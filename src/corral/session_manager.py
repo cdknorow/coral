@@ -545,6 +545,11 @@ async def restart_session(
         _ensure_session_in_project_dir(resume_session_id, working_dir)
 
     try:
+        # Install hooks before launching the agent
+        if working_dir:
+            from corral.utils import install_hooks
+            install_hooks(working_dir)
+
         # 0. Generate a new UUID for the restarted session.  This UUID is
         #    used for *both* the tmux session name and the Claude --session-id
         #    so that discover_corral_agents, the log file, and Claude all
@@ -972,6 +977,10 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
     log_file = f"{log_dir}/{agent_type}_corral_{session_id}.log"
 
     try:
+        # Install hooks before launching the agent
+        from corral.utils import install_hooks
+        install_hooks(working_dir)
+
         # Clear old log
         Path(log_file).write_text("")
 

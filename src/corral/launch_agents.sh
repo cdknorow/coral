@@ -3,6 +3,7 @@ set -euo pipefail
 
 TARGET_DIR="${1:-.}"
 AGENT_TYPE="${2:-claude}"
+LAUNCH_AGENTS="${3:-}"  # Pass "agents" as 3rd arg to auto-launch agents
 LOG_DIR="${TMPDIR:-/tmp}"
 LOG_DIR="${LOG_DIR%/}" # Remove trailing slash if present
 MAX_AGENTS=5
@@ -89,72 +90,79 @@ EOF
     fi
 }
 
-# Collect valid subdirectories (up to MAX_AGENTS)
-worktrees=()
-for dir in "$TARGET_DIR"/*/; do
-    [ -d "$dir" ] || continue
-    worktrees+=("$dir")
-    [ ${#worktrees[@]} -ge $MAX_AGENTS ] && break
-done
-
-if [ ${#worktrees[@]} -eq 0 ]; then
-    echo "Error: No subdirectories found in $TARGET_DIR"
-    exit 1
-fi
-
-echo "=== $AGENT_TYPE Corral Launcher (Independent Sessions) ==="
-echo "Target directory: $TARGET_DIR"
-echo "Found ${#worktrees[@]} workspace(s):"
-echo ""
-
 session_names=()
-for dir in "${worktrees[@]}"; do
-    folder_name="$(basename "$dir")"
-    session_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
-    session_name="${AGENT_TYPE}-${session_id}"
-    log_file="${LOG_DIR}/${AGENT_TYPE}_corral_${session_id}.log"
 
-    # Clear old log
-    > "$log_file"
+if [ "$LAUNCH_AGENTS" = "agents" ]; then
+    # Collect valid subdirectories (up to MAX_AGENTS)
+    worktrees=()
+    for dir in "$TARGET_DIR"/*/; do
+        [ -d "$dir" ] || continue
+        worktrees+=("$dir")
+        [ ${#worktrees[@]} -ge $MAX_AGENTS ] && break
+    done
 
-    # Create a new detached session rooted in the worktree
-    tmux new-session -d -s "$session_name" -c "$dir"
-
-    # Stream stdout to log file
-    tmux pipe-pane -t "${session_name}" -o "cat >> '${log_file}'"
-
-    # Pane 0: agent (with PROTOCOL.md piped in as system prompt if available)
-    tmux send-keys -t "${session_name}.0" "printf '\033]2;${folder_name} — ${AGENT_TYPE}\033\\\\'" Enter
-    if [ "$AGENT_TYPE" == "gemini" ]; then
-        if [ -f "$PROTOCOL_PATH" ]; then
-            tmux send-keys -t "${session_name}.0" "GEMINI_SYSTEM_MD=\"${PROTOCOL_PATH}\" gemini" Enter
-        else
-            tmux send-keys -t "${session_name}.0" "gemini" Enter
-        fi
-    else
-        if [ -f "$PROTOCOL_PATH" ]; then
-            tmux send-keys -t "${session_name}.0" "claude --session-id ${session_id} --append-system-prompt \"\$(cat '${PROTOCOL_PATH}')\"" Enter
-        else
-            tmux send-keys -t "${session_name}.0" "claude --session-id ${session_id}" Enter
-        fi
+    if [ ${#worktrees[@]} -eq 0 ]; then
+        echo "Error: No subdirectories found in $TARGET_DIR"
+        exit 1
     fi
 
-
-    # Focus back on the agent pane
-    tmux select-pane -t "${session_name}.0"
-
-    # Open a new terminal window and attach to this session
-    open_agent_terminal "$session_name" "${folder_name} — ${AGENT_TYPE}"
-
-    echo "  [+] Session : $session_name"
-    echo "      Dir     : $dir"
-    echo "      Log     : $log_file"
-    echo "      Attach  : tmux attach -t $session_name"
+    echo "=== $AGENT_TYPE Corral Launcher (Independent Sessions) ==="
+    echo "Target directory: $TARGET_DIR"
+    echo "Found ${#worktrees[@]} workspace(s):"
     echo ""
 
-    session_names+=("$session_name")
-done
+    for dir in "${worktrees[@]}"; do
+        folder_name="$(basename "$dir")"
+        session_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+        session_name="${AGENT_TYPE}-${session_id}"
+        log_file="${LOG_DIR}/${AGENT_TYPE}_corral_${session_id}.log"
 
+        # Clear old log
+        > "$log_file"
+
+        # Create a new detached session rooted in the worktree
+        tmux new-session -d -s "$session_name" -c "$dir"
+
+        # Stream stdout to log file
+        tmux pipe-pane -t "${session_name}" -o "cat >> '${log_file}'"
+
+        # Pane 0: agent (with PROTOCOL.md piped in as system prompt if available)
+        tmux send-keys -t "${session_name}.0" "printf '\033]2;${folder_name} — ${AGENT_TYPE}\033\\\\'" Enter
+        if [ "$AGENT_TYPE" == "gemini" ]; then
+            if [ -f "$PROTOCOL_PATH" ]; then
+                tmux send-keys -t "${session_name}.0" "GEMINI_SYSTEM_MD=\"${PROTOCOL_PATH}\" gemini" Enter
+            else
+                tmux send-keys -t "${session_name}.0" "gemini" Enter
+            fi
+        else
+            if [ -f "$PROTOCOL_PATH" ]; then
+                tmux send-keys -t "${session_name}.0" "claude --session-id ${session_id} --append-system-prompt \"\$(cat '${PROTOCOL_PATH}')\"" Enter
+            else
+                tmux send-keys -t "${session_name}.0" "claude --session-id ${session_id}" Enter
+            fi
+        fi
+
+
+        # Focus back on the agent pane
+        tmux select-pane -t "${session_name}.0"
+
+        # Open a new terminal window and attach to this session
+        open_agent_terminal "$session_name" "${folder_name} — ${AGENT_TYPE}"
+
+        echo "  [+] Session : $session_name"
+        echo "      Dir     : $dir"
+        echo "      Log     : $log_file"
+        echo "      Attach  : tmux attach -t $session_name"
+        echo ""
+
+        session_names+=("$session_name")
+    done
+else
+    echo "=== Corral Dashboard ==="
+    echo "Starting web server only (launch agents from the dashboard)."
+    echo "To also launch agents: launch-corral <path> <agent-type> agents"
+    echo ""
+fi
 
 launch_web_server
 
