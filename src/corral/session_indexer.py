@@ -65,6 +65,7 @@ class SessionIndexer:
                     continue
                 count = await self._index_claude_file(jsonl_file, mtime)
                 indexed += count
+                await asyncio.sleep(0)  # yield to event loop between files
 
         # -- Gemini files --
         if GEMINI_HISTORY_BASE.exists():
@@ -78,6 +79,7 @@ class SessionIndexer:
                     continue
                 count = await self._index_gemini_file(session_file, mtime)
                 indexed += count
+                await asyncio.sleep(0)  # yield to event loop between files
 
         return {"indexed": indexed, "skipped": skipped}
 
