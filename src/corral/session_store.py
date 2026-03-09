@@ -752,6 +752,15 @@ class SessionStore:
         )
         await conn.commit()
 
+    async def update_live_session_display_name(self, session_id: str, display_name: str) -> None:
+        """Update display_name on an existing live session record."""
+        conn = await self._get_conn()
+        await conn.execute(
+            "UPDATE live_sessions SET display_name = ? WHERE session_id = ?",
+            (display_name, session_id),
+        )
+        await conn.commit()
+
     async def unregister_live_session(self, session_id: str) -> None:
         """Remove a live session record (e.g. on kill)."""
         conn = await self._get_conn()

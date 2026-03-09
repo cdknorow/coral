@@ -480,6 +480,7 @@ async def set_display_name(name: str, body: dict):
     if not display_name:
         return {"error": "display_name is required"}
     await store.set_display_name(session_id, display_name)
+    await store.update_live_session_display_name(session_id, display_name)
     return {"ok": True, "display_name": display_name}
 
 
