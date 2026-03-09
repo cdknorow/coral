@@ -926,6 +926,55 @@ body {
     box-sizing: border-box;
 }
 
+.macro-btn-wrap {
+    position: relative;
+    display: inline-flex;
+}
+
+.macro-delete-btn {
+    display: none;
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+}
+
+.macro-btn-wrap:hover .macro-delete-btn {
+    display: inline-flex;
+}
+
+.macro-delete-btn:hover {
+    background: rgba(248, 81, 73, 0.2);
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.btn-add-macro {
+    font-size: 16px;
+    font-weight: 400;
+    color: var(--text-muted);
+    border-style: dashed;
+    min-width: 28px;
+}
+
+.btn-add-macro:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(31, 111, 235, 0.1);
+}
+
 .btn-enter {
     border-color: var(--accent-dim);
     border-bottom-color: var(--accent-dim);

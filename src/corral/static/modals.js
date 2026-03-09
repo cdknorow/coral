@@ -329,6 +329,10 @@ document.addEventListener("click", (e) => {
     if (e.target === restartModal) {
         hideRestartModal();
     }
+    const macroModal = document.getElementById("macro-modal");
+    if (e.target === macroModal) {
+        macroModal.style.display = "none";
+    }
 });
 
 // Close modals on Escape
@@ -339,5 +343,7 @@ document.addEventListener("keydown", (e) => {
         hideResumeModal();
         hideSettingsModal();
         hideRestartModal();
+        const mm = document.getElementById("macro-modal");
+        if (mm) mm.style.display = "none";
     }
 });

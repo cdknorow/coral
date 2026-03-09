@@ -385,6 +385,24 @@
         </div>
     </div>
 
+    <!-- Add Macro Modal -->
+    <div id="macro-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:400px">
+            <h3>Add Macro</h3>
+            <label>Label:
+                <input type="text" id="macro-label-input" placeholder="e.g. Commit & Push" style="width:100%">
+            </label>
+            <label style="margin-top:8px;display:block">Command:
+                <input type="text" id="macro-command-input" placeholder="e.g. /commit && git push" style="width:100%">
+            </label>
+            <p style="color:var(--text-muted);font-size:11px;margin-top:6px">Use <code>&&</code> to chain multiple commands (1s delay between each).</p>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideMacroModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addMacro()">Add</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script type="module" src="/static/app.js"></script>
 </body>

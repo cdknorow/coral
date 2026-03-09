@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { loadLiveSessions, loadHistorySessions, loadHistorySessionsPaged } from './api.js';
 import { connectCorralWs } from './websocket.js';
-import { sendCommand, sendRawKeys, sendModeToggle, sendQuickCommand, sendResetCommand, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart } from './controls.js';
+import { sendCommand, sendRawKeys, sendModeToggle, sendQuickCommand, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent } from './sessions.js';
 import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeIntoSession, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag } from './modals.js';
 import { toggleBrowser, browserNavigateTo, browserNavigateUp } from './browser.js';
@@ -22,7 +22,11 @@ window.sendCommand = sendCommand;
 window.sendRawKeys = sendRawKeys;
 window.sendModeToggle = sendModeToggle;
 window.sendQuickCommand = sendQuickCommand;
-window.sendResetCommand = sendResetCommand;
+window.executeMacro = executeMacro;
+window.addMacro = addMacro;
+window.deleteMacro = deleteMacro;
+window.showMacroModal = showMacroModal;
+window.hideMacroModal = hideMacroModal;
 window.attachTerminal = attachTerminal;
 window.killSession = killSession;
 window.restartSession = restartSession;
@@ -155,6 +159,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Markdown notes panel: click-to-edit, blur-to-save
     initNotesMd();
+
+    // Enter in macro modal submits
+    document.getElementById("macro-command-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); addMacro(); }
+    });
 
     // Enter sends command, Shift+Enter inserts newline
     document.getElementById("command-input").addEventListener("keydown", (e) => {
