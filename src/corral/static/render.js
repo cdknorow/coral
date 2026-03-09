@@ -13,6 +13,40 @@ function formatShortTime(isoStr) {
     return `${dd}/${mm}/${yy}`;
 }
 
+function formatStaleness(seconds) {
+    if (seconds === null || seconds === undefined) return "Unknown";
+    if (seconds < 5) return "Just now";
+    if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return `${Math.floor(seconds / 3600)}h ago`;
+}
+
+function getStateLabel(waitingForInput, working, staleness) {
+    if (waitingForInput) return "Waiting for input";
+    if (working) return "Working";
+    if (staleness !== null && staleness !== undefined && staleness < 60) return "Active";
+    return "Idle";
+}
+
+function buildSessionTooltip(s) {
+    const stateLabel = getStateLabel(s.waiting_for_input, s.working, s.staleness_seconds);
+    const lastAction = formatStaleness(s.staleness_seconds);
+    const goal = s.summary || "No goal set";
+    const status = s.status || "No status";
+    const branch = s.branch || "—";
+    const agent = s.agent_type || "claude";
+
+    let rows = [
+        `<tr><td class="tt-label">State</td><td class="tt-value tt-state-${stateLabel.toLowerCase().replace(/ /g, '-')}">${escapeHtml(stateLabel)}</td></tr>`,
+        `<tr><td class="tt-label">Last action</td><td class="tt-value">${escapeHtml(lastAction)}</td></tr>`,
+        `<tr><td class="tt-label">Goal</td><td class="tt-value">${escapeHtml(goal)}</td></tr>`,
+        `<tr><td class="tt-label">Status</td><td class="tt-value">${escapeHtml(status)}</td></tr>`,
+        `<tr><td class="tt-label">Branch</td><td class="tt-value">${escapeHtml(branch)}</td></tr>`,
+        `<tr><td class="tt-label">Agent</td><td class="tt-value">${escapeHtml(agent)}</td></tr>`,
+    ];
+    return `<table class="session-tooltip-table">${rows.join("")}</table>`;
+}
+
 function getDotClass(staleness, waitingForInput, working) {
     if (waitingForInput) return "waiting";
     if (working) return "working";
@@ -53,6 +87,7 @@ export function renderLiveSessions(sessions) {
             const displayLabel = s.display_name || "Agent";
             const sid = s.session_id ? escapeHtml(s.session_id) : "";
             const editBtn = `<button class="sidebar-edit-btn" onclick="event.stopPropagation(); renameAgent('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')" title="Rename agent">&#x270E;</button>`;
+            const tooltip = buildSessionTooltip(s);
             html += `<li class="session-group-item${isActive ? ' active' : ''}" onclick="selectLiveSession('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
                 <span class="session-dot ${dotClass}"></span>
                 <div class="session-info">
@@ -60,6 +95,7 @@ export function renderLiveSessions(sessions) {
                     <span class="session-goal">${goal}</span>
                 </div>
                 ${editBtn}
+                <div class="session-tooltip">${tooltip}</div>
             </li>`;
         }
     }
