@@ -1,18 +1,16 @@
-"""Session manager — shared logic for tmux discovery, history parsing, and command execution."""
+"""Session manager — log parsing, agent discovery, session launch/restart, and history loading."""
 
 from __future__ import annotations
 
 import asyncio
 import os
-import platform
 import re
-import shutil
 import time
 import uuid as _uuid
 from pathlib import Path
 from typing import Any
 
-from corral.tools.utils import run_cmd, LOG_DIR, LOG_PATTERN, HISTORY_PATH
+from corral.tools.utils import run_cmd, LOG_DIR, LOG_PATTERN
 
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -24,8 +22,6 @@ _UUID_RE = re.compile(
     r"^(\w+)-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
     re.IGNORECASE,
 )
-# Regex to parse old-format tmux session names: {agent_type}-agent-{N}
-_OLD_SESSION_RE = re.compile(r"^(\w+)-agent-(\d+)$", re.IGNORECASE)
 
 
 def strip_ansi(text: str) -> str:
@@ -97,6 +93,7 @@ async def discover_corral_agents() -> list[dict[str, Any]]:
     pane's working directory.
     """
     from glob import glob
+    from corral.tools.tmux_manager import list_tmux_sessions
 
     panes = await list_tmux_sessions()
     results = []
@@ -184,7 +181,7 @@ def get_log_status(log_path: str | Path) -> dict[str, Any]:
     }
     try:
         result["staleness_seconds"] = time.time() - log_path.stat().st_mtime
-        
+
         with open(log_path, "rb") as f:
             f.seek(0, 2)
             file_size = f.tell()
@@ -196,7 +193,7 @@ def get_log_status(log_path: str | Path) -> dict[str, Any]:
             max_chunks = 1000  # Up to ~4MB backwards
             chunks_read = 0
 
-            while pos > 0 and (len(lines) < 20 or result["status"] is None or result["summary"] is None): 
+            while pos > 0 and (len(lines) < 20 or result["status"] is None or result["summary"] is None):
                 if chunks_read >= max_chunks:
                     break
 
@@ -238,9 +235,9 @@ def get_log_status(log_path: str | Path) -> dict[str, Any]:
 
                     if need_lines:
                         lines.insert(0, clean_line)
-                
+
                 chunks_read += 1
-                        
+
             # Fallback for summary: if not found in the tail, it might be at the very top
             if result["summary"] is None:
                 f.seek(0)
@@ -248,231 +245,35 @@ def get_log_status(log_path: str | Path) -> dict[str, Any]:
                 head_matches = SUMMARY_RE.findall(strip_ansi(head_chunk))
                 if head_matches:
                     result["summary"] = clean_match(head_matches[-1])
-            
+
             result["recent_lines"] = lines
     except OSError:
         pass
     return result
 
 
-async def list_tmux_sessions() -> list[dict[str, str]]:
-    """List all tmux panes with their titles, session names, and targets."""
-    try:
-        rc, stdout, _ = await run_cmd(
-            "tmux", "list-panes", "-a",
-            "-F", "#{pane_title}|#{session_name}|#S:#I.#P|#{pane_current_path}",
-        )
-        if rc != 0:
-            return []
+def load_history_sessions() -> list[dict[str, Any]]:
+    """Load session history from all registered agents.
 
-        results = []
-        for line in stdout.splitlines():
-            parts = line.split("|", 3)
-            if len(parts) == 4:
-                results.append({
-                    "pane_title": parts[0],
-                    "session_name": parts[1],
-                    "target": parts[2],
-                    "current_path": parts[3],
-                })
-        return results
-    except (OSError, FileNotFoundError):
-        return []
-
-
-async def _find_pane(
-    agent_name: str,
-    agent_type: str | None = None,
-    session_id: str | None = None,
-) -> dict[str, str] | None:
-    """Find the tmux pane dict for a given agent.
-
-    When *session_id* is provided, matches by tmux session name containing
-    that UUID (new format). Falls back to fuzzy agent_name matching.
+    Returns list of session summaries sorted by last timestamp descending.
     """
-    sessions = await list_tmux_sessions()
-
-    # Fast path: match by session_id in tmux session name
-    if session_id:
-        sid_low = session_id.lower()
-        for s in sessions:
-            if sid_low in s["session_name"].lower():
-                return s
-
-    # Fallback: fuzzy match by agent_name
-    agent_low = agent_name.lower()
-    norm_name = agent_name.replace("_", "-").lower()
-    type_low = agent_type.lower() if agent_type else None
-
-    fallback: dict[str, str] | None = None
-
-    for s in sessions:
-        title_low = s["pane_title"].lower()
-        session_low = s["session_name"].lower()
-        path_low = s.get("current_path", "").lower()
-        path_base = os.path.basename(path_low.rstrip("/"))
-
-        name_match = (agent_low in title_low or
-                      norm_name in title_low or
-                      agent_low in session_low or
-                      norm_name in session_low or
-                      agent_low == path_base or
-                      norm_name == path_base)
-
-        if not name_match:
-            continue
-
-        if type_low:
-            if type_low in title_low or type_low in session_low:
-                return s
-            if fallback is None:
-                fallback = s
-        else:
-            return s
-
-    return fallback
+    from corral.agents import get_all_agents
+    result = []
+    for agent in get_all_agents():
+        result.extend(agent.load_history_sessions())
+    result.sort(key=lambda x: x.get("last_timestamp") or "", reverse=True)
+    return result
 
 
-async def get_session_info(
-    agent_name: str, agent_type: str | None = None, session_id: str | None = None,
-) -> dict[str, Any] | None:
-    """Return enriched metadata for a live session (used by the Info modal)."""
-    pane = await _find_pane(agent_name, agent_type, session_id=session_id)
-    if not pane:
-        return None
-
-    log_path = get_agent_log_path(agent_name, agent_type, session_id=session_id)
-    return {
-        "agent_name": agent_name,
-        "agent_type": agent_type or "claude",
-        "session_id": session_id,
-        "tmux_session_name": pane["session_name"],
-        "tmux_target": pane["target"],
-        "tmux_command": f"tmux attach -t {pane['session_name']}",
-        "working_directory": pane.get("current_path", ""),
-        "log_path": str(log_path) if log_path else None,
-        "pane_title": pane.get("pane_title", ""),
-    }
-
-
-async def find_pane_target(
-    agent_name: str, agent_type: str | None = None, session_id: str | None = None,
-) -> str | None:
-    """Find the tmux pane target address for a given agent name."""
-    pane = await _find_pane(agent_name, agent_type, session_id=session_id)
-    return pane["target"] if pane else None
-
-
-async def send_to_tmux(
-    agent_name: str, command: str, agent_type: str | None = None, session_id: str | None = None,
-) -> str | None:
-    """Send a command to the tmux pane for the given agent. Returns error string or None."""
-    target = await find_pane_target(agent_name, agent_type, session_id=session_id)
-    if not target:
-        return f"Pane '{agent_name}' not found in any tmux session"
-
-    try:
-        # Send the text content
-        rc, _, stderr = await run_cmd(
-            "tmux", "send-keys", "-t", target, "-l", command
-        )
-        if rc != 0:
-            return f"send-keys failed (rc={rc}): {stderr}"
-
-        # Pause to let tmux deliver keystrokes to the pane
-        await asyncio.sleep(0.3)
-
-        # Send Enter
-        rc, _, stderr = await run_cmd(
-            "tmux", "send-keys", "-t", target, "Enter"
-        )
-        if rc != 0:
-            return f"send Enter failed (rc={rc}): {stderr}"
-
-        return None
-    except Exception as e:
-        return str(e)
-
-
-async def send_raw_keys(
-    agent_name: str, keys: list[str], agent_type: str | None = None, session_id: str | None = None,
-) -> str | None:
-    """Send raw tmux key names (e.g. BTab, Escape) to a pane. Returns error string or None."""
-    target = await find_pane_target(agent_name, agent_type, session_id=session_id)
-    if not target:
-        return f"Pane '{agent_name}' not found in any tmux session"
-
-    try:
-        for key in keys:
-            rc, _, stderr = await run_cmd(
-                "tmux", "send-keys", "-t", target, key
-            )
-            if rc != 0:
-                return f"send-keys '{key}' failed (rc={rc}): {stderr}"
-            await asyncio.sleep(0.1)
-        return None
-    except Exception as e:
-        return str(e)
-
-
-async def capture_pane(
-    agent_name: str, lines: int = 200, agent_type: str | None = None, session_id: str | None = None,
-) -> str | None:
-    """Capture the current content of a tmux pane. Returns text or None on error."""
-    target = await find_pane_target(agent_name, agent_type, session_id=session_id)
-    if not target:
-        return None
-
-    try:
-        rc, stdout, _ = await run_cmd(
-            "tmux", "capture-pane", "-t", target, "-p", f"-S-{lines}"
-        )
-        if rc != 0:
-            return None
-        return stdout
-    except (OSError, FileNotFoundError):
-        return None
-
-
-async def kill_session(
-    agent_name: str, agent_type: str | None = None, session_id: str | None = None,
-) -> str | None:
-    """Kill the tmux session for a given agent and remove its log file.
-
-    Returns error string or None.
-    """
-    pane = await _find_pane(agent_name, agent_type, session_id=session_id)
-    if not pane:
-        return f"Pane '{agent_name}' not found in any tmux session"
-
-    session_name = pane["session_name"]
-    try:
-        rc, _, stderr = await run_cmd(
-            "tmux", "kill-session", "-t", session_name
-        )
-        if rc != 0:
-            return f"kill-session failed: {stderr}"
-
-        # Remove the log file so the agent disappears from discover_corral_agents
-        log_path = get_agent_log_path(agent_name, agent_type, session_id=session_id)
-        if log_path:
-            try:
-                log_path.unlink()
-            except OSError:
-                pass
-
-        # Unregister from persistent live sessions
-        if session_id:
-            try:
-                from corral.store import CorralStore
-                _store = CorralStore()
-                await _store.unregister_live_session(session_id)
-            except Exception:
-                pass  # Non-critical
-
-        return None
-    except Exception as e:
-        return str(e)
+def load_history_session_messages(session_id: str) -> list[dict[str, Any]]:
+    """Load all messages for a specific historical session (tries each agent)."""
+    from corral.agents import get_all_agents
+    for agent in get_all_agents():
+        messages = agent.load_session_messages(session_id)
+        if messages:
+            messages.sort(key=lambda x: x.get("timestamp") or "")
+            return messages
+    return []
 
 
 async def restart_session(
@@ -494,6 +295,8 @@ async def restart_session(
 
     Returns a dict with result info or an ``error`` key.
     """
+    from corral.tools.tmux_manager import _find_pane
+
     pane = await _find_pane(agent_name, agent_type, session_id=session_id)
     if not pane:
         return {"error": f"Pane '{agent_name}' not found in any tmux session"}
@@ -660,79 +463,6 @@ async def restart_session(
         }
     except Exception as e:
         return {"error": str(e)}
-
-
-async def open_terminal_attached(
-    agent_name: str, agent_type: str | None = None, session_id: str | None = None,
-) -> str | None:
-    """Open a local terminal window attached to the agent's tmux session.
-
-    Returns an error string on failure, or None on success.
-    Uses osascript on macOS, or falls back to common terminal emulators on Linux.
-    """
-    pane = await _find_pane(agent_name, agent_type, session_id=session_id)
-    if not pane:
-        return f"Pane '{agent_name}' not found in any tmux session"
-
-    session_name = pane["session_name"]
-    attach_cmd = f"tmux attach -t {session_name}"
-
-    try:
-        if platform.system() == "Darwin":
-            # macOS: use osascript to open Terminal.app
-            script = (
-                f'tell application "Terminal"\n'
-                f'    activate\n'
-                f'    do script "{attach_cmd}"\n'
-                f'end tell'
-            )
-            rc, _, stderr = await run_cmd(
-                "osascript", "-e", script
-            )
-            if rc != 0:
-                return f"osascript failed: {stderr}"
-        else:
-            # Linux: try common terminal emulators
-            for term in ("gnome-terminal", "xfce4-terminal", "konsole", "xterm"):
-                if shutil.which(term):
-                    if term == "gnome-terminal":
-                        args = [term, "--", "bash", "-c", attach_cmd]
-                    elif term == "konsole":
-                        args = [term, "-e", "bash", "-c", attach_cmd]
-                    else:
-                        args = [term, "-e", attach_cmd]
-                    asyncio.create_task(run_cmd(*args))
-                    # Don't wait — terminal runs independently
-                    return None
-            return "No supported terminal emulator found"
-
-        return None
-    except Exception as e:
-        return str(e)
-
-
-def load_history_sessions() -> list[dict[str, Any]]:
-    """Load session history from all registered agents.
-
-    Returns list of session summaries sorted by last timestamp descending.
-    """
-    from corral.agents import get_all_agents
-    result = []
-    for agent in get_all_agents():
-        result.extend(agent.load_history_sessions())
-    result.sort(key=lambda x: x.get("last_timestamp") or "", reverse=True)
-    return result
-
-
-def load_history_session_messages(session_id: str) -> list[dict[str, Any]]:
-    """Load all messages for a specific historical session (tries each agent)."""
-    from corral.agents import get_all_agents
-    for agent in get_all_agents():
-        messages = agent.load_session_messages(session_id)
-        if messages:
-            messages.sort(key=lambda x: x.get("timestamp") or "")
-            return messages
-    return []
 
 
 async def launch_claude_session(working_dir: str, agent_type: str = "claude", display_name: str | None = None, resume_session_id: str | None = None, flags: list[str] | None = None) -> dict[str, str]:

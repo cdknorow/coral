@@ -13,14 +13,16 @@ from corral.tools.session_manager import (
     discover_corral_agents,
     get_agent_log_path,
     get_log_status,
+    restart_session,
+    launch_claude_session,
+)
+from corral.tools.tmux_manager import (
     get_session_info,
     send_to_tmux,
     send_raw_keys,
     capture_pane,
     kill_session,
-    restart_session,
     open_terminal_attached,
-    launch_claude_session,
 )
 from corral.agents import get_agent
 from corral.tools.log_streamer import get_log_snapshot
