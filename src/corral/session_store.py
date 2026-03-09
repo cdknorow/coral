@@ -169,12 +169,13 @@ class SessionStore:
             );
 
             CREATE TABLE IF NOT EXISTS live_sessions (
-                session_id   TEXT PRIMARY KEY,
-                agent_type   TEXT NOT NULL DEFAULT 'claude',
-                agent_name   TEXT NOT NULL,
-                working_dir  TEXT NOT NULL,
-                display_name TEXT,
-                created_at   TEXT NOT NULL
+                session_id     TEXT PRIMARY KEY,
+                agent_type     TEXT NOT NULL DEFAULT 'claude',
+                agent_name     TEXT NOT NULL,
+                working_dir    TEXT NOT NULL,
+                display_name   TEXT,
+                resume_from_id TEXT,
+                created_at     TEXT NOT NULL
             );
 
         """)
@@ -217,6 +218,12 @@ class SessionStore:
                 current_session_id TEXT
             )
         """)
+
+        # Add resume_from_id to live_sessions if missing (migration)
+        try:
+            await conn.execute("ALTER TABLE live_sessions ADD COLUMN resume_from_id TEXT")
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
 
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_git_snap_session ON git_snapshots(session_id)")
 
@@ -732,15 +739,16 @@ class SessionStore:
     async def register_live_session(
         self, session_id: str, agent_type: str, agent_name: str,
         working_dir: str, display_name: str | None = None,
+        resume_from_id: str | None = None,
     ) -> None:
         """Record a live session so it can be resumed if Corral restarts."""
         conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
         await conn.execute(
             "INSERT OR REPLACE INTO live_sessions "
-            "(session_id, agent_type, agent_name, working_dir, display_name, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (session_id, agent_type, agent_name, working_dir, display_name, now),
+            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, now),
         )
         await conn.commit()
 
@@ -750,16 +758,16 @@ class SessionStore:
         await conn.execute("DELETE FROM live_sessions WHERE session_id = ?", (session_id,))
         await conn.commit()
 
-    async def replace_live_session(self, old_session_id: str, new_session_id: str, agent_type: str, agent_name: str, working_dir: str, display_name: str | None = None) -> None:
+    async def replace_live_session(self, old_session_id: str, new_session_id: str, agent_type: str, agent_name: str, working_dir: str, display_name: str | None = None, resume_from_id: str | None = None) -> None:
         """Replace one live session record with a new one (e.g. on restart)."""
         conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
         await conn.execute("DELETE FROM live_sessions WHERE session_id = ?", (old_session_id,))
         await conn.execute(
             "INSERT OR REPLACE INTO live_sessions "
-            "(session_id, agent_type, agent_name, working_dir, display_name, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (new_session_id, agent_type, agent_name, working_dir, display_name, now),
+            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (new_session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, now),
         )
         await conn.commit()
 
@@ -767,7 +775,7 @@ class SessionStore:
         """Return all registered live sessions."""
         conn = await self._get_conn()
         rows = await (await conn.execute(
-            "SELECT session_id, agent_type, agent_name, working_dir, display_name, created_at "
+            "SELECT session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, created_at "
             "FROM live_sessions ORDER BY created_at"
         )).fetchall()
         return [dict(r) for r in rows]

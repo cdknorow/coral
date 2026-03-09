@@ -170,6 +170,33 @@ async def test_resume_relaunches_missing_session(store, tmp_path):
         await _resume_persistent_sessions()
 
     mock_launch.assert_called_once_with(work_dir, "claude", display_name="My Agent", resume_session_id="old-sid")
+
+
+@pytest.mark.asyncio
+async def test_resume_uses_resume_from_id(store, tmp_path):
+    """When resume_from_id is set, it should be used instead of session_id."""
+    work_dir = str(tmp_path)
+    await store.register_live_session(
+        "new-sid", "claude", "wt1", work_dir, "My Agent",
+        resume_from_id="original-sid",
+    )
+
+    launch_result = {
+        "session_name": "claude-fresh-sid",
+        "session_id": "fresh-sid",
+        "log_file": "/tmp/claude_corral_fresh-sid.log",
+        "working_dir": work_dir,
+        "agent_type": "claude",
+    }
+
+    with patch("corral.web_server.store", store), \
+         patch("corral.session_manager.discover_corral_agents", AsyncMock(return_value=[])), \
+         patch("corral.session_manager.launch_claude_session", AsyncMock(return_value=launch_result)) as mock_launch:
+        from corral.web_server import _resume_persistent_sessions
+        await _resume_persistent_sessions()
+
+    # Should use the original-sid (resume_from_id), not new-sid (session_id)
+    mock_launch.assert_called_once_with(work_dir, "claude", display_name="My Agent", resume_session_id="original-sid")
     # Old session should be cleaned up (new one registered by launch_claude_session)
     sessions = await store.get_all_live_sessions()
     old_ids = {s["session_id"] for s in sessions}
@@ -252,3 +279,183 @@ async def test_resume_no_registered_sessions(store):
 
     # discover_corral_agents should not even be called when table is empty
     mock_discover.assert_not_called()
+
+
+# ── Name & display_name persistence across restarts ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_register_stores_resume_from_id(store):
+    """resume_from_id should be persisted and returned by get_all_live_sessions."""
+    await store.register_live_session(
+        "sid-1", "claude", "wt1", "/tmp/wt1", "My Agent",
+        resume_from_id="original-sid",
+    )
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["resume_from_id"] == "original-sid"
+
+
+@pytest.mark.asyncio
+async def test_register_without_resume_from_id(store):
+    """resume_from_id should be None when not provided."""
+    await store.register_live_session("sid-1", "claude", "wt1", "/tmp/wt1")
+    sessions = await store.get_all_live_sessions()
+    assert sessions[0]["resume_from_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_replace_preserves_display_name(store):
+    """replace_live_session should preserve display_name when provided."""
+    await store.register_live_session("old-sid", "claude", "wt1", "/tmp/wt1", "My Agent")
+    await store.replace_live_session(
+        "old-sid", "new-sid", "claude", "wt1", "/tmp/wt1",
+        display_name="My Agent", resume_from_id="original-sid",
+    )
+
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["session_id"] == "new-sid"
+    assert sessions[0]["display_name"] == "My Agent"
+    assert sessions[0]["resume_from_id"] == "original-sid"
+
+
+@pytest.mark.asyncio
+async def test_replace_without_display_name_sets_null(store):
+    """replace_live_session without display_name should store NULL."""
+    await store.register_live_session("old-sid", "claude", "wt1", "/tmp/wt1", "My Agent")
+    await store.replace_live_session(
+        "old-sid", "new-sid", "claude", "wt1", "/tmp/wt1",
+    )
+
+    sessions = await store.get_all_live_sessions()
+    assert sessions[0]["display_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_resume_preserves_display_name_across_multiple_restarts(store, tmp_path):
+    """display_name should survive multiple Corral restart cycles.
+
+    Simulates: initial launch → Corral restart → Corral restart again.
+    Each cycle the old session is unregistered and a new one registered
+    by launch_claude_session. The display_name must carry through.
+    """
+    work_dir = str(tmp_path)
+    call_log = []
+
+    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None):
+        """Simulate launch_claude_session: register a new session in the store."""
+        new_sid = f"sid-cycle-{len(call_log) + 1}"
+        call_log.append({
+            "display_name": display_name,
+            "resume_session_id": resume_session_id,
+            "new_sid": new_sid,
+        })
+        # Mimic what launch_claude_session does internally
+        await store.register_live_session(
+            new_sid, agent_type, "wt1", working_dir,
+            display_name=display_name,
+            resume_from_id=resume_session_id,
+        )
+        return {
+            "session_name": f"{agent_type}-{new_sid}",
+            "session_id": new_sid,
+            "log_file": f"/tmp/{agent_type}_corral_{new_sid}.log",
+            "working_dir": working_dir,
+            "agent_type": agent_type,
+        }
+
+    # Cycle 0: Initial launch (simulated by direct registration)
+    await store.register_live_session("sid-original", "claude", "wt1", work_dir, "My Custom Name")
+
+    # Cycle 1: First Corral restart
+    with patch("corral.web_server.store", store), \
+         patch("corral.session_manager.discover_corral_agents", AsyncMock(return_value=[])), \
+         patch("corral.session_manager.launch_claude_session", AsyncMock(side_effect=mock_launch)):
+        from corral.web_server import _resume_persistent_sessions
+        await _resume_persistent_sessions()
+
+    assert call_log[0]["display_name"] == "My Custom Name"
+    assert call_log[0]["resume_session_id"] == "sid-original"
+
+    # Verify the new record has display_name and resume_from_id
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    s = sessions[0]
+    assert s["session_id"] == "sid-cycle-1"
+    assert s["display_name"] == "My Custom Name"
+    assert s["resume_from_id"] == "sid-original"
+
+    # Cycle 2: Second Corral restart — should still use original session ID
+    with patch("corral.web_server.store", store), \
+         patch("corral.session_manager.discover_corral_agents", AsyncMock(return_value=[])), \
+         patch("corral.session_manager.launch_claude_session", AsyncMock(side_effect=mock_launch)):
+        await _resume_persistent_sessions()
+
+    assert call_log[1]["display_name"] == "My Custom Name"
+    assert call_log[1]["resume_session_id"] == "sid-original"  # Still the original!
+
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    s = sessions[0]
+    assert s["session_id"] == "sid-cycle-2"
+    assert s["display_name"] == "My Custom Name"
+    assert s["resume_from_id"] == "sid-original"
+
+
+@pytest.mark.asyncio
+async def test_resume_preserves_agent_name_across_restarts(store, tmp_path):
+    """agent_name (folder name) should be consistent across restart cycles."""
+    work_dir = str(tmp_path / "my_worktree")
+    os.makedirs(work_dir)
+
+    await store.register_live_session("sid-1", "claude", "my_worktree", work_dir)
+
+    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None):
+        folder = os.path.basename(working_dir)
+        await store.register_live_session(
+            "sid-2", agent_type, folder, working_dir,
+            display_name=display_name, resume_from_id=resume_session_id,
+        )
+        return {
+            "session_name": f"{agent_type}-sid-2",
+            "session_id": "sid-2",
+            "log_file": f"/tmp/{agent_type}_corral_sid-2.log",
+            "working_dir": working_dir,
+            "agent_type": agent_type,
+        }
+
+    with patch("corral.web_server.store", store), \
+         patch("corral.session_manager.discover_corral_agents", AsyncMock(return_value=[])), \
+         patch("corral.session_manager.launch_claude_session", AsyncMock(side_effect=mock_launch)):
+        from corral.web_server import _resume_persistent_sessions
+        await _resume_persistent_sessions()
+
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["agent_name"] == "my_worktree"
+
+
+@pytest.mark.asyncio
+async def test_resume_without_display_name_passes_none(store, tmp_path):
+    """Sessions without a display_name should pass None through to launch."""
+    work_dir = str(tmp_path)
+    await store.register_live_session("sid-1", "claude", "wt1", work_dir)
+
+    launch_result = {
+        "session_name": "claude-sid-2",
+        "session_id": "sid-2",
+        "log_file": "/tmp/claude_corral_sid-2.log",
+        "working_dir": work_dir,
+        "agent_type": "claude",
+    }
+
+    with patch("corral.web_server.store", store), \
+         patch("corral.session_manager.discover_corral_agents", AsyncMock(return_value=[])), \
+         patch("corral.session_manager.launch_claude_session", AsyncMock(return_value=launch_result)) as mock_launch:
+        from corral.web_server import _resume_persistent_sessions
+        await _resume_persistent_sessions()
+
+    mock_launch.assert_called_once_with(
+        work_dir, "claude", display_name=None, resume_session_id="sid-1",
+    )

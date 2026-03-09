@@ -665,9 +665,12 @@ async def restart_session(
             try:
                 from corral.session_store import SessionStore
                 _store = SessionStore()
+                old_display_name = await _store.get_display_name(session_id)
                 await _store.migrate_display_name(session_id, new_session_id)
                 await _store.replace_live_session(
                     session_id, new_session_id, effective_type, agent_name, working_dir,
+                    display_name=old_display_name,
+                    resume_from_id=resume_session_id,
                 )
             except Exception:
                 pass  # Non-critical
@@ -1060,6 +1063,7 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
                 await _store.set_display_name(session_id, display_name)
             await _store.register_live_session(
                 session_id, agent_type, folder_name, working_dir, display_name,
+                resume_from_id=resume_session_id,
             )
         except Exception:
             pass  # Non-critical

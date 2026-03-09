@@ -106,9 +106,14 @@ async def _resume_persistent_sessions():
                 sid[:8], agent_type, working_dir,
             )
 
+            # Use resume_from_id if available (tracks the original Claude
+            # session across multiple Corral restarts), otherwise fall back
+            # to the session_id itself (first restart after initial launch).
+            resume_id = rec.get("resume_from_id") or sid
+
             result = await launch_claude_session(
                 working_dir, agent_type, display_name=display_name,
-                resume_session_id=sid,
+                resume_session_id=resume_id,
             )
 
             if result.get("error"):
