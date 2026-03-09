@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import re
 import time
@@ -274,6 +275,70 @@ def load_history_session_messages(session_id: str) -> list[dict[str, Any]]:
             messages.sort(key=lambda x: x.get("timestamp") or "")
             return messages
     return []
+
+
+async def resume_persistent_sessions(store) -> None:
+    """Resume live sessions that were running when Corral last stopped.
+
+    Compares the ``live_sessions`` DB table against currently running tmux
+    sessions.  Any registered session without a matching tmux session is
+    relaunched (with ``--resume`` for Claude agents so they pick up context).
+    Sessions whose working directory no longer exists are silently removed.
+
+    *store* is a :class:`~corral.store.CorralStore` instance.
+    """
+    log = logging.getLogger(__name__)
+
+    try:
+        registered = await store.get_all_live_sessions()
+        if not registered:
+            return
+
+        # Discover what is already alive in tmux
+        live_agents = await discover_corral_agents()
+        live_session_ids = {a["session_id"] for a in live_agents}
+
+        for rec in registered:
+            sid = rec["session_id"]
+            if sid in live_session_ids:
+                continue  # Already running — nothing to do
+
+            working_dir = rec["working_dir"]
+            if not os.path.isdir(working_dir):
+                # Working directory gone (worktree removed?) — clean up
+                await store.unregister_live_session(sid)
+                log.info("Removed stale live session %s (dir missing: %s)", sid[:8], working_dir)
+                continue
+
+            agent_type = rec["agent_type"]
+            display_name = rec.get("display_name")
+            flags = rec.get("flags")  # Already deserialized by get_all_live_sessions
+
+            log.info(
+                "Resuming session %s (%s) in %s",
+                sid[:8], agent_type, working_dir,
+            )
+
+            # Use resume_from_id if available (tracks the original Claude
+            # session across multiple Corral restarts), otherwise fall back
+            # to the session_id itself (first restart after initial launch).
+            resume_id = rec.get("resume_from_id") or sid
+
+            result = await launch_claude_session(
+                working_dir, agent_type, display_name=display_name,
+                resume_session_id=resume_id,
+                flags=flags,
+            )
+
+            if result.get("error"):
+                log.warning("Failed to resume session %s: %s", sid[:8], result["error"])
+                await store.unregister_live_session(sid)
+            else:
+                # Old session record is replaced by the new launch
+                # (launch_claude_session calls register_live_session with new id)
+                await store.unregister_live_session(sid)
+    except Exception:
+        log.exception("Error resuming persistent sessions")
 
 
 async def restart_session(
