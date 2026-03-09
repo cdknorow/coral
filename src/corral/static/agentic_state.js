@@ -4,36 +4,36 @@ import { state } from './state.js';
 import { startLiveHistoryPoll, stopLiveHistoryPoll } from './live_chat.js';
 
 const TOOL_ICONS = {
-    Read:       { char: 'R', cls: 'tool-read' },
-    Write:      { char: 'W', cls: 'tool-write' },
-    Edit:       { char: 'E', cls: 'tool-edit' },
-    Bash:       { char: '$', cls: 'tool-bash' },
-    Grep:       { char: '?', cls: 'tool-grep' },
-    Glob:       { char: '*', cls: 'tool-glob' },
-    WebFetch:   { char: 'F', cls: 'tool-web' },
-    WebSearch:  { char: 'S', cls: 'tool-web' },
-    TaskCreate: { char: 'T', cls: 'tool-task' },
-    TaskUpdate: { char: 'T', cls: 'tool-task' },
-    TaskList:   { char: 'T', cls: 'tool-task' },
-    TaskGet:    { char: 'T', cls: 'tool-task' },
-    Task:       { char: 'A', cls: 'tool-agent' },
+    Read:       { char: '&#xe8f4;', cls: 'tool-read' },
+    Write:      { char: '&#xe3c9;', cls: 'tool-write' },
+    Edit:       { char: '&#xe3c9;', cls: 'tool-edit' },
+    Bash:       { char: '&#xeb8e;', cls: 'tool-bash' },
+    Grep:       { char: '&#xe8b6;', cls: 'tool-grep' },
+    Glob:       { char: '&#xe2c8;', cls: 'tool-glob' },
+    WebFetch:   { char: '&#xe894;', cls: 'tool-web' },
+    WebSearch:  { char: '&#xf02e;', cls: 'tool-web' },
+    TaskCreate: { char: '&#xe145;', cls: 'tool-task' },
+    TaskUpdate: { char: '&#xe8d5;', cls: 'tool-task' },
+    TaskList:   { char: '&#xe8ef;', cls: 'tool-task' },
+    TaskGet:    { char: '&#xe8ef;', cls: 'tool-task' },
+    Task:       { char: '&#xea21;', cls: 'tool-agent' },
 };
 
 // Filter groups — maps display label to the set of tool_names/event_types it covers
 const FILTER_GROUPS = [
-    { key: 'read',   label: 'R', title: 'Read',          cls: 'tool-read',   match: ev => ev.tool_name === 'Read' },
-    { key: 'write',  label: 'W', title: 'Write',         cls: 'tool-write',  match: ev => ev.tool_name === 'Write' },
-    { key: 'edit',   label: 'E', title: 'Edit',          cls: 'tool-edit',   match: ev => ev.tool_name === 'Edit' },
-    { key: 'bash',   label: '$', title: 'Bash',          cls: 'tool-bash',   match: ev => ev.tool_name === 'Bash' },
-    { key: 'search', label: '?', title: 'Grep / Glob',   cls: 'tool-grep',   match: ev => ev.tool_name === 'Grep' || ev.tool_name === 'Glob' },
-    { key: 'web',    label: 'W', title: 'Web',           cls: 'tool-web',    match: ev => ev.tool_name === 'WebFetch' || ev.tool_name === 'WebSearch' },
-    { key: 'task',   label: 'T', title: 'Tasks',         cls: 'tool-task',   match: ev => ['TaskCreate','TaskUpdate','TaskList','TaskGet'].includes(ev.tool_name) },
-    { key: 'agent',  label: 'A', title: 'Subagents',     cls: 'tool-agent',  match: ev => ev.tool_name === 'Task' },
-    { key: 'status',     label: 'S', title: 'Status',          cls: 'tool-status',     match: ev => ev.event_type === 'status' },
-    { key: 'goal',       label: 'G', title: 'Goal',            cls: 'tool-goal',       match: ev => ev.event_type === 'goal' },
-    { key: 'confidence', label: 'C', title: 'Confidence',      cls: 'tool-confidence', match: ev => ev.event_type === 'confidence' },
-    { key: 'system',     label: '!', title: 'Stop / Notify',   cls: 'tool-stop',       match: ev => ev.event_type === 'stop' || ev.event_type === 'notification' },
-    { key: 'pulse',      label: 'P', title: 'Pulse (other)',   cls: 'tool-pulse',      match: ev => ev.event_type && !ev.tool_name && !['status','goal','confidence','stop','notification'].includes(ev.event_type) },
+    { key: 'read',   label: '&#xe8f4;', title: 'Read',          cls: 'tool-read',   match: ev => ev.tool_name === 'Read' },
+    { key: 'write',  label: '&#xe3c9;', title: 'Write',         cls: 'tool-write',  match: ev => ev.tool_name === 'Write' },
+    { key: 'edit',   label: '&#xe3c9;', title: 'Edit',          cls: 'tool-edit',   match: ev => ev.tool_name === 'Edit' },
+    { key: 'bash',   label: '&#xeb8e;', title: 'Bash',          cls: 'tool-bash',   match: ev => ev.tool_name === 'Bash' },
+    { key: 'search', label: '&#xe8b6;', title: 'Grep / Glob',   cls: 'tool-grep',   match: ev => ev.tool_name === 'Grep' || ev.tool_name === 'Glob' },
+    { key: 'web',    label: '&#xe894;', title: 'Web',           cls: 'tool-web',    match: ev => ev.tool_name === 'WebFetch' || ev.tool_name === 'WebSearch' },
+    { key: 'task',   label: '&#xe8ef;', title: 'Tasks',         cls: 'tool-task',   match: ev => ['TaskCreate','TaskUpdate','TaskList','TaskGet'].includes(ev.tool_name) },
+    { key: 'agent',  label: '&#xea21;', title: 'Subagents',     cls: 'tool-agent',  match: ev => ev.tool_name === 'Task' },
+    { key: 'status',     label: '&#xe8b8;', title: 'Status',          cls: 'tool-status',     match: ev => ev.event_type === 'status' },
+    { key: 'goal',       label: '&#xe153;', title: 'Goal',            cls: 'tool-goal',       match: ev => ev.event_type === 'goal' },
+    { key: 'confidence', label: '&#xe8e8;', title: 'Confidence',      cls: 'tool-confidence', match: ev => ev.event_type === 'confidence' },
+    { key: 'system',     label: '&#xe002;', title: 'Stop / Notify',   cls: 'tool-stop',       match: ev => ev.event_type === 'stop' || ev.event_type === 'notification' },
+    { key: 'pulse',      label: '&#xe87e;', title: 'Pulse (other)',   cls: 'tool-pulse',      match: ev => ev.event_type && !ev.tool_name && !['status','goal','confidence','stop','notification'].includes(ev.event_type) },
 ];
 
 // Hidden filters are persisted per-session in state
@@ -48,11 +48,11 @@ function getHiddenFilters() {
 
 // Known pulse event types — add new PULSE:<TYPE> entries here
 const PULSE_ICONS = {
-    status:       { char: 'S', cls: 'tool-status',     title: 'Status' },
-    goal:         { char: 'G', cls: 'tool-goal',       title: 'Goal' },
-    confidence:   { char: 'C', cls: 'tool-confidence', title: 'Confidence' },
-    stop:         { char: '!', cls: 'tool-stop',       title: 'Stop' },
-    notification: { char: 'N', cls: 'tool-notification', title: 'Notification' },
+    status:       { char: '&#xe8b8;', cls: 'tool-status',     title: 'Status' },
+    goal:         { char: '&#xe153;', cls: 'tool-goal',       title: 'Goal' },
+    confidence:   { char: '&#xe8e8;', cls: 'tool-confidence', title: 'Confidence' },
+    stop:         { char: '&#xe002;', cls: 'tool-stop',       title: 'Stop' },
+    notification: { char: '&#xe7f4;', cls: 'tool-notification', title: 'Notification' },
 };
 
 function getToolIcon(toolName, eventType) {
@@ -66,9 +66,9 @@ function getToolIcon(toolName, eventType) {
     if (eventType && !toolName) {
         const label = eventType.charAt(0).toUpperCase();
         const title = eventType.charAt(0).toUpperCase() + eventType.slice(1);
-        return { char: label, cls: 'tool-pulse', title };
+        return { char: '&#xe87e;', cls: 'tool-pulse', title };
     }
-    return { char: '.', cls: 'tool-default', title: eventType || 'Event' };
+    return { char: '&#xe061;', cls: 'tool-default', title: eventType || 'Event' };
 }
 
 function formatTime(isoStr) {
@@ -120,30 +120,83 @@ export function renderEventFilters() {
 
     const hidden = getHiddenFilters();
     const events = state.currentAgentEvents || [];
+    const activeCount = FILTER_GROUPS.length - hidden.size;
+    const badge = hidden.size > 0 ? `<span class="filter-btn-badge">${activeCount}/${FILTER_GROUPS.length}</span>` : '';
 
-    const allHidden = hidden.size === FILTER_GROUPS.length;
-    const noneHidden = hidden.size === 0;
-    const toggleCls = noneHidden ? '' : allHidden ? 'filter-hidden' : 'filter-partial';
+    container.innerHTML = `<button class="filter-dropdown-btn" onclick="toggleFilterDropdown('live')">
+        <span class="event-filter-char">&#xe152;</span>
+        <span class="filter-btn-label">Filter</span>
+        ${badge}
+    </button>`;
+}
 
-    const toggleBtn = `<button class="event-filter-chip filter-toggle ${toggleCls}"
-                onclick="toggleAllEventFilters()"
-                title="${noneHidden ? 'Hide all' : 'Show all'}">
-                <span class="event-filter-char">*</span>
-            </button>`;
+// Track which mode the dropdown is open for
+let _filterDropdownMode = null;
 
-    const chips = FILTER_GROUPS.map(group => {
-        const count = events.filter(group.match).length;
-        const isHidden = hidden.has(group.key);
-        const dimClass = isHidden ? 'filter-hidden' : '';
-        return `<button class="event-filter-chip ${group.cls} ${dimClass}"
-                    onclick="toggleEventFilter('${group.key}')"
-                    onmouseenter="showFilterPopup(event, '${group.key}')"
-                    onmouseleave="hideFilterPopup()">
-                    <span class="event-filter-char">${group.label}</span>
-                </button>`;
+export function toggleFilterDropdown(mode) {
+    const existing = document.getElementById('filter-dropdown');
+    if (existing) {
+        existing.remove();
+        _filterDropdownMode = null;
+        return;
+    }
+    _openFilterDropdown(mode);
+}
+
+function _openFilterDropdown(mode) {
+    _filterDropdownMode = mode;
+    const isLive = mode === 'live';
+    const hidden = isLive ? getHiddenFilters() : window.historyFilterHiddenRef;
+    const events = isLive ? (state.currentAgentEvents || []) : null;
+    const btn = document.querySelector(`#${isLive ? 'event-filters' : 'history-event-filters'} .filter-dropdown-btn`);
+    if (!btn) return;
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'filter-dropdown';
+    dropdown.id = 'filter-dropdown';
+
+    const items = FILTER_GROUPS.map(group => {
+        const isHidden = hidden ? hidden.has(group.key) : false;
+        const checked = !isHidden;
+        const count = events ? events.filter(group.match).length : '';
+        const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
+        const toggleFn = isLive ? 'toggleEventFilter' : 'toggleHistoryEventFilter';
+        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${toggleFn}('${group.key}')">
+            <span class="filter-item-icon event-filter-char">${group.label}</span>
+            <span class="filter-item-label">${group.title}</span>
+            ${countHtml}
+            <span class="filter-item-check">${checked ? '&#xe834;' : '&#xe835;'}</span>
+        </div>`;
     }).join('');
 
-    container.innerHTML = toggleBtn + chips;
+    const toggleAllFn = isLive ? 'toggleAllEventFilters' : 'toggleAllHistoryEventFilters';
+    dropdown.innerHTML = `
+        <div class="filter-dropdown-header">
+            <span class="filter-dropdown-title">Filter Events</span>
+            <button class="filter-dropdown-toggle" onclick="event.stopPropagation(); ${toggleAllFn}()">Toggle All</button>
+        </div>
+        <div class="filter-dropdown-list">${items}</div>
+    `;
+
+    const rect = btn.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.top = (rect.bottom + 4) + 'px';
+    dropdown.style.left = rect.left + 'px';
+
+    document.body.appendChild(dropdown);
+
+    // Close on outside click
+    setTimeout(() => {
+        const closeHandler = (e) => {
+            const dd = document.getElementById('filter-dropdown');
+            if (!dd || (!dd.contains(e.target) && !btn.contains(e.target))) {
+                if (dd) dd.remove();
+                _filterDropdownMode = null;
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        document.addEventListener('click', closeHandler);
+    }, 0);
 }
 
 export function toggleEventFilter(key) {
@@ -153,6 +206,7 @@ export function toggleEventFilter(key) {
     } else {
         hidden.add(key);
     }
+    _refreshFilterDropdown('live');
     renderEventFilters();
     renderEventTimeline();
 }
@@ -160,14 +214,39 @@ export function toggleEventFilter(key) {
 export function toggleAllEventFilters() {
     const hidden = getHiddenFilters();
     if (hidden.size === 0) {
-        // Hide all
         for (const group of FILTER_GROUPS) hidden.add(group.key);
     } else {
-        // Show all
         hidden.clear();
     }
+    _refreshFilterDropdown('live');
     renderEventFilters();
     renderEventTimeline();
+}
+
+function _refreshFilterDropdown(mode) {
+    const dropdown = document.getElementById('filter-dropdown');
+    if (!dropdown) return;
+    // Re-render dropdown items in place
+    const isLive = mode === 'live';
+    const hidden = isLive ? getHiddenFilters() : window.historyFilterHiddenRef;
+    const events = isLive ? (state.currentAgentEvents || []) : null;
+
+    const items = FILTER_GROUPS.map(group => {
+        const isHidden = hidden ? hidden.has(group.key) : false;
+        const checked = !isHidden;
+        const count = events ? events.filter(group.match).length : '';
+        const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
+        const toggleFn = isLive ? 'toggleEventFilter' : 'toggleHistoryEventFilter';
+        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${toggleFn}('${group.key}')">
+            <span class="filter-item-icon event-filter-char">${group.label}</span>
+            <span class="filter-item-label">${group.title}</span>
+            ${countHtml}
+            <span class="filter-item-check">${checked ? '&#xe834;' : '&#xe835;'}</span>
+        </div>`;
+    }).join('');
+
+    const list = dropdown.querySelector('.filter-dropdown-list');
+    if (list) list.innerHTML = items;
 }
 
 export function renderEventTimeline() {

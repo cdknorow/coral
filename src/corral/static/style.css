@@ -2234,10 +2234,10 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 22px;
+    width: 28px;
+    height: 26px;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 6px;
     background: var(--bg-tertiary);
     cursor: pointer;
     transition: all 0.15s;
@@ -2246,9 +2246,18 @@ body {
 }
 
 .event-filter-char {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 11px;
-    font-weight: 700;
+    font-family: 'Material Icons';
+    font-size: 15px;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
 }
 
 .event-filter-chip.tool-read  .event-filter-char { color: var(--accent); }
@@ -2285,6 +2294,142 @@ body {
 
 .event-filter-chip.filter-hidden:hover {
     opacity: 0.6;
+}
+
+/* Filter Dropdown Button */
+.filter-dropdown-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+.filter-dropdown-btn:hover {
+    border-color: var(--border-light);
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.filter-dropdown-btn .event-filter-char {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+.filter-btn-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 500;
+}
+.filter-btn-badge {
+    font-size: 10px;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 8px;
+    padding: 1px 6px;
+    margin-left: 2px;
+}
+
+/* Filter Dropdown Panel */
+.filter-dropdown {
+    z-index: 400;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 10px;
+    width: 240px;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+}
+.filter-dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+}
+.filter-dropdown-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.filter-dropdown-toggle {
+    font-size: 11px;
+    color: var(--accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+.filter-dropdown-toggle:hover {
+    background: rgba(88, 166, 255, 0.1);
+}
+.filter-dropdown-list {
+    padding: 4px 0;
+    max-height: 360px;
+    overflow-y: auto;
+}
+.filter-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.filter-dropdown-item:hover {
+    background: var(--bg-hover);
+}
+.filter-dropdown-item .filter-item-icon {
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 5px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.filter-dropdown-item.tool-read .filter-item-icon    { color: var(--accent); background: rgba(88, 166, 255, 0.1); }
+.filter-dropdown-item.tool-write .filter-item-icon   { color: var(--success); background: rgba(63, 185, 80, 0.1); }
+.filter-dropdown-item.tool-edit .filter-item-icon     { color: var(--warning); background: rgba(210, 153, 34, 0.1); }
+.filter-dropdown-item.tool-bash .filter-item-icon     { color: #d2a8ff; background: rgba(210, 168, 255, 0.1); }
+.filter-dropdown-item.tool-grep .filter-item-icon     { color: #79c0ff; background: rgba(121, 192, 255, 0.1); }
+.filter-dropdown-item.tool-web .filter-item-icon      { color: #ffa657; background: rgba(255, 166, 87, 0.1); }
+.filter-dropdown-item.tool-task .filter-item-icon     { color: var(--accent); background: rgba(88, 166, 255, 0.1); }
+.filter-dropdown-item.tool-agent .filter-item-icon    { color: #d2a8ff; background: rgba(210, 168, 255, 0.1); }
+.filter-dropdown-item.tool-status .filter-item-icon   { color: var(--accent); background: rgba(88, 166, 255, 0.15); }
+.filter-dropdown-item.tool-goal .filter-item-icon     { color: var(--success); background: rgba(63, 185, 80, 0.15); }
+.filter-dropdown-item.tool-confidence .filter-item-icon { color: #e3b341; background: rgba(227, 179, 65, 0.15); }
+.filter-dropdown-item.tool-stop .filter-item-icon     { color: var(--error); background: rgba(248, 81, 73, 0.1); }
+.filter-dropdown-item.tool-pulse .filter-item-icon    { color: #bc8cff; background: rgba(188, 140, 255, 0.15); }
+
+.filter-item-label {
+    flex: 1;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.filter-item-count {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    min-width: 20px;
+    text-align: right;
+}
+.filter-item-check {
+    font-family: 'Material Icons';
+    font-size: 18px;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    color: var(--accent);
+    flex-shrink: 0;
 }
 
 /* Filter Popup */
@@ -2384,24 +2529,33 @@ body {
     display: flex;
     align-items: flex-start;
     gap: 8px;
-    padding: 4px 14px;
+    padding: 6px 10px;
+    margin: 3px 8px;
     font-size: 12px;
     color: var(--text-secondary);
-    border-bottom: 1px solid rgba(48, 54, 61, 0.5);
-    transition: background 0.1s;
+    border: 1px solid rgba(48, 54, 61, 0.4);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    transition: all 0.15s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .event-item.event-type-status {
-    background: rgba(88, 166, 255, 0.1);
+    background: rgba(88, 166, 255, 0.06);
+    border-color: rgba(88, 166, 255, 0.2);
 }
 .event-item.event-type-goal {
-    background: rgba(63, 185, 80, 0.1);
+    background: rgba(63, 185, 80, 0.06);
+    border-color: rgba(63, 185, 80, 0.2);
 }
 .event-item.event-type-confidence {
-    background: rgba(227, 179, 65, 0.1);
+    background: rgba(227, 179, 65, 0.06);
+    border-color: rgba(227, 179, 65, 0.2);
 }
 .event-item:hover {
     background: var(--bg-hover);
+    border-color: var(--border-light);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
 .event-item[data-tooltip] {
@@ -2430,16 +2584,25 @@ body {
 }
 
 .event-icon {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 11px;
-    font-weight: 700;
-    border-radius: 3px;
+    font-family: 'Material Icons';
+    font-size: 15px;
+    font-weight: 400;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    border-radius: 6px;
     margin-top: 1px;
 }
 

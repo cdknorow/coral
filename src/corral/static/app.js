@@ -13,7 +13,7 @@ import { loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown
 import { loadSessionCommits } from './commits.js';
 import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle } from './tasks.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
-import { switchAgenticTab, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, showFilterPopup, hideFilterPopup } from './agentic_state.js';
+import { switchAgenticTab, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
 import { copyBranchName } from './utils.js';
 
@@ -72,6 +72,7 @@ window.switchAgenticTab = switchAgenticTab;
 window.loadAgentEvents = loadAgentEvents;
 window.toggleEventFilter = toggleEventFilter;
 window.toggleAllEventFilters = toggleAllEventFilters;
+window.toggleFilterDropdown = toggleFilterDropdown;
 window.showFilterPopup = showFilterPopup;
 window.hideFilterPopup = hideFilterPopup;
 window.toggleHistoryEventFilter = toggleHistoryEventFilter;
