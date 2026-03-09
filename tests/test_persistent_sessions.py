@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from corral.session_store import SessionStore
+from corral.store import CorralStore as SessionStore
 
 
 @pytest_asyncio.fixture

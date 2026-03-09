@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from corral.session_store import SessionStore
+from corral.store import CorralStore
 from corral.jsonl_reader import JsonlSessionReader
 
 # Import routers
@@ -97,9 +97,8 @@ async def _resume_persistent_sessions():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Start background indexer, batch summarizer, and git poller on server startup."""
-    from corral.session_indexer import SessionIndexer, BatchSummarizer
-    from corral.git_poller import GitPoller
-    from corral.utils import install_hooks
+    from corral.background_tasks import SessionIndexer, BatchSummarizer, GitPoller
+    from corral.agents import get_agent
     from corral.session_manager import discover_corral_agents
 
     # Resume any persistent live sessions that are no longer running in tmux
@@ -112,7 +111,8 @@ async def lifespan(app: FastAPI):
     for agent in live_agents:
         wd = agent.get("working_directory") or ""
         if wd:
-            install_hooks(wd)
+            agent_impl = get_agent(agent["agent_type"])
+            agent_impl.install_hooks(wd)
         sid = agent.get("session_id")
         if sid and sid not in tracked:
             await store.register_live_session(
@@ -142,7 +142,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Corral Dashboard", lifespan=lifespan)
-store = SessionStore()
+store = CorralStore()
 jsonl_reader = JsonlSessionReader()
 
 # Wire up module-level dependencies in router modules

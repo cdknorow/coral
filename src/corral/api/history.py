@@ -117,7 +117,7 @@ async def get_session_notes(session_id: str):
 
     if not notes["notes_md"] and not notes["auto_summary"]:
         try:
-            from corral.auto_summarizer import AutoSummarizer
+            from corral.background_tasks import AutoSummarizer
             summarizer = AutoSummarizer(store)
             asyncio.create_task(summarizer.summarize_session(session_id))
             notes["summarizing"] = True
@@ -139,7 +139,7 @@ async def save_session_notes(session_id: str, body: dict):
 async def resummarize_session(session_id: str):
     """Force re-generate auto-summary for a session."""
     try:
-        from corral.auto_summarizer import AutoSummarizer
+        from corral.background_tasks import AutoSummarizer
         summarizer = AutoSummarizer(store)
         summary = await summarizer.summarize_session(session_id)
         return {"ok": True, "auto_summary": summary}

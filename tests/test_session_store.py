@@ -5,7 +5,7 @@ import pytest_asyncio
 import aiosqlite
 from pathlib import Path
 
-from corral.session_store import SessionStore
+from corral.store import CorralStore as SessionStore
 
 
 @pytest_asyncio.fixture

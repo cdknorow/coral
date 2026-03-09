@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 def main():
-    from corral.utils import install_hooks
+    from corral.agents.claude import install_hooks
 
     # Install hooks into each worktree's .claude/settings.local.json
     # (only when launching agents)

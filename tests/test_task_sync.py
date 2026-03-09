@@ -12,7 +12,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from corral.web_server import app, store as _default_store
-from corral.session_store import SessionStore
+from corral.store import CorralStore as SessionStore
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────

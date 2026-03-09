@@ -5,7 +5,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from corral.web_server import app
-from corral.session_store import SessionStore
+from corral.store import CorralStore as SessionStore
 from corral.hook_agentic_state import _make_summary, _make_detail_json, _truncate
 
 

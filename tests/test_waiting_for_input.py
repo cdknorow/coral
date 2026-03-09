@@ -3,7 +3,7 @@
 import pytest
 import pytest_asyncio
 
-from corral.session_store import SessionStore
+from corral.store import CorralStore as SessionStore
 
 
 @pytest_asyncio.fixture

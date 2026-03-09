@@ -3,9 +3,6 @@
 The CorralStore class composes all domain-specific stores (sessions, git, tasks)
 behind a single shared SQLite connection. It is the primary interface used by
 the web server and background services.
-
-For backward compatibility, ``from corral.session_store import SessionStore``
-still works and returns CorralStore.
 """
 
 from __future__ import annotations

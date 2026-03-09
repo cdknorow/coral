@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from corral.session_manager import discover_corral_agents, _find_pane
-from corral.session_store import SessionStore
+from corral.store import CorralStore
 from corral.utils import run_cmd, HISTORY_PATH
 
 log = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 class GitPoller:
     """Periodically polls git branch/commit info for live agents and stores snapshots."""
 
-    def __init__(self, store: SessionStore) -> None:
+    def __init__(self, store: CorralStore) -> None:
         self._store = store
 
     async def run_forever(self, interval: float = 120) -> None:

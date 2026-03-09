@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import platform
 import re
@@ -465,8 +464,8 @@ async def kill_session(
         # Unregister from persistent live sessions
         if session_id:
             try:
-                from corral.session_store import SessionStore
-                _store = SessionStore()
+                from corral.store import CorralStore
+                _store = CorralStore()
                 await _store.unregister_live_session(session_id)
             except Exception:
                 pass  # Non-critical
@@ -474,47 +473,6 @@ async def kill_session(
         return None
     except Exception as e:
         return str(e)
-
-
-def _ensure_session_in_project_dir(session_id: str, working_dir: str) -> None:
-    """Copy a Claude session's JSONL file (and companion dir) into the target project dir.
-
-    ``claude --resume`` only searches the current project directory, so if the
-    session originated in a different worktree/project we must copy the files
-    across before resuming.
-    """
-    # Build the target project directory for the agent's working dir
-    encoded = working_dir.replace("/", "-").replace("_", "-")
-    target_project = HISTORY_PATH / encoded
-    target_jsonl = target_project / f"{session_id}.jsonl"
-
-    if target_jsonl.exists():
-        return  # Already present — nothing to do
-
-    # Search all project dirs for the session file
-    source_jsonl: Path | None = None
-    for candidate in HISTORY_PATH.iterdir():
-        if not candidate.is_dir():
-            continue
-        f = candidate / f"{session_id}.jsonl"
-        if f.exists():
-            source_jsonl = f
-            break
-
-    if source_jsonl is None:
-        return  # Session file not found anywhere
-
-    # Ensure target directory exists
-    target_project.mkdir(parents=True, exist_ok=True)
-
-    # Copy the JSONL transcript
-    shutil.copy2(source_jsonl, target_jsonl)
-
-    # Copy the companion session-state directory if it exists
-    source_dir = source_jsonl.parent / session_id
-    target_dir = target_project / session_id
-    if source_dir.is_dir() and not target_dir.exists():
-        shutil.copytree(source_dir, target_dir)
 
 
 async def restart_session(
@@ -545,19 +503,20 @@ async def restart_session(
     working_dir = pane.get("current_path", "")
     effective_type = (agent_type or "claude").lower()
 
-    if resume_session_id and effective_type == "gemini":
-        return {"error": "Resume is only supported for Claude agents"}
+    from corral.agents import get_agent
+    agent_impl = get_agent(effective_type)
 
-    # If resuming, ensure the session file exists in the target agent's
-    # project directory so `claude --resume` can find it.
+    if resume_session_id and not agent_impl.supports_resume:
+        return {"error": f"Resume is not supported for {effective_type} agents"}
+
+    # If resuming, let the agent prepare (e.g. copy session files)
     if resume_session_id and working_dir:
-        _ensure_session_in_project_dir(resume_session_id, working_dir)
+        agent_impl.prepare_resume(resume_session_id, working_dir)
 
     try:
-        # Install hooks before launching the agent
+        # Install agent-specific hooks before launching
         if working_dir:
-            from corral.utils import install_hooks
-            install_hooks(working_dir)
+            agent_impl.install_hooks(working_dir)
 
         # 0. Generate a new UUID for the restarted session.  This UUID is
         #    used for *both* the tmux session name and the Claude --session-id
@@ -630,8 +589,8 @@ async def restart_session(
         if session_id:
             try:
                 import json as _json
-                from corral.session_store import SessionStore
-                _flag_store = SessionStore()
+                from corral.store import CorralStore
+                _flag_store = CorralStore()
                 _flag_conn = await _flag_store._get_conn()
                 _flag_row = await (await _flag_conn.execute(
                     "SELECT flags FROM live_sessions WHERE session_id = ?", (session_id,)
@@ -645,26 +604,15 @@ async def restart_session(
         script_dir = Path(__file__).parent
         protocol_path = script_dir / "PROTOCOL.md"
 
-        if effective_type == "gemini":
-            if protocol_path.exists():
-                cmd = f'GEMINI_SYSTEM_MD="{protocol_path}" gemini'
-            else:
-                cmd = "gemini"
-            if extra_flags:
-                cmd += f" {extra_flags}"
-        else:
-            parts = ["claude"]
-            if resume_session_id:
-                parts.append(f"--resume {resume_session_id}")
-            else:
-                parts.append(f"--session-id {new_session_id}")
-            if protocol_path.exists():
-                parts.append(f"--append-system-prompt \"$(cat '{protocol_path}')\"")
-            if extra_flags:
-                parts.append(extra_flags)
-            # Apply persisted flags (e.g. --chrome, --dangerously-skip-permissions)
-            parts.extend(stored_flags)
-            cmd = " ".join(parts)
+        all_flags = list(stored_flags)
+        if extra_flags:
+            all_flags.append(extra_flags)
+
+        cmd = agent_impl.build_launch_command(
+            new_session_id, protocol_path,
+            resume_session_id=resume_session_id,
+            flags=all_flags or None,
+        )
 
         rc, _, stderr = await run_cmd(
             "tmux", "send-keys", "-t", target, "-l", cmd
@@ -681,8 +629,8 @@ async def restart_session(
         # Migrate display_name and update live session record
         if session_id:
             try:
-                from corral.session_store import SessionStore
-                _store = SessionStore()
+                from corral.store import CorralStore
+                _store = CorralStore()
                 old_display_name = await _store.get_display_name(session_id)
                 await _store.migrate_display_name(session_id, new_session_id)
                 await _store.replace_live_session(
@@ -695,8 +643,8 @@ async def restart_session(
         else:
             # No old session_id — just register the new one
             try:
-                from corral.session_store import SessionStore
-                _store = SessionStore()
+                from corral.store import CorralStore
+                _store = CorralStore()
                 await _store.register_live_session(
                     new_session_id, effective_type, agent_name, working_dir,
                 )
@@ -763,243 +711,27 @@ async def open_terminal_attached(
         return str(e)
 
 
-def _load_claude_history_sessions() -> list[dict[str, Any]]:
-    """Load Claude session history from ~/.claude/projects/**/history.jsonl files."""
-    sessions: dict[str, dict[str, Any]] = {}
-    history_base = Path.home() / ".claude" / "projects"
-
-    if not history_base.exists():
-        return []
-
-    for history_file in history_base.rglob("*.jsonl"):
-        try:
-            with open(history_file, "r", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-
-                    session_id = entry.get("sessionId")
-                    if not session_id:
-                        continue
-
-                    if session_id not in sessions:
-                        sessions[session_id] = {
-                            "session_id": session_id,
-                            "messages": [],
-                            "first_timestamp": entry.get("timestamp"),
-                            "last_timestamp": entry.get("timestamp"),
-                            "source_file": str(history_file),
-                            "source_type": "claude",
-                            "summary": None,
-                        }
-
-                    ts = entry.get("timestamp")
-                    if ts:
-                        if not sessions[session_id]["first_timestamp"] or ts < sessions[session_id]["first_timestamp"]:
-                            sessions[session_id]["first_timestamp"] = ts
-                        if not sessions[session_id]["last_timestamp"] or ts > sessions[session_id]["last_timestamp"]:
-                            sessions[session_id]["last_timestamp"] = ts
-
-                    sessions[session_id]["messages"].append(entry)
-        except OSError:
-            continue
-
-    # Build summaries: prefer ||PULSE:SUMMARY|| marker, fall back to first human message
-    result = []
-    for sid, data in sessions.items():
-        summary_marker = ""
-        first_human = ""
-        for msg in data["messages"]:
-            if not summary_marker and msg.get("type") == "assistant":
-                content = msg.get("message", {}).get("content", "")
-                text = ""
-                if isinstance(content, str):
-                    text = content
-                elif isinstance(content, list):
-                    text = " ".join(
-                        b.get("text", "") for b in content
-                        if isinstance(b, dict) and b.get("type") == "text"
-                    )
-                m = SUMMARY_RE.search(text)
-                if m:
-                    summary_marker = clean_match(m.group(1))
-
-            if not first_human and msg.get("type") in ("human", "user"):
-                content = msg.get("message", {}).get("content", "")
-                if isinstance(content, str):
-                    first_human = content[:100]
-                elif isinstance(content, list):
-                    for block in content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            first_human = block.get("text", "")[:100]
-                            break
-        data["summary"] = summary_marker or first_human or "(no messages)"
-        data["message_count"] = len(data["messages"])
-        listing = {k: v for k, v in data.items() if k != "messages"}
-        result.append(listing)
-
-    return result
-
-
-GEMINI_HISTORY_BASE = Path.home() / ".gemini" / "tmp"
-
-
-def _extract_gemini_text(content: list[dict]) -> str:
-    """Extract plain text from a Gemini message content array."""
-    parts = []
-    for item in content:
-        if isinstance(item, dict) and item.get("text"):
-            parts.append(item["text"])
-    return "\n".join(parts)
-
-
-def _load_gemini_history_sessions() -> list[dict[str, Any]]:
-    """Load Gemini session history from ~/.gemini/tmp/*/chats/session-*.json."""
-    if not GEMINI_HISTORY_BASE.exists():
-        return []
-
-    result = []
-    for session_file in GEMINI_HISTORY_BASE.rglob("session-*.json"):
-        try:
-            data = json.loads(session_file.read_text(errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            continue
-
-        session_id = data.get("sessionId")
-        if not session_id:
-            continue
-
-        messages = data.get("messages", [])
-        first_ts = data.get("startTime")
-        last_ts = data.get("lastUpdated")
-
-        # Build summary: prefer ||PULSE:SUMMARY|| in gemini messages, fall back to first user message
-        summary_marker = ""
-        first_user = ""
-        for msg in messages:
-            msg_type = msg.get("type", "")
-            content = msg.get("content", [])
-            if not isinstance(content, list):
-                continue
-
-            text = _extract_gemini_text(content)
-
-            if not summary_marker and msg_type == "gemini":
-                m = SUMMARY_RE.search(text)
-                if m:
-                    summary_marker = clean_match(m.group(1))
-
-            if not first_user and msg_type == "user":
-                first_user = text[:100]
-
-        result.append({
-            "session_id": session_id,
-            "first_timestamp": first_ts,
-            "last_timestamp": last_ts,
-            "source_file": str(session_file),
-            "source_type": "gemini",
-            "summary": summary_marker or first_user or "(no messages)",
-            "message_count": len(messages),
-        })
-
-    return result
-
-
 def load_history_sessions() -> list[dict[str, Any]]:
-    """Load session history from both Claude and Gemini.
+    """Load session history from all registered agents.
 
     Returns list of session summaries sorted by last timestamp descending.
     """
-    result = _load_claude_history_sessions() + _load_gemini_history_sessions()
+    from corral.agents import get_all_agents
+    result = []
+    for agent in get_all_agents():
+        result.extend(agent.load_history_sessions())
     result.sort(key=lambda x: x.get("last_timestamp") or "", reverse=True)
     return result
 
 
-def _load_claude_session_messages(session_id: str) -> list[dict[str, Any]]:
-    """Load all messages for a specific Claude historical session."""
-    history_base = Path.home() / ".claude" / "projects"
-    if not history_base.exists():
-        return []
-
-    messages = []
-    for history_file in history_base.rglob("*.jsonl"):
-        try:
-            with open(history_file, "r", errors="replace") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if entry.get("sessionId") == session_id:
-                        messages.append(entry)
-        except OSError:
-            continue
-
-    return messages
-
-
-def _normalize_gemini_message(msg: dict) -> dict[str, Any]:
-    """Convert a Gemini message to the Claude-compatible format used by the UI."""
-    msg_type = msg.get("type", "unknown")
-    content = msg.get("content", [])
-    text = _extract_gemini_text(content) if isinstance(content, list) else ""
-
-    # Map Gemini types to the human/assistant convention the UI expects
-    if msg_type == "user":
-        role = "human"
-    elif msg_type in ("gemini", "error", "info"):
-        role = "assistant"
-    else:
-        role = "assistant"
-
-    return {
-        "sessionId": msg.get("id", ""),
-        "timestamp": msg.get("timestamp"),
-        "type": role,
-        "message": {"content": text},
-    }
-
-
-def _load_gemini_session_messages(session_id: str) -> list[dict[str, Any]]:
-    """Load all messages for a specific Gemini historical session."""
-    if not GEMINI_HISTORY_BASE.exists():
-        return []
-
-    for session_file in GEMINI_HISTORY_BASE.rglob("session-*.json"):
-        try:
-            data = json.loads(session_file.read_text(errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            continue
-
-        if data.get("sessionId") != session_id:
-            continue
-
-        return [_normalize_gemini_message(m) for m in data.get("messages", [])]
-
-    return []
-
-
 def load_history_session_messages(session_id: str) -> list[dict[str, Any]]:
-    """Load all messages for a specific historical session (Claude or Gemini)."""
-    # Try Claude first
-    messages = _load_claude_session_messages(session_id)
-    if messages:
-        messages.sort(key=lambda x: x.get("timestamp") or "")
-        return messages
-
-    # Try Gemini
-    messages = _load_gemini_session_messages(session_id)
-    if messages:
-        return messages
-
+    """Load all messages for a specific historical session (tries each agent)."""
+    from corral.agents import get_all_agents
+    for agent in get_all_agents():
+        messages = agent.load_session_messages(session_id)
+        if messages:
+            messages.sort(key=lambda x: x.get("timestamp") or "")
+            return messages
     return []
 
 
@@ -1019,14 +751,16 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
     session_name = f"{agent_type}-{session_id}"
     log_file = f"{log_dir}/{agent_type}_corral_{session_id}.log"
 
-    # If resuming, ensure the session file exists in the target project dir
+    from corral.agents import get_agent
+    agent_impl = get_agent(agent_type)
+
+    # If resuming, let the agent prepare (e.g. copy session files)
     if resume_session_id:
-        _ensure_session_in_project_dir(resume_session_id, working_dir)
+        agent_impl.prepare_resume(resume_session_id, working_dir)
 
     try:
-        # Install hooks before launching the agent
-        from corral.utils import install_hooks
-        install_hooks(working_dir)
+        # Install agent-specific hooks before launching
+        agent_impl.install_hooks(working_dir)
 
         # Clear old log
         Path(log_file).write_text("")
@@ -1055,21 +789,11 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
         script_dir = Path(__file__).parent
         protocol_path = script_dir / "PROTOCOL.md"
 
-        if agent_type == "gemini":
-            if protocol_path.exists():
-                cmd = f'GEMINI_SYSTEM_MD="{protocol_path}" gemini'
-            else:
-                cmd = "gemini"
-        else:
-            if resume_session_id:
-                parts = [f"claude --resume {resume_session_id}"]
-            else:
-                parts = [f"claude --session-id {session_id}"]
-            if protocol_path.exists():
-                parts.append(f"--append-system-prompt \"$(cat '{protocol_path}')\"")
-            if flags:
-                parts.extend(flags)
-            cmd = " ".join(parts)
+        cmd = agent_impl.build_launch_command(
+            session_id, protocol_path,
+            resume_session_id=resume_session_id,
+            flags=flags,
+        )
 
         await asyncio.create_subprocess_exec(
             "tmux", "send-keys", "-t", f"{session_name}.0", cmd, "Enter"
@@ -1077,8 +801,8 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
 
         # Store display_name and register live session
         try:
-            from corral.session_store import SessionStore
-            _store = SessionStore()
+            from corral.store import CorralStore
+            _store = CorralStore()
             if display_name:
                 await _store.set_display_name(session_id, display_name)
             await _store.register_live_session(

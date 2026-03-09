@@ -22,6 +22,7 @@ from corral.session_manager import (
     open_terminal_attached,
     launch_claude_session,
 )
+from corral.agents import get_agent
 from corral.log_streamer import get_log_snapshot
 from corral.task_detector import scan_log_for_pulse_events
 
@@ -39,11 +40,6 @@ jsonl_reader: JsonlSessionReader = None  # type: ignore[assignment]
 
 # Track last-known status/summary per session_id so we only emit events on change.
 _last_known: dict[str, dict[str, str | None]] = {}
-
-COMMAND_MAP = {
-    "claude": {"compress": "/compact", "clear": "/clear"},
-    "gemini": {"compress": "/compact", "clear": "/clear"},
-}
 
 
 async def _track_status_summary_events(
@@ -93,7 +89,7 @@ async def get_live_sessions():
             "status": log_info["status"],
             "summary": log_info["summary"],
             "staleness_seconds": log_info["staleness_seconds"],
-            "commands": COMMAND_MAP.get(agent["agent_type"].lower(), COMMAND_MAP["claude"]),
+            "commands": get_agent(agent["agent_type"]).available_commands,
             "branch": git["branch"] if git else None,
             "display_name": display_names.get(sid) if sid else None,
             "working_directory": agent.get("working_directory", ""),
