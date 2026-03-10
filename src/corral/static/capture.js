@@ -5,6 +5,59 @@ import { getRenderer } from './renderers.js';
 import { loadAgentTasks } from './tasks.js';
 import { loadAgentEvents } from './agentic_state.js';
 
+/* ── Tmux pane width sync ─────────────────────────────────────────────── */
+
+function measureTerminalColumns() {
+    const el = document.getElementById("pane-capture");
+    if (!el) return null;
+
+    const span = document.createElement("span");
+    span.style.visibility = "hidden";
+    span.style.position = "absolute";
+    span.style.fontFamily = getComputedStyle(el).fontFamily;
+    span.style.fontSize = getComputedStyle(el).fontSize;
+    span.style.whiteSpace = "pre";
+    span.textContent = "M";
+    document.body.appendChild(span);
+    const charWidth = span.getBoundingClientRect().width;
+    document.body.removeChild(span);
+
+    if (charWidth === 0) return null;
+
+    const style = getComputedStyle(el);
+    const availableWidth = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return Math.floor(availableWidth / charWidth);
+}
+
+let _lastSyncedCols = null;
+
+export async function syncPaneWidth() {
+    if (!state.settings?.fit_pane_width) return;
+    if (!state.currentSession || state.currentSession.type !== "live") return;
+    const cols = measureTerminalColumns();
+    if (!cols || cols < 10) return;
+    if (cols === _lastSyncedCols) return;
+    _lastSyncedCols = cols;
+
+    try {
+        await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/resize`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                columns: cols,
+                agent_type: state.currentSession.agent_type,
+                session_id: state.currentSession.session_id,
+            }),
+        });
+    } catch (e) {
+        console.error("Failed to sync pane width:", e);
+    }
+}
+
+export function resetSyncedCols() {
+    _lastSyncedCols = null;
+}
+
 export function renderCaptureText(el, text) {
     const agentType = state.currentSession?.agent_type || "claude";
     const sessionId = state.currentSession?.session_id || null;

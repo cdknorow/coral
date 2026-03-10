@@ -1063,6 +1063,15 @@ body {
     box-sizing: border-box;
 }
 
+.toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
 .macro-btn-wrap {
     position: relative;
     display: inline-flex;

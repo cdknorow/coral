@@ -8,6 +8,7 @@ import { filterState, deserializeFromUrl, serializeToUrl,
 import { connectCorralWs } from './websocket.js';
 import { sendCommand, sendRawKeys, sendModeToggle, sendQuickCommand, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent } from './sessions.js';
+import { syncPaneWidth } from './capture.js';
 import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeIntoSession, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag } from './modals.js';
 import { toggleBrowser, browserNavigateTo, browserNavigateUp } from './browser.js';
 import { initSidebarResize, initCommandPaneResize, initTaskBarResize } from './sidebar.js';
@@ -437,6 +438,17 @@ document.addEventListener("DOMContentLoaded", () => {
     initSidebarResize();
     initCommandPaneResize();
     initTaskBarResize();
+
+    // Sync tmux pane width on window resize and panel drag
+    let resizeDebounce;
+    window.addEventListener("resize", () => {
+        clearTimeout(resizeDebounce);
+        resizeDebounce = setTimeout(syncPaneWidth, 300);
+    });
+    // Re-sync after sidebar/task-bar drag ends (the panels change available width)
+    document.addEventListener("mouseup", () => {
+        setTimeout(syncPaneWidth, 50);
+    });
 
     // Restore session from URL hash
     const hash = window.location.hash;

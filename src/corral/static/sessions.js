@@ -14,6 +14,7 @@ import { loadAgentNotes } from './agent_notes.js';
 import { loadAgentEvents } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
 import { startLiveHistoryPoll, stopLiveHistoryPoll, resetLiveHistory } from './live_chat.js';
+import { syncPaneWidth, resetSyncedCols } from './capture.js';
 
 export async function selectLiveSession(name, agentType, sessionId) {
     stopCaptureRefresh();
@@ -84,7 +85,11 @@ export async function selectLiveSession(name, agentType, sessionId) {
 
     // Reset live history and start capture polling
     resetLiveHistory();
+    resetSyncedCols();
     startCaptureRefresh();
+
+    // Sync tmux pane width to match browser display after layout settles
+    setTimeout(syncPaneWidth, 100);
 
     // Start history poll if the history tab is currently active
     const historyTab = document.getElementById("agentic-tab-history");

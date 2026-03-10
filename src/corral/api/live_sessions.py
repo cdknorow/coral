@@ -23,6 +23,7 @@ from corral.tools.tmux_manager import (
     capture_pane,
     kill_session,
     open_terminal_attached,
+    resize_pane,
 )
 from corral.agents import get_agent
 from corral.tools.log_streamer import get_log_snapshot
@@ -197,6 +198,20 @@ async def send_keys(name: str, body: dict):
     if error:
         return {"error": error}
     return {"ok": True, "keys": keys}
+
+
+@router.post("/api/sessions/live/{name}/resize")
+async def resize_pane_width(name: str, body: dict):
+    """Resize the tmux pane width to match the browser display columns."""
+    columns = body.get("columns")
+    if not isinstance(columns, int) or columns < 10:
+        return {"error": "columns must be an integer >= 10"}
+    agent_type = body.get("agent_type") or None
+    sid = body.get("session_id") or None
+    error = await resize_pane(name, columns, agent_type=agent_type, session_id=sid)
+    if error:
+        return {"error": error}
+    return {"ok": True, "columns": columns}
 
 
 @router.post("/api/sessions/live/{name}/kill")

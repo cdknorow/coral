@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { showToast, escapeHtml, escapeAttr } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { getEngineNames, getEngineName, setRendererOverride } from './renderers.js';
-import { renderCaptureText } from './capture.js';
+import { renderCaptureText, syncPaneWidth } from './capture.js';
 import { hideRestartModal } from './controls.js';
 
 export function toggleFlag(inputId, flag) {
@@ -216,7 +216,12 @@ export async function loadSettings() {
     try {
         const resp = await fetch("/api/settings");
         const data = await resp.json();
-        state.settings = data.settings || {};
+        const s = data.settings || {};
+        // Boolean settings are stored as strings in SQLite — coerce them
+        if (typeof s.fit_pane_width === "string") {
+            s.fit_pane_width = s.fit_pane_width === "True";
+        }
+        state.settings = s;
     } catch (e) {
         console.error("Failed to load settings:", e);
     }
@@ -244,6 +249,10 @@ export function showSettingsModal() {
         dirInput.placeholder = dirInput.dataset.corralRoot || "/path/to/project";
     }
 
+    // Fit Pane Width
+    const fitPaneCheck = document.getElementById("settings-fit-pane-width");
+    if (fitPaneCheck) fitPaneCheck.checked = !!s.fit_pane_width;
+
     document.getElementById("settings-modal").style.display = "flex";
 }
 
@@ -255,11 +264,13 @@ export async function applySettings() {
     const engineName = document.getElementById("settings-renderer-select").value;
     const agentType = document.getElementById("settings-agent-type")?.value || "claude";
     const workingDir = document.getElementById("settings-working-dir")?.value.trim() || "";
+    const fitPaneWidth = document.getElementById("settings-fit-pane-width")?.checked || false;
 
     const payload = {
         default_renderer: engineName,
         default_agent_type: agentType,
         default_working_dir: workingDir,
+        fit_pane_width: fitPaneWidth,
     };
 
     try {
@@ -276,6 +287,11 @@ export async function applySettings() {
             if (el && el._lastCapture) {
                 renderCaptureText(el, el._lastCapture);
             }
+        }
+
+        // Trigger pane width sync if the setting was just enabled
+        if (fitPaneWidth) {
+            syncPaneWidth();
         }
 
         showToast("Settings saved");
