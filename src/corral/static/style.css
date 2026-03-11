@@ -417,6 +417,9 @@ body {
     background: var(--warning);
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
+.session-dot.done {
+    background: var(--success, #4caf50);
+}
 
 @keyframes pulse-working {
     0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
@@ -657,6 +660,11 @@ body {
     font-size: 10px;
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
+.badge.done-badge {
+    background: var(--success, #4caf50);
+    color: #fff;
+    font-size: 10px;
+}
 
 .session-meta {
     display: flex;
@@ -722,6 +730,10 @@ body {
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
 
+.status-dot.done {
+    background: var(--success, #4caf50);
+}
+
 .waiting-banner {
     display: none;
     background: rgba(255, 193, 7, 0.15);
@@ -732,6 +744,12 @@ body {
     font-size: 13px;
     color: var(--warning);
     text-align: center;
+}
+
+.waiting-banner.done-banner {
+    background: rgba(76, 175, 80, 0.15);
+    border-color: rgba(76, 175, 80, 0.3);
+    color: var(--success, #4caf50);
 }
 
 /* Live Body — horizontal split: left column + agentic state */

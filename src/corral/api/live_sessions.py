@@ -114,6 +114,7 @@ async def get_live_sessions():
             "display_name": display_names.get(sid) if sid else None,
             "working_directory": agent.get("working_directory", ""),
             "waiting_for_input": waiting,
+            "waiting_reason": latest_ev if waiting else None,
             "working": working,
         }
         results.append(entry)
@@ -537,6 +538,7 @@ async def ws_corral(websocket: WebSocket):
                     "display_name": ws_display_names.get(sid) if sid else None,
                     "working_directory": agent.get("working_directory", ""),
                     "waiting_for_input": waiting,
+                    "waiting_reason": latest_ev if waiting else None,
                     "working": working,
                 })
                 await _track_status_summary_events(name, log_info["status"], log_info["summary"], session_id=sid)

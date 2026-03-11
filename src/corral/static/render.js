@@ -30,15 +30,17 @@ function formatStaleness(seconds) {
     return `${Math.floor(seconds / 3600)}h ago`;
 }
 
-function getStateLabel(waitingForInput, working, staleness) {
-    if (waitingForInput) return "Waiting for input";
+function getStateLabel(waitingForInput, working, staleness, waitingReason) {
+    if (waitingForInput) {
+        return waitingReason === "stop" ? "Done" : "Needs input";
+    }
     if (working) return "Working";
     if (staleness !== null && staleness !== undefined && staleness < 60) return "Active";
     return "Idle";
 }
 
 function buildSessionTooltip(s) {
-    const stateLabel = getStateLabel(s.waiting_for_input, s.working, s.staleness_seconds);
+    const stateLabel = getStateLabel(s.waiting_for_input, s.working, s.staleness_seconds, s.waiting_reason);
     const lastAction = formatStaleness(s.staleness_seconds);
     const goal = s.summary || "No goal set";
     const status = s.status || "No status";
@@ -56,8 +58,8 @@ function buildSessionTooltip(s) {
     return `<table class="session-tooltip-table">${rows.join("")}</table>`;
 }
 
-function getDotClass(staleness, waitingForInput, working) {
-    if (waitingForInput) return "waiting";
+function getDotClass(staleness, waitingForInput, working, waitingReason) {
+    if (waitingForInput) return waitingReason === "stop" ? "done" : "waiting";
     if (working) return "working";
     if (staleness === null || staleness === undefined) return "stale";
     if (staleness < 60) return "active";
@@ -87,11 +89,15 @@ export function renderLiveSessions(sessions) {
         html += `<li class="session-group-header">${escapeHtml(groupName)}${countBadge}</li>`;
 
         for (const s of groupSessions) {
-            const dotClass = getDotClass(s.staleness_seconds, s.waiting_for_input, s.working);
+            const dotClass = getDotClass(s.staleness_seconds, s.waiting_for_input, s.working, s.waiting_reason);
             const isActive = state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
             const typeTag = s.agent_type && s.agent_type !== "claude" ? ` <span class="badge ${escapeHtml(s.agent_type)}">${escapeHtml(s.agent_type)}</span>` : "";
             const branchTag = s.branch ? ` <span class="sidebar-branch">${escapeHtml(s.branch)}</span>` : "";
-            const waitingBadge = s.waiting_for_input ? ' <span class="badge waiting-badge">Needs input</span>' : '';
+            const waitingBadge = s.waiting_for_input
+                ? (s.waiting_reason === "stop"
+                    ? ' <span class="badge done-badge">Done</span>'
+                    : ' <span class="badge waiting-badge">Needs input</span>')
+                : '';
             const goal = s.summary ? escapeHtml(s.summary) : "No goal set";
             const displayLabel = s.display_name || "Agent";
             const sid = s.session_id ? escapeHtml(s.session_id) : "";
@@ -252,15 +258,21 @@ export function updateSessionBranch(branch) {
     }
 }
 
-export function updateWaitingIndicator(waiting, working) {
+export function updateWaitingIndicator(waiting, working, waitingReason) {
     const dot = document.getElementById("session-status-dot");
     const banner = document.getElementById("waiting-banner");
+    const isDone = waiting && waitingReason === "stop";
     if (dot) {
-        dot.classList.toggle("waiting", !!waiting);
+        dot.classList.toggle("waiting", !!waiting && !isDone);
+        dot.classList.toggle("done", isDone);
         dot.classList.toggle("working", !!working);
     }
     if (banner) {
         banner.style.display = waiting ? "" : "none";
+        if (waiting) {
+            banner.className = isDone ? "waiting-banner done-banner" : "waiting-banner";
+            banner.textContent = isDone ? "✅ Agent is done" : "⏳ Agent is waiting for input";
+        }
     }
 }
 
