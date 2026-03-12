@@ -1,7 +1,7 @@
 # CLAUDE.md - Project Guide
 
 ## Project Overview
-**Corral** is a multi-agent orchestration system for managing AI coding agents (Claude and Gemini) running in parallel git worktrees using tmux. It features a web dashboard, real-time logging, complete session history with FTS5 search, git state polling, task management, agent notes, and event tracking.
+**Corral** is a multi-agent orchestration system for managing AI coding agents (Claude and Gemini) running in parallel git worktrees using tmux. It features a web dashboard, real-time logging, complete session history with FTS5 search, git state polling, task management, scheduled jobs, webhook notifications, agent notes, and event tracking.
 
 ## Project Structure Highlights
 - `src/corral/`: Main package directory
@@ -10,14 +10,15 @@
   - `web_server.py`: FastAPI web dashboard (REST + WebSocket endpoints).
   - `PROTOCOL.md`: Protocol for agents to follow (status/summary reporting).
   - `agents/`: Agent implementations (`base.py`, `claude.py`, `gemini.py`).
-  - `api/`: REST API route modules (`live_sessions.py`, `history.py`, `system.py`).
-  - `store/`: SQLite storage layer (`connection.py`, `sessions.py`, `git.py`, `tasks.py`).
-  - `tools/`: Core utilities (`session_manager.py`, `tmux_manager.py`, `log_streamer.py`, `pulse_detector.py`, `jsonl_reader.py`, `utils.py`).
-  - `background_tasks/`: Background services (`session_indexer.py`, `auto_summarizer.py`, `git_poller.py`).
+  - `api/`: REST API route modules (`live_sessions.py`, `history.py`, `system.py`, `tasks.py`, `schedule.py`, `uploads.py`, `webhooks.py`).
+  - `store/`: SQLite storage layer (`connection.py`, `sessions.py`, `git.py`, `tasks.py`, `schedule.py`, `webhooks.py`).
+  - `tools/`: Core utilities (`session_manager.py`, `tmux_manager.py`, `log_streamer.py`, `pulse_detector.py`, `jsonl_reader.py`, `cron_parser.py`, `run_callback.py`, `utils.py`).
+  - `background_tasks/`: Background services (`session_indexer.py`, `auto_summarizer.py`, `git_poller.py`, `idle_detector.py`, `scheduler.py`, `webhook_dispatcher.py`).
   - `hooks/`: Claude Code integration hooks (`task_state.py`, `agentic_state.py`, `utils.py`).
-  - `templates/`: Jinja2 HTML templates (`index.html`, `includes/`).
+  - `templates/`: Jinja2 HTML templates (`index.html`, `diff.html`, `includes/`).
   - `static/`: JavaScript, CSS, images, and favicon assets.
 - `tests/`: Test suite (Python and JavaScript tests).
+- `docs/`: MkDocs documentation site (Material theme), published at https://cdknorow.github.io/corral/.
 - `DEVELOP.md`: Detailed developer guide containing full project structure, API endpoints, and database schema.
 - `pyproject.toml`: Project configuration and dependencies.
 
@@ -74,7 +75,13 @@ All agent events use the `||PULSE:<EVENT_TYPE> <payload>||` format. The dashboar
 
 ## Development Guidelines
 - **Build System:** Setuptools with `pyproject.toml`.
-- **Dependencies:** `fastapi`, `uvicorn`, `jinja2`, `aiosqlite` (Python 3.8+).
+- **Dependencies:** `fastapi`, `uvicorn`, `jinja2`, `aiosqlite`, `httpx`, `python-multipart` (Python 3.8+).
 - **Database:** SQLite (`~/.corral/sessions.db`) using WAL mode.
 - **Logs:** Agents stream output to `/tmp/<agent_type>_corral_<folder_name>.log` via `tmux pipe-pane`.
-- **Entry Points:** `corral` (web server), `launch-corral` (agent launcher), `corral-hook-task-sync` (task sync hook), `corral-hook-agentic-state` (agentic state hook).
+- **Entry Points:** `corral` / `corral-dashboard` (web server), `launch-corral` (agent launcher), `corral-hook-task-sync` (task sync hook), `corral-hook-agentic-state` (agentic state hook).
+
+## Documentation
+- Documentation uses MkDocs with Material theme, configured in `docs/mkdocs.yml`.
+- Local preview: `cd docs && mkdocs serve`
+- Deploy to GitHub Pages: `cd docs && mkdocs gh-deploy`
+- Published at https://cdknorow.github.io/corral/
