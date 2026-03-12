@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.9.0
+
+### Features
+
+- **Redesigned session header** — Inline goal display, branch info, and editable goal directly in the session header.
+- **Resizable right sidebar** — Split into two independently resizable blocks for better layout control.
+- **Welcome screen improvements** — Added quick-action buttons for creating jobs, webhooks, and accessing documentation.
+- **Top bar links** — Added documentation and GitHub links to the top navigation bar.
+- **Scroll-pause for terminal** — Terminal output pauses auto-scroll when the user scrolls up, with a resume button.
+- **Changed files panel with diff viewer** — View file diffs for live agent sessions directly in the dashboard.
+- **Image drag-and-drop and clipboard paste** — Support for sending images to agents via drag-and-drop or paste.
+- **Instant tooltips** — Toolbar buttons now show tooltips without delay.
+- **xterm.js terminal renderer** — Full terminal emulation with WebSocket streaming, now the default for Claude agents.
+- **One-shot task runs API** — Jobs sidebar for managing scheduled and on-demand task runs.
+- **Fit-pane-width setting** — Auto-resize tmux panes to match browser width.
+- **Done vs Needs Input states** — Dashboard now differentiates between agent states waiting for input vs completed.
+
+### Bug Fixes
+
+- Fixed sidebar widths and removed activity chart border.
+- Reset activity data on session restart and poll events in xterm mode.
+- Fixed arrow key forwarding from xterm terminal to tmux sessions.
+- Eliminated xterm flickering and fixed tmux auto-resize in xterm mode.
+- Fixed session cycling when multiple agents share the same directory.
+- Classified "waiting for your input" notifications correctly as done state.
+- Paused xterm terminal updates while user has text selected.
+- Prevented job sessions from resuming on restart and fixed auto-accept.
+
+### Documentation
+
+- Added MkDocs Material documentation site at https://cdknorow.github.io/corral/.
+- Feature documentation for all major Corral features with screenshots.
+- API reference pages for Jobs, Webhooks, and more.
+
 ## 0.6.2
 
 ### Bug Fixes
