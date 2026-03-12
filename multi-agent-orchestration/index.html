@@ -1151,8 +1151,7 @@
 <p>Multi-Agent Orchestration is Corral's core capability: run multiple AI coding agents in parallel, each in its own git worktree, managed via tmux, and monitored through a single dashboard.</p>
 <p>Every agent runs in a dedicated tmux session named <code>{agent_type}-{uuid}</code>. Output is piped to a log file via <code>tmux pipe-pane</code>, and the dashboard discovers agents by parsing tmux session names. You can launch up to <code>MAX_AGENTS=5</code> agents through the CLI launcher, or add more at any time through the dashboard.</p>
 <p>Both <strong>Claude</strong> and <strong>Gemini</strong> agents are supported, and you can run them side by side.</p>
-<!-- TODO: Screenshot - dashboard with multiple agents visible in the sidebar, showing different status dots and agent type badges -->
-
+<p><img alt="Dashboard with multiple agents in the sidebar showing different status dots and agent type badges" src="../images/sidebar-multi-agent.png" /></p>
 <hr />
 <h2 id="why-multi-agent">Why multi-agent?</h2>
 <table>
@@ -1217,8 +1216,7 @@ launch-corral /path/to/parent-dir gemini
   -H &quot;Content-Type: application/json&quot; \
   -d '{&quot;working_dir&quot;: &quot;/path/to/worktree&quot;, &quot;agent_type&quot;: &quot;claude&quot;, &quot;display_name&quot;: &quot;Auth Feature&quot;}'
 </code></pre>
-<!-- TODO: Screenshot - the Launch New Session modal with fields filled in -->
-
+<p><img alt="Launch New Session modal with Agent Name, Working Directory, Agent Type, and Flags fields" src="../images/launch-session-modal.png" /></p>
 <p>!!! tip
     Dashboard-launched sessions are not limited by <code>MAX_AGENTS</code> — you can add as many as your machine can handle.</p>
 <h3 id="step-4-monitor-agents">Step 4: Monitor agents</h3>
@@ -1229,8 +1227,7 @@ launch-corral /path/to/parent-dir gemini
 <li><strong>Status dots</strong> — Green (active), yellow (stale), amber (waiting for input)</li>
 <li><strong>PULSE protocol</strong> — Agents emit structured <code>||PULSE:STATUS||</code> and <code>||PULSE:SUMMARY||</code> markers that the dashboard parses into readable status and goal fields</li>
 </ul>
-<!-- TODO: Screenshot - session header showing status dot, goal, and status fields populated from PULSE markers -->
-
+<p><img alt="Session header showing status dot, Goal, and Status fields populated from PULSE markers" src="../images/session-header-pulse.png" /></p>
 <h3 id="step-5-interact-with-agents">Step 5: Interact with agents</h3>
 <p>Once agents are running, you can control them from the dashboard:</p>
 <ul>
@@ -1390,8 +1387,7 @@ git worktree prune
 </tr>
 </tbody>
 </table>
-<!-- TODO: Screenshot - sidebar showing multiple sessions with different states: one active (green dot), one waiting for input (amber dot with NEEDS INPUT badge), one stale (gray dot) -->
-
+<p><img alt="Sidebar showing sessions with different states: active (green), waiting for input (amber with NEEDS INPUT badge), and stale (gray)" src="../images/sidebar-multi-agent.png" /></p>
 <h3 id="session-switching">Session switching</h3>
 <p>Click any session in the sidebar to switch to it. When switching:</p>
 <ul>

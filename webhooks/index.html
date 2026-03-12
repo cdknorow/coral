@@ -1160,8 +1160,7 @@
 <h1 id="webhook-notifications">Webhook Notifications</h1>
 <p>Webhook Notifications let you receive HTTP POST alerts when an agent needs attention. Instead of watching the dashboard, you can route notifications to Slack, Discord, or any HTTP endpoint — so you know the moment an agent is stuck waiting for input.</p>
 <p>Corral supports three platforms out of the box: <strong>Slack</strong>, <strong>Discord</strong>, and <strong>Generic HTTP POST</strong>. Webhooks are configured entirely through the dashboard UI, with built-in retry logic and a circuit breaker to keep things reliable without overwhelming a failing endpoint.</p>
-<!-- TODO: Screenshot - Webhook modal overview showing the list of configured webhooks -->
-
+<p><img alt="Webhook Notifications modal showing configured webhooks" src="../images/webhook-notifications-modal.png" /></p>
 <hr />
 <h2 id="how-it-works">How it works</h2>
 <p>Corral monitors every live agent session. When an agent has been waiting for input for <strong>5 or more minutes</strong>, a <code>needs_input</code> event fires and is dispatched to all matching webhooks. The notification fires <strong>once per waiting period</strong> — it will not repeat until the agent becomes active again and then re-enters a waiting state.</p>
@@ -1212,8 +1211,7 @@
 <ol>
 <li>Click <strong>Save</strong>.</li>
 </ol>
-<!-- TODO: Screenshot - Add Webhook form filled out with example values -->
-
+<p><img alt="Add Webhook form with Name, Platform, URL, Agent Filter, and Enabled fields" src="../images/add-webhook-form.png" /></p>
 <h3 id="slack">Slack</h3>
 <ol>
 <li>Go to <a href="https://api.slack.com">api.slack.com</a> and create a new Slack app (or use an existing one).</li>
@@ -1276,8 +1274,7 @@
 </tbody>
 </table>
 <p>Failed deliveries show the HTTP status code and error message for debugging.</p>
-<!-- TODO: Screenshot - Delivery history table showing a mix of delivered and failed entries -->
-
+<p><img alt="Webhook notifications overview" src="../images/webhook-notifications-modal.png" /></p>
 <hr />
 <h2 id="managing-webhooks">Managing webhooks</h2>
 <h3 id="editing">Editing</h3>

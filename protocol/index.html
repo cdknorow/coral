@@ -993,12 +993,10 @@
 <li><strong>WebSocket</strong> pushes the updated session state to all connected browsers every 3 seconds.</li>
 <li><strong>Dashboard renders</strong> the status in the session header "Status:" line, the summary as the "Goal:" line, and confidence events in the Activity timeline.</li>
 </ol>
-<!-- TODO: Screenshot - Data flow diagram showing the pipeline from agent stdout through tmux pipe-pane, log file, log streamer, WebSocket, to browser dashboard -->
-
+<p><img alt="Dashboard showing the full pipeline: agent output flows through tmux pipe-pane to the browser" src="../images/dashboard-full-view.png" /></p>
 <hr />
 <h2 id="dashboard-display">Dashboard display</h2>
-<!-- TODO: Screenshot - Session header showing Status and Goal lines with a live agent -->
-
+<p><img alt="Session header showing Status and Goal lines populated by PULSE protocol" src="../images/session-header-pulse.png" /></p>
 <table>
 <thead>
 <tr>
@@ -1026,8 +1024,7 @@
 </tbody>
 </table>
 <p>All three event types appear in the Activity tab and are filterable using the <strong>Filter</strong> dropdown. See <a href="../live-sessions/#activity">Live Sessions — Activity</a> for details on the timeline view.</p>
-<!-- TODO: Screenshot - Activity timeline showing Status, Goal, and Confidence events with filter dropdown -->
-
+<p><img alt="Activity filter dropdown showing Status, Goal, Confidence, and other event categories" src="../images/activity-filter-dropdown.png" /></p>
 <hr />
 <h2 id="custom-agents">Custom agents</h2>
 <p>Any process that writes <code>||PULSE:STATUS ...||</code> to stdout will work with Corral. The dashboard does not care what language or framework the agent uses — it only parses the log file.</p>

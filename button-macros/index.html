@@ -815,8 +815,7 @@
 
 <h1 id="button-macros">Button Macros</h1>
 <p>Button Macros are customizable one-click toolbar buttons in the <a href="../live-sessions/#command-pane">command pane</a>. Each macro has a label and a command — click it, and the command is sent directly to the selected agent.</p>
-<!-- TODO: Screenshot - command toolbar showing default macros (/compact, /clear, Reset) between mode toggles and navigation buttons -->
-
+<p><img alt="Command toolbar showing mode toggles, macro buttons, and navigation buttons" src="../images/command-pane-toolbar.png" /></p>
 <p>Macros appear in the toolbar between the mode toggle buttons and the navigation buttons. Three defaults are included out of the box: <code>/compact</code>, <code>/clear</code>, and <code>Reset</code> (which chains both). You can add your own for any command you run frequently.</p>
 <p>Macros are stored in the SQLite <code>user_settings</code> table and persist across sessions and restarts. They are <strong>global</strong> — the same set of macros appears regardless of which session is selected.</p>
 <hr />
@@ -830,8 +829,7 @@
 </li>
 <li>Click <strong>Add</strong> (or press Enter).</li>
 </ol>
-<!-- TODO: Screenshot - Add Macro modal with Label and Command fields filled in -->
-
+<p><img alt="Add Macro modal with Label and Command fields" src="../images/add-macro-modal.png" /></p>
 <p>The new macro button appears immediately in the toolbar. The change is persisted via <code>PUT /api/settings</code>.</p>
 <p>!!! tip
     Use <code>&amp;&amp;</code> to chain multiple commands. Chained commands are sent sequentially with a 1-second delay between each.</p>
@@ -842,13 +840,11 @@
 <li>Click any macro button in the toolbar.</li>
 </ol>
 <p>The command is sent to the agent. If the command contains <code>&amp;&amp;</code>, each part is sent sequentially with a 1-second delay. A toast notification confirms each send.</p>
-<!-- TODO: Screenshot - toast notification after clicking a macro button -->
-
+<p><img alt="Command pane with macro buttons in the toolbar" src="../images/command-pane-toolbar.png" /></p>
 <hr />
 <h2 id="deleting-a-macro">Deleting a macro</h2>
 <p>Hover over a macro button to reveal an <strong>x</strong> button in the top-right corner. Click it to remove the macro. The deletion is persisted immediately.</p>
-<!-- TODO: Screenshot - macro button with x delete button visible on hover -->
-
+<p><img alt="Macro buttons in the toolbar with delete button on hover" src="../images/command-pane-toolbar.png" /></p>
 <hr />
 <h2 id="toolbar-layout">Toolbar layout</h2>
 <p>The command toolbar is divided into three sections:</p>

@@ -1427,14 +1427,12 @@
 <li>Summary title (first heading from the AI-generated summary)</li>
 </ul>
 <p>Click any session to open it in the main panel. The list paginates at 50 sessions per page — use the pagination controls at the bottom of the sidebar to navigate older sessions.</p>
-<!-- TODO: Screenshot - Sidebar showing the History section with several session entries displaying timestamps, badges, branch names, and tags -->
-
+<p><img alt="History sidebar showing session entries with timestamps, badges, and branch names" src="../images/history-search-sidebar.png" /></p>
 <hr />
 <h2 id="searching-sessions">Searching sessions</h2>
 <p>Type in the search box at the top of the History sidebar to search across all indexed sessions. Results are ranked by FTS5 relevance when a search query is active, rather than by recency.</p>
 <p>The search indexes the <strong>full body of all messages</strong> — both your prompts and the agent's responses. This means you can search for specific code snippets, error messages, file paths, or any text that appeared in a conversation.</p>
-<!-- TODO: Screenshot - Search box with a query entered and filtered results in the sidebar -->
-
+<p><img alt="Search box with query and filtered results in the sidebar" src="../images/history-search-sidebar.png" /></p>
 <p>!!! tip
     FTS5 uses Porter stemming by default, so searching for "testing" also matches "test", "tests", and "tested".</p>
 <hr />
@@ -1478,8 +1476,7 @@
 </tbody>
 </table>
 <p>Use the <strong>Clear filters</strong> button to reset all filters at once. Filter state is encoded in the URL, so you can bookmark or share a filtered view.</p>
-<!-- TODO: Screenshot - Advanced filter panel expanded, showing FTS Mode, Source, Tags, Date Range, and Duration filters -->
-
+<p><img alt="Advanced filter panel with Source, Tags, Date Range, and Duration filters" src="../images/history-advanced-filters.png" /></p>
 <hr />
 <h2 id="viewing-a-session">Viewing a session</h2>
 <p>When you open a historical session, the main panel shows a header with session metadata and six content tabs.</p>
@@ -1511,8 +1508,7 @@
 <li><strong>Edit</strong> — Open a markdown editor to write or revise the summary</li>
 <li><strong>Re-summarize</strong> — Re-run the AI summarizer to generate a fresh summary</li>
 </ul>
-<!-- TODO: Screenshot - Summary tab showing a rendered markdown summary with Edit and Re-summarize buttons -->
-
+<p><img alt="Summary tab with rendered markdown summary, Edit and Re-summarize buttons" src="../images/history-session-detail.png" /></p>
 <h4 id="chat">Chat</h4>
 <p>The Chat tab shows the full conversation transcript between you and the agent. User messages, assistant responses, and tool-use cards (Bash commands, file edits, reads, etc.) are all displayed in order.</p>
 <h4 id="activity">Activity</h4>
@@ -1523,8 +1519,7 @@
 <p>The Notes tab shows any agent-written notes from the session. These are the notes the agent recorded while working, separate from the user-editable summary.</p>
 <h4 id="commits">Commits</h4>
 <p>The Commits tab lists all git commits that occurred during the session's time range. Each commit shows its hash, message, author, and timestamp.</p>
-<!-- TODO: Screenshot - Session detail view showing the six tabs with the Summary tab selected -->
-
+<p><img alt="Session detail view showing Summary, Chat, Activity, Tasks, Notes, and Commits tabs" src="../images/history-session-detail.png" /></p>
 <hr />
 <h2 id="tagging-sessions">Tagging sessions</h2>
 <p>Tags help you organize sessions by project, feature, status, or any other category.</p>
@@ -1536,8 +1531,7 @@
 </ol>
 <h3 id="using-tags-as-filters">Using tags as filters</h3>
 <p>Tags are available as a filter in the <a href="#using-advanced-filters">advanced filter panel</a>. You can select multiple tags and choose whether to match sessions with <strong>all</strong> selected tags (AND) or <strong>any</strong> of them (OR).</p>
-<!-- TODO: Screenshot - Tag picker dropdown showing existing tags and the option to create a new tag -->
-
+<p><img alt="Session header with + Tag button for adding tags" src="../images/history-session-detail.png" /></p>
 <hr />
 <h2 id="writing-and-editing-notes">Writing and editing notes</h2>
 <h3 id="editing-the-summary">Editing the summary</h3>
