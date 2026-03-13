@@ -6,6 +6,8 @@ import json
 import logging
 from pathlib import Path
 
+import shutil
+
 from fastapi import APIRouter, UploadFile, File
 
 log = logging.getLogger(__name__)
@@ -36,6 +38,8 @@ THEME_VARIABLES = {
         "--bg-tertiary": "Tertiary background",
         "--bg-hover": "Hover background",
         "--bg-elevated": "Elevated surface",
+        "--topbar-bg": "Top bar background",
+        "--topbar-border": "Top bar border",
     },
     "Borders": {
         "--border": "Border",
@@ -218,3 +222,83 @@ async def import_theme(file: UploadFile = File(...)):
     path = THEMES_DIR / f"{safe_name}.json"
     path.write_text(json.dumps(theme_data, indent=2))
     return {"ok": True, "name": safe_name}
+
+
+GENERATE_PROMPT = """You are a UI theme designer. Given a description of a color theme, generate a complete set of CSS color values for a web dashboard.
+
+You MUST respond with ONLY a valid JSON object — no markdown, no explanation, no code fences. The JSON must have this exact structure:
+
+{
+  "name": "A short creative name for this theme (2-4 words)",
+  "variables": {
+    "--css-variable-name": "#hexcolor",
+    ...
+  }
+}
+
+Here are the CSS variables you must provide values for, grouped by category:
+
+"""
+
+
+@router.post("/api/themes/generate")
+async def generate_theme(body: dict):
+    """Use an LLM to generate theme colors from a text description."""
+    description = body.get("description", "").strip()
+    if not description:
+        return {"error": "Description is required"}
+
+    base = body.get("base", "dark")
+
+    # Build the variable list for the prompt
+    var_list = ""
+    for group_name, vars_dict in THEME_VARIABLES.items():
+        var_list += f"\n{group_name}:\n"
+        for css_var, label in vars_dict.items():
+            var_list += f"  {css_var} — {label}\n"
+
+    prompt = (
+        f"{GENERATE_PROMPT}{var_list}\n"
+        f"The theme should be based on a {base} color scheme.\n"
+        f"User's description: {description}\n\n"
+        f"Respond with ONLY the JSON object."
+    )
+
+    claude_path = shutil.which("claude")
+    if not claude_path:
+        return {"error": "Claude CLI not found — install Claude Code to use AI theme generation"}
+
+    from corral.tools.utils import run_cmd
+
+    rc, stdout, stderr = await run_cmd(
+        claude_path,
+        "--print",
+        "--model", "haiku",
+        "--no-session-persistence",
+        prompt,
+        timeout=60.0,
+    )
+
+    if rc != 0:
+        err = stderr.strip() if stderr else "Unknown error"
+        return {"error": f"Claude CLI failed: {err}"}
+
+    # Parse the response — strip any markdown fences if present
+    raw = (stdout or "").strip()
+    if raw.startswith("```"):
+        # Remove code fences
+        lines = raw.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        raw = "\n".join(lines).strip()
+
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"error": "Failed to parse LLM response as JSON", "raw": raw}
+
+    variables = result.get("variables", result)
+    if not isinstance(variables, dict):
+        return {"error": "LLM response missing variables object", "raw": raw}
+
+    name = result.get("name", "")
+    return {"ok": True, "variables": variables, "name": name}

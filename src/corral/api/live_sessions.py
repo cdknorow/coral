@@ -659,6 +659,9 @@ async def create_agent_event(name: str, body: dict):
     tool_name = body.get("tool_name")
     session_id = body.get("session_id")
     detail_json = body.get("detail_json")
+    # Ensure detail_json is a string for SQLite storage
+    if detail_json is not None and not isinstance(detail_json, str):
+        detail_json = json.dumps(detail_json)
     event = await store.insert_agent_event(
         name, event_type, summary,
         tool_name=tool_name, session_id=session_id, detail_json=detail_json,

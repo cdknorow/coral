@@ -77,6 +77,10 @@ function renderModal() {
                 <button class="btn btn-sm" onclick="importThemeFile()">Import</button>
                 <button class="btn btn-sm" onclick="exportCurrentTheme()">Export</button>
             </div>
+            <div class="theme-generate-bar">
+                <input type="text" id="theme-ai-prompt" class="settings-input" placeholder="Describe your theme... (e.g. &quot;cyberpunk neon with pink and teal&quot;)">
+                <button class="btn btn-sm btn-primary" id="theme-generate-btn" onclick="generateThemeFromDescription()">Generate</button>
+            </div>
             <div class="theme-editor-scroll">
                 ${groups}
             </div>
@@ -248,6 +252,75 @@ window.exportCurrentTheme = function() {
     a.click();
     URL.revokeObjectURL(url);
     showToast('Theme exported');
+};
+
+window.generateThemeFromDescription = async function() {
+    const prompt = document.getElementById('theme-ai-prompt')?.value.trim();
+    if (!prompt) {
+        showToast('Enter a theme description first', true);
+        return;
+    }
+
+    const base = document.getElementById('theme-save-base')?.value || 'dark';
+    const btn = document.getElementById('theme-generate-btn');
+    const input = document.getElementById('theme-ai-prompt');
+    const origText = btn.textContent;
+    btn.textContent = 'Generating...';
+    btn.disabled = true;
+    if (input) input.disabled = true;
+
+    // Show a persistent progress banner in the editor area
+    const scroll = document.querySelector('.theme-editor-scroll');
+    let banner = null;
+    if (scroll) {
+        banner = document.createElement('div');
+        banner.className = 'theme-generate-banner';
+        banner.innerHTML = '<span class="theme-generate-spinner"></span> Generating theme with AI — this may take 10-20 seconds...';
+        scroll.prepend(banner);
+    }
+
+    try {
+        const resp = await fetch('/api/themes/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: prompt, base }),
+        });
+        const data = await resp.json();
+        if (data.error) {
+            showToast(data.error, true);
+            return;
+        }
+
+        // Merge generated variables into current edits
+        const generated = data.variables || {};
+        for (const [cssVar, value] of Object.entries(generated)) {
+            if (cssVar in currentEdits) {
+                currentEdits[cssVar] = value;
+            }
+        }
+
+        // Capture generated name before re-render
+        const generatedName = data.name || '';
+
+        // Re-render the editor with new values
+        renderModal();
+
+        // Restore fields after re-render (renderModal rebuilds all inputs)
+        const promptInput = document.getElementById('theme-ai-prompt');
+        if (promptInput) promptInput.value = prompt;
+        if (generatedName) {
+            document.getElementById('theme-save-name').value = generatedName;
+        }
+
+        showToast('Theme generated — click Preview to see it live');
+    } catch (e) {
+        showToast('Failed to generate theme', true);
+    } finally {
+        if (banner) banner.remove();
+        btn.textContent = origText;
+        btn.disabled = false;
+        if (input) input.disabled = false;
+    }
 };
 
 window.importThemeFile = function() {

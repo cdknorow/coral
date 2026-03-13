@@ -21,6 +21,18 @@
     flex: 1;
 }
 
+.theme-generate-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 0;
+    flex-shrink: 0;
+}
+
+.theme-generate-bar input {
+    flex: 1;
+    min-width: 0;
+}
+
 .theme-editor-scroll {
     flex: 1;
     min-height: 0;
@@ -131,4 +143,32 @@
 
 .btn-danger:hover {
     background: rgba(248, 81, 73, 0.15);
+}
+
+.theme-generate-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.theme-generate-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--text-muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: theme-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes theme-spin {
+    to { transform: rotate(360deg); }
 }
