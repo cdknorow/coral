@@ -168,6 +168,10 @@
     min-width: 0;
 }
 
+.session-name-spacer {
+    flex: 1;
+}
+
 .session-goal {
     font-size: 11px;
     color: var(--text-muted);
@@ -175,10 +179,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     margin-top: 2px;
-}
-
-.session-branch-row {
-    margin-top: 1px;
 }
 
 /* ── Sidebar Edit / Rename ─────────────────────────────────── */
@@ -397,9 +397,18 @@
 }
 
 .sidebar-branch {
+    display: flex;
+    align-items: center;
+    gap: 3px;
     font-size: 11px;
     color: var(--text-muted);
     font-family: var(--font-mono);
+    margin-top: 1px;
+}
+
+.sidebar-branch svg {
+    flex-shrink: 0;
+    opacity: 0.7;
 }
 
 /* ── Status Dots ───────────────────────────────────────────── */

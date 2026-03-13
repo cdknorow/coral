@@ -95,7 +95,7 @@ export function renderLiveSessions(sessions) {
             const dotClass = getDotClass(s.staleness_seconds, s.waiting_for_input, s.working, s.waiting_reason);
             const isActive = state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
             const typeTag = s.agent_type && s.agent_type !== "claude" ? ` <span class="badge ${escapeHtml(s.agent_type)}">${escapeHtml(s.agent_type)}</span>` : "";
-            const branchTag = s.branch ? ` <span class="sidebar-branch">${escapeHtml(s.branch)}</span>` : "";
+            const branchTag = s.branch ? `<span class="sidebar-branch"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(s.branch)}</span>` : "";
             const waitingBadge = s.waiting_for_input
                 ? (s.waiting_reason === "stop"
                     ? ' <span class="badge done-badge">Done</span>'
@@ -110,11 +110,13 @@ export function renderLiveSessions(sessions) {
                 <span class="session-dot ${dotClass}"></span>
                 <div class="session-info">
                     <div class="session-name-row">
-                        <span class="session-label">${escapeHtml(displayLabel)}${typeTag}${waitingBadge}</span>
+                        <span class="session-label">${escapeHtml(displayLabel)}${typeTag}</span>
                         ${editBtn}
+                        <span class="session-name-spacer"></span>
+                        ${waitingBadge}
                     </div>
                     <span class="session-goal">${goal}</span>
-                    ${branchTag ? `<span class="session-branch-row">${branchTag}</span>` : ''}
+                    ${branchTag}
                 </div>
                 <div class="session-tooltip">${tooltip}</div>
             </li>`;
