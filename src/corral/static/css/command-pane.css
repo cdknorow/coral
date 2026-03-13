@@ -54,7 +54,9 @@
     border-bottom: 1px solid var(--border);
     min-width: 0;
     overflow-x: auto;
-    overflow-y: hidden;
+    overflow-y: visible;
+    position: relative;
+    z-index: 20;
 }
 
 .toolbar-divider {

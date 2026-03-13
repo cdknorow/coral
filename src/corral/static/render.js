@@ -109,10 +109,13 @@ export function renderLiveSessions(sessions) {
             html += `<li class="session-group-item${isActive ? ' active' : ''}" onclick="selectLiveSession('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
                 <span class="session-dot ${dotClass}"></span>
                 <div class="session-info">
-                    <span class="session-label">${escapeHtml(displayLabel)}${typeTag}${waitingBadge}${branchTag}</span>
+                    <div class="session-name-row">
+                        <span class="session-label">${escapeHtml(displayLabel)}${typeTag}${waitingBadge}</span>
+                        ${editBtn}
+                    </div>
                     <span class="session-goal">${goal}</span>
+                    ${branchTag ? `<span class="session-branch-row">${branchTag}</span>` : ''}
                 </div>
-                ${editBtn}
                 <div class="session-tooltip">${tooltip}</div>
             </li>`;
         }

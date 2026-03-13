@@ -439,7 +439,7 @@
     white-space: pre-wrap;
     max-width: 280px;
     word-break: break-word;
-    z-index: 100;
+    z-index: 200;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     pointer-events: none;
 }

@@ -111,8 +111,8 @@
     padding: 10px 14px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
     pointer-events: none;
-    white-space: nowrap;
     min-width: 220px;
+    max-width: 400px;
 }
 
 .session-tooltip-table {
@@ -133,9 +133,8 @@
 
 .tt-value {
     color: var(--text-primary);
-    max-width: 240px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    max-width: 300px;
+    word-break: break-word;
 }
 
 .tt-state-working           { color: #3b82f6; font-weight: 600; }
@@ -159,6 +158,14 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    flex: 1;
+}
+
+.session-name-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
 }
 
 .session-goal {
@@ -168,6 +175,10 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     margin-top: 2px;
+}
+
+.session-branch-row {
+    margin-top: 1px;
 }
 
 /* ── Sidebar Edit / Rename ─────────────────────────────────── */
@@ -180,7 +191,6 @@
     cursor: pointer;
     font-size: 13px;
     padding: 2px 4px;
-    margin-left: auto;
     flex-shrink: 0;
     border-radius: 3px;
     line-height: 1;
@@ -389,7 +399,7 @@
 .sidebar-branch {
     font-size: 11px;
     color: var(--text-muted);
-    margin-left: 4px;
+    font-family: var(--font-mono);
 }
 
 /* ── Status Dots ───────────────────────────────────────────── */
