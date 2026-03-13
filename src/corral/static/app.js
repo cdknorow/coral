@@ -417,6 +417,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const keyMap = {
             "Escape": ["Escape"],
+            "ArrowLeft": ["Left"],
+            "ArrowRight": ["Right"],
             "ArrowUp": ["Up"],
             "ArrowDown": ["Down"],
             "Enter": ["Enter"],

@@ -302,6 +302,30 @@ async def refresh_live_session_files(name: str, body: dict | None = None):
     return {"agent_name": name, "files": files_list}
 
 
+async def _get_diff_base(workdir: str) -> str:
+    """Return the base ref to diff against.
+
+    On a feature branch: merge-base with main/master (shows all branch work).
+    On the default branch (or merge-base fails): HEAD (shows uncommitted changes).
+    """
+    from corral.tools.utils import run_cmd
+
+    rc, branch, _ = await run_cmd(
+        "git", "-C", workdir, "rev-parse", "--abbrev-ref", "HEAD", timeout=5.0,
+    )
+    current_branch = branch.strip() if rc == 0 else ""
+
+    if current_branch not in ("main", "master", "HEAD", ""):
+        for base_branch in ("main", "master"):
+            rc, stdout, _ = await run_cmd(
+                "git", "-C", workdir, "merge-base", base_branch, "HEAD", timeout=5.0,
+            )
+            if rc == 0 and stdout:
+                return stdout.strip()
+
+    return "HEAD"
+
+
 @router.get("/api/sessions/live/{name}/diff")
 async def get_file_diff(name: str, filepath: str = Query(...), session_id: str | None = None):
     """Return the unified diff for a single file in the agent's working tree."""
@@ -323,23 +347,16 @@ async def get_file_diff(name: str, filepath: str = Query(...), session_id: str |
     if not workdir:
         return {"error": "Could not determine working directory"}
 
-    # Get combined diff (staged + unstaged) for this file
-    # First try unstaged changes
-    rc, unstaged, _ = await run_cmd(
-        "git", "-C", workdir, "diff", "--", filepath, timeout=10.0,
-    )
-    # Then staged changes
-    rc2, staged, _ = await run_cmd(
-        "git", "-C", workdir, "diff", "--cached", "--", filepath, timeout=10.0,
-    )
+    # Determine the diff base — on feature branches this is the merge-base
+    # with main/master so we show all branch changes, not just uncommitted ones.
+    base = await _get_diff_base(workdir)
 
-    diff_text = ""
-    if staged:
-        diff_text += staged
-    if unstaged:
-        if diff_text:
-            diff_text += "\n"
-        diff_text += unstaged
+    # Diff from base to working tree for this file — captures committed +
+    # staged + unstaged changes in one shot.
+    rc, diff_text, _ = await run_cmd(
+        "git", "-C", workdir, "diff", base, "--", filepath, timeout=10.0,
+    )
+    diff_text = diff_text or ""
 
     # For untracked files, show the file content as a "new file" diff
     if not diff_text:

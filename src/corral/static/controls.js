@@ -148,6 +148,8 @@ export function renderQuickActions() {
 
     const navButtons = `
         <button class="btn-nav" onclick="sendRawKeys(['Escape'])" title="Escape" aria-label="Escape">Esc</button>
+        <button class="btn-nav" onclick="sendRawKeys(['Left'])" title="Arrow Left" aria-label="Arrow Left">&larr;</button>
+        <button class="btn-nav" onclick="sendRawKeys(['Right'])" title="Arrow Right" aria-label="Arrow Right">&rarr;</button>
         <button class="btn-nav" onclick="sendRawKeys(['Up'])" title="Arrow Up" aria-label="Arrow Up">&uarr;</button>
         <button class="btn-nav" onclick="sendRawKeys(['Down'])" title="Arrow Down" aria-label="Arrow Down">&darr;</button>
         <button class="btn-nav btn-enter" onclick="sendRawKeys(['Enter'])" title="Enter" aria-label="Enter">&#9166;</button>
