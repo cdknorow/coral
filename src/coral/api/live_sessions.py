@@ -745,6 +745,7 @@ async def ws_terminal(websocket: WebSocket, name: str):
 
 
 @router.websocket("/ws/coral")
+@router.websocket("/ws/corral")
 async def ws_coral(websocket: WebSocket):
     """Stream coral-wide session list updates (polls every 3s)."""
     await websocket.accept()
