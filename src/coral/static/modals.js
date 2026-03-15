@@ -23,24 +23,56 @@ export function toggleFlag(inputId, flag) {
     input.dispatchEvent(new Event("input"));
 }
 
+// Track which launch mode is active: null (chooser), 'agent', or 'terminal'
+let _launchMode = null;
+
+function _showLaunchStep(step) {
+    document.getElementById("launch-step-chooser").style.display = step === "chooser" ? "" : "none";
+    document.getElementById("launch-step-agent").style.display = step === "agent" ? "" : "none";
+    document.getElementById("launch-step-terminal").style.display = step === "terminal" ? "" : "none";
+}
+
+function _selectLaunchType(type) {
+    if (type === "back") {
+        _launchMode = null;
+        _showLaunchStep("chooser");
+        return;
+    }
+    _launchMode = type;
+    _showLaunchStep(type);
+    if (type === "agent") {
+        document.getElementById("launch-agent-name").focus();
+    } else {
+        document.getElementById("launch-terminal-name").focus();
+    }
+}
+window._selectLaunchType = _selectLaunchType;
+
 export function showLaunchModal() {
+    _launchMode = null;
     document.getElementById("launch-modal").style.display = "flex";
+    _showLaunchStep("chooser");
+
+    // Reset agent form
     document.getElementById("launch-agent-name").value = "";
     document.getElementById("launch-flags").value = "";
     _syncFlagButtons("launch-flags");
 
+    // Reset terminal form
+    document.getElementById("launch-terminal-name").value = "";
+
     // Pre-fill from global settings
     const s = state.settings || {};
     const dirInput = document.getElementById("launch-dir");
-    if (s.default_working_dir && dirInput) {
-        dirInput.value = s.default_working_dir;
+    const termDirInput = document.getElementById("launch-terminal-dir");
+    if (s.default_working_dir) {
+        if (dirInput) dirInput.value = s.default_working_dir;
+        if (termDirInput) termDirInput.value = s.default_working_dir;
     }
     const typeSelect = document.getElementById("launch-type");
     if (s.default_agent_type && typeSelect) {
         typeSelect.value = s.default_agent_type;
     }
-
-    document.getElementById("launch-agent-name").focus();
 }
 
 export function hideLaunchModal() {
@@ -48,9 +80,19 @@ export function hideLaunchModal() {
 }
 
 export async function launchSession() {
-    const dir = document.getElementById("launch-dir").value.trim();
-    const type = document.getElementById("launch-type").value;
-    const agentName = document.getElementById("launch-agent-name").value.trim();
+    let dir, type, agentName, flagsStr;
+
+    if (_launchMode === "terminal") {
+        dir = document.getElementById("launch-terminal-dir").value.trim();
+        type = "terminal";
+        agentName = document.getElementById("launch-terminal-name").value.trim();
+        flagsStr = "";
+    } else {
+        dir = document.getElementById("launch-dir").value.trim();
+        type = document.getElementById("launch-type").value;
+        agentName = document.getElementById("launch-agent-name").value.trim();
+        flagsStr = document.getElementById("launch-flags").value.trim();
+    }
 
     if (!dir) {
         showToast("Working directory is required", true);
@@ -60,7 +102,6 @@ export async function launchSession() {
     const payload = { working_dir: dir, agent_type: type };
     if (agentName) payload.display_name = agentName;
 
-    const flagsStr = document.getElementById("launch-flags").value.trim();
     if (flagsStr) {
         payload.flags = flagsStr.split(/\s+/);
     }

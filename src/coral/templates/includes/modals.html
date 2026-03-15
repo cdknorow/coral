@@ -1,41 +1,101 @@
     <!-- Launch Modal -->
     <div id="launch-modal" class="modal" style="display:none">
         <div class="modal-content modal-content-wide">
-            <h3>Launch New Session</h3>
-            <label>Agent Name <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                <input type="text" id="launch-agent-name" placeholder="e.g. Auth Feature, Bug Fix #123">
-            </label>
-            <label>Working Directory:
-                <div class="dir-input-row">
-                    <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
-                    <button class="btn" id="btn-browse" onclick="toggleBrowser()">Browse</button>
+            <!-- Step 1: Session type chooser -->
+            <div id="launch-step-chooser">
+                <h3>Launch New Session</h3>
+                <div class="launch-type-cards">
+                    <button class="launch-type-card" onclick="window._selectLaunchType('agent')">
+                        <div class="launch-type-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+                                <path d="M6 10v1a6 6 0 0 0 12 0v-1"/>
+                                <line x1="12" y1="17" x2="12" y2="21"/>
+                                <line x1="8" y1="21" x2="16" y2="21"/>
+                            </svg>
+                        </div>
+                        <div class="launch-type-label">AI Agent</div>
+                        <div class="launch-type-desc">Launch Claude or Gemini with system prompt and tools</div>
+                    </button>
+                    <button class="launch-type-card" onclick="window._selectLaunchType('terminal')">
+                        <div class="launch-type-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="18" rx="2"/>
+                                <polyline points="7 9 10 12 7 15"/>
+                                <line x1="13" y1="15" x2="17" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="launch-type-label">Terminal</div>
+                        <div class="launch-type-desc">Open a shell session you can use alongside your agents</div>
+                    </button>
                 </div>
-            </label>
-            <div id="dir-browser" class="dir-browser" style="display:none">
-                <div class="dir-browser-header">
-                    <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
-                    <span class="dir-browser-path" id="browser-current-path">~</span>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
                 </div>
-                <ul class="dir-browser-list" id="browser-list">
-                    <li class="empty-state">Loading...</li>
-                </ul>
             </div>
-            <label>Agent Type:
-                <select id="launch-type">
-                    <option value="claude">Claude</option>
-                    <option value="gemini">Gemini</option>
-                </select>
-            </label>
-            <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                <input type="text" id="launch-flags" placeholder="e.g. --verbose">
-            </label>
-            <div class="flag-shortcuts">
-                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--chrome')">--chrome</button>
-                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+
+            <!-- Step 2a: Agent form -->
+            <div id="launch-step-agent" style="display:none">
+                <h3>
+                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    Launch AI Agent
+                </h3>
+                <label>Agent Name <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                    <input type="text" id="launch-agent-name" placeholder="e.g. Auth Feature, Bug Fix #123">
+                </label>
+                <label>Working Directory:
+                    <div class="dir-input-row">
+                        <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
+                        <button class="btn" id="btn-browse" onclick="toggleBrowser()">Browse</button>
+                    </div>
+                </label>
+                <div id="dir-browser" class="dir-browser" style="display:none">
+                    <div class="dir-browser-header">
+                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                        <span class="dir-browser-path" id="browser-current-path">~</span>
+                    </div>
+                    <ul class="dir-browser-list" id="browser-list">
+                        <li class="empty-state">Loading...</li>
+                    </ul>
+                </div>
+                <label>Agent Type:
+                    <select id="launch-type">
+                        <option value="claude">Claude</option>
+                        <option value="gemini">Gemini</option>
+                    </select>
+                </label>
+                <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                    <input type="text" id="launch-flags" placeholder="e.g. --verbose">
+                </label>
+                <div class="flag-shortcuts">
+                    <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--chrome')">--chrome</button>
+                    <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+                </div>
             </div>
-            <div class="modal-actions">
-                <button class="btn" onclick="hideLaunchModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+
+            <!-- Step 2b: Terminal form -->
+            <div id="launch-step-terminal" style="display:none">
+                <h3>
+                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    Launch Terminal
+                </h3>
+                <label>Session Name <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                    <input type="text" id="launch-terminal-name" placeholder="e.g. build server, test runner">
+                </label>
+                <label>Working Directory:
+                    <div class="dir-input-row">
+                        <input type="text" id="launch-terminal-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
+                        <button class="btn" id="btn-browse-terminal" onclick="toggleBrowser()">Browse</button>
+                    </div>
+                </label>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+                </div>
             </div>
         </div>
     </div>

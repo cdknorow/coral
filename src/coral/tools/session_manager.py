@@ -563,16 +563,20 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
     session_name = f"{agent_type}-{session_id}"
     log_file = f"{log_dir}/{agent_type}_coral_{session_id}.log"
 
-    from coral.agents import get_agent
-    agent_impl = get_agent(agent_type)
+    is_terminal = agent_type == "terminal"
 
-    # If resuming, let the agent prepare (e.g. copy session files)
-    if resume_session_id:
-        agent_impl.prepare_resume(resume_session_id, working_dir)
+    if not is_terminal:
+        from coral.agents import get_agent
+        agent_impl = get_agent(agent_type)
+
+        # If resuming, let the agent prepare (e.g. copy session files)
+        if resume_session_id:
+            agent_impl.prepare_resume(resume_session_id, working_dir)
 
     try:
         # Install agent-specific hooks before launching
-        agent_impl.install_hooks(working_dir)
+        if not is_terminal:
+            agent_impl.install_hooks(working_dir)
 
         # Clear old log
         Path(log_file).write_text("")
@@ -597,19 +601,20 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
 
         await asyncio.sleep(0.3)
 
-        # Launch the agent
-        script_dir = Path(__file__).parent.parent
-        protocol_path = script_dir / "PROTOCOL.md"
+        if not is_terminal:
+            # Launch the agent
+            script_dir = Path(__file__).parent.parent
+            protocol_path = script_dir / "PROTOCOL.md"
 
-        cmd = agent_impl.build_launch_command(
-            session_id, protocol_path,
-            resume_session_id=resume_session_id,
-            flags=flags,
-        )
+            cmd = agent_impl.build_launch_command(
+                session_id, protocol_path,
+                resume_session_id=resume_session_id,
+                flags=flags,
+            )
 
-        await asyncio.create_subprocess_exec(
-            "tmux", "send-keys", "-t", f"{session_name}.0", cmd, "Enter"
-        )
+            await asyncio.create_subprocess_exec(
+                "tmux", "send-keys", "-t", f"{session_name}.0", cmd, "Enter"
+            )
 
         # Store display_name and register live session
         try:

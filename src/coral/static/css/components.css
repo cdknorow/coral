@@ -857,6 +857,73 @@
     color: var(--text-primary);
 }
 
+/* ── Launch Type Chooser ──────────────────────────────────── */
+
+.launch-type-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.launch-type-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 24px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    color: var(--text-secondary);
+}
+
+.launch-type-card:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    box-shadow: 0 2px 12px rgba(88, 166, 255, 0.15);
+}
+
+.launch-type-icon {
+    color: var(--text-muted);
+    transition: color 0.15s;
+}
+
+.launch-type-card:hover .launch-type-icon {
+    color: var(--accent);
+}
+
+.launch-type-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.launch-type-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    line-height: 1.4;
+}
+
+.launch-back-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 0 8px 0 0;
+    vertical-align: middle;
+    transition: color 0.15s;
+}
+
+.launch-back-btn:hover {
+    color: var(--text-primary);
+}
+
 .resume-item-goal {
     font-size: 12px;
     color: var(--text-secondary);
