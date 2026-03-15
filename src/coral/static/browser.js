@@ -3,26 +3,44 @@
 import { escapeHtml, escapeAttr } from './utils.js';
 
 let browserCurrentPath = "~";
+// Track which dir-input + browser pair is active
+let _activeDirInputId = "launch-dir";
+let _activeBrowserId = "dir-browser";
+let _activeListId = "browser-list";
+let _activePathId = "browser-current-path";
 
 function getCoralRoot() {
-    const input = document.getElementById("launch-dir");
+    const input = document.getElementById(_activeDirInputId);
     return (input && input.dataset.coralRoot) || "~";
 }
 
-export function toggleBrowser() {
-    const browser = document.getElementById("dir-browser");
+export function toggleBrowser(dirInputId, browserId, listId, pathId) {
+    // If called with arguments, use those; otherwise default to agent form
+    if (dirInputId) {
+        _activeDirInputId = dirInputId;
+        _activeBrowserId = browserId;
+        _activeListId = listId;
+        _activePathId = pathId;
+    } else {
+        _activeDirInputId = "launch-dir";
+        _activeBrowserId = "dir-browser";
+        _activeListId = "browser-list";
+        _activePathId = "browser-current-path";
+    }
+
+    const browser = document.getElementById(_activeBrowserId);
     const isVisible = browser.style.display !== "none";
     browser.style.display = isVisible ? "none" : "";
     if (!isVisible) {
-        const inputPath = document.getElementById("launch-dir").value.trim();
+        const inputPath = document.getElementById(_activeDirInputId).value.trim();
         browserCurrentPath = inputPath || getCoralRoot();
         loadBrowserEntries(browserCurrentPath);
     }
 }
 
 async function loadBrowserEntries(path) {
-    const list = document.getElementById("browser-list");
-    const pathDisplay = document.getElementById("browser-current-path");
+    const list = document.getElementById(_activeListId);
+    const pathDisplay = document.getElementById(_activePathId);
     list.innerHTML = '<li class="empty-state">Loading...</li>';
 
     try {
@@ -36,7 +54,7 @@ async function loadBrowserEntries(path) {
 
         browserCurrentPath = data.path;
         pathDisplay.textContent = data.path;
-        document.getElementById("launch-dir").value = data.path;
+        document.getElementById(_activeDirInputId).value = data.path;
 
         if (!data.entries.length) {
             list.innerHTML = '<li class="empty-state">No subdirectories</li>';

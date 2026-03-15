@@ -46,7 +46,7 @@
                 <label>Working Directory:
                     <div class="dir-input-row">
                         <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
-                        <button class="btn" id="btn-browse" onclick="toggleBrowser()">Browse</button>
+                        <button class="btn" id="btn-browse" onclick="toggleBrowser('launch-dir','dir-browser','browser-list','browser-current-path')">Browse</button>
                     </div>
                 </label>
                 <div id="dir-browser" class="dir-browser" style="display:none">
@@ -89,9 +89,18 @@
                 <label>Working Directory:
                     <div class="dir-input-row">
                         <input type="text" id="launch-terminal-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
-                        <button class="btn" id="btn-browse-terminal" onclick="toggleBrowser()">Browse</button>
+                        <button class="btn" id="btn-browse-terminal" onclick="toggleBrowser('launch-terminal-dir','dir-browser-terminal','browser-list-terminal','browser-current-path-terminal')">Browse</button>
                     </div>
                 </label>
+                <div id="dir-browser-terminal" class="dir-browser" style="display:none">
+                    <div class="dir-browser-header">
+                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                        <span class="dir-browser-path" id="browser-current-path-terminal">~</span>
+                    </div>
+                    <ul class="dir-browser-list" id="browser-list-terminal">
+                        <li class="empty-state">Loading...</li>
+                    </ul>
+                </div>
                 <div class="modal-actions">
                     <button class="btn" onclick="hideLaunchModal()">Cancel</button>
                     <button class="btn btn-primary" onclick="launchSession()">Launch</button>
