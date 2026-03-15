@@ -141,6 +141,7 @@
 .tt-state-waiting-for-input  { color: var(--warning); font-weight: 600; }
 .tt-state-active             { color: var(--success); font-weight: 600; }
 .tt-state-idle               { color: var(--text-muted); }
+.tt-unread                   { color: var(--warning); font-weight: 600; }
 
 .session-time {
     font-size: 11px;

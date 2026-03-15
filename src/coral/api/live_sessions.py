@@ -34,6 +34,7 @@ from coral.tools.tmux_manager import (
 from coral.agents import get_agent
 from coral.tools.log_streamer import get_log_snapshot
 from coral.tools.pulse_detector import scan_log_for_pulse_events
+from coral.messageboard.store import MessageBoardStore
 
 if TYPE_CHECKING:
     from coral.store import CoralStore
@@ -48,6 +49,7 @@ router = APIRouter()
 store: CoralStore = None  # type: ignore[assignment]
 jsonl_reader: JsonlSessionReader = None  # type: ignore[assignment]
 schedule_store: ScheduleStore = None  # type: ignore[assignment]
+board_store: MessageBoardStore = MessageBoardStore()
 
 # Track last-known status/summary per session_id so we only emit events on change.
 _last_known: dict[str, dict[str, str | None]] = {}
@@ -95,6 +97,12 @@ async def get_live_sessions():
     display_names = await store.get_display_names(session_ids)
     latest_events = await store.get_latest_event_types(session_ids)
     latest_goals = await store.get_latest_goals(session_ids)
+
+    # Fetch board subscriptions (keyed by tmux session name)
+    try:
+        board_subs = await board_store.get_all_subscriptions()
+    except Exception:
+        board_subs = {}
     results = []
     for agent in agents:
         log_info = get_log_status(agent["log_path"])
@@ -116,6 +124,16 @@ async def get_live_sessions():
         summary = log_info["summary"]
         if not summary and sid:
             summary = latest_goals.get(sid)
+        # Board subscription lookup (CLI subscribes using tmux session name)
+        tmux_name = agent.get("tmux_session") or ""
+        board_sub = board_subs.get(tmux_name)
+        board_unread = 0
+        if board_sub:
+            try:
+                board_unread = await board_store.check_unread(board_sub["project"], tmux_name)
+            except Exception:
+                pass
+
         entry = {
             "name": name,
             "agent_type": agent["agent_type"],
@@ -134,6 +152,9 @@ async def get_live_sessions():
             "waiting_summary": latest_ev_summary if waiting else None,
             "working": working,
             "changed_file_count": fc,
+            "board_project": board_sub["project"] if board_sub else None,
+            "board_job_title": board_sub["job_title"] if board_sub else None,
+            "board_unread": board_unread,
         }
         results.append(entry)
         await _track_status_summary_events(name, log_info["status"], log_info["summary"], session_id=sid)

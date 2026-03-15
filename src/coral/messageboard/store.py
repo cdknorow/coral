@@ -121,6 +121,12 @@ class MessageBoardStore:
         )
         return dict(rows[0]) if rows else None
 
+    async def get_all_subscriptions(self) -> dict[str, dict[str, Any]]:
+        """Return all active subscriptions keyed by session_id."""
+        conn = await self._get_conn()
+        rows = await conn.execute_fetchall("SELECT * FROM board_subscribers")
+        return {row["session_id"]: dict(row) for row in rows}
+
     # ── Messages ─────────────────────────────────────────────────────────
 
     async def post_message(
