@@ -137,7 +137,7 @@ def _run_foreground(host: str, port: int) -> None:
                 )
             menu_items.extend([
                 rumps.MenuItem("Shutdown — Kill Agents & Stop Server", callback=self.shutdown),
-                rumps.MenuItem("Quit", callback=self.quit_app),
+                rumps.MenuItem("Quit — Exit Coral", callback=self.quit_app),
             ])
             self.menu = menu_items
 
