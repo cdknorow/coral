@@ -15,11 +15,6 @@ import aiosqlite
 DB_DIR = Path.home() / ".coral"
 DB_PATH = DB_DIR / "messageboard.db"
 
-<<<<<<< HEAD
-MAX_MESSAGES_PER_PROJECT = 500
-
-=======
->>>>>>> features/message_board
 
 class MessageBoardStore:
     """Self-contained store for the message board feature."""
@@ -115,8 +110,6 @@ class MessageBoardStore:
         )
         return [dict(r) for r in rows]
 
-<<<<<<< HEAD
-=======
     async def get_subscription(self, session_id: str) -> dict[str, Any] | None:
         """Return the active subscription for a session, or None."""
         conn = await self._get_conn()
@@ -132,7 +125,6 @@ class MessageBoardStore:
         rows = await conn.execute_fetchall("SELECT * FROM board_subscribers")
         return {row["session_id"]: dict(row) for row in rows}
 
->>>>>>> features/message_board
     # ── Messages ─────────────────────────────────────────────────────────
 
     async def post_message(
@@ -147,31 +139,8 @@ class MessageBoardStore:
         msg_id = cursor.lastrowid
         await conn.commit()
 
-<<<<<<< HEAD
-        # Auto-prune: keep only the latest MAX_MESSAGES_PER_PROJECT messages
-        await self._prune_messages(conn, project)
-
         return {"id": msg_id, "project": project, "session_id": session_id, "content": content, "created_at": now}
 
-    async def _prune_messages(self, conn: aiosqlite.Connection, project: str) -> None:
-        rows = await conn.execute_fetchall(
-            "SELECT COUNT(*) as cnt FROM board_messages WHERE project = ?",
-            (project,),
-        )
-        count = rows[0]["cnt"]
-        if count > MAX_MESSAGES_PER_PROJECT:
-            await conn.execute(
-                """DELETE FROM board_messages WHERE project = ? AND id NOT IN (
-                    SELECT id FROM board_messages WHERE project = ? ORDER BY id DESC LIMIT ?
-                )""",
-                (project, project, MAX_MESSAGES_PER_PROJECT),
-            )
-            await conn.commit()
-
-=======
-        return {"id": msg_id, "project": project, "session_id": session_id, "content": content, "created_at": now}
-
->>>>>>> features/message_board
     async def read_messages(
         self, project: str, session_id: str, limit: int = 50
     ) -> list[dict[str, Any]]:
@@ -213,8 +182,6 @@ class MessageBoardStore:
 
         return messages
 
-<<<<<<< HEAD
-=======
     async def list_messages(
         self, project: str, limit: int = 200
     ) -> list[dict[str, Any]]:
@@ -268,7 +235,6 @@ class MessageBoardStore:
         )
         return count_rows[0]["cnt"]
 
->>>>>>> features/message_board
     # ── Webhooks ─────────────────────────────────────────────────────────
 
     async def get_webhook_targets(

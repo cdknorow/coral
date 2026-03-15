@@ -34,7 +34,6 @@ import { showThemeConfigurator, hideThemeConfigurator } from './theme_config.js'
 import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject } from './message_board.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
-import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject } from './message_board.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 window.sendCommand = sendCommand;
