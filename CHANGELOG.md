@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 2.4.1 — 2026-03-16
+
+### Added
+- **Redesigned agent team selection flow** — Default team now includes 3 agents (Lead Developer, QA Engineer, Orchestrator) with compact card UI, edit/collapse toggle, and preset picker with 8 predefined roles
+- **Terminal scrollback setting** — Configurable scrollback buffer (1k–100k lines) in user settings, applies to existing terminals on save
+- **Remote Server field** in the new agent launch modal for cross-server board support
+
+### Fixed
+- **xterm.js scrollbar now clickable** — Use CSS `clip-path` on `.xterm-screen` to expose the native scrollbar without breaking terminal rendering
+- **Wider xterm scrollbar** — Increased from 6px to 12px with hover highlight for easier interaction
+- **Session resume** now restores prompt and board subscription correctly
+
 ## 2.4.0 — 2026-03-15
 
 ### Added
