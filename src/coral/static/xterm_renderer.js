@@ -226,27 +226,6 @@ export function createTerminal(containerEl) {
     terminal.open(containerEl);
     fitAddon.fit();
 
-    // Make the native scrollbar clickable/draggable.
-    // xterm.js layers .xterm-screen on top of .xterm-viewport, blocking the
-    // native scrollbar. Fix: after each fit(), nudge the screen element so it
-    // doesn't cover the scrollbar. We monkey-patch fitAddon.fit() to apply
-    // this after every resize.
-    const _origFit = fitAddon.fit.bind(fitAddon);
-    fitAddon.fit = () => {
-        _origFit();
-        const screen = containerEl.querySelector('.xterm-screen');
-        if (screen) {
-            screen.style.width = 'calc(100% - 14px)';
-        }
-    };
-    // Apply once now
-    {
-        const screen = containerEl.querySelector('.xterm-screen');
-        if (screen) {
-            screen.style.width = 'calc(100% - 14px)';
-        }
-    }
-
     // Focus management: track terminal focus state
     // (terminal.textarea is only available after open())
     if (terminal.textarea) {

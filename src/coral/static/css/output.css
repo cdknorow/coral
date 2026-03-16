@@ -86,11 +86,14 @@
 }
 
 /*
- * xterm.js scrollbar fix: The .xterm-screen canvas sits on top of .xterm-viewport
- * and blocks the native scrollbar. We shrink the screen canvas by the scrollbar
- * width using clip-path so it no longer covers the scrollbar track, while keeping
- * the viewport scrollbar accessible.
+ * xterm.js scrollbar fix: The .xterm-screen (position:relative, rendered after
+ * .xterm-viewport in DOM) sits on top and blocks the scrollbar. Fix: clip the
+ * screen to exclude the rightmost 14px where the scrollbar lives.
  */
+.xterm-container .xterm .xterm-screen {
+    clip-path: inset(0 14px 0 0);
+}
+
 .xterm-container .xterm .xterm-viewport {
     scrollbar-width: auto;
     scrollbar-color: var(--border-light) transparent;
