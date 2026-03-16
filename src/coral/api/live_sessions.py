@@ -588,7 +588,7 @@ async def set_display_name(name: str, body: dict):
 async def launch_session(body: dict):
     """Launch a new Claude/Gemini session."""
     import asyncio as _asyncio
-    from coral.tools.session_manager import run_cmd
+    from coral.tools.session_manager import setup_board_and_prompt
 
     working_dir = body.get("working_dir", "").strip()
     agent_type = body.get("agent_type", "claude").strip()
@@ -609,43 +609,11 @@ async def launch_session(body: dict):
     if result.get("error"):
         return result
 
-    session_id = result["session_id"]
-    session_name = result["session_name"]
-
-    # Subscribe to message board if requested
-    if board_name:
-        job_title = display_name or agent_type
-        await board_store.subscribe(board_name, session_id, job_title)
-        # Write board state file so coral-board auto-routes to correct server
-        try:
-            from coral.tools.session_manager import _write_board_state
-            _write_board_state(session_name, board_name, job_title, server_url=board_server)
-        except Exception:
-            pass
-
-    # Send initial prompt after agent initializes
-    if prompt:
-        async def _send_initial(sname, sid, atype, p, bname, dname):
-            await _asyncio.sleep(3)
-            full = p
-            if bname:
-                full += (
-                    f"\n\nYou are subscribed to message board \"{bname}\". "
-                    f"Your role is: {dname or atype}. "
-                    f"Use the coral-board CLI to communicate with your teammates:\n"
-                    f"  coral-board read          — read new messages from teammates\n"
-                    f"  coral-board post \"msg\"    — post a message to the board\n"
-                    f"  coral-board read --last 5 — see the 5 most recent messages\n"
-                    f"  coral-board subscribers   — see who is on the board\n"
-                    f"Check the board periodically for updates from your teammates."
-                )
-            err = await send_to_tmux(atype, full, session_id=sid)
-            if err:
-                await run_cmd("tmux", "send-keys", "-t", sname, "-l", full)
-            await run_cmd("tmux", "send-keys", "-t", sname, "Enter")
-
-        _asyncio.create_task(_send_initial(
-            session_name, session_id, agent_type, prompt, board_name, display_name
+    if board_name or prompt:
+        _asyncio.create_task(setup_board_and_prompt(
+            result["session_id"], result["session_name"], agent_type,
+            prompt=prompt or None, board_name=board_name or None,
+            board_server=board_server, display_name=display_name,
         ))
 
     return result
@@ -655,8 +623,7 @@ async def launch_session(body: dict):
 async def launch_team(body: dict):
     """Launch multiple agents and subscribe them to a shared message board."""
     import asyncio as _asyncio
-    from coral.messageboard.store import MessageBoardStore
-    from coral.tools.tmux_manager import send_to_tmux
+    from coral.tools.session_manager import setup_board_and_prompt
 
     board_name = body.get("board_name", "").strip()
     board_server = body.get("board_server", "").strip() or None
@@ -672,7 +639,6 @@ async def launch_team(body: dict):
     if not agents:
         return {"error": "At least one agent is required"}
 
-    board_store = MessageBoardStore()
     launched = []
 
     for agent_def in agents:
@@ -694,47 +660,17 @@ async def launch_team(body: dict):
             launched.append({"name": agent_name, "error": result["error"]})
             continue
 
-        session_id = result["session_id"]
-        session_name = result["session_name"]
-
-        # Subscribe this agent to the message board
-        await board_store.subscribe(board_name, session_id, agent_name)
-        # Write board state file so coral-board auto-routes to correct server
-        try:
-            from coral.tools.session_manager import _write_board_state
-            _write_board_state(session_name, board_name, agent_name, server_url=board_server)
-        except Exception:
-            pass
-
-        # Send the agent's behavior prompt after it initializes
-        if agent_prompt:
-            async def _send_prompt(sname, sid, atype, prompt, bname, aname):
-                from coral.tools.session_manager import run_cmd
-                await _asyncio.sleep(3)
-                board_instruction = (
-                    f"\n\nYou are part of an agent team on message board \"{bname}\". "
-                    f"Your role is: {aname}. "
-                    f"Use the coral-board CLI to communicate with your teammates:\n"
-                    f"  coral-board read          — read new messages from teammates\n"
-                    f"  coral-board post \"msg\"    — post a message to the board\n"
-                    f"  coral-board read --last 5 — see the 5 most recent messages\n"
-                    f"  coral-board subscribers   — see who is on the board\n"
-                    f"Check the board periodically for updates from your teammates."
-                )
-                full_prompt = prompt + board_instruction
-                err = await send_to_tmux(atype, full_prompt, session_id=sid)
-                if err:
-                    await run_cmd("tmux", "send-keys", "-t", sname, "-l", full_prompt)
-                await run_cmd("tmux", "send-keys", "-t", sname, "Enter")
-
-            _asyncio.create_task(_send_prompt(
-                session_name, session_id, agent_type, agent_prompt, board_name, agent_name
-            ))
+        # Board subscription + prompt send handled by setup_board_and_prompt
+        _asyncio.create_task(setup_board_and_prompt(
+            result["session_id"], result["session_name"], agent_type,
+            prompt=agent_prompt or None, board_name=board_name or None,
+            board_server=board_server, display_name=agent_name,
+        ))
 
         launched.append({
             "name": agent_name,
-            "session_id": session_id,
-            "session_name": session_name,
+            "session_id": result["session_id"],
+            "session_name": result["session_name"],
         })
 
     return {"ok": True, "board": board_name, "agents": launched}

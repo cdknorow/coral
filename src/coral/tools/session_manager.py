@@ -48,6 +48,67 @@ def _write_board_state(tmux_session_name: str, project: str, job_title: str,
     state_file.write_text(_json_mod.dumps(data))
 
 
+def _build_board_prompt(prompt: str, board_name: str | None, role: str) -> str:
+    """Build a prompt string with board instructions appended if applicable."""
+    if not board_name:
+        return prompt
+    return prompt + (
+        f"\n\nYou are subscribed to message board \"{board_name}\". "
+        f"Your role is: {role}. "
+        f"Use the coral-board CLI to communicate with your teammates:\n"
+        f"  coral-board read          — read new messages from teammates\n"
+        f"  coral-board post \"msg\"    — post a message to the board\n"
+        f"  coral-board read --last 5 — see the 5 most recent messages\n"
+        f"  coral-board subscribers   — see who is on the board\n"
+        f"Check the board periodically for updates from your teammates."
+    )
+
+
+async def setup_board_and_prompt(
+    session_id: str,
+    session_name: str,
+    agent_type: str,
+    prompt: str | None = None,
+    board_name: str | None = None,
+    board_server: str | None = None,
+    display_name: str | None = None,
+) -> None:
+    """Subscribe to a message board and send the initial prompt to an agent.
+
+    This is the single entry point for the post-launch setup that is shared
+    across initial launch, restart, and resume-persistent-sessions paths.
+    The prompt is sent after a short delay to give the agent time to initialize.
+    """
+    log = logging.getLogger(__name__)
+    role = display_name or agent_type
+
+    # Board subscription (immediate — no delay needed)
+    if board_name:
+        try:
+            from coral.messageboard.store import MessageBoardStore
+            board_store = MessageBoardStore()
+            await board_store.subscribe(board_name, session_id, role)
+        except Exception:
+            log.warning("Failed to subscribe session %s to board %s", session_id[:8], board_name)
+        try:
+            _write_board_state(session_name, board_name, role, server_url=board_server)
+        except Exception:
+            log.warning("Failed to write board state for session %s", session_id[:8])
+
+    # Send prompt after agent initializes
+    if prompt:
+        await asyncio.sleep(3)
+        full = _build_board_prompt(prompt, board_name, role)
+        try:
+            from coral.tools.tmux_manager import send_to_tmux
+            err = await send_to_tmux(agent_type, full, session_id=session_id)
+            if err:
+                await run_cmd("tmux", "send-keys", "-t", session_name, "-l", full)
+            await run_cmd("tmux", "send-keys", "-t", session_name, "Enter")
+        except Exception:
+            log.warning("Failed to send prompt to session %s", session_id[:8])
+
+
 def strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences, replacing each with a space."""
     text = ANSI_RE.sub(" ", text)
@@ -353,6 +414,9 @@ async def resume_persistent_sessions(store, schedule_store=None) -> None:
             agent_type = rec["agent_type"]
             display_name = rec.get("display_name")
             flags = rec.get("flags")  # Already deserialized by get_all_live_sessions
+            prompt = rec.get("prompt")
+            board_name = rec.get("board_name")
+            board_server = rec.get("board_server")
 
             log.info(
                 "Resuming session %s (%s) in %s",
@@ -368,15 +432,28 @@ async def resume_persistent_sessions(store, schedule_store=None) -> None:
                 working_dir, agent_type, display_name=display_name,
                 resume_session_id=resume_id,
                 flags=flags,
+                prompt=prompt,
+                board_name=board_name,
+                board_server=board_server,
             )
 
             if result.get("error"):
                 log.warning("Failed to resume session %s: %s", sid[:8], result["error"])
                 await store.unregister_live_session(sid)
             else:
+                new_session_id = result["session_id"]
+                new_session_name = result["session_name"]
                 # Old session record is replaced by the new launch
                 # (launch_claude_session calls register_live_session with new id)
                 await store.unregister_live_session(sid)
+
+                # Re-subscribe to message board and re-send prompt
+                if board_name or prompt:
+                    asyncio.create_task(setup_board_and_prompt(
+                        new_session_id, new_session_name, agent_type,
+                        prompt=prompt, board_name=board_name,
+                        board_server=board_server, display_name=display_name,
+                    ))
     except Exception:
         log.exception("Error resuming persistent sessions")
 
@@ -567,39 +644,6 @@ async def restart_session(
 
         # Re-subscribe to message board and re-send prompt on restart
         if stored_board or stored_prompt:
-            async def _resend(sid, sname, atype, prompt, board, dname, board_srv):
-                await asyncio.sleep(3)
-                if board:
-                    try:
-                        from coral.messageboard.store import MessageBoardStore
-                        board_store = MessageBoardStore()
-                        await board_store.subscribe(board, sid, dname or atype)
-                    except Exception:
-                        pass
-                    # Write board state file so coral-board auto-routes to correct server
-                    try:
-                        _write_board_state(sname, board, dname or atype, server_url=board_srv)
-                    except Exception:
-                        pass
-                if prompt:
-                    full = prompt
-                    if board:
-                        full += (
-                            f"\n\nYou are subscribed to message board \"{board}\". "
-                            f"Your role is: {dname or atype}. "
-                            f"Use the coral-board CLI to communicate with your teammates:\n"
-                            f"  coral-board read          — read new messages from teammates\n"
-                            f"  coral-board post \"msg\"    — post a message to the board\n"
-                            f"  coral-board read --last 5 — see the 5 most recent messages\n"
-                            f"  coral-board subscribers   — see who is on the board\n"
-                            f"Check the board periodically for updates from your teammates."
-                        )
-                    from coral.tools.tmux_manager import send_to_tmux
-                    err = await send_to_tmux(atype, full, session_id=sid)
-                    if err:
-                        await run_cmd("tmux", "send-keys", "-t", sname, "-l", full)
-                    await run_cmd("tmux", "send-keys", "-t", sname, "Enter")
-
             old_display_name_for_prompt = None
             try:
                 from coral.store import CoralStore
@@ -607,10 +651,11 @@ async def restart_session(
                 old_display_name_for_prompt = await _dn_store.get_display_name(new_session_id)
             except Exception:
                 pass
-            asyncio.create_task(_resend(
+            asyncio.create_task(setup_board_and_prompt(
                 new_session_id, new_session_name, effective_type,
-                stored_prompt, stored_board, old_display_name_for_prompt,
-                stored_board_server,
+                prompt=stored_prompt, board_name=stored_board,
+                board_server=stored_board_server,
+                display_name=old_display_name_for_prompt,
             ))
 
         return {
