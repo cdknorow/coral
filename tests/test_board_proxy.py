@@ -122,12 +122,13 @@ async def test_proxy_route_forwards_remote_500(client):
 @pytest.mark.asyncio
 async def test_add_remote_subscription_endpoint(client):
     """POST /api/board/remotes adds a subscription."""
-    resp = await client.post("/api/board/remotes", json={
-        "session_id": "agent-1",
-        "remote_server": "http://remote:8420",
-        "project": "proj1",
-        "job_title": "Dev",
-    })
+    with patch("coral.api.board_remotes._resolve_and_validate_url", return_value="203.0.113.1"):
+        resp = await client.post("/api/board/remotes", json={
+            "session_id": "agent-1",
+            "remote_server": "http://remote:8420",
+            "project": "proj1",
+            "job_title": "Dev",
+        })
     assert resp.status_code == 200
     data = resp.json()
     assert data["session_id"] == "agent-1"
@@ -137,12 +138,13 @@ async def test_add_remote_subscription_endpoint(client):
 @pytest.mark.asyncio
 async def test_list_remote_subscriptions_endpoint(client):
     """GET /api/board/remotes lists all subscriptions."""
-    await client.post("/api/board/remotes", json={
-        "session_id": "agent-1",
-        "remote_server": "http://remote:8420",
-        "project": "proj1",
-        "job_title": "Dev",
-    })
+    with patch("coral.api.board_remotes._resolve_and_validate_url", return_value="203.0.113.1"):
+        await client.post("/api/board/remotes", json={
+            "session_id": "agent-1",
+            "remote_server": "http://remote:8420",
+            "project": "proj1",
+            "job_title": "Dev",
+        })
     resp = await client.get("/api/board/remotes")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
@@ -151,12 +153,13 @@ async def test_list_remote_subscriptions_endpoint(client):
 @pytest.mark.asyncio
 async def test_delete_remote_subscription_endpoint(client):
     """DELETE /api/board/remotes removes a subscription."""
-    await client.post("/api/board/remotes", json={
-        "session_id": "agent-1",
-        "remote_server": "http://remote:8420",
-        "project": "proj1",
-        "job_title": "Dev",
-    })
+    with patch("coral.api.board_remotes._resolve_and_validate_url", return_value="203.0.113.1"):
+        await client.post("/api/board/remotes", json={
+            "session_id": "agent-1",
+            "remote_server": "http://remote:8420",
+            "project": "proj1",
+            "job_title": "Dev",
+        })
     resp = await client.request("DELETE", "/api/board/remotes", json={
         "session_id": "agent-1",
     })

@@ -9,11 +9,15 @@ from coral.messageboard.app import create_app
 
 @pytest_asyncio.fixture
 async def client(tmp_path):
+    from coral.messageboard import api as board_api
     app = create_app(db_path=tmp_path / "test_board.db")
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as c:
         yield c
+    # Close the store's aiosqlite connection to prevent worker thread leaks
+    if board_api.store is not None:
+        await board_api.store.close()
 
 
 @pytest.mark.asyncio

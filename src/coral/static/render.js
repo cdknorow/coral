@@ -177,7 +177,7 @@ export async function restartDirect(name, agentType, sessionId) {
 }
 
 export async function killGroup(groupName) {
-    const groupSessions = state.liveSessions.filter(s => s.board_project === groupName || (!s.board_project && (s.name || 'unknown') === groupName));
+    const groupSessions = state.liveSessions.filter(s => (s.name || 'unknown') === groupName);
     if (!groupSessions.length) return;
     if (!confirm(`Kill all ${groupSessions.length} agent(s) in "${groupName}"? This will terminate them.`)) return;
 
@@ -274,67 +274,24 @@ export function renderLiveSessions(sessions) {
         return;
     }
 
-    // Group sessions: board groups first, then ungrouped by folder name
-    const boardGroups = {};
-    const folderGroups = {};
+    // Group sessions by folder name (primary grouping)
+    const groups = {};
     for (const s of sessions) {
-        if (s.board_project) {
-            if (!boardGroups[s.board_project]) boardGroups[s.board_project] = [];
-            boardGroups[s.board_project].push(s);
-        } else {
-            const key = s.name || "unknown";
-            if (!folderGroups[key]) folderGroups[key] = [];
-            folderGroups[key].push(s);
-        }
-    }
-
-    // Helper to generate a deterministic accent color from a string
-    function _boardAccentColor(name) {
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-        const hue = ((hash % 360) + 360) % 360;
-        return `hsl(${hue}, 60%, 55%)`;
+        const key = s.name || "unknown";
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(s);
     }
 
     let html = "";
-
-    // Render board groups as cards
-    for (const [boardName, groupSessions] of Object.entries(boardGroups)) {
-        const sorted = _sortByOrder(groupSessions);
-        const countBadge = ` <span class="session-group-count">${sorted.length}</span>`;
-        const collapsed = _isGroupCollapsed(boardName);
-        const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
-        const accentColor = _boardAccentColor(boardName);
-        const boardLink = `<button class="group-board-link" onclick="event.stopPropagation(); selectBoardProject('${escapeHtml(boardName)}')" title="View message board"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v8H5l-3 3V3z"/></svg></button>`;
-        const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
-            <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
-            <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${escapeHtml(boardName)}')">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
-                    Kill All
-                </button>
-            </div>
-        </div>`;
-        html += `<li class="session-board-card" style="border-left-color: ${accentColor}">
-            <div class="session-group-header board-card-header" data-group-name="${escapeHtml(boardName)}" onclick="toggleGroupCollapse('${escapeHtml(boardName)}')">
-                <span class="group-chevron">${chevron}</span>${escapeHtml(boardName)}${countBadge}<span class="session-name-spacer"></span>${boardLink}${groupKebab}
-            </div>
-            <ul class="board-card-agents${collapsed ? ' board-card-collapsed' : ''}">`;
-
-        for (const s of sorted) {
-            html += _renderSessionItem(s, boardName, true);
-        }
-
-        html += `</ul></li>`;
-    }
-
-    // Render ungrouped sessions (no board) with folder headers
-    for (const [groupName, groupSessions] of Object.entries(folderGroups)) {
+    for (const [groupName, groupSessions] of Object.entries(groups)) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
         const countBadge = isMulti ? ` <span class="session-group-count">${sorted.length}</span>` : "";
         const collapsed = _isGroupCollapsed(groupName);
         const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
+        // Show board link if all agents in this group share a board
+        const sharedBoard = sorted.every(s => s.board_project && s.board_project === sorted[0].board_project) ? sorted[0].board_project : null;
+        const boardLink = sharedBoard ? `<button class="group-board-link" onclick="event.stopPropagation(); selectBoardProject('${escapeHtml(sharedBoard)}')" title="View board: ${escapeHtml(sharedBoard)}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v8H5l-3 3V3z"/></svg></button>` : '';
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
@@ -345,7 +302,7 @@ export function renderLiveSessions(sessions) {
             </div>
         </div>`;
         html += `<li class="session-group-header" data-group-name="${escapeHtml(groupName)}" onclick="toggleGroupCollapse('${escapeHtml(groupName)}')">
-            <span class="group-chevron">${chevron}</span>${escapeHtml(groupName)}${countBadge}<span class="session-name-spacer"></span>${groupKebab}</li>`;
+            <span class="group-chevron">${chevron}</span>${escapeHtml(groupName)}${countBadge}<span class="session-name-spacer"></span>${boardLink}${groupKebab}</li>`;
 
         for (const s of sorted) {
             html += _renderSessionItem(s, groupName, false, collapsed);

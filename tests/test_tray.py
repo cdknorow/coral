@@ -43,7 +43,7 @@ class TestTrayIconPath:
 
     def test_find_icon_returns_none_if_missing(self):
         from coral.tray import _find_icon
-        with patch("os.path.isfile", return_value=False):
+        with patch("pathlib.Path.is_file", return_value=False):
             assert _find_icon() is None
 
 
@@ -92,29 +92,37 @@ class TestRunUvicorn:
 class TestRunForeground:
     """Test _run_foreground() which contains the actual tray logic."""
 
+    def _make_rumps_mock(self):
+        """Create a mock rumps module."""
+        mock_rumps = MagicMock()
+        mock_rumps.App = MagicMock(return_value=MagicMock())
+        mock_rumps.MenuItem = MagicMock()
+        return mock_rumps
+
+    def _make_rumps_import(self, mock_rumps):
+        """Create a mock __import__ that returns mock_rumps for 'rumps'."""
+        import builtins
+        real_import = builtins.__import__
+        def mock_import(name, *args, **kwargs):
+            if name == "rumps":
+                return mock_rumps
+            return real_import(name, *args, **kwargs)
+        return mock_import
+
     def test_server_thread_is_daemon(self):
         """Uvicorn must run in a daemon thread."""
         from coral.tray import _run_foreground
 
-        mock_rumps = MagicMock()
-        mock_rumps.App = MagicMock(return_value=MagicMock())
-        mock_rumps.MenuItem = MagicMock()
+        mock_rumps = self._make_rumps_mock()
 
         with patch("threading.Thread") as MockThread, \
+             patch("threading.Event.wait", return_value=None), \
              patch("coral.tray._write_pid"), \
              patch("coral.tray._remove_pid"):
             mock_thread_instance = MagicMock()
             MockThread.return_value = mock_thread_instance
 
-            import builtins
-            real_import = builtins.__import__
-
-            def mock_import(name, *args, **kwargs):
-                if name == "rumps":
-                    return mock_rumps
-                return real_import(name, *args, **kwargs)
-
-            with patch("builtins.__import__", side_effect=mock_import):
+            with patch("builtins.__import__", side_effect=self._make_rumps_import(mock_rumps)):
                 _run_foreground("0.0.0.0", 8420)
 
             # First Thread call should be the uvicorn server thread
@@ -127,23 +135,14 @@ class TestRunForeground:
         """The tray app should open the dashboard in the browser on startup."""
         from coral.tray import _run_foreground
 
-        mock_rumps = MagicMock()
-        mock_rumps.App = MagicMock(return_value=MagicMock())
-        mock_rumps.MenuItem = MagicMock()
-
-        import builtins
-        real_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "rumps":
-                return mock_rumps
-            return real_import(name, *args, **kwargs)
+        mock_rumps = self._make_rumps_mock()
 
         with patch("threading.Thread") as MockThread, \
+             patch("threading.Event.wait", return_value=None), \
              patch("webbrowser.open") as mock_open, \
              patch("coral.tray._write_pid"), \
              patch("coral.tray._remove_pid"), \
-             patch("builtins.__import__", side_effect=mock_import):
+             patch("builtins.__import__", side_effect=self._make_rumps_import(mock_rumps)):
             MockThread.return_value = MagicMock()
             _run_foreground("0.0.0.0", 8420)
 
@@ -193,24 +192,14 @@ class TestRunForeground:
         """_run_foreground should chdir to the specified home directory."""
         from coral.tray import _run_foreground
 
-        mock_rumps = MagicMock()
-        mock_rumps.App = MagicMock(return_value=MagicMock())
-        mock_rumps.MenuItem = MagicMock()
-
-        import builtins
-        real_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "rumps":
-                return mock_rumps
-            return real_import(name, *args, **kwargs)
-
+        mock_rumps = self._make_rumps_mock()
         target_dir = str(tmp_path / "my-coral-home")
 
         with patch("threading.Thread") as MockThread, \
+             patch("threading.Event.wait", return_value=None), \
              patch("coral.tray._write_pid"), \
              patch("coral.tray._remove_pid"), \
-             patch("builtins.__import__", side_effect=mock_import):
+             patch("builtins.__import__", side_effect=self._make_rumps_import(mock_rumps)):
             MockThread.return_value = MagicMock()
             original_cwd = os.getcwd()
             try:
@@ -224,21 +213,12 @@ class TestRunForeground:
         """_run_foreground should write a PID file on startup."""
         from coral.tray import _run_foreground
 
-        mock_rumps = MagicMock()
-        mock_rumps.App = MagicMock(return_value=MagicMock())
-        mock_rumps.MenuItem = MagicMock()
-
-        import builtins
-        real_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "rumps":
-                return mock_rumps
-            return real_import(name, *args, **kwargs)
+        mock_rumps = self._make_rumps_mock()
 
         with patch("threading.Thread") as MockThread, \
+             patch("threading.Event.wait", return_value=None), \
              patch("coral.tray._write_pid") as mock_write_pid, \
-             patch("builtins.__import__", side_effect=mock_import):
+             patch("builtins.__import__", side_effect=self._make_rumps_import(mock_rumps)):
             MockThread.return_value = MagicMock()
             _run_foreground("0.0.0.0", 8420)
 
