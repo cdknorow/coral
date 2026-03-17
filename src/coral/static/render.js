@@ -148,11 +148,32 @@ export async function killSessionDirect(name, agentType, sessionId) {
 }
 
 export async function showInfoDirect(name, agentType, sessionId) {
-    // Select the session (needed for info modal data) then show info
     const { selectLiveSession } = await import('./sessions.js');
     await selectLiveSession(name, agentType, sessionId);
     const { showInfoModal } = await import('./modals.js');
     showInfoModal();
+}
+
+export async function attachDirect(name, agentType, sessionId) {
+    try {
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/attach`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
+        });
+        const result = await resp.json();
+        if (result.error) showToast(result.error, true);
+        else showToast("Terminal opened");
+    } catch (e) {
+        showToast("Failed to open terminal", true);
+    }
+}
+
+export async function restartDirect(name, agentType, sessionId) {
+    const { selectLiveSession } = await import('./sessions.js');
+    await selectLiveSession(name, agentType, sessionId);
+    const { restartSession } = await import('./controls.js');
+    restartSession();
 }
 
 export async function killGroup(groupName) {
@@ -234,6 +255,14 @@ export function renderLiveSessions(sessions) {
             const kebabMenu = `<div class="sidebar-kebab-wrapper">
                         <button class="sidebar-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="More actions">&#x22EE;</button>
                         <div class="sidebar-kebab-menu" style="display:none">
+                            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
+                                Attach
+                            </button>
+                            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
+                                Restart
+                            </button>
                             <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
                                 Rename

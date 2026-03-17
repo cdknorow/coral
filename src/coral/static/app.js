@@ -8,7 +8,7 @@ import { filterState, deserializeFromUrl, serializeToUrl,
 import { connectCoralWs } from './websocket.js';
 import { sendCommand, sendRawKeys, sendModeToggle, sendQuickCommand, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, removeAttachment, editGoal, refreshGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent } from './sessions.js';
-import { toggleGroupCollapse, killGroup, killSessionDirect, showInfoDirect } from './render.js';
+import { toggleGroupCollapse, killGroup, killSessionDirect, showInfoDirect, attachDirect, restartDirect } from './render.js';
 import { syncPaneWidth } from './capture.js';
 import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeIntoSession, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag } from './modals.js';
 import { toggleBrowser, browserNavigateTo, browserNavigateUp } from './browser.js';
@@ -161,6 +161,8 @@ window.toggleGroupCollapse = toggleGroupCollapse;
 window.killGroup = killGroup;
 window.killSessionDirect = killSessionDirect;
 window.showInfoDirect = showInfoDirect;
+window.attachDirect = attachDirect;
+window.restartDirect = restartDirect;
 
 // Close kebab menus when clicking outside
 document.addEventListener('click', (e) => {
