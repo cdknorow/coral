@@ -31,11 +31,12 @@ function _showLaunchStep(step) {
     document.getElementById("launch-step-agent").style.display = step === "agent" ? "" : "none";
     document.getElementById("launch-step-terminal").style.display = step === "terminal" ? "" : "none";
     document.getElementById("launch-step-team").style.display = step === "team" ? "" : "none";
-    // Widen the modal for the team form's two-column layout
+    // Widen the modal for two-column layouts (agent and team forms)
     const content = document.querySelector("#launch-modal .modal-content");
     if (content) {
-        content.classList.toggle("modal-content-extra-wide", step === "team");
-        content.classList.toggle("modal-content-wide", step !== "team");
+        const wide = step === "team" || step === "agent";
+        content.classList.toggle("modal-content-extra-wide", wide);
+        content.classList.toggle("modal-content-wide", !wide);
     }
 }
 

@@ -46,61 +46,81 @@
                 </div>
             </div>
 
-            <!-- Step 2a: Agent form -->
+            <!-- Step 2a: Agent form (two-column layout matching team form) -->
             <div id="launch-step-agent" style="display:none">
                 <h3>
                     <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
                     Launch AI Agent
                 </h3>
-                <label>Agent Name <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                    <input type="text" id="launch-agent-name" placeholder="e.g. Auth Feature, Bug Fix #123">
-                </label>
-                <label>Working Directory:
-                    <div class="dir-input-row">
-                        <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
-                        <button class="btn" id="btn-browse" onclick="toggleBrowser('launch-dir','dir-browser','browser-list','browser-current-path')">Browse</button>
+                <div class="team-columns">
+                    <div class="team-col-left">
+                        <label>Message Board <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                            <select id="launch-board-select" onchange="window._onAgentBoardChange()">
+                                <option value="">None</option>
+                                <option value="__new__">Create new board...</option>
+                            </select>
+                        </label>
+                        <div id="launch-new-board-row" style="display:none">
+                            <label>Board Name:
+                                <input type="text" id="launch-board-name" placeholder="e.g. Auth Feature, Sprint 42">
+                            </label>
+                        </div>
+                        <div id="launch-board-server-row" style="display:none">
+                            <label>Remote Server <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                <input type="text" id="launch-board-server" placeholder="e.g. http://remote-machine:8420">
+                            </label>
+                        </div>
+                        <label>Working Directory:
+                            <div class="dir-input-row">
+                                <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ coral_root }}" value="{{ coral_root }}">
+                                <button class="btn" id="btn-browse" onclick="toggleBrowser('launch-dir','dir-browser','browser-list','browser-current-path')">Browse</button>
+                            </div>
+                        </label>
+                        <div id="dir-browser" class="dir-browser" style="display:none">
+                            <div class="dir-browser-header">
+                                <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                                <span class="dir-browser-path" id="browser-current-path">~</span>
+                            </div>
+                            <ul class="dir-browser-list" id="browser-list">
+                                <li class="empty-state">Loading...</li>
+                            </ul>
+                        </div>
+                        <label>Agent Type:
+                            <select id="launch-type">
+                                <option value="claude">Claude</option>
+                                <option value="gemini">Gemini</option>
+                            </select>
+                        </label>
+                        <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                            <input type="text" id="launch-flags" placeholder="e.g. --verbose">
+                        </label>
+                        <div class="flag-shortcuts">
+                            <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--chrome')">--chrome</button>
+                            <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+                        </div>
                     </div>
-                </label>
-                <div id="dir-browser" class="dir-browser" style="display:none">
-                    <div class="dir-browser-header">
-                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
-                        <span class="dir-browser-path" id="browser-current-path">~</span>
+                    <div class="team-col-right">
+                        <div class="team-agents-container">
+                            <div class="team-agents-header">
+                                <strong style="font-size:14px">Agent</strong>
+                                <p class="team-agents-desc">Configure the agent's name and behavior prompt.</p>
+                            </div>
+                            <div class="team-agents-scroll">
+                                <div class="team-agent-row">
+                                    <div class="team-agent-card editing">
+                                        <div class="team-agent-form">
+                                            <label>Name / Role <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                                <input type="text" id="launch-agent-name" class="team-agent-name" placeholder="e.g. Auth Feature, Bug Fix #123">
+                                            </label>
+                                            <label>Behavior Prompt <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                                <textarea id="launch-agent-prompt" class="team-agent-prompt" rows="5" placeholder="e.g. You are a QA engineer. Review the codebase and create a test plan..."></textarea>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <ul class="dir-browser-list" id="browser-list">
-                        <li class="empty-state">Loading...</li>
-                    </ul>
-                </div>
-                <label>Agent Type:
-                    <select id="launch-type">
-                        <option value="claude">Claude</option>
-                        <option value="gemini">Gemini</option>
-                    </select>
-                </label>
-                <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                    <input type="text" id="launch-flags" placeholder="e.g. --verbose">
-                </label>
-                <div class="flag-shortcuts">
-                    <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--chrome')">--chrome</button>
-                    <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
-                </div>
-                <label>Initial Prompt <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                    <textarea id="launch-agent-prompt" rows="3" placeholder="e.g. You are a QA engineer. Review the codebase and create a test plan..." style="width:100%;resize:vertical"></textarea>
-                </label>
-                <label>Message Board <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                    <select id="launch-board-select" onchange="window._onAgentBoardChange()">
-                        <option value="">None</option>
-                        <option value="__new__">Create new board...</option>
-                    </select>
-                </label>
-                <div id="launch-new-board-row" style="display:none">
-                    <label>Board Name:
-                        <input type="text" id="launch-board-name" placeholder="e.g. Auth Feature, Sprint 42">
-                    </label>
-                </div>
-                <div id="launch-board-server-row" style="display:none">
-                    <label>Remote Server <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
-                        <input type="text" id="launch-board-server" placeholder="e.g. http://remote-machine:8420">
-                    </label>
                 </div>
                 <div class="modal-actions">
                     <button class="btn" onclick="hideLaunchModal()">Cancel</button>
