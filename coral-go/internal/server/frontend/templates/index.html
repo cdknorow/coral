@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <!-- Apply theme before any rendering to prevent flash of wrong theme -->
+    <script>
+        (function() {
+            var t = 'dark';
+            try { t = localStorage.getItem('coral-theme') || 'dark'; } catch(_) {}
+            if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coral</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons&display=swap">
+    <!-- xterm.js terminal emulator -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/css/xterm.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10/lib/addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-web-links@0.11/lib/addon-web-links.min.js"></script>
+</head>
+
+<body>
+    <header class="top-bar">
+        <div class="top-bar-brand">
+            <button class="tablet-sidebar-toggle" onclick="toggleTabletSidebar()" title="Toggle sidebar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <img src="/static/coral_logo.png" alt="Coral" class="top-bar-logo">
+            <h1>Coral</h1>
+        </div>
+        <div id="startup-loading" class="startup-loading">
+            <span class="startup-spinner"></span>
+            <span>Agents loading…</span>
+        </div>
+        <div class="top-bar-actions">
+            <button class="top-bar-btn" onclick="showWebhookModal()"
+                    title="Webhook notifications">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                     stroke-linejoin="round">
+                    <path d="M8 1a5 5 0 0 1 5 5v2.5l1.5 2H1.5L3 8.5V6A5 5 0 0 1 8 1z"/>
+                    <path d="M6 13a2 2 0 0 0 4 0"/>
+                </svg>
+            </button>
+            <a class="top-bar-btn" href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener" title="Documentation">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M2 1.5h4.5a2 2 0 0 1 2 2v11a1.5 1.5 0 0 0-1.5-1.5H2z"/>
+                    <path d="M14 1.5H9.5a2 2 0 0 0-2 2v11a1.5 1.5 0 0 1 1.5-1.5H14z"/>
+                </svg>
+            </a>
+            <a class="top-bar-btn" href="https://github.com/cdknorow/coral" target="_blank" rel="noopener" title="GitHub">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+            </a>
+            <button class="top-bar-btn" onclick="showSettingsModal()" title="Settings">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="M6.7 1.4h2.6l.4 1.8.5.2 1.6-.9 1.8 1.8-.9 1.6.2.5 1.8.4v2.6l-1.8.4-.2.5.9 1.6-1.8 1.8-1.6-.9-.5.2-.4 1.8H6.7l-.4-1.8-.5-.2-1.6.9-1.8-1.8.9-1.6-.2-.5-1.8-.4V6.7l1.8-.4.2-.5-.9-1.6 1.8-1.8 1.6.9.5-.2z" />
+                    <circle cx="8" cy="8" r="2.5" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="layout">
+        {{ template "includes/sidebar.html" . }}
+        <div class="tablet-sidebar-backdrop" onclick="toggleTabletSidebar()"></div>
+        <div class="sidebar-resize-handle" id="sidebar-resize-handle"></div>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Mobile Agent List (shown on mobile instead of sidebar) -->
+            <div id="mobile-agent-list" class="mobile-agent-list"></div>
+
+            <div id="welcome-screen" class="welcome">
+                <img src="/static/coral_logo.png" alt="Coral" class="welcome-logo">
+                <h2>Welcome to Coral</h2>
+                <p>Select a session from the sidebar, or get started:</p>
+                <div class="welcome-actions">
+                    <button class="welcome-action-card" onclick="showLaunchModal()" aria-label="Launch Agent">
+                        <span class="material-icons">add_circle</span>
+                        <span>Launch Agent</span>
+                    </button>
+                    <button class="welcome-action-card" onclick="showJobModal()" aria-label="Create Job">
+                        <span class="material-icons">schedule</span>
+                        <span>Create Job</span>
+                    </button>
+                    <button class="welcome-action-card" onclick="showWebhookModal(); showWebhookCreate();" aria-label="Create Webhook">
+                        <span class="material-icons">webhook</span>
+                        <span>Create Webhook</span>
+                    </button>
+                    <button class="welcome-action-card" onclick="showThemeConfigurator()" aria-label="Customize Theme">
+                        <span class="material-icons">palette</span>
+                        <span>Customize Theme</span>
+                    </button>
+                    <button class="welcome-action-card" onclick="showSettingsModal()" aria-label="Settings">
+                        <span class="material-icons">settings</span>
+                        <span>Settings</span>
+                    </button>
+                    <a class="welcome-action-card" href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener" aria-label="Documentation">
+                        <span class="material-icons">menu_book</span>
+                        <span>Documentation</span>
+                    </a>
+                </div>
+            </div>
+
+            {{ template "includes/views/live_session.html" . }}
+
+            {{ template "includes/views/history_session.html" . }}
+
+            <!-- Scheduler Job Detail View -->
+            <div id="scheduler-view" style="display:none" class="scheduler-view">
+                <div id="scheduler-detail"></div>
+            </div>
+
+            {{ template "includes/views/message_board.html" . }}
+        </main>
+    </div>
+
+    {{ template "includes/modals.html" . }}
+
+    <!-- Mobile Bottom Tab Bar -->
+    <nav class="mobile-tab-bar">
+        <button class="mobile-tab active" data-tab="agents" onclick="switchMobileTab('agents')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/>
+                <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+                <path d="M17 11a4 4 0 0 1 4 4v2"/>
+            </svg>
+            Agents
+        </button>
+        <button class="mobile-tab" data-tab="board" onclick="switchMobileTab('board')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            Board
+        </button>
+        <button class="mobile-tab" data-tab="history" onclick="switchMobileTab('history')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            History
+        </button>
+        <button class="mobile-tab" data-tab="jobs" onclick="switchMobileTab('jobs')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            Jobs
+        </button>
+        <button class="mobile-tab" data-tab="settings" onclick="switchMobileTab('settings')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
+            </svg>
+            Settings
+        </button>
+    </nav>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script type="module" src="/static/app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,584 @@
+{{ define "includes/modals.html" }}
+    <!-- Launch Modal -->
+    <div id="launch-modal" class="modal" style="display:none">
+        <div class="modal-content modal-content-wide">
+            <!-- Step 1: Session type chooser -->
+            <div id="launch-step-chooser">
+                <h3>Launch New Session</h3>
+                <div class="launch-type-cards">
+                    <button class="launch-type-card" onclick="window._selectLaunchType('team')">
+                        <div class="launch-type-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="9" cy="7" r="3"/>
+                                <circle cx="17" cy="7" r="3"/>
+                                <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/>
+                                <path d="M17 11a4 4 0 0 1 4 4v2"/>
+                            </svg>
+                        </div>
+                        <div class="launch-type-label">Agent Team</div>
+                        <div class="launch-type-desc">Launch multiple agents collaborating on a shared message board</div>
+                    </button>
+                    <button class="launch-type-card" onclick="window._selectLaunchType('agent')">
+                        <div class="launch-type-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+                                <path d="M6 10v1a6 6 0 0 0 12 0v-1"/>
+                                <line x1="12" y1="17" x2="12" y2="21"/>
+                                <line x1="8" y1="21" x2="16" y2="21"/>
+                            </svg>
+                        </div>
+                        <div class="launch-type-label">AI Agent</div>
+                        <div class="launch-type-desc">Launch Claude or Gemini with system prompt and tools</div>
+                    </button>
+                    <button class="launch-type-card" onclick="window._selectLaunchType('terminal')">
+                        <div class="launch-type-icon">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="18" rx="2"/>
+                                <polyline points="7 9 10 12 7 15"/>
+                                <line x1="13" y1="15" x2="17" y2="15"/>
+                            </svg>
+                        </div>
+                        <div class="launch-type-label">Terminal</div>
+                        <div class="launch-type-desc">Open a shell session you can use alongside your agents</div>
+                    </button>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                </div>
+            </div>
+
+            <!-- Step 2a: Agent form (two-column layout matching team form) -->
+            <div id="launch-step-agent" style="display:none">
+                <h3>
+                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    Launch AI Agent
+                </h3>
+                <div class="team-columns">
+                    <div class="team-col-left">
+                        <label>Message Board <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                            <select id="launch-board-select" onchange="window._onAgentBoardChange()">
+                                <option value="">None</option>
+                                <option value="__new__">Create new board...</option>
+                            </select>
+                        </label>
+                        <div id="launch-new-board-row" style="display:none">
+                            <label>Board Name:
+                                <input type="text" id="launch-board-name" placeholder="e.g. Auth Feature, Sprint 42">
+                            </label>
+                        </div>
+                        <div id="launch-board-server-row" style="display:none">
+                            <label>Remote Server <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                <input type="text" id="launch-board-server" placeholder="e.g. http://remote-machine:8420">
+                            </label>
+                        </div>
+                        <label>Working Directory:
+                            <div class="dir-input-row">
+                                <input type="text" id="launch-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+                                <button class="btn" id="btn-browse" onclick="toggleBrowser('launch-dir','dir-browser','browser-list','browser-current-path')">Browse</button>
+                            </div>
+                        </label>
+                        <div id="dir-browser" class="dir-browser" style="display:none">
+                            <div class="dir-browser-header">
+                                <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                                <span class="dir-browser-path" id="browser-current-path">~</span>
+                            </div>
+                            <ul class="dir-browser-list" id="browser-list">
+                                <li class="empty-state">Loading...</li>
+                            </ul>
+                        </div>
+                        <label>Agent Type:
+                            <select id="launch-type">
+                                <option value="claude">Claude</option>
+                                <option value="gemini">Gemini</option>
+                            </select>
+                        </label>
+                        <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                            <input type="text" id="launch-flags" placeholder="e.g. --verbose">
+                        </label>
+                        <div class="flag-shortcuts">
+                            <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--chrome')">--chrome</button>
+                            <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('launch-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+                        </div>
+                    </div>
+                    <div class="team-col-right">
+                        <div class="team-agents-container">
+                            <div class="team-agents-header">
+                                <strong style="font-size:14px">Agent</strong>
+                                <p class="team-agents-desc">Choose a preset role or configure a custom agent.</p>
+                            </div>
+                            <div id="agent-preset-selector" class="agent-preset-selector"></div>
+                            <div class="import-export-row">
+                                <button class="btn btn-small btn-subtle" onclick="exportPersonas()" title="Export saved personas">Export</button>
+                                <button class="btn btn-small btn-subtle" onclick="importPersonas()" title="Import personas from file">Import</button>
+                            </div>
+                            <div class="team-agents-scroll">
+                                <div class="team-agent-row">
+                                    <div class="team-agent-card editing">
+                                        <div class="team-agent-form">
+                                            <label>Name / Role <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                                <input type="text" id="launch-agent-name" class="team-agent-name" placeholder="e.g. Auth Feature, Bug Fix #123">
+                                            </label>
+                                            <label>Behavior Prompt <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                                <textarea id="launch-agent-prompt" class="team-agent-prompt" rows="5" placeholder="e.g. You are a QA engineer. Review the codebase and create a test plan..."></textarea>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                    <button class="btn btn-save-persona" onclick="window._saveCurrentPersona('launch-agent-name','launch-agent-prompt','launch-flags')" title="Save as reusable persona">Save Persona</button>
+                    <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+                </div>
+            </div>
+
+            <!-- Step 2b: Terminal form -->
+            <div id="launch-step-terminal" style="display:none">
+                <h3>
+                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    Launch Terminal
+                </h3>
+                <label>Session Name <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                    <input type="text" id="launch-terminal-name" placeholder="e.g. build server, test runner">
+                </label>
+                <label>Working Directory:
+                    <div class="dir-input-row">
+                        <input type="text" id="launch-terminal-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+                        <button class="btn" id="btn-browse-terminal" onclick="toggleBrowser('launch-terminal-dir','dir-browser-terminal','browser-list-terminal','browser-current-path-terminal')">Browse</button>
+                    </div>
+                </label>
+                <div id="dir-browser-terminal" class="dir-browser" style="display:none">
+                    <div class="dir-browser-header">
+                        <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                        <span class="dir-browser-path" id="browser-current-path-terminal">~</span>
+                    </div>
+                    <ul class="dir-browser-list" id="browser-list-terminal">
+                        <li class="empty-state">Loading...</li>
+                    </ul>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="launchSession()">Launch</button>
+                </div>
+            </div>
+
+            <!-- Step 2c: Agent Team form -->
+            <div id="launch-step-team" style="display:none">
+                <h3>
+                    <button class="launch-back-btn" onclick="window._selectLaunchType('back')" title="Back">&larr;</button>
+                    Launch Agent Team
+                </h3>
+                <div class="team-columns">
+                    <div class="team-col-left">
+                        <label>Message Board:
+                            <select id="team-board-select" onchange="window._onTeamBoardChange()">
+                                <option value="__new__">Create new board...</option>
+                            </select>
+                        </label>
+                        <div id="team-new-board-row">
+                            <label>Board Name:
+                                <input type="text" id="team-board-name" placeholder="e.g. Auth Feature, Sprint 42">
+                            </label>
+                        </div>
+                        <div>
+                            <label>Remote Server <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                                <input type="text" id="team-board-server" placeholder="e.g. http://remote-machine:8420">
+                            </label>
+                        </div>
+                        <label>Working Directory:
+                            <div class="dir-input-row">
+                                <input type="text" id="launch-team-dir" placeholder="/path/to/project" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+                                <button class="btn" id="btn-browse-team" onclick="toggleBrowser('launch-team-dir','dir-browser-team','browser-list-team','browser-current-path-team')">Browse</button>
+                            </div>
+                        </label>
+                        <div id="dir-browser-team" class="dir-browser" style="display:none">
+                            <div class="dir-browser-header">
+                                <button class="btn btn-small dir-browser-up" onclick="browserNavigateUp()" title="Go up">..</button>
+                                <span class="dir-browser-path" id="browser-current-path-team">~</span>
+                            </div>
+                            <ul class="dir-browser-list" id="browser-list-team">
+                                <li class="empty-state">Loading...</li>
+                            </ul>
+                        </div>
+                        <label>Agent Type:
+                            <select id="team-agent-type">
+                                <option value="claude">Claude</option>
+                                <option value="gemini">Gemini</option>
+                            </select>
+                        </label>
+                        <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional, applied to all agents)</span>:
+                            <input type="text" id="team-flags" placeholder="e.g. --verbose">
+                        </label>
+                        <div class="flag-shortcuts">
+                            <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('team-flags','--chrome')">--chrome</button>
+                            <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('team-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+                        </div>
+                        <!-- Subgent Server (optional, collapsible) -->
+                        <div class="subgent-section">
+                            <button type="button" class="subgent-toggle-btn" onclick="window._toggleSubgentSection()">
+                                <svg class="subgent-chevron" id="subgent-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                                Subgent Server <span style="color:var(--text-muted);font-weight:normal">(optional)</span>
+                            </button>
+                            <div id="subgent-fields" style="display:none">
+                                <label>Admin URL:
+                                    <input type="text" id="team-subgent-url" placeholder="http://subgent.io:8421">
+                                </label>
+                                <label>Admin Key:
+                                    <input type="password" id="team-subgent-key" placeholder="cb_live_..." autocomplete="off">
+                                </label>
+                                <label>Org ID:
+                                    <input type="text" id="team-subgent-org" placeholder="default" value="default">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="team-col-right">
+                        <div class="team-agents-container">
+                            <div class="team-agents-header">
+                                <strong style="font-size:14px">Team Agents</strong>
+                                <p class="team-agents-desc">These agents will launch together on the shared message board, each in its own session.</p>
+                            </div>
+                            <div id="team-template-selector"></div>
+                            <div id="team-agents-list" class="team-agents-scroll"></div>
+                            <div class="team-agents-footer" style="position:relative">
+                                <button class="btn btn-small btn-primary team-add-agent-btn" onclick="window._showAddAgentPicker()">+ Add Agent</button>
+                                <div id="team-agent-picker" class="agent-picker-dropdown" style="display:none"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn" onclick="hideLaunchModal()">Cancel</button>
+                    <button class="btn btn-save-persona" onclick="importTeamTemplates()" title="Import team templates from file">Import</button>
+                    <button class="btn btn-save-persona" onclick="window._saveTeamTemplate()" title="Save team configuration as reusable template">Save Template</button>
+                    <button class="btn btn-primary" onclick="window.launchTeam()">Launch Team</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal (reusable) -->
+    <div id="confirm-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:420px">
+            <h3 id="confirm-modal-title">Are you sure?</h3>
+            <p id="confirm-modal-message" style="color:var(--text-secondary);font-size:13px;margin:8px 0 16px"></p>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideConfirmModal()">Cancel</button>
+                <button id="confirm-modal-yes" class="btn btn-danger">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Restart Modal -->
+    <div id="restart-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:480px">
+            <h3>Restart Session</h3>
+            <p id="restart-modal-name" style="color:var(--text-secondary);font-size:13px;margin-bottom:12px"></p>
+            <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                <input type="text" id="restart-flags" placeholder="e.g. --verbose">
+            </label>
+            <div class="flag-shortcuts">
+                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('restart-flags','--chrome')">--chrome</button>
+                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('restart-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideRestartModal()">Cancel</button>
+                <button class="btn btn-warning" onclick="confirmRestart()">Restart</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div id="info-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:480px">
+            <h3>Session Info</h3>
+            <dl class="info-grid">
+                <dt>Agent Name</dt>
+                <dd id="info-agent-name"></dd>
+                <dt>Agent Type</dt>
+                <dd id="info-agent-type"></dd>
+                <dt>Tmux Session</dt>
+                <dd id="info-tmux-session"></dd>
+                <dt>Attach Command</dt>
+                <dd>
+                    <code id="info-tmux-command"></code>
+                    <button class="copy-btn" onclick="copyInfoCommand()" title="Copy to clipboard">Copy</button>
+                </dd>
+                <dt>Working Directory</dt>
+                <dd id="info-working-dir"></dd>
+                <dt>Log Path</dt>
+                <dd id="info-log-path"></dd>
+                <dt>Pane Title</dt>
+                <dd id="info-pane-title"></dd>
+                <dt>Branch</dt>
+                <dd id="info-git-branch"></dd>
+                <dt>Latest Commit</dt>
+                <dd id="info-git-commit"></dd>
+                <dt id="info-prompt-label" style="display:none">Prompt</dt>
+                <dd id="info-prompt" style="display:none"></dd>
+                <dt id="info-board-label" style="display:none">Message Board</dt>
+                <dd id="info-board" style="display:none"></dd>
+                <dt id="info-subgent-label" style="display:none">Board Server</dt>
+                <dd id="info-subgent" style="display:none"></dd>
+            </dl>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideInfoModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resume Modal -->
+    <div id="resume-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:440px">
+            <h3>Resume Session</h3>
+            <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">
+                Select a live agent to restart with this session:
+            </p>
+            <div id="resume-session-list"></div>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideResumeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:440px">
+            <h3>Settings</h3>
+            <button class="btn btn-primary settings-theme-btn" onclick="hideSettingsModal(); showThemeConfigurator()" style="width:100%;margin-bottom:12px">
+                <span class="material-icons" style="font-size:16px;vertical-align:middle;margin-right:6px">palette</span>
+                Customize Theme
+            </button>
+            <dl class="info-grid">
+                <dt>Theme</dt>
+                <dd>
+                    <select id="settings-theme" class="settings-select">
+                        <option value="dark">Dark</option>
+                        <option value="light">Light</option>
+                        <option value="system">System</option>
+                    </select>
+                </dd>
+                <dt>Default Render Engine</dt>
+                <dd>
+                    <select id="settings-renderer-select" class="settings-select"></select>
+                </dd>
+                <dt>Default Agent Type</dt>
+                <dd>
+                    <select id="settings-agent-type" class="settings-select">
+                        <option value="claude">Claude</option>
+                        <option value="gemini">Gemini</option>
+                    </select>
+                </dd>
+                <dt>Default Working Directory</dt>
+                <dd>
+                    <input type="text" id="settings-working-dir" class="settings-input" data-coral-root="{{ .CoralRoot }}" placeholder="{{ .CoralRoot }}">
+                </dd>
+                <dt>Terminal Scrollback</dt>
+                <dd>
+                    <select id="settings-terminal-scrollback" class="settings-select">
+                        <option value="1000">1,000 lines</option>
+                        <option value="5000">5,000 lines</option>
+                        <option value="10000">10,000 lines</option>
+                        <option value="50000">50,000 lines</option>
+                        <option value="100000">Unlimited (100k)</option>
+                    </select>
+                </dd>
+                <dt class="toggle-dt">
+                    <label for="settings-fit-pane-width">Fit Pane Width</label>
+                    <span class="toggle-desc">Auto-resize tmux pane to match browser width</span>
+                </dt>
+                <dd><input type="checkbox" id="settings-fit-pane-width"></dd>
+                <dt class="toggle-dt">
+                    <label for="settings-notify-needs-input">Notifications</label>
+                    <span class="toggle-desc">Show toast when an agent needs input</span>
+                </dt>
+                <dd><input type="checkbox" id="settings-notify-needs-input"></dd>
+                <dt class="toggle-dt">
+                    <label for="settings-check-updates">Check for Updates</label>
+                    <span class="toggle-desc">Notify when a new version of Coral is available</span>
+                </dt>
+                <dd><input type="checkbox" id="settings-check-updates"></dd>
+            </dl>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideSettingsModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="applySettings()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Configurator Modal (content rendered dynamically) -->
+    <div id="theme-configurator-modal" class="modal" style="display:none"></div>
+
+    <!-- Scheduled Job Modal -->
+    <div id="job-modal" class="modal" style="display:none">
+        <div class="modal-content modal-content-wide">
+            <h3 id="job-modal-title">New Scheduled Job</h3>
+            <label>Job Name:
+                <input type="text" id="job-modal-name" placeholder="e.g. Nightly Tests">
+            </label>
+            <label>Description <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                <input type="text" id="job-modal-description" placeholder="e.g. Runs the full test suite">
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <label>Cron Expression:
+                    <input type="text" id="job-modal-cron" placeholder="0 2 * * *" value="0 2 * * *" oninput="validateCronPreview()">
+                </label>
+                <label>Timezone:
+                    <input type="text" id="job-modal-timezone" placeholder="UTC" value="UTC" oninput="validateCronPreview()">
+                </label>
+            </div>
+            <div id="cron-preview" style="font-size:12px;margin:-4px 0 8px;min-height:18px"></div>
+            <label>Repository Path:
+                <input type="text" id="job-modal-repo" placeholder="/path/to/repo" data-coral-root="{{ .CoralRoot }}" value="{{ .CoralRoot }}">
+            </label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <label>Base Branch:
+                    <input type="text" id="job-modal-branch" placeholder="main" value="main">
+                </label>
+                <label>Agent Type:
+                    <select id="job-modal-agent">
+                        <option value="claude">Claude</option>
+                        <option value="gemini">Gemini</option>
+                    </select>
+                </label>
+            </div>
+            <label>Prompt:
+                <textarea id="job-modal-prompt" rows="4" placeholder="Run the full test suite and report failures..." style="width:100%;resize:vertical"></textarea>
+            </label>
+            <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                <input type="text" id="job-modal-flags" placeholder="e.g. --verbose">
+            </label>
+            <div class="flag-shortcuts">
+                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('job-modal-flags','--chrome')">--chrome</button>
+                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('job-modal-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end">
+                <label>Max Duration (seconds):
+                    <input type="number" id="job-modal-timeout" value="3600" min="60">
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;padding-bottom:6px">
+                    <input type="checkbox" id="job-modal-cleanup" checked>
+                    Cleanup worktree
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideJobModal()">Cancel</button>
+                <button class="btn btn-primary" id="job-modal-submit" onclick="saveScheduledJob()">Create Job</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Macro Modal -->
+    <div id="macro-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:400px">
+            <h3>Add Macro</h3>
+            <label>Label:
+                <input type="text" id="macro-label-input" placeholder="e.g. Commit & Push" style="width:100%">
+            </label>
+            <label style="margin-top:8px;display:block">Command:
+                <input type="text" id="macro-command-input" placeholder="e.g. /commit && git push" style="width:100%">
+            </label>
+            <p style="color:var(--text-muted);font-size:11px;margin-top:6px">Use <code>&&</code> to chain multiple commands (1s delay between each).</p>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideMacroModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="addMacro()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Webhooks Modal -->
+    <div id="webhook-modal" class="modal" style="display:none">
+        <div class="modal-content modal-content-wide">
+            <h3>Webhook Notifications</h3>
+
+            <!-- List view -->
+            <div id="webhook-list-view" style="display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;justify-content:flex-end">
+                    <button class="btn btn-small btn-primary" onclick="showWebhookCreate()">+ Add Webhook</button>
+                </div>
+                <div id="webhook-list-body"></div>
+            </div>
+
+            <!-- Create / Edit form -->
+            <div id="webhook-form-view" style="display:none;flex-direction:column;gap:12px">
+                <h4 id="webhook-form-title">Add Webhook</h4>
+                <input type="hidden" id="webhook-form-id">
+                <form id="webhook-form" class="webhook-form"
+                      onsubmit="event.preventDefault(); saveWebhook()">
+                    <label>Name
+                        <input id="wh-name" type="text"
+                               placeholder="e.g. Slack #agents" required>
+                    </label>
+                    <label>Platform
+                        <select id="wh-platform">
+                            <option value="slack">Slack</option>
+                            <option value="discord">Discord</option>
+                            <option value="generic">Generic HTTP POST</option>
+                        </select>
+                    </label>
+                    <label>Webhook URL
+                        <input id="wh-url" type="url"
+                               placeholder="https://hooks.slack.com/..." required>
+                    </label>
+                    <label>Agent Filter (blank = all agents)
+                        <input id="wh-agent-filter" type="text"
+                               placeholder="claude-agent-1">
+                    </label>
+                    <p style="color:var(--text-muted);font-size:12px;margin:4px 0 8px">
+                        Sends a notification when an agent needs input and has been idle for 5+ minutes.
+                    </p>
+                    <label class="checkbox-label">
+                        <input id="wh-enabled" type="checkbox" checked>
+                        Enabled
+                    </label>
+                    <div style="display:flex;gap:8px;margin-top:4px">
+                        <button type="submit" class="btn btn-primary">Save</button>
+                        <button type="button" class="btn"
+                                onclick="showWebhookList()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Delivery history view -->
+            <div id="webhook-history-view"
+                 style="display:none;flex-direction:column;gap:8px">
+                <button class="btn btn-small"
+                        onclick="showWebhookList()">&#8592; Back</button>
+                <div id="webhook-history-body"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Agent to Board Modal -->
+    <div id="add-agent-board-modal" class="modal" style="display:none">
+        <div class="modal-content modal-content-wide">
+            <h3>Add Agent to Board</h3>
+            <p class="add-agent-board-subtitle" id="add-agent-board-subtitle"></p>
+            <input type="hidden" id="add-agent-board-name">
+            <input type="hidden" id="add-agent-board-workdir">
+            <div id="add-agent-board-presets" class="agent-preset-selector" style="margin-bottom:16px"></div>
+            <label>Name / Role:
+                <input type="text" id="add-agent-board-agent-name" placeholder="e.g. Security Reviewer">
+            </label>
+            <label>Behavior Prompt:
+                <textarea id="add-agent-board-prompt" rows="5" placeholder="Describe the agent's role and behavior..."></textarea>
+            </label>
+            <label>Flags <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
+                <input type="text" id="add-agent-board-flags" placeholder="e.g. --verbose">
+            </label>
+            <div class="flag-shortcuts">
+                <button class="btn btn-small flag-shortcut-btn" onclick="toggleFlag('add-agent-board-flags','--dangerously-skip-permissions')">--dangerously-skip-permissions</button>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" onclick="hideAddAgentBoardModal()">Cancel</button>
+                <button class="btn btn-save-persona" onclick="window._saveCurrentPersona('add-agent-board-agent-name','add-agent-board-prompt','add-agent-board-flags')" title="Save as reusable persona">Save Persona</button>
+                <button class="btn btn-primary" onclick="launchAgentToBoard()">Launch</button>
+            </div>
+        </div>
+    </div>
+
+
+{{ end }}

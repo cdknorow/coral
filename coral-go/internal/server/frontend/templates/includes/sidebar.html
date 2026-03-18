@@ -1,0 +1,155 @@
+{{ define "includes/sidebar.html" }}
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <section class="sidebar-section" data-section="live-sessions">
+                <div class="sidebar-section-header" data-collapse-toggle>
+                    <div class="sidebar-section-title">
+                        <svg class="collapse-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                        <h2>Live Sessions</h2>
+                        <span class="section-count-badge" id="live-sessions-count">0</span>
+                    </div>
+                    <button class="btn btn-small btn-primary sidebar-new-btn" onclick="event.stopPropagation(); showLaunchModal()">+ New</button>
+                </div>
+                <div class="sidebar-section-body">
+                    <ul id="live-sessions-list" class="session-list">
+                        <li class="empty-state">No live sessions</li>
+                    </ul>
+                </div>
+            </section>
+            <section class="sidebar-section" data-section="jobs">
+                <div class="sidebar-section-header" data-collapse-toggle>
+                    <div class="sidebar-section-title">
+                        <svg class="collapse-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                        <h2>Jobs</h2>
+                        <span class="section-count-badge" id="jobs-count">0</span>
+                    </div>
+                    <button class="btn btn-small btn-primary sidebar-new-btn" onclick="event.stopPropagation(); showJobModal()">+ Job</button>
+                </div>
+                <div class="sidebar-section-body">
+                    <div class="sidebar-subtabs">
+                        <button class="sidebar-subtab active" data-subtab="active" onclick="switchJobsSubtab('active')">Active <span class="subtab-count" id="active-jobs-count"></span></button>
+                        <button class="sidebar-subtab" data-subtab="scheduled" onclick="switchJobsSubtab('scheduled')">Scheduled <span class="subtab-count" id="scheduled-jobs-count"></span></button>
+                    </div>
+                    <div class="sidebar-subtab-content" id="jobs-subtab-active">
+                        <ul id="live-jobs-list" class="session-list">
+                            <li class="empty-state">No active jobs</li>
+                        </ul>
+                    </div>
+                    <div class="sidebar-subtab-content" id="jobs-subtab-scheduled" style="display:none">
+                        <ul id="scheduled-jobs-list" class="session-list">
+                            <li class="empty-state">No scheduled jobs</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+            <section class="sidebar-section" data-section="messageboard">
+                <div class="sidebar-section-header" data-collapse-toggle>
+                    <div class="sidebar-section-title">
+                        <svg class="collapse-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                        <h2>Message Board</h2>
+                        <span class="section-count-badge" id="messageboard-count">0</span>
+                    </div>
+                </div>
+                <div class="sidebar-section-body">
+                    <ul id="messageboard-sidebar-list" class="session-list">
+                        <li class="empty-state">No projects</li>
+                    </ul>
+                </div>
+            </section>
+            <section class="sidebar-section" data-section="history">
+                <div class="sidebar-section-header" data-collapse-toggle>
+                    <div class="sidebar-section-title">
+                        <svg class="collapse-chevron" width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
+                        <h2>History</h2>
+                        <span class="section-count-badge" id="history-count">0</span>
+                    </div>
+                </div>
+                <div class="sidebar-section-body">
+                    <div class="history-filters">
+                        <!-- Row 1: Text search + advanced toggle -->
+                        <div class="hf-search-row">
+                            <input id="history-search" type="search" placeholder="Search sessions...">
+                            <button id="hf-adv-toggle" class="btn btn-small hf-adv-btn"
+                                    title="Advanced filters">
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
+                                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                                    <line x1="2" y1="4" x2="14" y2="4"/>
+                                    <line x1="4" y1="8" x2="12" y2="8"/>
+                                    <line x1="6" y1="12" x2="10" y2="12"/>
+                                </svg>
+                                <span id="hf-active-count" class="hf-active-badge"
+                                      style="display:none">0</span>
+                            </button>
+                        </div>
+
+                        <!-- Advanced panel (collapsed by default) -->
+                        <div id="hf-advanced" class="hf-advanced" style="display:none">
+
+                            <!-- FTS mode (shown only when search box has text) -->
+                            <div class="hf-row" id="hf-fts-mode-row" style="display:none">
+                                <label class="hf-label">Match</label>
+                                <div class="hf-toggle-group">
+                                    <button class="hf-toggle" data-mode="phrase">Phrase</button>
+                                    <button class="hf-toggle active" data-mode="and">All words</button>
+                                    <button class="hf-toggle" data-mode="or">Any word</button>
+                                </div>
+                            </div>
+
+                            <!-- Source multi-select -->
+                            <div class="hf-row">
+                                <label class="hf-label">Source</label>
+                                <div class="hf-toggle-group">
+                                    <button class="hf-toggle active" data-source="all">All</button>
+                                    <button class="hf-toggle" data-source="claude">Claude</button>
+                                    <button class="hf-toggle" data-source="gemini">Gemini</button>
+                                </div>
+                            </div>
+
+                            <!-- Tag multi-filter -->
+                            <div class="hf-row">
+                                <label class="hf-label">Tags</label>
+                                <div class="hf-tag-filter" id="hf-tag-pills"></div>
+                                <select id="hf-tag-add" class="hf-tag-add-select">
+                                    <option value="">+ tag</option>
+                                </select>
+                            </div>
+                            <div class="hf-row" id="hf-tag-logic-row" style="display:none">
+                                <label class="hf-label">Tag logic</label>
+                                <div class="hf-toggle-group">
+                                    <button class="hf-toggle active" data-logic="AND">AND</button>
+                                    <button class="hf-toggle" data-logic="OR">OR</button>
+                                </div>
+                            </div>
+
+                            <!-- Date range -->
+                            <div class="hf-row">
+                                <label class="hf-label">From</label>
+                                <input type="date" id="hf-date-from" class="hf-date">
+                            </div>
+                            <div class="hf-row">
+                                <label class="hf-label">To</label>
+                                <input type="date" id="hf-date-to" class="hf-date">
+                            </div>
+
+                            <!-- Duration range (in minutes for usability) -->
+                            <div class="hf-row">
+                                <label class="hf-label">Duration</label>
+                                <input type="number" id="hf-dur-min" class="hf-dur-input"
+                                       placeholder="min" min="0" step="1">
+                                <span class="hf-dur-sep">&ndash;</span>
+                                <input type="number" id="hf-dur-max" class="hf-dur-input"
+                                       placeholder="max" min="0" step="1">
+                                <span class="hf-dur-unit">min</span>
+                            </div>
+
+                            <button class="btn btn-small hf-clear-btn">Clear filters</button>
+                        </div>
+                    </div>
+                    <ul id="history-sessions-list" class="session-list">
+                        <li class="empty-state">Loading...</li>
+                    </ul>
+                </div>
+            </section>
+        </aside>
+
+{{ end }}

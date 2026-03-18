@@ -1,0 +1,95 @@
+{{ define "includes/views/history_session.html" }}
+            <!-- History Session View -->
+            <div id="history-session-view" class="session-view" style="display:none">
+                <div class="session-header">
+                    <div class="history-title-row">
+                        <h2 id="history-session-title">Session History</h2>
+                        <span id="history-session-branch" class="title-branch" style="display:none">
+                            <span class="branch-icon">&#x2387;</span> <span class="branch-text"></span>
+                            <button class="copy-branch-btn" onclick="copyBranchName(this)" title="Copy branch name"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 0 1 2 9.5V3.5A1.5 1.5 0 0 1 3.5 2h6A1.5 1.5 0 0 1 11 3.5V5"/></svg></button>
+                        </span>
+                        <span id="history-session-id" class="session-id-label"></span>
+                        <div id="history-session-tags" class="tag-list"></div>
+                        <button class="btn btn-small" onclick="showTagDropdown()" title="Add tag">+ Tag</button>
+                        <button id="btn-resume-session" class="btn btn-small btn-primary"
+                          onclick="showResumeModal()" title="Resume this session in a live agent"
+                          style="display:none">Resume</button>
+                    </div>
+                    <!-- Tag Dropdown -->
+                    <div id="tag-dropdown" class="tag-dropdown" style="display:none">
+                        <div class="tag-dropdown-header">
+                            <span>Add Tag</span>
+                            <button class="btn btn-small" onclick="hideTagDropdown()">Close</button>
+                        </div>
+                        <div class="tag-dropdown-list" id="tag-dropdown-list"></div>
+                        <div class="tag-dropdown-create">
+                            <input type="text" id="new-tag-name" placeholder="New tag name...">
+                            <input type="color" id="new-tag-color" value="#58a6ff">
+                            <button class="btn btn-small btn-primary" onclick="createTag()">Add</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Tab Bar -->
+                <div class="history-tabs">
+                    <button class="history-tab-btn active" onclick="switchHistoryTab('notes')">Summary</button>
+                    <button class="history-tab-btn" onclick="switchHistoryTab('chat')">Chat</button>
+                    <button class="history-tab-btn" onclick="switchHistoryTab('activity')" id="history-tab-btn-activity">Activity <span id="history-activity-count" class="task-bar-count"></span></button>
+                    <button class="history-tab-btn" onclick="switchHistoryTab('tasks')" id="history-tab-btn-tasks">Tasks <span id="history-tasks-count" class="task-bar-count"></span></button>
+                    <button class="history-tab-btn" onclick="switchHistoryTab('agent-notes')" id="history-tab-btn-agent-notes">Notes <span id="history-agent-notes-count" class="task-bar-count"></span></button>
+                    <button class="history-tab-btn" onclick="switchHistoryTab('commits')">Commits</button>
+                </div>
+                <!-- Chat Tab Content -->
+                <div id="history-tab-chat" class="history-tab-content active">
+                    <div id="history-messages" class="chat-messages"></div>
+                </div>
+                <!-- Notes Tab Content -->
+                <div id="history-tab-notes" class="history-tab-content">
+                    <div class="notes-view">
+                        <div class="notes-header">
+                            <button id="notes-edit-btn" class="btn btn-small" onclick="toggleNotesEdit()">Edit</button>
+                            <button id="notes-resummarize-btn" class="btn btn-small" onclick="resummarize()">Re-summarize</button>
+                        </div>
+                        <div id="notes-spinner" class="notes-spinner" style="display:none">
+                            <span>Generating summary...</span>
+                        </div>
+                        <div id="notes-rendered" class="notes-rendered"></div>
+                        <div id="notes-edit-area" style="display:none">
+                            <textarea id="notes-textarea" class="notes-textarea" placeholder="Write session notes in markdown..."></textarea>
+                            <div class="notes-edit-actions">
+                                <button class="btn btn-small" onclick="cancelNotesEdit()">Cancel</button>
+                                <button class="btn btn-small btn-primary" onclick="saveNotes()">Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Activity Tab Content (read-only) -->
+                <div id="history-tab-activity" class="history-tab-content">
+                    <div id="history-activity-chart" class="activity-chart"></div>
+                    <div class="event-filter-bar" id="history-event-filters"></div>
+                    <div class="agentic-events-body">
+                        <div id="history-events-list">
+                            <div class="event-empty">No activity recorded</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Tasks Tab Content (read-only) -->
+                <div id="history-tab-tasks" class="history-tab-content">
+                    <div class="task-bar-list" id="history-task-list">
+                        <div class="task-empty">No tasks recorded</div>
+                    </div>
+                </div>
+                <!-- Agent Notes Tab Content (read-only) -->
+                <div id="history-tab-agent-notes" class="history-tab-content">
+                    <div id="history-note-list" class="notes-rendered" style="padding: 12px 14px; overflow-y: auto; flex: 1;">
+                        <div class="empty-notes">No agent notes recorded</div>
+                    </div>
+                </div>
+                <!-- Commits Tab Content -->
+                <div id="history-tab-commits" class="history-tab-content">
+                    <div id="commits-list" class="commits-view">
+                        <div class="empty-notes">Loading commits...</div>
+                    </div>
+                </div>
+            </div>
+
+{{ end }}

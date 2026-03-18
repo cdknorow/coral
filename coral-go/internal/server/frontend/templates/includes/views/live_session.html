@@ -1,0 +1,170 @@
+{{ define "includes/views/live_session.html" }}
+            <!-- Live Session View -->
+            <div id="live-session-view" class="session-view" style="display:none">
+                <div class="session-header">
+                    <button class="mobile-back-btn" onclick="mobileBack()" title="Back to agents">&larr;</button>
+                    <div class="session-title">
+                        <div id="session-summary" class="summary-line summary-inline" style="display:none">
+                            <span class="goal-label">Goal</span>
+                            <span class="summary-text"></span>
+                            <button class="goal-action-btn" onclick="refreshGoal()" title="Ask agent to update goal"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8a7 7 0 0 1 12.9-3.8"/><path d="M15 8a7 7 0 0 1-12.9 3.8"/><polyline points="13 1 14 4.2 10.5 4.2"/><polyline points="3 15 2 11.8 5.5 11.8"/></svg></button>
+                            <button class="goal-action-btn" onclick="editGoal()" title="Edit goal"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg></button>
+                        </div>
+                        <span id="session-branch" class="branch-chip" style="display:none">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg>
+                            <span class="branch-text"></span>
+                            <button class="copy-branch-btn" onclick="copyBranchName(this)" title="Copy branch name" aria-label="Copy branch name"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="9" height="9" rx="1.5"/><path d="M5 11H3.5A1.5 1.5 0 0 1 2 9.5V3.5A1.5 1.5 0 0 1 3.5 2h6A1.5 1.5 0 0 1 11 3.5V5"/></svg></button>
+                        </span>
+                        <span id="session-type-badge" class="badge" style="display:none">claude</span>
+                        <h2 id="session-name" style="display:none"></h2>
+                        <div class="session-title-actions">
+                            <button class="btn btn-icon-label btn-primary" onclick="attachTerminal()" title="Open this session in a new terminal window via tmux attach" aria-label="Attach terminal"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg><span>Attach</span></button>
+                            <button class="btn btn-icon-label btn-warning" onclick="restartSession()" title="Exit and relaunch the agent with the same system prompt and working directory" aria-label="Restart session"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg><span>Restart</span></button>
+                            <div class="overflow-menu-wrapper">
+                                <button class="btn btn-icon overflow-menu-trigger" title="More actions" aria-label="More actions">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
+                                </button>
+                                <div class="overflow-menu" style="display:none">
+                                    <button class="overflow-menu-item mobile-overflow-only" onclick="attachTerminal()">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
+                                        Attach Terminal
+                                    </button>
+                                    <button class="overflow-menu-item mobile-overflow-only" onclick="restartSession()">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
+                                        Restart
+                                    </button>
+                                    <button class="overflow-menu-item" onclick="showInfoModal()">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                                        Session Info
+                                    </button>
+                                    <hr class="overflow-menu-divider">
+                                    <button class="overflow-menu-item overflow-menu-danger" onclick="killSession()">
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                                        Kill Session
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="session-meta session-meta-compact">
+                        <div id="session-status" class="status-line" style="display:none">
+                            <span class="status-text">Idle</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="waiting-banner" class="waiting-banner" style="display:none">
+                    Agent is waiting for input
+                </div>
+
+                <div class="live-body">
+                    <div class="live-left-column">
+                        <div id="capture-wrapper" style="position:relative;flex:1;min-height:0;display:flex;flex-direction:column">
+                            <!-- Semantic blocks view (existing) -->
+                            <div id="pane-capture" class="output-scroll capture-text"></div>
+                            <!-- xterm.js terminal view -->
+                            <div id="xterm-container" class="xterm-container" style="display:none">
+                                <span class="xterm-focus-hint">Click to type &middot; Ctrl+Shift+Esc to unfocus</span>
+                            </div>
+                            <div id="selection-pause-badge" class="selection-pause-badge" style="display:none">Updates paused — text selected</div>
+                            <div id="xterm-disconnected-badge" class="xterm-disconnected-badge">Disconnected — reconnecting...</div>
+                        </div>
+                        <div class="command-pane-resize-handle" id="command-pane-resize-handle"></div>
+                        <div class="command-pane" id="command-pane">
+                            <div class="command-pane-toolbar" id="command-toolbar">
+                                <!-- All buttons populated dynamically -->
+                            </div>
+                            <div class="command-pane-body">
+                                <div id="image-attachments" class="image-attachments"></div>
+                                <div class="command-editor">
+                                    <textarea id="command-input" placeholder="Type a command..." rows="3" autocomplete="off"></textarea>
+                                    <div class="command-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send</div>
+                                </div>
+                                <button class="mobile-send-btn" onclick="sendCommand()" aria-label="Send">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="task-bar-resize-handle" id="task-bar-resize-handle"></div>
+                    <div class="agentic-state" id="agentic-state">
+                        <button class="agentic-collapse-btn" id="agentic-collapse-btn" title="Toggle panel" aria-label="Toggle agentic state panel">
+                            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M10 4l-4 4 4 4z"/></svg>
+                        </button>
+                        <!-- Top block: Files, Chat, Notes -->
+                        <div class="agentic-block" id="agentic-block-top">
+                            <div class="agentic-state-tabs">
+                                <button class="agentic-tab active" onclick="switchAgenticTab('files', 'top')" id="agentic-tab-files" title="Files" aria-label="Files">
+                                    <span class="material-icons">description</span>
+                                    <span class="agentic-tab-count" id="files-bar-count"></span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('history', 'top')" id="agentic-tab-history" title="Chat" aria-label="Chat">
+                                    <span class="material-icons">history</span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('notes', 'top')" id="agentic-tab-notes" title="Notes" aria-label="Notes">
+                                    <span class="material-icons">edit_note</span>
+                                    <span class="agentic-tab-count" id="note-bar-count"></span>
+                                </button>
+                            </div>
+                            <!-- Files tab -->
+                            <div id="agentic-panel-files" class="agentic-panel active">
+                                <div class="changed-files-header" id="changed-files-header">
+                                    <span class="changed-files-title" id="changed-files-title">0 files changed</span>
+                                    <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff">&#x21bb;</button>
+                                </div>
+                                <div class="changed-files-list" id="changed-files-list">
+                                    <div class="file-empty">No changed files</div>
+                                </div>
+                            </div>
+                            <!-- History/Chat tab -->
+                            <div id="agentic-panel-history" class="agentic-panel">
+                                <div id="live-history-messages" class="chat-messages live-history-panel"></div>
+                            </div>
+                            <!-- Notes tab -->
+                            <div id="agentic-panel-notes" class="agentic-panel">
+                                <div id="note-md-rendered" class="note-md-rendered notes-rendered">
+                                    <div class="note-md-placeholder">Click to add notes...</div>
+                                </div>
+                                <textarea id="note-md-editor" class="note-md-editor" placeholder="Write notes in markdown..." style="display:none"></textarea>
+                            </div>
+                        </div>
+                        <div class="agentic-block-resize-handle" id="agentic-block-resize-handle"></div>
+                        <!-- Bottom block: Activity, Tasks, Stats -->
+                        <div class="agentic-block" id="agentic-block-bottom">
+                            <div class="agentic-state-tabs">
+                                <button class="agentic-tab active" onclick="switchAgenticTab('activity', 'bottom')" id="agentic-tab-activity" title="Activity" aria-label="Activity">
+                                    <span class="material-icons">timeline</span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('tasks', 'bottom')" id="agentic-tab-tasks" title="Tasks" aria-label="Tasks">
+                                    <span class="material-icons">checklist</span>
+                                    <span class="agentic-tab-count" id="task-bar-count"></span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('stats', 'bottom')" id="agentic-tab-stats" title="Stats" aria-label="Stats">
+                                    <span class="material-icons">bar_chart</span>
+                                </button>
+                            </div>
+                            <!-- Activity tab -->
+                            <div id="agentic-panel-activity" class="agentic-panel active">
+                                <div class="event-filter-bar" id="event-filters"></div>
+                                <div class="agentic-events-body">
+                                    <div id="agentic-state-events">
+                                        <div class="event-empty">No activity yet</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Stats tab -->
+                            <div id="agentic-panel-stats" class="agentic-panel">
+                                <div id="live-activity-chart" class="activity-chart"></div>
+                            </div>
+                            <!-- Tasks tab -->
+                            <div id="agentic-panel-tasks" class="agentic-panel">
+                                <div class="task-bar-list" id="task-bar-list">
+                                    <div class="task-empty">No tasks yet</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+{{ end }}

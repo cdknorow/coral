@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+        (function() {
+            var t = 'dark';
+            try { t = localStorage.getItem('coral-theme') || 'dark'; } catch(_) {}
+            if (t === 'system') t = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diff View — Coral</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/css/variables.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .diff-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .diff-header-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+        }
+
+        .diff-filepath {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .diff-filepath .dir {
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .diff-toolbar {
+            display: flex;
+            gap: 6px;
+            flex-shrink: 0;
+        }
+
+        .diff-toolbar button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .diff-toolbar button:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover, #30363d);
+        }
+
+        .diff-toolbar button.active {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .diff-toolbar button:disabled {
+            opacity: 0.3;
+            cursor: default;
+        }
+
+        .diff-toolbar button:disabled:hover {
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+        }
+
+        .diff-nav-group {
+            display: flex;
+            gap: 2px;
+        }
+
+        .diff-nav-group button {
+            min-width: 32px;
+            text-align: center;
+        }
+
+        .diff-file-counter {
+            font-size: 11px;
+            color: var(--text-muted);
+            padding: 0 6px;
+            align-self: center;
+            white-space: nowrap;
+        }
+
+        .diff-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .diff-error {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--error);
+            font-size: 14px;
+        }
+
+        .diff-empty {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        #diff-container {
+            padding: 0;
+        }
+
+        /* Theme-aware overrides for diff2html */
+        .d2h-wrapper {
+            background: var(--bg-primary) !important;
+        }
+
+        .d2h-file-header {
+            display: none !important;
+        }
+
+        .d2h-file-wrapper {
+            border: none !important;
+            margin: 0 !important;
+        }
+
+        .d2h-code-wrapper {
+            background: var(--bg-primary) !important;
+        }
+
+        .d2h-code-line,
+        .d2h-code-side-line {
+            background: var(--d2h-code-bg) !important;
+            color: var(--text-primary) !important;
+            font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
+            font-size: 12px !important;
+            padding: 0 10px !important;
+        }
+
+        .d2h-code-line-prefix {
+            display: none !important;
+        }
+
+        /* Line numbers — default (context lines) */
+        .d2h-code-linenumber, .d2h-code-side-linenumber {
+            background: var(--d2h-gutter-bg) !important;
+            color: var(--text-muted) !important;
+            border-right: 1px solid var(--border) !important;
+            border-left: none !important;
+            font-size: 11px !important;
+            user-select: none;
+        }
+
+        /* Addition lines */
+        .d2h-ins,
+        .d2h-ins td,
+        .d2h-ins .d2h-code-side-line,
+        .d2h-ins .d2h-code-line,
+        .d2h-ins .d2h-code-linenumber,
+        .d2h-ins .d2h-code-side-linenumber,
+        .d2h-ins .d2h-emptyplaceholder {
+            background: var(--d2h-ins-bg) !important;
+        }
+
+        .d2h-ins .d2h-code-linenumber,
+        .d2h-ins .d2h-code-side-linenumber {
+            background: var(--d2h-ins-gutter-bg) !important;
+            color: var(--success) !important;
+        }
+
+        ins {
+            background: var(--d2h-ins-highlight) !important;
+            text-decoration: none !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Deletion lines */
+        .d2h-del,
+        .d2h-del td,
+        .d2h-del .d2h-code-side-line,
+        .d2h-del .d2h-code-line,
+        .d2h-del .d2h-code-linenumber,
+        .d2h-del .d2h-code-side-linenumber,
+        .d2h-del .d2h-emptyplaceholder {
+            background: var(--d2h-del-bg) !important;
+        }
+
+        .d2h-del .d2h-code-linenumber,
+        .d2h-del .d2h-code-side-linenumber {
+            background: var(--d2h-del-gutter-bg) !important;
+            color: var(--error) !important;
+        }
+
+        del {
+            background: var(--d2h-del-highlight) !important;
+            text-decoration: none !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Empty placeholder rows */
+        .d2h-emptyplaceholder,
+        .d2h-code-side-emptyplaceholder,
+        tr.d2h-ins .d2h-emptyplaceholder,
+        tr.d2h-del .d2h-emptyplaceholder {
+            background: var(--d2h-empty-bg) !important;
+        }
+
+        /* Hunk headers */
+        .d2h-info {
+            background: var(--d2h-hunk-bg) !important;
+            color: var(--accent) !important;
+            border: none !important;
+            padding: 6px 12px !important;
+        }
+
+        .d2h-code-line-ctn {
+            color: var(--text-primary) !important;
+            padding-left: 8px !important;
+        }
+
+        /* Line number columns */
+        .d2h-code-linenumber, .d2h-code-side-linenumber {
+            position: static !important;
+            min-width: 50px !important;
+            width: 50px !important;
+            padding: 0 10px !important;
+            text-align: right !important;
+            white-space: nowrap !important;
+            overflow: visible !important;
+        }
+
+
+        /* Table layout */
+        .d2h-diff-table {
+            font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace !important;
+            border-collapse: collapse !important;
+            border-spacing: 0 !important;
+            background: var(--d2h-code-bg) !important;
+            table-layout: auto !important;
+        }
+
+        .d2h-diff-table *,
+        .d2h-diff-table *::before,
+        .d2h-diff-table *::after {
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+        }
+
+        .d2h-code-linenumber,
+        .d2h-code-side-linenumber {
+            border-right: 1px solid var(--border) !important;
+        }
+
+        .d2h-file-diff {
+            overflow-x: auto !important;
+        }
+
+        .d2h-file-side-diff {
+            width: 50% !important;
+        }
+
+        .d2h-files-diff {
+            display: flex !important;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* Refresh animation */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .refreshing { animation: spin 1s linear infinite; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="diff-header">
+        <img src="/static/coral_logo.png" alt="Coral" class="diff-header-icon">
+        <div class="diff-filepath" id="diff-filepath">Loading...</div>
+        <div class="diff-toolbar">
+            <div class="diff-nav-group" id="diff-nav" style="display:none">
+                <button id="btn-prev" onclick="navigateDiff(-1)" title="Previous file (←)">&larr;</button>
+                <span class="diff-file-counter" id="diff-counter"></span>
+                <button id="btn-next" onclick="navigateDiff(1)" title="Next file (→)">&rarr;</button>
+            </div>
+            <button id="btn-unified" onclick="setViewMode('line-by-line')">Unified</button>
+            <button id="btn-split" class="active" onclick="setViewMode('side-by-side')">Split</button>
+            <button id="btn-refresh" onclick="refreshDiff()" title="Refresh diff">&#x21bb;</button>
+        </div>
+    </div>
+    <div id="diff-container">
+        <div class="diff-loading">Loading diff...</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html.min.js"></script>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const agentName = params.get('agent');
+        let filepath = params.get('file');
+        const sessionId = params.get('session_id');
+        const fileListRaw = params.get('files') || '';
+        const fileList = fileListRaw ? fileListRaw.split('\n').filter(Boolean) : [];
+        let currentIndex = fileList.indexOf(filepath);
+        let viewMode = 'side-by-side';
+        let lastDiff = '';
+
+        function initNav() {
+            if (fileList.length <= 1) return;
+            document.getElementById('diff-nav').style.display = 'flex';
+            updateNav();
+        }
+
+        function updateNav() {
+            const prev = document.getElementById('btn-prev');
+            const next = document.getElementById('btn-next');
+            const counter = document.getElementById('diff-counter');
+            prev.disabled = currentIndex <= 0;
+            next.disabled = currentIndex >= fileList.length - 1;
+            counter.textContent = (currentIndex + 1) + ' / ' + fileList.length;
+        }
+
+        function navigateDiff(delta) {
+            const newIndex = currentIndex + delta;
+            if (newIndex < 0 || newIndex >= fileList.length) return;
+            currentIndex = newIndex;
+            filepath = fileList[currentIndex];
+            // Update URL without reload
+            const newParams = new URLSearchParams(window.location.search);
+            newParams.set('file', filepath);
+            history.replaceState(null, '', '?' + newParams.toString());
+            updateTitle();
+            updateNav();
+            loadDiff();
+        }
+
+        function splitPath(fp) {
+            const i = fp.lastIndexOf('/');
+            if (i === -1) return { dir: '', name: fp };
+            return { dir: fp.substring(0, i + 1), name: fp.substring(i + 1) };
+        }
+
+        function updateTitle() {
+            const el = document.getElementById('diff-filepath');
+            if (!filepath) {
+                el.textContent = 'No file specified';
+                return;
+            }
+            const { dir, name } = splitPath(filepath);
+            el.innerHTML = (dir ? '<span class="dir">' + escapeHtml(dir) + '</span>' : '') + escapeHtml(name);
+            document.title = name + ' — Diff — Coral';
+        }
+
+        function escapeHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            document.getElementById('btn-unified').classList.toggle('active', mode === 'line-by-line');
+            document.getElementById('btn-split').classList.toggle('active', mode === 'side-by-side');
+            renderDiff(lastDiff);
+        }
+
+        function renderDiff(diffText) {
+            const container = document.getElementById('diff-container');
+            if (!diffText) {
+                container.innerHTML = '<div class="diff-empty">No changes in this file</div>';
+                return;
+            }
+            lastDiff = diffText;
+            const html = Diff2Html.html(diffText, {
+                drawFileList: false,
+                matching: 'lines',
+                outputFormat: viewMode,
+                colorScheme: document.documentElement.getAttribute('data-theme') || 'dark',
+            });
+            container.innerHTML = html;
+        }
+
+        async function loadDiff() {
+            if (!agentName || !filepath) {
+                document.getElementById('diff-container').innerHTML =
+                    '<div class="diff-error">Missing agent or file parameter</div>';
+                return;
+            }
+
+            const qs = new URLSearchParams({ filepath });
+            if (sessionId) qs.set('session_id', sessionId);
+
+            try {
+                const resp = await fetch(
+                    '/api/sessions/live/' + encodeURIComponent(agentName) + '/diff?' + qs
+                );
+                const data = await resp.json();
+                if (data.error) {
+                    document.getElementById('diff-container').innerHTML =
+                        '<div class="diff-error">' + escapeHtml(data.error) + '</div>';
+                    return;
+                }
+                renderDiff(data.diff || '');
+            } catch (e) {
+                document.getElementById('diff-container').innerHTML =
+                    '<div class="diff-error">Failed to load diff</div>';
+            }
+        }
+
+        async function refreshDiff() {
+            const btn = document.getElementById('btn-refresh');
+            btn.classList.add('refreshing');
+
+            // Also trigger backend file refresh so the main file list stays in sync
+            try {
+                const body = {};
+                if (sessionId) body.session_id = sessionId;
+                fetch(
+                    '/api/sessions/live/' + encodeURIComponent(agentName) + '/files/refresh',
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    }
+                );
+            } catch (e) { /* best-effort */ }
+
+            await loadDiff();
+            setTimeout(() => btn.classList.remove('refreshing'), 300);
+        }
+
+        // Inject file path and line number into copied text
+        document.addEventListener('copy', function(e) {
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || !filepath) return;
+
+            // Find the line number from the row where the selection starts
+            let node = sel.anchorNode;
+            if (!node) return;
+            if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
+
+            // Walk up to find the table row
+            const row = node.closest('tr');
+            if (!row) return;
+
+            // Look for line number in this row — try the "new" side first (right),
+            // then fall back to the "old" side (left)
+            let lineNum = null;
+            const lineNumCells = row.querySelectorAll('.d2h-code-linenumber, .d2h-code-side-linenumber');
+            for (const cell of lineNumCells) {
+                const text = cell.textContent.trim();
+                if (text && /^\d+$/.test(text)) {
+                    lineNum = text;
+                }
+            }
+
+            const selectedText = sel.toString();
+            const header = filepath + (lineNum ? ':' + lineNum : '');
+            e.clipboardData.setData('text/plain', header + '\n' + selectedText);
+            e.preventDefault();
+        });
+
+        updateTitle();
+        initNav();
+        loadDiff();
+
+        // Keyboard shortcuts: left/right arrow for prev/next
+        document.addEventListener('keydown', function(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); navigateDiff(-1); }
+            if (e.key === 'ArrowRight') { e.preventDefault(); navigateDiff(1); }
+        });
+
+        // Auto-refresh every 10 seconds
+        setInterval(loadDiff, 10000);
+    </script>
+</body>
+</html>
