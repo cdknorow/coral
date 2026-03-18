@@ -49,7 +49,7 @@ class IdleDetector:
             sid = agent.get("session_id")
             ev_tuple = latest_events.get(sid) if sid else None
             latest_ev = ev_tuple[0] if ev_tuple else None
-            waiting = latest_ev in ("stop", "notification")
+            waiting = latest_ev == "notification"
 
             if not waiting:
                 # Agent is active — clear notification state

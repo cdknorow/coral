@@ -85,7 +85,6 @@
     margin-top: 5px;
 }
 
-.session-dot.active  { background: var(--success); }
 .session-dot.stale   { background: var(--text-muted); }
 .session-dot.working {
     background: #3b82f6;
@@ -97,6 +96,10 @@
 }
 .session-dot.done {
     background: var(--success, #4caf50);
+}
+.session-dot.stuck {
+    background: var(--danger, #ef4444);
+    animation: pulse-stuck 3s ease-in-out infinite;
 }
 
 /* ── Session Hover Tooltip ─────────────────────────────────── */
@@ -138,9 +141,10 @@
 }
 
 .tt-state-working           { color: #3b82f6; font-weight: 600; }
-.tt-state-waiting-for-input  { color: var(--warning); font-weight: 600; }
-.tt-state-active             { color: var(--success); font-weight: 600; }
-.tt-state-idle               { color: var(--text-muted); }
+.tt-state-needs-input       { color: var(--warning); font-weight: 600; }
+.tt-state-done              { color: var(--success); font-weight: 600; }
+.tt-state-stuck             { color: var(--danger, #ef4444); font-weight: 600; }
+.tt-state-idle              { color: var(--text-muted); }
 .tt-unread                   { color: var(--warning); font-weight: 600; }
 
 .session-time {
@@ -649,6 +653,11 @@
 
 .status-dot.done {
     background: var(--success, #4caf50);
+}
+
+.status-dot.stuck {
+    background: var(--danger, #ef4444);
+    animation: pulse-stuck 3s ease-in-out infinite;
 }
 
 .status-dot-stale {

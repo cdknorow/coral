@@ -49,6 +49,13 @@ _CORAL_HOOKS = [
     ("Notification", {
         "hooks": [{"type": "command", "command": "coral-hook-agentic-state"}],
     }),
+    ("UserPromptSubmit", {
+        "hooks": [{"type": "command", "command": "coral-hook-agentic-state"}],
+    }),
+    ("SessionStart", {
+        "matcher": "clear",
+        "hooks": [{"type": "command", "command": "coral-hook-agentic-state --session-clear"}],
+    }),
 ]
 
 
@@ -270,6 +277,32 @@ class ClaudeAgent(BaseAgent):
         """Parse a Claude hook payload into an agentic event for the dashboard."""
         session_id = resolve_session_id(hook_data.get("session_id"))
         hook_type = hook_data.get("hook_event_name") or hook_data.get("type", "")
+
+        # SessionStart with source="clear" fires when the user runs /clear.
+        # The --session-clear CLI arg injects _coral_session_clear into hook_data
+        # as a fallback when hook_event_name isn't set.
+        if hook_type == "SessionStart" or hook_data.get("_coral_session_clear"):
+            return {
+                "event_type": "session_reset",
+                "tool_name": None,
+                "summary": "Session reset: /clear",
+                "session_id": session_id,
+            }
+
+        # UserPromptSubmit: fall back to detecting the "prompt" field when
+        # hook_event_name isn't populated.  Guard against tool_use / stop
+        # payloads that might also contain a "prompt" key.
+        if hook_type == "UserPromptSubmit" or (
+            "prompt" in hook_data
+            and not hook_data.get("tool_name")
+            and not hook_data.get("stop_hook_active")
+        ):
+            return {
+                "event_type": "prompt_submit",
+                "tool_name": None,
+                "summary": "User submitted prompt",
+                "session_id": session_id,
+            }
 
         tool = hook_data.get("tool_name", "")
         inp = hook_data.get("tool_input", {}) if isinstance(hook_data.get("tool_input"), dict) else {}

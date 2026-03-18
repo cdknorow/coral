@@ -519,7 +519,7 @@ async def test_idle_detector_notifies_stale_waiting(tmp_path):
         {"id": 1, "agent_filter": None},
     ]
     mock_store.get_latest_event_types.return_value = {
-        "sess-1": ("stop", "Waiting for input"),
+        "sess-1": ("notification", "Permission prompt"),
     }
     mock_store.create_webhook_delivery = AsyncMock()
 
@@ -551,7 +551,7 @@ async def test_idle_detector_only_notifies_once(tmp_path):
         {"id": 1, "agent_filter": None},
     ]
     mock_store.get_latest_event_types.return_value = {
-        "sess-1": ("stop", "Waiting"),
+        "sess-1": ("notification", "Permission prompt"),
     }
     mock_store.create_webhook_delivery = AsyncMock()
 

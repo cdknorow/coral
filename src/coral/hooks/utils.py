@@ -56,12 +56,20 @@ def cache_dir() -> str:
 
 
 def debug_log(msg: str) -> None:
-    """Append to debug log if CORAL_HOOK_DEBUG is set."""
-    if not os.environ.get("CORAL_HOOK_DEBUG"):
-        return
+    """Append a timestamped line to the hook debug log."""
     try:
-        with open(os.path.join(cache_dir(), "debug.log"), "a") as f:
-            f.write(msg + "\n")
+        log_path = os.path.join(cache_dir(), "debug.log")
+        # Rotate: truncate if over 500KB
+        try:
+            if os.path.getsize(log_path) > 512_000:
+                with open(log_path, "w") as f:
+                    f.write("--- log rotated ---\n")
+        except OSError:
+            pass
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%H:%M:%S.%f")[:-3]
+        with open(log_path, "a") as f:
+            f.write(f"[{ts}] {msg}\n")
     except OSError:
         pass
 

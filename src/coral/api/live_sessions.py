@@ -134,8 +134,12 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
         ev_tuple = latest_events.get(sid) if sid else None
         latest_ev = ev_tuple[0] if ev_tuple else None
         ev_summary = ev_tuple[1] if ev_tuple else None
-        waiting = latest_ev in ("stop", "notification")
-        working = latest_ev == "tool_use" and (log_info["staleness_seconds"] or 999) < 120
+        needs_input = latest_ev == "notification"
+        done = latest_ev == "stop"
+        working = latest_ev in ("tool_use", "prompt_submit")
+        stuck = working and (log_info["staleness_seconds"] or 999) > 420
+        if stuck:
+            working = False
 
         summary = log_info["summary"]
         if not summary and sid:
@@ -156,10 +160,12 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
             "branch": git["branch"] if git else None,
             "display_name": display_names.get(sid) if sid else None,
             "working_directory": agent.get("working_directory", ""),
-            "waiting_for_input": waiting,
-            "waiting_reason": latest_ev if waiting else None,
-            "waiting_summary": ev_summary if waiting else None,
+            "waiting_for_input": needs_input,
+            "done": done,
             "working": working,
+            "stuck": stuck,
+            "waiting_reason": latest_ev if needs_input else None,
+            "waiting_summary": ev_summary if needs_input else None,
             "changed_file_count": fc,
             "board_project": board_sub["project"] if board_sub else None,
             "board_job_title": board_sub["job_title"] if board_sub else None,

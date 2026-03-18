@@ -33,17 +33,16 @@ function formatStaleness(seconds) {
     return `${Math.floor(seconds / 3600)}h ago`;
 }
 
-function getStateLabel(waitingForInput, working, staleness, waitingReason) {
-    if (waitingForInput) {
-        return waitingReason === "stop" ? "Done" : "Needs input";
-    }
-    if (working) return "Working";
-    if (staleness !== null && staleness !== undefined && staleness < 60) return "Active";
+function getStateLabel(s) {
+    if (s.waiting_for_input) return "Needs input";
+    if (s.stuck) return "Stuck";
+    if (s.working) return "Working";
+    if (s.done) return "Done";
     return "Idle";
 }
 
 function buildSessionTooltip(s) {
-    const stateLabel = getStateLabel(s.waiting_for_input, s.working, s.staleness_seconds, s.waiting_reason);
+    const stateLabel = getStateLabel(s);
     const lastAction = formatStaleness(s.staleness_seconds);
     const goal = s.summary || "No goal set";
     const status = s.status || "No status";
@@ -66,11 +65,11 @@ function buildSessionTooltip(s) {
     return `<table class="session-tooltip-table">${rows.join("")}</table>`;
 }
 
-function getDotClass(staleness, waitingForInput, working, waitingReason) {
-    if (waitingForInput) return waitingReason === "stop" ? "done" : "waiting";
-    if (working) return "working";
-    if (staleness === null || staleness === undefined) return "stale";
-    if (staleness < 60) return "active";
+function getDotClass(s) {
+    if (s.waiting_for_input) return "waiting";
+    if (s.stuck) return "stuck";
+    if (s.working) return "working";
+    if (s.done) return "done";
     return "stale";
 }
 
@@ -312,15 +311,15 @@ export async function saveTeamFromSidebar(boardName) {
 let _draggedSid = null;
 
 function _renderSessionItem(s, groupName, isCompact, collapsed) {
-    const dotClass = getDotClass(s.staleness_seconds, s.waiting_for_input, s.working, s.waiting_reason);
+    const dotClass = getDotClass(s);
     const isActive = state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
     const typeTag = s.agent_type && s.agent_type !== "claude" ? ` <span class="badge ${escapeHtml(s.agent_type)}">${escapeHtml(s.agent_type)}</span>` : "";
     // Branch is shown at folder level, not per agent
     const branchTag = "";
     const waitingBadge = s.waiting_for_input
-        ? (s.waiting_reason === "stop"
-            ? ' <span class="badge done-badge">Done</span>'
-            : ' <span class="badge waiting-badge">Needs input</span>')
+        ? ' <span class="badge waiting-badge">Needs input</span>'
+        : s.done
+        ? ' <span class="badge done-badge">Done</span>'
         : '';
     const isTerminal = s.agent_type === "terminal";
     const sid = s.session_id ? escapeHtml(s.session_id) : "";
@@ -702,20 +701,21 @@ export function updateSessionBranch(branch) {
     }
 }
 
-export function updateWaitingIndicator(waiting, working, waitingReason) {
+export function updateWaitingIndicator(s) {
     const dot = document.getElementById("session-status-dot");
     const banner = document.getElementById("waiting-banner");
-    const isDone = waiting && waitingReason === "stop";
     if (dot) {
-        dot.classList.toggle("waiting", !!waiting && !isDone);
-        dot.classList.toggle("done", isDone);
-        dot.classList.toggle("working", !!working);
+        dot.classList.toggle("waiting", !!s.waiting_for_input);
+        dot.classList.toggle("stuck", !!s.stuck);
+        dot.classList.toggle("working", !!s.working);
+        dot.classList.toggle("done", !!s.done);
     }
     if (banner) {
-        banner.style.display = waiting ? "" : "none";
-        if (waiting) {
-            banner.className = isDone ? "waiting-banner done-banner" : "waiting-banner";
-            banner.textContent = isDone ? "✅ Agent is done" : "⏳ Agent is waiting for input";
+        // Only show banner for needs-input state
+        banner.style.display = s.waiting_for_input ? "" : "none";
+        if (s.waiting_for_input) {
+            banner.className = "waiting-banner";
+            banner.textContent = "⏳ Agent is waiting for input";
         }
     }
 }
