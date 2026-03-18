@@ -50,9 +50,7 @@ export function connectCoralWs() {
                 const id = s.session_id || s.name;
                 const wasWaiting = state.prevWaitingState[id];
                 const notifyEnabled = state.settings.notify_needs_input !== false;
-                // A "stop" event with "waiting for input" in the summary is a real input request
-                const isRealStop = s.waiting_reason === "stop" && !(s.waiting_summary || "").toLowerCase().includes("waiting for input");
-                if (notifyEnabled && s.waiting_for_input && !isRealStop && !wasWaiting) {
+                if (notifyEnabled && s.waiting_for_input && !wasWaiting) {
                     const label = escapeHtml(s.display_name || s.name);
                     const detail = s.waiting_summary ? escapeHtml(s.waiting_summary) : null;
                     const sessionName = s.name;
@@ -62,7 +60,7 @@ export function connectCoralWs() {
                         import('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId));
                     });
                 }
-                state.prevWaitingState[id] = s.waiting_for_input && !isRealStop;
+                state.prevWaitingState[id] = !!s.waiting_for_input;
             }
 
             state.liveSessions = data.sessions;
@@ -108,7 +106,7 @@ export function connectCoralWs() {
                     updateSessionStatus(s.status);
                     updateSessionSummary(s.summary);
                     updateSessionBranch(s.branch);
-                    updateWaitingIndicator(s.waiting_for_input, s.working, s.waiting_reason);
+                    updateWaitingIndicator(s);
                     updateChangedFileCount(s.changed_file_count || 0);
                 }
             }

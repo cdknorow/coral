@@ -17,11 +17,26 @@ def main():
     """Read hook JSON from stdin, create event for the activity timeline."""
     try:
         raw = sys.stdin.read()
-        d = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
+    except Exception as exc:
+        debug_log(f"AGENTIC_STATE STDIN_ERROR: {type(exc).__name__}: {exc}")
         return
 
-    debug_log(f"AGENTIC_STATE INPUT: {raw[:500]}")
+    debug_log(f"AGENTIC_STATE RAW({len(raw)}): {raw[:300]}")
+
+    try:
+        d = json.loads(raw)
+    except (json.JSONDecodeError, ValueError) as exc:
+        debug_log(f"AGENTIC_STATE JSON_ERROR: {exc}")
+        return
+
+    # If launched with --session-clear, inject a marker so parse_agentic_event
+    # can identify this as a SessionStart/clear event even when
+    # hook_event_name is missing from the payload.
+    if "--session-clear" in sys.argv:
+        d["_coral_session_clear"] = True
+
+    hook_type = d.get("hook_event_name") or d.get("type", "")
+    debug_log(f"AGENTIC_STATE INPUT: hook_type={hook_type} argv={sys.argv[1:]}")
 
     port = os.environ.get("CORAL_PORT", "8420")
     base = f"http://localhost:{port}"
@@ -32,11 +47,12 @@ def main():
 
     agent_name = agent.resolve_agent_name(d)
     if not agent_name:
+        debug_log(f"DROPPED (no agent_name): hook_type={hook_type}")
         return
 
     event = agent.parse_agentic_event(d)
     if event is None:
-        debug_log(f"DONE (no event): agent={agent_name}")
+        debug_log(f"DROPPED (parse returned None): hook_type={hook_type} agent={agent_name} keys={list(d.keys())}")
         return
 
     # Send event to the Coral dashboard
