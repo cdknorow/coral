@@ -88,6 +88,12 @@
     padding: 0 3px;
 }
 
+/* ── Mobile-only overflow menu items (hidden on desktop) ── */
+
+.mobile-overflow-only {
+    display: none !important;
+}
+
 /* ── Mobile Send Button (hidden on desktop) ──────────────── */
 
 .mobile-send-btn {
@@ -252,12 +258,16 @@
         display: none !important;
     }
 
-    /* Command pane: compact single-line input bar on mobile */
+    /* Command pane: compact sticky input bar at bottom on mobile */
     .command-pane {
         max-height: none !important;
         height: auto !important;
         min-height: 0 !important;
         flex-shrink: 0;
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        border-top: 1px solid var(--border);
     }
 
     /* Hide toolbar (macros, nav keys, mode buttons) on mobile */
@@ -275,9 +285,8 @@
     .command-pane textarea {
         min-height: 36px !important;
         max-height: 80px;
-        rows: 1;
         font-size: 16px !important; /* prevent iOS zoom on focus */
-        padding: 7px 10px;
+        padding: 7px 12px;
         border-radius: 18px;
     }
 
@@ -285,13 +294,20 @@
         display: none !important;
     }
 
-    /* Add a compact send button inside the input bar */
+    /* Show the inline send button on mobile */
     .command-pane .mobile-send-btn {
         display: flex;
     }
 
     .command-pane-resize-handle {
         display: none !important;
+    }
+
+    /* Capture pane scroll speed fix — enable momentum scrolling */
+    .output-scroll,
+    .xterm-container {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
     }
 
     /* Hide tab bar when virtual keyboard is open */
@@ -303,15 +319,39 @@
         height: calc(100vh - 49px); /* full height minus top bar only */
     }
 
-    /* Session header compact */
+    /* Session header: single compact row on mobile */
     .session-header {
-        padding: 8px 12px !important;
-        flex-wrap: wrap;
-        gap: 8px;
+        padding: 6px 10px !important;
+        flex-wrap: nowrap;
+        gap: 0;
     }
 
     .session-header h2 {
         font-size: 14px !important;
+    }
+
+    /* Hide Goal, branch, status, Attach/Restart — all in overflow menu */
+    .session-title #session-summary,
+    .session-title #session-branch,
+    .session-title #session-type-badge,
+    .session-meta {
+        display: none !important;
+    }
+
+    /* Keep back + name + overflow menu only */
+    .session-title {
+        margin-bottom: 0 !important;
+        gap: 6px !important;
+    }
+
+    /* Hide the separate Attach and Restart buttons, keep only the overflow menu */
+    .session-title-actions .btn-icon-label {
+        display: none !important;
+    }
+
+    /* Show Attach/Restart inside the overflow menu on mobile */
+    .mobile-overflow-only {
+        display: flex !important;
     }
 
     /* Message board adjustments */
