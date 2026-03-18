@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 3.1.2 — 2026-03-18
+
+### Fixed
+- **Agent Team launch failure** — Fixed crash when launching agent teams caused by unsupported parameters being passed to the session launcher
+
 ## 3.1.1 — 2026-03-18
 
 ### Added
