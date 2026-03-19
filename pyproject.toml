@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-coral"
-version = "3.2.3"
+version = "3.2.4"
 description = "A multi-agent orchestration system for managing AI coding agents (Claude and Gemini) in parallel git worktrees with a real-time web dashboard."
 readme = "README.md"
 license = "MIT"
