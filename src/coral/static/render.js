@@ -355,31 +355,31 @@ function _renderSessionItem(s, groupName, isCompact, collapsed) {
         ? ' <span class="badge done-badge">Done</span>'
         : '';
     const isTerminal = s.agent_type === "terminal";
-    const sid = s.session_id ? escapeHtml(s.session_id) : "";
+    const sid = s.session_id ? escapeAttr(s.session_id) : "";
     const goalText = s.summary ? escapeHtml(s.summary) : null;
-    const goal = goalText || (isTerminal ? "" : `<a href="#" class="generate-goal-link" onclick="event.preventDefault(); event.stopPropagation(); requestGoal('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')" title="Ask agent to set a goal">Generate Goal</a>`);
+    const goal = goalText || (isTerminal ? "" : `<a href="#" class="generate-goal-link" onclick="event.preventDefault(); event.stopPropagation(); requestGoal('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')" title="Ask agent to set a goal">Generate Goal</a>`);
     const displayLabel = s.display_name || (isCompact && s.board_job_title) || (isTerminal ? "Terminal" : "Agent");
     const kebabMenu = `<div class="sidebar-kebab-wrapper">
         <button class="sidebar-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="More actions">&#x22EE;</button>
         <div class="sidebar-kebab-menu" style="display:none">
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
                 Attach
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                 Restart
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
                 Rename
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
                 Session Info
             </button>
             <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Kill Session
             </button>
@@ -391,8 +391,8 @@ function _renderSessionItem(s, groupName, isCompact, collapsed) {
     return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}"
         draggable="true"
         data-session-id="${sid}"
-        data-group="${escapeHtml(groupName)}"
-        onclick="selectLiveSession('${escapeHtml(s.name)}', '${escapeHtml(s.agent_type)}', '${sid}')">
+        data-group="${escapeAttr(groupName)}"
+        onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">`;
         <span class="session-dot ${dotClass}"></span>
         <div class="session-info">
             <div class="session-name-row">
@@ -448,7 +448,7 @@ export function renderLiveSessions(sessions) {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
                     Manage Tags
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${escapeHtml(groupName)}')">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${escapeAttr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
                 </button>
@@ -460,7 +460,7 @@ export function renderLiveSessions(sessions) {
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = sorted[0]?.working_directory || '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeHtml(groupName)}" onclick="toggleGroupCollapse('${escapeHtml(groupName)}')">
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
             <span class="group-chevron">${chevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div>${groupBranchLine}</div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
@@ -483,7 +483,7 @@ export function renderLiveSessions(sessions) {
                 const accentColor = _boardAccentColor(boardName);
                 const boardCollapsed = _isGroupCollapsed(boardName);
                 const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
-                const boardLink = `<button class="group-board-link" onclick="event.stopPropagation(); selectBoardProject('${escapeHtml(boardName)}')" title="View board: ${escapeHtml(boardName)}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v8H5l-3 3V3z"/></svg></button>`;
+                const boardLink = `<button class="group-board-link" onclick="event.stopPropagation(); selectBoardProject('${escapeAttr(boardName)}')" title="View board: ${escapeAttr(boardName)}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v8H5l-3 3V3z"/></svg></button>`;
                 const boardWorkDir = boardSessions[0]?.working_directory || '';
                 const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
                     <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
@@ -509,7 +509,7 @@ export function renderLiveSessions(sessions) {
                 </div>`;
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> Agent Team</div>`;
                 html += `<li class="session-board-card" style="border-left-color: ${accentColor}">
-                    <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeHtml(boardName)}')">
+                    <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
                         <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)} <span class="session-group-count">${boardSessions.length}</span></div>${teamSubline}</div><span class="session-name-spacer"></span>${boardLink}${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
@@ -636,7 +636,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
         const timeTag = timeStr ? `<span class="session-time">${escapeHtml(timeStr)}</span>` : "";
         const durStr = s.duration_sec != null ? formatDuration(s.duration_sec) : '';
         const durTag = durStr ? `<span class="session-dur">${escapeHtml(durStr)}</span>` : '';
-        return `<li class="${isActive ? 'active' : ''}" onclick="selectHistorySession('${escapeHtml(s.session_id)}')">
+        return `<li class="${isActive ? 'active' : ''}" onclick="selectHistorySession('${escapeAttr(s.session_id)}')">
             <div class="session-row-top">${timeTag}${durTag}${typeTag}${tagDots}</div>
             <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
             ${branchTag ? `<div class="session-row-bottom">${branchTag}</div>` : ""}

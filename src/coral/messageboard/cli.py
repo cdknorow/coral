@@ -32,6 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote as urlquote
 from urllib.request import Request, urlopen
 
 
@@ -205,7 +206,7 @@ def cmd_join(args: argparse.Namespace) -> None:
     }
     if args.webhook:
         body["webhook_url"] = args.webhook
-    result = _api("POST", f"/{args.project}/subscribe", body)
+    result = _api("POST", f"/{urlquote(args.project, safe='')}/subscribe", body)
     _save_state(args.project, args.job_title)
 
     # If joining a remote board, register with local Coral for tmux notifications
@@ -227,7 +228,7 @@ def cmd_leave(args: argparse.Namespace) -> None:
     if _is_remote_join():
         _unregister_remote_from_local(sid)
 
-    _api("DELETE", f"/{project}/subscribe", {"session_id": sid})
+    _api("DELETE", f"/{urlquote(project, safe='')}/subscribe", {"session_id": sid})
     _clear_state()
     print(f"Left '{project}'")
 
@@ -236,7 +237,7 @@ def cmd_post(args: argparse.Namespace) -> None:
     """Post a message to the current project board."""
     project = _active_project()
     message = " ".join(args.message)
-    result = _api("POST", f"/{project}/messages", {
+    result = _api("POST", f"/{urlquote(project, safe='')}/messages", {
         "session_id": _session_id(),
         "content": message,
     })
@@ -250,7 +251,7 @@ def cmd_read(args: argparse.Namespace) -> None:
 
     if args.last:
         # Fetch enough messages and show only the last N (no cursor advancement)
-        result = _api("GET", f"/{project}/messages/all?limit=200")
+        result = _api("GET", f"/{urlquote(project, safe='')}/messages/all?limit=200")
         messages = result.get("messages", result) if isinstance(result, dict) else result
         if not messages:
             print("No messages on this board.")
@@ -261,7 +262,7 @@ def cmd_read(args: argparse.Namespace) -> None:
             print(f"[{ts}] {title}: {msg['content']}")
         return
 
-    messages = _api("GET", f"/{project}/messages?session_id={sid}&limit={args.limit}")
+    messages = _api("GET", f"/{urlquote(project, safe='')}/messages?session_id={sid}&limit={args.limit}")
     if not messages:
         print("No new messages.")
         return
@@ -275,7 +276,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     """Check for unread messages without advancing the read cursor."""
     project = _active_project()
     sid = _session_id()
-    result = _api("GET", f"/{project}/messages/check?session_id={sid}")
+    result = _api("GET", f"/{urlquote(project, safe='')}/messages/check?session_id={sid}")
     count = result.get("unread", 0)
     if getattr(args, "quiet", False):
         print(count)
@@ -302,7 +303,7 @@ def cmd_projects(args: argparse.Namespace) -> None:
 def cmd_subscribers(args: argparse.Namespace) -> None:
     """List subscribers in the current project."""
     project = _active_project()
-    subs = _api("GET", f"/{project}/subscribers")
+    subs = _api("GET", f"/{urlquote(project, safe='')}/subscribers")
     if not subs:
         print(f"No subscribers in '{project}'.")
         return
@@ -316,7 +317,7 @@ def cmd_subscribers(args: argparse.Namespace) -> None:
 def cmd_delete(args: argparse.Namespace) -> None:
     """Delete the current project and all its messages."""
     project = _active_project()
-    _api("DELETE", f"/{project}")
+    _api("DELETE", f"/{urlquote(project, safe='')}")
     _clear_state()
     print(f"Deleted project '{project}'")
 

@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { escapeHtml } from './utils.js';
+import { escapeHtml, escapeAttr } from './utils.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -54,7 +54,7 @@ function renderBoardSidebar(projects) {
     }
     list.innerHTML = projects.map(p => {
         const active = currentProject === p.project ? 'active' : '';
-        return `<li class="session-list-item ${active}" onclick="selectBoardProject('${escapeHtml(p.project)}')">
+        return `<li class="session-list-item ${active}" onclick="selectBoardProject('${escapeAttr(p.project)}')">
             <span class="session-name">${escapeHtml(p.project)}</span>
             <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${p.message_count} msgs</span>
         </li>`;
@@ -135,7 +135,7 @@ async function loadBoardProjectList() {
         }
         empty.style.display = 'none';
         ul.innerHTML = projects.map(p => `
-            <li class="session-list-item" onclick="selectBoardProject('${escapeHtml(p.project)}')"
+            <li class="session-list-item" onclick="selectBoardProject('${escapeAttr(p.project)}')"
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
                     <strong>${escapeHtml(p.project)}</strong>

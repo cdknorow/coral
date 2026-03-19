@@ -7,7 +7,17 @@ export function escapeHtml(str) {
 }
 
 export function escapeAttr(str) {
-    return str.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    // Escape for safe use in HTML attributes and JS string literals within onclick handlers.
+    // Handles: & < > " ' \ newlines
+    return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/\\/g, "\\\\")
+        .replace(/\n/g, "\\n")
+        .replace(/\r/g, "\\r");
 }
 
 export function showToast(message, isError = false) {
