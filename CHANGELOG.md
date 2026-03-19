@@ -3,6 +3,29 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 3.2.0 — 2026-03-19
+
+### Added
+- **System prompt injection** — Behavior prompt, board instructions, and agent role injected via systemPrompt settings file instead of fragile tmux send; agents have persistent context from startup
+- **Prompt delivery verification** — Retries up to 3 times with pane capture verification to ensure the initial prompt reaches the agent
+- **Side panel toggle button** — Replaced confusing drag handle with a clear toggle icon in the action bar; panel fully hidden when closed, open by default
+- **Welcome screen tip** — Quick-start hint: "Launch an Agent Team to see multi-agent collaboration in action"
+- **Goal update toasts** — Brief toast notification when agents update their PULSE:SUMMARY, making real-time activity visible
+- **Built-in Demo Team template** — Pre-loaded team template for quick demo launches
+- **Session ended overlay** — Clean "Session ended" message with Restart button when agent finishes, replacing infinite reconnect loop
+- **Default --dangerously-skip-permissions for teams** — Agent teams default to auto-accept mode for autonomous collaboration
+- **SVG vector logo** — Clean scalable logo for the dashboard
+
+### Fixed
+- **Agents joining wrong board** — Write board state file before agent launch to prevent race condition with coral-board CLI
+- **Team agents split across groups** — Fixed sidebar grouping when launching agent teams
+- **Disconnected banner loop** — Eliminated persistent "Disconnected — reconnecting" banner when sessions end; server sends terminal_closed message
+- **Pause badge confusion** — Shows "scrolled up" vs "text selected" as appropriate
+- **Done badge removed** — Green dot is sufficient; removed redundant "DONE" badge from sidebar
+- **xterm resize on panel toggle** — Terminal reflows correctly when opening/closing side panel
+- **Sidebar rendering** — Fixed stray backtick from escapeAttr migration
+- **Mobile scrollbar** — Reduced from 8px to 3px on mobile viewports
+
 ## 3.1.4 — 2026-03-19
 
 ### Fixed
