@@ -101,8 +101,19 @@ async def setup_board_and_prompt(
         except Exception:
             log.warning("Failed to write board state for session %s", session_id[:8])
 
-    # Behavior prompt + board instructions are now injected via systemPrompt
-    # in the agent's settings file (build_launch_command), so no tmux send needed.
+    # Behavior prompt + board instructions are injected via systemPrompt in the
+    # settings file. But Claude needs an initial user message to start working.
+    if prompt:
+        await asyncio.sleep(3)
+        try:
+            from coral.tools.tmux_manager import send_to_tmux
+            # Send a short kick message — the full prompt is already in systemPrompt
+            err = await send_to_tmux(agent_type, prompt, session_id=session_id)
+            if err:
+                await run_cmd("tmux", "send-keys", "-t", session_name, "-l", prompt)
+            await run_cmd("tmux", "send-keys", "-t", session_name, "Enter")
+        except Exception:
+            log.warning("Failed to send initial prompt to session %s", session_id[:8])
 
 
 def strip_ansi(text: str) -> str:
