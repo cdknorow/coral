@@ -61,6 +61,11 @@ let _connectedSessionId = null;
 let _wsGeneration = 0;
 let _paneClosed = false;  // true when server reports pane is gone
 
+function _setSessionEndedOverlay(visible) {
+    const overlay = document.getElementById("session-ended-overlay");
+    if (overlay) overlay.style.display = visible ? "" : "none";
+}
+
 function _setDisconnectedBadge(visible) {
     const badge = document.getElementById("xterm-disconnected-badge");
     if (badge) {
@@ -278,6 +283,7 @@ export function connectTerminalWs(name, agentType, sessionId) {
     const myGeneration = ++_wsGeneration;
     _connectedSessionId = sessionId;
     _paneClosed = false;
+    _setSessionEndedOverlay(false);
 
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const params = new URLSearchParams();
@@ -306,16 +312,15 @@ export function connectTerminalWs(name, agentType, sessionId) {
         const data = JSON.parse(event.data);
         if (data.type === "terminal_closed") {
             // Server reports the tmux pane is gone (agent killed/done).
-            // Show a session-ended state instead of the reconnect banner.
+            // Show a session-ended overlay with restart button.
             _paneClosed = true;
             _setDisconnectedBadge(false);
-            if (terminal) {
-                terminal.write('\r\n\x1b[90m--- Session ended ---\x1b[0m\r\n');
-            }
+            _setSessionEndedOverlay(true);
             return;
         }
         if (data.type === "terminal_update" && terminal) {
             _paneClosed = false;
+            _setSessionEndedOverlay(false);
             // Buffer the update if user has text selected or scrolled up
             if (_xtermSelecting || _userScrolledUp) {
                 _pendingContent = data.content;

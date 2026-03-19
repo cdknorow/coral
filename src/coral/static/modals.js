@@ -592,27 +592,44 @@ async function _initTeamForm() {
     document.getElementById("team-board-name").focus();
 }
 
+const BUILTIN_TEAM_TEMPLATES = [
+    {
+        name: "Demo Team",
+        builtin: true,
+        agents: [
+            { name: "Orchestrator", prompt: "You are the orchestrator. Break down the task, assign work to the team via the message board, and track progress. Do not write code yourself — delegate to the other agents. Discuss your plan with the operator before posting assignments." },
+            { name: "Lead Developer", prompt: "You are the lead developer. Implement features, write code, and coordinate with the team via the message board. Wait for instructions from the Orchestrator before starting." },
+            { name: "QA Engineer", prompt: "You are a QA engineer. Review code, write tests, and verify the work of other agents. Wait for instructions from the Orchestrator before starting." },
+        ],
+        flags: "",
+    },
+];
+
 function _renderTeamTemplateSelector() {
     const container = document.getElementById("team-template-selector");
     if (!container) return;
-    const templates = _getSavedTeamTemplates();
-    if (templates.length === 0) {
+    const saved = _getSavedTeamTemplates();
+    const all = [...BUILTIN_TEAM_TEMPLATES, ...saved];
+    if (all.length === 0) {
         container.innerHTML = '';
         return;
     }
 
     let html = '<div class="team-template-row">';
     html += '<span class="team-template-label">Templates:</span>';
-    for (const t of templates) {
-        html += `<button class="agent-preset-btn agent-preset-saved" onclick="window._loadTeamTemplate('${escapeAttr(t.name)}')">${escapeHtml(t.name)} <span class="team-template-count">${t.agents.length}</span><span class="agent-preset-delete" onclick="event.stopPropagation(); window._deleteTeamTemplate('${escapeAttr(t.name)}')">×</span></button>`;
+    for (const t of all) {
+        const isBuiltin = t.builtin;
+        const cls = isBuiltin ? "agent-preset-btn" : "agent-preset-btn agent-preset-saved";
+        const deleteBtn = isBuiltin ? "" : `<span class="agent-preset-delete" onclick="event.stopPropagation(); window._deleteTeamTemplate('${escapeAttr(t.name)}')">×</span>`;
+        html += `<button class="${cls}" onclick="window._loadTeamTemplate('${escapeAttr(t.name)}')">${escapeHtml(t.name)} <span class="team-template-count">${t.agents.length}</span>${deleteBtn}</button>`;
     }
     html += '</div>';
     container.innerHTML = html;
 }
 
 function _loadTeamTemplate(name) {
-    const templates = _getSavedTeamTemplates();
-    const tmpl = templates.find(t => t.name === name);
+    const all = [...BUILTIN_TEAM_TEMPLATES, ..._getSavedTeamTemplates()];
+    const tmpl = all.find(t => t.name === name);
     if (!tmpl) return;
 
     // Clear current agents and load from template

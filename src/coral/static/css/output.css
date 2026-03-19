@@ -3,6 +3,33 @@
             xterm container
    ============================================================ */
 
+/* ── Loading Skeleton ──────────────────────────────────────── */
+
+.loading-skeleton {
+    position: relative;
+}
+
+.loading-skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    background: linear-gradient(
+        110deg,
+        var(--bg-primary) 30%,
+        var(--bg-secondary) 50%,
+        var(--bg-primary) 70%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    border-radius: 4px;
+}
+
+@keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
 /* ── Live Body ─────────────────────────────────────────────── */
 
 .live-body {
@@ -150,6 +177,29 @@
     opacity: 0.9;
     z-index: 10;
     display: none;
+}
+
+.session-ended-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10;
+    border-radius: 6px;
+}
+
+.session-ended-content {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 14px;
+}
+
+.session-ended-content p {
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: var(--text-secondary);
 }
 
 /* ── Capture Blocks ────────────────────────────────────────── */

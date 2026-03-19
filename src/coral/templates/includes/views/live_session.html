@@ -17,19 +17,17 @@
                         <span id="session-type-badge" class="badge" style="display:none">claude</span>
                         <h2 id="session-name" style="display:none"></h2>
                         <div class="session-title-actions">
-                            <button class="btn btn-icon-label btn-primary" onclick="attachTerminal()" title="Open this session in a new terminal window via tmux attach" aria-label="Attach terminal"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg><span>Attach</span></button>
-                            <button class="btn btn-icon-label btn-warning" onclick="restartSession()" title="Exit and relaunch the agent with the same system prompt and working directory" aria-label="Restart session"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg><span>Restart</span></button>
                             <button class="btn btn-icon panel-toggle-btn" id="panel-toggle-btn" onclick="toggleAgenticPanel()" title="Toggle side panel (Activity, Tasks, Notes)" aria-label="Toggle side panel"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="12" rx="1.5"/><line x1="10" y1="2" x2="10" y2="14"/></svg></button>
                             <div class="overflow-menu-wrapper">
                                 <button class="btn btn-icon overflow-menu-trigger" title="More actions" aria-label="More actions">
                                     <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
                                 </button>
                                 <div class="overflow-menu" style="display:none">
-                                    <button class="overflow-menu-item mobile-overflow-only" onclick="attachTerminal()">
+                                    <button class="overflow-menu-item" onclick="attachTerminal()">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
                                         Attach Terminal
                                     </button>
-                                    <button class="overflow-menu-item mobile-overflow-only" onclick="restartSession()">
+                                    <button class="overflow-menu-item" onclick="restartSession()">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                                         Restart
                                     </button>
@@ -65,6 +63,12 @@
                             <!-- xterm.js terminal view -->
                             <div id="xterm-container" class="xterm-container" style="display:none">
                                 <span class="xterm-focus-hint">Click to type &middot; Ctrl+Shift+Esc to unfocus</span>
+                            </div>
+                            <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
+                                <div class="session-ended-content">
+                                    <p>Session ended</p>
+                                    <button class="btn btn-primary" onclick="restartSession()">Restart Agent</button>
+                                </div>
                             </div>
                             <div id="selection-pause-badge" class="selection-pause-badge" style="display:none">Updates paused — text selected</div>
                             <div id="xterm-disconnected-badge" class="xterm-disconnected-badge">Disconnected — reconnecting...</div>
