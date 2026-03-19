@@ -20,12 +20,12 @@ export function escapeAttr(str) {
         .replace(/\r/g, "\\r");
 }
 
-export function showToast(message, isError = false) {
+export function showToast(message, isError = false, duration = 4000) {
     const toast = document.createElement("div");
     toast.className = `toast ${isError ? "error" : ""}`;
     toast.textContent = message;
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+    setTimeout(() => toast.remove(), duration);
 }
 
 export function showNotificationToast(agentLabel, detail, onClick) {

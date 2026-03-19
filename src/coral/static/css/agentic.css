@@ -166,21 +166,7 @@
 }
 
 .agentic-collapse-btn {
-    position: absolute;
-    top: 6px;
-    left: -12px;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border);
-    color: var(--text-muted);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    transition: all 0.15s;
+    display: none;
 }
 
 .agentic-collapse-btn:hover {

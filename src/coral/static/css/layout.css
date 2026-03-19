@@ -537,6 +537,13 @@
     box-shadow: var(--shadow-md);
 }
 
+.welcome-tip {
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--text-muted);
+    opacity: 0.7;
+}
+
 /* ── Resize Handle Grip Pattern ────────────────────────────── */
 
 .task-bar-resize-handle::after,

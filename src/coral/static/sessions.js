@@ -53,6 +53,10 @@ export async function selectLiveSession(name, agentType, sessionId) {
     document.getElementById("messageboard-view").style.display = "none";
     document.getElementById("live-session-view").style.display = "flex";
 
+    // Show loading skeleton
+    const captureWrapper = document.getElementById("capture-wrapper");
+    captureWrapper.classList.add("loading-skeleton");
+
     // Update header
     document.getElementById("session-name").textContent = displayName || name;
     const badge = document.getElementById("session-type-badge");
@@ -65,6 +69,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
 
     // Load detail for status/summary
     const detail = await loadLiveSessionDetail(name, agentType, sessionId);
+    captureWrapper.classList.remove("loading-skeleton");
     if (detail) {
         updateSessionStatus(detail.status);
         updateSessionSummary(detail.summary);
