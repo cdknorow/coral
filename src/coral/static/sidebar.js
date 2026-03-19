@@ -298,9 +298,9 @@ export function initAgenticPanelCollapse() {
     const panel = document.getElementById('agentic-state');
     if (!panel) return;
 
-    // Default to collapsed unless user has explicitly opened it
+    // Default to open unless user has explicitly closed it
     const stored = localStorage.getItem('coral-agentic-collapsed');
-    const collapsed = stored === null ? true : stored === 'true';
+    const collapsed = stored === null ? false : stored === 'true';
     if (collapsed) panel.classList.add('collapsed');
 
     // Sync toggle button state
