@@ -115,22 +115,19 @@ Features:
 <img width="1502" height="812" alt="image" src="https://github.com/user-attachments/assets/9a8d1b7b-1bef-414b-9002-c27dd928342b" />
 
 
-The web dashboard provides quick-action buttons for each live session:
+The web dashboard provides a toolbar and context menu for each live session:
 
 | Action | Description |
 |---|---|
 | **Esc / Arrow / Enter** | Send navigation keys to the agent |
-| **Plan Mode** | Toggle Claude Code plan mode |
-| **Accept Edits** | Toggle Claude Code auto-accept mode |
-| **Bash Mode** | Send `!` command to enter bash mode |
-| **Base Mode** | Toggle base mode |
+| **Mode** | Cycle through Claude Code modes (Plan → Accept Edits → Normal) |
 | **/compact / /clear** | Send compress or clear commands (adapts per agent type) |
-| **Reset** | Compress then clear the session |
-| **Attach** | Open a local terminal window attached to the agent's tmux session |
+| **Custom macros** | Add your own one-click command buttons |
+| **Attach** | Open a local terminal attached to the agent's tmux session |
 | **Restart** | Restart the agent in the same tmux pane |
-| **Kill** | Terminate the tmux session and remove it from the dashboard |
+| **Kill** | Terminate the tmux session |
 
-You can also type arbitrary commands in the input bar and send them to the selected agent.
+Type arbitrary commands in the input bar and send them to the selected agent.
 
 
 
@@ -150,9 +147,11 @@ Run history is tracked per job with links to view each session's full history.
 
 ### Webhook Notifications
 
-Configure webhooks from the dashboard settings to receive HTTP notifications when agents need input or when other events occur. Useful for integrating with Slack, Discord, or custom monitoring.
+Configure webhooks from the dashboard to receive HTTP notifications when agents need input or when other events occur. Supports Slack, Discord, and generic HTTP endpoints with retry logic and circuit breaker.
 
-You can also use the launcher, which discovers worktree subdirectories, creates an agent for each one, and launches the dashboard:
+### Bulk agent launcher
+
+Use the launcher to discover worktree subdirectories, create an agent for each one, and start the dashboard:
 
 ```bash
 # Launch Claude agents and web dashboard for worktrees in the current directory
@@ -160,7 +159,6 @@ launch-coral
 
 # Launch Gemini agents from a specific path
 launch-coral <path-to-root> gemini
-
 ```
 
 ### Remote server development (SSH port forwarding)
@@ -187,8 +185,8 @@ Host my-dev-server
 ### Manual tmux management
 
 ```bash
-# Attach to a specific agent session
-tmux attach -t claude-agent-1
+# Attach to a specific agent session (use the tmux name from the Info modal)
+tmux attach -t claude-<session-uuid>
 
 # Switch between windows
 Ctrl+b n  # next
