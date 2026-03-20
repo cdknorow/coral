@@ -34,7 +34,7 @@
 .command-pane {
     display: flex;
     flex-direction: column;
-    height: 160px;
+    height: 300px;
     min-height: 120px;
     max-height: 60vh;
     min-width: 0;
