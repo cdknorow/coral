@@ -19,7 +19,7 @@ import { loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown
 import { loadSessionCommits } from './commits.js';
 import { showTemplateBrowser } from './template_browser.js';
 import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle } from './tasks.js';
-import { loadChangedFiles, openFileDiff, refreshChangedFiles } from './changed_files.js';
+import { loadChangedFiles, openFileDiff, openFilePreview, refreshChangedFiles } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { switchAgenticTab, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
@@ -176,6 +176,7 @@ window.createTag = createTag;
 window.loadHistoryPage = loadHistoryPage;
 window.loadChangedFiles = loadChangedFiles;
 window.openFileDiff = openFileDiff;
+window.openFilePreview = openFilePreview;
 window.refreshChangedFiles = refreshChangedFiles;
 window.loadAgentTasks = loadAgentTasks;
 window.addAgentTask = addAgentTask;

@@ -499,6 +499,55 @@ async def get_file_diff(name: str, filepath: str = Query(...), session_id: str |
     return {"filepath": filepath, "diff": diff_text, "working_directory": workdir}
 
 
+@router.get("/api/sessions/live/{name}/file-content")
+async def get_file_content(name: str, filepath: str = Query(...), session_id: str | None = None):
+    """Return the raw content of a file in the agent's working tree."""
+    import os
+
+    workdir = await _resolve_workdir(name, None, session_id)
+    if not workdir:
+        return {"error": "Could not determine working directory"}
+
+    full_path = os.path.realpath(os.path.join(workdir, filepath))
+    if not full_path.startswith(os.path.realpath(workdir) + os.sep):
+        return {"error": "Path traversal not allowed"}
+
+    if not os.path.isfile(full_path):
+        return {"error": "File not found"}
+
+    try:
+        with open(full_path, "r", errors="replace") as f:
+            content = f.read()
+        return {"filepath": filepath, "content": content, "working_directory": workdir}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@router.put("/api/sessions/live/{name}/file-content")
+async def save_file_content(name: str, body: dict, filepath: str = Query(...), session_id: str | None = None):
+    """Write content to a file in the agent's working tree."""
+    import os
+
+    workdir = await _resolve_workdir(name, None, session_id)
+    if not workdir:
+        return {"error": "Could not determine working directory"}
+
+    content = body.get("content")
+    if content is None:
+        return {"error": "content is required"}
+
+    full_path = os.path.realpath(os.path.join(workdir, filepath))
+    if not full_path.startswith(os.path.realpath(workdir) + os.sep):
+        return {"error": "Path traversal not allowed"}
+
+    try:
+        with open(full_path, "w") as f:
+            f.write(content)
+        return {"ok": True, "filepath": filepath}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.get("/api/sessions/live/{name}/search-files")
 async def search_files(name: str, q: str = Query(""), session_id: str | None = None):
     """Search for files in the agent's working directory by name fragment."""
