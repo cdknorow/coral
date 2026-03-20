@@ -127,13 +127,16 @@ def _run_foreground(host: str, port: int, home_dir: str | None = None) -> None:
         import rumps
     except ImportError:
         print(
-            "rumps is not installed. Install it with: pip install agent-coral[tray]\n"
-            "Falling back to standard dashboard mode."
+            "Error: rumps is not installed. The menu bar tray app requires rumps.\n"
+            "\n"
+            "Install it with:\n"
+            "  pip install rumps\n"
+            "\n"
+            "Or use the standard dashboard instead:\n"
+            "  coral",
+            file=sys.stderr,
         )
-        from coral.web_server import main as web_main
-        sys.argv = [sys.argv[0], "--host", host, "--port", str(port), "--no-browser"]
-        web_main()
-        return
+        sys.exit(1)
 
     _write_pid()
     atexit.register(_remove_pid)
