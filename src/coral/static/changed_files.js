@@ -63,26 +63,33 @@ export async function openFilePreview(filepath) {
     const qs = new URLSearchParams({ filepath });
     if (sessionId) qs.set('session_id', sessionId);
 
+    // Open the window immediately (in the click handler) to avoid popup blockers
+    const width = Math.min(900, Math.round(window.screen.width * 0.6));
+    const height = Math.min(800, Math.round(window.screen.height * 0.75));
+    const left = Math.round((window.screen.width - width) / 2);
+    const top = Math.round((window.screen.height - height) / 2);
+
+    const win = window.open('', 'coral-preview',
+        `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no`);
+    if (!win) { showToast('Popup blocked — allow popups for this site', true); return; }
+
+    // Show loading state
+    win.document.write('<html><body style="background:#0d1117;color:#8b949e;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">Loading...</body></html>');
+
     try {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/file-content?${qs}`);
         const data = await resp.json();
         if (data.error) {
+            win.close();
             showToast(data.error, true);
             return;
         }
 
         const content = data.content || '';
-        const width = Math.min(900, Math.round(window.screen.width * 0.6));
-        const height = Math.min(800, Math.round(window.screen.height * 0.75));
-        const left = Math.round((window.screen.width - width) / 2);
-        const top = Math.round((window.screen.height - height) / 2);
-
-        const win = window.open('', 'coral-preview',
-            `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,status=no`);
-        if (!win) { showToast('Popup blocked', true); return; }
 
         // Render markdown-like content with basic HTML conversion
         const rendered = _renderMarkdownBasic(content);
+        win.document.open();
 
         win.document.write(`<!DOCTYPE html>
 <html>
