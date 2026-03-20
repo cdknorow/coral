@@ -111,10 +111,11 @@ window.showMacroAddMenu = function(btn) {
     const existing = document.getElementById('macro-add-menu');
     if (existing) { existing.remove(); return; }
 
+    const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.id = 'macro-add-menu';
     menu.className = 'sidebar-kebab-menu';
-    menu.style.cssText = 'display:block;position:absolute;bottom:100%;right:0;margin-bottom:4px;min-width:160px;z-index:100';
+    menu.style.cssText = `display:block;position:fixed;bottom:${window.innerHeight - rect.top + 4}px;left:${rect.left}px;min-width:180px;z-index:10000`;
     menu.innerHTML = `
         <button class="overflow-menu-item" onclick="this.closest('#macro-add-menu').remove(); showMacroModal()">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
@@ -125,8 +126,7 @@ window.showMacroAddMenu = function(btn) {
             Browse Commands <span style="font-size:9px;color:var(--text-muted)">(aitmpl.com)</span>
         </button>
     `;
-    btn.parentElement.style.position = 'relative';
-    btn.parentElement.appendChild(menu);
+    document.body.appendChild(menu);
 
     // Close on outside click
     setTimeout(() => {
