@@ -30,8 +30,8 @@ INDEXER_INTERVAL_S = 120           # Session indexer re-scan interval
 GIT_POLLER_INTERVAL_S = 120        # Git snapshot polling interval
 WEBHOOK_DISPATCHER_INTERVAL_S = 15 # Webhook delivery retry interval
 IDLE_DETECTOR_INTERVAL_S = 60      # Idle agent detection interval
-BOARD_NOTIFIER_INTERVAL_S = 30     # Message board notification interval
-REMOTE_POLLER_INTERVAL_S = 30      # Remote board polling interval
+BOARD_NOTIFIER_INTERVAL_S = 5      # Message board notification interval
+REMOTE_POLLER_INTERVAL_S = 5       # Remote board polling interval
 
 # ── WebSocket ────────────────────────────────────────────────────────────
 WS_POLL_INTERVAL_S = 5            # Dashboard WebSocket refresh interval
@@ -39,5 +39,5 @@ WS_POLL_INTERVAL_S = 5            # Dashboard WebSocket refresh interval
 # ── Message board (frontend) ────────────────────────────────────────────
 BOARD_PAGE_SIZE = 50               # Messages per page in board UI
 BOARD_MAX_LIMIT = 500              # Server-side cap on message list queries
-BOARD_POLL_INTERVAL_S = 10         # Frontend polling interval for new messages
+BOARD_POLL_INTERVAL_S = 5          # Frontend polling interval for new messages
 BOARD_SUBSCRIBER_POLL_MULTIPLIER = 3  # Refresh subscribers every N poll cycles
