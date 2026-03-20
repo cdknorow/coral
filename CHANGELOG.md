@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 4.0.2 — 2026-03-20
+
+### Fixed
+- **Tray app fails gracefully** — Exits with clear error when rumps or tmux is not installed instead of silently continuing
+- **README cleanup** — Removed homebrew, DMG, and tray install sections until fixed
+
 ## 4.0.1 — 2026-03-20
 
 ### Changed
