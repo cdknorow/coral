@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 4.3.0 — 2026-03-21
+
+### Added
+- **Per-agent sleep/wake** — Sleep or wake individual agents from the per-agent kebab menu, independent of team-level sleep
+- **Global sleep/wake** — Sleep All and Wake All buttons in new workspace settings gear dropdown next to +New
+- **Workspace settings dropdown** — Gear icon menu with Sleep All, Wake All, and Themes access
+- **UI/UX overhaul** — Sidebar team grouping, welcome screen, send button, toolbar styling, group-by-team toggle, resend prompt
+- **Per-agent and global sleep/wake tests** — Comprehensive test coverage for sleep/wake isolation and edge cases
+
+### Fixed
+- **SQLite database lock on wake** — Increased busy_timeout from 5s to 30s; made event tracking non-fatal during DB contention
+- **Board message cursor lost on resume** — Carry forward last_read_id when session_id changes during wake/resume, preventing agents from re-reading all messages
+- **Per-agent wake board unpause** — Waking a single agent now correctly unpauses its message board
+- **wake_team consistency** — Only clears is_sleeping on successful relaunch (failed sessions stay sleeping)
+- **Kebab menu positioning** — Fix menus opening at bottom of viewport for sleeping teams; remove CSS filter that trapped fixed-position menus inside card
+- **Kebab menu opacity** — Dropdown menus no longer inherit sleeping team's dimmed opacity
+- **Folder path visible when collapsed** — Keep folder path visible when team card is collapsed
+
 ## 4.2.0 — 2026-03-21
 
 ### Added

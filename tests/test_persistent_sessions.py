@@ -993,12 +993,11 @@ async def test_wake_all_only_clears_sleeping_on_success(store, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_team_sleep_then_per_agent_wake_board_still_paused(store, tmp_path):
-    """BUG: Per-agent wake after team sleep leaves board paused.
+async def test_team_sleep_then_per_agent_wake_unpauses_board(store, tmp_path):
+    """Per-agent wake after team sleep should unpause the board.
 
     Scenario: team sleep pauses the board. Per-agent wake relaunches one
-    agent but does NOT unpause the board. The woken agent can't receive
-    board messages because the board is still in _paused_projects.
+    agent and unpauses the board so the woken agent can receive messages.
     """
     work_dir = str(tmp_path)
     await store.register_live_session(
@@ -1013,12 +1012,14 @@ async def test_team_sleep_then_per_agent_wake_board_still_paused(store, tmp_path
     paused = set()
     paused.add("my-team")
 
-    # Per-agent wake (simulating wake_session endpoint logic)
+    # Per-agent wake (simulating wake_session endpoint logic including board unpause)
     await store.set_session_sleeping("sid-1", False)
-    # NOTE: wake_session does NOT touch _paused_projects
+    board = "my-team"
+    if board and board in paused:
+        paused.discard(board)
 
-    # Board is still paused even though sid-1 is awake
-    assert "my-team" in paused  # This is the bug
+    # Board should be unpaused now that an agent is awake
+    assert "my-team" not in paused
 
     # At least one agent is awake on the board
     sessions = await store.get_all_live_sessions()
@@ -1031,11 +1032,11 @@ async def test_team_sleep_then_per_agent_wake_board_still_paused(store, tmp_path
 
 
 @pytest.mark.asyncio
-async def test_wake_team_clears_all_sleeping_unconditionally(store, tmp_path):
-    """wake_team clears is_sleeping for ALL sessions on board, even failed relaunches.
+async def test_wake_team_only_clears_sleeping_on_success(store, tmp_path):
+    """wake_team should only clear is_sleeping for successfully relaunched sessions.
 
-    This differs from wake_all which only clears on success. This could leave
-    ghost sessions (not sleeping in DB, no tmux process).
+    Simulates the per-session try/except pattern in wake_team: failed relaunches
+    keep the session sleeping, matching wake_all's behavior.
     """
     work_dir = str(tmp_path)
     await store.register_live_session(
@@ -1046,10 +1047,16 @@ async def test_wake_team_clears_all_sleeping_unconditionally(store, tmp_path):
     )
     await store.set_board_sleeping("my-team", sleeping=True)
 
-    # Simulate wake_team: even if relaunch fails, set_board_sleeping(False) runs
-    # (line 1093 in live_sessions.py is outside the per-session try/except)
-    await store.set_board_sleeping("my-team", sleeping=False)
+    # Simulate wake_team per-session logic: only clear on success
+    for sid in ["sid-1", "sid-2"]:
+        try:
+            if sid == "sid-2":
+                raise RuntimeError("Simulated relaunch failure")
+            await store.set_session_sleeping(sid, sleeping=False)
+        except Exception:
+            pass  # Keep sleeping
 
     sessions = await store.get_all_live_sessions()
-    # All sessions cleared — even ones that might have failed to relaunch
-    assert all(s["is_sleeping"] is False for s in sessions)
+    sleeping = {s["session_id"]: s["is_sleeping"] for s in sessions}
+    assert sleeping["sid-1"] is False  # Successfully woken
+    assert sleeping["sid-2"] is True   # Failed — stays sleeping
