@@ -707,47 +707,38 @@ async def test_resume_sleeping_session_skips_prompt(store, tmp_path):
         from coral.tools.session_manager import resume_persistent_sessions
         await resume_persistent_sessions(store)
 
-    # prompt should be None (sleeping session skips prompt delivery)
-    mock_launch.assert_called_once()
-    call_kwargs = mock_launch.call_args
-    assert call_kwargs.kwargs.get("prompt") is None or call_kwargs[1].get("prompt") is None
+    # Sleeping sessions should NOT be launched at all — they're skipped
+    mock_launch.assert_not_called()
+
+    # The original DB record should be kept as-is
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["session_id"] == "sid-1"
+    assert sessions[0]["is_sleeping"] is True
 
 
 @pytest.mark.asyncio
 async def test_resume_sleeping_session_carries_forward_state(store, tmp_path):
-    """Sleeping state should be carried to the new session after resume."""
+    """Sleeping sessions should be preserved in DB without relaunching."""
     work_dir = str(tmp_path)
     await store.register_live_session(
         "sid-1", "claude", "wt1", work_dir, board_name="my-team",
     )
     await store.set_session_sleeping("sid-1", True)
 
-    async def mock_launch(working_dir, agent_type, display_name=None,
-                          resume_session_id=None, flags=None, prompt=None,
-                          board_name=None, board_server=None):
-        await store.register_live_session(
-            "new-sid", agent_type, "wt1", working_dir,
-            display_name=display_name, resume_from_id=resume_session_id,
-            board_name=board_name,
-        )
-        return {
-            "session_name": f"{agent_type}-new-sid",
-            "session_id": "new-sid",
-            "log_file": f"/tmp/{agent_type}_coral_new-sid.log",
-            "working_dir": working_dir,
-            "agent_type": agent_type,
-        }
-
     with patch("coral.tools.session_manager.discover_coral_agents", AsyncMock(return_value=[])), \
-         patch("coral.tools.session_manager.launch_claude_session", AsyncMock(side_effect=mock_launch)):
+         patch("coral.tools.session_manager.launch_claude_session", AsyncMock()) as mock_launch:
         from coral.tools.session_manager import resume_persistent_sessions
         await resume_persistent_sessions(store)
 
-    # The new session should inherit the sleeping state
+    # No launch should have happened
+    mock_launch.assert_not_called()
+
+    # The sleeping session should still be in the DB unchanged
     sessions = await store.get_all_live_sessions()
-    new_sessions = [s for s in sessions if s["session_id"] == "new-sid"]
-    assert len(new_sessions) == 1
-    assert new_sessions[0]["is_sleeping"] is True
+    assert len(sessions) == 1
+    assert sessions[0]["session_id"] == "sid-1"
+    assert sessions[0]["is_sleeping"] is True
 
 
 @pytest.mark.asyncio

@@ -229,6 +229,46 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
             await _track_status_summary_events(name, log_info["status"], log_info["summary"], session_id=sid)
             await scan_log_for_pulse_events(store, name, agent["log_path"], session_id=sid)
 
+    # Include sleeping sessions from DB that have no tmux session
+    # (their tmux was killed when the team was put to sleep).
+    live_sids = {r["session_id"] for r in results if r.get("session_id")}
+    try:
+        all_live = await store.get_all_live_sessions()
+        for sess in all_live:
+            if not sess.get("is_sleeping"):
+                continue
+            sid = sess["session_id"]
+            if sid in live_sids:
+                continue  # Already in results from tmux discovery
+            board_name = sess.get("board_name")
+            results.append({
+                "name": sess.get("agent_name", ""),
+                "agent_type": sess.get("agent_type", "claude"),
+                "session_id": sid,
+                "tmux_session": None,
+                "status": "Sleeping",
+                "summary": None,
+                "staleness_seconds": None,
+                "branch": None,
+                "display_name": sess.get("display_name"),
+                "icon": sess.get("icon"),
+                "working_directory": sess.get("working_dir", ""),
+                "waiting_for_input": False,
+                "done": False,
+                "working": False,
+                "stuck": False,
+                "waiting_reason": None,
+                "waiting_summary": None,
+                "changed_file_count": 0,
+                "board_project": board_name,
+                "board_job_title": sess.get("display_name"),
+                "board_unread": 0,
+                "sleeping": True,
+                "log_path": "",
+            })
+    except Exception:
+        log.debug("Failed to append sleeping sessions to session list")
+
     _elapsed = _time.monotonic() - _t0
     if _elapsed > 1.0:
         log.warning("_build_session_list took %.2fs for %d agents", _elapsed, len(agents))
@@ -999,16 +1039,20 @@ async def sleep_team(board_name: str):
     from coral.messageboard.api import _paused_projects
     _paused_projects.add(board_name)
 
-    # Kill tmux sessions to free resources
+    # Kill tmux sessions to free resources — use direct tmux kill
+    # instead of kill_session() which would unregister the DB record.
+    from coral.tools.utils import run_cmd
+    from coral.tools.tmux_manager import _find_pane
     killed = 0
     for sess in board_sessions:
         try:
-            err = await kill_session(
+            pane = await _find_pane(
                 sess["agent_name"],
-                agent_type=sess.get("agent_type"),
+                sess.get("agent_type"),
                 session_id=sess["session_id"],
             )
-            if not err:
+            if pane:
+                await run_cmd("tmux", "kill-session", "-t", pane["session_name"])
                 killed += 1
         except Exception:
             log.debug("Failed to kill session %s during sleep", sess["session_id"][:8])

@@ -76,6 +76,28 @@
     margin: 8px 16px 12px;
 }
 
+/* Sleeping session overlay */
+.session-sleeping-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10;
+    border-radius: 6px;
+}
+
+.session-sleeping-content {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 16px;
+}
+
+.session-sleeping-content p {
+    margin: 12px 0 0;
+}
+
 /* Message board — worker message indent */
 .mb-message-worker {
     margin-left: 40px;

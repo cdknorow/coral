@@ -393,10 +393,15 @@ async def _resume_single_session(store, rec, log) -> None:
     board_server = rec.get("board_server")
     is_sleeping = rec.get("is_sleeping", False)
 
+    # Sleeping sessions: keep DB record but don't launch anything.
+    # The wake endpoint will relaunch them when the user wakes the team.
+    if is_sleeping:
+        log.info("Skipping sleeping session %s (%s)", sid[:8], agent_type)
+        return
+
     log.info(
-        "Resuming session %s (%s) in %s%s",
+        "Resuming session %s (%s) in %s",
         sid[:8], agent_type, working_dir,
-        " (sleeping)" if is_sleeping else "",
     )
 
     # Use resume_from_id if available (tracks the original Claude
@@ -404,12 +409,11 @@ async def _resume_single_session(store, rec, log) -> None:
     # to the session_id itself (first restart after initial launch).
     resume_id = rec.get("resume_from_id") or sid
 
-    # Sleeping sessions: relaunch but don't send prompt or set up board
     result = await launch_claude_session(
         working_dir, agent_type, display_name=display_name,
         resume_session_id=resume_id,
         flags=flags,
-        prompt=None if is_sleeping else prompt,
+        prompt=prompt,
         board_name=board_name,
         board_server=board_server,
     )
@@ -424,12 +428,8 @@ async def _resume_single_session(store, rec, log) -> None:
         # (launch_claude_session calls register_live_session with new id)
         await store.unregister_live_session(sid)
 
-        # Carry forward sleeping state to the new session
-        if is_sleeping:
-            await store.set_session_sleeping(new_session_id, True)
-
-        # Re-subscribe to message board (skip if sleeping — board is paused)
-        if board_name and not is_sleeping:
+        # Re-subscribe to message board
+        if board_name:
             asyncio.create_task(setup_board_and_prompt(
                 new_session_id, new_session_name, agent_type,
                 board_name=board_name,

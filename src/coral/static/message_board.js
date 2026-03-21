@@ -1,6 +1,7 @@
 /* Message Board: project list, messages, subscribers, posting */
 
 import { escapeHtml, escapeAttr } from './utils.js';
+import { loadLiveSessions } from './api.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -516,6 +517,7 @@ export async function toggleBoardSleep() {
         const data = await resp.json();
         isSleeping = !!data.sleeping;
         updateSleepUI();
+        loadLiveSessions();
     } catch (e) {
         console.error('Failed to toggle sleep:', e);
     }
