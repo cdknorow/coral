@@ -126,7 +126,6 @@ export function renderEventFilters() {
 
     container.innerHTML = `<button class="filter-dropdown-btn" onclick="toggleFilterDropdown('live')">
         <span class="event-filter-char">&#xe152;</span>
-        <span class="filter-btn-label">Filter</span>
         ${badge}
     </button>`;
 }
