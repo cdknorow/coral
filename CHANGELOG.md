@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 4.4.1 — 2026-03-21
+
+### Fixed
+- **CLAUDECODE env var breaks agent launches** — Unset inherited CLAUDECODE environment variable in tmux sessions so Claude Code doesn't refuse to launch inside another instance
+- **SQLite database locked errors** — Batch event writes and defer pruning to reduce lock contention under concurrent agent hooks
+- **Shared store registry** — Replace 10+ ad-hoc store instances with singleton registry to eliminate connection leaks
+- **SQLite pragma tuning** — Enable synchronous=NORMAL, temp_store=MEMORY, cache_size=8MB for faster writes under WAL mode
+- **Periodic WAL checkpoint** — Run PASSIVE checkpoint every 5 minutes instead of only on startup
+- **Graceful shutdown event flush** — Flush pending batched events before closing store connection on server stop
+- **Live chat history crash** — Resolve crash on startup when loading live chat history
+- **Transcript session ID lookup** — Fix session ID resolution in shared store registry
+
+### Changed
+- **License** — Changed from MIT to Apache 2.0
+
 ## 4.3.0 — 2026-03-21
 
 ### Added
