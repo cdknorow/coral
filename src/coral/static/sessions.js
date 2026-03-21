@@ -18,11 +18,13 @@ import { startLiveHistoryPoll, stopLiveHistoryPoll, resetLiveHistory } from './l
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
 import { getRendererMode } from './renderers.js';
+import { invalidateFileCache, fetchFileList } from './file_mention.js';
 
 export async function selectLiveSession(name, agentType, sessionId) {
     stopCaptureRefresh();
     stopLiveHistoryPoll();
     disconnectTerminalWs();
+    invalidateFileCache();
 
     // Save current input text for the old session
     const input = document.getElementById("command-input");
@@ -86,7 +88,10 @@ export async function selectLiveSession(name, agentType, sessionId) {
     updateWaitingIndicator(agent || {});
 
     // Set up quick action buttons
-    state.currentCommands = (agent && agent.commands) || { compress: "/compact", clear: "/clear" };
+    state.currentCommands = (agent && agent.commands) || [
+        { name: "compact", command: "/compact", description: "Compress conversation history" },
+        { name: "clear", command: "/clear", description: "Clear conversation and start fresh" },
+    ];
     renderQuickActions();
 
     // Highlight in sidebar
@@ -97,6 +102,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     loadAgentNotes(name, sessionId);
     loadAgentEvents(name, sessionId);
     loadChangedFiles(name, sessionId);
+    fetchFileList();  // prefetch for @file mention
 
     // Reset live history and start capture/terminal
     resetLiveHistory();

@@ -61,6 +61,10 @@ async def get_diff_base(workdir: str) -> str:
 async def run_cmd(*args: str, timeout: float | None = None) -> Tuple[int, str, str]:
     """Execute a subprocess command asynchronously.
 
+    Args:
+        *args: Command and arguments.
+        timeout: Optional timeout in seconds.
+
     Returns:
         Tuple of (returncode, stdout, stderr).
     """
@@ -70,12 +74,12 @@ async def run_cmd(*args: str, timeout: float | None = None) -> Tuple[int, str, s
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        
+
         if timeout is not None:
             stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         else:
             stdout, stderr = await proc.communicate()
-            
+
         return proc.returncode or 0, stdout.decode().strip(), stderr.decode().strip()
     except asyncio.TimeoutError:
         # If timeout, try to terminate the process

@@ -26,6 +26,10 @@ export function connectCoralWs() {
                     const key = changed.session_id || changed.name;
                     const idx = sessions.findIndex(s => (s.session_id || s.name) === key);
                     if (idx >= 0) {
+                        // Preserve commands from previous data (not sent in WS updates)
+                        if (!changed.commands && sessions[idx].commands) {
+                            changed.commands = sessions[idx].commands;
+                        }
                         sessions[idx] = changed;
                     } else {
                         sessions.push(changed);
@@ -72,6 +76,20 @@ export function connectCoralWs() {
                 // state.prevSummaryState[id] = s.summary || null;
             }
 
+            // Preserve commands from previous data (REST includes them, WS does not)
+            if (state.liveSessions && state.liveSessions.length) {
+                const cmdMap = {};
+                for (const s of state.liveSessions) {
+                    const key = s.session_id || s.name;
+                    if (s.commands) cmdMap[key] = s.commands;
+                }
+                for (const s of data.sessions) {
+                    if (!s.commands) {
+                        const key = s.session_id || s.name;
+                        if (cmdMap[key]) s.commands = cmdMap[key];
+                    }
+                }
+            }
             state.liveSessions = data.sessions;
             renderLiveSessions(data.sessions);
 

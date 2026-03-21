@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from coral.agents.base import BaseAgent, ExtractedSession
+from coral.agents.base import BaseAgent, ExtractedSession, discover_skills
 from coral.hooks.utils import resolve_session_id, truncate
 from coral.tools.utils import HISTORY_PATH
 
@@ -141,6 +141,30 @@ class ClaudeAgent(BaseAgent):
     @property
     def history_glob_pattern(self) -> str:
         return "*.jsonl"
+
+    def available_commands(self, working_dir: str | None = None) -> list[dict[str, str]]:
+        builtins = [
+            {"name": "compact", "command": "/compact", "description": "Compress conversation history"},
+            {"name": "clear", "command": "/clear", "description": "Clear conversation and start fresh"},
+            {"name": "help", "command": "/help", "description": "Show available commands"},
+            {"name": "cost", "command": "/cost", "description": "Show token usage and cost"},
+            {"name": "review", "command": "/review", "description": "Review code changes"},
+            {"name": "bug", "command": "/bug", "description": "Report a bug"},
+            {"name": "init", "command": "/init", "description": "Initialize project CLAUDE.md"},
+            {"name": "memory", "command": "/memory", "description": "Edit CLAUDE.md memory files"},
+            {"name": "status", "command": "/status", "description": "Show account and session info"},
+            {"name": "doctor", "command": "/doctor", "description": "Check health of Claude Code"},
+            {"name": "config", "command": "/config", "description": "Open settings configuration"},
+            {"name": "permissions", "command": "/permissions", "description": "View or update permissions"},
+            {"name": "mcp", "command": "/mcp", "description": "Manage MCP server connections"},
+            {"name": "vim", "command": "/vim", "description": "Toggle vim keybindings"},
+            {"name": "terminal-setup", "command": "/terminal-setup", "description": "Install Shift+Enter terminal integration"},
+            {"name": "login", "command": "/login", "description": "Authenticate with Anthropic"},
+            {"name": "logout", "command": "/logout", "description": "Sign out of current account"},
+        ]
+        skills = discover_skills(working_dir)
+        builtin_names = {c["name"] for c in builtins}
+        return builtins + [s for s in skills if s["name"] not in builtin_names]
 
     def build_launch_command(
         self,

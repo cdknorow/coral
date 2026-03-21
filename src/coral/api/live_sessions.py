@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,6 +56,21 @@ board_store: MessageBoardStore = MessageBoardStore()
 
 # Track last-known status/summary per session_id so we only emit events on change.
 _last_known: dict[str, dict[str, str | None]] = {}
+
+# TTL cache for git ls-files results, keyed by workdir path.
+_FILE_LIST_TTL_S = 60
+_file_list_cache: dict[str, tuple[float, list[str]]] = {}
+
+
+def _file_list_cache_get(workdir: str) -> list[str] | None:
+    entry = _file_list_cache.get(workdir)
+    if entry and (time.monotonic() - entry[0]) < _FILE_LIST_TTL_S:
+        return entry[1]
+    return None
+
+
+def _file_list_cache_set(workdir: str, files: list[str]) -> None:
+    _file_list_cache[workdir] = (time.monotonic(), files)
 
 
 async def _resolve_workdir(name: str, agent_type: str | None, session_id: str | None) -> str | None:
@@ -199,7 +215,8 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
             "board_unread": board_unread,
         }
         if include_commands:
-            entry["commands"] = get_agent(agent["agent_type"]).available_commands
+            wd = agent.get("working_directory", "")
+            entry["commands"] = get_agent(agent["agent_type"]).available_commands(wd or None)
         entry["log_path"] = agent["log_path"]
 
         results.append(entry)
@@ -391,6 +408,9 @@ async def refresh_live_session_files(name: str, body: dict | None = None):
     if not workdir:
         return {"error": "Could not determine working directory", "files": []}
 
+    # Invalidate file list cache so next search picks up new files
+    _file_list_cache.pop(workdir, None)
+
     # Run git queries directly
     from coral.background_tasks.git_poller import GitPoller
     poller = GitPoller(store)
@@ -549,45 +569,33 @@ async def save_file_content(name: str, body: dict, filepath: str = Query(...), s
 
 
 @router.get("/api/sessions/live/{name}/search-files")
-async def search_files(name: str, q: str = Query(""), session_id: str | None = None):
-    """Search for files in the agent's working directory by name fragment."""
+async def search_files(name: str, session_id: str | None = None):
+    """Return the full file list for the agent's working directory.
+
+    Fuzzy matching is handled client-side in file_mention.js.
+    The server caches the git ls-files output with a TTL to avoid
+    repeated subprocess calls.
+    """
     from coral.tools.utils import run_cmd
 
     workdir = await _resolve_workdir(name, None, session_id)
     if not workdir:
         return {"files": []}
 
-    # Use git ls-files for tracked files, falling back to find
-    query = q.strip().lower()
-    rc, stdout, _ = await run_cmd(
-        "git", "-C", workdir, "ls-files", "--cached", "--others", "--exclude-standard",
-        timeout=10.0,
-    )
-    if rc != 0 or stdout is None:
-        return {"files": []}
+    # Check TTL cache before calling git ls-files
+    files = _file_list_cache_get(workdir)
+    if files is None:
+        rc, stdout, _ = await run_cmd(
+            "git", "-C", workdir, "ls-files",
+            "--cached", "--others", "--exclude-standard",
+            timeout=10.0,
+        )
+        if rc != 0 or not stdout or not stdout.strip():
+            return {"files": []}
+        files = stdout.strip().split("\n")
+        _file_list_cache_set(workdir, files)
 
-    all_files = stdout.strip().split("\n") if stdout.strip() else []
-
-    if not query:
-        # Return first 50 files when no query
-        return {"files": all_files[:50]}
-
-    # Score matches: basename match is better than path-only match
-    import os
-    scored = []
-    for fp in all_files:
-        fp_lower = fp.lower()
-        basename = os.path.basename(fp_lower)
-        if query in fp_lower:
-            # Prioritize: exact basename match > basename contains > path contains
-            if basename == query:
-                scored.append((0, fp))
-            elif query in basename:
-                scored.append((1, fp))
-            else:
-                scored.append((2, fp))
-    scored.sort(key=lambda x: (x[0], x[1]))
-    return {"files": [s[1] for s in scored[:50]]}
+    return {"files": files}
 
 
 @router.get("/api/sessions/live/{name}/git")

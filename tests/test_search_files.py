@@ -7,6 +7,7 @@ from httpx import ASGITransport, AsyncClient
 
 from coral.web_server import app
 from coral.store import CoralStore as SessionStore
+from coral.api.live_sessions import _file_list_cache
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -31,8 +32,7 @@ async def client(tmp_store, monkeypatch):
         yield c
 
 
-# Sample file list returned by git ls-files
-SAMPLE_FILES = "\n".join([
+SAMPLE_GIT_LS_FILES = "\n".join([
     "src/main.py",
     "src/utils.py",
     "src/api/routes.py",
@@ -46,77 +46,52 @@ SAMPLE_FILES = "\n".join([
 ])
 
 
+@pytest.fixture(autouse=True)
+def clear_file_list_cache():
+    """Clear the file list cache before and after each test."""
+    _file_list_cache.clear()
+    yield
+    _file_list_cache.clear()
+
+
 @pytest.fixture
-def mock_pane_and_git():
-    """Patch _find_pane to return a fake workdir and run_cmd to return sample files."""
+def mock_workdir_and_git():
+    """Patch _find_pane + run_cmd (for git ls-files) to return sample files."""
     find_pane = AsyncMock(return_value={"current_path": "/fake/workdir"})
-    run_cmd = AsyncMock(return_value=(0, SAMPLE_FILES, ""))
+
+    async def fake_run_cmd(*args, **kwargs):
+        if "ls-files" in args:
+            return (0, SAMPLE_GIT_LS_FILES, "")
+        return (0, "", "")
+
     with patch("coral.api.live_sessions._find_pane", find_pane), \
-         patch("coral.tools.utils.run_cmd", run_cmd):
-        yield find_pane, run_cmd
+         patch("coral.tools.utils.run_cmd", fake_run_cmd):
+        yield
 
 
-# ── Tests ─────────────────────────────────────────────────────────────────
+# ── Endpoint tests ───────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_search_no_query_returns_all(client, mock_pane_and_git):
-    """With no query, returns up to 50 files."""
+async def test_list_files_returns_all(client, mock_workdir_and_git):
+    """With no query param, returns the full file list."""
     resp = await client.get("/api/sessions/live/agent-1/search-files")
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["files"]) == 10  # all sample files
-
-
-@pytest.mark.asyncio
-async def test_search_filters_by_query(client, mock_pane_and_git):
-    """Query filters to matching files only."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=test")
-    assert resp.status_code == 200
     files = resp.json()["files"]
-    assert all("test" in f.lower() for f in files)
-    assert "tests/test_main.py" in files
-    assert "tests/test_utils.py" in files
-    assert "tests/test_api.py" in files
+    assert len(files) == 10
 
 
 @pytest.mark.asyncio
-async def test_search_basename_exact_match_ranked_first(client, mock_pane_and_git):
-    """Exact basename match should rank above partial basename match."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=setup.py")
-    assert resp.status_code == 200
-    files = resp.json()["files"]
-    assert files[0] == "setup.py"
+async def test_search_git_failure_returns_empty(client):
+    """If git ls-files fails, returns empty list."""
+    find_pane = AsyncMock(return_value={"current_path": "/fake/workdir"})
 
+    async def failing_git(*args, **kwargs):
+        return (1, "", "fatal: not a git repo")
 
-@pytest.mark.asyncio
-async def test_search_basename_contains_ranked_above_path(client, mock_pane_and_git):
-    """Basename-contains matches rank above path-only matches."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=main")
-    assert resp.status_code == 200
-    files = resp.json()["files"]
-    # "src/main.py" and "tests/test_main.py" have "main" in basename — should come first
-    basename_matches = [f for f in files if "main" in f.split("/")[-1].lower()]
-    path_only_matches = [f for f in files if "main" not in f.split("/")[-1].lower()]
-    if path_only_matches:
-        first_path_idx = files.index(path_only_matches[0])
-        last_basename_idx = files.index(basename_matches[-1])
-        assert last_basename_idx < first_path_idx
-
-
-@pytest.mark.asyncio
-async def test_search_case_insensitive(client, mock_pane_and_git):
-    """Search is case-insensitive."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=README")
-    assert resp.status_code == 200
-    files = resp.json()["files"]
-    assert "README.md" in files
-
-
-@pytest.mark.asyncio
-async def test_search_no_matches_returns_empty(client, mock_pane_and_git):
-    """Non-matching query returns empty list."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=nonexistent_xyz")
+    with patch("coral.api.live_sessions._find_pane", find_pane), \
+         patch("coral.tools.utils.run_cmd", failing_git):
+        resp = await client.get("/api/sessions/live/agent-1/search-files")
     assert resp.status_code == 200
     assert resp.json()["files"] == []
 
@@ -125,67 +100,65 @@ async def test_search_no_matches_returns_empty(client, mock_pane_and_git):
 async def test_search_no_workdir_returns_empty(client):
     """If working directory can't be resolved, returns empty."""
     with patch("coral.api.live_sessions._find_pane", AsyncMock(return_value=None)):
-        resp = await client.get("/api/sessions/live/agent-1/search-files?q=test")
+        resp = await client.get("/api/sessions/live/agent-1/search-files")
     assert resp.status_code == 200
     assert resp.json()["files"] == []
 
 
 @pytest.mark.asyncio
-async def test_search_git_failure_returns_empty(client):
-    """If git ls-files fails, returns empty."""
-    with patch("coral.api.live_sessions._find_pane", AsyncMock(return_value={"current_path": "/fake"})), \
-         patch("coral.tools.utils.run_cmd", AsyncMock(return_value=(1, None, "fatal: not a git repo"))):
-        resp = await client.get("/api/sessions/live/agent-1/search-files?q=test")
-    assert resp.status_code == 200
-    assert resp.json()["files"] == []
+async def test_search_cache_hit_avoids_second_git_call(client):
+    """Second search with same workdir should use cached file list (git called once)."""
+    find_pane = AsyncMock(return_value={"current_path": "/fake/workdir"})
+    call_count = 0
+
+    async def counting_run_cmd(*args, **kwargs):
+        nonlocal call_count
+        if "ls-files" in args:
+            call_count += 1
+            return (0, SAMPLE_GIT_LS_FILES, "")
+        return (0, "", "")
+
+    with patch("coral.api.live_sessions._find_pane", find_pane), \
+         patch("coral.tools.utils.run_cmd", counting_run_cmd):
+        resp1 = await client.get("/api/sessions/live/agent-1/search-files")
+        assert resp1.status_code == 200
+        assert len(resp1.json()["files"]) == 10
+
+        resp2 = await client.get("/api/sessions/live/agent-1/search-files")
+        assert resp2.status_code == 200
+        assert len(resp2.json()["files"]) == 10
+
+    assert call_count == 1  # git ls-files called only once
 
 
 @pytest.mark.asyncio
-async def test_search_empty_repo_returns_empty(client):
-    """Empty git output returns empty list."""
-    with patch("coral.api.live_sessions._find_pane", AsyncMock(return_value={"current_path": "/fake"})), \
-         patch("coral.tools.utils.run_cmd", AsyncMock(return_value=(0, "", ""))):
-        resp = await client.get("/api/sessions/live/agent-1/search-files?q=anything")
-    assert resp.status_code == 200
-    assert resp.json()["files"] == []
+async def test_search_cache_expiry(client):
+    """After TTL expires, git ls-files should be called again."""
+    import coral.api.live_sessions as mod
 
+    find_pane = AsyncMock(return_value={"current_path": "/fake/workdir"})
+    call_count = 0
 
-@pytest.mark.asyncio
-async def test_search_path_query_matches_directory(client, mock_pane_and_git):
-    """Query matching a directory path component finds files in that dir."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=api")
-    assert resp.status_code == 200
-    files = resp.json()["files"]
-    assert "tests/test_api.py" in files
-    assert "src/api/routes.py" in files
-    assert "src/api/models.py" in files
+    async def counting_run_cmd(*args, **kwargs):
+        nonlocal call_count
+        if "ls-files" in args:
+            call_count += 1
+            return (0, SAMPLE_GIT_LS_FILES, "")
+        return (0, "", "")
 
+    with patch("coral.api.live_sessions._find_pane", find_pane), \
+         patch("coral.tools.utils.run_cmd", counting_run_cmd):
+        # First call populates cache
+        resp1 = await client.get("/api/sessions/live/agent-1/search-files")
+        assert resp1.status_code == 200
+        assert call_count == 1
 
-@pytest.mark.asyncio
-async def test_search_max_50_results(client):
-    """Results are capped at 50."""
-    many_files = "\n".join([f"src/file_{i:03d}.py" for i in range(100)])
-    with patch("coral.api.live_sessions._find_pane", AsyncMock(return_value={"current_path": "/fake"})), \
-         patch("coral.tools.utils.run_cmd", AsyncMock(return_value=(0, many_files, ""))):
-        resp = await client.get("/api/sessions/live/agent-1/search-files?q=file")
-    assert resp.status_code == 200
-    assert len(resp.json()["files"]) == 50
+        # Expire the cache by backdating the timestamp
+        for key in mod._file_list_cache:
+            ts, files = mod._file_list_cache[key]
+            mod._file_list_cache[key] = (ts - mod._FILE_LIST_TTL_S - 1, files)
 
-
-@pytest.mark.asyncio
-async def test_search_whitespace_query_treated_as_empty(client, mock_pane_and_git):
-    """Whitespace-only query is treated as empty (returns all files)."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=%20%20")
-    assert resp.status_code == 200
-    assert len(resp.json()["files"]) == 10
-
-
-@pytest.mark.asyncio
-async def test_search_dot_extension_query(client, mock_pane_and_git):
-    """Query for file extension works."""
-    resp = await client.get("/api/sessions/live/agent-1/search-files?q=.md")
-    assert resp.status_code == 200
-    files = resp.json()["files"]
-    assert "README.md" in files
-    assert "docs/guide.md" in files
-    assert all(".md" in f for f in files)
+        # Second call should miss cache and call git again
+        resp2 = await client.get("/api/sessions/live/agent-1/search-files")
+        assert resp2.status_code == 200
+        assert call_count == 2

@@ -21,6 +21,7 @@ import { showTemplateBrowser } from './template_browser.js';
 import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle } from './tasks.js';
 import { loadChangedFiles, openFileDiff, openFilePreview, refreshChangedFiles } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
+import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { switchAgenticTab, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
@@ -587,6 +588,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // @file mention autocomplete
     initFileMention();
+
+    // /command mention autocomplete
+    initCommandMention();
 
     // Markdown notes panel: click-to-edit, blur-to-save
     initNotesMd();

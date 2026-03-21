@@ -232,3 +232,59 @@
     color: inherit;
     font-weight: 700;
 }
+
+/* ── Command /mention Dropdown ───────────────────────────── */
+
+.command-mention-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+    margin-bottom: 4px;
+}
+
+.command-mention-item {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.command-mention-item:hover,
+.command-mention-item.selected {
+    background: var(--accent);
+    color: #fff;
+}
+
+.command-mention-item .cmd-name {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.command-mention-item .cmd-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.command-mention-item:hover .cmd-desc,
+.command-mention-item.selected .cmd-desc {
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.command-mention-item strong {
+    color: inherit;
+    font-weight: 700;
+}

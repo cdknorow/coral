@@ -148,7 +148,8 @@ def _run_foreground(host: str, port: int, home_dir: str | None = None) -> None:
 
     # Check if tmux is installed
     import shutil
-    if not shutil.which("tmux"):
+    _tmux_available = shutil.which("tmux")
+    if not _tmux_available:
         print(
             "Error: tmux is not installed. Coral requires tmux for agent management.\n"
             "\n"

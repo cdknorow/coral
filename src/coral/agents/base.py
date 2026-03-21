@@ -2,11 +2,148 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
+
+
+def _parse_frontmatter(text: str) -> dict[str, str]:
+    """Parse simple YAML frontmatter (flat key: value pairs) from a markdown file."""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return {}
+    result: dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        m = re.match(r"^(\w[\w_-]*)\s*:\s*(.+)$", line)
+        if m:
+            key = m.group(1).strip()
+            val = m.group(2).strip().strip("\"'")
+            result[key] = val
+    return result
+
+
+def _scan_skills_dir(skills_dir: Path, seen: set[str]) -> list[dict[str, str]]:
+    """Scan a .claude/skills directory for skill markdown files.
+
+    Looks for:
+    - *.md files directly in the directory
+    - */SKILL.md files in subdirectories
+    """
+    results: list[dict[str, str]] = []
+    if not skills_dir.is_dir():
+        return results
+
+    # Direct .md files
+    try:
+        for md_file in sorted(skills_dir.iterdir()):
+            if md_file.suffix == ".md" and md_file.is_file():
+                _try_add_skill(md_file, seen, results)
+    except OSError:
+        pass
+
+    # Subdirectory SKILL.md files
+    try:
+        for sub in sorted(skills_dir.iterdir()):
+            if sub.is_dir():
+                skill_md = sub / "SKILL.md"
+                if skill_md.is_file():
+                    _try_add_skill(skill_md, seen, results)
+    except OSError:
+        pass
+
+    return results
+
+
+def _try_add_skill(md_path: Path, seen: set[str], results: list[dict[str, str]]) -> None:
+    """Parse a skill .md file and append to results if valid and not already seen."""
+    try:
+        text = md_path.read_text(errors="replace")
+    except OSError:
+        return
+    fm = _parse_frontmatter(text)
+    name = fm.get("name", "")
+    if not name:
+        # Fallback: use parent directory name for SKILL.md, else filename stem
+        if md_path.name == "SKILL.md":
+            name = md_path.parent.name
+        else:
+            name = md_path.stem
+    if not name or name in seen:
+        return
+    seen.add(name)
+    desc = fm.get("description", "")
+    results.append({
+        "name": name,
+        "command": f"/{name}",
+        "description": desc,
+    })
+
+
+def discover_skills(working_dir: str | None = None) -> list[dict[str, str]]:
+    """Scan .claude/skills dirs and installed plugins for available skills.
+
+    Returns a list of {name, command, description} dicts.
+    Deduplicates by name — project-level overrides user-level which overrides plugin.
+    """
+    seen: set[str] = set()
+    results: list[dict[str, str]] = []
+
+    # 1. Project skills: {working_dir}/.claude/skills/
+    if working_dir:
+        project_skills = Path(working_dir) / ".claude" / "skills"
+        results.extend(_scan_skills_dir(project_skills, seen))
+
+    # 2. User skills: ~/.claude/skills/
+    user_skills = Path.home() / ".claude" / "skills"
+    results.extend(_scan_skills_dir(user_skills, seen))
+
+    # 3. Installed plugins: ~/.claude/plugins/installed_plugins.json
+    plugins_file = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+    if plugins_file.is_file():
+        try:
+            data = json.loads(plugins_file.read_text(errors="replace"))
+            # Normalise to a flat list of plugin entries.
+            # v2 format: {"version": 2, "plugins": {"name@source": [entries]}}
+            # v1 format: [entries]
+            plugin_entries = data.get("plugins", data) if isinstance(data, dict) else data
+            if isinstance(plugin_entries, dict):
+                all_entries: list = []
+                for entry_list in plugin_entries.values():
+                    if isinstance(entry_list, list):
+                        all_entries.extend(entry_list)
+                plugin_entries = all_entries
+
+            if isinstance(plugin_entries, list):
+                for plugin in plugin_entries:
+                    install_path = plugin.get("installPath", "") if isinstance(plugin, dict) else ""
+                    if not install_path:
+                        continue
+                    plugin_dir = Path(install_path)
+                    # Plugin skills
+                    results.extend(_scan_skills_dir(plugin_dir / "skills", seen))
+                    # Plugin commands and agents
+                    for subdir_name in ("commands", "agents"):
+                        subdir = plugin_dir / subdir_name
+                        if subdir.is_dir():
+                            try:
+                                for md_file in sorted(subdir.iterdir()):
+                                    if md_file.suffix == ".md" and md_file.is_file():
+                                        _try_add_skill(md_file, seen, results)
+                            except OSError:
+                                pass
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    return results
 
 # Default board system-prompt fragments (used in systemPrompt injected via settings file).
 # These are the fallback when the user hasn't configured custom prompts.
@@ -68,10 +205,12 @@ class BaseAgent(ABC):
     def history_glob_pattern(self) -> str:
         """Glob pattern (relative to *history_base_path*) for history files."""
 
-    @property
-    def available_commands(self) -> dict[str, str]:
-        """Map of command names to slash-commands the agent supports."""
-        return {"compress": "/compact", "clear": "/clear"}
+    def available_commands(self, working_dir: str | None = None) -> list[dict[str, str]]:
+        """Return available slash commands and skills for this agent type."""
+        return [
+            {"name": "compact", "command": "/compact", "description": "Compress conversation history"},
+            {"name": "clear", "command": "/clear", "description": "Clear conversation and start fresh"},
+        ]
 
     @staticmethod
     def _build_board_system_prompt(

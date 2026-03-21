@@ -1,12 +1,19 @@
 /* @file mention autocomplete for the command input textarea */
 
-import { state } from './state.js';
+import { state, sessionKey } from './state.js';
 
 let dropdown = null;
 let selectedIndex = 0;
 let currentResults = [];
 let mentionStart = -1; // position of the '@' character
-let debounceTimer = null;
+
+// Client-side file list cache (fetched once per session, refreshed on TTL)
+let cachedFiles = [];       // string[]
+let cachedSessionKey = null;
+let cachedTimestamp = 0;
+const CACHE_TTL_MS = 60_000;
+let fetchPromise = null;    // dedup concurrent fetches
+let renderTimer = null;     // 30ms render throttle
 
 export function initFileMention() {
     const input = document.getElementById("command-input");
@@ -27,7 +34,107 @@ export function initFileMention() {
     });
 }
 
-function onInput(e) {
+export async function fetchFileList() {
+    if (!state.currentSession || state.currentSession.type !== "live") {
+        return [];
+    }
+
+    const key = sessionKey(state.currentSession);
+    const now = Date.now();
+
+    // Return cached if fresh and same session
+    if (cachedFiles.length > 0 && cachedSessionKey === key && (now - cachedTimestamp) < CACHE_TTL_MS) {
+        return cachedFiles;
+    }
+
+    // Dedup concurrent fetches
+    if (fetchPromise) return fetchPromise;
+
+    fetchPromise = (async () => {
+        try {
+            const name = encodeURIComponent(state.currentSession.name);
+            const params = new URLSearchParams();
+            if (state.currentSession.session_id) {
+                params.set("session_id", state.currentSession.session_id);
+            }
+            const resp = await fetch(`/api/sessions/live/${name}/search-files?${params}`);
+            if (!resp.ok) return cachedFiles;
+            const data = await resp.json();
+            cachedFiles = data.files || [];
+            cachedSessionKey = key;
+            cachedTimestamp = Date.now();
+            return cachedFiles;
+        } catch {
+            return cachedFiles;
+        } finally {
+            fetchPromise = null;
+        }
+    })();
+
+    return fetchPromise;
+}
+
+function fuzzyMatch(text, query, original) {
+    // Walk text left-to-right matching query chars in order
+    // Returns a score (lower is better) or null if no match
+    // `original` is the un-lowered filepath for boundary detection
+    let qi = 0;
+    let score = 0;
+    let lastMatchPos = -1;
+
+    // Basename bonus: find where filename starts
+    const slashIdx = original.lastIndexOf('/');
+    const basenameStart = slashIdx >= 0 ? slashIdx + 1 : 0;
+    const boundaryChars = '/_-.';
+
+    for (let ti = 0; ti < text.length && qi < query.length; ti++) {
+        if (text[ti] === query[qi]) {
+            // Bonus for consecutive matches
+            if (lastMatchPos === ti - 1) {
+                score -= 1;
+            }
+            // Bonus for matching at word boundaries
+            if (ti === 0 || boundaryChars.indexOf(text[ti - 1]) !== -1) {
+                score -= 2;
+            }
+            // Basename bonus: matches in the filename score higher
+            if (ti >= basenameStart) {
+                score -= 1;
+            }
+            lastMatchPos = ti;
+            score += ti; // Penalize matches later in the string
+            qi++;
+        }
+    }
+
+    // All query chars must match
+    if (qi < query.length) return null;
+    return score;
+}
+
+function fuzzyFilter(files, query) {
+    if (!query) return [];
+
+    const qLower = query.toLowerCase();
+    const scored = [];
+
+    for (const fp of files) {
+        const matchResult = fuzzyMatch(fp.toLowerCase(), qLower, fp);
+        if (matchResult !== null) {
+            scored.push({ fp, score: matchResult });
+        }
+    }
+
+    // Sort by score (lower = better match)
+    scored.sort((a, b) => a.score - b.score);
+    return scored.slice(0, 50).map(s => s.fp);
+}
+
+async function onInput(e) {
+    // Skip if command mention dropdown is active (mutual exclusion)
+    const cmdDropdown = document.querySelector(".command-mention-dropdown");
+    if (cmdDropdown && cmdDropdown.style.display !== "none") return;
+
     const input = e.target;
     const text = input.value;
     const cursor = input.selectionStart;
@@ -44,9 +151,47 @@ function onInput(e) {
     mentionStart = atIndex;
     const query = beforeCursor.slice(atIndex + 1); // text after '@'
 
-    // Debounce the API call
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => fetchFiles(query), 150);
+    // Require at least 1 character
+    if (query.length < 1) {
+        hideDropdown();
+        return;
+    }
+
+    // Fast path: use cached files synchronously if available
+    let files = cachedFiles;
+    const key = sessionKey(state.currentSession);
+    const now = Date.now();
+    if (files.length === 0 || cachedSessionKey !== key || (now - cachedTimestamp) >= CACHE_TTL_MS) {
+        files = await fetchFileList();
+    }
+
+    if (files.length === 0) {
+        hideDropdown();
+        return;
+    }
+
+    // Throttle rendering to batch rapid keystrokes (30ms)
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => {
+        // Re-read current query in case it changed during the throttle
+        const currentInput = document.getElementById("command-input");
+        if (!currentInput) return;
+        const currentText = currentInput.value;
+        const currentCursor = currentInput.selectionStart;
+        const currentBefore = currentText.slice(0, currentCursor);
+        const currentAtIndex = findMentionStart(currentBefore);
+        if (currentAtIndex === -1) { hideDropdown(); return; }
+        const currentQuery = currentBefore.slice(currentAtIndex + 1);
+        if (currentQuery.length < 1) { hideDropdown(); return; }
+
+        currentResults = fuzzyFilter(files, currentQuery);
+        if (currentResults.length === 0) {
+            hideDropdown();
+            return;
+        }
+        selectedIndex = 0;
+        renderDropdown(currentQuery);
+    }, 30);
 }
 
 function findMentionStart(text) {
@@ -63,34 +208,6 @@ function findMentionStart(text) {
         }
     }
     return -1;
-}
-
-async function fetchFiles(query) {
-    if (!state.currentSession || state.currentSession.type !== "live") {
-        hideDropdown();
-        return;
-    }
-
-    const name = encodeURIComponent(state.currentSession.name);
-    const params = new URLSearchParams({ q: query });
-    if (state.currentSession.session_id) {
-        params.set("session_id", state.currentSession.session_id);
-    }
-
-    try {
-        const resp = await fetch(`/api/sessions/live/${name}/search-files?${params}`);
-        if (!resp.ok) { hideDropdown(); return; }
-        const data = await resp.json();
-        currentResults = data.files || [];
-        if (currentResults.length === 0) {
-            hideDropdown();
-            return;
-        }
-        selectedIndex = 0;
-        renderDropdown(query);
-    } catch {
-        hideDropdown();
-    }
 }
 
 function renderDropdown(query) {
@@ -121,13 +238,30 @@ function highlightMatch(filepath, query) {
     if (!query) return escapeHtml(filepath);
     const lower = filepath.toLowerCase();
     const qLower = query.toLowerCase();
-    const idx = lower.indexOf(qLower);
-    if (idx === -1) return escapeHtml(filepath);
 
-    const before = filepath.slice(0, idx);
-    const match = filepath.slice(idx, idx + query.length);
-    const after = filepath.slice(idx + query.length);
-    return `${escapeHtml(before)}<strong>${escapeHtml(match)}</strong>${escapeHtml(after)}`;
+    // Fuzzy match: walk filepath chars, matching query chars in order
+    const matched = new Set();
+    let qi = 0;
+    for (let fi = 0; fi < lower.length && qi < qLower.length; fi++) {
+        if (lower[fi] === qLower[qi]) {
+            matched.add(fi);
+            qi++;
+        }
+    }
+    // If not all query chars matched, show without highlighting
+    if (qi < qLower.length) return escapeHtml(filepath);
+
+    // Build HTML, merging consecutive matched chars into <strong> runs
+    let html = "";
+    let inStrong = false;
+    for (let i = 0; i < filepath.length; i++) {
+        const isMatch = matched.has(i);
+        if (isMatch && !inStrong) { html += "<strong>"; inStrong = true; }
+        if (!isMatch && inStrong) { html += "</strong>"; inStrong = false; }
+        html += escapeHtml(filepath[i]);
+    }
+    if (inStrong) html += "</strong>";
+    return html;
 }
 
 function escapeHtml(str) {
@@ -193,5 +327,15 @@ function hideDropdown() {
     if (dropdown) dropdown.style.display = "none";
     currentResults = [];
     mentionStart = -1;
-    clearTimeout(debounceTimer);
+    clearTimeout(renderTimer);
+}
+
+export function isDropdownVisible() {
+    return dropdown && dropdown.style.display !== "none";
+}
+
+export function invalidateFileCache() {
+    cachedFiles = [];
+    cachedSessionKey = null;
+    cachedTimestamp = 0;
 }
