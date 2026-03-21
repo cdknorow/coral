@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import aiosqlite
 from pathlib import Path
 
@@ -26,22 +27,26 @@ class DatabaseManager:
         self._db_path = db_path
         self._schema_ensured = False
         self._conn: aiosqlite.Connection | None = None
+        self._conn_lock = asyncio.Lock()
 
     async def _get_conn(self) -> aiosqlite.Connection:
         """Return persistent connection, creating it lazily on first use."""
         if self._conn is not None:
             return self._conn
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = await aiosqlite.connect(str(self._db_path))
-        conn.row_factory = aiosqlite.Row
-        await conn.execute("PRAGMA journal_mode=WAL")
-        await conn.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}")
-        await conn.execute("PRAGMA foreign_keys=ON")
-        if not self._schema_ensured:
-            self._schema_ensured = True
-            await self._ensure_schema(conn)
-        self._conn = conn
-        return conn
+        async with self._conn_lock:
+            if self._conn is not None:
+                return self._conn
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = await aiosqlite.connect(str(self._db_path))
+            conn.row_factory = aiosqlite.Row
+            await conn.execute("PRAGMA journal_mode=WAL")
+            await conn.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS}")
+            await conn.execute("PRAGMA foreign_keys=ON")
+            if not self._schema_ensured:
+                self._schema_ensured = True
+                await self._ensure_schema(conn)
+            self._conn = conn
+            return conn
 
     async def close(self) -> None:
         """Close the persistent connection. Call on shutdown."""

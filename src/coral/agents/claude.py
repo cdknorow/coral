@@ -222,6 +222,24 @@ class ClaudeAgent(BaseAgent):
         parts.append(f"--settings {settings_file}")
         if flags:
             parts.extend(flags)
+        # Pass the prompt as a positional argument so Claude starts immediately
+        # without relying on fragile tmux send-keys delivery.
+        # For board agents, append the orchestrator/worker action instructions.
+        cli_prompt = prompt or ""
+        if board_name:
+            from coral.tools.session_manager import DEFAULT_ORCHESTRATOR_PROMPT, DEFAULT_WORKER_PROMPT
+            is_orchestrator = role and "orchestrator" in role.lower()
+            overrides = prompt_overrides or {}
+            if is_orchestrator:
+                template = overrides.get("default_prompt_orchestrator") or DEFAULT_ORCHESTRATOR_PROMPT
+            else:
+                template = overrides.get("default_prompt_worker") or DEFAULT_WORKER_PROMPT
+            action_text = template.replace("{board_name}", board_name)
+            cli_prompt = f"{cli_prompt}\n\n{action_text}" if cli_prompt else action_text
+        if cli_prompt:
+            prompt_file = Path(f"/tmp/coral_prompt_{effective_id}.txt")
+            prompt_file.write_text(cli_prompt)
+            parts.append(f"\"$(cat '{prompt_file}')\"")
         return " ".join(parts)
 
     # ── Hook Processing (Claude-specific) ─────────────────────────────────

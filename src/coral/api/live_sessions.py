@@ -746,10 +746,10 @@ async def launch_session(body: dict):
     if result.get("error"):
         return result
 
-    if board_name or prompt:
+    if board_name:
         _asyncio.create_task(setup_board_and_prompt(
             result["session_id"], result["session_name"], agent_type,
-            prompt=prompt or None, board_name=board_name or None,
+            board_name=board_name or None,
             board_server=board_server, display_name=display_name,
         ))
 
@@ -799,12 +799,13 @@ async def launch_team(body: dict):
             launched.append({"name": agent_name, "error": result["error"]})
             continue
 
-        # Board subscription + prompt send handled by setup_board_and_prompt
-        _asyncio.create_task(setup_board_and_prompt(
-            result["session_id"], result["session_name"], agent_type,
-            prompt=agent_prompt or None, board_name=board_name or None,
-            board_server=board_server, display_name=agent_name,
-        ))
+        # Board subscription handled by setup_board_and_prompt
+        if board_name:
+            _asyncio.create_task(setup_board_and_prompt(
+                result["session_id"], result["session_name"], agent_type,
+                board_name=board_name or None,
+                board_server=board_server, display_name=agent_name,
+            ))
 
         launched.append({
             "name": agent_name,

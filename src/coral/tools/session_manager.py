@@ -71,61 +71,21 @@ def _write_board_state(tmux_session_name: str, project: str, job_title: str,
         data["server_url"] = server_url.rstrip("/")
     state_file.write_text(_json_mod.dumps(data))
 
-async def _is_agent_cli_running(session_name: str) -> bool:
-    """Check if an agent CLI process (claude, gemini) is running in a tmux pane.
-
-    Uses tmux to get the pane's shell PID, then checks if any child process
-    matches known agent CLI binaries. Returns False if only a bare shell is
-    running (i.e. the agent CLI has exited).
-    """
-    try:
-        rc, stdout, _ = await run_cmd(
-            "tmux", "list-panes", "-t", session_name, "-F", "#{pane_pid}"
-        )
-        if rc != 0 or not stdout.strip():
-            return False
-        pane_pid = stdout.strip().splitlines()[0]
-        # Check child processes of the pane's shell.
-        # Try ps --ppid first (Linux), fall back to pgrep -P (macOS/Linux).
-        rc, stdout, _ = await run_cmd(
-            "ps", "--ppid", pane_pid, "-o", "comm=",
-        )
-        if rc != 0:
-            rc, stdout, _ = await run_cmd("pgrep", "-P", pane_pid, "-l")
-            if rc != 0:
-                return False
-        children = stdout.strip().lower().splitlines()
-        _AGENT_BINS = {"claude", "gemini", "node", "python", "python3"}
-        return any(
-            any(agent_bin in child for agent_bin in _AGENT_BINS)
-            for child in children
-        )
-    except Exception:
-        return False
-
-
-# Phrases that indicate a bare shell prompt (agent CLI has exited/crashed)
-_BARE_SHELL_INDICATORS = [
-    "command not found",
-    "no such file or directory",
-    "bash-",
-]
-
 
 async def setup_board_and_prompt(
     session_id: str,
     session_name: str,
     agent_type: str,
-    prompt: str | None = None,
     board_name: str | None = None,
     board_server: str | None = None,
     display_name: str | None = None,
 ) -> None:
-    """Subscribe to a message board and send the initial prompt to an agent.
+    """Subscribe a session to a message board.
 
-    This is the single entry point for the post-launch setup that is shared
-    across initial launch, restart, and resume-persistent-sessions paths.
-    The prompt is sent after a short delay to give the agent time to initialize.
+    This is the single entry point for the post-launch board setup that is
+    shared across initial launch, restart, and resume-persistent-sessions paths.
+    The agent prompt is now passed directly to the CLI as a positional argument
+    in build_launch_command, so no tmux-based prompt delivery is needed.
     """
     log = logging.getLogger(__name__)
     role = display_name or agent_type
@@ -151,118 +111,8 @@ async def setup_board_and_prompt(
         except Exception:
             log.warning("Failed to write board state for session %s", session_id[:8])
 
-    # Behavior prompt + board instructions are injected via systemPrompt in the
-    # settings file. But Claude needs an initial user message to start working.
-    # When on a board, append action instructions so the agent knows what to do
-    # immediately — this is the last thing the agent sees before it starts.
-    if prompt and board_name:
-        is_orchestrator = role and "orchestrator" in role.lower()
-        # Check user settings for custom prompt overrides
-        try:
-            from coral.store.sessions import SessionStore
-            _settings_store = SessionStore()
-            user_settings = await _settings_store.get_settings()
-        except Exception:
-            user_settings = {}
-        if is_orchestrator:
-            template = user_settings.get("default_prompt_orchestrator") or DEFAULT_ORCHESTRATOR_PROMPT
-        else:
-            template = user_settings.get("default_prompt_worker") or DEFAULT_WORKER_PROMPT
-        prompt += "\n\n" + template.replace("{board_name}", board_name)
-    if prompt:
-        from coral.tools.tmux_manager import send_to_tmux, capture_pane
-
-        # Before sending the prompt, wait for Claude Code to be ready.
-        # It may be showing a trust/acceptance prompt that blocks input.
-        _ACCEPTANCE_PHRASES = [
-            "do you trust",
-            "trust the files",
-            "yes, proceed",
-            "allow access",
-            "(y)",
-            "y/n",
-            "press enter to",
-            "to trust",
-        ]
-        cli_ready = False
-        for _wait in range(5):
-            await asyncio.sleep(1)
-            try:
-                pane_text = await capture_pane(agent_type, session_id=session_id)
-            except Exception:
-                continue
-            if not pane_text:
-                continue
-            pane_lower = pane_text.lower()
-
-            # Detect if the agent CLI has crashed/exited and we're at a bare shell
-            if any(indicator in pane_lower for indicator in _BARE_SHELL_INDICATORS):
-                if not await _is_agent_cli_running(session_name):
-                    log.warning(
-                        "Agent CLI not running in session %s — bare shell detected, "
-                        "aborting prompt delivery", session_id[:8],
-                    )
-                    return
-
-            # Check if Claude Code is showing a trust/acceptance prompt
-            if any(phrase in pane_lower for phrase in _ACCEPTANCE_PHRASES):
-                log.info("Detected acceptance prompt in session %s, sending 'y'", session_id[:8])
-                try:
-                    await run_cmd("tmux", "send-keys", "-t", session_name, "y", "Enter")
-                except Exception:
-                    pass
-                await asyncio.sleep(1)
-                continue
-            # Check if the CLI is ready (shows the input prompt ">" or "❯")
-            if ">" in pane_text or "❯" in pane_text or "..." in pane_text:
-                cli_ready = True
-                break
-
-        # Final safety check: verify the agent CLI process is actually running
-        # before sending the prompt. This catches cases where the readiness loop
-        # matched ">" from a bash PS1 prompt rather than the Claude CLI prompt.
-        if not await _is_agent_cli_running(session_name):
-            log.warning(
-                "Agent CLI is not running in session %s — aborting prompt delivery "
-                "to prevent sending raw text to bare shell", session_id[:8],
-            )
-            return
-
-        if not cli_ready:
-            log.warning(
-                "CLI readiness not confirmed for session %s, but agent process is "
-                "running — proceeding with prompt delivery", session_id[:8],
-            )
-
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            await asyncio.sleep(3)
-            try:
-                err = await send_to_tmux(agent_type, prompt, session_id=session_id)
-                if err:
-                    await run_cmd("tmux", "send-keys", "-t", session_name, "-l", prompt)
-                await run_cmd("tmux", "send-keys", "-t", session_name, "Enter")
-            except Exception:
-                log.warning("Failed to send prompt to session %s (attempt %d/%d)",
-                            session_id[:8], attempt + 1, max_attempts)
-                continue
-
-            # Verify the prompt was received by checking tmux pane content
-            await asyncio.sleep(2)
-            try:
-                pane_text = await capture_pane(agent_type, session_id=session_id)
-                if pane_text and prompt[:40] in pane_text:
-                    log.info("Prompt verified in session %s (attempt %d)", session_id[:8], attempt + 1)
-                    break
-                else:
-                    log.warning("Prompt not found in pane for session %s (attempt %d/%d)",
-                                session_id[:8], attempt + 1, max_attempts)
-            except Exception:
-                log.warning("Could not verify prompt for session %s (attempt %d/%d)",
-                            session_id[:8], attempt + 1, max_attempts)
-        else:
-            log.error("Failed to deliver prompt to session %s after %d attempts",
-                      session_id[:8], max_attempts)
+    # The agent prompt is now passed as a CLI positional argument in
+    # build_launch_command, so no tmux-based prompt delivery is needed.
 
 
 def strip_ansi(text: str) -> str:
@@ -571,11 +421,11 @@ async def _resume_single_session(store, rec, log) -> None:
         # (launch_claude_session calls register_live_session with new id)
         await store.unregister_live_session(sid)
 
-        # Re-subscribe to message board and re-send prompt
-        if board_name or prompt:
+        # Re-subscribe to message board
+        if board_name:
             asyncio.create_task(setup_board_and_prompt(
                 new_session_id, new_session_name, agent_type,
-                prompt=prompt, board_name=board_name,
+                board_name=board_name,
                 board_server=board_server, display_name=display_name,
             ))
 
@@ -872,8 +722,8 @@ async def restart_session(
             except Exception:
                 pass
 
-        # Re-subscribe to message board and re-send prompt on restart
-        if stored_board or stored_prompt:
+        # Re-subscribe to message board on restart
+        if stored_board:
             old_display_name_for_prompt = None
             try:
                 old_display_name_for_prompt = await _store.get_display_name(new_session_id)
@@ -881,7 +731,7 @@ async def restart_session(
                 pass
             asyncio.create_task(setup_board_and_prompt(
                 new_session_id, new_session_name, effective_type,
-                prompt=stored_prompt, board_name=stored_board,
+                board_name=stored_board,
                 board_server=stored_board_server,
                 display_name=old_display_name_for_prompt,
             ))
