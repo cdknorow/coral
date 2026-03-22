@@ -91,6 +91,12 @@ class MessageBoardStore:
         except Exception:
             pass  # Column already exists
 
+        # Migration: add target_group_id column for Subgent API compatibility
+        try:
+            await conn.execute("ALTER TABLE board_messages ADD COLUMN target_group_id TEXT")
+        except Exception:
+            pass  # Column already exists
+
         # Board groups table for group-based receive modes
         await conn.executescript("""
             CREATE TABLE IF NOT EXISTS board_groups (
@@ -203,18 +209,22 @@ class MessageBoardStore:
     # ── Messages ─────────────────────────────────────────────────────────
 
     async def post_message(
-        self, project: str, session_id: str, content: str
+        self, project: str, session_id: str, content: str,
+        target_group_id: str | None = None,
     ) -> dict[str, Any]:
         conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
         cursor = await conn.execute(
-            "INSERT INTO board_messages (project, session_id, content, created_at) VALUES (?, ?, ?, ?)",
-            (project, session_id, content, now),
+            "INSERT INTO board_messages (project, session_id, content, created_at, target_group_id) VALUES (?, ?, ?, ?, ?)",
+            (project, session_id, content, now, target_group_id),
         )
         msg_id = cursor.lastrowid
         await conn.commit()
 
-        return {"id": msg_id, "project": project, "session_id": session_id, "content": content, "created_at": now}
+        return {
+            "id": msg_id, "project": project, "session_id": session_id,
+            "content": content, "created_at": now, "target_group_id": target_group_id,
+        }
 
     async def read_messages(
         self, project: str, session_id: str, limit: int = 50
@@ -233,6 +243,7 @@ class MessageBoardStore:
         # Fetch new messages from others
         rows = await conn.execute_fetchall(
             """SELECT m.id, m.project, m.session_id, m.content, m.created_at,
+                      m.target_group_id,
                       COALESCE(s.job_title, 'Unknown') as job_title
                FROM board_messages m
                LEFT JOIN board_subscribers s ON m.project = s.project AND m.session_id = s.session_id
@@ -265,18 +276,26 @@ class MessageBoardStore:
         return messages
 
     async def list_messages(
-        self, project: str, limit: int = 200, offset: int = 0
+        self, project: str, limit: int = 200, offset: int = 0,
+        before_id: int | None = None,
     ) -> list[dict[str, Any]]:
         """Return recent messages for a project (no cursor, no side effects)."""
         conn = await self._get_conn()
+        where = "m.project = ?"
+        params: list[Any] = [project]
+        if before_id is not None:
+            where += " AND m.id < ?"
+            params.append(before_id)
+        params.extend([limit, offset])
         rows = await conn.execute_fetchall(
-            """SELECT m.id, m.project, m.session_id, m.content, m.created_at,
+            f"""SELECT m.id, m.project, m.session_id, m.content, m.created_at,
+                      m.target_group_id,
                       COALESCE(s.job_title, 'Unknown') as job_title
                FROM board_messages m
                LEFT JOIN board_subscribers s ON m.project = s.project AND m.session_id = s.session_id
-               WHERE m.project = ?
+               WHERE {where}
                ORDER BY m.id ASC LIMIT ? OFFSET ?""",
-            (project, limit, offset),
+            tuple(params),
         )
         return [dict(r) for r in rows]
 

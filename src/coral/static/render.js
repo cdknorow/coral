@@ -815,9 +815,12 @@ export function renderLiveSessions(sessions) {
             // Render nested board cards
             for (const [boardName, boardSessions] of Object.entries(boardedByProject)) {
                 const accentColor = _boardAccentColor(boardName);
-                const boardCollapsed = _isGroupCollapsed(boardName);
+                const boardCollapseKey = `board:${boardName}`;
+                const boardCollapsed = _isGroupCollapsed(boardCollapseKey);
                 const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
-                const boardLink = `<button class="group-board-link" onclick="event.stopPropagation(); selectBoardProject('${escapeAttr(boardName)}')" title="View board: ${escapeAttr(boardName)}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v8H5l-3 3V3z"/></svg></button>`;
+                const boardUuid = boardSessions[0]?.subgent_board_id || '';
+                const boardIdArg = boardUuid ? `, '${escapeAttr(boardUuid)}'` : '';
+                const boardLink = `<button class="group-board-link" onclick="event.stopPropagation(); selectBoardProject('${escapeAttr(boardName)}'${boardIdArg})" title="View board: ${escapeAttr(boardName)}"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12v8H5l-3 3V3z"/></svg></button>`;
                 const boardIsSleeping = boardSessions.every(s => s.sleeping);
                 const boardSleepIcon = boardIsSleeping ? ' <span class="agent-icon" title="Team is sleeping">🌙</span>' : '';
                 const sleepLabel = boardIsSleeping ? 'Wake Team' : 'Sleep Team';

@@ -111,6 +111,11 @@ class SessionStore(DatabaseManager):
         )
         await conn.commit()
 
+    async def delete_setting(self, key: str) -> None:
+        conn = await self._get_conn()
+        await conn.execute("DELETE FROM user_settings WHERE key = ?", (key,))
+        await conn.commit()
+
     # ── Session Notes ──────────────────────────────────────────────────────
 
     async def get_session_notes(self, session_id: str) -> dict[str, Any]:
@@ -590,6 +595,11 @@ class SessionStore(DatabaseManager):
         board_name: str | None = None,
         board_server: str | None = None,
         icon: str | None = None,
+        subgent_key_id: str | None = None,
+        subgent_api_key: str | None = None,
+        subgent_admin_url: str | None = None,
+        subgent_admin_key: str | None = None,
+        subgent_org_id: str | None = None,
     ) -> None:
         import json as _json
         conn = await self._get_conn()
@@ -597,9 +607,11 @@ class SessionStore(DatabaseManager):
         flags_json = _json.dumps(flags) if flags else None
         await conn.execute(
             "INSERT OR REPLACE INTO live_sessions "
-            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, icon, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, int(is_job), prompt, board_name, board_server, icon, now),
+            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, icon, "
+            "subgent_key_id, subgent_api_key, subgent_admin_url, subgent_admin_key, subgent_org_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, int(is_job), prompt, board_name, board_server, icon,
+             subgent_key_id, subgent_api_key, subgent_admin_url, subgent_admin_key, subgent_org_id, now),
         )
         await conn.commit()
 
@@ -641,9 +653,11 @@ class SessionStore(DatabaseManager):
         import json as _json
         conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
-        # Carry forward flags, prompt, board_name, board_server, and is_sleeping from old session
+        # Carry forward flags, prompt, board_name, board_server, is_sleeping, and subgent fields from old session
         old_row = await (await conn.execute(
-            "SELECT flags, prompt, board_name, board_server, icon, is_sleeping FROM live_sessions WHERE session_id = ?", (old_session_id,)
+            "SELECT flags, prompt, board_name, board_server, icon, is_sleeping, "
+            "subgent_key_id, subgent_api_key, subgent_admin_url, subgent_admin_key, subgent_org_id "
+            "FROM live_sessions WHERE session_id = ?", (old_session_id,)
         )).fetchone()
         if flags is None:
             flags_json = old_row["flags"] if old_row and old_row["flags"] else None
@@ -654,24 +668,72 @@ class SessionStore(DatabaseManager):
         old_board_server = old_row["board_server"] if old_row else None
         old_icon = old_row["icon"] if old_row and "icon" in old_row.keys() else None
         old_sleeping = old_row["is_sleeping"] if old_row else 0
+        old_subgent_key_id = old_row["subgent_key_id"] if old_row else None
+        old_subgent_api_key = old_row["subgent_api_key"] if old_row else None
+        old_subgent_admin_url = old_row["subgent_admin_url"] if old_row else None
+        old_subgent_admin_key = old_row["subgent_admin_key"] if old_row else None
+        old_subgent_org_id = old_row["subgent_org_id"] if old_row else None
         await conn.execute("DELETE FROM live_sessions WHERE session_id = ?", (old_session_id,))
         await conn.execute(
             "INSERT OR REPLACE INTO live_sessions "
-            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, prompt, board_name, board_server, icon, is_sleeping, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (new_session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, old_prompt, old_board, old_board_server, old_icon, old_sleeping, now),
+            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, prompt, board_name, board_server, icon, is_sleeping, "
+            "subgent_key_id, subgent_api_key, subgent_admin_url, subgent_admin_key, subgent_org_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, old_prompt, old_board, old_board_server, old_icon, old_sleeping,
+             old_subgent_key_id, old_subgent_api_key, old_subgent_admin_url, old_subgent_admin_key, old_subgent_org_id, now),
         )
         await conn.commit()
 
     async def get_live_session_prompt_info(self, session_id: str) -> dict[str, str | None] | None:
-        """Return prompt, board_name, and board_server for a live session, or None if not found."""
+        """Return prompt, board_name, board_server, and subgent fields for a live session."""
         conn = await self._get_conn()
         row = await (await conn.execute(
-            "SELECT prompt, board_name, board_server FROM live_sessions WHERE session_id = ?", (session_id,)
+            "SELECT prompt, board_name, board_server, "
+            "subgent_key_id, subgent_api_key, subgent_admin_url, subgent_admin_key, subgent_org_id "
+            "FROM live_sessions WHERE session_id = ?", (session_id,)
         )).fetchone()
         if not row:
             return None
-        return {"prompt": row["prompt"], "board_name": row["board_name"], "board_server": row["board_server"]}
+        return {
+            "prompt": row["prompt"],
+            "board_name": row["board_name"],
+            "board_server": row["board_server"],
+            "subgent_key_id": row["subgent_key_id"],
+            "subgent_api_key": row["subgent_api_key"],
+            "subgent_admin_url": row["subgent_admin_url"],
+            "subgent_admin_key": row["subgent_admin_key"],
+            "subgent_org_id": row["subgent_org_id"],
+        }
+
+    async def update_live_session_subgent(
+        self,
+        session_id: str,
+        subgent_key_id: str,
+        subgent_api_key: str,
+        subgent_admin_url: str,
+        subgent_admin_key: str,
+        subgent_org_id: str,
+        subgent_board_id: str | None = None,
+    ) -> None:
+        """Update the subgent fields on an existing live session."""
+        conn = await self._get_conn()
+        await conn.execute(
+            "UPDATE live_sessions SET subgent_key_id = ?, subgent_api_key = ?, "
+            "subgent_admin_url = ?, subgent_admin_key = ?, subgent_org_id = ?, subgent_board_id = ? "
+            "WHERE session_id = ?",
+            (subgent_key_id, subgent_api_key, subgent_admin_url, subgent_admin_key, subgent_org_id, subgent_board_id, session_id),
+        )
+        await conn.commit()
+
+    async def get_subgent_live_sessions(self) -> list[dict[str, str]]:
+        """Return live sessions that have a subgent_key_id set (subgent-backed boards)."""
+        conn = await self._get_conn()
+        rows = await (await conn.execute(
+            "SELECT session_id, agent_name, board_name, board_server, "
+            "subgent_key_id, subgent_api_key, subgent_admin_url "
+            "FROM live_sessions WHERE subgent_key_id IS NOT NULL AND subgent_key_id != ''"
+        )).fetchall()
+        return [dict(r) for r in rows]
 
     async def get_agent_type_for_session(self, session_id: str) -> str:
         """Look up the agent_type for a live session. Returns 'claude' as default."""
@@ -711,6 +773,18 @@ class SessionStore(DatabaseManager):
         d = dict(row)
         d["is_sleeping"] = bool(d.get("is_sleeping", 0))
         return d
+
+    async def get_live_session_board_names(self, session_ids: list[str]) -> dict[str, dict]:
+        """Return {session_id: {board_name, subgent_board_id}} for given session IDs."""
+        if not session_ids:
+            return {}
+        conn = await self._get_conn()
+        placeholders = ",".join("?" for _ in session_ids)
+        rows = await (await conn.execute(
+            f"SELECT session_id, board_name, subgent_board_id FROM live_sessions WHERE session_id IN ({placeholders})",
+            session_ids,
+        )).fetchall()
+        return {r["session_id"]: {"board_name": r["board_name"], "subgent_board_id": r["subgent_board_id"]} for r in rows}
 
     async def get_all_live_sessions(self) -> list[dict[str, Any]]:
         import json as _json

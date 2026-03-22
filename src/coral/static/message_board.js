@@ -11,26 +11,39 @@ const PAGE_SIZE = 50;
 let _allMessages = [];
 let _totalMessages = 0;
 let _loadedOffset = 0;
+let _localProjects = new Set();  // boards known to exist locally
+let _remoteBoardIds = {};        // project name → subgent board UUID for proxy routing
 
 // ── API helpers ──────────────────────────────────────────────────────────
 
+function _isRemoteBoard(project) {
+    return project in _remoteBoardIds;
+}
+
+/** Return the base API URL for a board — proxy for remote, local for others. */
+function _boardUrl(project) {
+    if (_isRemoteBoard(project)) {
+        return `/api/board-proxy/${encodeURIComponent(_remoteBoardIds[project])}`;
+    }
+    return `/api/board/${encodeURIComponent(project)}`;
+}
+
 async function fetchProjects() {
     const resp = await fetch('/api/board/projects');
-    return await resp.json();
+    const projects = await resp.json();
+    _localProjects = new Set(projects.map(p => p.project));
+    return projects;
 }
 
 async function fetchMessages(project, limit = PAGE_SIZE, offset = 0) {
-    const resp = await fetch(`/api/board/${encodeURIComponent(project)}/messages/all?limit=${limit}&offset=${offset}`);
+    const resp = await fetch(`${_boardUrl(project)}/messages/all?limit=${limit}&offset=${offset}&format=dashboard`);
     const data = await resp.json();
-    // Support both old format (array) and new format ({messages, total})
-    if (Array.isArray(data)) {
-        return { messages: data, total: data.length, offset: 0 };
-    }
+    if (Array.isArray(data)) return { messages: data, total: data.length, offset: 0 };
     return { messages: data.messages || [], total: data.total || 0, offset: data.offset || 0 };
 }
 
 async function fetchSubscribers(project) {
-    const resp = await fetch(`/api/board/${encodeURIComponent(project)}/subscribers`);
+    const resp = await fetch(`${_boardUrl(project)}/subscribers`);
     return await resp.json();
 }
 
@@ -65,8 +78,11 @@ function renderBoardSidebar(projects) {
 
 // ── View switching ───────────────────────────────────────────────────────
 
-export function selectBoardProject(project) {
+export async function selectBoardProject(project, boardId) {
     currentProject = project;
+
+    // Store board UUID for proxy routing if provided
+    if (boardId) _remoteBoardIds[project] = boardId;
 
     // Hide other views, show messageboard
     document.getElementById('welcome-screen').style.display = 'none';
@@ -86,16 +102,16 @@ export function selectBoardProject(project) {
     document.getElementById('mb-delete-btn').style.display = '';
 
     const badge = document.getElementById('messageboard-project-badge');
-    badge.textContent = project;
+    badge.textContent = project + (_isRemoteBoard(project) ? ' (Subgent)' : '');
     badge.style.display = '';
     document.getElementById('messageboard-title').textContent = 'Message Board';
 
-    // Ensure dashboard is subscribed as a reader
-    subscribeDashboard(project);
-
-    // Load paused and sleep state
-    loadPausedState(project);
-    loadSleepState(project);
+    // Subscribe dashboard as a reader (local boards only)
+    if (!_isRemoteBoard(project)) {
+        subscribeDashboard(project);
+        loadPausedState(project);
+        loadSleepState(project);
+    }
 
     loadBoardMessages(project);
     loadBoardSubscribers(project);
@@ -333,7 +349,7 @@ export async function postBoardMessage() {
     if (!content) return;
 
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/messages`, {
+        const resp = await fetch(`${_boardUrl(currentProject)}/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: 'dashboard', content }),
@@ -343,7 +359,6 @@ export async function postBoardMessage() {
             return;
         }
         input.value = '';
-        // Fetch new messages since our last known total
         await _pollNewMessages();
     } catch (e) {
         console.error('Failed to post message:', e);
@@ -395,6 +410,10 @@ export async function toggleBoardPause() {
 
 export async function deleteBoardMessage(messageId) {
     if (!currentProject) return;
+    if (_isRemoteBoard(currentProject)) {
+        console.warn('Delete not supported for remote boards');
+        return;
+    }
     try {
         const resp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/messages/${messageId}`, {
             method: 'DELETE',

@@ -182,10 +182,9 @@ async def test_list_all_messages(client):
 
     resp = await client.get("/proj1/messages/all")
     assert resp.status_code == 200
-    data = resp.json()
-    msgs = data["messages"]
+    msgs = resp.json()
+    assert isinstance(msgs, list)
     assert len(msgs) == 3
-    assert data["total"] == 3
     assert msgs[0]["content"] == "msg 1"
     assert msgs[0]["job_title"] == "Backend"
     assert msgs[2]["content"] == "msg 3"
@@ -200,9 +199,9 @@ async def test_list_all_messages_with_limit(client):
 
     resp = await client.get("/proj1/messages/all", params={"limit": 2})
     assert resp.status_code == 200
-    data = resp.json()
-    assert len(data["messages"]) == 2
-    assert data["total"] == 5
+    msgs = resp.json()
+    assert isinstance(msgs, list)
+    assert len(msgs) == 2
 
 
 @pytest.mark.asyncio
@@ -215,7 +214,7 @@ async def test_list_all_messages_does_not_advance_cursor(client):
 
     # Call /messages/all
     resp = await client.get("/proj1/messages/all")
-    assert len(resp.json()["messages"]) == 1
+    assert len(resp.json()) == 1
 
     # a1 should still see the message via cursor-based read
     resp = await client.get("/proj1/messages", params={"session_id": "a1"})

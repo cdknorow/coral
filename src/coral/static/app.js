@@ -10,7 +10,7 @@ import { sendCommand, sendCommandWithTeam, resendInputPrompt, sendRawKeys, sendM
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon, showEmojiPicker } from './sessions.js';
 import { toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
-import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeIntoSession, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates, showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts } from './modals.js';
+import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeIntoSession, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates, showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts, showSubgentSettingsModal, hideSubgentSettingsModal } from './modals.js';
 import { toggleBrowser, browserNavigateTo, browserNavigateUp } from './browser.js';
 import { initSidebarResize, initCommandPaneResize, initTaskBarResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse } from './sidebar.js';
 import { fitTerminal } from './xterm_renderer.js';
@@ -83,6 +83,8 @@ window.confirmRestart = confirmRestart;
 window.removeAttachment = removeAttachment;
 window.showSettingsModal = showSettingsModal;
 window.hideSettingsModal = hideSettingsModal;
+window.showSubgentSettingsModal = showSubgentSettingsModal;
+window.hideSubgentSettingsModal = hideSubgentSettingsModal;
 window.applySettings = applySettings;
 window.showDefaultPromptsModal = showDefaultPromptsModal;
 window.hideDefaultPromptsModal = hideDefaultPromptsModal;

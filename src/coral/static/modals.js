@@ -642,6 +642,34 @@ async function _initTeamForm() {
     // Render team template selector
     _renderTeamTemplateSelector();
 
+    // Show Subgent banner or Remote Server field based on saved settings
+    const subgentBanner = document.getElementById("team-subgent-banner");
+    const remoteServerRow = document.getElementById("team-remote-server-row");
+    const configureHint = document.getElementById("subgent-configure-hint");
+    document.getElementById("team-board-server").value = "";
+
+    try {
+        const subgentResp = await fetch("/api/settings/subgent");
+        const subgentData = await subgentResp.json();
+        if (subgentData.key_configured) {
+            // Show banner, hide Remote Server field
+            if (subgentBanner) {
+                subgentBanner.style.display = "";
+                const urlSpan = document.getElementById("team-subgent-banner-url");
+                if (urlSpan) urlSpan.textContent = subgentData.admin_url || "";
+            }
+            if (remoteServerRow) remoteServerRow.style.display = "none";
+        } else {
+            // Hide banner, show Remote Server field with hint
+            if (subgentBanner) subgentBanner.style.display = "none";
+            if (remoteServerRow) remoteServerRow.style.display = "";
+            if (configureHint) configureHint.style.display = "";
+        }
+    } catch (_) {
+        if (subgentBanner) subgentBanner.style.display = "none";
+        if (remoteServerRow) remoteServerRow.style.display = "";
+    }
+
     // Add three default agents
     for (const preset of DEFAULT_TEAM_PRESETS) {
         _addTeamAgent(preset.name, preset.prompt);
@@ -919,6 +947,8 @@ async function launchTeam() {
     };
     if (boardServer) payload.board_server = boardServer;
 
+    // Subgent config is handled server-side via saved settings (no explicit fields needed)
+
     try {
         const resp = await fetch("/api/sessions/launch-team", {
             method: "POST",
@@ -1007,6 +1037,18 @@ export async function showInfoModal() {
         } else {
             boardLabel.style.display = "none";
             boardVal.style.display = "none";
+        }
+
+        // Subgent status
+        const subgentLabel = document.getElementById("info-subgent-label");
+        const subgentVal = document.getElementById("info-subgent");
+        if (info.subgent_admin_url) {
+            subgentLabel.style.display = "";
+            subgentVal.style.display = "";
+            subgentVal.innerHTML = `<span class="info-subgent-badge connected">Connected</span> <span style="font-size:11px;color:var(--text-muted)">${escapeHtml(info.subgent_admin_url)}</span>`;
+        } else {
+            subgentLabel.style.display = "none";
+            subgentVal.style.display = "none";
         }
 
         document.getElementById("info-modal").style.display = "flex";
@@ -1507,7 +1549,186 @@ document.addEventListener("click", (e) => {
     if (e.target === webhookModal) window.hideWebhookModal?.();
     const confirmModal = document.getElementById("confirm-modal");
     if (e.target === confirmModal) window.hideConfirmModal?.();
+    const subgentModal = document.getElementById("subgent-settings-modal");
+    if (e.target === subgentModal) hideSubgentSettingsModal();
 });
+
+// ── Subgent Settings Modal ───────────────────────────────────────────────────
+
+let _subgentConfigured = false;
+
+export async function showSubgentSettingsModal() {
+    const modal = document.getElementById("subgent-settings-modal");
+    const statusEl = document.getElementById("subgent-settings-status");
+    statusEl.style.display = "none";
+
+    // Load saved settings
+    try {
+        const resp = await fetch("/api/settings/subgent");
+        const data = await resp.json();
+        document.getElementById("subgent-settings-url").value = data.admin_url || "";
+        document.getElementById("subgent-settings-org").value = data.org_id || "default";
+        const keyInput = document.getElementById("subgent-settings-key");
+        if (data.key_configured) {
+            keyInput.value = "";
+            keyInput.placeholder = data.admin_key || "••••••••";
+            _subgentConfigured = true;
+        } else {
+            keyInput.value = "";
+            keyInput.placeholder = "cb_live_...";
+            _subgentConfigured = false;
+        }
+        document.getElementById("subgent-clear-btn").style.display = _subgentConfigured ? "" : "none";
+    } catch (_) {
+        _subgentConfigured = false;
+        document.getElementById("subgent-clear-btn").style.display = "none";
+    }
+
+    // Reset key visibility
+    document.getElementById("subgent-settings-key").type = "password";
+
+    modal.style.display = "flex";
+}
+window.showSubgentSettingsModal = showSubgentSettingsModal;
+
+export function hideSubgentSettingsModal() {
+    document.getElementById("subgent-settings-modal").style.display = "none";
+}
+window.hideSubgentSettingsModal = hideSubgentSettingsModal;
+
+function _toggleSubgentKeyVisibility() {
+    const input = document.getElementById("subgent-settings-key");
+    input.type = input.type === "password" ? "text" : "password";
+}
+window._toggleSubgentKeyVisibility = _toggleSubgentKeyVisibility;
+
+async function _saveSubgentSettings() {
+    const url = document.getElementById("subgent-settings-url").value.trim();
+    const key = document.getElementById("subgent-settings-key").value.trim();
+    const org = document.getElementById("subgent-settings-org").value.trim() || "default";
+
+    if (!url) {
+        showToast("Admin URL is required", true);
+        return;
+    }
+
+    const payload = { admin_url: url, org_id: org };
+    // Only send key if user entered a new one (not empty placeholder)
+    if (key) payload.admin_key = key;
+    else if (!_subgentConfigured) {
+        showToast("Admin Key is required", true);
+        return;
+    }
+
+    try {
+        const resp = await fetch("/api/settings/subgent", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        if (resp.ok) {
+            showToast("Subgent settings saved");
+            _subgentConfigured = true;
+            _updateSubgentTopBarIcon(true);
+            hideSubgentSettingsModal();
+        } else {
+            const data = await resp.json();
+            showToast(data.error || "Failed to save", true);
+        }
+    } catch (e) {
+        showToast("Failed to save settings", true);
+    }
+}
+window._saveSubgentSettings = _saveSubgentSettings;
+
+async function _clearSubgentSettings() {
+    try {
+        const resp = await fetch("/api/settings/subgent", { method: "DELETE" });
+        if (resp.ok) {
+            showToast("Subgent settings cleared");
+            _subgentConfigured = false;
+            _updateSubgentTopBarIcon(false);
+            hideSubgentSettingsModal();
+        } else {
+            showToast("Failed to clear settings", true);
+        }
+    } catch (e) {
+        showToast("Failed to clear settings", true);
+    }
+}
+window._clearSubgentSettings = _clearSubgentSettings;
+
+async function _testSubgentConnection() {
+    const url = document.getElementById("subgent-settings-url").value.trim();
+    const statusEl = document.getElementById("subgent-settings-status");
+    if (!url) {
+        showToast("Enter an Admin URL first", true);
+        return;
+    }
+
+    statusEl.style.display = "";
+    statusEl.style.background = "rgba(139,148,158,0.1)";
+    statusEl.style.color = "var(--text-muted)";
+    statusEl.textContent = "Testing connection...";
+
+    const key = document.getElementById("subgent-settings-key").value.trim();
+    const payload = { admin_url: url };
+    if (key) payload.admin_key = key;
+
+    try {
+        const resp = await fetch("/api/settings/subgent/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            statusEl.style.background = "rgba(63,185,80,0.1)";
+            statusEl.style.color = "var(--success, #3fb950)";
+            const count = data.projects?.length ?? 0;
+            let msg = `Connected — ${count} board${count !== 1 ? "s" : ""} found`;
+            statusEl.textContent = msg;
+            // Show CLI warning if subgent binary not found
+            if (data.cli_available === false) {
+                const warn = document.createElement("div");
+                warn.style.cssText = "margin-top:6px;padding:6px 10px;border-radius:6px;font-size:12px;background:rgba(210,153,34,0.1);color:var(--warning, #d29922)";
+                warn.textContent = data.cli_warning || "subgent CLI not found in PATH. Agents need it to communicate on the board.";
+                statusEl.after(warn);
+                // Clean up warning when modal closes
+                const modal = document.getElementById("subgent-settings-modal");
+                const observer = new MutationObserver(() => {
+                    if (modal.style.display === "none") { warn.remove(); observer.disconnect(); }
+                });
+                observer.observe(modal, { attributes: true, attributeFilter: ["style"] });
+            }
+        } else {
+            statusEl.style.background = "rgba(248,81,73,0.1)";
+            statusEl.style.color = "var(--error, #f85149)";
+            statusEl.textContent = data.error || "Connection failed";
+        }
+    } catch (e) {
+        statusEl.style.background = "rgba(248,81,73,0.1)";
+        statusEl.style.color = "var(--error, #f85149)";
+        statusEl.textContent = "Connection failed";
+    }
+}
+window._testSubgentConnection = _testSubgentConnection;
+
+function _updateSubgentTopBarIcon(configured) {
+    const btn = document.getElementById("subgent-top-btn");
+    if (btn) btn.classList.toggle("configured", configured);
+}
+
+// Check subgent config status on page load for top bar icon
+async function _checkSubgentConfigStatus() {
+    try {
+        const resp = await fetch("/api/settings/subgent");
+        const data = await resp.json();
+        _subgentConfigured = !!data.key_configured;
+        _updateSubgentTopBarIcon(_subgentConfigured);
+    } catch (_) {}
+}
+_checkSubgentConfigStatus();
 
 // Close modals on Escape
 document.addEventListener("keydown", (e) => {
@@ -1516,6 +1737,7 @@ document.addEventListener("keydown", (e) => {
         hideInfoModal();
         hideResumeModal();
         hideSettingsModal();
+        hideSubgentSettingsModal();
         hideRestartModal();
         const mm = document.getElementById("macro-modal");
         if (mm) mm.style.display = "none";

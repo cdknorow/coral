@@ -20,10 +20,13 @@ log = logging.getLogger(__name__)
 class MessageBoardNotifier:
     """Background task that notifies idle agents about unread board messages."""
 
-    def __init__(self, board_store: MessageBoardStore) -> None:
+    def __init__(self, board_store: MessageBoardStore, coral_store=None) -> None:
         self._board_store = board_store
+        self._coral_store = coral_store
         # session_id -> unread count at time of last notification
         self._notified: dict[str, int] = {}
+        # Cache of session IDs backed by subgent (refreshed each tick)
+        self._subgent_sids: set[str] = set()
 
     async def run_forever(self, interval: float = 30) -> None:
         while True:
@@ -35,6 +38,14 @@ class MessageBoardNotifier:
 
     async def run_once(self) -> dict[str, int]:
         """Check all live agents for unread messages. Returns {"notified": n}."""
+        # Refresh subgent session cache — these are handled by SubgentWSListener
+        if self._coral_store:
+            try:
+                subgent_rows = await self._coral_store.get_subgent_live_sessions()
+                self._subgent_sids = {r["session_id"] for r in subgent_rows}
+            except Exception:
+                pass  # Keep previous cache on error
+
         agents = await discover_coral_agents()
         notified_count = 0
         live_board_ids: set[str] = set()
@@ -42,6 +53,10 @@ class MessageBoardNotifier:
         for agent in agents:
             sid = agent.get("session_id")
             if not sid:
+                continue
+
+            # Skip subgent-backed sessions — SubgentWSListener handles notifications
+            if sid in self._subgent_sids:
                 continue
 
             # The CLI subscribes using the tmux session name (e.g.

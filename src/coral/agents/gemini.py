@@ -77,10 +77,11 @@ class GeminiAgent(BaseAgent):
         role: str | None = None,
         prompt: str | None = None,
         prompt_overrides: dict[str, str] | None = None,
+        board_type: str | None = None,
     ) -> str:
         # Gemini uses GEMINI_SYSTEM_MD env var for system prompt.
         # If we have board/prompt instructions, write a combined file.
-        board_prompt = self._build_board_system_prompt(board_name, role, prompt, prompt_overrides=prompt_overrides)
+        board_prompt = self._build_board_system_prompt(board_name, role, prompt, prompt_overrides=prompt_overrides, board_type=board_type)
         if protocol_path and protocol_path.exists():
             if board_prompt:
                 import tempfile

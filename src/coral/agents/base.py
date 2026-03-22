@@ -212,12 +212,25 @@ class BaseAgent(ABC):
             {"name": "clear", "command": "/clear", "description": "Clear conversation and start fresh"},
         ]
 
+    CLI_NAMES: dict[str | None, str] = {
+        None: "coral-board",
+        "coral": "coral-board",
+        "subgent": "subgent",
+    }
+
+    CLI_NAMES: dict[str | None, str] = {
+        None: "coral-board",
+        "coral": "coral-board",
+        "subgent": "subgent",
+    }
+
     @staticmethod
     def _build_board_system_prompt(
         board_name: str | None,
         role: str | None,
         prompt: str | None,
         prompt_overrides: dict[str, str] | None = None,
+        board_type: str | None = None,
     ) -> str:
         """Build the board + behavior portion of the system prompt.
 
@@ -228,23 +241,27 @@ class BaseAgent(ABC):
         if prompt:
             parts.append(prompt)
         if board_name:
+            cli = BaseAgent.CLI_NAMES.get(board_type, "coral-board")
+            via = f" via {board_type.title()}" if board_type and board_type != "coral" else ""
             is_orchestrator = role and "orchestrator" in role.lower()
             role_label = f" Your role is: {role}." if role else ""
             board_intro = (
-                f"You were automatically joined to message board \"{board_name}\".{role_label} "
-                f"Do NOT run coral-board join — you are already subscribed.\n\n"
-                "Use the coral-board CLI to communicate with your teammates:\n"
-                "  coral-board read          — read new messages from teammates\n"
-                "  coral-board post \"msg\"    — post a message to the board\n"
-                "  coral-board read --last 5 — see the 5 most recent messages\n"
-                "  coral-board subscribers   — see who is on the board\n"
+                f"You were automatically joined to message board \"{board_name}\"{via}.{role_label} "
+                f"Do NOT run {cli} join — you are already subscribed.\n\n"
+                f"Use the {cli} CLI to communicate with your teammates:\n"
+                f"  {cli} read          — read new messages from teammates\n"
+                f"  {cli} post \"msg\"    — post a message to the board\n"
+                f"  {cli} read --last 5 — see the 5 most recent messages\n"
+                f"  {cli} subscribers   — see who is on the board\n"
                 "Check the board periodically for updates from your teammates.\n\n"
             )
             overrides = prompt_overrides or {}
+            default_orch = DEFAULT_ORCHESTRATOR_SYSTEM_PROMPT.replace("coral-board", cli)
+            default_work = DEFAULT_WORKER_SYSTEM_PROMPT.replace("coral-board", cli)
             if is_orchestrator:
-                tail = overrides.get("default_prompt_orchestrator") or DEFAULT_ORCHESTRATOR_SYSTEM_PROMPT
+                tail = overrides.get("default_prompt_orchestrator") or default_orch
             else:
-                tail = overrides.get("default_prompt_worker") or DEFAULT_WORKER_SYSTEM_PROMPT
+                tail = overrides.get("default_prompt_worker") or default_work
             board_intro += tail
             parts.append(board_intro)
         return "\n\n".join(parts)
@@ -261,6 +278,7 @@ class BaseAgent(ABC):
         role: str | None = None,
         prompt: str | None = None,
         prompt_overrides: dict[str, str] | None = None,
+        board_type: str | None = None,
     ) -> str:
         """Build the shell command string to launch this agent."""
 

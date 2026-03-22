@@ -45,11 +45,15 @@ async def update_check():
     return result
 
 
+_SENSITIVE_KEYS = {"subgent_admin_key"}
+
+
 @router.get("/api/settings")
 async def get_settings():
-    """Return all global user settings."""
+    """Return all global user settings (sensitive keys filtered out)."""
     settings = await store.get_settings()
-    return {"settings": settings}
+    filtered = {k: v for k, v in settings.items() if k not in _SENSITIVE_KEYS}
+    return {"settings": filtered}
 
 
 @router.get("/api/settings/default-prompts")
@@ -73,6 +77,118 @@ async def put_settings(body: dict):
     for key, value in body.items():
         await store.set_setting(str(key), str(value))
     return {"ok": True}
+
+
+_SUBGENT_KEYS = ("subgent_admin_url", "subgent_admin_key", "subgent_org_id")
+
+
+def _mask_key(key: str) -> str:
+    """Mask a sensitive key, showing only prefix and last 4 chars."""
+    if not key or len(key) < 8:
+        return "****"
+    # Show prefix up to first underscore group + last 4 chars
+    prefix = key[:8] if len(key) > 12 else key[:4]
+    return f"{prefix}...{key[-4:]}"
+
+
+@router.get("/api/settings/subgent")
+async def get_subgent_settings():
+    """Return saved Subgent server configuration (admin_key masked)."""
+    settings = await store.get_settings()
+    admin_url = settings.get("subgent_admin_url", "")
+    admin_key = settings.get("subgent_admin_key", "")
+    org_id = settings.get("subgent_org_id", "default")
+    return {
+        "admin_url": admin_url,
+        "org_id": org_id,
+        "key_configured": bool(admin_key),
+        "admin_key_masked": _mask_key(admin_key) if admin_key else "",
+    }
+
+
+@router.put("/api/settings/subgent")
+async def put_subgent_settings(body: dict):
+    """Save Subgent server configuration."""
+    admin_url = body.get("admin_url", "").strip()
+    admin_key = body.get("admin_key", "").strip()
+    org_id = body.get("org_id", "default").strip() or "default"
+    if not admin_url:
+        return {"error": "admin_url is required"}
+    # If no key provided, keep the existing one (user only changed URL/org)
+    if not admin_key:
+        existing = await store.get_settings()
+        admin_key = existing.get("subgent_admin_key", "")
+        if not admin_key:
+            return {"error": "admin_key is required"}
+    # Validate URL before saving (SSRF protection)
+    try:
+        from coral.messageboard.subgent_client import validate_url
+        validate_url(admin_url)
+    except ValueError as e:
+        return {"error": f"Invalid admin URL: {e}"}
+    await store.set_setting("subgent_admin_url", admin_url)
+    await store.set_setting("subgent_admin_key", admin_key)
+    await store.set_setting("subgent_org_id", org_id)
+    return {"ok": True}
+
+
+@router.delete("/api/settings/subgent")
+async def delete_subgent_settings():
+    """Clear saved Subgent server configuration."""
+    for key in _SUBGENT_KEYS:
+        await store.delete_setting(key)
+    return {"ok": True}
+
+
+@router.post("/api/settings/subgent/test")
+async def test_subgent_connection(body: dict):
+    """Test connectivity to a Subgent server. Proxies the request server-side to avoid CORS."""
+    import asyncio
+    import httpx
+
+    admin_url = body.get("admin_url", "").strip()
+    admin_key = body.get("admin_key", "").strip()
+    if not admin_url:
+        return {"error": "admin_url is required"}
+    # If no key provided, try saved key
+    if not admin_key:
+        try:
+            saved = await store.get_settings()
+            admin_key = saved.get("subgent_admin_key", "")
+        except Exception:
+            pass
+    if not admin_key:
+        return {"error": "admin_key is required"}
+    # Validate URL (SSRF protection)
+    try:
+        from coral.messageboard.subgent_client import validate_url
+        base = validate_url(admin_url)
+    except ValueError as e:
+        return {"error": f"Invalid URL: {e}"}
+    # Make the test request server-side
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{base}/api/board/projects",
+                headers={"Authorization": f"Bearer {admin_key}"},
+            )
+        if resp.status_code == 401:
+            return {"ok": False, "error": "Authentication failed (401)"}
+        if resp.status_code == 403:
+            return {"ok": False, "error": "Access denied (403)"}
+        resp.raise_for_status()
+        import shutil
+        cli_available = shutil.which("subgent") is not None
+        result = {"ok": True, "projects": resp.json(), "cli_available": cli_available}
+        if not cli_available:
+            result["cli_warning"] = "subgent CLI not found in PATH. Install it so agents can communicate on the board."
+        return result
+    except httpx.ConnectError:
+        return {"ok": False, "error": "Connection refused — is the server running?"}
+    except httpx.TimeoutException:
+        return {"ok": False, "error": "Connection timed out"}
+    except Exception as e:
+        return {"ok": False, "error": "Connection failed"}
 
 
 @router.get("/api/filesystem/list")

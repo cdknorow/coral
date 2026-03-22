@@ -71,6 +71,10 @@ def _write_board_state(tmux_session_name: str, project: str, job_title: str,
         data["server_url"] = server_url.rstrip("/")
     state_file.write_text(_json_mod.dumps(data))
 
+def _get_cli_name(board_type: str | None) -> str:
+    """Return the CLI command name for a board type."""
+    from coral.agents.base import BaseAgent
+    return BaseAgent.CLI_NAMES.get(board_type, "coral-board")
 
 async def setup_board_and_prompt(
     session_id: str,
@@ -79,6 +83,8 @@ async def setup_board_and_prompt(
     board_name: str | None = None,
     board_server: str | None = None,
     display_name: str | None = None,
+    subgent_api_key: str | None = None,
+    subgent_admin_url: str | None = None,
 ) -> None:
     """Subscribe a session to a message board.
 
@@ -86,12 +92,16 @@ async def setup_board_and_prompt(
     shared across initial launch, restart, and resume-persistent-sessions paths.
     The agent prompt is now passed directly to the CLI as a positional argument
     in build_launch_command, so no tmux-based prompt delivery is needed.
+
+    When *subgent_api_key* is set, the agent uses the Subgent server instead
+    of the local coral-board — skip local subscription and inject env vars.
     """
     log = logging.getLogger(__name__)
     role = display_name or agent_type
+    is_subgent = bool(subgent_api_key)
 
-    # Board subscription (immediate — no delay needed)
-    if board_name:
+    # Board subscription (skip for subgent — they use the remote server)
+    if board_name and not is_subgent:
         try:
             from coral.store.registry import get_board_store
             board_store = get_board_store()
@@ -113,6 +123,16 @@ async def setup_board_and_prompt(
 
     # The agent prompt is now passed as a CLI positional argument in
     # build_launch_command, so no tmux-based prompt delivery is needed.
+
+    # For subgent sessions, inject env vars via tmux set-environment (not send-keys)
+    # to avoid exposing credentials in scrollback, log files, or pane output.
+    if is_subgent:
+        import shlex
+        try:
+            await run_cmd("tmux", "set-environment", "-t", session_name, "SUBGENT_API_KEY", shlex.quote(subgent_api_key))
+            await run_cmd("tmux", "set-environment", "-t", session_name, "SUBGENT_URL", shlex.quote(subgent_admin_url))
+        except Exception:
+            log.warning("Failed to inject subgent env vars for session %s", session_id[:8])
 
 
 def strip_ansi(text: str) -> str:
@@ -660,19 +680,22 @@ async def restart_session(
         )
         await asyncio.sleep(0.3)
 
-        # 6. Load persisted flags, prompt, board_name, and board_server from the live session record
+        # 6. Load persisted flags, prompt, board_name, board_server, and subgent fields
         from coral.store.registry import get_store
         _store = get_store()
         stored_flags = []
         stored_prompt = None
         stored_board = None
         stored_board_server = None
+        stored_sg_api_key = None
+        stored_sg_admin_url = None
         if session_id:
             try:
                 import json as _json
                 _flag_conn = await _store._get_conn()
                 _flag_row = await (await _flag_conn.execute(
-                    "SELECT flags, prompt, board_name, board_server FROM live_sessions WHERE session_id = ?", (session_id,)
+                    "SELECT flags, prompt, board_name, board_server, subgent_api_key, subgent_admin_url "
+                    "FROM live_sessions WHERE session_id = ?", (session_id,)
                 )).fetchone()
                 if _flag_row:
                     if _flag_row["flags"]:
@@ -680,6 +703,8 @@ async def restart_session(
                     stored_prompt = _flag_row["prompt"]
                     stored_board = _flag_row["board_name"]
                     stored_board_server = _flag_row["board_server"]
+                    stored_sg_api_key = _flag_row["subgent_api_key"]
+                    stored_sg_admin_url = _flag_row["subgent_admin_url"]
             except Exception:
                 pass
 
@@ -719,6 +744,7 @@ async def restart_session(
             role=old_display_name_for_cmd or effective_type,
             prompt=stored_prompt,
             prompt_overrides=_prompt_overrides,
+            board_type="subgent" if stored_sg_api_key else None,
         )
 
         rc, _, stderr = await run_cmd(
@@ -765,6 +791,8 @@ async def restart_session(
                 board_name=stored_board,
                 board_server=stored_board_server,
                 display_name=old_display_name_for_prompt,
+                subgent_api_key=stored_sg_api_key,
+                subgent_admin_url=stored_sg_admin_url,
             ))
 
         return {
@@ -778,7 +806,7 @@ async def restart_session(
         return {"error": str(e)}
 
 
-async def launch_claude_session(working_dir: str, agent_type: str = "claude", display_name: str | None = None, resume_session_id: str | None = None, flags: list[str] | None = None, is_job: bool = False, prompt: str | None = None, board_name: str | None = None, board_server: str | None = None, icon: str | None = None) -> dict[str, str]:
+async def launch_claude_session(working_dir: str, agent_type: str = "claude", display_name: str | None = None, resume_session_id: str | None = None, flags: list[str] | None = None, is_job: bool = False, prompt: str | None = None, board_name: str | None = None, board_server: str | None = None, icon: str | None = None, subgent_key_id: str | None = None, subgent_api_key: str | None = None, subgent_admin_url: str | None = None, subgent_admin_key: str | None = None, subgent_org_id: str | None = None) -> dict[str, str]:
     """Launch a new tmux session with a Claude/Gemini agent.
 
     Returns dict with session_name, session_id, log_file, and any error.
@@ -869,6 +897,7 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
                 role=display_name or agent_type,
                 prompt=prompt,
                 prompt_overrides=_prompt_overrides,
+                board_type="subgent" if subgent_api_key else None,
             )
 
             await asyncio.create_subprocess_exec(
@@ -890,6 +919,11 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
                 board_name=board_name,
                 board_server=board_server,
                 icon=icon,
+                subgent_key_id=subgent_key_id,
+                subgent_api_key=subgent_api_key,
+                subgent_admin_url=subgent_admin_url,
+                subgent_admin_key=subgent_admin_key,
+                subgent_org_id=subgent_org_id,
             )
         except Exception:
             pass  # Non-critical

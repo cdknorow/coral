@@ -36,6 +36,7 @@ from coral.api import uploads as uploads_api
 from coral.api import themes as themes_api
 from coral.api import board_remotes as board_remotes_api
 from coral.api import templates as templates_api
+from coral.api import board_proxy as board_proxy_api
 
 from coral.tools.utils import get_package_dir
 
@@ -123,6 +124,42 @@ async def lifespan(app: FastAPI):
 
         # Seed _last_known from DB so we don't re-insert events already stored.
         live_sessions_api._last_known.update(await store.get_last_known_status_summary())
+
+        # Start WebSocket listeners for any subgent-backed boards
+        subgent_sessions = await store.get_subgent_live_sessions()
+        if subgent_sessions:
+            from coral.messageboard.subgent_client import validate_url
+            seen_boards: set[str] = set()
+            for sess in subgent_sessions:
+                board_id = sess.get("subgent_board_id")
+                if not board_id:
+                    log.debug("Skipping subgent session %s (no board_id)", sess["session_id"][:8])
+                    continue
+                board_key = f"{sess['board_server']}:{board_id}"
+                if board_key in seen_boards:
+                    continue
+                seen_boards.add(board_key)
+                # Re-validate URL before WebSocket connection (SSRF protection)
+                try:
+                    validate_url(sess["board_server"])
+                except ValueError as e:
+                    log.warning("Skipping subgent board %s: %s", board_key, e)
+                    continue
+                # Convert http(s) URL to ws(s) URL for WebSocket connection
+                ws_url = sess["board_server"]
+                if ws_url.startswith("https://"):
+                    ws_url = "wss://" + ws_url[len("https://"):]
+                elif ws_url.startswith("http://"):
+                    ws_url = "ws://" + ws_url[len("http://"):]
+                await subgent_listener.start_board(
+                    ws_url=ws_url,
+                    board_id=board_id,
+                    api_key=sess["subgent_api_key"],
+                    session_id=sess["session_id"],
+                    job_title="",
+                )
+            log.info("Started %d subgent board listeners", len(seen_boards))
+
         app.state.startup_complete = True
         log.info("Deferred startup complete (total %.2fs)", _time.monotonic() - _t0)
 
@@ -139,7 +176,7 @@ async def lifespan(app: FastAPI):
     board_store = get_board_store()
     set_board_store(board_store)
     live_sessions_api.board_store = board_store
-    board_notifier = MessageBoardNotifier(board_store)
+    board_notifier = MessageBoardNotifier(board_store, coral_store=store)
 
     from coral.config import (
         INDEXER_INTERVAL_S, INDEXER_STARTUP_DELAY_S,
@@ -159,6 +196,12 @@ async def lifespan(app: FastAPI):
     board_remotes_api.store = remote_board_store
     remote_poller = RemoteBoardPoller(remote_board_store)
     remote_poller_task = asyncio.create_task(remote_poller.run_forever(interval=REMOTE_POLLER_INTERVAL_S))
+
+    # Subgent WebSocket listener (one connection per remote board)
+    from coral.background_tasks.subgent_ws import SubgentWSListener
+    subgent_listener = SubgentWSListener()
+    app.state.subgent_listener = subgent_listener
+    live_sessions_api.subgent_listener = subgent_listener
 
     # Start job scheduler
     from coral.background_tasks.scheduler import JobScheduler
@@ -212,6 +255,10 @@ async def lifespan(app: FastAPI):
     board_notifier_task.cancel()
     remote_poller_task.cancel()
     try:
+        await asyncio.wait_for(subgent_listener.stop_all(), timeout=5)
+    except asyncio.TimeoutError:
+        log.warning("Subgent WebSocket listener close timed out")
+    try:
         await asyncio.wait_for(remote_poller.close(), timeout=5)
     except asyncio.TimeoutError:
         log.warning("Remote board poller close timed out")
@@ -261,6 +308,7 @@ schedule_api.store = schedule_store
 webhooks_api.store = store
 webhooks_api._app = app
 tasks_api.store = schedule_store
+board_proxy_api.store = store
 
 # Register routers
 app.include_router(live_sessions_api.router)
@@ -273,6 +321,7 @@ app.include_router(uploads_api.router)
 app.include_router(themes_api.router)
 app.include_router(board_remotes_api.router)
 app.include_router(templates_api.router)
+app.include_router(board_proxy_api.router)
 
 # Mount self-contained message board sub-app
 from coral.messageboard.app import create_app as create_board_app

@@ -2020,3 +2020,95 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ── Subgent Banner (launch modal) ───────────────────────── */
+
+.subgent-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(88, 166, 255, 0.08);
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.subgent-banner strong {
+    color: var(--accent);
+}
+
+.subgent-banner svg:first-child {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
+.subgent-banner-edit {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    margin-left: auto;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.subgent-banner-edit:hover {
+    color: var(--accent);
+}
+
+/* ── Subgent Settings Modal ──────────────────────────────── */
+
+.password-input-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.password-input-row input {
+    flex: 1;
+    min-width: 0;
+}
+
+.password-toggle-btn {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px !important;
+}
+
+/* ── Subgent Top Bar Icon States ─────────────────────────── */
+
+#subgent-top-btn {
+    color: var(--text-muted);
+    transition: color 0.15s;
+}
+
+#subgent-top-btn.configured {
+    color: var(--accent);
+}
+
+/* ── Subgent Info Badge ──────────────────────────────────── */
+
+.info-subgent-badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
+.info-subgent-badge.connected {
+    background: rgba(63, 185, 80, 0.15);
+    color: var(--success, #3fb950);
+}
+
+.info-subgent-badge.not-connected {
+    background: rgba(139, 148, 158, 0.15);
+    color: var(--text-muted);
+}

@@ -124,11 +124,20 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
     except Exception:
         pass
 
+
     # Batch fetch all unread counts in one pass (eliminates N+1 queries)
     try:
         all_unread = await board_store.get_all_unread_counts()
     except Exception:
         all_unread = {}
+
+    # Fetch board_name + subgent_board_id from live_sessions DB for sessions
+    # without local board subscriptions (e.g. subgent-backed sessions)
+    live_board_names: dict[str, dict] = {}
+    try:
+        live_board_names = await store.get_live_session_board_names(session_ids)
+    except Exception:
+        live_board_names = {}
 
     results = []
     for agent in agents:
@@ -187,12 +196,6 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
         board_sub = board_subs.get(tmux_name)
         board_unread = all_unread.get(tmux_name, 0) if board_sub else 0
 
-        # Fallback board info from live_sessions DB if subscription not yet active
-        board_project = board_sub["project"] if board_sub else None
-        board_job_title = board_sub["job_title"] if board_sub else None
-        if not board_project and sid and sid in live_board_names:
-            board_project, board_job_title = live_board_names[sid]
-
         entry = {
             "name": name,
             "agent_type": agent["agent_type"],
@@ -212,10 +215,11 @@ async def _build_session_list(include_commands: bool = False) -> list[dict]:
             "waiting_reason": latest_ev if needs_input else None,
             "waiting_summary": ev_summary if needs_input else None,
             "changed_file_count": fc,
-            "board_project": board_project,
-            "board_job_title": board_job_title,
+            "board_project": board_sub["project"] if board_sub else (live_board_names.get(sid, {}).get("board_name") if sid else None),
+            "board_job_title": board_sub["job_title"] if board_sub else None,
             "board_unread": board_unread,
             "sleeping": live_sleeping.get(sid, False) if sid else False,
+            "subgent_board_id": live_board_names.get(sid, {}).get("subgent_board_id") if sid else None,
         }
         if include_commands:
             wd = agent.get("working_directory", "")
@@ -432,6 +436,9 @@ async def get_live_session_info(name: str, agent_type: str | None = None, sessio
             if prompt_info:
                 info["prompt"] = prompt_info["prompt"]
                 info["board_name"] = prompt_info["board_name"]
+                if prompt_info.get("subgent_key_id"):
+                    info["subgent_admin_url"] = prompt_info["subgent_admin_url"]
+                    info["subgent_board_id"] = prompt_info.get("subgent_board_id")
         except Exception:
             pass
     return info
@@ -714,6 +721,45 @@ async def kill_live_session(name: str, body: dict | None = None):
         if session_info and session_info.get("is_sleeping"):
             return await _kill_sleeping_agent(sid, name, agent_type, session_info)
 
+    # Revoke subgent key and stop board listener if this was the last agent on the board
+    if sid:
+        try:
+            info = await store.get_live_session_prompt_info(sid)
+            if info and info.get("subgent_key_id"):
+                # Revoke the agent's API key on the subgent server
+                try:
+                    from coral.messageboard.subgent_client import revoke_key
+                    revoke_key(
+                        admin_url=info["subgent_admin_url"],
+                        admin_key=info["subgent_admin_key"],
+                        key_id=info["subgent_key_id"],
+                    )
+                except Exception:
+                    log.warning("Failed to revoke subgent key for session %s", sid[:8])
+
+                # Check if any other live sessions share this board
+                board_id = info.get("subgent_board_id")
+                board_server = info.get("board_server")
+                if board_id and board_server:
+                    remaining = await store.get_subgent_live_sessions()
+                    others = [r for r in remaining if r["session_id"] != sid and r.get("subgent_board_id") == board_id]
+                    if not others:
+                        # Last agent on this board — stop the WS listener
+                        try:
+                            from coral.web_server import app
+                            listener = getattr(app.state, "subgent_listener", None)
+                            if listener:
+                                ws_url = board_server
+                                if ws_url.startswith("https://"):
+                                    ws_url = "wss://" + ws_url[len("https://"):]
+                                elif ws_url.startswith("http://"):
+                                    ws_url = "ws://" + ws_url[len("http://"):]
+                                await listener.stop_board(ws_url, board_id)
+                        except Exception:
+                            log.warning("Failed to stop subgent listener for board %s", board_id)
+        except Exception:
+            pass  # Non-critical — don't block kill
+
     error = await kill_session(name, agent_type=agent_type, session_id=sid)
     if error:
         return {"error": error}
@@ -862,6 +908,7 @@ async def launch_team(body: dict):
     agent_type = body.get("agent_type", "claude").strip()
     flags = body.get("flags", [])
     agents = body.get("agents", [])
+    subgent_config = body.get("subgent")  # optional: {admin_url, admin_key, org_id}
 
     if not board_name:
         return {"error": "board_name is required"}
@@ -872,6 +919,44 @@ async def launch_team(body: dict):
 
     launched = []
 
+    # Extract subgent config: use request values if provided, else fall back to saved settings
+    subgent_admin_url = None
+    subgent_admin_key = None
+    subgent_org_id = None
+    if subgent_config:
+        subgent_admin_url = subgent_config.get("admin_url", "").strip()
+        subgent_admin_key = subgent_config.get("admin_key", "").strip()
+        subgent_org_id = subgent_config.get("org_id", "default").strip() or "default"
+    else:
+        # Fall back to saved subgent settings from DB
+        try:
+            saved = await store.get_settings()
+            if saved.get("subgent_admin_url") and saved.get("subgent_admin_key"):
+                subgent_admin_url = saved["subgent_admin_url"]
+                subgent_admin_key = saved["subgent_admin_key"]
+                subgent_org_id = saved.get("subgent_org_id", "default") or "default"
+        except Exception:
+            pass
+
+    # When using subgent, set board_server to the admin URL if not explicitly provided
+    if subgent_admin_url and not board_server:
+        board_server = subgent_admin_url
+
+    # Resolve project + board UUIDs before creating agent keys
+    subgent_board_id = None
+    if subgent_admin_url and subgent_admin_key:
+        try:
+            from coral.messageboard.subgent_client import ensure_project, ensure_board
+            project_id = await _asyncio.to_thread(
+                ensure_project, subgent_admin_url, subgent_admin_key, board_name,
+            )
+            subgent_board_id = await _asyncio.to_thread(
+                ensure_board, subgent_admin_url, subgent_admin_key, project_id, board_name,
+            )
+        except Exception as e:
+            log.warning("Failed to resolve subgent project/board UUIDs: %s", e)
+            return {"error": f"Subgent setup failed: {e}"}
+
     for agent_def in agents:
         agent_name = agent_def.get("name", "").strip()
         agent_prompt = agent_def.get("prompt", "").strip()
@@ -879,7 +964,8 @@ async def launch_team(body: dict):
         if not agent_name:
             continue
 
-        # Launch the agent session
+        # Launch the agent session first (without subgent fields —
+        # we need the real session_name before creating the key)
         result = await launch_claude_session(
             working_dir, agent_type,
             display_name=agent_name,
@@ -893,19 +979,106 @@ async def launch_team(body: dict):
             launched.append({"name": agent_name, "error": result["error"]})
             continue
 
+        real_session_name = result["session_name"]
+        real_session_id = result["session_id"]
+
+        # Create subgent agent key AFTER launch so we use the real session_name
+        subgent_key_id = None
+        subgent_api_key = None
+
+        if subgent_admin_url and subgent_admin_key:
+            try:
+                from coral.messageboard.subgent_client import create_agent_key
+                key_result = await _asyncio.to_thread(
+                    create_agent_key,
+                    admin_url=subgent_admin_url,
+                    admin_key=subgent_admin_key,
+                    org_id=subgent_org_id,
+                    board=subgent_board_id,
+                    session_id=real_session_name,
+                    job_title=agent_name,
+                    check_mode="all",
+                )
+                subgent_key_id = str(key_result.get("id", ""))
+                subgent_api_key = key_result.get("key", "")
+
+                # Update the DB record with subgent credentials
+                await store.update_live_session_subgent(
+                    real_session_id,
+                    subgent_key_id=subgent_key_id,
+                    subgent_api_key=subgent_api_key,
+                    subgent_admin_url=subgent_admin_url,
+                    subgent_admin_key=subgent_admin_key,
+                    subgent_org_id=subgent_org_id,
+                    subgent_board_id=subgent_board_id,
+                )
+            except Exception as e:
+                log.warning("Failed to create subgent key for %s: %s", agent_name, e)
+                # Agent is already launched — continue without subgent integration
+                launched.append({
+                    "name": agent_name,
+                    "session_id": real_session_id,
+                    "session_name": real_session_name,
+                    "warning": "Subgent key creation failed",
+                })
+                continue
+
         # Board subscription handled by setup_board_and_prompt
         if board_name:
             _asyncio.create_task(setup_board_and_prompt(
-                result["session_id"], result["session_name"], agent_type,
+                real_session_id, real_session_name, agent_type,
                 board_name=board_name or None,
                 board_server=board_server, display_name=agent_name,
+                subgent_api_key=subgent_api_key,
+                subgent_admin_url=subgent_admin_url,
+                subgent_board_id=subgent_board_id,
             ))
 
         launched.append({
             "name": agent_name,
-            "session_id": result["session_id"],
-            "session_name": result["session_name"],
+            "session_id": real_session_id,
+            "session_name": real_session_name,
         })
+
+    # Start WebSocket listener for subgent board (if any agents got keys)
+    if subgent_admin_url and subgent_admin_key and launched:
+        # Find a successfully launched agent with subgent credentials for the WS listener
+        first_subgent = None
+        for a in launched:
+            if "session_id" in a and "warning" not in a:
+                # Look up subgent credentials from DB
+                try:
+                    info = await store.get_live_session_prompt_info(a["session_id"])
+                    if info and info.get("subgent_api_key"):
+                        first_subgent = info
+                        break
+                except Exception:
+                    pass
+        if first_subgent:
+            try:
+                from coral.messageboard.subgent_client import validate_url
+                from coral.web_server import app
+                # Re-validate URL before WebSocket connection (SSRF protection)
+                validate_url(subgent_admin_url)
+                listener = getattr(app.state, "subgent_listener", None)
+                if listener:
+                    # Convert http(s) to ws(s) for WebSocket connection
+                    ws_url = subgent_admin_url
+                    if ws_url.startswith("https://"):
+                        ws_url = "wss://" + ws_url[len("https://"):]
+                    elif ws_url.startswith("http://"):
+                        ws_url = "ws://" + ws_url[len("http://"):]
+                    first_sid = next((a["session_name"] for a in launched if "session_id" in a), "")
+                    await listener.start_board(
+                        ws_url=ws_url,
+                        board_id=subgent_board_id,
+                        api_key=first_subgent["subgent_api_key"],
+                        session_id=first_sid,
+                    )
+            except ValueError as e:
+                log.warning("Subgent URL validation failed for board %s: %s", board_name, e)
+            except Exception as e:
+                log.warning("Failed to start subgent WS listener for board %s: %s", board_name, e)
 
     return {"ok": True, "board": board_name, "agents": launched}
 

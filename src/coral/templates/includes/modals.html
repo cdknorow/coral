@@ -171,10 +171,29 @@
                                 <input type="text" id="team-board-name" placeholder="e.g. Auth Feature, Sprint 42">
                             </label>
                         </div>
-                        <div>
+                        <!-- Subgent banner (shown when configured) -->
+                        <div id="team-subgent-banner" style="display:none">
+                            <div class="subgent-banner">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+                                    <circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/>
+                                </svg>
+                                <span>Board Server: <strong>Subgent</strong> (<span id="team-subgent-banner-url"></span>)</span>
+                                <button type="button" class="subgent-banner-edit" onclick="showSubgentSettingsModal()" title="Edit Subgent settings">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Remote Server field (shown when Subgent NOT configured) -->
+                        <div id="team-remote-server-row">
                             <label>Remote Server <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
                                 <input type="text" id="team-board-server" placeholder="e.g. http://remote-machine:8420">
                             </label>
+                            <div id="subgent-configure-hint" style="display:none;font-size:11px;color:var(--text-muted);margin-top:2px">
+                                Or <a href="#" onclick="event.preventDefault();showSubgentSettingsModal()" style="color:var(--accent)">configure Subgent</a> for enhanced board features
+                            </div>
                         </div>
                         <label>Working Directory:
                             <div class="dir-input-row">
@@ -292,9 +311,53 @@
                 <dd id="info-prompt" style="display:none"></dd>
                 <dt id="info-board-label" style="display:none">Message Board</dt>
                 <dd id="info-board" style="display:none"></dd>
+                <dt id="info-subgent-label" style="display:none">Subgent</dt>
+                <dd id="info-subgent" style="display:none"></dd>
             </dl>
             <div class="modal-actions">
                 <button class="btn" onclick="hideInfoModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subgent Settings Modal -->
+    <div id="subgent-settings-modal" class="modal" style="display:none">
+        <div class="modal-content" style="width:440px">
+            <h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px">
+                    <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+                    <circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/>
+                </svg>Subgent Server Settings
+            </h3>
+            <p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px">
+                Configure your Subgent server credentials. These will be used as defaults when launching agent teams.
+            </p>
+            <label>Admin URL:
+                <input type="text" id="subgent-settings-url" placeholder="http://subgent.io:8421">
+            </label>
+            <label>Admin Key:
+                <div class="password-input-row">
+                    <input type="password" id="subgent-settings-key" placeholder="cb_live_..." autocomplete="off">
+                    <button type="button" class="btn btn-small password-toggle-btn" onclick="window._toggleSubgentKeyVisibility()" title="Show/hide key">
+                        <svg id="subgent-key-eye" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                        </svg>
+                    </button>
+                </div>
+            </label>
+            <label>Org ID:
+                <input type="text" id="subgent-settings-org" placeholder="default" value="default">
+            </label>
+            <div id="subgent-settings-status" style="display:none;font-size:12px;margin-top:8px;padding:6px 10px;border-radius:6px"></div>
+            <div class="modal-actions" style="justify-content:space-between">
+                <div>
+                    <button class="btn btn-warning" id="subgent-clear-btn" onclick="window._clearSubgentSettings()" style="display:none">Disconnect</button>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn" onclick="hideSubgentSettingsModal()">Cancel</button>
+                    <button class="btn" onclick="window._testSubgentConnection()">Test</button>
+                    <button class="btn btn-primary" onclick="window._saveSubgentSettings()">Save</button>
+                </div>
             </div>
         </div>
     </div>

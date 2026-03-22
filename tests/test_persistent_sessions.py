@@ -183,7 +183,7 @@ async def test_resume_relaunches_missing_session(store, tmp_path):
         from coral.tools.session_manager import resume_persistent_sessions
         await resume_persistent_sessions(store)
 
-    mock_launch.assert_called_once_with(work_dir, "claude", display_name="My Agent", resume_session_id="old-sid", flags=None, prompt=None, board_name=None, board_server=None)
+    mock_launch.assert_called_once_with(work_dir, "claude", display_name="My Agent", resume_session_id="old-sid", flags=None, prompt=None, board_name=None, board_server=None, subgent_key_id=None, subgent_api_key=None, subgent_admin_url=None, subgent_admin_key=None, subgent_org_id=None, subgent_board_id=None)
 
 
 @pytest.mark.asyncio
@@ -209,7 +209,7 @@ async def test_resume_uses_resume_from_id(store, tmp_path):
         await resume_persistent_sessions(store)
 
     # Should use the original-sid (resume_from_id), not new-sid (session_id)
-    mock_launch.assert_called_once_with(work_dir, "claude", display_name="My Agent", resume_session_id="original-sid", flags=None, prompt=None, board_name=None, board_server=None)
+    mock_launch.assert_called_once_with(work_dir, "claude", display_name="My Agent", resume_session_id="original-sid", flags=None, prompt=None, board_name=None, board_server=None, subgent_key_id=None, subgent_api_key=None, subgent_admin_url=None, subgent_admin_key=None, subgent_org_id=None, subgent_board_id=None)
     # Old session should be cleaned up (new one registered by launch_claude_session)
     sessions = await store.get_all_live_sessions()
     old_ids = {s["session_id"] for s in sessions}
@@ -260,7 +260,7 @@ async def test_resume_multiple_sessions(store, tmp_path):
 
     call_count = 0
 
-    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None, flags=None, prompt=None, board_name=None, board_server=None):
+    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None, flags=None, prompt=None, board_name=None, board_server=None, **kwargs):
         nonlocal call_count
         call_count += 1
         return {
@@ -352,7 +352,7 @@ async def test_resume_preserves_display_name_across_multiple_restarts(store, tmp
     work_dir = str(tmp_path)
     call_log = []
 
-    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None, flags=None, prompt=None, board_name=None, board_server=None):
+    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None, flags=None, prompt=None, board_name=None, board_server=None, **kwargs):
         """Simulate launch_claude_session: register a new session in the store."""
         new_sid = f"sid-cycle-{len(call_log) + 1}"
         call_log.append({
@@ -418,7 +418,7 @@ async def test_resume_preserves_agent_name_across_restarts(store, tmp_path):
 
     await store.register_live_session("sid-1", "claude", "my_worktree", work_dir)
 
-    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None, flags=None, prompt=None, board_name=None, board_server=None):
+    async def mock_launch(working_dir, agent_type, display_name=None, resume_session_id=None, flags=None, prompt=None, board_name=None, board_server=None, **kwargs):
         folder = os.path.basename(working_dir)
         await store.register_live_session(
             "sid-2", agent_type, folder, working_dir,
@@ -464,6 +464,7 @@ async def test_resume_without_display_name_passes_none(store, tmp_path):
     mock_launch.assert_called_once_with(
         work_dir, "claude", display_name=None, resume_session_id="sid-1", flags=None,
         prompt=None, board_name=None, board_server=None,
+        subgent_key_id=None, subgent_api_key=None, subgent_admin_url=None, subgent_admin_key=None, subgent_org_id=None, subgent_board_id=None,
     )
 
 
@@ -517,6 +518,7 @@ async def test_display_name_set_via_ui_persists_on_resume(store, tmp_path):
     mock_launch.assert_called_once_with(
         work_dir, "claude", display_name="Dashboard Name", resume_session_id="sid-1", flags=None,
         prompt=None, board_name=None, board_server=None,
+        subgent_key_id=None, subgent_api_key=None, subgent_admin_url=None, subgent_admin_key=None, subgent_org_id=None, subgent_board_id=None,
     )
 
 
@@ -539,7 +541,7 @@ async def test_resume_runs_concurrently(store, tmp_path):
 
     async def mock_launch(working_dir, agent_type, display_name=None,
                           resume_session_id=None, flags=None, prompt=None,
-                          board_name=None, board_server=None):
+                          board_name=None, board_server=None, **kwargs):
         import asyncio as _asyncio
         start = _time.monotonic()
         await _asyncio.sleep(0.5)  # simulate launch delay
@@ -578,7 +580,7 @@ async def test_resume_timeout_does_not_block_others(store, tmp_path):
 
     async def mock_launch(working_dir, agent_type, display_name=None,
                           resume_session_id=None, flags=None, prompt=None,
-                          board_name=None, board_server=None):
+                          board_name=None, board_server=None, **kwargs):
         import asyncio as _asyncio
         if resume_session_id == "sid-slow":
             await _asyncio.sleep(999)  # will be timed out
@@ -622,7 +624,7 @@ async def test_resume_one_failure_does_not_abort_others(store, tmp_path):
 
     async def mock_launch(working_dir, agent_type, display_name=None,
                           resume_session_id=None, flags=None, prompt=None,
-                          board_name=None, board_server=None):
+                          board_name=None, board_server=None, **kwargs):
         if resume_session_id == "sid-err":
             raise RuntimeError("Simulated launch failure")
         completed.append(resume_session_id)
