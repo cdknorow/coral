@@ -20,7 +20,7 @@ async function fetchProjects() {
 }
 
 async function fetchMessages(project, limit = PAGE_SIZE, offset = 0) {
-    const resp = await fetch(`/api/board/${encodeURIComponent(project)}/messages/all?limit=${limit}&offset=${offset}`);
+    const resp = await fetch(`/api/board/${encodeURIComponent(project)}/messages/all?limit=${limit}&offset=${offset}&format=dashboard`);
     const data = await resp.json();
     // Support both old format (array) and new format ({messages, total})
     if (Array.isArray(data)) {

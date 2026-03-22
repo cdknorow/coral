@@ -30,6 +30,7 @@ class SubscribeRequest(BaseModel):
     job_title: str
     webhook_url: str | None = None
     receive_mode: str = "mentions"
+    check_mode: str | None = None  # Alias for receive_mode
 
 
 class UnsubscribeRequest(BaseModel):
@@ -39,6 +40,7 @@ class UnsubscribeRequest(BaseModel):
 class PostMessageRequest(BaseModel):
     session_id: str
     content: str
+    target_group_id: str | None = None
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────
@@ -60,9 +62,11 @@ async def subscribe(project: str, body: SubscribeRequest):
         url_error = _validate_url(body.webhook_url, "generic")
         if url_error:
             raise HTTPException(status_code=400, detail=f"Invalid webhook_url: {url_error}")
+    # check_mode is an alias for receive_mode
+    receive_mode = body.check_mode or body.receive_mode
     return await store.subscribe(
         project, body.session_id, body.job_title, body.webhook_url,
-        receive_mode=body.receive_mode,
+        receive_mode=receive_mode,
     )
 
 
@@ -76,7 +80,10 @@ async def unsubscribe(project: str, body: UnsubscribeRequest):
 
 @router.post("/{project}/messages")
 async def post_message(project: str, body: PostMessageRequest):
-    message = await store.post_message(project, body.session_id, body.content)
+    message = await store.post_message(
+        project, body.session_id, body.content,
+        target_group_id=body.target_group_id,
+    )
 
     # Fire-and-forget webhook dispatch
     asyncio.create_task(_dispatch_webhooks(project, body.session_id, message))
@@ -100,12 +107,18 @@ async def check_unread(project: str, session_id: str):
 
 
 @router.get("/{project}/messages/all")
-async def list_messages(project: str, limit: int = 200, offset: int = 0):
+async def list_messages(
+    project: str, limit: int = 200, offset: int = 0,
+    before_id: int | None = None, format: str | None = None,
+):
     from coral.config import BOARD_MAX_LIMIT
     limit = min(limit, BOARD_MAX_LIMIT)
-    messages = await store.list_messages(project, limit, offset)
-    total = await store.count_messages(project)
-    return {"messages": messages, "total": total, "limit": limit, "offset": offset}
+    messages = await store.list_messages(project, limit, offset, before_id=before_id)
+    # Default: bare array for CLI consumers. format=dashboard wraps with metadata.
+    if format == "dashboard":
+        total = await store.count_messages(project)
+        return {"messages": messages, "total": total, "limit": limit, "offset": offset}
+    return messages
 
 
 @router.delete("/{project}/messages/{message_id}")

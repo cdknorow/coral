@@ -111,6 +111,13 @@ class SessionStore(DatabaseManager):
         )
         await conn.commit()
 
+    async def delete_setting(self, key: str) -> bool:
+        """Delete a user setting. Returns True if the key existed."""
+        conn = await self._get_conn()
+        cursor = await conn.execute("DELETE FROM user_settings WHERE key = ?", (key,))
+        await conn.commit()
+        return cursor.rowcount > 0
+
     # ── Session Notes ──────────────────────────────────────────────────────
 
     async def get_session_notes(self, session_id: str) -> dict[str, Any]:
@@ -590,6 +597,7 @@ class SessionStore(DatabaseManager):
         board_name: str | None = None,
         board_server: str | None = None,
         icon: str | None = None,
+        board_type: str | None = None,
     ) -> None:
         import json as _json
         conn = await self._get_conn()
@@ -597,9 +605,9 @@ class SessionStore(DatabaseManager):
         flags_json = _json.dumps(flags) if flags else None
         await conn.execute(
             "INSERT OR REPLACE INTO live_sessions "
-            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, icon, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, int(is_job), prompt, board_name, board_server, icon, now),
+            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, icon, board_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, int(is_job), prompt, board_name, board_server, icon, board_type, now),
         )
         await conn.commit()
 
@@ -641,9 +649,9 @@ class SessionStore(DatabaseManager):
         import json as _json
         conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
-        # Carry forward flags, prompt, board_name, board_server, and is_sleeping from old session
+        # Carry forward flags, prompt, board_name, board_server, board_type, and is_sleeping from old session
         old_row = await (await conn.execute(
-            "SELECT flags, prompt, board_name, board_server, icon, is_sleeping FROM live_sessions WHERE session_id = ?", (old_session_id,)
+            "SELECT flags, prompt, board_name, board_server, icon, is_sleeping, board_type FROM live_sessions WHERE session_id = ?", (old_session_id,)
         )).fetchone()
         if flags is None:
             flags_json = old_row["flags"] if old_row and old_row["flags"] else None
@@ -654,24 +662,25 @@ class SessionStore(DatabaseManager):
         old_board_server = old_row["board_server"] if old_row else None
         old_icon = old_row["icon"] if old_row and "icon" in old_row.keys() else None
         old_sleeping = old_row["is_sleeping"] if old_row else 0
+        old_board_type = old_row["board_type"] if old_row and "board_type" in old_row.keys() else None
         await conn.execute("DELETE FROM live_sessions WHERE session_id = ?", (old_session_id,))
         await conn.execute(
             "INSERT OR REPLACE INTO live_sessions "
-            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, prompt, board_name, board_server, icon, is_sleeping, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (new_session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, old_prompt, old_board, old_board_server, old_icon, old_sleeping, now),
+            "(session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, prompt, board_name, board_server, icon, is_sleeping, board_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (new_session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags_json, old_prompt, old_board, old_board_server, old_icon, old_sleeping, old_board_type, now),
         )
         await conn.commit()
 
     async def get_live_session_prompt_info(self, session_id: str) -> dict[str, str | None] | None:
-        """Return prompt, board_name, and board_server for a live session, or None if not found."""
+        """Return prompt, board_name, board_server, and board_type for a live session, or None if not found."""
         conn = await self._get_conn()
         row = await (await conn.execute(
-            "SELECT prompt, board_name, board_server FROM live_sessions WHERE session_id = ?", (session_id,)
+            "SELECT prompt, board_name, board_server, board_type FROM live_sessions WHERE session_id = ?", (session_id,)
         )).fetchone()
         if not row:
             return None
-        return {"prompt": row["prompt"], "board_name": row["board_name"], "board_server": row["board_server"]}
+        return {"prompt": row["prompt"], "board_name": row["board_name"], "board_server": row["board_server"], "board_type": row["board_type"]}
 
     async def get_agent_type_for_session(self, session_id: str) -> str:
         """Look up the agent_type for a live session. Returns 'claude' as default."""
@@ -703,7 +712,7 @@ class SessionStore(DatabaseManager):
         conn = await self._get_conn()
         row = await (await conn.execute(
             "SELECT session_id, agent_type, agent_name, working_dir, display_name, "
-            "board_name, board_server, is_sleeping "
+            "board_name, board_server, is_sleeping, board_type "
             "FROM live_sessions WHERE session_id = ?", (session_id,)
         )).fetchone()
         if not row:
@@ -718,7 +727,7 @@ class SessionStore(DatabaseManager):
         rows = await (await conn.execute(
             "SELECT session_id, agent_type, agent_name, working_dir, display_name, "
             "resume_from_id, flags, is_job, prompt, board_name, board_server, icon, "
-            "is_sleeping, created_at "
+            "is_sleeping, board_type, created_at "
             "FROM live_sessions ORDER BY created_at"
         )).fetchall()
         results = []

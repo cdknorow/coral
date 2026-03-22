@@ -828,13 +828,14 @@ async def launch_session(body: dict):
     prompt = body.get("prompt", "").strip()
     board_name = body.get("board_name", "").strip()
     board_server = body.get("board_server", "").strip() or None
+    board_type = body.get("board_type", "").strip() or None
 
     if not working_dir:
         return {"error": "working_dir is required"}
     result = await launch_claude_session(
         working_dir, agent_type, display_name=display_name, flags=flags,
         prompt=prompt or None, board_name=board_name or None,
-        board_server=board_server,
+        board_server=board_server, board_type=board_type,
     )
 
     if result.get("error"):
@@ -845,6 +846,7 @@ async def launch_session(body: dict):
             result["session_id"], result["session_name"], agent_type,
             board_name=board_name or None,
             board_server=board_server, display_name=display_name,
+            board_type=board_type,
         ))
 
     return result
@@ -858,6 +860,7 @@ async def launch_team(body: dict):
 
     board_name = body.get("board_name", "").strip()
     board_server = body.get("board_server", "").strip() or None
+    board_type = body.get("board_type", "").strip() or None
     working_dir = body.get("working_dir", "").strip()
     agent_type = body.get("agent_type", "claude").strip()
     flags = body.get("flags", [])
@@ -888,6 +891,7 @@ async def launch_team(body: dict):
             board_name=board_name or None,
             board_server=board_server,
             icon=agent_icon,
+            board_type=board_type,
         )
         if result.get("error"):
             launched.append({"name": agent_name, "error": result["error"]})
@@ -899,6 +903,7 @@ async def launch_team(body: dict):
                 result["session_id"], result["session_name"], agent_type,
                 board_name=board_name or None,
                 board_server=board_server, display_name=agent_name,
+                board_type=board_type,
             ))
 
         launched.append({

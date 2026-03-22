@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from coral.messageboard.store import MessageBoardStore
 from coral.tools.session_manager import discover_coral_agents
@@ -20,8 +21,9 @@ log = logging.getLogger(__name__)
 class MessageBoardNotifier:
     """Background task that notifies idle agents about unread board messages."""
 
-    def __init__(self, board_store: MessageBoardStore) -> None:
+    def __init__(self, board_store: MessageBoardStore, coral_store: Any = None) -> None:
         self._board_store = board_store
+        self._coral_store = coral_store
         # session_id -> unread count at time of last notification
         self._notified: dict[str, int] = {}
 

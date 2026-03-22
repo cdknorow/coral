@@ -18,6 +18,9 @@ router = APIRouter()
 # Module-level dependency, set by web_server.py during app setup
 store: CoralStore = None  # type: ignore[assignment]
 
+# Keys that should never be returned to the frontend via GET /api/settings
+_SENSITIVE_KEYS: set[str] = set()
+
 
 @router.get("/api/system/status")
 async def system_status():
@@ -47,8 +50,10 @@ async def update_check():
 
 @router.get("/api/settings")
 async def get_settings():
-    """Return all global user settings."""
+    """Return all global user settings, filtering out sensitive keys."""
     settings = await store.get_settings()
+    if _SENSITIVE_KEYS:
+        settings = {k: v for k, v in settings.items() if k not in _SENSITIVE_KEYS}
     return {"settings": settings}
 
 

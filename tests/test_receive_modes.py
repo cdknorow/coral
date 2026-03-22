@@ -209,7 +209,8 @@ async def test_add_to_group(store):
     """add_to_group should create a group membership."""
     await store.add_to_group("proj", "team-a", "agent-1")
     members = await store.list_group_members("proj", "team-a")
-    assert "agent-1" in members
+    member_ids = [m["session_id"] for m in members]
+    assert "agent-1" in member_ids
 
 
 @pytest.mark.asyncio
@@ -227,17 +228,21 @@ async def test_remove_from_group(store):
     await store.add_to_group("proj", "team-a", "agent-1")
     await store.remove_from_group("proj", "team-a", "agent-1")
     members = await store.list_group_members("proj", "team-a")
-    assert "agent-1" not in members
+    member_ids = [m["session_id"] for m in members]
+    assert "agent-1" not in member_ids
 
 
 @pytest.mark.asyncio
 async def test_list_group_members_multiple(store):
-    """list_group_members returns all members of a group."""
+    """list_group_members returns all members of a group as objects."""
     await store.add_to_group("proj", "team-a", "agent-1")
     await store.add_to_group("proj", "team-a", "agent-2")
     await store.add_to_group("proj", "team-a", "agent-3")
     members = await store.list_group_members("proj", "team-a")
-    assert set(members) == {"agent-1", "agent-2", "agent-3"}
+    member_ids = {m["session_id"] for m in members}
+    assert member_ids == {"agent-1", "agent-2", "agent-3"}
+    # Each member should have a job_title key
+    assert all("job_title" in m for m in members)
 
 
 @pytest.mark.asyncio
@@ -275,8 +280,8 @@ async def test_groups_are_project_scoped(store):
 
     members1 = await store.list_group_members("proj1", "team-a")
     members2 = await store.list_group_members("proj2", "team-a")
-    assert members1 == ["agent-1"]
-    assert members2 == ["agent-2"]
+    assert [m["session_id"] for m in members1] == ["agent-1"]
+    assert [m["session_id"] for m in members2] == ["agent-2"]
 
 
 # ── Backward compatibility ───────────────────────────────────────────────────

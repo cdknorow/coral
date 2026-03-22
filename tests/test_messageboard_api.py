@@ -180,15 +180,21 @@ async def test_list_all_messages(client):
     await client.post("/proj1/messages", json={"session_id": "a2", "content": "msg 2"})
     await client.post("/proj1/messages", json={"session_id": "a1", "content": "msg 3"})
 
+    # Default format returns bare array
     resp = await client.get("/proj1/messages/all")
     assert resp.status_code == 200
-    data = resp.json()
-    msgs = data["messages"]
+    msgs = resp.json()
+    assert isinstance(msgs, list)
     assert len(msgs) == 3
-    assert data["total"] == 3
     assert msgs[0]["content"] == "msg 1"
     assert msgs[0]["job_title"] == "Backend"
     assert msgs[2]["content"] == "msg 3"
+
+    # format=dashboard returns wrapped object
+    resp = await client.get("/proj1/messages/all", params={"format": "dashboard"})
+    data = resp.json()
+    assert len(data["messages"]) == 3
+    assert data["total"] == 3
 
 
 @pytest.mark.asyncio
@@ -198,8 +204,15 @@ async def test_list_all_messages_with_limit(client):
     for i in range(5):
         await client.post("/proj1/messages", json={"session_id": "a1", "content": f"msg {i}"})
 
+    # Bare array default
     resp = await client.get("/proj1/messages/all", params={"limit": 2})
     assert resp.status_code == 200
+    msgs = resp.json()
+    assert isinstance(msgs, list)
+    assert len(msgs) == 2
+
+    # Dashboard format
+    resp = await client.get("/proj1/messages/all", params={"limit": 2, "format": "dashboard"})
     data = resp.json()
     assert len(data["messages"]) == 2
     assert data["total"] == 5
@@ -213,9 +226,9 @@ async def test_list_all_messages_does_not_advance_cursor(client):
 
     await client.post("/proj1/messages", json={"session_id": "a2", "content": "hello"})
 
-    # Call /messages/all
+    # Call /messages/all (bare array default)
     resp = await client.get("/proj1/messages/all")
-    assert len(resp.json()["messages"]) == 1
+    assert len(resp.json()) == 1
 
     # a1 should still see the message via cursor-based read
     resp = await client.get("/proj1/messages", params={"session_id": "a1"})

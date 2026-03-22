@@ -185,6 +185,13 @@ class BaseAgent(ABC):
     - Processing hook payloads (tool summaries, task sync, events)
     """
 
+    # Map board_type → CLI command name. Subclasses or feature branches can
+    # extend this dict to register additional board CLIs.
+    CLI_NAMES: dict[str | None, str] = {
+        None: "coral-board",
+        "coral": "coral-board",
+    }
+
     @property
     @abstractmethod
     def agent_type(self) -> str:
@@ -212,18 +219,22 @@ class BaseAgent(ABC):
             {"name": "clear", "command": "/clear", "description": "Clear conversation and start fresh"},
         ]
 
-    @staticmethod
+    @classmethod
     def _build_board_system_prompt(
+        cls,
         board_name: str | None,
         role: str | None,
         prompt: str | None,
         prompt_overrides: dict[str, str] | None = None,
+        board_type: str | None = None,
     ) -> str:
         """Build the board + behavior portion of the system prompt.
 
         prompt_overrides can contain 'default_prompt_orchestrator' and/or
         'default_prompt_worker' keys to replace the default tail text.
+        board_type selects the CLI name from CLI_NAMES (defaults to coral-board).
         """
+        cli = cls.CLI_NAMES.get(board_type, cls.CLI_NAMES[None])
         parts = []
         if prompt:
             parts.append(prompt)
@@ -232,12 +243,12 @@ class BaseAgent(ABC):
             role_label = f" Your role is: {role}." if role else ""
             board_intro = (
                 f"You were automatically joined to message board \"{board_name}\".{role_label} "
-                f"Do NOT run coral-board join — you are already subscribed.\n\n"
-                "Use the coral-board CLI to communicate with your teammates:\n"
-                "  coral-board read          — read new messages from teammates\n"
-                "  coral-board post \"msg\"    — post a message to the board\n"
-                "  coral-board read --last 5 — see the 5 most recent messages\n"
-                "  coral-board subscribers   — see who is on the board\n"
+                f"Do NOT run {cli} join — you are already subscribed.\n\n"
+                f"Use the {cli} CLI to communicate with your teammates:\n"
+                f"  {cli} read          — read new messages from teammates\n"
+                f"  {cli} post \"msg\"    — post a message to the board\n"
+                f"  {cli} read --last 5 — see the 5 most recent messages\n"
+                f"  {cli} subscribers   — see who is on the board\n"
                 "Check the board periodically for updates from your teammates.\n\n"
             )
             overrides = prompt_overrides or {}
@@ -261,6 +272,7 @@ class BaseAgent(ABC):
         role: str | None = None,
         prompt: str | None = None,
         prompt_overrides: dict[str, str] | None = None,
+        board_type: str | None = None,
     ) -> str:
         """Build the shell command string to launch this agent."""
 

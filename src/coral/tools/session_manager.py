@@ -50,6 +50,12 @@ DEFAULT_WORKER_PROMPT = (
 )
 
 
+def _get_cli_name(board_type: str | None = None) -> str:
+    """Return the CLI command name for the given board type."""
+    from coral.agents.base import BaseAgent
+    return BaseAgent.CLI_NAMES.get(board_type, BaseAgent.CLI_NAMES[None])
+
+
 def _write_board_state(tmux_session_name: str, project: str, job_title: str,
                        server_url: str | None = None) -> None:
     """Write the coral-board state file for an agent's tmux session.
@@ -79,6 +85,7 @@ async def setup_board_and_prompt(
     board_name: str | None = None,
     board_server: str | None = None,
     display_name: str | None = None,
+    board_type: str | None = None,
 ) -> None:
     """Subscribe a session to a message board.
 
@@ -391,6 +398,7 @@ async def _resume_single_session(store, rec, log) -> None:
     prompt = rec.get("prompt")
     board_name = rec.get("board_name")
     board_server = rec.get("board_server")
+    board_type = rec.get("board_type")
     is_sleeping = rec.get("is_sleeping", False)
 
     # Sleeping sessions: keep DB record but don't launch anything.
@@ -432,6 +440,7 @@ async def _resume_single_session(store, rec, log) -> None:
         prompt=prompt,
         board_name=board_name,
         board_server=board_server,
+        board_type=board_type,
     )
 
     if result.get("error"):
@@ -459,6 +468,7 @@ async def _resume_single_session(store, rec, log) -> None:
                 new_session_id, new_session_name, agent_type,
                 board_name=board_name,
                 board_server=board_server, display_name=display_name,
+                board_type=board_type,
             ))
 
 
@@ -660,19 +670,20 @@ async def restart_session(
         )
         await asyncio.sleep(0.3)
 
-        # 6. Load persisted flags, prompt, board_name, and board_server from the live session record
+        # 6. Load persisted flags, prompt, board_name, board_server, and board_type from the live session record
         from coral.store.registry import get_store
         _store = get_store()
         stored_flags = []
         stored_prompt = None
         stored_board = None
         stored_board_server = None
+        stored_board_type = None
         if session_id:
             try:
                 import json as _json
                 _flag_conn = await _store._get_conn()
                 _flag_row = await (await _flag_conn.execute(
-                    "SELECT flags, prompt, board_name, board_server FROM live_sessions WHERE session_id = ?", (session_id,)
+                    "SELECT flags, prompt, board_name, board_server, board_type FROM live_sessions WHERE session_id = ?", (session_id,)
                 )).fetchone()
                 if _flag_row:
                     if _flag_row["flags"]:
@@ -680,6 +691,7 @@ async def restart_session(
                     stored_prompt = _flag_row["prompt"]
                     stored_board = _flag_row["board_name"]
                     stored_board_server = _flag_row["board_server"]
+                    stored_board_type = _flag_row["board_type"]
             except Exception:
                 pass
 
@@ -719,6 +731,7 @@ async def restart_session(
             role=old_display_name_for_cmd or effective_type,
             prompt=stored_prompt,
             prompt_overrides=_prompt_overrides,
+            board_type=stored_board_type,
         )
 
         rc, _, stderr = await run_cmd(
@@ -765,6 +778,7 @@ async def restart_session(
                 board_name=stored_board,
                 board_server=stored_board_server,
                 display_name=old_display_name_for_prompt,
+                board_type=stored_board_type,
             ))
 
         return {
@@ -778,7 +792,7 @@ async def restart_session(
         return {"error": str(e)}
 
 
-async def launch_claude_session(working_dir: str, agent_type: str = "claude", display_name: str | None = None, resume_session_id: str | None = None, flags: list[str] | None = None, is_job: bool = False, prompt: str | None = None, board_name: str | None = None, board_server: str | None = None, icon: str | None = None) -> dict[str, str]:
+async def launch_claude_session(working_dir: str, agent_type: str = "claude", display_name: str | None = None, resume_session_id: str | None = None, flags: list[str] | None = None, is_job: bool = False, prompt: str | None = None, board_name: str | None = None, board_server: str | None = None, icon: str | None = None, board_type: str | None = None) -> dict[str, str]:
     """Launch a new tmux session with a Claude/Gemini agent.
 
     Returns dict with session_name, session_id, log_file, and any error.
@@ -869,6 +883,7 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
                 role=display_name or agent_type,
                 prompt=prompt,
                 prompt_overrides=_prompt_overrides,
+                board_type=board_type,
             )
 
             await asyncio.create_subprocess_exec(
@@ -890,6 +905,7 @@ async def launch_claude_session(working_dir: str, agent_type: str = "claude", di
                 board_name=board_name,
                 board_server=board_server,
                 icon=icon,
+                board_type=board_type,
             )
         except Exception:
             pass  # Non-critical

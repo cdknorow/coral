@@ -198,6 +198,7 @@ class ClaudeAgent(BaseAgent):
         role: str | None = None,
         prompt: str | None = None,
         prompt_overrides: dict[str, str] | None = None,
+        board_type: str | None = None,
     ) -> str:
         parts = ["env", "-u", "CLAUDECODE", "claude"]
         effective_id = resume_session_id or session_id
@@ -211,7 +212,7 @@ class ClaudeAgent(BaseAgent):
         sys_parts = []
         if protocol_path and protocol_path.exists():
             sys_parts.append(protocol_path.read_text())
-        board_prompt = self._build_board_system_prompt(board_name, role, prompt, prompt_overrides=prompt_overrides)
+        board_prompt = self._build_board_system_prompt(board_name, role, prompt, prompt_overrides=prompt_overrides, board_type=board_type)
         if board_prompt:
             sys_parts.append(board_prompt)
         if sys_parts:
@@ -231,13 +232,14 @@ class ClaudeAgent(BaseAgent):
         cli_prompt = prompt or ""
         if board_name:
             from coral.tools.session_manager import DEFAULT_ORCHESTRATOR_PROMPT, DEFAULT_WORKER_PROMPT
+            cli = self.CLI_NAMES.get(board_type, self.CLI_NAMES[None])
             is_orchestrator = role and "orchestrator" in role.lower()
             overrides = prompt_overrides or {}
             if is_orchestrator:
                 template = overrides.get("default_prompt_orchestrator") or DEFAULT_ORCHESTRATOR_PROMPT
             else:
                 template = overrides.get("default_prompt_worker") or DEFAULT_WORKER_PROMPT
-            action_text = template.replace("{board_name}", board_name)
+            action_text = template.replace("{board_name}", board_name).replace("coral-board", cli)
             cli_prompt = f"{cli_prompt}\n\n{action_text}" if cli_prompt else action_text
         if cli_prompt:
             prompt_file = Path(f"/tmp/coral_prompt_{effective_id}.txt")

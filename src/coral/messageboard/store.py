@@ -104,6 +104,12 @@ class MessageBoardStore:
                 ON board_groups(project, group_id);
         """)
 
+        # Migration: add target_group_id column for directed group messages
+        try:
+            await conn.execute("ALTER TABLE board_messages ADD COLUMN target_group_id TEXT")
+        except Exception:
+            pass  # Column already exists
+
     # ── Subscribers ──────────────────────────────────────────────────────
 
     async def subscribe(
@@ -203,18 +209,25 @@ class MessageBoardStore:
     # ── Messages ─────────────────────────────────────────────────────────
 
     async def post_message(
-        self, project: str, session_id: str, content: str
+        self, project: str, session_id: str, content: str,
+        target_group_id: str | None = None,
     ) -> dict[str, Any]:
         conn = await self._get_conn()
         now = datetime.now(timezone.utc).isoformat()
         cursor = await conn.execute(
-            "INSERT INTO board_messages (project, session_id, content, created_at) VALUES (?, ?, ?, ?)",
-            (project, session_id, content, now),
+            "INSERT INTO board_messages (project, session_id, content, target_group_id, created_at) VALUES (?, ?, ?, ?, ?)",
+            (project, session_id, content, target_group_id, now),
         )
         msg_id = cursor.lastrowid
         await conn.commit()
 
-        return {"id": msg_id, "project": project, "session_id": session_id, "content": content, "created_at": now}
+        result: dict[str, Any] = {
+            "id": msg_id, "project": project, "session_id": session_id,
+            "content": content, "created_at": now,
+        }
+        if target_group_id:
+            result["target_group_id"] = target_group_id
+        return result
 
     async def read_messages(
         self, project: str, session_id: str, limit: int = 50
@@ -265,19 +278,37 @@ class MessageBoardStore:
         return messages
 
     async def list_messages(
-        self, project: str, limit: int = 200, offset: int = 0
+        self, project: str, limit: int = 200, offset: int = 0,
+        before_id: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Return recent messages for a project (no cursor, no side effects)."""
+        """Return recent messages for a project (no cursor, no side effects).
+
+        If *before_id* is given, only messages with id < before_id are returned
+        (useful for keyset pagination).
+        """
         conn = await self._get_conn()
-        rows = await conn.execute_fetchall(
-            """SELECT m.id, m.project, m.session_id, m.content, m.created_at,
-                      COALESCE(s.job_title, 'Unknown') as job_title
-               FROM board_messages m
-               LEFT JOIN board_subscribers s ON m.project = s.project AND m.session_id = s.session_id
-               WHERE m.project = ?
-               ORDER BY m.id ASC LIMIT ? OFFSET ?""",
-            (project, limit, offset),
-        )
+        if before_id is not None:
+            rows = await conn.execute_fetchall(
+                """SELECT m.id, m.project, m.session_id, m.content, m.created_at,
+                          COALESCE(s.job_title, 'Unknown') as job_title,
+                          m.target_group_id
+                   FROM board_messages m
+                   LEFT JOIN board_subscribers s ON m.project = s.project AND m.session_id = s.session_id
+                   WHERE m.project = ? AND m.id < ?
+                   ORDER BY m.id ASC LIMIT ? OFFSET ?""",
+                (project, before_id, limit, offset),
+            )
+        else:
+            rows = await conn.execute_fetchall(
+                """SELECT m.id, m.project, m.session_id, m.content, m.created_at,
+                          COALESCE(s.job_title, 'Unknown') as job_title,
+                          m.target_group_id
+                   FROM board_messages m
+                   LEFT JOIN board_subscribers s ON m.project = s.project AND m.session_id = s.session_id
+                   WHERE m.project = ?
+                   ORDER BY m.id ASC LIMIT ? OFFSET ?""",
+                (project, limit, offset),
+            )
         return [dict(r) for r in rows]
 
     async def count_messages(self, project: str) -> int:
@@ -481,14 +512,18 @@ class MessageBoardStore:
         await conn.commit()
         return cursor.rowcount > 0
 
-    async def list_group_members(self, project: str, group_id: str) -> list[str]:
-        """Return session_ids in a group."""
+    async def list_group_members(self, project: str, group_id: str) -> list[dict[str, Any]]:
+        """Return group members as objects with session_id and job_title."""
         conn = await self._get_conn()
         rows = await conn.execute_fetchall(
-            "SELECT session_id FROM board_groups WHERE project = ? AND group_id = ? ORDER BY session_id",
+            """SELECT g.session_id, COALESCE(s.job_title, 'Unknown') as job_title
+               FROM board_groups g
+               LEFT JOIN board_subscribers s ON g.project = s.project AND g.session_id = s.session_id
+               WHERE g.project = ? AND g.group_id = ?
+               ORDER BY g.session_id""",
             (project, group_id),
         )
-        return [r["session_id"] for r in rows]
+        return [dict(r) for r in rows]
 
     async def list_groups(self, project: str) -> list[dict[str, Any]]:
         """Return all groups for a project with member counts."""
