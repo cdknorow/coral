@@ -700,12 +700,58 @@ async def resize_pane_width(name: str, body: dict):
 
 @router.post("/api/sessions/live/{name}/kill")
 async def kill_live_session(name: str, body: dict | None = None):
-    """Kill the tmux session for a live agent."""
+    """Kill the tmux session for a live agent.
+
+    Sleeping agents have no tmux session, so we handle them specially:
+    clean up DB record, log file, and board subscription without touching tmux.
+    """
     agent_type = (body or {}).get("agent_type") or None
     sid = (body or {}).get("session_id") or None
+
+    # Check if this is a sleeping agent (no tmux session to kill)
+    if sid:
+        session_info = await store.get_live_session(sid)
+        if session_info and session_info.get("is_sleeping"):
+            return await _kill_sleeping_agent(sid, name, agent_type, session_info)
+
     error = await kill_session(name, agent_type=agent_type, session_id=sid)
     if error:
         return {"error": error}
+    return {"ok": True}
+
+
+async def _kill_sleeping_agent(
+    session_id: str, agent_name: str, agent_type: str | None, session_info: dict,
+) -> dict:
+    """Remove a sleeping agent: clean up DB, log file, and board subscription."""
+    from coral.tools.session_manager import get_agent_log_path
+
+    # Remove log file so agent disappears from discover_coral_agents
+    log_path = get_agent_log_path(agent_name, agent_type, session_id=session_id)
+    if log_path:
+        try:
+            log_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    # Clean up settings temp file
+    settings_file = Path(f"/tmp/coral_settings_{session_id}.json")
+    try:
+        settings_file.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+    # Unsubscribe from message board if on one
+    board_name = session_info.get("board_name")
+    if board_name and board_store:
+        try:
+            await board_store.unsubscribe(board_name, session_id)
+        except Exception:
+            pass  # Non-critical
+
+    # Unregister from persistent live sessions DB
+    await store.unregister_live_session(session_id)
+
     return {"ok": True}
 
 

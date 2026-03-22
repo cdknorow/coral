@@ -1098,3 +1098,75 @@ async def test_wake_team_only_clears_sleeping_on_success(store, tmp_path):
     sleeping = {s["session_id"]: s["is_sleeping"] for s in sessions}
     assert sleeping["sid-1"] is False  # Successfully woken
     assert sleeping["sid-2"] is True   # Failed — stays sleeping
+
+
+# ── Kill sleeping agent ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_kill_sleeping_agent_removes_db_record(store, tmp_path):
+    """Killing a sleeping agent should remove its live_sessions DB record."""
+    work_dir = str(tmp_path)
+    await store.register_live_session("sid-1", "claude", "wt1", work_dir)
+    await store.set_session_sleeping("sid-1", True)
+
+    # Simulate the kill path for a sleeping agent: unregister from DB
+    await store.unregister_live_session("sid-1")
+
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 0
+
+
+@pytest.mark.asyncio
+async def test_kill_sleeping_agent_does_not_affect_teammates(store, tmp_path):
+    """Killing one sleeping agent should not affect other agents on the same board."""
+    work_dir = str(tmp_path)
+    await store.register_live_session(
+        "sid-1", "claude", "wt1", work_dir, board_name="my-team",
+    )
+    await store.register_live_session(
+        "sid-2", "claude", "wt2", work_dir, board_name="my-team",
+    )
+    await store.set_board_sleeping("my-team", sleeping=True)
+
+    # Kill only sid-1
+    await store.unregister_live_session("sid-1")
+
+    sessions = await store.get_all_live_sessions()
+    assert len(sessions) == 1
+    assert sessions[0]["session_id"] == "sid-2"
+    assert sessions[0]["is_sleeping"] is True
+
+
+@pytest.mark.asyncio
+async def test_kill_sleeping_agent_board_still_has_sleeping_members(store, tmp_path):
+    """After killing one sleeping agent, the board should still show as sleeping
+    if other members remain asleep."""
+    work_dir = str(tmp_path)
+    await store.register_live_session(
+        "sid-1", "claude", "wt1", work_dir, board_name="my-team",
+    )
+    await store.register_live_session(
+        "sid-2", "claude", "wt2", work_dir, board_name="my-team",
+    )
+    await store.set_board_sleeping("my-team", sleeping=True)
+
+    await store.unregister_live_session("sid-1")
+
+    sleeping_boards = await store.get_sleeping_board_names()
+    assert "my-team" in sleeping_boards  # sid-2 is still sleeping
+
+
+@pytest.mark.asyncio
+async def test_kill_last_sleeping_agent_clears_board(store, tmp_path):
+    """Killing the last sleeping agent on a board should remove it from sleeping boards."""
+    work_dir = str(tmp_path)
+    await store.register_live_session(
+        "sid-1", "claude", "wt1", work_dir, board_name="my-team",
+    )
+    await store.set_board_sleeping("my-team", sleeping=True)
+
+    await store.unregister_live_session("sid-1")
+
+    sleeping_boards = await store.get_sleeping_board_names()
+    assert "my-team" not in sleeping_boards

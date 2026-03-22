@@ -698,6 +698,20 @@ class SessionStore(DatabaseManager):
             return row["resume_from_id"]
         return session_id
 
+    async def get_live_session(self, session_id: str) -> dict[str, Any] | None:
+        """Return a single live session by session_id, or None if not found."""
+        conn = await self._get_conn()
+        row = await (await conn.execute(
+            "SELECT session_id, agent_type, agent_name, working_dir, display_name, "
+            "board_name, board_server, is_sleeping "
+            "FROM live_sessions WHERE session_id = ?", (session_id,)
+        )).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["is_sleeping"] = bool(d.get("is_sleeping", 0))
+        return d
+
     async def get_all_live_sessions(self) -> list[dict[str, Any]]:
         import json as _json
         conn = await self._get_conn()
