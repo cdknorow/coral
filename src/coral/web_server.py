@@ -352,7 +352,7 @@ def main():
         sys.exit(1)
 
     parser = argparse.ArgumentParser(description="Coral Dashboard")
-    parser.add_argument("--host", default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--host", default=os.environ.get("CORAL_HOST", "127.0.0.1"), help="Host to bind to (default: 127.0.0.1, env: CORAL_HOST)")
     parser.add_argument("--port", type=int, default=8420, help="Port to bind to (default: 8420)")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
     parser.add_argument("--no-browser", action="store_true", help="Don't open the browser on startup")
