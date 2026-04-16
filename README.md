@@ -1,3 +1,4 @@
+# Enterprise version of Coral is available at [Coral AI](https://coralai.ai)
 <p align="center">
   <img width="1299" height="336" alt="Coral" src="https://github.com/user-attachments/assets/4fb16dff-fa46-4189-837f-cc88b610849b" />
 </p>
