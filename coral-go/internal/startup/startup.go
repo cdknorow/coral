@@ -30,6 +30,8 @@ import (
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
+const devStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-01"
+
 // Options configures optional behaviors that differ between entry points.
 type Options struct {
 	// BackendType is "pty" or "tmux". Default is "tmux".
@@ -76,6 +78,19 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if opts.BackendType == "" {
 		opts.BackendType = "tmux"
 	}
+	exe, exeErr := os.Executable()
+	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
+		devStartupMarker,
+		config.Version,
+		config.TierName,
+		opts.BackendType,
+		os.Getpid(),
+		exe,
+		exeErr,
+		os.Getenv("PATH"),
+		os.Getenv("SHELL"),
+		os.Getenv("CORAL_TMUX_BIN"),
+	)
 
 	// Ensure ~/.coral directory exists before any file operations
 	coralDir := cfg.CoralDir()

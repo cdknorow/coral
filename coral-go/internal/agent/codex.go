@@ -124,7 +124,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		SourceFile:     fpath,
 		FileMtime:      mtime,
 		FirstTimestamp: firstTS,
-		LastTimestamp:   lastTS,
+		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
 	}, nil
@@ -207,12 +207,14 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Permission flags from capabilities
 	bypassSandbox := false
+	permissionApplied := false
 	if perms := TranslateToCodexPermissions(params.Capabilities); perms != nil {
+		permissionApplied = true
 		if perms.BypassSandbox {
 			bypassSandbox = true
 			parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
 		} else if perms.FullAuto {
-			parts = append(parts, "--full-auto")
+			parts = appendCodexFullAuto(parts)
 		} else {
 			if perms.SandboxMode != "" {
 				parts = append(parts, "--sandbox", perms.SandboxMode)
@@ -226,21 +228,46 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 		}
 	}
 
+	if !permissionApplied {
+		parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
+	}
+
 	// User-provided flags — translate or drop Claude-specific flags
 	claudeOnlyFlags := map[string]bool{
 		"--settings": true, "--session-id": true, "--resume": true,
 	}
-	for _, flag := range params.Flags {
-		if flag == "--dangerously-skip-permissions" {
-			// Translate to Codex equivalent, but skip if bypass was already added
-			if !bypassSandbox {
-				parts = append(parts, "--full-auto")
+	for i := 0; i < len(params.Flags); i++ {
+		flag := params.Flags[i]
+		if flag == "--permission-mode" {
+			if i+1 < len(params.Flags) {
+				i++
+				if !permissionApplied {
+					parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, params.Flags[i])
+				}
 			}
 			continue
 		}
-		// Drop --full-auto if --dangerously-bypass-approvals-and-sandbox already set;
-		// Codex rejects both flags together.
-		if flag == "--full-auto" && bypassSandbox {
+		if strings.HasPrefix(flag, "--permission-mode=") {
+			if !permissionApplied {
+				mode := strings.TrimPrefix(flag, "--permission-mode=")
+				parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, mode)
+			}
+			continue
+		}
+		if flag == "--dangerously-skip-permissions" {
+			// Translate to Codex equivalent, but skip if bypass was already added
+			if !bypassSandbox && !permissionApplied {
+				parts = appendCodexFullAuto(parts)
+				permissionApplied = true
+			}
+			continue
+		}
+		if flag == "--full-auto" {
+			// Newer Codex versions removed the alias; emit its equivalent directly.
+			if !bypassSandbox && !permissionApplied {
+				parts = appendCodexFullAuto(parts)
+				permissionApplied = true
+			}
 			continue
 		}
 		if claudeOnlyFlags[flag] {
@@ -262,6 +289,37 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	return strings.Join(ShellQuoteParts(parts), " ")
+}
+
+func appendCodexFullAuto(parts []string) []string {
+	return append(parts, "--sandbox", "workspace-write", "-a", "on-request")
+}
+
+func appendCodexPermissionMode(parts []string, bypassSandbox bool, mode string) ([]string, bool, bool) {
+	switch mode {
+	case "", "default":
+		return parts, bypassSandbox, false
+	case "bypassPermissions":
+		if !bypassSandbox {
+			parts = append(parts, "--dangerously-bypass-approvals-and-sandbox")
+			bypassSandbox = true
+		}
+		return parts, bypassSandbox, true
+	case "auto", "dontAsk":
+		if !bypassSandbox {
+			parts = appendCodexFullAuto(parts)
+		}
+		return parts, bypassSandbox, true
+	case "acceptEdits":
+		parts = append(parts, "--sandbox", "workspace-write", "-a", "on-request")
+		return parts, bypassSandbox, true
+	case "plan":
+		parts = append(parts, "--sandbox", "read-only", "-a", "untrusted")
+		return parts, bypassSandbox, true
+	default:
+		slog.Warn("dropping unsupported permission mode for Codex agent", "mode", mode)
+		return parts, bypassSandbox, false
+	}
 }
 
 // isCodexOAuthMode checks if the Codex CLI is configured to use ChatGPT OAuth

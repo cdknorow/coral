@@ -2,6 +2,8 @@ package tmux
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -62,10 +64,37 @@ func TestListPanes_ParsesFormat(t *testing.T) {
 
 func TestNewClient_Defaults(t *testing.T) {
 	c := NewClient()
-	// TmuxBin is "tmux" when tmux is on PATH, or a resolved absolute path
-	// from commonTmuxPaths when it's not (e.g. Homebrew at /opt/homebrew/bin
-	// inside an app bundle). Both are valid defaults.
-	assert.Contains(t, append([]string{"tmux"}, commonTmuxPaths...), c.TmuxBin)
+	assert.NotEmpty(t, c.TmuxBin)
+	if c.TmuxBin != "tmux" {
+		assert.True(t, executableFileExists(c.TmuxBin), "resolved tmux path should be executable")
+	}
+}
+
+func TestIsAvailable_UsesExplicitTmuxBin(t *testing.T) {
+	dir := t.TempDir()
+	tmuxPath := filepath.Join(dir, "tmux")
+	require.NoError(t, os.WriteFile(tmuxPath, []byte("#!/bin/sh\nexit 0\n"), 0755))
+	t.Setenv("CORAL_TMUX_BIN", tmuxPath)
+	t.Setenv("PATH", "")
+
+	got, ok := IsAvailable()
+	require.True(t, ok)
+	assert.Equal(t, tmuxPath, got)
+
+	c := NewClient()
+	assert.Equal(t, tmuxPath, c.TmuxBin)
+}
+
+func TestResolveTmuxBin_RechecksAvailability(t *testing.T) {
+	dir := t.TempDir()
+	tmuxPath := filepath.Join(dir, "tmux")
+	require.NoError(t, os.WriteFile(tmuxPath, []byte("#!/bin/sh\nexit 0\n"), 0755))
+	t.Setenv("CORAL_TMUX_BIN", tmuxPath)
+	t.Setenv("PATH", "")
+
+	c := &Client{TmuxBin: "tmux"}
+	assert.Equal(t, tmuxPath, c.resolveTmuxBin())
+	assert.Equal(t, tmuxPath, c.TmuxBin)
 }
 
 func TestFindPane_MatchesBySessionID(t *testing.T) {

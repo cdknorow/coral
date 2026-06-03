@@ -154,7 +154,7 @@ func TestClaude_Resume(t *testing.T) {
 
 func TestClaude_PermissionModeAllValues(t *testing.T) {
 	tests := []struct {
-		mode     string
+		mode       string
 		expectFlag bool
 	}{
 		{"plan", true},
@@ -393,8 +393,11 @@ func TestCodex_SystemPromptSeparation(t *testing.T) {
 func TestCodex_WithCapabilities_FullAuto(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{Capabilities: &Capabilities{Allow: []string{CapShell}}})
-	if !strings.Contains(cmd, "--full-auto") {
-		t.Errorf("expected --full-auto, got %q", cmd)
+	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a on-request") {
+		t.Errorf("expected full-auto equivalent flags, got %q", cmd)
+	}
+	if strings.Contains(cmd, "--full-auto") {
+		t.Errorf("should not use removed --full-auto alias, got %q", cmd)
 	}
 }
 
@@ -475,8 +478,78 @@ func TestCodex_ResumeWithPromptAndInstructions(t *testing.T) {
 func TestCodex_FlagTranslation(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{Flags: []string{"--dangerously-skip-permissions"}})
-	if strings.Contains(cmd, "--dangerously-skip-permissions") || !strings.Contains(cmd, "--full-auto") {
+	if strings.Contains(cmd, "--dangerously-skip-permissions") ||
+		!strings.Contains(cmd, "--sandbox workspace-write") ||
+		!strings.Contains(cmd, "-a on-request") {
 		t.Errorf("expected flag translation, got %q", cmd)
+	}
+
+	cmd = a.BuildLaunchCommand(LaunchParams{Flags: []string{"--full-auto"}})
+	if strings.Contains(cmd, "--full-auto") ||
+		!strings.Contains(cmd, "--sandbox workspace-write") ||
+		!strings.Contains(cmd, "-a on-request") {
+		t.Errorf("expected --full-auto alias translation, got %q", cmd)
+	}
+}
+
+func TestCodex_PermissionModeTranslation(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  LaunchParams
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "setting bypass",
+			params:  LaunchParams{PermissionMode: "bypassPermissions"},
+			want:    []string{"--dangerously-bypass-approvals-and-sandbox"},
+			notWant: []string{"--permission-mode", "bypassPermissions"},
+		},
+		{
+			name:    "team flag bypass",
+			params:  LaunchParams{Flags: []string{"--permission-mode", "bypassPermissions"}},
+			want:    []string{"--dangerously-bypass-approvals-and-sandbox"},
+			notWant: []string{"--permission-mode", "bypassPermissions"},
+		},
+		{
+			name:    "team flag equals auto",
+			params:  LaunchParams{Flags: []string{"--permission-mode=auto"}},
+			want:    []string{"--sandbox workspace-write", "-a on-request"},
+			notWant: []string{"--permission-mode"},
+		},
+		{
+			name:    "plan",
+			params:  LaunchParams{PermissionMode: "plan"},
+			want:    []string{"--sandbox read-only", "-a untrusted"},
+			notWant: []string{"--permission-mode", "plan"},
+		},
+		{
+			name: "capabilities win over permission mode",
+			params: LaunchParams{
+				PermissionMode: "bypassPermissions",
+				Flags:          []string{"--permission-mode", "auto"},
+				Capabilities:   &Capabilities{Allow: []string{CapFileRead}},
+			},
+			want:    []string{"--sandbox read-only", "-a untrusted"},
+			notWant: []string{"--dangerously-bypass-approvals-and-sandbox", "--full-auto", "--permission-mode"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &CodexAgent{}
+			cmd := a.BuildLaunchCommand(tt.params)
+			for _, want := range tt.want {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("expected %q in %q", want, cmd)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(cmd, notWant) {
+					t.Errorf("did not expect %q in %q", notWant, cmd)
+				}
+			}
+		})
 	}
 }
 
@@ -1448,7 +1521,7 @@ func TestBuildMergedSettings_EnvDeepMerge(t *testing.T) {
 	os.MkdirAll(globalDir, 0755)
 	globalSettings := map[string]interface{}{
 		"env": map[string]interface{}{
-			"AWS_REGION":             "us-east-1",
+			"AWS_REGION":              "us-east-1",
 			"CLAUDE_CODE_USE_BEDROCK": "1",
 		},
 	}

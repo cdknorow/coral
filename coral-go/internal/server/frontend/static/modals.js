@@ -119,7 +119,11 @@ function _selectLaunchType(type) {
         _loadAgentBoardProjects();
         _initAgentPresets();
         // Render agent config form
-        renderAgentConfigForm('launch-agent-acf', { showPreset: false, showName: false });
+        renderAgentConfigForm('launch-agent-acf', {
+            showPreset: false,
+            showName: false,
+            value: { agentType: state.settings?.default_agent_type || 'claude' },
+        });
     } else if (type === "team") {
         _initTeamForm();
     } else {
@@ -1216,15 +1220,21 @@ function _initAgentPresets() {
 function _selectAgentPreset(name) {
     const persona = name ? _findPersona(name) : null;
     const nameInput = document.getElementById("launch-agent-name-input");
+    const current = getAgentConfig('launch-agent-acf');
     if (persona) {
         setAgentConfig('launch-agent-acf', {
             name: persona.name,
             prompt: persona.prompt,
+            flags: persona.flags || current.flags,
+            agentType: persona.agentType || persona.agent_type || current.agentType,
+            model: persona.model || current.model,
             capabilities: persona.capabilities,
         });
         if (nameInput) nameInput.value = persona.name;
     } else {
-        setAgentConfig('launch-agent-acf', {});
+        setAgentConfig('launch-agent-acf', {
+            agentType: state.settings?.default_agent_type || current.agentType,
+        });
         if (nameInput) nameInput.value = '';
     }
 }
@@ -1238,7 +1248,11 @@ export function showAddAgentToBoard(boardName, workDir) {
     document.getElementById("add-agent-board-workdir").value = workDir;
     document.getElementById("add-agent-board-subtitle").textContent = `Board: ${boardName}`;
 
-    renderAgentConfigForm('add-agent-board-acf', { showPreset: true, showName: true });
+    renderAgentConfigForm('add-agent-board-acf', {
+        showPreset: true,
+        showName: true,
+        value: { agentType: state.settings?.default_agent_type || 'claude' },
+    });
 
     modal.style.display = "flex";
 }
@@ -1625,7 +1639,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
     const showAutoPermissions = opts.showAutoPermissions !== false;
     const v = opts.value || {};
 
-    const agentTypeVal = v.agentType || v.agent_type || '';
+    const agentTypeVal = v.agentType || v.agent_type || state.settings?.default_agent_type || '';
     const modelVal = v.model || '';
     const nameVal = v.name || '';
     const promptVal = v.prompt || '';
@@ -1844,7 +1858,7 @@ function setAgentConfig(containerId, values) {
     const nameEl = container.querySelector('.acf-name');
     if (nameEl) nameEl.value = v.name || '';
     const typeEl = container.querySelector('.acf-agent-type');
-    if (typeEl) typeEl.value = v.agentType || v.agent_type || 'claude';
+    if (typeEl) typeEl.value = v.agentType || v.agent_type || state.settings?.default_agent_type || 'claude';
     const modelEl = container.querySelector('.acf-model');
     if (modelEl) {
         modelEl.value = v.model || '';
@@ -1884,14 +1898,20 @@ window.setAgentConfig = setAgentConfig;
 /** Apply a preset to a specific AgentConfigForm by container ID */
 function _applyACFPresetFor(containerId, name) {
     const persona = name ? _findPersona(name) : null;
+    const current = getAgentConfig(containerId);
     if (persona) {
         setAgentConfig(containerId, {
             name: persona.name,
             prompt: persona.prompt,
+            flags: persona.flags || current.flags,
+            agentType: persona.agentType || persona.agent_type || current.agentType,
+            model: persona.model || current.model,
             capabilities: persona.capabilities,
         });
     } else {
-        setAgentConfig(containerId, {});
+        setAgentConfig(containerId, {
+            agentType: state.settings?.default_agent_type || current.agentType,
+        });
     }
 }
 window._applyACFPresetFor = _applyACFPresetFor;

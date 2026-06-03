@@ -7,8 +7,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strconv"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,39 +55,126 @@ type Client struct {
 func (c *Client) resolveTmuxBin() string {
 	c.tmuxBinMu.Lock()
 	defer c.tmuxBinMu.Unlock()
+	original := c.TmuxBin
 	// Absolute path that still exists — keep using it.
 	if filepath.IsAbs(c.TmuxBin) {
-		if _, err := os.Stat(c.TmuxBin); err == nil {
+		_, err := os.Stat(c.TmuxBin)
+		if err == nil {
 			return c.TmuxBin
 		}
+		log.Printf("[tmux] cached absolute tmux path is not usable: path=%q err=%v", c.TmuxBin, err)
 	} else if _, err := exec.LookPath(c.TmuxBin); err == nil {
 		return c.TmuxBin
+	} else {
+		log.Printf("[tmux] cached tmux binary not found on PATH: bin=%q path=%q err=%v", c.TmuxBin, os.Getenv("PATH"), err)
 	}
 	// Cached path no longer works — re-search common locations.
 	if p, ok := IsAvailable(); ok {
 		c.TmuxBin = p
+		if p != original {
+			log.Printf("[tmux] resolved tmux binary: previous=%q resolved=%q path=%q", original, p, os.Getenv("PATH"))
+		}
 		return p
 	}
+	log.Printf("[tmux] tmux discovery failed; using unresolved binary: bin=%q path=%q shell=%q coral_tmux_bin=%q", c.TmuxBin, os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"))
 	return c.TmuxBin
 }
 
 // commonTmuxPaths are checked when tmux is not on PATH (native app bundles
 // may not inherit a shell PATH that includes Homebrew).
-var commonTmuxPaths = []string{"/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"}
+var commonTmuxPaths = []string{
+	"/opt/homebrew/bin/tmux",
+	"/usr/local/bin/tmux",
+	"/usr/bin/tmux",
+	"/opt/local/bin/tmux",
+	"/nix/var/nix/profiles/default/bin/tmux",
+}
 
 // IsAvailable reports whether tmux can be found on PATH or in a common
 // install location. The returned path is the resolved binary (or "tmux"
 // if it was found on PATH).
 func IsAvailable() (string, bool) {
 	if p, err := exec.LookPath("tmux"); err == nil {
+		log.Printf("[tmux] discovery found tmux on PATH: %s", p)
+		return p, true
+	}
+	if p := tmuxFromEnv(); p != "" {
+		log.Printf("[tmux] discovery found tmux via CORAL_TMUX_BIN: %s", p)
 		return p, true
 	}
 	for _, p := range commonTmuxPaths {
-		if _, err := os.Stat(p); err == nil {
+		if executableFileExists(p) {
+			log.Printf("[tmux] discovery found tmux in common path: %s", p)
 			return p, true
 		}
 	}
+	if p := tmuxFromLoginShell(); p != "" {
+		log.Printf("[tmux] discovery found tmux via login shell: %s", p)
+		return p, true
+	}
+	log.Printf("[tmux] discovery failed: path=%q shell=%q coral_tmux_bin=%q common_paths=%v", os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"), commonTmuxPaths)
 	return "", false
+}
+
+func tmuxFromEnv() string {
+	p := strings.TrimSpace(os.Getenv("CORAL_TMUX_BIN"))
+	if p == "" {
+		return ""
+	}
+	if resolved, err := exec.LookPath(p); err == nil {
+		return resolved
+	}
+	if executableFileExists(p) {
+		return p
+	}
+	log.Printf("[tmux] CORAL_TMUX_BIN is set but not executable: %q", p)
+	return ""
+}
+
+func tmuxFromLoginShell() string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	shells := []string{}
+	if shell := strings.TrimSpace(os.Getenv("SHELL")); shell != "" {
+		shells = append(shells, shell)
+	}
+	shells = append(shells, "/bin/zsh", "/bin/bash", "/bin/sh")
+
+	seen := make(map[string]bool, len(shells))
+	for _, shell := range shells {
+		if shell == "" || seen[shell] || !executableFileExists(shell) {
+			continue
+		}
+		seen[shell] = true
+
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		out, err := exec.CommandContext(ctx, shell, "-lc", "command -v tmux").Output()
+		cancel()
+		if err != nil {
+			log.Printf("[tmux] login shell tmux lookup failed: shell=%q err=%v", shell, err)
+			continue
+		}
+		p := strings.TrimSpace(strings.SplitN(string(out), "\n", 2)[0])
+		if p == "" {
+			continue
+		}
+		if resolved, err := exec.LookPath(p); err == nil {
+			return resolved
+		}
+		if executableFileExists(p) {
+			return p
+		}
+	}
+	return ""
+}
+
+func executableFileExists(path string) bool {
+	st, err := os.Stat(path)
+	if err != nil || st.IsDir() {
+		return false
+	}
+	return st.Mode()&0111 != 0
 }
 
 // NewClient creates a new tmux Client.
@@ -96,14 +184,9 @@ func IsAvailable() (string, bool) {
 func NewClient(coralDir ...string) *Client {
 	c := &Client{TmuxBin: "tmux", FallbackToDefault: true, sessionSockets: make(map[string]string)}
 
-	// Find tmux binary if not on PATH (native app may not have /opt/homebrew/bin)
-	if _, err := exec.LookPath(c.TmuxBin); err != nil {
-		for _, p := range commonTmuxPaths {
-			if _, err := os.Stat(p); err == nil {
-				c.TmuxBin = p
-				break
-			}
-		}
+	// Find tmux binary if not on PATH (native app may not have Homebrew paths).
+	if p, ok := IsAvailable(); ok {
+		c.TmuxBin = p
 	}
 
 	if len(coralDir) > 0 && coralDir[0] != "" {
@@ -116,6 +199,7 @@ func NewClient(coralDir ...string) *Client {
 			c.SocketPath = filepath.Join(home, ".coral", "tmux.sock")
 		}
 	}
+	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v path=%q shell=%q coral_tmux_bin=%q", c.TmuxBin, c.SocketPath, c.FallbackToDefault, os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"))
 	return c
 }
 
@@ -441,6 +525,7 @@ func (c *Client) HasSession(ctx context.Context, name string) bool {
 // It automatically disables bracketed paste mode to prevent '00~' characters
 // from being prepended to commands sent via send-keys.
 func (c *Client) NewSession(ctx context.Context, name, workDir string) error {
+	log.Printf("[tmux] NewSession requested: name=%q work_dir=%q tmux_bin=%q socket=%q path=%q", name, workDir, c.TmuxBin, c.SocketPath, os.Getenv("PATH"))
 	_, err := c.run(ctx, "new-session", "-d", "-s", name, "-c", workDir)
 	if err != nil {
 		return err
@@ -488,7 +573,6 @@ func (c *Client) ClearHistory(ctx context.Context, target string) error {
 	_, err := c.run(ctx, "clear-history", "-t", target)
 	return err
 }
-
 
 // SendTerminalInputToTarget sends raw terminal input data to a resolved tmux target.
 // Handles control characters, escape sequences, and multi-line text.
@@ -610,9 +694,12 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 	if socketPath != "" {
 		args = append([]string{"-S", socketPath}, args...)
 	}
-	cmd := exec.CommandContext(ctx, c.resolveTmuxBin(), args...)
+	bin := c.resolveTmuxBin()
+	log.Printf("[tmux] exec: bin=%q socket=%q args=%q path=%q", bin, socketPath, args, os.Getenv("PATH"))
+	cmd := exec.CommandContext(ctx, bin, args...)
 	out, err := cmd.Output()
 	if err != nil {
+		log.Printf("[tmux] exec failed: bin=%q socket=%q args=%q err=%v", bin, socketPath, args, err)
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -625,4 +712,3 @@ func sessionFromTarget(target string) string {
 	}
 	return target
 }
-

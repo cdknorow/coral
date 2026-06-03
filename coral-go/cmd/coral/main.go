@@ -23,6 +23,8 @@ import (
 	"github.com/cdknorow/coral/internal/tracking"
 )
 
+const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
+
 // setupCrashLogging logs to both terminal (stderr) and <coralDir>/coral.log.
 // This ensures panics are captured in the file while keeping terminal output
 // visible when running interactively.
@@ -47,8 +49,8 @@ func main() {
 		}
 	}()
 
-	log.Printf("[STARTUP] coral server starting pid=%d go=%s os=%s arch=%s",
-		os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	log.Printf("[STARTUP] coral server starting marker=%s pid=%d go=%s os=%s arch=%s exe=%q path=%q",
+		coralDevStartupMarker, os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
 
 	// Parse --home early so config.Load() can use it
 	homeDir := flag.String("home", "", "Data directory (default: ~/.coral)")
@@ -138,4 +140,12 @@ func main() {
 	log.Println("[SHUTDOWN] shutting down...")
 	rs.Shutdown(10 * time.Second)
 	log.Println("[SHUTDOWN] done")
+}
+
+func mustExecutable() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "unknown: " + err.Error()
+	}
+	return exe
 }
