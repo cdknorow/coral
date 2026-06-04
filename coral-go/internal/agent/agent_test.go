@@ -87,6 +87,41 @@ func TestHistoryGlobPattern(t *testing.T) {
 	}
 }
 
+func TestParseCodexSession_EventMessages(t *testing.T) {
+	dir := t.TempDir()
+	codexSessionID := "019e90eb-a08a-7511-a410-23e7ae3e62a8"
+	coralSessionID := "9fccfe64-ac70-8ed7-af83-a76fa139c0a9"
+	path := filepath.Join(dir, "rollout-2026-06-03T21-37-01-"+codexSessionID+".jsonl")
+	entries := `{"timestamp":"2026-06-04T04:37:22.293Z","type":"session_meta","payload":{"id":"019e90eb-a08a-7511-a410-23e7ae3e62a8"}}
+{"timestamp":"2026-06-04T04:37:22.293Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Coral session metadata:\nCORAL_SESSION_ID: 9fccfe64-ac70-8ed7-af83-a76fa139c0a9"}]}}
+{"timestamp":"2026-06-04T04:37:22.296Z","type":"event_msg","payload":{"type":"user_message","message":"fix codex chat history","images":[]}}
+{"timestamp":"2026-06-04T04:37:28.017Z","type":"event_msg","payload":{"type":"agent_message","message":"I found the issue.","phase":"commentary"}}
+`
+	if err := os.WriteFile(path, []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	sess, err := parseCodexSession(path, 123)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess == nil {
+		t.Fatal("expected indexed session")
+	}
+	if sess.SessionID != coralSessionID {
+		t.Fatalf("unexpected session id: %s", sess.SessionID)
+	}
+	if sess.MessageCount != 2 {
+		t.Fatalf("expected 2 messages, got %d", sess.MessageCount)
+	}
+	if sess.DisplaySummary != "I found the issue." {
+		t.Fatalf("unexpected summary: %q", sess.DisplaySummary)
+	}
+	if sess.SourceType != "codex" || sess.SourceFile != path || sess.FileMtime != 123 {
+		t.Fatalf("unexpected indexed session: %+v", sess)
+	}
+}
+
 // ── CLIInfo Tests ───────────────────────────────────────────
 
 func TestGetCLIInfo(t *testing.T) {
@@ -331,10 +366,44 @@ func TestCodex_WithPrompt(t *testing.T) {
 	a := &CodexAgent{}
 	sid := "codex-prompt-test1"
 	a.BuildLaunchCommand(LaunchParams{SessionID: sid, Prompt: "Fix the bug"})
+	sysFile := findTempFile(t, "codex_instructions", sid, "md")
+	sysContent, _ := os.ReadFile(sysFile)
+	if !strings.Contains(string(sysContent), "CORAL_SESSION_ID: "+sid) {
+		t.Errorf("expected Coral session marker in instructions, got %q", string(sysContent))
+	}
 	promptFile := findTempFile(t, "codex_prompt", sid, "txt")
 	content, _ := os.ReadFile(promptFile)
 	if !strings.Contains(string(content), "Fix the bug") {
 		t.Errorf("expected prompt in file, got %q", string(content))
+	}
+}
+
+func TestInstructionPromptsIncludeCoralSessionMarker(t *testing.T) {
+	agents := []struct {
+		name      string
+		agent     Agent
+		prefix    string
+		extension string
+	}{
+		{"claude", &ClaudeAgent{}, "settings", "json"},
+		{"gemini", &GeminiAgent{}, "gemini_sys", "md"},
+		{"codex", &CodexAgent{}, "codex_instructions", "md"},
+		{"pi", &PiAgent{}, "pi_sys", "md"},
+	}
+
+	for _, tt := range agents {
+		t.Run(tt.name, func(t *testing.T) {
+			sid := tt.name + "-marker-session"
+			tt.agent.BuildLaunchCommand(LaunchParams{SessionID: sid})
+			path := findTempFile(t, tt.prefix, sid, tt.extension)
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(content), "CORAL_SESSION_ID: "+sid) {
+				t.Fatalf("expected Coral session marker in %s, got %q", path, string(content))
+			}
+		})
 	}
 }
 

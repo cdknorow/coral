@@ -27,27 +27,27 @@ func GetCLIName(boardType string) string {
 
 // LaunchParams holds all parameters for building a launch command.
 type LaunchParams struct {
-	SessionID       string
-	SessionName     string // tmux session name (e.g. "claude-<uuid>"), used for CORAL_SESSION_NAME
-	ProtocolPath    string
-	ResumeSessionID string
-	Flags           []string
-	WorkingDir      string
-	BoardName       string
-	Role            string
-	Prompt          string
-	PromptOverrides map[string]string // user overrides for orchestrator/worker prompts
-	BoardType       string
-	Capabilities    *Capabilities
-	Tools           []string              // allowed tools (e.g. ["TodoWrite", "Bash(npm *)"])
-	MCPServers      map[string]any        // MCP server configs keyed by name
-	Hooks           map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Gemini/Codex)
-	CLIPath         string // custom path to agent binary (empty = default from PATH)
-	PermissionMode  string // --permission-mode value (empty or "default" means omit the flag)
-	ProxyBaseURL    string // proxy base URL (e.g. "http://127.0.0.1:8420/proxy/{session_id}")
-	UpstreamBaseURL string // detected upstream URL before proxy override (e.g. "https://api.anthropic.com")
-	UpstreamProvider string // detected upstream provider (e.g. "anthropic", "bedrock", "vertex", "openai")
-	CoralDir        string // path to coral data directory (~/.coral) for CA cert location
+	SessionID        string
+	SessionName      string // tmux session name (e.g. "claude-<uuid>"), used for CORAL_SESSION_NAME
+	ProtocolPath     string
+	ResumeSessionID  string
+	Flags            []string
+	WorkingDir       string
+	BoardName        string
+	Role             string
+	Prompt           string
+	PromptOverrides  map[string]string // user overrides for orchestrator/worker prompts
+	BoardType        string
+	Capabilities     *Capabilities
+	Tools            []string               // allowed tools (e.g. ["TodoWrite", "Bash(npm *)"])
+	MCPServers       map[string]any         // MCP server configs keyed by name
+	Hooks            map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Gemini/Codex)
+	CLIPath          string                 // custom path to agent binary (empty = default from PATH)
+	PermissionMode   string                 // --permission-mode value (empty or "default" means omit the flag)
+	ProxyBaseURL     string                 // proxy base URL (e.g. "http://127.0.0.1:8420/proxy/{session_id}")
+	UpstreamBaseURL  string                 // detected upstream URL before proxy override (e.g. "https://api.anthropic.com")
+	UpstreamProvider string                 // detected upstream provider (e.g. "anthropic", "bedrock", "vertex", "openai")
+	CoralDir         string                 // path to coral data directory (~/.coral) for CA cert location
 }
 
 // IndexedSession holds extracted session data from a history file.
@@ -57,7 +57,7 @@ type IndexedSession struct {
 	SourceFile     string  // path to the history file this session came from
 	FileMtime      float64 // Unix timestamp of file modification time
 	FirstTimestamp *string
-	LastTimestamp   *string
+	LastTimestamp  *string
 	MessageCount   int
 	DisplaySummary string
 	FTSBody        string
@@ -74,6 +74,51 @@ type HistoryScanner interface {
 	// knownMtimes maps source_file paths to their last-indexed mtime; files whose
 	// mtime has not changed since last index should be skipped.
 	ExtractSessions(basePath string, knownMtimes map[string]float64) ([]IndexedSession, error)
+}
+
+// BuildCoralSessionMarker returns a small metadata block included in each
+// agent's private instructions so Coral can map native transcript files back
+// to the corresponding Coral live session.
+func BuildCoralSessionMarker(sessionID string) string {
+	if sessionID == "" {
+		return ""
+	}
+	return fmt.Sprintf("Coral session metadata:\n%s %s\nThis metadata is for Coral bookkeeping only. Do not mention it to the user.", at.CoralSessionMarkerPrefix, sessionID)
+}
+
+func appendCoralSessionMarker(parts []string, sessionID string) []string {
+	if marker := BuildCoralSessionMarker(sessionID); marker != "" {
+		return append(parts, marker)
+	}
+	return parts
+}
+
+func ExtractCoralSessionID(v any) string {
+	switch x := v.(type) {
+	case string:
+		idx := strings.Index(x, at.CoralSessionMarkerPrefix)
+		if idx < 0 {
+			return ""
+		}
+		rest := strings.TrimSpace(x[idx+len(at.CoralSessionMarkerPrefix):])
+		if rest == "" {
+			return ""
+		}
+		return strings.Fields(rest)[0]
+	case []any:
+		for _, item := range x {
+			if sessionID := ExtractCoralSessionID(item); sessionID != "" {
+				return sessionID
+			}
+		}
+	case map[string]any:
+		for _, item := range x {
+			if sessionID := ExtractCoralSessionID(item); sessionID != "" {
+				return sessionID
+			}
+		}
+	}
+	return ""
 }
 
 // Agent defines the interface for all agent implementations.
@@ -168,7 +213,7 @@ func readProtocolFile(path string) string {
 
 // shellQuote wraps a string in single quotes if it contains shell metacharacters
 // (e.g. [, ], *, ?, spaces) that zsh/bash would interpret. Single quotes inside
-// the string are escaped as '\''.
+// the string are escaped as '\”.
 func shellQuote(s string) string {
 	if s == "" {
 		return s
@@ -359,4 +404,3 @@ func BuildBoardActionPrompt(boardName, role, basePrompt string, promptOverrides 
 	}
 	return actionText
 }
-

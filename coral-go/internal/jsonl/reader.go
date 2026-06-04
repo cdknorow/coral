@@ -2,6 +2,7 @@
 package jsonl
 
 import (
+	"bufio"
 	"encoding/json"
 	"io"
 	"os"
@@ -206,6 +207,77 @@ func resolveCodexTranscript(sessionID string) string {
 	if len(matches) > 0 {
 		return matches[0]
 	}
+	return resolveCodexTranscriptByMarker(basePath, sessionID)
+}
+
+func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
+	var match string
+	_ = filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if !strings.HasPrefix(filepath.Base(path), "rollout-") || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+		if codexTranscriptCoralSessionID(path) == sessionID {
+			match = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return match
+}
+
+func codexTranscriptCoralSessionID(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if sessionID := extractCoralSessionID(entry); sessionID != "" {
+			return sessionID
+		}
+	}
+	return ""
+}
+
+func extractCoralSessionID(v any) string {
+	switch x := v.(type) {
+	case string:
+		idx := strings.Index(x, at.CoralSessionMarkerPrefix)
+		if idx < 0 {
+			return ""
+		}
+		rest := strings.TrimSpace(x[idx+len(at.CoralSessionMarkerPrefix):])
+		if rest == "" {
+			return ""
+		}
+		return strings.Fields(rest)[0]
+	case []any:
+		for _, item := range x {
+			if sessionID := extractCoralSessionID(item); sessionID != "" {
+				return sessionID
+			}
+		}
+	case map[string]any:
+		for _, item := range x {
+			if sessionID := extractCoralSessionID(item); sessionID != "" {
+				return sessionID
+			}
+		}
+	}
 	return ""
 }
 
@@ -298,9 +370,9 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 			return nil
 		}
 		if isSystemInjected(text) {
-		return nil
-	}
-	return []map[string]any{{"type": "user", "timestamp": timestamp, "content": text}}
+			return nil
+		}
+		return []map[string]any{{"type": "user", "timestamp": timestamp, "content": text}}
 	}
 	return nil
 }
@@ -557,6 +629,10 @@ func parseGeminiEntry(entry map[string]any) []map[string]any {
 // and a "content" field that can be a string or array of content blocks.
 // Tool calls appear as content blocks with type "function_call".
 func parseCodexEntry(entry map[string]any, toolUseNames map[string]string) []map[string]any {
+	if messages := parseCodexEventEntry(entry, toolUseNames); messages != nil {
+		return messages
+	}
+
 	role, _ := entry["role"].(string)
 	timestamp, _ := entry["timestamp"].(string)
 
@@ -572,6 +648,29 @@ func parseCodexEntry(entry map[string]any, toolUseNames map[string]string) []map
 	case "assistant":
 		return parseCodexAssistantEntry(content, timestamp, toolUseNames)
 	}
+	return nil
+}
+
+func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) []map[string]any {
+	entryType, _ := entry["type"].(string)
+	timestamp, _ := entry["timestamp"].(string)
+	payload, _ := entry["payload"].(map[string]any)
+	if payload == nil {
+		return nil
+	}
+
+	switch entryType {
+	case "event_msg":
+		payloadType, _ := payload["type"].(string)
+		message, _ := payload["message"].(string)
+		switch payloadType {
+		case "user_message":
+			return parseCodexUserEntry(message, timestamp, toolUseNames)
+		case "agent_message":
+			return parseCodexAssistantEntry(message, timestamp, toolUseNames)
+		}
+	}
+
 	return nil
 }
 
@@ -591,7 +690,7 @@ func parseCodexUserEntry(content any, timestamp string, toolUseNames map[string]
 				continue
 			}
 			bt, _ := b["type"].(string)
-			if bt == "text" {
+			if bt == "text" || bt == "input_text" {
 				if text, _ := b["text"].(string); text != "" {
 					textParts = append(textParts, text)
 				}
@@ -651,7 +750,7 @@ func parseCodexAssistantEntry(content any, timestamp string, toolUseNames map[st
 				continue
 			}
 			bt, _ := b["type"].(string)
-			if bt == "text" {
+			if bt == "text" || bt == "output_text" {
 				if t, _ := b["text"].(string); t != "" {
 					textParts = append(textParts, t)
 				}

@@ -82,6 +82,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 	var firstTS, lastTS *string
 	var msgCount int
 	var summary string
+	var coralSessionID string
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -94,6 +95,9 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
 		}
+		if id := ExtractCoralSessionID(entry); id != "" {
+			coralSessionID = id
+		}
 		ts, _ := entry["timestamp"].(string)
 		if ts != "" {
 			if firstTS == nil {
@@ -102,21 +106,23 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 			tsCopy := ts
 			lastTS = &tsCopy
 		}
-		role, _ := entry["role"].(string)
+
+		role, text := codexIndexMessage(entry)
 		if role == "user" || role == "assistant" {
 			msgCount++
 		}
 		if summary == "" && role == "assistant" {
-			if text := extractFirstText(entry["content"]); text != "" {
-				if len(text) > 200 {
-					text = text[:200]
-				}
-				summary = text
+			if len(text) > 200 {
+				text = text[:200]
 			}
+			summary = text
 		}
 	}
 	if msgCount == 0 {
 		return nil, nil
+	}
+	if coralSessionID != "" {
+		sessionID = coralSessionID
 	}
 	return &IndexedSession{
 		SessionID:      sessionID,
@@ -128,6 +134,32 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
 	}, nil
+}
+
+func codexIndexMessage(entry map[string]any) (role, text string) {
+	if role, _ := entry["role"].(string); role == "user" || role == "assistant" {
+		return role, extractFirstText(entry["content"])
+	}
+
+	if entryType, _ := entry["type"].(string); entryType != "event_msg" {
+		return "", ""
+	}
+	payload, _ := entry["payload"].(map[string]any)
+	if payload == nil {
+		return "", ""
+	}
+	message, _ := payload["message"].(string)
+	if strings.TrimSpace(message) == "" {
+		return "", ""
+	}
+	switch payloadType, _ := payload["type"].(string); payloadType {
+	case "user_message":
+		return "user", message
+	case "agent_message":
+		return "assistant", message
+	default:
+		return "", ""
+	}
 }
 
 func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
@@ -195,6 +227,7 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	if boardSysPrompt != "" {
 		sysParts = append(sysParts, boardSysPrompt)
 	}
+	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	if len(sysParts) > 0 {
 		sysFile := writeTempFile("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))

@@ -12,7 +12,8 @@ import (
 // GeminiAgent implements the Agent interface for Gemini CLI.
 type GeminiAgent struct{}
 
-func (a *GeminiAgent) AgentType() string    { return "gemini" }
+func (a *GeminiAgent) AgentType() string { return "gemini" }
+
 // SupportsResume returns false because Gemini's --resume flag only accepts
 // index numbers or "latest", not session UUIDs. With multiple Gemini agents
 // per project, both are unsafe — "latest" or an index could resume the wrong
@@ -130,7 +131,7 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		SourceFile:     fpath,
 		FileMtime:      mtime,
 		FirstTimestamp: firstTS,
-		LastTimestamp:   lastTS,
+		LastTimestamp:  lastTS,
 		MessageCount:   len(messages),
 		DisplaySummary: summary,
 	}, nil
@@ -149,6 +150,7 @@ func (a *GeminiAgent) BuildLaunchCommand(params LaunchParams) string {
 	if boardSysPrompt != "" {
 		sysParts = append(sysParts, boardSysPrompt)
 	}
+	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
 	// Single quotes prevent shell expansion; SanitizeShellValue strips metacharacters.

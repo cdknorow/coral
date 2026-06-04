@@ -11,3 +11,8 @@ const (
 	Pi       = "pi"
 	Terminal = "terminal"
 )
+
+// CoralSessionMarkerPrefix prefixes a session marker injected into per-agent
+// instructions. History parsers use it to map agent-native transcripts back to
+// Coral's stable live session IDs.
+const CoralSessionMarkerPrefix = "CORAL_SESSION_ID:"

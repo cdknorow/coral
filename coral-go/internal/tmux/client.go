@@ -695,7 +695,6 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 		args = append([]string{"-S", socketPath}, args...)
 	}
 	bin := c.resolveTmuxBin()
-	log.Printf("[tmux] exec: bin=%q socket=%q args=%q path=%q", bin, socketPath, args, os.Getenv("PATH"))
 	cmd := exec.CommandContext(ctx, bin, args...)
 	out, err := cmd.Output()
 	if err != nil {

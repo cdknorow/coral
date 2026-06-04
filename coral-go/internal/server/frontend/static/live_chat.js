@@ -195,6 +195,9 @@ export async function refreshLiveHistory() {
 
     const params = new URLSearchParams();
     params.set("session_id", session.session_id);
+    if (session.agent_type) {
+        params.set("agent_type", session.agent_type);
+    }
     if (session.working_directory) {
         params.set("working_directory", session.working_directory);
     }
@@ -215,6 +218,7 @@ export async function refreshLiveHistory() {
 
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {
+                container.innerHTML = "";
                 // Initial load — render all and add "Load More" button if needed
                 for (const msg of data.messages) {
                     renderMessage(msg, container);
@@ -231,6 +235,7 @@ export async function refreshLiveHistory() {
             }
             historyMessageCount = data.total;
         } else if (!initialLoadDone) {
+            container.innerHTML = "";
             historyHasMore = false;
             initialLoadDone = true;
             _updateLoadMoreButton(container);
@@ -254,6 +259,9 @@ export async function loadMoreHistory() {
 
     const params = new URLSearchParams();
     params.set("session_id", session.session_id);
+    if (session.agent_type) {
+        params.set("agent_type", session.agent_type);
+    }
     if (session.working_directory) {
         params.set("working_directory", session.working_directory);
     }

@@ -126,7 +126,7 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 		SourceFile:     fpath,
 		FileMtime:      mtime,
 		FirstTimestamp: firstTS,
-		LastTimestamp:   lastTS,
+		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: strings.Join(summaryParts, " "),
 	}}, nil
@@ -175,6 +175,7 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 	if boardSysPrompt != "" {
 		sysParts = append(sysParts, boardSysPrompt)
 	}
+	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 	if len(sysParts) > 0 {
 		merged["systemPrompt"] = strings.Join(sysParts, "\n\n")
 	}
@@ -470,7 +471,6 @@ func hookEntryExists(groups []interface{}, command string) bool {
 	}
 	return false
 }
-
 
 // BuildMergedSettingsForDetection returns the deep-merged env map from user settings files.
 // This is used by the launcher to detect the upstream provider before building the full

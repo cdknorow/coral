@@ -126,7 +126,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		SourceFile:     fpath,
 		FileMtime:      mtime,
 		FirstTimestamp: firstTS,
-		LastTimestamp:   lastTS,
+		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
 	}, nil
@@ -145,6 +145,7 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	if boardSysPrompt != "" {
 		sysParts = append(sysParts, boardSysPrompt)
 	}
+	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	// Export env vars
 	if params.SessionName != "" {

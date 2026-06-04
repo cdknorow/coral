@@ -129,6 +129,72 @@ func TestReadNewMessages_ToolResult(t *testing.T) {
 	}
 }
 
+func TestReadNewMessages_CodexEventMessages(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "019e90eb-a08a-7511-a410-23e7ae3e62a8"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "06", "03")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+
+	jsonlPath := filepath.Join(sessionDir, "rollout-2026-06-03T21-37-01-"+sessionID+".jsonl")
+	entries := `{"timestamp":"2026-06-04T04:37:22.293Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"hidden developer instructions"}]}}
+{"timestamp":"2026-06-04T04:37:22.296Z","type":"event_msg","payload":{"type":"user_message","message":"fix codex chat history","images":[]}}
+{"timestamp":"2026-06-04T04:37:28.017Z","type":"event_msg","payload":{"type":"agent_message","message":"||PULSE:STATUS Working||\nI found the issue.","phase":"commentary"}}
+`
+	if err := os.WriteFile(jsonlPath, []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewSessionReader()
+	msgs, total := reader.ReadNewMessages(sessionID, "", "codex")
+
+	if total != 2 {
+		t.Fatalf("expected 2 messages, got %d: %#v", total, msgs)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 new messages, got %d", len(msgs))
+	}
+	if msgs[0]["type"] != "user" || msgs[0]["content"] != "fix codex chat history" {
+		t.Fatalf("unexpected user message: %#v", msgs[0])
+	}
+	if msgs[1]["type"] != "assistant" || msgs[1]["text"] != "I found the issue." {
+		t.Fatalf("unexpected assistant message: %#v", msgs[1])
+	}
+}
+
+func TestReadNewMessages_CodexSessionMarker(t *testing.T) {
+	dir := t.TempDir()
+	coralSessionID := "9fccfe64-ac70-8ed7-af83-a76fa139c0a9"
+	codexSessionID := "019e90eb-a08a-7511-a410-23e7ae3e62a8"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "06", "03")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+
+	jsonlPath := filepath.Join(sessionDir, "rollout-2026-06-03T21-37-01-"+codexSessionID+".jsonl")
+	entries := `{"timestamp":"2026-06-04T04:37:22.293Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Coral session metadata:\nCORAL_SESSION_ID: 9fccfe64-ac70-8ed7-af83-a76fa139c0a9"}]}}
+{"timestamp":"2026-06-04T04:37:22.296Z","type":"event_msg","payload":{"type":"user_message","message":"hello from coral session","images":[]}}
+`
+	if err := os.WriteFile(jsonlPath, []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewSessionReader()
+	msgs, total := reader.ReadNewMessages(coralSessionID, "", "codex")
+
+	if total != 1 {
+		t.Fatalf("expected 1 message, got %d: %#v", total, msgs)
+	}
+	if len(msgs) != 1 || msgs[0]["content"] != "hello from coral session" {
+		t.Fatalf("unexpected messages: %#v", msgs)
+	}
+}
+
 func TestClearSession(t *testing.T) {
 	reader := NewSessionReader()
 	reader.cache["test"] = &sessionCache{path: "/tmp/test.jsonl"}
