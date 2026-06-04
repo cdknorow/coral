@@ -341,8 +341,17 @@ func TestBuildBoardSystemPrompt_PromptOnly(t *testing.T) {
 
 func TestCodex_BasicLaunch(t *testing.T) {
 	a := &CodexAgent{}
-	if cmd := a.BuildLaunchCommand(LaunchParams{}); cmd != "codex" {
-		t.Errorf("expected bare 'codex', got %q", cmd)
+	cmd := a.BuildLaunchCommand(LaunchParams{})
+	if !strings.HasPrefix(cmd, "codex ") {
+		t.Errorf("expected codex command, got %q", cmd)
+	}
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"} {
+		if !strings.Contains(cmd, "hooks."+event) {
+			t.Errorf("expected Codex %s hook config, got %q", event, cmd)
+		}
+	}
+	if !strings.Contains(cmd, "coral-hook-agentic-state") {
+		t.Errorf("expected Coral activity hook, got %q", cmd)
 	}
 }
 

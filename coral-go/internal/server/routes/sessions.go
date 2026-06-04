@@ -2593,15 +2593,6 @@ func (h *SessionsHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sidPtr := querySessionID(r)
-	agentType := r.URL.Query().Get("agent_type")
-	if agentType == at.Codex && sidPtr != nil && *sidPtr != "" {
-		workingDir := r.URL.Query().Get("working_directory")
-		if workingDir == "" {
-			workingDir = h.resolveWorkdir(r.Context(), name, agentType, *sidPtr)
-		}
-		messages, _ := h.jsonl.ReadNewMessages(*sidPtr, workingDir, agentType)
-		h.ingestCodexActivity(r.Context(), name, *sidPtr, messages)
-	}
 	limit := queryInt(r, "limit", 50)
 	if limit > 200 {
 		limit = 200
@@ -2673,15 +2664,6 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) EventCounts(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sidPtr := querySessionID(r)
-	agentType := r.URL.Query().Get("agent_type")
-	if agentType == at.Codex && sidPtr != nil && *sidPtr != "" {
-		workingDir := r.URL.Query().Get("working_directory")
-		if workingDir == "" {
-			workingDir = h.resolveWorkdir(r.Context(), name, agentType, *sidPtr)
-		}
-		messages, _ := h.jsonl.ReadNewMessages(*sidPtr, workingDir, agentType)
-		h.ingestCodexActivity(r.Context(), name, *sidPtr, messages)
-	}
 	counts, err := h.ts.GetAgentEventCounts(r.Context(), name, sidPtr)
 	if err != nil || counts == nil {
 		counts = []store.ToolCount{}

@@ -50,6 +50,15 @@ func ResolveSessionID(payloadSessionID string) string {
 func ResolveAgentName(hookData map[string]any) string {
 	cwd, _ := hookData["cwd"].(string)
 	if cwd == "" {
+		cwd, _ = hookData["current_working_directory"].(string)
+	}
+	if cwd == "" {
+		cwd, _ = hookData["working_directory"].(string)
+	}
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	if cwd == "" {
 		return ""
 	}
 	return filepath.Base(strings.TrimRight(cwd, "/\\"))
@@ -140,6 +149,20 @@ func StrVal(d map[string]any, key string) string {
 // GetToolInput extracts tool_input as a map from hook data.
 func GetToolInput(hookData map[string]any) map[string]any {
 	inp, ok := hookData["tool_input"].(map[string]any)
+	if !ok {
+		inp, ok = hookData["input"].(map[string]any)
+	}
+	if !ok {
+		if tool, toolOK := hookData["tool"].(map[string]any); toolOK {
+			inp, ok = tool["input"].(map[string]any)
+		}
+	}
+	if !ok {
+		if args, ok := hookData["arguments"].(map[string]any); ok {
+			inp = args
+			ok = true
+		}
+	}
 	if !ok {
 		return map[string]any{}
 	}

@@ -1,7 +1,9 @@
 src/coral.egg-info/
+coral-go/cmd/coral/.launch-count
 *pycache*
 dist/
 build/
+*coral-go/bin/
 *.DS_Store
 *.egg-info/
 *.egg

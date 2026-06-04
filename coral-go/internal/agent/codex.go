@@ -234,6 +234,8 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, fmt.Sprintf(`-c developer_instructions="$(cat '%s')"`, sysFile))
 	}
 
+	parts = appendCodexCoralHooks(parts)
+
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
@@ -322,6 +324,19 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	return strings.Join(ShellQuoteParts(parts), " ")
+}
+
+func appendCodexCoralHooks(parts []string) []string {
+	hookConfig := map[string]string{
+		"hooks.SessionStart":     `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
+		"hooks.UserPromptSubmit": `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
+		"hooks.PostToolUse":      `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
+		"hooks.Stop":             `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
+	}
+	for _, key := range []string{"hooks.SessionStart", "hooks.UserPromptSubmit", "hooks.PostToolUse", "hooks.Stop"} {
+		parts = append(parts, "-c", key+"="+hookConfig[key])
+	}
+	return parts
 }
 
 func appendCodexFullAuto(parts []string) []string {

@@ -47,6 +47,12 @@ func main() {
 	if hookType == "" {
 		hookType, _ = d["type"].(string)
 	}
+	if hookType == "" {
+		hookType, _ = d["event"].(string)
+	}
+	if hookType == "" {
+		hookType, _ = d["event_name"].(string)
+	}
 	hooks.DebugLog(fmt.Sprintf("AGENTIC_STATE INPUT: hook_type=%s argv=%v", hookType, os.Args[1:]))
 
 	base := hooks.CoralBase()
@@ -101,6 +107,14 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 
 	// Tool use
 	tool, _ := d["tool_name"].(string)
+	if tool == "" {
+		if toolData, _ := d["tool"].(map[string]any); toolData != nil {
+			tool, _ = toolData["name"].(string)
+		}
+	}
+	if tool == "" {
+		tool, _ = d["name"].(string)
+	}
 	if tool != "" {
 		inp := hooks.GetToolInput(d)
 		return map[string]any{
@@ -165,4 +179,3 @@ func makeToolDetail(tool string, inp map[string]any) map[string]any {
 	}
 	return detail
 }
-
