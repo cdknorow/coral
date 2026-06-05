@@ -24,10 +24,10 @@ import (
 
 // mockSessionTerminal implements ptymanager.SessionTerminal for testing.
 type mockSessionTerminal struct {
-	mu              sync.Mutex
-	sessions        map[string]*ptymanager.PaneInfo
-	outputs         map[string]string
-	sent            map[string][]string
+	mu               sync.Mutex
+	sessions         map[string]*ptymanager.PaneInfo
+	outputs          map[string]string
+	sent             map[string][]string
 	killSessionCalls []string
 }
 
@@ -67,12 +67,13 @@ func (m *mockSessionTerminal) CaptureOutput(_ context.Context, name string, _ in
 	return "", fmt.Errorf("session %q not found", name)
 }
 
-func (m *mockSessionTerminal) SendInput(_ context.Context, name, _, _, _ string) error {
+func (m *mockSessionTerminal) SendInput(_ context.Context, name, command, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.sessions[name]; !ok {
 		return fmt.Errorf("session %q not found", name)
 	}
+	m.sent[name] = append(m.sent[name], command)
 	return nil
 }
 

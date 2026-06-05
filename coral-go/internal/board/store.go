@@ -1201,7 +1201,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	err = s.db.GetContext(ctx, &task,
 		`SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '')
-		 ORDER BY `+priorityOrder+` LIMIT 1`, project, subscriberID)
+		 ORDER BY `+priorityOrder+` LIMIT 1`, project)
 	if err == nil {
 		return &task
 	}

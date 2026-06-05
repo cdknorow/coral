@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -395,6 +396,160 @@ func TestBoardReassignTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 		}
 		content, _ := last["content"].(string)
 		return content == "[Task #2 reassigned to Backend Dev — notification deferred while they have an active task] Unassigned task"
+	}, 2*time.Second, 50*time.Millisecond)
+}
+
+func boardMessagesContain(t *testing.T, base, needle string) bool {
+	t.Helper()
+	msgResp, err := http.Get(base + "/messages/all?format=dashboard")
+	require.NoError(t, err)
+	defer msgResp.Body.Close()
+
+	var body map[string]any
+	require.NoError(t, json.NewDecoder(msgResp.Body).Decode(&body))
+	messages, ok := body["messages"].([]any)
+	if !ok {
+		return false
+	}
+	for _, raw := range messages {
+		msg, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		content, _ := msg["content"].(string)
+		if strings.Contains(content, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBoardCompleteTask_DoesNotNudgeOrchestratorForUnassignedTask(t *testing.T) {
+	server, _ := setupBoardTestServer(t)
+	base := server.URL + "/api/board/myproject"
+
+	resp := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Orchestrator",
+		"job_title":     "Orchestrator",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks", map[string]string{
+		"title":       "Coordinate work",
+		"created_by":  "Operator",
+		"assigned_to": "Orchestrator",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks/claim", map[string]string{
+		"subscriber_id": "Orchestrator",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks", map[string]string{
+		"title":      "Unassigned implementation",
+		"created_by": "Orchestrator",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks/1/complete", map[string]string{
+		"subscriber_id": "Orchestrator",
+	})
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.Eventually(t, func() bool {
+		return boardMessagesContain(t, base, "[Task #1 completed by Orchestrator]")
+	}, 2*time.Second, 50*time.Millisecond)
+	assert.Never(t, func() bool {
+		return boardMessagesContain(t, base, "@Orchestrator You have tasks available")
+	}, 300*time.Millisecond, 50*time.Millisecond)
+}
+
+func TestBoardCompleteTask_NudgesWorkerForUnassignedTask(t *testing.T) {
+	server, _ := setupBoardTestServer(t)
+	base := server.URL + "/api/board/myproject"
+
+	resp := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Backend Dev",
+		"job_title":     "Backend Dev",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks", map[string]string{
+		"title":       "Initial implementation",
+		"created_by":  "Orchestrator",
+		"assigned_to": "Backend Dev",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks/claim", map[string]string{
+		"subscriber_id": "Backend Dev",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks", map[string]string{
+		"title":      "Unassigned follow-up",
+		"created_by": "Orchestrator",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks/1/complete", map[string]string{
+		"subscriber_id": "Backend Dev",
+	})
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.Eventually(t, func() bool {
+		return boardMessagesContain(t, base, "@Backend Dev You have tasks available")
+	}, 2*time.Second, 50*time.Millisecond)
+}
+
+func TestBoardCompleteTask_NotifiesOrchestrator(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	base := server.URL + "/api/board/myproject"
+	terminal := newMockTerminal()
+	terminal.addSession("claude-orchestrator", "/tmp/test")
+	handler.SetTerminal(terminal)
+
+	resp := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Orchestrator",
+		"job_title":     "Orchestrator",
+		"session_name":  "claude-orchestrator",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Backend Dev",
+		"job_title":     "Backend Dev",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks", map[string]string{
+		"title":       "Implement API",
+		"created_by":  "Orchestrator",
+		"assigned_to": "Backend Dev",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks/claim", map[string]string{
+		"subscriber_id": "Backend Dev",
+	})
+	resp.Body.Close()
+
+	resp = postJSON(t, base+"/tasks/1/complete", map[string]string{
+		"subscriber_id": "Backend Dev",
+	})
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.Eventually(t, func() bool {
+		for _, cmd := range terminal.sentCommands() {
+			if strings.Contains(cmd, "Backend Dev finished task #1: Implement API") {
+				return true
+			}
+		}
+		return false
 	}, 2*time.Second, 50*time.Millisecond)
 }
 

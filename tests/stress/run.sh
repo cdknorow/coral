@@ -442,12 +442,66 @@ print('yes' if 'task' in text and 'claim' in text else 'no')
     curl -s -m 10 -X POST "${BASE_URL}/api/sessions/live/${mock_session}/kill" >/dev/null
 fi
 
+# ── Test 12: Orchestrator notified when agent completes task ─────────
+
+ORCH_BOARD="orch-notify-$$"
+orch_api() {
+    local method="$1" path="$2"
+    shift 2
+    curl -s -m 10 -X "$method" "${BASE_URL}/api/board/${ORCH_BOARD}${path}" \
+        -H "Content-Type: application/json" "$@"
+}
+
+# Launch a mock orchestrator session subscribed to the board.
+orch_launch=$(curl -s -m 10 -X POST "${BASE_URL}/api/sessions/launch" \
+    -H "Content-Type: application/json" \
+    -d "{\"working_dir\": \"/tmp\", \"agent_type\": \"claude\", \"display_name\": \"Orchestrator\", \"board_name\": \"${ORCH_BOARD}\"}")
+orch_session=$(echo "$orch_launch" | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_name',''))" 2>/dev/null || echo "")
+
+if [[ -z "$orch_session" ]]; then
+    fail "Orchestrator completion notification: could not launch orchestrator session"
+else
+    sleep 3
+
+    # Subscribe a worker identity, then have it claim and complete a task.
+    orch_api POST "/subscribe" -d '{"subscriber_id": "Backend Dev", "job_title": "Backend Dev"}' >/dev/null
+    orch_api POST "/tasks" -d '{"title": "Orchestrator Notify Task", "priority": "high", "created_by": "Orchestrator", "assigned_to": "Backend Dev"}' >/dev/null
+
+    orch_task_id=$(orch_api POST "/tasks/claim" -d '{"subscriber_id": "Backend Dev"}' | \
+        python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
+
+    if [[ -n "$orch_task_id" ]]; then
+        orch_api POST "/tasks/${orch_task_id}/complete" \
+            -d '{"subscriber_id": "Backend Dev", "message": "finished stress task"}' >/dev/null
+
+        sleep 2
+
+        orch_capture=$(curl -s -m 10 "${BASE_URL}/api/sessions/live/${orch_session}/capture" 2>/dev/null)
+        has_orch_notice=$(echo "$orch_capture" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+text = data.get('capture') or ''
+print('yes' if 'Backend Dev finished task #{}: finished stress task'.format(${orch_task_id:-0}) in text else 'no')
+" 2>/dev/null || echo "no")
+
+        if [[ "$has_orch_notice" == "yes" ]]; then
+            pass "Orchestrator receives completion notification when agent finishes task"
+        else
+            fail "Orchestrator completion notification not found in pane capture"
+        fi
+    else
+        fail "Orchestrator completion notification: worker could not claim task"
+    fi
+
+    curl -s -m 10 -X POST "${BASE_URL}/api/sessions/live/${orch_session}/kill" >/dev/null
+fi
+
 # Reset CLI path
 curl -s -m 10 -X PUT "${BASE_URL}/api/settings" \
     -H "Content-Type: application/json" \
     -d '{"cli_path_claude": ""}' >/dev/null
 
-# ── Test 12: Create task with blocked_by — starts as blocked ─────────
+# ── Test 13: Create task with blocked_by — starts as blocked ─────────
 
 DEP_BOARD="dep-test-$$"
 dep_api() {
@@ -487,7 +541,7 @@ else
     fail "Dep: Task B status is '$dep_b_status', expected 'blocked'"
 fi
 
-# ── Test 13: Blocked task cannot be claimed ──────────────────────────
+# ── Test 14: Blocked task cannot be claimed ──────────────────────────
 
 claim_result=$(dep_api POST "/tasks/claim" -d '{"subscriber_id": "dep-agent"}')
 claimed_title=$(echo "$claim_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('title',''))" 2>/dev/null || echo "")
@@ -498,7 +552,7 @@ else
     fail "Dep: Claim returned '$claimed_title', expected 'Dep Task A'"
 fi
 
-# ── Test 14: Completing blocker auto-unblocks downstream ─────────────
+# ── Test 15: Completing blocker auto-unblocks downstream ─────────────
 
 dep_api POST "/tasks/${dep_a_id}/complete" -d '{"subscriber_id": "dep-agent", "message": "done"}' >/dev/null
 
@@ -532,7 +586,7 @@ fi
 
 dep_api POST "/tasks/${claim_b_id}/complete" -d '{"subscriber_id": "dep-agent", "message": "done"}' >/dev/null
 
-# ── Test 15: Cancelling blocker auto-unblocks downstream ─────────────
+# ── Test 16: Cancelling blocker auto-unblocks downstream ─────────────
 
 DEP2_BOARD="dep2-test-$$"
 dep2_api() {
@@ -567,7 +621,7 @@ else
     fail "Dep: Task D status is '$dep_d_status' after cancelling blocker, expected 'pending'"
 fi
 
-# ── Test 16: Multi-dependency — all blockers must resolve ────────────
+# ── Test 17: Multi-dependency — all blockers must resolve ────────────
 
 DEP3_BOARD="dep3-test-$$"
 dep3_api() {
@@ -635,7 +689,7 @@ else
     fail "Dep: Task G status is '$dep_g_final' after completing both blockers, expected 'pending'"
 fi
 
-# ── Test 17: Circular dependency rejection ───────────────────────────
+# ── Test 18: Circular dependency rejection ───────────────────────────
 
 DEP4_BOARD="dep4-test-$$"
 dep4_api() {
@@ -666,7 +720,7 @@ else
     fail "Dep: Circular dependency returned HTTP $cycle_status, expected 400"
 fi
 
-# ── Test 18: blocked_by appears in ListTasks response ────────────────
+# ── Test 19: blocked_by appears in ListTasks response ────────────────
 
 dep_list=$(dep4_api GET "/tasks")
 dep_i_blockers=$(echo "$dep_list" | python3 -c "
@@ -688,7 +742,7 @@ else
     fail "Dep: ListTasks blocked_by not populated correctly"
 fi
 
-# ── Test 19: Cross-board dependency ──────────────────────────────────
+# ── Test 20: Cross-board dependency ──────────────────────────────────
 
 CROSS_BOARD1="cross-board1-$$"
 CROSS_BOARD2="cross-board2-$$"
@@ -744,7 +798,7 @@ else
     fail "Dep: Cross-board task Y status is '$cross_y_final' after completing X, expected 'pending'"
 fi
 
-# ── Test 20: Draft task creation and publish ─────────────────────────
+# ── Test 21: Draft task creation and publish ─────────────────────────
 
 DRAFT_BOARD="draft-test-$$"
 draft_api() {
@@ -767,7 +821,7 @@ else
     fail "Draft: task status is '$draft_status', expected 'draft'"
 fi
 
-# ── Test 21: Draft task cannot be claimed ────────────────────────────
+# ── Test 22: Draft task cannot be claimed ────────────────────────────
 
 # Create a pending task too
 draft_api POST "/tasks" -d '{"title": "Pending Task", "priority": "low", "created_by": "orchestrator"}' >/dev/null
@@ -786,7 +840,7 @@ fi
 claim_draft_id=$(echo "$claim_draft" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 draft_api POST "/tasks/${claim_draft_id}/complete" -d '{"subscriber_id": "draft-agent", "message": "done"}' >/dev/null
 
-# ── Test 22: Publish draft → pending ─────────────────────────────────
+# ── Test 23: Publish draft → pending ─────────────────────────────────
 
 publish_result=$(draft_api POST "/tasks/${draft_id}/publish" -d '{}')
 publish_status=$(echo "$publish_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
@@ -810,7 +864,7 @@ fi
 claim_pub_id=$(echo "$claim_published" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 draft_api POST "/tasks/${claim_pub_id}/complete" -d '{"subscriber_id": "draft-agent", "message": "done"}' >/dev/null
 
-# ── Test 23: Draft with deps → publish → blocked ────────────────────
+# ── Test 24: Draft with deps → publish → blocked ────────────────────
 
 DRAFT2_BOARD="draft2-test-$$"
 draft2_api() {
@@ -867,7 +921,7 @@ else
     fail "Draft: task status is '$draft_dep_final' after completing blocker, expected 'pending'"
 fi
 
-# ── Test 24: Publish non-draft fails ─────────────────────────────────
+# ── Test 25: Publish non-draft fails ─────────────────────────────────
 
 DRAFT3_BOARD="draft3-test-$$"
 draft3_api() {

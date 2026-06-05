@@ -93,6 +93,44 @@ func (h *BoardHandler) buildAssignmentNotification(ctx context.Context, project 
 	return fmt.Sprintf("@%s [Task #%d (%s)] %s — assigned to you, run 'coral-board task claim' to start", assignee, task.ID, task.Priority, task.Title)
 }
 
+func taskAssignedToSubscriber(task *board.Task, subscriberID string) bool {
+	return task != nil && task.AssignedTo != nil && *task.AssignedTo == subscriberID
+}
+
+func isOrchestratorSubscriber(sub *board.Subscriber, subscriberID string) bool {
+	if sub != nil && sub.CanPeek != 0 {
+		return true
+	}
+	if strings.Contains(strings.ToLower(subscriberID), "orchestrator") {
+		return true
+	}
+	if sub != nil && strings.Contains(strings.ToLower(sub.JobTitle), "orchestrator") {
+		return true
+	}
+	return false
+}
+
+func (h *BoardHandler) notifyOrchestratorsTaskCompleted(ctx context.Context, project, subscriberID string, task *board.Task, msg string) {
+	if h.terminal == nil || task == nil {
+		return
+	}
+	subs, err := h.bs.ListSubscribers(ctx, project)
+	if err != nil {
+		slog.Warn("list subscribers for completion notification failed", "project", project, "task_id", task.ID, "error", err)
+		return
+	}
+	notification := fmt.Sprintf("%s finished task #%d: %s", subscriberID, task.ID, msg)
+	for i := range subs {
+		sub := &subs[i]
+		if sub.SubscriberID == subscriberID || sub.SessionName == "" || !isOrchestratorSubscriber(sub, sub.SubscriberID) {
+			continue
+		}
+		if err := h.terminal.SendInput(ctx, sub.SessionName, notification, "", ""); err != nil {
+			slog.Warn("failed to notify orchestrator of completed task", "orchestrator", sub.SubscriberID, "session", sub.SessionName, "task_id", task.ID, "error", err)
+		}
+	}
+}
+
 // ListProjects returns all boards with subscriber and message counts.
 // GET /api/board/projects
 func (h *BoardHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -848,19 +886,21 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		}
 		notification := fmt.Sprintf("[Task #%d completed by %s] %s", completedTask.ID, subscriberID, msg)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		h.notifyOrchestratorsTaskCompleted(ctx, project, subscriberID, completedTask, msg)
 
 		// Resolve downstream blocked tasks
 		h.notifyUnblockedTasks(ctx, project, completedTask.ID)
 
-		// Check if the agent has more pending tasks
+		// Check if the agent has more pending tasks. Unassigned pool tasks nudge
+		// workers, but not the orchestrator; explicitly assigned tasks still do.
 		nextTask := h.bs.NextPendingTaskForSubscriber(ctx, project, subscriberID)
-		if nextTask != nil {
+		sub, err := h.bs.GetSubscription(ctx, subscriberID)
+		if nextTask != nil && (taskAssignedToSubscriber(nextTask, subscriberID) || !isOrchestratorSubscriber(sub, subscriberID)) {
 			auditMsg := fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start",
 				subscriberID)
 			h.bs.PostMessage(ctx, project, "Coral Task Queue", auditMsg, nil)
 
 			if h.terminal != nil {
-				sub, err := h.bs.GetSubscription(ctx, subscriberID)
 				if err == nil && sub != nil && sub.SessionName != "" {
 					if err := h.terminal.SendInput(ctx, sub.SessionName, taskNudge, "", ""); err != nil {
 						slog.Warn("failed to nudge agent", "subscriber", subscriberID, "session", sub.SessionName, "error", err)
