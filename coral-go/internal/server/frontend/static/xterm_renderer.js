@@ -142,6 +142,7 @@ export function createTerminal(containerEl) {
         scrollback: scrollback,
         fontSize: fontSize,
         fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
+        minimumContrastRatio: 4.5,
         theme: _getXtermTheme(),
     });
 

@@ -170,86 +170,36 @@
             <div id="mobile-agent-list" class="mobile-agent-list"></div>
 
             <div id="welcome-screen" class="welcome">
-                <h2>Welcome to Coral</h2>
-                <p>Select a session from the sidebar, or launch a team:</p>
-                <button class="welcome-wizard-card" onclick="window.showTeamWizardModal()" aria-label="Create Your Own Team">
-                    <span class="welcome-wizard-badge">AI generated</span>
-                    <span class="material-icons welcome-wizard-icon">auto_awesome</span>
-                    <div class="welcome-wizard-copy">
-                        <strong>Create Your Own Team</strong>
-                        <span>Describe the mission, choose the roles you want, and let Coral draft the team before launch.</span>
+                <div class="welcome-shell">
+                    <header class="welcome-header">
+                        <span class="welcome-eyebrow">Coral workspace</span>
+                        <h1>What do you want to work on?</h1>
+                        <p>Start with a goal, or launch an agent directly.</p>
+                    </header>
+                    <div class="welcome-primary-actions">
+                        <button class="welcome-start-button" onclick="window.showTeamWizardModal()">
+                            <span class="welcome-start-icon material-icons">auto_awesome</span>
+                            <span class="welcome-start-copy"><strong>Create a team</strong><span>Describe a goal and Coral will assemble the right agents.</span></span>
+                            <span class="material-icons welcome-start-arrow">arrow_forward</span>
+                        </button>
+                        <button class="welcome-agent-button" onclick="showLaunchModal()"><span class="material-icons">add</span>Launch one agent</button>
                     </div>
-                    <span class="material-icons welcome-wizard-arrow">arrow_forward</span>
-                </button>
-                <div class="welcome-team-presets">
-                    <button class="welcome-team-card" onclick="window._launchTeamPreset('Coding Team')">
-                        <span class="material-icons welcome-team-icon">code</span>
-                        <strong>Coding Team</strong>
-                        <span class="welcome-team-desc">Lead Dev, QA, Frontend Dev, Security Reviewer</span>
-                        <span class="welcome-team-count">5 agents</span>
-                    </button>
-                    <button class="welcome-team-card" onclick="window._launchTeamPreset('Consumer Research')">
-                        <span class="material-icons welcome-team-icon">groups</span>
-                        <strong>Consumer Research</strong>
-                        <span class="welcome-team-desc">10 consumer personas + Experiment Designer</span>
-                        <span class="welcome-team-count">12 agents</span>
-                    </button>
-                    <button class="welcome-team-card" onclick="window._launchTeamPreset('Dungeon Master')">
-                        <span class="material-icons welcome-team-icon">castle</span>
-                        <strong>Dungeon Master</strong>
-                        <span class="welcome-team-desc">Fantasy RPG with 4 heroes and 2 villains</span>
-                        <span class="welcome-team-count">7 agents</span>
-                    </button>
-                </div>
-                <div class="welcome-section-label">Automations</div>
-                <div class="welcome-team-presets">
-                    <button class="welcome-team-card" onclick="window.showJobModal()">
-                        <span class="material-icons welcome-team-icon">schedule</span>
-                        <strong>Scheduled Jobs</strong>
-                        <span class="welcome-team-desc">Run agents on a cron schedule — daily reports, monitoring, recurring tasks</span>
-                    </button>
-                    <button class="welcome-team-card" onclick="window.showWorkflowCreateModal()">
-                        <span class="material-icons welcome-team-icon">account_tree</span>
-                        <strong>Workflows</strong>
-                        <span class="welcome-team-desc">Multi-step automations with shell commands and AI agents chained together</span>
-                    </button>
-                    <button class="welcome-team-card" onclick="window.showWorkflowsTab()">
-                        <span class="material-icons welcome-team-icon">history</span>
-                        <strong>Workflow Runs</strong>
-                        <span class="welcome-team-desc">View and manage your workflow execution history and active runs</span>
-                    </button>
-                </div>
-                <div class="welcome-actions">
-                    <button class="welcome-action-card welcome-action-card--create" onclick="window.showTeamWizardModal()" aria-label="Create Your Own Team">
-                        <span class="material-icons">auto_awesome</span>
-                        <span>Create Your Own Team</span>
-                    </button>
-                    <button class="welcome-action-card" onclick="showLaunchModal()" aria-label="Launch Agent">
-                        <span class="material-icons">add_circle</span>
-                        <span>Launch Agent</span>
-                    </button>
-                    <button class="welcome-action-card" onclick="showLaunchModal(); if (window._selectLaunchType) window._selectLaunchType('team')" aria-label="Custom Team">
-                        <span class="material-icons">groups</span>
-                        <span>Custom Team</span>
-                    </button>
-                    <button class="welcome-action-card" onclick="window._showMobileConnectModal()" aria-label="Coral Mobile">
-                        <span class="material-icons">phone_iphone</span>
-                        <span>Mobile</span>
-                    </button>
-                </div>
-                <div class="welcome-secondary">
-                    <button class="welcome-secondary-link" onclick="showCostDashboard()">
-                        <span class="material-icons">payments</span> Token Usage
-                    </button>
-                    <button class="welcome-secondary-link" onclick="showThemeConfigurator()">
-                        <span class="material-icons">palette</span> Theme
-                    </button>
-                    <button class="welcome-secondary-link" onclick="showSettingsModal()">
-                        <span class="material-icons">settings</span> Settings
-                    </button>
-                    <a class="welcome-secondary-link" href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener">
-                        <span class="material-icons">menu_book</span> Docs
-                    </a>
+                    <section class="welcome-section" aria-labelledby="welcome-templates-title">
+                        <div class="welcome-section-heading"><h2 id="welcome-templates-title">Start from a template</h2><span>Pre-built teams</span></div>
+                        <div class="welcome-template-list">
+                            <button class="welcome-template" onclick="window._launchTeamPreset('Coding Team')"><span class="welcome-template-icon material-icons">code</span><span class="welcome-template-copy"><strong>Build software</strong><small>5-agent coding team</small></span><span class="material-icons">chevron_right</span></button>
+                            <button class="welcome-template" onclick="window._launchTeamPreset('Consumer Research')"><span class="welcome-template-icon material-icons">travel_explore</span><span class="welcome-template-copy"><strong>Research an audience</strong><small>12 consumer perspectives</small></span><span class="material-icons">chevron_right</span></button>
+                            <button class="welcome-template" onclick="window._launchTeamPreset('Dungeon Master')"><span class="welcome-template-icon material-icons">castle</span><span class="welcome-template-copy"><strong>Run an adventure</strong><small>7-character RPG team</small></span><span class="material-icons">chevron_right</span></button>
+                        </div>
+                    </section>
+                    <section class="welcome-section" aria-labelledby="welcome-tools-title">
+                        <div class="welcome-section-heading"><h2 id="welcome-tools-title">Automate work</h2><span>Optional tools</span></div>
+                        <div class="welcome-tool-list">
+                            <button class="welcome-tool" onclick="window.showWorkflowCreateModal()"><span class="material-icons">account_tree</span><span><strong>New workflow</strong><small>Chain steps and agents</small></span></button>
+                            <button class="welcome-tool" onclick="window.showJobModal()"><span class="material-icons">schedule</span><span><strong>Schedule a job</strong><small>Run work automatically</small></span></button>
+                            <button class="welcome-tool" onclick="window._showMobileConnectModal()"><span class="material-icons">phone_iphone</span><span><strong>Connect mobile</strong><small>Continue from your phone</small></span></button>
+                        </div>
+                    </section>
                 </div>
             </div>
 

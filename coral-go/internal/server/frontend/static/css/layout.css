@@ -841,6 +841,45 @@
     margin-top: 2px;
 }
 
+/* Simplified launch page */
+.welcome {
+    display: block;
+    padding: clamp(36px, 7vh, 80px) 28px;
+}
+.welcome-shell { width: min(760px, 100%); margin: 0 auto; }
+.welcome-header { margin-bottom: 30px; }
+.welcome-eyebrow { display: block; margin-bottom: 10px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.welcome-header h1 { margin: 0 0 8px; color: var(--text-primary); font-size: clamp(26px, 3.4vw, 38px); line-height: 1.15; letter-spacing: -.035em; }
+.welcome-header p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+.welcome-primary-actions { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.welcome-start-button, .welcome-agent-button, .welcome-template, .welcome-tool { border: 1px solid var(--border); font-family: inherit; cursor: pointer; transition: border-color .15s ease, background .15s ease, transform .15s ease; }
+.welcome-start-button { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; padding: 18px; color: #fff; text-align: left; border-color: rgba(121, 192, 255, .24); border-radius: 14px; background: linear-gradient(135deg, #2563eb, #1486c9); box-shadow: 0 14px 34px rgba(9, 105, 218, .18); }
+.welcome-start-button:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.38); }
+.welcome-start-icon { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 11px; background: rgba(255,255,255,.13); font-size: 21px; }
+.welcome-start-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.welcome-start-copy strong { font-size: 15px; }
+.welcome-start-copy span { color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.45; }
+.welcome-start-arrow { font-size: 19px; opacity: .75; }
+.welcome-agent-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 19px; border-radius: 14px; background: var(--bg-secondary); color: var(--text-primary); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.welcome-agent-button .material-icons { color: var(--accent); font-size: 19px; }
+.welcome-agent-button:hover, .welcome-template:hover, .welcome-tool:hover { border-color: var(--border-light); background: var(--bg-hover); }
+.welcome-section { margin-top: 32px; }
+.welcome-section-heading { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+.welcome-section-heading h2 { margin: 0; color: var(--text-primary); font-size: 13px; font-weight: 650; }
+.welcome-section-heading span { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; }
+.welcome-template-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.welcome-template { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; min-width: 0; padding: 13px; border-radius: 10px; background: var(--bg-secondary); color: var(--text-secondary); text-align: left; }
+.welcome-template > .material-icons:last-child { font-size: 17px; color: var(--text-muted); }
+.welcome-template-icon { color: var(--accent); font-size: 19px; }
+.welcome-template-copy, .welcome-tool > span:last-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.welcome-template strong, .welcome-tool strong { color: var(--text-primary); font-size: 11px; font-weight: 650; }
+.welcome-template small, .welcome-tool small { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.welcome-tool-list { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.welcome-tool { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 14px; border: 0; border-right: 1px solid var(--border); border-radius: 0; background: transparent; color: var(--text-secondary); text-align: left; }
+.welcome-tool:last-child { border-right: 0; }
+.welcome-tool > .material-icons { color: var(--text-secondary); font-size: 19px; }
+.welcome-tool:hover { transform: none; }
+
 /* ── Resize Handle Grip Pattern ────────────────────────────── */
 
 .task-bar-resize-handle::after,

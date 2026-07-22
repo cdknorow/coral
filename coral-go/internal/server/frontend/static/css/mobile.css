@@ -1028,6 +1028,14 @@
 }
 
 @media (max-width: 767px) {
+    .welcome { padding: 30px 18px; }
+    .welcome-header { margin-bottom: 22px; }
+    .welcome-primary-actions { grid-template-columns: 1fr; }
+    .welcome-agent-button { min-height: 46px; }
+    .welcome-template-list, .welcome-tool-list { grid-template-columns: 1fr; }
+    .welcome-tool { border-right: 0; border-bottom: 1px solid var(--border); }
+    .welcome-tool:last-child { border-bottom: 0; }
+
     /* Welcome team cards: stack vertically on mobile */
     .welcome-team-presets {
         flex-direction: column;
