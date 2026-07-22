@@ -596,6 +596,24 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 			notWant: []string{"--permission-mode"},
 		},
 		{
+			name: "team flag overrides default permission mode",
+			params: LaunchParams{
+				PermissionMode: "bypassPermissions",
+				Flags:          []string{"--permission-mode", "auto"},
+			},
+			want:    []string{"--sandbox workspace-write", "-a on-request"},
+			notWant: []string{"--dangerously-bypass-approvals-and-sandbox", "--permission-mode"},
+		},
+		{
+			name: "native codex flags override default permission mode",
+			params: LaunchParams{
+				PermissionMode: "bypassPermissions",
+				Flags:          []string{"--sandbox", "workspace-write", "-a", "on-request"},
+			},
+			want:    []string{"--sandbox workspace-write", "-a on-request"},
+			notWant: []string{"--dangerously-bypass-approvals-and-sandbox", "--permission-mode"},
+		},
+		{
 			name:    "plan",
 			params:  LaunchParams{PermissionMode: "plan"},
 			want:    []string{"--sandbox read-only", "-a untrusted"},

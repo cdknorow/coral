@@ -39,6 +39,19 @@ func newMockTerminal() *mockSessionTerminal {
 	}
 }
 
+func TestStripAgentPermissionFlags_RemovesPermissionModeForms(t *testing.T) {
+	got := stripAgentPermissionFlags([]string{
+		"--permission-mode", "bypassPermissions",
+		"--model", "gpt-5",
+		"--permission-mode=auto",
+		"--sandbox", "workspace-write",
+		"-a", "on-request",
+		"--verbose",
+	})
+
+	require.Equal(t, []string{"--model", "gpt-5", "--verbose"}, got)
+}
+
 func (m *mockSessionTerminal) ListSessions(_ context.Context) ([]ptymanager.PaneInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

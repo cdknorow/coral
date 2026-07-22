@@ -1731,32 +1731,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	// from the stored flags — capabilities are the source of truth and
 	// BuildLaunchCommand will generate the correct flags for the target agent type.
 	// This prevents flag mismatches when changing agent type (e.g. Codex --full-auto → Claude).
-	agentPermFlags := map[string]bool{
-		"--full-auto": true, "--dangerously-skip-permissions": true,
-		"--dangerously-bypass-approvals-and-sandbox": true,
-		"--sandbox": true, "--search": true,
-		"--approval-mode": true, "--yolo": true,
-	}
-	var cleanFlags []string
-	skipNext := false
-	for _, f := range storedFlags {
-		if skipNext {
-			skipNext = false
-			continue
-		}
-		if agentPermFlags[f] {
-			// Some flags take a value argument (e.g. --sandbox workspace-write, -a untrusted)
-			if f == "--sandbox" || f == "--approval-mode" || f == "-a" {
-				skipNext = true
-			}
-			continue
-		}
-		if f == "-a" {
-			skipNext = true
-			continue
-		}
-		cleanFlags = append(cleanFlags, f)
-	}
+	cleanFlags := stripAgentPermissionFlags(storedFlags)
 	// Also strip --model from old flags (we'll re-add from storedModel)
 	var finalFlags []string
 	for i := 0; i < len(cleanFlags); i++ {
@@ -4020,4 +3995,38 @@ func (h *SessionsHandler) ResolveByPIDs(w http.ResponseWriter, r *http.Request) 
 		"project":       boardName,
 		"session_name":  ls.SessionID,
 	})
+}
+
+func stripAgentPermissionFlags(flags []string) []string {
+	agentPermFlags := map[string]bool{
+		"--full-auto": true, "--dangerously-skip-permissions": true,
+		"--dangerously-bypass-approvals-and-sandbox": true,
+		"--sandbox": true, "--search": true,
+		"--approval-mode": true, "--permission-mode": true, "--yolo": true,
+	}
+
+	var cleanFlags []string
+	skipNext := false
+	for _, f := range flags {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if strings.HasPrefix(f, "--permission-mode=") {
+			continue
+		}
+		if agentPermFlags[f] {
+			// Some flags take a value argument (e.g. --sandbox workspace-write, -a untrusted).
+			if f == "--sandbox" || f == "--approval-mode" || f == "--permission-mode" || f == "-a" {
+				skipNext = true
+			}
+			continue
+		}
+		if f == "-a" {
+			skipNext = true
+			continue
+		}
+		cleanFlags = append(cleanFlags, f)
+	}
+	return cleanFlags
 }

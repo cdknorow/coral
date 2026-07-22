@@ -812,42 +812,42 @@ const activationPage = `<!DOCTYPE html>
 <div class="page">
   <div class="page-header">
     <h1>Coral</h1>
-    <p>Your AI agent team, running locally.</p>
+    <p>Free and fully unlocked. A one-time license supports development and retires this reminder.</p>
   </div>
 
   <div class="pricing-row">
     <div class="price-card">
-      <h3>14-Day Free Trial</h3>
-      <p class="price-desc">Full Pro access, cancel anytime</p>
+      <h3>Free &amp; Fully Unlocked</h3>
+      <p class="price-desc">The full product, forever</p>
       <div class="price-amount">Free</div>
-      <p class="price-note">Card required &middot; auto-converts to Pro after trial</p>
+      <p class="price-note">No card required &middot; every feature unlocked</p>
       <ul class="price-features">
         <li>Native desktop app (macOS &amp; Linux)</li>
-        <li>Full Pro features for 14 days</li>
+        <li>Every feature, no time limit</li>
         <li>Unlimited Teams &amp; Agents</li>
         <li>Claude, Codex &amp; Gemini support</li>
         <li>Real-time dashboard &amp; message boards</li>
-        <li>Cancel before trial ends — no charge</li>
+        <li>Skip this screen anytime</li>
       </ul>
-      <a href="{{STORE_URL}}" class="price-btn price-btn-secondary" target="_blank">Start Free Trial</a>
+      <a href="/?skip_activation=1" class="price-btn price-btn-secondary">Continue Free</a>
     </div>
 
     <div class="price-card featured">
       <div class="price-badge">Early Adopter</div>
-      <h3>Pro</h3>
-      <p class="price-desc">Early adopter pricing for individual developers</p>
+      <h3>Supporter License</h3>
+      <p class="price-desc">Back the project &amp; hide this reminder</p>
       <div class="price-amount">$49.99</div>
-      <p class="price-note">One-time purchase &middot; price increases as we add features</p>
+      <p class="price-note">One-time &middot; early adopter price rises as we add features</p>
       <ul class="price-features">
-        <li>1 machine activation</li>
-        <li>Unlimited Teams &amp; Agents</li>
+        <li>Retires this periodic activation reminder</li>
+        <li>Activates on 1 machine</li>
+        <li>Directly supports ongoing development</li>
         <li>Agent team templates &amp; sharing</li>
         <li>Search chat history</li>
-        <li>Lifetime access with updates</li>
-        <li>Email support</li>
+        <li>Lifetime license with updates &amp; email support</li>
       </ul>
-      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Lock in early adopter pricing today.</p>
-      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank">Get Coral Pro</a>
+      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way &mdash; a license simply backs the project and stops this reminder.</p>
+      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank">Buy a License</a>
     </div>
   </div>
 
@@ -862,7 +862,7 @@ const activationPage = `<!DOCTYPE html>
     </form>
     <div class="error" id="error-msg"></div>
     <div class="success" id="success-msg"></div>
-    <a href="/?skip_activation=1" class="skip-btn">Continue without license</a>
+    <a href="/?skip_activation=1" class="skip-btn">Continue with the free version</a>
     <p style="font-size:12px;color:#484f58;margin-top:16px;">Need help? <a href="https://coralai.ai/support.html" target="_blank" style="color:#58a6ff;">Contact Support</a></p>
   </div>
 

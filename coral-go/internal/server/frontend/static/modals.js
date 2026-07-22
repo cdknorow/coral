@@ -24,6 +24,14 @@ export function toggleFlag(inputId, flag) {
     input.dispatchEvent(new Event("input"));
 }
 
+function _setPermFlagsForInput(inputId, agentType, mode) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    input.value = _normalizePermFlagsForAgent(input.value, agentType, mode);
+    input.dispatchEvent(new Event("input"));
+}
+window._setPermFlagsForInput = _setPermFlagsForInput;
+
 // Track which launch mode is active: null (chooser), 'agent', or 'terminal'
 let _launchMode = null;
 let _existingTeamBoardNames = new Set();
@@ -627,35 +635,69 @@ function _updatePermModeDescription(selectEl) {
     if (hint) hint.textContent = PERMISSION_MODE_DESCRIPTIONS[selectEl.value] || '';
 }
 
-function _getPermFlagForAgent(agentType) {
-    if (agentType === 'pi') return '';
-    if (agentType === 'claude') {
-        const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
-        return `--permission-mode ${mode}`;
+function _getPermissionFlagsForAgentMode(agentType, mode) {
+    const permMode = mode || (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    if (!permMode || permMode === 'default' || agentType === 'pi' || agentType === 'terminal') return '';
+    if (agentType === 'claude') return `--permission-mode ${permMode}`;
+    if (agentType === 'gemini') return '--yolo';
+    if (agentType === 'codex') {
+        if (permMode === 'bypassPermissions') return '--dangerously-bypass-approvals-and-sandbox';
+        if (permMode === 'plan') return '--sandbox read-only -a untrusted';
+        return '--sandbox workspace-write -a on-request';
     }
-    return PERM_FLAGS[agentType] || PERM_FLAGS.claude;
+    return PERM_FLAGS[agentType] || '';
 }
 
 function _stripPermFlags(flagsStr) {
-    const known = new Set(Object.values(PERM_FLAGS));
-    // Also strip --permission-mode <value> pairs
-    const stripped = (flagsStr || '').replace(/--permission-mode\s+\S+/g, '');
-    return stripped
-        .split(/\s+/)
-        .filter(Boolean)
-        .filter(flag => !known.has(flag))
-        .join(' ');
+    const known = new Set(Object.values(PERM_FLAGS).filter(Boolean));
+    known.add('--dangerously-bypass-approvals-and-sandbox');
+    const tokens = (flagsStr || '').split(/\s+/).filter(Boolean);
+    const kept = [];
+    for (let i = 0; i < tokens.length; i++) {
+        const flag = tokens[i];
+        if (known.has(flag) || flag === '--search') continue;
+        if (flag === '--permission-mode' || flag === '--sandbox' || flag === '--approval-mode' || flag === '-a') {
+            i++;
+            continue;
+        }
+        if (
+            flag.startsWith('--permission-mode=') ||
+            flag.startsWith('--sandbox=') ||
+            flag.startsWith('--approval-mode=')
+        ) {
+            continue;
+        }
+        kept.push(flag);
+    }
+    return kept.join(' ');
+}
+
+function _normalizePermFlagsForAgent(flagsStr, agentType, mode) {
+    const base = _stripPermFlags(flagsStr);
+    const permFlags = _getPermissionFlagsForAgentMode(agentType, mode);
+    return [base, permFlags].filter(Boolean).join(' ');
+}
+
+function _permissionModeFromFlags(flagsStr) {
+    const flags = flagsStr || '';
+    const modeMatch = flags.match(/--permission-mode(?:\s+|=)(\S+)/);
+    if (modeMatch) return modeMatch[1];
+    if (flags.includes('--dangerously-bypass-approvals-and-sandbox')) return 'bypassPermissions';
+    if (flags.includes('--full-auto') || flags.includes('--dangerously-skip-permissions') || flags.includes('--yolo')) return 'bypassPermissions';
+    if (/--sandbox(?:\s+|=)read-only/.test(flags)) return 'plan';
+    if (/--sandbox(?:\s+|=)workspace-write/.test(flags)) return 'auto';
+    return '';
 }
 
 function _getPermFlagHelp(agentType) {
-    const flag = _getPermFlagForAgent(agentType);
+    const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    const flag = _getPermissionFlagsForAgentMode(agentType, mode);
     const agentLabel = getEngineName(agentType || 'claude');
     if (agentType === 'pi') {
         return `${agentLabel} runs full-auto by design — no permission flag needed.`;
     }
     if (agentType === 'claude') {
-        const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
-        return `High-autonomy launch for ${agentLabel}. Coral adds --permission-mode ${mode} so the agent can run without interactive permission prompts.`;
+        return `High-autonomy launch for ${agentLabel}. Coral adds ${flag} so the agent can run without interactive permission prompts.`;
     }
     return `High-autonomy launch for ${agentLabel}. Coral adds ${flag} so the agent can run without interactive permission prompts.`;
 }
@@ -663,7 +705,8 @@ function _getPermFlagHelp(agentType) {
 /** Update permission flag shortcut buttons in the same modal as the agent type select. */
 function _updatePermFlagButtons(selectEl) {
     const agentType = selectEl.value || 'claude';
-    const flag = _getPermFlagForAgent(agentType);
+    const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    const flag = _getPermissionFlagsForAgentMode(agentType, mode);
 
     // Find the enclosing modal content and update all flag-shortcut-btn that reference skip-permissions/full-auto
     const modal = selectEl.closest('.modal-content') || selectEl.closest('.modal');
@@ -672,42 +715,33 @@ function _updatePermFlagButtons(selectEl) {
     modal.querySelectorAll('.flag-shortcut-btn').forEach(btn => {
         const onclick = btn.getAttribute('onclick') || '';
         // Match buttons that toggle a dangerously- or --full-auto flag
-        if (onclick.includes('dangerously-') || onclick.includes('full-auto')) {
+        if (onclick.includes('dangerously-') || onclick.includes('full-auto') || onclick.includes('_setPermFlagsForInput')) {
             // Extract the flag input ID from the onclick
-            const match = onclick.match(/toggleFlag\('([^']+)'/);
+            const match = onclick.match(/(?:toggleFlag|_setPermFlagsForInput)\('([^']+)'/);
             if (match) {
                 const flagInputId = match[1];
-                btn.setAttribute('onclick', `toggleFlag('${flagInputId}','${flag}')`);
+                btn.setAttribute('onclick', `window._setPermFlagsForInput('${flagInputId}','${agentType}','${mode}')`);
                 btn.textContent = flag;
             }
         }
     });
 
     // Also update the flags input value — replace any known perm flag with the new one
-    const allFlags = Object.values(PERM_FLAGS);
     modal.querySelectorAll('input[id*=flags]').forEach(input => {
-        let val = input.value;
-        const hadFlag = allFlags.some(f => val.includes(f));
-        if (hadFlag) {
-            allFlags.forEach(f => { val = val.replace(f, ''); });
-            val = val.trim();
-            input.value = val ? val + ' ' + flag : flag;
-        }
+        const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+        input.value = _normalizePermFlagsForAgent(input.value, agentType, mode);
     });
 }
 window._updatePermFlagButtons = _updatePermFlagButtons;
 window._updatePermModeDescription = _updatePermModeDescription;
 
-/** Get the permission flag for a given agent type select element ID. */
-function _getPermFlag(selectId) {
-    const el = document.getElementById(selectId);
-    const agentType = el ? el.value : 'claude';
-    return _getPermFlagForAgent(agentType);
-}
-
 /** Check if a flags string contains ANY known permission flag. */
 function _hasPermFlag(flagsStr) {
-    return Object.values(PERM_FLAGS).some(f => flagsStr.includes(f)) || /--permission-mode\s+\S+/.test(flagsStr);
+    return Object.values(PERM_FLAGS).filter(Boolean).some(f => flagsStr.includes(f)) ||
+        flagsStr.includes('--dangerously-bypass-approvals-and-sandbox') ||
+        /--permission-mode(?:\s+|=)\S+/.test(flagsStr) ||
+        /--sandbox(?:\s+|=)\S+/.test(flagsStr) ||
+        /(?:^|\s)(?:-a|--approval-mode)(?:\s+|=)\S+/.test(flagsStr);
 }
 
 function _syncACFAutoPermissions(container) {
@@ -719,7 +753,10 @@ function _syncACFAutoPermissions(container) {
     if (!typeEl || !toggleEl || !noteEl || !flagEl) return;
 
     const agentType = typeEl.value || 'claude';
-    const flag = _getPermFlagForAgent(agentType);
+    const mode = container.querySelector('.acf-permission-mode')?.value ||
+        (state.settings && state.settings.default_permission_mode) ||
+        'bypassPermissions';
+    const flag = _getPermissionFlagsForAgentMode(agentType, mode);
     flagEl.textContent = flag;
     noteEl.textContent = _getPermFlagHelp(agentType);
     noteEl.style.opacity = toggleEl.checked ? '1' : '0.72';
@@ -802,12 +839,10 @@ function _showCLINotFoundModal(agentType) {
 }
 
 async function _showDemoLimitModal(message) {
-    let storeURL = 'https://store.coralai.ai';
     let tierName = '';
     try {
         const resp = await fetch('/api/system/status');
         const data = await resp.json();
-        if (data.store_url) storeURL = data.store_url;
         if (data.tier_name) tierName = data.tier_name;
     } catch (_e) { /* use default */ }
 
@@ -839,11 +874,10 @@ async function _showDemoLimitModal(message) {
                     ${message || 'You have reached the maximum number of concurrent agents or teams.'}
                 </p>
                 <p style="color:var(--text-secondary);font-size:13px;margin:0 0 20px">
-                    Please stop existing sessions before launching new ones, or upgrade to <strong>Coral Pro</strong> for unlimited access.
+                    Please stop existing sessions before launching new ones.
                 </p>
-                <div class="modal-actions" style="justify-content:center;gap:12px">
-                    <button class="btn btn-secondary" data-action="close">OK</button>
-                    <a href="${storeURL}" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none">Upgrade to Pro</a>
+                <div class="modal-actions" style="justify-content:center">
+                    <button class="btn btn-primary" data-action="close">OK</button>
                 </div>
             </div>
         `;
@@ -856,7 +890,9 @@ async function _showDemoLimitModal(message) {
 }
 
 function _checkPermissionFlag(flagsStr, agentType) {
-    const permFlag = _getPermFlagForAgent(agentType);
+    const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+    const permFlag = _getPermissionFlagsForAgentMode(agentType, mode);
+    if (!permFlag) return Promise.resolve('skip');
     return new Promise((resolve) => {
         if (flagsStr && _hasPermFlag(flagsStr)) {
             resolve('skip');
@@ -920,8 +956,8 @@ export async function launchSession() {
         const permResult = await _checkPermissionFlag(flagsStr, type);
         if (permResult === null) return;
         if (permResult === 'enable') {
-            const permFlag = _getPermFlagForAgent(type);
-            flagsStr = (flagsStr ? flagsStr + ' ' : '') + permFlag;
+            const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+            flagsStr = _normalizePermFlagsForAgent(flagsStr, type, mode);
         }
     }
 
@@ -1277,8 +1313,8 @@ export async function launchAgentToBoard() {
     const permResult = await _checkPermissionFlag(flagsStr, config.agentType);
     if (permResult === null) return;
     if (permResult === 'enable') {
-        const permFlag = _getPermFlagForAgent(config.agentType);
-        flagsStr = (flagsStr ? flagsStr + ' ' : '') + permFlag;
+        const mode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
+        flagsStr = _normalizePermFlagsForAgent(flagsStr, config.agentType, mode);
     }
 
     const flags = flagsStr ? flagsStr.split(/\s+/) : [];
@@ -1361,7 +1397,7 @@ export async function launchTerminalToBoard(boardName, workDir) {
 export async function launchDefaultAgent(workDir) {
     const s = state.settings || {};
     const agentType = s.default_agent_type || 'claude';
-    const permFlag = _getPermFlagForAgent(agentType);
+    const permFlag = _getPermissionFlagsForAgentMode(agentType, s.default_permission_mode || 'bypassPermissions');
     const flags = permFlag ? permFlag.split(/\s+/) : [];
 
     const payload = {
@@ -1768,6 +1804,10 @@ function renderAgentConfigForm(containerId, opts = {}) {
     // Populate datalist + apply visibility + pre-fill for the initial agent type.
     _syncACFModelField(container);
     container.querySelector('.acf-agent-type')?.addEventListener('change', () => {
+        const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+        const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
+        const flagsEl = container.querySelector('.acf-flags');
+        if (flagsEl) flagsEl.value = _stripPermFlags(_normalizePermFlagsForAgent(flagsEl.value, agentType, permMode));
         _syncACFAutoPermissions(container);
         _syncACFModelField(container);
     });
@@ -1825,8 +1865,7 @@ function getAgentConfig(containerId) {
     const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
     let flags = _stripPermFlags(container.querySelector('.acf-flags')?.value.trim() || '');
     if (permMode && permMode !== 'default') {
-        const permFlag = `--permission-mode ${permMode}`;
-        flags = flags ? `${flags} ${permFlag}` : permFlag;
+        flags = _normalizePermFlagsForAgent(flags, agentType, permMode);
     }
 
     // Terminal agents never carry a model — the field is hidden in the UI.
@@ -1874,10 +1913,10 @@ function setAgentConfig(containerId, values) {
     const permModeEl = container.querySelector('.acf-permission-mode');
     if (permModeEl) {
         // Extract permission mode from flags if present, otherwise use default from settings
-        const modeMatch = (v.flags || '').match(/--permission-mode\s+(\S+)/);
+        const flagMode = _permissionModeFromFlags(v.flags || '');
         const defaultMode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
-        if (modeMatch) {
-            permModeEl.value = modeMatch[1];
+        if (flagMode) {
+            permModeEl.value = flagMode;
         } else if (_hasPermFlag(v.flags || '')) {
             // Legacy --dangerously-skip-permissions flag → map to bypassPermissions
             permModeEl.value = 'bypassPermissions';
@@ -1929,8 +1968,6 @@ async function _initTeamForm() {
     document.getElementById("team-board-server").value = "";
     _existingTeamBoardNames = new Set();
     _validateTeamName();
-    const tfEl = document.getElementById("team-flags");
-    if (tfEl) tfEl.value = _getPermFlag('team-agent-type');
     const tapEl = document.getElementById("team-permission-mode");
     if (tapEl) {
         tapEl.value = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
@@ -1964,6 +2001,15 @@ async function _initTeamForm() {
     }
     const typeSelect = document.getElementById("team-agent-type");
     if (s.default_agent_type && typeSelect) typeSelect.value = s.default_agent_type;
+    if (typeSelect) {
+        typeSelect.onchange = () => {
+            const tfEl = document.getElementById("team-flags");
+            if (tfEl) {
+                const mode = document.getElementById("team-permission-mode")?.value || 'default';
+                tfEl.value = _normalizePermFlagsForAgent(tfEl.value, typeSelect.value, mode);
+            }
+        };
+    }
 
     // Fetch existing boards for uniqueness validation
     try {
@@ -2087,7 +2133,8 @@ window._quickLaunchTeam = async function() {
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
     const agentType = 'claude';
-    const permFlag = _getPermFlagForAgent(agentType);
+    const permFlag = _getPermissionFlagsForAgentMode(agentType, state.settings?.default_permission_mode || 'bypassPermissions');
+    const flags = permFlag ? permFlag.split(/\s+/) : [];
 
     try {
         const resp = await fetch('/api/sessions/launch-team', {
@@ -2097,7 +2144,7 @@ window._quickLaunchTeam = async function() {
                 board_name: boardName,
                 working_dir: workDir,
                 agent_type: agentType,
-                flags: [permFlag],
+                flags,
                 agents: tmpl.agents.map(a => {
                     const entry = { name: a.name, prompt: a.prompt, capabilities: a.capabilities };
                     if (a.agent_type) entry.agent_type = a.agent_type;
@@ -2436,11 +2483,8 @@ async function launchTeam() {
     const agentType = document.getElementById("team-agent-type").value;
     const teamPermMode = document.getElementById("team-permission-mode")?.value || 'default';
 
-    // Build flags from permission mode dropdown
-    const flags = [];
-    if (teamPermMode && teamPermMode !== 'default') {
-        flags.push('--permission-mode', teamPermMode);
-    }
+    // Build agent-native flags from the permission mode dropdown.
+    const flags = _getPermissionFlagsForAgentMode(agentType, teamPermMode).split(/\s+/).filter(Boolean);
 
     // Collect agent definitions
     const rows = document.querySelectorAll("#team-agents-list .team-agent-row");
@@ -2856,7 +2900,7 @@ export async function loadSettings() {
     }
 }
 
-/** Show license tier (Pro / Free Trial) in the settings dropdown. */
+/** Show license tier (Supporter License / Free) in the settings dropdown. */
 async function _loadLicenseTierBadge() {
     const badge = document.getElementById('license-tier-badge');
     if (!badge) return;
@@ -2879,38 +2923,19 @@ async function _loadLicenseTierBadge() {
         if (!resp.ok) return;
         const data = await resp.json();
         if (data.activated && data.valid) {
-            // Check if still on trial
-            if (data.trial_ends_at) {
-                const trialEnd = new Date(data.trial_ends_at);
-                const now = new Date();
-                const daysLeft = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
-                if (daysLeft > 0) {
-                    let storeProURL = 'https://store.coralai.ai';
-                    try {
-                        const sResp = await fetch('/api/system/status');
-                        const sData = await sResp.json();
-                        if (sData.store_url) storeProURL = sData.store_url;
-                    } catch (_) {}
-                    badge.innerHTML = `<span class="tier-label tier-trial">Free Trial — ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left</span>` +
-                        `<a href="${storeProURL}" target="_blank" rel="noopener" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Upgrade to Pro</a>`;
-                } else {
-                    const label = data.product_name || 'Coral Pro';
-                    badge.innerHTML = `<span class="tier-label tier-pro">${escapeHtml(label)}</span>`;
-                }
-            } else {
-                const label = data.product_name || 'Coral Pro';
-                badge.innerHTML = `<span class="tier-label tier-pro">${escapeHtml(label)}</span>`;
-            }
+            // Licensed supporter — show the product name.
+            const label = data.product_name || 'Supporter License';
+            badge.innerHTML = `<span class="tier-label tier-pro">${escapeHtml(label)}</span>`;
         } else {
-            // Not activated or expired
+            // Free version — fully unlocked; offer to support development.
             let storeProURL = 'https://store.coralai.ai';
             try {
                 const sResp = await fetch('/api/system/status');
                 const sData = await sResp.json();
                 if (sData.store_url) storeProURL = sData.store_url;
             } catch (_) {}
-            badge.innerHTML = '<span class="tier-label tier-trial">Expired</span>' +
-                `<a href="${storeProURL}" target="_blank" rel="noopener" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Upgrade to Pro</a>`;
+            badge.innerHTML = '<span class="tier-label tier-trial">Free</span>' +
+                `<a href="${storeProURL}" target="_blank" rel="noopener" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Support the developer</a>`;
         }
         badge.style.display = '';
     } catch { /* silent — non-critical */ }
@@ -3169,27 +3194,8 @@ async function _loadLicenseStatus() {
             const revalDays = data.days_until_revalidation;
             const revalText = revalDays != null ? `${revalDays} day${revalDays !== 1 ? 's' : ''}` : '';
             const machineId = escapeHtml(data.machine_id || '');
-            const productName = (data.product_name || '').toLowerCase();
-            const isTrial = productName.includes('trial');
 
-            let storeURL = 'https://store.coralai.ai';
-            try {
-                const sysResp = await fetch('/api/system/status');
-                if (sysResp.ok) {
-                    const sysData = await sysResp.json();
-                    if (sysData.store_url) storeURL = sysData.store_url;
-                }
-            } catch { /* use default */ }
-
-            const statusLabel = isTrial
-                ? '<span style="color:var(--green, #4caf50);font-weight:600">Free Trial</span>'
-                : '<span style="color:var(--green, #4caf50);font-weight:600">Coral Pro</span>';
-            const upgradeRow = isTrial
-                ? `<div style="margin-top:10px;padding:10px;background:var(--bg-tertiary);border-radius:6px;border:1px solid var(--border)">
-                    <span style="font-size:12px;color:var(--text-secondary)">Upgrade to <strong>Coral Pro</strong> for unlimited agents and teams.</span>
-                    <a href="${storeURL}" target="_blank" rel="noopener" class="btn btn-small btn-primary" style="margin-left:8px;text-decoration:none;font-size:11px">Upgrade</a>
-                   </div>`
-                : '';
+            const statusLabel = `<span style="color:var(--green, #4caf50);font-weight:600">${escapeHtml(data.product_name || 'Supporter License')}</span>`;
 
             container.innerHTML = `
                 <dl class="info-grid" style="margin:0">
@@ -3201,14 +3207,23 @@ async function _loadLicenseStatus() {
                     ${revalText ? `<dt>Next Revalidation</dt><dd>${revalText}</dd>` : ''}
                     ${machineId ? `<dt>Machine ID</dt><dd><code style="font-size:11px;color:var(--text-secondary)">${machineId}</code></dd>` : ''}
                 </dl>
-                ${upgradeRow}
+                <p style="font-size:12px;color:var(--text-secondary);margin:10px 0 0">Thanks for supporting Coral's development. &#10084;&#65039;</p>
                 <button class="btn btn-small" onclick="_deactivateLicense()" style="margin-top:8px;color:var(--text-secondary)">Deactivate</button>`;
         } else if (data.activated && !data.valid) {
-            container.innerHTML = `<span style="color:var(--red, #f44336);font-size:13px;font-weight:600">License expired or invalid</span>
+            container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Your license could not be validated — Coral remains free and fully unlocked.</span>
                 <br><a href="https://coralai.ai/support.html" target="_blank" style="font-size:11px;color:var(--text-muted)">Contact Support</a>
                 <button class="btn btn-small" onclick="_deactivateLicense()" style="margin-top:8px">Deactivate</button>`;
         } else {
-            container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Not activated</span>`;
+            let storeURL = 'https://store.coralai.ai';
+            try {
+                const sysResp = await fetch('/api/system/status');
+                if (sysResp.ok) {
+                    const sysData = await sysResp.json();
+                    if (sysData.store_url) storeURL = sysData.store_url;
+                }
+            } catch { /* use default */ }
+            container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Free — fully unlocked. A one-time license supports development and retires the activation reminder.</span>
+                <br><a href="${storeURL}" target="_blank" rel="noopener" class="btn btn-small btn-primary" style="margin-top:8px;display:inline-block;text-decoration:none;font-size:11px">Support the developer</a>`;
         }
     } catch {
         container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Unable to check license</span>`;

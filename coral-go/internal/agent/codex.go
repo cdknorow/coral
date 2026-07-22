@@ -263,10 +263,6 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 		}
 	}
 
-	if !permissionApplied {
-		parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
-	}
-
 	// User-provided flags — translate or drop Claude-specific flags
 	claudeOnlyFlags := map[string]bool{
 		"--settings": true, "--session-id": true, "--resume": true,
@@ -297,6 +293,14 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 			}
 			continue
 		}
+		if flag == "--dangerously-bypass-approvals-and-sandbox" {
+			if !bypassSandbox && !permissionApplied {
+				parts = append(parts, flag)
+				bypassSandbox = true
+				permissionApplied = true
+			}
+			continue
+		}
 		if flag == "--full-auto" {
 			// Newer Codex versions removed the alias; emit its equivalent directly.
 			if !bypassSandbox && !permissionApplied {
@@ -305,11 +309,18 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 			}
 			continue
 		}
+		if flag == "--sandbox" || strings.HasPrefix(flag, "--sandbox=") || flag == "-a" || flag == "--approval-mode" || strings.HasPrefix(flag, "--approval-mode=") {
+			permissionApplied = true
+		}
 		if claudeOnlyFlags[flag] {
 			slog.Warn("dropping Claude-specific flag for Codex agent", "flag", flag)
 			continue
 		}
 		parts = append(parts, flag)
+	}
+
+	if !permissionApplied {
+		parts, bypassSandbox, permissionApplied = appendCodexPermissionMode(parts, bypassSandbox, params.PermissionMode)
 	}
 
 	// Action prompt as separate positional argument
