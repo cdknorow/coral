@@ -25,9 +25,11 @@ jobs:
 
       - name: Build Linux binaries (amd64)
         working-directory: coral-go
+        env:
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=phc_qXGp75qwDNcETkBDDsptPuP8qAV4nNQPDmTdAC8K9h2 -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
           BUILD_TAGS=""
           if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then
             BUILD_TAGS="-tags dropboxers"
@@ -78,11 +80,13 @@ jobs:
 
       - name: Build Windows binaries (amd64)
         working-directory: coral-go
+        env:
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
           $version = "${{ github.ref_name }}" -replace "^v", ""
-          $ldflags = "-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=phc_qXGp75qwDNcETkBDDsptPuP8qAV4nNQPDmTdAC8K9h2 -X github.com/cdknorow/coral/internal/config.Version=$version"
+          $ldflags = "-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=$env:POSTHOG_PROJECT_KEY -X github.com/cdknorow/coral/internal/config.Version=$version"
           $buildTags = ""
           if ("${{ github.ref_name }}" -match "-forDropbox") {
             $buildTags = "-tags dropboxers"
@@ -191,9 +195,11 @@ jobs:
 
       - name: Build universal binaries
         working-directory: coral-go
+        env:
+          POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=phc_qXGp75qwDNcETkBDDsptPuP8qAV4nNQPDmTdAC8K9h2 -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
           BUILD_TAGS=""
           if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then
             BUILD_TAGS="-tags dropboxers"
