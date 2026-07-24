@@ -1574,6 +1574,34 @@
     overflow: auto;
 }
 
+/* Make merge changes readable without CodeMirror's default underline effect. */
+.inline-preview-cm .cm-merge-b .cm-changedLine,
+.inline-preview-cm .cm-inlineChangedLine {
+    background-color: rgba(63, 185, 80, 0.24) !important;
+}
+
+.inline-preview-cm .cm-deletedChunk {
+    background-color: rgba(248, 81, 73, 0.24) !important;
+}
+
+.inline-preview-cm .cm-changedText,
+.inline-preview-cm .cm-insertedLine {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    text-decoration: none !important;
+}
+
+.inline-preview-cm .cm-deletedChunk .cm-deletedText,
+.inline-preview-cm .cm-merge-b .cm-deletedText,
+.inline-preview-cm .cm-deletedLine,
+.inline-preview-cm .cm-deletedLine del {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    text-decoration: none !important;
+}
+
 /* Fallback textarea when CodeMirror is unavailable */
 .inline-preview-fallback-editor {
     width: 100%;
