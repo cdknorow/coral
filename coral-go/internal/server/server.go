@@ -22,6 +22,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/license"
+	"github.com/cdknorow/coral/internal/lsp"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
@@ -57,6 +58,7 @@ type Server struct {
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
 	proxy           *proxy.Proxy
+	lspManager      *lsp.Manager
 }
 
 // templateData is passed to Go templates during rendering.
@@ -99,11 +101,11 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 	log.Printf("API Key: %s...", keyStore.Key()[:8])
 
 	s := &Server{
-		cfg:        cfg,
-		db:         db,
-		boardStore: boardStore,
-		backend:    backend,
-		terminal:   terminal,
+		cfg:           cfg,
+		db:            db,
+		boardStore:    boardStore,
+		backend:       backend,
+		terminal:      terminal,
 		licenseMgr:    licenseMgr,
 		launchCounter: launchCounter,
 		keyStore:      keyStore,
@@ -280,6 +282,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// ── API Routes ──────────────────────────────────────────────
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)
+	s.lspManager = sessHandler.LSPManager()
 	sysHandler := routes.NewSystemHandler(s.db, s.cfg)
 	s.systemHandler = sysHandler
 	histHandler := routes.NewHistoryHandler(s.db, s.cfg, s.boardStore)
@@ -316,6 +319,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/sessions/live/{name}/file-content", sessHandler.GetFileContent)
 	r.Get("/api/sessions/live/{name}/file-original", sessHandler.GetFileOriginal)
 	r.Put("/api/sessions/live/{name}/file-content", sessHandler.SaveFileContent)
+	r.Get("/api/sessions/live/{name}/language-capabilities", sessHandler.LanguageCapabilities)
+	r.Get("/api/sessions/live/{name}/lsp", sessHandler.WSLSP)
 	r.Put("/api/sessions/live/{name}/icon", sessHandler.SetIcon)
 	r.Post("/api/sessions/live/{name}/context-window", sessHandler.UpdateContextWindow)
 	r.Post("/api/sessions/launch", sessHandler.Launch)
@@ -634,6 +639,13 @@ func (s *Server) buildRouter() chi.Router {
 	// ── Dashboard SPA ───────────────────────────────────────────
 	r.Get("/", s.serveIndex)
 	return r
+}
+
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s.lspManager != nil {
+		return s.lspManager.Close(ctx)
+	}
+	return nil
 }
 
 // noCacheHandler wraps an http.Handler to set Cache-Control headers that force

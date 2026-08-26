@@ -29,6 +29,7 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/license"
+	"github.com/cdknorow/coral/internal/lsp"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -56,6 +57,8 @@ type SessionsHandler struct {
 	notifications *NotificationStore     // for UI notifications via websocket
 	teamStore     *store.TeamStore       // for team persistence
 	tokenStore    *store.TokenUsageStore // for token usage tracking
+	lspManager    *lsp.Manager
+	lspRegistry   *lsp.Registry
 
 	// Deduplication state for status/summary events (mirrors Python _last_known)
 	lastKnownMu sync.RWMutex
@@ -159,18 +162,22 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
-		db:        db,
-		ss:        store.NewSessionStore(db),
-		ts:        store.NewTaskStore(db),
-		gs:        store.NewGitStore(db),
-		bs:        bs,
-		cfg:       cfg,
-		terminal:  terminal,
-		jsonl:     jsonl.NewSessionReader(),
-		backend:   backend,
-		lastKnown: make(map[string]lastKnownState),
+		db:          db,
+		ss:          store.NewSessionStore(db),
+		ts:          store.NewTaskStore(db),
+		gs:          store.NewGitStore(db),
+		bs:          bs,
+		cfg:         cfg,
+		terminal:    terminal,
+		jsonl:       jsonl.NewSessionReader(),
+		backend:     backend,
+		lastKnown:   make(map[string]lastKnownState),
+		lspManager:  lsp.NewManager(),
+		lspRegistry: lsp.DefaultRegistry(),
 	}
 }
+
+func (h *SessionsHandler) LSPManager() *lsp.Manager { return h.lspManager }
 
 // ── Agent Discovery ─────────────────────────────────────────────────────
 

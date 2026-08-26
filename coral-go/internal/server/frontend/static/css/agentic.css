@@ -1863,3 +1863,124 @@
 .view-context-menu button:hover {
     background: var(--bg-hover);
 }
+
+/* ── Language intelligence ───────────────────────────────── */
+
+.lsp-status {
+    align-self: center;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    cursor: default;
+    font-size: 9px;
+    padding: 2px 6px;
+    text-transform: uppercase;
+}
+
+.lsp-status-ready { border-color: var(--success, #3fb950); color: var(--success, #3fb950); }
+.lsp-status-failed,
+.lsp-status-unavailable { border-color: var(--danger, #f85149); color: var(--danger, #f85149); cursor: pointer; }
+.lsp-status-starting { opacity: 0.7; }
+
+.lsp-hover-card {
+    background: var(--bg-primary, #fff);
+    border: 1px solid var(--text-secondary, #8b949e);
+    border-radius: 8px;
+    box-sizing: border-box;
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.35));
+    color: var(--text-primary, #1f2328);
+    font-size: 13px;
+    line-height: 1.55;
+    max-height: min(360px, 60vh);
+    max-width: min(600px, calc(100vw - 24px));
+    min-width: min(280px, calc(100vw - 24px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 14px 16px;
+    position: fixed;
+    scrollbar-gutter: stable;
+    z-index: 1200;
+}
+
+.lsp-hover-card > :first-child { margin-top: 0; }
+.lsp-hover-card > :last-child { margin-bottom: 0; }
+
+.lsp-hover-card pre {
+    background: var(--bg-secondary, #f6f8fa);
+    border: 1px solid var(--border, #d0d7de);
+    border-radius: 6px;
+    color: var(--text-primary, #1f2328);
+    line-height: 1.45;
+    overflow-x: auto;
+    padding: 10px 12px;
+}
+
+.lsp-hover-card code {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+    font-size: 0.95em;
+}
+
+.lsp-hover-card a {
+    color: var(--accent, var(--link-color, #0969da));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.lsp-hover-card a:hover {
+    color: var(--accent, var(--link-color, #0969da));
+    text-decoration-thickness: 2px;
+}
+
+.lsp-hover-card a:focus-visible {
+    border-radius: 3px;
+    outline: 2px solid var(--accent, #0969da);
+    outline-offset: 2px;
+}
+
+.lsp-results-panel {
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border);
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    left: 0;
+    max-height: 45%;
+    position: absolute;
+    right: 0;
+    z-index: 30;
+}
+
+.lsp-results-header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    padding: 7px 10px;
+}
+
+.lsp-results-header button {
+    background: none;
+    border: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.lsp-results-list { overflow: auto; padding: 0 6px 8px; }
+.lsp-result-group h4 { color: var(--text-secondary); font-size: 10px; margin: 8px 4px 3px; }
+.lsp-result-item {
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    overflow: hidden;
+    padding: 5px 7px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+}
+.lsp-result-item:hover { background: var(--bg-hover); }

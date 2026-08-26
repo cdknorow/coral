@@ -1,6 +1,12 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
+import {
+    CoralLSPClient, fileURIToRelativePath, groupLocations,
+    hoverMarkup, lspPositionToOffset,
+} from './lsp_client.js';
+import { NavigationHistory } from './navigation_history.js';
+import { HoverInteractionController } from './hover_intent.js';
 import { escapeHtml, showToast } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 
@@ -510,6 +516,19 @@ function _agentName() {
 
 let _cmView = null;       // active EditorView instance (edit mode)
 let _cmMergeView = null;  // active merge view instance (diff mode)
+let _lspClient = null;
+let _hoverTimer = null;
+let _hoverAnchor = null;
+let _hoverRequestGeneration = 0;
+const _hoverInteraction = new HoverInteractionController({
+    onDismiss: () => _dismissLSPHoverCard(),
+    onReplace: (x, y) => {
+        if (!_cmView) return;
+        const offset = _cmView.posAtCoords({ x, y });
+        if (offset != null) _showLSPHover(offset, x, y);
+    },
+});
+const _navigationHistory = new NavigationHistory(50);
 
 /** Get the CodeMirror module (loaded via IIFE script tag as window.CoralCM). */
 function _getCm() {
@@ -552,11 +571,53 @@ function _createCmEditor(container, content, langName) {
 
         const langExt = _getLangExtension(cm, langName);
         if (langExt) extensions.push(langExt);
+        if (cm.EditorView.updateListener) {
+            extensions.push(cm.EditorView.updateListener.of(update => {
+                if (update.docChanged) {
+                    _hideLSPHover();
+                    _lspClient?.documentChanged();
+                }
+            }));
+        }
+        if (cm.EditorView.domEventHandlers) {
+            extensions.push(cm.EditorView.domEventHandlers({
+                mousemove: (event, view) => {
+                    const card = document.getElementById('lsp-hover-card');
+                    if (card) return false;
+                    clearTimeout(_hoverTimer);
+                    _hoverTimer = setTimeout(() => {
+                        _hoverTimer = null;
+                        const offset = view.posAtCoords({ x: event.clientX, y: event.clientY });
+                        if (offset != null) _showLSPHover(offset, event.clientX, event.clientY);
+                    }, 350);
+                    return false;
+                },
+                mouseleave: event => {
+                    if (document.getElementById('lsp-hover-card')) return false;
+                    _hideLSPHover();
+                    return false;
+                },
+                mousedown: (event, view) => {
+                    if (!(event.metaKey || event.ctrlKey)) return false;
+                    const offset = view.posAtCoords({ x: event.clientX, y: event.clientY });
+                    if (offset != null) { event.preventDefault(); _goToDefinition(offset); return true; }
+                    return false;
+                },
+                keydown: event => {
+                    if (event.key === 'Escape') {
+                        _hideLSPHover();
+                        _closeLSPPanel();
+                    }
+                    return false;
+                },
+            }));
+        }
 
         _cmView = new cm.EditorView({
             state: cm.EditorState.create({ doc: content, extensions }),
             parent: container,
         });
+        _connectLSP();
         return true;
     } catch (e) {
         console.error('[coral] CodeMirror editor creation failed:', e);
@@ -565,6 +626,10 @@ function _createCmEditor(container, content, langName) {
 }
 
 function _destroyCmEditor() {
+    clearTimeout(_hoverTimer);
+    _hideLSPHover();
+    _lspClient?.close();
+    _lspClient = null;
     if (_cmView) {
         _cmView.destroy();
         _cmView = null;
@@ -634,6 +699,32 @@ export function openFileEdit(filepath) {
     _openInlinePane(filepath, 'edit');
 }
 
+export function openWorkspaceFile(filepath, options = {}) {
+    const mode = options.mode || 'edit';
+    if (_previewState) {
+        _navigationHistory.record({
+            filepath: _previewState.filepath,
+            mode: _previewState.mode,
+            selection: _cmView ? {
+                from: _cmView.state.selection.main.from,
+                to: _cmView.state.selection.main.to,
+            } : null,
+            scrollTop: _cmView?.scrollDOM?.scrollTop || 0,
+        }, options);
+    }
+    return _openInlinePane(filepath, mode, options);
+}
+
+export function navigateWorkspaceBack() {
+    const previous = _navigationHistory.pop();
+    if (previous) return _openInlinePane(previous.filepath, previous.mode, { ...previous, recordHistory: false });
+}
+
+export function findLSPReferences() {
+    if (!_cmView || !_lspClient?.capabilities.references) return;
+    _showReferences(_cmView.state.selection.main.head);
+}
+
 /** Create a new file via the API and open it in the editor. */
 // Exposed on window for onclick in rendered search results.
 window._createFile = async function(filePath) {
@@ -665,7 +756,7 @@ window._createFile = async function(filePath) {
     }
 };
 
-async function _openInlinePane(filepath, initialView) {
+async function _openInlinePane(filepath, initialView, options = {}) {
     // On mobile, use a full-screen overlay instead of the sidebar pane
     const isMobile = window.innerWidth <= 767;
     let panel;
@@ -687,7 +778,11 @@ async function _openInlinePane(filepath, initialView) {
     const { name } = splitPath(filepath);
     const gen = ++_previewGen;
 
-    _previewState = { filepath, mode: 'preview', content: '', originalContent: null, hasDiff: false, gen };
+    _previewState = {
+        filepath, mode: 'preview', content: '', originalContent: null,
+        hasDiff: false, gen, selection: options.selection || null,
+        restoreScrollTop: options.scrollTop || 0, workingDirectory: '',
+    };
 
     // Render the pane shell
     panel.innerHTML = `
@@ -697,6 +792,10 @@ async function _openInlinePane(filepath, initialView) {
             </button>
             <span class="inline-preview-filepath" title="${escapeHtml(filepath)}">${escapeHtml(name)}</span>
             <div class="inline-preview-actions">
+                <button class="inline-preview-mode-btn lsp-action" id="lsp-back-btn" onclick="navigateWorkspaceBack()" title="Navigate back" ${_navigationHistory.size ? '' : 'disabled'}><span class="material-icons">history</span></button>
+                <button class="inline-preview-mode-btn lsp-action" id="lsp-definition-btn" onclick="goToLSPDefinition()" title="Go to definition" disabled><span class="material-icons">open_in_new</span></button>
+                <button class="inline-preview-mode-btn lsp-action" id="lsp-references-btn" onclick="findLSPReferences()" title="Find references" disabled><span class="material-icons">account_tree</span></button>
+                <span class="lsp-status" id="lsp-status" title="Language intelligence">unsupported</span>
                 <button class="inline-preview-mode-btn file-star-btn ${_getStarredFiles().includes(filepath) ? 'starred' : ''}" id="preview-star-btn" onclick="window._togglePreviewStar()" title="Star">${_getStarredFiles().includes(filepath) ? '★' : '☆'}</button>
                 <button class="inline-preview-mode-btn" id="mode-btn-diff" onclick="window._switchMode('diff')" title="Diff"><span class="material-icons">difference</span></button>
                 <button class="inline-preview-mode-btn" id="mode-btn-preview" onclick="window._switchMode('preview')" title="Preview"><span class="material-icons">visibility</span></button>
@@ -725,6 +824,7 @@ async function _openInlinePane(filepath, initialView) {
                 if (saveBtn) saveBtn.style.display = '';
                 const langName = _getLangFromPath(filepath);
                 await _createCmEditor(cmContainer, _previewState.content, langName);
+                _restoreEditorLocation();
             }
         }
     } else if (initialView === 'diff') {
@@ -769,6 +869,7 @@ async function _loadDiffView(filepath, gen) {
         const originalContent = origData.error ? '' : (origData.content || '');
         _previewState.content = currentContent;
         _previewState.originalContent = originalContent;
+        _previewState.workingDirectory = curData.working_directory || '';
 
         // If original and current are the same (no changes), show content view
         if (originalContent === currentContent) {
@@ -850,6 +951,7 @@ async function _loadContentView(filepath, gen) {
 
         const content = data.content || '';
         _previewState.content = content;
+        _previewState.workingDirectory = data.working_directory || '';
 
         _renderContentView(body, content, filepath);
     } catch (e) {
@@ -865,7 +967,10 @@ async function _prefetchContent(filepath, gen) {
     try {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/file-content?${_apiQs(filepath)}`);
         const data = await resp.json();
-        if (!_isStale(gen) && !data.error) _previewState.content = data.content || '';
+        if (!_isStale(gen) && !data.error) {
+            _previewState.content = data.content || '';
+            _previewState.workingDirectory = data.working_directory || '';
+        }
     } catch (e) { /* best effort */ }
 }
 
@@ -913,6 +1018,7 @@ window._switchMode = async function(targetMode) {
         body.style.display = 'none';
         cmContainer.style.display = 'block';
         const ok = await _createCmEditor(cmContainer, _previewState.content, langName);
+        if (ok) _restoreEditorLocation();
         if (!ok) {
             // Fallback: plain textarea
             cmContainer.style.display = 'none';
@@ -976,6 +1082,7 @@ window._savePreviewFile = async function() {
             window.showAlertModal?.('Save Failed', `Error saving: ${data.error}`);
         } else {
             _previewState.content = content;
+            _lspClient?.didSave();
             if (saveBtn) { saveBtn.textContent = 'Saved!'; setTimeout(() => { saveBtn.textContent = 'Save'; }, 1500); }
         }
     } catch (e) {
@@ -984,6 +1091,225 @@ window._savePreviewFile = async function() {
         if (saveBtn) saveBtn.disabled = false;
     }
 };
+
+function _setLSPStatus({ status, message = '', capabilities = {} }) {
+    const badge = document.getElementById('lsp-status');
+    if (badge) {
+        badge.className = `lsp-status lsp-status-${status}`;
+        badge.textContent = status;
+        badge.title = message || `Language intelligence: ${status}`;
+        badge.onclick = (status === 'failed' || status === 'unavailable') ? () => _connectLSP(true) : null;
+    }
+    const definition = document.getElementById('lsp-definition-btn');
+    const references = document.getElementById('lsp-references-btn');
+    if (definition) definition.disabled = status !== 'ready' || !capabilities.definition;
+    if (references) references.disabled = status !== 'ready' || !capabilities.references;
+}
+
+async function _connectLSP(retry = false) {
+    if (!_cmView || !_previewState?.workingDirectory) return;
+    if (_lspClient && !retry) return;
+    _lspClient?.close();
+    const agentName = _agentName();
+    if (!agentName) return;
+    const filepath = _previewState.filepath;
+    const query = _apiQs(filepath).toString();
+    const client = new CoralLSPClient({
+        baseURL: `/api/sessions/live/${encodeURIComponent(agentName)}`,
+        query,
+        filepath,
+        worktree: _previewState.workingDirectory,
+        language: _getLangFromPath(filepath),
+        getText: () => _getCmContent() ?? _previewState?.content ?? '',
+        onStatus: status => { if (_lspClient === client) _setLSPStatus(status); },
+    });
+    _lspClient = client;
+    try {
+        await client.connect();
+    } catch (error) {
+        if (_lspClient === client) _setLSPStatus({ status: 'failed', message: error.message });
+    }
+}
+
+function _restoreEditorLocation() {
+    if (!_cmView || !_previewState) return;
+    const selection = _previewState.selection;
+    if (selection) {
+        const text = _cmView.state.doc.toString();
+        const from = selection.from && typeof selection.from === 'object'
+            ? lspPositionToOffset(text, selection.from) : selection.from;
+        const toValue = selection.to ?? selection.from;
+        const to = toValue && typeof toValue === 'object'
+            ? lspPositionToOffset(text, toValue) : toValue;
+        _cmView.dispatch({
+            selection: { anchor: Math.max(0, from || 0), head: Math.max(0, to || from || 0) },
+            scrollIntoView: true,
+        });
+    }
+    if (_previewState.restoreScrollTop) _cmView.scrollDOM.scrollTop = _previewState.restoreScrollTop;
+}
+
+function _hideLSPHover() {
+    clearTimeout(_hoverTimer);
+    _hoverTimer = null;
+    _hoverInteraction.dismissNow();
+}
+
+// Grace-period dismissal deliberately leaves a pending replacement hover alone.
+// Explicit teardown calls _hideLSPHover first so Escape/editor cleanup cannot
+// resurrect the card.
+function _dismissLSPHoverCard() {
+    _hoverRequestGeneration++;
+    _hoverAnchor = null;
+    _lspClient?.cancelHover();
+    document.getElementById('lsp-hover-card')?.remove();
+}
+
+async function _showLSPHover(offset, clientX, clientY) {
+    if (!_lspClient?.capabilities.hover) return;
+    const generation = ++_hoverRequestGeneration;
+    const client = _lspClient;
+    _hoverAnchor = { x: clientX, y: clientY };
+    const pendingToken = _hoverInteraction.beginPending(
+        { x: clientX, y: clientY },
+        () => _hideLSPHover(),
+    );
+    try {
+        const result = await client.hover(offset);
+        if (generation !== _hoverRequestGeneration || client !== _lspClient) {
+            _hoverInteraction.finishPending(pendingToken);
+            return;
+        }
+        const pointer = _hoverInteraction.finishPending(pendingToken);
+        const markdown = hoverMarkup(result?.contents);
+        if (!markdown || !result) return;
+        document.getElementById('lsp-hover-card')?.remove();
+        const card = document.createElement('div');
+        card.id = 'lsp-hover-card';
+        card.className = 'lsp-hover-card';
+        card.setAttribute('role', 'region');
+        card.setAttribute('aria-label', 'Symbol information');
+        const rawHTML = typeof marked !== 'undefined' ? marked.parse(markdown) : escapeHtml(markdown);
+        card.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHTML) : escapeHtml(markdown);
+        document.body.appendChild(card);
+        const margin = 8;
+        const rect = card.getBoundingClientRect();
+        card.style.left = `${Math.max(margin, Math.min(clientX + 12, innerWidth - rect.width - margin))}px`;
+        card.style.top = `${Math.max(margin, Math.min(clientY + 18, innerHeight - rect.height - margin))}px`;
+        _hoverInteraction.activate({
+            anchor: _hoverAnchor,
+            card,
+            editor: _cmView.dom,
+            pointer,
+        });
+    } catch (error) {
+        _hoverInteraction.finishPending(pendingToken);
+        if (error.code === 'outside_workspace') showToast(error.message, true);
+    }
+}
+
+function _locations(result) {
+    if (!result) return [];
+    return Array.isArray(result) ? result : [result];
+}
+
+async function _goToDefinition(offset) {
+    if (!_lspClient?.capabilities.definition) return;
+    try {
+        const locations = _locations(await _lspClient.definition(offset));
+        if (!locations.length) { showToast('No definition found'); return; }
+        if (locations.length === 1) { _openLSPLocation(locations[0]); return; }
+        _showLocationPicker('Definitions', locations);
+    } catch (error) { showToast(error.message, true); }
+}
+
+export function goToLSPDefinition() {
+    if (_cmView) _goToDefinition(_cmView.state.selection.main.head);
+}
+
+function _openLSPLocation(location) {
+    try {
+        const filepath = fileURIToRelativePath(location.uri || location.targetUri, _lspClient?.workspace || _previewState.workingDirectory);
+        const range = location.range || location.targetSelectionRange || location.targetRange;
+        openWorkspaceFile(filepath, {
+            mode: 'edit',
+            selection: { from: range.start, to: range.end },
+            recordHistory: true,
+        });
+    } catch (error) { showToast(error.message, true); }
+}
+
+function _closeLSPPanel() { document.getElementById('lsp-results-panel')?.remove(); }
+
+function _showLocationPicker(title, locations) {
+    _closeLSPPanel();
+    const panel = document.createElement('div');
+    panel.id = 'lsp-results-panel';
+    panel.className = 'lsp-results-panel';
+    panel.innerHTML = `<div class="lsp-results-header"><strong>${escapeHtml(title)}</strong><button type="button" aria-label="Close">×</button></div><div class="lsp-results-list"></div>`;
+    panel.querySelector('button').onclick = _closeLSPPanel;
+    const list = panel.querySelector('.lsp-results-list');
+    for (const location of locations) {
+        try {
+            const filepath = fileURIToRelativePath(location.uri || location.targetUri, _lspClient?.workspace || _previewState.workingDirectory);
+            const range = location.range || location.targetSelectionRange || location.targetRange;
+            const button = document.createElement('button');
+            button.className = 'lsp-result-item';
+            button.textContent = `${filepath}:${range.start.line + 1}:${range.start.character + 1}`;
+            button.onclick = () => { _closeLSPPanel(); _openLSPLocation(location); };
+            list.appendChild(button);
+        } catch { /* backend also rejects these; omit defensively */ }
+    }
+    document.getElementById('inline-preview-body')?.parentElement?.appendChild(panel);
+}
+
+async function _showReferences(offset) {
+    try {
+        const locations = _locations(await _lspClient.references(offset));
+        if (!locations.length) { _showLocationPicker('No references found', []); return; }
+        const groups = groupLocations(locations, _lspClient?.workspace || _previewState.workingDirectory);
+        _closeLSPPanel();
+        const panel = document.createElement('div');
+        panel.id = 'lsp-results-panel';
+        panel.className = 'lsp-results-panel';
+        panel.innerHTML = '<div class="lsp-results-header"><strong>References</strong><button type="button" aria-label="Close">×</button></div><div class="lsp-results-list"></div>';
+        panel.querySelector('button').onclick = _closeLSPPanel;
+        const list = panel.querySelector('.lsp-results-list');
+        const previews = await _fetchReferencePreviews([...groups.keys()].slice(0, 20));
+        for (const [filepath, items] of groups) {
+            const group = document.createElement('section');
+            group.className = 'lsp-result-group';
+            const heading = document.createElement('h4');
+            heading.textContent = filepath;
+            group.appendChild(heading);
+            for (const item of items.slice(0, 100)) {
+                const button = document.createElement('button');
+                button.className = 'lsp-result-item';
+                const lineText = previews.get(filepath)?.split('\n')[item.range.start.line]?.trim() || '';
+                button.textContent = `${item.line}:${item.column}  ${lineText.slice(0, 160)}`;
+                const location = locations.find(value =>
+                    (value.uri || value.targetUri) &&
+                    (value.range || value.targetSelectionRange || value.targetRange) === item.range);
+                button.onclick = () => { _closeLSPPanel(); _openLSPLocation(location); };
+                group.appendChild(button);
+            }
+            list.appendChild(group);
+        }
+        document.getElementById('inline-preview-body')?.parentElement?.appendChild(panel);
+    } catch (error) { showToast(error.message, true); }
+}
+
+async function _fetchReferencePreviews(filepaths) {
+    const previews = new Map();
+    await Promise.all(filepaths.map(async filepath => {
+        try {
+            const response = await fetch(`/api/sessions/live/${encodeURIComponent(_agentName())}/file-content?${_apiQs(filepath)}`);
+            const data = await response.json();
+            if (!data.error && typeof data.content === 'string') previews.set(filepath, data.content);
+        } catch { /* preview is optional */ }
+    }));
+    return previews;
+}
 
 /** Close inline preview and restore the files list. */
 window._closeInlinePreview = function() {

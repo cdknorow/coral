@@ -58,6 +58,9 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	if err := rs.HTTPServer.Shutdown(ctx); err != nil {
 		log.Printf("Shutdown error: %v", err)
 	}
+	if err := rs.Server.Shutdown(ctx); err != nil {
+		log.Printf("LSP shutdown error: %v", err)
+	}
 	if rs.Backend != nil {
 		rs.Backend.Close()
 	}

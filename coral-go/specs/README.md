@@ -44,6 +44,7 @@ Design specifications for Coral features. Each subdirectory contains a `README.m
 | [Git Diff Tree View](GIT_DIFF_TREE_VIEW/) | Shipped | File preview pane showing changed files with diffs and inline editing |
 | [Git Diff Toggle](GIT_DIFF_TOGGLE/) | Shipped | Choosing what to compare against in file diff view |
 | [File Search Mode](FILE_SEARCH_MODE/) | Shipped | Progressive directory-based file browsing replacing fuzzy matching |
+| [LSP Code Intelligence](LSP_CODE_INTELLIGENCE/) | In Progress | Implemented Go-first semantic hover, definition navigation, and references; real-gopls automation complete, live-editor DOM validation pending |
 | [Team Directory Grouping](TEAM_DIRECTORY_GROUPING/) | Shipped | Better UI distinction for multiple teams by working directory and worktree |
 | [Native Titlebar Drag](NATIVE_TITLEBAR_DRAG/) | Shipped | Restoring native macOS window dragging in transparent titlebar |
 
