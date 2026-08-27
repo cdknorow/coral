@@ -352,16 +352,36 @@ func (s *SessionStore) GetAllFolderTags(ctx context.Context) (map[string][]Tag, 
 // UpsertSessionIndex inserts or replaces a session index entry.
 func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex) error {
 	now := nowUTC()
-	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO session_index
-		 (session_id, source_type, source_file, first_timestamp, last_timestamp,
-		  message_count, display_summary, agent_name, display_name, indexed_at, file_mtime)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		idx.SessionID, idx.SourceType, idx.SourceFile,
-		idx.FirstTimestamp, idx.LastTimestamp,
-		idx.MessageCount, idx.DisplaySummary,
-		idx.AgentName, idx.DisplayName, now, idx.FileMtime)
-	return err
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// A Codex rollout file represents exactly one session. Remove stale aliases
+		// created if an older parser extracted a malformed Coral session marker.
+		if idx.SourceType == "codex" {
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM session_fts WHERE session_id IN
+				 (SELECT session_id FROM session_index WHERE source_type = 'codex'
+				  AND source_file = ? AND session_id <> ?)`,
+				idx.SourceFile, idx.SessionID); err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM session_index WHERE source_type = 'codex'
+				 AND source_file = ? AND session_id <> ?`,
+				idx.SourceFile, idx.SessionID); err != nil {
+				return err
+			}
+		}
+
+		_, err := tx.ExecContext(ctx,
+			`INSERT OR REPLACE INTO session_index
+			 (session_id, source_type, source_file, first_timestamp, last_timestamp,
+			  message_count, display_summary, agent_name, display_name, indexed_at, file_mtime)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			idx.SessionID, idx.SourceType, idx.SourceFile,
+			idx.FirstTimestamp, idx.LastTimestamp,
+			idx.MessageCount, idx.DisplaySummary,
+			idx.AgentName, idx.DisplayName, now, idx.FileMtime)
+		return err
+	})
 }
 
 // UpsertFTS updates the FTS5 index for a session.

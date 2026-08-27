@@ -87,6 +87,19 @@ func TestHistoryGlobPattern(t *testing.T) {
 	}
 }
 
+func TestExtractCoralSessionIDEscapedNewline(t *testing.T) {
+	const sessionID = "4f124038-fe27-b4a1-af6a-24c86b35aa63"
+	for _, marker := range []string{
+		"CORAL_SESSION_ID: " + sessionID + "\\012This metadata follows",
+		"CORAL_SESSION_ID: " + sessionID + "\\nThis metadata follows",
+		"CORAL_SESSION_ID: " + sessionID + "\nThis metadata follows",
+	} {
+		if got := ExtractCoralSessionID(marker); got != sessionID {
+			t.Fatalf("ExtractCoralSessionID(%q) = %q, want %q", marker, got, sessionID)
+		}
+	}
+}
+
 func TestParseCodexSession_EventMessages(t *testing.T) {
 	dir := t.TempDir()
 	codexSessionID := "019e90eb-a08a-7511-a410-23e7ae3e62a8"

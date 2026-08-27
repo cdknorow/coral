@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 )
 
@@ -246,36 +247,8 @@ func codexTranscriptCoralSessionID(path string) string {
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
 		}
-		if sessionID := extractCoralSessionID(entry); sessionID != "" {
+		if sessionID := agent.ExtractCoralSessionID(entry); sessionID != "" {
 			return sessionID
-		}
-	}
-	return ""
-}
-
-func extractCoralSessionID(v any) string {
-	switch x := v.(type) {
-	case string:
-		idx := strings.Index(x, at.CoralSessionMarkerPrefix)
-		if idx < 0 {
-			return ""
-		}
-		rest := strings.TrimSpace(x[idx+len(at.CoralSessionMarkerPrefix):])
-		if rest == "" {
-			return ""
-		}
-		return strings.Fields(rest)[0]
-	case []any:
-		for _, item := range x {
-			if sessionID := extractCoralSessionID(item); sessionID != "" {
-				return sessionID
-			}
-		}
-	case map[string]any:
-		for _, item := range x {
-			if sessionID := extractCoralSessionID(item); sessionID != "" {
-				return sessionID
-			}
 		}
 	}
 	return ""

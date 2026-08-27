@@ -6,10 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 )
+
+var coralSessionIDPattern = regexp.MustCompile(`^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}`)
 
 // cliNames maps board_type to CLI command name. The nil/empty key is the default.
 var cliNames = map[string]string{
@@ -101,10 +104,10 @@ func ExtractCoralSessionID(v any) string {
 			return ""
 		}
 		rest := strings.TrimSpace(x[idx+len(at.CoralSessionMarkerPrefix):])
-		if rest == "" {
-			return ""
+		if match := coralSessionIDPattern.FindString(rest); match != "" {
+			return match
 		}
-		return strings.Fields(rest)[0]
+		return ""
 	case []any:
 		for _, item := range x {
 			if sessionID := ExtractCoralSessionID(item); sessionID != "" {

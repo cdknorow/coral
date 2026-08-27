@@ -202,6 +202,10 @@ function switchNavTab(tab) {
     } else if (tab === 'tokens') {
         showCostDashboard();
     } else if (tab === 'history') {
+        // History is populated by the background indexer, so the cached list may
+        // have changed while another tab was active. Refresh it whenever the
+        // user returns while preserving the current page and filters.
+        loadHistoryFiltered();
         if (state.currentSession && state.currentSession.type === 'history') {
             showView('history-session-view');
         } else {
