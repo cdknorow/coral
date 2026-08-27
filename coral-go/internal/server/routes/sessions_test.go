@@ -285,7 +285,7 @@ func TestSessionsCapture_WithOutput(t *testing.T) {
 }
 
 func TestSessionsChangesDiff_ReturnsTrackedAndUntrackedChanges(t *testing.T) {
-	server, _, terminal, _ := setupSessionsTestServer(t)
+	server, _, terminal, ss := setupSessionsTestServer(t)
 	repo := t.TempDir()
 
 	runGit := func(args ...string) {
@@ -304,9 +304,13 @@ func TestSessionsChangesDiff_ReturnsTrackedAndUntrackedChanges(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("after\n"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "untracked.txt"), []byte("new file\n"), 0644))
 
-	name := "codex-00000000-0000-0000-0000-000000000123"
+	sessionID := "00000000-0000-0000-0000-000000000123"
+	name := "codex-" + sessionID
 	terminal.addSession(name, repo)
-	resp, err := http.Get(server.URL + "/api/sessions/live/" + name + "/changes.diff")
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
+		SessionID: sessionID, AgentType: "codex", AgentName: name, WorkingDir: repo,
+	}))
+	resp, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/changes")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -419,7 +423,7 @@ func TestSessionsKill_PersistsChangesBeforeTermination(t *testing.T) {
 	assert.Equal(t, filepath.Join(coralDir, "artifacts", "sessions", sessionID, "changes.diff"), result["changes_artifact"])
 	assert.False(t, terminal.HasSession(context.Background(), name))
 
-	download, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/changes.diff")
+	download, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/changes")
 	require.NoError(t, err)
 	defer download.Body.Close()
 	assert.Equal(t, http.StatusOK, download.StatusCode)
@@ -683,6 +687,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 
 	// Session routes
 	r.Get("/api/sessions/live", handler.List)
+	r.Get("/api/sessions/{sessionID}/changes", handler.SessionChanges)
 	r.Get("/api/sessions/{sessionID}/changes.diff", handler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", handler.Detail)
 	r.Get("/api/sessions/live/{name}/capture", handler.Capture)

@@ -462,13 +462,13 @@ Before terminating the runtime or removing an owned worktree, Coral captures the
 
 The response includes `changes_artifact` when the snapshot succeeds and `changes_artifact_error` when it cannot be generated. Snapshot failure does not prevent terminating a non-git agent session.
 
-Download the persisted artifact after termination:
+Download the current or persisted session changes using only the session ID:
 
 ```bash
-curl -fsS http://localhost:8420/api/sessions/{sessionID}/changes.diff -o changes.diff
+curl -fsS http://localhost:8420/api/sessions/{sessionID}/changes -o changes.diff
 ```
 
-The download response uses `Content-Type: text/x-diff`. Team kill snapshots every non-terminal member before removing the shared worktree.
+For a live session, Coral generates the diff from its registered working directory. After termination or worktree cleanup, it serves the captured artifact instead. The response uses `Content-Type: text/x-diff`. Team kill snapshots every non-terminal member before removing the shared worktree.
 
 Terminate a session.
 

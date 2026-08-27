@@ -1193,6 +1193,51 @@ func (h *SessionsHandler) generateChangesDiff(ctx context.Context, workdir strin
 	return diff, nil
 }
 
+// SessionChanges returns a session's unified diff using only its stable ID.
+// Live sessions are generated from their current working directory; stopped
+// sessions fall back to the artifact captured when they were terminated.
+// GET /api/sessions/{sessionID}/changes
+func (h *SessionsHandler) SessionChanges(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	if sessionID == "" || strings.ContainsAny(sessionID, "/\\\x00") {
+		errBadRequest(w, "invalid session_id")
+		return
+	}
+
+	workdir := h.resolveGitRoot(r.Context(), "", "", sessionID)
+	if workdir != "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		if diff, err := h.generateChangesDiff(ctx, workdir); err == nil {
+			writeSessionChanges(w, diff, workdir)
+			return
+		} else {
+			slog.Warn("git session changes failed", "session_id", sessionID, "workdir", workdir, "error", err)
+		}
+	}
+
+	data, err := os.ReadFile(h.sessionChangesArtifactPath(sessionID))
+	if err != nil {
+		if os.IsNotExist(err) {
+			errNotFound(w, "session changes not found")
+			return
+		}
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeSessionChanges(w, data, "")
+}
+
+func writeSessionChanges(w http.ResponseWriter, diff []byte, workdir string) {
+	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
+	if workdir != "" {
+		w.Header().Set("X-Coral-Working-Directory", workdir)
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(diff)
+}
+
 // PersistTaskChanges stores a board task's final patch before its working
 // directory can be cleaned up.
 func (h *SessionsHandler) PersistTaskChanges(ctx context.Context, task *board.Task, artifactPath string) error {

@@ -10,7 +10,7 @@ export async function loadHistoryChanges(sessionId) {
 
     button.style.display = 'none';
     content.textContent = '';
-    const url = `/api/sessions/${encodeURIComponent(sessionId)}/changes.diff`;
+    const url = `/api/sessions/${encodeURIComponent(sessionId)}/changes`;
     download.href = url;
 
     try {
