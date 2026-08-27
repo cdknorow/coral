@@ -460,6 +460,24 @@ POST /api/board/{project}/tasks/{taskID}/cancel
 
 **Response:** Task object with `status: "skipped"`.
 
+### Download Task Changes
+
+```text
+GET /api/board/{project}/tasks/{taskID}/changes.diff
+```
+
+When a claimed task is completed or skipped, Coral captures the claiming agent's checkout as `.coral/artifacts/tasks/{taskID}/changes.diff`. The artifact includes committed changes since Coral's configured diff base, staged and unstaged changes, untracked files, and binary patches. It remains available after the agent session or team worktree is removed.
+
+The response uses `Content-Type: text/x-diff` and downloads as `changes.diff`.
+
+```bash
+curl -fsS \
+  http://localhost:8420/api/board/eval-team/tasks/42/changes.diff \
+  -o changes.diff
+```
+
+Returns `404` if the task does not exist or no artifact was captured. A task that was never claimed has no `session_id`, so Coral cannot resolve its checkout and does not create an artifact.
+
 ### Reassign Task
 
 ```

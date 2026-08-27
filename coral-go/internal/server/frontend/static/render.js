@@ -833,7 +833,11 @@ export function killSessionDirect(name, agentType, sessionId) {
         });
         const result = await resp.json();
         if (result.error) { showToast(result.error, true); return; }
-        showToast(`Killed: ${name}`);
+        if (result.changes_artifact_error) {
+            showToast(`Killed, but changes.diff could not be saved: ${result.changes_artifact_error}`, true);
+        } else {
+            showToast(`Killed and saved changes.diff: ${name}`);
+        }
         // Mark as done and preserve for history link instead of removing
         const killed = state.liveSessions.find(s => s.session_id === sessionId);
         if (killed) {

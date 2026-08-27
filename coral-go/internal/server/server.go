@@ -295,6 +295,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Live sessions
 	r.Get("/api/sessions/resolve", sessHandler.ResolveByPIDs)
 	r.Get("/api/sessions/live", sessHandler.List)
+	r.Get("/api/sessions/{sessionID}/changes.diff", sessHandler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", sessHandler.Detail)
 	r.Get("/api/sessions/live/{name}/capture", sessHandler.Capture)
 	r.Get("/api/sessions/live/{name}/poll", sessHandler.Poll)
@@ -303,6 +304,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/sessions/live/{name}/files", sessHandler.Files)
 	r.Post("/api/sessions/live/{name}/files/refresh", sessHandler.RefreshFiles)
 	r.Get("/api/sessions/live/{name}/diff", sessHandler.Diff)
+	r.Get("/api/sessions/live/{name}/changes.diff", sessHandler.ChangesDiff)
 	r.Get("/api/sessions/live/{name}/search-files", sessHandler.SearchFiles)
 	r.Get("/api/sessions/live/{name}/git", sessHandler.Git)
 	r.Post("/api/sessions/live/{name}/send", sessHandler.Send)
@@ -507,6 +509,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Message board
 	boardHandler := routes.NewBoardHandler(s.boardStore)
 	boardHandler.SetTerminal(s.terminal)
+	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	s.boardHandler = boardHandler
 	sessHandler.SetBoardHandler(boardHandler)
 	sessHandler.SetLicenseManager(s.licenseMgr)
@@ -549,6 +552,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/board/{project}/tasks/{taskID}/reassign", boardHandler.ReassignTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/publish", boardHandler.PublishTask)
 	r.Get("/api/board/{project}/tasks/{taskID}/cost", boardHandler.TaskLiveCost)
+	r.Get("/api/board/{project}/tasks/{taskID}/changes.diff", boardHandler.TaskChangesDiff)
 
 	// One-shot tasks
 	tasksHandler := routes.NewTasksHandler(s.db, s.cfg)

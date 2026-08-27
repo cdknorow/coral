@@ -14,6 +14,7 @@ import { loadChangedFiles, refreshChangedFiles } from './changed_files.js';
 import { loadAgentNotes } from './agent_notes.js';
 import { loadAgentEvents, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
+import { loadHistoryChanges } from './history_changes.js';
 import { startLiveHistoryPoll, stopLiveHistoryPoll, resetLiveHistory } from './live_chat.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
@@ -270,6 +271,7 @@ export async function selectHistorySession(sessionId) {
     loadHistoryEvents(sessionId);
     loadHistoryTasks(sessionId);
     loadHistoryAgentNotes(sessionId);
+    loadHistoryChanges(sessionId);
     updateHistoryTokenUsage(sessionId);
 }
 

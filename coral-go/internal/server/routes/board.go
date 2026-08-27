@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,11 +24,32 @@ const taskNudge = "You have tasks available. Run 'coral-board task claim' to sta
 
 // BoardHandler handles message board HTTP endpoints.
 type BoardHandler struct {
-	bs       *board.Store
-	terminal ptymanager.SessionTerminal
-	mu       sync.RWMutex
-	paused   map[string]bool // in-memory set of paused project names
-	notifyFn func()          // triggers immediate board notification pass
+	bs                *board.Store
+	terminal          ptymanager.SessionTerminal
+	mu                sync.RWMutex
+	paused            map[string]bool // in-memory set of paused project names
+	notifyFn          func()          // triggers immediate board notification pass
+	coralDir          string
+	writeTaskArtifact func(context.Context, *board.Task, string) error
+}
+
+// SetTaskArtifactWriter configures persistence of task patches under .coral.
+func (h *BoardHandler) SetTaskArtifactWriter(coralDir string, fn func(context.Context, *board.Task, string) error) {
+	h.coralDir = coralDir
+	h.writeTaskArtifact = fn
+}
+
+func (h *BoardHandler) taskArtifactPath(taskID int64) string {
+	return filepath.Join(h.coralDir, "artifacts", "tasks", strconv.FormatInt(taskID, 10), "changes.diff")
+}
+
+func (h *BoardHandler) persistTaskArtifact(ctx context.Context, task *board.Task) {
+	if task == nil || h.coralDir == "" || h.writeTaskArtifact == nil {
+		return
+	}
+	if err := h.writeTaskArtifact(ctx, task, h.taskArtifactPath(task.ID)); err != nil {
+		slog.Warn("persist task changes artifact failed", "task_id", task.ID, "board", task.BoardID, "error", err)
+	}
 }
 
 func NewBoardHandler(bs *board.Store) *BoardHandler {
@@ -866,6 +889,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, err.Error())
 		return
 	}
+	h.persistTaskArtifact(r.Context(), task)
 	// Copy values for goroutine closure safety
 	completedTask := task
 	subscriberID := body.SubscriberID
@@ -938,6 +962,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
+	h.persistTaskArtifact(r.Context(), task)
 	go func() {
 		ctx := context.Background()
 		notification := fmt.Sprintf("[Task #%d cancelled by %s] %s", task.ID, body.SubscriberID, task.Title)
@@ -947,6 +972,50 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		h.notifyUnblockedTasks(ctx, project, task.ID)
 	}()
 	writeJSON(w, http.StatusOK, task)
+}
+
+// TaskChangesDiff serves the patch captured when a task completed or was skipped.
+// GET /api/board/{project}/tasks/{taskID}/changes.diff
+func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	tasks, err := h.bs.ListTasks(r.Context(), project)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	found := false
+	for i := range tasks {
+		if tasks[i].ID == taskID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		errNotFound(w, "task not found")
+		return
+	}
+	if h.coralDir == "" {
+		errNotFound(w, "task changes artifact not found")
+		return
+	}
+	data, err := os.ReadFile(h.taskArtifactPath(taskID))
+	if err != nil {
+		if os.IsNotExist(err) {
+			errNotFound(w, "task changes artifact not found")
+			return
+		}
+		errInternalServer(w, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 // UpdateTask applies partial edits to a pending, in_progress, or blocked task.

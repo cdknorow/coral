@@ -50,6 +50,7 @@
                     <button class="history-tab-btn" onclick="switchHistoryTab('tasks')" id="history-tab-btn-tasks">Tasks <span id="history-tasks-count" class="task-bar-count"></span></button>
                     <button class="history-tab-btn" onclick="switchHistoryTab('agent-notes')" id="history-tab-btn-agent-notes">Notes <span id="history-agent-notes-count" class="task-bar-count"></span></button>
                     <button class="history-tab-btn" onclick="switchHistoryTab('commits')">Commits</button>
+                    <button class="history-tab-btn" onclick="switchHistoryTab('changes')" id="history-tab-btn-changes" style="display:none">Changes</button>
                 </div>
                 <!-- Chat Tab Content -->
                 <div id="history-tab-chat" class="history-tab-content active">
@@ -101,6 +102,14 @@
                     <div id="commits-list" class="commits-view">
                         <div class="empty-notes">Loading commits...</div>
                     </div>
+                </div>
+                <!-- Persisted changes.diff Tab Content -->
+                <div id="history-tab-changes" class="history-tab-content">
+                    <div class="history-changes-toolbar">
+                        <span>changes.diff captured when this session ended</span>
+                        <a id="history-changes-download" class="btn btn-small" href="#" download="changes.diff">Download</a>
+                    </div>
+                    <pre id="history-changes-content" class="history-changes-content"></pre>
                 </div>
             </div>
 

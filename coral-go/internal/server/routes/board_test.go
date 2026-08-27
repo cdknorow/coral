@@ -2,10 +2,13 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +46,7 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	r.Patch("/api/board/{project}/tasks/{taskID}", handler.UpdateTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/complete", handler.CompleteTaskByID)
 	r.Post("/api/board/{project}/tasks/{taskID}/cancel", handler.CancelTaskByID)
+	r.Get("/api/board/{project}/tasks/{taskID}/changes.diff", handler.TaskChangesDiff)
 	r.Post("/api/board/{project}/tasks/{taskID}/publish", handler.PublishTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/reassign", handler.ReassignTask)
 	r.Post("/api/board/{project}/pause", handler.PauseBoard)
@@ -54,6 +58,37 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	t.Cleanup(server.Close)
 
 	return server, handler
+}
+
+func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	coralDir := t.TempDir()
+	handler.SetTaskArtifactWriter(coralDir, func(_ context.Context, _ *board.Task, path string) error {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+		return os.WriteFile(path, []byte("diff --git a/a.txt b/a.txt\n"), 0644)
+	})
+	base := server.URL + "/api/board/eval/tasks"
+
+	resp := postJSON(t, base, map[string]string{"title": "Evaluate", "created_by": "harness"})
+	resp.Body.Close()
+	resp = postJSON(t, base+"/claim", map[string]string{"subscriber_id": "Lead"})
+	resp.Body.Close()
+	resp = postJSON(t, base+"/1/complete", map[string]string{"subscriber_id": "Lead"})
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	artifactPath := filepath.Join(coralDir, "artifacts", "tasks", "1", "changes.diff")
+	data, err := os.ReadFile(artifactPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "diff --git")
+
+	download, err := http.Get(base + "/1/changes.diff")
+	require.NoError(t, err)
+	defer download.Body.Close()
+	assert.Equal(t, http.StatusOK, download.StatusCode)
+	assert.Equal(t, `attachment; filename="changes.diff"`, download.Header.Get("Content-Disposition"))
 }
 
 func postJSON(t *testing.T, url string, payload any) *http.Response {

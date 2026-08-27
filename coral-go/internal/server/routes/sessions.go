@@ -2,6 +2,7 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	crand "crypto/rand"
 	"encoding/json"
@@ -865,6 +866,9 @@ func (h *SessionsHandler) resolveWorkdir(ctx context.Context, name, agentType, s
 		}
 	}
 	if sessionID != "" {
+		if live, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && live != nil && live.WorkingDir != "" {
+			return live.WorkingDir
+		}
 		snap, err := h.gs.GetLatestGitStateBySession(ctx, sessionID)
 		if err == nil && snap != nil {
 			return snap.WorkingDirectory
@@ -1125,6 +1129,158 @@ func (h *SessionsHandler) Diff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"filepath": fp, "diff": diffText, "working_directory": workdir})
+}
+
+// ChangesDiff returns a downloadable unified diff for all changes in an
+// agent's current working directory, including committed changes since the
+// configured diff base, working-tree changes, and untracked files.
+// GET /api/sessions/live/{name}/changes.diff
+func (h *SessionsHandler) ChangesDiff(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	sessionID := r.URL.Query().Get("session_id")
+	workdir := h.resolveGitRoot(r.Context(), name, "", sessionID)
+	if workdir == "" {
+		errBadRequest(w, "Could not determine working directory")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	diff, err := h.generateChangesDiff(ctx, workdir)
+	if err != nil {
+		slog.Warn("git changes diff failed", "agent_name", name, "workdir", workdir, "error", err)
+		errInternalServer(w, "Could not generate changes.diff")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
+	w.Header().Set("X-Coral-Working-Directory", workdir)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(diff)
+}
+
+func (h *SessionsHandler) generateChangesDiff(ctx context.Context, workdir string) ([]byte, error) {
+	base := gitutil.GetDiffBase(ctx, workdir, h.getDiffMode(ctx))
+	diff, err := exec.CommandContext(ctx, "git", "-C", workdir, "diff", "--binary", base, "--").Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// A normal git diff omits untracked files. Render each as a new-file patch.
+	untracked, err := exec.CommandContext(ctx, "git", "-C", workdir, "ls-files", "--others", "--exclude-standard", "-z").Output()
+	if err != nil {
+		return nil, err
+	}
+	for _, rawPath := range bytes.Split(untracked, []byte{0}) {
+		if len(rawPath) == 0 {
+			continue
+		}
+		cmd := exec.CommandContext(ctx, "git", "-C", workdir, "diff", "--no-index", "--binary", "--", os.DevNull, string(rawPath))
+		fileDiff, fileErr := cmd.Output()
+		// git diff --no-index returns 1 when differences were found.
+		if fileErr != nil {
+			if exitErr, ok := fileErr.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+				return nil, fmt.Errorf("diff untracked file %q: %w", string(rawPath), fileErr)
+			}
+		}
+		if len(diff) > 0 && diff[len(diff)-1] != '\n' {
+			diff = append(diff, '\n')
+		}
+		diff = append(diff, fileDiff...)
+	}
+	return diff, nil
+}
+
+// PersistTaskChanges stores a board task's final patch before its working
+// directory can be cleaned up.
+func (h *SessionsHandler) PersistTaskChanges(ctx context.Context, task *board.Task, artifactPath string) error {
+	if task == nil || task.SessionID == nil || *task.SessionID == "" {
+		return fmt.Errorf("task has no session_id")
+	}
+	workdir := h.resolveGitRoot(ctx, "", "", *task.SessionID)
+	if workdir == "" {
+		return fmt.Errorf("could not determine working directory")
+	}
+	diff, err := h.generateChangesDiff(ctx, workdir)
+	if err != nil {
+		return err
+	}
+	return writeChangesArtifact(artifactPath, diff)
+}
+
+func writeChangesArtifact(artifactPath string, diff []byte) error {
+	if err := os.MkdirAll(filepath.Dir(artifactPath), 0755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(artifactPath), ".changes-*.diff")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.Write(diff); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, artifactPath)
+}
+
+func (h *SessionsHandler) sessionChangesArtifactPath(sessionID string) string {
+	return filepath.Join(h.cfg.CoralDir(), "artifacts", "sessions", sessionID, "changes.diff")
+}
+
+func (h *SessionsHandler) persistSessionChanges(ctx context.Context, sessionID, workdir string) (string, error) {
+	if sessionID == "" {
+		return "", fmt.Errorf("session_id required")
+	}
+	if workdir == "" {
+		workdir = h.resolveGitRoot(ctx, "", "", sessionID)
+	} else {
+		workdir = gitutil.ResolveGitRoot(ctx, workdir)
+	}
+	if workdir == "" {
+		return "", fmt.Errorf("could not determine working directory")
+	}
+	diff, err := h.generateChangesDiff(ctx, workdir)
+	if err != nil {
+		return "", err
+	}
+	path := h.sessionChangesArtifactPath(sessionID)
+	if err := writeChangesArtifact(path, diff); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// SessionChangesArtifact serves a patch captured before a session was killed.
+// GET /api/sessions/{sessionID}/changes.diff
+func (h *SessionsHandler) SessionChangesArtifact(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	if sessionID == "" || strings.ContainsAny(sessionID, "/\\\x00") {
+		errBadRequest(w, "invalid session_id")
+		return
+	}
+	data, err := os.ReadFile(h.sessionChangesArtifactPath(sessionID))
+	if err != nil {
+		if os.IsNotExist(err) {
+			errNotFound(w, "session changes artifact not found")
+			return
+		}
+		errInternalServer(w, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/x-diff; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="changes.diff"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
 }
 
 // SearchFiles searches for files in the agent's working directory.
@@ -1517,11 +1673,12 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	bgCtx := context.Background()
 
 	// Look up the live session before deleting so we can clean up board/worktree state
-	var boardName string
+	var boardName, sessionWorkdir string
 	var wasSleeping bool
 	var worktreePathForCleanup, worktreeRepoForCleanup string
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(bgCtx, body.SessionID); err == nil && ls != nil {
+			sessionWorkdir = ls.WorkingDir
 			if ls.BoardName != nil {
 				boardName = *ls.BoardName
 			}
@@ -1533,6 +1690,22 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 				worktreeRepoForCleanup = *ls.WorktreeRepo
 			}
 		}
+	}
+
+	// Snapshot the checkout before unregistering the session or removing an
+	// owned worktree. A snapshot failure is reported but does not make agents
+	// in non-git directories impossible to terminate.
+	changesArtifact := ""
+	artifactError := ""
+	if body.SessionID != "" && body.AgentType != at.Terminal {
+		artifactCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+		if path, err := h.persistSessionChanges(artifactCtx, body.SessionID, sessionWorkdir); err != nil {
+			artifactError = err.Error()
+			slog.Warn("persist session changes artifact failed", "session_id", body.SessionID, "error", err)
+		} else {
+			changesArtifact = path
+		}
+		cancel()
 	}
 
 	// Mark the team member as stopped (if this session belongs to a team)
@@ -1592,7 +1765,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	// put to sleep). Skip all tmux operations — calling KillSession here
 	// risks the fuzzy FindPane fallback matching a different agent's session.
 	if wasSleeping {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changes_artifact": changesArtifact, "changes_artifact_error": artifactError})
 		return
 	}
 
@@ -1617,7 +1790,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changes_artifact": changesArtifact, "changes_artifact_error": artifactError})
 }
 
 // Restart restarts the agent session.
@@ -3400,24 +3573,12 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Atomically stop the team record (snapshots active members with same stopped_at)
+	teamWorktree := ""
 	if h.teamStore != nil {
 		if team, err := h.teamStore.GetTeam(ctx, boardName); err == nil && team != nil {
 			h.teamStore.StopTeam(ctx, team.ID)
-
-			// Clean up worktree if team owns one
 			if team.IsWorktree == 1 && team.WorkingDir != "" {
-				go func() {
-					wtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-					defer cancel()
-					// Find the parent repo (worktree's parent)
-					parentDir := filepath.Dir(team.WorkingDir)
-					cmd := exec.CommandContext(wtCtx, "git", "-C", parentDir, "worktree", "remove", "--force", team.WorkingDir)
-					if out, err := cmd.CombinedOutput(); err != nil {
-						log.Printf("[kill-team] failed to remove worktree %s: %s", team.WorkingDir, string(out))
-					} else {
-						log.Printf("[kill-team] cleaned up worktree: %s", team.WorkingDir)
-					}
-				}()
+				teamWorktree = team.WorkingDir
 			}
 		}
 	}
@@ -3425,11 +3586,33 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 	// Kill each session
 	killed := 0
 	for _, ls := range sessions {
+		if ls.AgentType != at.Terminal {
+			artifactCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+			if _, err := h.persistSessionChanges(artifactCtx, ls.SessionID, ls.WorkingDir); err != nil {
+				slog.Warn("persist team session changes artifact failed", "session_id", ls.SessionID, "error", err)
+			}
+			cancel()
+		}
 		h.ss.UnregisterLiveSession(bgCtx, ls.SessionID)
 		h.terminal.KillSession(ctx, ls.AgentName, ls.AgentType, ls.SessionID)
 		removeBoardStateFile(ls.AgentName, h.cfg)
 		agent.CleanupTempFiles(ls.SessionID)
 		killed++
+	}
+
+	// Artifact snapshots above must finish before an owned worktree is removed.
+	if teamWorktree != "" {
+		go func() {
+			wtCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			parentDir := filepath.Dir(teamWorktree)
+			cmd := exec.CommandContext(wtCtx, "git", "-C", parentDir, "worktree", "remove", "--force", teamWorktree)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				log.Printf("[kill-team] failed to remove worktree %s: %s", teamWorktree, string(out))
+			} else {
+				log.Printf("[kill-team] cleaned up worktree: %s", teamWorktree)
+			}
+		}()
 	}
 
 	// Unpause board

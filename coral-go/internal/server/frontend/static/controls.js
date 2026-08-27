@@ -393,7 +393,11 @@ export async function killSession() {
                 showToast(result.error, true);
             } else {
                 const killedSid = state.currentSession.session_id;
-                showToast(`Killed: ${state.currentSession.name}`);
+                if (result.changes_artifact_error) {
+                    showToast(`Killed, but changes.diff could not be saved: ${result.changes_artifact_error}`, true);
+                } else {
+                    showToast(`Killed and saved changes.diff: ${state.currentSession.name}`);
+                }
                 // Preserve killed session for history link
                 const killed = state.liveSessions.find(s => s.session_id === killedSid);
                 if (killed) {

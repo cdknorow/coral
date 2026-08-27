@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -281,6 +284,47 @@ func TestSessionsCapture_WithOutput(t *testing.T) {
 	assert.Contains(t, result, "capture")
 }
 
+func TestSessionsChangesDiff_ReturnsTrackedAndUntrackedChanges(t *testing.T) {
+	server, _, terminal, _ := setupSessionsTestServer(t)
+	repo := t.TempDir()
+
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", out)
+	}
+	runGit("init")
+	runGit("config", "user.email", "test@example.com")
+	runGit("config", "user.name", "Coral Test")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("before\n"), 0644))
+	runGit("add", "tracked.txt")
+	runGit("commit", "-m", "initial")
+
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("after\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "untracked.txt"), []byte("new file\n"), 0644))
+
+	name := "codex-00000000-0000-0000-0000-000000000123"
+	terminal.addSession(name, repo)
+	resp, err := http.Get(server.URL + "/api/sessions/live/" + name + "/changes.diff")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "text/x-diff; charset=utf-8", resp.Header.Get("Content-Type"))
+	assert.Equal(t, `attachment; filename="changes.diff"`, resp.Header.Get("Content-Disposition"))
+	realRepo, err := filepath.EvalSymlinks(repo)
+	require.NoError(t, err)
+	assert.Equal(t, realRepo, resp.Header.Get("X-Coral-Working-Directory"))
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "diff --git a/tracked.txt b/tracked.txt")
+	assert.Contains(t, string(body), "-before")
+	assert.Contains(t, string(body), "+after")
+	assert.Contains(t, string(body), "untracked.txt")
+	assert.Contains(t, string(body), "+new file")
+}
+
 func TestSessionsSend_NotFound(t *testing.T) {
 	server, _, _, _ := setupSessionsTestServer(t)
 
@@ -336,6 +380,52 @@ func TestSessionsKill(t *testing.T) {
 
 	// Verify session was removed
 	assert.False(t, terminal.HasSession(context.Background(), "claude-00000000-0000-0000-0000-000000000006"))
+}
+
+func TestSessionsKill_PersistsChangesBeforeTermination(t *testing.T) {
+	coralDir := t.TempDir()
+	server, _, terminal, ss := setupSessionsTestServerWithConfig(t, config.Load(coralDir))
+	repo := t.TempDir()
+
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "%s", out)
+	}
+	runGit("init")
+	runGit("config", "user.email", "test@example.com")
+	runGit("config", "user.name", "Coral Test")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "file.txt"), []byte("before\n"), 0644))
+	runGit("add", "file.txt")
+	runGit("commit", "-m", "initial")
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "file.txt"), []byte("after\n"), 0644))
+
+	sessionID := "00000000-0000-0000-0000-000000000124"
+	name := "codex-" + sessionID
+	terminal.addSession(name, repo)
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
+		SessionID: sessionID, AgentType: "codex", AgentName: name, WorkingDir: repo,
+	}))
+
+	resp := postJSON(t, server.URL+"/api/sessions/live/"+name+"/kill", map[string]string{
+		"agent_type": "codex", "session_id": sessionID,
+	})
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Empty(t, result["changes_artifact_error"])
+	assert.Equal(t, filepath.Join(coralDir, "artifacts", "sessions", sessionID, "changes.diff"), result["changes_artifact"])
+	assert.False(t, terminal.HasSession(context.Background(), name))
+
+	download, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/changes.diff")
+	require.NoError(t, err)
+	defer download.Body.Close()
+	assert.Equal(t, http.StatusOK, download.StatusCode)
+	data, err := io.ReadAll(download.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "+after")
 }
 
 func TestSessionsLaunch_MissingWorkDir(t *testing.T) {
@@ -593,8 +683,10 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 
 	// Session routes
 	r.Get("/api/sessions/live", handler.List)
+	r.Get("/api/sessions/{sessionID}/changes.diff", handler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", handler.Detail)
 	r.Get("/api/sessions/live/{name}/capture", handler.Capture)
+	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
 	r.Post("/api/sessions/live/{name}/send", handler.Send)
 	r.Post("/api/sessions/live/{name}/keys", handler.Keys)
 	r.Post("/api/sessions/live/{name}/resize", handler.Resize)
