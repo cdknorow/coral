@@ -2900,6 +2900,27 @@ export async function loadSettings() {
     }
 }
 
+/**
+ * Report a supporter/store link click to the server, which forwards it to
+ * analytics. Fire-and-forget: it must never delay or block opening the link.
+ * `surface` is a fixed slug identifying where in the UI the link lives.
+ */
+export function trackSupporterClick(surface) {
+    try {
+        const payload = JSON.stringify({ event: 'supporter_checkout_clicked', props: { surface } });
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon('/api/tracking/event', new Blob([payload], { type: 'application/json' }));
+            return;
+        }
+        fetch('/api/tracking/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true,
+        }).catch(() => {});
+    } catch { /* analytics must never break the link */ }
+}
+
 /** Show license tier (Supporter License / Free) in the settings dropdown. */
 async function _loadLicenseTierBadge() {
     const badge = document.getElementById('license-tier-badge');
@@ -2935,7 +2956,7 @@ async function _loadLicenseTierBadge() {
                 if (sData.store_url) storeProURL = sData.store_url;
             } catch (_) {}
             badge.innerHTML = '<span class="tier-label tier-trial">Free</span>' +
-                `<a href="${storeProURL}" target="_blank" rel="noopener" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Support the developer</a>`;
+                `<a href="${storeProURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Support the developer</a>`;
         }
         badge.style.display = '';
     } catch { /* silent — non-critical */ }
@@ -3223,7 +3244,7 @@ async function _loadLicenseStatus() {
                 }
             } catch { /* use default */ }
             container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Free — fully unlocked. A one-time license supports development and retires the activation reminder.</span>
-                <br><a href="${storeURL}" target="_blank" rel="noopener" class="btn btn-small btn-primary" style="margin-top:8px;display:inline-block;text-decoration:none;font-size:11px">Support the developer</a>`;
+                <br><a href="${storeURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('license_settings_panel')" class="btn btn-small btn-primary" style="margin-top:8px;display:inline-block;text-decoration:none;font-size:11px">Support the developer</a>`;
         }
     } catch {
         container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Unable to check license</span>`;

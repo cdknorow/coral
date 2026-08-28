@@ -370,6 +370,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/settings/default-prompts", sysHandler.GetDefaultPrompts)
 	r.Get("/api/agent-models", sysHandler.GetAgentModels)
 	r.Get("/api/system/status", sysHandler.Status)
+	r.Post("/api/tracking/event", routes.NewTrackingHandler().TrackEvent)
 	r.Get("/api/system/update-check", sysHandler.UpdateCheck)
 	r.Get("/api/system/cli-check", sysHandler.CLICheck)
 	r.Get("/api/system/qr", sysHandler.QRCode)
@@ -853,7 +854,7 @@ const activationPage = `<!DOCTYPE html>
         <li>Lifetime license with updates &amp; email support</li>
       </ul>
       <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way &mdash; a license simply backs the project and stops this reminder.</p>
-      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank">Buy a License</a>
+      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank" onclick="trackSupporterClick('activation_nag')">Buy a License</a>
     </div>
   </div>
 
@@ -882,6 +883,24 @@ const activationPage = `<!DOCTYPE html>
   const btn = document.getElementById('submit-btn');
   const errorEl = document.getElementById('error-msg');
   const successEl = document.getElementById('success-msg');
+
+  // Fire-and-forget supporter-link click reporting. Never delays the link.
+  function trackSupporterClick(surface) {
+    try {
+      const payload = JSON.stringify({ event: 'supporter_checkout_clicked', props: { surface } });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/tracking/event', new Blob([payload], { type: 'application/json' }));
+        return;
+      }
+      fetch('/api/tracking/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    } catch (e) { /* analytics must never break the link */ }
+  }
+  window.trackSupporterClick = trackSupporterClick;
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
