@@ -2,7 +2,7 @@
 
 **Owner of this file:** Content & Launch Producer
 **Status:** Wave 1 — nothing external ships
-**Last updated:** 2026-08-28 (rev 41)
+**Last updated:** 2026-08-28 (rev 42)
 
 > **Hard gate (operator decision, settled):** No Show HN, no Reddit, no X thread, no
 > newsletter until Phase 2 activation targets are hit on real data — 40% of new installs
@@ -323,6 +323,20 @@ reporting that the markers matched.
 **The failure mode it cannot detect** is an author editing under a commitment they had forgotten
 they made — the checker sees a mismatch and cannot tell corruption from moved goalposts. That is
 why the freeze is a rule rather than a habit.
+
+### It protects the publisher, not the verifier — and that asymmetry is the trap
+
+The count format stops the **publisher** paraphrasing: a paraphrase reports **zero**, before the
+check runs, where everyone can see it. **It does nothing for the person running the check.** When a
+*verifier* recalls a marker instead of reading the published one, zero looks exactly like **loss** —
+and they have evidence. Observed on 2026-08-28: a verifier ran three markers they had invented, got
+three zeros, and was one step from reporting three files corrupted in a correct commit.
+
+> **A marker recalled instead of read is a false alarm waiting to fire.**
+
+**So run the diff first.** `git diff <sha> -- <path>` is authoritative; markers are the *which edit
+is missing* diagnostic. **If the diff is empty, a marker mismatch is a bug in your marker, not in
+the artifact** — and you will not waste anyone's close hunting a corruption that does not exist.
 
 ## Approval launders evidence tier — follow the SENTENCE, not just the entry
 
