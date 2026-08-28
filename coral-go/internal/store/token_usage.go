@@ -9,23 +9,24 @@ import (
 
 // TokenUsage represents a token usage snapshot for a session.
 type TokenUsage struct {
-	ID           int64   `db:"id" json:"id"`
-	SessionID    string  `db:"session_id" json:"session_id"`
-	AgentName    string  `db:"agent_name" json:"agent_name"`
-	AgentType    string  `db:"agent_type" json:"agent_type"`
-	TeamID       *int64  `db:"team_id" json:"team_id,omitempty"`
-	BoardName    *string `db:"board_name" json:"board_name,omitempty"`
-	InputTokens      int `db:"input_tokens" json:"input_tokens"`
-	OutputTokens     int `db:"output_tokens" json:"output_tokens"`
-	CacheReadTokens  int `db:"cache_read_tokens" json:"cache_read_tokens"`
-	CacheWriteTokens int `db:"cache_write_tokens" json:"cache_write_tokens"`
-	TotalTokens      int `db:"total_tokens" json:"total_tokens"`
-	CostUSD        float64 `db:"cost_usd" json:"cost_usd"`
-	NumTurns       int     `db:"num_turns" json:"num_turns"`
-	SessionStartAt string  `db:"session_start_at" json:"session_start_at,omitempty"`
-	LastActivityAt string  `db:"last_activity_at" json:"last_activity_at,omitempty"`
-	RecordedAt     string  `db:"recorded_at" json:"recorded_at"`
-	Source         string  `db:"source" json:"source,omitempty"`
+	ID               int64   `db:"id" json:"id"`
+	SessionID        string  `db:"session_id" json:"session_id"`
+	AgentName        string  `db:"agent_name" json:"agent_name"`
+	AgentType        string  `db:"agent_type" json:"agent_type"`
+	TeamID           *int64  `db:"team_id" json:"team_id,omitempty"`
+	BoardName        *string `db:"board_name" json:"board_name,omitempty"`
+	InputTokens      int     `db:"input_tokens" json:"input_tokens"`
+	OutputTokens     int     `db:"output_tokens" json:"output_tokens"`
+	CacheReadTokens  int     `db:"cache_read_tokens" json:"cache_read_tokens"`
+	CacheWriteTokens int     `db:"cache_write_tokens" json:"cache_write_tokens"`
+	TotalTokens      int     `db:"total_tokens" json:"total_tokens"`
+	CostUSD          float64 `db:"cost_usd" json:"cost_usd"`
+	NumTurns         int     `db:"num_turns" json:"num_turns"`
+	SessionStartAt   string  `db:"session_start_at" json:"session_start_at,omitempty"`
+	LastActivityAt   string  `db:"last_activity_at" json:"last_activity_at,omitempty"`
+	ExecutionTimeSec int64   `db:"execution_time_sec" json:"execution_time_sec"`
+	RecordedAt       string  `db:"recorded_at" json:"recorded_at"`
+	Source           string  `db:"source" json:"source,omitempty"`
 }
 
 // UsageSummary represents aggregated token usage totals.
@@ -132,6 +133,9 @@ func (s *TokenUsageStore) GetSessionUsage(ctx context.Context, sessionID string)
 		 COUNT(*) as num_turns,
 		 COALESCE(MIN(session_start_at), '') as session_start_at,
 		 COALESCE(MAX(last_activity_at), '') as last_activity_at,
+		 CASE WHEN MIN(NULLIF(session_start_at, '')) IS NOT NULL AND MAX(NULLIF(last_activity_at, '')) IS NOT NULL
+		      THEN MAX(0, CAST(ROUND((julianday(MAX(NULLIF(last_activity_at, ''))) - julianday(MIN(NULLIF(session_start_at, '')))) * 86400) AS INTEGER))
+		      ELSE 0 END as execution_time_sec,
 		 MAX(recorded_at) as recorded_at
 		 FROM token_usage WHERE session_id = ? AND `+sourceDedup+` GROUP BY session_id`, sessionID)
 	if err == sql.ErrNoRows {
@@ -236,7 +240,13 @@ func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]Token
 	          COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens,
 	          COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens, COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
 	          COALESCE(SUM(total_tokens), 0) as total_tokens, COALESCE(SUM(cost_usd), 0) as cost_usd,
-	          COUNT(*) as num_turns, MAX(recorded_at) as recorded_at,
+	          COUNT(*) as num_turns,
+	          COALESCE(MIN(NULLIF(session_start_at, '')), '') as session_start_at,
+	          COALESCE(MAX(NULLIF(last_activity_at, '')), '') as last_activity_at,
+	          CASE WHEN MIN(NULLIF(session_start_at, '')) IS NOT NULL AND MAX(NULLIF(last_activity_at, '')) IS NOT NULL
+	               THEN MAX(0, CAST(ROUND((julianday(MAX(NULLIF(last_activity_at, ''))) - julianday(MIN(NULLIF(session_start_at, '')))) * 86400) AS INTEGER))
+	               ELSE 0 END as execution_time_sec,
+	          MAX(recorded_at) as recorded_at,
 	          COALESCE(MAX(source), 'jsonl') as source
 	   FROM token_usage WHERE ` + sourceDedup + ` AND 1=1`
 	var args []interface{}

@@ -1,0 +1,51 @@
+# README docs-link redirects — DRAFT, operator approval required
+#
+# Removes the four README links to cdknorow.github.io/coral, which currently
+# instructs visitors to 'pip install agent-coral' (the retired Python product).
+# Interim target: coral-go/agent_docs/ (22 current docs, in-repo).
+#
+# SEPARATE from the D1 download-filename fix, which is already in the working tree.
+# Apply order: filename fix first (already applied), then:
+#   git apply specs/gtm/patches/README-docs-links.patch
+#
+--- a/README.md
++++ b/README.md
+@@ -9,7 +9,7 @@
+ <p align="center">
+   <a href="https://github.com/cdknorow/coral/stargazers"><img src="https://img.shields.io/github/stars/cdknorow/coral?style=social" alt="GitHub Stars"></a>
+   <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
+-  <a href="https://cdknorow.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
++  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs"><img src="https://img.shields.io/badge/docs-in_repo-blue" alt="Documentation"></a>
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><img src="https://img.shields.io/badge/support_Coral-$49.99_one--time-FF7D52" alt="Support Coral development for $49.99"></a>
+   <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/discord/placeholder?label=Discord&color=5865F2" alt="Discord"></a>
+ </p>
+@@ -17,7 +17,7 @@
+ <p align="center">
+   <a href="#quick-start">Quick Start</a> &bull;
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
+-  <a href="https://cdknorow.github.io/coral/">Documentation</a> &bull;
++  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs">Documentation</a> &bull;
+   <a href="#features">Features</a> &bull;
+   <a href="#how-it-works">How It Works</a> &bull;
+   <a href="https://discord.gg/qhfgY57AZn">Discord</a>
+@@ -139,8 +139,12 @@
+ 
+ ## Documentation
+ 
+-Full documentation at **[cdknorow.github.io/coral](https://cdknorow.github.io/coral/)**.
++Documentation lives in the repo at **[coral-go/agent_docs](https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs)** — covering teams,
++workflows, scheduled jobs, the message board, webhooks, session history, and the proxy.
+ 
++A hosted docs site is being rebuilt. The previous site documented the retired Python
++implementation and has been taken out of the README until its replacement is published.
++
+ ## Contributing
+ 
+ We welcome contributions! Whether it's adding support for new AI agents, improving the dashboard, or fixing bugs — please open an issue or submit a pull request.
+@@ -155,5 +159,5 @@
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
+   <a href="https://github.com/cdknorow/coral">Star the repo</a> &bull;
+   <a href="https://discord.gg/qhfgY57AZn">Join Discord</a> &bull;
+-  <a href="https://cdknorow.github.io/coral/">Read the docs</a>
++  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs">Read the docs</a>
+ </p>

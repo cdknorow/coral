@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -51,6 +52,45 @@ type LaunchParams struct {
 	UpstreamBaseURL  string                 // detected upstream URL before proxy override (e.g. "https://api.anthropic.com")
 	UpstreamProvider string                 // detected upstream provider (e.g. "anthropic", "bedrock", "vertex", "openai")
 	CoralDir         string                 // path to coral data directory (~/.coral) for CA cert location
+	CoralHost        string                 // host this Coral server is bound to
+	CoralPort        int                    // port this Coral server is listening on
+}
+
+// CoralEnv returns the Coral environment every launched agent needs, as
+// ordered name/value pairs. Empty values are omitted.
+//
+// This exists because the environment was being assembled independently in
+// five places — once per agent implementation, plus the tmux session env — and
+// they had already drifted: all of them set CORAL_SESSION_NAME and
+// CORAL_SUBSCRIBER_ID, none set CORAL_PORT or CORAL_URL, while the workflow
+// runner set all four. An agent without CORAL_PORT falls back to
+// localhost:8420, so on any other port its coral-board talked to whatever
+// server happened to own 8420 — which on a developer's machine is their real
+// Coral, not the one that launched it. Every launch path must build this env
+// from here so they cannot drift apart again.
+func CoralEnv(params LaunchParams) [][2]string {
+	var env [][2]string
+	add := func(k, v string) {
+		if v != "" {
+			env = append(env, [2]string{k, v})
+		}
+	}
+	add("CORAL_SESSION_NAME", params.SessionName)
+	add("CORAL_SUBSCRIBER_ID", params.Role)
+	if params.CoralPort > 0 {
+		port := strconv.Itoa(params.CoralPort)
+		host := params.CoralHost
+		// 0.0.0.0 means "every interface"; an agent has to dial a real one.
+		if host == "" || host == "0.0.0.0" || host == "::" {
+			host = "127.0.0.1"
+		}
+		add("CORAL_PORT", port)
+		add("CORAL_HOST", host)
+		add("CORAL_URL", fmt.Sprintf("http://%s:%s", host, port))
+	}
+	add("CORAL_DIR", params.CoralDir)
+	add("CORAL_DATA_DIR", params.CoralDir)
+	return env
 }
 
 // IndexedSession holds extracted session data from a history file.
@@ -64,6 +104,59 @@ type IndexedSession struct {
 	MessageCount   int
 	DisplaySummary string
 	FTSBody        string
+}
+
+// ftsBodyLimit caps how much of one session's text enters the search index.
+// A long session can run to megabytes; indexing all of it across hundreds of
+// sessions would cost far more disk than the search is worth. 256 KiB is
+// roughly a hundred thousand words, which is more than enough for the "what
+// was that session about" query this feature exists to answer.
+const ftsBodyLimit = 256 * 1024
+
+// FTSBodyBuilder accumulates the searchable text of one session, bounded.
+//
+// It exists so every agent's extractor builds the body the same way. FTSBody
+// was declared and read but never assigned by any of the four extractors, so
+// the guard in the indexer was never true, UpsertFTS was never called, and
+// session_fts stayed empty — in production, across 56 indexed sessions, for
+// months. Building it in one place is what stops three of the four being
+// fixed and the fourth quietly not.
+type FTSBodyBuilder struct {
+	b    strings.Builder
+	full bool
+}
+
+// Add appends one message's text. Empty strings are ignored, and everything
+// after the limit is dropped rather than truncated mid-append, so the body
+// never ends in half a word.
+func (f *FTSBodyBuilder) Add(text string) {
+	if f.full || text == "" {
+		return
+	}
+	if f.b.Len() > 0 {
+		f.b.WriteByte('\n')
+	}
+	f.b.WriteString(text)
+	if f.b.Len() >= ftsBodyLimit {
+		f.full = true
+	}
+}
+
+// String returns the accumulated body.
+func (f *FTSBodyBuilder) String() string { return f.b.String() }
+
+// buildFTSBody returns the searchable body for a session, seeded with the
+// display summary.
+//
+// Seeding matters: the summary is what the session list shows, so a word a
+// user can see on screen must be findable. That was the exact symptom — a
+// summary reading "MEMORY-TOKEN-7731 the capital of the demo is Coralville"
+// was on screen while a search for "Coralville" returned nothing.
+func buildFTSBody(summary string, body *FTSBodyBuilder) string {
+	var out FTSBodyBuilder
+	out.Add(summary)
+	out.Add(body.String())
+	return out.String()
 }
 
 // HistoryScanner is the interface that agent implementations must satisfy
@@ -162,9 +255,48 @@ func GetAgent(agentType string) Agent {
 		return &CodexAgent{}
 	case at.Pi:
 		return &PiAgent{}
+	case at.Claude, "":
+		return &ClaudeAgent{}
 	default:
+		// Reached only if a caller skipped ValidateAgentType. Falling back to
+		// Claude is kept so a stored session with an unexpected type still
+		// resolves to something, but it is no longer silent: this used to
+		// start a real Claude process for a type the user never asked for.
+		slog.Warn("unknown agent type, falling back to claude",
+			"agent_type", agentType, "supported", LaunchableAgentTypes())
 		return &ClaudeAgent{}
 	}
+}
+
+// LaunchableAgentTypes lists every agent_type Coral accepts, in a stable order
+// suitable for an error message.
+//
+// "terminal" is included deliberately. It is a plain shell rather than an
+// agent, so it has no Agent implementation and never reaches GetAgent — the
+// launch path skips command building for it entirely — but it is a valid
+// agent_type at the API and rejecting it would break terminal sessions.
+func LaunchableAgentTypes() []string {
+	return []string{at.Claude, at.Codex, at.Gemini, at.Pi, at.Terminal}
+}
+
+// ValidateAgentType checks an agent_type supplied by a caller.
+//
+// An empty type is allowed and means "use the default", which is a different
+// case from a type that was specified and is not recognised. Only the second
+// is an error: it used to fall through to Claude, so a request naming an agent
+// Coral does not support returned 200 ok:true and started a real Claude
+// session, spending the user's tokens on an agent they never asked for.
+func ValidateAgentType(agentType string) error {
+	if agentType == "" {
+		return nil // not specified; the caller's default applies
+	}
+	for _, known := range LaunchableAgentTypes() {
+		if agentType == known {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported agent_type %q — supported types are %s",
+		agentType, strings.Join(LaunchableAgentTypes(), ", "))
 }
 
 // CLIInfo holds the CLI binary name and install instructions for an agent type.

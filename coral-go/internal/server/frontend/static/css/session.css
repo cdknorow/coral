@@ -1054,6 +1054,15 @@
     text-align: center;
 }
 
+/* A stalled first launch is the most likely moment a new user gives up, so
+   this reads as an instruction rather than a status: slightly louder, and
+   left-aligned because it is a sentence, not a label. */
+.waiting-banner.waiting-banner-not-started {
+    text-align: left;
+    line-height: 1.45;
+    padding: 8px 12px;
+}
+
 .waiting-banner.done-banner {
     background: rgba(76, 175, 80, 0.15);
     border-color: rgba(76, 175, 80, 0.3);

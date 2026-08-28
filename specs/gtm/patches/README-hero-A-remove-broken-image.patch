@@ -1,0 +1,21 @@
+# OPTION A — remove the broken hero image (DRAFT, operator approval required)
+#
+# cdn.loom.com thumbnail returns HTTP 403 (verified with plain client AND browser UA),
+# so GitHub's camo proxy renders it broken. This replaces the broken <img> with a plain
+# text link to the same Loom video. Zero new assets required, shippable immediately.
+# Mutually exclusive with OPTION B.
+--- a/README.md
++++ b/README.md
+@@ -25,11 +25,8 @@
+ 
+ ---
+ 
+-<!-- TODO: Replace with hosted mp4 once uploaded to GitHub -->
+ <p align="center">
+-  <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">
+-    <img src="https://cdn.loom.com/sessions/thumbnails/7dce83519c8d4882af5a15bb9d727c21-with-play.gif" alt="Watch Coral in action" width="720" />
+-  </a>
++  <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21"><strong>▶ Watch Coral in action (2 min)</strong></a>
+ </p>
+ 
+ ## What is Coral?

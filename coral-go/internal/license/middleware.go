@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/httputil"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 // Middleware returns an HTTP middleware that tracks license state.
@@ -62,6 +63,20 @@ func (lr *Routes) Activate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info := lr.mgr.GetInfo()
+
+	// Funnel: successful supporter-license activation. Only the non-identifying
+	// product/variant name is sent — never the key, name, or email.
+	props := map[string]string{}
+	if info != nil {
+		if info.ProductName != "" {
+			props["product_name"] = info.ProductName
+		}
+		if info.VariantName != "" {
+			props["variant_name"] = info.VariantName
+		}
+	}
+	tracking.TrackEvent(tracking.EventLicenseActivated, props)
+
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"valid":          true,
 		"customer_name":  info.CustomerName,

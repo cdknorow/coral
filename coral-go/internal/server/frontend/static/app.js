@@ -10,7 +10,7 @@ import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt,
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon, showEmojiPicker } from './sessions.js';
 import { toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
-import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeLaunchNew, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, launchTerminalToBoard, launchDefaultAgent, showAddStandaloneAgent, launchStandaloneTerminal, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates, showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts, deactivateLicense } from './modals.js';
+import { showLaunchModal, hideLaunchModal, launchSession, showInfoModal, hideInfoModal, copyInfoCommand, showResumeModal, hideResumeModal, resumeLaunchNew, showSettingsModal, hideSettingsModal, applySettings, loadSettings, toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, launchTerminalToBoard, launchDefaultAgent, showAddStandaloneAgent, launchStandaloneTerminal, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates, showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts, deactivateLicense, trackSupporterClick } from './modals.js';
 import { toggleBrowser, browserNavigateTo, browserNavigateUp } from './browser.js';
 import { initSidebarResize, initCommandPaneResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse } from './sidebar.js';
 import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
@@ -42,6 +42,7 @@ import { initWorkflows, showWorkflowsTab, selectWorkflow, selectWorkflowRun, tri
 import { showConnectedApps, showConnectAppModal, hideConnectAppModal, startOAuthFlow, testConnectedApp, disconnectApp } from './connected_apps.js';
 import { showCostDashboard, stopCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } from './cost_dashboard.js';
 import { showDocsTab, selectDoc } from './docs.js';
+import { maybeShowTelemetryDisclosure, acknowledgeTelemetryDisclosure, openTelemetryDoc } from './telemetry.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
 import { platform } from './platform/detect.js';
 import { initNative } from './platform/native.js';
@@ -68,6 +69,7 @@ Object.assign(window, {
     showSettingsModal, hideSettingsModal, applySettings,
     showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts,
     _deactivateLicense: deactivateLicense,
+    _trackSupporterClick: trackSupporterClick,
     showLaunchModal, hideLaunchModal, launchSession, toggleFlag,
     showInfoModal, hideInfoModal, copyInfoCommand,
     showResumeModal, hideResumeModal, resumeLaunchNew,
@@ -133,6 +135,8 @@ Object.assign(window, {
     showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged,
     // docs
     showDocsTab, selectDoc,
+    // telemetry
+    acknowledgeTelemetryDisclosure, openTelemetryDoc,
     // folder_tags
     showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag,
     // utils
@@ -672,6 +676,11 @@ document.addEventListener("DOMContentLoaded", () => {
     initLiveJobs();
     initMessageBoard();
     initMobile();
+
+    // First-run telemetry disclosure. Shown once, only on builds that can
+    // actually send anything, and never blocking: the dashboard is already
+    // usable behind it.
+    maybeShowTelemetryDisclosure();
 
     // Hide connected apps in prod builds (feature is dev/beta only),
     // and surface a banner if tmux is missing so the user knows agents

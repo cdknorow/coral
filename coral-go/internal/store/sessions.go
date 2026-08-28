@@ -456,14 +456,23 @@ func (s *SessionStore) GetAgentNames(ctx context.Context, sessionIDs []string) (
 	return result, nil
 }
 
-// GetIndexedMtimes returns source_file -> file_mtime for all indexed sessions.
+// GetIndexedMtimes returns source_file -> file_mtime for sessions that are
+// fully indexed, so the indexer can skip re-reading files that have not changed.
+//
+// A session is only "fully indexed" if it also has a full-text row. Sessions
+// indexed before FTSBody was populated have a session_index row and no
+// session_fts row; without this join they would be skipped forever on mtime
+// and stay permanently unsearchable. Excluding them here makes the next
+// indexer pass re-read exactly those files and backfill them, once, with no
+// migration and no flag.
 func (s *SessionStore) GetIndexedMtimes(ctx context.Context) (map[string]float64, error) {
 	var rows []struct {
 		SourceFile string  `db:"source_file"`
 		FileMtime  float64 `db:"file_mtime"`
 	}
 	err := s.db.SelectContext(ctx, &rows,
-		"SELECT source_file, file_mtime FROM session_index")
+		`SELECT si.source_file, si.file_mtime FROM session_index si
+		 WHERE EXISTS (SELECT 1 FROM session_fts f WHERE f.session_id = si.session_id)`)
 	if err != nil {
 		return nil, err
 	}

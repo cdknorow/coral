@@ -88,6 +88,42 @@ func TestListUsage_WithRecords(t *testing.T) {
 	assert.Equal(t, float64(2), totals["num_sessions"])
 }
 
+func TestListUsage_ExecutionTimeUsesFirstAndLastMessage(t *testing.T) {
+	ts, _, router := setupTokenUsageTest(t)
+	ctx := t.Context()
+	board := "timed-team"
+
+	require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{
+		SessionID: "s1", AgentName: "agent-a", BoardName: &board, TotalTokens: 10,
+		SessionStartAt: "2026-08-27T10:00:00Z", LastActivityAt: "2026-08-27T10:05:00Z",
+	}))
+	require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{
+		SessionID: "s2", AgentName: "agent-b", BoardName: &board, TotalTokens: 10,
+		SessionStartAt: "2026-08-27T10:02:00Z", LastActivityAt: "2026-08-27T10:12:30Z",
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/token-usage?board_name=timed-team", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	totals := body["totals"].(map[string]any)
+	assert.Equal(t, float64(750), totals["execution_time_sec"])
+	assert.Equal(t, "2026-08-27T10:00:00Z", totals["first_message_at"])
+	assert.Equal(t, "2026-08-27T10:12:30Z", totals["last_message_at"])
+
+	records := body["records"].([]any)
+	durations := map[string]float64{}
+	for _, raw := range records {
+		record := raw.(map[string]any)
+		durations[record["session_id"].(string)] = record["execution_time_sec"].(float64)
+	}
+	assert.Equal(t, float64(300), durations["s1"])
+	assert.Equal(t, float64(630), durations["s2"])
+}
+
 func TestListUsage_FilterBySessionID(t *testing.T) {
 	ts, _, router := setupTokenUsageTest(t)
 	ctx := t.Context()

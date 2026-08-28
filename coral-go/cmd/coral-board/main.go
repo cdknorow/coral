@@ -37,10 +37,26 @@ type boardState struct {
 	ServerURL string `json:"server_url,omitempty"`
 }
 
-func stateFilePath() string {
+// coralDir returns the data directory this agent's Coral server uses, falling
+// back to ~/.coral.
+//
+// Without this the CLI wrote its board state into ~/.coral no matter which
+// server launched it, so an agent belonging to a server started with --home
+// both failed to find its own subscription and wrote a file into the user's
+// real install. Coral sets CORAL_DATA_DIR in every agent's environment.
+func coralDir() string {
+	for _, k := range []string{"CORAL_DATA_DIR", "CORAL_DIR"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
 	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".coral")
+}
+
+func stateFilePath() string {
 	sessionName := resolveSessionName()
-	return filepath.Join(home, ".coral", fmt.Sprintf("board_state_%s.json", sessionName))
+	return filepath.Join(coralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
 }
 
 func loadState() *boardState {

@@ -352,6 +352,17 @@ func applyReplayBytesFromSettings(ctx context.Context, db *store.DB) {
 }
 
 func selectBackend(backendType, logDir, coralDir string) (ptymanager.TerminalBackend, background.AgentRuntime, ptymanager.SessionTerminal) {
+	// A tmux socket path over the platform's sun_path limit cannot be bound.
+	// Previously that produced a bare "File name too long" from tmux while the
+	// server went on logging that it was using the tmux backend, so the operator
+	// was told one thing and got another. Say it plainly and pick PTY on purpose.
+	if backendType != "pty" && coralDir != "" {
+		if err := tmux.CheckSocketPath(coralDir); err != nil {
+			log.Printf("[startup] tmux backend unavailable: %v", err)
+			log.Printf("[startup] using a shorter --home / CORAL_DATA_DIR would restore the tmux backend")
+			backendType = "pty"
+		}
+	}
 	if backendType == "pty" {
 		ptyBackend := ptymanager.NewPTYBackend()
 		log.Println("Using native PTY terminal backend")

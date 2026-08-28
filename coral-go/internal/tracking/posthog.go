@@ -5,6 +5,9 @@ package tracking
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,25 +20,41 @@ import (
 	"github.com/google/uuid"
 )
 
-const posthogURL = "https://us.i.posthog.com/capture/"
+// posthogURL is the capture endpoint. It is a var so tests can point it at a
+// local server; production never reassigns it.
+var posthogURL = "https://us.i.posthog.com/capture/"
 
 var (
 	cachedInstallID string
 	installIDOnce   sync.Once
-	coralDir        string // set by SetCoralDir; falls back to ~/.coral
+	// coralDir is where all tracking state lives. It has no default: until
+	// SetCoralDir is called this package reads nothing, writes nothing, and
+	// sends nothing. See resolveCoralDir for why there is no fallback.
+	coralDir string
+
+	// asyncWG tracks in-flight tracking goroutines so tests can wait on them.
+	asyncWG sync.WaitGroup
 )
 
-// SetCoralDir sets the data directory used for tracking state files.
-// Must be called before TrackInstallAsync(). If not called, falls back to ~/.coral.
+// SetCoralDir sets the data directory used for tracking state files. Call it
+// as early as possible, before anything can read tracking state — until it is
+// called this package is inert and keeps no state at all.
 func SetCoralDir(dir string) {
 	coralDir = dir
 }
 
+// CoralDir returns the data directory tracking state is written to, or "" if
+// it has not been configured. Exposed so the telemetry disclosure can show the
+// user exactly where their install ID and failure log live.
+func CoralDir() string { return resolveCoralDir() }
+
 // getInstallID returns the install ID, reading from disk once and caching.
 func getInstallID() string {
 	installIDOnce.Do(func() {
-		idFile := filepath.Join(resolveCoralDir(), ".install_id")
-		cachedInstallID = readFile(idFile)
+		if !stateDirReady() {
+			return
+		}
+		cachedInstallID = readFile(filepath.Join(resolveCoralDir(), ".install_id"))
 	})
 	return cachedInstallID
 }
@@ -47,41 +66,68 @@ func TrackInstallAsync() {
 	if config.PostHogKey == "" {
 		return
 	}
-	go func() {
-		defer func() { recover() }()
+	asyncGo(func() {
 		trackInstall()
 		// Always send app_opened for DAU tracking
-		TrackEvent("app_opened", nil)
-	}()
+		trackEventSync(EventAppOpened, nil)
+		// Retention: fire returned_24h once, on the first open >24h after the first.
+		trackReturnVisitSync()
+	})
 }
 
 // TrackEvent sends a named event to PostHog with optional extra properties.
 // Non-blocking — runs in a goroutine. Safe to call from any context.
 func TrackEvent(eventName string, extraProps map[string]string) {
+	asyncGo(func() { trackEventSync(eventName, extraProps) })
+}
+
+// trackEventSync is the synchronous body of TrackEvent. It is the single place
+// every event acquires its standard properties.
+func trackEventSync(eventName string, extraProps map[string]string) {
 	if config.PostHogKey == "" {
 		return
 	}
+	id := getInstallID()
+	if id == "" {
+		return
+	}
+	props := map[string]any{
+		"version": config.Version,
+		"edition": config.TierName,
+		"os":      runtime.GOOS,
+		"arch":    runtime.GOARCH,
+	}
+	for k, v := range extraProps {
+		props[k] = v
+	}
+	postEvent(eventName, id, props)
+}
+
+// asyncGo runs fn in a goroutine that can never panic into the caller. All
+// tracking work goes through here so no launch path can be blocked or failed
+// by tracking. The WaitGroup exists so tests can wait for in-flight work.
+func asyncGo(fn func()) {
+	asyncWG.Add(1)
 	go func() {
-		defer func() { recover() }()
-		id := getInstallID()
-		if id == "" {
-			return
-		}
-		props := map[string]any{
-			"version": config.Version,
-			"edition": config.TierName,
-			"os":      runtime.GOOS,
-			"arch":    runtime.GOARCH,
-		}
-		for k, v := range extraProps {
-			props[k] = v
-		}
-		postEvent(eventName, id, props)
+		defer asyncWG.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				logDeliveryFailure("panic", 0, fmt.Sprintf("%v", r))
+			}
+		}()
+		fn()
 	}()
 }
 
+// waitForAsync blocks until all in-flight tracking goroutines finish.
+// Test-only helper; production code never waits on tracking.
+func waitForAsync() { asyncWG.Wait() }
+
 func trackInstall() {
 	dir := resolveCoralDir()
+	if dir == "" {
+		return
+	}
 	os.MkdirAll(dir, 0755)
 
 	idFile := filepath.Join(dir, ".install_id")
@@ -98,7 +144,7 @@ func trackInstall() {
 		os.WriteFile(versionFile, []byte(currentVersion), 0600)
 		// Update cache
 		cachedInstallID = installID
-		postEvent("install", installID, map[string]any{
+		postEvent(EventInstall, installID, map[string]any{
 			"version": currentVersion,
 			"edition": config.TierName,
 			"os":      runtime.GOOS,
@@ -113,7 +159,7 @@ func trackInstall() {
 	if currentVersion != "" && storedVersion != currentVersion {
 		// Version upgrade
 		os.WriteFile(versionFile, []byte(currentVersion), 0600)
-		postEvent("upgrade", installID, map[string]any{
+		postEvent(EventUpgrade, installID, map[string]any{
 			"version": currentVersion,
 			"edition": config.TierName,
 			"os":      runtime.GOOS,
@@ -138,10 +184,58 @@ func postEvent(event, distinctID string, properties map[string]any) {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Post(posthogURL, "application/json", bytes.NewReader(data))
 	if err != nil {
+		logDeliveryFailure(event, 0, err.Error())
 		return
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		logDeliveryFailure(event, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
 }
+
+// deliveryLogMaxBytes caps the local failure log so it can never grow without
+// bound on a machine that is permanently offline.
+const deliveryLogMaxBytes = 64 * 1024
+
+// logDeliveryFailure records a non-sensitive tracking delivery failure to
+// <coralDir>/tracking-failures.log so failures can be diagnosed instead of
+// silently discarded. Only the event name, HTTP status, and error detail are
+// written — never event properties, install ID, or any user content.
+func logDeliveryFailure(event string, status int, detail string) {
+	defer func() { recover() }()
+
+	if len(detail) > 300 {
+		detail = detail[:300]
+	}
+	detail = strings.ReplaceAll(detail, "\n", " ")
+	line := fmt.Sprintf("%s event=%s status=%d detail=%s\n",
+		time.Now().UTC().Format(time.RFC3339), event, status, detail)
+
+	log.Printf("[tracking] delivery failure: event=%s status=%d detail=%s", event, status, detail)
+
+	dir := resolveCoralDir()
+	if dir == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return
+	}
+	path := filepath.Join(dir, "tracking-failures.log")
+	if fi, err := os.Stat(path); err == nil && fi.Size() > deliveryLogMaxBytes {
+		os.Remove(path)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	f.WriteString(line)
+}
+
+// posthogKeyPresent reports whether an analytics key was injected at build
+// time. Builds from source have none and send nothing.
+func posthogKeyPresent() bool { return config.PostHogKey != "" }
 
 func readFile(path string) string {
 	data, err := os.ReadFile(path)
@@ -151,14 +245,19 @@ func readFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// resolveCoralDir returns the data directory for tracking state files.
-func resolveCoralDir() string {
-	if coralDir != "" {
-		return coralDir
-	}
-	h, _ := os.UserHomeDir()
-	return filepath.Join(h, ".coral")
-}
+// resolveCoralDir returns the data directory for tracking state files, or ""
+// if SetCoralDir has not been called.
+//
+// There is deliberately no ~/.coral fallback. Guessing a default let this
+// package write milestone state into the user's real install from anywhere
+// that had not configured it — including the test suite, which exercises the
+// launch and task handlers and so silently changed the production install's
+// supporter-reminder state. Tracking now touches disk only where it has been
+// told to.
+func resolveCoralDir() string { return coralDir }
+
+// stateDirReady reports whether tracking has somewhere to keep state.
+func stateDirReady() bool { return coralDir != "" }
 
 func generateUUID() string {
 	return uuid.New().String()

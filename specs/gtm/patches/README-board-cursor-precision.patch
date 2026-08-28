@@ -1,0 +1,35 @@
+# Replace the "nothing is lost" absolute at README:95 (DRAFT, operator approval required)
+#
+# *** APPLIES ON TOP OF the combined patch (or the five separate) + the FTS patch. ***
+#
+# The old line: "Messages are delivered reliably with cursor-based tracking — nothing is lost
+# across agent restarts."
+#
+# This survived every sweep today because our grep patterns were "survives a restart" and
+# "survives reboots"; this says "across agent restarts" — different words, same claim family,
+# and STRONGER than either, because "nothing is lost" is an absolute.
+#
+# THE MECHANISM IS REAL, so this is a precision fix, not a retraction. board_subscribers is a
+# genuine SQLite table with last_read_id (internal/board/store.go:147), advanced and persisted
+# at :397 and :523. The Developer Advocate then verified it by execution across a full process
+# kill: cursor persisted at last_read_id=6, messages 1-3 not re-delivered, 4-5 not skipped.
+#
+# Why the absolute still had to go: "nothing is lost" invites a counterexample, and one exists
+# today — with CORAL_PORT/CORAL_URL absent from the agent launcher env, coral-board talks to
+# port 8420 regardless of its own server's port, so off the default port messages are entirely
+# lost from the agent's side (Growth Engineer task #34).
+#
+# New wording is the Orchestrator-approved form, and it claims MORE than a hedge would while
+# staying inside what was demonstrated: it names the two failure modes that were actually
+# ruled out (repeats and skips) instead of asserting a universal.
+--- a/README.md
++++ b/README.md
+@@ -91,7 +91,7 @@
+ 
+ ### 3. Agents communicate via the message board
+ 
+-Every team has a shared message board. Agents post status updates, ask for help, and coordinate handoffs. The orchestrator agent can assign tasks and track progress. Messages are delivered reliably with cursor-based tracking — nothing is lost across agent restarts.
++Every team has a shared message board. Agents post status updates, ask for help, and coordinate handoffs. The orchestrator agent can assign tasks and track progress. Delivery is cursor-tracked: your read position is remembered across an agent restart — agents resume where they left off, with no messages repeated or skipped.
+ 
+ ### 4. You monitor and steer from the dashboard
+ 

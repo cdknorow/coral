@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"embed"
+	"html"
 	"html/template"
 	"io/fs"
 	"log"
@@ -26,6 +27,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 // Frontend assets are embedded at build time. The directories must exist
@@ -89,7 +91,15 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 	// Track launch count for nag screen frequency
 	launchCounter := license.NewLaunchCounter(cfg.CoralDir())
 	launchCount := launchCounter.Increment()
-	log.Printf("Launch count: %d (nag=%v)", launchCount, launchCounter.IsNagLaunch())
+	// The supporter reminder is scheduled from the launch at which Coral first
+	// delivered a result, not from install. See LaunchCounter.RecordValueAnchor.
+	// ValueDeliveredIn, not ValueDelivered: this runs before main calls
+	// tracking.SetCoralDir, and the package default is ~/.coral — which would
+	// let the production install's state decide a test instance's behaviour.
+	valueDelivered := tracking.ValueDeliveredIn(cfg.CoralDir())
+	launchCounter.RecordValueAnchor(valueDelivered)
+	log.Printf("Launch count: %d (value_delivered=%v nag=%v)",
+		launchCount, valueDelivered, launchCounter.IsNagLaunch())
 
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())
@@ -370,6 +380,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/settings/default-prompts", sysHandler.GetDefaultPrompts)
 	r.Get("/api/agent-models", sysHandler.GetAgentModels)
 	r.Get("/api/system/status", sysHandler.Status)
+	trackHandler := routes.NewTrackingHandler(s.cfg.CoralDir())
+	r.Post("/api/tracking/event", trackHandler.TrackEvent)
+	r.Get("/api/system/telemetry", trackHandler.TelemetryDisclosure)
+	r.Post("/api/system/telemetry/acknowledge", trackHandler.AcknowledgeTelemetryDisclosure)
 	r.Get("/api/system/update-check", sysHandler.UpdateCheck)
 	r.Get("/api/system/cli-check", sysHandler.CLICheck)
 	r.Get("/api/system/qr", sysHandler.QRCode)
@@ -657,10 +671,7 @@ func noCacheHandler(h http.Handler) http.Handler {
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// Show activation nag screen if: license required, not yet licensed,
-	// it's a nag launch (every 3rd), and user hasn't clicked "skip".
-	if s.cfg.LicenseRequired() && !s.licenseMgr.IsValid() &&
-		s.launchCounter.IsNagLaunch() && r.URL.Query().Get("skip_activation") != "1" {
+	if s.shouldShowSupporterReminder(r) {
 		s.serveActivation(w, r)
 		return
 	}
@@ -676,9 +687,45 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// shouldShowSupporterReminder decides whether this page load gets the supporter
+// reminder instead of the dashboard. Every condition must hold:
+//
+//   - the build asks for a license at all (dev and beta builds never do);
+//   - the user has not already activated one — supporters are never asked again;
+//   - this launch is on the reminder cadence, which does not start until Coral
+//     has actually delivered a result (see LaunchCounter.IsNagLaunch);
+//   - the user has not dismissed it with "Continue Free" on this request.
+//
+// This gates only WHEN we ask for support. No Coral feature is gated on a
+// license: see license.Middleware, which passes every request through.
+func (s *Server) shouldShowSupporterReminder(r *http.Request) bool {
+	return supporterReminderDue(
+		s.cfg.LicenseRequired(),
+		s.licenseMgr != nil && s.licenseMgr.IsValid(),
+		s.launchCounter != nil && s.launchCounter.IsNagLaunch(),
+		r.URL.Query().Get("skip_activation") == "1",
+	)
+}
+
+// supporterReminderDue is the entire rule, kept as a pure function so each
+// clause can be tested on its own.
+func supporterReminderDue(licenseRequired, licensed, onCadence, dismissed bool) bool {
+	if !licenseRequired {
+		return false // dev and beta builds never ask.
+	}
+	if licensed {
+		return false // supporters are never asked again.
+	}
+	if !onCadence {
+		return false // no result delivered yet, or not a reminder launch.
+	}
+	return !dismissed
+}
+
 func (s *Server) serveActivation(w http.ResponseWriter, r *http.Request) {
 	page := activationPage
-	page = strings.ReplaceAll(page, "{{STORE_URL}}", config.StoreURL)
+	page = strings.ReplaceAll(page, "{{STORE_URL}}",
+		html.EscapeString(routes.SupporterCheckoutURL(config.StoreURL, routes.SurfaceActivationNag)))
 	w.Write([]byte(page))
 }
 
@@ -687,7 +734,7 @@ const activationPage = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coral — Activate License</title>
+<title>Coral</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -716,13 +763,6 @@ const activationPage = `<!DOCTYPE html>
     position: relative;
   }
   .price-card.featured { border-color: #58a6ff; }
-  .price-badge {
-    position: absolute; top: -10px; right: 16px;
-    background: #58a6ff; color: #fff;
-    font-size: 11px; font-weight: 700;
-    padding: 3px 10px; border-radius: 10px;
-    text-transform: uppercase; letter-spacing: 0.5px;
-  }
   .price-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
   .price-desc { color: #8b949e; font-size: 13px; margin-bottom: 16px; }
   .price-amount { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
@@ -828,32 +868,31 @@ const activationPage = `<!DOCTYPE html>
       <div class="price-amount">Free</div>
       <p class="price-note">No card required &middot; every feature unlocked</p>
       <ul class="price-features">
-        <li>Native desktop app (macOS &amp; Linux)</li>
         <li>Every feature, no time limit</li>
-        <li>Unlimited Teams &amp; Agents</li>
-        <li>Claude, Codex &amp; Gemini support</li>
-        <li>Real-time dashboard &amp; message boards</li>
+        <li>Unlimited teams and agents</li>
+        <li>Claude Code, Codex, Gemini CLI and Pi.dev</li>
+        <li>Real-time dashboard and message boards</li>
+        <li>Agent team templates &mdash; generate a team from a plain-English description, import one from a folder</li>
+        <li>Token and cost tracking per agent and per session</li>
+        <li>Native desktop app (macOS and Linux)</li>
         <li>Skip this screen anytime</li>
       </ul>
       <a href="/?skip_activation=1" class="price-btn price-btn-secondary">Continue Free</a>
     </div>
 
     <div class="price-card featured">
-      <div class="price-badge">Early Adopter</div>
-      <h3>Supporter License</h3>
-      <p class="price-desc">Back the project &amp; hide this reminder</p>
+      <h3>Coral Pro &mdash; Supporter License</h3>
+      <p class="price-desc">Back the project</p>
       <div class="price-amount">$49.99</div>
-      <p class="price-note">One-time &middot; early adopter price rises as we add features</p>
+      <p class="price-note">One-time &middot; no subscription</p>
       <ul class="price-features">
-        <li>Retires this periodic activation reminder</li>
-        <li>Activates on 1 machine</li>
-        <li>Directly supports ongoing development</li>
-        <li>Agent team templates &amp; sharing</li>
-        <li>Search chat history</li>
-        <li>Lifetime license with updates &amp; email support</li>
+        <li>Retires this periodic reminder</li>
+        <li>Priority support</li>
+        <li>Priority consideration for feature requests</li>
+        <li>Directly funds ongoing development</li>
       </ul>
-      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way &mdash; a license simply backs the project and stops this reminder.</p>
-      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank">Buy a License</a>
+      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way. A license backs the project &mdash; it doesn&rsquo;t unlock anything, because nothing is locked.</p>
+      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank" onclick="trackSupporterClick('activation_nag')">Buy a License</a>
     </div>
   </div>
 
@@ -882,6 +921,24 @@ const activationPage = `<!DOCTYPE html>
   const btn = document.getElementById('submit-btn');
   const errorEl = document.getElementById('error-msg');
   const successEl = document.getElementById('success-msg');
+
+  // Fire-and-forget supporter-link click reporting. Never delays the link.
+  function trackSupporterClick(surface) {
+    try {
+      const payload = JSON.stringify({ event: 'supporter_checkout_clicked', props: { surface } });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/tracking/event', new Blob([payload], { type: 'application/json' }));
+        return;
+      }
+      fetch('/api/tracking/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {});
+    } catch (e) { /* analytics must never break the link */ }
+  }
+  window.trackSupporterClick = trackSupporterClick;
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();

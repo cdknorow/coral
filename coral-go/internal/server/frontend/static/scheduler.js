@@ -53,10 +53,17 @@ function renderJobsSidebar() {
         const typeIcon = isWorkflow
             ? '<span class="material-icons sched-type-icon" style="font-size:13px;color:#d2a8ff" title="Workflow">account_tree</span>'
             : '';
+        // A job whose scheduling works but whose every run fails otherwise looks
+        // identical to a healthy one here — enabled, with a next fire time.
+        const fails = job.consecutive_failures || 0;
+        const failBadge = fails >= 2
+            ? `<span class="sched-fail-badge" title="The last ${fails} runs all failed">${fails} failed</span>`
+            : '';
         return `<li class="session-list-item ${active}" onclick="selectScheduledJob(${job.id})">
             <span class="sched-dot">${dot}</span>
             ${typeIcon}
             <span class="session-name">${escapeHtml(job.name)}${status}</span>
+            ${failBadge}
             <span class="sched-cron" style="font-size:10px;color:var(--text-muted);margin-left:auto">${escapeHtml(job.cron_expr)}</span>
         </li>`;
     }).join('');
@@ -116,7 +123,21 @@ function renderJobDetail(job, runs) {
         runsHtml = '<p class="empty-state">No runs yet</p>';
     }
 
+    // Surface a job that fires on schedule and fails every time. Without this
+    // the only evidence is inside the run history table, which nobody opens
+    // for a job that appears to be running fine.
+    const fails = job.consecutive_failures || 0;
+    const lastErr = job.last_run && job.last_run.error_msg ? job.last_run.error_msg : '';
+    const failBanner = fails >= 1
+        ? `<div class="sched-fail-banner" role="status">
+             <strong>${fails === 1 ? 'The last run failed.' : `The last ${fails} runs all failed.`}</strong>
+             This job is still firing on schedule; its runs are not completing.
+             ${lastErr ? `<div class="sched-fail-error"><code>${escapeHtml(lastErr)}</code></div>` : ''}
+           </div>`
+        : '';
+
     container.innerHTML = `
+        ${failBanner}
         <div class="sched-header">
             <h2>${escapeHtml(job.name)}</h2>
             <div class="sched-actions">

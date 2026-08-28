@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"time"
@@ -41,6 +42,11 @@ func (h *ScheduleHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		store.ScheduledJob
 		LastRun    *store.ScheduledRun `json:"last_run"`
 		NextFireAt *string             `json:"next_fire_at"`
+		// ConsecutiveFailures counts failed runs back from the most recent.
+		// A job whose scheduling works but whose every run fails is otherwise
+		// indistinguishable from a healthy one in the jobs list — it shows as
+		// enabled, with a next fire time, accumulating failures nobody sees.
+		ConsecutiveFailures int `json:"consecutive_failures"`
 	}
 	enriched := make([]enrichedJob, 0, len(jobs))
 	for _, job := range jobs {
@@ -49,6 +55,7 @@ func (h *ScheduleHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			ej.LastRun = lastRun
 		}
+		ej.ConsecutiveFailures = h.countConsecutiveFailures(r.Context(), job.ID)
 		s, err := parser.Parse(job.CronExpr)
 		if err == nil {
 			loc := time.UTC
@@ -146,18 +153,18 @@ func (h *ScheduleHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 
 	// Build ScheduledJob with defaults
 	job := store.ScheduledJob{
-		Name:        body.Name,
-		Description: body.Description,
-		CronExpr:    body.CronExpr,
-		Timezone:    body.Timezone,
-		AgentType:   body.AgentType,
-		RepoPath:    body.RepoPath,
-		BaseBranch:  body.BaseBranch,
-		Prompt:      body.Prompt,
-		Flags:       body.Flags,
-		JobType:     jobType,
-		WorkflowID:  body.WorkflowID,
-		Enabled:     intPtrOr(body.Enabled, 1),
+		Name:            body.Name,
+		Description:     body.Description,
+		CronExpr:        body.CronExpr,
+		Timezone:        body.Timezone,
+		AgentType:       body.AgentType,
+		RepoPath:        body.RepoPath,
+		BaseBranch:      body.BaseBranch,
+		Prompt:          body.Prompt,
+		Flags:           body.Flags,
+		JobType:         jobType,
+		WorkflowID:      body.WorkflowID,
+		Enabled:         intPtrOr(body.Enabled, 1),
 		MaxDurationS:    intPtrOr(body.MaxDurationS, 3600),
 		CleanupWorktree: intPtrOr(body.CleanupWorktree, 1),
 	}
@@ -314,4 +321,34 @@ func (h *ScheduleHandler) ValidateCron(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"valid": true, "next_fire_times": nextFires})
+}
+
+// consecutiveFailureWindow is how many recent runs are examined when deciding
+// whether a job is failing. Enough to be confident it is not a one-off, small
+// enough to stay cheap for every job on every list.
+const consecutiveFailureWindow = 20
+
+// countConsecutiveFailures counts failed runs back from the most recent,
+// stopping at the first run that did not fail. Pending and running runs stop
+// the count without contributing to it: a job that is currently trying again
+// is not yet a job that failed again.
+func (h *ScheduleHandler) countConsecutiveFailures(ctx context.Context, jobID int64) int {
+	runs, err := h.sched.GetRunsForJob(ctx, jobID, consecutiveFailureWindow)
+	if err != nil {
+		return 0
+	}
+	return countConsecutiveFailedRuns(runs)
+}
+
+// countConsecutiveFailedRuns counts failed runs from the front of a
+// newest-first list, stopping at the first run that did not fail.
+func countConsecutiveFailedRuns(runs []store.ScheduledRun) int {
+	n := 0
+	for _, run := range runs {
+		if run.Status != "failed" {
+			break
+		}
+		n++
+	}
+	return n
 }

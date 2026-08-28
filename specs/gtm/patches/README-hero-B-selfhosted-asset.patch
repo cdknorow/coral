@@ -1,0 +1,23 @@
+# OPTION B — self-host the hero from the repo (DRAFT, operator approval required)
+#
+# Serves assets/icons/corral-dashboard-tour.gif (1400x677, 2.5MB, already in the repo)
+# over raw.githubusercontent.com instead of the 403-ing Loom CDN. Removes the external
+# dependency entirely.
+#
+# GATE: @Developer Advocate must confirm this GIF matches the shipping UI before this
+# ships. It predates the current build. A stale screenshot on HN is a credibility hit.
+# Mutually exclusive with OPTION A.
+--- a/README.md
++++ b/README.md
+@@ -25,10 +25,9 @@
+ 
+ ---
+ 
+-<!-- TODO: Replace with hosted mp4 once uploaded to GitHub -->
+ <p align="center">
+   <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">
+-    <img src="https://cdn.loom.com/sessions/thumbnails/7dce83519c8d4882af5a15bb9d727c21-with-play.gif" alt="Watch Coral in action" width="720" />
++    <img src="https://raw.githubusercontent.com/cdknorow/coral/main/assets/icons/corral-dashboard-tour.gif" alt="Coral dashboard: multiple agents running in parallel" width="720" />
+   </a>
+ </p>
+ 

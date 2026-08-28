@@ -97,12 +97,10 @@ func loadBoardState() map[string]any {
 	}
 
 	safeName := strings.NewReplacer("/", "_", "\\", "_").Replace(sessionName)
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-
-	statePath := filepath.Join(home, ".coral", fmt.Sprintf("board_state_%s.json", safeName))
+	// Must match coral-board's stateFilePath: the CLI writes this file into the
+	// launching server's data directory, so reading ~/.coral unconditionally
+	// would look in the wrong place for any server started with --home.
+	statePath := filepath.Join(coralDir(), fmt.Sprintf("board_state_%s.json", safeName))
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return nil
@@ -123,4 +121,17 @@ func exec(name string, args ...string) (string, error) {
 	cmd := osexec.Command(name, args...)
 	out, err := cmd.Output()
 	return string(out), err
+}
+
+// coralDir returns the data directory of the Coral server that launched this
+// agent, falling back to ~/.coral. Coral sets CORAL_DATA_DIR in every agent's
+// environment; see agent.CoralEnv.
+func coralDir() string {
+	for _, k := range []string{"CORAL_DATA_DIR", "CORAL_DIR"} {
+		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
+			return v
+		}
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".coral")
 }

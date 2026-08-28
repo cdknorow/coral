@@ -1,0 +1,46 @@
+# Cut the full-text search claim — search has NEVER worked (DRAFT, operator approval required)
+#
+# *** APPLIES ON TOP OF README-COMBINED-apply-all.patch (or the five separate patches). ***
+#
+# FTSBody is declared at internal/agent/agent.go:66 and read at internal/background/
+# indexer.go:114-115 — and ASSIGNED NOWHERE. I grepped every assignment form across the whole
+# repo, tests included: zero results. So `if s.FTSBody != ""` is never true, UpsertFTS is
+# never called, and the session_fts virtual table stays empty forever.
+#
+# Production confirms it: 56 indexed sessions, ZERO fts rows, for months. The indexer itself
+# works correctly — only the FTS half is dead, which is why reading indexer.go shows what
+# looks like working search machinery.
+#
+# The demonstration that settles it (Developer Advocate): the session list DISPLAYS the string
+# "MEMORY-TOKEN-7731 the capital of the demo is Coralville", and searching q=Coralville returns
+# 0 hits. A string visible on screen that the product's own search cannot find.
+#
+# TWO EDITS:
+#   :119 features row — drop "Full-text search across", keep what is true and verified.
+#        Session history, auto-summaries, tags and notes all work and are visible today.
+#   :135 comparison table — remove the "Search chat history" row outright. It claims a
+#        capability we do not have, against competitors, which is the worst place to have one.
+#        (If the comparison table is deleted wholesale per the Strategist's recommendation,
+#        this hunk becomes redundant — harmless either way, but check before applying.)
+#
+# Tracked as Growth Engineer task #40. This patch does not wait on that fix: the claim is
+# false today and the README is what users read today.
+--- a/README.md
++++ b/README.md
+@@ -115,7 +115,7 @@
+ | **Scheduled jobs** | Launch agents or workflows on a cron schedule in isolated worktrees |
+ | **Task management** | Create, assign, and track tasks on the message board; agents mark tasks complete as they finish |
+ | **Token tracking** | Monitor token usage per agent and per session — see cost and consumption in real time |
+-| **Session history** | Full-text search across all past sessions with auto-summaries, tags, and notes |
++| **Session history** | Every past session kept with auto-summaries, tags, and notes |
+ | **Git integration** | Tracks commits, branches, and changed files per agent session |
+ | **Webhooks** | Notifications to Slack, Discord, or any HTTP endpoint |
+ 
+@@ -131,7 +131,6 @@
+ | Real-time monitoring dashboard | ✓ | — | IDE only | — | — |
+ | Inter-agent message board | ✓ | Basic | — | API-level | API-level |
+ | Sleep & wake with full state | ✓ | — | — | — | — |
+-| Search chat history | ✓ | — | — | — | — |
+ | Dynamic team composition | ✓ | Limited | — | ✓ | ✓ |
+ | Process-level isolation | ✓ | ✓ | ✓ | — | — |
+ | Open source | ✓ | — | — | ✓ | ✓ |

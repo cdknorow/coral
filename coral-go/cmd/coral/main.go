@@ -67,6 +67,22 @@ func main() {
 	cfg := config.Load(*homeDir)
 	setupCrashLogging(cfg.CoralDir())
 
+	// Warn if typing "coral" would run a different program. An abandoned PyPI
+	// package ships the same six binary names, uses the same ~/.coral directory
+	// and the same port, and pip --user installs ahead of us on a default PATH.
+	// Silently running the wrong product looks exactly like running this one.
+	if w := startup.CheckPATHShadowing(); w != nil {
+		log.Printf("[WARNING] 'coral' on your PATH is NOT this program.")
+		log.Printf("[WARNING]   typing 'coral' runs: %s", w.OnPath)
+		log.Printf("[WARNING]   you are running:     %s", w.Running)
+		log.Printf("[WARNING] Another program of the same name comes earlier on your PATH.")
+		log.Printf("[WARNING] Check with: command -v coral")
+	}
+	// Point tracking at this instance's data directory before anything can read
+	// it. The package default is ~/.coral, so a late call here would let the
+	// production install's state be read by an instance run with --home.
+	tracking.SetCoralDir(cfg.CoralDir())
+
 	// Resolve license variant name for logging (no feature gating).
 	variantName := ""
 	if cfg.LicenseRequired() {
@@ -109,7 +125,6 @@ func main() {
 	defer rs.Close()
 
 	// Anonymous install/upgrade tracking (non-blocking)
-	tracking.SetCoralDir(cfg.CoralDir())
 	tracking.TrackInstallAsync()
 
 	// Check for updates on startup (non-blocking, skip for license-free builds)

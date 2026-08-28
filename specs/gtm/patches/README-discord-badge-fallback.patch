@@ -1,0 +1,27 @@
+# Discord badge fallback (DRAFT, operator approval required)
+#
+# Current badge uses img.shields.io/discord/placeholder — 'placeholder' is not a guild ID,
+# and shields.io renders the literal text 'Discord | invalid' (its own <title> says
+# 'Discord: invalid'). Verified live.
+#
+# This is the NO-BLOCKER fallback: a static label badge, no member count, no guild ID
+# needed. If the operator supplies the numeric guild ID, use the live-count version
+# instead:  https://img.shields.io/discord/<GUILD_ID>?label=Discord&color=5865F2
+#
+# *** REGENERATED against post-docs-links context. ***
+# The previous version carried the OLD docs-badge line as context, which README-docs-links
+# replaces. `patch` absorbed that with fuzz; `git apply` is EXACT and rejected it. All earlier
+# "verified byte-identical" results for this patch were produced with the permissive tool.
+# APPLY ORDER: after README-docs-links.
+
+--- a/README.md
++++ b/README.md
+@@ -11,7 +11,7 @@
+   <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
+   <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs"><img src="https://img.shields.io/badge/docs-in_repo-blue" alt="Documentation"></a>
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><img src="https://img.shields.io/badge/support_Coral-$49.99_one--time-FF7D52" alt="Support Coral development for $49.99"></a>
+-  <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/discord/placeholder?label=Discord&color=5865F2" alt="Discord"></a>
++  <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+ </p>
+ 
+ <p align="center">

@@ -13,6 +13,7 @@ import (
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -279,10 +280,12 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	// Context window from live sessions
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 	ctxWindowMap := make(map[string]int, len(allLive))
+	createdAtMap := make(map[string]string, len(allLive))
 	for _, ls := range allLive {
 		if ls.ContextWindow > 0 {
 			ctxWindowMap[ls.SessionID] = ls.ContextWindow
 		}
+		createdAtMap[ls.SessionID] = ls.CreatedAt
 	}
 
 	var sessions []map[string]any
@@ -302,6 +305,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		if working && strings.HasPrefix(evSummary, "Ran: sleep") {
 			working = false
 		}
+		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 
 		var waitingReason, waitingSummary any
 		if needsInput {
@@ -336,6 +340,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"icon":               nilIfEmpty(icons[sid]),
 			"working_directory":  agent.WorkingDir,
 			"waiting_for_input":  needsInput,
+			"not_started":        notStarted,
 			"done":               done,
 			"stuck":              false,
 			"waiting_reason":     waitingReason,
@@ -393,6 +398,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"icon":               ls.Icon,
 			"branch":             nil,
 			"waiting_for_input":  false,
+			"not_started":        false,
 			"done":               false,
 			"waiting_reason":     nil,
 			"waiting_summary":    nil,
@@ -554,3 +560,61 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+const (
+	// notStartedThresholdSeconds is how long an agent may produce nothing before
+	// we tell the user to look at its terminal. Long enough that a slow start is
+	// not mistaken for a stall; short enough that a new user has not given up.
+	notStartedThresholdSeconds = 25
+
+	// notStartedWindowSeconds bounds how long after launch this is reported, so
+	// a long-lived agent that is simply unused does not carry the label forever.
+	notStartedWindowSeconds = 15 * 60
+)
+
+// agentNeverStarted reports that an agent has written terminal output, has
+// never emitted a single agent event, and has been silent since — within a
+// window after launch.
+//
+// What it does NOT claim is that the agent is blocked. Measured against a real
+// agent: it is true while the agent sits on Claude Code's trust-folder prompt,
+// and equally true once that prompt is answered and the agent waits idle at its
+// own REPL having been given nothing to do. From outside the CLI those two are
+// indistinguishable — both are a live process waiting on stdin — and pretending
+// otherwise would mean matching one CLI's prompt wording, which breaks the
+// first time that wording changes and covers only the CLI we encoded.
+//
+// So this reports the union, which is a true statement about both: this agent
+// has not done anything yet, and its terminal is where the answer is. It stops
+// the moment the agent emits its first event, and after the window regardless.
+//
+// Terminal sessions are excluded: they are a shell, they never emit agent
+// events, and sitting at a prompt is what they are for.
+func agentNeverStarted(agentType, latestEvent string, stalenessSeconds, sessionAgeSeconds float64) bool {
+	if agentType == at.Terminal {
+		return false
+	}
+	if latestEvent != "" {
+		return false // it started; whatever it is doing now, it is not this
+	}
+	if sessionAgeSeconds <= 0 || sessionAgeSeconds > notStartedWindowSeconds {
+		return false
+	}
+	return stalenessSeconds >= notStartedThresholdSeconds
+}
+
+// sessionAgeSeconds returns how long ago a session was created, or 0 when the
+// timestamp is missing or unparseable.
+func sessionAgeSeconds(createdAt string) float64 {
+	if createdAt == "" {
+		return 0
+	}
+	t, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return 0
+	}
+	age := time.Since(t).Seconds()
+	if age < 0 {
+		return 0
+	}
+	return age
+}

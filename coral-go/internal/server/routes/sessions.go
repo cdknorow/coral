@@ -326,6 +326,14 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if latestEvents == nil {
 		latestEvents = map[string][2]string{}
 	}
+	// Launch times, used to bound how long after launch a stalled start is
+	// reported. See agentNeverStarted.
+	createdAtMap := map[string]string{}
+	if live, err := h.ss.GetAllLiveSessions(ctx); err == nil {
+		for _, ls := range live {
+			createdAtMap[ls.SessionID] = ls.CreatedAt
+		}
+	}
 	var tokenUsageMap map[string]*store.TokenUsage
 	var latestTurnCtx map[string]int
 	if h.tokenStore != nil && len(sessionIDs) > 0 {
@@ -452,6 +460,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		done := latestEv == "stop"
 		staleF, _ := staleness.(float64)
 		working := (latestEv == "tool_use" || latestEv == "prompt_submit") && staleF < 120
+		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 		// Sleep loop detection: agent stuck in a sleep loop is not actually working
 		if working && strings.HasPrefix(evSummary, "Ran: sleep") {
 			working = false
@@ -502,6 +511,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"branch":             branchVal,
 			"repo_name":          repoNameVal,
 			"waiting_for_input":  waiting,
+			"not_started":        notStarted,
 			"done":               done,
 			"waiting_reason":     nilIf(!waiting, latestEv),
 			"waiting_summary":    nilIf(!waiting, evSummary),
@@ -584,6 +594,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"icon":               ls.Icon,
 			"branch":             nil,
 			"waiting_for_input":  false,
+			"not_started":        false,
 			"done":               false,
 			"waiting_reason":     nil,
 			"waiting_summary":    nil,
@@ -2056,6 +2067,9 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		MCPServers:      storedMCPServers,
 		ProxyBaseURL:    restartProxyURL,
 		PermissionMode:  userSettings["default_permission_mode"],
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}))
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
 	h.terminal.SendToTarget(ctx, target, cmd)
@@ -2198,6 +2212,9 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		Tools:           storedTools,
 		MCPServers:      storedMCPServers,
 		PermissionMode:  userSettings["default_permission_mode"],
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}))
 	h.terminal.SendToTarget(ctx, target, cmd)
 
@@ -2309,6 +2326,12 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "working_dir is required")
 		return
 	}
+	// An unknown agent_type used to fall through to Claude and return 200
+	// ok:true, silently starting an agent the caller never asked for.
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	slog.Info("launch request received",
 		"working_dir", body.WorkingDir,
 		"agent_type", body.AgentType,
@@ -2363,7 +2386,8 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 			body.AgentType, body.BoardName, body.DisplayName)
 	}
 
-	tracking.TrackEvent("session_launched", nil)
+	tracking.TrackEvent(tracking.EventSessionLaunched, nil)
+	tracking.TrackOnce(tracking.EventFirstAgentLaunched, nil)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -2398,6 +2422,18 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if body.BoardName == "" || body.WorkingDir == "" || len(body.Agents) == 0 {
 		errBadRequest(w, "board_name, working_dir, and agents required")
 		return
+	}
+	// Validate the team-level type and every per-agent override before
+	// launching anything: a team that fails halfway leaves live agents behind.
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	for _, a := range body.Agents {
+		if err := agent.ValidateAgentType(a.AgentType); err != nil {
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, err))
+			return
+		}
 	}
 
 	ctx := r.Context()
@@ -2490,9 +2526,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		// Resolve model: per-agent request wins, else user's default_model_<type>.
 		effectiveModel := defaultModelFromSettings(userSettings, agentType, agentDef.Model)
 
-		// Build per-agent flags: start with team-level, add model if resolved
-		agentFlags := make([]string, len(body.Flags))
-		copy(agentFlags, body.Flags)
+		// Team-level flags are shared by every member, which may use different
+		// agent types. Drop engine-specific permission flags here and let
+		// launchSession translate the configured permission mode for each agent.
+		// Otherwise a mixed team can pass (for example) a Codex bypass flag to
+		// Claude alongside Claude's own --permission-mode flag.
+		agentFlags := stripAgentPermissionFlags(body.Flags)
 		if effectiveModel != "" {
 			agentFlags = append(agentFlags, "--model", effectiveModel)
 		}
@@ -2545,7 +2584,8 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if teamID > 0 {
 		resp["team_id"] = teamID
 	}
-	tracking.TrackEvent("team_launched", map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
+	tracking.TrackEvent(tracking.EventTeamLaunched, map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
+	tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -3081,6 +3121,15 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		}
 	}
 
+	if err := agent.ValidateAgentType(agentType); err != nil {
+		return nil, err
+	}
+
+	// NOTE: this value selects the LAUNCH PATH, not the terminal a session ends
+	// up on. "pty" means "go through the TerminalBackend abstraction", which is
+	// how tmux-backed sessions are launched too — h.backend is a TmuxBackend in
+	// that case. It is persisted and drives the same branch on wake, so it must
+	// keep meaning exactly this. Use terminalKind below for what actually runs.
 	if backend == "" {
 		if h.backend != nil {
 			backend = "pty"
@@ -3127,6 +3176,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		ProxyBaseURL:    proxyBaseURL,
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}
 	if cliPath != "" {
 		log.Printf("[launch] using custom CLI path: %s", cliPath)
@@ -3208,13 +3260,14 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 			)
 			return nil, fmt.Errorf("tmux new-session failed: %w", err)
 		}
-		// Set CORAL_SESSION_NAME and CORAL_SUBSCRIBER_ID in the tmux session environment
+		// Put the Coral environment into the tmux session so that anything the
+		// user runs by hand in that pane — coral-board especially — reaches the
+		// server that launched the agent. Same source as the agent's own env.
 		if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {
-			if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "CORAL_SESSION_NAME", sessionName); err != nil {
-				log.Printf("[launch] failed to set CORAL_SESSION_NAME for %s: %v", sessionName, err)
-			}
-			if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "CORAL_SUBSCRIBER_ID", role); err != nil {
-				log.Printf("[launch] failed to set CORAL_SUBSCRIBER_ID for %s: %v", sessionName, err)
+			for _, kv := range agent.CoralEnv(launchParams) {
+				if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, kv[0], kv[1]); err != nil {
+					log.Printf("[launch] failed to set %s for %s: %v", kv[0], sessionName, err)
+				}
 			}
 			// Prepend Coral tools dir to PATH so coral-board and hooks are
 			// discoverable by subshells Claude spawns (e.g. Bash tool).
@@ -3287,7 +3340,25 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	return map[string]any{
 		"ok": true, "session_id": sessionID, "session_name": sessionName,
 		"log_file": logFile, "backend": backend,
+		// backend names the launch path and reads as "pty" even for a tmux
+		// session; terminal names what the session actually runs on. Reporting
+		// only the former is how a silent backend downgrade went unnoticed.
+		"terminal": terminalKind(h.backend),
 	}, nil
+}
+
+// terminalKind names the terminal a session actually runs on, as opposed to
+// the launch path taken to get there.
+func terminalKind(b ptymanager.TerminalBackend) string {
+	switch b.(type) {
+	case *ptymanager.PTYBackend:
+		return "pty"
+	case *ptymanager.TmuxBackend:
+		return "tmux"
+	case nil:
+		return "tmux"
+	}
+	return "unknown"
 }
 
 // setupBoardAndPrompt subscribes a session to a message board.
@@ -4036,6 +4107,9 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		ProxyBaseURL:    proxyBaseURL,
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}
 
 	if ls.AgentType != at.Terminal {

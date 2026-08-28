@@ -104,6 +104,10 @@ function formatStaleness(seconds) {
 function getStateLabel(s) {
     if (s.sleeping) return "Sleeping";
     if (s.waiting_for_input) return "Needs input";
+    // The agent has produced output but has never done anything. Most often a
+    // prompt sitting unanswered in its terminal; sometimes just an agent that
+    // was never given a task. Both mean: look at the terminal.
+    if (s.not_started) return "Check terminal";
     if (s.stuck) return "Stuck";
     if (s.working) return "Working";
     if (s.done) return "Done";
@@ -112,6 +116,7 @@ function getStateLabel(s) {
 
 function getMobileStatusChip(s) {
     if (s.waiting_for_input) return { label: "Needs Input", className: "needs-input" };
+    if (s.not_started) return { label: "Check Terminal", className: "needs-input" };
     if (s.stuck) return { label: "Error", className: "error" };
     if (s.working) return { label: "Running", className: "running" };
     return { label: "Idle", className: "idle" };
@@ -156,6 +161,7 @@ function buildSessionTooltip(s) {
 function getDotClass(s) {
     if (s.sleeping) return "sleeping";
     if (s.waiting_for_input) return "waiting";
+    if (s.not_started) return "waiting";
     if (s.stuck) return "stuck";
     if (s.working) return "working";
     if (s.done) return "done";
@@ -1252,7 +1258,9 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const branchTag = "";
     const waitingBadge = s.waiting_for_input
         ? ' <span class="badge waiting-badge">Needs input</span>'
-        : '';
+        : (s.not_started
+            ? ' <span class="badge waiting-badge">Check terminal</span>'
+            : '');
     const isTerminal = s.agent_type === "terminal";
     const sid = s.session_id ? escapeAttr(s.session_id) : "";
     const goalText = (isActive && s.summary) ? escapeHtml(s.summary) : null;
@@ -1262,14 +1270,16 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const displayLabel = s.display_name || (isCompact && s.board_job_title) || (isTerminal ? "Terminal" : "Agent");
     const mobileStatus = getMobileStatusChip(s);
     const lastActivity = formatStaleness(s.staleness_seconds);
-    const needsAttention = !!(s.waiting_for_input || s.stuck);
+    const needsAttention = !!(s.waiting_for_input || s.stuck || s.not_started);
     const unreadBoardBadge = s.board_unread > 0
         ? `<span class="session-mobile-meta-pill">${s.board_unread} unread</span>`
         : '';
-    const activityLabel = s.waiting_for_input ? "Waiting since" : "Last activity";
+    const activityLabel = (s.waiting_for_input || s.not_started) ? "Waiting since" : "Last activity";
     const mobileAttentionBanner = s.waiting_for_input
         ? '<div class="session-mobile-banner">Waiting for your input</div>'
-        : (s.stuck ? '<div class="session-mobile-banner error">Session needs attention</div>' : '');
+        : (s.not_started
+            ? '<div class="session-mobile-banner">Nothing yet — open the terminal</div>'
+            : (s.stuck ? '<div class="session-mobile-banner error">Session needs attention</div>' : ''));
     const avatar = _renderAvatar(s, dotClass);
     const _sleepingMenu = `
             <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}', 'wake')">
@@ -2219,6 +2229,7 @@ export async function getTeamTokenUsage(boardName) {
         if (!data.totals.total_tokens || data.totals.total_tokens === 0) return null;
         const parts = [_formatTokens(data.totals.total_tokens) + ' tokens'];
         if (data.totals.cost_usd > 0) parts.push(_formatCost(data.totals.cost_usd));
+        if (data.totals.execution_time_sec > 0) parts.push(formatDuration(data.totals.execution_time_sec));
         return parts.join(' · ');
     } catch {
         return null;
@@ -2243,15 +2254,17 @@ export async function showTeamTokenUsage(boardName) {
         return;
     }
 
-    // Fetch proxy cost per session in parallel
-    const results = await Promise.all(teamSessions.map(async (s) => {
+    // Fetch proxy cost per session and message-based execution timing in parallel.
+    const [results, usageData] = await Promise.all([Promise.all(teamSessions.map(async (s) => {
         try {
             const resp = await fetch(`/api/proxy/session/${encodeURIComponent(s.session_id)}/cost`);
             if (!resp.ok) return null;
             const data = await resp.json();
             return { name: s.display_name || s.name, ...data };
         } catch { return null; }
-    }));
+    })), fetch(`/api/token-usage?board_name=${encodeURIComponent(boardName)}`)
+        .then(resp => resp.ok ? resp.json() : null)
+        .catch(() => null)]);
 
     const agents = results.filter(r => r && r.total_requests > 0);
 
@@ -2272,6 +2285,9 @@ export async function showTeamTokenUsage(boardName) {
     }
 
     // Render summary + agent table
+    const executionTimeRow = usageData?.totals?.execution_time_sec > 0
+        ? `<span class="info-token-label">Execution Time</span><span class="info-token-value">${formatDuration(usageData.totals.execution_time_sec)}</span>`
+        : '';
     let html = `<div class="info-token-grid" style="margin-bottom:16px">
         <span class="info-token-label">Input</span><span class="info-token-value">${_formatTokens(totalIn)}</span>
         <span class="info-token-label">Output</span><span class="info-token-value">${_formatTokens(totalOut)}</span>
@@ -2279,6 +2295,7 @@ export async function showTeamTokenUsage(boardName) {
         <span class="info-token-label">Cache Write</span><span class="info-token-value">${_formatTokens(totalCacheW)}</span>
         <span class="info-token-label">Requests</span><span class="info-token-value">${totalReqs}</span>
         <span class="info-token-label">Cost</span><span class="info-token-value">${_formatCost(totalCost)}</span>
+        ${executionTimeRow}
     </div>`;
 
     html += `<table class="cost-table" style="font-size:12px">
@@ -2320,17 +2337,27 @@ export function updateWaitingIndicator(s) {
     const dot = document.getElementById("session-status-dot");
     const banner = document.getElementById("waiting-banner");
     if (dot) {
-        dot.classList.toggle("waiting", !!s.waiting_for_input);
+        dot.classList.toggle("waiting", !!(s.waiting_for_input || s.not_started));
         dot.classList.toggle("stuck", !!s.stuck);
         dot.classList.toggle("working", !!s.working);
         dot.classList.toggle("done", !!s.done);
     }
     if (banner) {
-        // Only show banner for needs-input state
-        banner.style.display = s.waiting_for_input ? "" : "none";
+        // Two states share this banner. waiting_for_input is a running agent
+        // asking a question. not_started is an agent that has never done
+        // anything — blocked on a first-run prompt, or simply never given a
+        // task; those are indistinguishable from outside the CLI, so the copy
+        // claims only what is true of both. We never answer a prompt on the
+        // user's behalf: the banner's job is to point at the terminal, where
+        // the question is already on screen.
+        banner.style.display = (s.waiting_for_input || s.not_started) ? "" : "none";
         if (s.waiting_for_input) {
             banner.className = "waiting-banner";
             banner.textContent = "⏳ Agent is waiting for input";
+        } else if (s.not_started) {
+            banner.className = "waiting-banner waiting-banner-not-started";
+            banner.textContent =
+                "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.";
         }
     }
 }

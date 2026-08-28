@@ -1,0 +1,73 @@
+# Remove the unsupportable "any CLI agent" extensibility claim (DRAFT, operator approval required)
+#
+# *** APPLY ORDER: THIS PATCH APPLIES ON TOP OF README-P0-worktree-isolation-claim.patch. ***
+# Both edit adjacent rows of the features table, so applied against bare HEAD this one
+# conflicts. Order is: P0 first, then this. (Caught by stack-testing the full set; each
+# patch verifies clean individually against HEAD, which is not sufficient.)
+#
+# Developer Advocate closed question 3f: adding a fifth agent requires writing Go and
+# recompiling. internal/agent/agent.go:157-168 is a hardcoded switch over four types;
+# internal/agenttypes/types.go:8-12 defines exactly claude/gemini/codex/pi (+terminal, a raw
+# shell that GetAgent never returns). A tree-wide grep for
+# custom_agent|customagent|user_defined|plugin|registerAgent returns NOTHING — no registry,
+# no plugin interface, no config file, no UI form, no env var.
+#
+# Compounding it: the switch's `default:` arm means an unknown agent_type returns HTTP 200
+# ok:true and SILENTLY STARTS CLAUDE (observed by the Dev Advocate). A user testing our
+# advertised extensibility gets a real Claude session burning their tokens and no error.
+#
+# Three claims imply user-facing extensibility that does not exist:
+#   :37  "...or any CLI-based agent"
+#   :81  "Any CLI-based agent can be added."
+#   :110 "Any CLI agent | ...and any CLI-based tool"
+#   :131 comparison table: "| Works with any CLI agent | ✓ | — | — | — | — |"
+#
+# *** REVISED — the earlier version of this patch fixed only THREE of the four. ***
+# :131 claims a DISPROVEN capability as an advantage over four NAMED competitors, which is
+# the worst placement for a false claim: it invites a check against tools where the feature
+# genuinely exists. Found by grepping the fully-patched README rather than trusting the
+# enumeration in this header. Note the FTS row was removed from this same table, four lines
+# below, in a separate patch — I was editing this table and left another false row in it.
+# (If the comparison table is deleted wholesale per the Strategist, this hunk is redundant.)
+#
+# The features row is retitled to carry the real differentiator (mixing vendors in one team,
+# per the Strategist's wedge) rather than leaving a deflated cell behind. The requirements
+# line additionally now states agents must be INSTALLED AND AUTHENTICATED — per the Dev
+# Advocate, that is the real long pole on a clean machine and Coral does neither.
+--- a/README.md
++++ b/README.md
+@@ -34,7 +34,7 @@
+ 
+ ## What is Coral?
+ 
+-Coral is a local server that lets you run multiple AI coding agents — Claude Code, Gemini CLI, Codex, Pi.dev, or any CLI-based agent — as a coordinated team on the same codebase.
++Coral is a local server that lets you run multiple AI coding agents — Claude Code, Gemini CLI, Codex, and Pi.dev — as a coordinated team on the same codebase.
+ 
+ It works by managing three things:
+ 
+@@ -78,7 +78,7 @@
+ 
+ Open **http://localhost:8420** in your browser. Click **+New** to launch your first agent or create a team.
+ 
+-> **Requirements:** [tmux](https://github.com/tmux/tmux). Coral works with Claude Code, Codex, Gemini CLI, and Pi.dev out of the box. Any CLI-based agent can be added.
++> **Requirements:** [tmux](https://github.com/tmux/tmux), and at least one coding agent CLI already installed and authenticated — Claude Code, Codex, Gemini CLI, or Pi.dev. Coral does not install or authenticate agents for you.
+ 
+ ## How It Works
+ 
+@@ -109,7 +109,7 @@
+ | Feature | Description |
+ |---|---|
+ | **Multi-agent orchestration** | Run multiple agents in parallel, each in its own tmux session, optionally on a dedicated team branch in a git worktree |
+-| **Any CLI agent** | Works with Claude Code, Gemini CLI, Codex, Pi.dev, and any CLI-based tool |
++| **Four coding agents** | Claude Code, Codex, Gemini CLI, and Pi.dev — mix different vendors' agents in one team |
+ | **Real-time dashboard** | Web UI showing live terminal output, agent status, and controls |
+ | **Message board** | Inter-agent communication with cursor-based delivery and @mentions |
+ | **Sleep & wake** | Suspend agents and resume with full state — prompts, messages, session context |
+@@ -130,7 +130,6 @@
+ |---|:---:|:---:|:---:|:---:|:---:|
+ | Multiple agents in parallel | ✓ | Limited | ✓ | ✓ | ✓ |
+ | Isolated execution environments | ✓ | ✓ | ✓ | — | — |
+-| Works with any CLI agent | ✓ | — | — | — | — |
+ | Real-time monitoring dashboard | ✓ | — | IDE only | — | — |
+ | Inter-agent message board | ✓ | Basic | — | API-level | API-level |
+ | Sleep & wake with full state | ✓ | — | — | — | — |

@@ -1,0 +1,158 @@
+# COMBINED apply-all — all five README corrections in one patch (DRAFT, operator approval required)
+#
+# CONVENIENCE PATH ONLY. Use this when approving the whole set at once; it cannot be
+# misordered because there is no order. If you want to approve changes individually — in
+# particular if you want to ship ONLY the P0 safety fix today — use the five separate patches
+# instead, in this order:
+#   1. README-P0-worktree-isolation-claim.patch     <- the safety fix; approvable alone
+#   2. README-remove-any-cli-agent-claim.patch      <- MUST follow #1 (adjacent table rows)
+#   3. README-docs-links.patch
+#   4. README-discord-badge-fallback.patch
+#   5. README-hero-A-remove-broken-image.patch
+#
+# This combined patch uses HERO OPTION A (replace the broken 403 image with a text link),
+# because it needs no new asset and is shippable today. Option B (self-host
+# assets/icons/corral-dashboard-tour.gif) is gated on the Developer Advocate confirming that
+# GIF matches the shipping UI, and remains available as a separate patch.
+#
+# NOT INCLUDED: the D1 download-filename fix, which is already applied in the working tree
+# and approved separately.
+#
+# WHAT THIS FIXES, and what each is grounded in:
+#
+# P0 — per-agent worktree isolation does not exist. sessions.go:2438 keys ONE worktree on the
+#   board name and hands it to every agent; modals.html:240 has no `checked` attribute, so it
+#   is OFF BY DEFAULT and the median user's team runs in their own working directory.
+#   ":41 ... without merge conflicts" is a SAFETY claim: Demo 1 put two agents on one function
+#   and produced "Truncate redeclared in this block", build failed. This is the only change in
+#   the set where a user acting on our current copy can lose work in their own repository.
+#
+# ANY-CLI — agent.go:157-168 is a hardcoded four-case switch; a tree-wide grep for
+#   custom_agent|plugin|registerAgent returns nothing. The `default:` arm silently starts
+#   Claude for an unknown agent_type, with HTTP 200 and no error.
+#
+# DOCS LINKS — all four pointed at cdknorow.github.io/coral, which instructs
+#   `pip install agent-coral`. That command SUCCEEDS and installs the retired Python product
+#   (PyPI 4.4.1), which collides with current Coral on binary names, ~/.coral, and port 8420.
+#
+# DISCORD — img.shields.io/discord/placeholder renders the literal text "Discord | invalid"
+#   (shields.io's own <title> says "Discord: invalid"). Static-label fallback needs no guild ID.
+#
+# HERO — the Loom CDN thumbnail returns HTTP 403 with a plain client AND a browser UA, so
+#   GitHub's camo proxy gets the same. The largest element above the fold renders broken today.
+#
+# REVISED: now also removes the comparison-table row '| Works with any CLI agent | ✓ |' —
+#   a disproven capability claimed against four named competitors, missed by the first
+#   version of the any-CLI patch.
+#
+# Verified: applies cleanly to HEAD, and produces byte-identical output to applying the five
+# separate patches in the order above.
+--- a/README.md
++++ b/README.md
+@@ -9,15 +9,15 @@
+ <p align="center">
+   <a href="https://github.com/cdknorow/coral/stargazers"><img src="https://img.shields.io/github/stars/cdknorow/coral?style=social" alt="GitHub Stars"></a>
+   <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
+-  <a href="https://cdknorow.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
++  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs"><img src="https://img.shields.io/badge/docs-in_repo-blue" alt="Documentation"></a>
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><img src="https://img.shields.io/badge/support_Coral-$49.99_one--time-FF7D52" alt="Support Coral development for $49.99"></a>
+-  <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/discord/placeholder?label=Discord&color=5865F2" alt="Discord"></a>
++  <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
+ </p>
+ 
+ <p align="center">
+   <a href="#quick-start">Quick Start</a> &bull;
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
+-  <a href="https://cdknorow.github.io/coral/">Documentation</a> &bull;
++  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs">Documentation</a> &bull;
+   <a href="#features">Features</a> &bull;
+   <a href="#how-it-works">How It Works</a> &bull;
+   <a href="https://discord.gg/qhfgY57AZn">Discord</a>
+@@ -25,20 +25,17 @@
+ 
+ ---
+ 
+-<!-- TODO: Replace with hosted mp4 once uploaded to GitHub -->
+ <p align="center">
+-  <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">
+-    <img src="https://cdn.loom.com/sessions/thumbnails/7dce83519c8d4882af5a15bb9d727c21-with-play.gif" alt="Watch Coral in action" width="720" />
+-  </a>
++  <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21"><strong>▶ Watch Coral in action (2 min)</strong></a>
+ </p>
+ 
+ ## What is Coral?
+ 
+-Coral is a local server that lets you run multiple AI coding agents — Claude Code, Gemini CLI, Codex, Pi.dev, or any CLI-based agent — as a coordinated team on the same codebase.
++Coral is a local server that lets you run multiple AI coding agents — Claude Code, Gemini CLI, Codex, and Pi.dev — as a coordinated team on the same codebase.
+ 
+ It works by managing three things:
+ 
+-- **Isolated workspaces.** Each agent runs in its own tmux session with its own git worktree, so agents can write code in parallel without merge conflicts.
++- **Separate terminal sessions.** Each agent runs in its own tmux session. You can optionally launch a team into a git worktree on a dedicated `coral-team/<name>` branch, so the team's work stays off your main checkout.
+ - **A shared message board.** Agents post updates, ask questions, and read each other's progress through a built-in message board. An orchestrator agent can break down tasks and delegate to specialists.
+ - **A web dashboard.** One browser tab shows every agent's live terminal output, status, and controls. Launch, pause, wake, restart, or kill agents without switching between terminal windows.
+ 
+@@ -78,7 +75,7 @@
+ 
+ Open **http://localhost:8420** in your browser. Click **+New** to launch your first agent or create a team.
+ 
+-> **Requirements:** [tmux](https://github.com/tmux/tmux). Coral works with Claude Code, Codex, Gemini CLI, and Pi.dev out of the box. Any CLI-based agent can be added.
++> **Requirements:** [tmux](https://github.com/tmux/tmux), and at least one coding agent CLI already installed and authenticated — Claude Code, Codex, Gemini CLI, or Pi.dev. Coral does not install or authenticate agents for you.
+ 
+ ## How It Works
+ 
+@@ -86,10 +83,12 @@
+ 
+ Define a team of agents, each with a role and a system prompt. For example: an Orchestrator that plans and delegates, a Lead Developer that writes code, and a QA Engineer that reviews and tests. You can create teams from the dashboard UI, use built-in templates, or describe what you need in plain English and let AI generate the team configuration.
+ 
+-### 2. Agents work in isolated worktrees
++### 2. Agents run in separate sessions, on a shared team branch
+ 
+-When you launch a team, Coral creates a git worktree for each agent and starts them in separate tmux sessions. Each agent has its own copy of the repo and can read, write, and run commands without interfering with others.
++When you launch a team, Coral starts each agent in its own tmux session. If you enable **Launch in Git Worktree**, Coral also creates one git worktree for the team on a dedicated `coral-team/<name>` branch, so the team's work stays off your main checkout.
+ 
++Agents on a team share that one working directory and the same branch — **they are not isolated from each other, and two agents given overlapping work can and will overwrite or duplicate each other's code.** Scope each agent to its own files. The message board is how agents coordinate, but it is not a lock: it does not prevent a collision on its own.
++
+ ### 3. Agents communicate via the message board
+ 
+ Every team has a shared message board. Agents post status updates, ask for help, and coordinate handoffs. The orchestrator agent can assign tasks and track progress. Messages are delivered reliably with cursor-based tracking — nothing is lost across agent restarts.
+@@ -106,8 +105,8 @@
+ 
+ | Feature | Description |
+ |---|---|
+-| **Multi-agent orchestration** | Run multiple agents in parallel, each in its own git worktree and tmux session |
+-| **Any CLI agent** | Works with Claude Code, Gemini CLI, Codex, Pi.dev, and any CLI-based tool |
++| **Multi-agent orchestration** | Run multiple agents in parallel, each in its own tmux session, optionally on a dedicated team branch in a git worktree |
++| **Four coding agents** | Claude Code, Codex, Gemini CLI, and Pi.dev — mix different vendors' agents in one team |
+ | **Real-time dashboard** | Web UI showing live terminal output, agent status, and controls |
+ | **Message board** | Inter-agent communication with cursor-based delivery and @mentions |
+ | **Sleep & wake** | Suspend agents and resume with full state — prompts, messages, session context |
+@@ -128,7 +127,6 @@
+ |---|:---:|:---:|:---:|:---:|:---:|
+ | Multiple agents in parallel | ✓ | Limited | ✓ | ✓ | ✓ |
+ | Isolated execution environments | ✓ | ✓ | ✓ | — | — |
+-| Works with any CLI agent | ✓ | — | — | — | — |
+ | Real-time monitoring dashboard | ✓ | — | IDE only | — | — |
+ | Inter-agent message board | ✓ | Basic | — | API-level | API-level |
+ | Sleep & wake with full state | ✓ | — | — | — | — |
+@@ -139,8 +137,12 @@
+ 
+ ## Documentation
+ 
+-Full documentation at **[cdknorow.github.io/coral](https://cdknorow.github.io/coral/)**.
++Documentation lives in the repo at **[coral-go/agent_docs](https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs)** — covering teams,
++workflows, scheduled jobs, the message board, webhooks, session history, and the proxy.
+ 
++A hosted docs site is being rebuilt. The previous site documented the retired Python
++implementation and has been taken out of the README until its replacement is published.
++
+ ## Contributing
+ 
+ We welcome contributions! Whether it's adding support for new AI agents, improving the dashboard, or fixing bugs — please open an issue or submit a pull request.
+@@ -155,5 +157,5 @@
+   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
+   <a href="https://github.com/cdknorow/coral">Star the repo</a> &bull;
+   <a href="https://discord.gg/qhfgY57AZn">Join Discord</a> &bull;
+-  <a href="https://cdknorow.github.io/coral/">Read the docs</a>
++  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs">Read the docs</a>
+ </p>

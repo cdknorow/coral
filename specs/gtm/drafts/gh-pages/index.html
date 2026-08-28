@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coral — Multi-agent orchestration for AI coding tools</title>
+<meta name="description" content="Coral runs Claude Code, Codex, Gemini CLI, and Pi.dev as a coordinated engineering team on one codebase. Free, Apache 2.0, runs locally.">
+<style>
+  :root{
+    --bg:#ffffff; --fg:#16181d; --muted:#5b6472; --line:#e3e6ea;
+    --card:#f7f8fa; --accent:#d9542b; --accent-fg:#ffffff;
+    --warn-bg:#fff6ed; --warn-line:#f0c39a; --code-bg:#f2f4f7;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1115; --fg:#e6e8ec; --muted:#98a1b0; --line:#262b33;
+      --card:#161a20; --accent:#ff7d52; --accent-fg:#1a0d06;
+      --warn-bg:#211710; --warn-line:#5c3c22; --code-bg:#1b1f26;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:56px 20px 72px}
+  h1{font-size:1.9rem; line-height:1.25; margin:0 0 10px; letter-spacing:-.02em}
+  h2{font-size:1.15rem; margin:40px 0 12px; letter-spacing:-.01em}
+  p{margin:0 0 14px}
+  .lede{font-size:1.08rem; color:var(--muted); margin-bottom:26px}
+  a{color:var(--accent)}
+  code,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}
+  code{background:var(--code-bg); padding:.15em .4em; border-radius:4px; font-size:.88em}
+  pre{background:var(--code-bg); border:1px solid var(--line); border-radius:8px;
+      padding:14px 16px; overflow-x:auto; font-size:.88rem; margin:0 0 14px}
+  pre code{background:none; padding:0}
+  .notice{background:var(--warn-bg); border:1px solid var(--warn-line);
+          border-radius:8px; padding:16px 18px; margin:0 0 30px}
+  .notice p:last-child{margin-bottom:0}
+  .notice strong{display:block; margin-bottom:6px}
+  ul{margin:0 0 14px; padding-left:22px}
+  li{margin-bottom:6px}
+  .cta{display:inline-block; background:var(--accent); color:var(--accent-fg);
+       text-decoration:none; font-weight:600; padding:11px 20px; border-radius:7px; margin:4px 8px 4px 0}
+  .muted{color:var(--muted); font-size:.92rem}
+  footer{border-top:1px solid var(--line); margin-top:52px; padding-top:22px}
+  footer a{margin-right:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Coral</h1>
+  <p class="lede">Run Claude Code, Codex, Gemini CLI, and Pi.dev as a coordinated
+  engineering team on one codebase — without losing visibility or control.</p>
+
+  <div class="notice">
+    <strong>This site has moved on from the Python version of Coral.</strong>
+    <p>Coral is now a Go application distributed as a native binary. The old
+    <code>pip install agent-coral</code> instructions that used to live here installed the
+    Python implementation, which is <strong>no longer maintained</strong>.</p>
+    <p><strong>If you ever ran that pip command, uninstall it before installing Coral.</strong>
+    The two share command names, the <code>~/.coral</code> data directory, and port 8420. With
+    both installed, typing <code>coral</code> can silently start the old Python version
+    instead — it will look like it worked.</p>
+    <pre><code># do you have both? more than one hit means yes
+which -a coral coral-board launch-coral
+
+# remove the retired Python package
+pip uninstall agent-coral</code></pre>
+    <p>One thing that trips people up: the Python releases reached <strong>4.4.1</strong> on
+    PyPI. The Go rewrite restarted versioning at 1.0.0, so the current
+    <strong>v1.0.8</strong> is <em>newer</em> than 4.4.1, not older.</p>
+  </div>
+
+  <p>Coral is a local server that runs multiple CLI coding agents in parallel on the same
+  repository. Each agent runs in its own terminal session, agents coordinate through a shared
+  message board, and you watch and steer all of them from one browser tab.</p>
+
+  <p>You bring your own agents and API keys. Coral has no API keys of its own and never calls
+  a model on your behalf. It runs the CLI agents you have already installed, using your
+  credentials. To count tokens and costs, Coral can proxy those agents' API traffic locally —
+  the traffic goes to the same provider it always did, and none of it comes to us.</p>
+
+  <p><strong>Coral itself does send anonymous usage events.</strong> A fixed list — installed,
+  opened, agent launched, team launched, task completed, and a few more — each carrying only
+  Coral's version and build, your operating system and CPU architecture, tied to a random ID.
+  Never your prompts, your code, repository or file names, agent output, personal information,
+  or licence key. There is no opt-out switch. Builds you compile yourself carry no analytics
+  key and send nothing at all, and the whole implementation is in
+  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/internal/tracking">internal/tracking</a>
+  if you would rather read it than take our word.</p>
+
+  <h2>Requirements</h2>
+  <ul>
+    <li><a href="https://github.com/tmux/tmux">tmux</a> — the default session backend on
+        macOS and Linux</li>
+    <li>At least one CLI coding agent installed: Claude Code, Codex, Gemini CLI, or Pi.dev</li>
+  </ul>
+
+  <h2>Install</h2>
+  <p>Download the latest release from
+  <a href="https://github.com/cdknorow/coral/releases">GitHub Releases</a>:</p>
+  <ul>
+    <li><strong>macOS</strong> — <code>Coral.v&lt;version&gt;.dmg</code> (universal binary),
+        e.g. <code>Coral.v1.0.8.dmg</code></li>
+    <li><strong>Linux</strong> — <code>coral-linux-amd64-&lt;version&gt;.tar.gz</code>,
+        e.g. <code>coral-linux-amd64-1.0.8.tar.gz</code></li>
+  </ul>
+  <p class="muted">Coral is free. No purchase or account is required to download or use it.</p>
+
+  <h2>Build from source</h2>
+  <p>Requires <a href="https://go.dev/dl/">Go</a>.</p>
+  <pre><code>git clone https://github.com/cdknorow/coral.git
+cd coral/coral-go
+make build</code></pre>
+
+  <h2>Run</h2>
+  <p><strong>macOS</strong> — open <code>Coral.app</code>. <strong>Linux</strong> — run
+  <code>./coral</code> from the extracted tarball. <strong>Source build</strong> — the binary
+  lands in <code>bin/</code>, so run <code>./bin/coral</code>.</p>
+  <p>Either way, open <a href="http://localhost:8420">http://localhost:8420</a> and click
+  <strong>+New</strong> to launch your first agent or create a team.</p>
+
+  <h2>Documentation</h2>
+  <p>Documentation currently lives in the repository at
+  <a href="https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs">coral-go/agent_docs</a>.
+  A hosted docs site built from that source is in progress; this page is a stopgap while it is
+  built.</p>
+
+  <h2>Links</h2>
+  <p>
+    <a class="cta" href="https://github.com/cdknorow/coral/releases">Download</a>
+    <a class="cta" href="https://github.com/cdknorow/coral">GitHub</a>
+    <a class="cta" href="https://discord.gg/qhfgY57AZn">Discord</a>
+  </p>
+
+  <footer>
+    <p class="muted">Coral is free and released under the Apache 2.0 license. No features are
+    gated. If it saves you time, you can support continued development with an optional
+    one-time <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">$49.99
+    supporter license</a> — no subscription.</p>
+    <p>
+      <a href="https://github.com/cdknorow/coral">Repository</a>
+      <a href="https://github.com/cdknorow/coral/releases">Releases</a>
+      <a href="https://discord.gg/qhfgY57AZn">Discord</a>
+    </p>
+  </footer>
+
+</div>
+</body>
+</html>

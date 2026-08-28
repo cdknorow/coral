@@ -1145,4 +1145,18 @@
         </div>
     </div>
 
+    <!-- Telemetry Disclosure — shown once, on first run of a build that has an analytics key -->
+    <div id="telemetry-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="telemetry-modal-title" style="display:none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="telemetry-modal-title">What Coral sends</h3>
+            </div>
+            <div class="modal-body" id="telemetry-modal-body"></div>
+            <div class="modal-actions modal-footer">
+                <button class="btn" onclick="window.openTelemetryDoc()">Read the full details</button>
+                <button class="btn btn-primary" onclick="window.acknowledgeTelemetryDisclosure()">Got it</button>
+            </div>
+        </div>
+    </div>
+
 {{ end }}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 const taskNudge = "You have tasks available. Run 'coral-board task claim' to start."
@@ -890,6 +891,8 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.persistTaskArtifact(r.Context(), task)
+	// Funnel milestone: the first board task ever completed on this install.
+	tracking.TrackOnce(tracking.EventFirstTaskCompleted, nil)
 	// Copy values for goroutine closure safety
 	completedTask := task
 	subscriberID := body.SubscriberID

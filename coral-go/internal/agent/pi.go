@@ -77,6 +77,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	var sessionID string
 	var firstTS, lastTS *string
 	var summary string
+	var fts FTSBodyBuilder
 	msgCount := 0
 
 	for scanner.Scan() {
@@ -102,14 +103,14 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 				tsCopy := ts
 				lastTS = &tsCopy
 			}
+			content, _ := entry["content"].(string)
+			fts.Add(content)
 			if summary == "" {
-				if role, _ := entry["role"].(string); role == "user" {
-					if content, _ := entry["content"].(string); content != "" {
-						if len(content) > 200 {
-							content = content[:200]
-						}
-						summary = content
+				if role, _ := entry["role"].(string); role == "user" && content != "" {
+					if len(content) > 200 {
+						content = content[:200]
 					}
+					summary = content
 				}
 			}
 		}
@@ -129,6 +130,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
+		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }
 
@@ -148,11 +150,9 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	// Export env vars
-	if params.SessionName != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SESSION_NAME='%s' &&`, SanitizeShellValue(params.SessionName)))
-	}
-	if params.Role != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SUBSCRIBER_ID='%s' &&`, SanitizeShellValue(params.Role)))
+	// Coral environment, built by CoralEnv so every launch path agrees.
+	for _, kv := range CoralEnv(params) {
+		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
 	}
 	if params.ProxyBaseURL != "" {
 		parts = append(parts, fmt.Sprintf(`export HTTPS_PROXY='%s' &&`, sanitizeURL(params.ProxyBaseURL)))

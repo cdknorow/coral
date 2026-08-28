@@ -99,6 +99,7 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 
 	var firstTS, lastTS *string
 	var summary string
+	var fts FTSBodyBuilder
 	for _, msg := range messages {
 		ts, _ := msg["timestamp"].(string)
 		if ts != "" {
@@ -108,17 +109,23 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 			tsCopy := ts
 			lastTS = &tsCopy
 		}
-		// Grab first model response as summary
-		if summary == "" {
-			if role, _ := msg["role"].(string); role == "model" {
-				if parts, _ := msg["parts"].([]any); len(parts) > 0 {
-					if p, ok := parts[0].(map[string]any); ok {
-						if text, _ := p["text"].(string); text != "" {
-							if len(text) > 200 {
-								text = text[:200]
-							}
-							summary = text
+		role, _ := msg["role"].(string)
+		if parts, _ := msg["parts"].([]any); len(parts) > 0 {
+			for _, part := range parts {
+				if pm, ok := part.(map[string]any); ok {
+					if text, _ := pm["text"].(string); text != "" {
+						fts.Add(text)
+					}
+				}
+			}
+			// Grab first model response as summary
+			if summary == "" && role == "model" {
+				if p, ok := parts[0].(map[string]any); ok {
+					if text, _ := p["text"].(string); text != "" {
+						if len(text) > 200 {
+							text = text[:200]
 						}
+						summary = text
 					}
 				}
 			}
@@ -134,6 +141,7 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		LastTimestamp:  lastTS,
 		MessageCount:   len(messages),
 		DisplaySummary: summary,
+		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }
 
@@ -159,11 +167,9 @@ func (a *GeminiAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, fmt.Sprintf(`export GEMINI_SYSTEM_MD="%s" &&`, sysFile))
 	}
 
-	if params.SessionName != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SESSION_NAME='%s' &&`, SanitizeShellValue(params.SessionName)))
-	}
-	if params.Role != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SUBSCRIBER_ID='%s' &&`, SanitizeShellValue(params.Role)))
+	// Coral environment, built by CoralEnv so every launch path agrees.
+	for _, kv := range CoralEnv(params) {
+		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
 	}
 	if params.ProxyBaseURL != "" {
 		parts = append(parts, fmt.Sprintf(`export GEMINI_API_BASE='%s' &&`, sanitizeURL(params.ProxyBaseURL)))
