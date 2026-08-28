@@ -34,7 +34,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 |---|---|---|---|
 | `prompt` | string | **required** | The instruction sent to the agent. |
 | `repo_path` | string | **required** | Absolute path to the git repository. |
-| `agent_type` | string | `"claude"` | Agent to use (`claude`, `codex`, `gemini`, or `pi`). Any other value silently falls back to `claude`. |
+| `agent_type` | string | `"claude"` | Agent to use (`claude`, `codex`, `gemini`, or `pi`). **In v1.0.8 any other value silently falls back to `claude`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
 | `base_branch` | string | `"main"` | Branch to create the worktree from. |
 | `create_worktree` | bool | `true` | Create a fresh git worktree **per run** (`<repo>_task_run_<runID>`). Unlike team launches, jobs are designed to be isolated from each other — but see the defect note above. |
 | `cleanup_worktree` | bool | `true` | Remove the worktree when the run finishes. |

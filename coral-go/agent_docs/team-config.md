@@ -23,7 +23,7 @@ All fields are optional. Values apply to every agent unless overridden at the ag
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agent_type` | string | `"claude"` | CLI to use: `"claude"`, `"codex"`, `"gemini"`, or `"pi"`. Any other value silently falls back to `"claude"`. |
+| `agent_type` | string | `"claude"` | CLI to use: `"claude"`, `"codex"`, `"gemini"`, or `"pi"`. **In v1.0.8 any other value silently falls back to `"claude"`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
 | `model` | string | CLI default | Model identifier, vendor-specific (e.g. `"opus"`, `"sonnet"`, `"gemini-2.5-pro"`). |
 | `permissions` | object | none | Coral-level capability permissions (see [Permissions](#permissions)). |
 | `flags` | string[] | `[]` | Extra CLI flags passed to every agent. |
