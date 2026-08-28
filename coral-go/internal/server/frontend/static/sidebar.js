@@ -235,10 +235,14 @@ export function updateSectionVisibility(sectionId, itemCount) {
         header.setAttribute('aria-expanded', !section.classList.contains('collapsed'));
     }
 
+    // Keep History available when a search/filter has no matches. Collapsing the
+    // section would also hide the controls needed to change or clear the filter.
+    const canAutoCollapseWhenEmpty = sectionId !== 'history';
+
     // Auto-collapse empty sections (unless user manually expanded)
-    if (itemCount === 0 && !section.dataset.manualExpand) {
+    if (itemCount === 0 && canAutoCollapseWhenEmpty && !section.dataset.manualExpand) {
         section.classList.add('collapsed');
-    } else if (itemCount > 0 && !section.dataset.manualCollapse) {
+    } else if ((itemCount > 0 || !canAutoCollapseWhenEmpty) && !section.dataset.manualCollapse) {
         section.classList.remove('collapsed');
     }
 }

@@ -536,7 +536,11 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 		params.PageSize = 50
 	}
 	if params.FTSMode == "" {
-		params.FTSMode = "and"
+		// Natural-language searches should return the best partial matches instead
+		// of disappearing as soon as one query word is absent. FTS rank still puts
+		// sessions matching more (and rarer) terms first; callers can explicitly
+		// request "and" when every word is required.
+		params.FTSMode = "or"
 	}
 
 	var args []interface{}

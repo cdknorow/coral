@@ -375,6 +375,35 @@ func TestSanitizeFTSQuery(t *testing.T) {
 	}
 }
 
+func TestListSessionsPaged_DefaultSearchRanksPartialMatches(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+	ts := "2024-01-01T10:00:00"
+
+	for _, session := range []struct {
+		id   string
+		body string
+	}{
+		{id: "strong-match", body: "session history red"},
+		{id: "weak-match", body: "session notes"},
+	} {
+		require.NoError(t, s.UpsertSessionIndex(ctx, &SessionIndex{
+			SessionID: session.id, SourceType: "claude", SourceFile: "/tmp/" + session.id,
+			FirstTimestamp: &ts, LastTimestamp: &ts, MessageCount: 1,
+		}))
+		require.NoError(t, s.UpsertFTS(ctx, session.id, session.body))
+	}
+
+	result, err := s.ListSessionsPaged(ctx, SessionListParams{
+		Search: "session history red blue", PageSize: 10,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Total)
+	require.Len(t, result.Sessions, 2)
+	assert.Equal(t, "strong-match", result.Sessions[0].SessionID)
+}
+
 func TestComputeDuration(t *testing.T) {
 	tests := []struct {
 		name     string

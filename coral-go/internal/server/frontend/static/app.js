@@ -845,7 +845,7 @@ document.addEventListener("DOMContentLoaded", () => {
             document.querySelectorAll('[data-logic]')
                 .forEach(b => b.classList.toggle('active', b.dataset.logic === 'AND'));
             document.querySelectorAll('[data-mode]')
-                .forEach(b => b.classList.toggle('active', b.dataset.mode === 'and'));
+                .forEach(b => b.classList.toggle('active', b.dataset.mode === 'or'));
             renderFilterTagPills();
             historyPage = 1;
             loadHistoryFiltered();

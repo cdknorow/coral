@@ -2,7 +2,7 @@
 
 export const filterState = {
     q: '',
-    ftsMode: 'and',       // 'phrase' | 'and' | 'or'
+    ftsMode: 'or',        // 'phrase' | 'and' | 'or'; broad matches are ranked by relevance
     chatType: 'all',         // 'all' | 'agent' | 'group'
     tagIds: [],              // array of int
     tagLogic: 'AND',         // 'AND' | 'OR'
@@ -19,7 +19,7 @@ export function buildApiParams(page, pageSize) {
         p.set('type', filterState.chatType);
     if (filterState.q)
         p.set('q', filterState.q);
-    if (filterState.q && filterState.ftsMode !== 'and')
+    if (filterState.q && filterState.ftsMode !== 'or')
         p.set('fts_mode', filterState.ftsMode);
     if (filterState.tagIds.length)
         p.set('tag_ids', filterState.tagIds.join(','));
@@ -51,7 +51,7 @@ export function deserializeFromUrl() {
     filterState.chatType = ['all', 'agent', 'group'].includes(p.get('type'))
         ? p.get('type') : 'all';
     filterState.ftsMode = ['phrase', 'and', 'or'].includes(p.get('fts_mode'))
-        ? p.get('fts_mode') : 'and';
+        ? p.get('fts_mode') : 'or';
     filterState.tagIds = (p.get('tag_ids') || '')
         .split(',').filter(Boolean).map(Number).filter(n => !isNaN(n));
     filterState.tagLogic = p.get('tag_logic') === 'OR' ? 'OR' : 'AND';
@@ -72,7 +72,7 @@ export function deserializeFromUrl() {
 export function resetFilters() {
     filterState.q = '';
     filterState.chatType = 'all';
-    filterState.ftsMode = 'and';
+    filterState.ftsMode = 'or';
     filterState.tagIds = [];
     filterState.tagLogic = 'AND';
     filterState.sourceTypes = [];
