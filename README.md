@@ -10,13 +10,13 @@
   <a href="https://github.com/cdknorow/coral/stargazers"><img src="https://img.shields.io/github/stars/cdknorow/coral?style=social" alt="GitHub Stars"></a>
   <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
   <a href="https://cdknorow.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><img src="https://img.shields.io/badge/Coral_Pro-$49.99_one--time-FF7D52" alt="Buy Coral Pro for $49.99"></a>
+  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><img src="https://img.shields.io/badge/support_Coral-$49.99_one--time-FF7D52" alt="Support Coral development for $49.99"></a>
   <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/discord/placeholder?label=Discord&color=5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Buy Coral Pro</a> &bull;
+  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
   <a href="https://cdknorow.github.io/coral/">Documentation</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#how-it-works">How It Works</a> &bull;
@@ -44,10 +44,10 @@ It works by managing three things:
 
 You bring your own API keys and agents. Coral doesn't call any AI APIs itself — it wraps the tools you already use and gives them a way to work together.
 
-**Coral Pro is $49.99 once, with no subscription.** Your license includes the packaged macOS and Linux releases, priority support, and priority consideration for feature requests. Buying Pro also funds continued development.
+**Coral is free to use.** If it saves you time, you can support continued development by buying an optional Coral Pro license for $49.99 once, with no subscription. Supporters receive priority support and priority consideration for feature requests.
 
 <p align="center">
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><strong>Buy Coral Pro for $49.99 →</strong></a>
+  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><strong>Support Coral development for $49.99 →</strong></a>
 </p>
 
 ![Coral Dashboard](https://github.com/user-attachments/assets/6af60c92-1d72-45bd-9b46-7f1eab2ce5fe)
@@ -56,12 +56,12 @@ You bring your own API keys and agents. Coral doesn't call any AI APIs itself �
 
 ### Download a release
 
-1. [Buy a Coral Pro license](https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6) for $49.99 (one-time).
-2. Download the latest binary from [GitHub Releases](https://github.com/cdknorow/coral/releases):
+Download the latest binary for free from [GitHub Releases](https://github.com/cdknorow/coral/releases):
 
-   - **macOS**: `Coral.dmg` (universal binary)
-   - **Linux**: `coral-linux-amd64.tar.gz`
-3. Launch Coral and enter the license key delivered by email.
+- **macOS**: `Coral.dmg` (universal binary)
+- **Linux**: `coral-linux-amd64.tar.gz`
+
+No purchase is required. If you want to support development, [buy an optional Coral Pro supporter license](https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6).
 
 ### Build from source
 
@@ -152,7 +152,7 @@ Apache 2.0 License. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Buy Coral Pro</a> &bull;
+  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
   <a href="https://github.com/cdknorow/coral">Star the repo</a> &bull;
   <a href="https://discord.gg/qhfgY57AZn">Join Discord</a> &bull;
   <a href="https://cdknorow.github.io/coral/">Read the docs</a>
