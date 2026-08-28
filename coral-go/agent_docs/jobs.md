@@ -2,7 +2,13 @@
 
 Submit one-shot agent tasks, monitor their progress, and cancel running jobs via the `/api/tasks/*` endpoints.
 
-Each job launches an agent in an isolated git worktree, sends it a prompt, and monitors it until completion. Jobs appear in the **Jobs** sidebar in the Coral dashboard, separate from persistent live sessions.
+Each job launches an agent in a per-run git worktree, sends it a prompt, and monitors it until completion.
+
+> **Known defect — jobs fail on the documented default.** `base_branch` defaults to `main`,
+> and `git worktree add <dir> main` is rejected when `main` is checked out in your repo, so
+> **every run fails** with `fatal: 'main' is already used by worktree at ...`. Set
+> `base_branch` to a branch that is not checked out anywhere. See
+> [Worktrees](#worktrees) below. Jobs appear in the **Jobs** sidebar in the Coral dashboard, separate from persistent live sessions.
 
 This page documents the one-shot Tasks API surface. Coral uses "job" for the UI concept and "task" for the REST paths:
 
@@ -28,9 +34,9 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 |---|---|---|---|
 | `prompt` | string | **required** | The instruction sent to the agent. |
 | `repo_path` | string | **required** | Absolute path to the git repository. |
-| `agent_type` | string | `"claude"` | Agent to use (`claude`, `gemini`, or `codex`). |
+| `agent_type` | string | `"claude"` | Agent to use (`claude`, `codex`, `gemini`, or `pi`). Any other value silently falls back to `claude`. |
 | `base_branch` | string | `"main"` | Branch to create the worktree from. |
-| `create_worktree` | bool | `true` | Create a fresh git worktree for the run. |
+| `create_worktree` | bool | `true` | Create a fresh git worktree **per run** (`<repo>_task_run_<runID>`). Unlike team launches, jobs are designed to be isolated from each other — but see the defect note above. |
 | `cleanup_worktree` | bool | `true` | Remove the worktree when the run finishes. |
 | `max_duration_s` | int | `3600` | Timeout in seconds. The run is killed after this. |
 | `flags` | string | `""` | Extra CLI flags passed to the agent. |
@@ -197,11 +203,21 @@ POST /api/tasks/run
 
 ## Worktrees
 
-When `create_worktree: true` (the default), each job gets an isolated copy of the repo:
+When `create_worktree: true` (the default), each job is *intended* to get its own copy of the repo,
+keyed on the run id (`internal/background/scheduler.go:551`):
 
 - **Path**: `<repo_path>_task_run_<run_id>` (sibling directory to the repo)
 - **Branch**: Checked out from `base_branch`
 - **Cleanup**: Removed automatically when the run finishes (unless `cleanup_worktree: false`)
+Set `create_worktree: false` to run the agent directly in `repo_path` — useful for tasks that
+don't modify files, and currently the only configuration that works without changing
+`base_branch`.
+
+> **Verified 2026-08-28 against v1.0.8.** With `base_branch: "main"` (the default) every run
+> fails at worktree creation and the agent never starts. With `base_branch` set to a branch
+> that is not checked out anywhere, the per-run worktree is created, the agent launches, and
+> cleanup removes it — but the run is still recorded `killed` / `timeout` rather than
+> `completed`, because an interactive agent does not exit on its own.
 
 Set `create_worktree: false` to run the agent directly in `repo_path` — useful for tasks that don't modify files.
 

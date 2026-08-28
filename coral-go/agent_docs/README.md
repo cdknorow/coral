@@ -12,6 +12,11 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Session History](session-history.md) — Historical session data, notes, events, tags
 - [WebSockets](websockets.md) — Real-time terminal and event streams
 
+### Getting Started
+- [Quickstart](quickstart.md) — Install, launch your first agent, and get a committed change
+- [Worked Demos](worked-demos.md) — Three multi-agent scenarios run end to end, with real output
+- [Troubleshooting](troubleshooting.md) — Observed failure modes and their causes
+
 ### Automation
 - [Workflow Quickstart](workflow-quickstart.md) — Build your first workflow in 5 minutes
 - [Workflows](workflows.md) — Multi-step workflow definitions and execution
