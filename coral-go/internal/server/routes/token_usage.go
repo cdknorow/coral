@@ -3,10 +3,11 @@ package routes
 import (
 	"net/http"
 	"strconv"
+	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/go-chi/chi/v5"
 )
 
 // TokenUsageHandler provides HTTP handlers for token usage API.
@@ -54,6 +55,7 @@ func (h *TokenUsageHandler) ListUsage(w http.ResponseWriter, r *http.Request) {
 	// Compute aggregated totals
 	var totalInput, totalOutput, totalCacheRead, totalCacheWrite, totalTokens int64
 	var totalCost float64
+	var firstMessage, lastMessage time.Time
 	for _, r := range records {
 		totalInput += int64(r.InputTokens)
 		totalOutput += int64(r.OutputTokens)
@@ -61,6 +63,16 @@ func (h *TokenUsageHandler) ListUsage(w http.ResponseWriter, r *http.Request) {
 		totalCacheWrite += int64(r.CacheWriteTokens)
 		totalTokens += int64(r.TotalTokens)
 		totalCost += r.CostUSD
+		if ts, err := time.Parse(time.RFC3339Nano, r.SessionStartAt); err == nil && (firstMessage.IsZero() || ts.Before(firstMessage)) {
+			firstMessage = ts
+		}
+		if ts, err := time.Parse(time.RFC3339Nano, r.LastActivityAt); err == nil && (lastMessage.IsZero() || ts.After(lastMessage)) {
+			lastMessage = ts
+		}
+	}
+	var executionTimeSec int64
+	if !firstMessage.IsZero() && !lastMessage.IsZero() && lastMessage.After(firstMessage) {
+		executionTimeSec = int64(lastMessage.Sub(firstMessage).Seconds())
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -73,8 +85,18 @@ func (h *TokenUsageHandler) ListUsage(w http.ResponseWriter, r *http.Request) {
 			"total_tokens":       totalTokens,
 			"cost_usd":           totalCost,
 			"num_sessions":       len(records),
+			"first_message_at":   formatOptionalTime(firstMessage),
+			"last_message_at":    formatOptionalTime(lastMessage),
+			"execution_time_sec": executionTimeSec,
 		},
 	})
+}
+
+func formatOptionalTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339Nano)
 }
 
 // UsageSummary returns high-level aggregated usage.

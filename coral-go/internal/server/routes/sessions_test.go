@@ -519,6 +519,37 @@ func TestSessionsLaunchTeam_MissingBoardName(t *testing.T) {
 	assert.Contains(t, result, "error")
 }
 
+func TestSessionsLaunchTeam_StripsForeignPermissionFlags(t *testing.T) {
+	cfg := &config.Config{LogDir: t.TempDir()}
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	terminal := newMockTerminal()
+	handler := NewSessionsHandler(db, cfg, nil, terminal, nil)
+	body, err := json.Marshal(map[string]any{
+		"board_name":  "mixed-team",
+		"working_dir": t.TempDir(),
+		"agent_type":  "codex",
+		"flags":       []string{"--dangerously-bypass-approvals-and-sandbox", "--verbose"},
+		"agents": []map[string]any{
+			{"name": "Claude Worker", "agent_type": "claude"},
+		},
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/sessions/launch-team", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.LaunchTeam(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	commands := strings.Join(terminal.sentCommands(), "\n")
+	require.NotEmpty(t, commands)
+	assert.NotContains(t, commands, "--dangerously-bypass-approvals-and-sandbox")
+	assert.Contains(t, commands, "--verbose")
+}
+
 func TestSessionsLaunchTeam_PreservesToolsAndMCPServers(t *testing.T) {
 	cfg := &config.Config{LogDir: t.TempDir()}
 	dbPath := t.TempDir() + "/test.db"
