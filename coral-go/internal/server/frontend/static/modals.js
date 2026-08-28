@@ -2901,6 +2901,16 @@ export async function loadSettings() {
 }
 
 /**
+ * Pick the attributed supporter link for one UI surface out of an
+ * /api/system/status payload. The server builds these from the same base as
+ * store_url, so a store_url override still drives them. Falls back to the raw
+ * store_url and then to `fallback`, so a click always has somewhere to go.
+ */
+export function supporterURL(statusData, surface, fallback) {
+    return statusData?.supporter_urls?.[surface] || statusData?.store_url || fallback;
+}
+
+/**
  * Report a supporter/store link click to the server, which forwards it to
  * analytics. Fire-and-forget: it must never delay or block opening the link.
  * `surface` is a fixed slug identifying where in the UI the link lives.
@@ -2953,7 +2963,7 @@ async function _loadLicenseTierBadge() {
             try {
                 const sResp = await fetch('/api/system/status');
                 const sData = await sResp.json();
-                if (sData.store_url) storeProURL = sData.store_url;
+                storeProURL = supporterURL(sData, 'settings_tier_badge', storeProURL);
             } catch (_) {}
             badge.innerHTML = '<span class="tier-label tier-trial">Free</span>' +
                 `<a href="${storeProURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Support the developer</a>`;
@@ -3240,7 +3250,7 @@ async function _loadLicenseStatus() {
                 const sysResp = await fetch('/api/system/status');
                 if (sysResp.ok) {
                     const sysData = await sysResp.json();
-                    if (sysData.store_url) storeURL = sysData.store_url;
+                    storeURL = supporterURL(sysData, 'license_settings_panel', storeURL);
                 }
             } catch { /* use default */ }
             container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Free — fully unlocked. A one-time license supports development and retires the activation reminder.</span>

@@ -2,8 +2,10 @@ package routes
 
 import (
 	"net/http"
+	"net/url"
 	"regexp"
 
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/tracking"
 )
 
@@ -70,6 +72,79 @@ func sanitizeTrackingProps(in map[string]string) map[string]string {
 			out = map[string]string{}
 		}
 		out[k] = v
+	}
+	return out
+}
+
+// ── Supporter link attribution ────────────────────────────────────────────
+//
+// Every in-product supporter link carries attribution so we can tell which
+// surface produced a supporter. Two parameter families are attached:
+//
+//   checkout[custom][...]  Lemon Squeezy's documented custom-data passthrough.
+//                          LS surfaces these as meta.custom_data on the Order,
+//                          Subscription, and License Key webhooks, which is what
+//                          closes the loop from click to completed purchase.
+//   utm_*                  Standard campaign parameters, so the same convention
+//                          works for README and campaign links that do not
+//                          terminate at Lemon Squeezy.
+//
+// Only non-identifying values are attached: a fixed source, the UI surface, the
+// campaign, and the app version. Never the install ID or anything user-derived.
+
+// Supporter link surfaces. These are the `surface` values on both the
+// attribution parameters and the supporter_checkout_clicked event.
+const (
+	SurfaceSettingsTierBadge    = "settings_tier_badge"
+	SurfaceLicenseSettingsPanel = "license_settings_panel"
+	SurfaceActivationNag        = "activation_nag"
+)
+
+// supporterSource identifies clicks originating inside the app, as opposed to
+// the README, docs site, or a campaign link.
+const supporterSource = "coral_app"
+
+// supporterCampaign is the campaign for organic in-product clicks. Paid or
+// syndicated links use their own campaign value.
+const supporterCampaign = "in_app"
+
+// supporterSurfaces are the surfaces exposed to the frontend via
+// GET /api/system/status.
+var supporterSurfaces = []string{
+	SurfaceSettingsTierBadge,
+	SurfaceLicenseSettingsPanel,
+	SurfaceActivationNag,
+}
+
+// SupporterCheckoutURL returns the store URL with attribution parameters for
+// one UI surface. An unparseable base is returned unchanged so a bad config can
+// never produce a broken or empty link — the worst case is an untracked click.
+func SupporterCheckoutURL(base, surface string) string {
+	u, err := url.Parse(base)
+	if err != nil || u.Host == "" {
+		return base
+	}
+	q := u.Query()
+	q.Set("checkout[custom][source]", supporterSource)
+	q.Set("checkout[custom][surface]", surface)
+	q.Set("checkout[custom][campaign]", supporterCampaign)
+	q.Set("utm_source", supporterSource)
+	q.Set("utm_medium", "in_app")
+	q.Set("utm_campaign", supporterCampaign)
+	if config.Version != "" {
+		q.Set("checkout[custom][version]", config.Version)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// SupporterCheckoutURLs returns the attributed store URL for every surface,
+// keyed by surface name. Built from the same base as store_url so the
+// /api/system/status override keeps working.
+func SupporterCheckoutURLs(base string) map[string]string {
+	out := make(map[string]string, len(supporterSurfaces))
+	for _, s := range supporterSurfaces {
+		out[s] = SupporterCheckoutURL(base, s)
 	}
 	return out
 }

@@ -183,6 +183,7 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 		"startup_complete":     true,
 		"version":              config.Version,
 		"store_url":            config.StoreURL,
+		"supporter_urls":       SupporterCheckoutURLs(config.StoreURL),
 		"skip_license":         config.TierSkipLicense,
 		"tier_name":            config.TierName,
 		"tmux_available":       tmuxAvailable,

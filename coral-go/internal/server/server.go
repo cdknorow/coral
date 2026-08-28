@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"embed"
+	"html"
 	"html/template"
 	"io/fs"
 	"log"
@@ -679,7 +680,8 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) serveActivation(w http.ResponseWriter, r *http.Request) {
 	page := activationPage
-	page = strings.ReplaceAll(page, "{{STORE_URL}}", config.StoreURL)
+	page = strings.ReplaceAll(page, "{{STORE_URL}}",
+		html.EscapeString(routes.SupporterCheckoutURL(config.StoreURL, routes.SurfaceActivationNag)))
 	w.Write([]byte(page))
 }
 
