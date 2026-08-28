@@ -18,7 +18,7 @@ func postTrackingEvent(t *testing.T, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/tracking/event", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
-	NewTrackingHandler().TrackEvent(rr, req)
+	NewTrackingHandler(t.TempDir()).TrackEvent(rr, req)
 	return rr
 }
 
@@ -186,7 +186,7 @@ func TestSurfaceConstantsAreValidEventPropertyValues(t *testing.T) {
 func TestTelemetryDisclosureDescribesTheEventsCoralActuallySends(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/system/telemetry", nil)
 	rr := httptest.NewRecorder()
-	NewTrackingHandler().TelemetryDisclosure(rr, req)
+	NewTrackingHandler(t.TempDir()).TelemetryDisclosure(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)

@@ -27,6 +27,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 // Frontend assets are embedded at build time. The directories must exist
@@ -90,7 +91,15 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 	// Track launch count for nag screen frequency
 	launchCounter := license.NewLaunchCounter(cfg.CoralDir())
 	launchCount := launchCounter.Increment()
-	log.Printf("Launch count: %d (nag=%v)", launchCount, launchCounter.IsNagLaunch())
+	// The supporter reminder is scheduled from the launch at which Coral first
+	// delivered a result, not from install. See LaunchCounter.RecordValueAnchor.
+	// ValueDeliveredIn, not ValueDelivered: this runs before main calls
+	// tracking.SetCoralDir, and the package default is ~/.coral — which would
+	// let the production install's state decide a test instance's behaviour.
+	valueDelivered := tracking.ValueDeliveredIn(cfg.CoralDir())
+	launchCounter.RecordValueAnchor(valueDelivered)
+	log.Printf("Launch count: %d (value_delivered=%v nag=%v)",
+		launchCount, valueDelivered, launchCounter.IsNagLaunch())
 
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())
@@ -371,7 +380,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/settings/default-prompts", sysHandler.GetDefaultPrompts)
 	r.Get("/api/agent-models", sysHandler.GetAgentModels)
 	r.Get("/api/system/status", sysHandler.Status)
-	trackHandler := routes.NewTrackingHandler()
+	trackHandler := routes.NewTrackingHandler(s.cfg.CoralDir())
 	r.Post("/api/tracking/event", trackHandler.TrackEvent)
 	r.Get("/api/system/telemetry", trackHandler.TelemetryDisclosure)
 	r.Post("/api/system/telemetry/acknowledge", trackHandler.AcknowledgeTelemetryDisclosure)
@@ -662,10 +671,7 @@ func noCacheHandler(h http.Handler) http.Handler {
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	// Show activation nag screen if: license required, not yet licensed,
-	// it's a nag launch (every 3rd), and user hasn't clicked "skip".
-	if s.cfg.LicenseRequired() && !s.licenseMgr.IsValid() &&
-		s.launchCounter.IsNagLaunch() && r.URL.Query().Get("skip_activation") != "1" {
+	if s.shouldShowSupporterReminder(r) {
 		s.serveActivation(w, r)
 		return
 	}
@@ -679,6 +685,41 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error rendering index template: %v", err)
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 	}
+}
+
+// shouldShowSupporterReminder decides whether this page load gets the supporter
+// reminder instead of the dashboard. Every condition must hold:
+//
+//   - the build asks for a license at all (dev and beta builds never do);
+//   - the user has not already activated one — supporters are never asked again;
+//   - this launch is on the reminder cadence, which does not start until Coral
+//     has actually delivered a result (see LaunchCounter.IsNagLaunch);
+//   - the user has not dismissed it with "Continue Free" on this request.
+//
+// This gates only WHEN we ask for support. No Coral feature is gated on a
+// license: see license.Middleware, which passes every request through.
+func (s *Server) shouldShowSupporterReminder(r *http.Request) bool {
+	return supporterReminderDue(
+		s.cfg.LicenseRequired(),
+		s.licenseMgr != nil && s.licenseMgr.IsValid(),
+		s.launchCounter != nil && s.launchCounter.IsNagLaunch(),
+		r.URL.Query().Get("skip_activation") == "1",
+	)
+}
+
+// supporterReminderDue is the entire rule, kept as a pure function so each
+// clause can be tested on its own.
+func supporterReminderDue(licenseRequired, licensed, onCadence, dismissed bool) bool {
+	if !licenseRequired {
+		return false // dev and beta builds never ask.
+	}
+	if licensed {
+		return false // supporters are never asked again.
+	}
+	if !onCadence {
+		return false // no result delivered yet, or not a reminder launch.
+	}
+	return !dismissed
 }
 
 func (s *Server) serveActivation(w http.ResponseWriter, r *http.Request) {

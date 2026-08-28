@@ -39,16 +39,18 @@ func SetCoralDir(dir string) {
 	coralDir = dir
 }
 
-// CoralDir returns the data directory tracking state is written to. Exposed so
-// the telemetry disclosure can show the user exactly where their install ID
-// and failure log live.
+// CoralDir returns the data directory tracking state is written to, or "" if
+// it has not been configured. Exposed so the telemetry disclosure can show the
+// user exactly where their install ID and failure log live.
 func CoralDir() string { return resolveCoralDir() }
 
 // getInstallID returns the install ID, reading from disk once and caching.
 func getInstallID() string {
 	installIDOnce.Do(func() {
-		idFile := filepath.Join(resolveCoralDir(), ".install_id")
-		cachedInstallID = readFile(idFile)
+		if !stateDirReady() {
+			return
+		}
+		cachedInstallID = readFile(filepath.Join(resolveCoralDir(), ".install_id"))
 	})
 	return cachedInstallID
 }
@@ -119,6 +121,9 @@ func waitForAsync() { asyncWG.Wait() }
 
 func trackInstall() {
 	dir := resolveCoralDir()
+	if dir == "" {
+		return
+	}
 	os.MkdirAll(dir, 0755)
 
 	idFile := filepath.Join(dir, ".install_id")
@@ -206,6 +211,9 @@ func logDeliveryFailure(event string, status int, detail string) {
 	log.Printf("[tracking] delivery failure: event=%s status=%d detail=%s", event, status, detail)
 
 	dir := resolveCoralDir()
+	if dir == "" {
+		return
+	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return
 	}
@@ -233,14 +241,19 @@ func readFile(path string) string {
 	return strings.TrimSpace(string(data))
 }
 
-// resolveCoralDir returns the data directory for tracking state files.
-func resolveCoralDir() string {
-	if coralDir != "" {
-		return coralDir
-	}
-	h, _ := os.UserHomeDir()
-	return filepath.Join(h, ".coral")
-}
+// resolveCoralDir returns the data directory for tracking state files, or ""
+// if SetCoralDir has not been called.
+//
+// There is deliberately no ~/.coral fallback. Guessing a default let this
+// package write milestone state into the user's real install from anywhere
+// that had not configured it — including the test suite, which exercises the
+// launch and task handlers and so silently changed the production install's
+// supporter-reminder state. Tracking now touches disk only where it has been
+// told to.
+func resolveCoralDir() string { return coralDir }
+
+// stateDirReady reports whether tracking has somewhere to keep state.
+func stateDirReady() bool { return coralDir != "" }
 
 func generateUUID() string {
 	return uuid.New().String()

@@ -12,9 +12,16 @@ import (
 
 // TrackingHandler exposes the small set of funnel events that can only be
 // observed in the browser (link clicks). Everything else is emitted server-side.
-type TrackingHandler struct{}
+type TrackingHandler struct {
+	// coralDir is this instance's data directory, used only to show the user
+	// where their install ID and failure log live. Passed in rather than read
+	// from package state so the paths shown always belong to this instance.
+	coralDir string
+}
 
-func NewTrackingHandler() *TrackingHandler { return &TrackingHandler{} }
+func NewTrackingHandler(coralDir string) *TrackingHandler {
+	return &TrackingHandler{coralDir: coralDir}
+}
 
 // allowedTrackingEvents is a strict allowlist. The endpoint is reachable by
 // anything running in the page, so it must never become a general-purpose
@@ -163,8 +170,8 @@ func (h *TrackingHandler) TelemetryDisclosure(w http.ResponseWriter, r *http.Req
 		"events":          tracking.AllEvents,
 		"properties":      tracking.StandardProperties,
 		"never_collected": tracking.NeverCollected,
-		"install_id_path": filepath.Join(tracking.CoralDir(), ".install_id"),
-		"failure_log":     filepath.Join(tracking.CoralDir(), "tracking-failures.log"),
+		"install_id_path": filepath.Join(h.coralDir, ".install_id"),
+		"failure_log":     filepath.Join(h.coralDir, "tracking-failures.log"),
 	})
 }
 

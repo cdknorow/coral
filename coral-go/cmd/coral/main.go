@@ -66,6 +66,10 @@ func main() {
 
 	cfg := config.Load(*homeDir)
 	setupCrashLogging(cfg.CoralDir())
+	// Point tracking at this instance's data directory before anything can read
+	// it. The package default is ~/.coral, so a late call here would let the
+	// production install's state be read by an instance run with --home.
+	tracking.SetCoralDir(cfg.CoralDir())
 
 	// Resolve license variant name for logging (no feature gating).
 	variantName := ""
@@ -109,7 +113,6 @@ func main() {
 	defer rs.Close()
 
 	// Anonymous install/upgrade tracking (non-blocking)
-	tracking.SetCoralDir(cfg.CoralDir())
 	tracking.TrackInstallAsync()
 
 	// Check for updates on startup (non-blocking, skip for license-free builds)

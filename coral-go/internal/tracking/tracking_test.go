@@ -2,10 +2,12 @@ package tracking
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -155,7 +157,7 @@ func TestTrackOnceIsConcurrencySafe(t *testing.T) {
 }
 
 func TestTrackOnceWithoutPostHogKeySendsNothingAndDoesNotBurnTheMilestone(t *testing.T) {
-	rec, dir := newTestTracking(t)
+	rec, _ := newTestTracking(t)
 	config.PostHogKey = ""
 
 	TrackOnce(EventFirstAgentLaunched, nil)
@@ -164,16 +166,57 @@ func TestTrackOnceWithoutPostHogKeySendsNothingAndDoesNotBurnTheMilestone(t *tes
 	if got := len(rec.all()); got != 0 {
 		t.Fatalf("expected no events without a PostHog key, got %d", got)
 	}
-	if _, err := os.Stat(filepath.Join(dir, milestonesFileName)); !os.IsNotExist(err) {
-		t.Fatalf("expected no milestone file to be written without a PostHog key")
+	// The milestone is still recorded as reached — it is product state that
+	// gates the supporter reminder — but it is not marked as sent.
+	s := loadMilestones()
+	if _, ok := s.Reached[EventFirstAgentLaunched]; !ok {
+		t.Error("the milestone should be recorded as reached even with no analytics key")
+	}
+	if _, ok := s.Fired[EventFirstAgentLaunched]; ok {
+		t.Error("the milestone must not be marked as sent when nothing was sent")
 	}
 
-	// Once a key is present the milestone is still available to fire.
+	// Once a key is present the event is still available to fire.
 	config.PostHogKey = "phc_test_key"
 	TrackOnce(EventFirstAgentLaunched, nil)
 	waitForAsync()
 	if got := rec.count(EventFirstAgentLaunched); got != 1 {
 		t.Fatalf("expected 1 %s event after the key appears, got %d", EventFirstAgentLaunched, got)
+	}
+}
+
+func TestValueDeliveredTracksTheValueMilestones(t *testing.T) {
+	newTestTracking(t)
+
+	if ValueDelivered() {
+		t.Fatal("a fresh install has not been delivered any value yet")
+	}
+
+	// A milestone that is not a value milestone does not count.
+	TrackOnce(EventReturned24h, nil)
+	waitForAsync()
+	if ValueDelivered() {
+		t.Fatal("returned_24h is not a demonstration of value")
+	}
+
+	TrackOnce(EventFirstAgentLaunched, nil)
+	waitForAsync()
+	if !ValueDelivered() {
+		t.Fatal("launching the first agent should count as value delivered")
+	}
+}
+
+// The supporter reminder is a product decision and must work on a build that
+// sends no analytics at all.
+func TestValueDeliveredWorksWithoutAnAnalyticsKey(t *testing.T) {
+	newTestTracking(t)
+	config.PostHogKey = ""
+
+	TrackOnce(EventFirstTaskCompleted, nil)
+	waitForAsync()
+
+	if !ValueDelivered() {
+		t.Fatal("value must be recorded even when analytics are not configured")
 	}
 }
 
@@ -278,4 +321,84 @@ func containsAll(s string, subs ...string) bool {
 func config_PostHogKeyTo(t *testing.T, key string) {
 	t.Helper()
 	config.PostHogKey = key
+}
+
+// Regression: the supporter reminder reads value state during server startup,
+// which happens before SetCoralDir is called. Reading the ambient default
+// there meant a test instance run with --home consulted the production
+// install's milestones. ValueDeliveredIn must read only the directory it is
+// given.
+func TestValueDeliveredInReadsOnlyTheDirectoryItIsGiven(t *testing.T) {
+	newTestTracking(t) // coralDir is the ambient temp dir for this test
+
+	TrackOnce(EventFirstAgentLaunched, nil)
+	waitForAsync()
+	if !ValueDelivered() {
+		t.Fatal("expected value delivered in the ambient directory")
+	}
+
+	other := t.TempDir()
+	if ValueDeliveredIn(other) {
+		t.Fatal("ValueDeliveredIn read state from outside the directory it was given")
+	}
+}
+
+// Regression, and the reason there is no ~/.coral fallback any more: the test
+// suite exercises the launch and task handlers, which call TrackOnce. With a
+// guessed default directory those calls wrote milestone state into the user's
+// real ~/.coral install — silently changing the supporter-reminder state of a
+// production install from a unit test run.
+func TestTrackingWritesNothingWhenNoDataDirectoryIsConfigured(t *testing.T) {
+	prevDir, prevKey, prevID := coralDir, config.PostHogKey, cachedInstallID
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory to guard")
+	}
+	guarded := filepath.Join(home, ".coral")
+	before := dirSnapshot(guarded)
+
+	coralDir = "" // as if SetCoralDir had never been called
+	config.PostHogKey = "phc_test_key"
+	cachedInstallID = "install-under-test"
+	t.Cleanup(func() {
+		waitForAsync()
+		coralDir, config.PostHogKey, cachedInstallID = prevDir, prevKey, prevID
+	})
+
+	TrackOnce(EventFirstAgentLaunched, nil)
+	TrackOnce(EventFirstTaskCompleted, nil)
+	TrackEvent(EventSessionLaunched, nil)
+	trackReturnVisitSync()
+	trackInstall()
+	if err := AcknowledgeDisclosure(); err == nil {
+		t.Error("AcknowledgeDisclosure should refuse when no data directory is configured")
+	}
+	waitForAsync()
+
+	if after := dirSnapshot(guarded); after != before {
+		t.Errorf("tracking wrote into %s with no data directory configured\nbefore: %v\nafter:  %v",
+			guarded, before, after)
+	}
+	if ValueDelivered() {
+		t.Error("ValueDelivered must not consult a guessed directory")
+	}
+	if DisclosureAcknowledged() {
+		t.Error("DisclosureAcknowledged must not consult a guessed directory")
+	}
+}
+
+// dirSnapshot lists the tracking state files in dir with their sizes, so a
+// test can assert nothing about them changed.
+func dirSnapshot(dir string) string {
+	names := []string{".milestones.json", ".install_id", ".install_version", ".telemetry_disclosed", "tracking-failures.log"}
+	var b []string
+	for _, n := range names {
+		fi, err := os.Stat(filepath.Join(dir, n))
+		if err != nil {
+			b = append(b, n+"=absent")
+			continue
+		}
+		b = append(b, fmt.Sprintf("%s=%d@%d", n, fi.Size(), fi.ModTime().UnixNano()))
+	}
+	return strings.Join(b, " ")
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/server/routes"
 )
 
@@ -58,5 +59,59 @@ func TestActivationPageEscapesTheSupporterURL(t *testing.T) {
 	href := body[start+6 : start+6+end]
 	if strings.Contains(href, "&") && !strings.Contains(href, "&amp;") {
 		t.Errorf("supporter href contains unescaped ampersands: %s", href)
+	}
+}
+
+// The four clauses of the supporter-reminder rule, each isolated.
+func TestSupporterReminderRule(t *testing.T) {
+	tests := []struct {
+		name                                        string
+		licenseRequired, licensed, cadence, dismiss bool
+		want                                        bool
+	}{
+		{"due", true, false, true, false, true},
+		// Criterion 4: an activated supporter is never asked again.
+		{"activated supporter is never asked", true, true, true, false, false},
+		// Criterion 2: no result delivered yet means no cadence, so no ask.
+		{"no value delivered yet", true, false, false, false, false},
+		{"dismissed with Continue Free", true, false, true, true, false},
+		{"dev and beta builds never ask", false, false, true, false, false},
+		{"licensed and dismissed", true, true, true, true, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := supporterReminderDue(tc.licenseRequired, tc.licensed, tc.cadence, tc.dismiss)
+			if got != tc.want {
+				t.Fatalf("supporterReminderDue(%v,%v,%v,%v) = %v, want %v",
+					tc.licenseRequired, tc.licensed, tc.cadence, tc.dismiss, got, tc.want)
+			}
+		})
+	}
+}
+
+// End to end through the real handler: a brand-new install gets the dashboard,
+// not a pricing page.
+func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
+	dir := t.TempDir()
+	counter := license.NewLaunchCounter(dir)
+	counter.Increment()
+	counter.RecordValueAnchor(false) // nothing delivered yet
+
+	s := &Server{cfg: &config.Config{}, launchCounter: counter}
+	if s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+		t.Fatal("a first-ever launch would have been served the supporter reminder")
+	}
+
+	// And once value exists and the cadence comes due, it does show.
+	counter.RecordValueAnchor(true)
+	for i := 0; i < 3; i++ {
+		counter.Increment()
+	}
+	if !s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+		t.Fatal("the reminder never becomes due, so supporters would never be asked")
+	}
+	// "Continue Free" still works.
+	if s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/?skip_activation=1", nil)) {
+		t.Fatal("Continue Free did not dismiss the reminder")
 	}
 }
