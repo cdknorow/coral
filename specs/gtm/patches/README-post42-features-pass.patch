@@ -1,0 +1,131 @@
+# POST-#42 FEATURES PASS — the single pass held until every row had a verdict
+#
+# *** APPLIES LAST: after the combined patch (or the five separate), the FTS patch, and the
+#     board-cursor patch. ***
+#
+# #42 gave four of the seven unverified features-table rows a verdict. This pass acts on all
+# of them plus two rows nobody had examined, and one contradiction in the comparison table.
+#
+# ── ROW-BY-ROW VERDICTS ────────────────────────────────────────────────────────────────
+#
+# CHANGED — "Team templates" -> "Team configs"
+#   "Save and share" is cut. `/api/teams/import` RETURNS a config and does not PERSIST one;
+#   `teams/all` showed zero afterwards (Dev Advocate, #42). "Share" is separately unsupported:
+#   exportTeamTemplates() exists (modals.js:1219) and is globally exposed (app.js:78), but NO
+#   BUTTON CALLS IT — modals.html has Import (:195) and Save as Template (:197) and no Export.
+#   A user can import a file someone hands them and cannot produce one from the UI.
+#   ⚠ UNRESOLVED, and the reason "save" is cut rather than kept: a SECOND mechanism exists that
+#   #42 did not test — modals.html:197 -> _setSavedTeamTemplates() -> PUT /api/settings ->
+#   `user_settings` table (store/sessions.go:114, INSERT ... ON CONFLICT DO UPDATE). That is
+#   real server-side persistence. It is 📖 — read, never run — so under "nothing ships that is
+#   not ✅" it stays out. If someone clicks Save as Template and confirms a `saved_team_templates`
+#   row lands in user_settings, "save" can be restored. Do not restore it before that.
+#   ⚠ "generate one from a plain-English description" rests on the Strategist's reading, not on
+#   an execution I can point to. @Developer Advocate please confirm during re-verification.
+#
+# CUT — "Scheduled jobs"
+#   Fails 100% on the documented default configuration. scheduler.go:557 runs
+#   `git worktree add <dir> main`, which fails whenever the user's own copy has main checked
+#   out — the normal case. Reproduced: `fatal: 'main' is already used by worktree at ...`.
+#   The cron half works and the per-run worktree keying at :551 is correct; neither is ever
+#   reached. The UI shows the job healthy while every run fails.
+#   RESTORE THIS ROW ONLY WHEN ALL THREE HOLD — the mechanism is sound, only the git call
+#   was wrong, but "the fix landed" is not the condition:
+#     (a) the #43 fix is MERGED TO MAIN and in a shipped build. As of 2026-08-28 it is on an
+#         UNPUSHED BRANCH, so the shipped product still fails every run. The README describes
+#         what users download, not what exists on a branch.
+#     (b) ledger row 5 is re-verified by the Developer Advocate — the Growth Engineer wrote
+#         the fix and correctly declined to clear their own gate.
+#     (c) the wording names WHICH path. Per-run isolation is real for jobs; teams share one
+#         worktree, off by default; workflow runs create none.
+#   It is cut rather than qualified because advertising it sends a user to a guaranteed failure,
+#   and a false claim in something a user is invited to try is worse than a missing line.
+#
+# CHANGED — "Token tracking" -> "Token & cost tracking"
+#   "In real time" is cut and the Codex gap is named. Controlled same-team test: Claude
+#   reported $2.97, Codex reported nothing — 8 usage records, 8 claude, 0 codex, while the
+#   Codex usage sat on disk (Dev Advocate). Not unimplemented: extractCodexUsage() exists and
+#   fails at runtime. Naming the gap matters more than trimming the claim, because a mixed-team
+#   total LOOKS COMPLETE AND IS NOT, and a user comparing vendor spend gets a confident wrong
+#   number with no indication anything is missing.
+#
+# CHANGED — "Webhooks"
+#   Slack and Discord are removed; "any HTTP endpoint you configure" remains. Naming two
+#   third-party services implies tested integrations we have not tested and CANNOT test from
+#   here: the SSRF guard blocks the only endpoints we could safely reach, so this claim is
+#   structurally unverifiable rather than merely unverified — more effort will not close it.
+#   The row is kept rather than cut for exactly that reason: a claim that can never become ✅
+#   from our position is not the same as one we tried and failed to confirm.
+#   Related defect, not addressed here: validation happens at SEND time, not CREATE time, so
+#   Coral saves an enabled webhook pointing at a blocked address with no warning.
+#
+# KEPT, ✅ VERIFIED BY EXECUTION — Workflows, Task management
+#   Workflows: verified across agents (an agent step feeding a shell step), which is the half
+#   the claim is actually about. Note it makes NO isolation claim and must not acquire one —
+#   workflow runs create no worktree at all.
+#   Task management: exercised first-hand today by five agents through the full lifecycle —
+#   create, assign, claim, complete. I claimed and completed four tasks myself. That is direct
+#   execution evidence, not a route number.
+#
+# ⚠ NO VERDICT — "Git integration"
+#   The one row in this table nobody has examined, today or otherwise. Left UNCHANGED rather
+#   than cut on a guess, and flagged here so it is visible in the handoff instead of shipping
+#   silently. @Developer Advocate this is the last unverified claim in the features table.
+#
+# REMOVED — comparison table row "Isolated execution environments | ✓"
+#   It contradicted the corrected features row directly above it in the same document: teams
+#   share one worktree and it is OFF by default, workflow runs create none, and the jobs path
+#   fails. Claiming it against four named competitors, several of which do provide per-agent
+#   isolation, is the worst placement for it. "Process-level isolation ✓" is retained and IS
+#   true — each agent really does get its own tmux session.
+#
+# REMOVED — the topic enumeration in the Documentation section
+#   "...covering teams, workflows, SCHEDULED JOBS, the message board, WEBHOOKS, session
+#   history, and the proxy." Every word true — those topics do have docs — but at the set
+#   level a reader concludes Coral HAS those things, and it names two of the rows this very
+#   patch just cut and qualified. A feature list wearing a table of contents.
+#   Found by grepping the FULLY PATCHED result: the line came from my own docs-links patch,
+#   and I had removed the identical sentence from the gh-pages draft an hour earlier for the
+#   identical reason. Fixed one artifact, left the other.
+#
+# ── VERIFICATION ───────────────────────────────────────────────────────────────────────
+#   Grepped the FULLY PATCHED result, not these sources. Set test run on the finished table.
+#   Summary positions checked first. Positive-quantity assertion on every check.
+--- a/README.md
++++ b/README.md
+@@ -110,14 +110,13 @@
+ | **Real-time dashboard** | Web UI showing live terminal output, agent status, and controls |
+ | **Message board** | Inter-agent communication with cursor-based delivery and @mentions |
+ | **Sleep & wake** | Suspend agents and resume with full state — prompts, messages, session context |
+-| **Team templates** | Save and share team configurations; generate teams from plain-English descriptions |
++| **Team configs** | Import a team configuration from a folder, or generate one from a plain-English description |
+ | **Workflows** | Define multi-step agent pipelines that run automatically — chain tasks across agents with dependencies |
+-| **Scheduled jobs** | Launch agents or workflows on a cron schedule in isolated worktrees |
+ | **Task management** | Create, assign, and track tasks on the message board; agents mark tasks complete as they finish |
+-| **Token tracking** | Monitor token usage per agent and per session — see cost and consumption in real time |
++| **Token & cost tracking** | Token usage and cost per agent and per session, with cache reads broken out. Codex usage is not currently ingested |
+ | **Session history** | Every past session kept with auto-summaries, tags, and notes |
+ | **Git integration** | Tracks commits, branches, and changed files per agent session |
+-| **Webhooks** | Notifications to Slack, Discord, or any HTTP endpoint |
++| **Webhooks** | Notifications to any HTTP endpoint you configure |
+ 
+ ## Comparison
+ 
+@@ -126,7 +125,6 @@
+ | | Coral | Claude Code | Cursor | AutoGen | CrewAI |
+ |---|:---:|:---:|:---:|:---:|:---:|
+ | Multiple agents in parallel | ✓ | Limited | ✓ | ✓ | ✓ |
+-| Isolated execution environments | ✓ | ✓ | ✓ | — | — |
+ | Real-time monitoring dashboard | ✓ | — | IDE only | — | — |
+ | Inter-agent message board | ✓ | Basic | — | API-level | API-level |
+ | Sleep & wake with full state | ✓ | — | — | — | — |
+@@ -136,8 +134,7 @@
+ 
+ ## Documentation
+ 
+-Documentation lives in the repo at **[coral-go/agent_docs](https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs)** — covering teams,
+-workflows, scheduled jobs, the message board, webhooks, session history, and the proxy.
++Documentation lives in the repo at **[coral-go/agent_docs](https://github.com/cdknorow/coral/tree/main/coral-go/agent_docs)**.
+ 
+ A hosted docs site is being rebuilt. The previous site documented the retired Python
+ implementation and has been taken out of the README until its replacement is published.

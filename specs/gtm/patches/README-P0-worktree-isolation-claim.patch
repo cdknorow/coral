@@ -1,0 +1,84 @@
+# P0 — cut the false per-agent worktree isolation claims (DRAFT, operator approval required)
+#
+# Task #35. HIGHEST-SEVERITY CLAIM DEFECT FOUND TODAY. Verified three ways, independently:
+# Developer Advocate empirically (git worktree list showed ONE worktree for a 2-agent team),
+# GTM Strategist in handleLaunchTeam, and Content Producer in the same code.
+#
+#   sessions.go:2430  var worktreePath string                          <- ONE var per team
+#   sessions.go:2431  if body.Worktree && body.WorkingDir != ""         <- OPTIONAL
+#   sessions.go:2438  worktreePath = filepath.Join(dir, body.BoardName) <- keyed on BOARD
+#   sessions.go:2439  worktreeBranch = "coral-team/{boardName}"         <- ONE branch
+#   sessions.go:2449  workingDir = worktreePath                         <- used by EVERY agent
+#
+# AND IT IS OFF BY DEFAULT. templates/includes/modals.html:240 has no `checked` attribute,
+# and the containing #team-worktree-option is display:none (:238) until the directory is
+# detected as a git repo. The median user clicking through normal team creation gets NO
+# worktree: the team runs directly in their own working directory.
+#
+# THE SAFETY CLAIM IS THE PRIORITY. ":41 ... so agents can write code in parallel without
+# merge conflicts" tells users agents cannot clobber each other, in a shared directory where
+# they demonstrably can — and by default that directory is the user's real checkout. Per the
+# Orchestrator's ruling this CANNOT be softened: "isolated at the team level" still implies a
+# safety property we do not provide. It is cut outright, and :91 now states plainly that
+# agents are NOT isolated from each other.
+#
+# Four edits:
+#   :41  bullet     — "Isolated workspaces" retitled; merge-conflicts clause CUT
+#   :89  heading    — "Agents work in isolated worktrees" (plural implies per-agent) retitled
+#   :91  paragraph  — rewritten; adds an explicit "they are not isolated from each other"
+#   :109 table row  — per-agent worktree claim removed
+#
+# UPDATED after Demo 1's empirical result. Two agents on a 2-agent team, given the same
+# function, both wrote Truncate() into the same file:
+#     ./stringutil.go:38:6: Truncate redeclared in this block
+#     FAIL example.com/stringutil [build failed]
+# Two complete, competent, DIFFERING implementations (one guards n <= 0, the other n < 0) —
+# two genuine authors silently stacked, repository left broken. Dev Advocate: "I did not
+# defeat a safeguard; there is no safeguard to defeat."
+#
+# Consequence for this wording: the earlier draft said "coordinate their edits through the
+# message board", which implies the board is the mitigation. Demo 1 shows it is not — those
+# two agents had a board and still collided. The board is a communication channel, not a
+# lock. :91 now leads with the actual mitigation (scope each agent to its own files) and
+# says plainly that the board does not prevent a collision on its own.
+#
+# What is PRESERVED because it is true: each agent really does get its own tmux session.
+# The isolation that exists is FROM YOUR MAIN CHECKOUT, not BETWEEN AGENTS.
+#
+# The in-product copy is already correct (modals.html:243: "Create an isolated git worktree
+# so the team works on a separate branch"). Code and UI agree; only the README overclaimed.
+--- a/README.md
++++ b/README.md
+@@ -38,7 +38,7 @@
+ 
+ It works by managing three things:
+ 
+-- **Isolated workspaces.** Each agent runs in its own tmux session with its own git worktree, so agents can write code in parallel without merge conflicts.
++- **Separate terminal sessions.** Each agent runs in its own tmux session. You can optionally launch a team into a git worktree on a dedicated `coral-team/<name>` branch, so the team's work stays off your main checkout.
+ - **A shared message board.** Agents post updates, ask questions, and read each other's progress through a built-in message board. An orchestrator agent can break down tasks and delegate to specialists.
+ - **A web dashboard.** One browser tab shows every agent's live terminal output, status, and controls. Launch, pause, wake, restart, or kill agents without switching between terminal windows.
+ 
+@@ -86,10 +86,12 @@
+ 
+ Define a team of agents, each with a role and a system prompt. For example: an Orchestrator that plans and delegates, a Lead Developer that writes code, and a QA Engineer that reviews and tests. You can create teams from the dashboard UI, use built-in templates, or describe what you need in plain English and let AI generate the team configuration.
+ 
+-### 2. Agents work in isolated worktrees
++### 2. Agents run in separate sessions, on a shared team branch
+ 
+-When you launch a team, Coral creates a git worktree for each agent and starts them in separate tmux sessions. Each agent has its own copy of the repo and can read, write, and run commands without interfering with others.
++When you launch a team, Coral starts each agent in its own tmux session. If you enable **Launch in Git Worktree**, Coral also creates one git worktree for the team on a dedicated `coral-team/<name>` branch, so the team's work stays off your main checkout.
+ 
++Agents on a team share that one working directory and the same branch — **they are not isolated from each other, and two agents given overlapping work can and will overwrite or duplicate each other's code.** Scope each agent to its own files. The message board is how agents coordinate, but it is not a lock: it does not prevent a collision on its own.
++
+ ### 3. Agents communicate via the message board
+ 
+ Every team has a shared message board. Agents post status updates, ask for help, and coordinate handoffs. The orchestrator agent can assign tasks and track progress. Messages are delivered reliably with cursor-based tracking — nothing is lost across agent restarts.
+@@ -106,7 +108,7 @@
+ 
+ | Feature | Description |
+ |---|---|
+-| **Multi-agent orchestration** | Run multiple agents in parallel, each in its own git worktree and tmux session |
++| **Multi-agent orchestration** | Run multiple agents in parallel, each in its own tmux session, optionally on a dedicated team branch in a git worktree |
+ | **Any CLI agent** | Works with Claude Code, Gemini CLI, Codex, Pi.dev, and any CLI-based tool |
+ | **Real-time dashboard** | Web UI showing live terminal output, agent status, and controls |
+ | **Message board** | Inter-agent communication with cursor-based delivery and @mentions |
