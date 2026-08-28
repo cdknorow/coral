@@ -326,6 +326,14 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if latestEvents == nil {
 		latestEvents = map[string][2]string{}
 	}
+	// Launch times, used to bound how long after launch a stalled start is
+	// reported. See agentNeverStarted.
+	createdAtMap := map[string]string{}
+	if live, err := h.ss.GetAllLiveSessions(ctx); err == nil {
+		for _, ls := range live {
+			createdAtMap[ls.SessionID] = ls.CreatedAt
+		}
+	}
 	var tokenUsageMap map[string]*store.TokenUsage
 	var latestTurnCtx map[string]int
 	if h.tokenStore != nil && len(sessionIDs) > 0 {
@@ -452,6 +460,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		done := latestEv == "stop"
 		staleF, _ := staleness.(float64)
 		working := (latestEv == "tool_use" || latestEv == "prompt_submit") && staleF < 120
+		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 		// Sleep loop detection: agent stuck in a sleep loop is not actually working
 		if working && strings.HasPrefix(evSummary, "Ran: sleep") {
 			working = false
@@ -502,6 +511,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"branch":             branchVal,
 			"repo_name":          repoNameVal,
 			"waiting_for_input":  waiting,
+			"not_started":        notStarted,
 			"done":               done,
 			"waiting_reason":     nilIf(!waiting, latestEv),
 			"waiting_summary":    nilIf(!waiting, evSummary),
@@ -584,6 +594,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"icon":               ls.Icon,
 			"branch":             nil,
 			"waiting_for_input":  false,
+			"not_started":        false,
 			"done":               false,
 			"waiting_reason":     nil,
 			"waiting_summary":    nil,
