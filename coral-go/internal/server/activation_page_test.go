@@ -115,3 +115,52 @@ func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
 		t.Fatal("Continue Free did not dismiss the reminder")
 	}
 }
+
+// The supporter column listed two features that are free and ungated, on a
+// page whose own free column says "every feature unlocked". Nothing in Coral
+// is paywalled — license.Middleware passes every request through — so any
+// copy implying otherwise is false, not merely oversold.
+func TestActivationPageClaimsNoPaidFeatureGate(t *testing.T) {
+	rr := httptest.NewRecorder()
+	(&Server{}).serveActivation(rr, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rr.Body.String()
+
+	mustNotContain := map[string]string{
+		"Agent team templates &amp; sharing": "free feature listed as a supporter benefit",
+		"Search chat history":                "free feature listed as a supporter benefit, and full-text search does not work at all",
+		"Lifetime license":                   "meaningless on a product where everyone gets updates",
+		"Early adopter":                      "manufactured urgency implying future features will be paid",
+		"Activates on 1 machine":             "an unverified constraint on a paid product",
+	}
+	for phrase, why := range mustNotContain {
+		if strings.Contains(body, phrase) {
+			t.Errorf("activation page still contains %q — %s", phrase, why)
+		}
+	}
+
+	// The honest benefits must survive, or the page stops explaining what the
+	// license is actually for.
+	for _, phrase := range []string{
+		"Retires this periodic reminder",
+		"Priority support",
+		"Priority consideration for feature requests",
+		"Directly funds ongoing development",
+	} {
+		if !strings.Contains(body, phrase) {
+			t.Errorf("activation page is missing the supporter benefit %q", phrase)
+		}
+	}
+
+	// The line that makes the whole page coherent.
+	if !strings.Contains(body, "because nothing is locked") {
+		t.Error("activation page no longer states that nothing is locked")
+	}
+	// A free path has to stay visible and equally weighted.
+	if !strings.Contains(body, "Continue Free") {
+		t.Error("activation page has no visible free path")
+	}
+	// The tab title should not read as a paywall on a free product.
+	if strings.Contains(body, "<title>Coral — Activate License</title>") {
+		t.Error("page title still reads as a paywall")
+	}
+}

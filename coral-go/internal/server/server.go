@@ -734,7 +734,7 @@ const activationPage = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coral — Activate License</title>
+<title>Coral</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -763,13 +763,6 @@ const activationPage = `<!DOCTYPE html>
     position: relative;
   }
   .price-card.featured { border-color: #58a6ff; }
-  .price-badge {
-    position: absolute; top: -10px; right: 16px;
-    background: #58a6ff; color: #fff;
-    font-size: 11px; font-weight: 700;
-    padding: 3px 10px; border-radius: 10px;
-    text-transform: uppercase; letter-spacing: 0.5px;
-  }
   .price-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
   .price-desc { color: #8b949e; font-size: 13px; margin-bottom: 16px; }
   .price-amount { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
@@ -875,31 +868,30 @@ const activationPage = `<!DOCTYPE html>
       <div class="price-amount">Free</div>
       <p class="price-note">No card required &middot; every feature unlocked</p>
       <ul class="price-features">
-        <li>Native desktop app (macOS &amp; Linux)</li>
         <li>Every feature, no time limit</li>
-        <li>Unlimited Teams &amp; Agents</li>
-        <li>Claude, Codex &amp; Gemini support</li>
-        <li>Real-time dashboard &amp; message boards</li>
+        <li>Unlimited teams and agents</li>
+        <li>Claude Code, Codex, Gemini CLI and Pi.dev</li>
+        <li>Real-time dashboard and message boards</li>
+        <li>Agent team templates &mdash; generate a team from a plain-English description, import one from a folder</li>
+        <li>Token and cost tracking per agent and per session</li>
+        <li>Native desktop app (macOS and Linux)</li>
         <li>Skip this screen anytime</li>
       </ul>
       <a href="/?skip_activation=1" class="price-btn price-btn-secondary">Continue Free</a>
     </div>
 
     <div class="price-card featured">
-      <div class="price-badge">Early Adopter</div>
-      <h3>Supporter License</h3>
-      <p class="price-desc">Back the project &amp; hide this reminder</p>
+      <h3>Coral Pro &mdash; Supporter License</h3>
+      <p class="price-desc">Back the project</p>
       <div class="price-amount">$49.99</div>
-      <p class="price-note">One-time &middot; early adopter price rises as we add features</p>
+      <p class="price-note">One-time &middot; no subscription</p>
       <ul class="price-features">
-        <li>Retires this periodic activation reminder</li>
-        <li>Activates on 1 machine</li>
-        <li>Directly supports ongoing development</li>
-        <li>Agent team templates &amp; sharing</li>
-        <li>Search chat history</li>
-        <li>Lifetime license with updates &amp; email support</li>
+        <li>Retires this periodic reminder</li>
+        <li>Priority support</li>
+        <li>Priority consideration for feature requests</li>
+        <li>Directly funds ongoing development</li>
       </ul>
-      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way &mdash; a license simply backs the project and stops this reminder.</p>
+      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way. A license backs the project &mdash; it doesn&rsquo;t unlock anything, because nothing is locked.</p>
       <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank" onclick="trackSupporterClick('activation_nag')">Buy a License</a>
     </div>
   </div>
