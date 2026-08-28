@@ -202,9 +202,48 @@ func GetAgent(agentType string) Agent {
 		return &CodexAgent{}
 	case at.Pi:
 		return &PiAgent{}
+	case at.Claude, "":
+		return &ClaudeAgent{}
 	default:
+		// Reached only if a caller skipped ValidateAgentType. Falling back to
+		// Claude is kept so a stored session with an unexpected type still
+		// resolves to something, but it is no longer silent: this used to
+		// start a real Claude process for a type the user never asked for.
+		slog.Warn("unknown agent type, falling back to claude",
+			"agent_type", agentType, "supported", LaunchableAgentTypes())
 		return &ClaudeAgent{}
 	}
+}
+
+// LaunchableAgentTypes lists every agent_type Coral accepts, in a stable order
+// suitable for an error message.
+//
+// "terminal" is included deliberately. It is a plain shell rather than an
+// agent, so it has no Agent implementation and never reaches GetAgent — the
+// launch path skips command building for it entirely — but it is a valid
+// agent_type at the API and rejecting it would break terminal sessions.
+func LaunchableAgentTypes() []string {
+	return []string{at.Claude, at.Codex, at.Gemini, at.Pi, at.Terminal}
+}
+
+// ValidateAgentType checks an agent_type supplied by a caller.
+//
+// An empty type is allowed and means "use the default", which is a different
+// case from a type that was specified and is not recognised. Only the second
+// is an error: it used to fall through to Claude, so a request naming an agent
+// Coral does not support returned 200 ok:true and started a real Claude
+// session, spending the user's tokens on an agent they never asked for.
+func ValidateAgentType(agentType string) error {
+	if agentType == "" {
+		return nil // not specified; the caller's default applies
+	}
+	for _, known := range LaunchableAgentTypes() {
+		if agentType == known {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported agent_type %q — supported types are %s",
+		agentType, strings.Join(LaunchableAgentTypes(), ", "))
 }
 
 // CLIInfo holds the CLI binary name and install instructions for an agent type.

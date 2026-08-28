@@ -2326,6 +2326,12 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "working_dir is required")
 		return
 	}
+	// An unknown agent_type used to fall through to Claude and return 200
+	// ok:true, silently starting an agent the caller never asked for.
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	slog.Info("launch request received",
 		"working_dir", body.WorkingDir,
 		"agent_type", body.AgentType,
@@ -2416,6 +2422,18 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if body.BoardName == "" || body.WorkingDir == "" || len(body.Agents) == 0 {
 		errBadRequest(w, "board_name, working_dir, and agents required")
 		return
+	}
+	// Validate the team-level type and every per-agent override before
+	// launching anything: a team that fails halfway leaves live agents behind.
+	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	for _, a := range body.Agents {
+		if err := agent.ValidateAgentType(a.AgentType); err != nil {
+			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, err))
+			return
+		}
 	}
 
 	ctx := r.Context()
@@ -3101,6 +3119,10 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 				cliPath = resolved
 			}
 		}
+	}
+
+	if err := agent.ValidateAgentType(agentType); err != nil {
+		return nil, err
 	}
 
 	// NOTE: this value selects the LAUNCH PATH, not the terminal a session ends
