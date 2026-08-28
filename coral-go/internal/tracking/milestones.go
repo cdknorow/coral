@@ -273,9 +273,9 @@ func ValueDelivered() bool { return ValueDeliveredIn(resolveCoralDir()) }
 // install rooted at dir.
 //
 // Prefer this over ValueDelivered wherever the data directory is already
-// known. ValueDelivered depends on SetCoralDir having been called first, and a
-// caller that runs before it would silently read ~/.coral — letting one
-// install's state decide another install's behaviour.
+// known. ValueDelivered depends on SetCoralDir having been called first and
+// reports false until it has, which would read as "no value delivered yet"
+// rather than as "not configured" — a distinction the caller cannot see.
 //
 // It reads the same milestone state the funnel uses and works on builds with
 // no analytics key: whether we ask a user for support is a product decision

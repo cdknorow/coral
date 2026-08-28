@@ -27,14 +27,18 @@ var posthogURL = "https://us.i.posthog.com/capture/"
 var (
 	cachedInstallID string
 	installIDOnce   sync.Once
-	coralDir        string // set by SetCoralDir; falls back to ~/.coral
+	// coralDir is where all tracking state lives. It has no default: until
+	// SetCoralDir is called this package reads nothing, writes nothing, and
+	// sends nothing. See resolveCoralDir for why there is no fallback.
+	coralDir string
 
 	// asyncWG tracks in-flight tracking goroutines so tests can wait on them.
 	asyncWG sync.WaitGroup
 )
 
-// SetCoralDir sets the data directory used for tracking state files.
-// Must be called before TrackInstallAsync(). If not called, falls back to ~/.coral.
+// SetCoralDir sets the data directory used for tracking state files. Call it
+// as early as possible, before anything can read tracking state — until it is
+// called this package is inert and keeps no state at all.
 func SetCoralDir(dir string) {
 	coralDir = dir
 }
