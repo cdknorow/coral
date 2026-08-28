@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 func postTrackingEvent(t *testing.T, body string) *httptest.ResponseRecorder {
@@ -178,6 +179,63 @@ func TestSurfaceConstantsAreValidEventPropertyValues(t *testing.T) {
 		got := sanitizeTrackingProps(map[string]string{"surface": surface})
 		if got["surface"] != surface {
 			t.Errorf("surface %q is rejected by the event property allowlist", surface)
+		}
+	}
+}
+
+func TestTelemetryDisclosureDescribesTheEventsCoralActuallySends(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/system/telemetry", nil)
+	rr := httptest.NewRecorder()
+	NewTrackingHandler().TelemetryDisclosure(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var body struct {
+		Enabled      bool                `json:"enabled"`
+		Acknowledged bool                `json:"acknowledged"`
+		Events       []tracking.EventDoc `json:"events"`
+		Properties   []string            `json:"properties"`
+		Never        []string            `json:"never_collected"`
+		InstallID    string              `json:"install_id_path"`
+		FailureLog   string              `json:"failure_log"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+
+	if len(body.Events) != len(tracking.AllEvents) {
+		t.Fatalf("disclosure lists %d events but Coral sends %d", len(body.Events), len(tracking.AllEvents))
+	}
+	for i, want := range tracking.AllEvents {
+		if body.Events[i].Name != want.Name {
+			t.Errorf("event %d: disclosure says %q, Coral sends %q", i, body.Events[i].Name, want.Name)
+		}
+	}
+	if len(body.Properties) == 0 || len(body.Never) == 0 {
+		t.Error("disclosure must state both what is sent and what is never sent")
+	}
+	if !strings.HasSuffix(body.InstallID, ".install_id") {
+		t.Errorf("expected the install ID path, got %q", body.InstallID)
+	}
+	if !strings.HasSuffix(body.FailureLog, "tracking-failures.log") {
+		t.Errorf("expected the failure log path, got %q", body.FailureLog)
+	}
+}
+
+// The supporter click is the one event the browser can originate, so it must be
+// the one event the disclosure's allowlist accepts.
+func TestTheOnlyBrowserOriginatedEventIsDisclosed(t *testing.T) {
+	for name := range allowedTrackingEvents {
+		found := false
+		for _, e := range tracking.AllEvents {
+			if e.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("event %q is accepted by /api/tracking/event but is not in the telemetry disclosure", name)
 		}
 	}
 }

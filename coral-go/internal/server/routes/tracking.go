@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -15,14 +16,11 @@ type TrackingHandler struct{}
 
 func NewTrackingHandler() *TrackingHandler { return &TrackingHandler{} }
 
-// EventSupporterCheckoutClicked fires when a user clicks any supporter/store link.
-const EventSupporterCheckoutClicked = "supporter_checkout_clicked"
-
 // allowedTrackingEvents is a strict allowlist. The endpoint is reachable by
 // anything running in the page, so it must never become a general-purpose
 // event pipe.
 var allowedTrackingEvents = map[string]bool{
-	EventSupporterCheckoutClicked: true,
+	tracking.EventSupporterCheckoutClicked: true,
 }
 
 // allowedTrackingProps is the allowlist of property keys the browser may set.
@@ -147,4 +145,36 @@ func SupporterCheckoutURLs(base string) map[string]string {
 		out[s] = SupporterCheckoutURL(base, s)
 	}
 	return out
+}
+
+// ── Telemetry disclosure ─────────────────────────────────────────────────
+
+// TelemetryDisclosure returns everything the first-run disclosure needs to
+// render, generated from the tracking package's own event list so the UI can
+// never describe a different set of events than the one Coral sends.
+// GET /api/system/telemetry
+func (h *TrackingHandler) TelemetryDisclosure(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		// enabled is false for builds compiled from source, which carry no
+		// analytics key and send nothing. The disclosure is not shown then:
+		// warning users about collection that is not happening is misleading.
+		"enabled":         tracking.Enabled(),
+		"acknowledged":    tracking.DisclosureAcknowledged(),
+		"events":          tracking.AllEvents,
+		"properties":      tracking.StandardProperties,
+		"never_collected": tracking.NeverCollected,
+		"install_id_path": filepath.Join(tracking.CoralDir(), ".install_id"),
+		"failure_log":     filepath.Join(tracking.CoralDir(), "tracking-failures.log"),
+	})
+}
+
+// AcknowledgeTelemetryDisclosure records that the user has seen the
+// disclosure, so it does not appear again.
+// POST /api/system/telemetry/acknowledge
+func (h *TrackingHandler) AcknowledgeTelemetryDisclosure(w http.ResponseWriter, r *http.Request) {
+	if err := tracking.AcknowledgeDisclosure(); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "acknowledged": true})
 }

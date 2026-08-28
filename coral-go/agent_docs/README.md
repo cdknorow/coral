@@ -35,6 +35,9 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Templates](templates.md) — Agent and command templates from GitHub
 - [Views](views.md) — Custom dashboard views/tabs
 
+### Privacy
+- [Telemetry](telemetry.md) — Every event Coral sends, what it never collects, and why there is no opt-out
+
 ### Observability
 - [LLM Proxy](proxy.md) — Proxy passthrough, cost tracking, dashboard API, WebSocket events
 

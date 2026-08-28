@@ -272,3 +272,10 @@ func containsAll(s string, subs ...string) bool {
 	}
 	return true
 }
+
+// config_PostHogKeyTo sets the analytics key for the rest of the test.
+// newTestTracking's cleanup restores the original.
+func config_PostHogKeyTo(t *testing.T, key string) {
+	t.Helper()
+	config.PostHogKey = key
+}

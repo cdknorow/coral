@@ -39,6 +39,11 @@ func SetCoralDir(dir string) {
 	coralDir = dir
 }
 
+// CoralDir returns the data directory tracking state is written to. Exposed so
+// the telemetry disclosure can show the user exactly where their install ID
+// and failure log live.
+func CoralDir() string { return resolveCoralDir() }
+
 // getInstallID returns the install ID, reading from disk once and caching.
 func getInstallID() string {
 	installIDOnce.Do(func() {
@@ -58,7 +63,7 @@ func TrackInstallAsync() {
 	asyncGo(func() {
 		trackInstall()
 		// Always send app_opened for DAU tracking
-		trackEventSync("app_opened", nil)
+		trackEventSync(EventAppOpened, nil)
 		// Retention: fire returned_24h once, on the first open >24h after the first.
 		trackReturnVisitSync()
 	})
@@ -130,7 +135,7 @@ func trackInstall() {
 		os.WriteFile(versionFile, []byte(currentVersion), 0600)
 		// Update cache
 		cachedInstallID = installID
-		postEvent("install", installID, map[string]any{
+		postEvent(EventInstall, installID, map[string]any{
 			"version": currentVersion,
 			"edition": config.TierName,
 			"os":      runtime.GOOS,
@@ -145,7 +150,7 @@ func trackInstall() {
 	if currentVersion != "" && storedVersion != currentVersion {
 		// Version upgrade
 		os.WriteFile(versionFile, []byte(currentVersion), 0600)
-		postEvent("upgrade", installID, map[string]any{
+		postEvent(EventUpgrade, installID, map[string]any{
 			"version": currentVersion,
 			"edition": config.TierName,
 			"os":      runtime.GOOS,
@@ -215,6 +220,10 @@ func logDeliveryFailure(event string, status int, detail string) {
 	defer f.Close()
 	f.WriteString(line)
 }
+
+// posthogKeyPresent reports whether an analytics key was injected at build
+// time. Builds from source have none and send nothing.
+func posthogKeyPresent() bool { return config.PostHogKey != "" }
 
 func readFile(path string) string {
 	data, err := os.ReadFile(path)

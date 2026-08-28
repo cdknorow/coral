@@ -75,7 +75,7 @@ func (lr *Routes) Activate(w http.ResponseWriter, r *http.Request) {
 			props["variant_name"] = info.VariantName
 		}
 	}
-	tracking.TrackEvent("license_activated", props)
+	tracking.TrackEvent(tracking.EventLicenseActivated, props)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"valid":          true,

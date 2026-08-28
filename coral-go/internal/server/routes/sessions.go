@@ -2363,7 +2363,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 			body.AgentType, body.BoardName, body.DisplayName)
 	}
 
-	tracking.TrackEvent("session_launched", nil)
+	tracking.TrackEvent(tracking.EventSessionLaunched, nil)
 	tracking.TrackOnce(tracking.EventFirstAgentLaunched, nil)
 	writeJSON(w, http.StatusOK, result)
 }
@@ -2546,7 +2546,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if teamID > 0 {
 		resp["team_id"] = teamID
 	}
-	tracking.TrackEvent("team_launched", map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
+	tracking.TrackEvent(tracking.EventTeamLaunched, map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
 	tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
 	writeJSON(w, http.StatusOK, resp)
 }

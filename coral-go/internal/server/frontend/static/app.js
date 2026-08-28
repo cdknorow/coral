@@ -42,6 +42,7 @@ import { initWorkflows, showWorkflowsTab, selectWorkflow, selectWorkflowRun, tri
 import { showConnectedApps, showConnectAppModal, hideConnectAppModal, startOAuthFlow, testConnectedApp, disconnectApp } from './connected_apps.js';
 import { showCostDashboard, stopCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } from './cost_dashboard.js';
 import { showDocsTab, selectDoc } from './docs.js';
+import { maybeShowTelemetryDisclosure, acknowledgeTelemetryDisclosure, openTelemetryDoc } from './telemetry.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
 import { platform } from './platform/detect.js';
 import { initNative } from './platform/native.js';
@@ -134,6 +135,8 @@ Object.assign(window, {
     showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged,
     // docs
     showDocsTab, selectDoc,
+    // telemetry
+    acknowledgeTelemetryDisclosure, openTelemetryDoc,
     // folder_tags
     showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag,
     // utils
@@ -673,6 +676,11 @@ document.addEventListener("DOMContentLoaded", () => {
     initLiveJobs();
     initMessageBoard();
     initMobile();
+
+    // First-run telemetry disclosure. Shown once, only on builds that can
+    // actually send anything, and never blocking: the dashboard is already
+    // usable behind it.
+    maybeShowTelemetryDisclosure();
 
     // Hide connected apps in prod builds (feature is dev/beta only),
     // and surface a banner if tmux is missing so the user knows agents

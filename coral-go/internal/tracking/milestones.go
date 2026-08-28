@@ -177,3 +177,31 @@ func trackReturnVisitSync() {
 func nowUTC() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
+
+// ── Telemetry disclosure ─────────────────────────────────────────────────
+
+// disclosureFileName records that the user has seen the telemetry disclosure.
+// It sits alongside .install_id so it survives upgrades and is trivial to
+// inspect or delete.
+const disclosureFileName = ".telemetry_disclosed"
+
+func disclosurePath() string {
+	return filepath.Join(resolveCoralDir(), disclosureFileName)
+}
+
+// DisclosureAcknowledged reports whether the telemetry disclosure has been
+// acknowledged on this install.
+func DisclosureAcknowledged() bool {
+	_, err := os.Stat(disclosurePath())
+	return err == nil
+}
+
+// AcknowledgeDisclosure records that the user has seen the disclosure. It is
+// idempotent.
+func AcknowledgeDisclosure() error {
+	dir := resolveCoralDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(disclosurePath(), []byte(nowUTC()+"\n"), 0600)
+}
