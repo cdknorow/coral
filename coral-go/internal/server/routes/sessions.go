@@ -2491,9 +2491,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		// Resolve model: per-agent request wins, else user's default_model_<type>.
 		effectiveModel := defaultModelFromSettings(userSettings, agentType, agentDef.Model)
 
-		// Build per-agent flags: start with team-level, add model if resolved
-		agentFlags := make([]string, len(body.Flags))
-		copy(agentFlags, body.Flags)
+		// Team-level flags are shared by every member, which may use different
+		// agent types. Drop engine-specific permission flags here and let
+		// launchSession translate the configured permission mode for each agent.
+		// Otherwise a mixed team can pass (for example) a Codex bypass flag to
+		// Claude alongside Claude's own --permission-mode flag.
+		agentFlags := stripAgentPermissionFlags(body.Flags)
 		if effectiveModel != "" {
 			agentFlags = append(agentFlags, "--model", effectiveModel)
 		}
@@ -3083,6 +3086,11 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		}
 	}
 
+	// NOTE: this value selects the LAUNCH PATH, not the terminal a session ends
+	// up on. "pty" means "go through the TerminalBackend abstraction", which is
+	// how tmux-backed sessions are launched too — h.backend is a TmuxBackend in
+	// that case. It is persisted and drives the same branch on wake, so it must
+	// keep meaning exactly this. Use terminalKind below for what actually runs.
 	if backend == "" {
 		if h.backend != nil {
 			backend = "pty"
@@ -3289,7 +3297,25 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	return map[string]any{
 		"ok": true, "session_id": sessionID, "session_name": sessionName,
 		"log_file": logFile, "backend": backend,
+		// backend names the launch path and reads as "pty" even for a tmux
+		// session; terminal names what the session actually runs on. Reporting
+		// only the former is how a silent backend downgrade went unnoticed.
+		"terminal": terminalKind(h.backend),
 	}, nil
+}
+
+// terminalKind names the terminal a session actually runs on, as opposed to
+// the launch path taken to get there.
+func terminalKind(b ptymanager.TerminalBackend) string {
+	switch b.(type) {
+	case *ptymanager.PTYBackend:
+		return "pty"
+	case *ptymanager.TmuxBackend:
+		return "tmux"
+	case nil:
+		return "tmux"
+	}
+	return "unknown"
 }
 
 // setupBoardAndPrompt subscribes a session to a message board.

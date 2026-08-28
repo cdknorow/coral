@@ -182,7 +182,7 @@ func executableFileExists(path string) bool {
 // placed at <coralDir>/tmux.sock. Pass "" to use CORAL_TMUX_SOCKET env var
 // or fall back to ~/.coral/tmux.sock.
 func NewClient(coralDir ...string) *Client {
-	c := &Client{TmuxBin: "tmux", FallbackToDefault: true, sessionSockets: make(map[string]string)}
+	c := &Client{TmuxBin: "tmux", sessionSockets: make(map[string]string)}
 
 	// Find tmux binary if not on PATH (native app may not have Homebrew paths).
 	if p, ok := IsAvailable(); ok {
@@ -199,17 +199,85 @@ func NewClient(coralDir ...string) *Client {
 			c.SocketPath = filepath.Join(home, ".coral", "tmux.sock")
 		}
 	}
+	c.FallbackToDefault = defaultSocketFallback(c.SocketPath)
 	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v path=%q shell=%q coral_tmux_bin=%q", c.TmuxBin, c.SocketPath, c.FallbackToDefault, os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"))
 	return c
 }
 
+// defaultSocketFallback decides whether session discovery also reads tmux's
+// default socket.
+//
+// The merge exists so that upgrading from a Coral old enough to have used the
+// default socket does not lose sight of already-running agents. That only ever
+// applies to an install rooted at the default ~/.coral. For any other data
+// directory there is no upgrade to serve, and the merge is actively harmful:
+// a second Coral instance — its own port, its own database, its own socket —
+// still enumerates the first instance's sessions, and the session endpoints
+// that can kill an agent take those same names. A user with two instances can
+// kill the first one's agents from a dashboard that looks entirely like their
+// own.
+//
+// So the merge is on only for a default-rooted install, and either environment
+// variable overrides that decision explicitly.
+func defaultSocketFallback(socketPath string) bool {
+	if envTruthy(os.Getenv("CORAL_TMUX_NO_FALLBACK")) {
+		return false
+	}
+	if envTruthy(os.Getenv("CORAL_TMUX_FALLBACK")) {
+		return true
+	}
+	return socketPath == "" || socketPath == defaultSocketPath()
+}
+
+// defaultSocketPath is the socket an install rooted at ~/.coral uses.
+func defaultSocketPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return ""
+	}
+	return filepath.Join(home, ".coral", "tmux.sock")
+}
+
+func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// maxUnixSocketPath is the sun_path limit for unix domain sockets: 104 bytes
+// on macOS and the BSDs, 108 on Linux. A socket path at or over the limit
+// cannot be bound at all.
+func maxUnixSocketPath() int {
+	if runtime.GOOS == "linux" {
+		return 108
+	}
+	return 104
+}
+
+// CheckSocketPath reports whether a tmux socket can actually be created for
+// this data directory. An over-limit path fails at bind time with a bare
+// "File name too long", which previously left the server logging that it was
+// using the tmux backend while nothing tmux-related could work.
+func CheckSocketPath(coralDir string) error {
+	path := filepath.Join(coralDir, "tmux.sock")
+	if limit := maxUnixSocketPath(); len(path) >= limit {
+		return fmt.Errorf("tmux socket path is %d bytes, over this platform's %d-byte limit: %s",
+			len(path), limit, path)
+	}
+	return nil
+}
+
 // ListPanes returns all tmux panes with their titles, session names, and targets.
-// If FallbackToDefault is enabled and the primary socket has no sessions,
-// also checks the default tmux socket for backward compatibility.
+// When FallbackToDefault is set it also reads tmux's default socket and merges
+// the result, so an upgrade from a Coral that used the default socket still
+// sees its running agents. See defaultSocketFallback for when that is enabled;
+// it is off by default for any non-default data directory, because merging
+// there lets one Coral instance discover and kill another's agents.
 func (c *Client) ListPanes(ctx context.Context) ([]Pane, error) {
 	panes := c.listPanesOnSocket(ctx, c.SocketPath)
 
-	// Always merge sessions from the default socket for backward compatibility
 	if c.FallbackToDefault && c.SocketPath != "" {
 		fallbackPanes := c.listPanesOnSocket(ctx, "")
 		// Deduplicate by session name (prefer primary socket)
