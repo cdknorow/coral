@@ -2,7 +2,7 @@
 
 **Owner of this file:** Content & Launch Producer
 **Status:** Wave 1 — nothing external ships
-**Last updated:** 2026-08-28 (rev 40)
+**Last updated:** 2026-08-28 (rev 41)
 
 > **Hard gate (operator decision, settled):** No Show HN, no Reddit, no X thread, no
 > newsletter until Phase 2 activation targets are hit on real data — 40% of new installs
@@ -61,6 +61,12 @@ That check is one command and it protects five documents.
 **Also revisit at release time:** the first-run experience fixes (#26 nag, #33 trust prompt),
 `#31` tmux isolation and `#34` board port — all real, all invisible to a v1.0.8 user, and all
 absent from the README **deliberately**.
+
+**How fast this list goes stale — measured, not assumed.** It was written expecting to matter in
+weeks. **Two of the five rows changed status within three hours of being written**: scheduled jobs
+and full-text search both acquired real fixes on unreleased branches in a single evening. If the
+rate is anything like that, **you cannot assume any row below is current** — check each one against
+the shipped artifact rather than trusting the entry.
 
 **The general obligation:** when a release ships, re-run the shipped-artifact test on every
 row above. The README's correctness is currently a function of *which build we decided to
@@ -292,6 +298,31 @@ too, and it is harder to catch because it feels virtuous.
 This matters most for me. Every retracted claim today had a **stronger** true version
 underneath it, so the correct move at the copy pass is almost never "say less" — it is "say
 the specific thing." See the five pairs in the lift-test table.
+
+## Pre-registration: publish markers before the commit, then freeze
+
+The only control here that constrains **the checker** rather than the artifact. Before a file is
+committed, publish the exact strings you will check for **and their current counts**. A marker
+chosen after seeing the result is a marker chosen to pass.
+
+**State counts, not just strings.** A published marker with no number is still a guess; one with a
+number cannot be a paraphrase, because a paraphrase reports **zero** and zero is visible before
+anyone commits anything. Counts proved stronger than a hash twice on 2026-08-28: **markers survived
+an edit the hash did not**, and **markers caught a hash that was wrong** — a broken shell expansion
+returned the md5 of an empty string, which would have reported the load-bearing file as corrupted
+in a correct commit.
+
+> **Once you publish markers against a file, the file is frozen until the check runs — or you
+> re-publish. There is no third option.** *"I edited it and the markers still match"* is not
+> verification, it is a coin that came up heads.
+
+**Re-publication does not weaken this; silent re-publication does.** Change the file, say so before
+any check runs, give the new hash and the reason. What is not available is editing quietly and
+reporting that the markers matched.
+
+**The failure mode it cannot detect** is an author editing under a commitment they had forgotten
+they made — the checker sees a mismatch and cannot tell corruption from moved goalposts. That is
+why the freeze is a rule rather than a habit.
 
 ## Approval launders evidence tier — follow the SENTENCE, not just the entry
 
