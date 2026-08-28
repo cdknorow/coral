@@ -202,18 +202,16 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		merged["mcpServers"] = params.MCPServers
 	}
 
-	// Set CORAL_SESSION_NAME and CORAL_SUBSCRIBER_ID in env so coral-board and hooks
-	// can identify this agent. CORAL_SUBSCRIBER_ID is the stable board identity (role name).
+	// Coral environment so coral-board and the hooks can find, and identify
+	// themselves to, the server that launched this agent. Built by CoralEnv so
+	// every launch path agrees; see that function for why.
 	{
 		envMap, _ := merged["env"].(map[string]interface{})
 		if envMap == nil {
 			envMap = make(map[string]interface{})
 		}
-		if params.SessionName != "" {
-			envMap["CORAL_SESSION_NAME"] = params.SessionName
-		}
-		if params.Role != "" {
-			envMap["CORAL_SUBSCRIBER_ID"] = params.Role
+		for _, kv := range CoralEnv(params) {
+			envMap[kv[0]] = kv[1]
 		}
 		if params.ProxyBaseURL != "" {
 			// Override the appropriate base URL env var based on detected provider.

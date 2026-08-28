@@ -148,11 +148,9 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	// Export env vars
-	if params.SessionName != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SESSION_NAME='%s' &&`, SanitizeShellValue(params.SessionName)))
-	}
-	if params.Role != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SUBSCRIBER_ID='%s' &&`, SanitizeShellValue(params.Role)))
+	// Coral environment, built by CoralEnv so every launch path agrees.
+	for _, kv := range CoralEnv(params) {
+		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
 	}
 	if params.ProxyBaseURL != "" {
 		parts = append(parts, fmt.Sprintf(`export HTTPS_PROXY='%s' &&`, sanitizeURL(params.ProxyBaseURL)))

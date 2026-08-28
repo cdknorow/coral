@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -51,6 +52,45 @@ type LaunchParams struct {
 	UpstreamBaseURL  string                 // detected upstream URL before proxy override (e.g. "https://api.anthropic.com")
 	UpstreamProvider string                 // detected upstream provider (e.g. "anthropic", "bedrock", "vertex", "openai")
 	CoralDir         string                 // path to coral data directory (~/.coral) for CA cert location
+	CoralHost        string                 // host this Coral server is bound to
+	CoralPort        int                    // port this Coral server is listening on
+}
+
+// CoralEnv returns the Coral environment every launched agent needs, as
+// ordered name/value pairs. Empty values are omitted.
+//
+// This exists because the environment was being assembled independently in
+// five places — once per agent implementation, plus the tmux session env — and
+// they had already drifted: all of them set CORAL_SESSION_NAME and
+// CORAL_SUBSCRIBER_ID, none set CORAL_PORT or CORAL_URL, while the workflow
+// runner set all four. An agent without CORAL_PORT falls back to
+// localhost:8420, so on any other port its coral-board talked to whatever
+// server happened to own 8420 — which on a developer's machine is their real
+// Coral, not the one that launched it. Every launch path must build this env
+// from here so they cannot drift apart again.
+func CoralEnv(params LaunchParams) [][2]string {
+	var env [][2]string
+	add := func(k, v string) {
+		if v != "" {
+			env = append(env, [2]string{k, v})
+		}
+	}
+	add("CORAL_SESSION_NAME", params.SessionName)
+	add("CORAL_SUBSCRIBER_ID", params.Role)
+	if params.CoralPort > 0 {
+		port := strconv.Itoa(params.CoralPort)
+		host := params.CoralHost
+		// 0.0.0.0 means "every interface"; an agent has to dial a real one.
+		if host == "" || host == "0.0.0.0" || host == "::" {
+			host = "127.0.0.1"
+		}
+		add("CORAL_PORT", port)
+		add("CORAL_HOST", host)
+		add("CORAL_URL", fmt.Sprintf("http://%s:%s", host, port))
+	}
+	add("CORAL_DIR", params.CoralDir)
+	add("CORAL_DATA_DIR", params.CoralDir)
+	return env
 }
 
 // IndexedSession holds extracted session data from a history file.

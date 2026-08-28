@@ -168,11 +168,9 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
 	// Single quotes prevent shell expansion; SanitizeShellValue strips metacharacters.
-	if params.SessionName != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SESSION_NAME='%s' &&`, SanitizeShellValue(params.SessionName)))
-	}
-	if params.Role != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SUBSCRIBER_ID='%s' &&`, SanitizeShellValue(params.Role)))
+	// Coral environment, built by CoralEnv so every launch path agrees.
+	for _, kv := range CoralEnv(params) {
+		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
 	}
 	// Route LLM traffic through the Coral MITM proxy for transparent cost tracking.
 	// HTTPS_PROXY must be exported BEFORE the binary (it's an env var, not a flag).

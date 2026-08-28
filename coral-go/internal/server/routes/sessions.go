@@ -2067,6 +2067,9 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		MCPServers:      storedMCPServers,
 		ProxyBaseURL:    restartProxyURL,
 		PermissionMode:  userSettings["default_permission_mode"],
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}))
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
 	h.terminal.SendToTarget(ctx, target, cmd)
@@ -2209,6 +2212,9 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		Tools:           storedTools,
 		MCPServers:      storedMCPServers,
 		PermissionMode:  userSettings["default_permission_mode"],
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}))
 	h.terminal.SendToTarget(ctx, target, cmd)
 
@@ -3148,6 +3154,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		ProxyBaseURL:    proxyBaseURL,
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}
 	if cliPath != "" {
 		log.Printf("[launch] using custom CLI path: %s", cliPath)
@@ -3229,13 +3238,14 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 			)
 			return nil, fmt.Errorf("tmux new-session failed: %w", err)
 		}
-		// Set CORAL_SESSION_NAME and CORAL_SUBSCRIBER_ID in the tmux session environment
+		// Put the Coral environment into the tmux session so that anything the
+		// user runs by hand in that pane — coral-board especially — reaches the
+		// server that launched the agent. Same source as the agent's own env.
 		if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {
-			if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "CORAL_SESSION_NAME", sessionName); err != nil {
-				log.Printf("[launch] failed to set CORAL_SESSION_NAME for %s: %v", sessionName, err)
-			}
-			if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, "CORAL_SUBSCRIBER_ID", role); err != nil {
-				log.Printf("[launch] failed to set CORAL_SUBSCRIBER_ID for %s: %v", sessionName, err)
+			for _, kv := range agent.CoralEnv(launchParams) {
+				if err := tmuxTerm.Client().SetEnvironment(ctx, sessionName, kv[0], kv[1]); err != nil {
+					log.Printf("[launch] failed to set %s for %s: %v", kv[0], sessionName, err)
+				}
 			}
 			// Prepend Coral tools dir to PATH so coral-board and hooks are
 			// discoverable by subshells Claude spawns (e.g. Bash tool).
@@ -4075,6 +4085,9 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
 		ProxyBaseURL:    proxyBaseURL,
+		CoralDir:        h.cfg.CoralDir(),
+		CoralHost:       h.cfg.Host,
+		CoralPort:       h.cfg.Port,
 	}
 
 	if ls.AgentType != at.Terminal {

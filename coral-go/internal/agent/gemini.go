@@ -159,11 +159,9 @@ func (a *GeminiAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, fmt.Sprintf(`export GEMINI_SYSTEM_MD="%s" &&`, sysFile))
 	}
 
-	if params.SessionName != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SESSION_NAME='%s' &&`, SanitizeShellValue(params.SessionName)))
-	}
-	if params.Role != "" {
-		parts = append(parts, fmt.Sprintf(`export CORAL_SUBSCRIBER_ID='%s' &&`, SanitizeShellValue(params.Role)))
+	// Coral environment, built by CoralEnv so every launch path agrees.
+	for _, kv := range CoralEnv(params) {
+		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
 	}
 	if params.ProxyBaseURL != "" {
 		parts = append(parts, fmt.Sprintf(`export GEMINI_API_BASE='%s' &&`, sanitizeURL(params.ProxyBaseURL)))
