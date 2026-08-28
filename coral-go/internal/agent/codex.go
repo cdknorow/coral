@@ -82,6 +82,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 	var firstTS, lastTS *string
 	var msgCount int
 	var summary string
+	var fts FTSBodyBuilder
 	var coralSessionID string
 
 	scanner := bufio.NewScanner(f)
@@ -110,6 +111,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		role, text := codexIndexMessage(entry)
 		if role == "user" || role == "assistant" {
 			msgCount++
+			fts.Add(text)
 		}
 		if summary == "" && role == "assistant" {
 			if len(text) > 200 {
@@ -133,6 +135,7 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
+		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }
 

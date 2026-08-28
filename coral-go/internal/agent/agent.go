@@ -106,6 +106,59 @@ type IndexedSession struct {
 	FTSBody        string
 }
 
+// ftsBodyLimit caps how much of one session's text enters the search index.
+// A long session can run to megabytes; indexing all of it across hundreds of
+// sessions would cost far more disk than the search is worth. 256 KiB is
+// roughly a hundred thousand words, which is more than enough for the "what
+// was that session about" query this feature exists to answer.
+const ftsBodyLimit = 256 * 1024
+
+// FTSBodyBuilder accumulates the searchable text of one session, bounded.
+//
+// It exists so every agent's extractor builds the body the same way. FTSBody
+// was declared and read but never assigned by any of the four extractors, so
+// the guard in the indexer was never true, UpsertFTS was never called, and
+// session_fts stayed empty — in production, across 56 indexed sessions, for
+// months. Building it in one place is what stops three of the four being
+// fixed and the fourth quietly not.
+type FTSBodyBuilder struct {
+	b    strings.Builder
+	full bool
+}
+
+// Add appends one message's text. Empty strings are ignored, and everything
+// after the limit is dropped rather than truncated mid-append, so the body
+// never ends in half a word.
+func (f *FTSBodyBuilder) Add(text string) {
+	if f.full || text == "" {
+		return
+	}
+	if f.b.Len() > 0 {
+		f.b.WriteByte('\n')
+	}
+	f.b.WriteString(text)
+	if f.b.Len() >= ftsBodyLimit {
+		f.full = true
+	}
+}
+
+// String returns the accumulated body.
+func (f *FTSBodyBuilder) String() string { return f.b.String() }
+
+// buildFTSBody returns the searchable body for a session, seeded with the
+// display summary.
+//
+// Seeding matters: the summary is what the session list shows, so a word a
+// user can see on screen must be findable. That was the exact symptom — a
+// summary reading "MEMORY-TOKEN-7731 the capital of the demo is Coralville"
+// was on screen while a search for "Coralville" returned nothing.
+func buildFTSBody(summary string, body *FTSBodyBuilder) string {
+	var out FTSBodyBuilder
+	out.Add(summary)
+	out.Add(body.String())
+	return out.String()
+}
+
 // HistoryScanner is the interface that agent implementations must satisfy
 // to participate in session indexing.
 type HistoryScanner interface {

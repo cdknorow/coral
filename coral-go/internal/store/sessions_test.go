@@ -204,12 +204,19 @@ func TestSessionIndex(t *testing.T) {
 		SourceType:     "claude",
 		SourceFile:     "/path/to/file.jsonl",
 		FirstTimestamp: &first,
-		LastTimestamp:   &last,
+		LastTimestamp:  &last,
 		MessageCount:   42,
 		DisplaySummary: "Test session",
 		FileMtime:      1234567890.0,
 	})
 	require.NoError(t, err)
+
+	// A session only counts as indexed once it also has a full-text row.
+	// Without this the session is reported as needing re-indexing, which is
+	// deliberate: sessions indexed before FTSBody was populated must be
+	// re-read once so they can be backfilled. See
+	// TestGetIndexedMtimesExcludesSessionsMissingTheirFullTextRow.
+	require.NoError(t, s.UpsertFTS(ctx, "sess-1", "Test session body"))
 
 	// Check indexed mtimes
 	mtimes, err := s.GetIndexedMtimes(ctx)
@@ -413,3 +420,56 @@ func TestUnmarshalFlags(t *testing.T) {
 
 func strPtr(s string) *string { return &s }
 func intPtr(i int) *int       { return &i }
+
+// A session indexed before FTSBody was ever populated has a session_index row
+// and no session_fts row. If GetIndexedMtimes reported it as indexed, the
+// scanner would skip its file on mtime forever and it would stay permanently
+// unsearchable — which is exactly what an upgrade looked like: 25 indexed
+// sessions, 0 full-text rows, and a search that found nothing.
+func TestGetIndexedMtimesExcludesSessionsMissingTheirFullTextRow(t *testing.T) {
+	db := openTestDB(t)
+	s := NewSessionStore(db)
+	ctx := context.Background()
+
+	searchable := &SessionIndex{
+		SessionID: "has-fts", SourceType: "claude",
+		SourceFile: "/history/has-fts.jsonl", FileMtime: 1000,
+	}
+	stale := &SessionIndex{
+		SessionID: "no-fts", SourceType: "claude",
+		SourceFile: "/history/no-fts.jsonl", FileMtime: 2000,
+	}
+	if err := s.UpsertSessionIndex(ctx, searchable); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertSessionIndex(ctx, stale); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpsertFTS(ctx, "has-fts", "the capital of the demo is Coralville"); err != nil {
+		t.Fatal(err)
+	}
+
+	mtimes, err := s.GetIndexedMtimes(ctx)
+	if err != nil {
+		t.Fatalf("GetIndexedMtimes: %v", err)
+	}
+
+	if _, ok := mtimes["/history/has-fts.jsonl"]; !ok {
+		t.Error("a fully indexed session should be reported, so its file is not re-read every pass")
+	}
+	if _, ok := mtimes["/history/no-fts.jsonl"]; ok {
+		t.Error("a session with no full-text row must NOT be reported as indexed, or it is never backfilled")
+	}
+
+	// Once it has a full-text row it stops being re-read.
+	if err := s.UpsertFTS(ctx, "no-fts", "backfilled body"); err != nil {
+		t.Fatal(err)
+	}
+	mtimes, err = s.GetIndexedMtimes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := mtimes["/history/no-fts.jsonl"]; !ok {
+		t.Error("after backfilling, the file should be skipped on mtime again")
+	}
+}

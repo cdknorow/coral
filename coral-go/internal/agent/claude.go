@@ -81,6 +81,7 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 	var firstTS, lastTS *string
 	var msgCount int
 	var summaryParts []string
+	var fts FTSBodyBuilder
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -104,6 +105,9 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 		etype, _ := entry["type"].(string)
 		if etype == "user" || etype == "assistant" {
 			msgCount++
+			if msg, _ := entry["message"].(map[string]any); msg != nil {
+				fts.Add(extractFirstText(msg["content"]))
+			}
 		}
 		// Grab first assistant text for display summary
 		if etype == "assistant" && len(summaryParts) < 1 {
@@ -120,6 +124,7 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 	if msgCount == 0 {
 		return nil, nil
 	}
+	summary := strings.Join(summaryParts, " ")
 	return []IndexedSession{{
 		SessionID:      sessionID,
 		SourceType:     "claude",
@@ -128,7 +133,8 @@ func parseClaudeSessions(fpath string, mtime float64) ([]IndexedSession, error) 
 		FirstTimestamp: firstTS,
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
-		DisplaySummary: strings.Join(summaryParts, " "),
+		DisplaySummary: summary,
+		FTSBody:        buildFTSBody(summary, &fts),
 	}}, nil
 }
 

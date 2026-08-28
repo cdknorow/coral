@@ -77,6 +77,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 	var sessionID string
 	var firstTS, lastTS *string
 	var summary string
+	var fts FTSBodyBuilder
 	msgCount := 0
 
 	for scanner.Scan() {
@@ -102,14 +103,14 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 				tsCopy := ts
 				lastTS = &tsCopy
 			}
+			content, _ := entry["content"].(string)
+			fts.Add(content)
 			if summary == "" {
-				if role, _ := entry["role"].(string); role == "user" {
-					if content, _ := entry["content"].(string); content != "" {
-						if len(content) > 200 {
-							content = content[:200]
-						}
-						summary = content
+				if role, _ := entry["role"].(string); role == "user" && content != "" {
+					if len(content) > 200 {
+						content = content[:200]
 					}
+					summary = content
 				}
 			}
 		}
@@ -129,6 +130,7 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 		LastTimestamp:  lastTS,
 		MessageCount:   msgCount,
 		DisplaySummary: summary,
+		FTSBody:        buildFTSBody(summary, &fts),
 	}, nil
 }
 
