@@ -408,3 +408,47 @@
     padding-left: 4px;
     font-family: var(--font-mono);
 }
+
+/* ── Failing job indicators ────────────────────────────────────────────── */
+
+/* A job that fires on schedule and fails every run looks healthy in the list:
+   enabled, with a next fire time. These two make the failure visible without
+   opening the run history. */
+.sched-fail-badge {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--error, #f85149);
+    background: rgba(248, 81, 73, 0.14);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.sched-fail-banner {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--error, #f85149);
+    background: rgba(248, 81, 73, 0.12);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.sched-fail-banner strong {
+    display: block;
+    margin-bottom: 2px;
+}
+
+.sched-fail-error {
+    margin-top: 6px;
+    overflow-x: auto;
+}
+
+.sched-fail-error code {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    white-space: pre;
+}

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -547,13 +548,22 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	var worktreeDir string
 
 	// Create worktree if configured
+	var runBranch, baseBranch string
 	if rc.createWorktree && rc.repoPath != "" {
 		worktreeDir = fmt.Sprintf("%s_task_run_%d", rc.repoPath, runID)
-		branch := rc.baseBranch
-		if branch == "" {
-			branch = "main"
+		baseBranch = rc.baseBranch
+		if baseBranch == "" {
+			baseBranch = "main"
 		}
-		err := runGitCmd(watchCtx, rc.repoPath, "worktree", "add", worktreeDir, branch)
+		// Git refuses to check out a branch that is already checked out in
+		// another worktree, and the user's own working copy almost always has
+		// the base branch checked out — which is exactly what our docs give as
+		// the default. Checking out the base directly therefore failed on every
+		// run of a correctly configured job. Branch from the base instead:
+		// worktreeDir is already keyed on runID, so the branch keys the same
+		// way and each run stays isolated from every other.
+		runBranch = fmt.Sprintf("coral/job-run-%d", runID)
+		err := runGitCmd(watchCtx, rc.repoPath, "worktree", "add", "-b", runBranch, worktreeDir, baseBranch)
 		if err != nil {
 			errMsg := fmt.Sprintf("git worktree add failed: %v", err)
 			s.logger.Error(errMsg, "run_id", runID)
@@ -631,7 +641,7 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 
 	// Cleanup worktree if configured
 	if rc.cleanupWorktree && worktreeDir != "" {
-		s.cleanupWorktree(rc.repoPath, worktreeDir)
+		s.cleanupWorktree(rc.repoPath, worktreeDir, runBranch, baseBranch)
 	}
 
 	// Unregister auto-accept if set
@@ -744,14 +754,48 @@ func runGitCmd(ctx context.Context, repoPath string, args ...string) error {
 	return nil
 }
 
-// cleanupWorktree removes a git worktree.
-func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath string) {
+// cleanupWorktree removes a job run's worktree, and its per-run branch when
+// that branch holds nothing.
+//
+// The branch is only deleted when it has no commits the base does not already
+// have. Removing a worktree discards uncommitted work by design, but deleting
+// a branch the agent committed to would make finished work unreachable, so a
+// run that produced commits leaves its branch behind for the user to find.
+func (s *JobScheduler) cleanupWorktree(repoPath, worktreePath, runBranch, baseBranch string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := runGitCmd(ctx, repoPath, "worktree", "remove", "--force", worktreePath)
 	if err != nil {
 		s.logger.Warn("failed to remove worktree", "path", worktreePath, "error", err)
-	} else {
-		s.logger.Info("cleaned up worktree", "path", worktreePath)
+		return
 	}
+	s.logger.Info("cleaned up worktree", "path", worktreePath)
+
+	if runBranch == "" || baseBranch == "" {
+		return
+	}
+	if branchHasCommits(ctx, repoPath, baseBranch, runBranch) {
+		s.logger.Info("keeping job run branch — it has commits",
+			"branch", runBranch, "base", baseBranch)
+		return
+	}
+	if err := runGitCmd(ctx, repoPath, "branch", "-D", runBranch); err != nil {
+		s.logger.Warn("failed to delete job run branch", "branch", runBranch, "error", err)
+	}
+}
+
+// branchHasCommits reports whether branch contains commits that base does not.
+// On any error it answers true, so an unreadable repository leaves the branch
+// alone rather than risking the deletion of real work.
+func branchHasCommits(ctx context.Context, repoPath, base, branch string) bool {
+	out, err := executil.Command(ctx, "git", "-C", repoPath,
+		"rev-list", "--count", base+".."+branch).Output()
+	if err != nil {
+		return true
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return true
+	}
+	return n > 0
 }
