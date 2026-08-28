@@ -54,6 +54,8 @@ There is no code path that sends any of the following:
 - Your name, email address, or IP-derived location
 - Your license key
 
+On that last one, precisely: Coral never puts your location in a payload. PostHog does geo-resolve source IPs server-side by default, so this is a statement about what we send, not a claim about what our analytics provider can infer from the connection itself.
+
 ## No opt-out
 
 There is no runtime toggle that disables telemetry. Rather than soften that, here is what is true instead:
