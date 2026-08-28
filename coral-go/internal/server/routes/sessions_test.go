@@ -329,6 +329,42 @@ func TestSessionsChangesDiff_ReturnsTrackedAndUntrackedChanges(t *testing.T) {
 	assert.Contains(t, string(body), "+new file")
 }
 
+func TestSessionStatus_WaitingThenFinished(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sessionID := "00000000-0000-0000-0000-000000000125"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: sessionID, AgentType: "codex", AgentName: "status-test", WorkingDir: t.TempDir(),
+	}))
+
+	ts := store.NewTaskStore(ss.DB())
+	_, err := ts.InsertAgentEvent(ctx, &store.AgentEvent{
+		AgentName: "status-test", SessionID: &sessionID, EventType: "notification", Summary: "Needs input",
+	})
+	require.NoError(t, err)
+
+	resp, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/status")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var waiting map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&waiting))
+	assert.Equal(t, "waiting_for_input", waiting["state"])
+	assert.Equal(t, true, waiting["waiting_for_input"])
+	assert.Equal(t, false, waiting["finished"])
+
+	require.NoError(t, ss.UnregisterLiveSession(ctx, sessionID))
+	finishedResp, err := http.Get(server.URL + "/api/sessions/" + sessionID + "/status")
+	require.NoError(t, err)
+	defer finishedResp.Body.Close()
+	require.Equal(t, http.StatusOK, finishedResp.StatusCode)
+	var finished map[string]any
+	require.NoError(t, json.NewDecoder(finishedResp.Body).Decode(&finished))
+	assert.Equal(t, "finished", finished["state"])
+	assert.Equal(t, true, finished["finished"])
+	assert.Equal(t, false, finished["waiting_for_input"])
+}
+
 func TestSessionsSend_NotFound(t *testing.T) {
 	server, _, _, _ := setupSessionsTestServer(t)
 
@@ -687,6 +723,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 
 	// Session routes
 	r.Get("/api/sessions/live", handler.List)
+	r.Get("/api/sessions/{sessionID}/status", handler.SessionStatus)
 	r.Get("/api/sessions/{sessionID}/changes", handler.SessionChanges)
 	r.Get("/api/sessions/{sessionID}/changes.diff", handler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", handler.Detail)

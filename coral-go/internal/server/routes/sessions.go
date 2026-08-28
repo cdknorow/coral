@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -856,6 +857,71 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Files / Git ─────────────────────────────────────────────────────────
+
+// SessionStatus returns lifecycle and agent-turn state for one stable session ID.
+// GET /api/sessions/{sessionID}/status
+func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	if sessionID == "" || strings.ContainsAny(sessionID, "/\\\x00") {
+		errBadRequest(w, "invalid session_id")
+		return
+	}
+
+	var row struct {
+		Status     string  `db:"status"`
+		IsSleeping int     `db:"is_sleeping"`
+		StoppedAt  *string `db:"stopped_at"`
+	}
+	err := h.db.GetContext(r.Context(), &row,
+		"SELECT status, is_sleeping, stopped_at FROM live_sessions WHERE session_id = ?", sessionID)
+	if err == sql.ErrNoRows {
+		var indexed bool
+		if indexErr := h.db.GetContext(r.Context(), &indexed,
+			"SELECT EXISTS(SELECT 1 FROM session_index WHERE session_id = ?)", sessionID); indexErr != nil || !indexed {
+			errNotFound(w, "session not found")
+			return
+		}
+		row.Status = "inactive"
+	} else if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+
+	finished := row.Status != "active"
+	sleeping := !finished && row.IsSleeping == 1
+	latestEvent, latestSummary := "", ""
+	if events, eventErr := h.ts.GetLatestEventTypes(r.Context(), []string{sessionID}); eventErr == nil {
+		latestEvent = events[sessionID][0]
+		latestSummary = events[sessionID][1]
+	}
+	waiting := !finished && !sleeping && latestEvent == "notification"
+	done := !finished && latestEvent == "stop"
+
+	state := "active"
+	switch {
+	case finished:
+		state = "finished"
+	case sleeping:
+		state = "sleeping"
+	case waiting:
+		state = "waiting_for_input"
+	case done:
+		state = "done"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":        sessionID,
+		"state":             state,
+		"active":            !finished,
+		"finished":          finished,
+		"waiting_for_input": waiting,
+		"done":              done,
+		"sleeping":          sleeping,
+		"latest_event":      nilIfEmpty(latestEvent),
+		"latest_summary":    nilIfEmpty(latestSummary),
+		"stopped_at":        row.StoppedAt,
+	})
+}
 
 // resolveWorkdir determines the working directory for an agent session.
 func (h *SessionsHandler) resolveWorkdir(ctx context.Context, name, agentType, sessionID string) string {

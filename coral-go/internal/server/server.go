@@ -295,6 +295,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Live sessions
 	r.Get("/api/sessions/resolve", sessHandler.ResolveByPIDs)
 	r.Get("/api/sessions/live", sessHandler.List)
+	r.Get("/api/sessions/{sessionID}/status", sessHandler.SessionStatus)
 	r.Get("/api/sessions/{sessionID}/changes", sessHandler.SessionChanges)
 	r.Get("/api/sessions/{sessionID}/changes.diff", sessHandler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", sessHandler.Detail)

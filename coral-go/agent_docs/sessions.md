@@ -47,6 +47,29 @@ Sleeping sessions (no active tmux) are included as placeholder entries with `"sl
 
 ---
 
+### GET `/api/sessions/{sessionID}/status`
+
+Poll lifecycle and agent-turn state using only the stable session ID. The `state` value is one of `active`, `waiting_for_input`, `done`, `sleeping`, or `finished`.
+
+```json
+{
+  "session_id": "abc123-uuid",
+  "state": "waiting_for_input",
+  "active": true,
+  "finished": false,
+  "waiting_for_input": true,
+  "done": false,
+  "sleeping": false,
+  "latest_event": "notification",
+  "latest_summary": "Agent needs permission",
+  "stopped_at": null
+}
+```
+
+`done` means the agent completed its current turn but the session remains active. `finished` means the session itself has stopped and will not accept more input without being resumed.
+
+---
+
 ### GET `/api/sessions/live/{name}`
 
 Get detailed info for a single session, including pane capture, status, and recent logs.
