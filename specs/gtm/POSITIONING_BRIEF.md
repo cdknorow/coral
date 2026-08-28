@@ -104,7 +104,7 @@ workflow in our abstraction. We run the CLIs you already have.
 
 | | Proof point | Verdict |
 |---|---|---|
-| 4.1 | Four agents from three vendors on one board | ✅ **verified** — the wedge |
+| 4.1 | Four agents from four vendors on one board | ✅ **verified** — the wedge |
 | 4.2 | Sleep a team, restart Coral, wake it with context | ✅ **verified** |
 | 4.3 | One browser tab for every agent's live terminal | ✅ **verified** |
 | 4.4 | One cost figure across vendors | ⚠️ **downgraded** — per-agent only; the cross-vendor total silently omits vendors |
@@ -147,7 +147,7 @@ returns nothing. **Adding an agent means writing Go and recompiling** — a cont
 project, not a user feature. README.md:37, :81 and the features table all claim otherwise and are
 being cut.
 
-**This does not weaken the wedge.** "Four agents from three vendors on one board" is checkable,
+**This does not weaken the wedge.** "Four agents from four vendors on one board" is checkable,
 defensible, and still something no single-vendor tool does. The unbounded version bought us nothing
 and could be disproven by opening one file — which is exactly the test every claim we ship has to
 pass.
@@ -374,9 +374,26 @@ write copy where a reader can take it for one.
 worktrees to match the docs, or change the docs to match the code. Until it is resolved, copy
 follows the code.
 
-### 4.6 ⛔ RETRACTED — full-text search has never worked
+### 4.6 ⛔ RETRACTED for copy — full-text search never worked in any shipped build
 
-**Do not use this as a proof point. Do not put it in any copy.**
+**Do not use this as a proof point. Do not put it in any copy.** ⚠️ **That holds even though it is
+now fixed**, and the reason is the working ruling rather than the code — see the status note below.
+
+**STATUS UPDATE (#40, commit `fe67896`):** the Growth Engineer has fixed it. `FTSBody` is now
+populated, so search works **in the repository**. I confirmed `git tag --contains fe67896` returns
+**empty** — it is in **no release**.
+
+So this is the third claim in the same two-reading state as scheduled jobs and the CLI installer:
+
+| Reading | Verdict |
+|---|---|
+| **For a downloader** (v1.0.8) | ⛔ **has never worked, and still does not** |
+| **For the repository** | ✅ fixed, unreleased |
+
+**The copy verdict is unchanged and stays unchanged until a release ships**, per the working ruling
+that the README describes what a user can download. It joins the release-time revisit list in the
+exit brief's Part 1b — a fourth row that becomes claimable when a release ships and nothing in the
+repository will remind anyone.
 
 **What I originally wrote:** "a real SQLite FTS5 virtual table with a porter tokenizer —
 `store/connection.go:175`." That was true and it was 📖 — verified in code, never observed.

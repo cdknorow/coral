@@ -126,10 +126,26 @@ stated bar. Fire this only after P5.
 
 ### 3. The 90-second demo — effort 2–3d, impact very high as a multiplier
 
-**Content, in this order** (matches the wedge): three different agents — Claude, Codex, Gemini —
-on one board, working the same repo; the dashboard showing all three live terminals; a handoff on
-the message board; sleep the team, close the browser, reopen, wake it with state intact; the cost
-figure spanning all three vendors.
+**Content, in this order** (matches the wedge): **two different vendors' agents — Claude Code and
+Codex** — on one board, working the same repo; the dashboard showing both live terminals; a handoff
+on the message board; sleep the team, **quit Coral, restart it**, and wake the team with its
+conversation context intact.
+
+⚠️ **This script was stale on three counts and is corrected above.** It previously proposed
+demonstrating (a) *three* agents, when only Claude Code and Codex have ever been run side by side —
+Gemini CLI and Pi.dev are not installed on any machine here; (b) *"close the browser, reopen"*,
+which is weaker and different from the thing actually verified, a **Coral process restart**; and
+(c) **"the cost figure spanning all three vendors"** — 📌 *preserved quotation, do not "fix"* —
+which is downgraded, because Codex usage is not ingested (#41), so that figure would render on
+camera **looking complete while silently omitting a vendor.** Filming it would have demonstrated the
+defect as though it were the feature.
+
+> 📌 **Preserved-quotation marker.** Every quoted string in this block is the **old, wrong** wording,
+> kept so a future editor can recognise it if it reappears. It must not be corrected, and a grep for
+> retracted phrasings will hit it. This marker exists because preserved quotations were flagged as
+> possible stragglers **three separate times** today by three different readers — the convention was
+> working and unmarked, so each reader had to re-derive it. Use 📌 wherever a document deliberately
+> contains a phrase it forbids.
 
 That sequence *is* the positioning. Nothing else we can produce demonstrates the wedge as fast.
 
@@ -209,8 +225,23 @@ forks, or 90 watchers — is our bar.**
 **Coral has 31 stars.** Watchers and forks are the cheaper of the three routes and worth tracking,
 but on any measure we are far from the self-submission bar.
 
-**Therefore:** the goal is a **working third-party tap**, e.g. `brew install cdknorow/coral/coral`,
-not `brew install coral`. Growth Engineer #21 owns making it real; `Casks/coral.rb` currently
+**Therefore:** the goal is a **working third-party tap**. ⚠️ **The permissible form is two commands,
+not one**, and it carries `--cask` because `Casks/coral.rb` is a cask (there is no `Formula/`
+directory — Coral ships a `.app`):
+
+```
+brew tap cdknorow/coral
+brew install --cask cdknorow/coral/coral
+```
+
+**This corrects an earlier version of this line**, which gave a single `brew install
+cdknorow/coral/coral` — omitting both the tap step and `--cask`. That form would not have worked,
+and it is the only install command that ever appeared in my documents. The two-command form is the
+one the Content Producer recorded as the only permissible Homebrew copy.
+
+⚖️ **And it is a real conversion cost, not a formatting detail.** Two commands with a `--cask` flag
+is meaningfully worse than `brew install coral`, which is why Homebrew stays *an* option presented
+alongside the DMG and never the headline path. Growth Engineer #21 owns making it real; `Casks/coral.rb` currently
 claims version **2.3.1** against a shipped **v1.0.8** — a third conflicting version lineage.
 
 **Copy rule, from the Orchestrator:** nobody writes any `brew install` line in any copy until an

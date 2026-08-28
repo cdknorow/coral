@@ -41,7 +41,8 @@ the retired Python product (PyPI 4.4.1). It never mentions the DMG, Go, or GitHu
 ## ⛔ Ship-blocking pairing rule
 
 **The privacy paragraph and the telemetry paragraph must ship together.** The page says
-*"nothing is sent to us"* — true of the agents' API traffic, and a **false impression** about
+📌 **preserved quotation, do not "fix"** — the page *previously* said
+*"nothing is sent to us"*, which was true of the agents' API traffic, and a **false impression** about
 the product if it stands alone, because the shipped binary posts to PostHog by default with
 no opt-out. Every sentence true, the impression false: the same completeness failure the D5
 rewrite was written to fix, in the sentence that fixed it.

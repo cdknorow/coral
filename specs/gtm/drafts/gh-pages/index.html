@@ -92,6 +92,13 @@ pip uninstall agent-coral</code></pre>
   <a href="https://github.com/cdknorow/coral/tree/main/coral-go/internal/tracking">internal/tracking</a>
   if you would rather read it than take our word.</p>
 
+  <h2>Requirements</h2>
+  <ul>
+    <li><a href="https://github.com/tmux/tmux">tmux</a> — the default session backend on
+        macOS and Linux</li>
+    <li>At least one CLI coding agent installed: Claude Code, Codex, Gemini CLI, or Pi.dev</li>
+  </ul>
+
   <h2>Install</h2>
   <p>Download the latest release from
   <a href="https://github.com/cdknorow/coral/releases">GitHub Releases</a>:</p>
@@ -104,21 +111,17 @@ pip uninstall agent-coral</code></pre>
   <p class="muted">Coral is free. No purchase or account is required to download or use it.</p>
 
   <h2>Build from source</h2>
+  <p>Requires <a href="https://go.dev/dl/">Go</a>.</p>
   <pre><code>git clone https://github.com/cdknorow/coral.git
 cd coral/coral-go
 make build</code></pre>
 
   <h2>Run</h2>
-  <pre><code>./coral</code></pre>
-  <p>Open <a href="http://localhost:8420">http://localhost:8420</a> and click
+  <p><strong>macOS</strong> — open <code>Coral.app</code>. <strong>Linux</strong> — run
+  <code>./coral</code> from the extracted tarball. <strong>Source build</strong> — the binary
+  lands in <code>bin/</code>, so run <code>./bin/coral</code>.</p>
+  <p>Either way, open <a href="http://localhost:8420">http://localhost:8420</a> and click
   <strong>+New</strong> to launch your first agent or create a team.</p>
-
-  <h2>Requirements</h2>
-  <ul>
-    <li><a href="https://github.com/tmux/tmux">tmux</a> — the default session backend on
-        macOS and Linux</li>
-    <li>At least one CLI coding agent installed: Claude Code, Codex, Gemini CLI, or Pi.dev</li>
-  </ul>
 
   <h2>Documentation</h2>
   <p>Documentation currently lives in the repository at

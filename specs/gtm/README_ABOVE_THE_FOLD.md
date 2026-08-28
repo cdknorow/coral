@@ -84,8 +84,9 @@ It manages three things:
   launch a team into its own git worktree on a dedicated `coral-team/<name>` branch, so the
   team's work stays off your main checkout.
 - **A shared message board.** Agents post updates, ask questions, and read each other's
-  progress. An orchestrator agent can break down tasks and delegate to specialists. Messages
-  are delivered with cursor tracking, so nothing is lost across agent restarts.
+  progress. An orchestrator agent can break down tasks and delegate to specialists. Delivery is
+  cursor-tracked: your read position is remembered across an agent restart — agents resume
+  where they left off, with no messages repeated or skipped.
 - **A web dashboard.** One browser tab shows every agent's live terminal, status, and
   controls. Launch, sleep, wake, restart, or kill agents without switching windows.
 
@@ -128,7 +129,7 @@ make build
 ### Run
 
 ```bash
-./coral
+./bin/coral
 ```
 
 Open **http://localhost:8420** and click **+New** to launch your first agent or create a team.
@@ -146,6 +147,7 @@ Open **http://localhost:8420** and click **+New** to launch your first agent or 
 |---|---|
 | Headline names the four agents instead of "Multi-agent orchestration for AI coding tools" | The old line is a category label that describes a dozen tools. Naming the agents *is* the differentiator — Strategist §3 |
 | Subhead: "the coding agents you already pay for" | Strategist §3 value proposition, verbatim intent. Speaks to the multi-vendor ICP |
+| Board delivery: "nothing is lost" → the read-position wording | **Corrected 2026-08-28.** This draft still carried the retracted absolute after the README patch had already fixed it — found while marking preserved quotations, not by any sweep. Fixed one artifact and left the other proposing the same content |
 | Subhead carries the **wedge** (multi-vendor, one tab), not isolation or durability | **Corrected 2026-08-28.** The first draft read "each in its own git worktree, with work that survives a restart" — **two retracted claims in the highest-traffic sentence in the document**, while `:79` of the same file was already correct. Durability is real but only within one server run, so it cannot carry a headline until the restart test lands |
 | Added the agent-agnostic paragraph | Strategist's wedge (§4.1). Claude Code's own agent teams coordinate Claude Code instances; nothing there puts Codex and Gemini on one board. Stated as a contrast without naming a competitor to attack |
 | Removed "or any CLI-based agent" from `:37` | **Disproven.** `agent.go:157-168` is a hardcoded four-case switch, no registry or plugin mechanism anywhere — Dev Advocate 3f |

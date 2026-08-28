@@ -17,6 +17,7 @@ not a softening, and not to be rounded up.
 | 6 | :118 | Token tracking "cost and consumption in real time" | ⛔ (Claude-only) | Real figures per agent/session/team with input/output/cache broken out. But 8 usage records, **all Claude, zero Codex** — in a same-team controlled comparison Claude reported $2.97 and Codex reported nothing, despite `~/.codex/sessions` holding token counts. | "Token and cost tracking per agent, per session, and per team." **Nothing cross-vendor; a mixed-team total looks complete and is not.** |
 | 7 | :119 | "Full-text search across all past sessions" | ⛔ | `FTSBody` is declared (`agent/agent.go:66`) and read (`indexer.go:114-115`) but **never assigned anywhere in the repo**. `session_fts` = 0 rows in a fresh instance (42 indexed) **and in production (56 indexed)**. A term visible on screen returns 0 hits. | "Every past session kept, with auto-summaries, tags, and notes." **Search is dead — cut it.** |
 | 8 | :121 | Webhooks "Slack, Discord, or any HTTP endpoint" | 📖 | **Structurally unverifiable here.** SSRF protection (`httputil/ssrf.go`) blocks loopback/private on both `/test` and the dispatch path (`background/webhook.go:76`), no override — so the only test is a public third-party endpoint. CRUD works; 0 delivery records. Defect found: URL is validated at **send** time, not create time, so a localhost webhook saves as enabled and can never fire. | Say nothing stronger than "webhook notifications to an HTTP endpoint", and mark it unverified in the header. |
+| 10 | :115 | Task management "create, assign, and track tasks on the message board; agents mark tasks complete as they finish" | **✅ CLI / 📖 dashboard** | **Not verified by me and not by any test** — verified by *continuous use*: **27 tasks, 23 completions, four assignees** over one working day, through `coral-board task add/list/claim/complete`. (The Orchestrator created and assigned every task and was assigned none, so five agents exercised the board while the assignee column holds four names.) *Counts re-run against `coral-board task list` on 2026-08-28; an earlier version of this row said 28 tasks / five agents — the 28 counted the table header row, and the five counted the team rather than the column.* Every clause exercised repeatedly, with results visible to all five agents throughout. Evidence is the working day itself; there is no fixture and no report. | "Create, assign, and track tasks on the message board." ✅ for the CLI mechanism. **📖 for the dashboard** — nobody has created, assigned or completed a task through the browser UI, the same standing gap as every other UI surface. |
 
 ## Artifact provenance
 
@@ -29,7 +30,14 @@ verified on an unreleased branch is not a claim a downloading reader can rely on
 | **Repository** | Run against a binary built from an unpushed branch. True of the code, **not** of anything a user can download. |
 | **Unknown** | Not run. Distinct from disproven — see *Not verifiable from this machine*. |
 
-**Downloader** covers every row in this file except one.
+**Downloader** covers every row in this file except two.
+
+**Verified by use, not by test — row 10 only.** Task management was exercised continuously by five
+agents all day rather than run in a fixture. That is a *stronger* provenance than most rows here —
+more execution than anything we tested deliberately — but it is **not reproducible by a reader**,
+which is why it is named rather than folded in with the rest. A row exercised constantly by everyone
+generates no artifact that looks like verification, which is why it read as unexamined until someone
+noticed we were standing on it.
 
 > **A restored claim is a new claim.** The both-directions rule ("as obliged to claim what is
 > true as to cut what is not") is a reason to *re-examine* a cut, not a reason to *restore* one.
@@ -44,6 +52,8 @@ claim the isolated-worktree clause until it ships in a release.
 > be trusted describes v1.0.8. `#33` has since changed that response to report
 > `backend (launch path)` and `terminal (what runs)` separately, so the note is already stale
 > *for the repository* while remaining true *for the artifact*. No verdict changes; the reading does.
+
+| 9 | :118 | Git integration "tracks commits, branches, and changed files per agent session" | **✅ all three** | Commits: snapshot recorded `7250728` with subject and timestamp. Branches: `feature/git-probe`, matching ground truth. Changed files: `/files` returned `a.go` (+2) and `b.go` (+1), `status M`, `source: git`, `diff_mode branch_point` — exactly the two files changed against the base branch, written to `git_changed_files` by `git_poller.go:116,161`. All keyed to the session. Poller interval **120 s** (`config.go:93`), so nothing is instant. **Note for anyone re-testing:** `changed_file_count` in the sessions list is a *different* metric — `tasks.go:517-524` counts agent Write/Edit tool events, not git state, and it reads 0 on a non-default port because the hook posts to `localhost:8420`. Test `/files`, not that field. | "Tracks commits, branches, and changed files per agent session." Verified in full. |
 
 ## Verified and safe to claim
 

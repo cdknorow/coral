@@ -2,7 +2,7 @@
 
 **Owner of this file:** Content & Launch Producer
 **Status:** Wave 1 — nothing external ships
-**Last updated:** 2026-08-28 (rev 35)
+**Last updated:** 2026-08-28 (rev 40)
 
 > **Hard gate (operator decision, settled):** No Show HN, no Reddit, no X thread, no
 > newsletter until Phase 2 activation targets are hit on real data — 40% of new installs
@@ -29,7 +29,34 @@ external to it. This is the one staleness with no automated detector.
 | **Scheduled jobs** (row removed entirely) | On v1.0.8, `git worktree add <dir> main` fails whenever the user's own copy has the base branch checked out — and the agent launch is **gated behind worktree creation**, so no agent ever runs on the documented default | the #43 fix is **in a shipped release** (not merged — released), **and** ledger row 5 is re-verified by someone who did not write the fix, **and** the wording names which path |
 | **Webhooks** | Loopback/private refused at send time; `CreateWebhook` is unguarded so a local webhook saves and never fires | delivery is observed by a human against a real external endpoint — note this is **structurally unverifiable** from a sandboxed environment, so it needs a machine that can reach the internet |
 | **Token & cost tracking** | Codex usage is not ingested, so a mixed-team total looks complete and is not | #41 ships **and** a mixed-team run shows both vendors' costs |
-| **Git integration** | Never verified by anyone | someone runs it |
+| **Git integration** | ~~Never verified~~ — **now ✅**, all three nouns, via `git_changed_files` and `/files` on a terminal session | no action; kept for the record |
+| **Full-text search** (row currently CUT) | `FTSBody` was declared and read and **assigned by nothing**, in all four extractors — `session_fts` empty since creation. Production still shows **0 rows**. Fixed by `fe67896`, which also **backfills**: without it only 3 of 25 pre-existing sessions became searchable and the rest would have stayed invisible forever | **all three, not "the fix landed"**: (a) `fe67896` is **in a shipped release** — verified **0 tags contain it** as of 2026-08-28; (b) the backfill has run, which is one indexer pass after upgrade, not user action; (c) note `MEMORY-TOKEN-7731`-style **hyphenated terms still return 0 unquoted** — bare hyphens are FTS5 operators. That is pre-existing sanitizer behaviour, not part of this fix, and *"search across all past sessions"* is true despite it |
+
+### ⚠️ "Free and fully unlocked" has a specific way to become false silently
+
+This is the claim the entire free/supporter story rests on, and it is ✅ verified today. **The
+risk is not that it decays — it is that someone implements a mechanism the comments already
+describe.**
+
+`config.go:104` and `tier_prod.go:7` both state that prod demo limits are *"controlled by
+runtime LS plan"*. **No such mechanism exists.** `MaxLiveTeams`/`MaxLiveAgents` are written in
+exactly one place (`config.go:106-107`), guarded by `TierDemoLimits`, which is `false` in prod,
+and nothing reads a Lemon Squeezy plan. `tier_test.go:22` encodes the same belief in its
+assertion message while asserting the flag is false.
+
+**"Unlimited teams and agents" is true *because* the mechanism is absent.** So the comments
+document an intention as though it were behaviour — and the next person to read them will
+reasonably believe prod limits are already wired to the LS plan.
+
+**The hazard:** if anyone implements that wiring, or flips `TierDemoLimits` in prod, then
+*nothing is gated*, *free and fully unlocked*, and *unlimited teams and agents* all become
+false at once — across the README, the activation page, the FAQ and the positioning brief —
+**without a single line of copy being edited**. Nothing in this checklist or any verifier
+would fire.
+
+**Before shipping any release that touches `internal/license/` or the tier files:** re-verify
+that `middleware.go` still passes every request through and that prod still zeroes both limits.
+That check is one command and it protects five documents.
 
 **Also revisit at release time:** the first-run experience fixes (#26 nag, #33 trust prompt),
 `#31` tmux isolation and `#34` board port — all real, all invisible to a v1.0.8 user, and all
@@ -108,6 +135,7 @@ suspects, with a named way each could fail:
 
 | 📖 entry | How it could fail, specifically |
 |---|---|
+| **Task management — create, assign, track; agents mark complete as they finish** | ✅ | **Verified by continuous multi-agent use, not by a designed test.** Counted directly, not quoted: **27 tasks, 23 completed, 4 distinct agents** across a full working day. Every clause exercised — the Orchestrator created and assigned each task to a named agent; `coral-board task list` showed live status throughout; I ran `coral-board task complete` on #25, #27, #35, #37 and the board reflected each. **Caveat: CLI path only.** Nobody has created, assigned or completed a task through the dashboard UI, which is where a user would. ✅ for the mechanism, 📖 for the browser surface | Producer + GTM Strategist, independently |
 | **Features table claims are real** | **Highest risk — same evidence type as both retractions.** It rests on *routes existing* (`server.go:440/429/466/484`). FTS also had a table, `UpsertFTS`, query params and a sanitizer, and did nothing. A registered route proves a handler is wired, not that the feature works. **Workflows, scheduled jobs, webhooks and templates have never been run by anyone.** |
 | **Linux statically linked, runs on musl/Alpine** | Nobody has executed the Linux binary at all — `file` output is not a run. "Should run" is doing load-bearing work in that sentence |
 | **Genuinely free — nothing is gated** | Read from `middleware.go:18-19`. Never tested by exercising a gated-looking route on a prod-tier build without a license |
@@ -127,7 +155,7 @@ drafted, but it must go ✅ before it goes out.
 | **Apache 2.0, real open source** | ✅ | `LICENSE` | Producer |
 | **Coral holds no API keys of its own — keys come from your environment** | ✅ | **Verified against the shipped binary**: zero embedded key prefixes, with a positive-quantity assertion proving the scan ran. Keys only from `os.Getenv`, no fallback. `proxy.go:166-172` passes the caller's own credentials through rather than replacing them | Dev Advocate |
 | ⚠️ **Wording note** | — | Write **"no API keys of its own; keys come from your environment"** — checkable. *"Never calls a model on your behalf"* is a promise about **all possible code paths**; both are true, only the first survives an adversarial reader cheaply. If the absolute is used, the mechanism must be in the same breath | GTM Strategist |
-| **Four coding agents from three vendors on one board** | ✅ | `internal/agent/{claude,codex,gemini,pi}.go`, each with a documented install command at `agent.go:177-182` | Producer + Dev Advocate |
+| **Four coding agents from four vendors — two of them run side by side, verified** | ✅ | `agentCLIs` at `agent.go:217-222` is the authoritative map: Anthropic, Google, OpenAI, Pi.dev — **four distinct vendors, not three**. *Corrected 2026-08-28: this row said 'three vendors' and the composed prose inherited the error from it. Only Claude Code + Codex have been run simultaneously; Gemini and Pi.dev are supported, never launched by anyone here.* | Producer (error) + Dev Advocate (caught it) |
 | **Each team works in its own git worktree on its own branch** — isolated from your main checkout, **when enabled; OFF by default** | ✅ | `sessions.go:2436-2438`, branch `coral-team/<name>` | Dev Advocate + Producer — **per-AGENT isolation does NOT exist; never write it** |
 | **Mixing vendors in one team is the wedge** | ✅ | Claude Code's own agent teams coordinate Claude Code instances; nothing there puts Codex and Gemini on one team | GTM Strategist (sourced to Anthropic's docs) |
 | **Sleep an agent team, quit Coral, restart it later, and wake the team with its conversation context intact** | ✅ | Demo 3 on the **shipped v1.0.8 binary**: tmux server gone (not detached), session restored under the same id, agent answered `MEMORY-TOKEN-7731` from its own prior turn. Contrast is Anthropic's documented limitation: "/resume and /rewind do not restore in-process teammates" | Dev Advocate — **server-process restart now VERIFIED** (fresh process reported `sleeping:true` *before* the wake, ruling out a lingering process). Still NOT tested: **machine reboot**, long intervals, large multi-agent teams, scrollback retention. Write **"restarting Coral"** — never the ambiguous "survives a restart" |
@@ -136,6 +164,7 @@ drafted, but it must go ✅ before it goes out.
 | **Token and cost tracking per agent, per session, and per team** | ✅ | Real numbers, input/output/cache-read/cache-write broken out, tagged by board — `store/token_usage.go` | Dev Advocate demo |
 | ~~**Cross-vendor cost in one figure**~~ | ⛔ | **NOT supportable.** Controlled test: `claude-impl` and `codex-impl` in the *same team*, launched and killed together. Claude reported **$2.97**; Codex reported **nothing** — 8 token-usage records, 8 claude, 0 codex, despite the Codex agent doing real work and its usage sitting on disk in `~/.codex/sessions/`. Not unimplemented — `extractCodexUsage()` exists; it failed at runtime | Dev Advocate — **worse than showing nothing: the total looks complete and is not** |
 | **Fast to a real result** | ✅ | *always with the qualifier:* "under two minutes from launching Coral to a committed, tested change — **once your agent CLI is installed and authenticated**" | Dev Advocate ran it: 90s from server start to a 12-line function + 11-case table-driven test suite, `go test ./...` passing when re-run independently | Dev Advocate #23 — **bare "90 seconds" is not approved; the clock excludes download, install, and agent auth** |
+| **Task management — create, assign, track; agents mark complete as they finish** | ✅ | **Verified by continuous multi-agent use, not by a designed test.** Counted directly, not quoted: **27 tasks, 23 completed, 4 distinct agents** across a full working day. Every clause exercised — the Orchestrator created and assigned each task to a named agent; `coral-board task list` showed live status throughout; I ran `coral-board task complete` on #25, #27, #35, #37 and the board reflected each. **Caveat: CLI path only.** Nobody has created, assigned or completed a task through the dashboard UI, which is where a user would. ✅ for the mechanism, 📖 for the browser surface | Producer + GTM Strategist, independently |
 | **Features table claims are real** | 📖 | verified routes: workflows `:440`, scheduled jobs `:429`, webhooks `:466`, sleep/wake `:331-340`, templates `:484` | Producer |
 
 ### The three ✅ that carry the launch
@@ -350,7 +379,8 @@ question: **what would a reader conclude from all of these sentences together?**
 > **Not "is each claim true" but "what does the set imply".**
 
 A page can be composed entirely of true sentences and still leave a false impression. Live
-instance: the gh-pages draft carried *"nothing is sent to us"* — true of the agents' API
+instance (📌 **preserved quotation, do not "fix"**): the gh-pages draft carried
+*"nothing is sent to us"* — true of the agents' API
 traffic — and mentioned telemetry **zero times**. Every sentence true; the impression false.
 
 This is the same completeness failure the D5 rewrite was written to fix, **recurring one level

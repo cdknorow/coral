@@ -227,13 +227,21 @@ verified.** The patches were scoped to disproven claims; the features table cont
 category — **claims nobody has ever executed** — and no hunk touches them. What survives the full
 patch set:
 
-| Row still standing | Entire evidence base |
-|---|---|
-| **Workflows** — "multi-step agent pipelines that run automatically… with dependencies" | route `:440` |
-| **Scheduled jobs** — "on a cron schedule in isolated worktrees" | route `:429` |
-| **Team templates** — "save and share… generate teams from plain-English descriptions" | route `:484` |
-| **Webhooks** — "notifications to Slack, Discord, or any HTTP endpoint" | route `:466` |
-| **Task management**, **Git integration** | never examined |
+⚠️ **This table records the state when the patch set was prepared. #42 and the work after it have
+since resolved most of it** — kept because it shows what "verified by a route number" was actually
+worth, and updated in the right-hand column so it is not read as current:
+
+| Row as it stood | Evidence base then | Where it landed |
+|---|---|---|
+| **Workflows** — pipelines with dependencies | route `:440` | ✅ **verified by execution** |
+| **Scheduled jobs** — cron, "in isolated worktrees" | route `:429` | ⛔ **failed 100% on documented defaults**; fixed in repo, unreleased |
+| **Team templates** — "save and share" | route `:484` | ✅ **verified**, and *"save"* cut — import returns a config, it does not persist one |
+| **Webhooks** — "any HTTP endpoint" | route `:466` | 📖 **structurally unverifiable**; *"any"* cut — loopback is refused |
+| **Git integration** | never examined | ✅ commits, branches, per-session — **changed-files 📖 untested, not disproven** |
+| **Task management** | never examined | ⚠️ **still unexamined** |
+
+⚖️ **Six rows entered on a route number. One survived intact.** Two were verified, one was disproven,
+one is unverifiable, one is half-verified, and one has still never been looked at.
 
 **Every one traces to a route number — the evidence base that failed twice today** (FTS had a
 virtual table, an upsert function and a tokenizer; Codex cost extraction has a function that never
@@ -389,6 +397,42 @@ Producer.)
 | Supporter reminder timing claims | #26 ships |
 | Anything describing multi-instance safety | #31 ships |
 | First-run experience claims | #33 ships |
+| **Full-text session search** — currently ⛔ "never worked" | **#40 ships** (`fe67896`, in no tag as of writing) |
+| **CLI install instructions** — currently absent from copy | **#30 ships** |
+
+### A second instance, and this one has no trigger at all
+
+**Two comments in the codebase describe a feature that does not exist**, and the next person to read
+them will believe it is half-built rather than absent:
+
+- `config.go:104` — *"Demo limits from build tier (beta) or **runtime LS plan** (prod)"*
+- `tier_prod.go:7` — *"Demo limits controlled by **LS plan at runtime**"*
+
+**There is no such mechanism.** `MaxLiveTeams` and `MaxLiveAgents` are written in exactly one place,
+guarded by `TierDemoLimits`, which is `false` in prod. Nothing reads a Lemon Squeezy plan. A test
+even encodes the belief in its assertion message while asserting the flag is false. (Growth
+Engineer, #29.)
+
+**Nothing is wrong today — and that is precisely what makes it dangerous.** *"Unlimited teams and
+agents"* is true **because the mechanism is absent.**
+
+🔴 **If anyone implements that wiring — or simply flips `TierDemoLimits` in prod, believing they are
+completing something half-built rather than creating something new — then *nothing is gated*, *free
+and fully unlocked*, and *unlimited teams and agents* all become false at once**, across the README,
+the activation page, the objection FAQ and this brief's own ledger, **without a single line of copy
+being edited.**
+
+⚖️ **This is worse than the release-time instance above, because that one has a defined trigger and
+this one has none.** It fires whenever someone acts on a comment that reads like a spec. The
+release-time obligation can at least be attached to an event; this cannot be attached to anything.
+
+**The cheap protection:** before shipping any release that touches `internal/license/` or the tier
+files, confirm `middleware.go` still passes every request through and prod still zeroes both limits.
+One command, and it protects five documents. **The better fix is yours to decide:** correct the two
+comments so they describe what the code does, which requires deciding whether that intent is
+abandoned or merely unimplemented.
+
+---
 
 **The failure mode if this is missed is silent and one-directional:** the README simply understates
 the product, indefinitely, and no reader or tool ever complains. That is the correct direction to be
@@ -485,7 +529,7 @@ found none.**
   restart.
 
 ⚖️ **The generalisable finding:** in every case the overclaim sat on top of a **better, checkable
-claim** — four named agents from three vendors; a team branch plus board coordination; a verified
+claim** — four named agents from four vendors; a team branch plus board coordination; a verified
 server-restart wake. The true version was always more specific and harder to disprove.
 
 **A fourth, found last:** `README.md:95` — *"Messages are delivered reliably with cursor-based
@@ -553,7 +597,7 @@ kind clears copy today.
 | 2 | Universal binary, Intel + Apple Silicon | ✅ **shipped v1.0.8 DMG** |
 | 3 | Agent launch in 0.58s; dashboard same-second | ✅ **shipped binary** — note the *backend* label on that run was later disproven; the timing stands, the PTY inference does not |
 | 4 | Apache 2.0 | ✅ `LICENSE` |
-| 5 | **Four agents from three vendors on one board** — the wedge | ⚠️ **artifact not recorded** |
+| 5 | **Four agents from four vendors on one board** — the wedge | ⚠️ **artifact not recorded** |
 | 6 | Each **team** gets its own worktree and branch — *when enabled; off by default* | ⚠️ **artifact not recorded** |
 | 7 | Mixing vendors in one team | ⚠️ **artifact not recorded** |
 | 8 | **Sleep a team, quit Coral, restart it, wake it with context intact** | ✅ **shipped v1.0.8 binary**, explicitly |
@@ -650,7 +694,7 @@ available.)*
 
 | # | Differentiator | Verdict |
 |---|---|---|
-| 4.1 | Four agents from three vendors on one board | ✅ **survives** — the wedge |
+| 4.1 | Four agents from four vendors on one board | ✅ **survives** — the wedge |
 | 4.2 | Sleep a team, restart Coral, wake it with context | ✅ **survives** |
 | 4.3 | One browser tab for every agent's live terminal | ✅ **survives** |
 | 4.4 | One cost figure across vendors | ⚠️ **downgraded** — per-agent cost only (#41) |
