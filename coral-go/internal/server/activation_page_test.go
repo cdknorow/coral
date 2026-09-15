@@ -104,7 +104,7 @@ func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
 
 	// And once value exists and the cadence comes due, it does show.
 	counter.RecordValueAnchor(true)
-	for i := 0; i < 3; i++ {
+	for !counter.IsNagLaunch() {
 		counter.Increment()
 	}
 	if !s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {

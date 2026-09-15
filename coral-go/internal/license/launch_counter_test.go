@@ -63,17 +63,45 @@ func TestSupporterReminderFollowsTheCadenceOnceValueIsDelivered(t *testing.T) {
 		t.Fatal("the anchoring launch must not itself show the reminder")
 	}
 
-	want := map[int]bool{4: false, 5: false, 6: true, 7: false, 8: false, 9: true, 10: false, 12: true}
-	for launch := 4; launch <= 12; launch++ {
+	// The anchor is launch 3, so reminders are due at 3+nagInterval,
+	// 3+2*nagInterval, and nowhere in between. Derive the expectation from
+	// nagInterval so tuning the cadence does not silently break this.
+	const anchor = 3
+	for launch := anchor + 1; launch <= anchor+2*nagInterval; launch++ {
 		lc.Increment()
 		lc.RecordValueAnchor(true) // idempotent; the anchor stays at 3
-		expected, checked := want[launch]
-		if !checked {
-			continue
+		want := (launch-anchor)%nagInterval == 0
+		if got := lc.IsNagLaunch(); got != want {
+			t.Errorf("launch %d (%d since anchor): reminder shown = %v, want %v",
+				launch, launch-anchor, got, want)
 		}
-		if got := lc.IsNagLaunch(); got != expected {
-			t.Errorf("launch %d: reminder shown = %v, want %v", launch, got, expected)
+	}
+}
+
+// Sending the reminder away must hold for the rest of the launch: the
+// dashboard is reloaded constantly, and every reload consults IsNagLaunch.
+func TestDismissingTheReminderHoldsUntilTheNextDueLaunch(t *testing.T) {
+	dir := t.TempDir()
+	lc := NewLaunchCounter(dir)
+
+	setLaunchCount(t, dir, 1)
+	lc.RecordValueAnchor(true) // anchor at 1
+	setLaunchCount(t, dir, 1+nagInterval)
+	if !lc.IsNagLaunch() {
+		t.Fatal("the reminder should be due one full interval after the anchor")
+	}
+
+	lc.DismissNag()
+	for i := 0; i < 3; i++ {
+		if lc.IsNagLaunch() {
+			t.Fatal("the reminder came back on a reload of the same launch")
 		}
+	}
+
+	// The next due launch asks again.
+	setLaunchCount(t, dir, 1+2*nagInterval)
+	if !lc.IsNagLaunch() {
+		t.Fatal("dismissing once silenced the reminder permanently")
 	}
 }
 
@@ -115,7 +143,8 @@ func TestIsNagLaunchHasNoSideEffects(t *testing.T) {
 	setLaunchCount(t, dir, 6)
 	lc.RecordValueAnchor(true) // anchor at 6
 
-	setLaunchCount(t, dir, 9) // three launches later: due
+	due := 6 + nagInterval
+	setLaunchCount(t, dir, due) // one full interval later: due
 	first := lc.IsNagLaunch()
 	for i := 0; i < 5; i++ {
 		if lc.IsNagLaunch() != first {
@@ -123,9 +152,9 @@ func TestIsNagLaunchHasNoSideEffects(t *testing.T) {
 		}
 	}
 	if !first {
-		t.Fatal("expected the reminder to be due 3 launches after the anchor")
+		t.Fatalf("expected the reminder to be due %d launches after the anchor", nagInterval)
 	}
-	if got := readCount(filepath.Join(dir, ".launch-count")); got != 9 {
+	if got := readCount(filepath.Join(dir, ".launch-count")); got != due {
 		t.Fatalf("IsNagLaunch modified the launch count: %d", got)
 	}
 }

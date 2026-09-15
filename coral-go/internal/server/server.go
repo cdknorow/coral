@@ -676,6 +676,12 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// "Continue Free" lands here with skip_activation=1. Remember it, or the
+	// reminder returns on the next page load of the same launch.
+	if r.URL.Query().Get("skip_activation") == "1" && s.launchCounter != nil {
+		s.launchCounter.DismissNag()
+	}
+
 	if s.indexTmpl == nil {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
 		return
