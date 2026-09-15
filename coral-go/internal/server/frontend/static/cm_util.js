@@ -1,6 +1,13 @@
 /* Shared CodeMirror 6 helpers — used by the file preview pane and the inline
  * diffs in the Files tab, so both render code the same way. */
 
+// unifiedMergeView defaults to scanLimit 500 — far below the differ's own
+// default — which makes it stop refining on any file with edits spread through
+// it and return the whole file as one chunk. Scan far enough to diff real
+// files properly, bounded by time so a pathological one degrades rather than
+// hanging the tab.
+export const DIFF_CONFIG = { scanLimit: 20000, timeout: 1500 };
+
 /** Get the CodeMirror module (loaded via IIFE script tag as window.CoralCM). */
 export function getCm() {
     if (!window.CoralCM) {

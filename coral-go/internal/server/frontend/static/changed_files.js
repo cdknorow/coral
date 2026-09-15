@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { escapeHtml, showToast } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
-import { getCm, getLangExtension, getLangFromPath } from './cm_util.js';
+import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -575,6 +575,9 @@ function _createCmMergeView(container, originalContent, currentContent, langName
             cm.EditorView.theme({ '&': { height: '100%' }, '.cm-scroller': { overflow: 'auto' } }),
             cm.unifiedMergeView({
                 original: cm.Text.of(originalContent.split('\n')),
+                // Without this the merge view's own scanLimit of 500 returns
+                // the whole file as a single chunk. See DIFF_CONFIG.
+                diffConfig: DIFF_CONFIG,
             }),
         ];
 

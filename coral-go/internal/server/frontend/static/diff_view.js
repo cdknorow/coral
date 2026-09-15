@@ -4,7 +4,7 @@
 
 import { state } from './state.js';
 import { escapeHtml } from './utils.js';
-import { getCm, getLangExtension, getLangFromPath } from './cm_util.js';
+import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 
 let _expanded = new Set();   // filepaths the user has opened
 const _views = new Map();    // filepath → mounted EditorView
@@ -21,6 +21,7 @@ const MAX_INLINE_CHARS = 400000;
 // Unchanged runs longer than this collapse, keeping a few lines of context.
 const COLLAPSE_MARGIN = 3;
 const COLLAPSE_MIN_SIZE = 6;
+
 
 /* ── Expansion state ───────────────────────────────────────── */
 
@@ -301,6 +302,7 @@ function _createInlineMergeView(container, filepath, original, current) {
                 original: cm.Text.of(original.split('\n')),
                 mergeControls: false,
                 collapseUnchanged: { margin: COLLAPSE_MARGIN, minSize: COLLAPSE_MIN_SIZE },
+                diffConfig: DIFF_CONFIG,
             }),
         ];
 
