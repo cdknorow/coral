@@ -10,14 +10,20 @@
     cursor: col-resize;
     background: var(--border);
     flex-shrink: 0;
-    transition: background 0.15s, width 0.15s;
-    margin: 36px 0 24px;
+    transition: background 0.15s;
+    position: relative;
 }
 
 .task-bar-resize-handle:hover,
 .task-bar-resize-handle.dragging {
-    width: 3px;
     background: var(--accent);
+}
+
+.task-bar-resize-handle::before {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
+    z-index: 2;
 }
 
 /* ── Panel Toggle Button ──────────────────────────────────── */
@@ -49,9 +55,6 @@
     flex-shrink: 0;
     overflow: hidden;
     position: relative;
-    border-radius: 0.75rem;
-    border: 1px solid var(--border);
-    margin: 6px 6px 6px 0;
     transition: width 0.2s ease, min-width 0.2s ease;
 }
 

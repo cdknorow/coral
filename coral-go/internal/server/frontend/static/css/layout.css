@@ -236,14 +236,20 @@
     cursor: col-resize;
     background: var(--border);
     flex-shrink: 0;
-    transition: background 0.15s, width 0.15s;
-    margin: 24px 0;
+    transition: background 0.15s;
+    position: relative;
 }
 
 .sidebar-resize-handle:hover,
 .sidebar-resize-handle.dragging {
-    width: 3px;
     background: var(--accent);
+}
+
+/* Keep the divider visually thin while providing a comfortable drag target. */
+.sidebar-resize-handle::before {
+    content: '';
+    position: absolute;
+    inset: 0 -4px;
 }
 
 .sidebar-section {

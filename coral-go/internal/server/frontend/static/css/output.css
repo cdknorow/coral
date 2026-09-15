@@ -54,9 +54,7 @@
     flex-direction: column;
     overflow: hidden;
     min-width: 0;
-    border-radius: 0.75rem;
-    border: 1px solid var(--border);
-    margin: 6px;
+    background: var(--bg-primary);
 }
 
 /* ── Terminal Header Bar ───────────────────────────────────── */

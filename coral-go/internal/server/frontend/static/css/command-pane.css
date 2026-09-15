@@ -5,7 +5,7 @@
 /* ── Resize Handle ─────────────────────────────────────────── */
 
 .command-pane-resize-handle {
-    height: 4px;
+    height: 1px;
     cursor: row-resize;
     background: var(--border);
     flex-shrink: 0;
