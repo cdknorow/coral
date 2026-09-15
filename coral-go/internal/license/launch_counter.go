@@ -18,16 +18,14 @@ const nagInterval = 25
 // reminder is scheduled from the second of those, never the first: the ask
 // follows a result, it does not precede one.
 type LaunchCounter struct {
-	path        string
-	anchorPath  string
-	dismissPath string
+	path       string
+	anchorPath string
 }
 
 func NewLaunchCounter(coralDir string) *LaunchCounter {
 	return &LaunchCounter{
-		path:        filepath.Join(coralDir, ".launch-count"),
-		anchorPath:  filepath.Join(coralDir, ".value-anchor"),
-		dismissPath: filepath.Join(coralDir, ".nag-dismissed"),
+		path:       filepath.Join(coralDir, ".launch-count"),
+		anchorPath: filepath.Join(coralDir, ".value-anchor"),
 	}
 }
 
@@ -56,38 +54,26 @@ func (lc *LaunchCounter) RecordValueAnchor(valueDelivered bool) {
 	os.WriteFile(lc.anchorPath, []byte(strconv.Itoa(count)), 0644)
 }
 
-// IsNagLaunch reports whether the supporter reminder should be shown on this
-// launch. It is a pure read with no side effects, so it is safe to call more
-// than once per launch — and it is, because it is consulted on every page
-// load.
+// IsNagLaunch reports whether this launch is one the supporter reminder is due
+// on. It is a pure read with no side effects, so it is safe to call more than
+// once per launch — and it is, because it is consulted on every page load.
+// Showing the reminder at most once per launch is the caller's job; see
+// Server.claimSupporterReminder.
 //
 // It returns false until Coral has delivered a result — a brand-new user never
-// sees it, however many times they open the app. After that it shows every
-// nagInterval launches, never on the anchoring launch itself, and not again
-// once the user has dismissed it on this launch.
+// sees it, however many times they open the app. After that it comes due every
+// nagInterval launches, and never on the anchoring launch itself.
 func (lc *LaunchCounter) IsNagLaunch() bool {
 	anchor := lc.readAnchor()
 	if anchor == 0 {
 		return false
 	}
-	count := lc.read()
-	since := count - anchor
-	if since <= 0 || since%nagInterval != 0 {
-		return false
-	}
-	return lc.readDismissed() != count
+	since := lc.read() - anchor
+	return since > 0 && since%nagInterval == 0
 }
 
-// DismissNag records that the user has sent the reminder away on this launch,
-// so reloading the dashboard does not bring it straight back. The next
-// reminder launch asks again.
-func (lc *LaunchCounter) DismissNag() {
-	os.WriteFile(lc.dismissPath, []byte(strconv.Itoa(lc.read())), 0644)
-}
-
-func (lc *LaunchCounter) read() int          { return readCount(lc.path) }
-func (lc *LaunchCounter) readAnchor() int    { return readCount(lc.anchorPath) }
-func (lc *LaunchCounter) readDismissed() int { return readCount(lc.dismissPath) }
+func (lc *LaunchCounter) read() int       { return readCount(lc.path) }
+func (lc *LaunchCounter) readAnchor() int { return readCount(lc.anchorPath) }
 
 func readCount(path string) int {
 	data, err := os.ReadFile(path)

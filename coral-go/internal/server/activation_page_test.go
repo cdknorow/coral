@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -98,7 +100,7 @@ func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
 	counter.RecordValueAnchor(false) // nothing delivered yet
 
 	s := &Server{cfg: &config.Config{}, launchCounter: counter}
-	if s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+	if s.claimSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
 		t.Fatal("a first-ever launch would have been served the supporter reminder")
 	}
 
@@ -107,12 +109,65 @@ func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
 	for !counter.IsNagLaunch() {
 		counter.Increment()
 	}
-	if !s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+	if !s.claimSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
 		t.Fatal("the reminder never becomes due, so supporters would never be asked")
 	}
-	// "Continue Free" still works.
-	if s.shouldShowSupporterReminder(httptest.NewRequest(http.MethodGet, "/?skip_activation=1", nil)) {
-		t.Fatal("Continue Free did not dismiss the reminder")
+}
+
+// The dashboard is reloaded constantly and every load runs this check, so a
+// reload must not bring the pricing page back — only the next server start
+// can ask again.
+func TestTheReminderIsServedOncePerServerStart(t *testing.T) {
+	dir := t.TempDir()
+	counter := license.NewLaunchCounter(dir)
+	counter.Increment()
+	counter.RecordValueAnchor(true)
+	for !counter.IsNagLaunch() {
+		counter.Increment()
+	}
+
+	s := &Server{cfg: &config.Config{}, launchCounter: counter}
+	if !s.claimSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+		t.Fatal("the first page load of a due launch should show the reminder")
+	}
+	for i := 0; i < 5; i++ {
+		if s.claimSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+			t.Fatalf("reload %d was served the reminder again", i+1)
+		}
+	}
+
+	// A fresh server start on the same due launch asks once more.
+	restarted := &Server{cfg: &config.Config{}, launchCounter: counter}
+	if !restarted.claimSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+		t.Fatal("restarting the server should let the reminder ask again")
+	}
+}
+
+// Concurrent page loads must not each get their own reminder.
+func TestConcurrentLoadsClaimTheReminderOnce(t *testing.T) {
+	dir := t.TempDir()
+	counter := license.NewLaunchCounter(dir)
+	counter.Increment()
+	counter.RecordValueAnchor(true)
+	for !counter.IsNagLaunch() {
+		counter.Increment()
+	}
+
+	s := &Server{cfg: &config.Config{}, launchCounter: counter}
+	var shown atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if s.claimSupporterReminder(httptest.NewRequest(http.MethodGet, "/", nil)) {
+				shown.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := shown.Load(); got != 1 {
+		t.Fatalf("the reminder was served %d times across concurrent loads, want 1", got)
 	}
 }
 

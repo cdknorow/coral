@@ -78,33 +78,6 @@ func TestSupporterReminderFollowsTheCadenceOnceValueIsDelivered(t *testing.T) {
 	}
 }
 
-// Sending the reminder away must hold for the rest of the launch: the
-// dashboard is reloaded constantly, and every reload consults IsNagLaunch.
-func TestDismissingTheReminderHoldsUntilTheNextDueLaunch(t *testing.T) {
-	dir := t.TempDir()
-	lc := NewLaunchCounter(dir)
-
-	setLaunchCount(t, dir, 1)
-	lc.RecordValueAnchor(true) // anchor at 1
-	setLaunchCount(t, dir, 1+nagInterval)
-	if !lc.IsNagLaunch() {
-		t.Fatal("the reminder should be due one full interval after the anchor")
-	}
-
-	lc.DismissNag()
-	for i := 0; i < 3; i++ {
-		if lc.IsNagLaunch() {
-			t.Fatal("the reminder came back on a reload of the same launch")
-		}
-	}
-
-	// The next due launch asks again.
-	setLaunchCount(t, dir, 1+2*nagInterval)
-	if !lc.IsNagLaunch() {
-		t.Fatal("dismissing once silenced the reminder permanently")
-	}
-}
-
 func TestValueAnchorIsRecordedOnceAndOnlyAfterValue(t *testing.T) {
 	dir := t.TempDir()
 	lc := NewLaunchCounter(dir)

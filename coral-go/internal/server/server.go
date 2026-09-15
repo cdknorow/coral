@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -59,6 +60,11 @@ type Server struct {
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
 	proxy           *proxy.Proxy
+
+	// reminderShown is claimed by the first page load that serves the
+	// supporter reminder, so a reload cannot bring it back. It is per
+	// process: "once per launch" means once per server start.
+	reminderShown atomic.Bool
 }
 
 // templateData is passed to Go templates during rendering.
@@ -671,15 +677,9 @@ func noCacheHandler(h http.Handler) http.Handler {
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	if s.shouldShowSupporterReminder(r) {
+	if s.claimSupporterReminder(r) {
 		s.serveActivation(w, r)
 		return
-	}
-
-	// "Continue Free" lands here with skip_activation=1. Remember it, or the
-	// reminder returns on the next page load of the same launch.
-	if r.URL.Query().Get("skip_activation") == "1" && s.launchCounter != nil {
-		s.launchCounter.DismissNag()
 	}
 
 	if s.indexTmpl == nil {
@@ -693,7 +693,7 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// shouldShowSupporterReminder decides whether this page load gets the supporter
+// claimSupporterReminder decides whether this page load gets the supporter
 // reminder instead of the dashboard. Every condition must hold:
 //
 //   - the build asks for a license at all (dev and beta builds never do);
@@ -704,13 +704,20 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 //
 // This gates only WHEN we ask for support. No Coral feature is gated on a
 // license: see license.Middleware, which passes every request through.
-func (s *Server) shouldShowSupporterReminder(r *http.Request) bool {
-	return supporterReminderDue(
+// It claims that showing: the dashboard is reloaded constantly and every load
+// comes through here, so the reminder is served to the first qualifying load
+// of a server start and to no other.
+func (s *Server) claimSupporterReminder(r *http.Request) bool {
+	due := supporterReminderDue(
 		s.cfg.LicenseRequired(),
 		s.licenseMgr != nil && s.licenseMgr.IsValid(),
 		s.launchCounter != nil && s.launchCounter.IsNagLaunch(),
 		r.URL.Query().Get("skip_activation") == "1",
 	)
+	if !due {
+		return false
+	}
+	return s.reminderShown.CompareAndSwap(false, true)
 }
 
 // supporterReminderDue is the entire rule, kept as a pure function so each
