@@ -3,8 +3,10 @@ package routes
 import (
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -161,6 +163,8 @@ func SupporterCheckoutURLs(base string) map[string]string {
 // never describe a different set of events than the one Coral sends.
 // GET /api/system/telemetry
 func (h *TrackingHandler) TelemetryDisclosure(w http.ResponseWriter, r *http.Request) {
+	installIDPath := telemetryDisplayPath(filepath.Join(h.coralDir, ".install_id"))
+	failureLogPath := telemetryDisplayPath(filepath.Join(h.coralDir, "tracking-failures.log"))
 	writeJSON(w, http.StatusOK, map[string]any{
 		// enabled is false for builds compiled from source, which carry no
 		// analytics key and send nothing. The disclosure is not shown then:
@@ -170,9 +174,26 @@ func (h *TrackingHandler) TelemetryDisclosure(w http.ResponseWriter, r *http.Req
 		"events":          tracking.AllEvents,
 		"properties":      tracking.StandardProperties,
 		"never_collected": tracking.NeverCollected,
-		"install_id_path": filepath.Join(h.coralDir, ".install_id"),
-		"failure_log":     filepath.Join(h.coralDir, "tracking-failures.log"),
+		"install_id_path": installIDPath,
+		"failure_log":     failureLogPath,
 	})
+}
+
+// telemetryDisplayPath keeps the disclosure useful without embedding the local
+// account name in text that may be copied into screenshots or bug reports.
+func telemetryDisplayPath(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	prefix := home + string(filepath.Separator)
+	if strings.HasPrefix(path, prefix) {
+		return filepath.Join("~", strings.TrimPrefix(path, prefix))
+	}
+	return path
 }
 
 // AcknowledgeTelemetryDisclosure records that the user has seen the

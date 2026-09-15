@@ -3299,16 +3299,11 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	// Capture shell PID for process-tree-based identity resolution.
 	// Must happen after CreateSession (tmux session exists) but the pane PID
 	// is available immediately — it's the shell spawned by tmux new-session.
-	var shellPID int
-	if backend == "tmux" {
-		if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {
-			if pid, err := tmuxTerm.Client().GetPanePID(ctx, sessionName); err == nil {
-				shellPID = pid
-				log.Printf("[launch] captured PID %d for session %s", pid, sessionName)
-			} else {
-				log.Printf("[launch] failed to capture PID for session %s: %v", sessionName, err)
-			}
-		}
+	shellPID, pidErr := launchedSessionPID(ctx, backend, h.backend, h.terminal, sessionName)
+	if pidErr != nil {
+		log.Printf("[launch] failed to capture PID for session %s: %v", sessionName, pidErr)
+	} else if shellPID > 0 {
+		log.Printf("[launch] captured PID %d for session %s", shellPID, sessionName)
 	}
 
 	// Register in DB
@@ -3345,6 +3340,22 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		// only the former is how a silent backend downgrade went unnoticed.
 		"terminal": terminalKind(h.backend),
 	}, nil
+}
+
+// launchedSessionPID resolves the process identifier from what actually owns
+// the launched session. The persisted backend label describes the launch path
+// and can be "pty" even when h.backend is a TmuxBackend, so it must not be the
+// sole condition for PID capture.
+func launchedSessionPID(ctx context.Context, backend string, terminalBackend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, sessionName string) (int, error) {
+	if provider, ok := terminalBackend.(ptymanager.SessionPIDProvider); ok {
+		return provider.SessionPID(ctx, sessionName)
+	}
+	if backend == "tmux" {
+		if tmuxTerm, ok := terminal.(*ptymanager.TmuxSessionTerminal); ok {
+			return tmuxTerm.Client().GetPanePID(ctx, sessionName)
+		}
+	}
+	return 0, nil
 }
 
 // terminalKind names the terminal a session actually runs on, as opposed to

@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,6 +72,14 @@ func TestTmuxBackend_SpawnAndKill(t *testing.T) {
 
 	if !b.IsRunning("test-agent") {
 		t.Error("expected session to be running after spawn")
+	}
+
+	pid, err := b.SessionPID(context.Background(), "test-agent")
+	if err != nil {
+		t.Fatalf("SessionPID failed: %v", err)
+	}
+	if pid <= 0 {
+		t.Fatalf("SessionPID = %d, want a live pane PID", pid)
 	}
 
 	err = b.Kill("test-agent")

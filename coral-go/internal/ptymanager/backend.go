@@ -1,6 +1,9 @@
 package ptymanager
 
-import "sync/atomic"
+import (
+	"context"
+	"sync/atomic"
+)
 
 // SessionInfo holds metadata about a running terminal session.
 type SessionInfo struct {
@@ -71,4 +74,11 @@ type TerminalBackend interface {
 
 	// Close shuts down all sessions and cleans up resources.
 	Close() error
+}
+
+// SessionPIDProvider is implemented by terminal backends that can identify the
+// root process for a spawned session. It is optional so backends without a
+// stable process identifier can still implement TerminalBackend.
+type SessionPIDProvider interface {
+	SessionPID(ctx context.Context, name string) (int, error)
 }

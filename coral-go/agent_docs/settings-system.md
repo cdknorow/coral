@@ -62,9 +62,27 @@ Returns default prompt and system prompt templates for orchestrator and worker a
 }
 ```
 
+### Agent model suggestions
+
+```
+GET /api/agent-models
+```
+
+Returns the curated model-name suggestions keyed by agent type. These are UI
+suggestions; launch requests may still provide a free-form model string.
+
 ---
 
 ## Health & Status
+
+### API discovery and embedded docs
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/spec.json` | Machine-readable API metadata used by custom views. |
+| `GET` | `/api/agent-docs` | List embedded documentation as `{name,title}` entries. |
+| `GET` | `/api/agent-docs/{name}` | Return one document as JSON with `name`, `content`, and `path`. |
+| `GET` | `/api/agent-docs/all` | Return all documents concatenated as Markdown. |
 
 ### Health Check
 
@@ -171,6 +189,25 @@ Lists visible (non-hidden) directories within a path. Restricted to the home dir
   "entries": ["Documents", "Projects", "Desktop"]
 }
 ```
+
+### Check for a Git repository
+
+```
+GET /api/filesystem/is-git?path=/absolute/path
+```
+
+Returns `{"is_git":true}` when the path contains a `.git` entry. A missing or
+invalid path returns `false`.
+
+### Upload an image
+
+```
+POST /api/upload
+```
+
+Send multipart form field `file`. PNG, JPEG, GIF, WebP, BMP, and TIFF images up
+to 20 MiB are stored under Coral's uploads directory. SVG is rejected. The
+response contains `ok`, absolute `path`, original `filename`, and byte `size`.
 
 ---
 

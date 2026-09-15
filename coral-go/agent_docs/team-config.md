@@ -191,25 +191,23 @@ POST /api/sessions/launch-team
 
 **Request Body:** Full team config JSON (same schema as a `.json` file).
 
-### Save Team Config
+### List Persisted Team Runs
 
 ```
-POST /api/teams
+GET /api/teams/all
 ```
 
-**Request Body:** Full team config JSON. Saved to `~/.coral/teams/<name>.json`.
+This lists teams that have been launched and persisted in Coral's database; it is not a saved-config file API.
 
-### List Saved Teams
-
-```
-GET /api/teams
-```
-
-### Get Team Config
+### Get Persisted Team Detail
 
 ```
-GET /api/teams/{name}
+GET /api/teams/detail/{name}
 ```
+
+Coral does not expose an HTTP endpoint that saves a team definition to
+`~/.coral/teams`. Write the JSON file there directly, import one with
+`POST /api/teams/import`, or pass the full definition to the launch endpoint.
 
 ## Examples
 

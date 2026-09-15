@@ -241,3 +241,18 @@ Events (tool calls, notifications) from a historical session.
 Tasks from a historical session.
 
 **Response:** Array of task objects (same shape as live session tasks).
+
+### GET `/api/sessions/history/{sessionID}/files`
+
+Returns files observed in agent edit events, normalized against the session's
+latest recorded working directory.
+
+```json
+{"session_id":"abc123","files":[{"filepath":"src/app.go","status":"agent_only","agents":["worker"],"source":"agent_events"}]}
+```
+
+### GET `/api/sessions/history/{sessionID}/resume-info`
+
+Returns the metadata available for resuming the session: `session_id` and, when
+the session is still registered, `working_dir`, `agent_type`, `board_name`, and
+`display_name`.

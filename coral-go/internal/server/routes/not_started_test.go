@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -8,6 +9,15 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/tmux"
 )
+
+type pidProvidingBackend struct {
+	ptymanager.TerminalBackend
+	pid int
+}
+
+func (b pidProvidingBackend) SessionPID(context.Context, string) (int, error) {
+	return b.pid, nil
+}
 
 // The defect this guards: an agent blocked on its CLI's trust-folder prompt
 // looks identical to a working agent in the dashboard, on a new user's very
@@ -98,5 +108,16 @@ func TestTerminalKindNamesWhatActuallyRuns(t *testing.T) {
 	// No backend configured means tmux is driven directly.
 	if got := terminalKind(nil); got != "tmux" {
 		t.Errorf("nil backend reported as %q, want \"tmux\"", got)
+	}
+}
+
+func TestLaunchedSessionPIDUsesActualBackendWhenLaunchPathIsPTY(t *testing.T) {
+	backend := pidProvidingBackend{pid: 4242}
+	got, err := launchedSessionPID(context.Background(), "pty", backend, nil, "codex-session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 4242 {
+		t.Fatalf("captured PID = %d, want 4242", got)
 	}
 }

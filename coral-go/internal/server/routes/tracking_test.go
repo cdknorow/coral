@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -220,6 +222,17 @@ func TestTelemetryDisclosureDescribesTheEventsCoralActuallySends(t *testing.T) {
 	}
 	if !strings.HasSuffix(body.FailureLog, "tracking-failures.log") {
 		t.Errorf("expected the failure log path, got %q", body.FailureLog)
+	}
+}
+
+func TestTelemetryDisplayPathHidesHomeDirectory(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := telemetryDisplayPath(filepath.Join(home, ".coral", ".install_id"))
+	if got != filepath.Join("~", ".coral", ".install_id") {
+		t.Fatalf("expected a home-relative display path, got %q", got)
 	}
 }
 

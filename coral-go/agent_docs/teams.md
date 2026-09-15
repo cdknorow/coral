@@ -14,13 +14,13 @@ Teams move through three states:
 |--------|-------------|
 | `running` | Team is active. Members have live sessions on the board. |
 | `sleeping` | Team is paused. Sessions are killed and the board is paused, but everything is recoverable via wake. |
-| `stopped` | Team is terminated. Members are marked stopped with timestamps. Can be resurrected, relaunched, or deleted. |
+| `stopped` | Team is terminated. Members are marked stopped with timestamps. Can be resurrected or deleted. |
 
 ```
 running ──sleep──▶ sleeping ──wake──▶ running
    │                                     ▲
    └──stop──▶ stopped ──resurrect────────┘
-                  │        or relaunch
+                  │
                   └──delete──▶ (removed)
 ```
 
@@ -78,7 +78,7 @@ This means `session_id` gets updated on restart, but the slot identity (agent na
 ## List teams
 
 ```
-GET /api/teams
+GET /api/teams/all
 ```
 
 ### Parameters
@@ -100,7 +100,8 @@ GET /api/teams
       "is_worktree": 0,
       "created_at": "2025-03-11T10:00:00+00:00",
       "updated_at": "2025-03-11T10:30:00+00:00",
-      "members": [ ... ]
+      "member_count": 2,
+      "active_count": 2
     }
   ]
 }
@@ -111,7 +112,7 @@ GET /api/teams
 ## Get a team
 
 ```
-GET /api/teams/{name}
+GET /api/teams/detail/{name}
 ```
 
 Returns one team with its full member list and config.
@@ -123,7 +124,7 @@ Returns `{"error": "team not found"}, 404` if no team matches the name.
 ## Resurrect a stopped team
 
 ```
-POST /api/teams/{name}/resurrect
+POST /api/teams/detail/{name}/resurrect
 ```
 
 Brings a stopped team back to life by relaunching the agents that were active when the team was stopped. Uses each member's stored `agent_config` to recreate sessions.
@@ -155,33 +156,15 @@ Brings a stopped team back to life by relaunching the agents that were active wh
 | Status | Body | Cause |
 |--------|------|-------|
 | 404 | `{"error": "team not found"}` | No team with that name. |
-| 409 | `{"error": "team is not stopped"}` | Team must be stopped to resurrect. |
-| 403 | `{"error": "..."}` | Edition limit exceeded (max teams or agents). |
-
----
-
-## Relaunch a stopped team
-
-```
-POST /api/teams/{name}/relaunch
-```
-
-Like resurrect, but starts fresh — uses the team's original `config` to launch all agents from scratch, ignoring individual member state.
-
-### Response
-
-Same shape as resurrect.
-
-### Errors
-
-Same as resurrect.
+| 400 | `{"error": "can only resurrect stopped teams (current status: ...)"}` | Team must be stopped to resurrect. |
+| 400 | `{"error": "no members eligible for resurrection"}` | No member slots were active when the team stopped. |
 
 ---
 
 ## Delete a stopped team
 
 ```
-DELETE /api/teams/{name}
+DELETE /api/teams/detail/{name}
 ```
 
 Permanently deletes a stopped team and all its member records.
@@ -197,7 +180,7 @@ Permanently deletes a stopped team and all its member records.
 | Status | Body | Cause |
 |--------|------|-------|
 | 404 | `{"error": "team not found"}` | No team with that name. |
-| 409 | `{"error": "team is not stopped"}` | Only stopped teams can be deleted. |
+| 400 | `{"error": "can only delete stopped teams"}` | Only stopped teams can be deleted. |
 
 ---
 
@@ -231,10 +214,10 @@ curl -X POST http://localhost:8420/api/sessions/launch-team \
   }'
 
 # 2. List running teams
-curl http://localhost:8420/api/teams?status=running
+curl http://localhost:8420/api/teams/all?status=running
 
 # 3. Get team detail
-curl http://localhost:8420/api/teams/api-team
+curl http://localhost:8420/api/teams/detail/api-team
 
 # 4. Sleep the team (pause without losing state)
 curl -X POST http://localhost:8420/api/sessions/live/team/api-team/sleep
@@ -246,8 +229,8 @@ curl -X POST http://localhost:8420/api/sessions/live/team/api-team/wake
 # (done via killing all sessions on the board)
 
 # 7. Resurrect — bring back the agents that were running
-curl -X POST http://localhost:8420/api/teams/api-team/resurrect
+curl -X POST http://localhost:8420/api/teams/detail/api-team/resurrect
 
 # 8. Or delete the stopped team
-curl -X DELETE http://localhost:8420/api/teams/api-team
+curl -X DELETE http://localhost:8420/api/teams/detail/api-team
 ```

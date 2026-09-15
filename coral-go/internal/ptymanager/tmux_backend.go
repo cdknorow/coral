@@ -96,6 +96,19 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 	return nil
 }
 
+// SessionPID returns the tmux pane's root shell PID for process-tree identity
+// resolution. Resolve the generated tmux name from stored metadata because a
+// backend caller may use a different public lookup name.
+func (b *TmuxBackend) SessionPID(ctx context.Context, name string) (int, error) {
+	tmuxName := name
+	b.mu.RLock()
+	if sess := b.sessions[name]; sess != nil {
+		tmuxName = naming.SessionName(sess.info.AgentType, sess.info.SessionID)
+	}
+	b.mu.RUnlock()
+	return b.client.GetPanePID(ctx, tmuxName)
+}
+
 func (b *TmuxBackend) Kill(name string) error {
 	ctx := context.Background()
 

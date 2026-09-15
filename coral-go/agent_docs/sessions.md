@@ -491,6 +491,12 @@ Download the current or persisted session changes using only the session ID:
 curl -fsS http://localhost:8420/api/sessions/{sessionID}/changes -o changes.diff
 ```
 
+`GET /api/sessions/{sessionID}/changes` prefers a freshly generated live diff and
+falls back to the saved artifact. `GET /api/sessions/{sessionID}/changes.diff`
+serves only the artifact captured at termination. For a live session,
+`GET /api/sessions/live/{name}/changes.diff?session_id={sessionID}` generates the
+current checkout diff.
+
 For a live session, Coral generates the diff from its registered working directory. After termination or worktree cleanup, it serves the captured artifact instead. The response uses `Content-Type: text/x-diff`. Team kill snapshots every non-terminal member before removing the shared worktree.
 
 Terminate a session.
@@ -553,6 +559,17 @@ Pass `"icon": null` to clear.
 ```json
 {"ok": true, "icon": "🤖"}
 ```
+
+### POST `/api/sessions/live/{name}/context-window`
+
+Records the model-derived context-window size for a live session. This is
+normally called by Coral's session-start hook.
+
+```json
+{"session_id": "abc123", "model": "claude-sonnet-4-6"}
+```
+
+Unknown models return `{"ok":true,"context_window":0,"skipped":true}`.
 
 ---
 
@@ -689,6 +706,13 @@ Clear all events for a session.
 
 **Query Parameters:** `session_id` (optional)
 
+### POST `/api/sessions/live/{name}/token-usage`
+
+Records a cumulative usage snapshot for integrations that report usage outside
+the local proxy. The JSON body accepts `session_id`, `input_tokens`,
+`output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost_usd`, and
+`num_turns`.
+
 ---
 
 ## Sleep / Wake
@@ -737,6 +761,11 @@ Kills and relaunches all team members with their original configuration.
   "agents": [...]
 }
 ```
+
+#### POST `/api/sessions/live/team/{boardName}/kill`
+
+Stops every live session on the board, captures each agent's changes, marks the
+persisted team stopped, and removes a Coral-owned team worktree.
 
 ### Individual Session Sleep/Wake
 

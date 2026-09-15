@@ -386,6 +386,18 @@ POST /api/board/{project}/tasks
 GET /api/board/{project}/tasks
 ```
 
+To list recent tasks across every board, use
+`GET /api/board/tasks?limit=100` (default `100`).
+
+### Current Task
+
+```
+POST /api/board/{project}/tasks/current
+```
+
+With `{"subscriber_id":"Agent1"}`, returns that subscriber's in-progress task
+or `404` when there is none.
+
 Returns all tasks ordered by priority (critical > high > medium > low), then by ID.
 
 **Response:**
@@ -427,6 +439,24 @@ Claims the next available pending task. Prioritizes tasks assigned to the caller
 **Response:** Task object with `status: "in_progress"` and `claimed_at` set.
 
 **404** if no tasks are available.
+
+### Update Task
+
+```
+PATCH /api/board/{project}/tasks/{taskID}
+```
+
+Partially updates `title`, `body`, `priority`, `assigned_to`, or `blocked_by` on
+a draft, pending, in-progress, or blocked task. Dependency changes can move a
+task between `pending` and `blocked`.
+
+### Publish Draft Task
+
+```
+POST /api/board/{project}/tasks/{taskID}/publish
+```
+
+Moves a draft to `pending`, or to `blocked` when its dependencies are not done.
 
 ### Complete Task
 
@@ -477,6 +507,16 @@ curl -fsS \
 ```
 
 Returns `404` if the task does not exist or no artifact was captured. A task that was never claimed has no `session_id`, so Coral cannot resolve its checkout and does not create an artifact.
+
+### Task Cost
+
+```
+GET /api/board/{project}/tasks/{taskID}/cost
+```
+
+Returns proxy-derived token and cost totals from the task's claim time through
+now. When no session or proxy data is available, the response contains a
+descriptive `message` instead of totals.
 
 ### Reassign Task
 
