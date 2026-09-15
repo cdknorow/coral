@@ -121,12 +121,14 @@ export function createTerminal(containerEl) {
         return null;
     }
 
-    // Reuse existing terminal — just disconnect WS and clear the buffer
+    // Reuse existing terminal. xterm processes write() calls asynchronously, so
+    // clear()/reset() here can be overtaken by output that was already queued by
+    // the previous session. Queue an ANSI full reset instead: it is parsed after
+    // all old writes and before any replay from the new socket.
     if (terminal) {
         disconnectTerminalWs();
-        terminal.clear();
-        terminal.reset();
-        dbg('createTerminal: reusing existing terminal, cleared buffer');
+        terminal.write("\x1bc");
+        dbg('createTerminal: reusing existing terminal, queued buffer reset');
         if (fitAddon) {
             requestAnimationFrame(() => { if (fitAddon) fitAddon.fit(); });
         }
@@ -304,6 +306,9 @@ export function connectTerminalWs(name, agentType, sessionId) {
     terminalWs.binaryType = 'arraybuffer';
 
     terminalWs.onopen = () => {
+        // A socket can finish opening after the user has already selected a
+        // different agent. Never resize it or flush input into that old agent.
+        if (myGeneration !== _wsGeneration) return;
         dbg('terminalWs OPEN', { sessionId, url: terminalWs.url });
         _setDisconnectedBadge(false);
         if (terminal) {
@@ -326,6 +331,10 @@ export function connectTerminalWs(name, agentType, sessionId) {
 
     let _msgCount = 0;
     terminalWs.onmessage = (event) => {
+        // close() does not guarantee that already-dispatched message events are
+        // cancelled. Ignoring the old generation prevents stale terminal data
+        // from being appended to the newly selected agent's xterm instance.
+        if (myGeneration !== _wsGeneration) return;
         _msgCount++;
 
         if (event.data instanceof ArrayBuffer) {
