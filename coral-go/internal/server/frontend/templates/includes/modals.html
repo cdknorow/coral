@@ -717,6 +717,21 @@
                         <option value="main_head">Main Branch (vs main)</option>
                     </select>
                 </dd>
+                <dt>
+                    <label for="settings-git-poll-interval">Git Scan Interval</label>
+                    <span class="toggle-desc">How often Coral rescans git for changed files. Scanning a large repository is slow — stretch this out, or turn it off and use the refresh button.</span>
+                </dt>
+                <dd>
+                    <select id="settings-git-poll-interval" class="settings-select">
+                        <option value="30">Every 30 seconds</option>
+                        <option value="60">Every minute</option>
+                        <option value="120">Every 2 minutes</option>
+                        <option value="300">Every 5 minutes</option>
+                        <option value="600">Every 10 minutes</option>
+                        <option value="1800">Every 30 minutes</option>
+                        <option value="0">Off &mdash; refresh manually</option>
+                    </select>
+                </dd>
                 </dl>
                 <button class="btn btn-primary settings-prompts-btn" onclick="hideSettingsModal(); showDefaultPromptsModal()">
                     <span style="font-size:16px;vertical-align:middle;margin-right:6px">✏️</span>

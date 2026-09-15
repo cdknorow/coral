@@ -3183,6 +3183,19 @@ export async function showSettingsModal() {
     const gitDiffSelect = document.getElementById("settings-git-diff-mode");
     if (gitDiffSelect) gitDiffSelect.value = s.git_diff_mode || 'previous_commit';
 
+    // Git scan interval, in seconds; "0" means the user scans manually.
+    const gitPollSelect = document.getElementById("settings-git-poll-interval");
+    if (gitPollSelect) {
+        const secs = String(s.git_poll_interval_s ?? '120');
+        // An interval set outside the presets (by hand, or by an older build)
+        // still needs to show as itself rather than silently snapping.
+        if (!Array.from(gitPollSelect.options).some(o => o.value === secs)) {
+            const opt = new Option(`Every ${secs} seconds`, secs);
+            gitPollSelect.add(opt);
+        }
+        gitPollSelect.value = secs;
+    }
+
     // License status
     _loadLicenseStatus();
 
@@ -3312,6 +3325,7 @@ export async function applySettings() {
     const fileSearchMode = document.getElementById("settings-file-search-mode")?.value || "directory";
     const fileSearchLimit = document.getElementById("settings-file-search-limit")?.value || "500";
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
+    const gitPollIntervalS = document.getElementById("settings-git-poll-interval")?.value ?? "120";
 
     // Parse theme selection — "custom:<name>" or built-in "dark"/"light"/"system"
     let theme, customTheme;
@@ -3349,6 +3363,7 @@ export async function applySettings() {
         file_search_mode: fileSearchMode,
         file_search_limit: fileSearchLimit,
         git_diff_mode: gitDiffMode,
+        git_poll_interval_s: gitPollIntervalS,
     };
 
     const oldGitDiffMode = state.settings?.git_diff_mode || 'previous_commit';

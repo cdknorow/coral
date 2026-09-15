@@ -16,6 +16,15 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 )
 
+// MinGitPollInterval is the floor for a user-configured poll interval. Git
+// queries on a large repository are not cheap, so a too-eager setting would
+// spend more time scanning than working.
+const MinGitPollInterval = 15 * time.Second
+
+// pausedRecheck is how often a paused poller re-reads its interval, so turning
+// polling back on takes effect without restarting Coral.
+const pausedRecheck = 30 * time.Second
+
 // GitPoller periodically polls git branch/commit info for live agents.
 type GitPoller struct {
 	store      *store.GitStore
@@ -24,6 +33,12 @@ type GitPoller struct {
 	logger     *slog.Logger
 	discoverFn func(ctx context.Context) ([]AgentInfo, error)
 	prCache    map[string]prCacheEntry // keyed by "remote_url::branch"
+
+	// intervalFn, when set, is consulted before every wait so a settings
+	// change takes effect without a restart. A non-positive result pauses
+	// polling entirely, for repositories where scanning is too expensive to
+	// do on a timer at all.
+	intervalFn func() time.Duration
 }
 
 type prCacheEntry struct {
@@ -56,19 +71,45 @@ func (p *GitPoller) SetDiscoverFn(fn func(ctx context.Context) ([]AgentInfo, err
 	p.discoverFn = fn
 }
 
+// SetIntervalFn supplies a user-configured poll interval, re-read before every
+// wait. Return a non-positive duration to pause polling.
+func (p *GitPoller) SetIntervalFn(fn func() time.Duration) { p.intervalFn = fn }
+
+// nextWait returns how long to wait before the next pass, and whether that
+// pass should actually poll. A paused poller still wakes periodically so it
+// can notice the setting being turned back on.
+func (p *GitPoller) nextWait() (time.Duration, bool) {
+	d := p.interval
+	if p.intervalFn != nil {
+		d = p.intervalFn()
+	}
+	if d <= 0 {
+		return pausedRecheck, false
+	}
+	if d < MinGitPollInterval {
+		d = MinGitPollInterval
+	}
+	return d, true
+}
+
 // Run starts the polling loop. Blocks until context is cancelled.
 func (p *GitPoller) Run(ctx context.Context) error {
-	ticker := time.NewTicker(p.interval)
-	defer ticker.Stop()
+	wait, _ := p.nextWait()
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-ticker.C:
-			if err := p.PollOnce(ctx); err != nil {
-				p.logger.Error("poll error", "error", err)
+		case <-timer.C:
+			if _, enabled := p.nextWait(); enabled {
+				if err := p.PollOnce(ctx); err != nil {
+					p.logger.Error("poll error", "error", err)
+				}
 			}
+			next, _ := p.nextWait()
+			timer.Reset(next)
 		}
 	}
 }
@@ -288,6 +329,7 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	logger.Debug("git diff --numstat", "files", len(fileMap), "duration_ms", time.Since(t2).Milliseconds())
 
 	// git status --porcelain for untracked files
+	lineCounts := 0
 	t3 := time.Now()
 	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "status", "--porcelain", "--untracked-files=normal").Output()
 	if err == nil && len(out) > 0 {
@@ -310,9 +352,18 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 					if info.ModTime().Unix() < int64(baseTS) {
 						continue
 					}
+					// Reading each new file to count its lines is the only
+					// per-file I/O in this loop, so it is budgeted: a working
+					// tree with this many new files is not one anybody reads
+					// per-file counts off.
+					adds := 0
+					if lineCounts < gitutil.MaxNewFileStatFiles {
+						adds = gitutil.NewFileLineCount(fullPath)
+						lineCounts++
+					}
 					fileMap[fp] = store.ChangedFile{
 						Filepath:  fp,
-						Additions: gitutil.NewFileLineCount(fullPath),
+						Additions: adds,
 						Deletions: 0,
 						Status:    "??",
 					}

@@ -153,6 +153,12 @@ func ShowPrefix(ctx context.Context, workdir string) string {
 	return prefix
 }
 
+// MaxNewFileStatFiles caps how many new files one scan will read to count
+// lines. Past this the stat is not worth the I/O: a working tree with that
+// many new files is not one anybody reads per-file counts off, and on a large
+// repo the reads are the expensive part of refreshing the list.
+const MaxNewFileStatFiles = 500
+
 // MaxNewFileStatBytes caps how large a new file we will read just to count its
 // lines for changed-file stats.
 const MaxNewFileStatBytes = 2 << 20

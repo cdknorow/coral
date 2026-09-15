@@ -1007,6 +1007,39 @@ func (h *SessionsHandler) RefreshFiles(w http.ResponseWriter, r *http.Request) {
 	h.refreshFilesInner(w, r, name, body.SessionID)
 }
 
+// trackedPaths reports which of the given repo-relative paths git tracks. It
+// asks only about those paths, so the cost follows the number of candidates
+// rather than the size of the repository. An empty list costs nothing.
+func trackedPaths(ctx context.Context, workdir string, paths []string) map[string]bool {
+	tracked := make(map[string]bool, len(paths))
+	if len(paths) == 0 {
+		return tracked
+	}
+
+	args := append([]string{"ls-files", "-z", "--"}, paths...)
+	out, err := gitCmd(ctx, workdir, args...).Output()
+	if err != nil {
+		// Unknown tracked status: treat every candidate as untracked, which at
+		// worst shows a clean file in the list rather than hiding a dirty one.
+		slog.Warn("git ls-files (tracked) failed", "workdir", workdir, "error", err)
+		return tracked
+	}
+	for _, f := range bytes.Split(out, []byte{0}) {
+		if len(f) > 0 {
+			tracked[string(f)] = true
+		}
+	}
+	return tracked
+}
+
+// gitCmd builds a git command for the changed-files path. --no-optional-locks
+// keeps a read-only query from refreshing and rewriting the index, which on a
+// large repo means disk writes and lock contention on every poll.
+func gitCmd(ctx context.Context, workdir string, args ...string) *exec.Cmd {
+	full := append([]string{"--no-optional-locks", "-C", workdir}, args...)
+	return exec.CommandContext(ctx, "git", full...)
+}
+
 // refreshFilesInner contains the shared logic for computing fresh changed files.
 func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Request, name, sessionID string) {
 	workdir := h.resolveGitRoot(r.Context(), name, "", sessionID)
@@ -1021,7 +1054,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 
 	diffMode := h.getDiffMode(r.Context())
 	base := gitutil.GetDiffBase(ctx, workdir, diffMode)
-	out, err := exec.CommandContext(ctx, "git", "-C", workdir, "diff", base, "--numstat").Output()
+	out, err := gitCmd(ctx, workdir, "diff", base, "--numstat").Output()
 	fileMap := make(map[string]store.ChangedFile)
 	if err != nil {
 		slog.Warn("git diff --numstat failed", "agent_name", name, "workdir", workdir, "error", err)
@@ -1042,38 +1075,36 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 
 	// Include untracked files
 	untrackedSet := make(map[string]bool)
-	untrackedOut, err := exec.CommandContext(ctx, "git", "-C", workdir, "ls-files", "--others", "--exclude-standard").Output()
+	untrackedOut, err := gitCmd(ctx, workdir, "ls-files", "--others", "--exclude-standard").Output()
 	if err != nil {
 		slog.Warn("git ls-files (untracked) failed", "agent_name", name, "workdir", workdir, "error", err)
 	} else {
+		counted := 0
 		for _, f := range strings.Split(strings.TrimSpace(string(untrackedOut)), "\n") {
 			if f == "" {
 				continue
 			}
 			untrackedSet[f] = true
 			if _, exists := fileMap[f]; !exists {
-				adds := gitutil.NewFileLineCount(filepath.Join(workdir, f))
+				adds := 0
+				if counted < gitutil.MaxNewFileStatFiles {
+					adds = gitutil.NewFileLineCount(filepath.Join(workdir, f))
+					counted++
+				}
 				fileMap[f] = store.ChangedFile{Filepath: f, Additions: adds, Deletions: 0, Status: "??"}
 			}
 		}
 	}
 
-	// Build tracked file set (one batch call instead of per-file git ls-files)
-	trackedSet := make(map[string]bool)
-	trackedOut, err := exec.CommandContext(ctx, "git", "-C", workdir, "ls-files").Output()
-	if err != nil {
-		slog.Warn("git ls-files (tracked) failed", "agent_name", name, "workdir", workdir, "error", err)
-	} else {
-		for _, f := range strings.Split(strings.TrimSpace(string(trackedOut)), "\n") {
-			if f != "" {
-				trackedSet[f] = true
-			}
-		}
-	}
-
-	// Merge in files from agent Write/Edit events
+	// Files the agent wrote or edited that git has not already reported.
+	// Collect the candidates first so their tracked status can be asked for by
+	// pathspec: this used to list every tracked file in the repo to answer a
+	// question about a handful of paths, which on a monorepo is the single
+	// most expensive thing here.
 	sidPtr := strPtr(sessionID)
 	events, _ := h.ts.ListAgentEvents(r.Context(), name, 200, sidPtr)
+	candidates := make([]string, 0, 16)
+	seen := make(map[string]bool)
 	for _, ev := range events {
 		if ev.ToolName == nil || (*ev.ToolName != "Write" && *ev.ToolName != "Edit") {
 			continue
@@ -1093,25 +1124,31 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 		if err != nil || strings.HasPrefix(rel, "..") {
 			continue
 		}
-		if _, exists := fileMap[rel]; !exists {
-			// Skip files that no longer exist on disk
-			fullPath := filepath.Join(workdir, rel)
-			info, statErr := os.Stat(fullPath)
-			if statErr != nil || info.IsDir() {
-				continue
-			}
-			// Skip tracked files not in fileMap — they have no diff (clean)
-			if trackedSet[rel] && !untrackedSet[rel] {
-				continue
-			}
-			adds := 0
-			data, err := os.ReadFile(fullPath)
-			if err != nil {
-				slog.Warn("failed to read file for line count", "path", fullPath, "error", err)
-			} else {
-				adds = strings.Count(string(data), "\n") + 1
-			}
-			fileMap[rel] = store.ChangedFile{Filepath: rel, Additions: adds, Deletions: 0, Status: "??"}
+		if _, exists := fileMap[rel]; exists || seen[rel] {
+			continue
+		}
+		seen[rel] = true
+		candidates = append(candidates, rel)
+	}
+
+	trackedSet := trackedPaths(ctx, workdir, candidates)
+
+	for _, rel := range candidates {
+		// Skip files that no longer exist on disk
+		fullPath := filepath.Join(workdir, rel)
+		info, statErr := os.Stat(fullPath)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		// Skip tracked files not in fileMap — they have no diff (clean)
+		if trackedSet[rel] && !untrackedSet[rel] {
+			continue
+		}
+		fileMap[rel] = store.ChangedFile{
+			Filepath:  rel,
+			Additions: gitutil.NewFileLineCount(fullPath),
+			Deletions: 0,
+			Status:    "??",
 		}
 	}
 
