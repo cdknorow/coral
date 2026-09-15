@@ -126,7 +126,8 @@
                                 <div class="changed-files-header" id="changed-files-header">
                                     <div class="files-search-row files-search-row-wrapper">
                                         <input type="search" id="files-search-input" class="files-search-input" placeholder="Search files..." autocomplete="off" aria-label="Search changed files">
-                                        <button class="refresh-files-btn" id="file-search-mode-btn" onclick="toggleFileSearchMode()" title="Toggle browse/search mode" aria-label="Toggle file search mode" style="font-size:14px">&#x1F4C1;</button>
+                                        <button class="refresh-files-btn" id="file-search-mode-btn" onclick="toggleFileSearchMode()" title="Toggle browse/search mode" aria-label="Toggle file search mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9.5v-3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/></svg></button>
+                                        <button class="refresh-files-btn" id="diff-expand-all-btn" onclick="toggleAllFileDiffs()" title="Expand all diffs" aria-label="Expand all diffs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9l4-4 4 4"/><path d="M8 15l4 4 4-4"/></svg></button>
                                         <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
                                         <div id="files-search-dropdown" class="file-mention-dropdown" style="display:none;bottom:auto;top:100%;margin-top:4px;margin-bottom:0;max-height:400px"></div>
                                     </div>

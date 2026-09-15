@@ -3,6 +3,8 @@
 import { state } from './state.js';
 import { escapeHtml, showToast } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
+import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
+import { getCm, getLangExtension, getLangFromPath } from './cm_util.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -84,6 +86,16 @@ export function renderStarredFiles() {
 let _searchResults = [];      // current dropdown results
 let _searchSelectedIdx = 0;   // selected index in dropdown
 
+const fileSearchModeIcons = {
+    directory: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9.5v-3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/></svg>',
+    fuzzy: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>',
+};
+
+function setFileSearchModeIcon(btn, mode) {
+    if (!btn) return;
+    btn.innerHTML = fileSearchModeIcons[mode === 'directory' ? 'directory' : 'fuzzy'];
+}
+
 // Toggle between directory browse and fuzzy search modes
 export function toggleFileSearchMode() {
     if (!state.settings) state.settings = {};
@@ -94,7 +106,7 @@ export function toggleFileSearchMode() {
 
     // Update toggle button icon
     const btn = document.getElementById('file-search-mode-btn');
-    if (btn) btn.textContent = next === 'directory' ? '\u{1F4C1}' : '\u{1F50D}';
+    setFileSearchModeIcon(btn, next);
 
     // Update placeholder
     const input = document.getElementById('files-search-input');
@@ -220,12 +232,10 @@ export function initFileSearch() {
 
     // Restore persisted search mode
     const savedMode = localStorage.getItem('coral-file-search-mode');
-    if (savedMode && state.settings) {
-        state.settings.file_search_mode = savedMode;
-        const btn = document.getElementById('file-search-mode-btn');
-        if (btn) btn.textContent = savedMode === 'directory' ? '\u{1F4C1}' : '\u{1F50D}';
-        input.placeholder = savedMode === 'directory' ? 'Browse files...' : 'Search files...';
-    }
+    const mode = savedMode || (state.settings || {}).file_search_mode || 'directory';
+    if (state.settings) state.settings.file_search_mode = mode;
+    setFileSearchModeIcon(document.getElementById('file-search-mode-btn'), mode);
+    input.placeholder = mode === 'directory' ? 'Browse files...' : 'Search files...';
 
     function onSearchInput() {
         clearTimeout(_searchTimeout);
@@ -511,34 +521,9 @@ function _agentName() {
 let _cmView = null;       // active EditorView instance (edit mode)
 let _cmMergeView = null;  // active merge view instance (diff mode)
 
-/** Get the CodeMirror module (loaded via IIFE script tag as window.CoralCM). */
-function _getCm() {
-    if (!window.CoralCM) {
-        console.error('[coral] CodeMirror not available — codemirror-bundle.js may not have loaded');
-        return null;
-    }
-    return window.CoralCM;
-}
-
-function _getLangExtension(cm, langName) {
-    const loaders = {
-        javascript: () => cm.javascript(),
-        typescript: () => cm.javascript({ typescript: true }),
-        jsx:        () => cm.javascript({ jsx: true }),
-        tsx:        () => cm.javascript({ jsx: true, typescript: true }),
-        python: () => cm.python(), html: () => cm.html(), css: () => cm.css(),
-        json: () => cm.json(), markdown: () => cm.markdown(), sql: () => cm.sql(),
-        rust: () => cm.rust(), cpp: () => cm.cpp(), c: () => cm.cpp(),
-        java: () => cm.java(), go: () => cm.go(), xml: () => cm.xml(), yaml: () => cm.yaml(),
-    };
-    const loader = loaders[langName];
-    if (!loader) return null;
-    try { return loader(); } catch { return null; }
-}
-
 /** Create an editable CodeMirror editor. Returns false if CM is unavailable. */
 function _createCmEditor(container, content, langName) {
-    const cm = _getCm();
+    const cm = getCm();
     if (!cm) return false;
 
     try {
@@ -550,7 +535,7 @@ function _createCmEditor(container, content, langName) {
             cm.EditorView.theme({ '&': { height: '100%' }, '.cm-scroller': { overflow: 'auto' } }),
         ];
 
-        const langExt = _getLangExtension(cm, langName);
+        const langExt = getLangExtension(cm, langName);
         if (langExt) extensions.push(langExt);
 
         _cmView = new cm.EditorView({
@@ -577,7 +562,7 @@ function _destroyCmEditor() {
 
 /** Create a read-only CodeMirror merge view. Returns false if CM is unavailable. */
 function _createCmMergeView(container, originalContent, currentContent, langName) {
-    const cm = _getCm();
+    const cm = getCm();
     if (!cm) return false;
 
     try {
@@ -593,7 +578,7 @@ function _createCmMergeView(container, originalContent, currentContent, langName
             }),
         ];
 
-        const langExt = _getLangExtension(cm, langName);
+        const langExt = getLangExtension(cm, langName);
         if (langExt) extensions.push(langExt);
 
         _cmMergeView = new cm.EditorView({
@@ -615,12 +600,6 @@ function _getCmContent() {
 
 let _previewState = null; // { filepath, mode, content, hasDiff, diffText, gen }
 let _previewGen = 0;      // generation counter to guard against stale async writes
-
-/** Show inline diff for a file (clicking a file row). */
-export function openFileDiff(filepath) {
-    if (!state.currentSession || state.currentSession.type !== 'live') return;
-    _openInlinePane(filepath, 'diff');
-}
 
 /** Show inline preview for a file (clicking the preview icon). */
 export function openFilePreview(filepath) {
@@ -723,13 +702,10 @@ async function _openInlinePane(filepath, initialView) {
                 cmContainer.style.display = 'block';
                 const saveBtn = document.getElementById('preview-save-btn');
                 if (saveBtn) saveBtn.style.display = '';
-                const langName = _getLangFromPath(filepath);
+                const langName = getLangFromPath(filepath);
                 await _createCmEditor(cmContainer, _previewState.content, langName);
             }
         }
-    } else if (initialView === 'diff') {
-        _previewState.mode = 'diff';
-        await _loadDiffView(filepath, gen);
     } else {
         _previewState.mode = 'preview';
         await _loadContentView(filepath, gen);
@@ -781,7 +757,7 @@ async function _loadDiffView(filepath, gen) {
         // Try to show merge view; fall back to plain content if CM unavailable
         const cmContainer = document.getElementById('inline-preview-cm');
         if (cmContainer) {
-            const langName = _getLangFromPath(filepath);
+            const langName = getLangFromPath(filepath);
             const ok = await _createCmMergeView(cmContainer, originalContent, currentContent, langName);
             if (ok) {
                 body.style.display = 'none';
@@ -800,7 +776,7 @@ async function _loadDiffView(filepath, gen) {
 
 /** Render file content with syntax highlighting into the given container. */
 function _renderContentView(container, content, filepath) {
-    const lang = _getLangFromPath(filepath);
+    const lang = getLangFromPath(filepath);
     // Render markdown files as formatted HTML
     if (lang === 'markdown' && typeof marked !== 'undefined') {
         const html = marked.parse(content);
@@ -814,20 +790,6 @@ function _renderContentView(container, content, filepath) {
         const block = container.querySelector('pre code');
         if (block) window.hljs.highlightElement(block);
     }
-}
-
-function _getLangFromPath(fp) {
-    const ext = (fp.match(/\.(\w+)$/) || [])[1] || '';
-    const map = {
-        js: 'javascript', ts: 'typescript', tsx: 'typescript', jsx: 'javascript',
-        py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
-        sh: 'bash', zsh: 'bash', bash: 'bash', yml: 'yaml', yaml: 'yaml',
-        json: 'json', toml: 'toml', css: 'css', scss: 'scss',
-        html: 'html', xml: 'xml', sql: 'sql', c: 'c', cpp: 'cpp',
-        h: 'c', hpp: 'cpp', cs: 'csharp', swift: 'swift', kt: 'kotlin',
-        md: 'markdown',
-    };
-    return map[ext.toLowerCase()] || ext.toLowerCase() || 'plaintext';
 }
 
 async function _loadContentView(filepath, gen) {
@@ -907,7 +869,7 @@ window._switchMode = async function(targetMode) {
 
     _previewState.mode = targetMode;
     _updateModeButtons(targetMode);
-    const langName = _getLangFromPath(_previewState.filepath);
+    const langName = getLangFromPath(_previewState.filepath);
 
     if (targetMode === 'edit') {
         body.style.display = 'none';
@@ -920,7 +882,14 @@ window._switchMode = async function(targetMode) {
             body.innerHTML = `<textarea class="inline-preview-fallback-editor" id="fallback-editor">${escapeHtml(_previewState.content)}</textarea>`;
         }
     } else if (targetMode === 'diff') {
-        if (_previewState.hasDiff && _previewState.originalContent != null) {
+        if (_previewState.originalContent == null) {
+            // First switch into diff mode: fetch the base content, which
+            // renders the merge view (or the plain file when nothing changed).
+            cmContainer.style.display = 'none';
+            body.style.display = '';
+            body.innerHTML = '<div class="inline-preview-loading">Loading...</div>';
+            await _loadDiffView(_previewState.filepath, _previewState.gen);
+        } else if (_previewState.hasDiff) {
             body.style.display = 'none';
             cmContainer.style.display = 'block';
             const ok = await _createCmMergeView(cmContainer, _previewState.originalContent, _previewState.content, langName);
@@ -999,6 +968,8 @@ window._closeInlinePreview = function() {
             <div class="changed-files-header" id="changed-files-header">
                 <div class="files-search-row" style="position:relative">
                     <input type="search" id="files-search-input" class="files-search-input" placeholder="Search or create files..." autocomplete="off">
+                    <button class="refresh-files-btn" id="file-search-mode-btn" onclick="toggleFileSearchMode()" title="Toggle browse/search mode" aria-label="Toggle file search mode">${fileSearchModeIcons.directory}</button>
+                    <button class="refresh-files-btn" id="diff-expand-all-btn" onclick="toggleAllFileDiffs()" title="Expand all diffs" aria-label="Expand all diffs">${diffExpandIcons.expand}</button>
                     <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff">&#x21bb;</button>
                     <div id="files-search-dropdown" class="file-mention-dropdown" style="display:none;bottom:auto;top:100%;margin-top:4px;margin-bottom:0;max-height:400px"></div>
                 </div>
@@ -1037,6 +1008,7 @@ export async function setGitDiffMode(mode) {
         return;
     }
 
+    invalidateDiffs();
     refreshChangedFiles();
 }
 
@@ -1055,6 +1027,7 @@ export async function refreshChangedFiles() {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     const btn = document.querySelector('.refresh-files-btn');
     if (btn) btn.classList.add('refreshing');
+    invalidateDiffs();
 
     const agentName = state.currentSession.name;
     const sessionId = state.currentSession.session_id;
@@ -1099,7 +1072,16 @@ export function renderChangedFiles() {
         const options = _diffModes.map(m =>
             `<option value="${m}"${m === diffMode ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
         ).join('');
-        titleEl.innerHTML = `${files.length} file${files.length !== 1 ? 's' : ''} changed <select class="diff-mode-select" onchange="setGitDiffMode(this.value)" title="Diff comparison mode">${options}</select>`;
+        const totals = files.reduce(
+            (acc, f) => ({ adds: acc.adds + (f.additions || 0), dels: acc.dels + (f.deletions || 0) }),
+            { adds: 0, dels: 0 }
+        );
+        const stats = files.length > 0
+            ? `<span class="file-adds">+${totals.adds}</span><span class="file-dels">-${totals.dels}</span>`
+            : '';
+        titleEl.innerHTML = `<span class="changed-files-count">${files.length} file${files.length !== 1 ? 's' : ''} changed</span>
+            ${stats}
+            <select class="diff-mode-select" onchange="setGitDiffMode(this.value)" title="Diff comparison mode">${options}</select>`;
     }
     if (countEl) {
         countEl.textContent = files.length > 0 ? String(files.length) : '';
@@ -1112,6 +1094,9 @@ export function renderChangedFiles() {
         list.innerHTML = `<div class="file-empty">No changed files<br><select class="diff-mode-select" onchange="setGitDiffMode(this.value)" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select></div>`;
         return;
     }
+
+    // The rows about to be replaced may host mounted editors.
+    destroyInlineDiffs();
 
     const starred = new Set(_getStarredFiles());
     list.innerHTML = files.map((f) => {
@@ -1131,13 +1116,16 @@ export function renderChangedFiles() {
             : '';
         const starBtn = `<button class="file-star-btn ${isStarred ? 'starred' : ''}" data-filepath="${escapeHtml(f.filepath)}" onclick="event.stopPropagation(); toggleStarFile('${escapedPath}')" title="${isStarred ? 'Unstar' : 'Star'}">${isStarred ? '★' : '☆'}</button>`;
         const copyBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); copyFilePath('${escapedPath}')" title="Copy path"><span class="material-icons">content_copy</span></button>`;
-        const diffBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFileDiff('${escapedPath}')" title="Diff"><span class="material-icons">difference</span></button>`;
         const previewBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFilePreview('${escapedPath}')" title="Preview"><span class="material-icons">visibility</span></button>`;
         const editBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFileEdit('${escapedPath}')" title="Edit"><span class="material-icons">edit</span></button>`;
 
+        // The row expands in place to show its diff; the remaining buttons
+        // copy the path, preview the file, and open it in the editor.
         return `<div class="file-item ${statusCls}${agentOnlyCls}" title="${escapeHtml(f.filepath)} (${statusLabel})"
-                     onclick="openFileDiff('${escapedPath}')">
+                     data-filepath="${escapeHtml(f.filepath)}"
+                     onclick="toggleFileDiff('${escapedPath}', this)">
             ${starBtn}
+            <span class="file-diff-caret material-icons">chevron_right</span>
             <span class="file-status-icon">${statusIcon}</span>
             <div class="file-path-wrap">
                 <span class="file-name">${escapeHtml(name)}</span>
@@ -1145,7 +1133,10 @@ export function renderChangedFiles() {
                 ${agentsHtml}
             </div>
             ${stats}
-            <div class="file-action-btns">${copyBtn}${diffBtn}${previewBtn}${editBtn}</div>
-        </div>`;
+            <div class="file-action-btns">${copyBtn}${previewBtn}${editBtn}</div>
+        </div>
+        <div class="file-diff-body" style="display:none"></div>`;
     }).join('');
+
+    restoreExpandedDiffs();
 }

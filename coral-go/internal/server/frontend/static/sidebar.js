@@ -44,6 +44,20 @@ export function initSidebarResize() {
 
 /* Task bar drag-to-resize functionality */
 
+// The panel may take everything except a usable sliver of terminal, rather
+// than a fixed fraction of the window — a wide diff needs the room, and the
+// handle drags back. Collapsing the agent sidebar frees up more still.
+const AGENTIC_MIN_WIDTH = 280;
+const LEFT_COLUMN_MIN_WIDTH = 240;
+
+function maxAgenticWidth(liveBody) {
+    // On load the live view is still hidden, so it measures 0 — fall back to
+    // the window, or a restored width would be clamped down to the minimum.
+    const measured = liveBody ? liveBody.getBoundingClientRect().width : 0;
+    const available = measured > 0 ? measured : window.innerWidth;
+    return Math.max(AGENTIC_MIN_WIDTH, available - LEFT_COLUMN_MIN_WIDTH);
+}
+
 export function initTaskBarResize() {
     const handle = document.getElementById("task-bar-resize-handle");
     const taskBar = document.getElementById("agentic-state");
@@ -55,10 +69,13 @@ export function initTaskBarResize() {
     const saved = localStorage.getItem('coral-taskbar-width');
     if (saved) {
         const w = parseInt(saved, 10);
-        if (w >= 280 && w <= window.innerWidth * 0.5) taskBar.style.width = w + "px";
+        if (w >= AGENTIC_MIN_WIDTH) {
+            taskBar.style.width = Math.min(w, maxAgenticWidth(liveBody)) + "px";
+        }
     }
 
     let dragging = false;
+    let draggedWidth = null;
 
     handle.addEventListener("mousedown", (e) => {
         e.preventDefault();
@@ -72,7 +89,8 @@ export function initTaskBarResize() {
         if (!dragging) return;
         const rect = liveBody.getBoundingClientRect();
         const newWidth = rect.right - e.clientX;
-        const clamped = Math.min(Math.max(newWidth, 280), window.innerWidth * 0.5);
+        const clamped = Math.min(Math.max(newWidth, AGENTIC_MIN_WIDTH), maxAgenticWidth(liveBody));
+        draggedWidth = clamped;
         taskBar.style.width = clamped + "px";
         fitTerminal();
     });
@@ -83,8 +101,12 @@ export function initTaskBarResize() {
         handle.classList.remove("dragging");
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        // Persist width
-        localStorage.setItem('coral-taskbar-width', taskBar.offsetWidth);
+        // Persist the width we set, not offsetWidth — the panel animates, so
+        // measuring here can catch it mid-transition and save the old value.
+        if (draggedWidth != null) {
+            localStorage.setItem('coral-taskbar-width', Math.round(draggedWidth));
+            draggedWidth = null;
+        }
         fitTerminal();
     });
 }

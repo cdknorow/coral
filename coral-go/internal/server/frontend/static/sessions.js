@@ -11,6 +11,7 @@ import { loadSessionTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
 import { loadAgentTasks, loadBoardTasks, renderTaskList } from './tasks.js';
 import { loadChangedFiles, refreshChangedFiles } from './changed_files.js';
+import { resetDiffCache } from './diff_view.js';
 import { loadAgentNotes } from './agent_notes.js';
 import { loadAgentEvents, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
@@ -196,6 +197,8 @@ export async function selectLiveSession(name, agentType, sessionId) {
     } else {
         loadChangedFiles(name, sessionId);
     }
+    // Cached patches belong to the agent we just left
+    resetDiffCache();
     fetchFileList();
 }
 

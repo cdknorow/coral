@@ -1052,7 +1052,8 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 			}
 			untrackedSet[f] = true
 			if _, exists := fileMap[f]; !exists {
-				fileMap[f] = store.ChangedFile{Filepath: f, Additions: 0, Deletions: 0, Status: "??"}
+				adds := gitutil.NewFileLineCount(filepath.Join(workdir, f))
+				fileMap[f] = store.ChangedFile{Filepath: f, Additions: adds, Deletions: 0, Status: "??"}
 			}
 		}
 	}

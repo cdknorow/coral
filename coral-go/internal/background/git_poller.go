@@ -312,7 +312,7 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 					}
 					fileMap[fp] = store.ChangedFile{
 						Filepath:  fp,
-						Additions: 0,
+						Additions: gitutil.NewFileLineCount(fullPath),
 						Deletions: 0,
 						Status:    "??",
 					}

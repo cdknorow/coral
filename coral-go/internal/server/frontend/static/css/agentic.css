@@ -48,7 +48,9 @@
 .agentic-state {
     width: 420px;
     min-width: 280px;
-    max-width: 50vw;
+    /* The drag handle enforces the real limit, which keeps the terminal
+       column usable; this only stops a stale saved width running away. */
+    max-width: 92vw;
     display: flex;
     flex-direction: column;
     background: var(--bg-secondary);
@@ -1359,6 +1361,17 @@
     background: var(--bg-tertiary);
 }
 
+.refresh-files-btn svg {
+    display: block;
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
 .refresh-files-btn.refreshing {
     animation: spin 1s linear infinite;
     display: inline-block;
@@ -1577,18 +1590,25 @@
     overflow: auto;
 }
 
-/* Make merge changes readable without CodeMirror's default underline effect. */
+/* Make merge changes readable without CodeMirror's default underline effect.
+   Applies to both merge views: the preview pane's Diff mode and the diffs the
+   Files tab expands inline, so the two look identical. */
 .inline-preview-cm .cm-merge-b .cm-changedLine,
-.inline-preview-cm .cm-inlineChangedLine {
+.inline-preview-cm .cm-inlineChangedLine,
+.file-diff-body .cm-merge-b .cm-changedLine,
+.file-diff-body .cm-inlineChangedLine {
     background-color: rgba(63, 185, 80, 0.24) !important;
 }
 
-.inline-preview-cm .cm-deletedChunk {
+.inline-preview-cm .cm-deletedChunk,
+.file-diff-body .cm-deletedChunk {
     background-color: rgba(248, 81, 73, 0.24) !important;
 }
 
 .inline-preview-cm .cm-changedText,
-.inline-preview-cm .cm-insertedLine {
+.inline-preview-cm .cm-insertedLine,
+.file-diff-body .cm-changedText,
+.file-diff-body .cm-insertedLine {
     background-color: transparent !important;
     background-image: none !important;
     border: none !important;
@@ -1598,7 +1618,11 @@
 .inline-preview-cm .cm-deletedChunk .cm-deletedText,
 .inline-preview-cm .cm-merge-b .cm-deletedText,
 .inline-preview-cm .cm-deletedLine,
-.inline-preview-cm .cm-deletedLine del {
+.inline-preview-cm .cm-deletedLine del,
+.file-diff-body .cm-deletedChunk .cm-deletedText,
+.file-diff-body .cm-merge-b .cm-deletedText,
+.file-diff-body .cm-deletedLine,
+.file-diff-body .cm-deletedLine del {
     background-color: transparent !important;
     background-image: none !important;
     border: none !important;
@@ -1866,3 +1890,76 @@
 .view-context-menu button:hover {
     background: var(--bg-hover);
 }
+
+/* ── Inline Diffs in the Files Tab ─────────────────────────── */
+
+.changed-files-title {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.changed-files-count { white-space: nowrap; }
+
+/* Expand-all sits with the browse and refresh buttons, and marks itself when
+   any diff is open. */
+.refresh-files-btn.active { color: var(--accent); }
+
+/* ── Expandable file row ── */
+
+.file-diff-caret {
+    font-size: 15px !important;
+    color: var(--text-muted);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+    margin-left: -4px;
+}
+
+.file-item.expanded .file-diff-caret {
+    transform: rotate(90deg);
+    color: var(--text-secondary);
+}
+
+.file-item.expanded {
+    background: var(--bg-tertiary);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+
+.file-diff-body {
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-primary);
+}
+
+.diff-file-note {
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ── Inline CodeMirror diff ── */
+
+.file-diff-body .cm-editor {
+    font-size: 11.5px;
+}
+
+/* The file list is the scroll container; each editor sizes to its content. */
+.file-diff-body .cm-scroller {
+    overflow: hidden !important;
+    font-family: var(--font-mono);
+    line-height: 1.5;
+}
+
+.file-diff-body .cm-editor.cm-focused {
+    outline: none;
+}
+
+/* Read-only: no caret, and no active-line band. Changed lines are excluded so
+   this never paints over a diff color. */
+.file-diff-body .cm-cursor,
+.file-diff-body .cm-dropCursor { display: none !important; }
+.file-diff-body .cm-activeLine:not(.cm-changedLine) { background: transparent !important; }
+.file-diff-body .cm-activeLineGutter:not(.cm-changedLineGutter) { background: transparent !important; }
+

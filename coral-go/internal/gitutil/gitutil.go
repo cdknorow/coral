@@ -4,6 +4,7 @@
 package gitutil
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -150,4 +151,42 @@ func ShowPrefix(ctx context.Context, workdir string) string {
 	}
 	prefix, _ := git(ctx, workdir, "rev-parse", "--show-prefix")
 	return prefix
+}
+
+// MaxNewFileStatBytes caps how large a new file we will read just to count its
+// lines for changed-file stats.
+const MaxNewFileStatBytes = 2 << 20
+
+// NewFileLineCount reports how many lines an untracked file adds, matching the
+// additions `git diff` reports for it. A trailing newline terminates the last
+// line rather than starting another, so only an unterminated final line counts
+// extra. Binary files have no line count in a diff and report 0, as do files
+// larger than MaxNewFileStatBytes and anything unreadable.
+func NewFileLineCount(path string) int {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Size() > MaxNewFileStatBytes {
+		return 0
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || len(data) == 0 || isBinary(data) {
+		return 0
+	}
+	n := strings.Count(string(data), "\n")
+	if data[len(data)-1] != '\n' {
+		n++
+	}
+	return n
+}
+
+// binarySniffBytes matches the prefix git inspects when deciding whether a
+// blob is binary.
+const binarySniffBytes = 8000
+
+// isBinary reports whether content looks binary, using git's heuristic: a NUL
+// byte in the leading chunk.
+func isBinary(data []byte) bool {
+	if len(data) > binarySniffBytes {
+		data = data[:binarySniffBytes]
+	}
+	return bytes.IndexByte(data, 0) >= 0
 }
