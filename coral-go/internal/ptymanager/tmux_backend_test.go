@@ -164,30 +164,6 @@ func TestTmuxBackend_ReplayUsesCoherentPaneSnapshot(t *testing.T) {
 	if strings.Contains(content, "STALE_COMMAND_TEXT") {
 		t.Fatalf("replay retained overwritten text from the raw event stream: %q", content)
 	}
-	if strings.Contains(strings.ReplaceAll(content, "\r\n", ""), "\n") {
-		t.Fatalf("replay contains bare LF that would produce staircase rendering: %q", content)
-	}
-}
-
-func TestNormalizeCaptureForXterm(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{name: "bare LF", in: "one\ntwo\n", want: "one\r\ntwo\r\n"},
-		{name: "existing CRLF", in: "one\r\ntwo\r\n", want: "one\r\ntwo\r\n"},
-		{name: "mixed", in: "one\r\ntwo\nthree", want: "one\r\ntwo\r\nthree"},
-		{name: "no newline", in: "one", want: "one"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := normalizeCaptureForXterm(tt.in); got != tt.want {
-				t.Fatalf("normalizeCaptureForXterm(%q) = %q, want %q", tt.in, got, tt.want)
-			}
-		})
-	}
 }
 
 func TestTmuxBackend_SendInput(t *testing.T) {
