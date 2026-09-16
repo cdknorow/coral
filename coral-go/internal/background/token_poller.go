@@ -477,6 +477,26 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 		return
 	}
 
+	// Team launches may not know the concrete Claude model up front. Learn it
+	// from transcript metadata so the persisted context denominator self-heals.
+	for i := len(usage.Calls) - 1; i >= 0; i-- {
+		observedModel := strings.TrimSpace(usage.Calls[i].Model)
+		if observedModel == "" {
+			continue
+		}
+		window := proxy.LookupContextWindow(observedModel)
+		storedModel := ""
+		if ls.Model != nil {
+			storedModel = *ls.Model
+		}
+		if observedModel != storedModel || window != ls.ContextWindow {
+			if err := p.sessionStore.UpdateContextWindow(ctx, ls.SessionID, window, observedModel); err != nil {
+				p.logger.Error("failed to update Claude model context window", "session_id", ls.SessionID, "model", observedModel, "error", err)
+			}
+		}
+		break
+	}
+
 	// Skip entries we've already processed
 	alreadyProcessed := p.lastEntryCount[ls.SessionID]
 	if len(usage.Calls) <= alreadyProcessed {

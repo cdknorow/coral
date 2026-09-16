@@ -1,10 +1,13 @@
 package background
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -104,6 +107,34 @@ func TestExtractClaudeUsage_ModelExtraction(t *testing.T) {
 	assert.Equal(t, "claude-haiku-4-5-20251001", usage.Calls[1].Model)
 }
 
+func TestPollClaudeSession_LearnsModelAndContextWindow(t *testing.T) {
+	db := setupTestDB(t)
+	ss := store.NewSessionStore(db)
+	us := store.NewTokenUsageStore(db)
+	ctx := context.Background()
+	const sid = "00000000-0000-0000-0000-000000000097"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: sid, AgentType: "claude", AgentName: "coral-go", WorkingDir: t.TempDir(),
+	}))
+
+	path := writeTestJSONL(t, `{"type":"assistant","message":{"model":"claude-fable-5-1","usage":{"input_tokens":32,"output_tokens":100,"cache_creation_input_tokens":650,"cache_read_input_tokens":292368}},"timestamp":"2026-09-16T07:39:26Z"}`+"\n")
+	poller := NewTokenPoller(ss, us, time.Hour)
+	poller.sessionPaths[sid] = path
+	ls, err := ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	poller.pollClaudeSession(ctx, ls)
+
+	learned, err := ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	require.NotNil(t, learned.Model)
+	assert.Equal(t, "claude-fable-5-1", *learned.Model)
+	assert.Equal(t, 1_000_000, learned.ContextWindow)
+	latest, err := us.GetLatestTurnContextBySessionIDs(ctx, []string{sid})
+	require.NoError(t, err)
+	assert.Equal(t, 293_050, latest[sid], "numerator remains input + cache read + cache write")
+}
+
 func TestExtractClaudeUsage_CacheTokens(t *testing.T) {
 	jsonl := `{"type":"assistant","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":1000,"cache_read_input_tokens":500}},"timestamp":"2026-04-06T10:00:01Z"}
 `
@@ -142,34 +173,34 @@ func TestExtractClaudeUsage_NonexistentFile(t *testing.T) {
 
 func TestEstimateCost_ClaudeModels(t *testing.T) {
 	tests := []struct {
-		name        string
-		model       string
-		input       int
-		output      int
-		cacheRead   int
-		cacheWrite  int
-		minCost     float64
+		name       string
+		model      string
+		input      int
+		output     int
+		cacheRead  int
+		cacheWrite int
+		minCost    float64
 	}{
 		{
-			name: "claude-sonnet-4-6",
+			name:  "claude-sonnet-4-6",
 			model: "claude-sonnet-4-6",
 			input: 1_000_000, output: 1_000_000, cacheRead: 0, cacheWrite: 0,
 			minCost: 3.00 + 15.00, // $3/M input + $15/M output
 		},
 		{
-			name: "claude-opus-4-6",
+			name:  "claude-opus-4-6",
 			model: "claude-opus-4-6",
 			input: 1_000_000, output: 1_000_000, cacheRead: 0, cacheWrite: 0,
 			minCost: 15.00 + 75.00,
 		},
 		{
-			name: "claude-sonnet with cache read",
+			name:  "claude-sonnet with cache read",
 			model: "claude-sonnet-4-6",
 			input: 1000, output: 500, cacheRead: 10000, cacheWrite: 0,
 			minCost: 0, // just verify it's > 0
 		},
 		{
-			name: "claude-sonnet with cache write",
+			name:  "claude-sonnet with cache write",
 			model: "claude-sonnet-4-6",
 			input: 1_000_000, output: 1_000_000, cacheRead: 0, cacheWrite: 1_000_000,
 			minCost: 3.00 + 15.00 + 3.75, // $3/M input + $15/M output + $3.75/M cache write

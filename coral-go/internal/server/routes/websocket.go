@@ -232,8 +232,12 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		if err := h.db.SelectContext(ctx, &rows, "SELECT session_id, board_name, display_name FROM live_sessions WHERE board_name IS NOT NULL AND status = 'active'"); err == nil {
 			for _, r := range rows {
 				bn, dn := "", ""
-				if r.BoardName != nil { bn = *r.BoardName }
-				if r.DisplayName != nil { dn = *r.DisplayName }
+				if r.BoardName != nil {
+					bn = *r.BoardName
+				}
+				if r.DisplayName != nil {
+					dn = *r.DisplayName
+				}
 				liveBoardNames[r.SessionID] = [2]string{bn, dn}
 			}
 		}
@@ -282,8 +286,8 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	ctxWindowMap := make(map[string]int, len(allLive))
 	createdAtMap := make(map[string]string, len(allLive))
 	for _, ls := range allLive {
-		if ls.ContextWindow > 0 {
-			ctxWindowMap[ls.SessionID] = ls.ContextWindow
+		if knownWindow := knownContextWindow(ls.Model); knownWindow > 0 {
+			ctxWindowMap[ls.SessionID] = knownWindow
 		}
 		createdAtMap[ls.SessionID] = ls.CreatedAt
 	}

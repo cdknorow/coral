@@ -75,13 +75,66 @@ func TestLookupPricing_UnknownModel(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestLookupPricing_EmptyModelIsUnknown(t *testing.T) {
+	for _, model := range []string{"", " ", "\t\n"} {
+		_, ok := lookupPricing(model)
+		assert.False(t, ok)
+		assert.Zero(t, LookupContextWindow(model))
+	}
+}
+
+func TestLookupContextWindow_CurrentClaudeModelsDeterministic(t *testing.T) {
+	models := []string{
+		"claude-opus-4-7[1m]", "claude-opus-4-8[1m]",
+		"claude-opus-5[1m]", "claude-sonnet-5", "claude-fable-5-1",
+	}
+	for i := 0; i < 100; i++ {
+		for _, model := range models {
+			assert.Equal(t, 1_000_000, LookupContextWindow(model), "iteration %d model %s", i, model)
+		}
+	}
+}
+
+func TestLookupContextWindow_FableUsagePercentage(t *testing.T) {
+	window := LookupContextWindow("claude-fable-5-1")
+	assert.Equal(t, 1_000_000, window)
+	assert.Equal(t, 29, int(float64(293_050)/float64(window)*100))
+	assert.False(t, CalculateCostBreakdown("claude-fable-5-1", TokenUsage{InputTokens: 1_000}).PricingFound,
+		"context recognition must not invent Fable pricing")
+}
+
 func TestLookupPricing_SingleSegmentNoMatch(t *testing.T) {
-	// A single matching segment should not be enough
-	_, ok := lookupPricing("claude")
-	// "claude" matches only 1 segment of keys like "claude-opus-4-20250514",
-	// but prefix match may find it. Let's verify behavior.
-	// Actually "claude" IS a prefix of "claude-opus-4-20250514", so prefix match hits.
-	assert.True(t, ok)
+	for _, model := range []string{"c", "claude", "claude-", "claude-opus"} {
+		_, ok := lookupPricing(model)
+		assert.False(t, ok, "%q is too broad to identify a model", model)
+		assert.Zero(t, LookupContextWindow(model))
+	}
+}
+
+func TestLookupContextWindow_Claude5FamiliesAndBedrockPointReleases(t *testing.T) {
+	tests := map[string]int{
+		"claude-opus-5-1":                 1_000_000,
+		"claude-opus-5-20260901":          1_000_000,
+		"claude-sonnet-5-1":               1_000_000,
+		"claude-haiku-5":                  1_000_000,
+		"claude-fable-5-1-20260601":       1_000_000,
+		"anthropic.claude-opus-5-v1:0":    1_000_000,
+		"us.anthropic.claude-opus-5-v1:0": 1_000_000,
+		" CLAUDE-FABLE-5-1[1m] ":          1_000_000,
+		"claude-opus-4-6-20260407":        1_000_000,
+		"claude-haiku-4-5-20251001":       1_000_000,
+		"claude-sonnet-4-20250514":        200_000,
+		"claude-opus-4-20250514":          200_000,
+		"claude-sonnet-4":                 200_000,
+		"gpt-4o":                          128_000,
+		"o3":                              200_000,
+		"gemini-2.5-pro":                  1_000_000,
+	}
+	for i := 0; i < 300; i++ {
+		for model, want := range tests {
+			assert.Equal(t, want, LookupContextWindow(model), "iteration %d model %s", i, model)
+		}
+	}
 }
 
 func TestLookupPricing_NoFalsePositiveOnShortInput(t *testing.T) {
@@ -125,9 +178,9 @@ func TestCalculateCostBreakdown_InputOnlyNoCacheTokens(t *testing.T) {
 	b := CalculateCostBreakdown("gpt-4o", usage)
 	require.True(t, b.PricingFound)
 	// gpt-4o: input $2.50/MTok, output $10.00/MTok
-	assert.InDelta(t, 1.25, b.InputCostUSD, 0.001)   // 500k * 2.50 / 1M
-	assert.InDelta(t, 1.00, b.OutputCostUSD, 0.001)   // 100k * 10.00 / 1M
-	assert.Equal(t, 0.0, b.CacheReadCostUSD)           // no cache pricing for OpenAI
+	assert.InDelta(t, 1.25, b.InputCostUSD, 0.001)  // 500k * 2.50 / 1M
+	assert.InDelta(t, 1.00, b.OutputCostUSD, 0.001) // 100k * 10.00 / 1M
+	assert.Equal(t, 0.0, b.CacheReadCostUSD)        // no cache pricing for OpenAI
 	assert.InDelta(t, 2.25, b.TotalCostUSD, 0.001)
 }
 
@@ -143,8 +196,8 @@ func TestCalculateCostBreakdown_OpusPricing(t *testing.T) {
 	b := CalculateCostBreakdown("claude-opus-4-20250514", usage)
 	require.True(t, b.PricingFound)
 	// opus: input $15/MTok, output $75/MTok
-	assert.InDelta(t, 1.50, b.InputCostUSD, 0.001)    // 100k * 15 / 1M
-	assert.InDelta(t, 3.75, b.OutputCostUSD, 0.001)   // 50k * 75 / 1M
+	assert.InDelta(t, 1.50, b.InputCostUSD, 0.001)  // 100k * 15 / 1M
+	assert.InDelta(t, 3.75, b.OutputCostUSD, 0.001) // 50k * 75 / 1M
 	assert.InDelta(t, 5.25, b.TotalCostUSD, 0.001)
 }
 

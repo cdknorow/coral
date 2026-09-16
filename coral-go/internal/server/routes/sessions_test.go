@@ -25,6 +25,16 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 )
 
+func TestKnownContextWindow_UnknownMetadataIsSuppressed(t *testing.T) {
+	blank := "  "
+	unknown := "claude-future-unknown"
+	fable := "claude-fable-5-1"
+	assert.Zero(t, knownContextWindow(nil))
+	assert.Zero(t, knownContextWindow(&blank))
+	assert.Zero(t, knownContextWindow(&unknown))
+	assert.Equal(t, 1_000_000, knownContextWindow(&fable))
+}
+
 // mockSessionTerminal implements ptymanager.SessionTerminal for testing.
 type mockSessionTerminal struct {
 	mu               sync.Mutex

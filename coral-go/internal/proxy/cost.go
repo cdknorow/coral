@@ -28,17 +28,17 @@ var Pricing = map[string]ModelPricing{
 	"claude-haiku-4-5-20251001":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
 
 	// Bedrock — Claude 4 (on-demand pricing matches direct API; model IDs use anthropic. prefix)
-	"anthropic.claude-opus-4-20250514-v1:0":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
-	"anthropic.claude-sonnet-4-20250514-v1:0": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
-	"anthropic.claude-haiku-4-20250514-v1:0":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
+	"anthropic.claude-opus-4-20250514-v1:0":      {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
+	"anthropic.claude-sonnet-4-20250514-v1:0":    {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
+	"anthropic.claude-haiku-4-20250514-v1:0":     {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
 	"us.anthropic.claude-opus-4-20250514-v1:0":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
 	"us.anthropic.claude-sonnet-4-20250514-v1:0": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
 	"us.anthropic.claude-haiku-4-20250514-v1:0":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
 
 	// Bedrock — Claude 4.5/4.6 (1M context)
-	"anthropic.claude-opus-4-6-20260407-v1:0":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 1_000_000},
-	"anthropic.claude-sonnet-4-6-20260407-v1:0": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
-	"anthropic.claude-haiku-4-5-20251001-v1:0":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
+	"anthropic.claude-opus-4-6-20260407-v1:0":      {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 1_000_000},
+	"anthropic.claude-sonnet-4-6-20260407-v1:0":    {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
+	"anthropic.claude-haiku-4-5-20251001-v1:0":     {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
 	"us.anthropic.claude-opus-4-6-20260407-v1:0":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 1_000_000},
 	"us.anthropic.claude-sonnet-4-6-20260407-v1:0": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
 	"us.anthropic.claude-haiku-4-5-20251001-v1:0":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
@@ -53,6 +53,49 @@ var Pricing = map[string]ModelPricing{
 	"gemini-2.5-flash": {InputPerMTok: 0.15, OutputPerMTok: 0.60, ContextWindow: 1_000_000},
 }
 
+// modelAliases maps model identifiers observed from supported agent CLIs to
+// canonical pricing rows. These aliases deliberately reuse repository pricing
+// data instead of duplicating or guessing prices for every dated identifier.
+var modelAliases = map[string]string{
+	"claude-opus-4-7": "claude-opus-4-6-20260407",
+	"claude-opus-4-8": "claude-opus-4-6-20260407",
+	"claude-opus-5":   "claude-opus-4-6-20260407",
+	"claude-sonnet-5": "claude-sonnet-4-6-20260407",
+}
+
+// modelContextWindows records authoritative context sizes even when Coral has
+// no verified pricing row for a model (and therefore must not invent costs).
+var modelContextWindows = map[string]int{
+	"claude-opus-4-7":  1_000_000,
+	"claude-opus-4-8":  1_000_000,
+	"claude-opus-5":    1_000_000,
+	"claude-sonnet-5":  1_000_000,
+	"claude-fable-5-1": 1_000_000,
+}
+
+func normalizeModel(model string) string {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if idx := strings.IndexByte(model, '['); idx >= 0 {
+		model = strings.TrimSpace(model[:idx])
+	}
+	return model
+}
+
+func explicitContextWindow(model string) (int, bool) {
+	if window, ok := modelContextWindows[model]; ok {
+		return window, true
+	}
+	for _, providerPrefix := range []string{"", "anthropic.", "us.anthropic."} {
+		for _, family := range []string{"claude-opus-5", "claude-sonnet-5", "claude-haiku-5", "claude-fable-5"} {
+			prefix := providerPrefix + family
+			if model == prefix || strings.HasPrefix(model, prefix+"-") {
+				return 1_000_000, true
+			}
+		}
+	}
+	return 0, false
+}
+
 // lookupPricing finds pricing for a model. Matching strategy:
 //  1. Exact match against pricing table
 //  2. Prefix match: model is a prefix of a known key (e.g. "claude-opus-4" matches "claude-opus-4-20250514")
@@ -60,22 +103,37 @@ var Pricing = map[string]ModelPricing{
 //     dash-delimited prefix. Handles aliases like "claude-opus-4-6" matching
 //     "claude-opus-4-20250514" (both share prefix "claude-opus-4").
 func lookupPricing(model string) (ModelPricing, bool) {
-	// Strip bracket suffixes like "[1m]" from model names (e.g. "claude-opus-4-6[1m]")
-	if idx := strings.IndexByte(model, '['); idx >= 0 {
-		model = model[:idx]
+	model = normalizeModel(model)
+	if model == "" {
+		return ModelPricing{}, false
 	}
 
 	// 1. Exact match
 	if p, ok := Pricing[model]; ok {
 		return p, true
 	}
+	if canonical, ok := modelAliases[model]; ok {
+		p, found := Pricing[canonical]
+		return p, found
+	}
+	modelParts := strings.Split(model, "-")
+	if len(modelParts) < 3 || modelParts[0] == "" || modelParts[1] == "" || modelParts[2] == "" {
+		return ModelPricing{}, false
+	}
+
+	keys := make([]string, 0, len(Pricing))
+	for key := range Pricing {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
 
 	// 2. Prefix match: the incoming model is a prefix of a known key.
 	// Prefer the shortest matching key to avoid ambiguity (e.g. "claude-sonnet-4"
 	// should match "claude-sonnet-4-20250514" not "claude-sonnet-4-6-20260407").
 	var bestPrefix ModelPricing
 	bestPrefixLen := 0
-	for key, p := range Pricing {
+	for _, key := range keys {
+		p := Pricing[key]
 		if strings.HasPrefix(key, model) {
 			if bestPrefixLen == 0 || len(key) < bestPrefixLen {
 				bestPrefix = p
@@ -91,10 +149,10 @@ func lookupPricing(model string) (ModelPricing, bool) {
 	// Split both the model and each pricing key on dashes, count how many
 	// leading segments match. The key with the most matching segments wins.
 	// Requires at least 2 matching segments to avoid false positives.
-	modelParts := strings.Split(model, "-")
 	var best ModelPricing
 	bestMatch := 1 // minimum 2 matching segments required
-	for key, p := range Pricing {
+	for _, key := range keys {
+		p := Pricing[key]
 		keyParts := strings.Split(key, "-")
 		match := commonPrefixLen(modelParts, keyParts)
 		if match > bestMatch {
@@ -194,6 +252,13 @@ func CalculateCost(model string, usage TokenUsage) float64 {
 
 // LookupContextWindow returns the context window size for a model (0 if unknown).
 func LookupContextWindow(model string) int {
+	normalized := normalizeModel(model)
+	if normalized == "" {
+		return 0
+	}
+	if window, ok := explicitContextWindow(normalized); ok {
+		return window
+	}
 	if p, ok := lookupPricing(model); ok {
 		return p.ContextWindow
 	}

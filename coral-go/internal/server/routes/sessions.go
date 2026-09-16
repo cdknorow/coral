@@ -577,10 +577,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Context window usage: latest turn's input_tokens / context_window
-		if extra, ok := liveExtras[sid]; ok && extra.ContextWindow > 0 {
-			entry["context_window"] = extra.ContextWindow
+		if extra, ok := liveExtras[sid]; ok && knownContextWindow(extra.Model) > 0 {
+			knownWindow := knownContextWindow(extra.Model)
+			entry["context_window"] = knownWindow
 			if turnCtx, ok := latestTurnCtx[sid]; ok && turnCtx > 0 {
-				pct := int(float64(turnCtx) / float64(extra.ContextWindow) * 100)
+				pct := int(float64(turnCtx) / float64(knownWindow) * 100)
 				if pct > 100 {
 					pct = 100
 				}
@@ -4457,6 +4458,15 @@ func (h *SessionsHandler) ResolveByPIDs(w http.ResponseWriter, r *http.Request) 
 		"project":       boardName,
 		"session_name":  ls.SessionID,
 	})
+}
+
+// knownContextWindow returns zero when model metadata is absent or unrecognized,
+// preventing payload builders from publishing a percentage against stale data.
+func knownContextWindow(model *string) int {
+	if model == nil {
+		return 0
+	}
+	return proxy.LookupContextWindow(*model)
 }
 
 func stripAgentPermissionFlags(flags []string) []string {
