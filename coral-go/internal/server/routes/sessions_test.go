@@ -35,6 +35,23 @@ func TestKnownContextWindow_UnknownMetadataIsSuppressed(t *testing.T) {
 	assert.Equal(t, 1_000_000, knownContextWindow(&fable))
 }
 
+func TestAddContextUsage_NullsUnknownAndComputesKnown(t *testing.T) {
+	stale := map[string]any{"context_window": 200_000, "context_pct": 100}
+	addContextUsage(stale, nil, 293_050)
+	value, exists := stale["context_window"]
+	assert.True(t, exists)
+	assert.Nil(t, value)
+	value, exists = stale["context_pct"]
+	assert.True(t, exists)
+	assert.Nil(t, value)
+
+	fable := "claude-fable-5-1"
+	known := map[string]any{}
+	addContextUsage(known, &fable, 293_050)
+	assert.Equal(t, 1_000_000, known["context_window"])
+	assert.Equal(t, 29, known["context_pct"])
+}
+
 // mockSessionTerminal implements ptymanager.SessionTerminal for testing.
 type mockSessionTerminal struct {
 	mu               sync.Mutex

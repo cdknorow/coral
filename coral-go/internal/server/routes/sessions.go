@@ -576,18 +576,13 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			entry["token_cost_usd"] = usage.CostUSD
 		}
 
-		// Context window usage: latest turn's input_tokens / context_window
-		if extra, ok := liveExtras[sid]; ok && knownContextWindow(extra.Model) > 0 {
-			knownWindow := knownContextWindow(extra.Model)
-			entry["context_window"] = knownWindow
-			if turnCtx, ok := latestTurnCtx[sid]; ok && turnCtx > 0 {
-				pct := int(float64(turnCtx) / float64(knownWindow) * 100)
-				if pct > 100 {
-					pct = 100
-				}
-				entry["context_pct"] = pct
-			}
+		// Context window usage: latest turn's input_tokens / context_window.
+		// Explicit nulls clear stale values in clients that spread-merge updates.
+		var contextModel *string
+		if extra, ok := liveExtras[sid]; ok {
+			contextModel = extra.Model
 		}
+		addContextUsage(entry, contextModel, latestTurnCtx[sid])
 
 		// Track status/summary for event deduplication
 		h.trackStatusSummary(ctx, agent.AgentName, status, summary, sid)
@@ -4467,6 +4462,24 @@ func knownContextWindow(model *string) int {
 		return 0
 	}
 	return proxy.LookupContextWindow(*model)
+}
+
+func addContextUsage(entry map[string]any, model *string, turnContext int) {
+	entry["context_window"] = nil
+	entry["context_pct"] = nil
+	window := knownContextWindow(model)
+	if window == 0 {
+		return
+	}
+	entry["context_window"] = window
+	if turnContext <= 0 {
+		return
+	}
+	pct := int(float64(turnContext) / float64(window) * 100)
+	if pct > 100 {
+		pct = 100
+	}
+	entry["context_pct"] = pct
 }
 
 func stripAgentPermissionFlags(flags []string) []string {

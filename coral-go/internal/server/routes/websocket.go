@@ -283,12 +283,10 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 
 	// Context window from live sessions
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
-	ctxWindowMap := make(map[string]int, len(allLive))
+	ctxModelMap := make(map[string]*string, len(allLive))
 	createdAtMap := make(map[string]string, len(allLive))
 	for _, ls := range allLive {
-		if knownWindow := knownContextWindow(ls.Model); knownWindow > 0 {
-			ctxWindowMap[ls.SessionID] = knownWindow
-		}
+		ctxModelMap[ls.SessionID] = ls.Model
 		createdAtMap[ls.SessionID] = ls.CreatedAt
 	}
 
@@ -364,16 +362,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			entry["token_output"] = usage.OutputTokens
 			entry["token_cost_usd"] = usage.CostUSD
 		}
-		if cw, ok := ctxWindowMap[sid]; ok && cw > 0 {
-			entry["context_window"] = cw
-			if turnCtx, ok := latestTurnCtx[sid]; ok && turnCtx > 0 {
-				pct := int(float64(turnCtx) / float64(cw) * 100)
-				if pct > 100 {
-					pct = 100
-				}
-				entry["context_pct"] = pct
-			}
-		}
+		addContextUsage(entry, ctxModelMap[sid], latestTurnCtx[sid])
 		liveSIDs[sid] = true
 		sessions = append(sessions, entry)
 	}

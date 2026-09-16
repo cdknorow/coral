@@ -340,6 +340,29 @@ async function run() {
         // display_name/summary) must not blank the row goal, initials, header
         // or placeholder of the selected unnamed session.
         check('WS handler hook exposed', await evalInPage(`typeof window._coralHandleWsMessage === 'function'`));
+
+        // Regression: explicit null context fields from the server must clear
+        // stale values retained by the generic spread-merge and remove the bar
+        // without a page reload.
+        await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
+            { name: 'coral-go', agent_type: 'claude', session_id: 'sid-c',
+              context_pct: null, context_window: null }
+        ], removed: [] }); true`);
+        await sleep(100);
+        const clearedContext = await evalInPage(`(() => {
+            const li = document.querySelector('#live-sessions-list [data-session-id="sid-c"]');
+            const session = window._coralGetLiveSessions().find(s => s.session_id === 'sid-c');
+            return {
+                hasBar: !!(li && li.querySelector('.session-context-bar')),
+                pct: session ? session.context_pct : undefined,
+                window: session ? session.context_window : undefined,
+            };
+        })()`);
+        check('explicit null context fields overwrite stale values',
+            clearedContext.pct === null && clearedContext.window === null, JSON.stringify(clearedContext));
+        check('explicit null context removes stale ctx full bar without reload',
+            !clearedContext.hasBar, JSON.stringify(clearedContext));
+
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
             { name: 'coral-go', display_name: '', agent_type: 'claude', session_id: 'sid-b', summary: '',
               context_pct: 45, waiting_for_input: true, working: false, working_directory: '/repo/coral-go' }
