@@ -298,13 +298,6 @@ export function connectTerminalWs(name, agentType, sessionId) {
     const params = new URLSearchParams();
     if (agentType) params.set("agent_type", agentType);
     if (sessionId) params.set("session_id", sessionId);
-    // Let the server resize the backing terminal before it captures the
-    // initial replay snapshot. Sending terminal_resize in onopen remains as a
-    // compatibility/update path for subsequent layout changes.
-    if (terminal) {
-        params.set("cols", terminal.cols);
-        params.set("rows", terminal.rows);
-    }
     const qs = params.toString() ? `?${params}` : "";
 
     terminalWs = new WebSocket(

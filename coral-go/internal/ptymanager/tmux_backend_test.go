@@ -131,41 +131,6 @@ func TestTmuxBackend_Replay(t *testing.T) {
 	t.Errorf("expected replay to contain MARKER_REPLAY_42, got: %q", content)
 }
 
-func TestTmuxBackend_ReplayUsesCoherentPaneSnapshot(t *testing.T) {
-	b := newTestTmuxBackend(t)
-
-	// The script overwrites a line in place. A raw-log replay contains both
-	// values, while a coherent capture of tmux's grid contains only the final
-	// rendered value. Keep the stale text out of the shell command itself.
-	dir := t.TempDir()
-	script := filepath.Join(dir, "redraw.sh")
-	if err := os.WriteFile(script, []byte("printf 'STALE_COMMAND_TEXT\\r\\033[2KFINAL_SNAPSHOT_TEXT\\n'\nsleep 60\n"), 0755); err != nil {
-		t.Fatalf("write redraw script: %v", err)
-	}
-	err := b.Spawn("snapshot-test", "claude", dir, "sid-snapshot",
-		"sh "+script, 80, 24)
-	if err != nil {
-		t.Fatalf("Spawn failed: %v", err)
-	}
-	defer b.Kill("snapshot-test")
-
-	var content string
-	for i := 0; i < 20; i++ {
-		time.Sleep(200 * time.Millisecond)
-		data, _ := b.Replay("snapshot-test")
-		content = string(data)
-		if strings.Contains(content, "FINAL_SNAPSHOT_TEXT") {
-			break
-		}
-	}
-	if !strings.Contains(content, "FINAL_SNAPSHOT_TEXT") {
-		t.Fatalf("expected replay to contain final screen, got: %q", content)
-	}
-	if strings.Contains(content, "STALE_COMMAND_TEXT") {
-		t.Fatalf("replay retained overwritten text from the raw event stream: %q", content)
-	}
-}
-
 func TestTmuxBackend_SendInput(t *testing.T) {
 	b := newTestTmuxBackend(t)
 

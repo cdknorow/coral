@@ -480,33 +480,6 @@ func TestWSTerminal_ResizeOnConnect(t *testing.T) {
 	conn2.Close(websocket.StatusNormalClosure, "done")
 }
 
-// TestWSTerminal_InitialDimensionsQuery verifies that dimensions supplied by
-// the browser are applied before the server sends its first replay frame.
-func TestWSTerminal_InitialDimensionsQuery(t *testing.T) {
-	backend, client := newTerminalTestTmuxBackend(t)
-	server := setupTerminalTestServer(t, backend)
-
-	tmuxName := spawnTestSession(t, backend, "initial-size-agent",
-		"44444444-5555-6666-7777-888888888888", "sleep 120")
-	time.Sleep(500 * time.Millisecond)
-
-	wsURL := "ws" + server.URL[4:] + "/ws/terminal/" + tmuxName + "?cols=137&rows=41"
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
-	require.NoError(t, err)
-	defer conn.CloseNow()
-
-	// Receiving the replay proves the resize-before-snapshot path completed.
-	readOneBinaryFrame(t, ctx, conn)
-
-	size, err := client.DisplayMessage(context.Background(), tmuxName,
-		"#{window_width}x#{window_height}")
-	require.NoError(t, err)
-	assert.Equal(t, "137x41", strings.TrimSpace(size),
-		"initial dimensions should be applied before replay")
-}
-
 func minInt(a, b int) int {
 	if a < b {
 		return a

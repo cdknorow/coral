@@ -344,12 +344,9 @@ func (b *TmuxBackend) Unsubscribe(name, subscriberID string) {
 	}
 }
 
-// Replay returns a coherent snapshot of tmux's current screen and scrollback.
-//
-// The pipe-pane log is an event stream, not a terminal state. Replaying an
-// arbitrary byte suffix can begin in the middle of a cursor-addressed redraw
-// and leaves xterm with duplicated or otherwise malformed historical output.
-// capture-pane gives us tmux's already-interpreted grid instead.
+// Replay reads the last ReplayBytes() of the pipe-pane log file.
+// Falls back to capture-pane if the log file is empty (e.g. after server
+// restart before pipe-pane has produced new output).
 func (b *TmuxBackend) Replay(name string) ([]byte, error) {
 	b.mu.RLock()
 	sess, ok := b.sessions[name]
@@ -361,27 +358,19 @@ func (b *TmuxBackend) Replay(name string) ([]byte, error) {
 		}
 	}
 
-	ctx := context.Background()
-	target := naming.SessionName(sess.info.AgentType, sess.info.SessionID) + ".0"
-	content, capErr := b.client.CapturePaneRawTarget(ctx, target, replayLines())
-	if capErr != nil {
-		return nil, capErr
+	data, err := readTail(sess.logPath, ReplayBytes())
+	if err == nil && len(data) > 0 {
+		return data, nil
 	}
-	if content != "" {
+
+	// Fallback: log file empty or missing — use capture-pane as emergency seed
+	ctx := context.Background()
+	content, capErr := b.client.CapturePaneRawTarget(ctx, name+".0", 200)
+	if capErr == nil && content != "" {
 		return []byte(content), nil
 	}
-	return nil, nil
-}
 
-// replayLines converts the byte-oriented replay setting into a conservative
-// line count for tmux capture-pane. Eighty columns is deliberately used as the
-// baseline so a wide terminal does not unexpectedly reduce retained history.
-func replayLines() int {
-	lines := ReplayBytes() / 80
-	if lines < 200 {
-		return 200
-	}
-	return lines
+	return data, err
 }
 
 func (b *TmuxBackend) ListSessions() []SessionInfo {

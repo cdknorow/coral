@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -484,18 +483,6 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	if h.backend == nil {
 		conn.Close(websocket.StatusInternalError, "no backend")
 		return
-	}
-
-	// The browser knows its fitted dimensions before opening the socket. Apply
-	// them before taking the replay snapshot so tmux reflows its grid to the
-	// same width xterm will use. Older clients without these query parameters
-	// continue to resize through terminal_resize messages below.
-	if cols, colsErr := strconv.Atoi(r.URL.Query().Get("cols")); colsErr == nil && cols >= 10 {
-		rows, rowsErr := strconv.Atoi(r.URL.Query().Get("rows"))
-		if rowsErr != nil || rows <= 0 {
-			rows = 50
-		}
-		_ = h.backend.Resize(name, uint16(cols), uint16(rows))
 	}
 
 	subID := fmt.Sprintf("ws-%d", time.Now().UnixNano())
