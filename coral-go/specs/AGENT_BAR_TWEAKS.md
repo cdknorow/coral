@@ -125,11 +125,17 @@ Row layout becomes:
   label. The label is **plain text, not a click target** — it sits where the
   user clicks to select the row, and a mis-click must not fire an action.
 - Avatar initials: when `display_name` is empty, derive initials from
-  `auto_name` (D8) then `first_prompt` — never from `summary`, which changes
-  as the agent works and would make the avatar drift. Keep the folder-based
-  colour so agents in the same folder still share a hue.
-- Right-pane header and `Sending to:` placeholder use the same
-  `display_name → auto_name → first_prompt → "Agent"` resolution.
+  `auto_name` (D8) then `board_job_title`, then the folder/terminal name —
+  never from `summary`, which changes as the agent works and would make the
+  avatar drift, and never from `first_prompt`, which is a sentence or a path
+  and yields nonsense initials (revised in task #85). The role emoji follows
+  the same chain. Keep the folder-based colour (keyed on the folder/session
+  name) so agents in the same folder still share a hue.
+- Row label, right-pane header, terminal label and `Sending to:` placeholder
+  use the same `display_name → auto_name → board_job_title → "Agent"`
+  (or `"Terminal"`) resolution. `first_prompt` is **goal text only**: it is
+  the secondary fallback for the goal line (`summary → first_prompt`) and is
+  never a primary name, title or initials source.
 
 Automatic naming and goal generation are D8.
 
@@ -203,7 +209,8 @@ separate team. Summary of the contract this spec depends on:
 - Both payload builders expose `auto_name`, `goal_pending`, and
   `summary = pulse_summary || auto_goal`.
 - Frontend identity chain becomes
-  `display_name → auto_name → first_prompt → "Agent"` (D1).
+  `display_name → auto_name → board_job_title → "Agent"` (D1); the prompt
+  remains the goal-line fallback only.
 
 ## Implementation Plan
 
@@ -280,6 +287,7 @@ all listed there.
 ## Open Questions
 
 - ~~Should the summary fallback prefer the *latest* user prompt over the
-  first?~~ Resolved by D8: `first_prompt` stays as the stable identity
-  fallback; the *current* goal comes from a periodic Haiku call over the tail
-  of the transcript, with no prompt injected into the agent.
+  first?~~ Resolved by D8: `first_prompt` stays as the stable *goal-line*
+  fallback (not an identity source, per task #85); the *current* goal comes
+  from a periodic Haiku call over the tail of the transcript, with no prompt
+  injected into the agent.

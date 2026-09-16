@@ -62,14 +62,15 @@ export function sessionGoalText(s) {
 /**
  * Stable identity source for a session, or '' when there is none.
  * Chain: display_name -> auto_name (D8, transcript-derived, write-once) ->
- * first_prompt. The summary is deliberately NOT part of identity: it changes
- * as the agent works and is rendered as goal text only.
+ * board_job_title. Neither summary nor first_prompt is identity: the summary
+ * changes as the agent works, and a prompt is a sentence or a path, not a
+ * name (task #85). Both are rendered as goal text only.
  */
 export function sessionIdentitySource(s) {
     if (!s) return '';
     return (s.display_name || '').trim()
         || (s.auto_name || '').trim()
-        || oneLine(s.first_prompt || '');
+        || (s.board_job_title || '').trim();
 }
 
 /** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
@@ -81,8 +82,12 @@ export function resolveSessionIdentity(s) {
 }
 
 function _renderAvatar(s, dotClass) {
-    const name = s.display_name || s.board_job_title || s.name || '';
-    const color = getAgentColor(name);
+    // Role emoji + initials follow the shared identity chain, then the folder.
+    // Colour is keyed ONLY on the folder/session name (never display_name,
+    // auto_name, board_job_title, summary or first_prompt) so agents in one
+    // folder share a hue (established contract, task #89).
+    const name = sessionIdentitySource(s) || s.name || '';
+    const color = getAgentColor(s.name || '');
     const statusDot = `<span class="avatar-status-dot ${dotClass}"></span>`;
 
     // Custom icon takes priority
@@ -108,11 +113,11 @@ function _renderAvatar(s, dotClass) {
     }
 
     // Fallback: colored initials from the shared *stable* identity source
-    // (display_name -> auto_name -> first user prompt), then folder/terminal
-    // name. The summary is deliberately excluded: it changes as the agent
-    // works, and initials that flip mid-session are worse than folder
-    // initials. Colour stays folder-based (see `name` above) so agents in one
-    // folder share a hue.
+    // (display_name -> auto_name -> board_job_title), then folder/terminal
+    // name. Summary and first_prompt are deliberately excluded: one drifts as
+    // the agent works, the other yields initials from a path or sentence.
+    // Colour stays folder-based (see `color` above) so agents in one folder
+    // share a hue.
     const initialsSource = sessionIdentitySource(s) || name;
     const initials = _getInitials(initialsSource);
     return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.2)};color:${color}">
@@ -1313,10 +1318,10 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const goalText = sessionGoalText(s);
     const goalBtn = "";
     // Row label follows the shared identity chain (display_name -> auto_name
-    // -> first_prompt -> Agent/Terminal). Compact team rows may show the
-    // board job title before falling through to the prompt-derived name.
+    // -> board_job_title -> Agent/Terminal). The prompt is never a name; it
+    // shows on the goal line below when there is no summary.
     const identity = resolveSessionIdentity(s);
-    const displayLabel = (isCompact && !sessionIdentitySource(s) && s.board_job_title) || identity;
+    const displayLabel = identity;
     let goalLine = "";
     if (goalText) {
         goalLine = `<span class="session-goal${isCompact ? ' session-goal-compact' : ''}" title="${escapeAttr(goalText)}">${escapeHtml(goalText)}</span>`;

@@ -1,8 +1,9 @@
 // End-to-end acceptance test for the Agents sidebar tweaks
 // (specs/AGENT_BAR_TWEAKS.md D1–D7, badge-only D5):
-//   - identity chain display_name -> auto_name -> first_prompt -> Agent on row
-//     label, avatar initials, header, terminal label and Sending-to placeholder
-//     (summary is goal text only); passive "No goal yet" label, sparkle-only
+//   - identity chain display_name -> auto_name -> board_job_title -> Agent on
+//     row label, avatar initials, header, terminal label and Sending-to
+//     placeholder (summary and first_prompt are goal text only, never names or
+//     initials); passive "No goal yet" label, sparkle-only
 //     goal trigger; generic spread-merge of WS diffs (omitted preserves,
 //     explicit null/empty/value overwrites)
 //   - mobile-only banner/meta rows hidden on desktop
@@ -59,14 +60,20 @@ const SESSIONS = [
     // 3: terminal, nothing -> no goal affordance
     { name: 'coral-go', display_name: '', agent_type: 'terminal', session_id: 'sid-d',
       summary: '', first_prompt: '', context_pct: 0, working_directory: '/repo/coral-go' },
-    // 4: named agent in another folder, low context, healthy
+    // 4: unnamed, board job title, path-style first prompt (screenshot case)
+    { name: 'coral-go', display_name: '', agent_type: 'claude', session_id: 'sid-g',
+      board_job_title: 'Release Wrangler', summary: '',
+      first_prompt: '/Users/me/Software/coral/coral-go fix the release workflow', context_pct: 33,
+      working_directory: '/repo/coral-go' },
+    // 5: named agent in another folder, low context, healthy
     { name: 'other-proj', display_name: 'Zed', agent_type: 'claude', session_id: 'sid-e',
       summary: 'Writing docs', context_pct: 12, working_directory: '/repo/other-proj' },
-    // 5: unnamed, summary only (no first_prompt) -> initials fall back to folder
+    // 6: unnamed, summary only (no first_prompt) -> initials fall back to folder
     { name: 'other-proj', display_name: '', agent_type: 'claude', session_id: 'sid-f',
       summary: 'Investigate slow startup on Windows', first_prompt: '', context_pct: 63,
       working_directory: '/repo/other-proj' },
 ];
+const ORDER = SESSIONS.map(s => s.session_id).join(',');
 
 // Installed before any app script runs (Page.addScriptToEvaluateOnNewDocument).
 // - GET /api/sessions/live returns the current fixture, so app startup/init
@@ -166,7 +173,7 @@ async function run() {
         const before = await evalInPage(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(li => li.dataset.sessionId).join(',')`);
         await sleep(1500);
         const after = await evalInPage(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(li => li.dataset.sessionId).join(',')`);
-        check('fixture stable over time with no live socket', before === after && after === 'sid-a,sid-b,sid-c,sid-d,sid-e,sid-f', after);
+        check('fixture stable over time with no live socket', before === after && after === ORDER, after);
         check('still zero real /ws/coral sockets after settling', !wsCreated.some(u => /\/ws\/coral/.test(u)), JSON.stringify(wsCreated));
 
         const rows = await evalInPage(`
@@ -191,6 +198,8 @@ async function run() {
                     hasGoal: !!goal,
                     initials: q('.agent-avatar-initials') ? q('.agent-avatar-initials').textContent.trim() : null,
                     avatarW: q('.agent-avatar') ? q('.agent-avatar').getBoundingClientRect().width : null,
+                    avatarRgb: q('.agent-avatar') ? (getComputedStyle(q('.agent-avatar')).backgroundColor.match(/\\d+/g) || []).slice(0, 3).join(',') : null,
+                    avatarEmoji: q('.agent-avatar-emoji') ? q('.agent-avatar-emoji').textContent.trim() : null,
                     initialsFont: q('.agent-avatar-initials') ? getComputedStyle(q('.agent-avatar-initials')).fontSize : null,
                     ctxLabel: q('.context-bar-label') ? q('.context-bar-label').textContent.trim() : null,
                     compactBtn: !!q('.context-compact-btn'),
@@ -213,7 +222,7 @@ async function run() {
         // insertion order; within a folder the payload order is kept).
         const order = rows.map(r => r.sid).join(',');
         check('session ordering preserved (no attention sort)',
-            order === 'sid-a,sid-b,sid-c,sid-d,sid-e,sid-f', order);
+            order === ORDER, order);
 
         // D1 identity
         check('summary shown on non-active row', bySid['sid-a'].goalText === 'Refactoring the store layer', bySid['sid-a'].goalText);
@@ -221,8 +230,14 @@ async function run() {
         check('empty goal shows "No goal yet"', bySid['sid-c'].goalEmpty && /No goal yet/.test(bySid['sid-c'].goalText), bySid['sid-c'].goalText);
         check('generate-goal button is always visible when no goal', bySid['sid-c'].goalBtnVisible);
         check('terminal without goal shows no goal affordance', !bySid['sid-d'].hasGoal);
-        check('unnamed row label uses first_prompt (identity chain)', bySid['sid-b'].label.startsWith('Please fix the flaky websocket reconnect test'), bySid['sid-b'].label);
-        check('row label carries a title with the resolved identity', bySid['sid-b'].labelTitle === bySid['sid-b'].label, bySid['sid-b'].labelTitle);
+        // Screenshot cases (task #85): a sentence or a path in first_prompt is
+        // goal text, never a name or initials.
+        check('sentence prompt is not the row label (Agent)', bySid['sid-b'].label === 'Agent', bySid['sid-b'].label);
+        check('sentence prompt still shows on the goal line', bySid['sid-b'].goalText.startsWith('Please fix the flaky websocket'), bySid['sid-b'].goalText);
+        check('row label carries a title with the resolved identity', bySid['sid-b'].labelTitle === 'Agent' && bySid['sid-g'].labelTitle === 'Release Wrangler', `${bySid['sid-b'].labelTitle} / ${bySid['sid-g'].labelTitle}`);
+        check('path prompt with board_job_title uses the job title as label', bySid['sid-g'].label === 'Release Wrangler', bySid['sid-g'].label);
+        check('path prompt shows on the goal line', bySid['sid-g'].goalText === '/Users/me/Software/coral/coral-go fix the release workflow', bySid['sid-g'].goalText);
+        check('initials from board_job_title, not path words', bySid['sid-g'].initials === 'RW', bySid['sid-g'].initials);
         check('row label with no identity falls back to Agent', bySid['sid-c'].label === 'Agent', bySid['sid-c'].label);
         check('summary is goal text only, never the row label', bySid['sid-f'].label === 'Agent', bySid['sid-f'].label);
         check('terminal row label falls back to Terminal', bySid['sid-d'].label === 'Terminal', bySid['sid-d'].label);
@@ -232,7 +247,14 @@ async function run() {
         check('"No goal yet" label has no cursor styling of its own (inherits the row)', bySid['sid-c'].emptyLabelCursor === bySid['sid-c'].rowCursor, `${bySid['sid-c'].emptyLabelCursor} vs row ${bySid['sid-c'].rowCursor}`);
         check('sparkle hit target is at least 24x24', bySid['sid-c'].sparkleW >= 24 && bySid['sid-c'].sparkleH >= 24, `${bySid['sid-c'].sparkleW}x${bySid['sid-c'].sparkleH}`);
         check('sparkle has an aria-label naming the agent', bySid['sid-c'].sparkleAria === 'Generate goal for Agent', bySid['sid-c'].sparkleAria);
-        check('initials derive from first_prompt, not folder', bySid['sid-b'].initials === 'PF', bySid['sid-b'].initials);
+        check('initials never derive from prompt words (folder fallback)', bySid['sid-b'].initials === 'CO', bySid['sid-b'].initials);
+        // Avatar colour is keyed on the folder: named + unnamed agents in one
+        // folder share a hue; another folder gets a different one.
+        check('same-folder agents share an avatar hue', bySid['sid-a'].avatarRgb && bySid['sid-a'].avatarRgb === bySid['sid-b'].avatarRgb && bySid['sid-b'].avatarRgb === bySid['sid-g'].avatarRgb, `${bySid['sid-a'].avatarRgb} / ${bySid['sid-b'].avatarRgb} / ${bySid['sid-g'].avatarRgb}`);
+        check('different folder gets a different avatar hue', bySid['sid-e'].avatarRgb !== bySid['sid-b'].avatarRgb, `${bySid['sid-e'].avatarRgb} vs ${bySid['sid-b'].avatarRgb}`);
+        check('same-folder agents keep distinct identity marks (emoji / CO / RW)',
+            bySid['sid-a'].avatarEmoji && !bySid['sid-a'].initials && bySid['sid-b'].initials === 'CO' && bySid['sid-g'].initials === 'RW',
+            JSON.stringify([bySid['sid-a'].avatarEmoji, bySid['sid-b'].initials, bySid['sid-g'].initials]));
         check('initials never derive from mutable summary (folder fallback)', bySid['sid-f'].initials === 'OT', bySid['sid-f'].initials);
         check('summary-only row still shows summary as goal', bySid['sid-f'].goalText === 'Investigate slow startup on Windows', bySid['sid-f'].goalText);
         check('initials from display_name when present', bySid['sid-e'].initials === 'ZE', bySid['sid-e'].initials);
@@ -292,11 +314,10 @@ async function run() {
             modeLabel: (document.querySelector('#btn-mode-toggle .btn-label') || {}).textContent || null,
             modeTip: (document.getElementById('btn-mode-toggle') || { getAttribute(){ return null; } }).getAttribute('data-tooltip'),
         }))()`);
-        check('header uses first_prompt when no display_name/summary',
-            header.name.startsWith('Please fix the flaky websocket reconnect test'), header.name);
-        check('terminal header label uses the same identity', header.term.startsWith('Please fix the flaky'), header.term);
+        check('header is Agent for a prompt-only session (prompt is not identity)', header.name === 'Agent', header.name);
+        check('terminal header label uses the same identity', header.term === 'Agent -- sid-b', header.term);
         check('placeholder "Sending to:" uses resolved identity',
-            /^Sending to: Please fix the flaky/.test(header.placeholder), header.placeholder);
+            /^Sending to: Agent \(claude\)/.test(header.placeholder), header.placeholder);
         // The fixture session has no real terminal, so the poll returns an
         // error placeholder rather than a buffer -> label must fall back.
         check('Mode label falls back to "Mode" when undetectable', header.modeLabel === 'Mode', header.modeLabel);
@@ -337,12 +358,12 @@ async function run() {
             };
         })()`);
         check('diff without first_prompt keeps row goal', afterDiff.goal === 'Please fix the flaky websocket reconnect test in xterm_renderer.js', afterDiff.goal);
-        check('diff without first_prompt keeps initials', afterDiff.initials === 'PF', afterDiff.initials);
+        check('diff without first_prompt keeps folder initials', afterDiff.initials === 'CO', afterDiff.initials);
         check('diff still applies changed fields (ctx 45%)', afterDiff.ctx === 'ctx 45%', afterDiff.ctx);
-        check('diff without first_prompt keeps header identity', afterDiff.header.startsWith('Please fix the flaky'), afterDiff.header);
-        check('diff without first_prompt keeps terminal label identity', afterDiff.term.startsWith('Please fix the flaky'), afterDiff.term);
-        check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: Please fix the flaky/.test(afterDiff.placeholder), afterDiff.placeholder);
-        check('diff does not reorder sessions', afterDiff.order === 'sid-a,sid-b,sid-c,sid-d,sid-e,sid-f', afterDiff.order);
+        check('diff without first_prompt keeps header identity', afterDiff.header === 'Agent', afterDiff.header);
+        check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'Agent -- sid-b', afterDiff.term);
+        check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: Agent/.test(afterDiff.placeholder), afterDiff.placeholder);
+        check('diff does not reorder sessions', afterDiff.order === ORDER, afterDiff.order);
 
         // display_name / summary updates in a diff must still win.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
@@ -405,7 +426,7 @@ async function run() {
         check('auto_name drives avatar initials', f.initials === 'SR', f.initials);
         check('auto_name diff keeps omitted summary as goal', f.goal === 'Investigate slow startup on Windows', f.goal);
         check('auto_name diff keeps omitted context_pct', f.ctx === 'ctx 63%', f.ctx);
-        check('auto_name diff does not reorder', f.order === 'sid-a,sid-b,sid-c,sid-d,sid-e,sid-f', f.order);
+        check('auto_name diff does not reorder', f.order === ORDER, f.order);
         const mergedF = JSON.parse(await evalInPage(`JSON.stringify(window._coralGetLiveSessions().find(s => s.session_id === 'sid-f'))`));
         const prevF = JSON.parse(snapshotF);
         const lostKeys = Object.keys(prevF).filter(k => JSON.stringify(mergedF[k]) !== JSON.stringify(prevF[k]));
@@ -452,11 +473,11 @@ async function run() {
         check('display_name beats auto_name', rowE.label === 'Zed' && rowE.initials === 'ZE', JSON.stringify(rowE));
 
         // New session arriving via diff is taken intact (no merge partner).
-        await evalInPage(`window.__newSessionPayload = { name: 'coral-go', agent_type: 'claude', session_id: 'sid-new', display_name: '', summary: '', first_prompt: 'Audit the release workflow', context_pct: 5, working_directory: '/repo/coral-go' };
+        await evalInPage(`window.__newSessionPayload = { name: 'coral-go', agent_type: 'claude', session_id: 'sid-new', display_name: '', summary: '', first_prompt: '/repo/coral-go/.github/workflows/release.yml audit this', context_pct: 5, working_directory: '/repo/coral-go' };
             window._coralHandleWsMessage({ type: 'coral_diff', changed: [window.__newSessionPayload] }); true`);
         await sleep(100);
         const rowNew = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-new"]'); return li ? { label: li.querySelector('.session-label').textContent.trim(), initials: (li.querySelector('.agent-avatar-initials') || {}).textContent, count: window._coralGetLiveSessions().length } : null; })()`);
-        check('new session via diff renders intact', rowNew && rowNew.label === 'Audit the release workflow' && rowNew.initials === 'AT' && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
+        check('new session via diff renders intact (path prompt -> Agent, folder initials)', rowNew && rowNew.label === 'Agent' && rowNew.initials === 'CO' && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
         check('new session merge does not alias incoming payload', await evalInPage(`window._coralGetLiveSessions().find(s => s.session_id === 'sid-new') !== window.__newSessionPayload`));
 
         // A full update follows the same contract: omitted fields survive,
@@ -465,9 +486,23 @@ async function run() {
         await evalInPage(`window.__fullSessionPayload = { name: 'coral-go', agent_type: 'claude', session_id: 'sid-new', summary: null, context_pct: 0 };
             window._coralHandleWsMessage({ type: 'coral_update', sessions: [window.__fullSessionPayload] }); true`);
         const fullMerged = await evalInPage(`(() => { const s = window._coralGetLiveSessions()[0]; return { count: window._coralGetLiveSessions().length, first: s.first_prompt, summary: s.summary, pct: s.context_pct, distinct: s !== window.__fullSessionPayload }; })()`);
-        check('full update preserves omitted fields', fullMerged.count === 1 && fullMerged.first === 'Audit the release workflow', JSON.stringify(fullMerged));
+        check('full update preserves omitted fields', fullMerged.count === 1 && fullMerged.first === '/repo/coral-go/.github/workflows/release.yml audit this', JSON.stringify(fullMerged));
         check('full update applies explicit null and zero', fullMerged.summary === null && fullMerged.pct === 0, JSON.stringify(fullMerged));
         check('full update merge does not alias incoming payload', fullMerged.distinct);
+        await setFixture(SESSIONS);
+
+        // board_job_title identity agrees across header / terminal label / placeholder.
+        await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-g'); true`);
+        await sleep(250);
+        const hdrG = await evalInPage(`({ name: document.getElementById('session-name').textContent, term: (document.getElementById('terminal-header-label') || {}).textContent || '', ph: document.getElementById('command-input').placeholder })`);
+        check('header uses board_job_title, not the path prompt', hdrG.name === 'Release Wrangler', hdrG.name);
+        check('terminal label uses board_job_title', hdrG.term === 'Release Wrangler -- sid-g', hdrG.term);
+        check('placeholder uses board_job_title', /^Sending to: Release Wrangler \(claude\)/.test(hdrG.ph), hdrG.ph);
+        // auto_name outranks board_job_title.
+        await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', auto_name: 'Ship Bot' } ] }); true`);
+        await sleep(100);
+        const rowG = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-g"]'); return { label: li.querySelector('.session-label').textContent.trim(), initials: (li.querySelector('.agent-avatar-initials') || {}).textContent, header: document.getElementById('session-name').textContent }; })()`);
+        check('auto_name beats board_job_title', rowG.label === 'Ship Bot' && rowG.initials === 'SB' && rowG.header === 'Ship Bot', JSON.stringify(rowG));
         await setFixture(SESSIONS);
 
         // Header follows a named session too.

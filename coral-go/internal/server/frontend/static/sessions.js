@@ -64,7 +64,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     const captureWrapper = document.getElementById("capture-wrapper");
     captureWrapper.classList.add("loading-skeleton");
 
-    // Update header (display_name -> summary -> first_prompt -> "Agent")
+    // Update header via the shared identity chain (display_name -> auto_name -> board_job_title -> "Agent"/"Terminal")
     const identity = resolveSessionIdentity(agentData || { display_name: displayName, agent_type: agentType });
     document.getElementById("session-name").textContent = identity;
     const termLabel = document.getElementById("terminal-header-label");

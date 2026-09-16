@@ -209,13 +209,14 @@ In **both** session payload builders — the HTTP list (`routes/sessions.go`
 - `goal_pending` (true while a generation is in flight)
 
 Frontend identity chain (AGENT_BAR_TWEAKS D1):
-`display_name → auto_name → first_prompt → "Agent"`. Row label, avatar
-initials, right-pane header and the `Sending to:` placeholder all use it.
+`display_name → auto_name → board_job_title → "Agent"/"Terminal"`.
+Row label, avatar initials, right-pane header and the `Sending to:` placeholder
+all use it. `first_prompt` is only the secondary goal-line fallback after
+`summary`; it is never an identity source.
 
-The client `coral_diff` merge in `websocket.js` must not drop these fields.
-It currently replaces the session object and preserves an allowlist
-(`commands`, `icon`, `token_*`, `context_pct`); switch to
-`{...old, ...changed}` so fields the WS omits survive by default.
+The client `coral_diff` merge in `websocket.js` uses generic
+`{...old, ...changed}` semantics: fields omitted by the WS preserve their old
+values, while explicit values in `changed` overwrite the old values.
 
 ### UI
 

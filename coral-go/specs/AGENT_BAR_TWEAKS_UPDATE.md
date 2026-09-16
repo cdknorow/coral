@@ -28,15 +28,16 @@ pre-existing, unrelated.
 | Item | Landed in | Notes |
 |---|---|---|
 | 1. `first_prompt` survives WS ticks | #72 (client), #76 (both payload builders) | Client now uses generic spread-merge (task #81): omitted fields preserve, explicit `null`/`""`/value overwrite, new sessions taken intact |
-| 2. Initials never from `summary` | #72, #81 | Shared `sessionIdentitySource`: `display_name → auto_name → first_prompt`, then folder/terminal name |
+| 2. Initials never from `summary` | #72, #81, #85 | Shared `sessionIdentitySource`: `display_name → auto_name → board_job_title`, then folder/terminal name. #85 removed `first_prompt` from identity after screenshots showed paths/sentences as names and initials |
 | 3. "No goal yet" is passive text | #81 | Label has no handler/title/pointer; click bubbles to select the row. Sparkle is the sole trigger, 24×24, `aria-label` |
 | 4. Suite race | #72, #75 | HTTP stub before navigation + pre-navigation `/ws/coral` constructor stub; runner refuses :8420 and occupied ports |
 | 5. Cache only the first prompt | #71, #76 | Backend |
 | 6. Do not extend `requestGoal` | — | Unchanged apart from item 3 |
 
-Identity chain `display_name → auto_name → first_prompt → Agent/Terminal` is
-applied to row label, avatar initials, header, terminal label and the
-`Sending to:` placeholder (#81), ready for D8's `auto_name`. The real-socket
+Identity chain `display_name → auto_name → board_job_title → Agent/Terminal`
+is applied to row label (+title), avatar initials, header, terminal label and
+the `Sending to:` placeholder (#81, revised #85), ready for D8's `auto_name`.
+`first_prompt` is the goal-line fallback (`summary → first_prompt`) only. The real-socket
 browser e2e suggested under Finding 2 is deferred; the merge path is covered
 by driving `handleCoralMessage` directly.
 
@@ -62,6 +63,8 @@ What changed and why:
   WS omits survive by default. Every previous field on that allowlist got
   there by hitting this same bug.
 - **Initials: `display_name → auto_name → first_prompt`, never `summary`.**
+  *(Revised by task #85: `first_prompt` was dropped from identity too, in
+  favour of `board_job_title`; see Tracking.)*
   The original text said "summary's first two words". That was wrong:
   summary changes as the agent works, so the avatar would drift
   (`DT` today, `RE` tomorrow). Identity must be stable. `auto_name` comes
