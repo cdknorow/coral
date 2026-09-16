@@ -190,6 +190,33 @@ func TestNormalizeCaptureForXterm(t *testing.T) {
 	}
 }
 
+func TestTmuxBackend_ReplayJoinsSoftWrappedRows(t *testing.T) {
+	b := newTestTmuxBackend(t)
+
+	dir := t.TempDir()
+	marker := "SOFT_WRAP_" + strings.Repeat("X", 120) + "_END"
+	script := filepath.Join(dir, "soft-wrap.sh")
+	if err := os.WriteFile(script, []byte("printf '%s\\n' '"+marker+"'\nsleep 60\n"), 0755); err != nil {
+		t.Fatalf("write soft-wrap script: %v", err)
+	}
+	if err := b.Spawn("soft-wrap-test", "claude", dir, "sid-soft-wrap",
+		"sh "+script, 40, 24); err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer b.Kill("soft-wrap-test")
+
+	var content string
+	for i := 0; i < 20; i++ {
+		time.Sleep(200 * time.Millisecond)
+		data, _ := b.Replay("soft-wrap-test")
+		content = string(data)
+		if strings.Contains(content, marker) {
+			return
+		}
+	}
+	t.Fatalf("soft-wrapped marker was not rejoined in replay: %q", content)
+}
+
 func TestTmuxBackend_SendInput(t *testing.T) {
 	b := newTestTmuxBackend(t)
 

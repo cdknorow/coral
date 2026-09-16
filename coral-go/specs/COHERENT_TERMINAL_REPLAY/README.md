@@ -62,6 +62,19 @@ Before the captured snapshot is returned, lone LF separators are converted to
 CRLF. Existing CRLF sequences are preserved. This ensures every captured row
 begins at column zero when xterm parses the replay.
 
+### Soft-wrap preservation and single initial resize
+
+The tmux capture uses `capture-pane -J` to join physical grid rows that tmux
+marks as parts of one soft-wrapped logical line. Hard line boundaries remain
+LF-separated and are subsequently normalized to CRLF. This prevents replay
+from permanently preserving a historical narrow pane width.
+
+The browser supplies initial dimensions only through the WebSocket query. It
+does not immediately send a second identical `terminal_resize` from `onopen`.
+Subsequent xterm resize events still use the normal resize message. Avoiding
+the redundant initial resize prevents a TUI from redrawing just after its
+snapshot was captured and placing a duplicate copy into the live stream.
+
 ## Files Changed
 
 - `internal/ptymanager/tmux_backend.go`
@@ -78,6 +91,7 @@ Automated coverage verifies:
 - tmux replay contains recent output;
 - overwritten raw-stream text is absent from the captured snapshot;
 - captured lines use CRLF rather than bare LF;
+- tmux soft-wrapped rows are rejoined into logical lines;
 - initial WebSocket dimensions reach tmux before replay;
 - replay frames remain binary and live streaming continues afterward.
 
@@ -100,6 +114,9 @@ Manual verification:
   a narrow race boundary. The tail is attached before replay to avoid losing
   output; in a highly active pane, a small amount of duplicate output remains
   preferable to missing output entirely.
+- A genuine layout change immediately after connection can still cause the
+  running TUI to redraw. Coral only suppresses the redundant same-size resize;
+  it does not suppress real resize events.
 - The byte-oriented `terminal_replay_bytes` setting is approximate for tmux
   snapshots because capture depth is expressed in lines.
 

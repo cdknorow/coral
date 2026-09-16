@@ -510,7 +510,10 @@ func (c *Client) CapturePaneTarget(ctx context.Context, target string, lines int
 // If visibleOnly is true, captures only the visible viewport (no scrollback).
 // This is needed for TUI apps (vim, nano) that use the alternate screen buffer.
 func (c *Client) CapturePaneRawTarget(ctx context.Context, target string, lines int, visibleOnly ...bool) (string, error) {
-	args := []string{"capture-pane", "-t", target, "-p", "-e"}
+	// -J joins rows that tmux knows were created by soft wrapping. Without it,
+	// replay turns every physical grid row into a hard line and preserves the
+	// width at which historical output was originally rendered.
+	args := []string{"capture-pane", "-t", target, "-p", "-e", "-J"}
 	if len(visibleOnly) == 0 || !visibleOnly[0] {
 		args = append(args, fmt.Sprintf("-S-%d", lines))
 	}
