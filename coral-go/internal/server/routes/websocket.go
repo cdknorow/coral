@@ -407,6 +407,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"sleeping":           true,
 			"first_prompt":       h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
+		addContextUsage(sessions[len(sessions)-1], nil, 0)
 	}
 
 	return sessions, nil

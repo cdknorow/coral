@@ -206,6 +206,12 @@ func TestWSCoral_SleepingSessionIncluded(t *testing.T) {
 			found = true
 			assert.Equal(t, true, s["sleeping"])
 			assert.Equal(t, "Sleeping", s["status"])
+			contextWindow, hasContextWindow := s["context_window"]
+			assert.True(t, hasContextWindow)
+			assert.Nil(t, contextWindow)
+			contextPct, hasContextPct := s["context_pct"]
+			assert.True(t, hasContextPct)
+			assert.Nil(t, contextPct)
 			assert.Equal(t, nil, s["tmux_session"])
 			assert.Equal(t, "claude", s["agent_type"])
 			assert.Equal(t, "sleepy-agent", s["name"])

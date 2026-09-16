@@ -277,6 +277,35 @@ func TestSessionsList_WithSessions(t *testing.T) {
 	assert.Len(t, sessions, 2)
 }
 
+func TestSessionsList_SleepingSessionContextIsExplicitNull(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServer(t)
+
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
+		SessionID:  "00000000-0000-0000-0000-000000000010",
+		AgentType:  "claude",
+		AgentName:  "sleepy-agent",
+		WorkingDir: "/tmp/test",
+		IsSleeping: 1,
+		CreatedAt:  "2026-01-01T00:00:00Z",
+	}))
+
+	resp, err := http.Get(server.URL + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var sessions []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&sessions))
+	require.Len(t, sessions, 1)
+	assert.Equal(t, true, sessions[0]["sleeping"])
+	contextWindow, hasContextWindow := sessions[0]["context_window"]
+	assert.True(t, hasContextWindow)
+	assert.Nil(t, contextWindow)
+	contextPct, hasContextPct := sessions[0]["context_pct"]
+	assert.True(t, hasContextPct)
+	assert.Nil(t, contextPct)
+}
+
 // A runtime session whose DB row is already marked stopped is an orphan and
 // must not be listed as a live agent (it would otherwise appear with a stale
 // display name in whatever group its working directory happens to match).

@@ -636,6 +636,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 		// Include prompt, model, and capabilities for sleeping sessions too
 		entry := sessions[len(sessions)-1]
+		addContextUsage(entry, nil, 0)
 		if ls.Prompt != nil {
 			entry["prompt"] = *ls.Prompt
 		}
