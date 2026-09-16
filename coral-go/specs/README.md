@@ -46,6 +46,7 @@ Design specifications for Coral features. Each subdirectory contains a `README.m
 | [File Search Mode](FILE_SEARCH_MODE/) | Shipped | Progressive directory-based file browsing replacing fuzzy matching |
 | [Team Directory Grouping](TEAM_DIRECTORY_GROUPING/) | Shipped | Better UI distinction for multiple teams by working directory and worktree |
 | [Native Titlebar Drag](NATIVE_TITLEBAR_DRAG/) | Shipped | Restoring native macOS window dragging in transparent titlebar |
+| [Agent Bar Tweaks](AGENT_BAR_TWEAKS.md) | Planned | Identity, context-pressure, and attention signals in the Agents sidebar; Mode button shows current mode |
 
 ### Terminal & Performance
 

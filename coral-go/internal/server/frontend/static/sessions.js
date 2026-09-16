@@ -259,8 +259,8 @@ export async function selectHistorySession(sessionId) {
 
     updateSidebarActive();
 
-    // Reset to summary tab
-    switchHistoryTab('notes');
+    // Open the transcript by default; summaries may not exist yet.
+    switchHistoryTab('chat');
 
     const data = await loadHistoryMessages(sessionId);
     if (data && data.messages) {
