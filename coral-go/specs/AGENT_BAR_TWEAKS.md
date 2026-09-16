@@ -193,8 +193,9 @@ Automatic naming and goal generation are D8.
 ### D7. Naming
 
 - Live-session panel tab `Chat` → **Transcript**. Board chat unchanged.
-- No change to the top nav in this spec. Whether **Tokens** and **Docs** stay
-  top-level is a separate decision.
+- No change to the top nav in this spec. Whether **Analytics** (the tab
+  formerly labelled Tokens; id/route unchanged) and **Docs** stay top-level is
+  a separate decision.
 
 ### D8. Transcript-derived goals (replaces PULSE injection)
 

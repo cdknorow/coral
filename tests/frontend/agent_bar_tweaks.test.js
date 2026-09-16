@@ -556,6 +556,30 @@ async function run() {
         const toast = await evalInPage(`Array.from(document.querySelectorAll('.toast')).map(t => t.textContent).join(' | ')`);
         check('clicking the context bar shows no compact toast', !/compact/i.test(toast), toast);
 
+        // ── Top nav copy: "Tokens" tab is labelled "Analytics" (id/route/view unchanged) ──
+        const navBefore = await evalInPage(`(() => {
+            const tabs = Array.from(document.querySelectorAll('.top-nav-tabs .top-nav-tab'));
+            const t = document.getElementById('nav-tab-tokens');
+            return { label: t ? t.textContent.trim() : null, title: t ? t.getAttribute('title') : null, onclick: t ? t.getAttribute('onclick') : null,
+                     tokensLabels: tabs.filter(b => b.textContent.trim() === 'Tokens').length, count: tabs.length };
+        })()`);
+        check('top nav tab reads "Analytics"', navBefore.label === 'Analytics', JSON.stringify(navBefore));
+        check('no top-nav tab is still labelled "Tokens"', navBefore.tokensLabels === 0, `${navBefore.tokensLabels}`);
+        check('Analytics tab keeps its id, handler and a descriptive title', navBefore.onclick === "switchNavTab('tokens')" && /^Analytics/.test(navBefore.title || ''), JSON.stringify(navBefore));
+        await evalInPage(`document.getElementById('nav-tab-tokens').click(); true`);
+        await sleep(300);
+        const navAfter = await evalInPage(`(() => ({
+            active: document.querySelector('.top-nav-tab.active')?.id,
+            viewShown: getComputedStyle(document.getElementById('cost-dashboard-view')).display !== 'none',
+            heading: (document.querySelector('#cost-dashboard-view h2') || {}).textContent || null,
+            fullWidth: document.querySelector('.layout').classList.contains('sidebar-hidden'),
+        }))()`);
+        check('clicking Analytics activates the same tab id', navAfter.active === 'nav-tab-tokens', navAfter.active);
+        check('clicking Analytics opens the same token-usage view', navAfter.viewShown && navAfter.heading === 'Token Usage' && navAfter.fullWidth, JSON.stringify(navAfter));
+        await evalInPage(`window.switchNavTab('agents'); true`);
+        await sleep(200);
+        check('switching back restores the Agents tab', await evalInPage(`document.querySelector('.top-nav-tab.active')?.id`) === 'nav-tab-agents');
+
         // ── 390px mobile: empty-goal affordance stays one line; banner/meta visible ──
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: false });
         await evalInPage(`window.dispatchEvent(new Event('resize')); true`);
