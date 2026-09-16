@@ -41,6 +41,45 @@ function _getInitials(name) {
     return name.slice(0, 2).toUpperCase();
 }
 
+/* ── Session identity ───────────────────────────────────────────────── */
+
+const GOAL_LINE_MAX = 140;
+
+/** Collapse whitespace/newlines and truncate to one line. */
+export function oneLine(text, max = GOAL_LINE_MAX) {
+    if (!text) return '';
+    const flat = String(text).replace(/\s+/g, ' ').trim();
+    if (flat.length <= max) return flat;
+    return flat.slice(0, max - 1).trimEnd() + '\u2026';
+}
+
+/** Goal text for a session row: summary, else the first user prompt. */
+export function sessionGoalText(s) {
+    if (!s) return '';
+    return oneLine(s.summary || s.first_prompt || '');
+}
+
+/**
+ * Stable identity source for a session, or '' when there is none.
+ * Chain: display_name -> auto_name (D8, transcript-derived, write-once) ->
+ * first_prompt. The summary is deliberately NOT part of identity: it changes
+ * as the agent works and is rendered as goal text only.
+ */
+export function sessionIdentitySource(s) {
+    if (!s) return '';
+    return (s.display_name || '').trim()
+        || (s.auto_name || '').trim()
+        || oneLine(s.first_prompt || '');
+}
+
+/** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
+export function resolveSessionIdentity(s) {
+    if (!s) return 'Agent';
+    const src = sessionIdentitySource(s);
+    if (src) return oneLine(src, 60);
+    return s.agent_type === 'terminal' ? 'Terminal' : 'Agent';
+}
+
 function _renderAvatar(s, dotClass) {
     const name = s.display_name || s.board_job_title || s.name || '';
     const color = getAgentColor(name);
@@ -68,8 +107,14 @@ function _renderAvatar(s, dotClass) {
         </div>`;
     }
 
-    // Fallback: colored initials
-    const initials = _getInitials(name);
+    // Fallback: colored initials from the shared *stable* identity source
+    // (display_name -> auto_name -> first user prompt), then folder/terminal
+    // name. The summary is deliberately excluded: it changes as the agent
+    // works, and initials that flip mid-session are worse than folder
+    // initials. Colour stays folder-based (see `name` above) so agents in one
+    // folder share a hue.
+    const initialsSource = sessionIdentitySource(s) || name;
+    const initials = _getInitials(initialsSource);
     return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.2)};color:${color}">
         <span class="agent-avatar-initials">${escapeHtml(initials)}</span>${statusDot}
     </div>`;
@@ -1263,14 +1308,31 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
             : '');
     const isTerminal = s.agent_type === "terminal";
     const sid = s.session_id ? escapeAttr(s.session_id) : "";
-    const goalText = (isActive && s.summary) ? escapeHtml(s.summary) : null;
-    const goal = goalText || "";
-    const goalBtn = (!goalText && !isTerminal) ? `<button class="sidebar-goal-btn" onclick="event.stopPropagation(); requestGoal('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')" title="Generate Goal"><span class="material-icons" style="font-size:16px">auto_awesome</span></button>` : "";
+    // Goal line is rendered on every row (not just the active one):
+    // summary -> first user prompt -> inline "No goal yet" + generate button.
+    const goalText = sessionGoalText(s);
+    const goalBtn = "";
+    // Row label follows the shared identity chain (display_name -> auto_name
+    // -> first_prompt -> Agent/Terminal). Compact team rows may show the
+    // board job title before falling through to the prompt-derived name.
+    const identity = resolveSessionIdentity(s);
+    const displayLabel = (isCompact && !sessionIdentitySource(s) && s.board_job_title) || identity;
+    let goalLine = "";
+    if (goalText) {
+        goalLine = `<span class="session-goal${isCompact ? ' session-goal-compact' : ''}" title="${escapeAttr(goalText)}">${escapeHtml(goalText)}</span>`;
+    } else if (!isTerminal) {
+        // The "No goal yet" label is PASSIVE text: it sits where users click to
+        // select a row, so it must bubble to the row's click handler. Only the
+        // sparkle button requests a goal.
+        goalLine = `<span class="session-goal session-goal-empty${isCompact ? ' session-goal-compact' : ''}">
+                <button class="sidebar-goal-btn sidebar-goal-btn-inline" onclick="event.stopPropagation(); requestGoal('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:14px">auto_awesome</span></button>
+                <span class="session-goal-empty-label">No goal yet</span>
+            </span>`;
+    }
     const isDone = !!state.killedSessions?.[s.session_id];
-    const displayLabel = s.display_name || (isCompact && s.board_job_title) || (isTerminal ? "Terminal" : "Agent");
     const mobileStatus = getMobileStatusChip(s);
     const lastActivity = formatStaleness(s.staleness_seconds);
-    const needsAttention = !!(s.waiting_for_input || s.stuck || s.not_started);
+    const needsAttention = sessionNeedsAttention(s);
     const unreadBoardBadge = s.board_unread > 0
         ? `<span class="session-mobile-meta-pill">${s.board_unread} unread</span>`
         : '';
@@ -1385,7 +1447,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
         ${avatar}
         <div class="session-info">
             <div class="session-name-row">
-                <span class="session-label">${escapeHtml(displayLabel)}${typeTag}${dirChip}</span>
+                <span class="session-label" title="${escapeAttr(displayLabel)}">${escapeHtml(displayLabel)}${typeTag}${dirChip}</span>
                 <span class="session-name-spacer"></span>
                 ${waitingBadge}
                 ${goalBtn}
@@ -1400,7 +1462,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <span class="session-activity-text" title="${escapeAttr(activityLabel)} ${escapeAttr(lastActivity)}">${escapeHtml(mobileStatus.label)}</span>
                 ${unreadBoardBadge}
             </div>
-            <span class="session-goal${isCompact ? ' session-goal-compact' : ''}">${goal}</span>
+            ${goalLine}
             ${branchTag}
             ${isActive && s.status ? `<span class="session-inline-status">${escapeHtml(s.status)}</span>` : ''}
         </div>
@@ -1469,7 +1531,24 @@ export function toggleGroupByTeam() {
     renderLiveSessions(state.liveSessions);
 }
 
+/** True when the row shows an attention pill (needs input / check terminal / stuck). */
+export function sessionNeedsAttention(s) {
+    return !!(s && (s.waiting_for_input || s.stuck || s.not_started));
+}
+
+/** Update the count badge inside the Agents nav tab. Badge-only: ordering is untouched. */
+export function updateAgentsNavBadge(sessions) {
+    const badge = document.getElementById('nav-tab-agents-badge');
+    if (!badge) return;
+    const count = (sessions || []).filter(s => sessionNeedsAttention(s) && !state.killedSessions?.[s.session_id]).length;
+    badge.textContent = count > 0 ? String(count) : '';
+    badge.title = count > 0 ? `${count} agent${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} attention` : '';
+    badge.setAttribute('aria-label', badge.title);
+}
+
 export function renderLiveSessions(sessions) {
+    updateAgentsNavBadge(sessions);
+
     // Merge killed sessions back so they appear as "done" with history links.
     // Use a copy to avoid mutating state.liveSessions.
     const liveIds = new Set(sessions.map(s => s.session_id));
@@ -2160,9 +2239,13 @@ function _renderTokenLine(s) {
     const ctxWindow = s.context_window || 0;
     const barColor = pct >= 80 ? 'var(--status-error, #f85149)' : pct >= 50 ? 'var(--status-warning, #d29922)' : 'var(--text-muted, #8b949e)';
     const titleText = ctxWindow > 0 ? `${_formatTokens(Math.round(ctxWindow * pct / 100))} / ${_formatTokens(ctxWindow)} tokens (${pct}%)` : `Context: ${pct}%`;
-    return `<span class="session-context-bar" title="${titleText}">
-        <span class="context-bar-track"><span class="context-bar-fill" style="width:${pct}%;background:${barColor}"></span></span>
-        <span class="context-bar-label">${pct}%</span>
+    const label = pct >= 100 ? 'ctx full' : `ctx ${pct}%`;
+    const levelClass = pct >= 80 ? ' ctx-error' : pct >= 50 ? ' ctx-warning' : '';
+    // Informational only: no clickable action here. Users compact by typing
+    // /compact directly in the chat/terminal (operator decision, task #75).
+    return `<span class="session-context-bar${levelClass}" title="${titleText}">
+        <span class="context-bar-track"><span class="context-bar-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></span></span>
+        <span class="context-bar-label">${label}</span>
     </span>`;
 }
 

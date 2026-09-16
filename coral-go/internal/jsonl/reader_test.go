@@ -198,9 +198,104 @@ func TestReadNewMessages_CodexSessionMarker(t *testing.T) {
 func TestClearSession(t *testing.T) {
 	reader := NewSessionReader()
 	reader.cache["test"] = &sessionCache{path: "/tmp/test.jsonl"}
+	reader.firstPrompts["test"] = &firstPromptCache{path: "/tmp/test.jsonl", prompt: "hello"}
 	reader.ClearSession("test")
 	if _, ok := reader.cache["test"]; ok {
 		t.Error("expected session to be cleared")
+	}
+	if _, ok := reader.firstPrompts["test"]; ok {
+		t.Error("expected first-prompt cache to be cleared")
+	}
+}
+
+func TestFirstUserPrompt(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "first-prompt-session"
+	projectDir := filepath.Join(dir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	entries := `{"type":"assistant","message":{"content":"Before the user"}}
+{"type":"user","message":{"content":"<system-reminder>ignore me</system-reminder>"}}
+{"type":"user","message":{"content":"  Build the dashboard  "}}
+{"type":"user","message":{"content":"Second prompt"}}
+`
+	if err := os.WriteFile(filepath.Join(projectDir, sessionID+".jsonl"), []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewSessionReader()
+	if got := reader.FirstUserPrompt(sessionID, "", "claude"); got != "Build the dashboard" {
+		t.Fatalf("FirstUserPrompt() = %q, want %q", got, "Build the dashboard")
+	}
+	if _, ok := reader.cache[sessionID]; ok {
+		t.Fatal("FirstUserPrompt populated the full transcript message cache")
+	}
+	if got := reader.firstPrompts[sessionID]; got == nil || got.prompt != "Build the dashboard" {
+		t.Fatalf("first-prompt cache = %#v", got)
+	} else if info, err := os.Stat(filepath.Join(projectDir, sessionID+".jsonl")); err != nil {
+		t.Fatal(err)
+	} else if got.offset >= info.Size() {
+		t.Fatalf("first-prompt scan consumed full transcript: offset=%d size=%d", got.offset, info.Size())
+	}
+	if got := reader.FirstUserPrompt("missing-session", "", "claude"); got != "" {
+		t.Fatalf("FirstUserPrompt() for missing history = %q, want empty string", got)
+	}
+}
+
+func TestFirstUserPrompt_TerminalSkipsTranscriptLookup(t *testing.T) {
+	reader := NewSessionReader()
+	if got := reader.FirstUserPrompt("terminal-session", "/tmp", "terminal"); got != "" {
+		t.Fatalf("terminal prompt = %q, want empty", got)
+	}
+	if _, ok := reader.firstPrompts["terminal-session"]; ok {
+		t.Fatal("terminal session populated first-prompt path cache")
+	}
+}
+
+func TestFirstUserPrompt_IncrementalAndClear(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "incremental-first-prompt"
+	projectDir := filepath.Join(dir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+	path := filepath.Join(projectDir, sessionID+".jsonl")
+	if err := os.WriteFile(path, []byte(`{"type":"assistant","message":{"content":"waiting"}}`+"\n"+`{"type":"user","message":{"content":"partial`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewSessionReader()
+	if got := reader.FirstUserPrompt(sessionID, "", "claude"); got != "" {
+		t.Fatalf("prompt before record completed = %q, want empty", got)
+	}
+	if _, ok := reader.cache[sessionID]; ok {
+		t.Fatal("incremental first-prompt read populated full transcript cache")
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(` prompt"}}` + "\n"); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := reader.FirstUserPrompt(sessionID, "", "claude"); got != "partial prompt" {
+		t.Fatalf("prompt after append = %q, want %q", got, "partial prompt")
+	}
+
+	reader.ClearSession(sessionID)
+	if err := os.WriteFile(path, []byte(`{"type":"user","message":{"content":"replacement prompt"}}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := reader.FirstUserPrompt(sessionID, "", "claude"); got != "replacement prompt" {
+		t.Fatalf("prompt after ClearSession = %q, want %q", got, "replacement prompt")
 	}
 }
 

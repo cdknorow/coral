@@ -91,7 +91,7 @@
                         <button class="agentic-collapse-btn" id="agentic-collapse-btn" title="Toggle panel" aria-label="Toggle agentic state panel">
                             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M10 4l-4 4 4 4z"/></svg>
                         </button>
-                        <!-- Top block: Files, Tasks, Stats, Chat, Notes -->
+                        <!-- Top block: Files, Tasks, Stats, Transcript, Notes -->
                         <div class="agentic-block" id="agentic-block-top">
                             <div class="agentic-state-tabs" role="tablist" aria-label="Session panels">
                                 <button class="agentic-tab" onclick="switchAgenticTab('board', 'top')" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
@@ -105,7 +105,7 @@
                                     <span class="material-icons">checklist</span>
                                     <span class="agentic-tab-count" id="task-bar-count"></span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('history', 'top')" id="agentic-tab-history" title="Chat — conversation transcript" aria-label="Chat">
+                                <button class="agentic-tab" onclick="switchAgenticTab('history', 'top')" id="agentic-tab-history" title="Transcript — conversation transcript" aria-label="Transcript">
                                     <span class="material-icons">chat</span>
                                 </button>
                                 <button class="agentic-tab" onclick="switchAgenticTab('notes', 'top')" id="agentic-tab-notes" title="Notes — agent notes and observations" aria-label="Notes">
@@ -152,7 +152,7 @@
                                 <div class="task-bar-list" id="task-bar-list" style="display:none">
                                 </div>
                             </div>
-                            <!-- History/Chat tab -->
+                            <!-- History/Transcript tab -->
                             <div id="agentic-panel-history" class="agentic-panel">
                                 <div id="live-history-messages" class="chat-messages live-history-panel"></div>
                             </div>

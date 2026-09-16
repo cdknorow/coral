@@ -235,8 +235,9 @@ export function renderQuickActions() {
     const toolbar = document.getElementById("command-toolbar");
     const macros = getMacros();
 
+    const modeInfo = _modeLabelInfo();
     const modeButtons = `
-        <button class="btn-nav btn-mode" onclick="cycleModeToggle()" data-tooltip="Cycles through Default → Plan → Accept Edits modes (Shift+Tab). Each click advances one step."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><line x1="6" y1="5" x2="10" y2="5"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="11" x2="8" y2="11"/></svg><span class="btn-label">Mode</span></button>
+        <button class="btn-nav btn-mode" id="btn-mode-toggle" onclick="cycleModeToggle()" data-tooltip="${escapeAttr(modeInfo.tooltip)}" aria-label="${escapeAttr(modeInfo.aria)}"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><line x1="6" y1="5" x2="10" y2="5"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="11" x2="8" y2="11"/></svg><span class="btn-label">${escapeHtml(modeInfo.label)}</span></button>
         <button class="btn-nav btn-mode" onclick="sendQuickCommand('!')" data-tooltip="Prefixes your input with ! so Claude runs it as a shell command instead of a prompt."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><polyline points="4 7 6 9 4 11"/><line x1="8" y1="11" x2="12" y2="11"/></svg><span class="btn-label">Bash</span></button>
         <button class="btn-nav btn-mode" onclick="sendRawKeys(['Escape','Escape'])" data-tooltip="Sends two Escape keys to Claude. Interrupts the current response, rejects a pending tool call, or backs out of a permission prompt."><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg><span class="btn-label">Undo</span></button>
     `;
@@ -621,16 +622,61 @@ export function requestGoal(name, agentType, sessionId) {
 // Order: default -> plan -> auto-accept -> default
 const MODE_CYCLE = ["default", "auto", "plan"];
 
+/**
+ * Read the current Claude Code mode from the last terminal buffer scan.
+ * Returns "default" | "plan" | "auto", or null when nothing usable has been
+ * captured yet (empty buffer or a non-Claude session).
+ */
 function detectCurrentMode() {
     const el = document.getElementById("pane-capture");
-    const text = (el.textContent || "").toLowerCase();
+    const text = (el?.textContent || "").trim().toLowerCase();
+    if (!text || text === "no capture available") return null;
+    if (el?.dataset.captureState === "error") return null;
+    if (state.currentSession?.agent_type === "terminal") return null;
     if (text.includes("plan mode")) return "plan";
     if (text.includes("auto-accept") || text.includes("accept edits")) return "auto";
     return "default";
 }
 
-export function sendModeToggle(targetMode) {
+const MODE_SHORT_LABELS = { default: "Default", plan: "Plan", auto: "Accept" };
+
+function _modeLabelInfo() {
     const current = detectCurrentMode();
+    if (!current) {
+        return {
+            label: "Mode",
+            tooltip: "Cycles through Default → Plan → Accept Edits modes (Shift+Tab). Each click advances one step.",
+            aria: "Mode: unknown. Click to cycle Default, Plan, Accept Edits (Shift+Tab).",
+        };
+    }
+    const next = MODE_CYCLE[(MODE_CYCLE.indexOf(current) + 1) % MODE_CYCLE.length];
+    return {
+        label: MODE_SHORT_LABELS[current],
+        tooltip: `Current: ${MODE_LABELS[current]}. Click to switch to ${MODE_LABELS[next]} (Shift+Tab).`,
+        aria: `Mode: ${MODE_LABELS[current]}. Click to switch to ${MODE_LABELS[next]} (Shift+Tab).`,
+    };
+}
+
+/** Sync the Mode quick-action label/tooltip with the terminal buffer. */
+export function refreshModeLabel() {
+    const btn = document.getElementById("btn-mode-toggle");
+    if (!btn) return;
+    const info = _modeLabelInfo();
+    const labelEl = btn.querySelector(".btn-label");
+    if (labelEl && labelEl.textContent !== info.label) labelEl.textContent = info.label;
+    if (btn.getAttribute("data-tooltip") !== info.tooltip) btn.setAttribute("data-tooltip", info.tooltip);
+    if (btn.getAttribute("aria-label") !== info.aria) btn.setAttribute("aria-label", info.aria);
+}
+
+// Re-read the mode every time the terminal buffer is rescanned (capture poll
+// or initial pane detail), so Shift+Tab pressed directly in the terminal is
+// reflected in the button, not only clicks on it.
+if (typeof document !== "undefined") {
+    document.addEventListener("coral:terminal-updated", refreshModeLabel);
+}
+
+export function sendModeToggle(targetMode) {
+    const current = detectCurrentMode() || "default";
     if (current === targetMode) {
         showToast(`Already in ${targetMode === "plan" ? "Plan" : targetMode === "auto" ? "Accept Edits" : "Base"} mode`);
         return;
@@ -648,7 +694,7 @@ export function sendModeToggle(targetMode) {
 const MODE_LABELS = { default: "Default", plan: "Plan", auto: "Accept Edits" };
 
 export function cycleModeToggle() {
-    const current = detectCurrentMode();
+    const current = detectCurrentMode() || "default";
     const currentIdx = MODE_CYCLE.indexOf(current);
     const nextMode = MODE_CYCLE[(currentIdx + 1) % MODE_CYCLE.length];
     showToast(`Switching to ${MODE_LABELS[nextMode]} mode`);

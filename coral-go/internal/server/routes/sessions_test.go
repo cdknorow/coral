@@ -250,6 +250,66 @@ func TestSessionsList_WithSessions(t *testing.T) {
 	assert.Len(t, sessions, 2)
 }
 
+// A runtime session whose DB row is already marked stopped is an orphan and
+// must not be listed as a live agent (it would otherwise appear with a stale
+// display name in whatever group its working directory happens to match).
+func TestSessionsList_HidesStoppedOrphans(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+
+	liveID := "00000000-0000-0000-0000-000000000011"
+	orphanID := "00000000-0000-0000-0000-000000000012"
+	terminal.addSession("claude-"+liveID, "/tmp/test")
+	terminal.addSession("codex-"+orphanID, "/tmp/test")
+
+	ctx := context.Background()
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: liveID, AgentType: "claude", AgentName: "test", WorkingDir: "/tmp/test"}))
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: orphanID, AgentType: "codex", AgentName: "test", WorkingDir: "/tmp/test"}))
+	require.NoError(t, ss.UnregisterLiveSession(ctx, orphanID))
+
+	resp, err := http.Get(server.URL + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var sessions []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&sessions))
+	require.Len(t, sessions, 1)
+	assert.Equal(t, liveID, sessions[0]["session_id"])
+}
+
+func TestSessionsList_SerializesFirstPrompt(t *testing.T) {
+	server, _, terminal, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	withPromptID := "00000000-0000-0000-0000-000000000101"
+	emptyID := "00000000-0000-0000-0000-000000000102"
+	terminal.addSession("claude-"+withPromptID, "/tmp/with-prompt")
+	terminal.addSession("claude-"+emptyID, "/tmp/empty")
+	require.NoError(t, os.WriteFile(
+		filepath.Join(projectDir, withPromptID+".jsonl"),
+		[]byte("{\"type\":\"user\",\"message\":{\"content\":\"Name the agent from this\"}}\n"),
+		0644,
+	))
+
+	resp, err := http.Get(server.URL + "/api/sessions/live")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var sessions []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&sessions))
+	require.Len(t, sessions, 2)
+	prompts := make(map[string]any, len(sessions))
+	for _, session := range sessions {
+		prompts[session["session_id"].(string)] = session["first_prompt"]
+	}
+	assert.Equal(t, "Name the agent from this", prompts[withPromptID])
+	assert.Equal(t, "", prompts[emptyID])
+}
+
 func TestSessionsCapture_NotFound(t *testing.T) {
 	server, _, _, _ := setupSessionsTestServer(t)
 

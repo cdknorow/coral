@@ -4,7 +4,7 @@ import { state, sessionKey } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity } from './render.js';
 import { renderQuickActions, updateSidebarActive } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
@@ -64,10 +64,11 @@ export async function selectLiveSession(name, agentType, sessionId) {
     const captureWrapper = document.getElementById("capture-wrapper");
     captureWrapper.classList.add("loading-skeleton");
 
-    // Update header
-    document.getElementById("session-name").textContent = displayName || name;
+    // Update header (display_name -> summary -> first_prompt -> "Agent")
+    const identity = resolveSessionIdentity(agentData || { display_name: displayName, agent_type: agentType });
+    document.getElementById("session-name").textContent = identity;
     const termLabel = document.getElementById("terminal-header-label");
-    if (termLabel) termLabel.textContent = `${displayName || name} -- ${sessionId || ''}`;
+    if (termLabel) termLabel.textContent = `${identity} -- ${sessionId || ''}`;
     const termDot = document.getElementById("terminal-status-dot");
     if (termDot && agentData) {
         termDot.className = `terminal-status-dot ${agentData.working ? 'working' : agentData.waiting_for_input ? 'waiting' : agentData.sleeping ? 'sleeping' : 'stale'}`;
@@ -81,7 +82,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     if (cmdInput) {
         const typeInfo = agentType ? ` (${agentType})` : '';
         const boardInfo = agentData && agentData.board_project ? ` on ${agentData.board_project}` : '';
-        cmdInput.placeholder = `Sending to: ${displayName || name}${typeInfo}${boardInfo} \u2014 type a command or paste an image...`;
+        cmdInput.placeholder = `Sending to: ${identity}${typeInfo}${boardInfo} \u2014 type a command or paste an image...`;
     }
 
     // Reset summary/status before loading new session detail
@@ -102,7 +103,10 @@ export async function selectLiveSession(name, agentType, sessionId) {
     // Fetch full detail in background (non-blocking) for pane capture
     loadLiveSessionDetail(name, agentType, sessionId).then(detail => {
         if (detail && detail.pane_capture) {
-            document.getElementById("pane-capture").textContent = detail.pane_capture;
+            const paneEl = document.getElementById("pane-capture");
+            paneEl.textContent = detail.pane_capture;
+            paneEl.dataset.captureState = "ok";
+            document.dispatchEvent(new CustomEvent('coral:terminal-updated'));
         }
     });
 

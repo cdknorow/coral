@@ -303,7 +303,12 @@ func (c *Client) ListPanes(ctx context.Context) ([]Pane, error) {
 }
 
 func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pane {
-	args := []string{"list-panes", "-a", "-F", "#{pane_title}|#{session_name}|#S:#I.#P|#{pane_current_path}"}
+	// pane_title is LAST because it is free-form text controlled by the agent
+	// process and can itself contain the '|' separator (Codex, for example, sets
+	// "[ ! ] Action Required | coral" while waiting on approval). With the title
+	// last and SplitN(…, 4), any extra '|' stays inside the title field instead
+	// of shifting the session name and making the agent look dead.
+	args := []string{"list-panes", "-a", "-F", "#{session_name}|#S:#I.#P|#{pane_current_path}|#{pane_title}"}
 	if socketPath != "" {
 		args = append([]string{"-S", socketPath}, args...)
 	}
@@ -312,9 +317,15 @@ func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pan
 	if err != nil {
 		return nil
 	}
+	return parsePaneList(string(out), socketPath)
+}
 
+// parsePaneList parses the output of list-panes formatted as
+// "session|target|path|title". The title is the final field and may contain
+// additional '|' characters.
+func parsePaneList(out, socketPath string) []Pane {
 	var panes []Pane
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -324,10 +335,10 @@ func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pan
 			continue
 		}
 		panes = append(panes, Pane{
-			PaneTitle:   parts[0],
-			SessionName: parts[1],
-			Target:      parts[2],
-			CurrentPath: parts[3],
+			SessionName: parts[0],
+			Target:      parts[1],
+			CurrentPath: parts[2],
+			PaneTitle:   parts[3],
 			SocketPath:  socketPath,
 		})
 	}

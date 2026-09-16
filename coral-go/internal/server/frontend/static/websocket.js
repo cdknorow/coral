@@ -1,7 +1,7 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
-import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator } from './render.js';
+import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, resolveSessionIdentity } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -15,8 +15,33 @@ export function connectCoralWs() {
     state.coralWs = new WebSocket(url);
 
     state.coralWs.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        handleCoralMessage(JSON.parse(event.data));
+    };
 
+    state.coralWs.onclose = (ev) => {
+        dbg('coralWs CLOSE', { code: ev.code, reason: ev.reason });
+        setTimeout(connectCoralWs, 5000);
+    };
+
+    state.coralWs.onerror = (ev) => {
+        dbg('coralWs ERROR', ev);
+        // Will trigger onclose
+    };
+}
+
+/**
+ * Generic merge of a session payload onto the previous snapshot.
+ * Fields the server omits keep their old value; anything present in the
+ * payload (including explicit null / "" / 0) overwrites. Returns a new
+ * object so the previous snapshot is never aliased.
+ */
+function mergeSession(prev, next) {
+    return { ...(prev || {}), ...next };
+}
+
+/** Apply one message from /ws/coral. Exported for tests (window._coralHandleWsMessage). */
+export function handleCoralMessage(data) {
+    {
         // Handle diff updates: merge changed/removed into existing session list
         if (data.type === "coral_diff") {
             let sessions = [...(state.liveSessions || [])];
@@ -27,24 +52,11 @@ export function connectCoralWs() {
                     const key = changed.session_id || changed.name;
                     const idx = sessions.findIndex(s => (s.session_id || s.name) === key);
                     if (idx >= 0) {
-                        // Preserve fields not sent in WS diff updates
-                        if (!changed.commands && sessions[idx].commands) {
-                            changed.commands = sessions[idx].commands;
-                        }
-                        if (!changed.icon && sessions[idx].icon) {
-                            changed.icon = sessions[idx].icon;
-                        }
-                        if (changed.token_input === undefined && sessions[idx].token_input !== undefined) {
-                            changed.token_input = sessions[idx].token_input;
-                            changed.token_output = sessions[idx].token_output;
-                            changed.token_cost_usd = sessions[idx].token_cost_usd;
-                        }
-                        if (changed.context_pct === undefined && sessions[idx].context_pct !== undefined) {
-                            changed.context_pct = sessions[idx].context_pct;
-                            changed.context_window = sessions[idx].context_window;
-                        }
-                        sessions[idx] = changed;
+                        // Omitted fields keep their previous value; explicit
+                        // values (including null) overwrite.
+                        sessions[idx] = mergeSession(sessions[idx], changed);
                     } else {
+                        // New session: taken as-is.
                         sessions.push(changed);
                     }
                 }
@@ -89,22 +101,15 @@ export function connectCoralWs() {
                 // state.prevSummaryState[id] = s.summary || null;
             }
 
-            // Preserve commands and branch from previous data when not included in WS update
+            // Fields a full update omits (commands, branch, repo_name, ...)
+            // keep their previous value via the same generic merge.
             if (state.liveSessions && state.liveSessions.length) {
                 const prevMap = {};
                 for (const s of state.liveSessions) {
                     const key = s.session_id || s.name;
                     prevMap[key] = s;
                 }
-                for (const s of data.sessions) {
-                    const key = s.session_id || s.name;
-                    const prev = prevMap[key];
-                    if (prev) {
-                        if (!s.commands && prev.commands) s.commands = prev.commands;
-                        if (!s.branch && prev.branch) s.branch = prev.branch;
-                        if (!s.repo_name && prev.repo_name) s.repo_name = prev.repo_name;
-                    }
-                }
+                data.sessions = data.sessions.map(s => mergeSession(prevMap[s.session_id || s.name], s));
             }
             state.liveSessions = data.sessions;
             renderLiveSessions(data.sessions);
@@ -153,10 +158,24 @@ export function connectCoralWs() {
                             state.currentSession.session_id = s.session_id;
                         }
                     }
-                    // Sync display_name and update header
-                    const headerName = s.display_name || s.name;
+                    // Keep all identity inputs in sync so the header and command
+                    // placeholder resolve the same name as the sidebar. `s` is
+                    // already merged onto the previous snapshot, so omitted
+                    // fields are preserved and explicit values win.
                     state.currentSession.display_name = s.display_name || null;
+                    state.currentSession.auto_name = s.auto_name || null;
+                    state.currentSession.summary = s.summary || null;
+                    state.currentSession.first_prompt = s.first_prompt || '';
+                    const headerName = resolveSessionIdentity(s);
                     document.getElementById("session-name").textContent = headerName;
+                    const termLabel = document.getElementById("terminal-header-label");
+                    if (termLabel) termLabel.textContent = `${headerName} -- ${s.session_id || ''}`;
+                    const cmdInput = document.getElementById("command-input");
+                    if (cmdInput) {
+                        const typeInfo = s.agent_type ? ` (${s.agent_type})` : '';
+                        const boardInfo = s.board_project ? ` on ${s.board_project}` : '';
+                        cmdInput.placeholder = `Sending to: ${headerName}${typeInfo}${boardInfo} — type a command or paste an image...`;
+                    }
                     updateSessionStatus(s.status);
                     updateSessionSummary(s.summary);
                     updateSessionBranch(s.branch);
@@ -168,15 +187,5 @@ export function connectCoralWs() {
                 }
             }
         }
-    };
-
-    state.coralWs.onclose = (ev) => {
-        dbg('coralWs CLOSE', { code: ev.code, reason: ev.reason });
-        setTimeout(connectCoralWs, 5000);
-    };
-
-    state.coralWs.onerror = (ev) => {
-        dbg('coralWs ERROR', ev);
-        // Will trigger onclose
-    };
+    }
 }

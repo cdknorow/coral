@@ -353,6 +353,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"board_unread":       boardUnread,
 			"log_path":           agent.LogPath,
 			"sleeping":           false,
+			"first_prompt":       h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
 		if usage, ok := tokenUsageMap[sid]; ok {
 			entry["token_input"] = usage.InputTokens
@@ -411,6 +412,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"board_unread":       0,
 			"log_path":           "",
 			"sleeping":           true,
+			"first_prompt":       h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
 	}
 

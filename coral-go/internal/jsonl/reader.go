@@ -17,8 +17,9 @@ import (
 
 // SessionReader incrementally reads JSONL session files for live chat display.
 type SessionReader struct {
-	mu    sync.Mutex
-	cache map[string]*sessionCache
+	mu           sync.Mutex
+	cache        map[string]*sessionCache
+	firstPrompts map[string]*firstPromptCache
 }
 
 type sessionCache struct {
@@ -28,9 +29,21 @@ type sessionCache struct {
 	toolUseNames map[string]string // tool_use_id → tool_name
 }
 
+// firstPromptCache is deliberately separate from sessionCache. The live
+// sessions list needs one small identity string, not a pinned copy of every
+// parsed transcript message.
+type firstPromptCache struct {
+	path   string
+	offset int64
+	prompt string
+}
+
 // NewSessionReader creates a new JSONL session reader.
 func NewSessionReader() *SessionReader {
-	return &SessionReader{cache: make(map[string]*sessionCache)}
+	return &SessionReader{
+		cache:        make(map[string]*sessionCache),
+		firstPrompts: make(map[string]*firstPromptCache),
+	}
 }
 
 // ReadNewMessages reads new messages since the last call for the given session.
@@ -108,10 +121,93 @@ func (r *SessionReader) ReadAllMessages(sessionID, workingDirectory, agentType s
 	return c.messages, len(c.messages)
 }
 
+// FirstUserPrompt returns the earliest non-empty user message in a session.
+// Messages are read through the normal parser so system-injected user content
+// is excluded consistently with the chat transcript.
+func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType string) string {
+	if agentType == at.Terminal {
+		return ""
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	c := r.firstPrompts[sessionID]
+	if c == nil {
+		c = &firstPromptCache{}
+		r.firstPrompts[sessionID] = c
+	}
+	if c.prompt != "" {
+		return c.prompt
+	}
+	if c.path == "" {
+		c.path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+		if c.path == "" {
+			return ""
+		}
+	}
+
+	f, err := os.Open(c.path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	if info, err := f.Stat(); err == nil && info.Size() < c.offset {
+		c.offset = 0
+	}
+	if _, err := f.Seek(c.offset, io.SeekStart); err != nil {
+		return ""
+	}
+	reader := bufio.NewReader(f)
+	for {
+		line, readErr := reader.ReadBytes('\n')
+		if len(line) == 0 {
+			return ""
+		}
+		trimmed := strings.TrimSpace(string(line))
+		if trimmed == "" {
+			c.offset += int64(len(line))
+			if readErr != nil {
+				return ""
+			}
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(trimmed), &entry); err != nil {
+			// A final record may still be in the middle of being written. Leave
+			// the offset at its start so the next call retries the completed line.
+			if readErr == io.EOF && line[len(line)-1] != '\n' {
+				return ""
+			}
+			c.offset += int64(len(line))
+			if readErr != nil {
+				return ""
+			}
+			continue
+		}
+		c.offset += int64(len(line))
+		for _, message := range parseTranscriptEntry(entry, map[string]string{}, agentType) {
+			if message["type"] != "user" {
+				continue
+			}
+			content, _ := message["content"].(string)
+			if content = strings.TrimSpace(content); content != "" {
+				c.prompt = content
+				return c.prompt
+			}
+		}
+		if readErr != nil {
+			return ""
+		}
+	}
+}
+
 // ClearSession removes cached state for a session.
 func (r *SessionReader) ClearSession(sessionID string) {
 	r.mu.Lock()
 	delete(r.cache, sessionID)
+	delete(r.firstPrompts, sessionID)
 	r.mu.Unlock()
 }
 

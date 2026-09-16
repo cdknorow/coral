@@ -847,6 +847,35 @@ func (s *SessionStore) UnregisterLiveSession(ctx context.Context, sessionID stri
 	return err
 }
 
+// GetStoppedSessions returns, for the given session IDs, the ones whose
+// live_sessions row is marked inactive, mapped to their stopped_at timestamp
+// (empty string if none recorded). Used to recognise orphaned runtime
+// sessions: tmux/PTY sessions that are still running even though Coral has
+// already stopped them.
+func (s *SessionStore) GetStoppedSessions(ctx context.Context, sessionIDs []string) (map[string]string, error) {
+	result := map[string]string{}
+	if len(sessionIDs) == 0 {
+		return result, nil
+	}
+	query, args, err := sqlx.In(
+		"SELECT session_id, COALESCE(stopped_at, '') AS stopped_at FROM live_sessions WHERE status = 'inactive' AND session_id IN (?)",
+		sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		SessionID string `db:"session_id"`
+		StoppedAt string `db:"stopped_at"`
+	}
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	for _, r := range rows {
+		result[r.SessionID] = r.StoppedAt
+	}
+	return result, nil
+}
+
 // GetAllLiveSessions returns all registered live sessions.
 func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, error) {
 	var sessions []LiveSession

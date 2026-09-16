@@ -46,7 +46,8 @@ Design specifications for Coral features. Each subdirectory contains a `README.m
 | [File Search Mode](FILE_SEARCH_MODE/) | Shipped | Progressive directory-based file browsing replacing fuzzy matching |
 | [Team Directory Grouping](TEAM_DIRECTORY_GROUPING/) | Shipped | Better UI distinction for multiple teams by working directory and worktree |
 | [Native Titlebar Drag](NATIVE_TITLEBAR_DRAG/) | Shipped | Restoring native macOS window dragging in transparent titlebar |
-| [Agent Bar Tweaks](AGENT_BAR_TWEAKS.md) | Planned | Identity, context-pressure, and attention signals in the Agents sidebar; Mode button shows current mode |
+| [Agent Bar Tweaks](AGENT_BAR_TWEAKS.md) | Shipped | Stable agent identity, informational context labels, and a badge-only attention count without reordering; `/compact` remains a chat command |
+| [Transcript Goals](TRANSCRIPT_GOALS/) | Planned | Name and goal for every live agent from its own transcript via `claude -p` / `codex exec`; replaces the PULSE prompt injection |
 
 ### Terminal & Performance
 

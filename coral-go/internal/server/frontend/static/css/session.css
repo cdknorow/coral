@@ -110,8 +110,8 @@
 /* ── Agent Avatars ──────────────────────────────────────────── */
 
 .agent-avatar {
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     flex-shrink: 0;
     display: flex;
@@ -122,12 +122,12 @@
 }
 
 .agent-avatar-emoji {
-    font-size: 19px;
+    font-size: 15px;
     line-height: 1;
 }
 
 .agent-avatar-initials {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     line-height: 1;
     letter-spacing: 0.3px;
@@ -277,7 +277,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-top: 2px;
+    margin-top: 1px;
+    line-height: 14px;
 }
 
 .context-bar-track {
@@ -298,10 +299,21 @@
 }
 
 .context-bar-label {
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 14px;
     color: var(--text-muted);
     opacity: 0.8;
     white-space: nowrap;
+}
+
+.session-context-bar.ctx-warning .context-bar-label {
+    color: var(--status-warning, #d29922);
+    opacity: 1;
+}
+
+.session-context-bar.ctx-error .context-bar-label {
+    color: var(--status-error, #f85149);
+    opacity: 1;
 }
 
 .session-info {
@@ -316,6 +328,12 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
+    min-height: 18px;
+    line-height: 18px;
+}
+
+.session-name-row .sidebar-kebab-btn {
+    padding: 1px 4px;
 }
 
 .session-name-spacer {
@@ -323,12 +341,53 @@
 }
 
 .session-goal {
+    display: block;
     font-size: 12px;
+    line-height: 15px;
     color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin-top: 3px;
+    margin-top: 1px;
+}
+
+/* No summary / first prompt yet: inline generate-goal affordance, always visible */
+.session-goal-empty {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+    opacity: 0.75;
+}
+
+.session-goal-empty-label {
+    /* Passive text: no pointer, no hover accent. Clicks bubble to the row. */
+    font-style: italic;
+    cursor: inherit;
+}
+
+.session-goal-empty:hover {
+    opacity: 1;
+}
+
+/* The sparkle is the only goal trigger: give it a visible hover state and a
+   24x24 hit target. Negative vertical margins keep the row height at the
+   goal line's 15px so density (D6) is unaffected. */
+.sidebar-goal-btn-inline,
+.session-group-item .sidebar-goal-btn-inline {
+    opacity: 0.8;
+    padding: 0;
+    min-width: 24px;
+    min-height: 24px;
+    margin: -5px 0;
+    justify-content: center;
+    border-radius: 4px;
+}
+
+.session-goal-empty:hover .sidebar-goal-btn-inline {
+    opacity: 1;
+    color: var(--accent);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .sidebar-goal-btn {
@@ -722,7 +781,7 @@
 }
 
 .session-group-item {
-    padding: 14px 12px 14px 33px !important;
+    padding: 9px 12px 9px 33px !important;
     cursor: grab;
     min-height: 0;
     border-left: 2px solid transparent;
@@ -744,6 +803,13 @@
 }
 
 .session-status-chip {
+    display: none;
+}
+
+/* Mobile-only banner + meta rows: one signal per state on desktop.
+   mobile.css re-enables these under #mobile-session-list. */
+.session-mobile-banner-row,
+.session-mobile-meta {
     display: none;
 }
 

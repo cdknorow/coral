@@ -835,6 +835,10 @@
         display: none;
     }
 
+    #mobile-session-list .session-mobile-banner-row {
+        display: block;
+    }
+
     #mobile-session-list .session-mobile-banner-row:empty {
         display: none;
     }
@@ -916,6 +920,16 @@
         -webkit-line-clamp: 2;
         overflow: hidden;
         line-height: 1.45;
+    }
+
+    /* The empty-goal affordance (sparkle + "No goal yet") must stay a single
+       row: the -webkit-box clamp above would stack its two children. */
+    #mobile-session-list .session-goal.session-goal-empty {
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+        -webkit-line-clamp: none;
+        overflow: visible;
     }
 
     #mobile-session-list .sidebar-kebab-btn {

@@ -222,7 +222,35 @@ func (h *SessionsHandler) discoverAgents(ctx *http.Request) ([]AgentInfo, error)
 		})
 	}
 
-	return agents, nil
+	return h.dropStoppedAgents(ctx.Context(), agents), nil
+}
+
+// dropStoppedAgents removes runtime sessions that Coral has already marked as
+// stopped in the DB. Such a session is an orphan (a kill that missed, or a
+// process that outlived a server restart) and must not appear in the sidebar
+// as if it were a live team member. The session reconciler cleans them up.
+func (h *SessionsHandler) dropStoppedAgents(ctx context.Context, agents []AgentInfo) []AgentInfo {
+	if h.ss == nil || len(agents) == 0 {
+		return agents
+	}
+	ids := make([]string, 0, len(agents))
+	for _, a := range agents {
+		ids = append(ids, a.SessionID)
+	}
+	stopped, err := h.ss.GetStoppedSessions(ctx, ids)
+	if err != nil || len(stopped) == 0 {
+		return agents
+	}
+	kept := make([]AgentInfo, 0, len(agents))
+	for _, a := range agents {
+		if _, isStopped := stopped[a.SessionID]; isStopped {
+			slog.Debug("hiding orphaned runtime session marked stopped in DB",
+				"session", a.TmuxSession)
+			continue
+		}
+		kept = append(kept, a)
+	}
+	return kept
 }
 
 // getLogStatus reads a log file and extracts PULSE status/summary.
@@ -524,6 +552,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_unread":       boardUnread,
 			"log_path":           agent.LogPath,
 			"sleeping":           liveSleeping[sid],
+			"first_prompt":       h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
 		// Include prompt, model, and capabilities from live_sessions DB
 		if extra, ok := liveExtras[sid]; ok {
@@ -607,6 +636,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_unread":       0,
 			"log_path":           "",
 			"sleeping":           true,
+			"first_prompt":       h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
 		// Include prompt, model, and capabilities for sleeping sessions too
 		entry := sessions[len(sessions)-1]
@@ -4161,7 +4191,22 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		CoralPort:       h.cfg.Port,
 	}
 
-	if ls.AgentType != at.Terminal {
+	// If the session is still running (e.g. it was marked sleeping by a false
+	// crash detection rather than an actual crash), do NOT relaunch on top of
+	// it: tmux new-session fails with "duplicate session" and, worse, the
+	// resume command could be typed into the still-running agent's input.
+	// Just clear the sleeping flag and re-subscribe below.
+	alreadyRunning := false
+	if backend == "pty" && h.backend != nil {
+		alreadyRunning = h.backend.IsRunning(sessionName)
+	} else if h.terminal != nil {
+		alreadyRunning = h.terminal.HasSession(ctx, sessionName)
+	}
+	if alreadyRunning {
+		log.Printf("[wake] session=%s is still running — skipping relaunch, clearing sleeping flag only", sessionName)
+	}
+
+	if !alreadyRunning && ls.AgentType != at.Terminal {
 		cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
 		log.Printf("[wake] session=%s agent=%s backend=%s cmd=%s", sessionName, ls.AgentType, backend, cmd)
 

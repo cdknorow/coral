@@ -95,6 +95,10 @@ export async function refreshCapture() {
         const captureData = data.capture || {};
         const el = document.getElementById("pane-capture");
         const text = captureData.capture || captureData.error || "No capture available";
+        // Mark whether this is a real terminal buffer (vs an error placeholder)
+        // so consumers such as the Mode label can tell "default mode" from
+        // "nothing usable captured".
+        el.dataset.captureState = captureData.capture ? "ok" : "error";
 
         if (el._lastCapture !== text) {
             if (state.isSelecting) return;
@@ -103,6 +107,8 @@ export async function refreshCapture() {
 
             el._lastCapture = text;
             renderCaptureText(el, text);
+            // Let listeners (e.g. the Mode label) re-read the rescanned buffer.
+            document.dispatchEvent(new CustomEvent('coral:terminal-updated'));
 
             if (state.autoScroll) {
                 el.scrollTop = el.scrollHeight;

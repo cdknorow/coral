@@ -1,6 +1,6 @@
 # Agent Bar Tweaks
 
-**Status:** Planned
+**Status:** Shipped
 
 ## Overview
 
@@ -70,8 +70,9 @@ already `display:none` on desktop; the banner row and meta row were missed.
 only explanation is a `title` tooltip. A red `100%` next to an agent reads as
 "finished", when it actually means "context window exhausted — Claude is about
 to auto-compact or start degrading". For someone operating agents this is the
-single most useful number in the sidebar, and it is both unlabelled and
-passive: it warns, but offers no action.
+single most useful number in the sidebar, and it is unlabelled. (An earlier
+draft also proposed a sidebar action here; that was removed by operator
+decision — see D3.)
 
 ### P4. The Mode button hides the state it controls
 
@@ -112,18 +113,25 @@ Row layout becomes:
 - Render `s.summary` on every row, not just the active one. Drop the
   `isActive &&` guard.
 - When `summary` is empty, fall back to the first user prompt, truncated to
-  one line. (Available from the JSONL reader; if not already in the session
-  payload, add `first_prompt` to the live-sessions response.)
-- When neither exists and the agent is not a terminal, show the goal button
-  inline and always visible (not hover-only) with a muted "No goal yet" label.
-- Avatar initials: when `display_name` is empty, derive initials from the
-  summary's first two words rather than the folder name. Keep the folder-based
+  one line. `first_prompt` must be present in **both** session payload
+  builders — the HTTP list (`routes/sessions.go` `List`) and the WebSocket
+  tick (`routes/websocket.go`) — and the client `coral_diff` merge in
+  `websocket.js` must not drop it. That merge currently replaces the session
+  object and preserves only an allowlist (`commands`, `icon`, `token_*`,
+  `context_pct`); prefer `{...old, ...changed}` so fields the WS does not
+  send survive by default, rather than growing the allowlist per field.
+- When neither exists and the agent is not a terminal, show the goal
+  (sparkle) button inline and always visible, next to a muted "No goal yet"
+  label. The label is **plain text, not a click target** — it sits where the
+  user clicks to select the row, and a mis-click must not fire an action.
+- Avatar initials: when `display_name` is empty, derive initials from
+  `auto_name` (D8) then `first_prompt` — never from `summary`, which changes
+  as the agent works and would make the avatar drift. Keep the folder-based
   colour so agents in the same folder still share a hue.
 - Right-pane header and `Sending to:` placeholder use the same
-  `display_name → summary → "Agent"` resolution.
+  `display_name → auto_name → first_prompt → "Agent"` resolution.
 
-Out of scope for this spec: automatic naming via LLM. The summary fallback
-gets most of the value with none of the latency.
+Automatic naming and goal generation are D8.
 
 ### D2. One signal per state on desktop
 
@@ -136,15 +144,19 @@ gets most of the value with none of the latency.
 - Keep the `CHECK TERMINAL` / `NEEDS INPUT` pill as the desktop indicator.
   The avatar dot remains as a secondary, glanceable cue.
 
-### D3. Context bar: label it, make it actionable
+### D3. Context bar: label it (informational only)
 
 - Label: `ctx 69%` instead of bare `69%`. Tooltip unchanged.
-- Thresholds unchanged (≥50 warning, ≥80 error).
-- At ≥80%, the label becomes a button: **Compact** (or the label itself is
-  clickable with a `title="Send /compact"`). Clicking sends `/compact` to that
-  session via the existing `sendQuickCommand` path, regardless of whether the
-  session is the active one. Show a toast on send.
+- Thresholds unchanged (≥50 warning, ≥80 error); label colour follows the
+  threshold.
 - At 100%, colour is unchanged but the label reads `ctx full`.
+- The context display is **informational only**. It renders no button, link,
+  or click target at any level, including ≥80% and full. Users compact a
+  session by typing `/compact` directly in that session's chat/terminal, which
+  is unchanged by this spec.
+- History: an earlier revision added a sidebar **Compact** button at ≥80%. It
+  was removed by operator decision (task #75) because accidental activation
+  was too easy, and `/compact` is one keystroke away in chat.
 
 ### D4. Mode button shows current mode
 
@@ -154,6 +166,14 @@ gets most of the value with none of the latency.
   `detectCurrentMode()` reads from). If the mode cannot be detected, fall back
   to `Mode`.
 - Tooltip: "Current: Plan. Click to switch to Accept Edits (Shift+Tab)."
+
+### D5. Attention rollup is badge-only
+
+- Add an attention count badge to the **Agents** nav tab.
+- Count sessions where `waiting_for_input`, `stuck`, or `not_started` is true.
+- Do **not** sort, promote, or otherwise reorder attention-needed sessions.
+  Preserve the existing session and group order exactly; the badge is the
+  rollup, while the existing row indicators identify the affected sessions.
 
 
 ### D6. Density
@@ -169,6 +189,21 @@ gets most of the value with none of the latency.
 - Live-session panel tab `Chat` → **Transcript**. Board chat unchanged.
 - No change to the top nav in this spec. Whether **Tokens** and **Docs** stay
   top-level is a separate decision.
+
+### D8. Transcript-derived goals (replaces PULSE injection)
+
+Moved to its own spec: **[Transcript Goals](TRANSCRIPT_GOALS/)**, owned by a
+separate team. Summary of the contract this spec depends on:
+
+- The sparkle no longer types `Emit a ||PULSE:SUMMARY …||` into the agent's
+  terminal; it calls `POST /api/sessions/live/{name}/goal`.
+- A background service derives `{name, goal}` from the transcript via
+  `claude -p` or `codex exec` and stores `session_meta.auto_name` (write-once)
+  and `auto_goal` (refreshed).
+- Both payload builders expose `auto_name`, `goal_pending`, and
+  `summary = pulse_summary || auto_goal`.
+- Frontend identity chain becomes
+  `display_name → auto_name → first_prompt → "Agent"` (D1).
 
 ## Implementation Plan
 
@@ -186,8 +221,12 @@ Files:
 - `internal/server/frontend/static/css/mobile.css` — verify mobile still
   overrides to `display:block` (it scopes under `#mobile-session-list`;
   confirm specificity beats the new desktop rule)
-- If `first_prompt` is not in the payload: `internal/server/...` live-sessions
-  handler and the session struct
+- `internal/server/routes/sessions.go` (`List`) **and**
+  `internal/server/routes/websocket.go` — add `first_prompt` to both payload
+  builders; `internal/jsonl/reader.go` — cache the first prompt per session
+  rather than holding every listed session's full transcript in memory
+- `internal/server/frontend/static/websocket.js` — `coral_diff` merge must
+  preserve `first_prompt` (spread-merge, see D1)
 
 Verify: every row shows a second line; no raw "Nothing yet" text on desktop;
 mobile list unchanged.
@@ -195,13 +234,14 @@ mobile list unchanged.
 ### Phase 2 — Context bar (D3)
 
 Files:
-- `render.js` — `_renderTokenLine`
-- `controls.js` — expose a `compactSession(name, agentType, sessionId)` that
-  targets a specific session, not just the active one
-- `css/session.css` — `.context-bar-label` button styling at ≥80%
+- `render.js` — `_renderTokenLine` (label text, `ctx full` at 100%)
+- `css/session.css` — `.context-bar-label` threshold colours
 
-Verify: click Compact on a non-active row, confirm `/compact` lands in that
-session's terminal.
+No `controls.js` changes: there is no sidebar-specific compact plumbing.
+
+Verify: rows at ≥80% and 100% show `ctx N%` / `ctx full` in the error colour
+with no clickable control inside the context bar; typing `/compact` in chat
+still sends to the active session as before.
 
 ### Phase 3 — Mode label (D4)
 
@@ -215,21 +255,31 @@ clicks on the button.
 ### Phase 4 — Attention rollup + density (D5, D6)
 
 Files:
-- `render.js` — `renderLiveSessions` (sort), `_renderSessionItem`
+- `render.js` — `renderLiveSessions` (badge count only; preserve order),
+  `_renderSessionItem`
 - `templates/index.html` — badge span inside `#nav-tab-agents`
 - `app.js` or `websocket.js` — update the badge on each live-sessions tick
 - `css/session.css` — avatar and padding sizes
 - `css/layout.css` — nav tab badge
+
+Verify: the badge counts `waiting_for_input | stuck | not_started`, and the
+rendered session order is identical to the payload order.
 
 ### Phase 5 — Naming (D7)
 
 Files:
 - `templates/includes/views/live_session.html` — tab label and `title`
 
+### Phase 6 — Transcript-derived goals (D8)
+
+See [Transcript Goals](TRANSCRIPT_GOALS/) → Implementation Plan (Phases A/B).
+The only touchpoints inside this spec's files are `render.js` (identity
+chain), `controls.js` (sparkle → endpoint) and `websocket.js` (spread-merge),
+all listed there.
+
 ## Open Questions
 
-- Should the Compact action be gated behind a confirm on the first use? It
-  is non-destructive but does interrupt a working agent.
-- Should the summary fallback prefer the *latest* user prompt over the first?
-  First is stable; latest is more current.
-   Ideally summary fallback can be a call to to get a short summary from the agent, similar to /btw what are you doing? in claude. We could send a short transcript to a haiku level model asking for a summary based on the last X works periodically. 
+- ~~Should the summary fallback prefer the *latest* user prompt over the
+  first?~~ Resolved by D8: `first_prompt` stays as the stable identity
+  fallback; the *current* goal comes from a periodic Haiku call over the tail
+  of the transcript, with no prompt injected into the agent.

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -112,6 +114,46 @@ func TestWSCoral_SubsequentDiffsOnlyOnChange(t *testing.T) {
 	}
 
 	conn.Close(websocket.StatusNormalClosure, "done")
+}
+
+func TestWSCoral_NewSessionDiffIncludesFirstPrompt(t *testing.T) {
+	server, handler := setupTestServer(t)
+	wsURL := "ws" + server.URL[4:] + "/ws/coral"
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	require.NoError(t, err)
+	defer conn.CloseNow()
+
+	var initial map[string]json.RawMessage
+	require.NoError(t, wsjson.Read(ctx, conn, &initial))
+
+	projectsDir := t.TempDir()
+	projectDir := filepath.Join(projectsDir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", projectsDir)
+	sessionID := "00000000-0000-0000-0000-000000000777"
+	name := "claude-" + sessionID
+	require.NoError(t, os.WriteFile(
+		filepath.Join(projectDir, sessionID+".jsonl"),
+		[]byte("{\"type\":\"user\",\"message\":{\"content\":\"Investigate the websocket payload\"}}\n"),
+		0644,
+	))
+	terminal := newMockTerminal()
+	terminal.addSession(name, t.TempDir())
+	handler.terminal = terminal
+
+	var diff struct {
+		Type    string           `json:"type"`
+		Changed []map[string]any `json:"changed"`
+	}
+	require.NoError(t, wsjson.Read(ctx, conn, &diff))
+	require.Equal(t, "coral_diff", diff.Type)
+	require.Len(t, diff.Changed, 1)
+	assert.Equal(t, sessionID, diff.Changed[0]["session_id"])
+	assert.Equal(t, "", diff.Changed[0]["summary"])
+	assert.Equal(t, "Investigate the websocket payload", diff.Changed[0]["first_prompt"])
 }
 
 // --- Sleeping sessions in WebSocket ---
