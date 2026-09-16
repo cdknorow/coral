@@ -318,10 +318,13 @@ export function connectTerminalWs(name, agentType, sessionId) {
         if (myGeneration !== _wsGeneration) return;
         dbg('terminalWs OPEN', { sessionId, url: terminalWs.url });
         _setDisconnectedBadge(false);
-        // Initial dimensions were applied from the WebSocket query before the
-        // replay snapshot. Sending the same resize again here can make a TUI
-        // redraw after the snapshot, duplicating its visible content in the
-        // live stream. Later layout changes still use terminal.onResize.
+        if (terminal) {
+            terminalWs.send(JSON.stringify({
+                type: 'terminal_resize',
+                cols: terminal.cols,
+                rows: terminal.rows,
+            }));
+        }
         // Flush any input queued while disconnected
         if (_inputQueue.length > 0) {
             const queued = _inputQueue.join("");
