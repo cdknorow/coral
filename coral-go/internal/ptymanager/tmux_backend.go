@@ -368,9 +368,31 @@ func (b *TmuxBackend) Replay(name string) ([]byte, error) {
 		return nil, capErr
 	}
 	if content != "" {
-		return []byte(content), nil
+		return []byte(normalizeCaptureForXterm(content)), nil
 	}
 	return nil, nil
+}
+
+// normalizeCaptureForXterm gives captured grid rows terminal-style line
+// endings. tmux capture-pane emits LF separators, but xterm treats LF as
+// vertical movement without returning the cursor to column zero. Sending a
+// bare-LF snapshot therefore renders as a staircase, with every row beginning
+// where the previous row ended. Preserve existing CRLF and add CR only where
+// it is absent.
+func normalizeCaptureForXterm(content string) string {
+	if !strings.Contains(content, "\n") {
+		return content
+	}
+
+	var normalized strings.Builder
+	normalized.Grow(len(content) + strings.Count(content, "\n"))
+	for i := 0; i < len(content); i++ {
+		if content[i] == '\n' && (i == 0 || content[i-1] != '\r') {
+			normalized.WriteByte('\r')
+		}
+		normalized.WriteByte(content[i])
+	}
+	return normalized.String()
 }
 
 // replayLines converts the byte-oriented replay setting into a conservative
