@@ -97,7 +97,7 @@ cross-session targeting**, not a single interactive owner.
 14. Terminal-only session renders with 'Mode' fallback and no goal affordance. [U12]
 
 ## Opening
-15. Kebab 'Open in new window' present for awake and sleeping rows, absent for done rows; href exactly /agent/<uuid> (no query), target _blank, rel noopener noreferrer; workspace header carries the same anchor. [U1,U2]
+15. Kebab 'Open Agent Tab' is the FIRST actionable item of the awake and sleeping row menus (label, title and aria-label exactly 'Open Agent Tab'; the workspace-header opener uses the same accessible text), absent for done rows; href exactly /agent/<uuid> (no query), target _blank, rel noopener noreferrer; workspace header carries the same anchor. [U1,U2]
 16. Works with popups blocked (anchor navigation); opened window has window.opener === null. [A17,U2]
 17. Native app: in-app window when the bridge supports internal routes, else same-origin system-browser fallback (operator default). [#124 decision a]
 

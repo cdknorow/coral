@@ -70,7 +70,7 @@ body.popout-mode .terminal-session-label {
 .terminal-header-actions .terminal-header-btn[hidden] { display: none !important; }
 .terminal-header-btn[aria-pressed="true"] { color: var(--accent); }
 
-/* Kebab "Open in new window" is an anchor: match the button items */
+/* Kebab "Open Agent Tab" is an anchor: match the button items */
 .overflow-menu-item.overflow-menu-open-window {
     text-decoration: none;
     color: inherit;

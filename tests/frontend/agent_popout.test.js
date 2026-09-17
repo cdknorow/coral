@@ -509,14 +509,19 @@ async function run() {
     check('1 main app: dashboard boot attr is empty (not agent mode)', dm.mode === '' || dm.mode === null, String(dm.mode));
     const anchors = await td.ev(`(() => {
         const rows = Array.from(document.querySelectorAll('#live-sessions-list .session-group-item'));
-        const info = rows.map(li => { const a = li.querySelector('a.overflow-menu-item.overflow-menu-open-window'); return { sid: li.dataset.sessionId, sleeping: li.classList.contains('sleeping') || !!li.querySelector('.session-sleeping, [class*="sleep"]'), href: a ? a.getAttribute('href') : null, target: a ? a.getAttribute('target') : null, rel: a ? a.getAttribute('rel') : null }; });
+        const info = rows.map(li => { const a = li.querySelector('a.overflow-menu-item.overflow-menu-open-window'); const menu = li.querySelector('.sidebar-kebab-menu'); const firstItem = menu ? Array.from(menu.children).find(c => c.matches('.overflow-menu-item')) : null; return { sid: li.dataset.sessionId, sleeping: li.classList.contains('sleeping') || !!li.querySelector('.session-sleeping, [class*="sleep"]'), href: a ? a.getAttribute('href') : null, label: a ? a.textContent.replace(/\s+/g, ' ').trim() : null, title: a ? a.getAttribute('title') : null, aria: a ? a.getAttribute('aria-label') : null, isFirst: !!a && firstItem === a, hasIcon: !!(a && a.querySelector('svg')), target: a ? a.getAttribute('target') : null, rel: a ? a.getAttribute('rel') : null }; });
         const hdr = document.getElementById('terminal-open-window-link');
-        return { rows: info, header: hdr ? { tag: hdr.tagName, href: hdr.getAttribute('href'), target: hdr.getAttribute('target'), rel: hdr.getAttribute('rel') } : null };
+        return { rows: info, header: hdr ? { tag: hdr.tagName, href: hdr.getAttribute('href'), target: hdr.getAttribute('target'), rel: hdr.getAttribute('rel'), title: hdr.getAttribute('title'), aria: hdr.getAttribute('aria-label'), hasIcon: !!hdr.querySelector('svg') } : null, oldWording: document.body.innerHTML.includes('Open in new window') || document.body.innerHTML.includes('Open this agent in a new window') };
     })()`);
     const rowA = anchors.rows.find(r => r.sid === A);
-    check('15 kebab "Open in new window" anchor on awake row: href /agent/<uuid>, _blank, noopener noreferrer', !!rowA && rowA.href === `/agent/${A}` && rowA.target === '_blank' && /noopener/.test(rowA.rel || '') && /noreferrer/.test(rowA.rel || ''), JSON.stringify(rowA));
+    check('15 kebab "Open Agent Tab" anchor on awake row: href /agent/<uuid>, _blank, noopener noreferrer', !!rowA && rowA.href === `/agent/${A}` && rowA.target === '_blank' && /noopener/.test(rowA.rel || '') && /noreferrer/.test(rowA.rel || ''), JSON.stringify(rowA));
     check('15 kebab anchor present on the sleeping row too', anchors.rows.filter(r => r.href).length >= 2, JSON.stringify(anchors.rows.map(r => ({ sid: r.sid.slice(0, 8), href: !!r.href }))));
+    const withAnchor = anchors.rows.filter(r => r.href);
+    check('15 "Open Agent Tab" is the FIRST actionable item in every awake/sleeping kebab menu', withAnchor.length >= 2 && withAnchor.every(r => r.isFirst), JSON.stringify(withAnchor.map(r => ({ sid: r.sid.slice(0, 8), isFirst: r.isFirst }))));
+    check('15 kebab label/title/aria are exactly "Open Agent Tab" with the icon kept', withAnchor.every(r => r.label === 'Open Agent Tab' && r.title === 'Open Agent Tab' && r.aria === 'Open Agent Tab' && r.hasIcon), JSON.stringify(withAnchor.map(r => [r.label, r.title, r.aria, r.hasIcon])));
     check('15 workspace header carries the same anchor in the main app', !!anchors.header && anchors.header.tag === 'A' && anchors.header.href === `/agent/${A}` && anchors.header.target === '_blank' && /noopener/.test(anchors.header.rel || ''), JSON.stringify(anchors.header));
+    check('15 workspace header opener accessible text is "Open Agent Tab" with the icon kept', !!anchors.header && anchors.header.title === 'Open Agent Tab' && anchors.header.aria === 'Open Agent Tab' && anchors.header.hasIcon, JSON.stringify(anchors.header));
+    check('15 old "Open in new window" wording is absent from the main app DOM', !anchors.oldWording);
     // 35: null DOM targets must not throw
     await td.ev(`for (const id of ['nav-tab-agents-badge', 'terminal-header-label', 'session-name']) { const el = document.getElementById(id); if (el) el.remove(); } true`);
     const excBefore = td.exceptions.length;

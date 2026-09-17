@@ -87,7 +87,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
         badge.textContent = agentType || "claude";
         badge.className = `badge ${(agentType || "claude").toLowerCase()}`;
     }
-    // Dashboard: "Open in new window" link for this exact session. Popout mode
+    // Dashboard: "Open Agent Tab" link for this exact session. Popout mode
     // hides this control and never carries the id in it.
     const openWin = document.getElementById("terminal-open-window-link");
     if (openWin && !isPopout()) {
