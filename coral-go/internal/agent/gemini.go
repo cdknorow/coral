@@ -161,7 +161,10 @@ func (a *GeminiAgent) BuildLaunchCommand(params LaunchParams) string {
 	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
-	// Single quotes prevent shell expansion; SanitizeShellValue strips metacharacters.
+	// singleQuote single-quotes each value (escaping embedded quotes) so the
+	// shell never expands it. Values must NOT be run through SanitizeShellValue:
+	// CORAL_URL and CORAL_DIR contain ':' and '/', and stripping those broke the
+	// URL every hook posted to and pointed CORAL_DATA_DIR at a relative path.
 	if len(sysParts) > 0 {
 		sysFile := writeTempFile("gemini_sys", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
 		parts = append(parts, fmt.Sprintf(`export GEMINI_SYSTEM_MD="%s" &&`, sysFile))
@@ -169,7 +172,7 @@ func (a *GeminiAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Coral environment, built by CoralEnv so every launch path agrees.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
+		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
 	}
 	if params.ProxyBaseURL != "" {
 		parts = append(parts, fmt.Sprintf(`export GEMINI_API_BASE='%s' &&`, sanitizeURL(params.ProxyBaseURL)))

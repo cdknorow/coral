@@ -32,18 +32,33 @@ func CoralBase() string {
 	return "http://localhost:" + port
 }
 
-// ResolveSessionID gets the session ID from tmux session name or payload.
+// ResolveSessionID gets the Coral session ID, in order of preference, from
+// the tmux session name, the CORAL_SESSION_NAME env var Coral exports into
+// every agent, or finally the hook payload. The payload's session_id is the
+// agent's own ID (e.g. a Codex thread ID) which Coral does not know about, so
+// events posted under it would never show up in the dashboard.
 func ResolveSessionID(payloadSessionID string) string {
 	if os.Getenv("TMUX") != "" {
 		out, err := exec.Command("tmux", "display-message", "-p", "#{session_name}").Output()
 		if err == nil {
-			name := strings.TrimSpace(string(out))
-			if m := tmuxUUIDRe.FindStringSubmatch(name); len(m) == 2 {
-				return strings.ToLower(m[1])
+			if id := sessionIDFromName(strings.TrimSpace(string(out))); id != "" {
+				return id
 			}
 		}
 	}
+	if id := sessionIDFromName(strings.TrimSpace(os.Getenv("CORAL_SESSION_NAME"))); id != "" {
+		return id
+	}
 	return payloadSessionID
+}
+
+// sessionIDFromName extracts the lowercase UUID from a "{type}-{uuid}" Coral
+// session name, or returns "" if the name is not in that form.
+func sessionIDFromName(name string) string {
+	if m := tmuxUUIDRe.FindStringSubmatch(strings.ToLower(name)); len(m) == 2 {
+		return m[1]
+	}
+	return ""
 }
 
 // ResolveAgentName extracts the agent/worktree name from hook payload cwd.

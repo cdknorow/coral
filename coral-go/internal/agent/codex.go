@@ -170,10 +170,13 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	var parts []string
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
-	// Single quotes prevent shell expansion; SanitizeShellValue strips metacharacters.
+	// singleQuote single-quotes each value (escaping embedded quotes) so the
+	// shell never expands it. Values must NOT be run through SanitizeShellValue:
+	// CORAL_URL and CORAL_DIR contain ':' and '/', and stripping those broke the
+	// URL every hook posted to and pointed CORAL_DATA_DIR at a relative path.
 	// Coral environment, built by CoralEnv so every launch path agrees.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
+		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
 	}
 	// Route LLM traffic through the Coral MITM proxy for transparent cost tracking.
 	// HTTPS_PROXY must be exported BEFORE the binary (it's an env var, not a flag).

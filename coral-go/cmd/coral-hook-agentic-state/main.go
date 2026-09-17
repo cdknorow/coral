@@ -69,7 +69,10 @@ func main() {
 		return
 	}
 
-	hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/events", agentName), event)
+	if _, err := hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/events", agentName), event); err != nil {
+		hooks.DebugLog(fmt.Sprintf("POST_FAILED: base=%s agent=%s event_type=%s err=%v", base, agentName, event["event_type"], err))
+		return
+	}
 
 	// Forward token usage data on Stop events
 	if hookType == "Stop" && (d["total_input_tokens"] != nil || d["total_output_tokens"] != nil || d["total_cost_usd"] != nil) {
