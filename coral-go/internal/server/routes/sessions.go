@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -651,6 +652,172 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, emptyIfNil(sessions))
 }
 
+// ResolveSession returns the authoritative routing and identity metadata for a
+// stable session ID. Unknown UUIDs deliberately return a not_found state with
+// HTTP 200 so a freshly opened popout can retry while the session index catches
+// up without ever falling back to an agent name.
+func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	parsed, err := uuid.Parse(sessionID)
+	if err != nil || parsed.String() != sessionID {
+		errBadRequest(w, "invalid session_id")
+		return
+	}
+
+	ls, err := h.ss.GetLiveSession(r.Context(), sessionID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if ls == nil {
+		var indexed bool
+		if err := h.db.GetContext(r.Context(), &indexed,
+			"SELECT EXISTS(SELECT 1 FROM session_index WHERE session_id = ?)", sessionID); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		state := "not_found"
+		if indexed {
+			state = "finished"
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"session_id":        sessionID,
+			"state":             state,
+			"active":            false,
+			"sleeping":          false,
+			"agent_type":        nil,
+			"name":              nil,
+			"tmux_session":      nil,
+			"working_directory": nil,
+			"display_name":      nil,
+			"auto_name":         nil,
+			"board_project":     nil,
+			"board_job_title":   nil,
+			"icon":              nil,
+			"status":            nil,
+			"summary":           nil,
+			"first_prompt":      nil,
+			"waiting_for_input": false,
+			"waiting_reason":    nil,
+			"waiting_summary":   nil,
+			"working":           false,
+			"done":              false,
+			"stuck":             false,
+			"not_started":       false,
+		})
+		return
+	}
+
+	var status string
+	if err := h.db.GetContext(r.Context(), &status,
+		"SELECT status FROM live_sessions WHERE session_id = ?", sessionID); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	active := status == "active"
+	sleeping := active && ls.IsSleeping == 1
+	state := "finished"
+	if sleeping {
+		state = "sleeping"
+	} else if active {
+		state = "active"
+	}
+	var tmuxSession any
+	if active && !sleeping {
+		tmuxSession = naming.SessionName(ls.AgentType, ls.SessionID)
+	}
+	logInfo := getLogStatus(naming.LogFile(h.cfg.LogDir, ls.AgentType, ls.SessionID))
+	initialStatus, _ := logInfo["status"].(string)
+	summary, _ := logInfo["summary"].(string)
+	latestEvent, latestSummary := "", ""
+	if events, eventErr := h.ts.GetLatestEventTypes(r.Context(), []string{sessionID}); eventErr == nil {
+		latestEvent = events[sessionID][0]
+		latestSummary = events[sessionID][1]
+	}
+	waiting := active && !sleeping && latestEvent == "notification"
+	done := active && !sleeping && latestEvent == "stop"
+	working := active && !sleeping && (latestEvent == "tool_use" || latestEvent == "prompt_submit")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session_id":        ls.SessionID,
+		"state":             state,
+		"active":            active,
+		"sleeping":          sleeping,
+		"agent_type":        ls.AgentType,
+		"name":              ls.AgentName,
+		"tmux_session":      tmuxSession,
+		"working_directory": ls.WorkingDir,
+		"display_name":      ls.DisplayName,
+		"auto_name":         nil,
+		"board_project":     ls.BoardName,
+		"board_job_title":   ls.DisplayName,
+		"icon":              ls.Icon,
+		"status":            nilIfEmpty(initialStatus),
+		"summary":           nilIfEmpty(summary),
+		"first_prompt":      h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
+		"waiting_for_input": waiting,
+		"waiting_reason":    nilIf(!waiting, latestEvent),
+		"waiting_summary":   nilIf(!waiting, latestSummary),
+		"working":           working,
+		"done":              done,
+		"stuck":             false,
+		"not_started":       false,
+	})
+}
+
+// validateExactLiveTarget prevents name-based terminal APIs from selecting a
+// sibling session. The route name is checked against metadata loaded by the
+// supplied session ID; agentType is a consistency assertion, never a lookup key.
+func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, agentType, sessionID string, terminalRoute bool) (*store.LiveSession, int, string) {
+	if sessionID == "" || agentType == "" {
+		return nil, http.StatusBadRequest, "session_id and agent_type are required"
+	}
+	parsed, err := uuid.Parse(sessionID)
+	if err != nil || parsed.String() != sessionID {
+		return nil, http.StatusBadRequest, "invalid session_id"
+	}
+	ls, err := h.ss.GetLiveSession(ctx, sessionID)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err.Error()
+	}
+	if ls == nil {
+		return nil, http.StatusNotFound, "live session not found"
+	}
+	var status string
+	if err := h.db.GetContext(ctx, &status,
+		"SELECT status FROM live_sessions WHERE session_id = ?", sessionID); err != nil {
+		return nil, http.StatusInternalServerError, err.Error()
+	}
+	if status != "active" {
+		return nil, http.StatusNotFound, "live session not found"
+	}
+	if ls.IsSleeping == 1 {
+		return nil, http.StatusConflict, "session is sleeping"
+	}
+	expectedName := ls.AgentName
+	if terminalRoute {
+		expectedName = naming.SessionName(ls.AgentType, ls.SessionID)
+	}
+	nameMatches := name == expectedName
+	if !terminalRoute {
+		// Launch responses and existing API clients use the canonical terminal
+		// name as the REST path, while the dashboard uses the stored agent name.
+		// Both are unambiguous only after the exact type/ID tuple has matched.
+		nameMatches = nameMatches || name == naming.SessionName(ls.AgentType, ls.SessionID)
+	}
+	if agentType != ls.AgentType || !nameMatches {
+		return nil, http.StatusBadRequest, "session target mismatch"
+	}
+	return ls, 0, ""
+}
+
+func writeExactTargetError(w http.ResponseWriter, status int, message string) {
+	writeJSON(w, status, map[string]string{"error": message})
+}
+
+func shouldValidateExactTarget(agentType, sessionID string) bool {
+	return agentType != "" || sessionID != ""
+}
+
 func (h *SessionsHandler) trackStatusSummary(ctx interface{}, agentName, status, summary, sessionID string) {
 	h.lastKnownMu.Lock()
 	defer h.lastKnownMu.Unlock()
@@ -680,6 +847,12 @@ func (h *SessionsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if shouldValidateExactTarget(agentType, sessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
+			writeExactTargetError(w, status, message)
+			return
+		}
+	}
 
 	logPath := h.findLogPath(agentType, sessionID)
 	logInfo := getLogStatus(logPath)
@@ -703,6 +876,12 @@ func (h *SessionsHandler) Capture(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if shouldValidateExactTarget(agentType, sessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
+			writeExactTargetError(w, status, message)
+			return
+		}
+	}
 
 	text, err := h.terminal.CaptureOutput(r.Context(), name, 200, agentType, sessionID)
 	if err != nil || text == "" {
@@ -718,6 +897,12 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if shouldValidateExactTarget(agentType, sessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
+			writeExactTargetError(w, status, message)
+			return
+		}
+	}
 	eventsLimit := queryInt(r, "events_limit", 50)
 	if eventsLimit > 200 {
 		eventsLimit = 200
@@ -1791,6 +1976,12 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "No command provided")
 		return
 	}
+	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+			writeExactTargetError(w, status, message)
+			return
+		}
+	}
 
 	if err := h.terminal.SendInput(r.Context(), name, body.Command, body.AgentType, body.SessionID); err != nil {
 		errInternalServer(w, err.Error())
@@ -1812,6 +2003,12 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "keys must be a non-empty list")
 		return
 	}
+	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+			writeExactTargetError(w, status, message)
+			return
+		}
+	}
 
 	if err := h.terminal.SendRawInput(r.Context(), name, body.Keys, body.AgentType, body.SessionID); err != nil {
 		errInternalServer(w, err.Error())
@@ -1832,6 +2029,12 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Columns < 10 {
 		errBadRequest(w, "columns must be >= 10")
 		return
+	}
+	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+			writeExactTargetError(w, status, message)
+			return
+		}
 	}
 
 	if err := h.terminal.ResizeSession(r.Context(), name, body.Columns, body.AgentType, body.SessionID); err != nil {

@@ -42,6 +42,12 @@ export function initSidebarResize() {
     });
 }
 
+/* Layout persistence is scoped per entry mode: a narrow popout window must
+   never overwrite the dashboard's saved panel sizes. */
+function layoutKey(base) {
+    return document.body.classList.contains('popout-mode') ? `${base}:popout` : base;
+}
+
 /* Task bar drag-to-resize functionality */
 
 // The panel may take everything except a usable sliver of terminal, rather
@@ -66,7 +72,7 @@ export function initTaskBarResize() {
     if (!handle || !taskBar || !liveBody) return;
 
     // Restore saved width from localStorage
-    const saved = localStorage.getItem('coral-taskbar-width');
+    const saved = localStorage.getItem(layoutKey('coral-taskbar-width'));
     if (saved) {
         const w = parseInt(saved, 10);
         if (w >= AGENTIC_MIN_WIDTH) {
@@ -104,7 +110,7 @@ export function initTaskBarResize() {
         // Persist the width we set, not offsetWidth — the panel animates, so
         // measuring here can catch it mid-transition and save the old value.
         if (draggedWidth != null) {
-            localStorage.setItem('coral-taskbar-width', Math.round(draggedWidth));
+            localStorage.setItem(layoutKey('coral-taskbar-width'), Math.round(draggedWidth));
             draggedWidth = null;
         }
         fitTerminal();
@@ -119,7 +125,7 @@ export function initCommandPaneResize() {
     const column = document.querySelector(".live-left-column");
 
     // Restore saved height from localStorage
-    const saved = localStorage.getItem('coral-cmdpane-height');
+    const saved = localStorage.getItem(layoutKey('coral-cmdpane-height'));
     if (saved) {
         const h = parseInt(saved, 10);
         if (h >= 80 && h <= 600) pane.style.height = h + "px";
@@ -152,7 +158,7 @@ export function initCommandPaneResize() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         // Persist height
-        localStorage.setItem('coral-cmdpane-height', pane.offsetHeight);
+        localStorage.setItem(layoutKey('coral-cmdpane-height'), pane.offsetHeight);
         fitTerminal();
     });
 }
@@ -181,7 +187,7 @@ export function initBoardChatResize() {
             handle.style.background = "";
             document.body.style.cursor = "";
             document.body.style.userSelect = "";
-            localStorage.setItem('coral-boardchat-height', pane.offsetHeight);
+            localStorage.setItem(layoutKey('coral-boardchat-height'), pane.offsetHeight);
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
         };
@@ -377,7 +383,7 @@ export function initAgenticPanelCollapse() {
     if (!panel) return;
 
     // Default to open unless user has explicitly closed it
-    const stored = localStorage.getItem('coral-agentic-collapsed');
+    const stored = localStorage.getItem(layoutKey('coral-agentic-collapsed'));
     const collapsed = stored === null ? false : stored === 'true';
     if (collapsed) panel.classList.add('collapsed');
 
@@ -389,7 +395,7 @@ export function initAgenticPanelCollapse() {
     if (btn) {
         btn.addEventListener('click', () => {
             const isCollapsed = panel.classList.toggle('collapsed');
-            localStorage.setItem('coral-agentic-collapsed', isCollapsed);
+            localStorage.setItem(layoutKey('coral-agentic-collapsed'), isCollapsed);
             _syncPanelToggleBtn(!isCollapsed);
             fitTerminal();
         });
@@ -400,7 +406,7 @@ export function toggleAgenticPanel() {
     const panel = document.getElementById('agentic-state');
     if (!panel) return;
     const isCollapsed = panel.classList.toggle('collapsed');
-    localStorage.setItem('coral-agentic-collapsed', isCollapsed);
+    localStorage.setItem(layoutKey('coral-agentic-collapsed'), isCollapsed);
     _syncPanelToggleBtn(!isCollapsed);
     // Fit terminal immediately and again after CSS transition completes
     fitTerminal();
@@ -410,6 +416,11 @@ export function toggleAgenticPanel() {
 
 function _syncPanelToggleBtn(isOpen) {
     const btn = document.getElementById('panel-toggle-btn');
-    if (!btn) return;
-    btn.classList.toggle('active', isOpen);
+    if (btn) btn.classList.toggle('active', isOpen);
+    const popoutBtn = document.getElementById('popout-panel-toggle-btn');
+    if (popoutBtn && window.innerWidth > 767) {
+        popoutBtn.setAttribute('aria-pressed', isOpen ? 'true' : 'false');
+        popoutBtn.setAttribute('aria-label', isOpen ? 'Hide side panel' : 'Show side panel');
+        popoutBtn.title = popoutBtn.getAttribute('aria-label');
+    }
 }

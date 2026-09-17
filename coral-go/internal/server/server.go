@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/google/uuid"
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/background"
@@ -69,7 +70,9 @@ type Server struct {
 
 // templateData is passed to Go templates during rendering.
 type templateData struct {
-	CoralRoot string
+	CoralRoot       string
+	EntryMode       string
+	TargetSessionID string
 }
 
 // New creates a Server with all routes registered.
@@ -115,11 +118,11 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 	log.Printf("API Key: %s...", keyStore.Key()[:8])
 
 	s := &Server{
-		cfg:        cfg,
-		db:         db,
-		boardStore: boardStore,
-		backend:    backend,
-		terminal:   terminal,
+		cfg:           cfg,
+		db:            db,
+		boardStore:    boardStore,
+		backend:       backend,
+		terminal:      terminal,
 		licenseMgr:    licenseMgr,
 		launchCounter: launchCounter,
 		keyStore:      keyStore,
@@ -311,6 +314,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Live sessions
 	r.Get("/api/sessions/resolve", sessHandler.ResolveByPIDs)
 	r.Get("/api/sessions/live", sessHandler.List)
+	r.Get("/api/sessions/{sessionID}/resolve", sessHandler.ResolveSession)
 	r.Get("/api/sessions/{sessionID}/status", sessHandler.SessionStatus)
 	r.Get("/api/sessions/{sessionID}/changes", sessHandler.SessionChanges)
 	r.Get("/api/sessions/{sessionID}/changes.diff", sessHandler.SessionChangesArtifact)
@@ -658,6 +662,7 @@ func (s *Server) buildRouter() chi.Router {
 	})
 
 	// ── Dashboard SPA ───────────────────────────────────────────
+	r.Get("/agent/{sessionID}", s.serveAgentPopout)
 	r.Get("/", s.serveIndex)
 	return r
 }
@@ -689,6 +694,33 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	data := templateData{CoralRoot: s.cfg.CoralRoot}
 	if err := s.indexTmpl.Execute(w, data); err != nil {
 		log.Printf("Error rendering index template: %v", err)
+		http.Error(w, "Template render error", http.StatusInternalServerError)
+	}
+}
+
+// serveAgentPopout renders the dashboard bundle in single-agent mode. A valid
+// but currently unknown session still gets the shell so the client can
+// distinguish indexing lag, a historical session, and a genuinely unknown ID.
+func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	parsed, err := uuid.Parse(sessionID)
+	if err != nil || parsed.String() != sessionID {
+		http.Error(w, "invalid session ID", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if s.indexTmpl == nil {
+		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
+		return
+	}
+	data := templateData{
+		CoralRoot:       s.cfg.CoralRoot,
+		EntryMode:       "agent",
+		TargetSessionID: sessionID,
+	}
+	if err := s.indexTmpl.Execute(w, data); err != nil {
+		log.Printf("Error rendering agent popout template: %v", err)
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 	}
 }

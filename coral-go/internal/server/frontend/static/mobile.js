@@ -152,6 +152,7 @@ window.mobileBack = mobileBack;
 
 export function syncMobileAgentList() {
     if (!isMobile()) return;
+    if (document.body.classList.contains('popout-mode')) return;
 
     const agentList = document.getElementById('mobile-agent-list');
     if (!agentList || agentList.dataset.mode === 'history') return;
@@ -303,6 +304,7 @@ function _initSwipeNavigation() {
 
     document.addEventListener('touchend', (e) => {
         if (!isMobile()) return;
+        if (document.body.classList.contains('popout-mode')) return;
 
         const dx = e.changedTouches[0].clientX - touchStartX;
         const dy = e.changedTouches[0].clientY - touchStartY;
@@ -366,6 +368,11 @@ function _initKeyboardDetection() {
 // ── Initialize Mobile ─────────────────────────────────────────────────────
 
 export function initMobile() {
+    // Popout mode has no agent list, tab bar or swipe navigation.
+    if (document.body.classList.contains('popout-mode')) {
+        _initKeyboardDetection();
+        return;
+    }
     // Set default tab
     if (isMobile()) {
         switchMobileTab('agents');

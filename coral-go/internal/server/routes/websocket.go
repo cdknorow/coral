@@ -456,6 +456,17 @@ func (h *SessionsHandler) getActiveRuns(ctx context.Context) []map[string]any {
 // control messages (terminal_closed) remain JSON text frames.
 func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
+	agentType := r.URL.Query().Get("agent_type")
+	sessionID := r.URL.Query().Get("session_id")
+	if shouldValidateExactTarget(agentType, sessionID) {
+		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, true); status != 0 {
+			conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r))
+			if err == nil {
+				conn.Close(websocket.StatusPolicyViolation, message)
+			}
+			return
+		}
+	}
 
 	if debugEnabled() {
 		slog.Info("[debug] ws/terminal connect", "name", name, "remote", r.RemoteAddr)

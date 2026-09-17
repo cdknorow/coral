@@ -1,6 +1,7 @@
 /* Capture text rendering and auto-refresh */
 
 import { state, CAPTURE_REFRESH_MS } from './state.js';
+import { isInteractiveOwner } from './ownership.js';
 import { getRenderer } from './renderers.js';
 import { renderTaskList } from './tasks.js';
 import { renderEventTimeline } from './agentic_state.js';
@@ -38,6 +39,8 @@ let _lastSyncedCols = null;
 export async function syncPaneWidth() {
     if (!state.settings?.fit_pane_width) return;
     if (!state.currentSession || state.currentSession.type !== "live") return;
+    // Only the interactive owner window may resize the shared pane.
+    if (!isInteractiveOwner()) return;
     // In xterm mode the semantic pane is hidden, so use xterm's own column count
     const cols = getTerminalCols() || measureTerminalColumns();
     if (!cols || cols < 10) return;
@@ -142,3 +145,8 @@ export function stopCaptureRefresh() {
         state.captureInterval = null;
     }
 }
+
+// Re-sync the pane width once this window takes interactive control.
+document.addEventListener('coral:ownership-changed', (e) => {
+    if (e.detail && e.detail.owner) { resetSyncedCols(); syncPaneWidth(); }
+});

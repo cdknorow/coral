@@ -88,6 +88,23 @@ function initLinkInterceptor() {
         if (!a) return;
         const href = a.getAttribute('href');
         if (!href) return;
+        // Single-agent popout links: prefer a second in-app window when the
+        // native bridge supports internal routes; otherwise fall back to the
+        // same-origin URL in the system browser.
+        const isAgentPopout = a.target === '_blank'
+            && (/^\/agent\/[0-9a-f-]{36}$/i.test(href) || href.startsWith(location.origin + '/agent/'));
+        if (isAgentPopout) {
+            e.preventDefault();
+            const abs = new URL(href, location.origin).href;
+            if (window._coralOpenInternalWindow) {
+                window._coralOpenInternalWindow(abs);
+            } else if (window._coralOpenExternal) {
+                window._coralOpenExternal(abs);
+            } else {
+                window.open(abs, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
         const isExternal = href.startsWith('http') && !href.startsWith(location.origin);
         if (isExternal || a.target === '_blank') {
             e.preventDefault();

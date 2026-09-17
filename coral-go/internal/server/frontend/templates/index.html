@@ -41,6 +41,7 @@
     <link rel="stylesheet" href="/static/css/docs.css">
     <link rel="stylesheet" href="/static/css/theme-configurator.css">
     <link rel="stylesheet" href="/static/css/mobile.css">
+    <link rel="stylesheet" href="/static/css/popout.css">
     <!-- Platform-specific CSS — loaded for all targets, scoped by class selectors -->
     <link rel="stylesheet" href="/static/css/native.css">
     <link rel="stylesheet" href="/static/css/native-macos.css">
@@ -58,7 +59,7 @@
     <script src="/static/vendor/xterm/addon-web-links.min.js"></script>
 </head>
 
-<body data-coral-root="{{ .CoralRoot }}">
+<body data-coral-root="{{ .CoralRoot }}" data-entry-mode="{{ .EntryMode }}" data-target-session-id="{{ .TargetSessionID }}">
     <header class="top-bar">
         <div class="top-bar-brand">
             <button class="tablet-sidebar-toggle" onclick="toggleTabletSidebar()" title="Toggle sidebar" aria-label="Toggle sidebar">

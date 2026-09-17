@@ -35,6 +35,24 @@ function _parseHash(hash) {
     };
 }
 
+/** Select the live session named by a #chat/<sessionId> hash, if it is in the
+ *  loaded live list. Exact session_id match only. Returns true when selected. */
+function _restoreChat(sessionId) {
+    const s = (state.liveSessions || []).find(x => x.session_id === sessionId);
+    if (s && window.selectLiveSession) {
+        window.selectLiveSession(s.name, s.agent_type, s.session_id);
+        return true;
+    }
+    return false;
+}
+
+/** Load-time deep-link restore for #chat/<sessionId> (call after the live list has loaded). */
+export function restoreChatFromHash() {
+    const { view, params } = _parseHash(window.location.hash);
+    if (view === 'chat' && params.sessionId) return _restoreChat(params.sessionId);
+    return false;
+}
+
 /** Initialize the router — listen for popstate and handle initial hash. */
 export function initRouter() {
     window.addEventListener('popstate', (e) => {
@@ -59,7 +77,7 @@ function _restoreView(view, params) {
             break;
         case 'chat':
             if (params.sessionId && window.selectLiveSession) {
-                // selectLiveSession handles showing the session view
+                _restoreChat(params.sessionId);
             } else if (isMobile && window.mobileBack) {
                 window.mobileBack();
             }

@@ -36,11 +36,29 @@
                     <div class="live-left-column">
                         <div id="capture-wrapper" class="capture-wrapper">
                             <div class="terminal-header">
-                                <div class="terminal-header-left">
+                                <div class="terminal-header-left" id="popout-header-identity" aria-live="polite">
                                     <span class="terminal-status-dot" id="terminal-status-dot"></span>
                                     <span class="terminal-session-label" id="terminal-header-label"></span>
+                                    <span class="badge terminal-type-badge" id="terminal-type-badge" hidden></span>
+                                    <span class="badge terminal-state-pill" id="terminal-state-pill" data-state="" hidden></span>
+                                </div>
+                                <div class="terminal-header-actions">
+                                    <!-- Dashboard: open this agent in its own window (href set on selection). Hidden in popout mode. -->
+                                    <a class="terminal-header-btn" id="terminal-open-window-link" target="_blank" rel="noopener noreferrer" title="Open in new window" aria-label="Open this agent in a new window" hidden>
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
+                                    </a>
+                                    <!-- Popout: back to the full dashboard (noopener new tab). -->
+                                    <a class="terminal-header-btn" id="popout-open-main-btn" target="_blank" rel="noopener noreferrer" title="Open in Coral" aria-label="Open this agent in the Coral dashboard" hidden>
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M2 6h12"/><path d="M6 6v8"/></svg>
+                                        <span>Open in Coral</span>
+                                    </a>
+                                    <!-- Popout: the existing side-panel expand/collapse control. -->
+                                    <button class="terminal-header-btn" id="popout-panel-toggle-btn" type="button" onclick="togglePopoutPanel()" title="Toggle side panel" aria-label="Hide side panel" aria-pressed="true" hidden>
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M10 2.5v11"/></svg>
+                                    </button>
                                 </div>
                             </div>
+                            <button class="popout-viewer-chip" id="popout-viewer-chip" type="button" onclick="window._coralPopoutClaim()" hidden>Viewing — click to take control</button>
                             <!-- Semantic blocks view (existing) -->
                             <div id="pane-capture" class="output-scroll capture-text"></div>
                             <!-- xterm.js terminal view -->
@@ -51,6 +69,7 @@
                                 <div class="session-sleeping-content">
                                     <span class="sleeping-emoji">🌙</span>
                                     <p>This agent is sleeping</p>
+                                    <button class="btn btn-primary" id="popout-wake-btn" type="button" onclick="popoutWake()" hidden>Wake</button>
                                 </div>
                             </div>
                             <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
@@ -64,6 +83,17 @@
                                 </div>
                                 <div class="session-ended-content" id="session-lost-connection" style="display:none">
                                     <p>Lost connection to server</p>
+                                </div>
+                                <!-- Popout-only states (dashboard never shows these) -->
+                                <div class="session-ended-content" id="popout-ended" style="display:none">
+                                    <p>This agent has ended.</p>
+                                    <a class="btn btn-secondary" id="popout-open-history" target="_blank" rel="noopener noreferrer" hidden>Open transcript in Coral</a>
+                                    <a class="btn btn-primary" id="popout-restarted-link" target="_blank" rel="noopener noreferrer" hidden>A restarted agent is running — open it</a>
+                                </div>
+                                <div class="session-ended-content" id="popout-not-found" style="display:none">
+                                    <p>No agent with this id</p>
+                                    <button class="btn btn-primary" id="popout-retry-btn" type="button" onclick="popoutRetry()">Retry</button>
+                                    <a class="btn btn-secondary" id="popout-open-dashboard" href="/">Open Coral</a>
                                 </div>
                             </div>
                             <div id="selection-pause-badge" class="selection-pause-badge" role="status" aria-live="polite" style="display:none">Updates paused — text selected</div>

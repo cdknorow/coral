@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -310,7 +311,23 @@ func TestMiddleware_NoAuth_PageRedirectsToAuth(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, r)
 	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
-	assert.Equal(t, "/auth", w.Header().Get("Location"))
+	assert.Equal(t, "/auth?return_to=%2F", w.Header().Get("Location"))
+}
+
+func TestMiddleware_PageRedirectPreservesFullReturnPath(t *testing.T) {
+	ks := newTestKeyStore(t)
+	h := Middleware(ks)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, "/agent/11111111-2222-4333-8444-555555555555?view=terminal", nil)
+	req.RemoteAddr = "192.168.1.5:1234"
+	req.Host = "coral.example:8420"
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusTemporaryRedirect, rr.Code)
+	location, err := url.Parse(rr.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, "/auth", location.Path)
+	assert.Equal(t, req.URL.RequestURI(), location.Query().Get("return_to"))
 }
 
 func TestMiddleware_AuthPageAccessible(t *testing.T) {

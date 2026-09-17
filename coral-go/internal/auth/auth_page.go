@@ -78,10 +78,16 @@ const authPageHTML = `<!DOCTYPE html>
   // Auto-detect API key from URL query param (from QR code scan)
   const params = new URLSearchParams(window.location.search);
   const urlKey = params.get('api_key');
+	const requestedReturnTo = params.get('return_to');
+	const returnTo = requestedReturnTo && requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//')
+		? requestedReturnTo
+		: '/';
   if (urlKey) {
     document.getElementById('api-key').value = urlKey;
     // Strip key from URL for security
-    history.replaceState(null, '', window.location.pathname);
+		params.delete('api_key');
+		const safeQuery = params.toString();
+		history.replaceState(null, '', window.location.pathname + (safeQuery ? '?' + safeQuery : ''));
     // Auto-submit
     setTimeout(() => document.getElementById('auth-form').dispatchEvent(new Event('submit', {cancelable: true})), 100);
   }
@@ -112,7 +118,7 @@ const authPageHTML = `<!DOCTYPE html>
       if (data.ok) {
         successEl.textContent = 'Connected! Redirecting...';
         successEl.style.display = 'block';
-        setTimeout(() => window.location.href = '/', 500);
+		setTimeout(() => window.location.href = returnTo, 500);
       } else {
         errorEl.textContent = data.error || 'Invalid API key.';
         errorEl.style.display = 'block';

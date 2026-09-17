@@ -1,6 +1,8 @@
 /* Quick actions, command sending, mode toggling, and session controls */
 
 import { state, sessionKey } from './state.js';
+import { claimOwnership } from './ownership.js';
+import { popoutTerminalBlocked } from './popout.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
@@ -21,6 +23,11 @@ export async function sendCommand() {
         showToast("No live session selected", true);
         return;
     }
+    if (popoutTerminalBlocked()) {
+        showToast("Agent is not ready to receive input", true);
+        return;
+    }
+    claimOwnership(); // sending from a viewer window takes interactive control
 
     const input = document.getElementById("command-input");
     const textPart = input.value.trim();
@@ -321,6 +328,11 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
         showToast("No live session selected", true);
         return;
     }
+    if (popoutTerminalBlocked()) {
+        if (!silent) showToast("Agent is not ready to receive input", true);
+        return;
+    }
+    claimOwnership();
 
     // Try WebSocket path first — much faster than POST
     const xterm = await _getXtermModule();

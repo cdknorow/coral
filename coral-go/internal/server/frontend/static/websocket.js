@@ -6,6 +6,7 @@ import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, showToast, escapeHtml, dbg } from './utils.js';
+import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 
 export function connectCoralWs() {
     dbg('connectCoralWs: establishing connection');
@@ -79,7 +80,7 @@ export function handleCoralMessage(data) {
                 const id = s.session_id || s.name;
                 const wasWaiting = state.prevWaitingState[id];
                 const notifyEnabled = state.settings.notify_needs_input !== false;
-                if (notifyEnabled && s.waiting_for_input && !wasWaiting) {
+                if (notifyEnabled && s.waiting_for_input && !wasWaiting && popoutAllowsToastFor(s.session_id)) {
                     const label = escapeHtml(s.display_name || s.name);
                     const detail = s.waiting_summary ? escapeHtml(s.waiting_summary) : null;
                     const sessionName = s.name;
@@ -113,6 +114,7 @@ export function handleCoralMessage(data) {
             }
             state.liveSessions = data.sessions;
             renderLiveSessions(data.sessions);
+            if (isPopout()) popoutHandleSessionsTick(data.sessions);
 
             // Show notifications pushed via POST /api/notifications
             if (data.notifications) {
@@ -137,7 +139,9 @@ export function handleCoralMessage(data) {
                 let s = sid
                     ? data.sessions.find(s => s.session_id === sid)
                     : null;
-                if (!s) {
+                if (!s && !isPopout()) {
+                    // Dashboard only: a restarted agent may briefly be matchable by name.
+                    // Popout mode is exact-id only and never retargets.
                     s = data.sessions.find(s => s.name === state.currentSession.name);
                 }
                 if (s) {
@@ -150,7 +154,7 @@ export function handleCoralMessage(data) {
                     if (matchedById && s.name !== state.currentSession.name) {
                         state.currentSession.name = s.name;
                     }
-                    if (!matchedById && s.session_id && s.session_id !== state.currentSession.session_id) {
+                    if (!matchedById && !isPopout() && s.session_id && s.session_id !== state.currentSession.session_id) {
                         // Matched by name only — adopt new session_id
                         // (only safe when there's a single session with this name)
                         const sameNameCount = data.sessions.filter(x => x.name === state.currentSession.name).length;
@@ -167,9 +171,10 @@ export function handleCoralMessage(data) {
                     state.currentSession.summary = s.summary || null;
                     state.currentSession.first_prompt = s.first_prompt || '';
                     const headerName = resolveSessionIdentity(s);
-                    document.getElementById("session-name").textContent = headerName;
+                    const nameEl = document.getElementById("session-name");
+                    if (nameEl) nameEl.textContent = headerName;
                     const termLabel = document.getElementById("terminal-header-label");
-                    if (termLabel) termLabel.textContent = `${headerName} -- ${s.session_id || ''}`;
+                    if (termLabel) termLabel.textContent = formatTerminalLabel(headerName, s.session_id);
                     const cmdInput = document.getElementById("command-input");
                     if (cmdInput) {
                         const typeInfo = s.agent_type ? ` (${s.agent_type})` : '';
@@ -184,6 +189,7 @@ export function handleCoralMessage(data) {
                     // Update terminal header status dot
                     const termDot = document.getElementById('terminal-status-dot');
                     if (termDot) termDot.className = `terminal-status-dot ${s.working ? 'working' : s.waiting_for_input ? 'waiting' : s.sleeping ? 'sleeping' : s.done ? 'done' : 'stale'}`;
+                    popoutUpdateFromSession(s);
                 }
             }
         }

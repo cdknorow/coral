@@ -1,6 +1,7 @@
 /* xterm.js terminal renderer — streams raw ANSI output via WebSocket */
 
 import { state } from './state.js';
+import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { dbg } from './utils.js';
 
 let terminal = null;
@@ -188,6 +189,8 @@ export function createTerminal(containerEl) {
 
     _onDataDisposable = terminal.onData((data) => {
         if (!state.currentSession || state.currentSession.type !== "live") return;
+        // A keystroke in a viewer window takes interactive control (multi-window ownership).
+        claimOwnership();
 
         // Control chars / escape sequences flush immediately (no batching delay)
         const isControl = data.length === 1 && data.charCodeAt(0) < 32;
@@ -221,6 +224,8 @@ export function createTerminal(containerEl) {
     });
 
     terminal.open(containerEl);
+    // Clicking into a viewer window's terminal takes interactive control.
+    containerEl.addEventListener('mousedown', () => claimOwnership());
     dbg('terminal.open() done, container:', containerEl.offsetWidth, 'x', containerEl.offsetHeight,
         'display:', containerEl.style.display, 'cols:', terminal.cols, 'rows:', terminal.rows);
 
@@ -264,7 +269,8 @@ export function createTerminal(containerEl) {
 
     // Sync tmux pane dimensions when xterm resizes (e.g. after fitAddon.fit())
     _onResizeDisposable = terminal.onResize(({ cols, rows }) => {
-        if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+        // Only the interactive owner resizes the shared tmux pane; viewers fit locally.
+        if (terminalWs && terminalWs.readyState === WebSocket.OPEN && isInteractiveOwner()) {
             terminalWs.send(JSON.stringify({
                 type: "terminal_resize",
                 cols: cols,
@@ -311,7 +317,8 @@ export function connectTerminalWs(name, agentType, sessionId) {
         if (myGeneration !== _wsGeneration) return;
         dbg('terminalWs OPEN', { sessionId, url: terminalWs.url });
         _setDisconnectedBadge(false);
-        if (terminal) {
+        document.dispatchEvent(new CustomEvent('coral:terminal-reconnected'));
+        if (terminal && isInteractiveOwner()) {
             terminalWs.send(JSON.stringify({
                 type: 'terminal_resize',
                 cols: terminal.cols,
@@ -370,6 +377,7 @@ export function connectTerminalWs(name, agentType, sessionId) {
             _paneClosed = true;
             _setDisconnectedBadge(false);
             _setSessionEndedOverlay(true);
+            document.dispatchEvent(new CustomEvent('coral:terminal-closed'));
         }
     };
 
@@ -387,6 +395,7 @@ export function connectTerminalWs(name, agentType, sessionId) {
         if (state.currentSession && state.currentSession.type === "live"
             && state.currentSession.session_id === sessionId) {
             _setDisconnectedBadge(true);
+            document.dispatchEvent(new CustomEvent('coral:terminal-disconnected'));
             setTimeout(() => {
                 // Re-check: generation still current AND session still matches
                 if (myGeneration === _wsGeneration
@@ -479,3 +488,12 @@ export function sendTerminalInputWs(data) {
     }
     return false;
 }
+
+// When this window becomes the interactive owner, push its current geometry
+// once so the shared pane matches the window that is actually typing.
+document.addEventListener('coral:ownership-changed', (e) => {
+    if (!(e.detail && e.detail.owner)) return;
+    if (terminal && terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+        terminalWs.send(JSON.stringify({ type: 'terminal_resize', cols: terminal.cols, rows: terminal.rows }));
+    }
+});

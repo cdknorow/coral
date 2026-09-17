@@ -25,7 +25,9 @@ import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
 import { loadCustomViews, activateCustomView } from './custom_views.js';
-import { initRouter, pushView } from './router.js';
+import { initRouter, pushView, restoreChatFromHash } from './router.js';
+import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
+import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
 import { copyBranchName, escapeHtml, showView } from './utils.js';
@@ -63,6 +65,11 @@ Object.assign(window, {
     _coralSetLiveSessions: (sessions) => { state.liveSessions = sessions || []; renderLiveSessions(state.liveSessions); },
     _coralHandleWsMessage: handleCoralMessage,
     _coralGetLiveSessions: () => state.liveSessions,
+    // popout (/agent/{uuid}) + multi-window ownership
+    popoutRetry, togglePopoutPanel, popoutWake,
+    _coralPopout: popoutApi,
+    _coralPopoutIsOwner: isInteractiveOwner,
+    _coralPopoutClaim: claimOwnership,
     // controls
     sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys,
     sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel,
@@ -662,24 +669,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
     loadSettings();
 
+    // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.
+    // Marked before any renderer runs so CSS and storage scoping apply.
+    const popout = applyPopoutBodyClass();
+
     // Restore filter state from URL query params before first load
     const restored = deserializeFromUrl();
     historyPage = restored.page;
 
-    loadLiveSessions();
+    loadLiveSessions().then(() => {
+        // Dashboard deep link: #chat/<sessionId> restores the live session once the list is loaded.
+        if (!popout) restoreChatFromHash();
+    });
     loadAllFolderTags();
     loadCustomViews();
-    initRouter();
+    if (!popout) initRouter();
     connectCoralWs();
-    checkForUpdates();
+    if (!popout) checkForUpdates();
     pollStartupStatus();
-    populateHfTagSelect().then(() => {
-        syncFilterDomToState();
-        loadHistoryFiltered();
-    });
-    initScheduler();
-    initLiveJobs();
-    initMessageBoard();
+    if (!popout) {
+        populateHfTagSelect().then(() => {
+            syncFilterDomToState();
+            loadHistoryFiltered();
+        });
+        initScheduler();
+        initLiveJobs();
+        initMessageBoard();
+    }
     initMobile();
 
     // Hide connected apps in prod builds (feature is dev/beta only),
@@ -943,7 +959,11 @@ document.addEventListener("DOMContentLoaded", () => {
     restoreAgenticTabs();
 
     // Initialize nav tabs — hide history section on load (Agents tab is default)
-    switchNavTab('agents');
+    if (!popout) {
+        switchNavTab('agents');
+    } else {
+        initPopout();
+    }
 
     // Pause polling when tab is hidden; refresh immediately when visible again.
     // Skip in native apps — WKWebView may report document.hidden=true permanently.
@@ -969,7 +989,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Restore session from URL hash
     const hash = window.location.hash;
-    if (hash.startsWith('#session/')) {
+    if (!popout && hash.startsWith('#session/')) {
         const sessionId = hash.substring('#session/'.length);
         if (sessionId) {
             // Delay slightly to allow history list to populate first

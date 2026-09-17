@@ -400,6 +400,124 @@ func TestSessionsCapture_WithOutput(t *testing.T) {
 	assert.Contains(t, result, "capture")
 }
 
+func TestResolveSession_ExactIdentityAndLifecycle(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	displayName := "Backend Dev"
+	boardName := "popout-team"
+	firstID := "11111111-2222-4333-8444-555555555551"
+	secondID := "11111111-2222-4333-8444-555555555552"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: firstID, AgentType: "claude", AgentName: "shared-folder",
+		WorkingDir: "/tmp/shared", DisplayName: &displayName, BoardName: &boardName,
+	}))
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: secondID, AgentType: "codex", AgentName: "shared-folder",
+		WorkingDir: "/tmp/shared",
+	}))
+
+	resp, err := http.Get(server.URL + "/api/sessions/" + firstID + "/resolve")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var got map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	assert.Equal(t, firstID, got["session_id"])
+	assert.Equal(t, "claude", got["agent_type"])
+	assert.Equal(t, "shared-folder", got["name"])
+	assert.Equal(t, "claude-"+firstID, got["tmux_session"])
+	assert.Equal(t, "Backend Dev", got["display_name"])
+	assert.Equal(t, "popout-team", got["board_project"])
+	assert.Equal(t, "active", got["state"])
+	for _, key := range []string{"auto_name", "status", "waiting_for_input", "stuck", "not_started"} {
+		assert.Contains(t, got, key)
+	}
+}
+
+func TestResolveSession_UnknownAndMalformed(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	unknown := "11111111-2222-4333-8444-555555555559"
+	resp, err := http.Get(server.URL + "/api/sessions/" + unknown + "/resolve")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var got map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	assert.Equal(t, "not_found", got["state"])
+	for _, key := range []string{"agent_type", "name", "tmux_session", "display_name", "auto_name", "board_job_title", "board_project"} {
+		assert.Contains(t, got, key)
+		assert.Nil(t, got[key])
+	}
+
+	badResp, err := http.Get(server.URL + "/api/sessions/not-a-uuid/resolve")
+	require.NoError(t, err)
+	defer badResp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, badResp.StatusCode)
+}
+
+func TestExactTargetingRejectsDuplicateNameMismatchBeforeActing(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	firstID := "22222222-2222-4333-8444-555555555551"
+	secondID := "22222222-2222-4333-8444-555555555552"
+	for _, session := range []*store.LiveSession{
+		{SessionID: firstID, AgentType: "claude", AgentName: "shared-folder", WorkingDir: "/tmp/shared"},
+		{SessionID: secondID, AgentType: "codex", AgentName: "shared-folder", WorkingDir: "/tmp/shared"},
+	} {
+		require.NoError(t, ss.RegisterLiveSession(ctx, session))
+	}
+	terminal.addSession("shared-folder", "/tmp/shared")
+	terminal.addSession("claude-"+firstID, "/tmp/shared")
+	terminal.setOutput("shared-folder", "secret output")
+
+	post := func(path, body string) *http.Response {
+		t.Helper()
+		resp, err := http.Post(server.URL+path, "application/json", strings.NewReader(body))
+		require.NoError(t, err)
+		return resp
+	}
+
+	resp := post("/api/sessions/live/shared-folder/send",
+		`{"command":"wrong","agent_type":"claude","session_id":"`+secondID+`"}`)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	resp.Body.Close()
+	terminal.mu.Lock()
+	assert.Empty(t, terminal.sent["shared-folder"])
+	terminal.mu.Unlock()
+
+	resp = post("/api/sessions/live/shared-folder/send",
+		`{"command":"right","agent_type":"claude","session_id":"`+firstID+`"}`)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+	resp = post("/api/sessions/live/claude-"+firstID+"/send",
+		`{"command":"canonical","agent_type":"claude","session_id":"`+firstID+`"}`)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
+
+	for _, endpoint := range []string{"capture", "poll"} {
+		mismatch, err := http.Get(server.URL + "/api/sessions/live/shared-folder/" + endpoint +
+			"?agent_type=claude&session_id=" + secondID)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusBadRequest, mismatch.StatusCode)
+		mismatch.Body.Close()
+	}
+	detail, err := http.Get(server.URL + "/api/sessions/live/shared-folder" +
+		"?agent_type=claude&session_id=" + secondID)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, detail.StatusCode)
+	detail.Body.Close()
+
+	keys := post("/api/sessions/live/shared-folder/keys",
+		`{"keys":["Enter"],"agent_type":"claude","session_id":"`+secondID+`"}`)
+	assert.Equal(t, http.StatusBadRequest, keys.StatusCode)
+	keys.Body.Close()
+
+	unknown := post("/api/sessions/live/shared-folder/resize",
+		`{"columns":120,"agent_type":"claude","session_id":"22222222-2222-4333-8444-555555555559"}`)
+	assert.Equal(t, http.StatusNotFound, unknown.StatusCode)
+	unknown.Body.Close()
+}
+
 func TestSessionsChangesDiff_ReturnsTrackedAndUntrackedChanges(t *testing.T) {
 	server, _, terminal, ss := setupSessionsTestServer(t)
 	repo := t.TempDir()
@@ -870,11 +988,13 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 
 	// Session routes
 	r.Get("/api/sessions/live", handler.List)
+	r.Get("/api/sessions/{sessionID}/resolve", handler.ResolveSession)
 	r.Get("/api/sessions/{sessionID}/status", handler.SessionStatus)
 	r.Get("/api/sessions/{sessionID}/changes", handler.SessionChanges)
 	r.Get("/api/sessions/{sessionID}/changes.diff", handler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", handler.Detail)
 	r.Get("/api/sessions/live/{name}/capture", handler.Capture)
+	r.Get("/api/sessions/live/{name}/poll", handler.Poll)
 	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
 	r.Post("/api/sessions/live/{name}/send", handler.Send)
 	r.Post("/api/sessions/live/{name}/keys", handler.Keys)

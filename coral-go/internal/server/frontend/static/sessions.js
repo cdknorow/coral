@@ -21,6 +21,8 @@ import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
 import { getRendererMode } from './renderers.js';
 import { invalidateFileCache, fetchFileList } from './file_mention.js';
+import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
+import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
 
 export async function selectLiveSession(name, agentType, sessionId) {
     dbg('selectLiveSession', { name, agentType, sessionId });
@@ -58,24 +60,45 @@ export async function selectLiveSession(name, agentType, sessionId) {
     showView("live-session-view");
 
     // Push view to history for back navigation
-    if (window._pushView) window._pushView('chat', { sessionId });
+    // Popout mode never mutates the hash: the URL is the identity.
+    if (window._pushView && !isPopout()) window._pushView('chat', { sessionId });
 
     // Show loading skeleton
     const captureWrapper = document.getElementById("capture-wrapper");
     captureWrapper.classList.add("loading-skeleton");
 
     // Update header via the shared identity chain (display_name -> auto_name -> board_job_title -> "Agent"/"Terminal")
-    const identity = resolveSessionIdentity(agentData || { display_name: displayName, agent_type: agentType });
-    document.getElementById("session-name").textContent = identity;
+    // Popout: the resolver record is authoritative at selection time (the live
+    // list may only enrich later ticks), so identity comes from it first.
+    const identitySource = (isPopout() && popoutResolved())
+        ? Object.assign({}, agentData || {}, popoutResolved())
+        : (agentData || { display_name: displayName, agent_type: agentType });
+    const identity = resolveSessionIdentity(identitySource);
+    const nameEl = document.getElementById("session-name");
+    if (nameEl) nameEl.textContent = identity;
     const termLabel = document.getElementById("terminal-header-label");
-    if (termLabel) termLabel.textContent = `${identity} -- ${sessionId || ''}`;
+    if (termLabel) termLabel.textContent = formatTerminalLabel(identity, sessionId);
     const termDot = document.getElementById("terminal-status-dot");
     if (termDot && agentData) {
         termDot.className = `terminal-status-dot ${agentData.working ? 'working' : agentData.waiting_for_input ? 'waiting' : agentData.sleeping ? 'sleeping' : 'stale'}`;
     }
     const badge = document.getElementById("session-type-badge");
-    badge.textContent = agentType || "claude";
-    badge.className = `badge ${(agentType || "claude").toLowerCase()}`;
+    if (badge) {
+        badge.textContent = agentType || "claude";
+        badge.className = `badge ${(agentType || "claude").toLowerCase()}`;
+    }
+    // Dashboard: "Open in new window" link for this exact session. Popout mode
+    // hides this control and never carries the id in it.
+    const openWin = document.getElementById("terminal-open-window-link");
+    if (openWin && !isPopout()) {
+        if (sessionId) { openWin.href = `/agent/${encodeURIComponent(sessionId)}`; openWin.hidden = false; }
+        else { openWin.removeAttribute("href"); openWin.hidden = true; }
+    }
+    // Multi-window ownership group for this session (dashboard and popout alike)
+    joinSessionOwnership(sessionId || null);
+    popoutUpdateFromSession(isPopout() && popoutResolved()
+        ? Object.assign({}, agentData || {}, popoutResolved())
+        : (agentData || { agent_type: agentType, session_id: sessionId }));
 
     // Update command input placeholder with session target
     const cmdInput = document.getElementById("command-input");
@@ -156,7 +179,11 @@ export async function selectLiveSession(name, agentType, sessionId) {
     dbg('renderer mode:', mode, 'Terminal available:', typeof Terminal !== 'undefined');
     // Always start capture refresh — it polls tasks and events for any mode
     startCaptureRefresh();
-    if (mode === "xterm" && typeof Terminal !== 'undefined') {
+    // Popout: routing comes from the resolver only; a sleeping target has no
+    // attachable pane (tmux_session null) so the terminal is not connected.
+    const popoutTarget = isPopout() ? popoutResolved() : null;
+    const canAttach = !isPopout() || !!(popoutTarget && popoutTarget.tmux_session);
+    if (mode === "xterm" && typeof Terminal !== 'undefined' && canAttach) {
         dbg('switching to xterm mode, creating terminal + WS');
         document.getElementById("pane-capture").style.display = "none";
         const container = document.getElementById("xterm-container");
@@ -164,7 +191,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
         // Don't clear innerHTML — createTerminal reuses the existing xterm
         // instance to avoid canvas recreation issues in WebKit webview
         createTerminal(container);
-        const tmuxName = agentData ? (agentData.tmux_session || name) : name;
+        const tmuxName = popoutTarget ? popoutTarget.tmux_session : (agentData ? (agentData.tmux_session || name) : name);
         dbg('terminal WS using tmux_session:', tmuxName, '(agent name:', name, ')');
         connectTerminalWs(tmuxName, agentType, sessionId);
         // Fit terminal after session switch — the container may already be
@@ -208,6 +235,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
 
 export async function selectHistorySession(sessionId) {
     stopCaptureRefresh();
+    leaveSessionOwnership();
     disposeTerminal();
 
     // Save current input text for the old session

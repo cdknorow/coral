@@ -1,0 +1,147 @@
+/* ── Single-agent popout mode (/agent/{uuid}) ────────────────────────────
+   Only the selected-agent workspace is shown. Everything else is chrome. */
+
+body.popout-mode .top-bar,
+body.popout-mode .sidebar,
+body.popout-mode #sidebar-resize-handle,
+body.popout-mode .sidebar-resize-handle,
+body.popout-mode .tablet-sidebar-backdrop,
+body.popout-mode .tablet-sidebar-toggle,
+body.popout-mode #mobile-agent-list,
+body.popout-mode .mobile-tab-bar,
+body.popout-mode #welcome-screen,
+body.popout-mode #agentic-tab-board,
+body.popout-mode #session-ended-default,
+body.popout-mode #terminal-open-window-link {
+    display: none !important;
+}
+
+body.popout-mode .layout {
+    height: 100vh;
+    height: 100dvh;
+}
+
+body.popout-mode .main-content {
+    width: 100%;
+}
+
+/* ── Slim header: identity + type + state pill on the left, actions right ── */
+
+.terminal-header-left {
+    min-width: 0;
+}
+
+body.popout-mode .terminal-session-label {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 40vw;
+}
+
+.terminal-type-badge,
+.terminal-state-pill {
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 6px;
+    flex-shrink: 0;
+}
+
+.terminal-state-pill {
+    background: rgba(139, 148, 158, 0.15);
+    color: var(--text-muted);
+}
+.terminal-state-pill[data-state="working"]      { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+.terminal-state-pill[data-state="waiting"]      { background: rgba(210, 153, 34, 0.18); color: var(--warning); }
+.terminal-state-pill[data-state="sleeping"]     { background: rgba(210, 153, 34, 0.10); color: var(--warning); opacity: 0.8; }
+.terminal-state-pill[data-state="ended"],
+.terminal-state-pill[data-state="not-found"]    { background: rgba(248, 81, 73, 0.15); color: var(--error); }
+.terminal-state-pill[data-state="reconnecting"] { background: rgba(210, 153, 34, 0.18); color: var(--warning); }
+
+.terminal-header-actions .terminal-header-btn {
+    font-size: 11px;
+    gap: 4px;
+    text-decoration: none;
+    min-height: 26px;
+}
+.terminal-header-actions .terminal-header-btn[hidden] { display: none !important; }
+.terminal-header-btn[aria-pressed="true"] { color: var(--accent); }
+
+/* Kebab "Open in new window" is an anchor: match the button items */
+.overflow-menu-item.overflow-menu-open-window {
+    text-decoration: none;
+    color: inherit;
+}
+
+/* ── Viewer chip (multi-window ownership) ─────────────────────────────── */
+
+.popout-viewer-chip {
+    position: absolute;
+    top: 44px;
+    right: 12px;
+    z-index: 6;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--bg-elevated, var(--bg-secondary));
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+}
+.popout-viewer-chip:hover { color: var(--text-primary); border-color: var(--accent); }
+.popout-viewer-chip[hidden] { display: none !important; }
+
+/* ── Ended / not-found: workspace stays visible, input disabled ───────── */
+
+body.popout-mode.popout-ended #command-input { opacity: 0.6; }
+/* Terminal actions are gated with the input: blocked while loading/reconnecting,
+   sleeping, ended or not-found. Header navigation/panel/retry stay usable. */
+body.popout-mode.popout-terminal-blocked .command-pane-toolbar button,
+body.popout-mode.popout-terminal-blocked .mobile-send-btn {
+    pointer-events: none;
+    opacity: 0.5;
+}
+#popout-ended .btn, #popout-not-found .btn { margin: 4px; text-decoration: none; }
+#popout-restarted-link[hidden] { display: none !important; }
+
+/* ── Phone: workspace renders directly; quick-action strip stays reachable ── */
+
+@media (max-width: 767px) {
+    body.popout-mode .live-body { flex-direction: column !important; }
+    body.popout-mode .terminal-header {
+        position: sticky;
+        top: 0;
+        z-index: 11;
+    }
+    body.popout-mode .terminal-session-label { max-width: 46vw; }
+    body.popout-mode #popout-open-main-btn span { display: none; }
+    body.popout-mode .terminal-header-actions .terminal-header-btn {
+        min-width: 36px;
+        min-height: 36px;
+        justify-content: center;
+    }
+    body.popout-mode .command-pane-toolbar {
+        display: flex !important;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        gap: 6px;
+        padding: 6px 8px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+    body.popout-mode .command-pane-toolbar::-webkit-scrollbar { display: none; }
+    body.popout-mode .command-pane-toolbar .btn-nav,
+    body.popout-mode .command-pane-toolbar .btn-add-macro {
+        min-height: 44px;
+        min-width: 44px;
+        flex: 0 0 auto;
+    }
+    body.popout-mode .command-pane-toolbar .toolbar-spacer { display: none; }
+    /* Side panel is reached through the header toggle → overlay below the slim header */
+    body.popout-mode .agentic-state.mobile-panel-overlay { top: 36px; }
+    body.popout-mode .command-pane { max-height: 40vh; }
+}

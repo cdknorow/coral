@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -72,7 +73,8 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			http.Redirect(w, r, "/auth", http.StatusTemporaryRedirect)
+			returnTo := r.URL.RequestURI()
+			http.Redirect(w, r, "/auth?return_to="+url.QueryEscape(returnTo), http.StatusTemporaryRedirect)
 		})
 	}
 }

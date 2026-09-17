@@ -382,6 +382,26 @@ func TestWSTerminal_RejectsMissingPane(t *testing.T) {
 	assert.Error(t, err, "should close when pane not found")
 }
 
+func TestWSTerminal_RejectsSessionTupleMismatchWithPolicyViolation(t *testing.T) {
+	server, handler := setupTestServer(t)
+	sessionID := "33333333-2222-4333-8444-555555555551"
+	require.NoError(t, store.NewSessionStore(handler.db).RegisterLiveSession(context.Background(), &store.LiveSession{
+		SessionID: sessionID, AgentType: "claude", AgentName: "shared-folder", WorkingDir: "/tmp/shared",
+	}))
+
+	wsURL := "ws" + server.URL[4:] + "/ws/terminal/codex-" + sessionID +
+		"?agent_type=claude&session_id=" + sessionID
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	require.NoError(t, err)
+	defer conn.CloseNow()
+
+	_, _, err = conn.Read(ctx)
+	status := websocket.CloseStatus(err)
+	assert.Equal(t, websocket.StatusPolicyViolation, status)
+}
+
 // ── WebSocket Origin Validation Tests ────────────────────────────────
 
 // TestWSAcceptOptions_LocalhostPatterns verifies that wsAcceptOptions always

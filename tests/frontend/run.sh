@@ -141,3 +141,4 @@ fi
 node acf_model_field.test.js
 node terminal_scroll.test.js
 node agent_bar_tweaks.test.js
+node agent_popout.test.js
