@@ -152,7 +152,7 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	// Export env vars
 	// Coral environment, built by CoralEnv so every launch path agrees.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, fmt.Sprintf(`export %s='%s' &&`, kv[0], SanitizeShellValue(kv[1])))
+		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
 	}
 	if params.ProxyBaseURL != "" {
 		parts = append(parts, fmt.Sprintf(`export HTTPS_PROXY='%s' &&`, sanitizeURL(params.ProxyBaseURL)))

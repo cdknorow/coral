@@ -1200,11 +1200,16 @@ func TestGemini_EnvVarsExported(t *testing.T) {
 	}
 }
 
-func TestCodex_EnvVarsSanitized(t *testing.T) {
+func TestCodex_EnvVarsQuotedNotExpanded(t *testing.T) {
+	// Metacharacters are neutralised by single-quoting, not by stripping —
+	// stripping destroyed legitimate values like URLs and paths.
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: `$(evil)`, Role: "`whoami`"})
-	if strings.Contains(cmd, "$") || strings.Contains(cmd, "`") {
-		t.Errorf("expected sanitized, got %q", cmd)
+	if !strings.Contains(cmd, "export CORAL_SESSION_NAME='$(evil)' &&") {
+		t.Errorf("expected single-quoted session name, got %q", cmd)
+	}
+	if !strings.Contains(cmd, "export CORAL_SUBSCRIBER_ID='`whoami`' &&") {
+		t.Errorf("expected single-quoted role, got %q", cmd)
 	}
 }
 
@@ -1857,4 +1862,48 @@ func TestBuildLaunchCommand_HooksInSettings(t *testing.T) {
 	}
 
 	CleanupTempFiles("test-hooks-session")
+}
+
+// Regression: the launchers used to strip ':' and '/' from every exported
+// value, turning CORAL_URL into "http127.0.0.18420" and CORAL_DIR into
+// "Userscknorowski.coral". Hooks then posted to a garbage URL (so Codex
+// agents showed no activity) and coral-board wrote its state into a relative
+// directory inside the repo.
+func TestLaunchCommands_PreserveURLAndPathEnvValues(t *testing.T) {
+	params := LaunchParams{
+		SessionID:   "abc12345-0000-0000-0000-000000000000",
+		SessionName: "codex-abc12345-0000-0000-0000-000000000000",
+		Role:        "QA Engineer",
+		WorkingDir:  "/tmp/work",
+		CoralHost:   "127.0.0.1",
+		CoralPort:   8455,
+		CoralDir:    "/Users/someone/.coral",
+	}
+	for name, a := range map[string]Agent{
+		"codex":  &CodexAgent{},
+		"gemini": &GeminiAgent{},
+		"pi":     &PiAgent{},
+	} {
+		cmd := a.BuildLaunchCommand(params)
+		for _, want := range []string{
+			"export CORAL_URL='http://127.0.0.1:8455' &&",
+			"export CORAL_DIR='/Users/someone/.coral' &&",
+			"export CORAL_DATA_DIR='/Users/someone/.coral' &&",
+			"export CORAL_SUBSCRIBER_ID='QA Engineer' &&",
+		} {
+			if !strings.Contains(cmd, want) {
+				t.Errorf("%s: launch command missing %q\n%s", name, want, cmd)
+			}
+		}
+	}
+}
+
+func TestLaunchCommands_EscapeSingleQuotesInEnvValues(t *testing.T) {
+	cmd := (&CodexAgent{}).BuildLaunchCommand(LaunchParams{
+		SessionName: "codex-x",
+		Role:        "Bob's QA",
+	})
+	if !strings.Contains(cmd, `export CORAL_SUBSCRIBER_ID='Bob'\''s QA' &&`) {
+		t.Errorf("single quote not escaped in: %s", cmd)
+	}
 }

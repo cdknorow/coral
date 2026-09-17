@@ -130,6 +130,16 @@ func sanitizeURL(s string) string {
 	return b.String()
 }
 
+// singleQuote wraps s in single quotes unconditionally, escaping any embedded
+// single quote with the POSIX apostrophe-backslash-apostrophe-apostrophe sequence.
+// Inside single quotes, POSIX shells perform no expansion at all, so this is
+// the right way to pass arbitrary values such as
+// URLs and paths through an `export` line. Prefer this over SanitizeShellValue
+// for anything that may legitimately contain ':' or '/'.
+func singleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // SanitizeShellValue strips characters that could enable shell injection.
 // Only allows alphanumeric characters, hyphens, underscores, dots, and spaces.
 // This is used for values interpolated into shell command strings.
