@@ -467,11 +467,12 @@
 /* ── Board Card Groups ─────────────────────────────────────── */
 
 .session-board-card {
-    border: none;
-    border-left: none;
+    /* Team card: hairline frame + a little more breathing room between groups */
+    border: 1px solid var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+    border-left: 2px solid transparent;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.02) !important;
-    margin: 4px 8px 4px 10px !important;
+    background: rgba(255, 255, 255, 0.025) !important;
+    margin: 6px 8px 6px 10px !important;
     padding: 0 !important;
     display: block !important;
     cursor: default !important;
@@ -489,6 +490,8 @@
     font-size: 11px;
     min-height: 0;
     box-sizing: border-box;
+    /* header/agents boundary lives here (the agents list no longer draws its own) */
+    box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
 }
 
 .board-card-subline {
@@ -615,7 +618,7 @@
     list-style: none;
     padding: 0 0 4px 4px;
     margin: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: none; /* boundary is the header's inset shadow (no doubling) */
 }
 
 .board-card-agents .session-group-item {
@@ -811,13 +814,23 @@
     border-left: 2px solid transparent;
 }
 
-.session-group-item:hover {
-    background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+/* Row separation (task #152): a 1px low-contrast boundary between SIBLING
+   rows only, drawn as an inset shadow so row heights (40/36px) and group
+   boundaries are untouched and nothing doubles at headers/cards. The neutral
+   grey reads on dark and light themes. */
+.session-group-item + .session-group-item {
+    box-shadow: inset 0 1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+}
+
+.session-group-item:hover,
+.session-list li.session-group-item:hover {
+    background: var(--bg-hover, rgba(255, 255, 255, 0.045));
 }
 
 .session-group-item:focus-visible {
     outline: 2px solid var(--accent);
-    outline-offset: -2px;
+    outline-offset: -2px; /* drawn inside the row, never clipped by neighbours */
+    background: rgba(88, 166, 255, 0.06);
 }
 
 .session-group-item.needs-attention {
@@ -881,11 +894,30 @@
 
 .session-group-header + .session-group-item {
     margin-top: 2px;
+    box-shadow: none; /* the header boundary already separates the first row */
 }
 
-.session-group-item.active {
-    border-left-color: transparent;
-    background: rgba(255, 255, 255, 0.04);
+/* Folder headers: modest spacing above each group and a hairline beneath */
+.session-group-header:not(.board-card-header) {
+    margin-top: 6px;
+    box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+}
+#live-sessions-list > .session-group-header:first-child,
+#live-sessions-list > .session-board-card:first-child {
+    margin-top: 2px !important;
+}
+
+.session-group-item.active,
+.session-list li.session-group-item.active {
+    /* Selected row: accent edge + tinted surface so it stands out from hover.
+       The compound selector outranks the legacy `.session-list li.active`. */
+    border-left-color: var(--accent);
+    background: rgba(88, 166, 255, 0.10);
+}
+
+.session-group-item.active:hover,
+.session-list li.session-group-item.active:hover {
+    background: rgba(88, 166, 255, 0.13);
 }
 
 /* ── Agent Status Text ────────────────────────────────────── */
@@ -1283,7 +1315,7 @@
 
 .session-board-card.session-board-card-toplevel {
     border-left: none !important;
-    margin: 4px 8px 4px 0 !important;
+    margin: 6px 8px 6px 0 !important;
 }
 
 .session-board-card.team-sleeping .group-header-text,
