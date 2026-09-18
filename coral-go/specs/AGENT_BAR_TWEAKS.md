@@ -124,6 +124,7 @@ Row layout becomes:
   (sparkle) button inline and always visible, next to a muted "No goal yet"
   label. The label is **plain text, not a click target** — it sits where the
   user clicks to select the row, and a mis-click must not fire an action.
+- *(Avatar bullets below are superseded by `AGENT_LIST_COMPACT.md` when it ships; the identity/colour rules still apply to the workspace header.)*
 - Avatar initials: when `display_name` is empty, derive initials from
   `auto_name` (D8) then `board_job_title`, then the folder/terminal name —
   never from `summary`, which changes as the agent works and would make the
@@ -183,6 +184,8 @@ Automatic naming and goal generation are D8.
 
 
 ### D6. Density
+
+> **Superseded when `AGENT_LIST_COMPACT.md` ships:** avatars leave the list and rows become 36–40px two-line rows; the numbers below describe the currently shipped list.
 
 - Avatar 40px → 28px. Initials font 13px → 11px.
 - `.session-group-item` padding 14px → 9px vertical.

@@ -12,7 +12,8 @@ body.popout-mode .mobile-tab-bar,
 body.popout-mode #welcome-screen,
 body.popout-mode #agentic-tab-board,
 body.popout-mode #session-ended-default,
-body.popout-mode #terminal-open-window-link {
+body.popout-mode #terminal-open-window-link,
+body.popout-mode #terminal-branch-chip {
     display: none !important;
 }
 

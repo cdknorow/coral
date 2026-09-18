@@ -211,6 +211,9 @@ async function run() {
                     padTop: getComputedStyle(li).paddingTop,
                     height: li.getBoundingClientRect().height,
                     attention: li.classList.contains('needs-attention'),
+                    ariaLabel: li.getAttribute('aria-label'),
+                    ctxPill: q('.session-ctx-pill') ? q('.session-ctx-pill').textContent.trim() : null,
+                    attnPill: q('.session-attention-pill') ? q('.session-attention-pill').textContent.trim() : null,
                 };
             })
         `);
@@ -237,7 +240,7 @@ async function run() {
         check('row label carries a title with the resolved identity', bySid['sid-b'].labelTitle === 'Agent' && bySid['sid-g'].labelTitle === 'Release Wrangler', `${bySid['sid-b'].labelTitle} / ${bySid['sid-g'].labelTitle}`);
         check('path prompt with board_job_title uses the job title as label', bySid['sid-g'].label === 'Release Wrangler', bySid['sid-g'].label);
         check('path prompt shows on the goal line', bySid['sid-g'].goalText === '/Users/me/Software/coral/coral-go fix the release workflow', bySid['sid-g'].goalText);
-        check('initials from board_job_title, not path words', bySid['sid-g'].initials === 'RW', bySid['sid-g'].initials);
+        check('identity from board_job_title, not path words (aria-label)', /^Release Wrangler, /.test(bySid['sid-g'].ariaLabel || ''), bySid['sid-g'].ariaLabel);
         check('row label with no identity falls back to Agent', bySid['sid-c'].label === 'Agent', bySid['sid-c'].label);
         check('summary is goal text only, never the row label', bySid['sid-f'].label === 'Agent', bySid['sid-f'].label);
         check('terminal row label falls back to Terminal', bySid['sid-d'].label === 'Terminal', bySid['sid-d'].label);
@@ -247,18 +250,13 @@ async function run() {
         check('"No goal yet" label has no cursor styling of its own (inherits the row)', bySid['sid-c'].emptyLabelCursor === bySid['sid-c'].rowCursor, `${bySid['sid-c'].emptyLabelCursor} vs row ${bySid['sid-c'].rowCursor}`);
         check('sparkle hit target is at least 24x24', bySid['sid-c'].sparkleW >= 24 && bySid['sid-c'].sparkleH >= 24, `${bySid['sid-c'].sparkleW}x${bySid['sid-c'].sparkleH}`);
         check('sparkle has an aria-label naming the agent', bySid['sid-c'].sparkleAria === 'Generate goal for Agent', bySid['sid-c'].sparkleAria);
-        check('initials never derive from prompt words (folder fallback)', bySid['sid-b'].initials === 'CO', bySid['sid-b'].initials);
-        // Avatar colour is keyed on the folder: named + unnamed agents in one
-        // folder share a hue; another folder gets a different one.
-        check('same-folder agents share an avatar hue', bySid['sid-a'].avatarRgb && bySid['sid-a'].avatarRgb === bySid['sid-b'].avatarRgb && bySid['sid-b'].avatarRgb === bySid['sid-g'].avatarRgb, `${bySid['sid-a'].avatarRgb} / ${bySid['sid-b'].avatarRgb} / ${bySid['sid-g'].avatarRgb}`);
-        check('different folder gets a different avatar hue', bySid['sid-e'].avatarRgb !== bySid['sid-b'].avatarRgb, `${bySid['sid-e'].avatarRgb} vs ${bySid['sid-b'].avatarRgb}`);
-        check('same-folder agents keep distinct identity marks (emoji / CO / RW)',
-            bySid['sid-a'].avatarEmoji && !bySid['sid-a'].initials && bySid['sid-b'].initials === 'CO' && bySid['sid-g'].initials === 'RW',
-            JSON.stringify([bySid['sid-a'].avatarEmoji, bySid['sid-b'].initials, bySid['sid-g'].initials]));
-        check('initials never derive from mutable summary (folder fallback)', bySid['sid-f'].initials === 'OT', bySid['sid-f'].initials);
+        check('identity never derives from prompt words (aria-label Agent)', /^Agent, /.test(bySid['sid-b'].ariaLabel || ''), bySid['sid-b'].ariaLabel);
+        // AGENT_LIST_COMPACT supersedes D1 avatars in the list: no avatar element in any row.
+        check('no avatar element in list rows (AGENT_LIST_COMPACT)', rows.every(r => r.avatarW === null && r.initials === null && r.avatarEmoji === null), JSON.stringify(rows.map(r => [r.avatarW, r.initials])));
+        check('identity never derives from mutable summary (aria-label Agent)', /^Agent, /.test(bySid['sid-f'].ariaLabel || ''), bySid['sid-f'].ariaLabel);
         check('summary-only row still shows summary as goal', bySid['sid-f'].goalText === 'Investigate slow startup on Windows', bySid['sid-f'].goalText);
-        check('initials from display_name when present', bySid['sid-e'].initials === 'ZE', bySid['sid-e'].initials);
-        check('role keyword in display_name still yields emoji avatar', bySid['sid-a'].initials === null);
+        check('identity from display_name when present (aria-label)', /^Zed, /.test(bySid['sid-e'].ariaLabel || ''), bySid['sid-e'].ariaLabel);
+        check('named agent aria-label carries identity + state', /^Lead Dev, (Working|Idle)$/.test(bySid['sid-a'].ariaLabel || ''), bySid['sid-a'].ariaLabel);
 
         // D2 desktop hides mobile-only rows
         check('mobile banner row hidden on desktop', bySid['sid-c'].bannerDisplay === 'none', bySid['sid-c'].bannerDisplay);
@@ -266,9 +264,10 @@ async function run() {
         check('banner markup still emitted for mobile clone', bySid['sid-c'].bannerText === 'Nothing yet — open the terminal', bySid['sid-c'].bannerText);
 
         // D3 context bar
-        check('ctx label is "ctx N%"', bySid['sid-b'].ctxLabel === 'ctx 42%', bySid['sid-b'].ctxLabel);
-        check('high context keeps its label', bySid['sid-a'].ctxLabel === 'ctx 87%', bySid['sid-a'].ctxLabel);
-        check('100% reads "ctx full"', bySid['sid-c'].ctxLabel === 'ctx full', bySid['sid-c'].ctxLabel);
+        check('no ctx pill below 80% (42%)', bySid['sid-b'].ctxPill === null, String(bySid['sid-b'].ctxPill));
+        check('ctx pill at >= 80% reads "ctx 87%" on line 1', bySid['sid-a'].ctxPill === 'ctx 87%', String(bySid['sid-a'].ctxPill));
+        check('attention pill wins over the ctx pill (100% + not_started -> Check terminal only)', bySid['sid-c'].attnPill === 'Check terminal' && bySid['sid-c'].ctxPill === null, JSON.stringify([bySid['sid-c'].attnPill, bySid['sid-c'].ctxPill]));
+        check('needs-input row shows exactly the Needs input pill', bySid['sid-b'].attnPill === 'Needs input', String(bySid['sid-b'].attnPill));
         // Operator decision (task #75): the context bar is informational only.
         check('no Compact control at >= 80%', !bySid['sid-a'].compactBtn && bySid['sid-a'].ctxClickables === 0 && !bySid['sid-a'].ctxHasOnclick);
         check('no Compact control at 100%', !bySid['sid-c'].compactBtn && bySid['sid-c'].ctxClickables === 0 && !bySid['sid-c'].ctxHasOnclick);
@@ -278,12 +277,10 @@ async function run() {
         check('compactSession plumbing removed', await evalInPage(`typeof window.compactSession`) === 'undefined');
 
         // D6 density
-        check('avatar is 28px', Math.round(bySid['sid-a'].avatarW) === 28, `${bySid['sid-a'].avatarW}`);
-        check('initials font is 11px', bySid['sid-e'].initialsFont === '11px', bySid['sid-e'].initialsFont);
-        check('row vertical padding is 9px', bySid['sid-a'].padTop === '9px', bySid['sid-a'].padTop);
-        // name row + goal line + context bar; previously ~90px at 14px padding / 36px avatar
-        check('row with goal + ctx bar is compact (<= 70px)', bySid['sid-a'].height <= 70, `${bySid['sid-a'].height}`);
-        check('row with goal but no ctx bar is compact (<= 54px)', bySid['sid-d'].height <= 54, `${bySid['sid-d'].height}`);
+        check('row with goal is 40px ±1 (AGENT_LIST_COMPACT)', Math.abs(bySid['sid-a'].height - 40) <= 1, `${bySid['sid-a'].height}`);
+        check('row vertical padding is 5px', bySid['sid-a'].padTop === '5px', bySid['sid-a'].padTop);
+        check('terminal row without goal is 36px ±1', Math.abs(bySid['sid-d'].height - 36) <= 1, `${bySid['sid-d'].height}`);
+        check('sleeping/attention/empty rows never exceed 41px', rows.every(r => r.height <= 41), JSON.stringify(rows.map(r => r.height)));
 
         // D5 badge
         const badge = await evalInPage(`
@@ -375,8 +372,8 @@ async function run() {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-b"]');
             return {
                 goal: li ? li.querySelector('.session-goal').textContent.replace(/\\s+/g, ' ').trim() : null,
-                initials: li ? (li.querySelector('.agent-avatar-initials') || {}).textContent : null,
-                ctx: li ? li.querySelector('.context-bar-label').textContent.trim() : null,
+                aria: li ? li.getAttribute('aria-label') : null,
+                ctx: (window._coralGetLiveSessions().find(s => s.session_id === 'sid-b') || {}).context_pct,
                 header: document.getElementById('session-name').textContent,
                 term: (document.getElementById('terminal-header-label') || {}).textContent || '',
                 placeholder: document.getElementById('command-input').placeholder,
@@ -384,8 +381,8 @@ async function run() {
             };
         })()`);
         check('diff without first_prompt keeps row goal', afterDiff.goal === 'Please fix the flaky websocket reconnect test in xterm_renderer.js', afterDiff.goal);
-        check('diff without first_prompt keeps folder initials', afterDiff.initials === 'CO', afterDiff.initials);
-        check('diff still applies changed fields (ctx 45%)', afterDiff.ctx === 'ctx 45%', afterDiff.ctx);
+        check('diff without first_prompt keeps Agent identity (aria-label)', /^Agent, /.test(afterDiff.aria || ''), afterDiff.aria);
+        check('diff still applies changed fields (context_pct 45 in state)', afterDiff.ctx === 45, String(afterDiff.ctx));
         check('diff without first_prompt keeps header identity', afterDiff.header === 'Agent', afterDiff.header);
         check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'Agent -- sid-b', afterDiff.term);
         check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: Agent/.test(afterDiff.placeholder), afterDiff.placeholder);
@@ -400,12 +397,12 @@ async function run() {
         const afterRename = await evalInPage(`(() => {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-b"]');
             return { label: li.querySelector('.session-label').textContent.trim(), goal: li.querySelector('.session-goal').textContent.trim(),
-                     initials: (li.querySelector('.agent-avatar-initials') || {}).textContent, header: document.getElementById('session-name').textContent,
+                     aria: li.getAttribute('aria-label'), header: document.getElementById('session-name').textContent,
                      placeholder: document.getElementById('command-input').placeholder };
         })()`);
         check('diff display_name update applies to row + header', afterRename.label === 'Renamed Bot' && afterRename.header === 'Renamed Bot', JSON.stringify(afterRename));
         check('diff summary update applies to goal line', afterRename.goal === 'Now writing tests', afterRename.goal);
-        check('initials follow display_name after rename', afterRename.initials === 'RB', afterRename.initials);
+        check('aria-label follows display_name after rename', /^Renamed Bot, /.test(afterRename.aria || ''), afterRename.aria);
         check('placeholder follows display_name after rename', /^Sending to: Renamed Bot/.test(afterRename.placeholder), afterRename.placeholder);
         await setFixture(SESSIONS);
 
@@ -443,15 +440,15 @@ async function run() {
         const rowF = () => evalInPage(`(() => {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-f"]');
             const g = li.querySelector('.session-goal');
-            return { label: li.querySelector('.session-label').textContent.trim(), initials: (li.querySelector('.agent-avatar-initials') || {}).textContent || null,
-                     goal: g ? g.textContent.replace(/\\s+/g, ' ').trim() : null, ctx: (li.querySelector('.context-bar-label') || {}).textContent || null,
+            return { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'),
+                     goal: g ? g.textContent.replace(/\\s+/g, ' ').trim() : null, ctx: (window._coralGetLiveSessions().find(s => s.session_id === 'sid-f') || {}).context_pct,
                      order: Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(li => li.dataset.sessionId).join(',') };
         })()`);
         let f = await rowF();
         check('auto_name becomes the row label when no display_name', f.label === 'Store Refactorer', f.label);
-        check('auto_name drives avatar initials', f.initials === 'SR', f.initials);
+        check('auto_name drives the aria-label identity', /^Store Refactorer, /.test(f.aria || ''), f.aria);
         check('auto_name diff keeps omitted summary as goal', f.goal === 'Investigate slow startup on Windows', f.goal);
-        check('auto_name diff keeps omitted context_pct', f.ctx === 'ctx 63%', f.ctx);
+        check('auto_name diff keeps omitted context_pct', f.ctx === 63, String(f.ctx));
         check('auto_name diff does not reorder', f.order === ORDER, f.order);
         const mergedF = JSON.parse(await evalInPage(`JSON.stringify(window._coralGetLiveSessions().find(s => s.session_id === 'sid-f'))`));
         const prevF = JSON.parse(snapshotF);
@@ -475,7 +472,7 @@ async function run() {
         f = await rowF();
         const hdrF2 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
         check('summary-only diff updates the goal line', f.goal === 'Now profiling startup', f.goal);
-        check('summary-only diff leaves label + initials unchanged', f.label === 'Store Refactorer' && f.initials === 'SR', JSON.stringify(f));
+        check('summary-only diff leaves label + aria identity unchanged', f.label === 'Store Refactorer' && /^Store Refactorer, /.test(f.aria || ''), JSON.stringify(f));
         check('summary-only diff leaves header + placeholder unchanged', hdrF2.name === 'Store Refactorer' && /^Sending to: Store Refactorer/.test(hdrF2.ph), JSON.stringify(hdrF2));
 
         // Explicit values overwrite: null clears auto_name, "" clears summary, a number replaces context_pct.
@@ -486,24 +483,24 @@ async function run() {
         f = await rowF();
         const hdrF3 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
         check('explicit null auto_name falls back to Agent', f.label === 'Agent' && hdrF3.name === 'Agent' && /^Sending to: Agent/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
-        check('initials fall back to folder after auto_name cleared', f.initials === 'OT', f.initials);
+        check('aria identity falls back to Agent after auto_name cleared', /^Agent, /.test(f.aria || ''), f.aria);
         check('explicit empty summary clears the goal line', /No goal yet/.test(f.goal || ''), f.goal);
-        check('explicit context_pct value overwrites', f.ctx === 'ctx 71%', f.ctx);
+        check('explicit context_pct value overwrites', f.ctx === 71, String(f.ctx));
 
         // display_name always beats auto_name.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
             { name: 'other-proj', agent_type: 'claude', session_id: 'sid-e', auto_name: 'Somebody Else' }
         ] }); true`);
         await sleep(100);
-        const rowE = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-e"]'); return { label: li.querySelector('.session-label').textContent.trim(), initials: (li.querySelector('.agent-avatar-initials') || {}).textContent }; })()`);
-        check('display_name beats auto_name', rowE.label === 'Zed' && rowE.initials === 'ZE', JSON.stringify(rowE));
+        const rowE = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-e"]'); return { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label') }; })()`);
+        check('display_name beats auto_name', rowE.label === 'Zed' && /^Zed, /.test(rowE.aria || ''), JSON.stringify(rowE));
 
         // New session arriving via diff is taken intact (no merge partner).
         await evalInPage(`window.__newSessionPayload = { name: 'coral-go', agent_type: 'claude', session_id: 'sid-new', display_name: '', summary: '', first_prompt: '/repo/coral-go/.github/workflows/release.yml audit this', context_pct: 5, working_directory: '/repo/coral-go' };
             window._coralHandleWsMessage({ type: 'coral_diff', changed: [window.__newSessionPayload] }); true`);
         await sleep(100);
-        const rowNew = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-new"]'); return li ? { label: li.querySelector('.session-label').textContent.trim(), initials: (li.querySelector('.agent-avatar-initials') || {}).textContent, count: window._coralGetLiveSessions().length } : null; })()`);
-        check('new session via diff renders intact (path prompt -> Agent, folder initials)', rowNew && rowNew.label === 'Agent' && rowNew.initials === 'CO' && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
+        const rowNew = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-new"]'); return li ? { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'), count: window._coralGetLiveSessions().length } : null; })()`);
+        check('new session via diff renders intact (path prompt -> Agent identity)', rowNew && rowNew.label === 'Agent' && /^Agent, /.test(rowNew.aria || '') && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
         check('new session merge does not alias incoming payload', await evalInPage(`window._coralGetLiveSessions().find(s => s.session_id === 'sid-new') !== window.__newSessionPayload`));
 
         // A full update follows the same contract: omitted fields survive,
@@ -527,8 +524,8 @@ async function run() {
         // auto_name outranks board_job_title.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', auto_name: 'Ship Bot' } ] }); true`);
         await sleep(100);
-        const rowG = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-g"]'); return { label: li.querySelector('.session-label').textContent.trim(), initials: (li.querySelector('.agent-avatar-initials') || {}).textContent, header: document.getElementById('session-name').textContent }; })()`);
-        check('auto_name beats board_job_title', rowG.label === 'Ship Bot' && rowG.initials === 'SB' && rowG.header === 'Ship Bot', JSON.stringify(rowG));
+        const rowG = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-g"]'); return { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'), header: document.getElementById('session-name').textContent }; })()`);
+        check('auto_name beats board_job_title', rowG.label === 'Ship Bot' && /^Ship Bot, /.test(rowG.aria || '') && rowG.header === 'Ship Bot', JSON.stringify(rowG));
         await setFixture(SESSIONS);
 
         // Header follows a named session too.
@@ -548,13 +545,13 @@ async function run() {
         // context display is informational only. (It still bubbles to the row
         // click, which selects that session like any other click on the row.)
         await evalInPage(`window.__sendCalls = []; true`);
-        await evalInPage(`document.querySelector('#live-sessions-list [data-session-id="sid-a"] .context-bar-label').click(); true`);
+        await evalInPage(`document.querySelector('#live-sessions-list [data-session-id="sid-a"] .session-ctx-pill').click(); true`);
         await sleep(200);
         const calls = await evalInPage(`window.__sendCalls`);
         await evalInPage(`window.__sendCalls = null; true`);
-        check('clicking the context bar sends no /send request', calls.length === 0, JSON.stringify(calls));
+        check('clicking the ctx pill sends no /send request', calls.length === 0, JSON.stringify(calls));
         const toast = await evalInPage(`Array.from(document.querySelectorAll('.toast')).map(t => t.textContent).join(' | ')`);
-        check('clicking the context bar shows no compact toast', !/compact/i.test(toast), toast);
+        check('clicking the ctx pill shows no compact toast', !/compact/i.test(toast), toast);
 
         // ── Top nav copy: "Tokens" tab is labelled "Analytics" (id/route/view unchanged) ──
         const navBefore = await evalInPage(`(() => {

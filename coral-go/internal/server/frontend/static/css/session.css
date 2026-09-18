@@ -328,12 +328,23 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    min-height: 18px;
-    line-height: 18px;
+    min-height: 16px;
+    height: 16px;
+    line-height: 16px;
 }
 
 .session-name-row .sidebar-kebab-btn {
-    padding: 1px 4px;
+    /* 16px tall so line 1 stays 16px; the ::after pad gives a 24x24 hit target */
+    padding: 0 5px;
+    height: 16px;
+    line-height: 16px;
+    font-size: 14px;
+    position: relative;
+}
+.session-name-row .sidebar-kebab-btn::after {
+    content: "";
+    position: absolute;
+    inset: -4px -2px;
 }
 
 .session-name-spacer {
@@ -343,12 +354,13 @@
 .session-goal {
     display: block;
     font-size: 12px;
-    line-height: 15px;
+    line-height: 14px;
+    height: 14px;
     color: var(--text-muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin-top: 1px;
+    margin-top: 0;
 }
 
 /* No summary / first prompt yet: inline generate-goal affordance, always visible */
@@ -382,6 +394,7 @@
     margin: -5px 0;
     justify-content: center;
     border-radius: 4px;
+    height: 24px;
 }
 
 .session-goal-empty:hover .sidebar-goal-btn-inline {
@@ -470,7 +483,7 @@
 }
 
 .board-card-header {
-    padding: 8px 10px 6px 10px !important;
+    padding: 5px 10px !important;
     margin: 0;
     border-radius: 3px 3px 0 0;
     font-size: 11px;
@@ -606,8 +619,16 @@
 }
 
 .board-card-agents .session-group-item {
-    padding: 8px 10px 8px 12px !important;
-    min-height: 0;
+    padding: 5px 10px 5px 12px !important;
+    min-height: 36px;
+}
+
+/* Team card header: name + count only (metadata moved to Team details) */
+.board-card-header {
+    min-height: 28px;
+}
+.group-name-line .session-group-count {
+    margin-left: 4px;
 }
 
 .board-card-collapsed {
@@ -781,10 +802,81 @@
 }
 
 .session-group-item {
-    padding: 9px 12px 9px 33px !important;
+    /* AGENT_LIST_COMPACT: two-line 40px row = 5px + 16px line 1 + 14px goal + 5px;
+       rows without a goal line (terminal/ended) are held at 36px. */
+    padding: 5px 10px 5px 14px !important;
     cursor: grab;
-    min-height: 0;
+    box-sizing: border-box;
+    min-height: 36px;
     border-left: 2px solid transparent;
+}
+
+.session-group-item:hover {
+    background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+}
+
+.session-group-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.session-group-item.needs-attention {
+    background: rgba(210, 153, 34, 0.06);
+}
+
+.session-group-item.sleeping .session-label {
+    color: var(--text-secondary);
+}
+
+/* Rows never animate (reduced motion by default); the state pill carries the text. */
+.session-group-item .session-dot,
+.session-group-item .waiting-badge {
+    animation: none;
+}
+
+.session-group-item .session-dot {
+    margin: 0 4px 0 0;
+    width: 8px;
+    height: 8px;
+}
+
+.session-dot.ctx-high {
+    box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.35);
+}
+
+.session-group-item .session-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.session-state-pill,
+.session-ctx-pill {
+    font-size: 10px;
+    line-height: 14px;
+    padding: 0 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.session-state-pill.stuck {
+    background: var(--error, #f85149);
+    color: #fff;
+}
+
+.session-ctx-pill {
+    text-transform: none;
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--error, #f85149);
+}
+
+@media (max-width: 1023px) {
+    /* Tablet overlay is 280px: identity keeps at least ~12 characters */
+    .session-group-item .session-label { min-width: 12ch; }
 }
 
 .session-group-header + .session-group-item {
@@ -1395,3 +1487,62 @@
     background: var(--bg-hover);
     color: var(--text-primary);
 }
+
+/* ── Team details disclosure (AGENT_LIST_COMPACT D-D) ─────────── */
+.team-details-popover {
+    position: fixed;
+    z-index: 1001;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px 14px 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    min-width: 240px;
+    max-width: 360px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+.team-details-popover:focus { outline: none; }
+.team-details-popover:focus-visible { outline: 2px solid var(--accent); }
+.team-details-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.team-details-title { font-weight: 600; }
+.team-details-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 4px;
+}
+.team-details-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+.team-details-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 12px;
+    margin: 0;
+}
+.team-details-list dt { color: var(--text-muted); font-weight: 500; }
+.team-details-list dd { margin: 0; word-break: break-word; }
+
+/* Branch of the selected agent in the terminal header (dashboard only) */
+.terminal-branch-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.terminal-branch-chip[hidden] { display: none; }

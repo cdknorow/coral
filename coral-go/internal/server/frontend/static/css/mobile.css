@@ -804,10 +804,28 @@
         box-shadow: 0 0 0 6px rgba(255, 193, 7, 0.12);
     }
 
+    #mobile-session-list .session-group-item {
+        min-height: 56px; /* touch target */
+    }
+
     #mobile-session-list .session-dot {
         width: 10px;
         height: 10px;
-        margin-top: 7px;
+        margin: 5px 6px 0 0;
+    }
+
+    /* Compact list: no avatars, no elapsed text; the status chip carries state */
+    #mobile-session-list .agent-avatar,
+    #mobile-session-list .session-activity-text {
+        display: none !important;
+    }
+
+    #mobile-session-list .sidebar-kebab-btn {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     #mobile-session-list .agent-avatar {
