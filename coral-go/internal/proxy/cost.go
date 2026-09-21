@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -9,68 +10,108 @@ import (
 type ModelPricing struct {
 	InputPerMTok      float64 // $ per 1M input tokens
 	OutputPerMTok     float64 // $ per 1M output tokens
-	CacheReadPerMTok  float64 // $ per 1M cache-read tokens (Anthropic)
-	CacheWritePerMTok float64 // $ per 1M cache-write tokens (Anthropic)
+	CacheReadPerMTok  float64 // $ per 1M cached-input / cache-read tokens
+	CacheWritePerMTok float64 // $ per 1M cache-write tokens (Anthropic only)
 	ContextWindow     int     // max context window in tokens (0 = unknown)
+
+	// CachedInputIncluded records how the provider reports cached tokens.
+	// Anthropic reports input_tokens EXCLUDING cache reads, so the two are
+	// billed side by side. OpenAI and Google report an input count that already
+	// INCLUDES the cached tokens, so the cached part must be subtracted before
+	// the input rate is applied or it is billed twice.
+	CachedInputIncluded bool
 }
 
 // Pricing maps canonical model names to their pricing.
-// Use lookupPricing() for matching — it handles aliases and short names.
+// Use lookupPricing() for matching — it handles provider prefixes, dated IDs
+// and short names.
+//
+// Sources, checked 2026-09-21. Re-check them when adding or changing a row:
+//   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+//   - OpenAI:    https://developers.openai.com/api/docs/pricing (standard tier)
+//   - Google:    https://ai.google.dev/gemini-api/docs/pricing (paid tier)
+//
+// Anthropic cache rates follow fixed multipliers of the input price: reads
+// 0.1x (0.025x on Fable/Mythos 5.1), 5-minute writes 1.25x. CacheWritePerMTok
+// is the 5-minute rate; 1-hour writes bill at 2x, which this single-rate
+// struct cannot express.
+//
+// Keys are the providers' real model IDs. Every generation that has its own
+// price gets its own row: the fuzzy fallback in lookupPricing matches on shared
+// leading segments, so "claude-opus-4-5" must not be left to fall through to
+// "claude-opus-4", which costs three times as much.
 var Pricing = map[string]ModelPricing{
-	// Anthropic — Claude 4
-	"claude-opus-4-20250514":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
+	// Anthropic — Fable / Mythos 5.x. 5.1 differs from 5 ONLY in cache reads.
+	// Agent sessions are dominated by cache reads, so they stay separate rows.
+	"claude-fable-5-1":  {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 0.25, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+	"claude-mythos-5-1": {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 0.25, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+	"claude-fable-5":    {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 1.00, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+	"claude-mythos-5":   {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 1.00, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+
+	// Anthropic — Opus. 4.5 and later are $5/$25; Opus 4 and 4.1 remain $15/$75.
+	"claude-opus-5":          {InputPerMTok: 5.00, OutputPerMTok: 25.00, CacheReadPerMTok: 0.50, CacheWritePerMTok: 6.25, ContextWindow: 1_000_000},
+	"claude-opus-4-8":        {InputPerMTok: 5.00, OutputPerMTok: 25.00, CacheReadPerMTok: 0.50, CacheWritePerMTok: 6.25, ContextWindow: 1_000_000},
+	"claude-opus-4-7":        {InputPerMTok: 5.00, OutputPerMTok: 25.00, CacheReadPerMTok: 0.50, CacheWritePerMTok: 6.25, ContextWindow: 1_000_000},
+	"claude-opus-4-6":        {InputPerMTok: 5.00, OutputPerMTok: 25.00, CacheReadPerMTok: 0.50, CacheWritePerMTok: 6.25, ContextWindow: 1_000_000},
+	"claude-opus-4-5":        {InputPerMTok: 5.00, OutputPerMTok: 25.00, CacheReadPerMTok: 0.50, CacheWritePerMTok: 6.25, ContextWindow: 200_000},
+	"claude-opus-4-1":        {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
+	"claude-opus-4":          {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
+	"claude-opus-4-20250514": {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
+
+	// Anthropic — Sonnet. Sonnet 5 is $2/$10 (the launch price became permanent).
+	"claude-sonnet-5":          {InputPerMTok: 2.00, OutputPerMTok: 10.00, CacheReadPerMTok: 0.20, CacheWritePerMTok: 2.50, ContextWindow: 1_000_000},
+	"claude-sonnet-4-6":        {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
+	"claude-sonnet-4-5":        {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
+	"claude-sonnet-4":          {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
 	"claude-sonnet-4-20250514": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
-	"claude-haiku-4-20250514":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
 
-	// Anthropic — Claude 4.5/4.6 (1M context)
-	"claude-opus-4-6-20260407":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 1_000_000},
-	"claude-sonnet-4-6-20260407": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
-	"claude-haiku-4-5-20251001":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
+	// Anthropic — Haiku. There is no "Haiku 4"; $0.80/$4 is Haiku 3.5's price.
+	"claude-haiku-4-5": {InputPerMTok: 1.00, OutputPerMTok: 5.00, CacheReadPerMTok: 0.10, CacheWritePerMTok: 1.25, ContextWindow: 200_000},
+	"claude-3-5-haiku": {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
 
-	// Anthropic — Claude Fable 5.x (1M context). First-party API rates.
-	// CacheWritePerMTok is the 5-minute TTL rate (1.25x input); 1-hour writes
-	// bill at $20 (2x), which this single-rate struct cannot express.
-	// Fable 5.1 differs from Fable 5 ONLY in cache reads: $0.25 (0.025x input)
-	// versus $1.00 (0.1x). Agent sessions are dominated by cache reads, so the
-	// two must stay separate rows rather than aliases of each other.
-	"claude-fable-5-1": {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 0.25, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
-	"claude-fable-5":   {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 1.00, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+	// Bedrock and Vertex model IDs ("us.anthropic.claude-opus-5-v1:0",
+	// "claude-opus-4-5@20251101") have no rows of their own: lookupPricing
+	// strips the provider decoration and prices them from the rows above.
+	// Global endpoints match first-party rates; regional and multi-region
+	// endpoints carry a 10% premium from the 4.5 generation on, not modelled here.
 
-	// Bedrock — Claude 4 (on-demand pricing matches direct API; model IDs use anthropic. prefix)
-	"anthropic.claude-opus-4-20250514-v1:0":      {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
-	"anthropic.claude-sonnet-4-20250514-v1:0":    {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
-	"anthropic.claude-haiku-4-20250514-v1:0":     {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
-	"us.anthropic.claude-opus-4-20250514-v1:0":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
-	"us.anthropic.claude-sonnet-4-20250514-v1:0": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},
-	"us.anthropic.claude-haiku-4-20250514-v1:0":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 200_000},
+	// OpenAI — GPT-5 family (Codex agents). CacheReadPerMTok is "cached input".
+	// gpt-5.6-sol is promotional pricing through 2026-11-21. The -pro models
+	// have no cached-input discount, so their cached rate equals the input rate.
+	"gpt-5.6-sol":   {InputPerMTok: 4.00, OutputPerMTok: 20.00, CacheReadPerMTok: 0.40, CachedInputIncluded: true},
+	"gpt-5.6-terra": {InputPerMTok: 2.00, OutputPerMTok: 12.00, CacheReadPerMTok: 0.20, CachedInputIncluded: true},
+	"gpt-5.6-luna":  {InputPerMTok: 0.20, OutputPerMTok: 1.20, CacheReadPerMTok: 0.02, CachedInputIncluded: true},
+	"gpt-5.5":       {InputPerMTok: 5.00, OutputPerMTok: 30.00, CacheReadPerMTok: 0.50, CachedInputIncluded: true},
+	"gpt-5.5-pro":   {InputPerMTok: 30.00, OutputPerMTok: 180.00, CacheReadPerMTok: 30.00, CachedInputIncluded: true},
+	"gpt-5.4":       {InputPerMTok: 2.50, OutputPerMTok: 15.00, CacheReadPerMTok: 0.25, CachedInputIncluded: true},
+	"gpt-5.4-mini":  {InputPerMTok: 0.75, OutputPerMTok: 4.50, CacheReadPerMTok: 0.075, CachedInputIncluded: true},
+	"gpt-5.4-nano":  {InputPerMTok: 0.20, OutputPerMTok: 1.25, CacheReadPerMTok: 0.02, CachedInputIncluded: true},
+	"gpt-5.4-pro":   {InputPerMTok: 30.00, OutputPerMTok: 180.00, CacheReadPerMTok: 30.00, CachedInputIncluded: true},
+	"gpt-5.3-codex": {InputPerMTok: 1.75, OutputPerMTok: 14.00, CacheReadPerMTok: 0.175, CachedInputIncluded: true},
+	"gpt-5.2":       {InputPerMTok: 1.75, OutputPerMTok: 14.00, CacheReadPerMTok: 0.175, CachedInputIncluded: true},
+	"gpt-5.2-pro":   {InputPerMTok: 21.00, OutputPerMTok: 168.00, CacheReadPerMTok: 21.00, CachedInputIncluded: true},
+	"gpt-5.1":       {InputPerMTok: 1.25, OutputPerMTok: 10.00, CacheReadPerMTok: 0.125, CachedInputIncluded: true},
+	"gpt-5":         {InputPerMTok: 1.25, OutputPerMTok: 10.00, CacheReadPerMTok: 0.125, CachedInputIncluded: true},
+	"gpt-5-mini":    {InputPerMTok: 0.25, OutputPerMTok: 2.00, CacheReadPerMTok: 0.025, CachedInputIncluded: true},
+	"gpt-5-nano":    {InputPerMTok: 0.05, OutputPerMTok: 0.40, CacheReadPerMTok: 0.005, CachedInputIncluded: true},
+	"gpt-5-pro":     {InputPerMTok: 15.00, OutputPerMTok: 120.00, CacheReadPerMTok: 15.00, CachedInputIncluded: true},
 
-	// Bedrock — Claude 4.5/4.6 (1M context)
-	"anthropic.claude-opus-4-6-20260407-v1:0":      {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 1_000_000},
-	"anthropic.claude-sonnet-4-6-20260407-v1:0":    {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
-	"anthropic.claude-haiku-4-5-20251001-v1:0":     {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
-	"us.anthropic.claude-opus-4-6-20260407-v1:0":   {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 1_000_000},
-	"us.anthropic.claude-sonnet-4-6-20260407-v1:0": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
-	"us.anthropic.claude-haiku-4-5-20251001-v1:0":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
+	// OpenAI — earlier models
+	"gpt-4o":      {InputPerMTok: 2.50, OutputPerMTok: 10.00, CacheReadPerMTok: 1.25, ContextWindow: 128_000, CachedInputIncluded: true},
+	"gpt-4o-mini": {InputPerMTok: 0.15, OutputPerMTok: 0.60, CacheReadPerMTok: 0.075, ContextWindow: 128_000, CachedInputIncluded: true},
+	"o3":          {InputPerMTok: 2.00, OutputPerMTok: 8.00, CacheReadPerMTok: 0.50, ContextWindow: 200_000, CachedInputIncluded: true},
 
-	// OpenAI
-	"gpt-4o":      {InputPerMTok: 2.50, OutputPerMTok: 10.00, ContextWindow: 128_000},
-	"gpt-4o-mini": {InputPerMTok: 0.15, OutputPerMTok: 0.60, ContextWindow: 128_000},
-	"o3":          {InputPerMTok: 2.00, OutputPerMTok: 8.00, ContextWindow: 200_000},
-
-	// Google
-	"gemini-2.5-pro":   {InputPerMTok: 1.25, OutputPerMTok: 10.00, ContextWindow: 1_000_000},
-	"gemini-2.5-flash": {InputPerMTok: 0.15, OutputPerMTok: 0.60, ContextWindow: 1_000_000},
+	// Google — paid tier, prompts up to 200k tokens. Gemini 2.5 Pro doubles its
+	// input price (and output goes to $15) above 200k, which is not modelled.
+	"gemini-2.5-pro":   {InputPerMTok: 1.25, OutputPerMTok: 10.00, CacheReadPerMTok: 0.125, ContextWindow: 1_000_000, CachedInputIncluded: true},
+	"gemini-2.5-flash": {InputPerMTok: 0.30, OutputPerMTok: 2.50, CacheReadPerMTok: 0.03, ContextWindow: 1_000_000, CachedInputIncluded: true},
 }
 
-// modelAliases maps model identifiers observed from supported agent CLIs to
-// canonical pricing rows. These aliases deliberately reuse repository pricing
-// data instead of duplicating or guessing prices for every dated identifier.
-var modelAliases = map[string]string{
-	"claude-opus-4-7": "claude-opus-4-6-20260407",
-	"claude-opus-4-8": "claude-opus-4-6-20260407",
-	"claude-opus-5":   "claude-opus-4-6-20260407",
-	"claude-sonnet-5": "claude-sonnet-4-6-20260407",
-}
+// modelAliases maps model identifiers that cannot be resolved by exact or
+// segment matching to a canonical pricing row. It is empty now that every
+// priced generation has its own row; it stays as the place to put a true
+// alias (a differently named ID for the same model) if one appears.
+var modelAliases = map[string]string{}
 
 // modelContextWindows records authoritative context sizes even when Coral has
 // no verified pricing row for a model (and therefore must not invent costs).
@@ -88,6 +129,26 @@ func normalizeModel(model string) string {
 		model = strings.TrimSpace(model[:idx])
 	}
 	return model
+}
+
+// bedrockVersionSuffix matches the "-v1:0" / "-v2" tail of Bedrock model IDs.
+var bedrockVersionSuffix = regexp.MustCompile(`-v\d+(:\d+)?$`)
+
+// stripProviderDecoration reduces a cloud-provider model ID to the first-party
+// ID it denotes, so one pricing row serves every platform:
+//
+//	us.anthropic.claude-opus-5-v1:0  -> claude-opus-5          (Bedrock)
+//	claude-opus-4-5@20251101         -> claude-opus-4-5-20251101 (Vertex)
+func stripProviderDecoration(model string) string {
+	for _, region := range []string{"global.", "us.", "eu.", "apac.", "jp.", "au."} {
+		if strings.HasPrefix(model, region+"anthropic.") {
+			model = strings.TrimPrefix(model, region)
+			break
+		}
+	}
+	model = strings.TrimPrefix(model, "anthropic.")
+	model = bedrockVersionSuffix.ReplaceAllString(model, "")
+	return strings.ReplaceAll(model, "@", "-")
 }
 
 func explicitContextWindow(model string) (int, bool) {
@@ -112,7 +173,7 @@ func explicitContextWindow(model string) (int, bool) {
 //     dash-delimited prefix. Handles aliases like "claude-opus-4-6" matching
 //     "claude-opus-4-20250514" (both share prefix "claude-opus-4").
 func lookupPricing(model string) (ModelPricing, bool) {
-	model = normalizeModel(model)
+	model = stripProviderDecoration(normalizeModel(model))
 	if model == "" {
 		return ModelPricing{}, false
 	}
@@ -240,11 +301,18 @@ func CalculateCostBreakdown(model string, usage TokenUsage) CostBreakdown {
 		return CostBreakdown{Model: model}
 	}
 
+	// See ModelPricing.CachedInputIncluded: for OpenAI and Google the cached
+	// tokens are already inside InputTokens and must not be billed twice.
+	billableInput := usage.InputTokens
+	if pricing.CachedInputIncluded {
+		billableInput = max(usage.InputTokens-usage.CacheReadTokens, 0)
+	}
+
 	breakdown := CostBreakdown{
 		Model:             model,
 		PricingFound:      true,
 		Pricing:           pricing,
-		InputCostUSD:      float64(usage.InputTokens) * pricing.InputPerMTok / 1_000_000,
+		InputCostUSD:      float64(billableInput) * pricing.InputPerMTok / 1_000_000,
 		OutputCostUSD:     float64(usage.OutputTokens) * pricing.OutputPerMTok / 1_000_000,
 		CacheReadCostUSD:  float64(usage.CacheReadTokens) * pricing.CacheReadPerMTok / 1_000_000,
 		CacheWriteCostUSD: float64(usage.CacheWriteTokens) * pricing.CacheWritePerMTok / 1_000_000,
