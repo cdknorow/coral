@@ -155,6 +155,13 @@ async function run() {
   await sleep(1500);
   w = await W();
   check('while the agent is Working the row shows and names the latest step', w.shown && /Run the test suite/.test(w.text), JSON.stringify(w));
+  const groupsBefore = await ev(`${C}.querySelectorAll(':scope > .work-group').length`);
+  for (const [id, desc] of [['tw2', 'Build the app'], ['tw3', 'Lint the code']]) {
+    await ev(`window.__msgs.push({ type: 'assistant', text: '', tool_uses: [{ name: 'Bash', tool_use_id: '${id}', description: '${desc}', command: 'make' }] }, { type: 'tool_result', tool_use_id: '${id}', content: 'ok' }); true`);
+    await sleep(1300);
+  }
+  const grp = await ev(`(() => { const gs = ${C}.querySelectorAll(':scope > .work-group'); const g = gs[gs.length - 1]; return { groups: gs.length, steps: g.querySelector('.work-group-count').textContent, rows: g.querySelectorAll('.tool-call').length, rowText: (${C}.querySelector(':scope > .chat-working') || {}).textContent }; })()`);
+  check('tool calls arriving while Working is shown join the same group (no new little groups)', grp.groups === groupsBefore && grp.rows === 3 && /Lint the code/.test(grp.rowText || ''), JSON.stringify({ before: groupsBefore, ...grp }));
   await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; return true; })`);
   await sleep(1500);
   w = await W();

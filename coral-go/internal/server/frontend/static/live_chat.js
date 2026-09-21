@@ -227,8 +227,25 @@ function updateWorkGroupSummary(group) {
     group.querySelector(".work-group-latest").textContent = latest;
 }
 
+// The Working row and pending (Sent/Queued) bubbles live at the bottom of the
+// live chat but are not part of the transcript. Rendering reads and appends
+// transcript content as if they were not there, so a new tool call still
+// joins the turn's group while the Working row is showing.
+const TRAILING_CHROME = ".chat-working, .pending-messages";
+
+function lastContent(container) {
+    let el = container.lastElementChild;
+    while (el && el.matches(TRAILING_CHROME)) el = el.previousElementSibling;
+    return el;
+}
+
+function appendContent(container, el) {
+    const firstChrome = Array.from(container.children).find(c => c.matches(TRAILING_CHROME));
+    container.insertBefore(el, firstChrome || null);
+}
+
 function demoteTurnFinal(container) {
-    const last = container.lastElementChild;
+    const last = lastContent(container);
     if (!last || !last.classList.contains("turn-final")) return;
     let group = last.previousElementSibling;
     if (!group || !group.classList.contains("work-group")) {
@@ -242,10 +259,10 @@ function demoteTurnFinal(container) {
 
 function appendWork(container, el) {
     demoteTurnFinal(container);
-    let group = container.lastElementChild;
+    let group = lastContent(container);
     if (!group || !group.classList.contains("work-group")) {
         group = createWorkGroup();
-        container.appendChild(group);
+        appendContent(container, group);
     }
     group.querySelector(":scope > .work-group-body").appendChild(el);
     updateWorkGroupSummary(group);
@@ -254,7 +271,7 @@ function appendWork(container, el) {
 function appendTurnFinal(container, el) {
     demoteTurnFinal(container);
     el.classList.add("turn-final");
-    container.appendChild(el);
+    appendContent(container, el);
 }
 
 // Join a prepended older page to the page after it: a trailing "final" reply
@@ -280,9 +297,9 @@ function stitchPages(lastOlder) {
 
 function renderMessage(msg, container) {
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
-        container.appendChild(makeBubble("chat-note", "Interrupted"));
+        appendContent(container, makeBubble("chat-note", "Interrupted"));
     } else if (msg.type === "user") {
-        container.appendChild(makeBubble("chat-bubble human",
+        appendContent(container, makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
     } else if (msg.type === "assistant") {
         if (msg.text) {
