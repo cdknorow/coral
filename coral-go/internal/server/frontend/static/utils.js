@@ -188,6 +188,14 @@ export function renderMarkdown(content, options) {
     return escapeHtml(content);
 }
 
+/** Label fenced code blocks with their language (shown by .chat-prose CSS). */
+export function labelCodeBlocks(root) {
+    for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
+        const lang = /language-([\w+#.-]+)/.exec(code.className);
+        if (lang) code.parentElement.dataset.lang = lang[1];
+    }
+}
+
 // Shared agent color palette (Nord-inspired muted tones)
 const _agentColorPalette = [
     '#81a1c1', '#a3be8c', '#b48ead', '#d08770',

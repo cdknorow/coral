@@ -1,7 +1,7 @@
 /* Rendering functions for session lists, chat history, and status updates */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, getAgentColor, hexToRgba } from './utils.js';
+import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, labelCodeBlocks, getAgentColor, hexToRgba } from './utils.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -2313,9 +2313,8 @@ export function renderHistoryChat(messages) {
         if (isHuman) {
             messageHtml = escapeHtml(content);
         } else {
-            const cleaned = stripPulseLines(content);
-            const rawHtml = marked.parse(cleaned);
-            messageHtml = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHtml) : rawHtml;
+            // renderMarkdown sanitizes and applies syntax highlighting
+            messageHtml = renderMarkdown(stripPulseLines(content));
         }
 
         bubble.innerHTML = `
@@ -2323,6 +2322,7 @@ export function renderHistoryChat(messages) {
             <div class="message-text${!isHuman ? " markdown-body" : ""}">${messageHtml}</div>
             ${isHuman ? `<button class="edit-btn" onclick="editAndResubmit(this)">Edit & Resubmit</button>` : ""}
         `;
+        labelCodeBlocks(bubble);
         container.appendChild(bubble);
     }
 

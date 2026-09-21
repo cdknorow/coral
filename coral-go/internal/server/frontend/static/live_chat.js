@@ -1,7 +1,7 @@
 /* Live history view — renders JSONL messages as a read-only conversation log */
 
 import { state } from './state.js';
-import { escapeHtml, renderMarkdown } from './utils.js';
+import { escapeHtml, renderMarkdown, labelCodeBlocks } from './utils.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 
@@ -127,11 +127,7 @@ function makeBubble(className, html) {
     const div = document.createElement("div");
     div.className = className;
     div.innerHTML = html;
-    // Label fenced code blocks with their language (shown via CSS ::before).
-    for (const code of div.querySelectorAll('pre > code[class*="language-"]')) {
-        const lang = /language-([\w+#.-]+)/.exec(code.className);
-        if (lang) code.parentElement.dataset.lang = lang[1];
-    }
+    labelCodeBlocks(div);
     return div;
 }
 

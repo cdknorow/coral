@@ -657,11 +657,6 @@
     padding: 12px 20px;
 }
 
-.capture-wrapper.chat-mode .live-history-center > * {
-    max-width: 780px;
-    margin-left: auto;
-    margin-right: auto;
-}
 
 
 /* Narrow center pane: icon-only toggle so the header identity keeps its room */
@@ -675,23 +670,34 @@
     }
 }
 
-/* ── Center Chat View: reading typography ──────────────────── */
+/* ── Chat prose: reading typography (live Chat view + history Chat tab) ── */
 /* Replies read as prose, not bubbles: serif body, generous leading, carded
    code blocks with a language label. System serifs only, so the native app
    renders the same offline. */
 
-.live-history-center {
+.chat-prose {
     --chat-prose-font: ui-serif, "Iowan Old Style", Charter, "Charter BT", Georgia, serif;
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
     /* Theme accent (the New Agent button's hue), brighter shade for legible text */
     --chat-inline-code: var(--accent);
 }
 
-.capture-wrapper.chat-mode .live-history-center {
+.capture-wrapper.chat-mode .live-history-center,
+.chat-prose.chat-messages {
     padding: 24px 28px 40px;
 }
 
-.live-history-center .chat-bubble.assistant {
+.chat-prose > * {
+    max-width: 780px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.chat-prose.chat-messages .chat-bubble.assistant .role-label {
+    display: none;
+}
+
+.chat-prose.chat-messages .chat-bubble.assistant {
     background: none;
     border: none;
     border-radius: 0;
@@ -700,66 +706,66 @@
     max-width: 780px;
 }
 
-.live-history-center .chat-bubble.assistant .message-text {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text {
     font-family: var(--chat-prose-font);
     font-size: 17px;
     line-height: 1.65;
     color: var(--text-primary);
 }
 
-.live-history-center .chat-bubble.assistant .message-text p {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text p {
     margin: 0 0 14px;
 }
-.live-history-center .chat-bubble.assistant .message-text > :last-child {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text > :last-child {
     margin-bottom: 0;
 }
 
-.live-history-center .chat-bubble.assistant .message-text h1,
-.live-history-center .chat-bubble.assistant .message-text h2,
-.live-history-center .chat-bubble.assistant .message-text h3,
-.live-history-center .chat-bubble.assistant .message-text h4 {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h1,
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h2,
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h3,
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h4 {
     font-family: var(--chat-prose-font);
     font-weight: 700;
     line-height: 1.3;
     color: var(--text-primary);
     margin: 26px 0 10px;
 }
-.live-history-center .chat-bubble.assistant .message-text h1 { font-size: 1.5em; }
-.live-history-center .chat-bubble.assistant .message-text h2 { font-size: 1.3em; }
-.live-history-center .chat-bubble.assistant .message-text h3 { font-size: 1.12em; }
-.live-history-center .chat-bubble.assistant .message-text h4 { font-size: 1em; }
-.live-history-center .chat-bubble.assistant .message-text > :first-child { margin-top: 0; }
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h1 { font-size: 1.5em; }
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h2 { font-size: 1.3em; }
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h3 { font-size: 1.12em; }
+.chat-prose.chat-messages .chat-bubble.assistant .message-text h4 { font-size: 1em; }
+.chat-prose.chat-messages .chat-bubble.assistant .message-text > :first-child { margin-top: 0; }
 
-.live-history-center .chat-bubble.assistant .message-text ul,
-.live-history-center .chat-bubble.assistant .message-text ol {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text ul,
+.chat-prose.chat-messages .chat-bubble.assistant .message-text ol {
     margin: 0 0 14px;
     padding-left: 26px;
 }
-.live-history-center .chat-bubble.assistant .message-text li {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text li {
     margin: 4px 0;
 }
 
-.live-history-center .chat-bubble.assistant .message-text hr {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text hr {
     border: none;
     border-top: 1px solid var(--border);
     margin: 28px 0;
 }
 
-.live-history-center .chat-bubble.assistant .message-text blockquote {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text blockquote {
     border-left: 3px solid var(--border-light);
     margin: 0 0 14px;
     padding: 2px 0 2px 14px;
     color: var(--text-secondary);
 }
 
-.live-history-center .chat-bubble.assistant .message-text a {
+.chat-prose.chat-messages .chat-bubble.assistant .message-text a {
     color: var(--accent-light, var(--accent));
     text-decoration: underline;
     text-underline-offset: 2px;
 }
 
 /* Inline code: tinted, on a faint chip */
-.live-history-center .chat-bubble .message-text :not(pre) > code {
+.chat-prose.chat-messages .chat-bubble .message-text :not(pre) > code {
     font-family: var(--font-mono);
     font-size: 0.84em;
     color: var(--chat-inline-code);
@@ -770,7 +776,7 @@
 }
 
 /* Code blocks: a card with the language as a small label */
-.live-history-center .chat-bubble .message-text pre {
+.chat-prose.chat-messages .chat-bubble .message-text pre {
     position: relative;
     background: var(--chat-code-bg);
     border: 1px solid var(--border);
@@ -779,10 +785,10 @@
     margin: 0 0 16px;
     overflow-x: auto;
 }
-.live-history-center .chat-bubble .message-text pre[data-lang] {
+.chat-prose.chat-messages .chat-bubble .message-text pre[data-lang] {
     padding-top: 40px;
 }
-.live-history-center .chat-bubble .message-text pre[data-lang]::before {
+.chat-prose.chat-messages .chat-bubble .message-text pre[data-lang]::before {
     content: attr(data-lang);
     position: absolute;
     top: 12px;
@@ -791,7 +797,7 @@
     font-size: 12px;
     color: var(--text-secondary);
 }
-.live-history-center .chat-bubble .message-text pre code {
+.chat-prose.chat-messages .chat-bubble .message-text pre code {
     font-family: var(--font-mono);
     font-size: 13.5px;
     line-height: 1.6;
@@ -800,36 +806,44 @@
     padding: 0;
     color: var(--text-primary);
 }
-.live-history-center .chat-bubble .message-text pre code.hljs {
+.chat-prose.chat-messages .chat-bubble .message-text pre code.hljs {
     background: none;
     padding: 0;
 }
 
-.live-history-center .chat-bubble .message-text table {
+.chat-prose.chat-messages .chat-bubble .message-text table {
     font-family: var(--font-sans);
     font-size: 14px;
     margin: 0 0 16px;
 }
 
 /* User turns stay as a compact bubble on the right */
-.live-history-center .chat-bubble.human {
+.chat-prose.chat-messages .chat-bubble.human {
     margin: 28px 0 22px auto;
     max-width: min(75%, 600px);
     border: none;
     padding: 10px 16px;
 }
-.live-history-center > .chat-bubble.human {
+.chat-prose.chat-messages > .chat-bubble.human {
     margin-right: max(0px, calc((100% - 780px) / 2));
 }
-.live-history-center .chat-bubble.human .role-label {
+.chat-prose.chat-messages .chat-bubble.human .role-label {
     display: none;
 }
-.live-history-center .chat-bubble.human .message-text {
+.chat-prose.chat-messages .chat-bubble.human .message-text {
     font-size: 15px;
     line-height: 1.55;
 }
 
 /* Tool/work groups: quieter, sans, so prose stands out */
-.live-history-center .work-group {
+.chat-prose .work-group {
     margin-bottom: 18px;
+}
+
+/* History: "Edit & Resubmit" sits beside the compact user bubble, not over it */
+.chat-prose.chat-messages .chat-bubble.human .edit-btn {
+    top: 50%;
+    right: calc(100% + 8px);
+    transform: translateY(-50%);
+    white-space: nowrap;
 }
