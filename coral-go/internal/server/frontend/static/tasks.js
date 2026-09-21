@@ -1,7 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, renderMarkdown } from './utils.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -156,6 +156,26 @@ function _formatDuration(startIso, endIso) {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+// Prompt and result are model-written and almost always markdown. They are
+// also untrusted, so this fails closed: without the sanitizer the text is
+// shown escaped rather than rendered. breaks:true keeps single newlines,
+// which prompts use for "Key: value" style lines.
+function _subagentMarkdown(text) {
+    if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+        return `<div class="task-detail-body subagent-detail-text">${escapeHtml(text)}</div>`;
+    }
+    // renderMarkdown has already sanitized against script execution. This second
+    // pass removes anything that loads or embeds a resource. The text can be
+    // steered by whatever the subagent read, and an <img> with a remote URL
+    // makes the browser call out the moment the modal opens: a silent way to
+    // leak data through the URL. A report has no need for images.
+    const html = DOMPurify.sanitize(renderMarkdown(text, { breaks: true, gfm: true }), {
+        FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'track', 'svg', 'math', 'style', 'link', 'form', 'input', 'button', 'textarea', 'select'],
+        FORBID_ATTR: ['style', 'srcset', 'background', 'poster'],
+    });
+    return `<div class="task-detail-body subagent-detail-text subagent-detail-md">${html}</div>`;
+}
+
 function _subagentConversationHtml(sa) {
     const block = (label, inner) => `<div class="task-detail-section"><div class="task-detail-label">${label}</div>${inner}</div>`;
     const note = (text) => `<div class="subagent-detail-note">${escapeHtml(text)}</div>`;
@@ -166,7 +186,7 @@ function _subagentConversationHtml(sa) {
     if (!c.data || !c.data.conversation_available) {
         return block('Prompt', note('The transcript for this subagent is no longer available.'));
     }
-    const text = (t) => `<div class="task-detail-body subagent-detail-text">${escapeHtml(t)}</div>`;
+    const text = _subagentMarkdown;
     let html = block('Prompt', c.data.prompt ? text(c.data.prompt) : note('No prompt recorded.'));
     html += block('Result', c.data.result ? text(c.data.result)
         : note(sa.status === 'in_progress' ? 'Still working \u2014 no result yet.' : 'No final answer was recorded.'));
@@ -220,7 +240,30 @@ function _renderSubagentDetail(sa) {
         </div>`;
 
     html += _subagentConversationHtml(row);
+
+    // This runs on every poll while the modal is open. Replacing the DOM resets
+    // the scroll position of the text boxes, so do nothing when the output is
+    // unchanged (always the case once a subagent has finished), and otherwise
+    // put the reader back where they were.
+    if (content._subagentHtml === html && content.dataset.subagentId === sa.subagent_id) return;
+    const sameSubagent = content.dataset.subagentId === sa.subagent_id;
+    const scrollOf = (root) => Array.from(root.querySelectorAll('.subagent-detail-text')).map(el => el.scrollTop);
+    const body = content.closest('.modal-body');
+    const saved = sameSubagent ? { boxes: scrollOf(content), body: body ? body.scrollTop : 0 } : null;
+
     content.innerHTML = html;
+    content._subagentHtml = html;
+    content.dataset.subagentId = sa.subagent_id;
+
+    // A link in a report must not navigate the dashboard away.
+    content.querySelectorAll('.subagent-detail-md a[href]').forEach(a => {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+    });
+    if (saved) {
+        content.querySelectorAll('.subagent-detail-text').forEach((el, i) => { el.scrollTop = saved.boxes[i] || 0; });
+        if (body) body.scrollTop = saved.body;
+    }
 }
 
 async function _loadSubagentConversation(sa) {
@@ -808,6 +851,8 @@ function _getBoardProject() {
 
 export function showTaskDetailModal(taskId) {
     _openSubagentId = null; // the modal is shared; it now shows a board task
+    const sharedContent = document.getElementById('task-detail-content');
+    if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
     const tasks = state.currentBoardTasks || [];
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;

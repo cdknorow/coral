@@ -1112,6 +1112,93 @@
     padding-left: 10px;
 }
 
+/* Rendered markdown inside the prompt/result boxes. Compact, since the box is
+   a scrolling pane inside a modal rather than a full page. */
+.subagent-detail-text.subagent-detail-md {
+    white-space: normal; /* markdown supplies its own structure */
+    max-height: 420px;
+}
+
+.subagent-detail-md > :first-child { margin-top: 0; }
+.subagent-detail-md > :last-child { margin-bottom: 0; }
+
+.subagent-detail-md h1,
+.subagent-detail-md h2,
+.subagent-detail-md h3,
+.subagent-detail-md h4 {
+    margin: 14px 0 6px;
+    line-height: 1.3;
+    color: var(--text-primary);
+}
+.subagent-detail-md h1 { font-size: 16px; }
+.subagent-detail-md h2 { font-size: 15px; }
+.subagent-detail-md h3 { font-size: 14px; }
+.subagent-detail-md h4 { font-size: 13px; }
+
+.subagent-detail-md p { margin: 6px 0; }
+
+.subagent-detail-md ul,
+.subagent-detail-md ol {
+    margin: 6px 0;
+    padding-left: 22px;
+}
+.subagent-detail-md li { margin: 3px 0; }
+
+.subagent-detail-md code {
+    background: var(--bg-tertiary, rgba(255,255,255,0.06));
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 12px;
+}
+.subagent-detail-md pre {
+    background: var(--bg-tertiary, rgba(255,255,255,0.06));
+    padding: 10px 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+}
+.subagent-detail-md pre code {
+    background: none;
+    padding: 0;
+    white-space: pre;
+}
+
+.subagent-detail-md blockquote {
+    border-left: 3px solid var(--border, rgba(255,255,255,0.15));
+    padding-left: 10px;
+    margin: 6px 0;
+    color: var(--text-muted);
+}
+
+.subagent-detail-md table {
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 12px;
+    display: block;      /* lets a wide table scroll instead of stretching the modal */
+    overflow-x: auto;
+    max-width: 100%;
+}
+.subagent-detail-md th,
+.subagent-detail-md td {
+    border: 1px solid var(--border, rgba(255,255,255,0.12));
+    padding: 4px 8px;
+    text-align: left;
+    vertical-align: top;
+}
+.subagent-detail-md th {
+    background: var(--bg-tertiary, rgba(255,255,255,0.06));
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.subagent-detail-md a { color: var(--subagent-accent, #a371f7); }
+.subagent-detail-md hr {
+    border: none;
+    border-top: 1px solid var(--border, rgba(255,255,255,0.12));
+    margin: 10px 0;
+}
+
 .subagent-detail-note {
     font-size: 12px;
     font-style: italic;

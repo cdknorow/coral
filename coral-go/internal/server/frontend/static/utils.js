@@ -159,7 +159,9 @@ export function showView(activeId) {
     if (layout) layout.classList.toggle('sidebar-hidden', FULL_WIDTH_VIEWS.has(activeId));
 }
 
-export function renderMarkdown(content) {
+// options is passed through to marked.parse for this call only, e.g.
+// { breaks: true } to keep single newlines as line breaks.
+export function renderMarkdown(content, options) {
     if (!content) return '';
     if (typeof marked !== 'undefined') {
         try {
@@ -174,7 +176,7 @@ export function renderMarkdown(content) {
                 });
                 marked._hljsConfigured = true;
             }
-            const html = marked.parse(content);
+            const html = options ? marked.parse(content, options) : marked.parse(content);
             return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
         } catch { /* fall through */ }
     }
