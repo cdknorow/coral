@@ -947,6 +947,43 @@ func TestSessionsSetIcon(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestSessionsSetNameColor(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+
+	terminal.addSession("claude-test-color", "/tmp/test")
+	ctx := context.Background()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-test-color", AgentType: "claude", WorkingDir: "/tmp/test", SessionID: "test-color-123"})
+
+	put := func(body string) int {
+		req, err := http.NewRequest(http.MethodPut, server.URL+"/api/sessions/live/claude-test-color/name-color", bytes.NewBufferString(body))
+		require.NoError(t, err)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	colors := func() map[string]string {
+		m, err := ss.GetNameColors(ctx, []string{"test-color-123"})
+		require.NoError(t, err)
+		return m
+	}
+
+	assert.Equal(t, http.StatusOK, put(`{"color": "#A3BE8C", "session_id": "test-color-123"}`))
+	assert.Equal(t, "#a3be8c", colors()["test-color-123"], "stored lower-cased")
+
+	// Anything but #rrggbb is rejected: the value lands in a style attribute.
+	for _, bad := range []string{"red", "#abc", "#a3be8c;background:url(x)", "url(x)"} {
+		assert.Equal(t, http.StatusBadRequest, put(`{"color": "`+bad+`", "session_id": "test-color-123"}`), bad)
+	}
+	assert.Equal(t, "#a3be8c", colors()["test-color-123"], "rejected values leave the colour unchanged")
+
+	assert.Equal(t, http.StatusOK, put(`{"color": "", "session_id": "test-color-123"}`))
+	assert.Empty(t, colors(), "empty colour clears the override")
+
+	assert.Equal(t, http.StatusBadRequest, put(`{"color": "#a3be8c"}`), "session_id required")
+}
+
 func TestSessionsTasks_CRUD(t *testing.T) {
 	server, _, terminal, ss := setupSessionsTestServer(t)
 
@@ -1064,6 +1101,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Post("/api/sessions/live/{name}/kill", handler.Kill)
 	r.Post("/api/sessions/live/{name}/set-display-name", handler.SetDisplayName)
 	r.Post("/api/sessions/live/{name}/set-icon", handler.SetIcon)
+	r.Put("/api/sessions/live/{name}/name-color", handler.SetNameColor)
 	r.Post("/api/sessions/launch", handler.Launch)
 	r.Post("/api/sessions/launch-team", handler.LaunchTeam)
 

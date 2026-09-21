@@ -1,7 +1,7 @@
 /* Session selection and management */
 
 import { state, sessionKey } from './state.js';
-import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, dbg, showView, agentNameColor } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
 import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
@@ -311,21 +311,30 @@ export async function selectHistorySession(sessionId) {
 export function renameAgent(name, agentType, sessionId) {
     const current = state.liveSessions.find(s => s.session_id === sessionId);
     const currentName = (current && current.display_name) || name;
-    window.showPromptModal('Rename Agent', 'Display name', currentName, async (newName) => {
-        if (newName === currentName) return;
-        try {
-            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/display-name`, {
+    const currentColor = (current && current.name_color) || "";
+    // "Auto" previews the palette colour the agent would get with no override.
+    const autoColor = agentNameColor({ ...(current || { name }), name_color: null });
+    window.showPromptModal('Rename Agent', 'Display name', currentName, async (newName, newColor) => {
+        const nameChanged = newName !== currentName;
+        const colorChanged = newColor !== currentColor;
+        if (!nameChanged && !colorChanged) return;
+        const put = async (path, body) => {
+            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/${path}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ display_name: newName, session_id: sessionId }),
+                body: JSON.stringify({ ...body, session_id: sessionId }),
             });
             const result = await resp.json();
-            if (result.error) {
-                showToast(result.error, true);
-                return;
-            }
+            if (result.error) throw new Error(result.error);
+        };
+        try {
+            if (nameChanged) await put("display-name", { display_name: newName });
+            if (colorChanged) await put("name-color", { color: newColor });
             // Update in-memory state
-            if (current) current.display_name = newName;
+            if (current) {
+                current.display_name = newName;
+                current.name_color = newColor || null;
+            }
             // Update header if this is the current session
             if (state.currentSession && state.currentSession.session_id === sessionId) {
                 state.currentSession.display_name = newName;
@@ -334,11 +343,11 @@ export function renameAgent(name, agentType, sessionId) {
             // Re-render sidebar
             const { renderLiveSessions } = await import('./render.js');
             renderLiveSessions(state.liveSessions);
-            showToast("Agent renamed");
+            showToast(nameChanged ? "Agent renamed" : "Agent color updated");
         } catch (e) {
-            showToast("Failed to rename agent", true);
+            showToast(e.message || "Failed to rename agent", true);
         }
-    });
+    }, { color: { value: currentColor, auto: autoColor } });
 }
 
 export async function setAgentIcon(name, agentType, sessionId) {

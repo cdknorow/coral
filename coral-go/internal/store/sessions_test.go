@@ -324,6 +324,9 @@ func TestLiveSessions(t *testing.T) {
 	assert.Equal(t, &prompt, info.Prompt)
 	assert.Equal(t, &board, info.BoardName)
 
+	color := "#b48ead"
+	require.NoError(t, s.SetNameColor(ctx, "sess-1", &color))
+
 	// Replace
 	newPrompt := "Updated prompt"
 	err = s.ReplaceLiveSession(ctx, "sess-1", &LiveSession{
@@ -341,6 +344,8 @@ func TestLiveSessions(t *testing.T) {
 	assert.Equal(t, "sess-2", sessions[0].SessionID)
 	// Board should be carried forward
 	assert.Equal(t, &board, sessions[0].BoardName)
+	// Name colour survives a restart too
+	assert.Equal(t, &color, sessions[0].NameColor)
 
 	// Unregister
 	err = s.UnregisterLiveSession(ctx, "sess-2")

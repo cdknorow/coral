@@ -204,6 +204,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	if icons == nil {
 		icons = map[string]string{}
 	}
+	nameColors, _ := h.ss.GetNameColors(ctx, sessionIDs)
 
 	// Latest events for waiting/done/working state
 	latestEvents, _ := h.ts.GetLatestEventTypes(ctx, sessionIDs)
@@ -343,6 +344,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"staleness_seconds":     logInfo["staleness_seconds"],
 			"display_name":          nilIfEmpty(displayNames[sid]),
 			"icon":                  nilIfEmpty(icons[sid]),
+			"name_color":            nilIfEmpty(nameColors[sid]),
 			"working_directory":     agent.WorkingDir,
 			"waiting_for_input":     state.NeedsInput,
 			"awaiting_user":         state.AwaitingUser,
@@ -395,6 +397,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"working_directory":     ls.WorkingDir,
 			"display_name":          dn,
 			"icon":                  ls.Icon,
+			"name_color":            ls.NameColor,
 			"branch":                nil,
 			"waiting_for_input":     false,
 			"awaiting_user":         false,

@@ -58,6 +58,7 @@ type LiveSession struct {
 	BoardServer  *string `db:"board_server" json:"board_server,omitempty"`
 	Backend      *string `db:"backend" json:"backend,omitempty"`
 	Icon         *string `db:"icon" json:"icon,omitempty"`
+	NameColor    *string `db:"name_color" json:"name_color,omitempty"`
 	IsSleeping   int     `db:"is_sleeping" json:"is_sleeping"`
 	BoardType    *string `db:"board_type" json:"board_type,omitempty"`
 	GitDiffMode  *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
@@ -881,7 +882,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	var sessions []LiveSession
 	err := s.db.SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
 	return sessions, err
 }
@@ -978,7 +979,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.db.GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -992,7 +993,7 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		// Carry forward flags, prompt, board from old session if not set
 		var old LiveSession
 		err := tx.GetContext(ctx, &old,
-			"SELECT flags, prompt, board_name, board_server, icon, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools, mcp_servers FROM live_sessions WHERE session_id = ?",
+			"SELECT flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools, mcp_servers FROM live_sessions WHERE session_id = ?",
 			oldSessionID)
 		if err == nil {
 			if newSession.Flags == nil {
@@ -1009,6 +1010,9 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 			}
 			if newSession.Icon == nil {
 				newSession.Icon = old.Icon
+			}
+			if newSession.NameColor == nil {
+				newSession.NameColor = old.NameColor
 			}
 			if newSession.BoardType == nil {
 				newSession.BoardType = old.BoardType
@@ -1047,12 +1051,12 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		now := nowUTC()
 		_, err = tx.ExecContext(ctx,
 			`INSERT OR REPLACE INTO live_sessions
-			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, status, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+			 (session_id, agent_type, agent_name, working_dir, display_name, resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, status, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
 			newSession.SessionID, newSession.AgentType, newSession.AgentName,
 			newSession.WorkingDir, newSession.DisplayName, newSession.ResumeFromID,
 			newSession.Flags, newSession.IsJob, newSession.Prompt, newSession.BoardName,
-			newSession.BoardServer, newSession.Backend, newSession.Icon, newSession.IsSleeping, newSession.BoardType,
+			newSession.BoardServer, newSession.Backend, newSession.Icon, newSession.NameColor, newSession.IsSleeping, newSession.BoardType,
 			newSession.Capabilities, newSession.Model, newSession.ContextWindow, newSession.Tools, newSession.MCPServers, newSession.PID, now)
 		return err
 	})
@@ -1094,6 +1098,40 @@ func (s *SessionStore) UpdateContextWindow(ctx context.Context, sessionID string
 		"UPDATE live_sessions SET context_window = ? WHERE session_id = ?",
 		contextWindow, sessionID)
 	return err
+}
+
+// SetNameColor sets or clears the sidebar name colour for a live session.
+func (s *SessionStore) SetNameColor(ctx context.Context, sessionID string, color *string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE live_sessions SET name_color = ? WHERE session_id = ?",
+		color, sessionID)
+	return err
+}
+
+// GetNameColors returns {session_id: name_color} for sessions that have one set.
+func (s *SessionStore) GetNameColors(ctx context.Context, sessionIDs []string) (map[string]string, error) {
+	if len(sessionIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	query, args, err := sqlx.In(
+		"SELECT session_id, name_color FROM live_sessions WHERE session_id IN (?) AND name_color IS NOT NULL AND name_color != ''",
+		sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.QueryxContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]string{}
+	for rows.Next() {
+		var sid, color string
+		if err := rows.Scan(&sid, &color); err == nil {
+			result[sid] = color
+		}
+	}
+	return result, nil
 }
 
 // GetIcons returns {session_id: icon} for sessions that have an icon set.

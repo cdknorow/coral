@@ -111,6 +111,8 @@ var columnMigrations = []struct {
 	{"live_sessions", "status", "TEXT NOT NULL DEFAULT 'active'"},
 	{"live_sessions", "context_window", "INTEGER NOT NULL DEFAULT 0"},
 	{"live_sessions", "stopped_at", "TEXT"},
+	// User-chosen colour for the agent's name in the sidebar (#rrggbb); NULL = palette default.
+	{"live_sessions", "name_color", "TEXT"},
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},

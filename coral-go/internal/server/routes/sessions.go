@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -343,6 +344,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if icons == nil {
 		icons = map[string]string{}
 	}
+	nameColors, _ := h.ss.GetNameColors(ctx, sessionIDs)
 
 	// Batch fetch git state, file counts, events, and goals
 	gitState, _ := h.gs.GetAllLatestGitState(ctx)
@@ -541,6 +543,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"working_directory":     agent.WorkingDir,
 			"display_name":          displayNames[sid],
 			"icon":                  iconVal,
+			"name_color":            nilIfEmpty(nameColors[sid]),
 			"branch":                branchVal,
 			"repo_name":             repoNameVal,
 			"waiting_for_input":     state.NeedsInput,
@@ -624,6 +627,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"working_directory":     ls.WorkingDir,
 			"display_name":          dn,
 			"icon":                  ls.Icon,
+			"name_color":            ls.NameColor,
 			"branch":                nil,
 			"waiting_for_input":     false,
 			"awaiting_user":         false,
@@ -758,6 +762,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"board_project":     ls.BoardName,
 		"board_job_title":   ls.DisplayName,
 		"icon":              ls.Icon,
+		"name_color":        ls.NameColor,
 		"status":            nilIfEmpty(initialStatus),
 		"summary":           nilIfEmpty(summary),
 		"first_prompt":      h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
@@ -4008,6 +4013,42 @@ func (h *SessionsHandler) SetIcon(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "icon": icon})
 }
+
+// SetNameColor sets or clears the sidebar name colour for a live session.
+// PUT /api/sessions/live/{name}/name-color  {"session_id": "...", "color": "#rrggbb" | ""}
+func (h *SessionsHandler) SetNameColor(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SessionID string `json:"session_id"`
+		Color     string `json:"color"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if body.SessionID == "" {
+		errBadRequest(w, "session_id is required")
+		return
+	}
+
+	var color *string
+	trimmed := strings.ToLower(strings.TrimSpace(body.Color))
+	if trimmed != "" {
+		// The value is rendered into a style attribute, so accept only #rrggbb.
+		if !nameColorRe.MatchString(trimmed) {
+			errBadRequest(w, "color must be #rrggbb")
+			return
+		}
+		color = &trimmed
+	}
+
+	if err := h.ss.SetNameColor(r.Context(), body.SessionID, color); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "name_color": color})
+}
+
+var nameColorRe = regexp.MustCompile(`^#[0-9a-f]{6}$`)
 
 // POST /api/sessions/live/{name}/context-window
 // Updates the context window (and optionally model) for a live session.

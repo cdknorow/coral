@@ -341,6 +341,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/sessions/live/{name}/file-original", sessHandler.GetFileOriginal)
 	r.Put("/api/sessions/live/{name}/file-content", sessHandler.SaveFileContent)
 	r.Put("/api/sessions/live/{name}/icon", sessHandler.SetIcon)
+	r.Put("/api/sessions/live/{name}/name-color", sessHandler.SetNameColor)
 	r.Post("/api/sessions/live/{name}/context-window", sessHandler.UpdateContextWindow)
 	r.Post("/api/sessions/launch", sessHandler.Launch)
 	r.Post("/api/sessions/launch-team", sessHandler.LaunchTeam)

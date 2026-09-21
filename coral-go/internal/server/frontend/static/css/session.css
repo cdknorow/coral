@@ -1752,3 +1752,63 @@
     white-space: nowrap;
 }
 .terminal-header-actions { flex-shrink: 0; }
+
+/* ── Sidebar colour: project headers in the accent, agent names in their colour ── */
+
+.session-group-header .group-name-line {
+    color: var(--accent);
+}
+
+.session-label-name {
+    color: var(--agent-name-color, inherit);
+}
+
+/* Palette hues are tuned for dark backgrounds; deepen them on light themes */
+[data-theme="light"] .session-label-name {
+    color: color-mix(in srgb, var(--agent-name-color, currentColor) 62%, black);
+}
+
+/* Sleeping and finished agents stay muted so their state still reads at a glance */
+.session-group-item.sleeping .session-label-name,
+.session-group-item.session-done .session-label-name {
+    color: inherit;
+}
+
+/* Rename dialog: name colour swatches */
+.prompt-modal-colors {
+    margin-top: 14px;
+}
+
+.prompt-modal-colors-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.color-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.color-swatch {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    background: var(--swatch);
+    box-shadow: 0 0 0 1px var(--border);
+    cursor: pointer;
+    padding: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.color-swatch.selected {
+    border-color: var(--bg-primary);
+    box-shadow: 0 0 0 2px var(--text-primary);
+}
