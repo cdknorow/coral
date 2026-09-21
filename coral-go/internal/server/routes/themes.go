@@ -602,8 +602,10 @@ var themeVariableGroups = map[string]map[string]string{
 		"--color-tool-stop": "Stop event",
 	},
 	"Chat": {
-		"--chat-human-bg": "Human message background", "--chat-human-color": "Human message text",
-		"--chat-assistant-bg": "Assistant message background",
+		"--chat-prose-human-bg":    "Your message background (chat view)",
+		"--chat-prose-inline-code": "Inline code text (chat view)",
+		"--chat-human-bg":          "Your message background (history panel)", "--chat-human-color": "Your message text",
+		"--chat-assistant-bg": "Assistant message background (history panel)",
 	},
 	"Terminal (xterm)": {
 		"--xterm-background": "Background", "--xterm-foreground": "Foreground",
@@ -619,7 +621,7 @@ var themeVariableGroups = map[string]map[string]string{
 	"Message Board": {
 		"--mb-bg": "Message background", "--mb-text": "Body text",
 		"--mb-text-bright": "Bold/emphasis text", "--mb-heading": "Heading color",
-		"--mb-code-bg": "Code block background",
+		"--mb-code-bg":   "Code block background",
 		"--board-msg-bg": "Board panel message background",
 	},
 }
