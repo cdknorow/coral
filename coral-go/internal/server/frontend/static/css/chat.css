@@ -1004,6 +1004,23 @@
     background: var(--bg-primary);
     font-size: 14px;
 }
+.cni-plan h1, .cni-plan h2, .cni-plan h3, .cni-plan h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 10px 0 4px;
+}
+.cni-plan > :first-child {
+    margin-top: 0;
+}
+.cni-plan p, .cni-plan ul, .cni-plan ol {
+    margin: 4px 0;
+}
+.cni-plan ul, .cni-plan ol {
+    padding-left: 22px;
+}
+.cni-plan li {
+    margin: 2px 0;
+}
 .cni-static-q {
     margin: 0 0 10px;
     font-size: 14px;
@@ -1100,6 +1117,21 @@
 .cni-text-input {
     flex: 1;
     min-width: 0;
+    padding: 7px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+}
+.cni-text-input::placeholder {
+    color: var(--text-muted);
+}
+.cni-text-input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 /* Review step: each question with its answer */

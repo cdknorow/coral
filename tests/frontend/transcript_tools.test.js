@@ -195,23 +195,28 @@ async function run() {
 
   // Needs input: an open question (PreToolUse) shows as a card in place of Working
   const setRow = (o) => ev(`import('/static/state.js').then(st => { Object.assign(st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}), ${JSON.stringify(o)}); return true; })`);
-  const card = () => ev(`(() => { const c = ${C}.querySelector(':scope > .chat-needs-input'); return c ? { title: c.querySelector('.cni-title').textContent, text: c.textContent.replace(/\\s+/g, ' ').trim(), options: Array.from(c.querySelectorAll('.cni-option-label')).map(o => o.textContent), working: !!${C}.querySelector(':scope > .chat-working'), last: ${C}.lastElementChild === c } : null; })()`);
+  const card = () => ev(`(() => { const c = ${C}.querySelector(':scope > .chat-needs-input'); if (!c) return null;
+    const t = (sel) => (c.querySelector(sel) || {}).textContent || '';
+    return { kicker: t('.cni-kicker'), question: t('.cni-question'), text: c.textContent.replace(/\\s+/g, ' ').trim(),
+      options: Array.from(c.querySelectorAll('.cni-options .cni-answer')).map(b => ({ n: b.dataset.n, label: b.querySelector('.cni-answer-label').textContent, desc: (b.querySelector('.cni-answer-desc') || {}).textContent || '', dflt: b.classList.contains('is-default') })),
+      layout: c.querySelector('.cni-options-cards') ? 'cards' : c.querySelector('.cni-options-chips') ? 'chips' : '',
+      textForm: (c.querySelector('.cni-text-form input') || {}).placeholder || '', chat: t('.cni-foot .cni-answer[data-action="chat"]'),
+      foot: Array.from(c.querySelectorAll('.cni-foot .btn.cni-answer')).map(b => b.textContent), review: Array.from(c.querySelectorAll('.cni-review-row')).map(r => [r.querySelector('dt').textContent, r.querySelector('dd').textContent]),
+      working: !!${C}.querySelector(':scope > .chat-working'), last: ${C}.lastElementChild === c }; })()`);
   await setRow({ working: true, awaiting_user: false, waiting_for_input: false });
   await ev(`window.__pendingTool = { tool_use_id: 'q1', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which layout?', options: [{ label: 'Compact', description: 'Denser rows' }, { label: 'Roomy' }] }] } }; true`);
   await sleep(2600);
   let cd = await card();
-  check('an open question shows as a card with its options, replacing the Working row', cd && cd.title === 'Question for you' && /Which layout\?/.test(cd.text) && JSON.stringify(cd.options) === '["Compact","Roomy"]' && !cd.working && cd.last, JSON.stringify(cd));
+  check('an open question shows as a card with the question up front, replacing the Working row', cd && cd.kicker === 'Claude is asking' && cd.question === 'Which layout?' && !cd.working && cd.last, JSON.stringify(cd));
 
-  // Answer from the chat: buttons mirror the options on screen
+  // Answer from the chat: every option on screen, numbered like the terminal's keys
   await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }, { n: 3, label: 'Type something.', action: 'text' }, { n: 4, label: 'Chat about this', action: 'chat' }] }; true`);
   await sleep(2600);
-  const btns = await ev(`Array.from(${C}.querySelectorAll('.chat-needs-input .cni-answer')).map(b => ({ n: b.dataset.n, label: b.querySelector('.cni-answer-label').textContent, desc: (b.querySelector('.cni-answer-desc') || {}).textContent || '' }))`);
-  check('the question card offers every on-screen option, including typing an answer and chatting', JSON.stringify(btns) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows' }, { n: '2', label: 'Roomy', desc: '' }, { n: '3', label: 'Type something\u2026', desc: '' }, { n: '4', label: 'Chat about this', desc: '' }]), JSON.stringify(btns));
-  // Type something: the button opens a field; its answer is sent with the option's number
-  await ev(`window.__answers = []; ${C}.querySelector('.cni-answer[data-n="3"]').click(); true`);
-  const formShown = await ev(`(() => { const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); return !!f && !f.hidden && document.activeElement === f.querySelector('input'); })()`);
-  check('Type something opens a focused text field in the card', formShown);
-  await ev(`(() => { const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); f.querySelector('input').value = 'Something in between'; f.requestSubmit(); return true; })()`);
+  cd = await card();
+  check('options show as numbered cards (they have descriptions), the default outlined', cd.layout === 'cards' && JSON.stringify(cd.options) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows', dflt: true }, { n: '2', label: 'Roomy', desc: '', dflt: false }]), JSON.stringify(cd.options));
+  check('Type something is an inline field and Chat about this a footer link', cd.textForm === 'Or type your own answer…' && cd.chat === 'Chat about this instead', JSON.stringify({ textForm: cd.textForm, chat: cd.chat }));
+  // A typed answer is sent with the Type something option's number
+  await ev(`(() => { window.__answers = []; const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); f.querySelector('input').value = 'Something in between'; f.requestSubmit(); return true; })()`);
   await sleep(300);
   const typed = await ev(`window.__answers`);
   check('a typed answer is sent with the Type something option', JSON.stringify(typed) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 3, label: 'Type something.', text: 'Something in between' }]), JSON.stringify(typed));
@@ -220,11 +225,17 @@ async function run() {
   await sleep(300);
   const chat = await ev(`({ answers: window.__answers, focused: document.activeElement && document.activeElement.id })`);
   check('Chat about this sends its number and focuses the command box', chat.answers.length === 1 && chat.answers[0].n === 4 && chat.focused === 'command-input', JSON.stringify(chat));
-  // The review step shows each question with its answer before Submit
+  // Short options without descriptions are compact chips
+  await ev(`window.__pendingTool = { tool_use_id: 'q2', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Release' }, { label: 'Polish' }] }] } }; window.__promptScreen = { question: 'Next?', options: [{ n: 1, label: 'Release', selected: true, action: 'select' }, { n: 2, label: 'Polish', action: 'select' }] }; true`);
+  await sleep(2600);
+  cd = await card();
+  check('short options without descriptions are chips', cd.layout === 'chips' && cd.options.length === 2, JSON.stringify(cd));
+  // The review step: each question with its answer, Submit primary
   await ev(`window.__promptScreen = { question: 'Ready to submit your answers?', options: [{ n: 1, label: 'Submit answers', selected: true, action: 'select' }, { n: 2, label: 'Cancel', action: 'select' }], review: [{ question: 'Which layout?', answer: 'Roomy' }, { question: 'Which theme?', answer: 'Dark' }] }; true`);
   await sleep(2600);
-  const review = await ev(`(() => { const c = ${C}.querySelector('.chat-needs-input'); return { q: (c.querySelector('.cni-question') || {}).textContent, dt: Array.from(c.querySelectorAll('.cni-review dt')).map(d => d.textContent), dd: Array.from(c.querySelectorAll('.cni-review dd')).map(d => d.textContent), btns: Array.from(c.querySelectorAll('.cni-answer-label')).map(b => b.textContent) }; })()`);
-  check('the review step lists each question with its answer, then Submit and Cancel', review.q === 'Ready to submit your answers?' && JSON.stringify(review.dd) === '["Roomy","Dark"]' && JSON.stringify(review.dt) === '["Which layout?","Which theme?"]' && JSON.stringify(review.btns) === '["Submit answers","Cancel"]', JSON.stringify(review));
+  cd = await card();
+  const primary = await ev(`!!${C}.querySelector('.cni-foot .btn-primary.cni-answer[data-n="1"]')`);
+  check('the review step lists each question with its answer, with Submit as the primary action', cd.question === 'Ready to submit your answers?' && JSON.stringify(cd.review) === '[["Which layout?","Roomy"],["Which theme?","Dark"]]' && JSON.stringify(cd.foot) === '["Submit answers","Cancel"]' && primary && cd.options.length === 0, JSON.stringify(cd));
   await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }] }; true`);
   await sleep(2600);
   await ev(`window.__answers = []; window.__answerFail = true; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
@@ -238,7 +249,7 @@ async function run() {
   await ev(`window.__promptScreen = null; true`);
 
   // Open terminal switches this view without changing the saved Chat default
-  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input .cni-actions button').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
+  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input .cni-foot button[onclick]').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
   check('Open terminal shows the terminal without changing the saved view choice', !openTerm.chat && openTerm.saved === openTerm.before, JSON.stringify(openTerm));
 
   // A permission prompt: the Notification sets waiting_for_input; PreToolUse says what for
@@ -246,18 +257,18 @@ async function run() {
   await ev(`window.__pendingTool = { tool_use_id: 'b1', tool_name: 'Bash', input: { command: 'rm -rf build', description: 'Clean the build folder' } }; true`);
   await sleep(2600);
   cd = await card();
-  check('a permission prompt names the tool and shows the command', cd && cd.title === 'Needs your permission to use Bash' && /rm -rf build/.test(cd.text) && /Clean the build folder/.test(cd.text), JSON.stringify(cd));
+  check('a permission prompt names the tool and shows the command', cd && cd.kicker === 'Permission needed · Bash' && /rm -rf build/.test(cd.text) && /Clean the build folder/.test(cd.text), JSON.stringify(cd));
 
   // Agents launched before the hook existed: the notification text alone
   await ev(`window.__pendingTool = null; true`);
   await sleep(2600);
   cd = await card();
-  check('without hook details the card shows the notification text', cd && cd.title === 'Needs your input' && /Claude needs your permission to use Bash/.test(cd.text) && !/^Notification:/.test(cd.text), JSON.stringify(cd));
+  check('without hook details the card shows the notification text', cd && cd.question === 'Claude needs your permission to use Bash' && /Answer in the terminal/.test(cd.text), JSON.stringify(cd));
   // ...and the question the terminal shows, when it shows one (e.g. an AskUserQuestion from an agent without the hook)
   await ev(`window.__promptScreen = { question: 'Which color do you prefer?', options: [{ n: 1, label: 'Red', selected: true, action: 'select' }, { n: 2, label: 'Green', action: 'select' }] }; true`);
   await sleep(2600);
   cd = await card();
-  check('without hook details the card still shows the on-screen question and options', cd && /Which color do you prefer\?/.test(cd.text) && /Red/.test(cd.text) && /Green/.test(cd.text), JSON.stringify(cd));
+  check('without hook details the card still shows the on-screen question and options', cd && cd.question === 'Which color do you prefer?' && JSON.stringify(cd.options.map(o => o.label)) === '["Red","Green"]', JSON.stringify(cd));
   await ev(`window.__promptScreen = null; true`);
 
   await setRow({ waiting_for_input: false, waiting_summary: null, awaiting_user: true });
