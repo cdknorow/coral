@@ -291,6 +291,49 @@ func TestClearSession(t *testing.T) {
 	}
 }
 
+func TestReadNewMessages_SkipsMetaUserText(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "meta-session"
+	projectDir := filepath.Join(dir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	// A loaded skill arrives as a user entry flagged isMeta, in either content form.
+	entries := `{"type":"user","isMeta":true,"message":{"content":[{"type":"text","text":"# Dev Screenshot: Build, Reload, and Capture UI"}]}}
+{"type":"user","isMeta":true,"message":{"content":"Base directory for this skill: /x"}}
+{"type":"user","message":{"content":"Take a screenshot"}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"ls"}}]}}
+{"type":"user","isMeta":true,"message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"a.txt"}]}}
+`
+	if err := os.WriteFile(filepath.Join(projectDir, sessionID+".jsonl"), []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewSessionReader()
+	msgs, _ := reader.ReadNewMessages(sessionID, "", "claude")
+	var users []string
+	var results int
+	for _, m := range msgs {
+		switch m["type"] {
+		case "user":
+			users = append(users, m["content"].(string))
+		case "tool_result":
+			results++
+		}
+	}
+	if len(users) != 1 || users[0] != "Take a screenshot" {
+		t.Fatalf("user messages = %q, want only the typed prompt", users)
+	}
+	if results != 1 {
+		t.Fatalf("tool results = %d, want 1 (meta entries still carry tool results)", results)
+	}
+	if got := reader.FirstUserPrompt(sessionID, "", "claude"); got != "Take a screenshot" {
+		t.Fatalf("FirstUserPrompt() = %q, want the typed prompt, not skill text", got)
+	}
+}
+
 func TestFirstUserPrompt(t *testing.T) {
 	dir := t.TempDir()
 	sessionID := "first-prompt-session"

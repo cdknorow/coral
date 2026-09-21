@@ -383,10 +383,14 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 		return nil
 	}
 	content := msg["content"]
+	// isMeta marks text Claude Code injected itself (a loaded skill's
+	// instructions, command expansions). It is not something the user typed,
+	// so it never becomes a user message; tool results are still read.
+	isMeta, _ := entry["isMeta"].(bool)
 
 	switch c := content.(type) {
 	case string:
-		if strings.TrimSpace(c) == "" || isSystemInjected(c) {
+		if isMeta || strings.TrimSpace(c) == "" || isSystemInjected(c) {
 			return nil
 		}
 		return []map[string]any{{"type": "user", "timestamp": timestamp, "content": c}}
@@ -431,7 +435,7 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 		if len(results) > 0 {
 			return results
 		}
-		if len(textParts) == 0 {
+		if isMeta || len(textParts) == 0 {
 			return nil
 		}
 		text := strings.Join(textParts, "\n")
