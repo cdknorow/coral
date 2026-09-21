@@ -680,8 +680,10 @@
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
     /* Neutral by default: blue is kept for links, so code and the user's
        bubble do not compete with them. Themes may set either variable. */
-    --chat-inline-code: var(--chat-prose-inline-code, var(--text-primary));
-    --chat-prose-human: var(--chat-prose-human-bg, color-mix(in srgb, var(--text-primary) 9%, transparent));
+    /* --chat-highlight(-bubble) come from the Chat Highlight setting
+       (modals.js applyChatHighlight) and win over the theme. */
+    --chat-inline-code: var(--chat-highlight, var(--chat-prose-inline-code, var(--text-primary)));
+    --chat-prose-human: var(--chat-highlight-bubble, var(--chat-prose-human-bg, color-mix(in srgb, var(--text-primary) 9%, transparent)));
 }
 
 .capture-wrapper.chat-mode .live-history-center,
@@ -934,80 +936,234 @@
 
 /* Agent is waiting on the user: what it is asking, and a way to answer */
 .chat-needs-input {
-    margin: 6px auto 20px;
-    border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+    margin: 8px auto 22px;
+    padding: 16px 18px 12px;
+    border: 1px solid var(--border);
     border-left: 3px solid var(--warning);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--warning) 7%, var(--bg-secondary));
-    padding: 12px 16px;
+    border-radius: 10px;
+    background: var(--bg-secondary);
     font-family: var(--font-sans);
-    font-size: 14px;
     color: var(--text-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 .cni-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-weight: 600;
-    margin-bottom: 8px;
+    gap: 7px;
+    margin-bottom: 6px;
 }
 .cni-dot {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--warning);
     flex-shrink: 0;
+    animation: cni-pulse 2s ease-in-out infinite;
+}
+@keyframes cni-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cni-dot { animation: none; }
+}
+.cni-kicker {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--warning);
 }
 .cni-question {
-    font-weight: 500;
-    margin: 6px 0;
-}
-.cni-options {
-    margin: 4px 0 8px;
-    padding-left: 22px;
-}
-.cni-options li {
-    margin: 4px 0;
-}
-.cni-option-label {
+    font-size: 16px;
     font-weight: 600;
+    line-height: 1.4;
+    margin: 2px 0 12px;
 }
-.cni-option-desc {
-    display: block;
+.cni-context-text {
     color: var(--text-secondary);
     font-size: 13px;
-}
-.cni-summary {
-    color: var(--text-secondary);
-    margin: 4px 0;
+    margin: -6px 0 8px;
 }
 .cni-target {
-    background: var(--bg-tertiary);
+    background: var(--bg-primary);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 8px 10px;
-    margin: 6px 0;
+    margin: 0 0 12px;
     overflow-x: auto;
     font-size: 12.5px;
 }
 .cni-plan {
-    max-height: 320px;
+    max-height: 300px;
     overflow-y: auto;
     border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 12px;
-    margin: 6px 0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin: 0 0 12px;
     background: var(--bg-primary);
+    font-size: 14px;
+}
+.cni-static-q {
+    margin: 0 0 10px;
+    font-size: 14px;
+}
+.cni-static-q ul {
+    margin: 4px 0 0;
+    padding-left: 20px;
+    color: var(--text-secondary);
+}
+
+/* Options: chips for short answers, small cards when they have descriptions */
+.cni-options {
+    margin: 0 0 12px;
+}
+.cni-options-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.cni-options-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+}
+.cni-answer:not(.btn):not(.cni-link) {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 9px;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+}
+.cni-options-cards .cni-answer:not(.btn):not(.cni-link) {
+    padding: 10px 12px;
+}
+.cni-answer:not(.btn):not(.cni-link):hover:not(:disabled) {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-tertiary));
+}
+.cni-answer.is-default {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border-light));
+}
+.cni-answer:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+.cni-answer.sending {
+    opacity: 1;
+    border-color: var(--accent);
+}
+.cni-key {
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    border: 1px solid var(--border-light);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+    background: var(--bg-primary);
+    margin-top: 1px;
+}
+.cni-answer-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.cni-answer-label {
+    font-weight: 600;
+}
+.cni-answer-desc {
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+/* Typing an answer / feedback */
+.cni-text-form {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 12px;
+}
+.cni-text-input {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Review step: each question with its answer */
+.cni-review {
+    margin: 0 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    overflow: hidden;
+}
+.cni-review-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: baseline;
+    padding: 8px 12px;
+}
+.cni-review-row + .cni-review-row {
+    border-top: 1px solid var(--border);
+}
+.cni-review dt {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 0;
+}
+.cni-review dd {
+    margin: 0;
+    font-weight: 600;
+    font-size: 14px;
+    text-align: right;
+}
+
+/* Footer: Open terminal (quiet) on the left, primary actions on the right */
+.cni-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px;
+}
+.cni-foot-spacer {
+    flex: 1;
+}
+.cni-link {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-secondary);
+    font: inherit;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+}
+.cni-link:hover:not(:disabled) {
+    color: var(--text-primary);
+    text-decoration-color: currentColor;
 }
 .cni-hint {
     color: var(--text-muted);
-    font-size: 12px;
-    margin-top: 6px;
 }
-.cni-actions {
-    margin-top: 10px;
-    display: flex;
-    gap: 8px;
+.cni-foot .btn {
+    font-size: 13px;
 }
 
 /* A brand-new agent with no transcript yet */
@@ -1017,80 +1173,4 @@
     font-family: var(--font-sans);
     font-size: 14px;
     margin: 48px auto;
-}
-
-/* Answer buttons: the prompt's options as the terminal shows them */
-.cni-answers {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin: 8px 0 4px;
-}
-.cni-answer {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-    text-align: left;
-    padding: 8px 12px;
-    border: 1px solid var(--border-light);
-    border-radius: 8px;
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    font: inherit;
-    cursor: pointer;
-}
-.cni-answer:hover:not(:disabled) {
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
-}
-.cni-answer:disabled {
-    opacity: 0.55;
-    cursor: default;
-}
-.cni-answer.sending {
-    opacity: 1;
-    border-color: var(--accent);
-}
-.cni-answer-label {
-    font-weight: 600;
-}
-.cni-answer-desc {
-    font-size: 13px;
-    color: var(--text-secondary);
-}
-
-.cni-answer-text .cni-answer-label {
-    font-weight: 500;
-    color: var(--text-secondary);
-}
-.cni-text-form {
-    display: flex;
-    gap: 6px;
-    margin: -2px 0 2px;
-}
-.cni-text-form[hidden] {
-    display: none;
-}
-.cni-text-input {
-    flex: 1;
-    min-width: 0;
-}
-.cni-review {
-    margin: 6px 0 8px;
-    padding: 8px 12px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--bg-primary);
-}
-.cni-review dt {
-    color: var(--text-secondary);
-    font-size: 13px;
-}
-.cni-review dd {
-    margin: 0 0 6px;
-    font-weight: 600;
-}
-.cni-review dd:last-child {
-    margin-bottom: 0;
 }

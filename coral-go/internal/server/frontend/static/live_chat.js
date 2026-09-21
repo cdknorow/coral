@@ -855,86 +855,106 @@ function needsInputInfo(session) {
     return null;
 }
 
-// Answer buttons for the options on screen. A "text" option ("Type
-// something.", "Tell Claude what to change") opens an inline field; "Chat
-// about this" closes the dialog so the reply can be typed in the command box.
-function answerButtonsHtml(info, descriptions = {}) {
-    const opts = (info.screen && info.screen.options) || [];
-    if (!opts.length) return "";
-    return `<div class="cni-answers">` + opts.map(o => {
-        const desc = descriptions[o.label];
-        const attrs = `data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="${escapeHtml(o.action || "select")}"`;
-        let html = `<button type="button" class="cni-answer${o.action === "text" ? " cni-answer-text" : ""}" ${attrs}>`
-            + `<span class="cni-answer-label">${escapeHtml(o.action === "text" ? o.label.replace(/\.$/, "") + "\u2026" : o.label)}</span>`
-            + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
-            + `</button>`;
-        if (o.action === "text") {
-            html += `<form class="cni-text-form" ${attrs} hidden><input type="text" class="cni-text-input" placeholder="Type your answer" aria-label="${escapeHtml(o.label)}"><button type="submit" class="btn btn-sm btn-primary">Send</button></form>`;
-        }
-        return html;
-    }).join("") + `</div>`;
+// ── Needs-input card markup ──────────────────────────────────────────────
+// The question leads, large; options are compact chips (or small cards when
+// they carry descriptions), numbered like the terminal's keys, with the
+// terminal's default outlined. A text option becomes an inline field, "Chat
+// about this" a quiet link, and the review step a summary with Submit as the
+// primary action. Open terminal is a footer link.
+
+const KICKERS = {
+    question: "Claude is asking",
+    plan: "Plan ready for your review",
+    permission: "Permission needed",
+    startup: "Waiting in the terminal",
+};
+
+function optionButtonHtml(o, desc) {
+    return `<button type="button" class="cni-answer${o.selected ? " is-default" : ""}" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="select">`
+        + `<kbd class="cni-key">${o.n}</kbd>`
+        + `<span class="cni-answer-text"><span class="cni-answer-label">${escapeHtml(o.label)}</span>`
+        + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
+        + `</span></button>`;
 }
 
-// The review step of a multi-question dialog: each question and its answer
+function answerControlsHtml(info, descriptions = {}) {
+    const opts = (info.screen && info.screen.options) || [];
+    if (!opts.length) return { body: "", foot: "" };
+    const review = ((info.screen && info.screen.review) || []).length > 0;
+    const selects = opts.filter(o => (o.action || "select") === "select");
+    const texts = opts.filter(o => o.action === "text");
+    const chats = opts.filter(o => o.action === "chat");
+    let body = "";
+    let foot = "";
+    if (review) {
+        // Submit answers / Cancel: footer actions, Submit primary
+        foot += selects.map((o, i) => `<button type="button" class="cni-answer btn btn-sm ${i === 0 ? "btn-primary" : ""}" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="select">${escapeHtml(o.label)}</button>`).join("");
+    } else if (selects.length) {
+        const withDesc = selects.some(o => descriptions[o.label]);
+        body += `<div class="cni-options ${withDesc ? "cni-options-cards" : "cni-options-chips"}">`
+            + selects.map(o => optionButtonHtml(o, descriptions[o.label])).join("") + `</div>`;
+    }
+    for (const o of texts) {
+        const placeholder = /^type something/i.test(o.label) ? "Or type your own answer…" : `${o.label.replace(/\.$/, "")}…`;
+        body += `<form class="cni-text-form" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="text">`
+            + `<input type="text" class="cni-text-input" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(o.label)}">`
+            + `<button type="submit" class="btn btn-sm">Send</button></form>`;
+    }
+    for (const o of chats) {
+        foot = `<button type="button" class="cni-link cni-answer" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="chat">${escapeHtml(o.label)} instead</button>` + foot;
+    }
+    return { body, foot };
+}
+
 function reviewHtml(info) {
     const items = (info.screen && info.screen.review) || [];
     if (!items.length) return "";
     return `<dl class="cni-review">` + items.map(it =>
-        `<dt>${escapeHtml(it.question)}</dt><dd>${escapeHtml(it.answer || "\u2014")}</dd>`).join("") + `</dl>`;
+        `<div class="cni-review-row"><dt>${escapeHtml(it.question)}</dt><dd>${escapeHtml(it.answer || "—")}</dd></div>`).join("") + `</dl>`;
 }
 
 function needsInputHtml(info) {
     const inp = (info.tool && info.tool.input) || {};
-    let title = "";
-    let body = "";
-    const onScreen = ((info.screen && info.screen.options) || []).length > 0;
-    const screenQuestion = onScreen ? (info.screen.question || "") : "";
-    if (info.kind === "question" && onScreen) {
-        // The terminal shows one question at a time (then a review step):
-        // offer the options it is showing now.
-        title = "Question for you";
-        const descriptions = {};
-        for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
-            for (const o of Array.isArray(q.options) ? q.options : []) if (o.description) descriptions[o.label] = o.description;
+    const screen = info.screen || {};
+    const onScreen = (screen.options || []).length > 0;
+    const screenQuestion = onScreen ? (screen.question || "") : "";
+    let kicker = KICKERS[info.kind] || "Needs your input";
+    let question = "";
+    let context = "";
+    let descriptions = {};
+
+    if (info.kind === "question") {
+        const qs = Array.isArray(inp.questions) ? inp.questions : [];
+        for (const q of qs) for (const o of Array.isArray(q.options) ? q.options : []) if (o.description) descriptions[o.label] = o.description;
+        question = screenQuestion || (qs[0] && qs[0].question) || "";
+        if (!onScreen && qs.length) {
+            // No live options (yet): list the questions from the hook
+            context = qs.map(q => `<div class="cni-static-q">${escapeHtml(q.question || "")}`
+                + (Array.isArray(q.options) && q.options.length ? `<ul>${q.options.map(o => `<li>${escapeHtml(o.label || "")}</li>`).join("")}</ul>` : "") + `</div>`).slice(1).join("");
         }
-        body += `<div class="cni-question">${escapeHtml(screenQuestion)}</div>`;
-        body += reviewHtml(info);
-        body += answerButtonsHtml(info, descriptions);
-    } else if (info.kind === "question") {
-        title = "Question for you";
-        for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
-            body += `<div class="cni-question">${escapeHtml(q.question || "")}</div>`;
-            const opts = Array.isArray(q.options) ? q.options : [];
-            if (opts.length) {
-                body += `<ol class="cni-options">` + opts.map(o =>
-                    `<li><span class="cni-option-label">${escapeHtml(o.label || "")}</span>${o.description ? `<span class="cni-option-desc">${escapeHtml(o.description)}</span>` : ""}</li>`).join("") + `</ol>`;
-            }
-        }
-        body += `<div class="cni-hint">Answer in the terminal.</div>`;
     } else if (info.kind === "plan") {
-        title = "Plan ready for your approval";
-        if (inp.plan) body += `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
-        body += answerButtonsHtml(info);
-        if (!onScreen) body += `<div class="cni-hint">Approve or refine it in the terminal.</div>`;
+        question = screenQuestion ? "Ready to proceed with this plan?" : "Claude has a plan ready";
+        if (inp.plan) context = `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
     } else if (info.kind === "permission") {
         const tool = info.tool && info.tool.tool_name;
-        title = tool ? `Needs your permission to use ${escapeHtml(tool)}` : "Needs your input";
-        // Without hook details, the terminal still says what it is asking
-        if (screenQuestion) body += `<div class="cni-question">${escapeHtml(screenQuestion)}</div>`;
-        else if (info.summary && !tool) body += `<div class="cni-summary">${escapeHtml(info.summary)}</div>`;
-        body += reviewHtml(info);
+        if (tool) kicker = `Permission needed · ${escapeHtml(tool)}`;
+        question = screenQuestion || (tool ? `Allow ${tool}?` : (info.summary || "The agent is waiting for you"));
         const target = inp.command || inp.file_path || inp.path || inp.url || inp.query || inp.pattern || "";
-        if (inp.description && inp.command) body += `<div class="cni-summary">${escapeHtml(inp.description)}</div>`;
-        if (target) body += `<pre class="cni-target"><code>${escapeHtml(target)}</code></pre>`;
-        body += answerButtonsHtml(info);
-        if (!onScreen) body += `<div class="cni-hint">Answer in the terminal.</div>`;
+        if (inp.description && inp.command) context += `<div class="cni-context-text">${escapeHtml(inp.description)}</div>`;
+        if (target) context += `<pre class="cni-target"><code>${escapeHtml(target)}</code></pre>`;
     } else {
-        title = "Waiting in the terminal";
-        body = `<div class="cni-summary">The agent may be waiting at a startup prompt, such as trusting this folder or logging in.</div>`;
+        question = "The agent may be waiting at a startup prompt";
+        context = `<div class="cni-context-text">For example, trusting this folder or logging in. Answer it in the terminal.</div>`;
     }
-    return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-title">${title}</span></div>
-        <div class="cni-body">${body}</div>
-        <div class="cni-actions"><button type="button" class="btn btn-sm btn-primary" onclick="window.showTerminalView()">Open terminal</button></div>`;
+
+    const controls = answerControlsHtml(info, descriptions);
+    const hint = !onScreen && info.kind !== "startup" ? `<span class="cni-hint">Answer in the terminal</span>` : "";
+    return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-kicker">${kicker}</span></div>`
+        + (question ? `<div class="cni-question">${escapeHtml(question)}</div>` : "")
+        + context
+        + reviewHtml(info)
+        + controls.body
+        + `<div class="cni-foot"><button type="button" class="cni-link" onclick="window.showTerminalView()">Open terminal</button>${hint}<span class="cni-foot-spacer"></span>${controls.foot}</div>`;
 }
 
 function syncNeedsInputCard(container, session) {
@@ -952,13 +972,12 @@ function syncNeedsInputCard(container, session) {
     }
     if (el.dataset.key !== key) {
         // Keep an answer being typed if the card re-renders
-        const open = el.querySelector(".cni-text-form:not([hidden])");
+        const open = Array.from(el.querySelectorAll(".cni-text-form")).find(f => f.querySelector("input").value || document.activeElement === f.querySelector("input"));
         const typing = open ? { n: open.dataset.n, value: open.querySelector("input").value, focused: document.activeElement === open.querySelector("input") } : null;
         el.dataset.key = key;
         el.innerHTML = needsInputHtml(info);
         const form = typing && el.querySelector(`.cni-text-form[data-n="${typing.n}"]`);
         if (form) {
-            form.hidden = false;
             const input = form.querySelector("input");
             input.value = typing.value;
             if (typing.focused) input.focus();
@@ -1030,15 +1049,6 @@ document.addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest("#live-history-messages .cni-answer");
     if (!btn || btn.disabled) return;
     const card = btn.closest(".chat-needs-input");
-    if (btn.dataset.action === "text") {
-        // Reveal the field; the answer is sent from the form
-        const form = card && card.querySelector(`.cni-text-form[data-n="${btn.dataset.n}"]`);
-        if (form) {
-            form.hidden = false;
-            form.querySelector("input").focus();
-        }
-        return;
-    }
     btn.classList.add("sending");
     sendPromptAnswer(card, Number(btn.dataset.n), btn.dataset.label, btn.dataset.action).then(ok => {
         if (!ok) btn.classList.remove("sending");

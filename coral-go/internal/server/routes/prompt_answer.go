@@ -149,16 +149,28 @@ func parseReview(lines []string, questionAt int) []promptReviewItem {
 	}
 	var items []promptReviewItem
 	for _, line := range lines[start+1 : questionAt] {
-		t := strings.TrimSpace(line)
+		// The focused item carries a bar ("│ ● ..."); strip such markers
+		t := strings.TrimSpace(strings.TrimLeft(line, reviewMarkers))
 		switch {
 		case strings.HasPrefix(t, "●"):
 			items = append(items, promptReviewItem{Question: strings.TrimSpace(strings.TrimPrefix(t, "●"))})
 		case strings.HasPrefix(t, "→") && len(items) > 0:
 			items[len(items)-1].Answer = strings.TrimSpace(strings.TrimPrefix(t, "→"))
+		case t != "" && len(items) > 0:
+			// A long question or answer wraps onto the next line
+			last := &items[len(items)-1]
+			if last.Answer != "" {
+				last.Answer += " " + t
+			} else {
+				last.Question += " " + t
+			}
 		}
 	}
 	return items
 }
+
+// Characters Claude Code draws before a review item (focus bar, indent)
+const reviewMarkers = " \t│┃▎▍▌|>"
 
 func (h *SessionsHandler) capturePromptScreen(r *http.Request, name, agentType, sessionID string) (promptScreen, bool) {
 	text, err := h.terminal.CaptureOutput(r.Context(), name, 80, agentType, sessionID)

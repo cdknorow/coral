@@ -57,6 +57,19 @@ Ready to submit your answers?
   2. Cancel
 `
 
+// The focused review item carries a "│" bar, and a long question wraps.
+const screenReviewFocused = `←  ☒ Question  ☒ Next  ✔ Submit  →
+Review your answers
+ │ ● Does the card now show this question text instead of 'Claude needs your
+     permission'?
+   → Yes, question shown
+ ● What should come next for the chat view?
+   → More polish first
+Ready to submit your answers?
+❯ 1. Submit answers
+  2. Cancel
+`
+
 const screenPlan = ` Here is Claude's plan:
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
  Plan: create hello.txt
@@ -121,6 +134,13 @@ func TestParsePromptScreen(t *testing.T) {
 	assert.Equal(t, "Ready to submit your answers?", s.Question)
 	assert.Equal(t, []string{"Submit answers", "Cancel"}, labels(s.Options))
 	assert.Equal(t, []promptReviewItem{{"What is your favorite fruit?", "Pear"}, {"What is your favorite season?", "Summer"}}, s.Review)
+
+	s, ok = parsePromptScreen(screenReviewFocused)
+	require.True(t, ok)
+	assert.Equal(t, []promptReviewItem{
+		{"Does the card now show this question text instead of 'Claude needs your permission'?", "Yes, question shown"},
+		{"What should come next for the chat view?", "More polish first"},
+	}, s.Review, "the focused (barred) item and a wrapped question are both read")
 
 	s, ok = parsePromptScreen(screenPlan)
 	require.True(t, ok, "the plan's own numbered steps must not be mistaken for the options")
