@@ -7,6 +7,7 @@ import { loadBoardProjects } from './message_board.js';
 import { getEngineNames, getEngineName, setRendererOverride } from './renderers.js';
 import { renderCaptureText, syncPaneWidth } from './capture.js';
 import { hideRestartModal } from './controls.js';
+import { recordRecentDir } from './browser.js';
 import { updateTerminalTheme, getTerminal } from './xterm_renderer.js';
 
 export function toggleFlag(inputId, flag) {
@@ -1013,6 +1014,7 @@ export async function launchSession() {
                 showToast(result.error, true);
             }
         } else {
+            recordRecentDir(dir);
             showToast(`Launched: ${result.session_name}`);
             hideLaunchModal();
             setTimeout(loadLiveSessions, 2000);
@@ -2160,6 +2162,7 @@ window._quickLaunchTeam = async function() {
         }
         const data = await resp.json();
         if (data.error) { showToast(data.error, 'error'); return; }
+        recordRecentDir(workDir);
         document.getElementById('quick-launch-modal').style.display = 'none';
         const launched = data.agents || [];
         const failed = launched.filter(a => a.error);
@@ -2546,6 +2549,7 @@ async function launchTeam() {
         if (result.error) {
             showToast(result.error, true);
         } else {
+            recordRecentDir(workingDir);
             // Check for per-agent errors in the launched array
             const launched = result.agents || result.launched || [];
             const failed = launched.filter(a => a.error);
@@ -2813,6 +2817,7 @@ export async function resumeLaunchNew() {
         if (result.error) {
             showToast(result.error, true);
         } else {
+            recordRecentDir(dir);
             showToast(`Resumed session as new agent`);
             hideResumeModal();
             setTimeout(loadLiveSessions, 2000);

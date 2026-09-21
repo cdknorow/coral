@@ -14,6 +14,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/subagent"
 )
 
 // TokenPoller periodically reads Codex (and future non-Claude) agent transcripts
@@ -21,8 +22,10 @@ import (
 type TokenPoller struct {
 	sessionStore *store.SessionStore
 	usageStore   *store.TokenUsageStore
-	interval     time.Duration
-	logger       *slog.Logger
+	// subagentStore is optional; when nil, subagent spend is not tracked.
+	subagentStore *store.SubagentStore
+	interval      time.Duration
+	logger        *slog.Logger
 
 	// Track last-polled mtime per rollout file to skip unchanged files.
 	lastMtime map[string]time.Time
@@ -46,6 +49,12 @@ func NewTokenPoller(ss *store.SessionStore, us *store.TokenUsageStore, interval 
 		lastCumulative: make(map[string]cumulativeTokens),
 		lastEntryCount: make(map[string]int),
 	}
+}
+
+// SetSubagentStore enables tracking of the spend of subagents launched by
+// Claude sessions. Must be called before Run.
+func (p *TokenPoller) SetSubagentStore(st *store.SubagentStore) {
+	p.subagentStore = st
 }
 
 // Run starts the polling loop.
@@ -462,6 +471,11 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 		p.sessionPaths[ls.SessionID] = jsonlPath
 	}
 
+	// Subagents write to their own transcripts, and keep doing so while the
+	// main agent sits idle waiting on them. This must run before the mtime
+	// check below, which returns early when the MAIN transcript is unchanged.
+	p.pollClaudeSubagents(ctx, ls, jsonlPath)
+
 	// Check mtime to skip unchanged files
 	info, err := os.Stat(jsonlPath)
 	if err != nil {
@@ -554,6 +568,38 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 	}
 
 	p.lastEntryCount[ls.SessionID] = len(usage.Calls)
+}
+
+// pollClaudeSubagents records the spend of the subagents this session has
+// launched. Their API calls are absent from the session's own transcript, so
+// without this they would be missing from Coral entirely.
+func (p *TokenPoller) pollClaudeSubagents(ctx context.Context, ls *store.LiveSession, parentTranscriptPath string) {
+	if p.subagentStore == nil {
+		return
+	}
+	// Only re-read a subagent whose transcript or metadata changed.
+	var touched []subagent.Files
+	changed := func(f subagent.Files) bool {
+		mtime := latestMtime(f.TranscriptPath, f.MetaPath)
+		if last, ok := p.lastMtime[f.TranscriptPath]; ok && !mtime.After(last) {
+			return false
+		}
+		touched = append(touched, f)
+		return true
+	}
+
+	synced, err := syncSubagentSpend(ctx, p.subagentStore, ls.SessionID, parentTranscriptPath, changed)
+	if err != nil {
+		// Leave lastMtime alone so the failed subagent is retried next poll.
+		p.logger.Error("failed to sync subagent spend", "session_id", ls.SessionID, "error", err)
+		return
+	}
+	for _, f := range touched {
+		p.lastMtime[f.TranscriptPath] = latestMtime(f.TranscriptPath, f.MetaPath)
+	}
+	if synced > 0 {
+		p.logger.Debug("synced subagent spend", "session_id", ls.SessionID[:8], "subagents", synced)
+	}
 }
 
 // extractClaudeUsage reads a Claude JSONL file and extracts per-turn token usage

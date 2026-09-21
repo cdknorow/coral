@@ -437,6 +437,33 @@ CREATE TABLE IF NOT EXISTS team_members (
 
 CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id, status);
 
+-- Subagents launched by a main agent. Kept separate from live_sessions: a
+-- subagent is not a Coral-managed agent (no tmux session, board, or prompt),
+-- it is work a main agent delegated. session_id is the relational tie back to
+-- the main agent that launched it.
+CREATE TABLE IF NOT EXISTS subagents (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id         TEXT NOT NULL REFERENCES live_sessions(session_id) ON DELETE CASCADE,
+    subagent_id        TEXT NOT NULL,
+    subagent_type      TEXT,
+    description        TEXT,
+    tool_use_id        TEXT,
+    model              TEXT,
+    spawn_depth        INTEGER NOT NULL DEFAULT 0,
+    api_calls          INTEGER NOT NULL DEFAULT 0,
+    input_tokens       INTEGER NOT NULL DEFAULT 0,
+    output_tokens      INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd           REAL NOT NULL DEFAULT 0,
+    started_at         TEXT,
+    last_activity_at   TEXT,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    UNIQUE(session_id, subagent_id)
+);
+CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_id);
+
 CREATE TABLE IF NOT EXISTS token_usage (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id      TEXT NOT NULL,

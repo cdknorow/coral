@@ -1534,6 +1534,8 @@
     background: var(--bg-primary);
     margin-bottom: 12px;
     overflow: hidden;
+    /* Modals are flex columns — without this the browser is squashed instead of the modal scrolling */
+    flex-shrink: 0;
 }
 
 .dir-browser-header {
@@ -1562,8 +1564,56 @@
 
 .dir-browser-list {
     list-style: none;
-    max-height: 240px;
+    height: 320px;
+    min-height: 96px;
+    max-height: 70vh;
     overflow-y: auto;
+    resize: vertical;
+}
+
+.dir-browser-recents {
+    border-bottom: 1px solid var(--border);
+    padding: 4px 0;
+}
+
+.dir-browser-recents-label {
+    padding: 4px 12px 2px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.dir-browser-recent {
+    padding: 5px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.1s;
+}
+
+.dir-browser-recent:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.dir-browser-recent .dir-name {
+    flex-shrink: 0;
+    color: var(--text-primary);
+}
+
+.dir-browser-recent-path {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    direction: rtl;
+    text-align: left;
 }
 
 .dir-browser-list li {

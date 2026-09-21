@@ -530,6 +530,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Token poller — extracts token usage from Codex/Claude transcripts for cost tracking
 	tokenUsageStore := store.NewTokenUsageStore(db)
 	tokenPoller := background.NewTokenPoller(sessStore, tokenUsageStore, 30*time.Second)
+	tokenPoller.SetSubagentStore(store.NewSubagentStore(db))
 	safeGo(ctx, "token_poller", func() { tokenPoller.Run(ctx) })
 
 	// Wire proxy → token_usage table so proxy-captured tokens appear in the unified API
