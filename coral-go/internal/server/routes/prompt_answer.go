@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -21,25 +22,49 @@ import (
 // assumed, and an answer is only sent after re-reading the screen and
 // confirming the digit still maps to the option the user clicked.
 
+// How an option is answered:
+//   - "select": its digit answers it
+//   - "text":   its digit opens a text field ("Type something.", "Tell Claude
+//               what to change"); the answer is typed, then Enter
+//   - "chat":   its digit closes the dialog so the user can reply in chat
+//               ("Chat about this")
 type promptOption struct {
 	N        int    `json:"n"`
 	Label    string `json:"label"`
 	Selected bool   `json:"selected"`
-	FreeText bool   `json:"free_text"` // needs typed input; answer in the terminal
+	Action   string `json:"action"`
+}
+
+// One line of the "Review your answers" step of a multi-question dialog.
+type promptReviewItem struct {
+	Question string `json:"question"`
+	Answer   string `json:"answer"`
 }
 
 type promptScreen struct {
-	Question string         `json:"question"`
-	Options  []promptOption `json:"options"`
+	Question string             `json:"question"`
+	Options  []promptOption     `json:"options"`
+	Review   []promptReviewItem `json:"review,omitempty"`
 }
+
+// Time for the dialog to turn an option into a text field before typing
+var promptTextDelay = 300 * time.Millisecond
 
 var (
 	promptOptionRe = regexp.MustCompile(`^\s*(❯\s*)?(\d{1,2})\.\s+(.+?)\s*$`)
 	separatorRe    = regexp.MustCompile(`^\s*[─━╌┄═]+\s*$`)
 )
 
-// Options that open a text field instead of answering
-var freeTextPrefixes = []string{"type something", "chat about this", "tell claude what to change"}
+func optionAction(label string) string {
+	lower := strings.ToLower(strings.TrimSpace(label))
+	switch {
+	case strings.HasPrefix(lower, "type something"), strings.HasPrefix(lower, "tell claude what to change"):
+		return "text"
+	case strings.HasPrefix(lower, "chat about this"):
+		return "chat"
+	}
+	return "select"
+}
 
 func indentOf(s string) int {
 	return len(s) - len(strings.TrimLeft(s, " "))
@@ -70,25 +95,20 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	}
 	var opts []promptOption
 	question := ""
+	questionAt := -1
 	for i := end; i >= 0; i-- {
 		line := lines[i]
 		if m := promptOptionRe.FindStringSubmatch(line); m != nil && indentOf(line) < 5 {
 			n, _ := strconv.Atoi(m[2])
 			label := m[3]
-			lower := strings.ToLower(label)
-			free := false
-			for _, p := range freeTextPrefixes {
-				if strings.HasPrefix(lower, p) {
-					free = true
-				}
-			}
-			opts = append([]promptOption{{N: n, Label: label, Selected: m[1] != "", FreeText: free}}, opts...)
+			opts = append([]promptOption{{N: n, Label: label, Selected: m[1] != "", Action: optionAction(label)}}, opts...)
 			continue
 		}
 		if strings.TrimSpace(line) == "" || separatorRe.MatchString(line) || indentOf(line) >= 5 {
 			continue
 		}
 		question = strings.TrimSpace(line)
+		questionAt = i
 		break
 	}
 	if len(opts) < 2 {
@@ -104,7 +124,40 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 	if !selected {
 		return promptScreen{}, false
 	}
-	return promptScreen{Question: question, Options: opts}, true
+	return promptScreen{Question: question, Options: opts, Review: parseReview(lines, questionAt)}, true
+}
+
+// parseReview reads the "Review your answers" list shown above the Submit
+// step of a multi-question dialog:
+//
+//	Review your answers
+//	 ● What is your favorite fruit?
+//	   → Pear
+func parseReview(lines []string, questionAt int) []promptReviewItem {
+	if questionAt <= 0 {
+		return nil
+	}
+	start := -1
+	for i := questionAt - 1; i >= 0 && i >= questionAt-40; i-- {
+		if strings.TrimSpace(lines[i]) == "Review your answers" {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	var items []promptReviewItem
+	for _, line := range lines[start+1 : questionAt] {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "●"):
+			items = append(items, promptReviewItem{Question: strings.TrimSpace(strings.TrimPrefix(t, "●"))})
+		case strings.HasPrefix(t, "→") && len(items) > 0:
+			items[len(items)-1].Answer = strings.TrimSpace(strings.TrimPrefix(t, "→"))
+		}
+	}
+	return items
 }
 
 func (h *SessionsHandler) capturePromptScreen(r *http.Request, name, agentType, sessionID string) (promptScreen, bool) {
@@ -152,6 +205,7 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		AgentType string `json:"agent_type"`
 		N         int    `json:"n"`
 		Label     string `json:"label"`
+		Text      string `json:"text"` // the typed answer, for a "text" option
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.N < 1 || body.N > 9 || strings.TrimSpace(body.Label) == "" {
 		errBadRequest(w, "n (1-9) and label are required")
@@ -169,13 +223,27 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	opt := screen.Options[body.N-1]
-	if opt.FreeText || normalizeLabel(opt.Label) != normalizeLabel(body.Label) {
+	if normalizeLabel(opt.Label) != normalizeLabel(body.Label) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt changed. Answer it in the terminal."})
+		return
+	}
+	// A typed answer is one line: Enter submits the field
+	text := strings.Join(strings.Fields(body.Text), " ")
+	if opt.Action == "text" && text == "" {
+		errBadRequest(w, "text is required for this option")
 		return
 	}
 	if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	if opt.Action == "text" {
+		// The digit turns the option into a text field; type into it, then Enter
+		time.Sleep(promptTextDelay)
+		if err := h.terminal.SendInput(r.Context(), name, text, body.AgentType, body.SessionID); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "answered": opt.Label})
 }

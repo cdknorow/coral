@@ -106,8 +106,10 @@ func TestParsePromptScreen(t *testing.T) {
 	assert.Equal(t, "Which color do you prefer?", s.Question)
 	assert.Equal(t, []string{"Red", "Green", "Blue", "Type something.", "Chat about this"}, labels(s.Options))
 	assert.True(t, s.Options[0].Selected)
-	assert.True(t, s.Options[3].FreeText && s.Options[4].FreeText, "text-entry options are flagged")
-	assert.False(t, s.Options[1].FreeText)
+	assert.Equal(t, "text", s.Options[3].Action, "Type something opens a text field")
+	assert.Equal(t, "chat", s.Options[4].Action, "Chat about this closes the dialog")
+	assert.Equal(t, "select", s.Options[1].Action)
+	assert.Empty(t, s.Review)
 
 	s, ok = parsePromptScreen(screenPermission)
 	require.True(t, ok)
@@ -118,11 +120,12 @@ func TestParsePromptScreen(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "Ready to submit your answers?", s.Question)
 	assert.Equal(t, []string{"Submit answers", "Cancel"}, labels(s.Options))
+	assert.Equal(t, []promptReviewItem{{"What is your favorite fruit?", "Pear"}, {"What is your favorite season?", "Summer"}}, s.Review)
 
 	s, ok = parsePromptScreen(screenPlan)
 	require.True(t, ok, "the plan's own numbered steps must not be mistaken for the options")
 	assert.Equal(t, []string{"Yes, and use auto mode", "Yes, manually approve edits", "Tell Claude what to change"}, labels(s.Options))
-	assert.True(t, s.Options[2].FreeText)
+	assert.Equal(t, "text", s.Options[2].Action, "Tell Claude what to change takes typed feedback")
 	assert.True(t, strings.HasPrefix(s.Question, "Claude has written up a plan"))
 
 	_, ok = parsePromptScreen(screenTrust)
@@ -136,6 +139,7 @@ func TestParsePromptScreen(t *testing.T) {
 func TestAnswerPrompt(t *testing.T) {
 	server, _, terminal, _ := setupSessionsTestServer(t)
 	terminal.addSession("claude-ask", "/tmp/test")
+	promptTextDelay = 0
 	base := server.URL + "/api/sessions/live/claude-ask"
 	setScreen := func(s string) {
 		terminal.mu.Lock()
@@ -146,6 +150,20 @@ func TestAnswerPrompt(t *testing.T) {
 		terminal.mu.Lock()
 		defer terminal.mu.Unlock()
 		return append([]string(nil), terminal.raw["claude-ask"]...)
+	}
+	sentText := func() []string {
+		terminal.mu.Lock()
+		defer terminal.mu.Unlock()
+		return append([]string(nil), terminal.sent["claude-ask"]...)
+	}
+	answerText := func(n int, label, text string) (int, map[string]any) {
+		b, _ := json.Marshal(map[string]any{"n": n, "label": label, "text": text})
+		resp, err := http.Post(base+"/answer-prompt", "application/json", bytes.NewReader(b))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var body map[string]any
+		json.NewDecoder(resp.Body).Decode(&body)
+		return resp.StatusCode, body
 	}
 	answer := func(n int, label string) (int, map[string]any) {
 		b, _ := json.Marshal(map[string]any{"n": n, "label": label})
@@ -173,13 +191,22 @@ func TestAnswerPrompt(t *testing.T) {
 
 	code, _ = answer(1, "No")
 	assert.Equal(t, http.StatusConflict, code, "a label that no longer matches its number is refused")
+	// A typed answer: the digit opens the field, then the text and Enter
 	setScreen(screenQuestion)
 	code, _ = answer(4, "Type something.")
-	assert.Equal(t, http.StatusConflict, code, "text-entry options are answered in the terminal")
+	assert.Equal(t, http.StatusBadRequest, code, "a text option needs the typed answer")
+	code, _ = answerText(4, "Type something.", "  Mango \n  please ")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, []string{"4", "4"}, sentKeys())
+	assert.Equal(t, []string{"Mango please"}, sentText(), "typed as one line, then Enter")
+	// Chat about this is just its digit
+	code, _ = answer(5, "Chat about this")
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, []string{"4", "4", "5"}, sentKeys())
 	setScreen(screenIdleList)
 	code, _ = answer(1, "Rebuild the app")
 	assert.Equal(t, http.StatusConflict, code, "nothing is sent when no prompt is open")
-	assert.Equal(t, []string{"4"}, sentKeys(), "refused answers send no keys")
+	assert.Equal(t, []string{"4", "4", "5"}, sentKeys(), "refused answers send no keys")
 
 	code, _ = answer(0, "x")
 	assert.Equal(t, http.StatusBadRequest, code)

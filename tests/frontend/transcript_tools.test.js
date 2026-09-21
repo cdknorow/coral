@@ -203,18 +203,38 @@ async function run() {
   check('an open question shows as a card with its options, replacing the Working row', cd && cd.title === 'Question for you' && /Which layout\?/.test(cd.text) && JSON.stringify(cd.options) === '["Compact","Roomy"]' && !cd.working && cd.last, JSON.stringify(cd));
 
   // Answer from the chat: buttons mirror the options on screen
-  await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true }, { n: 2, label: 'Roomy' }, { n: 3, label: 'Type something.', free_text: true }] }; true`);
+  await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }, { n: 3, label: 'Type something.', action: 'text' }, { n: 4, label: 'Chat about this', action: 'chat' }] }; true`);
   await sleep(2600);
   const btns = await ev(`Array.from(${C}.querySelectorAll('.chat-needs-input .cni-answer')).map(b => ({ n: b.dataset.n, label: b.querySelector('.cni-answer-label').textContent, desc: (b.querySelector('.cni-answer-desc') || {}).textContent || '' }))`);
-  check('the question card offers the on-screen options as buttons (text entry stays in the terminal)', JSON.stringify(btns) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows' }, { n: '2', label: 'Roomy', desc: '' }]), JSON.stringify(btns));
-  await ev(`window.__answerFail = true; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
+  check('the question card offers every on-screen option, including typing an answer and chatting', JSON.stringify(btns) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows' }, { n: '2', label: 'Roomy', desc: '' }, { n: '3', label: 'Type something\u2026', desc: '' }, { n: '4', label: 'Chat about this', desc: '' }]), JSON.stringify(btns));
+  // Type something: the button opens a field; its answer is sent with the option's number
+  await ev(`window.__answers = []; ${C}.querySelector('.cni-answer[data-n="3"]').click(); true`);
+  const formShown = await ev(`(() => { const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); return !!f && !f.hidden && document.activeElement === f.querySelector('input'); })()`);
+  check('Type something opens a focused text field in the card', formShown);
+  await ev(`(() => { const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); f.querySelector('input').value = 'Something in between'; f.requestSubmit(); return true; })()`);
+  await sleep(300);
+  const typed = await ev(`window.__answers`);
+  check('a typed answer is sent with the Type something option', JSON.stringify(typed) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 3, label: 'Type something.', text: 'Something in between' }]), JSON.stringify(typed));
+  // Chat about this: its number, then the command box is ready for the reply
+  await ev(`window.__answers = []; ${C}.querySelectorAll('.cni-answer, .cni-text-form input, .cni-text-form button').forEach(b => b.disabled = false); ${C}.querySelector('.cni-answer[data-n="4"]').click(); true`);
+  await sleep(300);
+  const chat = await ev(`({ answers: window.__answers, focused: document.activeElement && document.activeElement.id })`);
+  check('Chat about this sends its number and focuses the command box', chat.answers.length === 1 && chat.answers[0].n === 4 && chat.focused === 'command-input', JSON.stringify(chat));
+  // The review step shows each question with its answer before Submit
+  await ev(`window.__promptScreen = { question: 'Ready to submit your answers?', options: [{ n: 1, label: 'Submit answers', selected: true, action: 'select' }, { n: 2, label: 'Cancel', action: 'select' }], review: [{ question: 'Which layout?', answer: 'Roomy' }, { question: 'Which theme?', answer: 'Dark' }] }; true`);
+  await sleep(2600);
+  const review = await ev(`(() => { const c = ${C}.querySelector('.chat-needs-input'); return { q: (c.querySelector('.cni-question') || {}).textContent, dt: Array.from(c.querySelectorAll('.cni-review dt')).map(d => d.textContent), dd: Array.from(c.querySelectorAll('.cni-review dd')).map(d => d.textContent), btns: Array.from(c.querySelectorAll('.cni-answer-label')).map(b => b.textContent) }; })()`);
+  check('the review step lists each question with its answer, then Submit and Cancel', review.q === 'Ready to submit your answers?' && JSON.stringify(review.dd) === '["Roomy","Dark"]' && JSON.stringify(review.dt) === '["Which layout?","Which theme?"]' && JSON.stringify(review.btns) === '["Submit answers","Cancel"]', JSON.stringify(review));
+  await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }] }; true`);
+  await sleep(2600);
+  await ev(`window.__answers = []; window.__answerFail = true; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
   await sleep(500);
   const refused = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).some(b => b.disabled) })`);
   check('a refused answer re-enables the buttons', refused.answers.length === 1 && !refused.disabled, JSON.stringify(refused));
   await ev(`window.__answerFail = false; window.__answers = []; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
   await sleep(300);
   const sent = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).every(b => b.disabled) })`);
-  check('clicking an option sends its number and label, and locks the buttons', JSON.stringify(sent.answers) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 2, label: 'Roomy' }]) && sent.disabled, JSON.stringify(sent));
+  check('clicking an option sends its number and label, and locks the buttons', JSON.stringify(sent.answers) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 2, label: 'Roomy', text: '' }]) && sent.disabled, JSON.stringify(sent));
   await ev(`window.__promptScreen = null; true`);
 
   // Open terminal switches this view without changing the saved Chat default
@@ -233,6 +253,12 @@ async function run() {
   await sleep(2600);
   cd = await card();
   check('without hook details the card shows the notification text', cd && cd.title === 'Needs your input' && /Claude needs your permission to use Bash/.test(cd.text) && !/^Notification:/.test(cd.text), JSON.stringify(cd));
+  // ...and the question the terminal shows, when it shows one (e.g. an AskUserQuestion from an agent without the hook)
+  await ev(`window.__promptScreen = { question: 'Which color do you prefer?', options: [{ n: 1, label: 'Red', selected: true, action: 'select' }, { n: 2, label: 'Green', action: 'select' }] }; true`);
+  await sleep(2600);
+  cd = await card();
+  check('without hook details the card still shows the on-screen question and options', cd && /Which color do you prefer\?/.test(cd.text) && /Red/.test(cd.text) && /Green/.test(cd.text), JSON.stringify(cd));
+  await ev(`window.__promptScreen = null; true`);
 
   await setRow({ waiting_for_input: false, waiting_summary: null, awaiting_user: true });
   await sleep(1500);

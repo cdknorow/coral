@@ -822,7 +822,7 @@ async function refreshPendingTool(session) {
 
 // The prompt's options as the terminal shows them right now (numbered, with
 // the digit that answers each), read by the server from a pane capture.
-const promptOptionsBySession = new Map(); // session_id -> [{ n, label, free_text }]
+const promptOptionsBySession = new Map(); // session_id -> { question, options: [{ n, label, action }], review }
 let promptOptionsInFlight = false;
 
 async function refreshPromptOptions(session) {
@@ -833,7 +833,7 @@ async function refreshPromptOptions(session) {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/prompt-options?${qs}`);
         if (resp.ok) {
             const data = await resp.json();
-            promptOptionsBySession.set(session.session_id, { question: data.question || "", options: data.options || [] });
+            promptOptionsBySession.set(session.session_id, { question: data.question || "", options: data.options || [], review: data.review || [] });
         }
     } catch { /* keep the last known value */ } finally {
         promptOptionsInFlight = false;
@@ -855,24 +855,40 @@ function needsInputInfo(session) {
     return null;
 }
 
-// Answer buttons for the options on screen; text-entry options stay in the terminal.
+// Answer buttons for the options on screen. A "text" option ("Type
+// something.", "Tell Claude what to change") opens an inline field; "Chat
+// about this" closes the dialog so the reply can be typed in the command box.
 function answerButtonsHtml(info, descriptions = {}) {
-    const opts = ((info.screen && info.screen.options) || []).filter(o => !o.free_text);
+    const opts = (info.screen && info.screen.options) || [];
     if (!opts.length) return "";
     return `<div class="cni-answers">` + opts.map(o => {
         const desc = descriptions[o.label];
-        return `<button type="button" class="cni-answer" data-n="${o.n}" data-label="${escapeHtml(o.label)}">`
-            + `<span class="cni-answer-label">${escapeHtml(o.label)}</span>`
+        const attrs = `data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="${escapeHtml(o.action || "select")}"`;
+        let html = `<button type="button" class="cni-answer${o.action === "text" ? " cni-answer-text" : ""}" ${attrs}>`
+            + `<span class="cni-answer-label">${escapeHtml(o.action === "text" ? o.label.replace(/\.$/, "") + "\u2026" : o.label)}</span>`
             + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
             + `</button>`;
+        if (o.action === "text") {
+            html += `<form class="cni-text-form" ${attrs} hidden><input type="text" class="cni-text-input" placeholder="Type your answer" aria-label="${escapeHtml(o.label)}"><button type="submit" class="btn btn-sm btn-primary">Send</button></form>`;
+        }
+        return html;
     }).join("") + `</div>`;
+}
+
+// The review step of a multi-question dialog: each question and its answer
+function reviewHtml(info) {
+    const items = (info.screen && info.screen.review) || [];
+    if (!items.length) return "";
+    return `<dl class="cni-review">` + items.map(it =>
+        `<dt>${escapeHtml(it.question)}</dt><dd>${escapeHtml(it.answer || "\u2014")}</dd>`).join("") + `</dl>`;
 }
 
 function needsInputHtml(info) {
     const inp = (info.tool && info.tool.input) || {};
     let title = "";
     let body = "";
-    const onScreen = ((info.screen && info.screen.options) || []).some(o => !o.free_text);
+    const onScreen = ((info.screen && info.screen.options) || []).length > 0;
+    const screenQuestion = onScreen ? (info.screen.question || "") : "";
     if (info.kind === "question" && onScreen) {
         // The terminal shows one question at a time (then a review step):
         // offer the options it is showing now.
@@ -881,9 +897,9 @@ function needsInputHtml(info) {
         for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
             for (const o of Array.isArray(q.options) ? q.options : []) if (o.description) descriptions[o.label] = o.description;
         }
-        body += `<div class="cni-question">${escapeHtml(info.screen.question || "")}</div>`;
+        body += `<div class="cni-question">${escapeHtml(screenQuestion)}</div>`;
+        body += reviewHtml(info);
         body += answerButtonsHtml(info, descriptions);
-        body += `<div class="cni-hint">To type your own answer, use the terminal.</div>`;
     } else if (info.kind === "question") {
         title = "Question for you";
         for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
@@ -899,11 +915,14 @@ function needsInputHtml(info) {
         title = "Plan ready for your approval";
         if (inp.plan) body += `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
         body += answerButtonsHtml(info);
-        body += `<div class="cni-hint">${onScreen ? "To ask for changes, use the terminal." : "Approve or refine it in the terminal."}</div>`;
+        if (!onScreen) body += `<div class="cni-hint">Approve or refine it in the terminal.</div>`;
     } else if (info.kind === "permission") {
         const tool = info.tool && info.tool.tool_name;
         title = tool ? `Needs your permission to use ${escapeHtml(tool)}` : "Needs your input";
-        if (info.summary && !tool) body += `<div class="cni-summary">${escapeHtml(info.summary)}</div>`;
+        // Without hook details, the terminal still says what it is asking
+        if (screenQuestion) body += `<div class="cni-question">${escapeHtml(screenQuestion)}</div>`;
+        else if (info.summary && !tool) body += `<div class="cni-summary">${escapeHtml(info.summary)}</div>`;
+        body += reviewHtml(info);
         const target = inp.command || inp.file_path || inp.path || inp.url || inp.query || inp.pattern || "";
         if (inp.description && inp.command) body += `<div class="cni-summary">${escapeHtml(inp.description)}</div>`;
         if (target) body += `<pre class="cni-target"><code>${escapeHtml(target)}</code></pre>`;
@@ -932,8 +951,18 @@ function syncNeedsInputCard(container, session) {
         el.setAttribute("role", "alert");
     }
     if (el.dataset.key !== key) {
+        // Keep an answer being typed if the card re-renders
+        const open = el.querySelector(".cni-text-form:not([hidden])");
+        const typing = open ? { n: open.dataset.n, value: open.querySelector("input").value, focused: document.activeElement === open.querySelector("input") } : null;
         el.dataset.key = key;
         el.innerHTML = needsInputHtml(info);
+        const form = typing && el.querySelector(`.cni-text-form[data-n="${typing.n}"]`);
+        if (form) {
+            form.hidden = false;
+            const input = form.querySelector("input");
+            input.value = typing.value;
+            if (typing.focused) input.focus();
+        }
     }
     // Same slot as the Working row: below Sent messages, above Queued ones
     const queued = container.querySelector(":scope > .pending-messages.pending-queued");
@@ -961,36 +990,70 @@ function syncEmptyState(container) {
     }
 }
 
-// Clicking an answer: the server re-reads the terminal and sends the digit
-// only if that option is still on screen with this label.
-document.addEventListener("click", async (e) => {
-    const btn = e.target.closest && e.target.closest("#live-history-messages .cni-answer");
-    if (!btn || btn.disabled) return;
+// Answering: the server re-reads the terminal and sends the digit (plus the
+// typed text for a text option) only if that option is still on screen with
+// this label.
+async function sendPromptAnswer(card, n, label, action, text) {
     const session = state.currentSession;
-    if (!session || session.type !== "live") return;
-    const card = btn.closest(".chat-needs-input");
-    const buttons = card ? Array.from(card.querySelectorAll(".cni-answer")) : [btn];
-    buttons.forEach(b => { b.disabled = true; });
-    btn.classList.add("sending");
+    if (!session || session.type !== "live") return false;
+    const controls = card ? Array.from(card.querySelectorAll(".cni-answer, .cni-text-form button, .cni-text-form input")) : [];
+    controls.forEach(c => { c.disabled = true; });
     try {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n: Number(btn.dataset.n), label: btn.dataset.label }),
+            body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
             showToast(data.error || "Could not send the answer. Use the terminal.", true);
-            buttons.forEach(b => { b.disabled = false; });
-            btn.classList.remove("sending");
-            return;
+            controls.forEach(c => { c.disabled = false; });
+            return false;
         }
         // The card refreshes from the terminal: the next question, the review
         // step, or gone once the tool runs.
         promptOptionsBySession.delete(session.session_id);
+        if (action === "chat") {
+            const input = document.getElementById("command-input");
+            if (input) input.focus();
+            showToast("Type your reply below");
+        }
+        return true;
     } catch {
         showToast("Could not send the answer. Use the terminal.", true);
-        buttons.forEach(b => { b.disabled = false; });
-        btn.classList.remove("sending");
+        controls.forEach(c => { c.disabled = false; });
+        return false;
     }
+}
+
+document.addEventListener("click", (e) => {
+    const btn = e.target.closest && e.target.closest("#live-history-messages .cni-answer");
+    if (!btn || btn.disabled) return;
+    const card = btn.closest(".chat-needs-input");
+    if (btn.dataset.action === "text") {
+        // Reveal the field; the answer is sent from the form
+        const form = card && card.querySelector(`.cni-text-form[data-n="${btn.dataset.n}"]`);
+        if (form) {
+            form.hidden = false;
+            form.querySelector("input").focus();
+        }
+        return;
+    }
+    btn.classList.add("sending");
+    sendPromptAnswer(card, Number(btn.dataset.n), btn.dataset.label, btn.dataset.action).then(ok => {
+        if (!ok) btn.classList.remove("sending");
+    });
+});
+
+document.addEventListener("submit", (e) => {
+    const form = e.target.closest && e.target.closest("#live-history-messages .cni-text-form");
+    if (!form) return;
+    e.preventDefault();
+    const input = form.querySelector("input");
+    const text = input.value.trim();
+    if (!text) {
+        input.focus();
+        return;
+    }
+    sendPromptAnswer(form.closest(".chat-needs-input"), Number(form.dataset.n), form.dataset.label, "text", text);
 });

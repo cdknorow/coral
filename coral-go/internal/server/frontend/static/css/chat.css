@@ -1059,3 +1059,38 @@
     font-size: 13px;
     color: var(--text-secondary);
 }
+
+.cni-answer-text .cni-answer-label {
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+.cni-text-form {
+    display: flex;
+    gap: 6px;
+    margin: -2px 0 2px;
+}
+.cni-text-form[hidden] {
+    display: none;
+}
+.cni-text-input {
+    flex: 1;
+    min-width: 0;
+}
+.cni-review {
+    margin: 6px 0 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-primary);
+}
+.cni-review dt {
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+.cni-review dd {
+    margin: 0 0 6px;
+    font-weight: 600;
+}
+.cni-review dd:last-child {
+    margin-bottom: 0;
+}
