@@ -52,7 +52,7 @@ async function run() {
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
   for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
   await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
-  await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)})).then(() => { window.switchAgenticTab('history', 'top'); return true; })`);
+  await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)})).then(() => { window.setLiveViewMode('chat'); return true; })`);
   for (let i = 0; i < 30; i++) { if (await ev(`document.querySelectorAll('#live-history-messages .tool-call').length > 0`)) break; await sleep(100); }
 
   const C = `document.getElementById('live-history-messages')`;

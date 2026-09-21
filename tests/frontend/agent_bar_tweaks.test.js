@@ -288,8 +288,8 @@ async function run() {
         check('needs-attention rows are sid-b and sid-c', attn === 'sid-b,sid-c', attn);
 
         // D7 naming
-        const tab = await evalInPage(`(() => { const t = document.getElementById('agentic-tab-history'); return t ? { title: t.title, aria: t.getAttribute('aria-label') } : null; })()`);
-        check('live panel tab renamed to Transcript', tab && tab.aria === 'Transcript' && /^Transcript/.test(tab.title), JSON.stringify(tab));
+        const tab = await evalInPage(`(() => ({ sideTab: !!document.getElementById('agentic-tab-history'), chatBtn: !!document.getElementById('live-view-btn-chat') }))()`);
+        check('transcript lives in the center Chat view, not a side tab', tab && !tab.sideTab && tab.chatBtn, JSON.stringify(tab));
 
         // D1 header + placeholder + D4 mode label via selectLiveSession on the
         // unnamed first_prompt row.

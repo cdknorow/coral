@@ -1,7 +1,6 @@
 /* Agentic State — event loading, timeline rendering, tab switching, filtering */
 
 import { state } from './state.js';
-import { startLiveHistoryPoll, stopLiveHistoryPoll } from './live_chat.js';
 import { loadChangedFiles } from './changed_files.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
 import { escapeHtml, escapeAttr } from './utils.js';
@@ -369,13 +368,6 @@ export function switchAgenticTab(tabName, blockId) {
     // Persist tab choice per block
     if (blockId) {
         localStorage.setItem(`coral-agentic-tab-${blockId}`, tabName);
-    }
-
-    // Start/stop history polling based on tab
-    if (tabName === 'history') {
-        startLiveHistoryPoll();
-    } else if (blockId === 'top') {
-        stopLiveHistoryPoll();
     }
 
     // Start/stop board task polling based on tab

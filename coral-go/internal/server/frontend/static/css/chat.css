@@ -599,3 +599,83 @@
     background: var(--bg-tertiary, #21262d);
     color: var(--text-primary);
 }
+
+/* ── Center Chat View (Terminal/Chat toggle) ───────────────── */
+
+.live-view-toggle {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-right: 4px;
+}
+
+.live-view-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 3px 8px;
+    cursor: pointer;
+}
+
+.live-view-toggle-btn + .live-view-toggle-btn {
+    border-left: 1px solid var(--border);
+}
+
+.live-view-toggle-btn .material-icons {
+    font-size: 14px;
+}
+
+.live-view-toggle-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.live-view-toggle-btn.active {
+    color: var(--text-primary);
+    background: var(--accent-dim);
+}
+
+/* The terminal views keep their inline display (set by sessions.js); chat
+   mode overrides it so the terminal stays alive but hidden. */
+.live-history-center {
+    display: none;
+}
+
+.capture-wrapper.chat-mode #pane-capture,
+.capture-wrapper.chat-mode #xterm-container {
+    display: none !important;
+}
+
+.capture-wrapper.chat-mode .live-history-center {
+    display: block;
+    min-height: 0;
+    padding: 12px 20px;
+}
+
+.capture-wrapper.chat-mode .live-history-center > * {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.capture-wrapper.chat-mode .live-history-center .chat-bubble.human {
+    margin-left: auto;
+    margin-right: max(0px, calc((100% - 900px) / 2));
+    max-width: min(70%, 640px);
+}
+
+/* Narrow center pane: icon-only toggle so the header identity keeps its room */
+.terminal-header {
+    container-type: inline-size;
+}
+
+@container (max-width: 560px) {
+    .live-view-toggle-btn > span:not(.material-icons) {
+        display: none;
+    }
+}

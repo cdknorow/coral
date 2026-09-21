@@ -16,7 +16,7 @@ import { loadAgentNotes } from './agent_notes.js';
 import { loadAgentEvents, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
 import { loadHistoryChanges } from './history_changes.js';
-import { startLiveHistoryPoll, stopLiveHistoryPoll, resetLiveHistory } from './live_chat.js';
+import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode } from './live_chat.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
 import { getRendererMode } from './renderers.js';
@@ -211,11 +211,8 @@ export async function selectLiveSession(name, agentType, sessionId) {
     // Sync tmux pane width to match browser display after layout settles
     setTimeout(syncPaneWidth, 100);
 
-    // Start history poll if the history tab is currently active
-    const historyTab = document.getElementById("agentic-tab-history");
-    if (historyTab && historyTab.classList.contains("active")) {
-        startLiveHistoryPoll();
-    }
+    // Show terminal or chat in the center pane (starts the transcript poll in chat mode)
+    applyLiveViewMode();
 
     // Load secondary data in background (non-blocking, after terminal is connected)
     loadAgentTasks(name, sessionId);

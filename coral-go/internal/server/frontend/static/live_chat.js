@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, renderMarkdown } from './utils.js';
 import { platform } from './platform/detect.js';
+import { fitTerminal } from './xterm_renderer.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -419,4 +420,50 @@ export function resetLiveHistory() {
     historyOffset = 0;
     historyHasMore = false;
     initialLoadDone = false;
+}
+
+// ── Center view mode: terminal vs. chat ─────────────────────────────────
+// The transcript renders in the center pane in place of the terminal. The
+// terminal keeps running underneath (hidden) so switching back is instant.
+
+const VIEW_MODE_KEY = "coral-live-view-mode";
+
+export function getLiveViewMode() {
+    try {
+        return localStorage.getItem(VIEW_MODE_KEY) === "chat" ? "chat" : "terminal";
+    } catch {
+        return "terminal";
+    }
+}
+
+/** Apply the persisted mode to the DOM and start/stop the transcript poll. */
+export function applyLiveViewMode() {
+    const mode = getLiveViewMode();
+    const wrapper = document.getElementById("capture-wrapper");
+    if (wrapper) wrapper.classList.toggle("chat-mode", mode === "chat");
+    for (const m of ["terminal", "chat"]) {
+        const btn = document.getElementById(`live-view-btn-${m}`);
+        if (!btn) continue;
+        btn.classList.toggle("active", m === mode);
+        btn.setAttribute("aria-pressed", String(m === mode));
+    }
+    if (mode === "chat") {
+        startLiveHistoryPoll();
+    } else {
+        stopLiveHistoryPoll();
+        // The xterm canvas was hidden; refit now that it has a size again.
+        setTimeout(fitTerminal, 0);
+    }
+}
+
+export function setLiveViewMode(mode) {
+    try {
+        localStorage.setItem(VIEW_MODE_KEY, mode === "chat" ? "chat" : "terminal");
+    } catch { /* storage unavailable — mode lasts for this page only */ }
+    applyLiveViewMode();
+    if (mode === "chat") {
+        const container = document.getElementById("live-history-messages");
+        if (container) container.scrollTop = container.scrollHeight;
+        state.autoScroll = true;
+    }
 }
