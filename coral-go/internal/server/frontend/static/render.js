@@ -151,28 +151,66 @@ function formatStaleness(seconds) {
     return `${Math.floor(seconds / 3600)}h ago`;
 }
 
+/* ── Agent state: one resolver, one vocabulary ─────────────────────────
+ * Priority (AGENT_LIST_COMPACT state table):
+ *   Ended (killed/history) > Sleeping > Stuck > Needs input > Check terminal
+ *   > Your turn (turn ended, awaiting instruction) > Working > Idle
+ * Context, unread and selection are overlays, never winners. Every surface
+ * (row dot/pill/aria, tooltip, mobile chip, workspace header, popout pill,
+ * nav and group counts) reads this table so the words never diverge. */
+export const SESSION_STATES = {
+    ended:          { label: 'Ended',          dot: 'ended',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
+    sleeping:       { label: 'Sleeping',       dot: 'sleeping',  pill: null,             pillClass: '',          chip: 'idle',        attention: false },
+    stuck:          { label: 'Stuck',          dot: 'stuck',     pill: 'Stuck',          pillClass: 'stuck',     chip: 'error',       attention: true },
+    needs_input:    { label: 'Needs input',    dot: 'waiting',   pill: 'Needs input',    pillClass: '',          chip: 'needs-input', attention: true },
+    check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
+    your_turn:      { label: 'Your turn',      dot: 'your-turn', pill: 'Your turn',      pillClass: 'your-turn', chip: 'your-turn',   attention: false },
+    working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
+    idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
+};
+
+/** Turn ended and the agent awaits its next instruction. Backend contract:
+ *  `awaiting_user` (boolean, explicit). Servers without the field still send
+ *  the stop-derived `done`, which means exactly this (never "completed"). */
+function _isAwaitingUser(s) {
+    if (s.awaiting_user !== undefined && s.awaiting_user !== null) return !!s.awaiting_user;
+    return !!s.done;
+}
+
+/** Resolve the single winning state key for a session. */
+export function deriveSessionState(s, opts = {}) {
+    if (!s) return 'idle';
+    const ended = opts.ended !== undefined ? opts.ended : !!state.killedSessions?.[s.session_id];
+    if (ended) return 'ended';
+    if (s.sleeping) return 'sleeping';
+    if (s.stuck) return 'stuck';
+    if (s.waiting_for_input) return 'needs_input';
+    if (s.not_started) return 'check_terminal';
+    if (_isAwaitingUser(s)) return 'your_turn';
+    if (s.working) return 'working';
+    return 'idle';
+}
+
+export function sessionStateInfo(s, opts) {
+    const key = deriveSessionState(s, opts);
+    return { key, ...SESSION_STATES[key] };
+}
+
 function getStateLabel(s) {
-    if (s.sleeping) return "Sleeping";
-    if (s.waiting_for_input) return "Needs input";
-    // The agent has produced output but has never done anything. Most often a
-    // prompt sitting unanswered in its terminal; sometimes just an agent that
-    // was never given a task. Both mean: look at the terminal.
-    if (s.not_started) return "Check terminal";
-    if (s.stuck) return "Stuck";
-    if (s.working) return "Working";
-    if (s.done) return "Done";
-    return "Idle";
+    return sessionStateInfo(s).label;
+}
+
+/** Class list for the workspace header status dot (same table as the rows). */
+export function terminalDotClass(s) {
+    return `terminal-status-dot ${sessionStateInfo(s || {}).dot}`;
 }
 
 function getMobileStatusChip(s) {
-    if (s.waiting_for_input) return { label: "Needs Input", className: "needs-input" };
-    if (s.not_started) return { label: "Check Terminal", className: "needs-input" };
-    if (s.stuck) return { label: "Error", className: "error" };
-    if (s.working) return { label: "Running", className: "running" };
-    return { label: "Idle", className: "idle" };
+    const info = sessionStateInfo(s);
+    return { label: info.label, className: info.chip };
 }
 
-function buildSessionTooltip(s) {
+export function buildSessionTooltip(s) {
     const stateLabel = getStateLabel(s);
     const lastAction = formatStaleness(s.staleness_seconds);
     const goal = s.summary || "No goal set";
@@ -188,6 +226,15 @@ function buildSessionTooltip(s) {
         `<tr><td class="tt-label">Branch</td><td class="tt-value">${escapeHtml(branch)}</td></tr>`,
         `<tr><td class="tt-label">Agent</td><td class="tt-value">${escapeHtml(agent)}</td></tr>`,
     ];
+    // Context window usage moved out of the row (AGENT_LIST_COMPACT): explicit
+    // null (unknown model) must read "unknown", never 0% or full.
+    const ctxText = (s.context_pct === null || s.context_pct === undefined)
+        ? 'unknown'
+        : (s.context_window ? `${s.context_pct}% of ${_formatTokens(s.context_window)}` : `${s.context_pct}%`);
+    rows.push(`<tr><td class="tt-label">Context</td><td class="tt-value">${escapeHtml(ctxText)}</td></tr>`);
+    if (s.working_directory) {
+        rows.push(`<tr><td class="tt-label">Directory</td><td class="tt-value" title="${escapeAttr(s.working_directory)}">${escapeHtml(_shortPath(s.working_directory, 3))}</td></tr>`);
+    }
     if (s.changed_file_count > 0) {
         rows.push(`<tr><td class="tt-label">Files changed</td><td class="tt-value">${s.changed_file_count}</td></tr>`);
     }
@@ -201,7 +248,8 @@ function buildSessionTooltip(s) {
         rows.push(`<tr><td class="tt-label">Tokens</td><td class="tt-value">${tokenText}</td></tr>`);
     }
     if (s.board_project) {
-        const unreadBadge = s.board_unread > 0 ? ` <span class="tt-unread">(${s.board_unread} unread)</span>` : '';
+        const ttUnread = sessionUnreadCount(s);
+        const unreadBadge = ttUnread > 0 ? ` <span class="tt-unread">(${ttUnread} unread)</span>` : '';
         rows.push(`<tr><td class="tt-label">Board</td><td class="tt-value">${escapeHtml(s.board_project)}${unreadBadge}</td></tr>`);
         rows.push(`<tr><td class="tt-label">Role</td><td class="tt-value">${escapeHtml(s.board_job_title)}</td></tr>`);
     }
@@ -209,13 +257,7 @@ function buildSessionTooltip(s) {
 }
 
 function getDotClass(s) {
-    if (s.sleeping) return "sleeping";
-    if (s.waiting_for_input) return "waiting";
-    if (s.not_started) return "waiting";
-    if (s.stuck) return "stuck";
-    if (s.working) return "working";
-    if (s.done) return "done";
-    return "stale";
+    return sessionStateInfo(s).dot;
 }
 
 // ── Board accent colors (localStorage) ────────────────────────────────
@@ -1302,15 +1344,24 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
 
     // Directory override chip
     const hasDirOverride = teamDefaultDir && s.working_directory && s.working_directory !== teamDefaultDir;
-    const dirChip = hasDirOverride ? ` <span class="agent-dir-chip" title="${escapeAttr(s.working_directory)}">${escapeHtml(_shortPath(s.working_directory, 1))}</span>` : "";
+    // Directory override now lives in the tooltip (Directory row), not the row.
+    const dirChip = "";
+    void hasDirOverride;
 
     // Branch is shown at folder level, not per agent
     const branchTag = "";
-    const waitingBadge = s.waiting_for_input
-        ? ' <span class="badge waiting-badge">Needs input</span>'
-        : (s.not_started
-            ? ' <span class="badge waiting-badge">Check terminal</span>'
-            : '');
+    // One pill at most, from the shared state table. Attention pills keep the
+    // quiet amber/red surface; "Your turn" is a neutral, quieter pill.
+    const stateInfo = sessionStateInfo(s);
+    const waitingBadge = stateInfo.pill
+        ? (stateInfo.attention
+            ? ` <span class="badge waiting-badge session-state-pill session-attention-pill${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
+            : ` <span class="badge session-state-pill session-turn-pill">${stateInfo.pill}</span>`)
+        : '';
+    // Context is secondary: any state pill owns line 1 and the ctx pill
+    // collapses to the dot's ring, which survives on every glyph.
+    const ctxPill = waitingBadge ? '' : _renderCtxPill(s);
+    const ctxHigh = s.context_pct !== null && s.context_pct !== undefined && s.context_pct >= 80;
     const isTerminal = s.agent_type === "terminal";
     const sid = s.session_id ? escapeAttr(s.session_id) : "";
     // Goal line is rendered on every row (not just the active one):
@@ -1338,16 +1389,23 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const mobileStatus = getMobileStatusChip(s);
     const lastActivity = formatStaleness(s.staleness_seconds);
     const needsAttention = sessionNeedsAttention(s);
-    const unreadBoardBadge = s.board_unread > 0
-        ? `<span class="session-mobile-meta-pill">${s.board_unread} unread</span>`
+    const mobileUnread = sessionUnreadCount(s);
+    const unreadBoardBadge = mobileUnread > 0
+        ? `<span class="session-mobile-meta-pill">${mobileUnread} unread</span>`
         : '';
     const activityLabel = (s.waiting_for_input || s.not_started) ? "Waiting since" : "Last activity";
-    const mobileAttentionBanner = s.waiting_for_input
+    const mobileAttentionBanner = stateInfo.key === 'needs_input'
         ? '<div class="session-mobile-banner">Waiting for your input</div>'
-        : (s.not_started
+        : (stateInfo.key === 'check_terminal'
             ? '<div class="session-mobile-banner">Nothing yet — open the terminal</div>'
-            : (s.stuck ? '<div class="session-mobile-banner error">Session needs attention</div>' : ''));
-    const avatar = _renderAvatar(s, dotClass);
+            : (stateInfo.key === 'stuck' ? '<div class="session-mobile-banner error">Session needs attention</div>' : ''));
+    // Unread board messages: a neutral count on line 2 (never an attention colour),
+    // shown on selected rows too.
+    const unreadCount = stateInfo.key === 'ended' ? 0 : sessionUnreadCount(s);
+    const unreadChip = unreadCount > 0
+        ? `<span class="session-unread-chip" title="${unreadCount} unread board message${unreadCount === 1 ? '' : 's'}" aria-hidden="true">${unreadCount}</span>`
+        : '';
+    void _renderAvatar; // avatars left the list (AGENT_LIST_COMPACT D-A); kept for other callers
     const _sleepingMenu = `
             <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${sid}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
@@ -1451,33 +1509,40 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const clickHandler = isDone
         ? `selectHistorySession('${sid}')`
         : `selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')`;
-    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${doneClass}"
+    // Focusable list item (not a button: it contains the kebab, the open-tab
+    // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
+    const ariaLabel = `${identity}, ${stateInfo.label}`
+        + (ctxHigh ? `, context ${s.context_pct >= 100 ? 'full' : Math.round(s.context_pct) + '%'}` : '')
+        + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
+    void lastActivity; void activityLabel;
+    const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
+    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}"
         draggable="true"
+        data-state="${stateInfo.key}"
+        tabindex="0"
+        aria-label="${escapeAttr(ariaLabel)}"${isActive ? ' aria-current="true"' : ''}
         data-session-id="${sid}"
         data-group="${escapeAttr(groupName)}"
         onclick="${clickHandler}">
         <span class="drag-grip" title="Drag to reorder">&#x2630;</span>
-        ${avatar}
         <div class="session-info">
             <div class="session-name-row">
+                <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
                 <span class="session-label" title="${escapeAttr(displayLabel)}">${escapeHtml(displayLabel)}${typeTag}${dirChip}</span>
                 <span class="session-name-spacer"></span>
-                ${waitingBadge}
+                ${waitingBadge}${ctxPill}
                 ${goalBtn}
                 ${kebabMenu}
             </div>
-            ${_renderTokenLine(s)}
             <div class="session-mobile-banner-row">
                 ${mobileAttentionBanner}
             </div>
             <div class="session-mobile-meta">
                 <span class="session-status-chip ${escapeAttr(mobileStatus.className)}">${escapeHtml(mobileStatus.label)}</span>
-                <span class="session-activity-text" title="${escapeAttr(activityLabel)} ${escapeAttr(lastActivity)}">${escapeHtml(mobileStatus.label)}</span>
                 ${unreadBoardBadge}
             </div>
-            ${goalLine}
+            ${(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
             ${branchTag}
-            ${isActive && s.status ? `<span class="session-inline-status">${escapeHtml(s.status)}</span>` : ''}
         </div>
         <div class="session-tooltip">${tooltip}</div>
     </li>`;
@@ -1545,15 +1610,57 @@ export function toggleGroupByTeam() {
 }
 
 /** True when the row shows an attention pill (needs input / check terminal / stuck). */
+/** Row-level attention (amber/red tint + attention pill): the three states
+ *  that need the operator at the terminal. */
 export function sessionNeedsAttention(s) {
-    return !!(s && (s.waiting_for_input || s.stuck || s.not_started));
+    return !!(s && SESSION_STATES[deriveSessionState(s)].attention);
+}
+
+/** board_unread as a safe, finite, non-negative integer (payloads are untrusted input to markup). */
+export function sessionUnreadCount(s) {
+    const n = Number(s && s.board_unread);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+/** Does this session count toward the Agents nav badge and its group's count?
+ *  Needs input / Check terminal / Stuck always. Your turn and unread board
+ *  messages follow one operator-facing rule: they count only when nobody else
+ *  will act on them, i.e. the agent has no board or is the board's
+ *  orchestrator (explicit backend flag, never a name match). An ordinary team
+ *  member's unread stays visible as the neutral row chip but never counts.
+ *  Ended and sleeping sessions never count. */
+export function sessionCountsTowardAttention(s) {
+    if (!s) return false;
+    const key = deriveSessionState(s);
+    if (key === 'ended' || key === 'sleeping') return false;
+    if (SESSION_STATES[key].attention) return true;
+    const operatorFacing = !s.board_project || s.board_is_orchestrator === true;
+    if (sessionUnreadCount(s) > 0 && operatorFacing) return true;
+    if (key === 'your_turn') {
+        // Operator switch (default on): localStorage 'coral-count-your-turn' = 'false' disables it.
+        let enabled = true;
+        try { enabled = localStorage.getItem('coral-count-your-turn') !== 'false'; } catch {}
+        return enabled && operatorFacing;
+    }
+    return false;
+}
+
+/** Small count chip for a team/folder header; the only attention signal that
+ *  survives a collapsed group. Red when any member is Stuck. */
+function _groupAttentionChip(sessions) {
+    const counted = (sessions || []).filter(sessionCountsTowardAttention);
+    if (!counted.length) return '';
+    const stuck = counted.some(x => deriveSessionState(x) === 'stuck');
+    const n = counted.length;
+    const text = `${n} need${n === 1 ? 's' : ''} attention`;
+    return ` <span class="group-attention-count${stuck ? ' stuck' : ''}" title="${text}" aria-label="${text}">${n}</span>`;
 }
 
 /** Update the count badge inside the Agents nav tab. Badge-only: ordering is untouched. */
 export function updateAgentsNavBadge(sessions) {
     const badge = document.getElementById('nav-tab-agents-badge');
     if (!badge) return;
-    const count = (sessions || []).filter(s => sessionNeedsAttention(s) && !state.killedSessions?.[s.session_id]).length;
+    const count = (sessions || []).filter(s => sessionCountsTowardAttention(s)).length;
     badge.textContent = count > 0 ? String(count) : '';
     badge.title = count > 0 ? `${count} agent${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} attention` : '';
     badge.setAttribute('aria-label', badge.title);
@@ -1580,6 +1687,12 @@ export function renderLiveSessions(sessions) {
     }
 
     const list = document.getElementById("live-sessions-list");
+    // Re-render replaces every row: remember which row had keyboard focus.
+    const focusedRow = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest('.session-group-item[data-session-id]') : null;
+    const focusedSid = focusedRow ? focusedRow.dataset.sessionId : null;
+    _wireListKeyboard(list);
+    _wireListKeyboard(document.getElementById('mobile-agent-list'));
 
     updateSectionVisibility('live-sessions', sessions.length);
 
@@ -1658,6 +1771,10 @@ export function renderLiveSessions(sessions) {
         const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
+                <button class="overflow-menu-item overflow-menu-team-details" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamDetails('${escapeAttr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                    Team details
+                </button>
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
@@ -1717,7 +1834,7 @@ export function renderLiveSessions(sessions) {
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-board-card-toplevel${sleepingClass}" style="border-left-color: ${accentColor}">
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon}</div>${teamDirLine}${teamSubline}</div><span class="session-name-spacer"></span>${boardLink}${bKebab}
+                <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span>${_groupAttentionChip(boardSessions)}</div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -1771,7 +1888,7 @@ export function renderLiveSessions(sessions) {
     for (const [groupName, groupSessions] of sortedFolders) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
-        const countBadge = isMulti ? ` <span class="session-group-count">${sorted.length}</span>` : "";
+        const countBadge = ` <span class="session-group-count">${sorted.length}</span>${_groupAttentionChip(sorted)}`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
         const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
         const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
@@ -1818,7 +1935,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
-            <span class="group-chevron">${chevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div>${groupDirLine}${groupBranchLine}</div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <span class="group-chevron">${chevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
@@ -1840,7 +1957,7 @@ export function renderLiveSessions(sessions) {
     for (const [groupName, groupSessions] of sortedGroups) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
-        const countBadge = isMulti ? ` <span class="session-group-count">${sorted.length}</span>` : "";
+        const countBadge = ` <span class="session-group-count">${sorted.length}</span>${_groupAttentionChip(sorted)}`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
         const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
         const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
@@ -1887,7 +2004,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
-            <span class="group-chevron">${chevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div>${groupDirLine}${groupBranchLine}</div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <span class="group-chevron">${chevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
             // Skip rendering items when collapsed
@@ -1920,6 +2037,10 @@ export function renderLiveSessions(sessions) {
                 const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
                     <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
                     <div class="sidebar-kebab-menu" style="display:none">
+                <button class="overflow-menu-item overflow-menu-team-details" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamDetails('${escapeAttr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                    Team details
+                </button>
                         <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                             Add Agent
@@ -1966,7 +2087,7 @@ export function renderLiveSessions(sessions) {
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card" style="border-left-color: ${accentColor}">
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                        <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div>${teamDirLine}${teamSubline}</div><span class="session-name-spacer"></span>${boardLink}${bKebab}
+                        <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span>${_groupAttentionChip(boardSessions)}</div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
@@ -2014,6 +2135,12 @@ export function renderLiveSessions(sessions) {
             if (text) el.textContent = ' · ' + text;
         });
     });
+
+    // Restore keyboard focus to the same agent after the rebuild
+    if (focusedSid) {
+        const again = list.querySelector(`.session-group-item[data-session-id="${CSS.escape(focusedSid)}"]`);
+        if (again) again.focus({ preventScroll: true });
+    }
 
     // Sync mobile agent list
     syncMobileAgentList();
@@ -2253,6 +2380,104 @@ export function updateSessionStatus(status) {
     }
 }
 
+/** Line-1 context pill, only at >=80% (D3 thresholds; explicit null = unknown = nothing). */
+function _renderCtxPill(s) {
+    const pct = s.context_pct;
+    if (pct === null || pct === undefined || pct < 80) return '';
+    const label = pct >= 100 ? 'ctx full' : `ctx ${Math.round(pct)}%`;
+    const win = s.context_window || 0;
+    const title = win > 0
+        ? `Context: ${_formatTokens(Math.round(win * pct / 100))} / ${_formatTokens(win)} tokens (${pct}%)`
+        : `Context: ${pct}%`;
+    return ` <span class="badge session-ctx-pill${pct >= 100 ? ' ctx-full' : ''}" title="${escapeAttr(title)}">${label}</span>`;
+}
+
+/** Delegated keyboard selection for a list container (survives the mobile
+ *  cloneNode, which drops element listeners). Enter/Space on a focused row
+ *  selects it; events from the kebab, the open-tab anchor or the sparkle are
+ *  left to those controls; Escape closes any open kebab. */
+function _wireListKeyboard(container) {
+    if (!container || container.dataset.kbWired) return;
+    container.dataset.kbWired = '1';
+    container.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (window.closeSidebarKebabs) window.closeSidebarKebabs();
+            return;
+        }
+        const row = e.target.closest ? e.target.closest('.session-group-item') : null;
+        if (!row || e.target !== row) return; // only the row itself, never its inner controls
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault(); // Space must not scroll the pane or start a drag
+            row.click();
+        }
+    });
+}
+
+/** Team details: anchored disclosure with dialog semantics for the metadata
+ *  that left the team header (directory, branch, agents, tokens, activity). */
+let _teamDetailsReturnFocus = null;
+export function showTeamDetails(boardName) {
+    hideTeamDetails();
+    const sessions = (state.liveSessions || []).filter(s => s.board_project === boardName);
+    const header = document.querySelector(`.session-group-header[data-group-name="${CSS.escape(boardName)}"]`);
+    _teamDetailsReturnFocus = (document.activeElement && document.activeElement !== document.body)
+        ? document.activeElement
+        : (header ? header.querySelector('.sidebar-kebab-btn') : null);
+    const dir = sessions.find(s => s.working_directory)?.working_directory || '';
+    const branchSession = sessions.find(s => s.branch);
+    const branch = _repoBranch(branchSession?.repo_name, branchSession?.branch) || '—';
+    let minStale = null;
+    for (const s of sessions) {
+        if (typeof s.staleness_seconds === 'number' && (minStale === null || s.staleness_seconds < minStale)) minStale = s.staleness_seconds;
+    }
+    const names = sessions.map(s => resolveSessionIdentity(s));
+    const titleId = 'team-details-title';
+    const pop = document.createElement('div');
+    pop.id = 'team-details-popover';
+    pop.className = 'team-details-popover';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-labelledby', titleId);
+    pop.setAttribute('tabindex', '-1');
+    pop.innerHTML = `
+        <div class="team-details-head">
+            <span id="${titleId}" class="team-details-title">${escapeHtml(boardName)}</span>
+            <button type="button" class="team-details-close" aria-label="Close team details" onclick="hideTeamDetails()">&times;</button>
+        </div>
+        <dl class="team-details-list">
+            <dt>Directory</dt><dd title="${escapeAttr(dir)}">${dir ? escapeHtml(_shortPath(dir, 3)) : '—'}</dd>
+            <dt>Branch</dt><dd>${escapeHtml(branch)}</dd>
+            <dt>Agents</dt><dd>${sessions.length}${names.length ? ' · ' + escapeHtml(names.join(', ')) : ''}</dd>
+            <dt>Tokens</dt><dd class="team-token-usage team-details-tokens" data-board="${escapeAttr(boardName)}">…</dd>
+            <dt>Last activity</dt><dd>${escapeHtml(formatStaleness(minStale))}</dd>
+        </dl>`;
+    document.body.appendChild(pop);
+    const rect = header ? header.getBoundingClientRect() : { left: 12, bottom: 60 };
+    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - pop.offsetHeight - 8) + 'px';
+    getTeamTokenUsage(boardName).then(text => {
+        const el = pop.querySelector('.team-details-tokens');
+        if (el) el.textContent = text || '—';
+    }).catch(() => {});
+    pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); hideTeamDetails(); } });
+    setTimeout(() => { document.addEventListener('mousedown', _teamDetailsOutside, true); }, 0);
+    pop.focus();
+}
+
+function _teamDetailsOutside(e) {
+    const pop = document.getElementById('team-details-popover');
+    if (pop && !pop.contains(e.target)) hideTeamDetails();
+}
+
+export function hideTeamDetails() {
+    const pop = document.getElementById('team-details-popover');
+    document.removeEventListener('mousedown', _teamDetailsOutside, true);
+    if (!pop) return;
+    pop.remove();
+    const back = _teamDetailsReturnFocus;
+    _teamDetailsReturnFocus = null;
+    if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
+}
+
 function _renderTokenLine(s) {
     const pct = s.context_pct || 0;
     if (pct === 0) return '';
@@ -2426,13 +2651,28 @@ export async function showTeamTokenUsage(boardName) {
 }
 
 export function updateSessionBranch(branch, repoName) {
-    const el = document.getElementById("session-branch");
     const display = _repoBranch(repoName, branch);
-    if (display) {
-        el.querySelector(".branch-text").textContent = display;
-        el.style.display = "";
-    } else {
-        el.style.display = "none";
+    const el = document.getElementById("session-branch");
+    if (el) {
+        if (display) {
+            el.querySelector(".branch-text").textContent = display;
+            el.style.display = "";
+        } else {
+            el.style.display = "none";
+        }
+    }
+    // Terminal-header chip: the branch left the sidebar rows/headers, so the
+    // selected agent's workspace shows it (dashboard only; hidden in popout).
+    const chip = document.getElementById("terminal-branch-chip");
+    if (chip) {
+        // Branch-only contract (AGENT_LIST_COMPACT): visible text AND tooltip are
+        // the branch string, so an ellipsized chip still reveals the full name.
+        // Never the repo slug, a filesystem path or a session id; repo metadata
+        // stays in #session-branch details and the row tooltip.
+        const t = chip.querySelector(".branch-text");
+        if (t) t.textContent = branch || "";
+        if (branch) chip.title = branch; else chip.removeAttribute("title");
+        chip.hidden = !branch;
     }
 }
 
@@ -2440,10 +2680,12 @@ export function updateWaitingIndicator(s) {
     const dot = document.getElementById("session-status-dot");
     const banner = document.getElementById("waiting-banner");
     if (dot) {
-        dot.classList.toggle("waiting", !!(s.waiting_for_input || s.not_started));
-        dot.classList.toggle("stuck", !!s.stuck);
-        dot.classList.toggle("working", !!s.working);
-        dot.classList.toggle("done", !!s.done);
+        const key = deriveSessionState(s);
+        dot.classList.toggle("waiting", key === 'needs_input' || key === 'check_terminal');
+        dot.classList.toggle("stuck", key === 'stuck');
+        dot.classList.toggle("working", key === 'working');
+        dot.classList.toggle("your-turn", key === 'your_turn');
+        dot.classList.remove("done"); // green no longer means anything
     }
     if (banner) {
         // Two states share this banner. waiting_for_input is a running agent
@@ -2453,11 +2695,14 @@ export function updateWaitingIndicator(s) {
         // claims only what is true of both. We never answer a prompt on the
         // user's behalf: the banner's job is to point at the terminal, where
         // the question is already on screen.
-        banner.style.display = (s.waiting_for_input || s.not_started) ? "" : "none";
-        if (s.waiting_for_input) {
+        // Same resolver as the rows: the banner follows the WINNING state, so a
+        // sleeping or stuck agent with a stale waiting flag never shows it.
+        const bannerKey = deriveSessionState(s);
+        banner.style.display = (bannerKey === 'needs_input' || bannerKey === 'check_terminal') ? "" : "none";
+        if (bannerKey === 'needs_input') {
             banner.className = "waiting-banner";
             banner.textContent = "⏳ Agent is waiting for input";
-        } else if (s.not_started) {
+        } else if (bannerKey === 'check_terminal') {
             banner.className = "waiting-banner waiting-banner-not-started";
             banner.textContent =
                 "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.";

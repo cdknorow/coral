@@ -40,3 +40,16 @@ func TestParseAgenticEventCodexPromptPayload(t *testing.T) {
 		t.Fatalf("expected prompt_submit, got %v", event["event_type"])
 	}
 }
+
+func TestParseAgenticEventWaitingNotificationRemainsNotification(t *testing.T) {
+	event := parseAgenticEvent(map[string]any{
+		"hook_event_name": "Notification",
+		"message":         "Claude is waiting for your input",
+	}, "Notification", "session-1")
+	if event == nil {
+		t.Fatal("expected event")
+	}
+	if event["event_type"] != "notification" {
+		t.Fatalf("expected notification, got %v", event["event_type"])
+	}
+}

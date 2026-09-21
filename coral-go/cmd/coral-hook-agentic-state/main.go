@@ -10,7 +10,6 @@ import (
 	"log"
 	"os"
 	"runtime/debug"
-	"strings"
 
 	"github.com/cdknorow/coral/internal/hooks"
 )
@@ -145,13 +144,6 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 	// Notification
 	if hookType == "Notification" || d["message"] != nil {
 		message, _ := d["message"].(string)
-		if strings.Contains(strings.ToLower(message), "waiting for your input") {
-			return map[string]any{
-				"event_type": "stop",
-				"summary":    "Agent stopped: waiting for input",
-				"session_id": sessionID,
-			}
-		}
 		return map[string]any{
 			"event_type": "notification",
 			"summary":    "Notification: " + hooks.Truncate(message, 100),

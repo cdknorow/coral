@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -211,6 +210,10 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	if latestEvents == nil {
 		latestEvents = map[string][2]string{}
 	}
+	stateEvents, _ := h.ts.GetSessionStateEvents(ctx, sessionIDs)
+	if stateEvents == nil {
+		stateEvents = map[string][]store.AgentEvent{}
+	}
 
 	// Board subscriptions (keyed by tmux session name)
 	var boardSubs map[string]*board.Subscriber
@@ -285,9 +288,11 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 	ctxModelMap := make(map[string]*string, len(allLive))
 	createdAtMap := make(map[string]string, len(allLive))
+	sleepingMap := make(map[string]bool, len(allLive))
 	for _, ls := range allLive {
 		ctxModelMap[ls.SessionID] = ls.Model
 		createdAtMap[ls.SessionID] = ls.CreatedAt
+		sleepingMap[ls.SessionID] = ls.IsSleeping == 1
 	}
 
 	var sessions []map[string]any
@@ -299,20 +304,18 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		// Compute waiting/done/working from latest event
 		ev := latestEvents[sid]
 		latestEv := ev[0]
-		evSummary := ev[1]
-		needsInput := latestEv == "notification"
-		done := latestEv == "stop"
 		staleF, _ := logInfo["staleness_seconds"].(float64)
-		working := (latestEv == "tool_use" || latestEv == "prompt_submit") && staleF < 120
-		if working && strings.HasPrefix(evSummary, "Ran: sleep") {
-			working = false
-		}
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
+		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: sleepingMap[sid]}
+		for _, event := range stateEvents[sid] {
+			stateInput.Events = append(stateInput.Events, StateEvent{Type: event.EventType, Summary: event.Summary})
+		}
+		state := DeriveSessionState(stateInput)
 
 		var waitingReason, waitingSummary any
-		if needsInput {
-			waitingReason = latestEv
-			waitingSummary = evSummary
+		if state.NeedsInput {
+			waitingReason = state.WaitingReason
+			waitingSummary = state.WaitingSummary
 		}
 
 		// Summary fallback to latest goal
@@ -331,31 +334,33 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		}
 
 		entry := map[string]any{
-			"name":               agent.AgentName,
-			"agent_type":         agent.AgentType,
-			"session_id":         sid,
-			"tmux_session":       agent.TmuxSession,
-			"status":             logInfo["status"],
-			"summary":            summary,
-			"staleness_seconds":  logInfo["staleness_seconds"],
-			"display_name":       nilIfEmpty(displayNames[sid]),
-			"icon":               nilIfEmpty(icons[sid]),
-			"working_directory":  agent.WorkingDir,
-			"waiting_for_input":  needsInput,
-			"not_started":        notStarted,
-			"done":               done,
-			"stuck":              false,
-			"waiting_reason":     waitingReason,
-			"waiting_summary":    waitingSummary,
-			"working":            working,
-			"changed_file_count": fileCounts[sid],
-			"commands":           map[string]string{"compress": "/compact", "clear": "/clear"},
-			"board_project":      boardProject(boardSubs, liveBoardNames, agent.TmuxSession, sid),
-			"board_job_title":    boardJobTitle(boardSubs, liveBoardNames, agent.TmuxSession, sid),
-			"board_unread":       boardUnread,
-			"log_path":           agent.LogPath,
-			"sleeping":           false,
-			"first_prompt":       h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
+			"name":                  agent.AgentName,
+			"agent_type":            agent.AgentType,
+			"session_id":            sid,
+			"tmux_session":          agent.TmuxSession,
+			"status":                logInfo["status"],
+			"summary":               summary,
+			"staleness_seconds":     logInfo["staleness_seconds"],
+			"display_name":          nilIfEmpty(displayNames[sid]),
+			"icon":                  nilIfEmpty(icons[sid]),
+			"working_directory":     agent.WorkingDir,
+			"waiting_for_input":     state.NeedsInput,
+			"awaiting_user":         state.AwaitingUser,
+			"not_started":           state.NotStarted,
+			"done":                  state.Done,
+			"stuck":                 state.Stuck,
+			"waiting_reason":        waitingReason,
+			"waiting_summary":       waitingSummary,
+			"working":               state.Working,
+			"changed_file_count":    fileCounts[sid],
+			"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
+			"board_project":         boardProject(boardSubs, liveBoardNames, agent.TmuxSession, sid),
+			"board_job_title":       boardJobTitle(boardSubs, liveBoardNames, agent.TmuxSession, sid),
+			"board_unread":          boardUnread,
+			"board_is_orchestrator": boardSubscriberFlag(boardSubs[tmuxName]),
+			"log_path":              agent.LogPath,
+			"sleeping":              state.Sleeping,
+			"first_prompt":          h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
 		if usage, ok := tokenUsageMap[sid]; ok {
 			entry["token_input"] = usage.InputTokens
@@ -380,32 +385,34 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			dn = *ls.DisplayName
 		}
 		sessions = append(sessions, map[string]any{
-			"name":               ls.AgentName,
-			"agent_type":         ls.AgentType,
-			"session_id":         ls.SessionID,
-			"tmux_session":       nil,
-			"status":             "Sleeping",
-			"summary":            nil,
-			"staleness_seconds":  nil,
-			"working_directory":  ls.WorkingDir,
-			"display_name":       dn,
-			"icon":               ls.Icon,
-			"branch":             nil,
-			"waiting_for_input":  false,
-			"not_started":        false,
-			"done":               false,
-			"waiting_reason":     nil,
-			"waiting_summary":    nil,
-			"working":            false,
-			"stuck":              false,
-			"changed_file_count": 0,
-			"commands":           map[string]string{"compress": "/compact", "clear": "/clear"},
-			"board_project":      bp,
-			"board_job_title":    dn,
-			"board_unread":       0,
-			"log_path":           "",
-			"sleeping":           true,
-			"first_prompt":       h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
+			"name":                  ls.AgentName,
+			"agent_type":            ls.AgentType,
+			"session_id":            ls.SessionID,
+			"tmux_session":          nil,
+			"status":                "Sleeping",
+			"summary":               nil,
+			"staleness_seconds":     nil,
+			"working_directory":     ls.WorkingDir,
+			"display_name":          dn,
+			"icon":                  ls.Icon,
+			"branch":                nil,
+			"waiting_for_input":     false,
+			"awaiting_user":         false,
+			"not_started":           false,
+			"done":                  false,
+			"waiting_reason":        nil,
+			"waiting_summary":       nil,
+			"working":               false,
+			"stuck":                 false,
+			"changed_file_count":    0,
+			"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
+			"board_project":         bp,
+			"board_job_title":       dn,
+			"board_unread":          0,
+			"board_is_orchestrator": nil,
+			"log_path":              "",
+			"sleeping":              true,
+			"first_prompt":          h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
 		addContextUsage(sessions[len(sessions)-1], nil, 0)
 	}

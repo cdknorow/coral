@@ -92,16 +92,50 @@
 .session-dot.stale    { background: var(--text-muted); }
 .session-dot.sleeping { background: var(--warning); opacity: 0.5; }
 .session-dot.working {
-    background: #3b82f6;
+    /* Working is GREEN. Green no longer means "done": a finished turn is
+       "Your turn" (hollow ring) and only killed rows are "Ended". */
+    background: var(--success, #3fb950);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
 .session-dot.waiting {
     background: var(--warning);
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
+/* Legacy class: never green. Kept neutral so an old caller cannot signal health. */
 .session-dot.done {
-    background: var(--success, #4caf50);
+    background: var(--text-muted);
 }
+
+/* Your turn: hollow NEUTRAL ring. No hue, so it is never confused with
+   working-green, attention-amber or the blue selected surface, and it keeps
+   >= 3:1 contrast on the selected tint. */
+.session-dot.your-turn {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--text-primary);
+}
+.session-dot.your-turn.ctx-high {
+    box-shadow: inset 0 0 0 1.5px var(--text-primary), 0 0 0 2px rgba(248, 81, 73, 0.35);
+}
+
+/* Sleeping = muted moon, Ended = muted check. Glyphs, not coloured dots, so
+   neither reads as a faded "needs input" or as healthy. aria-hidden in markup. */
+.session-dot.sleeping,
+.session-dot.ended {
+    background: transparent;
+    opacity: 1;
+    position: relative;
+}
+.session-dot.sleeping::before,
+.session-dot.ended::before {
+    position: absolute;
+    inset: -4px -3px;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.session-dot.sleeping::before { content: "\263E"; }
+.session-dot.ended::before    { content: "\2713"; }
 .session-dot.stuck {
     background: var(--danger, #ef4444);
     animation: pulse-stuck 3s ease-in-out infinite;
@@ -236,6 +270,16 @@
     font-weight: 500;
 }
 
+/* `.session-tooltip-table td { padding: 1px 0 }` outranks `.tt-label`, which
+   zeroed the label's right padding: the value column started exactly where the
+   longest label ("Last action") ended. Restore a real gutter between the
+   title column and the description column, and keep labels on one line. */
+.session-tooltip-table td.tt-label {
+    padding-right: 18px;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
 .tt-value {
     color: var(--text-primary);
     max-width: 300px;
@@ -328,12 +372,23 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    min-height: 18px;
-    line-height: 18px;
+    min-height: 16px;
+    height: 16px;
+    line-height: 16px;
 }
 
 .session-name-row .sidebar-kebab-btn {
-    padding: 1px 4px;
+    /* 16px tall so line 1 stays 16px; the ::after pad gives a 24x24 hit target */
+    padding: 0 5px;
+    height: 16px;
+    line-height: 16px;
+    font-size: 14px;
+    position: relative;
+}
+.session-name-row .sidebar-kebab-btn::after {
+    content: "";
+    position: absolute;
+    inset: -4px -2px;
 }
 
 .session-name-spacer {
@@ -342,13 +397,16 @@
 
 .session-goal {
     display: block;
+    /* Line 2 starts exactly under the agent name (not under the dot) */
+    margin-left: var(--row-dot-block, 16px);
     font-size: 12px;
-    line-height: 15px;
-    color: var(--text-muted);
+    line-height: 14px;
+    height: 14px;
+    color: var(--text-secondary); /* >= 4.5:1 on row, hover and selected surfaces */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    margin-top: 1px;
+    margin-top: 0;
 }
 
 /* No summary / first prompt yet: inline generate-goal affordance, always visible */
@@ -356,8 +414,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--text-muted);
-    opacity: 0.75;
+    color: var(--text-secondary); /* >= 4.5:1; the italic label keeps it distinct from a real goal */
+    opacity: 1;
 }
 
 .session-goal-empty-label {
@@ -382,6 +440,7 @@
     margin: -5px 0;
     justify-content: center;
     border-radius: 4px;
+    height: 24px;
 }
 
 .session-goal-empty:hover .sidebar-goal-btn-inline {
@@ -454,11 +513,12 @@
 /* ── Board Card Groups ─────────────────────────────────────── */
 
 .session-board-card {
-    border: none;
-    border-left: none;
+    /* Team card: hairline frame + a little more breathing room between groups */
+    border: 1px solid var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+    border-left: 2px solid transparent;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.02) !important;
-    margin: 4px 8px 4px 10px !important;
+    background: rgba(255, 255, 255, 0.025) !important;
+    margin: 6px 8px 6px 10px !important;
     padding: 0 !important;
     display: block !important;
     cursor: default !important;
@@ -470,12 +530,14 @@
 }
 
 .board-card-header {
-    padding: 8px 10px 6px 10px !important;
+    padding: 5px 10px !important;
     margin: 0;
     border-radius: 3px 3px 0 0;
     font-size: 11px;
     min-height: 0;
     box-sizing: border-box;
+    /* header/agents boundary lives here (the agents list no longer draws its own) */
+    box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
 }
 
 .board-card-subline {
@@ -602,12 +664,23 @@
     list-style: none;
     padding: 0 0 4px 4px;
     margin: 0;
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: none; /* boundary is the header's inset shadow (no doubling) */
 }
 
 .board-card-agents .session-group-item {
-    padding: 8px 10px 8px 12px !important;
-    min-height: 0;
+    /* Same visual offset from the card header label as folder rows have from
+       theirs; one value for top-level and nested cards (no cumulative indent
+       beyond the card's own margin). */
+    padding: 5px 10px 5px 24px !important;
+    min-height: 36px;
+}
+
+/* Team card header: name + count only (metadata moved to Team details) */
+.board-card-header {
+    min-height: 28px;
+}
+.group-name-line .session-group-count {
+    margin-left: 4px;
 }
 
 .board-card-collapsed {
@@ -781,19 +854,234 @@
 }
 
 .session-group-item {
-    padding: 9px 12px 9px 33px !important;
+    /* AGENT_LIST_COMPACT: two-line 40px row = 5px + 16px line 1 + 14px goal + 5px;
+       rows without a goal line (terminal/ended) are held at 36px. */
+    /* Grouping indent (task #155): the whole content block sits ~18px to the
+       right of the group header label. --row-dot-block is the width of the
+       status dot + its margin + the flex gap, so line 2 can start exactly
+       under the agent name. */
+    --row-dot-block: 16px;
+    padding: 5px 10px 5px 30px !important;
     cursor: grab;
-    min-height: 0;
+    box-sizing: border-box;
+    min-height: 36px;
     border-left: 2px solid transparent;
+}
+
+/* Row separation (task #152): a 1px low-contrast boundary between SIBLING
+   rows only, drawn as an inset shadow so row heights (40/36px) and group
+   boundaries are untouched and nothing doubles at headers/cards. The neutral
+   grey reads on dark and light themes. */
+.session-group-item + .session-group-item {
+    box-shadow: inset 0 1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+}
+
+.session-group-item:hover,
+.session-list li.session-group-item:hover {
+    background: var(--bg-hover, rgba(255, 255, 255, 0.045));
+}
+
+.session-group-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px; /* drawn inside the row, never clipped by neighbours */
+    background: rgba(88, 166, 255, 0.06);
+}
+
+.session-group-item.needs-attention {
+    background: rgba(210, 153, 34, 0.06);
+}
+
+.session-group-item.sleeping .session-label {
+    color: var(--text-secondary);
+}
+
+/* A sleeping row is still a readable, selectable item: its goal line must
+   meet WCAG AA. components.css dims it to --text-muted with the same
+   specificity; this later rule restores --text-secondary (>= 4.5:1). The
+   dimmed NAME above already carries the sleeping state. */
+.session-group-item.sleeping .session-goal,
+.session-group-item.sleeping .session-goal-empty {
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+/* "Your turn": quieter than attention. Neutral hairline pill, sentence case. */
+.session-group-item .badge.session-turn-pill {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
+}
+
+/* Line 2 = goal + optional unread count. The goal keeps its left inset so it
+   still starts exactly under the agent name. */
+.session-line2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: 14px;
+}
+.session-line2 .session-goal {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.session-unread-chip {
+    flex: 0 0 auto;
+    font-size: 10px;
+    line-height: 14px;
+    padding: 0 5px;
+    border-radius: 7px;
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
+}
+.session-line2 > .session-unread-chip:first-child {
+    margin-left: var(--row-dot-block, 16px); /* rows with no goal line */
+}
+
+/* Group attention count: the only attention cue on a collapsed group. */
+.group-attention-count {
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    margin-left: 4px;
+    background: rgba(210, 153, 34, 0.16);
+    color: #e3b341;
+    box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.35);
+}
+.group-attention-count.stuck {
+    background: rgba(248, 81, 73, 0.16);
+    color: #ff7b72;
+    box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.4);
+}
+
+/* Stuck rows switch from the amber to the error tint */
+.session-group-item.needs-attention.is-stuck {
+    background: rgba(248, 81, 73, 0.07);
+}
+
+/* Selected and attention rows keep full-strength names for readability/contrast */
+.session-group-item.active .session-label,
+.session-list li.session-group-item.active .session-label,
+.session-group-item.needs-attention .session-label {
+    color: var(--text-primary);
+}
+
+
+/* Rows never animate (reduced motion by default); the state pill carries the text. */
+.session-group-item .session-dot,
+.session-group-item .waiting-badge {
+    animation: none;
+}
+
+.session-group-item .session-dot {
+    margin: 0 4px 0 0;
+    width: 8px;
+    height: 8px;
+}
+
+.session-dot.ctx-high {
+    box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.35);
+}
+
+/* Neutral (idle) agents show no dot: grey carries no information and adds
+   noise. visibility:hidden keeps the 8px slot, so the name, the goal line and
+   the +18px group geometry never shift when a state tick brings the dot back.
+   The state stays in the row's aria-label and tooltip. Meaningful dots
+   (working, waiting/check-terminal, stuck, sleeping, done) and the
+   high-context tint remain visible. */
+.session-group-item .session-dot.stale:not(.ctx-high) {
+    visibility: hidden;
+}
+
+.session-group-item .session-label {
+    /* Agents are children: medium weight, slightly muted. Group headers stay
+       the strongest text (600, --text-primary). */
+    font-size: 13px;
+    font-weight: 500;
+    color: #c9d1d9; /* fallback for engines without color-mix */
+    color: var(--agent-name-color, color-mix(in srgb, var(--text-primary) 80%, transparent));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
+.session-state-pill,
+.session-ctx-pill {
+    font-size: 10px;
+    line-height: 14px;
+    padding: 0 6px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* Sentence-case labels ("Needs input" / "Check terminal" / "Stuck") on a quiet
+   warning surface: tinted background + hairline + warm text (>= 4.5:1). The
+   higher-specificity selector outranks `.badge.waiting-badge`. */
+.session-group-item .badge.session-state-pill {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+    background: rgba(210, 153, 34, 0.16);
+    color: #e3b341;
+    box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.35);
+}
+
+.session-group-item .badge.session-state-pill.stuck {
+    background: rgba(248, 81, 73, 0.16);
+    color: #ff7b72;
+    box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.4);
+}
+
+[data-theme="light"] .session-group-item .badge.session-state-pill {
+    color: #7d4e00;
+}
+[data-theme="light"] .session-group-item .badge.session-state-pill.stuck {
+    color: #a40e26;
+}
+
+.session-ctx-pill {
+    text-transform: none;
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--error, #f85149);
+}
+
+@media (max-width: 1023px) {
+    /* Tablet overlay is 280px: identity keeps at least ~12 characters */
+    .session-group-item .session-label { min-width: 12ch; }
 }
 
 .session-group-header + .session-group-item {
     margin-top: 2px;
+    box-shadow: none; /* the header boundary already separates the first row */
 }
 
-.session-group-item.active {
-    border-left-color: transparent;
-    background: rgba(255, 255, 255, 0.04);
+/* Folder headers: modest spacing above each group and a hairline beneath */
+.session-group-header:not(.board-card-header) {
+    margin-top: 6px;
+    box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
+}
+#live-sessions-list > .session-group-header:first-child,
+#live-sessions-list > .session-board-card:first-child {
+    margin-top: 2px !important;
+}
+
+.session-group-item.active,
+.session-list li.session-group-item.active {
+    /* Selected row: accent edge + tinted surface so it stands out from hover.
+       The compound selector outranks the legacy `.session-list li.active`. */
+    border-left-color: var(--accent);
+    background: rgba(88, 166, 255, 0.10);
+}
+
+.session-group-item.active:hover,
+.session-list li.session-group-item.active:hover {
+    background: rgba(88, 166, 255, 0.13);
 }
 
 /* ── Agent Status Text ────────────────────────────────────── */
@@ -1191,7 +1479,7 @@
 
 .session-board-card.session-board-card-toplevel {
     border-left: none !important;
-    margin: 4px 8px 4px 0 !important;
+    margin: 6px 8px 6px 0 !important;
 }
 
 .session-board-card.team-sleeping .group-header-text,
@@ -1395,3 +1683,100 @@
     background: var(--bg-hover);
     color: var(--text-primary);
 }
+
+/* ── Team details disclosure (AGENT_LIST_COMPACT D-D) ─────────── */
+.team-details-popover {
+    position: fixed;
+    z-index: 1001;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    padding: 10px 14px 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    min-width: 240px;
+    max-width: 360px;
+    font-size: 12px;
+    color: var(--text-primary);
+}
+.team-details-popover:focus { outline: none; }
+.team-details-popover:focus-visible { outline: 2px solid var(--accent); }
+.team-details-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+.team-details-title { font-weight: 600; }
+.team-details-close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 4px;
+}
+.team-details-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+.team-details-list {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 12px;
+    margin: 0;
+}
+.team-details-list dt { color: var(--text-muted); font-weight: 500; }
+.team-details-list dd { margin: 0; word-break: break-word; }
+
+/* Branch of the selected agent in the terminal header (dashboard only) */
+.terminal-branch-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    /* The session id left the header (task #156): the chip takes the freed
+       space and only truncates when the header is genuinely narrow. */
+    /* Yields first: the chip absorbs (almost) all shrink before the identity
+       loses a pixel, down to a 48px floor where it is still recognisable. */
+    flex: 0 1000 auto;
+    min-width: 48px;
+    max-width: none;
+    overflow: hidden;
+    /* Right-aligned (task #159): identity stays anchored left, the chip sits at
+       the right edge of the left group, immediately before the non-shrinking
+       actions; the space between them is the flexible separation. */
+    margin-left: auto;
+    margin-right: 8px; /* breathing room before the actions */
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.terminal-branch-chip[hidden] { display: none; }
+
+/* Selected-agent header: identity + branch share the left group and may
+   shrink; the actions on the right never do. */
+.terminal-header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+.terminal-header-left .terminal-session-label {
+    /* Identity has priority over the branch chip: it keeps its natural width
+       (up to 70% of the group) and only ellipsizes once the chip is at its
+       floor; it never collapses below 120px while it has more to show. */
+    flex: 0 1 auto;
+    min-width: min(120px, 100%);
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.terminal-branch-chip svg { flex-shrink: 0; }
+.terminal-branch-chip .branch-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.terminal-header-actions { flex-shrink: 0; }

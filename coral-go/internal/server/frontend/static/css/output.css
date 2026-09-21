@@ -84,12 +84,15 @@
     background: var(--text-muted);
 }
 
-.terminal-status-dot.working  { background: var(--accent); }
-.terminal-status-dot.waiting  { background: var(--warning); }
-.terminal-status-dot.done     { background: var(--success); }
-.terminal-status-dot.stuck    { background: var(--error); }
-.terminal-status-dot.sleeping { background: var(--warning); opacity: 0.5; }
-.terminal-status-dot.stale    { background: var(--text-muted); }
+/* Same state table as the agent rows (render.js SESSION_STATES) */
+.terminal-status-dot.working   { background: var(--success); }
+.terminal-status-dot.waiting   { background: var(--warning); }
+.terminal-status-dot.stuck     { background: var(--error); }
+.terminal-status-dot.your-turn { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-primary); }
+.terminal-status-dot.sleeping,
+.terminal-status-dot.ended,
+.terminal-status-dot.done      { background: var(--text-muted); opacity: 0.7; }
+.terminal-status-dot.stale     { background: var(--text-muted); }
 
 .terminal-session-label {
     font-family: var(--font-mono);
