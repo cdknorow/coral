@@ -122,6 +122,31 @@ async function run() {
     const pills = hrows.filter(r => r.pillText);
     check('155 attention pill: sentence-case label, no uppercase transform, contrast >= 4.5:1', pills.length >= 1 && pills.every(r => /^(Needs input|Check terminal|Stuck)$/.test(r.pillText) && r.pillTransform !== 'uppercase' && r.pillContrast >= 4.5), JSON.stringify(pills.map(r => [r.pillText, r.pillTransform, +r.pillContrast.toFixed(2)])));
     check('155 row heights unchanged (40px with goal / 36px without)', hrows.every(r => Math.abs(r.h - 40) <= 1 || Math.abs(r.h - 36) <= 1), JSON.stringify(hrows.map(r => r.h)));
+    // ── #159 neutral status dot: visually hidden, slot reserved, no layout shift on state ticks ──
+    await ev(`localStorage.setItem('coral-group-by-team','false'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`); await sleep(250);
+    const DOTS = (listId) => `(() => Object.fromEntries(Array.from(document.querySelectorAll('#' + ${JSON.stringify('LIST')} + ' .session-group-item')).map(li => { const d = li.querySelector('.session-dot'); const n = li.querySelector('.session-label'); const cs = d ? getComputedStyle(d) : null; const r = d ? d.getBoundingClientRect() : null; const range = document.createRange(); range.selectNodeContents(n); const nx = range.getClientRects()[0].left;
+      const shown = !!cs && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0.05 && cs.display !== 'none' && !/rgba\\(0, 0, 0, 0\\)|transparent/.test(cs.backgroundColor);
+      return [li.dataset.sessionId, { cls: d ? d.className : null, shown, slotW: r ? r.width : 0, display: cs ? cs.display : null, nameX: nx, dotX: r ? r.left : null, aria: li.getAttribute('aria-label') }]; })))()`.replace('LIST', listId);
+    let dots = await ev(DOTS('live-sessions-list'));
+    check('159 neutral (idle) dot is visually hidden but its slot is reserved (width >= 6px, not display:none)', /stale/.test(dots[F].cls || '') && !dots[F].shown && dots[F].slotW >= 6 && dots[F].display !== 'none', JSON.stringify(dots[F]));
+    check('159 meaningful dots stay visible: working (+ctx-high), needs-input, check-terminal', dots[A].shown && /working/.test(dots[A].cls) && dots[B].shown && dots[C].shown, JSON.stringify({ A: dots[A].cls, B: dots[B].cls, C: dots[C].cls }));
+    check('159 hidden dot is visual only: aria-label still carries the idle state', /, Idle$/.test(dots[F].aria || ''), dots[F].aria);
+    check('159 name x is identical for hidden-dot and visible-dot rows in the same layout (slot preserved)', Math.abs((dots[F].nameX - dots[F].dotX) - (dots[A].nameX - dots[A].dotX)) <= 1, JSON.stringify({ F: [dots[F].dotX, dots[F].nameX], A: [dots[A].dotX, dots[A].nameX] }));
+    const nameXBefore = dots[F].nameX;
+    await ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'other-proj', agent_type: 'claude', session_id: '${F}', working: true }] }); true`); await sleep(200);
+    dots = await ev(DOTS('live-sessions-list'));
+    check('159 idle -> working tick shows the dot without shifting the name', dots[F].shown && Math.abs(dots[F].nameX - nameXBefore) <= 0.5, JSON.stringify({ shown: dots[F].shown, before: nameXBefore, after: dots[F].nameX }));
+    await ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'other-proj', agent_type: 'claude', session_id: '${F}', working: false }] }); true`); await sleep(200);
+    // stuck and idle-at-high-context keep a visible dot; tooltip still exposes the idle state
+    await ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'other-proj', agent_type: 'claude', session_id: '${F}', stuck: true }] }); true`); await sleep(200);
+    dots = await ev(DOTS('live-sessions-list'));
+    check('159 stuck dot is visible', dots[F].shown && /stuck/.test(dots[F].cls), JSON.stringify(dots[F].cls));
+    await ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'other-proj', agent_type: 'claude', session_id: '${F}', stuck: false, context_pct: 91, context_window: 1000000 }] }); true`); await sleep(200);
+    dots = await ev(DOTS('live-sessions-list'));
+    check('159 idle row at >= 80% context keeps its (tinted) dot', dots[F].shown && /ctx-high/.test(dots[F].cls), JSON.stringify(dots[F].cls));
+    await ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'other-proj', agent_type: 'claude', session_id: '${F}', context_pct: 12 }] }); true`); await sleep(200);
+    const idleTip = String(await ev(`window.buildSessionTooltip(window._coralGetLiveSessions().find(s => s.session_id === '${F}'))`)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+    check('159 tooltip still exposes the state of a hidden-dot row', /State\s+Idle/i.test(idleTip), idleTip.slice(0, 80));
     check('exceptions none (desktop)', exceptions.length === 0, JSON.stringify(exceptions.slice(0, 2)));
     // phone
     await boot(390, 844, true);
@@ -129,6 +154,8 @@ async function run() {
     const hierM = await ev(HIER.replace('LIST_ID', JSON.stringify('mobile-session-list')));
     const mrows = hierM.flatMap(g => g.rows.map(r => ({ ...r, headerWeight: g.headerWeight, headerColor: g.headerColor })));
     check('155 phone: goal line aligned with the agent name (±1px), names lighter than headers, goal contrast >= 4.5:1', mrows.length >= 3 && mrows.filter(r => r.goalX !== null).every(r => Math.abs(r.goalX - r.nameX) <= 1) && mrows.every(r => r.weight <= 500 && (r.active || r.attention || r.color !== r.headerColor) && (r.goalContrast === null || r.goalContrast >= 4.5)), JSON.stringify(mrows.map(r => [r.goalX === null ? null : +(r.goalX - r.nameX).toFixed(1), r.weight, r.goalContrast === null ? null : +r.goalContrast.toFixed(2)])));
+    const mdots = await ev(DOTS('mobile-session-list'));
+    check('159 phone clone: neutral dot hidden with slot reserved, meaningful dots visible', mdots[F] && !mdots[F].shown && mdots[F].slotW >= 6 && mdots[A].shown && mdots[B].shown && Math.abs((mdots[F].nameX - mdots[F].dotX) - (mdots[A].nameX - mdots[A].dotX)) <= 1, JSON.stringify({ F: mdots[F], A: mdots[A] && mdots[A].cls }));
     check('8 phone card: no avatar, no elapsed text, status chip kept, 56px min, 44px kebab, 2-line goal clamp, banner visible', m && !m.avatar && !m.activity && m.chip && m.h >= 56 && m.kebab && m.kebab[0] >= 44 && m.kebab[1] >= 44 && String(m.clamp) === '2' && m.banner !== 'none', JSON.stringify(m));
     await ev(`document.querySelector('#mobile-session-list [data-session-id="${B}"]').focus(); true`);
     await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await sleep(300);

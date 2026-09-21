@@ -895,6 +895,16 @@
     box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.35);
 }
 
+/* Neutral (idle) agents show no dot: grey carries no information and adds
+   noise. visibility:hidden keeps the 8px slot, so the name, the goal line and
+   the +18px group geometry never shift when a state tick brings the dot back.
+   The state stays in the row's aria-label and tooltip. Meaningful dots
+   (working, waiting/check-terminal, stuck, sleeping, done) and the
+   high-context tint remain visible. */
+.session-group-item .session-dot.stale:not(.ctx-high) {
+    visibility: hidden;
+}
+
 .session-group-item .session-label {
     /* Agents are children: medium weight, slightly muted. Group headers stay
        the strongest text (600, --text-primary). */
@@ -1641,6 +1651,11 @@
     min-width: 48px;
     max-width: none;
     overflow: hidden;
+    /* Right-aligned (task #159): identity stays anchored left, the chip sits at
+       the right edge of the left group, immediately before the non-shrinking
+       actions; the space between them is the flexible separation. */
+    margin-left: auto;
+    margin-right: 8px; /* breathing room before the actions */
     text-overflow: ellipsis;
     white-space: nowrap;
 }
