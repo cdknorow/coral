@@ -879,3 +879,41 @@
     background: var(--warning);
     vertical-align: 1px;
 }
+
+/* Agent is working: a quiet row at the bottom of the chat */
+.chat-working {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 4px auto 18px;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+}
+.chat-working-detail {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-muted);
+}
+.chat-working-dots {
+    display: inline-flex;
+    gap: 3px;
+}
+.chat-working-dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: chat-working-pulse 1.2s infinite ease-in-out;
+}
+.chat-working-dots i:nth-child(2) { animation-delay: 0.15s; }
+.chat-working-dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-working-pulse {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+    40% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .chat-working-dots i { animation: none; opacity: 0.7; }
+}

@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast } from './utils.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
+import { deriveSessionState } from './render.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -387,6 +388,7 @@ export async function refreshLiveHistory() {
             }
             for (const msg of data.messages) {
                 if (msg.type === "user") settlePending(session.session_id, msg);
+                else noteAgentActivity(session.session_id, msg);
             }
             historyMessageCount = data.total;
         } else if (!initialLoadDone) {
@@ -396,7 +398,9 @@ export async function refreshLiveHistory() {
             _updateLoadMoreButton(container);
         }
 
+        // Pending first: it settles its place at the bottom, then the working row goes above it
         syncPendingBubbles(container, session.session_id);
+        syncWorkingIndicator(container, session);
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
         }
@@ -574,9 +578,11 @@ export function addPendingMessage(sessionId, text) {
     const list = pendingBySession.get(sessionId) || [];
     list.push({ id: ++pendingSeq, text, at: Date.now() });
     pendingBySession.set(sessionId, list);
+    lastSendAt.set(sessionId, Date.now());
     const container = document.getElementById("live-history-messages");
     if (container && state.currentSession && state.currentSession.session_id === sessionId) {
         syncPendingBubbles(container, sessionId);
+        syncWorkingIndicator(container, state.currentSession);
         container.scrollTop = container.scrollHeight;
     }
 }
@@ -641,4 +647,58 @@ function syncPendingBubbles(container, sessionId) {
     }
     // Always last, below any newly rendered messages
     if (container.lastElementChild !== wrap) container.appendChild(wrap);
+}
+
+// ── Working indicator ────────────────────────────────────────────────────
+// Between sending a message and the first tool call or reply there can be a
+// long silence. Show a "Working" row at the bottom of the chat while the
+// agent's state is Working, and right after a send until the agent's first
+// output lands (its state can take a moment to flip).
+
+const SEND_GRACE_MS = 90 * 1000;
+const lastSendAt = new Map(); // session_id -> ms of the last send with no agent output since
+
+function noteAgentActivity(sessionId, msg) {
+    const sent = lastSendAt.get(sessionId);
+    if (!sent) return;
+    const ts = Date.parse(msg.timestamp || "");
+    if (Number.isNaN(ts) || ts >= sent - 2000) lastSendAt.delete(sessionId);
+}
+
+function agentIsWorking(session) {
+    const row = (state.liveSessions || []).find(s => s.session_id === session.session_id) || session;
+    const key = deriveSessionState(row);
+    if (key === "working") return true;
+    // Awaiting the user, stuck, asleep or ended: nothing is in flight
+    if (key !== "idle" && key !== "your_turn") return false;
+    const sent = lastSendAt.get(session.session_id);
+    return !!sent && Date.now() - sent < SEND_GRACE_MS;
+}
+
+function syncWorkingIndicator(container, session) {
+    let el = container.querySelector(":scope > .chat-working");
+    if (!agentIsWorking(session)) {
+        if (el) el.remove();
+        return;
+    }
+    if (!el) {
+        el = document.createElement("div");
+        el.className = "chat-working";
+        el.setAttribute("role", "status");
+        el.innerHTML = `<span class="chat-working-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-working-label">Working</span><span class="chat-working-detail"></span>`;
+    }
+    // Name the latest step when the turn's work group is the newest content
+    const last = Array.from(container.children).filter(c => !c.matches(".chat-working, .pending-messages, .load-more-btn")).pop();
+    const latest = last && last.classList.contains("work-group")
+        ? last.querySelector(".work-group-latest").textContent.trim() : "";
+    const detail = el.querySelector(".chat-working-detail");
+    const text = latest ? ` \u00b7 ${latest}` : "";
+    if (detail.textContent !== text) detail.textContent = text;
+    // Sits after the messages, above any queued messages
+    const pending = container.querySelector(":scope > .pending-messages");
+    if (pending) {
+        if (el.nextElementSibling !== pending) container.insertBefore(el, pending);
+    } else if (container.lastElementChild !== el) {
+        container.appendChild(el);
+    }
 }
