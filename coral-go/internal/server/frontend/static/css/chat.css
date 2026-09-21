@@ -678,8 +678,9 @@
 .chat-prose {
     --chat-prose-font: ui-serif, "Iowan Old Style", Charter, "Charter BT", Georgia, serif;
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
-    /* Neutral by default: blue is kept for links, so code and the user's
-       bubble do not compete with them. Themes may set either variable. */
+    /* Inline code defaults to the theme's --chat-prose-inline-code (orange,
+       variables.css); the user's bubble is a neutral tint. Blue is kept for
+       links. Themes may set either variable. */
     /* --chat-highlight(-bubble) come from the Chat Highlight setting
        (modals.js applyChatHighlight) and win over the theme. */
     --chat-inline-code: var(--chat-highlight, var(--chat-prose-inline-code, var(--text-primary)));

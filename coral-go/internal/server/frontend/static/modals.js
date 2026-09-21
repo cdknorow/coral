@@ -3002,7 +3002,7 @@ export function applyTheme(theme) {
 
 /** Remove all custom CSS variables from inline styles (reset before switching themes) */
 /**
- * Chat Highlight setting: "" (neutral, the default), "accent" (theme accent)
+ * Chat Highlight setting: "" (the theme's colors, the default), "accent" (theme accent)
  * or a "#rrggbb" color. It colors inline code and tints the user's bubble in
  * the chat view. Set on <body>, not <html>, so theme changes (which clear
  * inline variables on <html>) leave it alone.

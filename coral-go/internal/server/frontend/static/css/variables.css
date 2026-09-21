@@ -116,6 +116,7 @@
 
     /* Chat */
     --chat-human-bg:      color-mix(in srgb, var(--accent) 15%, var(--bg-tertiary));
+    --chat-prose-inline-code: #e5931f; /* chat view inline code; themes may override */
     --chat-human-color:   var(--text-primary);
     --chat-assistant-bg:  var(--bg-tertiary);
     --board-msg-bg:       transparent;
@@ -247,6 +248,7 @@
 
     /* Chat */
     --chat-human-bg:      #d4e4f7;
+    --chat-prose-inline-code: #976012; /* #e5931f's hue, dark enough for 4.5:1 */
     --chat-human-color:   #1f2328;
     --chat-assistant-bg:  #f0f1f3;
     --board-msg-bg:       transparent;
