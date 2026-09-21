@@ -283,13 +283,13 @@ export async function refreshLiveHistory() {
         params.set("after", historyMessageCount);
     }
 
-    //off1
+    if (refreshInFlight === historyGeneration) return;
     const generation = historyGeneration;
     refreshInFlight = generation;
     try {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`);
         const data = await resp.json();
-        //off2
+        if (generation !== historyGeneration) return;
 
         if (data.messages && data.messages.length > 0) {
             if (!initialLoadDone) {
