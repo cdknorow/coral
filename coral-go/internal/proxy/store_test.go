@@ -246,5 +246,5 @@ func TestPricingTableStableOrder(t *testing.T) {
 	require.NotEmpty(t, rows)
 	raw, err := json.Marshal(rows)
 	require.NoError(t, err)
-	assert.Contains(t, string(raw), `"model":"claude-haiku-4-20250514"`)
+	assert.Contains(t, string(raw), `"model":"claude-haiku-4-5"`)
 }

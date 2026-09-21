@@ -2,8 +2,10 @@ package background
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,7 +193,7 @@ func TestEstimateCost_ClaudeModels(t *testing.T) {
 			name:  "claude-opus-4-6",
 			model: "claude-opus-4-6",
 			input: 1_000_000, output: 1_000_000, cacheRead: 0, cacheWrite: 0,
-			minCost: 15.00 + 75.00,
+			minCost: 5.00 + 25.00,
 		},
 		{
 			name:  "claude-sonnet with cache read",
@@ -244,4 +246,103 @@ func TestExtractCodexUsage_NoTokenCounts(t *testing.T) {
 	path := writeTestJSONL(t, jsonl)
 	usage := extractCodexUsage(path)
 	assert.Nil(t, usage)
+}
+
+// ── model recorded per usage row ─────────────────────────────
+
+type usageRow struct {
+	RecordedAt string  `db:"recorded_at"`
+	Model      *string `db:"model"`
+	CostUSD    float64 `db:"cost_usd"`
+}
+
+func usageRows(t *testing.T, db *store.DB, sid string) []usageRow {
+	t.Helper()
+	var rows []usageRow
+	require.NoError(t, db.SelectContext(context.Background(), &rows,
+		"SELECT recorded_at, model, cost_usd FROM token_usage WHERE session_id = ? ORDER BY recorded_at", sid))
+	return rows
+}
+
+func registerForPoll(t *testing.T, db *store.DB, sid, agentType string) (*store.SessionStore, *store.LiveSession) {
+	t.Helper()
+	ss := store.NewSessionStore(db)
+	ctx := context.Background()
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: sid, AgentType: agentType, AgentName: "coral-go", WorkingDir: t.TempDir()}))
+	ls, err := ss.GetLiveSession(ctx, sid)
+	require.NoError(t, err)
+	return ss, ls
+}
+
+// A session that switches model part-way records each row under the model
+// that produced it, which is what makes the stored cost re-derivable.
+func TestPollClaudeSession_RecordsModelPerCall(t *testing.T) {
+	db := setupTestDB(t)
+	const sid = "00000000-0000-0000-0000-0000000000c1"
+	ss, ls := registerForPoll(t, db, sid, "claude")
+	path := writeTestJSONL(t, `{"type":"assistant","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":1000,"output_tokens":1000}},"timestamp":"2026-09-21T10:00:01Z"}
+{"type":"assistant","message":{"id":"m2","model":"claude-fable-5-1","usage":{"input_tokens":1000,"output_tokens":1000}},"timestamp":"2026-09-21T10:00:02Z"}
+`)
+	poller := NewTokenPoller(ss, store.NewTokenUsageStore(db), time.Hour)
+	poller.sessionPaths[sid] = path
+	poller.pollClaudeSession(context.Background(), ls)
+
+	rows := usageRows(t, db, sid)
+	require.Len(t, rows, 2)
+	require.NotNil(t, rows[0].Model)
+	require.NotNil(t, rows[1].Model)
+	assert.Equal(t, "claude-opus-5", *rows[0].Model)
+	assert.Equal(t, "claude-fable-5-1", *rows[1].Model)
+	// Each row's cost matches its own model: opus $5+$25, fable $10+$50 per million.
+	assert.InDelta(t, 0.030, rows[0].CostUSD, 1e-9)
+	assert.InDelta(t, 0.060, rows[1].CostUSD, 1e-9)
+}
+
+// With no model in the transcript the poller still prices the call using a
+// default, but must not write that default into the model column.
+func TestPollClaudeSession_MissingModelIsStoredAsNullNotTheFallback(t *testing.T) {
+	db := setupTestDB(t)
+	const sid = "00000000-0000-0000-0000-0000000000c2"
+	ss, ls := registerForPoll(t, db, sid, "claude")
+	path := writeTestJSONL(t, `{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":1000000,"output_tokens":0}},"timestamp":"2026-09-21T10:00:01Z"}`+"\n")
+	poller := NewTokenPoller(ss, store.NewTokenUsageStore(db), time.Hour)
+	poller.sessionPaths[sid] = path
+	poller.pollClaudeSession(context.Background(), ls)
+
+	rows := usageRows(t, db, sid)
+	require.Len(t, rows, 1)
+	assert.Nil(t, rows[0].Model, "the pricing fallback is a guess and must not be recorded as the model")
+	assert.InDelta(t, 3.00, rows[0].CostUSD, 1e-9, "still priced, at the default model's rate")
+}
+
+func TestPollCodexSession_RecordsModelIncludingMidSessionSwitch(t *testing.T) {
+	db := setupTestDB(t)
+	const sid = "00000000-0000-0000-0000-0000000000c3"
+	ss, ls := registerForPoll(t, db, sid, "codex")
+	tokenCount := func(ts string, input, cached, output int) string {
+		return fmt.Sprintf(`{"type":"event_msg","timestamp":%q,"payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":%d,"cached_input_tokens":%d,"output_tokens":%d,"total_tokens":%d}}}}`,
+			ts, input, cached, output, input+output)
+	}
+	path := writeTestJSONL(t, strings.Join([]string{
+		`{"type":"session_meta","timestamp":"2026-09-21T10:00:00Z","payload":{}}`,
+		`{"type":"turn_context","timestamp":"2026-09-21T10:00:00Z","payload":{"model":"gpt-5.6-sol"}}`,
+		tokenCount("2026-09-21T10:00:01Z", 1_000_000, 900_000, 0),
+		`{"type":"turn_context","timestamp":"2026-09-21T10:00:02Z","payload":{"model":"gpt-5.6-luna"}}`,
+		tokenCount("2026-09-21T10:00:03Z", 2_000_000, 900_000, 0), // cumulative: +1M input, +0 cached
+	}, "\n")+"\n")
+
+	poller := NewTokenPoller(ss, store.NewTokenUsageStore(db), time.Hour)
+	poller.sessionPaths[sid] = path
+	poller.pollCodexSession(context.Background(), ls)
+
+	rows := usageRows(t, db, sid)
+	require.Len(t, rows, 2)
+	require.NotNil(t, rows[0].Model)
+	require.NotNil(t, rows[1].Model)
+	assert.Equal(t, "gpt-5.6-sol", *rows[0].Model)
+	assert.Equal(t, "gpt-5.6-luna", *rows[1].Model)
+	// sol: 100k uncached at $4 + 900k cached at $0.40 = $0.76. luna: 1M at $0.20.
+	assert.InDelta(t, 0.76, rows[0].CostUSD, 1e-9)
+	assert.InDelta(t, 0.20, rows[1].CostUSD, 1e-9)
 }

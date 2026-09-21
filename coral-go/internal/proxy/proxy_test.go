@@ -277,7 +277,7 @@ func TestCostCalculation(t *testing.T) {
 			name:     "claude-opus-4-6 alias",
 			model:    "claude-opus-4-6",
 			usage:    TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000},
-			expected: 15.00 + 75.00,
+			expected: 5.00 + 25.00,
 		},
 		{
 			name:     "claude-sonnet-4-6 alias",
@@ -289,7 +289,7 @@ func TestCostCalculation(t *testing.T) {
 			name:     "claude-haiku-4-5-20251001 alias",
 			model:    "claude-haiku-4-5-20251001",
 			usage:    TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000},
-			expected: 0.80 + 4.00,
+			expected: 1.00 + 5.00,
 		},
 		{
 			name:     "claude-opus-4 short prefix",
@@ -316,16 +316,16 @@ func TestCostCalculation(t *testing.T) {
 func TestLookupPricing(t *testing.T) {
 	// Verify all common model aliases resolve correctly
 	aliases := map[string]float64{
-		"claude-opus-4-20250514":      15.00, // exact
-		"claude-opus-4-6":             15.00, // short alias
-		"claude-opus-4-6-20250514":    15.00, // long alias
-		"claude-opus-4":               15.00, // family prefix
-		"claude-sonnet-4-20250514":    3.00,  // exact
-		"claude-sonnet-4-6":           3.00,  // short alias
-		"claude-haiku-4-20250514":     0.80,  // exact
-		"claude-haiku-4-5-20251001":   0.80,  // different date alias
-		"gpt-4o":                      2.50,  // exact
-		"gemini-2.5-pro":              1.25,  // exact
+		"claude-opus-4-20250514":    15.00, // exact
+		"claude-opus-4-6":           5.00,  // Opus 4.5+ is $5, unlike Opus 4/4.1
+		"claude-opus-4-6-20250514":  5.00,  // dated form of the same model
+		"claude-opus-4":             15.00, // family prefix
+		"claude-sonnet-4-20250514":  3.00,  // exact
+		"claude-sonnet-4-6":         3.00,  // short alias
+		"claude-haiku-4-5-20251001": 1.00,  // dated ID
+		"claude-3-5-haiku-20241022": 0.80,  // Haiku 3.5
+		"gpt-4o":                    2.50,  // exact
+		"gemini-2.5-pro":            1.25,  // exact
 	}
 	for model, expectedInput := range aliases {
 		t.Run(model, func(t *testing.T) {

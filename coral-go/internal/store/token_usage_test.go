@@ -390,21 +390,21 @@ func TestTokenUsageStore_GetLatestTurnContext_BasicCase(t *testing.T) {
 
 	// Turn 1: small context
 	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{
-		SessionID:       "s1",
-		AgentName:       "a1",
-		InputTokens:     5,
-		CacheReadTokens: 50000,
+		SessionID:        "s1",
+		AgentName:        "a1",
+		InputTokens:      5,
+		CacheReadTokens:  50000,
 		CacheWriteTokens: 2000,
-		RecordedAt:      "2026-01-01T00:00:00Z",
+		RecordedAt:       "2026-01-01T00:00:00Z",
 	}))
 	// Turn 2: larger context (latest)
 	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{
-		SessionID:       "s1",
-		AgentName:       "a1",
-		InputTokens:     1,
-		CacheReadTokens: 190000,
+		SessionID:        "s1",
+		AgentName:        "a1",
+		InputTokens:      1,
+		CacheReadTokens:  190000,
 		CacheWriteTokens: 500,
-		RecordedAt:      "2026-01-01T00:01:00Z",
+		RecordedAt:       "2026-01-01T00:01:00Z",
 	}))
 
 	result, err := s.GetLatestTurnContextBySessionIDs(ctx, []string{"s1"})
@@ -590,4 +590,124 @@ func TestTokenUsageStore_GetUsageSummaryByBoard_WithSince(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, teams, 1)
 	assert.InDelta(t, 0.20, teams[0].CostUSD, 0.001)
+}
+
+// ── model column ─────────────────────────────────────────────
+
+// usageModel reads the raw stored value, distinguishing NULL from "".
+func usageModel(t *testing.T, db *DB, sessionID, recordedAt string) (model string, isNull bool) {
+	t.Helper()
+	var v *string
+	require.NoError(t, db.GetContext(context.Background(), &v,
+		"SELECT model FROM token_usage WHERE session_id = ? AND recorded_at = ?", sessionID, recordedAt))
+	if v == nil {
+		return "", true
+	}
+	return *v, false
+}
+
+func TestTokenUsageStore_StoresModelPerRow(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+
+	// One session, two models: a user can switch model mid-session, which is
+	// why the model belongs on the row and not on the session.
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "sess-1", AgentName: "a", InputTokens: 10,
+		RecordedAt: "2026-09-21T10:00:00Z", Model: "claude-opus-5"}))
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "sess-1", AgentName: "a", InputTokens: 10,
+		RecordedAt: "2026-09-21T10:05:00Z", Model: "claude-fable-5-1"}))
+
+	first, null := usageModel(t, db, "sess-1", "2026-09-21T10:00:00Z")
+	assert.False(t, null)
+	assert.Equal(t, "claude-opus-5", first)
+	second, _ := usageModel(t, db, "sess-1", "2026-09-21T10:05:00Z")
+	assert.Equal(t, "claude-fable-5-1", second)
+}
+
+// An unobserved model is NULL, never "". NULL says "unknown"; an empty string
+// would look like a value and need special-casing in every later query.
+func TestTokenUsageStore_UnknownModelIsNull(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 1, RecordedAt: "2026-09-21T10:00:00Z"}))
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 1, RecordedAt: "2026-09-21T10:01:00Z", Model: "   "}))
+
+	for _, at := range []string{"2026-09-21T10:00:00Z", "2026-09-21T10:01:00Z"} {
+		_, null := usageModel(t, db, "s", at)
+		assert.True(t, null, "row at %s", at)
+	}
+}
+
+func TestTokenUsageStore_ModelIsTrimmedButOtherwiseVerbatim(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	require.NoError(t, s.RecordUsage(context.Background(), &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 1,
+		RecordedAt: "2026-09-21T10:00:00Z", Model: " claude-opus-5[1m] "}))
+	got, _ := usageModel(t, db, "s", "2026-09-21T10:00:00Z")
+	assert.Equal(t, "claude-opus-5[1m]", got, "stored as reported; normalising is the pricing lookup's job")
+}
+
+// Rows are insert-only: a re-poll of the same call must not rewrite the model.
+func TestTokenUsageStore_DuplicateRowDoesNotOverwriteModel(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+	at := "2026-09-21T10:00:00Z"
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 1, RecordedAt: at, Model: "claude-opus-5"}))
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 1, RecordedAt: at, Model: "something-else"}))
+	got, _ := usageModel(t, db, "s", at)
+	assert.Equal(t, "claude-opus-5", got)
+}
+
+// The existing session-level reads must keep working with the new column, and
+// with sessions whose rows span models or predate the column.
+func TestTokenUsageStore_ExistingReadsUnaffectedByModel(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 100, CostUSD: 1, RecordedAt: "2026-09-21T10:00:00Z", Model: "claude-opus-5"}))
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "s", AgentName: "a", InputTokens: 200, CostUSD: 2, RecordedAt: "2026-09-21T10:01:00Z"}))
+
+	got, err := s.GetSessionUsage(ctx, "s")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, 300, got.InputTokens)
+	assert.InDelta(t, 3.0, got.CostUSD, 1e-9)
+
+	list, err := s.ListUsage(ctx, UsageFilter{SessionID: "s"})
+	require.NoError(t, err)
+	assert.Len(t, list, 1)
+}
+
+// A database from before the column existed gains it on open. Its rows keep
+// their data and read as NULL: their model was never recorded and is not guessed.
+func TestTokenUsageSchema_ModelColumnIsMigratedIn(t *testing.T) {
+	path := t.TempDir() + "/older.db"
+	db, err := Open(path)
+	require.NoError(t, err)
+	ctx := context.Background()
+	require.NoError(t, NewTokenUsageStore(db).RecordUsage(ctx, &TokenUsage{SessionID: "old", AgentName: "a",
+		InputTokens: 777, CostUSD: 4.5, RecordedAt: "2026-08-01T00:00:00Z"}))
+	_, err = db.ExecContext(ctx, "ALTER TABLE token_usage DROP COLUMN model")
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	db, err = Open(path)
+	require.NoError(t, err)
+	defer db.Close()
+	s := NewTokenUsageStore(db)
+
+	_, null := usageModel(t, db, "old", "2026-08-01T00:00:00Z")
+	assert.True(t, null, "pre-existing row")
+	old, err := s.GetSessionUsage(ctx, "old")
+	require.NoError(t, err)
+	assert.Equal(t, 777, old.InputTokens)
+	assert.InDelta(t, 4.5, old.CostUSD, 1e-9)
+
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{SessionID: "new", AgentName: "a", InputTokens: 1,
+		RecordedAt: "2026-09-21T00:00:00Z", Model: "gpt-5.6-sol"}))
+	got, _ := usageModel(t, db, "new", "2026-09-21T00:00:00Z")
+	assert.Equal(t, "gpt-5.6-sol", got)
 }

@@ -118,6 +118,10 @@ var columnMigrations = []struct {
 	{"token_usage", "session_start_at", "TEXT"},
 	{"token_usage", "last_activity_at", "TEXT"},
 	{"token_usage", "source", "TEXT NOT NULL DEFAULT 'jsonl'"},
+	// The model that produced the row's tokens, as reported by the agent. NULL
+	// when it was not observed, and for every row written before this column
+	// existed. Without it a stored cost cannot be re-derived from its tokens.
+	{"token_usage", "model", "TEXT"},
 	{"agent_tasks", "started_at", "TEXT"},
 	{"agent_tasks", "completed_at", "TEXT"},
 	{"agent_tasks", "cost_usd", "REAL NOT NULL DEFAULT 0"},

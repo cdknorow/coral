@@ -315,7 +315,15 @@ func TestBedrockModelPricing(t *testing.T) {
 		{"claude sonnet exact", "claude-sonnet-4-20250514", true, 3.00},
 		{"claude opus exact", "claude-opus-4-20250514", true, 15.00},
 		{"claude sonnet prefix", "claude-sonnet-4", true, 3.00},
-		{"claude haiku exact", "claude-haiku-4-20250514", true, 0.80},
+		{"claude haiku 4.5", "claude-haiku-4-5-20251001", true, 1.00},
+		// Bedrock and Vertex IDs price from the first-party rows.
+		{"bedrock legacy id", "anthropic.claude-sonnet-4-20250514-v1:0", true, 3.00},
+		{"bedrock regional legacy id", "us.anthropic.claude-opus-4-20250514-v1:0", true, 15.00},
+		{"bedrock regional opus 4.6", "eu.anthropic.claude-opus-4-6-v1:0", true, 5.00},
+		{"bedrock current id", "anthropic.claude-opus-5", true, 5.00},
+		{"bedrock global fable", "global.anthropic.claude-fable-5-1", true, 10.00},
+		{"vertex dated id", "claude-haiku-4-5@20251001", true, 1.00},
+		{"vertex opus 4.5", "claude-opus-4-5@20251101", true, 5.00},
 	}
 
 	for _, tt := range tests {

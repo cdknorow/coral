@@ -3292,6 +3292,10 @@ func (h *SessionsHandler) RecordTokenUsage(w http.ResponseWriter, r *http.Reques
 		CacheWriteTokens float64 `json:"cache_write_tokens"`
 		CostUSD          float64 `json:"cost_usd"`
 		NumTurns         float64 `json:"num_turns"`
+		// Model is optional. When the caller does not know it the row stores
+		// NULL; the session's configured model is deliberately not substituted,
+		// since it may differ from the model that produced these tokens.
+		Model string `json:"model"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -3337,6 +3341,7 @@ func (h *SessionsHandler) RecordTokenUsage(w http.ResponseWriter, r *http.Reques
 		TotalTokens:      inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens,
 		CostUSD:          body.CostUSD,
 		NumTurns:         int(body.NumTurns),
+		Model:            body.Model,
 	})
 	if err != nil {
 		errInternalServer(w, err.Error())

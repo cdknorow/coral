@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -27,6 +28,12 @@ type TokenUsage struct {
 	ExecutionTimeSec int64   `db:"execution_time_sec" json:"execution_time_sec"`
 	RecordedAt       string  `db:"recorded_at" json:"recorded_at"`
 	Source           string  `db:"source" json:"source,omitempty"`
+	// Model is the model the agent reported for these tokens. Set it only to a
+	// value that was actually observed: leave it empty (stored as NULL) rather
+	// than filling in a default, so the column never holds a guess. It is
+	// write-only for now: the session-level reads aggregate rows that may span
+	// several models, so they do not select it.
+	Model string `db:"model" json:"model,omitempty"`
 }
 
 // UsageSummary represents aggregated token usage totals.
@@ -106,10 +113,10 @@ func (s *TokenUsageStore) RecordUsage(ctx context.Context, u *TokenUsage) error 
 
 	result, err := s.db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO token_usage
-		 (session_id, agent_name, agent_type, team_id, board_name, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, num_turns, session_start_at, last_activity_at, recorded_at, source)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (session_id, agent_name, agent_type, team_id, board_name, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, total_tokens, cost_usd, num_turns, session_start_at, last_activity_at, recorded_at, source, model)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''))`,
 		u.SessionID, u.AgentName, u.AgentType, u.TeamID, u.BoardName,
-		u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, u.TotalTokens, u.CostUSD, u.NumTurns, u.SessionStartAt, u.LastActivityAt, u.RecordedAt, u.Source)
+		u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, u.TotalTokens, u.CostUSD, u.NumTurns, u.SessionStartAt, u.LastActivityAt, u.RecordedAt, u.Source, strings.TrimSpace(u.Model))
 	if err != nil {
 		return err
 	}

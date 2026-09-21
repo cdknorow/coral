@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -23,35 +24,35 @@ func TestLookupPricing_PrefixMatch(t *testing.T) {
 }
 
 func TestLookupPricing_AliasMatch(t *testing.T) {
-	// "claude-opus-4-6" should match "claude-opus-4-6-20260407" (1M context)
-	p, ok := lookupPricing("claude-opus-4-6")
+	// A dated or suffixed form of an ID resolves to that model's own row.
+	p, ok := lookupPricing("claude-opus-4-6-20260407")
 	assert.True(t, ok)
-	assert.Equal(t, 1_000_000, p.ContextWindow, "claude-opus-4-6 should resolve to 1M context window")
-	assert.Equal(t, Pricing["claude-opus-4-6-20260407"].InputPerMTok, p.InputPerMTok)
+	assert.Equal(t, Pricing["claude-opus-4-6"], p)
 }
 
 func TestLookupPricing_Claude46Models(t *testing.T) {
-	// All Claude 4.6 short aliases should resolve to 1M context
+	// Dated IDs resolve to the dateless row. The 4.6 models have a 1M context
+	// window; Haiku 4.5 is 200K.
 	tests := []struct {
-		alias string
-		key   string
+		id      string
+		key     string
+		context int
 	}{
-		{"claude-opus-4-6", "claude-opus-4-6-20260407"},
-		{"claude-sonnet-4-6", "claude-sonnet-4-6-20260407"},
-		{"claude-haiku-4-5", "claude-haiku-4-5-20251001"},
+		{"claude-opus-4-6-20260407", "claude-opus-4-6", 1_000_000},
+		{"claude-sonnet-4-6-20260407", "claude-sonnet-4-6", 1_000_000},
+		{"claude-haiku-4-5-20251001", "claude-haiku-4-5", 200_000},
 	}
 	for _, tt := range tests {
-		p, ok := lookupPricing(tt.alias)
-		assert.True(t, ok, "expected match for %s", tt.alias)
-		assert.Equal(t, 1_000_000, p.ContextWindow, "%s should have 1M context", tt.alias)
-		assert.Equal(t, Pricing[tt.key], p, "%s should match %s", tt.alias, tt.key)
+		p, ok := lookupPricing(tt.id)
+		assert.True(t, ok, "expected match for %s", tt.id)
+		assert.Equal(t, tt.context, p.ContextWindow, "%s context window", tt.id)
+		assert.Equal(t, Pricing[tt.key], p, "%s should match %s", tt.id, tt.key)
 	}
 }
 
 func TestLookupPricing_PrefixMatchShortestKey(t *testing.T) {
-	// "claude-sonnet-4" is a prefix of both "claude-sonnet-4-20250514" (200K)
-	// and "claude-sonnet-4-6-20260407" (1M). Should consistently pick the
-	// shortest key (200K) to avoid non-deterministic behavior.
+	// "claude-sonnet-4" means Sonnet 4 (200K), not Sonnet 4.6 (1M), and must
+	// resolve the same way every time despite map iteration order.
 	for i := 0; i < 100; i++ {
 		p, ok := lookupPricing("claude-sonnet-4")
 		assert.True(t, ok)
@@ -178,7 +179,7 @@ func TestLookupContextWindow_Claude5FamiliesAndBedrockPointReleases(t *testing.T
 		"us.anthropic.claude-opus-5-v1:0": 1_000_000,
 		" CLAUDE-FABLE-5-1[1m] ":          1_000_000,
 		"claude-opus-4-6-20260407":        1_000_000,
-		"claude-haiku-4-5-20251001":       1_000_000,
+		"claude-haiku-4-5-20251001":       200_000,
 		"claude-sonnet-4-20250514":        200_000,
 		"claude-opus-4-20250514":          200_000,
 		"claude-sonnet-4":                 200_000,
@@ -259,10 +260,17 @@ func TestCalculateCostBreakdown_OpusPricing(t *testing.T) {
 
 func TestCalculateCostBreakdown_HaikuPricing(t *testing.T) {
 	usage := TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000}
-	b := CalculateCostBreakdown("claude-haiku-4-20250514", usage)
+	b := CalculateCostBreakdown("claude-haiku-4-5-20251001", usage)
 	require.True(t, b.PricingFound)
-	assert.InDelta(t, 0.80, b.InputCostUSD, 0.001)
-	assert.InDelta(t, 4.00, b.OutputCostUSD, 0.001)
+	assert.InDelta(t, 1.00, b.InputCostUSD, 0.001)
+	assert.InDelta(t, 5.00, b.OutputCostUSD, 0.001)
+
+	// $0.80/$4 is Haiku 3.5, which the table used to file under a
+	// non-existent "claude-haiku-4" model.
+	old := CalculateCostBreakdown("claude-3-5-haiku-20241022", usage)
+	require.True(t, old.PricingFound)
+	assert.InDelta(t, 0.80, old.InputCostUSD, 0.001)
+	assert.InDelta(t, 4.00, old.OutputCostUSD, 0.001)
 }
 
 func TestCalculateCostBreakdown_GeminiPro(t *testing.T) {
@@ -318,4 +326,192 @@ func TestCalculateCostBreakdown_BreakdownStoresPricing(t *testing.T) {
 	assert.Equal(t, 15.00, b.Pricing.OutputPerMTok)
 	assert.Equal(t, 0.30, b.Pricing.CacheReadPerMTok)
 	assert.Equal(t, 3.75, b.Pricing.CacheWritePerMTok)
+}
+
+// ── Rate card ────────────────────────────────────────────────
+// Prices per million tokens from the providers' pricing pages (see the comment
+// on Pricing for the URLs). A failure here means the table drifted from what
+// was verified, not that the test is stale: re-check the source before editing.
+
+func TestAnthropicRateCard(t *testing.T) {
+	// model -> {input, output, cache read, 5-minute cache write}
+	card := map[string][4]float64{
+		"claude-fable-5-1":  {10, 50, 0.25, 12.50},
+		"claude-mythos-5-1": {10, 50, 0.25, 12.50},
+		"claude-fable-5":    {10, 50, 1.00, 12.50},
+		"claude-mythos-5":   {10, 50, 1.00, 12.50},
+		"claude-opus-5":     {5, 25, 0.50, 6.25},
+		"claude-opus-4-8":   {5, 25, 0.50, 6.25},
+		"claude-opus-4-7":   {5, 25, 0.50, 6.25},
+		"claude-opus-4-6":   {5, 25, 0.50, 6.25},
+		"claude-opus-4-5":   {5, 25, 0.50, 6.25},
+		"claude-opus-4-1":   {15, 75, 1.50, 18.75},
+		"claude-opus-4":     {15, 75, 1.50, 18.75},
+		"claude-sonnet-5":   {2, 10, 0.20, 2.50},
+		"claude-sonnet-4-6": {3, 15, 0.30, 3.75},
+		"claude-sonnet-4-5": {3, 15, 0.30, 3.75},
+		"claude-sonnet-4":   {3, 15, 0.30, 3.75},
+		"claude-haiku-4-5":  {1, 5, 0.10, 1.25},
+		"claude-3-5-haiku":  {0.80, 4, 0.08, 1.00},
+	}
+	perMillion := TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000, CacheWriteTokens: 1_000_000}
+	for model, want := range card {
+		b := CalculateCostBreakdown(model, perMillion)
+		require.True(t, b.PricingFound, model)
+		assert.InDelta(t, want[0], b.InputCostUSD, 1e-9, "%s input", model)
+		assert.InDelta(t, want[1], b.OutputCostUSD, 1e-9, "%s output", model)
+		assert.InDelta(t, want[2], b.CacheReadCostUSD, 1e-9, "%s cache read", model)
+		assert.InDelta(t, want[3], b.CacheWriteCostUSD, 1e-9, "%s cache write", model)
+	}
+}
+
+// Anthropic's cache rates are fixed multiples of input. A row that breaks the
+// pattern is a typo, with Fable/Mythos 5.1 the one documented exception.
+func TestAnthropicCacheRatesFollowTheMultipliers(t *testing.T) {
+	for model, p := range Pricing {
+		if !strings.HasPrefix(model, "claude-") {
+			continue
+		}
+		readMultiplier := 0.1
+		if model == "claude-fable-5-1" || model == "claude-mythos-5-1" {
+			readMultiplier = 0.025
+		}
+		assert.InDelta(t, p.InputPerMTok*readMultiplier, p.CacheReadPerMTok, 1e-9, "%s cache read", model)
+		assert.InDelta(t, p.InputPerMTok*1.25, p.CacheWritePerMTok, 1e-9, "%s cache write", model)
+		assert.InDelta(t, p.InputPerMTok*5, p.OutputPerMTok, 1e-9, "%s output is 5x input", model)
+		assert.False(t, p.CachedInputIncluded, "%s: Anthropic reports cache reads outside input_tokens", model)
+	}
+}
+
+// The Opus price dropped from $15 to $5 at 4.5. IDs on either side of that
+// line share most of their name, so every spelling is pinned here.
+func TestOpusGenerationsResolveToTheRightPrice(t *testing.T) {
+	want := map[string]float64{
+		"claude-opus-4":              15,
+		"claude-opus-4-20250514":     15,
+		"claude-opus-4-1":            15,
+		"claude-opus-4-1-20250805":   15,
+		"claude-opus-4-5":            5,
+		"claude-opus-4-5-20251101":   5,
+		"claude-opus-4-6":            5,
+		"claude-opus-4-7":            5,
+		"claude-opus-4-8":            5,
+		"claude-opus-4-8[1m]":        5,
+		"claude-opus-5":              5,
+		"claude-opus-5[1m]":          5,
+		"claude-opus-5-20260901":     5,
+		" CLAUDE-OPUS-5[1m] ":        5,
+		"claude-sonnet-5":            2,
+		"claude-sonnet-5-20260601":   2,
+		"claude-sonnet-4-6":          3,
+		"claude-sonnet-4-5-20250929": 3,
+	}
+	for i := 0; i < 50; i++ { // map iteration order must not change the answer
+		for model, input := range want {
+			p, ok := lookupPricing(model)
+			require.True(t, ok, model)
+			require.InDelta(t, input, p.InputPerMTok, 1e-9, "iteration %d: %s", i, model)
+		}
+	}
+}
+
+func TestOpenAIRateCard(t *testing.T) {
+	// model -> {input, cached input, output}
+	card := map[string][3]float64{
+		"gpt-5.6-sol":   {4.00, 0.40, 20.00},
+		"gpt-5.6-terra": {2.00, 0.20, 12.00},
+		"gpt-5.6-luna":  {0.20, 0.02, 1.20},
+		"gpt-5.5":       {5.00, 0.50, 30.00},
+		"gpt-5.4":       {2.50, 0.25, 15.00},
+		"gpt-5.4-mini":  {0.75, 0.075, 4.50},
+		"gpt-5.4-nano":  {0.20, 0.02, 1.25},
+		"gpt-5.3-codex": {1.75, 0.175, 14.00},
+		"gpt-5.2":       {1.75, 0.175, 14.00},
+		"gpt-5.1":       {1.25, 0.125, 10.00},
+		"gpt-5":         {1.25, 0.125, 10.00},
+		"gpt-5-mini":    {0.25, 0.025, 2.00},
+		"gpt-5-nano":    {0.05, 0.005, 0.40},
+		"gpt-4o":        {2.50, 1.25, 10.00},
+		"gpt-4o-mini":   {0.15, 0.075, 0.60},
+		"o3":            {2.00, 0.50, 8.00},
+	}
+	for model, want := range card {
+		p, ok := lookupPricing(model)
+		require.True(t, ok, model)
+		assert.InDelta(t, want[0], p.InputPerMTok, 1e-9, "%s input", model)
+		assert.InDelta(t, want[1], p.CacheReadPerMTok, 1e-9, "%s cached input", model)
+		assert.InDelta(t, want[2], p.OutputPerMTok, 1e-9, "%s output", model)
+		assert.True(t, p.CachedInputIncluded, "%s: OpenAI input_tokens includes cached tokens", model)
+	}
+}
+
+// The -pro models have no cached-input discount. Their cached rate must equal
+// the input rate, or cached tokens (subtracted from input) would be free.
+func TestOpenAIProModelsBillCachedInputAtFullRate(t *testing.T) {
+	for _, model := range []string{"gpt-5.5-pro", "gpt-5.4-pro", "gpt-5.2-pro", "gpt-5-pro"} {
+		p, ok := lookupPricing(model)
+		require.True(t, ok, model)
+		assert.Equal(t, p.InputPerMTok, p.CacheReadPerMTok, model)
+		withCache := CalculateCost(model, TokenUsage{InputTokens: 1_000_000, CacheReadTokens: 900_000})
+		without := CalculateCost(model, TokenUsage{InputTokens: 1_000_000})
+		assert.InDelta(t, without, withCache, 1e-9, "%s: caching changes nothing", model)
+	}
+}
+
+// OpenAI reports cached tokens INSIDE input_tokens. Billing both in full
+// would charge the cached part twice. Figures are from a real Codex rollout:
+// 118.0M input of which 115.0M was cached.
+func TestOpenAICachedTokensAreNotBilledTwice(t *testing.T) {
+	usage := TokenUsage{InputTokens: 117_998_875, CacheReadTokens: 114_978_432, OutputTokens: 205_746}
+	b := CalculateCostBreakdown("gpt-5.6-sol", usage)
+	require.True(t, b.PricingFound)
+
+	uncached := float64(117_998_875 - 114_978_432)
+	assert.InDelta(t, uncached*4.00/1e6, b.InputCostUSD, 1e-6, "only the uncached remainder pays the input rate")
+	assert.InDelta(t, 114_978_432*0.40/1e6, b.CacheReadCostUSD, 1e-6)
+	assert.InDelta(t, 205_746*20.00/1e6, b.OutputCostUSD, 1e-6)
+	assert.InDelta(t, 62.19, b.TotalCostUSD, 0.01)
+
+	doubleBilled := 117_998_875*4.00/1e6 + 114_978_432*0.40/1e6 + 205_746*20.00/1e6
+	assert.Less(t, b.TotalCostUSD, doubleBilled/8, "the naive sum would be over $500")
+}
+
+func TestCachedInputNeverGoesNegative(t *testing.T) {
+	// A malformed report with more cached than input tokens must not produce a credit.
+	b := CalculateCostBreakdown("gpt-5.4", TokenUsage{InputTokens: 100, CacheReadTokens: 500})
+	assert.Zero(t, b.InputCostUSD)
+	assert.GreaterOrEqual(t, b.TotalCostUSD, 0.0)
+}
+
+// Anthropic reports cache reads OUTSIDE input_tokens: nothing is subtracted.
+func TestAnthropicCacheReadsAreBilledAlongsideInput(t *testing.T) {
+	b := CalculateCostBreakdown("claude-opus-5", TokenUsage{InputTokens: 1_000_000, CacheReadTokens: 1_000_000})
+	assert.InDelta(t, 5.00, b.InputCostUSD, 1e-9)
+	assert.InDelta(t, 0.50, b.CacheReadCostUSD, 1e-9)
+}
+
+func TestGeminiRateCard(t *testing.T) {
+	pro, ok := lookupPricing("gemini-2.5-pro")
+	require.True(t, ok)
+	assert.Equal(t, [3]float64{1.25, 0.125, 10.00}, [3]float64{pro.InputPerMTok, pro.CacheReadPerMTok, pro.OutputPerMTok})
+	flash, ok := lookupPricing("gemini-2.5-flash")
+	require.True(t, ok)
+	assert.Equal(t, [3]float64{0.30, 0.03, 2.50}, [3]float64{flash.InputPerMTok, flash.CacheReadPerMTok, flash.OutputPerMTok})
+}
+
+func TestStripProviderDecoration(t *testing.T) {
+	cases := map[string]string{
+		"claude-opus-5":                                "claude-opus-5",
+		"anthropic.claude-opus-5":                      "claude-opus-5",
+		"us.anthropic.claude-opus-5-v1:0":              "claude-opus-5",
+		"eu.anthropic.claude-sonnet-4-5-20250929-v1:0": "claude-sonnet-4-5-20250929",
+		"global.anthropic.claude-fable-5-1":            "claude-fable-5-1",
+		"anthropic.claude-3-5-haiku-20241022-v2":       "claude-3-5-haiku-20241022",
+		"claude-haiku-4-5@20251001":                    "claude-haiku-4-5-20251001",
+		"gpt-5.6-sol":                                  "gpt-5.6-sol",
+		"us.meta.llama":                                "us.meta.llama", // a region prefix is only stripped before "anthropic."
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, stripProviderDecoration(in), in)
+	}
 }

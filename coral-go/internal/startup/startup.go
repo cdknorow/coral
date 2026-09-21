@@ -553,6 +553,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 				CostUSD:          rec.CostUSD,
 				RecordedAt:       rec.RecordedAt,
 				Source:           rec.Source,
+				Model:            rec.Model,
 			})
 		})
 	}

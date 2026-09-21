@@ -199,7 +199,7 @@ func lookupPricing(model string) (ModelPricing, bool) {
 
 	// 2. Prefix match: the incoming model is a prefix of a known key.
 	// Prefer the shortest matching key to avoid ambiguity (e.g. "claude-sonnet-4"
-	// should match "claude-sonnet-4-20250514" not "claude-sonnet-4-6-20260407").
+	// should match "claude-sonnet-4-20250514" not "claude-sonnet-4-6").
 	var bestPrefix ModelPricing
 	bestPrefixLen := 0
 	for _, key := range keys {

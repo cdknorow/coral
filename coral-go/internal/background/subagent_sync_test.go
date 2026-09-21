@@ -139,10 +139,10 @@ func TestSyncSubagentSpend_ParsesPricesAndStoresFixture(t *testing.T) {
 	assert.Equal(t, "2026-09-17T02:10:18.133Z", *sa.StartedAt)
 	assert.Equal(t, "2026-09-17T02:14:11.667Z", *sa.LastActivityAt)
 
-	// claude-opus-5 is priced at $15 in / $75 out / $1.50 cache read /
-	// $18.75 cache write per million tokens:
-	//   5*15 + 600*75 + 26820*1.5 + 7304*18.75 = 222255 micro-dollars
-	assert.InDelta(t, 0.222255, sa.CostUSD, 1e-9)
+	// claude-opus-5 is priced at $5 in / $25 out / $0.50 cache read /
+	// $6.25 cache write per million tokens:
+	//   5*5 + 600*25 + 26820*0.5 + 7304*6.25 = 74085 micro-dollars
+	assert.InDelta(t, 0.074085, sa.CostUSD, 1e-9)
 }
 
 func TestSyncSubagentSpend_MultipleSubagentsAndMissingMetadata(t *testing.T) {
@@ -197,15 +197,13 @@ func TestSyncSubagentSpend_IsIdempotentAndTracksGrowth(t *testing.T) {
 func TestSyncSubagentSpend_PricesEachCallWithItsOwnModel(t *testing.T) {
 	env := newSubagentEnv(t)
 	env.writeSubagent("mixed",
-		subLine("msg_1", "claude-opus-5", 0, 1_000_000, 0, 0),             // $75.00
-		subLine("msg_2", "claude-haiku-4-5-20251001", 0, 1_000_000, 0, 0)) // haiku output price
+		subLine("msg_1", "claude-opus-5", 0, 1_000_000, 0, 0),             // $25.00
+		subLine("msg_2", "claude-haiku-4-5-20251001", 0, 1_000_000, 0, 0)) // $5.00
 	_, err := syncSubagentSpend(context.Background(), env.subagents, subMainSID, env.parentPath, nil)
 	require.NoError(t, err)
 
 	sa := env.get("mixed")
-	haikuOnly := sa.CostUSD - 75.0
-	assert.Greater(t, haikuOnly, 0.0, "the haiku call is priced too")
-	assert.Less(t, haikuOnly, 75.0, "...and not at the opus rate")
+	assert.InDelta(t, 25.0+5.0, sa.CostUSD, 1e-9, "opus output at $25/M plus haiku output at $5/M")
 	assert.Equal(t, "claude-opus-5", *sa.Model, "first-seen model wins a tie on output")
 }
 

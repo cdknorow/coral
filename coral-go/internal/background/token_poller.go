@@ -159,6 +159,8 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 			continue
 		}
 
+		// The fallback exists only to pick a price. The row records call.Model,
+		// what was actually observed, so the column never holds a guess.
 		model := call.Model
 		if model == "" {
 			model = "gpt-5.4"
@@ -180,6 +182,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 			LastActivityAt:  call.Timestamp,
 			RecordedAt:      call.Timestamp,
 			Source:          "jsonl",
+			Model:           call.Model,
 		}
 
 		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
@@ -529,6 +532,7 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 			continue
 		}
 
+		// As for Codex: the fallback only picks a price; the row stores call.Model.
 		model := call.Model
 		if model == "" {
 			model = "claude-sonnet-4-20250514"
@@ -551,6 +555,7 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 			LastActivityAt:   call.Timestamp,
 			RecordedAt:       call.Timestamp,
 			Source:           "jsonl",
+			Model:            call.Model,
 		}
 
 		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
@@ -777,6 +782,7 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 			LastActivityAt:   call.Timestamp,
 			RecordedAt:       call.Timestamp,
 			Source:           "jsonl",
+			Model:            call.Model,
 		}
 
 		if err := p.usageStore.RecordUsage(ctx, record); err != nil {
