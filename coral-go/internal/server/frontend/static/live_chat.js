@@ -581,21 +581,37 @@ export function addPendingMessage(sessionId, text) {
     }
 }
 
-// Drop the oldest pending message this transcript entry accounts for. Only
-// entries written after the send can match, so an earlier identical message
-// ("continue") does not clear a new one.
+// Drop the pending messages this transcript entry accounts for. Messages
+// queued while the agent was busy can arrive merged into one entry (e.g.
+// after an interrupt), so every pending message it contains is settled, each
+// occurrence consuming one. Only entries written after the send can match,
+// so an earlier identical message ("continue") does not clear a new one.
 function settlePending(sessionId, msg) {
     const list = pendingBySession.get(sessionId);
     if (!list || !list.length) return;
-    const got = normalizeMsg(msg.content);
+    let rest = normalizeMsg(msg.content);
     const ts = Date.parse(msg.timestamp || "");
-    if (!got) return;
-    const i = list.findIndex(p => {
-        if (!Number.isNaN(ts) && ts < p.at - 10000) return false;
+    if (!rest) return;
+    const whole = rest;
+    const eligible = (p) => Number.isNaN(ts) || ts >= p.at - 10000;
+    let settled = 0;
+    for (let i = 0; i < list.length;) {
+        const p = list[i];
         const want = normalizeMsg(p.text);
-        return got === want || got.includes(want) || want.includes(got);
-    });
-    if (i !== -1) list.splice(i, 1);
+        const at = eligible(p) && want ? rest.indexOf(want) : -1;
+        if (at !== -1) {
+            rest = rest.slice(0, at) + rest.slice(at + want.length);
+            list.splice(i, 1);
+            settled++;
+        } else {
+            i++;
+        }
+    }
+    // The transcript may hold a shortened form of a long message
+    if (!settled) {
+        const i = list.findIndex(p => eligible(p) && normalizeMsg(p.text).includes(whole));
+        if (i !== -1) list.splice(i, 1);
+    }
 }
 
 function syncPendingBubbles(container, sessionId) {

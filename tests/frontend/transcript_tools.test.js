@@ -132,6 +132,17 @@ async function run() {
   const settled = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.human.pending').length, real: Array.from(${C}.querySelectorAll('.chat-bubble.human:not(.pending)')).filter(b => b.textContent.includes('Please also fix the header')).length })`);
   check('once the transcript records it, the queued bubble is replaced by the real one', settled.pending === 0 && settled.real === 1, JSON.stringify(settled));
 
+  // Messages queued while the agent is busy can land merged into one entry (interrupt)
+  for (let i = 0; i < 3; i++) { await ev(`document.getElementById('command-input').value = 'test'; window.sendCommand(); true`); await sleep(100); }
+  await sleep(200);
+  check('three sends show three queued bubbles', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 3);
+  await ev(`window.__msgs.push({ type: 'user', content: 'test\\ntest', timestamp: new Date().toISOString() }); true`);
+  await sleep(1500);
+  check('a merged entry settles every queued message it contains, and only those', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 1);
+  await ev(`window.__msgs.push({ type: 'user', content: 'test', timestamp: new Date().toISOString() }); true`);
+  await sleep(1500);
+  check('the remaining queued message settles when it arrives', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 0);
+
   // A plain terminal has no transcript: always Terminal, toggle hidden
   const term = await ev(`Promise.all([import('/static/state.js'), import('/static/live_chat.js')]).then(([st, m]) => {
     const prev = st.state.currentSession.agent_type; st.state.currentSession.agent_type = 'terminal'; m.applyLiveViewMode();
