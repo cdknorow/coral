@@ -704,9 +704,11 @@
 .event-body {
     flex: 1;
     min-width: 0;
+    overflow: hidden; /* long summaries never run under the duration/time */
 }
 
 .event-summary {
+    display: block; /* ellipsis needs a block box; an inline span just overflows */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
