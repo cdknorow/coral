@@ -26,7 +26,12 @@ The goal half of this spec shipped, simpler than planned:
   state and plain-language `alerts` (failure rate, timeouts, slow p95, cost
   above ~$0.005/call, a session over 30 calls/h, mostly-unchanged refreshes,
   missing CLI, stalled poller).
-- Goals are **≤ 8 words** (capped at 10 after cleanup), not 12.
+- Goals are **≤ 8 words** (capped at 10 after cleanup), not 12, and name the
+  user's task (the deliverable), never the agent's current step. The model
+  reads only the current goal, the latest user request, the one before it
+  (for "yes, go ahead" follow-ups) and the agent's latest reply; no tool
+  calls or output. The transcript is read incrementally from byte 0, so a
+  request behind megabytes of tool output is still found.
 - Refresh: first goal once the agent has answered; then when the transcript
   has grown **and** either it has been quiet 20 s (turn ended) with ≥ 2 min
   since the last goal, or 5 min have passed. 10 min backoff after a failure.

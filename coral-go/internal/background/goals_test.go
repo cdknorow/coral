@@ -68,19 +68,32 @@ func TestCondenseForGoal(t *testing.T) {
 	msgs := []map[string]any{
 		{"type": "user", "content": "Make the sidebar quieter"},
 		{"type": "assistant", "text": "Looking at the CSS.", "tool_uses": []map[string]any{{"name": "Read", "input_summary": "session.css"}}},
-		{"type": "user", "content": "Also drop the separators"},
+		{"type": "user", "content": "Lets add some metrics that track how often goals are requested"},
+		{"type": "assistant", "text": "", "tool_uses": []map[string]any{{"name": "Bash", "input_summary": "go test ./..."}}},
+		{"type": "assistant", "text": "Metrics are recorded per attempt."},
 	}
-	first, tail, hasAssistant := condenseForGoal(msgs, 6000)
-	assert.Equal(t, "Make the sidebar quieter", first)
-	assert.True(t, hasAssistant)
-	assert.Equal(t, "User: Make the sidebar quieter\nAssistant: Looking at the CSS.\nTool: Read session.css\nUser: Also drop the separators", tail)
+	in := condenseForGoal(msgs)
+	assert.Equal(t, goalInput{
+		Earlier:      "Make the sidebar quieter",
+		Request:      "Lets add some metrics that track how often goals are requested",
+		Response:     "Metrics are recorded per attempt.",
+		HasAssistant: true,
+	}, in, "only the latest request and the latest reply; no tool calls")
 
-	_, tail, _ = condenseForGoal(msgs, 20)
-	assert.True(t, strings.HasPrefix(tail, "..."))
-	assert.Equal(t, "... drop the separators", tail, "keeps the most recent end")
+	followUp := append(msgs, map[string]any{"type": "user", "content": "yes, go ahead [Image #1]"})
+	fu := condenseForGoal(followUp)
+	assert.Equal(t, "Lets add some metrics that track how often goals are requested", fu.Earlier)
+	assert.Equal(t, "yes, go ahead", fu.Request)
 
-	_, _, hasAssistant = condenseForGoal(msgs[:1], 6000)
-	assert.False(t, hasAssistant, "no goal until the agent has answered")
+	img := []map[string]any{{"type": "user", "content": "[Image: original 2102x872, displayed at 2000x830.]\nRemove the separators"}}
+	assert.Equal(t, "Remove the separators", condenseForGoal(img).Request)
+	assert.False(t, condenseForGoal(img).HasAssistant, "no goal until the agent has answered")
+}
+
+func TestBuildGoalPrompt(t *testing.T) {
+	p := buildGoalPrompt(goalInput{Request: "Add metrics", Response: "Done."}, "")
+	assert.Equal(t, "CURRENT GOAL: (none)\n\nEARLIER USER REQUEST:\n(none)\n\nLATEST USER REQUEST:\nAdd metrics\n\nAGENT'S LATEST REPLY:\nDone.", p)
+	assert.Contains(t, buildGoalPrompt(goalInput{}, "Add goal metrics"), "CURRENT GOAL: Add goal metrics")
 }
 
 // goalFixture is one live Claude session with a transcript on disk and a
@@ -96,6 +109,7 @@ type goalFixture struct {
 	reply   string
 	err     error
 	metrics *store.GoalMetricsStore
+	prompt  string // the last prompt sent to the CLI
 }
 
 func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
@@ -130,6 +144,7 @@ func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
 	f.gen.SetMetricsStore(f.metrics)
 	f.gen.runCLI = func(_ context.Context, bin, prompt string) (goalCLIResult, error) {
 		f.calls.Add(1)
+		f.prompt = prompt
 		return goalCLIResult{Text: f.reply, CostUSD: 0.001, InputTokens: 400, OutputTokens: 12}, f.err
 	}
 	return f
@@ -324,4 +339,27 @@ func TestParseGoalCLIOutput(t *testing.T) {
 
 	_, err = parseGoalCLIOutput([]byte("plain text"))
 	assert.ErrorContains(t, err, "unreadable CLI output")
+}
+
+func TestGoalGenerator_SendsTheLatestRequestAndReplyEvenBehindLargeToolOutput(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g013", AgentType: "claude", AgentName: "coral-go"})
+	f.poll()
+	assert.Contains(t, f.prompt, "LATEST USER REQUEST:\nMake the sidebar goal line quieter")
+	assert.Contains(t, f.prompt, "AGENT'S LATEST REPLY:\nUpdating session.css.")
+
+	big := strings.Repeat("x", 600*1024)
+	f.appendTranscript(t,
+		`{"type":"user","message":{"role":"user","content":"Lets add metrics for goal generation"},"timestamp":"2026-09-21T11:02:00Z"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"go test ./..."}}]},"timestamp":"2026-09-21T11:02:01Z"}`,
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"`+big+`"}]},"timestamp":"2026-09-21T11:02:02Z"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Metrics are recorded per attempt."}]},"timestamp":"2026-09-21T11:02:03Z"}`,
+	)
+	f.gen.RequestGoal(f.sid)
+	f.poll()
+	assert.Contains(t, f.prompt, "CURRENT GOAL: Quiet the sidebar goal line")
+	assert.Contains(t, f.prompt, "EARLIER USER REQUEST:\nMake the sidebar goal line quieter\n")
+	assert.Contains(t, f.prompt, "LATEST USER REQUEST:\nLets add metrics for goal generation\n")
+	assert.Contains(t, f.prompt, "AGENT'S LATEST REPLY:\nMetrics are recorded per attempt.")
+	assert.NotContains(t, f.prompt, "go test", "tool calls are never sent")
+	assert.NotContains(t, f.prompt, "xxxx", "tool output is never sent")
 }

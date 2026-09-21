@@ -467,3 +467,33 @@ func TestPulseStripping(t *testing.T) {
 		t.Errorf("expected PULSE stripped, got %q", msgs[0]["text"])
 	}
 }
+
+func TestReadFrom_ConsumesOnlyCompleteLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.jsonl")
+	full := `{"type":"user","message":{"role":"user","content":"first"},"timestamp":"2026-09-21T11:00:00Z"}` + "\n"
+	partial := `{"type":"user","message":{"role":"user","content":"sec`
+	if err := os.WriteFile(path, []byte(full+partial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs, off, err := ReadFrom(path, "claude", 0)
+	if err != nil || len(msgs) != 1 || msgs[0]["content"] != "first" {
+		t.Fatalf("first read: msgs=%v err=%v", msgs, err)
+	}
+	if off != int64(len(full)) {
+		t.Fatalf("offset = %d, want %d: the half-written line waits", off, len(full))
+	}
+
+	if err := os.WriteFile(path, []byte(full+partial+`ond"},"timestamp":"2026-09-21T11:00:01Z"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	msgs, off2, err := ReadFrom(path, "claude", off)
+	if err != nil || len(msgs) != 1 || msgs[0]["content"] != "second" {
+		t.Fatalf("second read: msgs=%v err=%v", msgs, err)
+	}
+
+	msgs, _, err = ReadFrom(path, "claude", off2+1000)
+	if err != nil || len(msgs) != 2 {
+		t.Fatalf("an offset past the end starts over: msgs=%v err=%v", msgs, err)
+	}
+}

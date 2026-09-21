@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -46,23 +47,86 @@ const (
 	goalCLITimeout = 60 * time.Second
 	// goalConcurrency caps CLI calls running at once.
 	goalConcurrency = 2
-	// goalTailChars is how much of the recent transcript the model reads.
-	goalTailChars = 6000
-	// goalTailBytes is how much of the transcript file is parsed to find it.
-	goalTailBytes = 256 * 1024
 	// goalMaxWords caps the stored goal even if the model runs long.
 	goalMaxWords = 10
 )
 
 // goalPrompt is the CLI's whole system prompt. Replacing Claude Code's own
 // system prompt and tools cuts a call from ~22K input tokens to a few hundred.
-const goalPrompt = `You label a running AI coding agent for a dashboard sidebar. Read the agent's first instruction and the most recent part of its transcript, then reply with ONLY the agent's current goal.
+const goalPrompt = `You name the task a running AI coding agent is doing, for a dashboard sidebar. You are given the user's latest request, the one before it, and the agent's latest reply.
 
-Rules:
-- At most 8 words. Imperative, present tense, e.g. "Fix flaky websocket reconnect test" or "Add dark mode to settings page".
-- Describe what it is working toward right now, not everything it has done.
-- If it is waiting on the user, say what for, e.g. "Waiting for approval to delete migration".
-- No quotes, no trailing period, no preamble, no mention of the dashboard, the transcript or yourself.`
+Reply with ONLY the task: at most 8 words, imperative, e.g. "Add goal generation metrics", "Remove sidebar separator lines", "Fix flaky websocket reconnect test".
+
+The task is the feature, fix or change the user asked for: the deliverable. It is NOT the agent's current step. Never describe running tests, reading or editing files, building, benchmarking, committing, investigating or verifying.
+
+Use the LATEST USER REQUEST. If it only approves or adjusts earlier work ("yes, go ahead", "make it shorter"), the task comes from the EARLIER USER REQUEST.
+
+If CURRENT GOAL already names this task (not a step), reply with it exactly; otherwise replace it.
+
+No quotes, no trailing period, no preamble.`
+
+// goalInput is what the model reads about one session: the user's request
+// and the agent's latest reply. Nothing in between; tool calls describe the
+// agent's current step, and the goal is the user's task.
+type goalInput struct {
+	Earlier      string // the user request before Request, for follow-ups
+	Request      string // the user message that started the current exchange
+	Response     string // the agent's latest reply
+	HasAssistant bool   // the agent has answered at least once
+}
+
+// goalTranscript keeps what goalInput needs while a transcript is read
+// incrementally, so a request far behind large tool output is not lost.
+type goalTranscript struct {
+	offset       int64  // bytes consumed
+	prevRequest  string // the user request before lastRequest
+	lastRequest  string
+	response     string
+	hasAssistant bool
+}
+
+// feed consumes parsed transcript messages in order.
+func (t *goalTranscript) feed(messages []map[string]any) {
+	for _, m := range messages {
+		switch m["type"] {
+		case "user":
+			c, _ := m["content"].(string)
+			if c = userRequestText(c); c != "" {
+				t.prevRequest, t.lastRequest = t.lastRequest, truncateRunes(c, 1500)
+			}
+		case "assistant":
+			t.hasAssistant = true
+			if txt, _ := m["text"].(string); strings.TrimSpace(txt) != "" {
+				t.response = truncateRunes(strings.TrimSpace(txt), 1500)
+			}
+		}
+	}
+}
+
+// input is the model's input: the last two user requests and the agent's
+// last text reply.
+func (t *goalTranscript) input() goalInput {
+	return goalInput{Earlier: t.prevRequest, Request: t.lastRequest, Response: t.response, HasAssistant: t.hasAssistant}
+}
+
+// condenseForGoal builds the model's input from a whole list of messages.
+func condenseForGoal(messages []map[string]any) goalInput {
+	var t goalTranscript
+	t.feed(messages)
+	return t.input()
+}
+
+// buildGoalPrompt renders the model's user message.
+func buildGoalPrompt(in goalInput, current string) string {
+	if current == "" {
+		current = "(none)"
+	}
+	earlier := in.Earlier
+	if earlier == "" {
+		earlier = "(none)"
+	}
+	return fmt.Sprintf("CURRENT GOAL: %s\n\nEARLIER USER REQUEST:\n%s\n\nLATEST USER REQUEST:\n%s\n\nAGENT'S LATEST REPLY:\n%s", current, earlier, in.Request, in.Response)
+}
 
 // goalState is the generator's in-memory view of one session.
 type goalState struct {
@@ -73,6 +137,9 @@ type goalState struct {
 	inFlight    bool
 	force       bool   // operator asked for a refresh
 	trigger     string // why the in-flight generation was started
+	// transcript is read incrementally; only generate touches it, and only
+	// one generate runs per session (inFlight).
+	transcript goalTranscript
 }
 
 // goalDue reports whether a session needs a new goal, and the trigger (a
@@ -392,22 +459,32 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 		return
 	}
 
-	messages, err := jsonl.ReadTail(path, ls.AgentType, goalTailBytes)
+	g.mu.Lock()
+	tr := &goalState{}
+	if st := g.states[ls.SessionID]; st != nil {
+		tr = st
+	}
+	g.mu.Unlock()
+	transcript := &tr.transcript
+	if size < transcript.offset {
+		*transcript = goalTranscript{} // truncated or replaced: start over
+	}
+	messages, offset, err := jsonl.ReadFrom(path, ls.AgentType, transcript.offset)
 	if err != nil {
 		return
 	}
-	first := g.reader.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType)
-	tailFirst, tail, hasAssistant := condenseForGoal(messages, goalTailChars)
-	if first == "" {
-		first = tailFirst
+	transcript.offset = offset
+	transcript.feed(messages)
+	in := transcript.input()
+	if in.Request == "" {
+		in.Request = truncateRunes(userRequestText(g.reader.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType)), 1500)
 	}
-	first = truncateRunes(first, 1500)
-	if !hasAssistant {
+	if !in.HasAssistant {
 		size = 0 // nothing to describe yet; retry once the agent answers
 		return
 	}
 
-	prompt := fmt.Sprintf("FIRST INSTRUCTION:\n%s\n\nRECENT TRANSCRIPT:\n%s", first, tail)
+	prompt := buildGoalPrompt(in, current)
 	cctx, cancel := context.WithTimeout(ctx, goalCLITimeout)
 	defer cancel()
 	start := time.Now()
@@ -505,43 +582,21 @@ func GoalSource(detailJSON *string) string {
 	return d.Source
 }
 
-// condenseForGoal renders parsed transcript messages as the model's input:
-// the first user prompt, and the last maxChars of the conversation with tool
-// calls reduced to one line each. Tool output is left out; it is long and
-// rarely says what the agent is for.
-func condenseForGoal(messages []map[string]any, maxChars int) (first, tail string, hasAssistant bool) {
-	var parts []string
-	for _, m := range messages {
-		switch m["type"] {
-		case "user":
-			c, _ := m["content"].(string)
-			c = strings.TrimSpace(c)
-			if c == "" {
-				continue
-			}
-			if first == "" {
-				first = truncateRunes(c, 1500)
-			}
-			parts = append(parts, "User: "+truncateRunes(c, 1500))
-		case "assistant":
-			hasAssistant = true
-			if t, _ := m["text"].(string); strings.TrimSpace(t) != "" {
-				parts = append(parts, "Assistant: "+truncateRunes(strings.TrimSpace(t), 1500))
-			}
-			tools, _ := m["tool_uses"].([]map[string]any)
-			for _, tu := range tools {
-				name, _ := tu["name"].(string)
-				in, _ := tu["input_summary"].(string)
-				parts = append(parts, strings.TrimSpace("Tool: "+name+" "+truncateRunes(in, 200)))
-			}
+// userRequestText drops the image placeholders Claude Code adds to a user
+// message ("[Image: original 2102x872, ...]", "[Image #1]").
+func userRequestText(c string) string {
+	var keep []string
+	for _, line := range strings.Split(c, "\n") {
+		t := strings.TrimSpace(imageRefRE.ReplaceAllString(line, ""))
+		if t == "" || strings.HasPrefix(t, "[Image:") {
+			continue
 		}
+		keep = append(keep, t)
 	}
-	tail = strings.Join(parts, "\n")
-	if r := []rune(tail); len(r) > maxChars {
-		tail = "..." + string(r[len(r)-maxChars:])
-	}
-	return first, tail, hasAssistant
+	return strings.TrimSpace(strings.Join(keep, "\n"))
 }
+
+var imageRefRE = regexp.MustCompile(`\[Image #\d+\]`)
 
 // cleanGoal keeps the first non-empty line of the model's reply, strips
 // wrapping quotes, labels and a trailing period, and caps its length.
