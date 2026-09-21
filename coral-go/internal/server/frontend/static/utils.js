@@ -208,18 +208,12 @@ export const AGENT_NAME_PALETTE = _agentColorPalette;
 
 const _hexColorRe = /^#[0-9a-f]{6}$/i;
 
-/**
- * Colour for an agent's name in the sidebar: the user's override if set,
- * otherwise a stable palette pick keyed on the agent's name (so it survives
- * restarts, which change the session id).
- */
+/** The user's name-colour override for a session (#rrggbb), or null for the default. */
 export function agentNameColor(s) {
-    if (s && s.name_color && _hexColorRe.test(s.name_color)) return s.name_color;
-    const key = (s && (s.display_name || s.board_job_title || s.session_id || s.name)) || '';
-    let h = 0;
-    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-    return _agentColorPalette[h % _agentColorPalette.length];
+    return s && s.name_color && _hexColorRe.test(s.name_color) ? s.name_color : null;
 }
+
+
 
 export function getAgentColor(name) {
     if (!name) return _agentColorPalette[0];

@@ -1759,13 +1759,19 @@
     color: var(--accent);
 }
 
+/* Agents default to the theme's secondary accent, terminals to light grey;
+   a per-agent override (set from Rename) wins over both. */
 .session-label-name {
-    color: var(--agent-name-color, inherit);
+    color: var(--agent-name-color, var(--accent-secondary));
 }
 
-/* Palette hues are tuned for dark backgrounds; deepen them on light themes */
-[data-theme="light"] .session-label-name {
-    color: color-mix(in srgb, var(--agent-name-color, currentColor) 62%, black);
+.session-label-name.is-terminal {
+    color: var(--agent-name-color, var(--terminal-name-color));
+}
+
+/* Palette hues are tuned for dark backgrounds; deepen overrides on light themes */
+[data-theme="light"] .session-label-name[style] {
+    color: color-mix(in srgb, var(--agent-name-color) 62%, black);
 }
 
 /* Sleeping and finished agents stay muted so their state still reads at a glance */

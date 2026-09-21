@@ -105,6 +105,10 @@
 
     /* Accent variants */
     --accent-light: #79c0ff;
+    /* Secondary accent: a lighter tint of the theme accent unless a theme sets it.
+       Used for agent names in the sidebar. */
+    --accent-secondary: color-mix(in srgb, var(--accent) 55%, white);
+    --terminal-name-color: #c0c7cf;
     --text-on-accent: #fff;
 
     /* Modal backdrop */
@@ -234,6 +238,8 @@
 
     /* Accent variants */
     --accent-light: #0550ae;
+    --accent-secondary: color-mix(in srgb, var(--accent) 75%, black);
+    --terminal-name-color: #6e7781;
     --text-on-accent: #fff;
 
     /* Modal backdrop */

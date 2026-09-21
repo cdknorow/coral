@@ -1555,7 +1555,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
         <div class="session-info">
             <div class="session-name-row">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
-                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name" style="--agent-name-color:${agentNameColor(s)}">${escapeHtml(displayLabel)}</span>${typeTag}${dirChip}</span>
+                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${typeTag}${dirChip}</span>
                 <span class="session-name-spacer"></span>
                 ${waitingBadge}${ctxPill}
                 ${goalBtn}

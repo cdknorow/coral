@@ -1,7 +1,7 @@
 /* Session selection and management */
 
 import { state, sessionKey } from './state.js';
-import { showToast, escapeHtml, escapeAttr, dbg, showView, agentNameColor } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
 import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
@@ -312,8 +312,8 @@ export function renameAgent(name, agentType, sessionId) {
     const current = state.liveSessions.find(s => s.session_id === sessionId);
     const currentName = (current && current.display_name) || name;
     const currentColor = (current && current.name_color) || "";
-    // "Auto" previews the palette colour the agent would get with no override.
-    const autoColor = agentNameColor({ ...(current || { name }), name_color: null });
+    // "Auto" previews the default colour for this type (theme tokens).
+    const autoColor = (current && current.agent_type === 'terminal') ? 'var(--terminal-name-color)' : 'var(--accent-secondary)';
     window.showPromptModal('Rename Agent', 'Display name', currentName, async (newName, newColor) => {
         const nameChanged = newName !== currentName;
         const colorChanged = newColor !== currentColor;
