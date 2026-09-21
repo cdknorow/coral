@@ -930,7 +930,7 @@
         color: var(--warning);
     }
 
-    /* "Your turn" rows carry no chip; with no unread pill either the meta row is
+    /* "Ready for input" rows carry no chip; with no unread pill either the meta row is
        empty and must not leave its 8px top margin behind. */
     #mobile-session-list .session-mobile-meta:empty { display: none; }
 

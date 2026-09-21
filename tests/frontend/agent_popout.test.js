@@ -382,7 +382,7 @@ async function run() {
     const realIdleResolve = (await httpJson('GET', `/api/sessions/${sid}/resolve`)).data || {};
     const idleRow = await listRow();
     const idleStatus = (await httpJson('GET', `/api/sessions/${sid}/status`)).data || {};
-    check('33 real server: turn ended + idle reminder is Your turn in the resolver, never Needs input', realIdleResolve.waiting_for_input === false && realIdleResolve.awaiting_user === true && realIdleResolve.waiting_reason === null && realIdleResolve.waiting_summary === null && realIdleResolve.done === false, JSON.stringify(stateOf(realIdleResolve)));
+    check('33 real server: turn ended + idle reminder is Ready for input in the resolver, never Needs input', realIdleResolve.waiting_for_input === false && realIdleResolve.awaiting_user === true && realIdleResolve.waiting_reason === null && realIdleResolve.waiting_summary === null && realIdleResolve.done === false, JSON.stringify(stateOf(realIdleResolve)));
     check('33 real server: resolver state fields equal the list row', !!idleRow && JSON.stringify(stateOf(realIdleResolve)) === JSON.stringify(stateOf(idleRow)), JSON.stringify({ resolve: stateOf(realIdleResolve), list: stateOf(idleRow) }));
     check('33 real server: status endpoint is not waiting_for_input for an idle agent', idleStatus.waiting_for_input === false && idleStatus.awaiting_user === true && idleStatus.state !== 'waiting_for_input', JSON.stringify({ state: idleStatus.state, ...stateOf(idleStatus) }));
 
@@ -458,7 +458,7 @@ async function run() {
     {
         const OFF = { working: false, waiting_for_input: false, awaiting_user: false, not_started: false, stuck: false, done: false, sleeping: false };
         const seen = [];
-        for (const [patch, pill, text, glyph] of [[{ awaiting_user: true }, 'your-turn', 'Your turn', '◯'], [{ awaiting_user: true, not_started: true }, 'check', 'Check terminal', '⏸'], [{ awaiting_user: true, waiting_for_input: true }, 'waiting', 'Needs input', '⏸'], [{ waiting_for_input: true, stuck: true }, 'stuck', 'Stuck', '!'], [{}, 'idle', 'Idle', '○'], [{ working: true }, 'working', 'Working', '●']]) {
+        for (const [patch, pill, text, glyph] of [[{ awaiting_user: true }, 'your-turn', 'Ready for input', '◯'], [{ awaiting_user: true, not_started: true }, 'check', 'Check terminal', '⏸'], [{ awaiting_user: true, waiting_for_input: true }, 'waiting', 'Needs input', '⏸'], [{ waiting_for_input: true, stuck: true }, 'stuck', 'Stuck', '!'], [{}, 'idle', 'Idle', '○'], [{ working: true }, 'working', 'Working', '●']]) {
             await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', ...OFF, ...patch })}] }); true`); await sleep(250);
             const p = await ta.ev(SHELL_PROBE);
             seen.push({ want: pill, pill: p.pill, text: p.pillText.trim(), okText: p.pillText.trim() === text, okTitle: p.title === `${glyph} Renamed Bot · Coral` });
@@ -537,17 +537,17 @@ async function run() {
     // 33: popout merge. popout.js applies Object.assign({}, liveRow, resolverRecord),
     // so resolver fields win. Feed it the REAL resolver reply captured from the
     // server above (idle agent) over an idle live row: the pill must be the
-    // calm "Your turn", with no Needs-input banner, before and after a WS tick.
+    // calm "Ready for input", with no Needs-input banner, before and after a WS tick.
     const I = randomUuid();
     const liveI = { name: 'coral-go', display_name: 'Idle Dev', agent_type: 'claude', session_id: I, tmux_session: `claude-${I}`, summary: 'finished', context_pct: 9, working_directory: '/repo/coral-go', board_project: null, working: false, waiting_for_input: false, awaiting_user: true, waiting_reason: null, waiting_summary: null, not_started: false, stuck: false, done: false, sleeping: false };
     const resolveI = { ...realIdleResolve, session_id: I, agent_type: 'claude', name: 'coral-go', tmux_session: `claude-${I}`, display_name: 'Idle Dev' };
     const ti = await openTab(`${BASE}/agent/${I}`, { stub: stubSource({ live: [liveI], resolve: { [I]: resolveI }, history: {} }) });
     await ti.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await sleep(500);
     let si = await ti.ev(SHELL_PROBE);
-    check('33 popout: real idle resolver reply merged over the live row shows Your turn, not Needs input', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting, resolver: { waiting_for_input: resolveI.waiting_for_input, awaiting_user: resolveI.awaiting_user } }));
+    check('33 popout: real idle resolver reply merged over the live row shows Ready for input, not Needs input', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting, resolver: { waiting_for_input: resolveI.waiting_for_input, awaiting_user: resolveI.awaiting_user } }));
     await ti.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify(liveI)}] }); true`); await sleep(300);
     si = await ti.ev(SHELL_PROBE);
-    check('33 popout: still Your turn after a WS tick', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting }));
+    check('33 popout: still Ready for input after a WS tick', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting }));
     check('33 popout idle fixture: no exceptions', ti.exceptions.length === 0, JSON.stringify(ti.exceptions.slice(0, 2)));
     await ti.close();
 

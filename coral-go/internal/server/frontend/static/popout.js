@@ -46,7 +46,7 @@ const PILL_TEXT = {
     waiting: 'Needs input',
     check: 'Check terminal',
     stuck: 'Stuck',
-    'your-turn': 'Your turn',
+    'your-turn': 'Ready for input',
     idle: 'Idle',
     sleeping: 'Sleeping',
     ended: 'Ended',

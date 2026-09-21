@@ -117,7 +117,7 @@ hover.
 | needs input (`waiting_for_input`) | filled amber dot; pill "Needs input" (quiet amber surface, sentence case); amber row tint; name full-strength |
 | check terminal (`not_started`) | filled amber dot; pill "Check terminal"; amber row tint |
 | stuck (`stuck`) | filled red dot; pill "Stuck" (error surface); row tint switches to the error tint (`.is-stuck`); outranks needs input |
-| your turn (`awaiting_user`; servers without the field: the stop-derived `done`) | hollow NEUTRAL ring (`--text-primary`, no hue); **no pill and no mobile chip** (removed by operator request, task #175): the ring, the tooltip State row and the row `aria-label` carry "Your turn"; no row tint; never green, never a check mark |
+| ready for input (`awaiting_user`; servers without the field: the stop-derived `done`) | no dot (hollow ring removed by operator request); **no pill and no mobile chip** (removed by operator request, task #175): the tooltip State row and the row `aria-label` carry "Ready for input"; no row tint; never green, never a check mark |
 | sleeping | muted moon glyph in the dot slot (no amber); identity `--text-secondary`; goal line kept (40px, D-E); kebab shows Wake variant (existing) |
 | ended (killed/history rows only, `.session-done`) | muted check glyph, never green; identity line-through `--text-muted`; goal hidden (36px); click opens history (existing) |
 | working | filled GREEN dot (`--success`); no pill; nothing animates |
@@ -127,7 +127,7 @@ hover.
 
 One resolver (`render.js` `deriveSessionState` / `SESSION_STATES`) picks a single
 winner with the priority **Ended > Sleeping > Stuck > Needs input > Check
-terminal > Your turn > Working > Idle**, and every surface uses its words: row
+terminal > Ready for input > Working > Idle**, and every surface uses its words: row
 pill, row `aria-label`, tooltip State row, phone status chip, workspace header
 dot and the popout pill. Selection, context and unread are overlays, never
 winners:
@@ -166,14 +166,14 @@ and never for an agent that finished its turn and is idle.
 - Raised only by a notification whose text contains `needs your permission`,
   `needs your approval`, or `needs your input` (the MCP input dialog).
 - `waiting for your input` / `waiting for input` is Claude Code's idle reminder,
-  sent about a minute after every turn ends. It maps to "Your turn". It never
+  sent about a minute after every turn ends. It maps to "Ready for input". It never
   downgrades a request that is still pending.
 - Any other notification text, such as `login successful`, is informational and
   changes nothing.
 - Cleared by `prompt_submit`, `tool_use`, `session_reset`, and `stop`. A request
   blocks the turn, so a `stop` can only be recorded after it was answered. This
   covers a denied permission and an approved tool that failed, neither of which
-  produces a `tool_use` event. After `stop` the state is "Your turn".
+  produces a `tool_use` event. After `stop` the state is "Ready for input".
 
 **Known limit.** Claude Code reports a tool only after it succeeds
 (`PostToolUse`). An approved tool that runs for a long time keeps showing

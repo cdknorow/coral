@@ -155,7 +155,7 @@ function formatStaleness(seconds) {
 /* ── Agent state: one resolver, one vocabulary ─────────────────────────
  * Priority (AGENT_LIST_COMPACT state table):
  *   Ended (killed/history) > Sleeping > Stuck > Needs input > Check terminal
- *   > Your turn (turn ended, awaiting instruction) > Working > Idle
+ *   > Ready for input (turn ended, awaiting instruction) > Working > Idle
  * Context, unread and selection are overlays, never winners. Every surface
  * (row dot/pill/aria, tooltip, mobile chip, workspace header, popout pill,
  * nav and group counts) reads this table so the words never diverge. */
@@ -165,7 +165,7 @@ export const SESSION_STATES = {
     stuck:          { label: 'Stuck',          dot: 'stuck',     pill: 'Stuck',          pillClass: 'stuck',     chip: 'error',       attention: true },
     needs_input:    { label: 'Needs input',    dot: 'waiting',   pill: 'Needs input',    pillClass: '',          chip: 'needs-input', attention: true },
     check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
-    your_turn:      { label: 'Your turn',      dot: 'your-turn', pill: null,             pillClass: '',          chip: '',            attention: false },
+    your_turn:      { label: 'Ready for input', dot: 'your-turn', pill: null,            pillClass: '',          chip: '',            attention: false },
     working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
     idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
 };
@@ -1374,7 +1374,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     // Branch is shown at folder level, not per agent
     const branchTag = "";
     // One pill at most, from the shared state table. Only the attention states
-    // carry a pill. "Your turn" has none: the tooltip and the aria-label carry
+    // carry a pill. "Ready for input" has none: the tooltip and the aria-label carry
     // that state (no dot) (operator request, task #175).
     const stateInfo = sessionStateInfo(s);
     const waitingBadge = stateInfo.pill
@@ -1408,7 +1408,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
             </span>`;
     }
     const isDone = !!state.killedSessions?.[s.session_id];
-    // A state without a chip class ("Your turn") renders no mobile chip. The meta
+    // A state without a chip class ("Ready for input") renders no mobile chip. The meta
     // row is emitted without whitespace so :empty can collapse it on the phone.
     const mobileStatus = getMobileStatusChip(s);
     const mobileStatusChip = mobileStatus.className

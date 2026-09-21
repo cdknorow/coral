@@ -93,7 +93,7 @@
 .session-dot.sleeping { background: var(--warning); opacity: 0.5; }
 .session-dot.working {
     /* Working is GREEN. Green no longer means "done": a finished turn is
-       "Your turn" (no dot) and only killed rows are "Ended". */
+       "Ready for input" (no dot) and only killed rows are "Ended". */
     background: var(--success, #3fb950);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
@@ -106,7 +106,7 @@
     background: var(--text-muted);
 }
 
-/* Your turn: no dot. The empty slot keeps names aligned; the tooltip and
+/* Ready for input: no dot. The empty slot keeps names aligned; the tooltip and
    aria-label carry the state. */
 .session-dot.your-turn {
     background: transparent;

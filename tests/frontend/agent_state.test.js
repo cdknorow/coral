@@ -1,9 +1,9 @@
 // Acceptance harness for the unified Agent state indicators (tasks #165-#167).
 //
 // One vocabulary everywhere: Working, Idle, Needs input, Check terminal, Stuck,
-// Your turn, Sleeping, Ended. Priority:
+// Ready for input, Sleeping, Ended. Priority:
 //   Ended (killed rows) > Sleeping > Stuck > Needs input > Check terminal >
-//   Your turn > Working > Idle.   Overlays: context >= 80%, unread, selection.
+//   Ready for input > Working > Idle.   Overlays: context >= 80%, unread, selection.
 //
 // Fixture-driven through the pre-navigation fetch + /ws/coral stub (same
 // isolation pattern as agent_bar_tweaks / agent_list_compact). State flips go
@@ -68,10 +68,10 @@ const EXPECT = {
     [ID.needs]: { state: 'needs_input', label: 'Needs input', dot: 'waiting', pill: 'Needs input', attention: true },
     [ID.check]: { state: 'check_terminal', label: 'Check terminal', dot: 'waiting', pill: 'Check terminal', attention: true },
     [ID.stuck]: { state: 'stuck', label: 'Stuck', dot: 'stuck', pill: 'Stuck', attention: true },
-    [ID.turnSolo]: { state: 'your_turn', label: 'Your turn', dot: 'your-turn', pill: null, attention: false },
+    [ID.turnSolo]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
     [ID.sleeping]: { state: 'sleeping', label: 'Sleeping', dot: 'sleeping', pill: null, attention: false },
-    [ID.turnMember]: { state: 'your_turn', label: 'Your turn', dot: 'your-turn', pill: null, attention: false },
-    [ID.turnOrch]: { state: 'your_turn', label: 'Your turn', dot: 'your-turn', pill: null, attention: false },
+    [ID.turnMember]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
+    [ID.turnOrch]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
 };
 
 async function run() {
@@ -112,9 +112,9 @@ async function run() {
         }
         const tipStates = await ev(`Object.fromEntries(window._coralGetLiveSessions().map(s => [s.session_id, String(window.buildSessionTooltip(s)).replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ')]))`);
         check('tooltip State row uses the same words', Object.entries(EXPECT).every(([sid, exp]) => new RegExp('State\\s+' + exp.label).test(tipStates[sid] || '')), JSON.stringify(Object.fromEntries(Object.entries(EXPECT).map(([sid, e]) => [e.state, (tipStates[sid] || '').slice(0, 40)]))));
-        check('Your turn rows render NO pill while attention rows still do', [ID.turnSolo, ID.turnMember, ID.turnOrch].every(id => rows[id].pills.length === 0) && /session-attention-pill/.test(rows[ID.needs].pills[0].cls) && /session-attention-pill/.test(rows[ID.check].pills[0].cls) && /stuck/.test(rows[ID.stuck].pills[0].cls) && rows[ID.stuck].isStuck, JSON.stringify({ turn: rows[ID.turnSolo].pills, needs: rows[ID.needs].pills[0].cls, stuck: rows[ID.stuck].pills[0].cls }));
+        check('Ready for input rows render NO pill while attention rows still do', [ID.turnSolo, ID.turnMember, ID.turnOrch].every(id => rows[id].pills.length === 0) && /session-attention-pill/.test(rows[ID.needs].pills[0].cls) && /session-attention-pill/.test(rows[ID.check].pills[0].cls) && /stuck/.test(rows[ID.stuck].pills[0].cls) && rows[ID.stuck].isStuck, JSON.stringify({ turn: rows[ID.turnSolo].pills, needs: rows[ID.needs].pills[0].cls, stuck: rows[ID.stuck].pills[0].cls }));
         // K/J: green only means Working; your turn is a hollow neutral ring; idle hidden; glyph states
-        check('K Your turn is never green and is hollow (transparent fill); working is the only filled green/blue dot', /rgba\(0, 0, 0, 0\)|transparent/.test(rows[ID.turnSolo].dotBg) && rows[ID.working].dotBg !== rows[ID.turnSolo].dotBg && !/rgba\(0, 0, 0, 0\)/.test(rows[ID.working].dotBg), JSON.stringify({ turn: rows[ID.turnSolo].dotBg, working: rows[ID.working].dotBg }));
+        check('K Ready for input is never green and is hollow (transparent fill); working is the only filled green/blue dot', /rgba\(0, 0, 0, 0\)|transparent/.test(rows[ID.turnSolo].dotBg) && rows[ID.working].dotBg !== rows[ID.turnSolo].dotBg && !/rgba\(0, 0, 0, 0\)/.test(rows[ID.working].dotBg), JSON.stringify({ turn: rows[ID.turnSolo].dotBg, working: rows[ID.working].dotBg }));
         check('J idle dot hidden (slot kept), sleeping shows a glyph, no dot animation in rows', rows[ID.idle].dotHidden === true && rows[ID.sleeping].dotGlyph && rows[ID.sleeping].dotGlyph !== 'none' && Object.values(rows).every(r => r.dotAnim === 'none'), JSON.stringify({ idleHidden: rows[ID.idle].dotHidden, sleepingGlyph: rows[ID.sleeping].dotGlyph, anims: [...new Set(Object.values(rows).map(r => r.dotAnim))] }));
         const CONTRAST = `(() => { const parse = c => { let m = /rgba?\\(([^)]+)\\)/.exec(c); if (m) { const p = m[1].split(/[ ,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p[3] === undefined ? 1 : p[3] }; } m = /color\\(srgb ([^)]+)\\)/.exec(c); if (m) { const p = m[1].split(/[ \\/]+/).filter(Boolean).map(Number); return { r: p[0] * 255, g: p[1] * 255, b: p[2] * 255, a: p[3] === undefined ? 1 : p[3] }; } return { r: 0, g: 0, b: 0, a: 0 }; };
             const over = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
@@ -165,7 +165,7 @@ async function run() {
             await diff(Object.assign({}, P, patch)); await sleep(150); const r = await stateOf();
             seq.push({ want, got: r.state, dx: Math.abs(r.nameX - x0), h: r.h, focus: await ev(`(document.activeElement.dataset || {}).sessionId === '${ID.idle}'`), order: (await ev(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(l => l.dataset.sessionId).join(',')`)) === ORDER });
         }
-        check('F Idle -> Working -> Your turn -> Needs input -> Working: state, name x ±0.5px, 40px, focus kept, order kept', seq.every(s => s.want === s.got && s.dx <= 0.5 && Math.abs(s.h - 40) <= 1 && s.focus && s.order), JSON.stringify(seq));
+        check('F Idle -> Working -> Ready for input -> Needs input -> Working: state, name x ±0.5px, 40px, focus kept, order kept', seq.every(s => s.want === s.got && s.dx <= 0.5 && Math.abs(s.h - 40) <= 1 && s.focus && s.order), JSON.stringify(seq));
 
         // ── I: notifications ──
         // Fresh page: the first full update already contains Needs input rows.
@@ -210,7 +210,7 @@ async function run() {
         const m = await ev(ROWS('mobile-session-list'));
         const words = { [ID.working]: 'Working', [ID.idle]: 'Idle', [ID.needs]: 'Needs input', [ID.check]: 'Check terminal', [ID.stuck]: 'Stuck', [ID.sleeping]: 'Sleeping' };
         check('mobile status chip uses the same sentence-case words', Object.entries(words).every(([sid, w]) => m[sid] && m[sid].mobileChip === w), JSON.stringify(Object.fromEntries(Object.entries(words).map(([sid, w]) => [w, m[sid] && m[sid].mobileChip]))));
-        check('mobile Your turn rows render no status chip; the dot and aria-label still say Your turn', [ID.turnSolo, ID.turnMember, ID.turnOrch].every(id => m[id] && m[id].mobileChip === null && m[id].pills.length === 0 && /your-turn/.test(m[id].dotCls || '') && m[id].dotHidden === false && /, Your turn(,|$)/.test(m[id].aria || '')), JSON.stringify([ID.turnSolo, ID.turnMember, ID.turnOrch].map(id => m[id] && { chip: m[id].mobileChip, dot: m[id].dotCls, dotHidden: m[id].dotHidden, aria: m[id].aria })));
+        check('mobile Ready for input rows render no status chip; the dot and aria-label still say Ready for input', [ID.turnSolo, ID.turnMember, ID.turnOrch].every(id => m[id] && m[id].mobileChip === null && m[id].pills.length === 0 && /your-turn/.test(m[id].dotCls || '') && m[id].dotHidden === false && /, Ready for input(,|$)/.test(m[id].aria || '')), JSON.stringify([ID.turnSolo, ID.turnMember, ID.turnOrch].map(id => m[id] && { chip: m[id].mobileChip, dot: m[id].dotCls, dotHidden: m[id].dotHidden, aria: m[id].aria })));
         check('mobile clone: same data-state per row, idle dot hidden, unread chip hidden in favour of the meta pill', Object.entries(EXPECT).every(([sid, e]) => m[sid] && m[sid].state === e.state) && m[ID.idle].dotHidden === true && (!m[ID.turnMember].unread || !m[ID.turnMember].unread.shown), JSON.stringify({ idle: m[ID.idle] && m[ID.idle].dotHidden, unread: m[ID.turnMember] && m[ID.turnMember].unread }));
     } finally {
         await client.close();
