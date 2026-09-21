@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -63,6 +64,12 @@ type Transcript struct {
 	// StartedAt and LastActivityAt are the first and last record timestamps.
 	StartedAt      string
 	LastActivityAt string
+	// Finished reports whether the subagent has handed back its final answer:
+	// its last assistant message ended the turn and nothing follows it. While a
+	// subagent works, its transcript ends in a tool call or a tool result
+	// instead. A finished subagent that is later resumed appends more records
+	// and reads as unfinished again until it next ends its turn.
+	Finished bool
 }
 
 // Totals is summed usage across calls.
@@ -119,9 +126,10 @@ type record struct {
 	SessionID string `json:"sessionId"`
 	UUID      string `json:"uuid"`
 	Message   struct {
-		ID    string `json:"id"`
-		Model string `json:"model"`
-		Usage *struct {
+		ID         string `json:"id"`
+		Model      string `json:"model"`
+		StopReason string `json:"stop_reason"`
+		Usage      *struct {
 			InputTokens              int `json:"input_tokens"`
 			OutputTokens             int `json:"output_tokens"`
 			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
@@ -199,6 +207,16 @@ func (t *Transcript) addLine(line []byte, lineNo int, index map[string]int) {
 		t.LastActivityAt = rec.Timestamp
 	}
 
+	// Every record updates this, so only the state after the LAST record
+	// survives. Streaming writes a message's earlier content blocks with a null
+	// stop_reason, which correctly reads as "not finished yet".
+	switch rec.Type {
+	case "assistant":
+		t.Finished = isTerminalStop(rec.Message.StopReason)
+	case "user":
+		t.Finished = false // a prompt or tool result: the subagent has more to do
+	}
+
 	u := rec.Message.Usage
 	if rec.Type != "assistant" || u == nil {
 		return
@@ -233,6 +251,17 @@ func (t *Transcript) addLine(line []byte, lineNo int, index map[string]int) {
 	if rec.Timestamp != "" {
 		c.Timestamp = rec.Timestamp
 	}
+}
+
+// isTerminalStop reports whether a stop_reason ends the subagent's turn, as
+// opposed to "tool_use" (it will continue once the tool returns) or an empty
+// value (the message is still streaming).
+func isTerminalStop(reason string) bool {
+	switch reason {
+	case "end_turn", "stop_sequence", "max_tokens", "refusal":
+		return true
+	}
+	return false
 }
 
 // ReadMeta reads a subagent's launch metadata. A missing file is not an
@@ -305,4 +334,138 @@ func IDFromPath(path string) string {
 		return ""
 	}
 	return strings.TrimSuffix(strings.TrimPrefix(name, transcriptPrefix), transcriptSuffix)
+}
+
+// maxConversationText caps the prompt and result returned by ReadConversation.
+// Both are shown in a UI overlay; a subagent asked to return a whole file
+// should not turn that into a multi-megabyte response.
+const maxConversationText = 64 * 1024
+
+// Conversation is the two ends of a subagent's run: what it was asked, and
+// what it answered.
+type Conversation struct {
+	// Prompt is the task the main agent handed to the subagent.
+	Prompt string `json:"prompt"`
+	// Result is the text of the subagent's final answer. It is empty while the
+	// subagent is still working.
+	Result string `json:"result"`
+	// Truncated reports whether Prompt or Result was cut to fit the size cap.
+	Truncated bool `json:"truncated"`
+}
+
+// ReadConversation extracts the launch prompt and final answer from a
+// subagent transcript.
+//
+// The prompt is the first user record. The result is the text of the last
+// assistant message, and only if that message ended the subagent's turn:
+// text written before a tool call is commentary, not the answer. A message's
+// text can be spread over several records (one per content block), so blocks
+// are gathered per message id.
+func ReadConversation(path string) (*Conversation, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	type convRecord struct {
+		Type    string `json:"type"`
+		Message struct {
+			ID         string          `json:"id"`
+			StopReason string          `json:"stop_reason"`
+			Content    json.RawMessage `json:"content"`
+		} `json:"message"`
+	}
+
+	conv := &Conversation{}
+	havePrompt := false
+	var lastID string     // message id of the most recent assistant record
+	var lastText []string // text blocks gathered for lastID
+	lastTerminal := false // whether lastID ended the turn
+	sawUserAfter := false // a user record followed lastID (resumed / tool result)
+
+	br := bufio.NewReaderSize(f, 256*1024)
+	for {
+		line, err := br.ReadBytes('\n')
+		if len(bytes.TrimSpace(line)) > 0 {
+			var rec convRecord
+			if json.Unmarshal(line, &rec) == nil {
+				switch rec.Type {
+				case "user":
+					if !havePrompt {
+						if text := contentText(rec.Message.Content); text != "" {
+							conv.Prompt = text
+							havePrompt = true
+						}
+					}
+					sawUserAfter = true
+				case "assistant":
+					if rec.Message.ID == "" || rec.Message.ID != lastID {
+						lastID = rec.Message.ID
+						lastText = nil
+						lastTerminal = false
+					}
+					sawUserAfter = false
+					if text := contentText(rec.Message.Content); text != "" {
+						lastText = append(lastText, text)
+					}
+					if isTerminalStop(rec.Message.StopReason) {
+						lastTerminal = true
+					}
+				}
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
+	}
+
+	if lastTerminal && !sawUserAfter {
+		conv.Result = strings.Join(lastText, "\n\n")
+	}
+	conv.Prompt, conv.Truncated = capText(conv.Prompt, conv.Truncated)
+	conv.Result, conv.Truncated = capText(conv.Result, conv.Truncated)
+	return conv, nil
+}
+
+// contentText returns the human-readable text of a message's content, which
+// is either a plain string or a list of blocks. Only "text" blocks count:
+// thinking, tool calls and tool results are not part of what was said.
+func contentText(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return strings.TrimSpace(s)
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &blocks) != nil {
+		return ""
+	}
+	var parts []string
+	for _, b := range blocks {
+		if b.Type == "text" && strings.TrimSpace(b.Text) != "" {
+			parts = append(parts, strings.TrimSpace(b.Text))
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// capText cuts s to maxConversationText bytes on a rune boundary.
+func capText(s string, alreadyTruncated bool) (string, bool) {
+	if len(s) <= maxConversationText {
+		return s, alreadyTruncated
+	}
+	cut := maxConversationText
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut], true
 }

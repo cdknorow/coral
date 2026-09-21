@@ -43,15 +43,16 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
-	db       *store.DB
-	ss       *store.SessionStore
-	ts       *store.TaskStore
-	gs       *store.GitStore
-	bs       *board.Store
-	cfg      *config.Config
-	terminal ptymanager.SessionTerminal
-	jsonl    *jsonl.SessionReader
-	backend  ptymanager.TerminalBackend // nil = use tmux directly
+	db        *store.DB
+	ss        *store.SessionStore
+	ts        *store.TaskStore
+	subagents *store.SubagentStore
+	gs        *store.GitStore
+	bs        *board.Store
+	cfg       *config.Config
+	terminal  ptymanager.SessionTerminal
+	jsonl     *jsonl.SessionReader
+	backend   ptymanager.TerminalBackend // nil = use tmux directly
 
 	boardHandler  *BoardHandler          // for sleep/wake board pausing
 	licenseMgr    *license.Manager       // for runtime trial limit checks
@@ -165,6 +166,7 @@ func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.Ter
 		db:        db,
 		ss:        store.NewSessionStore(db),
 		ts:        store.NewTaskStore(db),
+		subagents: store.NewSubagentStore(db),
 		gs:        store.NewGitStore(db),
 		bs:        bs,
 		cfg:       cfg,
@@ -3196,6 +3198,8 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		ToolName   string `json:"tool_name"`
 		SessionID  string `json:"session_id"`
 		DetailJSON any    `json:"detail_json"`
+		DurationMs *int64 `json:"duration_ms"`
+		ToolUseID  string `json:"tool_use_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -3226,6 +3230,12 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ToolName != "" {
 		event.ToolName = &body.ToolName
+	}
+	if body.DurationMs != nil && *body.DurationMs >= 0 {
+		event.DurationMs = body.DurationMs
+	}
+	if body.ToolUseID != "" {
+		event.RefID = &body.ToolUseID
 	}
 	if body.DetailJSON != nil {
 		djBytes, err := json.Marshal(body.DetailJSON)

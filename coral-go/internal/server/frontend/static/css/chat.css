@@ -259,8 +259,18 @@
 }
 
 .live-history-panel .chat-bubble {
-    font-size: 12px;
-    padding: 8px 10px;
+    font-size: 13px;
+    padding: 8px 12px;
+    margin-bottom: 10px;
+}
+
+.live-history-panel .chat-bubble.assistant {
+    max-width: 100%;
+}
+
+.live-history-panel .chat-bubble.human {
+    max-width: 88%;
+    margin-top: 14px;
 }
 
 .live-history-panel .chat-bubble .role-label {
@@ -268,7 +278,151 @@
 }
 
 .live-history-panel .chat-bubble .message-text {
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+/* ── Work Groups (steps between a user message and the final reply) ── */
+
+.work-group {
+    margin: 0 0 10px;
+}
+
+.work-group-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
     font-size: 12px;
+    color: var(--text-muted);
+    min-width: 0;
+}
+
+.work-group-summary::-webkit-details-marker { display: none; }
+
+.work-group-summary::before {
+    content: "\25B8";
+    font-size: 13px;
+    line-height: 1;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    transition: transform 0.1s;
+}
+
+.work-group[open] > .work-group-summary::before { transform: rotate(90deg); }
+
+.work-group-summary:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.work-group-count {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.work-group-latest {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.work-group-body {
+    margin: 6px 0 0 6px;
+    padding-left: 8px;
+    border-left: 2px solid var(--border);
+}
+
+.work-group-body > .chat-bubble {
+    margin: 4px 0 6px;
+    opacity: 0.85;
+}
+
+/* ── Tool Calls (collapsed one-line rows) ──────────────────── */
+
+.tool-call {
+    margin: 0 0 3px;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.tool-call + .chat-bubble {
+    margin-top: 10px;
+}
+
+.tool-call-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    color: var(--text-muted);
+    min-width: 0;
+}
+
+.tool-call-summary::-webkit-details-marker { display: none; }
+
+.tool-call-summary::before {
+    content: "\25B8";
+    font-size: 13px;
+    line-height: 1;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    transition: transform 0.1s;
+}
+
+.tool-call[open] > .tool-call-summary::before { transform: rotate(90deg); }
+
+.tool-call-summary:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+}
+
+.tool-call-icon { flex-shrink: 0; font-size: 11px; }
+
+.tool-call-name {
+    flex-shrink: 0;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.tool-call-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tool-call-error .tool-call-name { color: var(--error); }
+
+.tool-call-body {
+    margin: 2px 0 8px 14px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+}
+
+.tool-call-body > :first-child,
+.tool-call-body > .tool-card-output:first-child {
+    margin-top: 0;
+}
+
+.tool-call-body .tool-card-output:first-child {
+    border-top: none;
+    padding-top: 0;
 }
 
 /* ── Tool Cards ────────────────────────────────────────────── */
@@ -353,24 +507,7 @@
     overflow-x: auto;
 }
 
-/* ── Tool Card Diff ────────────────────────────────────────── */
-
-.tool-card-diff {
-    margin-top: 4px;
-    font-size: 11px;
-}
-
-.tool-card-diff > summary {
-    cursor: pointer;
-    color: var(--text-muted);
-    font-size: 11px;
-    user-select: none;
-    padding: 2px 0;
-}
-
-.tool-card-diff > summary:hover {
-    color: var(--text-secondary);
-}
+/* ── Diffs ─────────────────────────────────────────────────── */
 
 .diff-content {
     margin-top: 4px;
@@ -437,42 +574,9 @@
     overflow-x: auto;
 }
 
-.tool-output-toggle {
-    display: block;
-    background: none;
-    border: none;
-    color: var(--accent);
-    font-size: 11px;
-    cursor: pointer;
-    padding: 2px 8px 4px;
-    opacity: 0.8;
-}
-
-.tool-output-toggle:hover {
-    opacity: 1;
-    text-decoration: underline;
-}
-
 .tool-output-inline.tool-result-error {
     color: var(--error);
     opacity: 0.85;
-}
-
-/* Fallback standalone result block */
-.tool-result-block {
-    max-width: 85%;
-    margin-bottom: 4px;
-    margin-top: -12px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px;
-}
-
-.tool-result-standalone {
-    font-size: 11px;
-    color: var(--text-muted);
-    margin-bottom: 4px;
 }
 
 /* ── Load More Button ─────────────────────────────────────── */

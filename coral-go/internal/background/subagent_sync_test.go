@@ -124,6 +124,8 @@ func TestSyncSubagentSpend_ParsesPricesAndStoresFixture(t *testing.T) {
 	sa := env.get(subFixtureID)
 	require.NotNil(t, sa)
 	assert.Equal(t, subMainSID, sa.SessionID, "tied back to the main agent")
+	require.NotNil(t, sa.TranscriptPath)
+	assert.Equal(t, env.transcriptPath(subFixtureID), *sa.TranscriptPath, "recorded so the detail view can read the conversation")
 	assert.Equal(t, "Explore", *sa.SubagentType)
 	assert.Equal(t, "Map Coral task-board UI code", *sa.Description)
 	assert.Equal(t, "toolu_016f9gxoF7HsvZXEdWAyP9cR", *sa.ToolUseID)
@@ -344,4 +346,26 @@ func TestPollClaudeSession_WithoutSubagentStoreIsANoOp(t *testing.T) {
 
 	require.NotPanics(t, func() { env.poll(p) })
 	assert.Nil(t, env.get(subFixtureID))
+}
+
+func TestSyncSubagentSpend_TracksFinishedState(t *testing.T) {
+	env := newSubagentEnv(t)
+	ctx := context.Background()
+	stop := func(msgID, reason string) string {
+		return fmt.Sprintf(`{"type":"assistant","timestamp":"2026-09-17T03:00:00Z","message":{"id":%q,"model":"claude-opus-5","stop_reason":%q,"usage":{"input_tokens":1,"output_tokens":10}}}`, msgID, reason)
+	}
+	env.writeSubagent("s1", stop("msg_1", "tool_use"))
+	_, err := syncSubagentSpend(ctx, env.subagents, subMainSID, env.parentPath, nil)
+	require.NoError(t, err)
+	assert.False(t, env.get("s1").Finished, "mid tool call")
+
+	env.appendSubagent("s1", stop("msg_2", "end_turn"))
+	_, err = syncSubagentSpend(ctx, env.subagents, subMainSID, env.parentPath, nil)
+	require.NoError(t, err)
+	assert.True(t, env.get("s1").Finished)
+
+	env.installFixture()
+	_, err = syncSubagentSpend(ctx, env.subagents, subMainSID, env.parentPath, nil)
+	require.NoError(t, err)
+	assert.True(t, env.get(subFixtureID).Finished, "the realistic fixture ends with end_turn")
 }

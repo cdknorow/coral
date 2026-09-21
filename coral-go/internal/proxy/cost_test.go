@@ -99,8 +99,64 @@ func TestLookupContextWindow_FableUsagePercentage(t *testing.T) {
 	window := LookupContextWindow("claude-fable-5-1")
 	assert.Equal(t, 1_000_000, window)
 	assert.Equal(t, 29, int(float64(293_050)/float64(window)*100))
-	assert.False(t, CalculateCostBreakdown("claude-fable-5-1", TokenUsage{InputTokens: 1_000}).PricingFound,
-		"context recognition must not invent Fable pricing")
+}
+
+// Fable had a context window entry but no pricing row, so every Fable session
+// was recorded at $0 with no error. These rates are Anthropic's first-party
+// API prices per million tokens.
+func TestFablePricing(t *testing.T) {
+	perMillion := TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000, CacheWriteTokens: 1_000_000}
+
+	b := CalculateCostBreakdown("claude-fable-5-1", perMillion)
+	require.True(t, b.PricingFound)
+	assert.InDelta(t, 10.00, b.InputCostUSD, 1e-9)
+	assert.InDelta(t, 50.00, b.OutputCostUSD, 1e-9)
+	assert.InDelta(t, 0.25, b.CacheReadCostUSD, 1e-9, "Fable 5.1 cache reads are 0.025x input, not the usual 0.1x")
+	assert.InDelta(t, 12.50, b.CacheWriteCostUSD, 1e-9)
+	assert.InDelta(t, 72.75, b.TotalCostUSD, 1e-9)
+
+	prev := CalculateCostBreakdown("claude-fable-5", perMillion)
+	require.True(t, prev.PricingFound)
+	assert.InDelta(t, 1.00, prev.CacheReadCostUSD, 1e-9, "Fable 5 cache reads cost four times Fable 5.1's")
+	assert.InDelta(t, 10.00, prev.InputCostUSD, 1e-9)
+	assert.InDelta(t, 50.00, prev.OutputCostUSD, 1e-9)
+	assert.InDelta(t, 12.50, prev.CacheWriteCostUSD, 1e-9)
+}
+
+// The two Fable rows differ only in cache-read price, so every spelling of a
+// model ID must land on the right one.
+func TestFablePricing_ModelIDVariantsResolveToTheRightRow(t *testing.T) {
+	cacheReadRate := func(model string) float64 {
+		b := CalculateCostBreakdown(model, TokenUsage{CacheReadTokens: 1_000_000})
+		require.True(t, b.PricingFound, model)
+		return b.CacheReadCostUSD
+	}
+	for _, model := range []string{
+		"claude-fable-5-1", "claude-fable-5-1[1m]", " CLAUDE-FABLE-5-1[1m] ", "claude-fable-5-1-20260601",
+	} {
+		assert.InDelta(t, 0.25, cacheReadRate(model), 1e-9, model)
+	}
+	for _, model := range []string{"claude-fable-5", "claude-fable-5[1m]", "claude-fable-5-20260301"} {
+		assert.InDelta(t, 1.00, cacheReadRate(model), 1e-9, model)
+	}
+}
+
+func TestFablePricing_Deterministic(t *testing.T) {
+	// lookupPricing iterates a map; the dated-ID fallback must not flip between rows.
+	for i := 0; i < 200; i++ {
+		b := CalculateCostBreakdown("claude-fable-5-20260301", TokenUsage{CacheReadTokens: 1_000_000})
+		require.InDelta(t, 1.00, b.CacheReadCostUSD, 1e-9, "iteration %d", i)
+	}
+}
+
+// A realistic agent turn, to show the scale of what was being recorded as $0:
+// mostly cache reads, as in the session that exposed the bug.
+func TestFablePricing_RealisticAgentTurn(t *testing.T) {
+	cost := CalculateCost("claude-fable-5-1", TokenUsage{
+		InputTokens: 32, OutputTokens: 100, CacheReadTokens: 292_368, CacheWriteTokens: 650,
+	})
+	// 32*10 + 100*50 + 292368*0.25 + 650*12.5 = 86,537 micro-dollars
+	assert.InDelta(t, 0.086537, cost, 1e-9)
 }
 
 func TestLookupPricing_SingleSegmentNoMatch(t *testing.T) {

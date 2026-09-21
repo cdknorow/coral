@@ -54,26 +54,6 @@
     border-bottom-color: var(--accent);
 }
 
-/* Attention count badge inside a nav tab (e.g. Agents needing input) */
-.top-nav-badge {
-    display: inline-block;
-    margin-left: 6px;
-    min-width: 16px;
-    padding: 0 5px;
-    border-radius: 8px;
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 16px;
-    text-align: center;
-    vertical-align: 1px;
-    background: rgba(255, 193, 7, 0.18);
-    color: var(--warning, #d29922);
-}
-
-.top-nav-badge:empty {
-    display: none;
-}
-
 /* ── Top Bar Search ────────────────────────────────────────── */
 
 .top-bar-search {

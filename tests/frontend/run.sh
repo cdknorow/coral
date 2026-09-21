@@ -46,6 +46,10 @@ if port_in_use "$CDP_PORT"; then
 fi
 CORAL_HOME="$(mktemp -d /tmp/coral-frontend-test.XXXXXX)"
 CHROME_PROFILE="$(mktemp -d /tmp/coral-frontend-chrome.XXXXXX)"
+# Isolated Codex home: suites write rollout fixtures here and the test server
+# reads Codex transcripts from it, never from the real ~/.codex.
+export CODEX_HOME="$CORAL_HOME/codex"
+mkdir -p "$CODEX_HOME/sessions"
 
 CORAL_BIN="${CORAL_BIN:-}"
 if [ -z "$CORAL_BIN" ]; then
@@ -138,9 +142,18 @@ if [ ! -d node_modules ]; then
     npm install --silent
 fi
 
+# ONLY=<file> runs a single suite, e.g. ONLY=subagent_tasks.test.js ./run.sh
+if [ -n "${ONLY:-}" ]; then
+    node "$ONLY"
+    exit $?
+fi
+
 node acf_model_field.test.js
 node terminal_scroll.test.js
 node agent_bar_tweaks.test.js
 node agent_list_compact.test.js
 node agent_state.test.js
 node agent_popout.test.js
+node subagent_tasks.test.js
+node transcript_tools.test.js
+node transcript_codex.test.js

@@ -53,3 +53,80 @@ func TestParseAgenticEventWaitingNotificationRemainsNotification(t *testing.T) {
 		t.Fatalf("expected notification, got %v", event["event_type"])
 	}
 }
+
+func TestParseAgenticEventKeepsToolTimingAndResponseMetadata(t *testing.T) {
+	event := parseAgenticEvent(map[string]any{
+		"hook_event_name": "PostToolUse",
+		"tool_name":       "WebFetch",
+		"tool_use_id":     "toolu_123",
+		"duration_ms":     float64(2936),
+		"tool_input":      map[string]any{"url": "https://example.com/docs"},
+		"tool_response": map[string]any{
+			"code": float64(200), "codeText": "OK", "bytes": float64(207450), "durationMs": float64(2901),
+			"result": "a very long page body that must not be stored",
+		},
+	}, "PostToolUse", "session-1")
+
+	if event == nil {
+		t.Fatal("expected event")
+	}
+	if event["tool_use_id"] != "toolu_123" {
+		t.Fatalf("tool_use_id = %v", event["tool_use_id"])
+	}
+	if event["duration_ms"] != int64(2936) {
+		t.Fatalf("duration_ms = %v", event["duration_ms"])
+	}
+	detail, _ := event["detail_json"].(map[string]any)
+	if detail["url"] != "https://example.com/docs" {
+		t.Fatalf("url = %v", detail["url"])
+	}
+	resp, _ := detail["response"].(map[string]any)
+	if resp["code"] != float64(200) || resp["codeText"] != "OK" || resp["bytes"] != float64(207450) {
+		t.Fatalf("unexpected response detail: %v", resp)
+	}
+	if _, kept := resp["result"]; kept {
+		t.Fatal("bulk response content must not be stored")
+	}
+}
+
+func TestParseAgenticEventToolFailure(t *testing.T) {
+	event := parseAgenticEvent(map[string]any{
+		"hook_event_name": "PostToolUseFailure",
+		"tool_name":       "mcp__github__create_issue",
+		"tool_use_id":     "toolu_456",
+		"duration_ms":     float64(812),
+		"tool_input":      map[string]any{"title": "x"},
+		"error":           "request timed out",
+		"is_interrupt":    false,
+	}, "PostToolUseFailure", "session-1")
+
+	if event == nil {
+		t.Fatal("expected event")
+	}
+	if event["event_type"] != "tool_use" || event["summary"] != "Failed: Used mcp__github__create_issue" {
+		t.Fatalf("unexpected event: %v", event)
+	}
+	if event["duration_ms"] != int64(812) {
+		t.Fatalf("duration_ms = %v", event["duration_ms"])
+	}
+	detail, _ := event["detail_json"].(map[string]any)
+	if detail["failed"] != true || detail["error"] != "request timed out" {
+		t.Fatalf("unexpected detail: %v", detail)
+	}
+	if _, set := detail["interrupted"]; set {
+		t.Fatal("interrupted must only be set for an interrupt")
+	}
+}
+
+func TestParseAgenticEventWithoutTimingStaysUnchanged(t *testing.T) {
+	event := parseAgenticEvent(map[string]any{
+		"tool_name":  "Read",
+		"tool_input": map[string]any{"file_path": "/repo/main.go"},
+	}, "PostToolUse", "session-1")
+	if _, set := event["duration_ms"]; set {
+		t.Fatal("duration_ms must be absent when the agent does not report it")
+	}
+	if _, set := event["tool_use_id"]; set {
+		t.Fatal("tool_use_id must be absent when the agent does not report it")
+	}
+}

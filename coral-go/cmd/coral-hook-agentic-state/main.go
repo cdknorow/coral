@@ -119,13 +119,37 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 	}
 	if tool != "" {
 		inp := hooks.GetToolInput(d)
-		return map[string]any{
+		summary := hooks.MakeToolSummary(tool, inp)
+		detail := makeToolDetail(tool, inp)
+		if resp := makeResponseDetail(d["tool_response"]); resp != nil {
+			detail = withDetail(detail, "response", resp)
+		}
+		// PostToolUseFailure: the tool errored or was interrupted.
+		if hookType == "PostToolUseFailure" || d["error"] != nil {
+			summary = "Failed: " + summary
+			detail = withDetail(detail, "failed", true)
+			if errMsg, _ := d["error"].(string); errMsg != "" {
+				detail = withDetail(detail, "error", hooks.Truncate(errMsg, 300))
+			}
+			if interrupted, _ := d["is_interrupt"].(bool); interrupted {
+				detail = withDetail(detail, "interrupted", true)
+			}
+		}
+		event := map[string]any{
 			"event_type":  "tool_use",
 			"tool_name":   tool,
-			"summary":     hooks.MakeToolSummary(tool, inp),
-			"detail_json": makeToolDetail(tool, inp),
+			"summary":     summary,
+			"detail_json": detail,
 			"session_id":  sessionID,
 		}
+		if id, _ := d["tool_use_id"].(string); id != "" {
+			event["tool_use_id"] = id
+		}
+		// Measured by the agent around the tool call itself.
+		if ms, ok := d["duration_ms"].(float64); ok && ms >= 0 {
+			event["duration_ms"] = int64(ms)
+		}
+		return event
 	}
 
 	// Stop
@@ -169,8 +193,57 @@ func makeToolDetail(tool string, inp map[string]any) map[string]any {
 		detail["pattern"], _ = inp["pattern"].(string)
 	case "Glob":
 		detail["pattern"], _ = inp["pattern"].(string)
+	case "WebFetch":
+		detail["url"], _ = inp["url"].(string)
+	case "WebSearch":
+		detail["query"], _ = inp["query"].(string)
+	case "Agent", "Task":
+		detail["description"], _ = inp["description"].(string)
+		detail["subagent_type"], _ = inp["subagent_type"].(string)
 	default:
 		return nil
 	}
+	return detail
+}
+
+// responseStringKeys are the short string fields worth keeping from a tool
+// response. Free-text output (stdout, file contents, page bodies) is not.
+var responseStringKeys = map[string]bool{"codeText": true, "status": true, "type": true}
+
+// makeResponseDetail keeps the scalar metadata of a tool response: HTTP status
+// and byte counts for WebFetch, search timings, interrupt flags, counters, and
+// whatever numeric or boolean fields an MCP tool reports. Bulk content is dropped.
+func makeResponseDetail(v any) map[string]any {
+	resp, ok := v.(map[string]any)
+	if !ok {
+		return nil
+	}
+	out := map[string]any{}
+	for k, val := range resp {
+		switch t := val.(type) {
+		case float64, bool:
+			out[k] = t
+		case string:
+			if responseStringKeys[k] && len(t) <= 64 {
+				out[k] = t
+			}
+		}
+		if len(out) >= 24 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// withDetail sets a key on a detail map that may still be nil (tools with no
+// input detail).
+func withDetail(detail map[string]any, key string, val any) map[string]any {
+	if detail == nil {
+		detail = map[string]any{}
+	}
+	detail[key] = val
 	return detail
 }

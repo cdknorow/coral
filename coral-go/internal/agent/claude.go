@@ -341,6 +341,12 @@ var coralHooks = map[string][]map[string]interface{}{
 			{"type": "command", "command": "coral-hook-message-check"},
 		}},
 	},
+	// A tool that errors or is interrupted fires this instead of PostToolUse.
+	"PostToolUseFailure": {
+		{"hooks": []map[string]interface{}{
+			{"type": "command", "command": "coral-hook-agentic-state"},
+		}},
+	},
 	"Stop": {
 		{"hooks": []map[string]interface{}{
 			{"type": "command", "command": "coral-hook-agentic-state"},

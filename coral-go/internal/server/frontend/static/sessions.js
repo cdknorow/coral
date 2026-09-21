@@ -9,7 +9,7 @@ import { renderQuickActions, updateSidebarActive } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
-import { loadAgentTasks, loadBoardTasks, renderTaskList } from './tasks.js';
+import { loadAgentTasks, loadBoardTasks, loadSubagents, renderTaskList } from './tasks.js';
 import { loadChangedFiles, refreshChangedFiles } from './changed_files.js';
 import { resetDiffCache } from './diff_view.js';
 import { loadAgentNotes } from './agent_notes.js';
@@ -219,6 +219,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
 
     // Load secondary data in background (non-blocking, after terminal is connected)
     loadAgentTasks(name, sessionId);
+    loadSubagents(name, sessionId);
     const boardProject = agentData && agentData.board_project;
     loadBoardTasks(boardProject || null);
     loadAgentNotes(name, sessionId);

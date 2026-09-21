@@ -51,6 +51,11 @@ type AgentEvent struct {
 	Summary    string  `db:"summary" json:"summary"`
 	DetailJSON *string `db:"detail_json" json:"detail_json,omitempty"`
 	CreatedAt  string  `db:"created_at" json:"created_at"`
+	// DurationMs is how long the activity took, when the source reports it.
+	DurationMs *int64 `db:"duration_ms" json:"duration_ms,omitempty"`
+	// RefID is the activity's id at its source: tool_use_id for tool calls,
+	// the API request id for thinking turns.
+	RefID *string `db:"ref_id" json:"ref_id,omitempty"`
 }
 
 // ToolCount holds a tool name and its usage count.
@@ -316,15 +321,18 @@ func (s *TaskStore) DeleteAgentNote(ctx context.Context, noteID int64) error {
 // ── Agent Events ──────────────────────────────────────────────────────
 
 // InsertAgentEvent inserts an event and auto-prunes to 500 per agent.
+// CreatedAt is stamped with the current time unless the caller set it, which
+// transcript-derived events do so they sort where they actually happened.
 func (s *TaskStore) InsertAgentEvent(ctx context.Context, event *AgentEvent) (*AgentEvent, error) {
-	now := nowUTC()
-	event.CreatedAt = now
+	if event.CreatedAt == "" {
+		event.CreatedAt = nowUTC()
+	}
 
 	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO agent_events (agent_name, session_id, event_type, tool_name, summary, detail_json, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO agent_events (agent_name, session_id, event_type, tool_name, summary, detail_json, created_at, duration_ms, ref_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.AgentName, event.SessionID, event.EventType, event.ToolName,
-		event.Summary, event.DetailJSON, now)
+		event.Summary, event.DetailJSON, event.CreatedAt, event.DurationMs, event.RefID)
 	if err != nil {
 		return nil, err
 	}
@@ -352,6 +360,17 @@ func (s *TaskStore) InsertAgentEvent(ctx context.Context, event *AgentEvent) (*A
 	return event, nil
 }
 
+// AgentEventExists reports whether a session already has an event of this
+// type for the given source id. Transcript-derived events use it to stay
+// idempotent across re-reads and restarts.
+func (s *TaskStore) AgentEventExists(ctx context.Context, sessionID, eventType, refID string) (bool, error) {
+	var n int
+	err := s.db.GetContext(ctx, &n,
+		`SELECT COUNT(*) FROM agent_events WHERE session_id = ? AND event_type = ? AND ref_id = ?`,
+		sessionID, eventType, refID)
+	return n > 0, err
+}
+
 // ListAgentEvents returns recent events for an agent.
 // If agentName is empty, events are not filtered by agent (useful for history queries by session).
 func (s *TaskStore) ListAgentEvents(ctx context.Context, agentName string, limit int, sessionID *string) ([]AgentEvent, error) {
@@ -372,7 +391,7 @@ func (s *TaskStore) ListAgentEvents(ctx context.Context, agentName string, limit
 	args = append(args, limit)
 	var events []AgentEvent
 	err := s.db.SelectContext(ctx, &events,
-		`SELECT id, agent_name, session_id, event_type, tool_name, summary, detail_json, created_at
+		`SELECT id, agent_name, session_id, event_type, tool_name, summary, detail_json, created_at, duration_ms, ref_id
 		 FROM agent_events`+where+` ORDER BY created_at DESC LIMIT ?`,
 		args...)
 	return events, err

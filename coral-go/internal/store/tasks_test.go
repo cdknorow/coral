@@ -144,6 +144,43 @@ func TestAgentEventsCRUD(t *testing.T) {
 	assert.Empty(t, events)
 }
 
+func TestAgentEventsDurationRefAndSuppliedTimestamp(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTaskStore(db)
+	ctx := context.Background()
+
+	sid := "sess-timing"
+	ms := int64(7250)
+	ref := "entry-uuid-1"
+	const happenedAt = "2026-09-21T08:00:07.250000+00:00"
+	_, err := s.InsertAgentEvent(ctx, &AgentEvent{
+		AgentName: "agent-1", SessionID: &sid, EventType: "thinking", Summary: "Thinking",
+		CreatedAt: happenedAt, DurationMs: &ms, RefID: &ref,
+	})
+	require.NoError(t, err)
+	_, err = s.InsertAgentEvent(ctx, &AgentEvent{AgentName: "agent-1", SessionID: &sid, EventType: "stop", Summary: "Agent stopped"})
+	require.NoError(t, err)
+
+	events, err := s.ListAgentEvents(ctx, "agent-1", 10, &sid)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	thinking := events[1] // newest first; the stop event is stamped now
+	assert.Equal(t, happenedAt, thinking.CreatedAt, "a supplied timestamp is kept")
+	require.NotNil(t, thinking.DurationMs)
+	assert.Equal(t, ms, *thinking.DurationMs)
+	require.NotNil(t, thinking.RefID)
+	assert.Equal(t, ref, *thinking.RefID)
+	assert.Nil(t, events[0].DurationMs, "events without timing stay null")
+	assert.NotEmpty(t, events[0].CreatedAt)
+
+	exists, err := s.AgentEventExists(ctx, sid, "thinking", ref)
+	require.NoError(t, err)
+	assert.True(t, exists)
+	exists, err = s.AgentEventExists(ctx, sid, "thinking", "other")
+	require.NoError(t, err)
+	assert.False(t, exists)
+}
+
 func TestAgentEventsRetentionIsolatedPerSession(t *testing.T) {
 	db := openTestDB(t)
 	s := NewTaskStore(db)

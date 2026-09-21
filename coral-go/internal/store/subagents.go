@@ -25,10 +25,16 @@ type Subagent struct {
 	CacheReadTokens  int     `db:"cache_read_tokens" json:"cache_read_tokens"`
 	CacheWriteTokens int     `db:"cache_write_tokens" json:"cache_write_tokens"`
 	CostUSD          float64 `db:"cost_usd" json:"cost_usd"`
-	StartedAt        *string `db:"started_at" json:"started_at,omitempty"`
-	LastActivityAt   *string `db:"last_activity_at" json:"last_activity_at,omitempty"`
-	CreatedAt        string  `db:"created_at" json:"created_at"`
-	UpdatedAt        string  `db:"updated_at" json:"updated_at"`
+	// Finished is true once the subagent has returned its final answer. It
+	// goes back to false if the subagent is resumed.
+	Finished bool `db:"finished" json:"finished"`
+	// TranscriptPath is where the subagent's transcript was found on disk. It
+	// is server-side detail, so it is not serialised to API clients.
+	TranscriptPath *string `db:"transcript_path" json:"-"`
+	StartedAt      *string `db:"started_at" json:"started_at,omitempty"`
+	LastActivityAt *string `db:"last_activity_at" json:"last_activity_at,omitempty"`
+	CreatedAt      string  `db:"created_at" json:"created_at"`
+	UpdatedAt      string  `db:"updated_at" json:"updated_at"`
 }
 
 // SubagentSpend is the summed spend of all of a main agent's subagents.
@@ -54,7 +60,7 @@ func NewSubagentStore(db *DB) *SubagentStore {
 }
 
 const subagentColumns = `id, session_id, subagent_id, subagent_type, description, tool_use_id, model, spawn_depth,
-	api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd,
+	api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, finished, transcript_path,
 	started_at, last_activity_at, created_at, updated_at`
 
 // UpsertSubagent stores a subagent's current state, keyed by
@@ -79,10 +85,10 @@ func (s *SubagentStore) UpsertSubagent(ctx context.Context, sa *Subagent) error 
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO subagents
 		   (session_id, subagent_id, subagent_type, description, tool_use_id, model, spawn_depth,
-		    api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd,
+		    api_calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, finished, transcript_path,
 		    started_at, last_activity_at, created_at, updated_at)
 		 VALUES (?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?,
-		         ?, ?, ?, ?, ?, ?,
+		         ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''),
 		         NULLIF(?, ''), NULLIF(?, ''), ?, ?)
 		 ON CONFLICT(session_id, subagent_id) DO UPDATE SET
 		    subagent_type      = COALESCE(excluded.subagent_type, subagent_type),
@@ -96,12 +102,14 @@ func (s *SubagentStore) UpsertSubagent(ctx context.Context, sa *Subagent) error 
 		    cache_read_tokens  = excluded.cache_read_tokens,
 		    cache_write_tokens = excluded.cache_write_tokens,
 		    cost_usd           = excluded.cost_usd,
+		    finished           = excluded.finished,
+		    transcript_path    = COALESCE(excluded.transcript_path, transcript_path),
 		    started_at         = COALESCE(started_at, excluded.started_at),
 		    last_activity_at   = COALESCE(excluded.last_activity_at, last_activity_at),
 		    updated_at         = excluded.updated_at`,
 		sa.SessionID, sa.SubagentID, derefStr(sa.SubagentType), derefStr(sa.Description),
 		derefStr(sa.ToolUseID), derefStr(sa.Model), sa.SpawnDepth,
-		sa.APICalls, sa.InputTokens, sa.OutputTokens, sa.CacheReadTokens, sa.CacheWriteTokens, sa.CostUSD,
+		sa.APICalls, sa.InputTokens, sa.OutputTokens, sa.CacheReadTokens, sa.CacheWriteTokens, sa.CostUSD, sa.Finished, derefStr(sa.TranscriptPath),
 		derefStr(sa.StartedAt), derefStr(sa.LastActivityAt), now, now)
 	return err
 }

@@ -27,6 +27,15 @@ var Pricing = map[string]ModelPricing{
 	"claude-sonnet-4-6-20260407": {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 1_000_000},
 	"claude-haiku-4-5-20251001":  {InputPerMTok: 0.80, OutputPerMTok: 4.00, CacheReadPerMTok: 0.08, CacheWritePerMTok: 1.00, ContextWindow: 1_000_000},
 
+	// Anthropic — Claude Fable 5.x (1M context). First-party API rates.
+	// CacheWritePerMTok is the 5-minute TTL rate (1.25x input); 1-hour writes
+	// bill at $20 (2x), which this single-rate struct cannot express.
+	// Fable 5.1 differs from Fable 5 ONLY in cache reads: $0.25 (0.025x input)
+	// versus $1.00 (0.1x). Agent sessions are dominated by cache reads, so the
+	// two must stay separate rows rather than aliases of each other.
+	"claude-fable-5-1": {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 0.25, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+	"claude-fable-5":   {InputPerMTok: 10.00, OutputPerMTok: 50.00, CacheReadPerMTok: 1.00, CacheWritePerMTok: 12.50, ContextWindow: 1_000_000},
+
 	// Bedrock — Claude 4 (on-demand pricing matches direct API; model IDs use anthropic. prefix)
 	"anthropic.claude-opus-4-20250514-v1:0":      {InputPerMTok: 15.00, OutputPerMTok: 75.00, CacheReadPerMTok: 1.50, CacheWritePerMTok: 18.75, ContextWindow: 200_000},
 	"anthropic.claude-sonnet-4-20250514-v1:0":    {InputPerMTok: 3.00, OutputPerMTok: 15.00, CacheReadPerMTok: 0.30, CacheWritePerMTok: 3.75, ContextWindow: 200_000},

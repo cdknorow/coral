@@ -346,3 +346,175 @@ func TestDiscover_SessionWithoutSubagents(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, files)
 }
+
+// ── Finished ─────────────────────────────────────────────────
+
+// recStop builds an assistant (or user) record with a stop_reason.
+func recStop(typ, msgID, stop, ts string) string {
+	m := map[string]any{"role": typ, "id": msgID, "model": "m",
+		"usage": map[string]int{"input_tokens": 1, "output_tokens": 1}}
+	if stop != "" {
+		m["stop_reason"] = stop
+	} else {
+		m["stop_reason"] = nil
+	}
+	b, _ := json.Marshal(map[string]any{"type": typ, "timestamp": ts, "agentId": "agentX", "message": m})
+	return string(b)
+}
+
+func TestFinished_FixtureEndsItsTurn(t *testing.T) {
+	tr, err := ParseTranscript(fixtureTranscript)
+	require.NoError(t, err)
+	assert.True(t, tr.Finished)
+}
+
+func TestFinished(t *testing.T) {
+	cases := []struct {
+		name  string
+		lines []string
+		want  bool
+	}{
+		{"final answer", []string{recStop("assistant", "m1", "end_turn", "t1")}, true},
+		{"max_tokens also ends the run", []string{recStop("assistant", "m1", "max_tokens", "t1")}, true},
+		{"waiting on a tool", []string{recStop("assistant", "m1", "tool_use", "t1")}, false},
+		{"tool result came back, model has not replied", []string{
+			recStop("assistant", "m1", "tool_use", "t1"), recStop("user", "", "", "t2")}, false},
+		{"message still streaming", []string{recStop("assistant", "m1", "", "t1")}, false},
+		{"streamed blocks then the closing one", []string{
+			recStop("assistant", "m1", "", "t1"), recStop("assistant", "m1", "", "t2"),
+			recStop("assistant", "m1", "end_turn", "t3")}, true},
+		{"only the launch prompt so far", []string{recStop("user", "", "", "t1")}, false},
+		{"finished, then resumed with a new prompt", []string{
+			recStop("assistant", "m1", "end_turn", "t1"), recStop("user", "", "", "t2")}, false},
+		{"resumed and finished again", []string{
+			recStop("assistant", "m1", "end_turn", "t1"), recStop("user", "", "", "t2"),
+			recStop("assistant", "m2", "end_turn", "t3")}, true},
+		{"bookkeeping record after the final answer does not reopen it", []string{
+			recStop("assistant", "m1", "end_turn", "t1"), rec("system", "", "", "t2", nil)}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tr, err := ParseTranscript(writeTranscript(t, "agent-x.jsonl", c.lines...))
+			require.NoError(t, err)
+			assert.Equal(t, c.want, tr.Finished)
+		})
+	}
+}
+
+func TestFinished_EmptyTranscriptIsNotFinished(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent-x.jsonl")
+	require.NoError(t, os.WriteFile(path, nil, 0o644))
+	tr, err := ParseTranscript(path)
+	require.NoError(t, err)
+	assert.False(t, tr.Finished)
+}
+
+// ── ReadConversation ─────────────────────────────────────────
+
+// convRec builds a record whose message.content is `content` (a string or a
+// list of blocks).
+func convRec(typ, msgID, stop string, content any) string {
+	m := map[string]any{"role": typ, "content": content}
+	if msgID != "" {
+		m["id"] = msgID
+	}
+	if stop != "" {
+		m["stop_reason"] = stop
+	}
+	b, _ := json.Marshal(map[string]any{"type": typ, "message": m})
+	return string(b)
+}
+
+func textBlock(s string) map[string]any { return map[string]any{"type": "text", "text": s} }
+
+func TestReadConversation_Fixture(t *testing.T) {
+	conv, err := ReadConversation(fixtureTranscript)
+	require.NoError(t, err)
+	assert.Equal(t, "Map the task-board UI code.", conv.Prompt)
+	assert.Equal(t, "Found it in tasks.js.", conv.Result)
+	assert.False(t, conv.Truncated)
+}
+
+func TestReadConversation_ResultIsOnlyTheFinalAnswer(t *testing.T) {
+	path := writeTranscript(t, "agent-x.jsonl",
+		convRec("user", "", "", "Find the bug."),
+		convRec("assistant", "m1", "", []any{map[string]any{"type": "thinking", "thinking": "hmm"}}),
+		convRec("assistant", "m1", "", []any{textBlock("Let me look around first.")}),
+		convRec("assistant", "m1", "tool_use", []any{map[string]any{"type": "tool_use", "name": "Grep"}}),
+		convRec("user", "", "", []any{map[string]any{"type": "tool_result", "content": "x.go:1"}}),
+		convRec("assistant", "m2", "", []any{textBlock("The bug is in x.go.")}),
+		convRec("assistant", "m2", "end_turn", []any{textBlock("Fix: check for nil.")}),
+	)
+	conv, err := ReadConversation(path)
+	require.NoError(t, err)
+	assert.Equal(t, "Find the bug.", conv.Prompt, "the tool result is a user record too, but not the prompt")
+	assert.Equal(t, "The bug is in x.go.\n\nFix: check for nil.", conv.Result,
+		"all text blocks of the final message, and none of the mid-run commentary, thinking or tool calls")
+}
+
+func TestReadConversation_NoResultWhileStillWorking(t *testing.T) {
+	cases := map[string][]string{
+		"waiting on a tool": {
+			convRec("user", "", "", "Do it."),
+			convRec("assistant", "m1", "tool_use", []any{textBlock("Checking...")}),
+		},
+		"tool result returned, no reply yet": {
+			convRec("user", "", "", "Do it."),
+			convRec("assistant", "m1", "tool_use", []any{textBlock("Checking...")}),
+			convRec("user", "", "", []any{map[string]any{"type": "tool_result", "content": "ok"}}),
+		},
+		"final message still streaming": {
+			convRec("user", "", "", "Do it."),
+			convRec("assistant", "m1", "", []any{textBlock("The answer is")}),
+		},
+		"finished once, then resumed": {
+			convRec("user", "", "", "Do it."),
+			convRec("assistant", "m1", "end_turn", []any{textBlock("Done.")}),
+			convRec("user", "", "", "Actually, one more thing."),
+		},
+	}
+	for name, lines := range cases {
+		t.Run(name, func(t *testing.T) {
+			conv, err := ReadConversation(writeTranscript(t, "agent-x.jsonl", lines...))
+			require.NoError(t, err)
+			assert.Equal(t, "Do it.", conv.Prompt, "prompt stays the FIRST user message")
+			assert.Empty(t, conv.Result)
+		})
+	}
+}
+
+func TestReadConversation_PromptAsContentBlocks(t *testing.T) {
+	path := writeTranscript(t, "agent-x.jsonl",
+		convRec("user", "", "", []any{textBlock("Part one."), textBlock("Part two.")}),
+		convRec("assistant", "m1", "end_turn", "A plain string answer."),
+	)
+	conv, err := ReadConversation(path)
+	require.NoError(t, err)
+	assert.Equal(t, "Part one.\n\nPart two.", conv.Prompt)
+	assert.Equal(t, "A plain string answer.", conv.Result)
+}
+
+func TestReadConversation_CapsHugeTextOnARuneBoundary(t *testing.T) {
+	huge := strings.Repeat("é", maxConversationText) // 2 bytes each: twice the cap
+	path := writeTranscript(t, "agent-x.jsonl",
+		convRec("user", "", "", "Short prompt."),
+		convRec("assistant", "m1", "end_turn", []any{textBlock(huge)}),
+	)
+	conv, err := ReadConversation(path)
+	require.NoError(t, err)
+	assert.True(t, conv.Truncated)
+	assert.LessOrEqual(t, len(conv.Result), maxConversationText)
+	assert.True(t, strings.HasSuffix(conv.Result, "é"), "must not split a multi-byte character")
+	assert.Equal(t, "Short prompt.", conv.Prompt)
+}
+
+func TestReadConversation_EmptyAndMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent-x.jsonl")
+	require.NoError(t, os.WriteFile(path, []byte("not json\n"), 0o644))
+	conv, err := ReadConversation(path)
+	require.NoError(t, err)
+	assert.Equal(t, Conversation{}, *conv)
+
+	_, err = ReadConversation(filepath.Join(t.TempDir(), "agent-gone.jsonl"))
+	require.ErrorIs(t, err, os.ErrNotExist)
+}

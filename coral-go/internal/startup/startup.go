@@ -533,6 +533,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	tokenPoller.SetSubagentStore(store.NewSubagentStore(db))
 	safeGo(ctx, "token_poller", func() { tokenPoller.Run(ctx) })
 
+	// Thinking tracker — no hook fires for model thinking, so thinking turns
+	// and their durations are read from Claude transcripts into the activity stream
+	thinkingTracker := background.NewThinkingTracker(sessStore, taskStore, 2*time.Second)
+	safeGo(ctx, "thinking_tracker", func() { thinkingTracker.Run(ctx) })
+
 	// Wire proxy → token_usage table so proxy-captured tokens appear in the unified API
 	if p := srv.Proxy(); p != nil {
 		p.SetTokenUsageRecorder(func(ctx context.Context, rec *proxy.TokenUsageRecord) error {

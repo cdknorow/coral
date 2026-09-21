@@ -141,21 +141,13 @@ winners:
 - **aria-label**: `<identity>, <state>` plus `, context 87%` and `, 3 unread` when
   those overlays are shown; glyphs are `aria-hidden`.
 
-**Aggregation** (`sessionCountsTowardAttention`): the Agents nav badge and each
-team/folder header's `.group-attention-count` (red `.stuck` variant when any
-member is Stuck; shown on collapsed groups too) always count Needs input, Check
-terminal and Stuck. **Your turn** and **unread board messages**
-(`board_unread > 0`, coerced to a finite non-negative integer) share one
-operator-facing rule: they count only when nobody else will act on them, i.e.
-no `board_project`, or `board_is_orchestrator === true` (explicit backend flag,
-never a name match). An ordinary team member's unread stays visible as the
-neutral row chip / phone metadata but never counts. Ended and sleeping sessions
-never count. Ended rows render no line 2 at all (36px), even when they had a
-goal or unread messages. Needs-input toasts fire on a later false -> true
-transition only: the first snapshot after load seeds silently, and the agent
-the operator is typing into never toasts itself.
-Operator switch: `localStorage['coral-count-your-turn'] = 'false'` disables
-Your-turn counting.
+**No aggregation**: there is no attention count on the Agents nav tab or on
+team/folder headers (removed; the counts did not map to anything visible on the
+rows). Attention is shown per row only. An ordinary team member's unread stays
+visible as the neutral row chip / phone metadata. Ended rows render no line 2
+at all (36px), even when they had a goal or unread messages. Needs-input toasts
+fire on a later false -> true transition only: the first snapshot after load
+seeds silently, and the agent the operator is typing into never toasts itself.
 
 ### Server-side derivation: when "Needs input" is raised and cleared (task #174)
 

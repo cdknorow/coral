@@ -366,6 +366,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.UpdateTask)
 	r.Delete("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.DeleteTask)
 	r.Post("/api/sessions/live/{name}/tasks/reorder", sessHandler.ReorderTasks)
+	r.Get("/api/sessions/live/{name}/subagents", sessHandler.ListSubagents)
+	r.Get("/api/sessions/live/{name}/subagents/{subagentID}", sessHandler.GetSubagent)
 
 	// Agent notes
 	r.Get("/api/sessions/live/{name}/notes", sessHandler.ListNotes)

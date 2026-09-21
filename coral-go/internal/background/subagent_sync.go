@@ -70,6 +70,8 @@ func syncOneSubagent(ctx context.Context, st *store.SubagentStore, sessionID str
 		CacheReadTokens:  totals.CacheReadTokens,
 		CacheWriteTokens: totals.CacheWriteTokens,
 		CostUSD:          subagentCostUSD(t),
+		Finished:         t.Finished,
+		TranscriptPath:   strPtrOrNil(f.TranscriptPath),
 		StartedAt:        strPtrOrNil(t.StartedAt),
 		LastActivityAt:   strPtrOrNil(t.LastActivityAt),
 	})

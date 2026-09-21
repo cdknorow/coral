@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -331,4 +332,60 @@ func TestSubagentSchema_CreatedOnReopenOfExistingDB(t *testing.T) {
 	ls, err := NewSessionStore(db).GetLiveSession(ctx, mainAgentA)
 	require.NoError(t, err)
 	require.NotNil(t, ls, "pre-existing data is intact")
+}
+
+func TestSubagentStore_FinishedRoundTripsAndCanReopen(t *testing.T) {
+	st, _, _ := newSubagentFixture(t)
+	ctx := context.Background()
+	for _, want := range []bool{false, true, false} { // running → finished → resumed
+		require.NoError(t, st.UpsertSubagent(ctx, &Subagent{SessionID: mainAgentA, SubagentID: "s1", Finished: want}))
+		got, err := st.GetSubagent(ctx, mainAgentA, "s1")
+		require.NoError(t, err)
+		assert.Equal(t, want, got.Finished)
+	}
+}
+
+// A database created by a build that had the subagents table but not yet the
+// finished column must gain the column on open, keeping its rows.
+func TestSubagentSchema_FinishedColumnIsMigratedIn(t *testing.T) {
+	path := t.TempDir() + "/older.db"
+	db, err := Open(path)
+	require.NoError(t, err)
+	ctx := context.Background()
+	require.NoError(t, NewSessionStore(db).RegisterLiveSession(ctx, &LiveSession{
+		SessionID: mainAgentA, AgentType: "claude", AgentName: "coral-go", WorkingDir: "/repo"}))
+	require.NoError(t, NewSubagentStore(db).UpsertSubagent(ctx, &Subagent{SessionID: mainAgentA, SubagentID: "s1", OutputTokens: 77}))
+	_, err = db.ExecContext(ctx, "ALTER TABLE subagents DROP COLUMN finished")
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+
+	db, err = Open(path)
+	require.NoError(t, err)
+	defer db.Close()
+	st := NewSubagentStore(db)
+	got, err := st.GetSubagent(ctx, mainAgentA, "s1")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, 77, got.OutputTokens, "existing row survives")
+	assert.False(t, got.Finished, "defaults to not finished")
+	require.NoError(t, st.UpsertSubagent(ctx, &Subagent{SessionID: mainAgentA, SubagentID: "s1", Finished: true}))
+}
+
+func TestSubagentStore_TranscriptPathIsStoredButNeverSerialised(t *testing.T) {
+	st, _, _ := newSubagentFixture(t)
+	ctx := context.Background()
+	require.NoError(t, st.UpsertSubagent(ctx, &Subagent{SessionID: mainAgentA, SubagentID: "s1",
+		TranscriptPath: sp("/home/u/.claude/projects/p/sess/subagents/agent-s1.jsonl")}))
+	// A later sync without a path keeps the stored one.
+	require.NoError(t, st.UpsertSubagent(ctx, &Subagent{SessionID: mainAgentA, SubagentID: "s1"}))
+
+	got, err := st.GetSubagent(ctx, mainAgentA, "s1")
+	require.NoError(t, err)
+	require.NotNil(t, got.TranscriptPath)
+	assert.Equal(t, "/home/u/.claude/projects/p/sess/subagents/agent-s1.jsonl", *got.TranscriptPath)
+
+	b, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.NotContains(t, string(b), "transcript", "a filesystem path must not leak to API clients")
+	assert.NotContains(t, string(b), "/home/u")
 }

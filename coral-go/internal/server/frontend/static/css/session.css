@@ -931,24 +931,6 @@
     margin-left: var(--row-dot-block, 16px); /* rows with no goal line */
 }
 
-/* Group attention count: the only attention cue on a collapsed group. */
-.group-attention-count {
-    font-size: 10px;
-    font-weight: 600;
-    line-height: 16px;
-    padding: 0 5px;
-    border-radius: 8px;
-    margin-left: 4px;
-    background: rgba(210, 153, 34, 0.16);
-    color: #e3b341;
-    box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.35);
-}
-.group-attention-count.stuck {
-    background: rgba(248, 81, 73, 0.16);
-    color: #ff7b72;
-    box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.4);
-}
-
 /* Stuck rows switch from the amber to the error tint */
 .session-group-item.needs-attention.is-stuck {
     background: rgba(248, 81, 73, 0.07);

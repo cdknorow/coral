@@ -1623,50 +1623,6 @@ export function sessionUnreadCount(s) {
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
-/** Does this session count toward the Agents nav badge and its group's count?
- *  Needs input / Check terminal / Stuck always. Your turn and unread board
- *  messages follow one operator-facing rule: they count only when nobody else
- *  will act on them, i.e. the agent has no board or is the board's
- *  orchestrator (explicit backend flag, never a name match). An ordinary team
- *  member's unread stays visible as the neutral row chip but never counts.
- *  Ended and sleeping sessions never count. */
-export function sessionCountsTowardAttention(s) {
-    if (!s) return false;
-    const key = deriveSessionState(s);
-    if (key === 'ended' || key === 'sleeping') return false;
-    if (SESSION_STATES[key].attention) return true;
-    const operatorFacing = !s.board_project || s.board_is_orchestrator === true;
-    if (sessionUnreadCount(s) > 0 && operatorFacing) return true;
-    if (key === 'your_turn') {
-        // Operator switch (default on): localStorage 'coral-count-your-turn' = 'false' disables it.
-        let enabled = true;
-        try { enabled = localStorage.getItem('coral-count-your-turn') !== 'false'; } catch {}
-        return enabled && operatorFacing;
-    }
-    return false;
-}
-
-/** Small count chip for a team/folder header; the only attention signal that
- *  survives a collapsed group. Red when any member is Stuck. */
-function _groupAttentionChip(sessions) {
-    const counted = (sessions || []).filter(sessionCountsTowardAttention);
-    if (!counted.length) return '';
-    const stuck = counted.some(x => deriveSessionState(x) === 'stuck');
-    const n = counted.length;
-    const text = `${n} need${n === 1 ? 's' : ''} attention`;
-    return ` <span class="group-attention-count${stuck ? ' stuck' : ''}" title="${text}" aria-label="${text}">${n}</span>`;
-}
-
-/** Update the count badge inside the Agents nav tab. Badge-only: ordering is untouched. */
-export function updateAgentsNavBadge(sessions) {
-    const badge = document.getElementById('nav-tab-agents-badge');
-    if (!badge) return;
-    const count = (sessions || []).filter(s => sessionCountsTowardAttention(s)).length;
-    badge.textContent = count > 0 ? String(count) : '';
-    badge.title = count > 0 ? `${count} agent${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} attention` : '';
-    badge.setAttribute('aria-label', badge.title);
-}
-
 export function renderLiveSessions(sessions) {
     // Single-agent popout: the sidebar is chrome. Never render rows there —
     // they would carry session ids and destructive kebab actions into the DOM.
@@ -1675,7 +1631,6 @@ export function renderLiveSessions(sessions) {
         if (list) list.innerHTML = '';
         return;
     }
-    updateAgentsNavBadge(sessions);
 
     // Merge killed sessions back so they appear as "done" with history links.
     // Use a copy to avoid mutating state.liveSessions.
@@ -1835,7 +1790,7 @@ export function renderLiveSessions(sessions) {
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-board-card-toplevel${sleepingClass}" style="border-left-color: ${accentColor}">
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span>${_groupAttentionChip(boardSessions)}</div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
+                <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -1889,7 +1844,7 @@ export function renderLiveSessions(sessions) {
     for (const [groupName, groupSessions] of sortedFolders) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
-        const countBadge = ` <span class="session-group-count">${sorted.length}</span>${_groupAttentionChip(sorted)}`; void isMulti;
+        const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
         const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
         const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
@@ -1958,7 +1913,7 @@ export function renderLiveSessions(sessions) {
     for (const [groupName, groupSessions] of sortedGroups) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
-        const countBadge = ` <span class="session-group-count">${sorted.length}</span>${_groupAttentionChip(sorted)}`; void isMulti;
+        const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
         const collapsed = _isGroupCollapsed(groupName);
         const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
         const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
@@ -2088,7 +2043,7 @@ export function renderLiveSessions(sessions) {
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card" style="border-left-color: ${accentColor}">
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                        <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span>${_groupAttentionChip(boardSessions)}</div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
+                        <span class="group-chevron">${bChevron}</span><div class="group-header-text"><div class="group-name-line">${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);

@@ -76,6 +76,7 @@
     --color-tool-confidence: #e3b341;
     --color-tool-stop:       var(--error);
     --color-tool-pulse:      #bc8cff;
+    --color-tool-thinking:   #39c5cf;
     --color-tool-default:    var(--text-muted);
 
     /* Design Tokens — Spacing Scale */
@@ -228,6 +229,7 @@
     --color-tool-confidence: #9a6700;
     --color-tool-stop:       #cf222e;
     --color-tool-pulse:      #8250df;
+    --color-tool-thinking:   #1b7c83;
     --color-tool-default:    #8b949e;
 
     /* Accent variants */

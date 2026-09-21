@@ -728,9 +728,9 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 		return nil
 	}
 
+	payloadType, _ := payload["type"].(string)
 	switch entryType {
 	case "event_msg":
-		payloadType, _ := payload["type"].(string)
 		message, _ := payload["message"].(string)
 		switch payloadType {
 		case "user_message":
@@ -738,9 +738,121 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 		case "agent_message":
 			return parseCodexAssistantEntry(message, timestamp, toolUseNames)
 		}
+	case "response_item":
+		// Messages are also emitted as event_msg entries; only tool traffic is
+		// taken from response_item to avoid duplicating them.
+		name, _ := payload["name"].(string)
+		callID, _ := payload["call_id"].(string)
+		switch payloadType {
+		case "function_call", "custom_tool_call":
+			var tool map[string]any
+			if payloadType == "function_call" {
+				args, _ := payload["arguments"].(string)
+				tool = codexFunctionCall(name, callID, args)
+			} else {
+				input, _ := payload["input"].(string)
+				tool = codexCustomToolCall(name, callID, input)
+			}
+			if callID != "" {
+				toolUseNames[callID] = name
+			}
+			return []map[string]any{{
+				"type":      "assistant",
+				"timestamp": timestamp,
+				"content":   "",
+				"text":      "",
+				"tool_uses": []map[string]any{tool},
+			}}
+		case "function_call_output", "custom_tool_call_output":
+			output := codexToolOutput(payload["output"])
+			if output == "" {
+				return nil
+			}
+			return []map[string]any{{
+				"type":        "tool_result",
+				"timestamp":   timestamp,
+				"content":     truncateContent(output),
+				"tool_name":   toolUseNames[callID],
+				"tool_use_id": callID,
+			}}
+		}
 	}
 
 	return nil
+}
+
+func codexFunctionCall(name, callID, args string) map[string]any {
+	tool := map[string]any{
+		"name":          name,
+		"tool_use_id":   callID,
+		"input_summary": truncate(name+": "+args, 200),
+	}
+	var argMap map[string]any
+	if args == "" || json.Unmarshal([]byte(args), &argMap) != nil {
+		return tool
+	}
+	// exec_command sends "cmd"; the older shell tool sends "command" as an argv list.
+	cmd, _ := argMap["cmd"].(string)
+	if cmd == "" {
+		switch c := argMap["command"].(type) {
+		case string:
+			cmd = c
+		case []any:
+			parts := make([]string, 0, len(c))
+			for _, p := range c {
+				if ps, ok := p.(string); ok {
+					parts = append(parts, ps)
+				}
+			}
+			cmd = strings.Join(parts, " ")
+		}
+	}
+	if cmd != "" {
+		tool["command"] = cmd
+		tool["input_summary"] = truncate(cmd, 200)
+	}
+	for _, key := range []string{"file_path", "path"} {
+		if fp, _ := argMap[key].(string); fp != "" {
+			tool["input_summary"] = fp
+			break
+		}
+	}
+	return tool
+}
+
+var codexPatchFileRE = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+)$`)
+
+func codexCustomToolCall(name, callID, input string) map[string]any {
+	tool := map[string]any{
+		"name":          name,
+		"tool_use_id":   callID,
+		"input_summary": truncate(name+": "+input, 200),
+	}
+	if name == "apply_patch" {
+		var files []string
+		for _, m := range codexPatchFileRE.FindAllStringSubmatch(input, -1) {
+			files = append(files, strings.TrimSpace(m[1]))
+		}
+		if len(files) > 0 {
+			tool["input_summary"] = truncate(strings.Join(files, ", "), 200)
+		}
+		tool["patch"] = truncateContent(input)
+	}
+	return tool
+}
+
+// codexToolOutput accepts a plain string or a JSON-encoded {"output": ...} wrapper.
+func codexToolOutput(raw any) string {
+	out, _ := raw.(string)
+	if strings.HasPrefix(strings.TrimSpace(out), "{") {
+		var wrapped map[string]any
+		if json.Unmarshal([]byte(out), &wrapped) == nil {
+			if inner, ok := wrapped["output"].(string); ok {
+				return inner
+			}
+		}
+	}
+	return out
 }
 
 func parseCodexUserEntry(content any, timestamp string, toolUseNames map[string]string) []map[string]any {
@@ -827,24 +939,7 @@ func parseCodexAssistantEntry(content any, timestamp string, toolUseNames map[st
 				fnName, _ := b["name"].(string)
 				callID, _ := b["call_id"].(string)
 				args, _ := b["arguments"].(string)
-				toolEntry := map[string]any{
-					"name":          fnName,
-					"tool_use_id":   callID,
-					"input_summary": truncate(fnName+": "+args, 200),
-				}
-				// Parse arguments JSON for common tool fields
-				if args != "" {
-					var argMap map[string]any
-					if json.Unmarshal([]byte(args), &argMap) == nil {
-						if cmd, _ := argMap["command"].(string); cmd != "" {
-							toolEntry["command"] = cmd
-						}
-						if fp, _ := argMap["file_path"].(string); fp != "" {
-							toolEntry["input_summary"] = fnName + ": " + fp
-						}
-					}
-				}
-				toolUses = append(toolUses, toolEntry)
+				toolUses = append(toolUses, codexFunctionCall(fnName, callID, args))
 				if callID != "" {
 					toolUseNames[callID] = fnName
 				}

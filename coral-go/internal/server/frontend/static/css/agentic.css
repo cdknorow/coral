@@ -355,6 +355,7 @@
 .filter-dropdown-item.tool-confidence .filter-item-icon { color: var(--color-tool-confidence); background: rgba(227, 179, 65, 0.15); }
 .filter-dropdown-item.tool-stop .filter-item-icon     { color: var(--color-tool-stop); background: rgba(248, 81, 73, 0.1); }
 .filter-dropdown-item.tool-pulse .filter-item-icon    { color: var(--color-tool-pulse); background: rgba(188, 140, 255, 0.15); }
+.filter-dropdown-item.tool-thinking .filter-item-icon { color: var(--color-tool-thinking); background: rgba(57, 197, 207, 0.12); }
 
 .filter-item-label {
     flex: 1;
@@ -579,6 +580,7 @@
 .event-icon.tool-notification { color: var(--color-tool-edit); background: rgba(210, 153, 34, 0.1); }
 .event-icon.tool-confidence   { color: var(--color-tool-confidence); background: rgba(227, 179, 65, 0.15); }
 .event-icon.tool-pulse  { color: var(--color-tool-pulse); background: rgba(188, 140, 255, 0.15); }
+.event-icon.tool-thinking { color: var(--color-tool-thinking); background: rgba(57, 197, 207, 0.12); }
 .event-icon.tool-default { color: var(--color-tool-default); background: rgba(72, 79, 88, 0.2); }
 
 /* ── Activity Chart ────────────────────────────────────────── */
@@ -595,8 +597,41 @@
     flex-direction: column;
     gap: 4px;
     flex-shrink: 0;
-    max-height: 100px;
+    max-height: 124px;
     overflow: hidden;
+}
+
+/* Count / Time switch above the bars */
+.activity-chart-mode {
+    display: flex;
+    justify-content: flex-end;
+    gap: 2px;
+    height: 18px;
+    flex-shrink: 0;
+}
+.activity-chart-mode button {
+    font-size: 10px;
+    line-height: 16px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.activity-chart-mode button:hover {
+    color: var(--text-primary);
+}
+.activity-chart-mode button.active {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-color: var(--border-light, var(--border));
+}
+.activity-chart-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 6px 0;
 }
 
 .activity-chart:empty {
@@ -643,6 +678,11 @@
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
 }
+.activity-chart-count.is-time {
+    width: 52px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
 
 /* Bar colors */
 .activity-chart-bar.tool-read   { background: rgba(63, 185, 80, 0.6); }
@@ -658,6 +698,7 @@
 .activity-chart-bar.tool-confidence { background: rgba(227, 179, 65, 0.6); }
 .activity-chart-bar.tool-stop   { background: rgba(248, 81, 73, 0.6); }
 .activity-chart-bar.tool-pulse  { background: rgba(188, 140, 255, 0.6); }
+.activity-chart-bar.tool-thinking { background: rgba(57, 197, 207, 0.6); }
 .activity-chart-bar.tool-default { background: rgba(72, 79, 88, 0.4); }
 
 .event-body {
@@ -671,6 +712,29 @@
     white-space: nowrap;
     color: var(--text-primary);
     font-size: 12px;
+}
+
+/* How long the activity took; amber once it is slow enough to matter (10s+) */
+.event-duration {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 0 5px;
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+}
+.event-duration.slow {
+    color: var(--warning, #d29922);
+}
+
+.event-item.event-failed {
+    border-color: rgba(248, 81, 73, 0.35);
+}
+.event-item.event-failed .event-summary {
+    color: var(--error, #f85149);
 }
 
 .event-time {
@@ -870,6 +934,11 @@
 .board-task-item {
     display: flex;
     align-items: center;
+    /* Fixed columns (398px) + gaps and padding (84px) + a 160px description.
+       Below this the list scrolls sideways. A fixed floor, not fit-content:
+       every row gets the same width, so backgrounds and borders line up and
+       long descriptions still truncate instead of stretching their row. */
+    min-width: 642px;
     gap: 10px;
     padding: 6px 12px;
     font-size: 12px;
@@ -980,6 +1049,75 @@
     white-space: nowrap;
 }
 
+/* ── Subagent rows ─────────────────────────────────────────
+   Work a main agent delegated, shown among its tasks. A violet rail, tint
+   and chip set them apart from board and agent tasks at a glance. */
+.board-task-item.board-task-subagent {
+    background: linear-gradient(90deg, rgba(163,113,247,0.10), rgba(163,113,247,0.02) 60%);
+    box-shadow: inset 3px 0 0 var(--subagent-accent, #a371f7);
+}
+
+.board-task-item.board-task-subagent.in-progress .board-task-desc {
+    color: var(--subagent-accent, #a371f7);
+}
+
+.board-task-type.board-task-type-subagent {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--subagent-accent, #a371f7);
+    font-weight: 600;
+}
+
+.board-task-type-subagent .material-icons {
+    font-size: 13px;
+}
+
+.board-task-subagent-badge {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    vertical-align: 1px;
+    color: var(--subagent-accent, #a371f7);
+    background: rgba(163,113,247,0.15);
+    border: 1px solid rgba(163,113,247,0.35);
+}
+
+/* Subagent detail modal */
+.subagent-detail-chip {
+    width: auto;
+    overflow: visible;
+    font-size: 11px;
+}
+
+.subagent-detail-fields {
+    margin-bottom: 16px;
+}
+
+.subagent-detail-mono {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 11px;
+}
+
+.subagent-detail-text {
+    max-height: 260px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    border-left: 2px solid var(--subagent-accent, #a371f7);
+    padding-left: 10px;
+}
+
+.subagent-detail-note {
+    font-size: 12px;
+    font-style: italic;
+    color: var(--text-muted);
+}
+
 .board-task-assignee {
     font-size: 11px;
     color: var(--text-secondary);
@@ -992,6 +1130,10 @@
 
 .board-task-desc {
     flex: 1;
+    /* The only flexible column. .board-task-item's min-width guarantees it at
+       least 160px; without that it collapsed to zero at the default panel
+       width and every task lost its title. */
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

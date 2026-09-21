@@ -282,19 +282,10 @@ async function run() {
         check('terminal row without goal is 36px ±1', Math.abs(bySid['sid-d'].height - 36) <= 1, `${bySid['sid-d'].height}`);
         check('sleeping/attention/empty rows never exceed 41px', rows.every(r => r.height <= 41), JSON.stringify(rows.map(r => r.height)));
 
-        // D5 badge
-        const badge = await evalInPage(`
-            (() => { const b = document.getElementById('nav-tab-agents-badge'); return b ? { text: b.textContent, display: getComputedStyle(b).display } : null; })()
-        `);
-        check('Agents nav badge exists', !!badge);
-        check('badge counts rows needing attention (2)', badge && badge.text === '2' && badge.display !== 'none', JSON.stringify(badge));
+        // D5: the Agents nav attention badge was removed; rows still carry needs-attention
+        check('no Agents nav badge', await evalInPage(`document.getElementById('nav-tab-agents-badge')`) == null);
         const attn = rows.filter(r => r.attention).map(r => r.sid).join(',');
         check('needs-attention rows are sid-b and sid-c', attn === 'sid-b,sid-c', attn);
-
-        await setFixture(SESSIONS.map(s => ({ ...s, waiting_for_input: false, not_started: false })));
-        const badgeAfter = await evalInPage(`(() => { const b = document.getElementById('nav-tab-agents-badge'); return { text: b.textContent, display: getComputedStyle(b).display }; })()`);
-        check('badge hides when nothing needs attention', badgeAfter.text === '' && badgeAfter.display === 'none', JSON.stringify(badgeAfter));
-        await setFixture(SESSIONS);
 
         // D7 naming
         const tab = await evalInPage(`(() => { const t = document.getElementById('agentic-tab-history'); return t ? { title: t.title, aria: t.getAttribute('aria-label') } : null; })()`);

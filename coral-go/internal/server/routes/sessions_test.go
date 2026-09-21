@@ -1010,6 +1010,8 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	// Task routes
 	r.Get("/api/sessions/live/{name}/tasks", handler.ListTasks)
 	r.Post("/api/sessions/live/{name}/tasks", handler.CreateTask)
+	r.Get("/api/sessions/live/{name}/subagents", handler.ListSubagents)
+	r.Get("/api/sessions/live/{name}/subagents/{subagentID}", handler.GetSubagent)
 	r.Put("/api/sessions/live/{name}/tasks/{taskID}", handler.UpdateTask)
 	r.Delete("/api/sessions/live/{name}/tasks/{taskID}", handler.DeleteTask)
 

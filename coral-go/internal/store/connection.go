@@ -62,6 +62,11 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 		d.ExecContext(ctx, sql) // Ignore error — column may already exist
 	}
 
+	// Indexes on migrated columns cannot live in schemaSQL: on an older
+	// database the column does not exist yet when schemaSQL runs.
+	d.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_agent_events_ref
+		ON agent_events(session_id, event_type, ref_id) WHERE ref_id IS NOT NULL`)
+
 	// Fix double-encoded detail_json rows in agent_events (one-time fixup).
 	// Prior to the fix, makeToolDetail returned a JSON string which was then
 	// re-marshaled, producing '"{\"key\":\"val\"}"' instead of '{"key":"val"}'.
@@ -121,8 +126,15 @@ var columnMigrations = []struct {
 	{"agent_tasks", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"agent_tasks", "cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"agent_tasks", "display_name", "TEXT"},
+	// Databases created before `finished` was part of the subagents table.
+	{"subagents", "finished", "INTEGER NOT NULL DEFAULT 0"},
+	{"subagents", "transcript_path", "TEXT"},
 	{"git_snapshots", "pr_number", "INTEGER"},
 	{"git_changed_files", "diff_mode", "TEXT DEFAULT ''"},
+	// How long the activity took, and the id it is known by at its source
+	// (tool_use_id for tool calls, API request id for thinking turns).
+	{"agent_events", "duration_ms", "INTEGER"},
+	{"agent_events", "ref_id", "TEXT"},
 }
 
 const schemaSQL = `
@@ -224,7 +236,9 @@ CREATE TABLE IF NOT EXISTS agent_events (
 	tool_name   TEXT,
 	summary     TEXT NOT NULL,
 	detail_json TEXT,
-	created_at  TEXT NOT NULL
+	created_at  TEXT NOT NULL,
+	duration_ms INTEGER,
+	ref_id      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS live_sessions (
@@ -456,6 +470,8 @@ CREATE TABLE IF NOT EXISTS subagents (
     cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
     cache_write_tokens INTEGER NOT NULL DEFAULT 0,
     cost_usd           REAL NOT NULL DEFAULT 0,
+    finished           INTEGER NOT NULL DEFAULT 0,
+    transcript_path    TEXT,
     started_at         TEXT,
     last_activity_at   TEXT,
     created_at         TEXT NOT NULL,

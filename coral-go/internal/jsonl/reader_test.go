@@ -3,6 +3,7 @@ package jsonl
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -162,6 +163,88 @@ func TestReadNewMessages_CodexEventMessages(t *testing.T) {
 	}
 	if msgs[1]["type"] != "assistant" || msgs[1]["text"] != "I found the issue." {
 		t.Fatalf("unexpected assistant message: %#v", msgs[1])
+	}
+}
+
+func TestReadAllMessages_CodexRolloutToolCalls(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "019e9db7-58df-7082-a954-7305c01b1489"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "09", "20")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+	fixture, err := os.ReadFile(filepath.Join("testdata", "codex_rollout.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessionDir, "rollout-2026-09-20T10-00-00-"+sessionID+".jsonl"), fixture, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs, total := NewSessionReader().ReadAllMessages(sessionID, "", "codex")
+
+	type row struct{ kind, text, tool, id string }
+	var got []row
+	for _, m := range msgs {
+		r := row{kind: m["type"].(string)}
+		switch r.kind {
+		case "user":
+			r.text = m["content"].(string)
+		case "assistant":
+			r.text = m["text"].(string)
+			if tools, _ := m["tool_uses"].([]map[string]any); len(tools) == 1 {
+				r.tool, r.id = tools[0]["name"].(string), tools[0]["tool_use_id"].(string)
+			}
+		case "tool_result":
+			r.tool, r.id = m["tool_name"].(string), m["tool_use_id"].(string)
+		}
+		got = append(got, r)
+	}
+	want := []row{
+		{kind: "user", text: "Build a snowy mountain page."},
+		{kind: "assistant", text: "I'll inspect the project structure first."},
+		{kind: "assistant", tool: "exec_command", id: "call_exec1"},
+		{kind: "tool_result", tool: "exec_command", id: "call_exec1"},
+		{kind: "assistant", tool: "shell", id: "call_shell1"},
+		{kind: "tool_result", tool: "shell", id: "call_shell1"},
+		{kind: "assistant", text: "The folder is empty, so I'll add the page files."},
+		{kind: "assistant", tool: "apply_patch", id: "call_patch1"},
+		{kind: "tool_result", tool: "apply_patch", id: "call_patch1"},
+		{kind: "assistant", tool: "view_image", id: "call_img1"},
+		{kind: "tool_result", tool: "view_image", id: "call_img1"},
+		{kind: "assistant", text: "Added index.html and styles.css. Open index.html to explore the mountains."},
+		{kind: "user", text: "Thanks! What did you name the title?"},
+		{kind: "assistant", text: "The page title is Snowy Mountains."},
+	}
+	if total != len(want) || len(got) != len(want) {
+		t.Fatalf("expected %d messages (no duplicated response_item messages), got total=%d:\n%+v", len(want), total, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("message %d: got %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	tool := func(i int) map[string]any { return msgs[i]["tool_uses"].([]map[string]any)[0] }
+	if tool(2)["command"] != "pwd && rg --files | head -200" {
+		t.Errorf("exec_command cmd not surfaced as command: %#v", tool(2))
+	}
+	if tool(4)["command"] != "bash -lc ls -la" {
+		t.Errorf("shell argv not joined into command: %#v", tool(4))
+	}
+	if msgs[5]["content"] != "total 8\nREADME.md\n" {
+		t.Errorf("JSON-wrapped shell output not unwrapped: %q", msgs[5]["content"])
+	}
+	if tool(7)["input_summary"] != "index.html, styles.css" {
+		t.Errorf("apply_patch summary should list files: %#v", tool(7)["input_summary"])
+	}
+	if patch, _ := tool(7)["patch"].(string); !strings.Contains(patch, "+body { margin: 0; }") {
+		t.Errorf("apply_patch patch body missing: %q", patch)
+	}
+	if tool(9)["input_summary"] != "/repo/game/shot.png" {
+		t.Errorf("view_image summary should be its path: %#v", tool(9)["input_summary"])
 	}
 }
 

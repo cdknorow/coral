@@ -87,7 +87,7 @@ async function run() {
         await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         for (let i = 0; i < 60; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function'`)) break; await sleep(100); }
-        await ev(`localStorage.setItem('coral-group-by-team','${grouped ? 'true' : 'false'}'); localStorage.removeItem('coral-count-your-turn'); window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`);
+        await ev(`localStorage.setItem('coral-group-by-team','${grouped ? 'true' : 'false'}'); window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`);
         await sleep(300);
     };
     const ROWS = (listId) => `(() => Object.fromEntries(Array.from(document.querySelectorAll('#${listId} .session-group-item')).map(li => {
@@ -99,7 +99,6 @@ async function run() {
             pills, ctxPill: q('.session-ctx-pill') ? q('.session-ctx-pill').textContent.trim() : null, attention: li.classList.contains('needs-attention'), isStuck: li.classList.contains('is-stuck'), done: li.classList.contains('session-done'),
             unread: chip ? { text: chip.textContent.trim(), title: chip.getAttribute('title'), shown: getComputedStyle(chip).display !== 'none' } : null, mobileChip: mchip ? mchip.textContent.trim() : null,
             nameX: nx, h: li.getBoundingClientRect().height, labelDecoration: getComputedStyle(name).textDecorationLine }]; })))()`;
-    const BADGE = `(() => { const b = document.getElementById('nav-tab-agents-badge'); return b ? b.textContent.trim() : null; })()`;
     const TOASTS = `document.querySelectorAll('.notification-toast').length`;
 
     try {
@@ -138,23 +137,12 @@ async function run() {
 
         // ── H: unread chip + aggregation ──
         check('H unread chip on line 2: count, title, aria suffix; absent at 0', rows[ID.turnMember].unread && rows[ID.turnMember].unread.text === '3' && /3 unread board messages/.test(rows[ID.turnMember].unread.title || '') && /, 3 unread$/.test(rows[ID.turnMember].aria) && (!rows[ID.working].unread || !rows[ID.working].unread.shown), JSON.stringify({ chip: rows[ID.turnMember].unread, aria: rows[ID.turnMember].aria }));
-        // Aggregation: needs + check + stuck (3) + Your turn standalone (1) + Your turn orchestrator (1) = 5.
-        // The ordinary team member (Your turn, 3 unread) counts through neither rule.
-        check('H nav badge = attention states + operator-facing Your turn; ordinary member with unread is not counted (5)', (await ev(BADGE)) === '5', String(await ev(BADGE)));
-        const ORCH = { name: 'team-dir', agent_type: 'claude', session_id: ID.turnOrch };
-        await diff(Object.assign({}, ORCH, { awaiting_user: false, done: false, working: true, board_unread: 2 })); await sleep(150);
-        const orchUnread = await ev(BADGE);
-        await diff(Object.assign({}, ORCH, { board_unread: 0 })); await sleep(150);
-        const orchNone = await ev(BADGE);
-        await diff(Object.assign({}, ORCH, { awaiting_user: true, done: true, working: false })); await sleep(150);
-        check('H unread counts only for an operator-facing row: working orchestrator with unread = 5, without = 4, back to Your turn = 5', orchUnread === '5' && orchNone === '4' && (await ev(BADGE)) === '5', JSON.stringify({ orchUnread, orchNone, restored: await ev(BADGE) }));
+        // No attention counts anywhere: the Agents nav badge and the team/folder header chips were removed.
+        check('H no Agents nav badge', (await ev(`document.getElementById('nav-tab-agents-badge')`)) == null);
         await diff({ name: 'team-dir', agent_type: 'claude', session_id: ID.turnMember, board_unread: 9 }); await sleep(150);
-        check('H more unread on an ordinary member changes the chip but not the badge', (await ev(BADGE)) === '5' && (await ev(ROWS('live-sessions-list')))[ID.turnMember].unread.text === '9', String(await ev(BADGE)));
-        await ev(`localStorage.setItem('coral-count-your-turn', 'false'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(150);
-        check('H setting coral-count-your-turn=false drops Your turn from the badge (3)', (await ev(BADGE)) === '3', String(await ev(BADGE)));
-        await ev(`localStorage.removeItem('coral-count-your-turn'); localStorage.setItem('coral-group-by-team','true'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(250);
-        const grp = await ev(`(() => { const card = Array.from(document.querySelectorAll('#live-sessions-list .session-board-card')).find(c => /qa-team/.test(c.textContent)); if (!card) return null; const c = card.querySelector('.group-attention-count'); const before = c ? { text: c.textContent.trim(), aria: c.getAttribute('aria-label'), stuck: c.classList.contains('stuck') } : null; const hdr = card.querySelector('.board-card-header'); const chev = hdr.querySelector('[class*="chevron"], .group-chevron, button') || hdr; chev.click(); const c2 = card.querySelector('.group-attention-count'); const out = { before, collapsedStillShown: !!c2 && getComputedStyle(c2).display !== 'none', rowsVisible: Array.from(card.querySelectorAll('.session-group-item')).filter(li => li.getBoundingClientRect().height > 0).length }; chev.click(); return out; })()`);
-        check('H team header attention count = 1 (orchestrator Your turn; member not counted), still visible when collapsed with rows hidden', grp && grp.before && grp.before.text === '1' && grp.rowsVisible === 0 && /attention/.test(grp.before.aria || '') && grp.collapsedStillShown, JSON.stringify(grp));
+        check('H more unread on an ordinary member updates the row chip', (await ev(ROWS('live-sessions-list')))[ID.turnMember].unread.text === '9');
+        await ev(`localStorage.setItem('coral-group-by-team','true'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(250);
+        check('H no attention count on team/folder headers', (await ev(`document.querySelectorAll('#live-sessions-list .group-attention-count').length`)) === 0);
         await ev(`localStorage.setItem('coral-group-by-team','false'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(200);
 
         // ── D: priority pairs on one row (Idler) ──
