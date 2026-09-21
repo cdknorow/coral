@@ -763,15 +763,9 @@ function syncWorkingIndicator(container, session) {
         el = document.createElement("div");
         el.className = "chat-working";
         el.setAttribute("role", "status");
-        el.innerHTML = `<span class="chat-working-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-working-label">Working</span><span class="chat-working-detail"></span>`;
+        // Just the state: the latest step is already the group summary above
+        el.innerHTML = `<span class="chat-working-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="chat-working-label">Working</span>`;
     }
-    // Name the latest step when the turn's work group is the newest content
-    const last = Array.from(container.children).filter(c => !c.matches(".chat-working, .pending-messages, .load-more-btn")).pop();
-    const latest = last && last.classList.contains("work-group")
-        ? last.querySelector(".work-group-latest").textContent.trim() : "";
-    const detail = el.querySelector(".chat-working-detail");
-    const text = latest ? ` \u00b7 ${latest}` : "";
-    if (detail.textContent !== text) detail.textContent = text;
     // Below what the agent is working on (including Sent messages), above
     // anything Queued behind it
     const queued = container.querySelector(":scope > .pending-messages.pending-queued");

@@ -892,11 +892,6 @@
     white-space: nowrap;
     overflow: hidden;
 }
-.chat-working-detail {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--text-muted);
-}
 .chat-working-dots {
     display: inline-flex;
     gap: 3px;
