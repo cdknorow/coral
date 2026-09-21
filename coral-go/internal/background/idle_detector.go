@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -93,7 +94,7 @@ func (d *IdleDetector) RunOnce(ctx context.Context) error {
 			sessionIDs = append(sessionIDs, a.SessionID)
 		}
 	}
-	latestEvents, err := d.taskStore.GetLatestEventTypes(ctx, sessionIDs)
+	stateEvents, err := d.taskStore.GetSessionStateEvents(ctx, sessionIDs)
 	if err != nil {
 		return err
 	}
@@ -106,12 +107,10 @@ func (d *IdleDetector) RunOnce(ctx context.Context) error {
 			d.notifiedMu.Unlock()
 			continue
 		}
-		evPair, ok := latestEvents[agent.SessionID]
-		latestEv := ""
-		if ok {
-			latestEv = evPair[0]
-		}
-		waiting := latestEv == "notification"
+		// Only a request made directly to the user counts. An agent that
+		// finished its turn and received the idle reminder is not waiting
+		// on anyone and must not page a webhook.
+		waiting := needsInput(stateEvents[agent.SessionID])
 
 		if !waiting {
 			d.notifiedMu.Lock()
@@ -154,4 +153,14 @@ func (d *IdleDetector) RunOnce(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// needsInput reports whether a session is blocked on a request made directly
+// to the user, using the same derivation as the dashboard.
+func needsInput(events []store.AgentEvent) bool {
+	in := sessionstate.Input{}
+	for _, ev := range events {
+		in.Events = append(in.Events, sessionstate.Event{Type: ev.EventType, Summary: ev.Summary})
+	}
+	return sessionstate.Derive(in).NeedsInput
 }

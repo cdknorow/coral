@@ -735,14 +735,13 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 	logInfo := getLogStatus(naming.LogFile(h.cfg.LogDir, ls.AgentType, ls.SessionID))
 	initialStatus, _ := logInfo["status"].(string)
 	summary, _ := logInfo["summary"].(string)
-	latestEvent, latestSummary := "", ""
-	if events, eventErr := h.ts.GetLatestEventTypes(r.Context(), []string{sessionID}); eventErr == nil {
-		latestEvent = events[sessionID][0]
-		latestSummary = events[sessionID][1]
+	// Same derivation as the list and WebSocket rows. The popout merges this
+	// record over the live row, so the state fields must agree with it.
+	var liveState SessionState
+	if active && !sleeping {
+		staleness, _ := logInfo["staleness_seconds"].(float64)
+		liveState = h.deriveSingleSessionState(r.Context(), sessionID, staleness)
 	}
-	waiting := active && !sleeping && latestEvent == "notification"
-	done := active && !sleeping && latestEvent == "stop"
-	working := active && !sleeping && (latestEvent == "tool_use" || latestEvent == "prompt_submit")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id":        ls.SessionID,
 		"state":             state,
@@ -760,11 +759,12 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"status":            nilIfEmpty(initialStatus),
 		"summary":           nilIfEmpty(summary),
 		"first_prompt":      h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
-		"waiting_for_input": waiting,
-		"waiting_reason":    nilIf(!waiting, latestEvent),
-		"waiting_summary":   nilIf(!waiting, latestSummary),
-		"working":           working,
-		"done":              done,
+		"waiting_for_input": liveState.NeedsInput,
+		"awaiting_user":     liveState.AwaitingUser,
+		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
+		"waiting_summary":   nilIfEmpty(liveState.WaitingSummary),
+		"working":           liveState.Working,
+		"done":              false,
 		"stuck":             false,
 		"not_started":       false,
 	})
@@ -1123,8 +1123,16 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		latestEvent = events[sessionID][0]
 		latestSummary = events[sessionID][1]
 	}
-	waiting := !finished && !sleeping && latestEvent == "notification"
-	done := !finished && latestEvent == "stop"
+	// Shared derivation: only a request made directly to the user is
+	// "waiting_for_input". A finished turn, including the idle reminder that
+	// follows it, is "done" here, which is this endpoint's name for the
+	// list row's awaiting_user.
+	var liveState SessionState
+	if !finished && !sleeping {
+		liveState = h.deriveSingleSessionState(r.Context(), sessionID, 0)
+	}
+	waiting := liveState.NeedsInput
+	done := liveState.AwaitingUser
 
 	state := "active"
 	switch {
@@ -1144,6 +1152,9 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		"active":            !finished,
 		"finished":          finished,
 		"waiting_for_input": waiting,
+		"awaiting_user":     done,
+		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
+		"waiting_summary":   nilIfEmpty(liveState.WaitingSummary),
 		"done":              done,
 		"sleeping":          sleeping,
 		"latest_event":      nilIfEmpty(latestEvent),

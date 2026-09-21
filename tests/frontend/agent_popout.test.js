@@ -243,7 +243,7 @@ async function run() {
     const resolveLive = await httpJson('GET', `/api/sessions/${sid}/resolve`);
     const rl = resolveLive.data || {};
     const aname = rl.name || sname; // resolver's agent name is the REST {name}
-    const REQ_KEYS = ['session_id', 'state', 'agent_type', 'name', 'tmux_session', 'display_name', 'auto_name', 'board_job_title', 'board_project', 'status', 'waiting_for_input'];
+    const REQ_KEYS = ['session_id', 'state', 'agent_type', 'name', 'tmux_session', 'display_name', 'auto_name', 'board_job_title', 'board_project', 'status', 'waiting_for_input', 'awaiting_user', 'waiting_reason', 'waiting_summary', 'working', 'done'];
     const missingLive = REQ_KEYS.filter(k => !(k in rl));
     check('18 resolver for a live session carries the full identity/status key set', missingLive.length === 0, `missing=${JSON.stringify(missingLive)}`);
     check('18 resolver for live session returns exact routing tuple', resolveLive.status === 200 && rl.state === 'active' && rl.agent_type === 'terminal' && typeof rl.name === 'string' && rl.name.length > 0 && rl.tmux_session === `terminal-${sid}` && rl.display_name === 'Popout QA', JSON.stringify({ state: rl.state, agent_type: rl.agent_type, name: rl.name, tmux: rl.tmux_session, dn: rl.display_name }));
@@ -362,6 +362,29 @@ async function run() {
     const audit3 = auditRouting(t3.requests, { agent_type: 'terminal', session_id: sid, name: aname, tmux_session: `terminal-${sid}` });
     check('30 cross-profile viewer also sends only the exact tuple', audit3.length === 0, JSON.stringify(audit3.slice(0, 3)));
     await t3.close();
+
+    // 33: the resolver must derive state exactly like the list row. It used to
+    // treat ANY trailing notification as "waiting for input", and the popout
+    // merges the resolver record over the live row, so Claude Code's idle
+    // reminder ("waiting for your input", sent ~1 min after every turn ends)
+    // showed "Needs input" on an agent that was asking nothing.
+    const postEvent = (event_type, summary) => httpJson('POST', `/api/sessions/live/${encodeURIComponent(aname)}/events`, { event_type, summary, session_id: sid });
+    const stateOf = (o) => ({ waiting_for_input: o && o.waiting_for_input, awaiting_user: o && o.awaiting_user, waiting_reason: o && o.waiting_reason, waiting_summary: o && o.waiting_summary });
+    const listRow = async () => { const l = await httpJson('GET', '/api/sessions/live'); return (Array.isArray(l.data) ? l.data : []).find(r => r.session_id === sid); };
+    await postEvent('prompt_submit', 'User submitted prompt');
+    await postEvent('notification', 'Notification: Claude needs your permission to use Bash');
+    const pendingResolve = (await httpJson('GET', `/api/sessions/${sid}/resolve`)).data || {};
+    const pendingRow = await listRow();
+    check('33 real server: a pending permission request is Needs input in resolver and list alike', pendingResolve.waiting_for_input === true && pendingResolve.awaiting_user === false && pendingResolve.waiting_reason === 'notification' && JSON.stringify(stateOf(pendingResolve)) === JSON.stringify(stateOf(pendingRow)), JSON.stringify({ resolve: stateOf(pendingResolve), list: stateOf(pendingRow) }));
+    // Denied: no tool event follows, the turn just ends, then the idle reminder.
+    await postEvent('stop', 'Agent stopped: unknown');
+    await postEvent('notification', 'Notification: Claude is waiting for your input');
+    const realIdleResolve = (await httpJson('GET', `/api/sessions/${sid}/resolve`)).data || {};
+    const idleRow = await listRow();
+    const idleStatus = (await httpJson('GET', `/api/sessions/${sid}/status`)).data || {};
+    check('33 real server: turn ended + idle reminder is Your turn in the resolver, never Needs input', realIdleResolve.waiting_for_input === false && realIdleResolve.awaiting_user === true && realIdleResolve.waiting_reason === null && realIdleResolve.waiting_summary === null && realIdleResolve.done === false, JSON.stringify(stateOf(realIdleResolve)));
+    check('33 real server: resolver state fields equal the list row', !!idleRow && JSON.stringify(stateOf(realIdleResolve)) === JSON.stringify(stateOf(idleRow)), JSON.stringify({ resolve: stateOf(realIdleResolve), list: stateOf(idleRow) }));
+    check('33 real server: status endpoint is not waiting_for_input for an idle agent', idleStatus.waiting_for_input === false && idleStatus.awaiting_user === true && idleStatus.state !== 'waiting_for_input', JSON.stringify({ state: idleStatus.state, ...stateOf(idleStatus) }));
 
     // 21: ended on kill; 24: no reconnect loop
     const wsBefore = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u)).length;
@@ -510,6 +533,23 @@ async function run() {
     await tm.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`); await sleep(300);
     check('31 390px: panel toggle opens the tools pane as an overlay', await tm.ev(`(() => { const p = document.getElementById('agentic-state'); return !!p && (p.classList.contains('mobile-panel-overlay') || getComputedStyle(p).display !== 'none'); })()`));
     await tm.close();
+
+    // 33: popout merge. popout.js applies Object.assign({}, liveRow, resolverRecord),
+    // so resolver fields win. Feed it the REAL resolver reply captured from the
+    // server above (idle agent) over an idle live row: the pill must be the
+    // calm "Your turn", with no Needs-input banner, before and after a WS tick.
+    const I = randomUuid();
+    const liveI = { name: 'coral-go', display_name: 'Idle Dev', agent_type: 'claude', session_id: I, tmux_session: `claude-${I}`, summary: 'finished', context_pct: 9, working_directory: '/repo/coral-go', board_project: null, working: false, waiting_for_input: false, awaiting_user: true, waiting_reason: null, waiting_summary: null, not_started: false, stuck: false, done: false, sleeping: false };
+    const resolveI = { ...realIdleResolve, session_id: I, agent_type: 'claude', name: 'coral-go', tmux_session: `claude-${I}`, display_name: 'Idle Dev' };
+    const ti = await openTab(`${BASE}/agent/${I}`, { stub: stubSource({ live: [liveI], resolve: { [I]: resolveI }, history: {} }) });
+    await ti.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await sleep(500);
+    let si = await ti.ev(SHELL_PROBE);
+    check('33 popout: real idle resolver reply merged over the live row shows Your turn, not Needs input', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting, resolver: { waiting_for_input: resolveI.waiting_for_input, awaiting_user: resolveI.awaiting_user } }));
+    await ti.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify(liveI)}] }); true`); await sleep(300);
+    si = await ti.ev(SHELL_PROBE);
+    check('33 popout: still Your turn after a WS tick', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting }));
+    check('33 popout idle fixture: no exceptions', ti.exceptions.length === 0, JSON.stringify(ti.exceptions.slice(0, 2)));
+    await ti.close();
 
     // ── D. Main-app regression ────────────────────────────────────────────
     console.log('\n── D. main app');

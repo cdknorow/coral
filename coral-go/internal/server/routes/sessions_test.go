@@ -573,7 +573,9 @@ func TestSessionStatus_WaitingThenFinished(t *testing.T) {
 
 	ts := store.NewTaskStore(ss.DB())
 	_, err := ts.InsertAgentEvent(ctx, &store.AgentEvent{
-		AgentName: "status-test", SessionID: &sessionID, EventType: "notification", Summary: "Needs input",
+		// A real request string: only a request made directly to the user
+		// is waiting_for_input, not any notification.
+		AgentName: "status-test", SessionID: &sessionID, EventType: "notification", Summary: permissionNote,
 	})
 	require.NoError(t, err)
 

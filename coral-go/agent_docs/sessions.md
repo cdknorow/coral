@@ -58,15 +58,20 @@ Poll lifecycle and agent-turn state using only the stable session ID. The `state
   "active": true,
   "finished": false,
   "waiting_for_input": true,
+  "awaiting_user": false,
+  "waiting_reason": "notification",
+  "waiting_summary": "Notification: Claude needs your permission to use Bash",
   "done": false,
   "sleeping": false,
   "latest_event": "notification",
-  "latest_summary": "Agent needs permission",
+  "latest_summary": "Notification: Claude needs your permission to use Bash",
   "stopped_at": null
 }
 ```
 
-`done` means the agent completed its current turn but the session remains active. `finished` means the session itself has stopped and will not accept more input without being resumed.
+`waiting_for_input` is true only while the agent has asked the user something directly, such as a permission or approval prompt, and is blocked on the answer. It is not set by every notification: the idle reminder an agent sends after finishing a turn reports `done` instead. `waiting_reason` and `waiting_summary` are `null` unless a request is pending.
+
+`done` means the agent completed its current turn but the session remains active. `awaiting_user` carries the same value under the name the session list uses. `finished` means the session itself has stopped and will not accept more input without being resumed.
 
 ---
 
