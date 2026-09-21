@@ -338,6 +338,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/sessions/live/{name}/attach", sessHandler.Attach)
 	r.Put("/api/sessions/live/{name}/display-name", sessHandler.SetDisplayName)
 	r.Get("/api/sessions/live/{name}/file-content", sessHandler.GetFileContent)
+	r.Get("/api/sessions/live/{name}/resolve-path", sessHandler.ResolvePath)
 	r.Get("/api/sessions/live/{name}/file-original", sessHandler.GetFileOriginal)
 	r.Put("/api/sessions/live/{name}/file-content", sessHandler.SaveFileContent)
 	r.Put("/api/sessions/live/{name}/icon", sessHandler.SetIcon)

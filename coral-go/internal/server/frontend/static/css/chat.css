@@ -847,3 +847,12 @@
     transform: translateY(-50%);
     white-space: nowrap;
 }
+
+/* File references in the live Chat view open in the Files preview */
+.live-history-center .chat-file-ref {
+    cursor: pointer;
+}
+.live-history-center code.chat-file-ref:hover {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}

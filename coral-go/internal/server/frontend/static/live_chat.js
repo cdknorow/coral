@@ -1,7 +1,7 @@
 /* Live history view — renders JSONL messages as a read-only conversation log */
 
 import { state } from './state.js';
-import { escapeHtml, renderMarkdown, labelCodeBlocks } from './utils.js';
+import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast } from './utils.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 
@@ -128,8 +128,78 @@ function makeBubble(className, html) {
     div.className = className;
     div.innerHTML = html;
     labelCodeBlocks(div);
+    linkifyRefs(div);
     return div;
 }
+
+// A path-looking inline code span: has a directory, a :line suffix, or a
+// common source extension. Keeps `window.fetch` or `v1.2.3` from matching.
+const FILE_REF_RE = /^(?:~?\.{0,2}\/)?(?:[\w@.+-]+\/)*[\w@.+-]+\.[A-Za-z][\w]{0,7}(?::\d+(?:[-:]\d+)?)?$/;
+const FILE_REF_EXTS = new Set(["md", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "py", "rb", "rs", "java", "kt", "swift", "c", "h", "cc", "cpp", "hpp", "cs", "php", "sh", "zsh", "bash", "json", "yaml", "yml", "toml", "ini", "css", "scss", "html", "sql", "txt", "mod", "sum", "lock", "xml", "svg", "vue", "svelte"]);
+
+function looksLikeFileRef(text) {
+    if (!FILE_REF_RE.test(text) || /^https?:/i.test(text)) return false;
+    const path = text.replace(/:\d+(?:[-:]\d+)?$/, "");
+    const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+    return path.includes("/") || path !== text || FILE_REF_EXTS.has(ext);
+}
+
+// Web links open in a new tab; links to relative paths and path-looking
+// inline code become file references (opened in the Files preview on click
+// in the live Chat view).
+function linkifyRefs(root) {
+    for (const a of root.querySelectorAll("a[href]")) {
+        const href = a.getAttribute("href");
+        if (/^(https?:|mailto:)/i.test(href)) {
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+        } else if (!href.startsWith("#") && looksLikeFileRef(decodeURIComponent(href))) {
+            a.dataset.fileRef = decodeURIComponent(href);
+            a.classList.add("chat-file-ref");
+        }
+    }
+    for (const code of root.querySelectorAll(":not(pre) > code")) {
+        if (code.closest("a")) continue;
+        const text = code.textContent.trim();
+        if (looksLikeFileRef(text)) {
+            code.dataset.fileRef = text;
+            code.classList.add("chat-file-ref");
+        }
+    }
+}
+
+async function openFileRef(ref) {
+    const s = state.currentSession;
+    if (!s || s.type !== "live") return;
+    try {
+        const qs = new URLSearchParams({ filepath: ref, session_id: s.session_id || "" });
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/resolve-path?${qs}`);
+        if (!resp.ok) {
+            showToast(`File not found: ${ref}`, true);
+            return;
+        }
+        const data = await resp.json();
+        if (window.openFilePreview) window.openFilePreview(data.filepath);
+    } catch {
+        showToast(`Could not open ${ref}`, true);
+    }
+}
+
+// File references are only actionable in the live Chat view (it has an agent
+// and a Files panel to open them in).
+document.addEventListener("click", (e) => {
+    const el = e.target.closest && e.target.closest("#live-history-messages [data-file-ref]");
+    if (!el) return;
+    e.preventDefault();
+    openFileRef(el.dataset.fileRef);
+});
+
+// Relative links in the history view have nowhere to go; keep them from
+// navigating the dashboard away.
+document.addEventListener("click", (e) => {
+    const el = e.target.closest && e.target.closest("#history-messages a[data-file-ref]");
+    if (el) e.preventDefault();
+});
 
 function htmlToElement(html) {
     const t = document.createElement("template");

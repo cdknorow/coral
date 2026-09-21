@@ -3802,6 +3802,70 @@ func boardJobTitle(subs map[string]*board.Subscriber, fallback map[string][2]str
 	return nil
 }
 
+// ResolvePath turns a file reference from an agent's chat (repo-relative,
+// relative to the agent's folder, or absolute, with an optional :line or
+// :line-line suffix) into the git-root-relative path the file endpoints use.
+// Only existing files inside the agent's git root resolve.
+// GET /api/sessions/live/{name}/resolve-path?filepath=...&session_id=...
+func (h *SessionsHandler) ResolvePath(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	ref := strings.TrimSpace(r.URL.Query().Get("filepath"))
+	sessionID := r.URL.Query().Get("session_id")
+	if ref == "" || strings.ContainsAny(ref, "\x00") {
+		errBadRequest(w, "filepath is required")
+		return
+	}
+
+	fp, line := ref, 0
+	if m := fileRefLineRe.FindStringSubmatch(ref); m != nil {
+		fp = m[1]
+		line, _ = strconv.Atoi(m[2])
+	}
+
+	root := h.resolveGitRoot(r.Context(), name, "", sessionID)
+	if root == "" {
+		errBadRequest(w, "Could not determine working directory")
+		return
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		errBadRequest(w, "Could not determine working directory")
+		return
+	}
+
+	var candidates []string
+	if filepath.IsAbs(fp) {
+		candidates = []string{fp}
+	} else {
+		candidates = []string{filepath.Join(root, fp)}
+		if wd := h.resolveWorkdir(r.Context(), name, "", sessionID); wd != "" && wd != root {
+			candidates = append(candidates, filepath.Join(wd, fp))
+		}
+	}
+	for _, c := range candidates {
+		real, err := filepath.EvalSymlinks(c)
+		if err != nil {
+			continue
+		}
+		if info, err := os.Stat(real); err != nil || info.IsDir() {
+			continue
+		}
+		if !strings.HasPrefix(real, realRoot+string(os.PathSeparator)) {
+			continue
+		}
+		rel, err := filepath.Rel(realRoot, real)
+		if err != nil {
+			continue
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"filepath": filepath.ToSlash(rel), "line": line})
+		return
+	}
+	errNotFound(w, "File not found")
+}
+
+// A trailing :line, :line:col or :line-line on a file reference.
+var fileRefLineRe = regexp.MustCompile(`^(.+?):(\d+)(?:[-:]\d+)?$`)
+
 // GetFileContent returns the raw content of a file in the agent's working tree.
 // GET /api/sessions/live/{name}/file-content?filepath=...&session_id=...
 func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request) {

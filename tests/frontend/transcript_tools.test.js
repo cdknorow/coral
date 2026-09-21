@@ -40,6 +40,7 @@ const STUB = `
     if (path==='/api/sessions/live') return json(window.__sessions);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
       const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, 400)).then(() => json(body)); }
+    if (/\\/resolve-path$/.test(path)) { window.__resolves = (window.__resolves||[]).concat([qs.get('filepath')]); return json({ filepath: 'resolved/' + qs.get('filepath').replace(/:.*$/, ''), line: 0 }); }
     if (/^\\/api\\/board\\//.test(path)) return json({});
     return window.__origFetch(url, opts); };`;
 
@@ -98,6 +99,20 @@ async function run() {
 
   const shot = await Page.captureScreenshot({ format: 'png', clip: await ev(`(() => { const r = ${C}.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: Math.min(r.height, 900), scale: 1 }; })()`) });
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT, Buffer.from(shot.data, 'base64'));
+
+  // Links and file references
+  const REF_TEXT = 'See `coral-go/static/render.js:1558` and `CLAUDE.md`, not `window.fetch` or `v1.1.5`. Docs: [site](https://example.com/x) and [local](static/app.js).';
+  await ev(`window.__opened = []; window.openFilePreview = (p) => window.__opened.push(p); window.__msgs.push({ type: 'assistant', text: ${JSON.stringify(REF_TEXT)} }); true`);
+  for (let i = 0; i < 30; i++) { if (await ev(`!!${C}.querySelector('.chat-file-ref')`)) break; await sleep(100); }
+  const refs = await ev(`(() => { const last = Array.from(${C}.querySelectorAll('.chat-bubble.assistant')).pop();
+    return { refs: Array.from(last.querySelectorAll('[data-file-ref]')).map(e => e.dataset.fileRef),
+      ext: (a => a && { target: a.target, rel: a.rel })(last.querySelector('a[href^="https://"]')) }; })()`);
+  check('path-looking inline code and relative links become file refs; identifiers and versions do not', JSON.stringify(refs.refs) === JSON.stringify(['coral-go/static/render.js:1558', 'CLAUDE.md', 'static/app.js']), JSON.stringify(refs.refs));
+  check('web links open in a new tab without opener access', refs.ext && refs.ext.target === '_blank' && /noopener/.test(refs.ext.rel), JSON.stringify(refs.ext));
+  await ev(`Array.from(${C}.querySelectorAll('[data-file-ref]')).find(e => e.dataset.fileRef.startsWith('coral-go')).click(); true`);
+  await sleep(300);
+  const refClick = await ev(`({ resolves: window.__resolves, opened: window.__opened, url: location.pathname })`);
+  check('clicking a file ref resolves it and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === '/', JSON.stringify(refClick));
 
   // History Chat tab renders the same transcript through the same renderer:
   // tool output folds into step groups instead of being shown as reply prose.

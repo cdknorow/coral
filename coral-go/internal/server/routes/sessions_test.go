@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -984,6 +985,61 @@ func TestSessionsSetNameColor(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, put(`{"color": "#a3be8c"}`), "session_id required")
 }
 
+func TestSessionsResolvePath(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	server, _, _, ss := setupSessionsTestServer(t)
+
+	// repo/            <- git root
+	//   README.md
+	//   app/           <- agent working directory
+	//     main.go
+	// outside.txt      <- outside the repo
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	app := filepath.Join(root, "app")
+	require.NoError(t, os.MkdirAll(app, 0o755))
+	require.NoError(t, exec.Command("git", "init", "-q", root).Run())
+	require.NoError(t, os.WriteFile(filepath.Join(root, "README.md"), []byte("hi"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(app, "main.go"), []byte("package main"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "outside.txt"), []byte("secret"), 0o644))
+
+	ctx := context.Background()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-resolve", AgentType: "claude", WorkingDir: app, SessionID: "resolve-1"})
+
+	resolve := func(ref string) (int, map[string]any) {
+		q := url.Values{"filepath": {ref}, "session_id": {"resolve-1"}}
+		resp, err := http.Get(server.URL + "/api/sessions/live/claude-resolve/resolve-path?" + q.Encode())
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var body map[string]any
+		json.NewDecoder(resp.Body).Decode(&body)
+		return resp.StatusCode, body
+	}
+
+	for ref, want := range map[string]string{
+		"app/main.go":                 "app/main.go", // repo-relative
+		"main.go":                     "app/main.go", // relative to the agent's folder
+		"app/main.go:12":              "app/main.go", // with a line
+		"main.go:3-9":                 "app/main.go", // with a range
+		filepath.Join(app, "main.go"): "app/main.go", // absolute
+		"README.md":                   "README.md",
+	} {
+		code, body := resolve(ref)
+		assert.Equal(t, http.StatusOK, code, ref)
+		assert.Equal(t, want, body["filepath"], ref)
+	}
+	_, body := resolve("app/main.go:12")
+	assert.Equal(t, float64(12), body["line"])
+
+	// Nothing outside the repo, and nothing that does not exist
+	for _, ref := range []string{"../outside.txt", "../../outside.txt", filepath.Join(base, "outside.txt"), "missing.go", "app"} {
+		code, _ := resolve(ref)
+		assert.Equal(t, http.StatusNotFound, code, ref)
+	}
+}
+
 func TestSessionsTasks_CRUD(t *testing.T) {
 	server, _, terminal, ss := setupSessionsTestServer(t)
 
@@ -1102,6 +1158,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Post("/api/sessions/live/{name}/set-display-name", handler.SetDisplayName)
 	r.Post("/api/sessions/live/{name}/set-icon", handler.SetIcon)
 	r.Put("/api/sessions/live/{name}/name-color", handler.SetNameColor)
+	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Post("/api/sessions/launch", handler.Launch)
 	r.Post("/api/sessions/launch-team", handler.LaunchTeam)
 
