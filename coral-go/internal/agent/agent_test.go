@@ -1793,6 +1793,10 @@ func TestBuildMergedSettings_NilAgentHooks(t *testing.T) {
 	if len(hooks["PostToolUse"]) == 0 {
 		t.Error("Coral PostToolUse hooks should still be present with nil agent hooks")
 	}
+	// The chat shows open permission prompts and questions from PreToolUse
+	if len(hooks["PreToolUse"]) == 0 {
+		t.Error("Coral PreToolUse hook should be present in merged settings")
+	}
 }
 
 func TestBuildLaunchCommand_HooksInSettings(t *testing.T) {

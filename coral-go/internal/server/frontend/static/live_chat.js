@@ -235,7 +235,7 @@ function updateWorkGroupSummary(group) {
 // live chat but are not part of the transcript. Rendering reads and appends
 // transcript content as if they were not there, so a new tool call still
 // joins the turn's group while the Working row is showing.
-const TRAILING_CHROME = ".chat-working, .pending-messages";
+const TRAILING_CHROME = ".chat-working, .chat-needs-input, .chat-empty, .pending-messages";
 
 function lastContent(container) {
     let el = container.lastElementChild;
@@ -424,7 +424,10 @@ export async function refreshLiveHistory() {
 
         // Pending first: it settles its place at the bottom, then the working row goes above it
         syncPendingBubbles(container, session.session_id);
+        syncNeedsInputCard(container, session);
         syncWorkingIndicator(container, session);
+        syncEmptyState(container);
+        refreshPendingTool(session);
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
         }
@@ -562,10 +565,10 @@ function hasTranscript(session) {
     return !!session && session.agent_type !== "terminal";
 }
 
-/** Apply the persisted mode to the DOM and start/stop the transcript poll. */
-export function applyLiveViewMode() {
+/** Apply the persisted mode (or a one-off override) to the DOM and start/stop the transcript poll. */
+export function applyLiveViewMode(override) {
     const canChat = hasTranscript(state.currentSession);
-    const mode = canChat ? getLiveViewMode() : "terminal";
+    const mode = canChat ? (override || getLiveViewMode()) : "terminal";
     const toggle = document.querySelector(".live-view-toggle");
     if (toggle) toggle.hidden = !canChat;
     const wrapper = document.getElementById("capture-wrapper");
@@ -740,6 +743,11 @@ function noteAgentActivity(sessionId, msg) {
     if (Number.isNaN(ts) || ts >= sent - 2000) lastSendAt.delete(sessionId);
 }
 
+/** Show the terminal for this agent without changing the saved Chat/Terminal choice. */
+export function showTerminalView() {
+    applyLiveViewMode("terminal");
+}
+
 function agentIsWorking(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session.session_id) || session;
     const key = deriveSessionState(row);
@@ -755,7 +763,8 @@ const agentIsBusy = agentIsWorking;
 
 function syncWorkingIndicator(container, session) {
     let el = container.querySelector(":scope > .chat-working");
-    if (!agentIsWorking(session)) {
+    // A card asking for input replaces the Working row
+    if (!agentIsWorking(session) || container.querySelector(":scope > .chat-needs-input")) {
         if (el) el.remove();
         return;
     }
@@ -783,3 +792,121 @@ document.addEventListener("scroll", (e) => {
     if (!el || el.id !== "live-history-messages") return;
     if (el.scrollTop < AUTO_LOAD_PX && historyHasMore && initialLoadDone) loadMoreHistory();
 }, true);
+
+// ── Needs input ──────────────────────────────────────────────────────────
+// Claude Code writes a tool call to the transcript only once it completes, so
+// an open permission prompt, AskUserQuestion or plan approval never shows in
+// the chat on its own. The PreToolUse hook reports the call as it starts
+// (GET /pending-tool); the Notification hook sets waiting_for_input. Together
+// they drive a card at the bottom of the chat saying what is being asked.
+
+const pendingToolBySession = new Map(); // session_id -> pending tool or null
+let pendingToolInFlight = false;
+
+async function refreshPendingTool(session) {
+    if (pendingToolInFlight || !session || !session.session_id) return;
+    pendingToolInFlight = true;
+    try {
+        const qs = new URLSearchParams({ session_id: session.session_id });
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/pending-tool?${qs}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            pendingToolBySession.set(session.session_id, data.pending || null);
+        }
+    } catch { /* keep the last known value */ } finally {
+        pendingToolInFlight = false;
+    }
+}
+
+// Tools whose whole purpose is to wait for the user
+const BLOCKING_TOOLS = { AskUserQuestion: "question", ExitPlanMode: "plan" };
+
+function needsInputInfo(session) {
+    const row = (state.liveSessions || []).find(s => s.session_id === session.session_id) || session;
+    const key = deriveSessionState(row);
+    if (key === "ended" || key === "sleeping") return null;
+    const pt = pendingToolBySession.get(session.session_id) || null;
+    if (pt && BLOCKING_TOOLS[pt.tool_name]) return { kind: BLOCKING_TOOLS[pt.tool_name], tool: pt };
+    if (row.waiting_for_input) return { kind: "permission", tool: pt, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
+    if (key === "check_terminal") return { kind: "startup" };
+    return null;
+}
+
+function needsInputHtml(info) {
+    const inp = (info.tool && info.tool.input) || {};
+    let title = "";
+    let body = "";
+    if (info.kind === "question") {
+        title = "Question for you";
+        for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
+            body += `<div class="cni-question">${escapeHtml(q.question || "")}</div>`;
+            const opts = Array.isArray(q.options) ? q.options : [];
+            if (opts.length) {
+                body += `<ol class="cni-options">` + opts.map(o =>
+                    `<li><span class="cni-option-label">${escapeHtml(o.label || "")}</span>${o.description ? `<span class="cni-option-desc">${escapeHtml(o.description)}</span>` : ""}</li>`).join("") + `</ol>`;
+            }
+        }
+        body += `<div class="cni-hint">Answer in the terminal.</div>`;
+    } else if (info.kind === "plan") {
+        title = "Plan ready for your approval";
+        if (inp.plan) body += `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
+        body += `<div class="cni-hint">Approve or refine it in the terminal.</div>`;
+    } else if (info.kind === "permission") {
+        const tool = info.tool && info.tool.tool_name;
+        title = tool ? `Needs your permission to use ${escapeHtml(tool)}` : "Needs your input";
+        if (info.summary && !tool) body += `<div class="cni-summary">${escapeHtml(info.summary)}</div>`;
+        const target = inp.command || inp.file_path || inp.path || inp.url || inp.query || inp.pattern || "";
+        if (inp.description && inp.command) body += `<div class="cni-summary">${escapeHtml(inp.description)}</div>`;
+        if (target) body += `<pre class="cni-target"><code>${escapeHtml(target)}</code></pre>`;
+        body += `<div class="cni-hint">Answer in the terminal.</div>`;
+    } else {
+        title = "Waiting in the terminal";
+        body = `<div class="cni-summary">The agent may be waiting at a startup prompt, such as trusting this folder or logging in.</div>`;
+    }
+    return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-title">${title}</span></div>
+        <div class="cni-body">${body}</div>
+        <div class="cni-actions"><button type="button" class="btn btn-sm btn-primary" onclick="window.showTerminalView()">Open terminal</button></div>`;
+}
+
+function syncNeedsInputCard(container, session) {
+    const info = needsInputInfo(session);
+    let el = container.querySelector(":scope > .chat-needs-input");
+    if (!info) {
+        if (el) el.remove();
+        return;
+    }
+    const key = JSON.stringify(info);
+    if (!el) {
+        el = document.createElement("div");
+        el.className = "chat-needs-input";
+        el.setAttribute("role", "alert");
+    }
+    if (el.dataset.key !== key) {
+        el.dataset.key = key;
+        el.innerHTML = needsInputHtml(info);
+    }
+    // Same slot as the Working row: below Sent messages, above Queued ones
+    const queued = container.querySelector(":scope > .pending-messages.pending-queued");
+    if (queued) {
+        if (el.nextElementSibling !== queued) container.insertBefore(el, queued);
+    } else if (container.lastElementChild !== el) {
+        container.appendChild(el);
+    }
+}
+
+// A brand-new agent has no transcript yet; say so instead of a blank pane.
+function syncEmptyState(container) {
+    const hasContent = Array.from(container.children).some(c => !c.matches(TRAILING_CHROME + ", .load-more-btn, .loading-indicator"));
+    const busy = container.querySelector(":scope > .chat-working, :scope > .chat-needs-input, :scope > .pending-messages");
+    let el = container.querySelector(":scope > .chat-empty");
+    if (hasContent || busy) {
+        if (el) el.remove();
+        return;
+    }
+    if (!el) {
+        el = document.createElement("div");
+        el.className = "chat-empty";
+        el.textContent = "No messages yet. Send a message below to get started.";
+        container.appendChild(el);
+    }
+}

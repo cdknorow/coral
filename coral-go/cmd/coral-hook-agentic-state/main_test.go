@@ -130,3 +130,21 @@ func TestParseAgenticEventWithoutTimingStaysUnchanged(t *testing.T) {
 		t.Fatal("tool_use_id must be absent when the agent does not report it")
 	}
 }
+
+func TestParsePendingTool(t *testing.T) {
+	got := parsePendingTool(map[string]any{
+		"hook_event_name": "PreToolUse",
+		"tool_name":       "AskUserQuestion",
+		"tool_use_id":     "toolu_1",
+		"tool_input":      map[string]any{"questions": []any{map[string]any{"question": "Which?"}}},
+	}, "session-1")
+	if got == nil || got["tool_name"] != "AskUserQuestion" || got["tool_use_id"] != "toolu_1" || got["session_id"] != "session-1" {
+		t.Fatalf("pending = %#v", got)
+	}
+	if in, _ := got["tool_input"].(map[string]any); in == nil || in["questions"] == nil {
+		t.Fatalf("tool_input not forwarded: %#v", got)
+	}
+	if parsePendingTool(map[string]any{"hook_event_name": "PreToolUse"}, "s") != nil {
+		t.Fatal("a PreToolUse without a tool name must be dropped")
+	}
+}

@@ -330,6 +330,14 @@ func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {
 
 // Coral hooks to inject into every Claude session.
 var coralHooks = map[string][]map[string]interface{}{
+	// Before a tool runs: lets the chat show what an open permission prompt,
+	// AskUserQuestion or plan approval is asking (it reaches the transcript
+	// only after it completes).
+	"PreToolUse": {
+		{"hooks": []map[string]interface{}{
+			{"type": "command", "command": "coral-hook-agentic-state"},
+		}},
+	},
 	"PostToolUse": {
 		{"matcher": "TaskCreate|TaskUpdate", "hooks": []map[string]interface{}{
 			{"type": "command", "command": "coral-hook-task-sync"},

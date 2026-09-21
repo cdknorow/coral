@@ -62,6 +62,20 @@ func main() {
 		return
 	}
 
+	// PreToolUse: record the tool call that is starting so the chat can show
+	// what a permission prompt, question or plan approval is asking. It is not
+	// an activity event; its PostToolUse is.
+	if hookType == "PreToolUse" {
+		pending := parsePendingTool(d, sessionID)
+		if pending == nil {
+			return
+		}
+		if _, err := hooks.CoralAPI(base, "POST", fmt.Sprintf("/api/sessions/live/%s/pending-tool", agentName), pending); err != nil {
+			hooks.DebugLog(fmt.Sprintf("PENDING_POST_FAILED: agent=%s tool=%v err=%v", agentName, pending["tool_name"], err))
+		}
+		return
+	}
+
 	event := parseAgenticEvent(d, hookType, sessionID)
 	if event == nil {
 		hooks.DebugLog(fmt.Sprintf("DROPPED (parse returned nil): hook_type=%s agent=%s", hookType, agentName))
@@ -86,6 +100,20 @@ func main() {
 	}
 
 	hooks.DebugLog(fmt.Sprintf("DONE: agent=%s event_type=%s", agentName, event["event_type"]))
+}
+
+// parsePendingTool builds the pending-tool payload for a PreToolUse hook.
+func parsePendingTool(d map[string]any, sessionID string) map[string]any {
+	tool, _ := d["tool_name"].(string)
+	if tool == "" {
+		return nil
+	}
+	return map[string]any{
+		"session_id":  sessionID,
+		"tool_use_id": hooks.StrVal(d, "tool_use_id"),
+		"tool_name":   tool,
+		"tool_input":  hooks.GetToolInput(d),
+	}
 }
 
 func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]any {

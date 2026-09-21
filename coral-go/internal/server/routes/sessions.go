@@ -64,6 +64,8 @@ type SessionsHandler struct {
 
 	goals GoalRequester // nil until the goal generator starts
 
+	pending pendingTools // tool calls started but not finished (PreToolUse hook)
+
 	// Deduplication state for status/summary events (mirrors Python _last_known)
 	lastKnownMu sync.RWMutex
 	lastKnown   map[string]lastKnownState
@@ -3327,6 +3329,7 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	h.notePendingToolEvent(body.SessionID, body.EventType, body.ToolUseID)
 	writeJSON(w, http.StatusOK, created)
 }
 

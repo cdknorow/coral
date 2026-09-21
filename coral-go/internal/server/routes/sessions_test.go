@@ -1040,6 +1040,55 @@ func TestSessionsResolvePath(t *testing.T) {
 	}
 }
 
+func TestSessionsPendingTool(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-pending", AgentType: "claude", WorkingDir: "/tmp/test", SessionID: "pend-1"})
+	base := server.URL + "/api/sessions/live/claude-pending"
+
+	post := func(path, body string) int {
+		resp, err := http.Post(base+path, "application/json", bytes.NewBufferString(body))
+		require.NoError(t, err)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	get := func() map[string]any {
+		resp, err := http.Get(base + "/pending-tool?session_id=pend-1")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		p, _ := body["pending"].(map[string]any)
+		return p
+	}
+
+	assert.Nil(t, get(), "nothing pending initially")
+
+	// A question is recorded with its options; bulky fields are never kept
+	assert.Equal(t, http.StatusOK, post("/pending-tool", `{"session_id":"pend-1","tool_use_id":"t1","tool_name":"AskUserQuestion",
+		"tool_input":{"questions":[{"question":"Which?","options":[{"label":"A"},{"label":"B"}]}],"content":"x"}}`))
+	p := get()
+	require.NotNil(t, p)
+	assert.Equal(t, "AskUserQuestion", p["tool_name"])
+	in := p["input"].(map[string]any)
+	assert.NotNil(t, in["questions"])
+	assert.Nil(t, in["content"], "fields the chat does not show are dropped")
+
+	// Another tool's completion does not clear it; its own does
+	post("/events", `{"event_type":"tool_use","summary":"Ran: ls","session_id":"pend-1","tool_use_id":"other"}`)
+	assert.NotNil(t, get())
+	post("/events", `{"event_type":"tool_use","summary":"Asked","session_id":"pend-1","tool_use_id":"t1"}`)
+	assert.Nil(t, get(), "the tool's own PostToolUse clears it")
+
+	// A turn ending clears whatever is pending
+	post("/pending-tool", `{"session_id":"pend-1","tool_use_id":"t2","tool_name":"Bash","tool_input":{"command":"rm -rf build"}}`)
+	assert.Equal(t, "rm -rf build", get()["input"].(map[string]any)["command"])
+	post("/events", `{"event_type":"stop","summary":"Agent stopped: unknown","session_id":"pend-1"}`)
+	assert.Nil(t, get())
+
+	assert.Equal(t, http.StatusBadRequest, post("/pending-tool", `{"tool_name":"Bash"}`), "session_id required")
+}
+
 func TestSessionsTasks_CRUD(t *testing.T) {
 	server, _, terminal, ss := setupSessionsTestServer(t)
 
@@ -1160,6 +1209,9 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Post("/api/sessions/live/{name}/set-icon", handler.SetIcon)
 	r.Put("/api/sessions/live/{name}/name-color", handler.SetNameColor)
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
+	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
+	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)
+	r.Post("/api/sessions/live/{name}/events", handler.CreateEvent)
 	r.Post("/api/sessions/launch", handler.Launch)
 	r.Post("/api/sessions/launch-team", handler.LaunchTeam)
 

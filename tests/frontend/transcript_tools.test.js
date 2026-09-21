@@ -41,6 +41,7 @@ const STUB = `
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
       const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, 400)).then(() => json(body)); }
+    if (/\\/pending-tool$/.test(path)) return json({ pending: window.__pendingTool || null });
     if (/\\/resolve-path$/.test(path)) { window.__resolves = (window.__resolves||[]).concat([qs.get('filepath')]); return json({ filepath: 'resolved/' + qs.get('filepath').replace(/:.*$/, ''), line: 0 }); }
     if (/^\\/api\\/board\\//.test(path)) return json({});
     return window.__origFetch(url, opts); };`;
@@ -188,6 +189,36 @@ async function run() {
   await sleep(1500);
   const done = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.pending').length, working: !!${C}.querySelector(':scope > .chat-working') })`);
   check('once it lands and the agent replies, nothing is pending and Working is gone', done.pending === 0 && !done.working, JSON.stringify(done));
+
+  // Needs input: an open question (PreToolUse) shows as a card in place of Working
+  const setRow = (o) => ev(`import('/static/state.js').then(st => { Object.assign(st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}), ${JSON.stringify(o)}); return true; })`);
+  const card = () => ev(`(() => { const c = ${C}.querySelector(':scope > .chat-needs-input'); return c ? { title: c.querySelector('.cni-title').textContent, text: c.textContent.replace(/\\s+/g, ' ').trim(), options: Array.from(c.querySelectorAll('.cni-option-label')).map(o => o.textContent), working: !!${C}.querySelector(':scope > .chat-working'), last: ${C}.lastElementChild === c } : null; })()`);
+  await setRow({ working: true, awaiting_user: false, waiting_for_input: false });
+  await ev(`window.__pendingTool = { tool_use_id: 'q1', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which layout?', options: [{ label: 'Compact', description: 'Denser rows' }, { label: 'Roomy' }] }] } }; true`);
+  await sleep(2600);
+  let cd = await card();
+  check('an open question shows as a card with its options, replacing the Working row', cd && cd.title === 'Question for you' && /Which layout\?/.test(cd.text) && JSON.stringify(cd.options) === '["Compact","Roomy"]' && !cd.working && cd.last, JSON.stringify(cd));
+
+  // Open terminal switches this view without changing the saved Chat default
+  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input button').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
+  check('Open terminal shows the terminal without changing the saved view choice', !openTerm.chat && openTerm.saved === openTerm.before, JSON.stringify(openTerm));
+
+  // A permission prompt: the Notification sets waiting_for_input; PreToolUse says what for
+  await setRow({ working: false, waiting_for_input: true, waiting_summary: 'Notification: Claude needs your permission to use Bash' });
+  await ev(`window.__pendingTool = { tool_use_id: 'b1', tool_name: 'Bash', input: { command: 'rm -rf build', description: 'Clean the build folder' } }; true`);
+  await sleep(2600);
+  cd = await card();
+  check('a permission prompt names the tool and shows the command', cd && cd.title === 'Needs your permission to use Bash' && /rm -rf build/.test(cd.text) && /Clean the build folder/.test(cd.text), JSON.stringify(cd));
+
+  // Agents launched before the hook existed: the notification text alone
+  await ev(`window.__pendingTool = null; true`);
+  await sleep(2600);
+  cd = await card();
+  check('without hook details the card shows the notification text', cd && cd.title === 'Needs your input' && /Claude needs your permission to use Bash/.test(cd.text) && !/^Notification:/.test(cd.text), JSON.stringify(cd));
+
+  await setRow({ waiting_for_input: false, waiting_summary: null, awaiting_user: true });
+  await sleep(1500);
+  check('the card goes away once the prompt is answered', (await card()) === null);
 
   // A plain terminal has no transcript: always Terminal, toggle hidden
   const term = await ev(`Promise.all([import('/static/state.js'), import('/static/live_chat.js')]).then(([st, m]) => {

@@ -927,3 +927,90 @@
     margin: 0 8px;
     opacity: 0.6;
 }
+
+/* Agent is waiting on the user: what it is asking, and a way to answer */
+.chat-needs-input {
+    margin: 6px auto 20px;
+    border: 1px solid color-mix(in srgb, var(--warning) 55%, var(--border));
+    border-left: 3px solid var(--warning);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--warning) 7%, var(--bg-secondary));
+    padding: 12px 16px;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color: var(--text-primary);
+}
+.cni-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+.cni-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warning);
+    flex-shrink: 0;
+}
+.cni-question {
+    font-weight: 500;
+    margin: 6px 0;
+}
+.cni-options {
+    margin: 4px 0 8px;
+    padding-left: 22px;
+}
+.cni-options li {
+    margin: 4px 0;
+}
+.cni-option-label {
+    font-weight: 600;
+}
+.cni-option-desc {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+.cni-summary {
+    color: var(--text-secondary);
+    margin: 4px 0;
+}
+.cni-target {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 6px 0;
+    overflow-x: auto;
+    font-size: 12.5px;
+}
+.cni-plan {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin: 6px 0;
+    background: var(--bg-primary);
+}
+.cni-hint {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 6px;
+}
+.cni-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+}
+
+/* A brand-new agent with no transcript yet */
+.chat-empty {
+    text-align: center;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    margin: 48px auto;
+}

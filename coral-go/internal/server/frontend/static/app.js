@@ -28,7 +28,7 @@ import { loadCustomViews, activateCustomView } from './custom_views.js';
 import { initRouter, pushView, restoreChatFromHash } from './router.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
-import { setLiveViewMode } from './live_chat.js';
+import { setLiveViewMode, showTerminalView } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
 import { copyBranchName, escapeHtml, showView } from './utils.js';
@@ -114,7 +114,7 @@ Object.assign(window, {
     // agentic_state
     switchAgenticTab, loadAgentEvents,
     // live_chat
-    setLiveViewMode,
+    setLiveViewMode, showTerminalView,
     toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup,
     // history_tabs
     toggleHistoryEventFilter, toggleAllHistoryEventFilters,
