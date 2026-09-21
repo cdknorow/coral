@@ -9,17 +9,60 @@ import (
 	"testing"
 )
 
+// isolateBoardEnv makes a test hermetic with respect to the agent environment.
+//
+// Coral exports CORAL_DATA_DIR, CORAL_DIR, CORAL_SESSION_NAME and
+// CORAL_SUBSCRIBER_ID into every agent shell, and coralDir() prefers the data
+// dir variables over HOME. Redirecting HOME alone therefore left these tests
+// reading, overwriting and deleting the real board_state file of whichever
+// agent ran them. Any test that touches the state file, coralDir() or identity
+// resolution must call this first. It returns the temporary data directory.
+func isolateBoardEnv(t *testing.T) string {
+	t.Helper()
+	dataDir := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CORAL_DATA_DIR", dataDir)
+	t.Setenv("CORAL_DIR", dataDir)
+	t.Setenv("CORAL_SESSION_NAME", "coral-board-test-session")
+	t.Setenv("CORAL_SUBSCRIBER_ID", "")
+	t.Setenv("TMUX", "")
+
+	// loadState falls back to PID resolution, which asks a live Coral server
+	// to identify the calling process tree. Inside an agent shell that
+	// succeeds, so "missing state" would never be observed. Mark it as already
+	// resolved to nothing, and restore the package globals afterwards.
+	oldDone, oldCached, oldURL := pidResolutionDone, cachedPIDResolution, serverURL
+	pidResolutionDone, cachedPIDResolution = true, nil
+	t.Cleanup(func() {
+		pidResolutionDone, cachedPIDResolution, serverURL = oldDone, oldCached, oldURL
+	})
+	return dataDir
+}
+
+// TestIsolateBoardEnv_RedirectsStateFile guards the helper itself: the state
+// file must resolve inside the temporary data dir even when the process
+// inherited CORAL_DATA_DIR and CORAL_DIR pointing at a real install.
+func TestIsolateBoardEnv_RedirectsStateFile(t *testing.T) {
+	t.Setenv("CORAL_DATA_DIR", "/nonexistent/real-coral-dir")
+	t.Setenv("CORAL_DIR", "/nonexistent/real-coral-dir")
+	dataDir := isolateBoardEnv(t)
+
+	if got := coralDir(); got != dataDir {
+		t.Fatalf("coralDir() = %q, want temp dir %q", got, dataDir)
+	}
+	want := filepath.Join(dataDir, "board_state_coral-board-test-session.json")
+	if got := stateFilePath(); got != want {
+		t.Fatalf("stateFilePath() = %q, want %q", got, want)
+	}
+}
+
 // --- resolveSessionName tests ---
 
 func TestResolveSessionName_FallsBackToHostname(t *testing.T) {
-	// Without TMUX env var, should fall back to hostname
-	old := os.Getenv("TMUX")
-	os.Unsetenv("TMUX")
-	defer func() {
-		if old != "" {
-			os.Setenv("TMUX", old)
-		}
-	}()
+	// Without CORAL_SESSION_NAME or TMUX, should fall back to hostname.
+	// Both are set in every agent shell, so clear them explicitly.
+	t.Setenv("CORAL_SESSION_NAME", "")
+	t.Setenv("TMUX", "")
 
 	name := resolveSessionName()
 	if name == "" {
@@ -34,11 +77,7 @@ func TestResolveSessionName_FallsBackToHostname(t *testing.T) {
 // --- State file management tests ---
 
 func TestStateFile_SaveAndLoad(t *testing.T) {
-	// Use a temp home directory
-	tmpHome := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", origHome)
+	isolateBoardEnv(t)
 
 	// Save state
 	st := &boardState{Project: "test-project", JobTitle: "QA Engineer"}
@@ -64,10 +103,7 @@ func TestStateFile_SaveAndLoad(t *testing.T) {
 }
 
 func TestStateFile_LoadMissing(t *testing.T) {
-	tmpHome := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", origHome)
+	isolateBoardEnv(t)
 
 	st := loadState()
 	if st != nil {
@@ -76,19 +112,13 @@ func TestStateFile_LoadMissing(t *testing.T) {
 }
 
 func TestStateFile_ServerURLOverride(t *testing.T) {
-	tmpHome := t.TempDir()
-	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpHome)
-	defer os.Setenv("HOME", origHome)
+	isolateBoardEnv(t)
 
 	// Save state with custom server URL
 	st := &boardState{Project: "test", JobTitle: "Dev", ServerURL: "http://custom:9999"}
 	saveState(st)
 
-	// Reset serverURL
-	oldURL := serverURL
-	defer func() { serverURL = oldURL }()
-
+	// loadState overrides serverURL; isolateBoardEnv restores it on cleanup.
 	loaded := loadState()
 	if loaded == nil {
 		t.Fatal("loadState returned nil")
@@ -99,12 +129,16 @@ func TestStateFile_ServerURLOverride(t *testing.T) {
 }
 
 func TestStateFilePath_ContainsSessionName(t *testing.T) {
+	isolateBoardEnv(t)
 	path := stateFilePath()
 	if !filepath.IsAbs(path) {
 		t.Errorf("state file path should be absolute, got %q", path)
 	}
 	if filepath.Ext(path) != ".json" {
 		t.Errorf("state file should have .json extension, got %q", path)
+	}
+	if base := filepath.Base(path); base != "board_state_coral-board-test-session.json" {
+		t.Errorf("state file name = %q, want it to contain the session name", base)
 	}
 }
 
@@ -186,7 +220,7 @@ func TestInit_CORAL_URL(t *testing.T) {
 	defer func() { serverURL = oldURL }()
 
 	// The init() already ran, but we can test the logic directly
-	os.Setenv("CORAL_URL", "http://custom-host:9000/")
+	t.Setenv("CORAL_URL", "http://custom-host:9000/")
 	serverURL = "http://localhost:8420"
 	if v := os.Getenv("CORAL_URL"); v != "" {
 		serverURL = v[:len(v)-1] // trim trailing slash
@@ -194,21 +228,19 @@ func TestInit_CORAL_URL(t *testing.T) {
 	if serverURL != "http://custom-host:9000" {
 		t.Errorf("serverURL = %q, want %q", serverURL, "http://custom-host:9000")
 	}
-	os.Unsetenv("CORAL_URL")
 }
 
 func TestInit_CORAL_PORT(t *testing.T) {
 	oldURL := serverURL
 	defer func() { serverURL = oldURL }()
 
-	os.Setenv("CORAL_PORT", "9999")
+	t.Setenv("CORAL_PORT", "9999")
 	if v := os.Getenv("CORAL_PORT"); v != "" {
 		serverURL = "http://localhost:" + v
 	}
 	if serverURL != "http://localhost:9999" {
 		t.Errorf("serverURL = %q, want %q", serverURL, "http://localhost:9999")
 	}
-	os.Unsetenv("CORAL_PORT")
 }
 
 // --- printUsage doesn't panic ---

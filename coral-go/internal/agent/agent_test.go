@@ -416,7 +416,11 @@ func TestInstructionPromptsIncludeCoralSessionMarker(t *testing.T) {
 	for _, tt := range agents {
 		t.Run(tt.name, func(t *testing.T) {
 			sid := tt.name + "-marker-session"
-			tt.agent.BuildLaunchCommand(LaunchParams{SessionID: sid})
+			// Pi creates <data dir>/pi-sessions/<id> while building the
+			// command. Without an explicit CoralDir it falls back to
+			// CORAL_DATA_DIR or ~/.coral and leaves a directory in the
+			// real install.
+			tt.agent.BuildLaunchCommand(LaunchParams{SessionID: sid, CoralDir: t.TempDir()})
 			path := findTempFile(t, tt.prefix, sid, tt.extension)
 			content, err := os.ReadFile(path)
 			if err != nil {
