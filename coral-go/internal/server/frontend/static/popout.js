@@ -11,7 +11,7 @@
  * visible text, tooltips or document.title. */
 
 import { state } from './state.js';
-import { resolveSessionIdentity } from './render.js';
+import { resolveSessionIdentity, deriveSessionState } from './render.js';
 import { toggleAgenticPanel } from './sidebar.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
@@ -37,10 +37,16 @@ let _attached = false;          // terminal attached for the current target
 let _waking = false;
 const DESTRUCTIVE_SELECTOR = '[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"]';
 
+/** States in which the target is attached and may receive input. */
+const LIVE_STATES = new Set(['working', 'waiting', 'check', 'stuck', 'your-turn', 'idle']);
+
 const PILL_TEXT = {
     loading: 'Connecting…',
     working: 'Working',
     waiting: 'Needs input',
+    check: 'Check terminal',
+    stuck: 'Stuck',
+    'your-turn': 'Your turn',
     idle: 'Idle',
     sleeping: 'Sleeping',
     ended: 'Ended',
@@ -48,7 +54,8 @@ const PILL_TEXT = {
     'not-found': 'Not found',
 };
 const TITLE_GLYPH = {
-    working: '●', waiting: '⏸', idle: '○', sleeping: '◌', ended: '✕',
+    // Existing title glyph contract kept (● ⏸ ○ ◌ ✕); only the new states are added.
+    working: '●', waiting: '⏸', check: '⏸', stuck: '!', 'your-turn': '◯', idle: '○', sleeping: '◌', ended: '✕',
     reconnecting: '…', loading: '…', 'not-found': '?',
 };
 
@@ -77,7 +84,7 @@ export function popoutGetState() { return _state; }
  *  attachable state yet (loading/reconnecting), sleeping, ended or not-found. */
 export function popoutTerminalBlocked() {
     if (!isPopout()) return false;
-    return !(_state === 'working' || _state === 'waiting' || _state === 'idle');
+    return !LIVE_STATES.has(_state);
 }
 export function popoutResolved() { return _resolved; }
 
@@ -286,7 +293,7 @@ function _setState(next) {
     }
     document.body.classList.toggle('popout-ended', next === 'ended' || next === 'not-found');
     // Terminal actions (quick-action strip, send buttons) follow the same gate as the input.
-    const blocked = !(next === 'working' || next === 'waiting' || next === 'idle');
+    const blocked = !LIVE_STATES.has(next);
     document.body.classList.toggle('popout-terminal-blocked', blocked);
     _gateTerminalControls(blocked);
     const wrapper = document.getElementById('capture-wrapper');
@@ -364,11 +371,11 @@ function _setInputEnabled(enabled) {
 function _applyLiveState(s) {
     if (!s || _isTerminal(_state)) return;
     _lastSession = s;
-    let next;
-    if (s.sleeping) next = 'sleeping';
-    else if (s.waiting_for_input || s.not_started) next = 'waiting';
-    else if (s.working) next = 'working';
-    else next = 'idle';
+    // Same resolver and vocabulary as the dashboard rows (never "ended" here:
+    // the popout's own lifecycle decides that).
+    const KEY_TO_POPOUT = { sleeping: 'sleeping', stuck: 'stuck', needs_input: 'waiting', check_terminal: 'check',
+                            your_turn: 'your-turn', working: 'working', idle: 'idle', ended: 'idle' };
+    let next = KEY_TO_POPOUT[deriveSessionState(s, { ended: false })] || 'idle';
     if (_terminalDown && next !== 'sleeping') next = 'reconnecting';
     _renderIdentity(s);
     _setState(next);

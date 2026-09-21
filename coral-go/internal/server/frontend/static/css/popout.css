@@ -55,11 +55,14 @@ body.popout-mode .terminal-session-label {
     background: rgba(139, 148, 158, 0.15);
     color: var(--text-muted);
 }
-.terminal-state-pill[data-state="working"]      { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
-.terminal-state-pill[data-state="waiting"]      { background: rgba(210, 153, 34, 0.18); color: var(--warning); }
-.terminal-state-pill[data-state="sleeping"]     { background: rgba(210, 153, 34, 0.10); color: var(--warning); opacity: 0.8; }
-.terminal-state-pill[data-state="ended"],
+.terminal-state-pill[data-state="working"]      { background: rgba(63, 185, 80, 0.15); color: var(--success); }
+.terminal-state-pill[data-state="waiting"],
+.terminal-state-pill[data-state="check"]        { background: rgba(210, 153, 34, 0.18); color: var(--warning); }
+.terminal-state-pill[data-state="stuck"],
 .terminal-state-pill[data-state="not-found"]    { background: rgba(248, 81, 73, 0.15); color: var(--error); }
+.terminal-state-pill[data-state="your-turn"]    { background: transparent; color: var(--text-secondary); box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4); }
+.terminal-state-pill[data-state="sleeping"],
+.terminal-state-pill[data-state="ended"]        { background: rgba(139, 148, 158, 0.15); color: var(--text-secondary); }
 .terminal-state-pill[data-state="reconnecting"] { background: rgba(210, 153, 34, 0.18); color: var(--warning); }
 
 .terminal-header-actions .terminal-header-btn {

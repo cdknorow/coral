@@ -431,6 +431,18 @@ async function run() {
     check('25 rename via live tick updates identity, pill and title in place', /^Renamed Bot/.test(sa.identity.trim()) && sa.pill === 'working' && /^● Renamed Bot · Coral$/.test(sa.title) && sa.hash === '', JSON.stringify({ identity: sa.identity.trim(), pill: sa.pill, title: sa.title, hash: sa.hash }));
     await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'coral-go', agent_type: 'claude', session_id: ${JSON.stringify(A)}, summary: 'Completely different summary' }] }); true`); await sleep(200);
     check('25 summary-only tick leaves identity alone', /^Renamed Bot/.test((await ta.ev(SHELL_PROBE)).identity.trim()));
+    // unified state vocabulary on the popout pill + title glyph (tasks #165-#167)
+    {
+        const OFF = { working: false, waiting_for_input: false, awaiting_user: false, not_started: false, stuck: false, done: false, sleeping: false };
+        const seen = [];
+        for (const [patch, pill, text, glyph] of [[{ awaiting_user: true }, 'your-turn', 'Your turn', '◯'], [{ awaiting_user: true, not_started: true }, 'check', 'Check terminal', '⏸'], [{ awaiting_user: true, waiting_for_input: true }, 'waiting', 'Needs input', '⏸'], [{ waiting_for_input: true, stuck: true }, 'stuck', 'Stuck', '!'], [{}, 'idle', 'Idle', '○'], [{ working: true }, 'working', 'Working', '●']]) {
+            await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', ...OFF, ...patch })}] }); true`); await sleep(250);
+            const p = await ta.ev(SHELL_PROBE);
+            seen.push({ want: pill, pill: p.pill, text: p.pillText.trim(), okText: p.pillText.trim() === text, okTitle: p.title === `${glyph} Renamed Bot · Coral` });
+        }
+        await ta.ev(`document.querySelectorAll('.notification-toast').forEach(t => t.remove()); true`); // own-session toast from the Needs input step is expected; clear it for check 27
+        check('state vocabulary: popout pill data-state, sentence-case text and title glyph follow the shared priority', seen.every(x => x.want === x.pill && x.okText && x.okTitle), JSON.stringify(seen));
+    }
     // other-session toast suppressed
     await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveO, waiting_for_input: true, waiting_summary: 'needs you' })}] }); true`); await sleep(300);
     check('27 needs-input toast for another session is suppressed in the popout', (await ta.ev(SHELL_PROBE)).toasts === 0);

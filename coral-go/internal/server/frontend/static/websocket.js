@@ -1,7 +1,7 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
-import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, resolveSessionIdentity } from './render.js';
+import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, resolveSessionIdentity, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -39,6 +39,19 @@ export function connectCoralWs() {
 function mergeSession(prev, next) {
     return { ...(prev || {}), ...next };
 }
+
+let _waitingSeeded = false; // first coral_update only records who is already waiting
+
+/** True when the operator is focused in this session's command input or terminal. */
+function _operatorIsTypingIn(s) {
+    const cur = state.currentSession;
+    if (!cur || cur.type !== 'live' || !s.session_id || cur.session_id !== s.session_id) return false;
+    const a = document.activeElement;
+    return !!(a && (a.id === 'command-input' || (a.closest && a.closest('#xterm-container'))));
+}
+
+/** Test hook: forget the seed so a harness can simulate a fresh page load. */
+export function _resetWaitingSeedForTests() { _waitingSeeded = false; state.prevWaitingState = {}; }
 
 /** Apply one message from /ws/coral. Exported for tests (window._coralHandleWsMessage). */
 export function handleCoralMessage(data) {
@@ -80,7 +93,11 @@ export function handleCoralMessage(data) {
                 const id = s.session_id || s.name;
                 const wasWaiting = state.prevWaitingState[id];
                 const notifyEnabled = state.settings.notify_needs_input !== false;
-                if (notifyEnabled && s.waiting_for_input && !wasWaiting && popoutAllowsToastFor(s.session_id)) {
+                // Rising edge only. The first snapshot after load seeds the map
+                // silently (no storm for agents that were already waiting), and the
+                // agent the operator is typing into never toasts itself.
+                if (notifyEnabled && _waitingSeeded && s.waiting_for_input && !wasWaiting
+                    && popoutAllowsToastFor(s.session_id) && !_operatorIsTypingIn(s)) {
                     const label = escapeHtml(s.display_name || s.name);
                     const detail = s.waiting_summary ? escapeHtml(s.waiting_summary) : null;
                     const sessionName = s.name;
@@ -101,6 +118,8 @@ export function handleCoralMessage(data) {
                 // if (!state.prevSummaryState) state.prevSummaryState = {};
                 // state.prevSummaryState[id] = s.summary || null;
             }
+
+            _waitingSeeded = true;
 
             // Fields a full update omits (commands, branch, repo_name, ...)
             // keep their previous value via the same generic merge.
@@ -188,7 +207,7 @@ export function handleCoralMessage(data) {
                     updateChangedFileCount(s.changed_file_count || 0);
                     // Update terminal header status dot
                     const termDot = document.getElementById('terminal-status-dot');
-                    if (termDot) termDot.className = `terminal-status-dot ${s.working ? 'working' : s.waiting_for_input ? 'waiting' : s.sleeping ? 'sleeping' : s.done ? 'done' : 'stale'}`;
+                    if (termDot) termDot.className = terminalDotClass(s);
                     popoutUpdateFromSession(s);
                 }
             }

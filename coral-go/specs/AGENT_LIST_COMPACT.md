@@ -114,10 +114,48 @@ hover.
 | hover | `background: var(--bg-hover)`; kebab and drag grip fade in (existing) |
 | focus | rows are focusable list items (`tabindex="0"`, no button role, see Accessibility D-F); `:focus-visible` 2px `--accent` outline inset (drawn inside the 2px selected border, not clipped); Enter/Space selects |
 | selected (`.active`) | 2px `--accent` left border + `rgba(255,255,255,.04)` background (existing colours); identity stays 600 |
-| attention (`waiting_for_input` / `stuck` / `not_started`) | dot `--warning`/`--error`; pill "Needs input" / "Check terminal" / "Stuck" on line 1; row background tint `rgba(210,153,34,.06)`; Agents-nav badge unchanged (D5) |
-| sleeping | dot `--warning` at .5 opacity; identity `--text-secondary`; goal line kept (40px, D-E); kebab shows Wake variant (existing) |
-| ended (`.session-done`) | identity line-through `--text-muted`; goal hidden; click opens history (existing) |
-| working | dot `--accent`; nothing else animates |
+| needs input (`waiting_for_input`) | filled amber dot; pill "Needs input" (quiet amber surface, sentence case); amber row tint; name full-strength |
+| check terminal (`not_started`) | filled amber dot; pill "Check terminal"; amber row tint |
+| stuck (`stuck`) | filled red dot; pill "Stuck" (error surface); row tint switches to the error tint (`.is-stuck`); outranks needs input |
+| your turn (`awaiting_user`; servers without the field: the stop-derived `done`) | hollow NEUTRAL ring (`--text-primary`, no hue); quieter neutral pill "Your turn"; no row tint; never green, never a check mark |
+| sleeping | muted moon glyph in the dot slot (no amber); identity `--text-secondary`; goal line kept (40px, D-E); kebab shows Wake variant (existing) |
+| ended (killed/history rows only, `.session-done`) | muted check glyph, never green; identity line-through `--text-muted`; goal hidden (36px); click opens history (existing) |
+| working | filled GREEN dot (`--success`); no pill; nothing animates |
+| idle | empty dot slot (`visibility: hidden`, slot kept); no pill |
+
+### State resolver and overlays (task #167)
+
+One resolver (`render.js` `deriveSessionState` / `SESSION_STATES`) picks a single
+winner with the priority **Ended > Sleeping > Stuck > Needs input > Check
+terminal > Your turn > Working > Idle**, and every surface uses its words: row
+pill, row `aria-label`, tooltip State row, phone status chip, workspace header
+dot and the popout pill. Selection, context and unread are overlays, never
+winners:
+
+- **Selection** keeps the accent edge and blue surface and never hides the glyph or pill.
+- **Context** (>=80%): `ctx N%` pill only when no state pill owns line 1; the red
+  ring on the dot slot survives on every glyph (also on the otherwise hidden idle slot).
+- **Unread** board messages: neutral count chip at the end of line 2
+  (`.session-unread-chip`), also on selected rows; never an attention colour. The
+  phone keeps its meta pill instead.
+- **aria-label**: `<identity>, <state>` plus `, context 87%` and `, 3 unread` when
+  those overlays are shown; glyphs are `aria-hidden`.
+
+**Aggregation** (`sessionCountsTowardAttention`): the Agents nav badge and each
+team/folder header's `.group-attention-count` (red `.stuck` variant when any
+member is Stuck; shown on collapsed groups too) always count Needs input, Check
+terminal and Stuck. **Your turn** and **unread board messages**
+(`board_unread > 0`, coerced to a finite non-negative integer) share one
+operator-facing rule: they count only when nobody else will act on them, i.e.
+no `board_project`, or `board_is_orchestrator === true` (explicit backend flag,
+never a name match). An ordinary team member's unread stays visible as the
+neutral row chip / phone metadata but never counts. Ended and sleeping sessions
+never count. Ended rows render no line 2 at all (36px), even when they had a
+goal or unread messages. Needs-input toasts fire on a later false -> true
+transition only: the first snapshot after load seeds silently, and the agent
+the operator is typing into never toasts itself.
+Operator switch: `localStorage['coral-count-your-turn'] = 'false'` disables
+Your-turn counting.
 
 ## Responsive
 

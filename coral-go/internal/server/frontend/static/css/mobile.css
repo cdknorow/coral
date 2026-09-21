@@ -930,6 +930,18 @@
         color: var(--warning);
     }
 
+    #mobile-session-list .session-status-chip.your-turn {
+        background: transparent;
+        color: var(--text-secondary);
+        box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
+    }
+
+    /* The phone shows unread in its meta row already */
+    #mobile-session-list .session-unread-chip { display: none; }
+    #mobile-session-list .session-line2 { height: auto; align-items: flex-start; }
+    #mobile-session-list .session-dot.sleeping::before,
+    #mobile-session-list .session-dot.ended::before { font-size: 13px; inset: -4px -2px; }
+
     #mobile-session-list .session-status-chip.error {
         background: rgba(248, 81, 73, 0.16);
         color: var(--error);

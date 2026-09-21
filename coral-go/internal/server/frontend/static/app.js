@@ -5,7 +5,7 @@ import { loadLiveSessions, loadHistorySessions, loadHistorySessionsPaged } from 
 import { filterState, deserializeFromUrl, serializeToUrl,
          hasActiveFilters, countActiveFilters, resetFilters }
     from './search_filters.js';
-import { connectCoralWs, handleCoralMessage } from './websocket.js';
+import { connectCoralWs, handleCoralMessage, _resetWaitingSeedForTests } from './websocket.js';
 import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt, sendRawKeys, sendModeToggle, cycleModeToggle, sendQuickCommand, refreshModeLabel, executeMacro, addMacro, deleteMacro, showMacroModal, hideMacroModal, attachTerminal, killSession, restartSession, hideRestartModal, confirmRestart, initImageDrop, removeAttachment, editGoal, refreshGoal, requestGoal } from './controls.js';
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon, showEmojiPicker } from './sessions.js';
 import { buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, renderLiveSessions } from './render.js';
@@ -64,6 +64,7 @@ Object.assign(window, {
     // feed a /ws/coral message through the real handler without a socket.
     _coralSetLiveSessions: (sessions) => { state.liveSessions = sessions || []; renderLiveSessions(state.liveSessions); },
     _coralHandleWsMessage: handleCoralMessage,
+    _coralResetWaitingSeed: _resetWaitingSeedForTests,
     _coralGetLiveSessions: () => state.liveSessions,
     // popout (/agent/{uuid}) + multi-window ownership
     popoutRetry, togglePopoutPanel, popoutWake,

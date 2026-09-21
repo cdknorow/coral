@@ -256,7 +256,7 @@ async function run() {
         check('identity never derives from mutable summary (aria-label Agent)', /^Agent, /.test(bySid['sid-f'].ariaLabel || ''), bySid['sid-f'].ariaLabel);
         check('summary-only row still shows summary as goal', bySid['sid-f'].goalText === 'Investigate slow startup on Windows', bySid['sid-f'].goalText);
         check('identity from display_name when present (aria-label)', /^Zed, /.test(bySid['sid-e'].ariaLabel || ''), bySid['sid-e'].ariaLabel);
-        check('named agent aria-label carries identity + state', /^Lead Dev, (Working|Idle)$/.test(bySid['sid-a'].ariaLabel || ''), bySid['sid-a'].ariaLabel);
+        check('named agent aria-label carries identity + state (+ context suffix at >= 80%)', /^Lead Dev, (Working|Idle)(, context (87%|full))?$/.test(bySid['sid-a'].ariaLabel || ''), bySid['sid-a'].ariaLabel);
 
         // D2 desktop hides mobile-only rows
         check('mobile banner row hidden on desktop', bySid['sid-c'].bannerDisplay === 'none', bySid['sid-c'].bannerDisplay);

@@ -144,6 +144,27 @@ func TestAgentEventsCRUD(t *testing.T) {
 	assert.Empty(t, events)
 }
 
+func TestAgentEventsRetentionIsolatedPerSession(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTaskStore(db)
+	ctx := context.Background()
+	sessionA, sessionB := "session-a", "session-b"
+	_, err := s.InsertAgentEvent(ctx, &AgentEvent{AgentName: "shared-agent", SessionID: &sessionA, EventType: "notification", Summary: "Claude needs your permission"})
+	require.NoError(t, err)
+	for i := 0; i < 501; i++ {
+		_, err = s.InsertAgentEvent(ctx, &AgentEvent{AgentName: "shared-agent", SessionID: &sessionB, EventType: "tool_use", Summary: "sibling activity"})
+		require.NoError(t, err)
+	}
+	events, err := s.GetSessionStateEvents(ctx, []string{sessionA, sessionB})
+	require.NoError(t, err)
+	if len(events[sessionA]) != 1 || events[sessionA][0].EventType != "notification" {
+		t.Fatalf("session A attention event was pruned by sibling activity: %+v", events[sessionA])
+	}
+	if len(events[sessionB]) != 500 {
+		t.Fatalf("session B retention = %d, want 500", len(events[sessionB]))
+	}
+}
+
 func TestGetAllEditedFileCounts(t *testing.T) {
 	db := openTestDB(t)
 	s := NewTaskStore(db)
@@ -204,5 +225,3 @@ func TestGetAllEditedFileCounts(t *testing.T) {
 	_, exists = counts["sess-999"]
 	assert.False(t, exists)
 }
-
-

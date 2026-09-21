@@ -355,6 +355,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if latestEvents == nil {
 		latestEvents = map[string][2]string{}
 	}
+	stateEvents, _ := h.ts.GetSessionStateEvents(ctx, sessionIDs)
+	if stateEvents == nil {
+		stateEvents = map[string][]store.AgentEvent{}
+	}
 	// Launch times, used to bound how long after launch a stalled start is
 	// reported. See agentNeverStarted.
 	createdAtMap := map[string]string{}
@@ -479,21 +483,19 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Resolve latest event type for waiting/working detection
-		var latestEv, evSummary string
+		var latestEv string
 		if sid != "" {
 			if ev, ok := latestEvents[sid]; ok {
-				latestEv, evSummary = ev[0], ev[1]
+				latestEv = ev[0]
 			}
 		}
-		waiting := latestEv == "notification"
-		done := latestEv == "stop"
 		staleF, _ := staleness.(float64)
-		working := (latestEv == "tool_use" || latestEv == "prompt_submit") && staleF < 120
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
-		// Sleep loop detection: agent stuck in a sleep loop is not actually working
-		if working && strings.HasPrefix(evSummary, "Ran: sleep") {
-			working = false
+		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid]}
+		for _, ev := range stateEvents[sid] {
+			stateInput.Events = append(stateInput.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
+		state := DeriveSessionState(stateInput)
 
 		// Summary fallback to latest goal
 		if summary == "" && sid != "" {
@@ -527,33 +529,35 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 
 		entry := map[string]any{
-			"name":               agent.AgentName,
-			"agent_type":         agent.AgentType,
-			"session_id":         sid,
-			"tmux_session":       agent.TmuxSession,
-			"status":             nilIfEmpty(status),
-			"summary":            nilIfEmpty(summary),
-			"staleness_seconds":  staleness,
-			"working_directory":  agent.WorkingDir,
-			"display_name":       displayNames[sid],
-			"icon":               iconVal,
-			"branch":             branchVal,
-			"repo_name":          repoNameVal,
-			"waiting_for_input":  waiting,
-			"not_started":        notStarted,
-			"done":               done,
-			"waiting_reason":     nilIf(!waiting, latestEv),
-			"waiting_summary":    nilIf(!waiting, evSummary),
-			"working":            working,
-			"stuck":              false,
-			"changed_file_count": fc,
-			"commands":           map[string]string{"compress": "/compact", "clear": "/clear"},
-			"board_project":      boardProject(boardSubs, liveBoardNames, tmuxName, sid),
-			"board_job_title":    boardJobTitle(boardSubs, liveBoardNames, tmuxName, sid),
-			"board_unread":       boardUnread,
-			"log_path":           agent.LogPath,
-			"sleeping":           liveSleeping[sid],
-			"first_prompt":       h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
+			"name":                  agent.AgentName,
+			"agent_type":            agent.AgentType,
+			"session_id":            sid,
+			"tmux_session":          agent.TmuxSession,
+			"status":                nilIfEmpty(status),
+			"summary":               nilIfEmpty(summary),
+			"staleness_seconds":     staleness,
+			"working_directory":     agent.WorkingDir,
+			"display_name":          displayNames[sid],
+			"icon":                  iconVal,
+			"branch":                branchVal,
+			"repo_name":             repoNameVal,
+			"waiting_for_input":     state.NeedsInput,
+			"awaiting_user":         state.AwaitingUser,
+			"not_started":           state.NotStarted,
+			"done":                  state.Done,
+			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
+			"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
+			"working":               state.Working,
+			"stuck":                 state.Stuck,
+			"changed_file_count":    fc,
+			"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
+			"board_project":         boardProject(boardSubs, liveBoardNames, tmuxName, sid),
+			"board_job_title":       boardJobTitle(boardSubs, liveBoardNames, tmuxName, sid),
+			"board_unread":          boardUnread,
+			"board_is_orchestrator": boardSubscriberFlag(boardSub),
+			"log_path":              agent.LogPath,
+			"sleeping":              liveSleeping[sid],
+			"first_prompt":          h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
 		// Include prompt, model, and capabilities from live_sessions DB
 		if extra, ok := liveExtras[sid]; ok {
@@ -608,32 +612,34 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			dn = *ls.DisplayName
 		}
 		sessions = append(sessions, map[string]any{
-			"name":               ls.AgentName,
-			"agent_type":         ls.AgentType,
-			"session_id":         ls.SessionID,
-			"tmux_session":       nil,
-			"status":             "Sleeping",
-			"summary":            nil,
-			"staleness_seconds":  nil,
-			"working_directory":  ls.WorkingDir,
-			"display_name":       dn,
-			"icon":               ls.Icon,
-			"branch":             nil,
-			"waiting_for_input":  false,
-			"not_started":        false,
-			"done":               false,
-			"waiting_reason":     nil,
-			"waiting_summary":    nil,
-			"working":            false,
-			"stuck":              false,
-			"changed_file_count": 0,
-			"commands":           map[string]string{"compress": "/compact", "clear": "/clear"},
-			"board_project":      bp,
-			"board_job_title":    dn,
-			"board_unread":       0,
-			"log_path":           "",
-			"sleeping":           true,
-			"first_prompt":       h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
+			"name":                  ls.AgentName,
+			"agent_type":            ls.AgentType,
+			"session_id":            ls.SessionID,
+			"tmux_session":          nil,
+			"status":                "Sleeping",
+			"summary":               nil,
+			"staleness_seconds":     nil,
+			"working_directory":     ls.WorkingDir,
+			"display_name":          dn,
+			"icon":                  ls.Icon,
+			"branch":                nil,
+			"waiting_for_input":     false,
+			"awaiting_user":         false,
+			"not_started":           false,
+			"done":                  false,
+			"waiting_reason":        nil,
+			"waiting_summary":       nil,
+			"working":               false,
+			"stuck":                 false,
+			"changed_file_count":    0,
+			"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
+			"board_project":         bp,
+			"board_job_title":       dn,
+			"board_unread":          0,
+			"board_is_orchestrator": nil,
+			"log_path":              "",
+			"sleeping":              true,
+			"first_prompt":          h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
 		// Include prompt, model, and capabilities for sleeping sessions too
 		entry := sessions[len(sessions)-1]
@@ -3735,6 +3741,15 @@ func isDir(path string) bool {
 
 // boardProject returns the board project name for a session, checking
 // board subscriptions first, then falling back to live_sessions DB.
+// boardSubscriberFlag exposes the authoritative CanPeek role without using
+// mutable display names or job-title substring matching. Nil means no board.
+func boardSubscriberFlag(sub *board.Subscriber) any {
+	if sub == nil {
+		return nil
+	}
+	return sub.CanPeek != 0
+}
+
 func boardProject(subs map[string]*board.Subscriber, fallback map[string][2]string, tmuxName, sessionID string) any {
 	if sub, ok := subs[tmuxName]; ok {
 		return sub.Project

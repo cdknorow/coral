@@ -92,16 +92,50 @@
 .session-dot.stale    { background: var(--text-muted); }
 .session-dot.sleeping { background: var(--warning); opacity: 0.5; }
 .session-dot.working {
-    background: #3b82f6;
+    /* Working is GREEN. Green no longer means "done": a finished turn is
+       "Your turn" (hollow ring) and only killed rows are "Ended". */
+    background: var(--success, #3fb950);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
 .session-dot.waiting {
     background: var(--warning);
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
+/* Legacy class: never green. Kept neutral so an old caller cannot signal health. */
 .session-dot.done {
-    background: var(--success, #4caf50);
+    background: var(--text-muted);
 }
+
+/* Your turn: hollow NEUTRAL ring. No hue, so it is never confused with
+   working-green, attention-amber or the blue selected surface, and it keeps
+   >= 3:1 contrast on the selected tint. */
+.session-dot.your-turn {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--text-primary);
+}
+.session-dot.your-turn.ctx-high {
+    box-shadow: inset 0 0 0 1.5px var(--text-primary), 0 0 0 2px rgba(248, 81, 73, 0.35);
+}
+
+/* Sleeping = muted moon, Ended = muted check. Glyphs, not coloured dots, so
+   neither reads as a faded "needs input" or as healthy. aria-hidden in markup. */
+.session-dot.sleeping,
+.session-dot.ended {
+    background: transparent;
+    opacity: 1;
+    position: relative;
+}
+.session-dot.sleeping::before,
+.session-dot.ended::before {
+    position: absolute;
+    inset: -4px -3px;
+    font-size: 11px;
+    line-height: 16px;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.session-dot.sleeping::before { content: "\263E"; }
+.session-dot.ended::before    { content: "\2713"; }
 .session-dot.stuck {
     background: var(--danger, #ef4444);
     animation: pulse-stuck 3s ease-in-out infinite;
@@ -869,6 +903,65 @@
 .session-group-item.sleeping .session-goal-empty {
     color: var(--text-secondary);
     opacity: 1;
+}
+
+/* "Your turn": quieter than attention. Neutral hairline pill, sentence case. */
+.session-group-item .badge.session-turn-pill {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+    background: transparent;
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
+}
+
+/* Line 2 = goal + optional unread count. The goal keeps its left inset so it
+   still starts exactly under the agent name. */
+.session-line2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: 14px;
+}
+.session-line2 .session-goal {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.session-unread-chip {
+    flex: 0 0 auto;
+    font-size: 10px;
+    line-height: 14px;
+    padding: 0 5px;
+    border-radius: 7px;
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
+}
+.session-line2 > .session-unread-chip:first-child {
+    margin-left: var(--row-dot-block, 16px); /* rows with no goal line */
+}
+
+/* Group attention count: the only attention cue on a collapsed group. */
+.group-attention-count {
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    padding: 0 5px;
+    border-radius: 8px;
+    margin-left: 4px;
+    background: rgba(210, 153, 34, 0.16);
+    color: #e3b341;
+    box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.35);
+}
+.group-attention-count.stuck {
+    background: rgba(248, 81, 73, 0.16);
+    color: #ff7b72;
+    box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.4);
+}
+
+/* Stuck rows switch from the amber to the error tint */
+.session-group-item.needs-attention.is-stuck {
+    background: rgba(248, 81, 73, 0.07);
 }
 
 /* Selected and attention rows keep full-strength names for readability/contrast */

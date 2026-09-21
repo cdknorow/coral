@@ -4,7 +4,7 @@ import { state, sessionKey } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
 import { renderQuickActions, updateSidebarActive } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
@@ -80,7 +80,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     if (termLabel) termLabel.textContent = formatTerminalLabel(identity, sessionId);
     const termDot = document.getElementById("terminal-status-dot");
     if (termDot && agentData) {
-        termDot.className = `terminal-status-dot ${agentData.working ? 'working' : agentData.waiting_for_input ? 'waiting' : agentData.sleeping ? 'sleeping' : 'stale'}`;
+        termDot.className = terminalDotClass(agentData);
     }
     const badge = document.getElementById("session-type-badge");
     if (badge) {

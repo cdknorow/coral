@@ -135,7 +135,9 @@ cross-session targeting**, not a single interactive owner.
 
 `body[data-entry-mode="agent"][data-target-session-id]`, `body.popout-mode`;
 `#popout-header-identity` (aria-live=polite), `#terminal-type-badge`,
-`#terminal-state-pill[data-state=loading|working|idle|waiting|sleeping|ended|reconnecting|not-found]`
+`#terminal-state-pill[data-state=loading|working|idle|waiting|check|stuck|your-turn|sleeping|ended|reconnecting|not-found]`
+(pill text: Working / Idle / Needs input / Check terminal / Stuck / Your turn / Sleeping / Ended, the same
+vocabulary and resolver as the dashboard rows; terminal actions stay enabled in working, idle, waiting, check, stuck and your-turn)
 (`idle` = attached, not working, not waiting; neutral pill text "Idle" and a neutral title glyph),
 `#popout-open-main-btn` (anchor to `/#chat/<uuid>`, `target=_blank`,
 `rel=noopener noreferrer`), `#popout-panel-toggle-btn[aria-pressed]`,

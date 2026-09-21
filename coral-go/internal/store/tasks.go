@@ -334,11 +334,18 @@ func (s *TaskStore) InsertAgentEvent(ctx context.Context, event *AgentEvent) (*A
 		event.ID = id
 	}
 
-	// Auto-prune to 500 events per agent (best-effort)
-	if _, err := s.db.ExecContext(ctx,
-		`DELETE FROM agent_events WHERE agent_name = ? AND id NOT IN
-		 (SELECT id FROM agent_events WHERE agent_name = ? ORDER BY id DESC LIMIT 500)`,
-		event.AgentName, event.AgentName); err != nil {
+	// Auto-prune to 500 events per session (best-effort). Session-scoped
+	// retention prevents activity from a sibling agent in the same worktree
+	// from erasing an unresolved attention notification.
+	pruneQuery := `DELETE FROM agent_events WHERE agent_name = ? AND id NOT IN
+		 (SELECT id FROM agent_events WHERE agent_name = ? ORDER BY id DESC LIMIT 500)`
+	pruneArgs := []any{event.AgentName, event.AgentName}
+	if event.SessionID != nil && *event.SessionID != "" {
+		pruneQuery = `DELETE FROM agent_events WHERE agent_name = ? AND session_id = ? AND id NOT IN
+			 (SELECT id FROM agent_events WHERE agent_name = ? AND session_id = ? ORDER BY id DESC LIMIT 500)`
+		pruneArgs = []any{event.AgentName, *event.SessionID, event.AgentName, *event.SessionID}
+	}
+	if _, err := s.db.ExecContext(ctx, pruneQuery, pruneArgs...); err != nil {
 		log.Printf("[store] event prune failed for %s: %v", event.AgentName, err)
 	}
 
@@ -419,6 +426,40 @@ func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string
 	for _, r := range rows {
 		if _, ok := result[r.SessionID]; !ok {
 			result[r.SessionID] = [2]string{r.EventType, r.Summary}
+		}
+	}
+	return result, nil
+}
+
+// GetSessionStateEvents returns the ordered events that participate in live
+// state derivation. Keeping this in the store makes the derivation restart
+// safe: notification state is reconstructed from the event log rather than an
+// in-memory latch. Events are returned oldest first for each session.
+func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []string) (map[string][]AgentEvent, error) {
+	if len(sessionIDs) == 0 {
+		return map[string][]AgentEvent{}, nil
+	}
+	query, args, err := sqlx.In(
+		`SELECT id, agent_name, session_id, event_type, tool_name, summary, detail_json, created_at
+		 FROM agent_events
+		 WHERE session_id IN (?)
+		   AND event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset')
+		 ORDER BY session_id, created_at ASC, id ASC`,
+		sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	var rows []AgentEvent
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
+	result := make(map[string][]AgentEvent, len(sessionIDs))
+	for _, id := range sessionIDs {
+		result[id] = []AgentEvent{}
+	}
+	for _, event := range rows {
+		if event.SessionID != nil {
+			result[*event.SessionID] = append(result[*event.SessionID], event)
 		}
 	}
 	return result, nil
@@ -595,4 +636,3 @@ func (s *TaskStore) ListNotesBySession(ctx context.Context, sessionID string) ([
 		 FROM agent_notes WHERE session_id = ? ORDER BY created_at DESC`, sessionID)
 	return notes, err
 }
-
