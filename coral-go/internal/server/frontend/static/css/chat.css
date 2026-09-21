@@ -678,8 +678,10 @@
 .chat-prose {
     --chat-prose-font: ui-serif, "Iowan Old Style", Charter, "Charter BT", Georgia, serif;
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
-    /* Theme accent (the New Agent button's hue), brighter shade for legible text */
-    --chat-inline-code: var(--accent);
+    /* Neutral by default: blue is kept for links, so code and the user's
+       bubble do not compete with them. Themes may set either variable. */
+    --chat-inline-code: var(--chat-prose-inline-code, var(--text-primary));
+    --chat-prose-human: var(--chat-prose-human-bg, color-mix(in srgb, var(--text-primary) 9%, transparent));
 }
 
 .capture-wrapper.chat-mode .live-history-center,
@@ -817,8 +819,10 @@
     margin: 0 0 16px;
 }
 
-/* User turns stay as a compact bubble on the right */
+/* User turns stay as a compact, neutral bubble on the right */
 .chat-prose.chat-messages .chat-bubble.human {
+    background: var(--chat-prose-human);
+    color: var(--text-primary);
     margin: 28px 0 22px auto;
     max-width: min(75%, 600px);
     border: none;
