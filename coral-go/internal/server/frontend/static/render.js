@@ -2577,9 +2577,14 @@ export function updateSessionBranch(branch, repoName) {
     // selected agent's workspace shows it (dashboard only; hidden in popout).
     const chip = document.getElementById("terminal-branch-chip");
     if (chip) {
+        // Branch-only contract (AGENT_LIST_COMPACT): visible text AND tooltip are
+        // the branch string, so an ellipsized chip still reveals the full name.
+        // Never the repo slug, a filesystem path or a session id; repo metadata
+        // stays in #session-branch details and the row tooltip.
         const t = chip.querySelector(".branch-text");
-        if (t) t.textContent = display || "";
-        chip.hidden = !display;
+        if (t) t.textContent = branch || "";
+        if (branch) chip.title = branch; else chip.removeAttribute("title");
+        chip.hidden = !branch;
     }
 }
 

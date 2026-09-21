@@ -88,6 +88,20 @@ no branding, icons or colours are copied.
 | team dir / branch / token roll-up | **Team details** popover from the team kebab ("Team details") and on header hover (desktop) | new small popover reusing `.session-tooltip` styling |
 | avatar emoji/initials | workspace header (identity + type badge) | unchanged |
 
+**Selected-agent header (task #156):** the terminal header identity line shows
+the resolved identity only. The session UUID and its ` -- ` separator are gone
+from the visible text and are not moved into a title, aria-label or tooltip;
+the id remains in application state, API/WS routing, URLs and Session Info.
+The dashboard-only branch chip shows the **branch name only**, in its visible
+text and in its tooltip (so an ellipsized chip still reveals the full branch);
+never the repo slug, a filesystem path or an id. Repo metadata stays in the
+existing details and row-tooltip surfaces. The chip takes the freed flex space (no fixed max-width), so a branch such as
+`feature/agent-list-compact` renders in full at common desktop widths. When
+the header is tight (e.g. 1024px) the identity has priority: the chip yields
+first (shrink factor 1000, 48px floor, ellipsis) and the identity keeps at
+least 120px while it has more to show; the actions on the right never shrink. The popout header is unchanged (it never
+showed the id and still hides the chip).
+
 Hover tooltips remain desktop-only; the Team details disclosure is reachable
 through the kebab item on desktop, tablet and phone, so nothing depends on
 hover.

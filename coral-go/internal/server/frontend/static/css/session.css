@@ -236,6 +236,16 @@
     font-weight: 500;
 }
 
+/* `.session-tooltip-table td { padding: 1px 0 }` outranks `.tt-label`, which
+   zeroed the label's right padding: the value column started exactly where the
+   longest label ("Last action") ended. Restore a real gutter between the
+   title column and the description column, and keep labels on one line. */
+.session-tooltip-table td.tt-label {
+    padding-right: 18px;
+    white-space: nowrap;
+    vertical-align: top;
+}
+
 .tt-value {
     color: var(--text-primary);
     max-width: 300px;
@@ -353,10 +363,12 @@
 
 .session-goal {
     display: block;
+    /* Line 2 starts exactly under the agent name (not under the dot) */
+    margin-left: var(--row-dot-block, 16px);
     font-size: 12px;
     line-height: 14px;
     height: 14px;
-    color: var(--text-muted);
+    color: var(--text-secondary); /* >= 4.5:1 on row, hover and selected surfaces */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -368,8 +380,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--text-muted);
-    opacity: 0.75;
+    color: var(--text-secondary); /* >= 4.5:1; the italic label keeps it distinct from a real goal */
+    opacity: 1;
 }
 
 .session-goal-empty-label {
@@ -622,7 +634,10 @@
 }
 
 .board-card-agents .session-group-item {
-    padding: 5px 10px 5px 12px !important;
+    /* Same visual offset from the card header label as folder rows have from
+       theirs; one value for top-level and nested cards (no cumulative indent
+       beyond the card's own margin). */
+    padding: 5px 10px 5px 24px !important;
     min-height: 36px;
 }
 
@@ -807,7 +822,12 @@
 .session-group-item {
     /* AGENT_LIST_COMPACT: two-line 40px row = 5px + 16px line 1 + 14px goal + 5px;
        rows without a goal line (terminal/ended) are held at 36px. */
-    padding: 5px 10px 5px 14px !important;
+    /* Grouping indent (task #155): the whole content block sits ~18px to the
+       right of the group header label. --row-dot-block is the width of the
+       status dot + its margin + the flex gap, so line 2 can start exactly
+       under the agent name. */
+    --row-dot-block: 16px;
+    padding: 5px 10px 5px 30px !important;
     cursor: grab;
     box-sizing: border-box;
     min-height: 36px;
@@ -841,6 +861,24 @@
     color: var(--text-secondary);
 }
 
+/* A sleeping row is still a readable, selectable item: its goal line must
+   meet WCAG AA. components.css dims it to --text-muted with the same
+   specificity; this later rule restores --text-secondary (>= 4.5:1). The
+   dimmed NAME above already carries the sleeping state. */
+.session-group-item.sleeping .session-goal,
+.session-group-item.sleeping .session-goal-empty {
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+/* Selected and attention rows keep full-strength names for readability/contrast */
+.session-group-item.active .session-label,
+.session-list li.session-group-item.active .session-label,
+.session-group-item.needs-attention .session-label {
+    color: var(--text-primary);
+}
+
+
 /* Rows never animate (reduced motion by default); the state pill carries the text. */
 .session-group-item .session-dot,
 .session-group-item .waiting-badge {
@@ -858,9 +896,12 @@
 }
 
 .session-group-item .session-label {
+    /* Agents are children: medium weight, slightly muted. Group headers stay
+       the strongest text (600, --text-primary). */
     font-size: 13px;
-    font-weight: 600;
-    color: var(--text-primary);
+    font-weight: 500;
+    color: #c9d1d9; /* fallback for engines without color-mix */
+    color: var(--agent-name-color, color-mix(in srgb, var(--text-primary) 80%, transparent));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -876,9 +917,29 @@
     white-space: nowrap;
 }
 
-.session-state-pill.stuck {
-    background: var(--error, #f85149);
-    color: #fff;
+/* Sentence-case labels ("Needs input" / "Check terminal" / "Stuck") on a quiet
+   warning surface: tinted background + hairline + warm text (>= 4.5:1). The
+   higher-specificity selector outranks `.badge.waiting-badge`. */
+.session-group-item .badge.session-state-pill {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 600;
+    background: rgba(210, 153, 34, 0.16);
+    color: #e3b341;
+    box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.35);
+}
+
+.session-group-item .badge.session-state-pill.stuck {
+    background: rgba(248, 81, 73, 0.16);
+    color: #ff7b72;
+    box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.4);
+}
+
+[data-theme="light"] .session-group-item .badge.session-state-pill {
+    color: #7d4e00;
+}
+[data-theme="light"] .session-group-item .badge.session-state-pill.stuck {
+    color: #a40e26;
 }
 
 .session-ctx-pill {
@@ -1572,9 +1633,42 @@
     gap: 3px;
     font-size: 11px;
     color: var(--text-secondary);
-    max-width: 180px;
+    /* The session id left the header (task #156): the chip takes the freed
+       space and only truncates when the header is genuinely narrow. */
+    /* Yields first: the chip absorbs (almost) all shrink before the identity
+       loses a pixel, down to a 48px floor where it is still recognisable. */
+    flex: 0 1000 auto;
+    min-width: 48px;
+    max-width: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 .terminal-branch-chip[hidden] { display: none; }
+
+/* Selected-agent header: identity + branch share the left group and may
+   shrink; the actions on the right never do. */
+.terminal-header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+}
+.terminal-header-left .terminal-session-label {
+    /* Identity has priority over the branch chip: it keeps its natural width
+       (up to 70% of the group) and only ellipsizes once the chip is at its
+       floor; it never collapses below 120px while it has more to show. */
+    flex: 0 1 auto;
+    min-width: min(120px, 100%);
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.terminal-branch-chip svg { flex-shrink: 0; }
+.terminal-branch-chip .branch-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.terminal-header-actions { flex-shrink: 0; }

@@ -81,10 +81,11 @@ export function popoutTerminalBlocked() {
 }
 export function popoutResolved() { return _resolved; }
 
-/** Terminal header label: dashboard keeps "identity -- id"; popout shows identity only. */
-export function formatTerminalLabel(identity, sessionId) {
-    if (isPopout()) return identity || '';
-    return `${identity} -- ${sessionId || ''}`;
+/** Terminal header label: the resolved identity only, in the dashboard and
+ *  the popout alike. The session id stays in state, routing, URLs and Session
+ *  Info; it is never shown in the header text, title or aria (task #156). */
+export function formatTerminalLabel(identity, _sessionId) {
+    return identity || '';
 }
 
 /** Toasts for other sessions are noise in a popout. */

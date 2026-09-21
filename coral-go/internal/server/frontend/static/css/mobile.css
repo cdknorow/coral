@@ -806,6 +806,21 @@
 
     #mobile-session-list .session-group-item {
         min-height: 56px; /* touch target */
+        /* Phone: cards are already inset by their group container; keep the
+           card padding (usable width) and only align line 2 with the name:
+           10px dot + 6px margin + 8px gap. */
+        --row-dot-block: 24px;
+    }
+
+    #mobile-session-list .session-mobile-banner-row,
+    #mobile-session-list .session-mobile-meta {
+        margin-left: var(--row-dot-block, 24px);
+    }
+
+    /* Folder-group cards sit under their header like team cards do (which are
+       inset by .board-card-agents): one consistent ~17-19px name offset. */
+    #mobile-session-list > .session-group-item {
+        margin-left: 8px;
     }
 
     #mobile-session-list .session-dot {
@@ -846,7 +861,7 @@
         white-space: normal;
         line-height: 1.35;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 500; /* agents are children of the 600-weight group header */
     }
 
     #mobile-session-list .waiting-badge {
