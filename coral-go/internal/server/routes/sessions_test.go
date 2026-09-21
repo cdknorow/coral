@@ -366,6 +366,65 @@ func TestSessionsList_SerializesFirstPrompt(t *testing.T) {
 	assert.Equal(t, "", prompts[emptyID])
 }
 
+// Two windows polling the same session's chat must each receive every new
+// message; the transcript reader's cache is shared, so the server has to slice
+// by the client's own `after` count rather than "new since the last read".
+func TestSessionsChat_MultipleClientsEachSeeNewMessages(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	sid := "00000000-0000-0000-0000-000000000201"
+	transcript := filepath.Join(projectDir, sid+".jsonl")
+	userLine := func(text string) string {
+		return fmt.Sprintf("{\"type\":\"user\",\"message\":{\"content\":%q}}\n", text)
+	}
+	require.NoError(t, os.WriteFile(transcript, []byte(userLine("one")+userLine("two")), 0644))
+
+	chat := func(after int) ([]string, int) {
+		t.Helper()
+		resp, err := http.Get(fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&after=%d", server.URL, sid, sid, after))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+			Total    int              `json:"total"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		texts := make([]string, 0, len(body.Messages))
+		for _, m := range body.Messages {
+			texts = append(texts, fmt.Sprint(m["content"]))
+		}
+		return texts, body.Total
+	}
+
+	a, totalA := chat(0)
+	b, totalB := chat(0)
+	assert.Equal(t, []string{"one", "two"}, a)
+	assert.Equal(t, []string{"one", "two"}, b)
+
+	f, err := os.OpenFile(transcript, os.O_APPEND|os.O_WRONLY, 0644)
+	require.NoError(t, err)
+	_, err = f.WriteString(userLine("three"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	a, totalA = chat(totalA)
+	b, totalB = chat(totalB)
+	assert.Equal(t, []string{"three"}, a, "first poller sees the new message")
+	assert.Equal(t, []string{"three"}, b, "second poller sees it too")
+	assert.Equal(t, 3, totalA)
+	assert.Equal(t, 3, totalB)
+
+	a, _ = chat(totalA)
+	assert.Empty(t, a, "nothing new on the next poll")
+	a, _ = chat(99)
+	assert.Empty(t, a, "after beyond the end is clamped")
+}
+
 func TestSessionsCapture_NotFound(t *testing.T) {
 	server, _, _, _ := setupSessionsTestServer(t)
 
@@ -996,6 +1055,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/{sessionID}/changes.diff", handler.SessionChangesArtifact)
 	r.Get("/api/sessions/live/{name}", handler.Detail)
 	r.Get("/api/sessions/live/{name}/capture", handler.Capture)
+	r.Get("/api/sessions/live/{name}/chat", handler.Chat)
 	r.Get("/api/sessions/live/{name}/poll", handler.Poll)
 	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
 	r.Post("/api/sessions/live/{name}/send", handler.Send)

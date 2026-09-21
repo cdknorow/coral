@@ -968,13 +968,13 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// When after=0, the client wants the full conversation history (e.g. after
 	// switching to the Chat tab). Return all accumulated messages, not just new ones.
 	// Supports pagination: ?after=0&limit=100&offset=0 returns the last 100 messages.
+	// Otherwise return messages[after:]. The reader's cache is shared by every
+	// client, so "new since the last read" would split new messages between
+	// windows polling the same session; each client's own count is used instead.
 	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
-	var messages []map[string]any
-	var total int
-	if after == 0 {
-		messages, total = h.jsonl.ReadAllMessages(id, workingDir, agentType)
-	} else {
-		messages, total = h.jsonl.ReadNewMessages(id, workingDir, agentType)
+	messages, total := h.jsonl.ReadAllMessages(id, workingDir, agentType)
+	if after > 0 {
+		messages = messages[min(after, len(messages)):]
 	}
 	messages = emptyIfNil(messages)
 
