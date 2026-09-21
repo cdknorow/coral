@@ -505,6 +505,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_session_time ON token_usage(se
 CREATE INDEX IF NOT EXISTS idx_token_usage_team ON token_usage(team_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_time ON token_usage(recorded_at);
 
+-- One row per goal generation attempt (background GoalGenerator), kept for
+-- GET /api/goals/metrics and pruned after GoalMetricsRetention.
+CREATE TABLE IF NOT EXISTS goal_generations (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id         TEXT NOT NULL,
+    agent_name         TEXT NOT NULL DEFAULT '',
+    agent_type         TEXT NOT NULL DEFAULT '',
+    trigger            TEXT NOT NULL,
+    outcome            TEXT NOT NULL,
+    goal               TEXT NOT NULL DEFAULT '',
+    error              TEXT NOT NULL DEFAULT '',
+    duration_ms        INTEGER NOT NULL DEFAULT 0,
+    input_tokens       INTEGER NOT NULL DEFAULT 0,
+    output_tokens      INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd           REAL NOT NULL DEFAULT 0,
+    transcript_bytes   INTEGER NOT NULL DEFAULT 0,
+    created_at         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_goal_generations_time ON goal_generations(created_at);
+CREATE INDEX IF NOT EXISTS idx_goal_generations_session ON goal_generations(session_id, created_at);
+
 CREATE INDEX IF NOT EXISTS idx_git_snap_session ON git_snapshots(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_tags_tag_id ON session_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_folder_tags_tag_id ON folder_tags(tag_id);

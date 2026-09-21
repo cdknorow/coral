@@ -9,9 +9,23 @@
 The goal half of this spec shipped, simpler than planned:
 
 - `internal/background/goals.go` — `GoalGenerator`, polled every 30 s. Claude
-  CLI only (`claude --print --model haiku --no-session-persistence`, run in
-  the temp dir with `TMUX*`/`CORAL_*` stripped). Any agent type with a
-  readable transcript is summarized through it.
+  CLI only, run as a bare completion: `claude --print --model haiku
+  --no-session-persistence --output-format json --system-prompt <rules>
+  --tools "" --disable-slash-commands --strict-mcp-config --setting-sources ""`
+  with `MAX_THINKING_TOKENS=0`, in the temp dir with `TMUX*`/`CORAL_*`
+  stripped. Measured 2026-09-21: the plain `-p` call sent ~22K tokens of
+  Claude Code system prompt ($0.018), and Haiku's thinking added up to 7K
+  output tokens and a minute; the bare call is ~1.5K in / ~15 out, ~2 s,
+  ~$0.0015. Any agent type with a readable transcript is summarized
+  through it.
+- Metrics: every attempt is a `goal_generations` row (trigger `first` /
+  `turn_end` / `interval` / `manual`; outcome `stored` / `unchanged` /
+  `user_goal` / `failed` / `timeout` / `bad_output` / `no_cli`; duration,
+  tokens, real `total_cost_usd`), kept 14 days. `GET /api/goals/metrics?hours=N`
+  returns totals, per-session rates, recent failures, the generator's live
+  state and plain-language `alerts` (failure rate, timeouts, slow p95, cost
+  above ~$0.005/call, a session over 30 calls/h, mostly-unchanged refreshes,
+  missing CLI, stalled poller).
 - Goals are **≤ 8 words** (capped at 10 after cleanup), not 12.
 - Refresh: first goal once the agent has answered; then when the transcript
   has grown **and** either it has been quiet 20 s (turn ended) with ≥ 2 min

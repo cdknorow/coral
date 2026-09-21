@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,26 +24,28 @@ func TestGoalDue(t *testing.T) {
 	gen := func(ago time.Duration) goalState { return goalState{size: 100, generatedAt: now.Add(-ago)} }
 
 	cases := []struct {
-		name string
-		st   goalState
-		size int64
-		mod  time.Time
-		want bool
+		name    string
+		st      goalState
+		size    int64
+		mod     time.Time
+		trigger string // "" = not due
 	}{
-		{"first goal as soon as there is a transcript", goalState{}, 10, busy, true},
-		{"nothing new since the last goal", gen(time.Hour), 100, quiet, false},
-		{"turn ended, min interval passed", gen(3 * time.Minute), 200, quiet, true},
-		{"turn ended, too soon", gen(time.Minute), 200, quiet, false},
-		{"still working, under max interval", gen(3 * time.Minute), 200, busy, false},
-		{"still working, max interval passed", gen(6 * time.Minute), 200, busy, true},
-		{"in flight", goalState{inFlight: true}, 10, quiet, false},
-		{"failed recently", goalState{failedAt: now.Add(-time.Minute)}, 10, quiet, false},
-		{"failure backoff over", goalState{failedAt: now.Add(-11 * time.Minute)}, 10, quiet, true},
-		{"forced bypasses interval, backoff and growth", goalState{size: 100, generatedAt: now, failedAt: now, force: true}, 100, busy, true},
+		{"first goal as soon as there is a transcript", goalState{}, 10, busy, store.GoalTriggerFirst},
+		{"nothing new since the last goal", gen(time.Hour), 100, quiet, ""},
+		{"turn ended, min interval passed", gen(3 * time.Minute), 200, quiet, store.GoalTriggerTurnEnd},
+		{"turn ended, too soon", gen(time.Minute), 200, quiet, ""},
+		{"still working, under max interval", gen(3 * time.Minute), 200, busy, ""},
+		{"still working, max interval passed", gen(6 * time.Minute), 200, busy, store.GoalTriggerInterval},
+		{"in flight", goalState{inFlight: true}, 10, quiet, ""},
+		{"failed recently", goalState{failedAt: now.Add(-time.Minute)}, 10, quiet, ""},
+		{"failure backoff over", goalState{failedAt: now.Add(-11 * time.Minute)}, 10, quiet, store.GoalTriggerFirst},
+		{"forced bypasses interval, backoff and growth", goalState{size: 100, generatedAt: now, failedAt: now, force: true}, 100, busy, store.GoalTriggerManual},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			assert.Equal(t, c.want, goalDue(c.st, c.size, c.mod, now))
+			due, trigger := goalDue(c.st, c.size, c.mod, now)
+			assert.Equal(t, c.trigger != "", due)
+			assert.Equal(t, c.trigger, trigger)
 		})
 	}
 }
@@ -83,26 +86,29 @@ func TestCondenseForGoal(t *testing.T) {
 // goalFixture is one live Claude session with a transcript on disk and a
 // generator whose CLI is faked.
 type goalFixture struct {
-	ctx   context.Context
-	ss    *store.SessionStore
-	ts    *store.TaskStore
-	gen   *GoalGenerator
-	sid   string
-	path  string
-	calls *atomic.Int32
-	reply string
+	ctx     context.Context
+	ss      *store.SessionStore
+	ts      *store.TaskStore
+	gen     *GoalGenerator
+	sid     string
+	path    string
+	calls   *atomic.Int32
+	reply   string
+	err     error
+	metrics *store.GoalMetricsStore
 }
 
 func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
 	t.Helper()
 	db := setupTestDB(t)
 	f := &goalFixture{
-		ctx:   context.Background(),
-		ss:    store.NewSessionStore(db),
-		ts:    store.NewTaskStore(db),
-		sid:   ls.SessionID,
-		calls: &atomic.Int32{},
-		reply: "\"Quiet the sidebar goal line.\"\n",
+		ctx:     context.Background(),
+		ss:      store.NewSessionStore(db),
+		ts:      store.NewTaskStore(db),
+		sid:     ls.SessionID,
+		calls:   &atomic.Int32{},
+		metrics: store.NewGoalMetricsStore(db),
+		reply:   "\"Quiet the sidebar goal line.\"\n",
 	}
 	projects := t.TempDir()
 	t.Setenv("CLAUDE_PROJECTS_DIR", projects)
@@ -121,9 +127,10 @@ func newGoalFixture(t *testing.T, ls store.LiveSession) *goalFixture {
 
 	f.gen = NewGoalGenerator(f.ss, f.ts, time.Hour)
 	f.gen.resolveCLI = func(map[string]string) string { return "claude" }
-	f.gen.runCLI = func(_ context.Context, bin, prompt string) (string, error) {
+	f.gen.SetMetricsStore(f.metrics)
+	f.gen.runCLI = func(_ context.Context, bin, prompt string) (goalCLIResult, error) {
 		f.calls.Add(1)
-		return f.reply, nil
+		return goalCLIResult{Text: f.reply, CostUSD: 0.001, InputTokens: 400, OutputTokens: 12}, f.err
 	}
 	return f
 }
@@ -237,4 +244,84 @@ func TestGoalGenerator_BacksOffAfterAFailure(t *testing.T) {
 	f.appendTranscript(t, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"more"}]},"timestamp":"2026-09-21T11:01:00Z"}`)
 	f.poll()
 	assert.Equal(t, int32(1), f.calls.Load(), "backing off")
+}
+
+func (f *goalFixture) attempts(t *testing.T) []store.GoalGeneration {
+	t.Helper()
+	rows, err := f.metrics.Since(f.ctx, time.Now().Add(-time.Hour))
+	require.NoError(t, err)
+	return rows
+}
+
+func outcomes(rows []store.GoalGeneration) []string {
+	var out []string
+	for _, r := range rows {
+		out = append(out, r.Trigger+":"+r.Outcome)
+	}
+	return out
+}
+
+func TestGoalGenerator_RecordsEveryAttemptWithTriggerOutcomeAndCost(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g010", AgentType: "claude", AgentName: "coral-go"})
+
+	f.poll()                 // first -> stored
+	f.gen.RequestGoal(f.sid) // manual -> same answer
+	f.poll()
+	f.gen.RequestGoal(f.sid)
+	f.err = errors.New("exit status 1")
+	f.poll() // manual -> failed
+
+	rows := f.attempts(t)
+	assert.Equal(t, []string{"first:stored", "manual:unchanged", "manual:failed"}, outcomes(rows))
+	assert.Equal(t, "Quiet the sidebar goal line", rows[0].Goal)
+	assert.InDelta(t, 0.001, rows[0].CostUSD, 1e-9)
+	assert.Equal(t, int64(400), rows[0].InputTokens)
+	assert.Greater(t, rows[0].TranscriptBytes, int64(0))
+	assert.Equal(t, "coral-go", rows[0].AgentName)
+	assert.Contains(t, rows[2].Error, "exit status 1")
+}
+
+func TestGoalGenerator_RecordsTheOperatorsGoalAndAMissingCLIOnce(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g011", AgentType: "claude", AgentName: "coral-go"})
+	f.gen.resolveCLI = func(map[string]string) string { return "" }
+
+	f.poll()
+	f.gen.RequestGoal(f.sid)
+	f.poll()
+	assert.Equal(t, []string{"first:no_cli"}, outcomes(f.attempts(t)), "one row per outage, not per tick")
+
+	f.gen.resolveCLI = func(map[string]string) string { return "claude" }
+	detail := `{"source":"user"}`
+	sid := f.sid
+	_, err := f.ts.InsertAgentEvent(f.ctx, &store.AgentEvent{AgentName: "coral-go", SessionID: &sid, EventType: GoalEventType, Summary: "Mine", DetailJSON: &detail})
+	require.NoError(t, err)
+	f.gen.RequestGoal(f.sid)
+	f.poll()
+	assert.Equal(t, []string{"first:no_cli", "manual:user_goal"}, outcomes(f.attempts(t)))
+}
+
+func TestGoalGenerator_StatusReportsLiveState(t *testing.T) {
+	f := newGoalFixture(t, store.LiveSession{SessionID: "00000000-0000-0000-0000-00000000g012", AgentType: "claude", AgentName: "coral-go"})
+	f.reply = ""
+	f.poll()
+	st := f.gen.Status(f.ctx)
+	assert.True(t, st.Enabled)
+	assert.True(t, st.CLIFound)
+	assert.Equal(t, 1, st.TrackedSessions)
+	assert.Equal(t, 1, st.BackingOff)
+	assert.Equal(t, 0, st.InFlight)
+	assert.NotEmpty(t, st.LastPoll)
+	assert.Equal(t, []string{"first:bad_output"}, outcomes(f.attempts(t)))
+}
+
+func TestParseGoalCLIOutput(t *testing.T) {
+	res, err := parseGoalCLIOutput([]byte(`{"result":"Fix the tests","is_error":false,"total_cost_usd":0.000936,"usage":{"input_tokens":386,"output_tokens":9,"cache_read_input_tokens":2,"cache_creation_input_tokens":3}}`))
+	require.NoError(t, err)
+	assert.Equal(t, goalCLIResult{Text: "Fix the tests", CostUSD: 0.000936, InputTokens: 386, OutputTokens: 9, CacheReadTokens: 2, CacheWriteTokens: 3}, res)
+
+	res, err = parseGoalCLIOutput([]byte(`{"result":"Credit balance is too low","is_error":true,"total_cost_usd":0}`))
+	assert.ErrorContains(t, err, "Credit balance is too low")
+
+	_, err = parseGoalCLIOutput([]byte("plain text"))
+	assert.ErrorContains(t, err, "unreadable CLI output")
 }

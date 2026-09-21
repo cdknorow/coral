@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -53,6 +54,8 @@ const (
 	goalMaxWords = 10
 )
 
+// goalPrompt is the CLI's whole system prompt. Replacing Claude Code's own
+// system prompt and tools cuts a call from ~22K input tokens to a few hundred.
 const goalPrompt = `You label a running AI coding agent for a dashboard sidebar. Read the agent's first instruction and the most recent part of its transcript, then reply with ONLY the agent's current goal.
 
 Rules:
@@ -68,30 +71,47 @@ type goalState struct {
 	generatedAt time.Time // last successful generation
 	failedAt    time.Time // last CLI failure
 	inFlight    bool
-	force       bool // operator asked for a refresh
+	force       bool   // operator asked for a refresh
+	trigger     string // why the in-flight generation was started
 }
 
-// goalDue reports whether a session needs a new goal. size and modAt describe
-// the transcript now.
-func goalDue(st goalState, size int64, modAt, now time.Time) bool {
+// goalDue reports whether a session needs a new goal, and the trigger (a
+// store.GoalTrigger* value) when it does. size and modAt describe the
+// transcript now.
+func goalDue(st goalState, size int64, modAt, now time.Time) (bool, string) {
 	if st.inFlight {
-		return false
+		return false, ""
 	}
 	if st.force {
-		return true
+		return true, store.GoalTriggerManual
 	}
 	if !st.failedAt.IsZero() && now.Sub(st.failedAt) < goalFailureBackoff {
-		return false
+		return false, ""
 	}
 	if size <= st.size {
-		return false // nothing new since the last goal
+		return false, "" // nothing new since the last goal
 	}
 	if st.generatedAt.IsZero() {
-		return true
+		return true, store.GoalTriggerFirst
 	}
 	since := now.Sub(st.generatedAt)
-	turnEnded := now.Sub(modAt) >= goalQuietPeriod
-	return (turnEnded && since >= goalMinInterval) || since >= goalMaxInterval
+	if now.Sub(modAt) >= goalQuietPeriod && since >= goalMinInterval {
+		return true, store.GoalTriggerTurnEnd
+	}
+	if since >= goalMaxInterval {
+		return true, store.GoalTriggerInterval
+	}
+	return false, ""
+}
+
+// goalCLIResult is one CLI answer with what it cost.
+type goalCLIResult struct {
+	Text             string
+	CostUSD          float64
+	InputTokens      int64
+	OutputTokens     int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
 }
 
 // GoalGenerator keeps a short, current goal line for every live agent. It
@@ -109,14 +129,17 @@ type GoalGenerator struct {
 	now         func() time.Time
 	resolvePath func(ls *store.LiveSession) string
 	resolveCLI  func(settings map[string]string) string
-	runCLI      func(ctx context.Context, bin, prompt string) (string, error)
+	runCLI      func(ctx context.Context, bin, prompt string) (goalCLIResult, error)
+	metrics     *store.GoalMetricsStore // nil: attempts are not recorded
 
-	mu     sync.Mutex
-	states map[string]*goalState
-	noCLI  bool // logged once, not once per tick
-	sem    chan struct{}
-	wake   chan struct{}
-	wg     sync.WaitGroup
+	mu        sync.Mutex
+	lastPrune time.Time
+	states    map[string]*goalState
+	noCLI     bool // logged once, not once per tick
+	lastPoll  time.Time
+	sem       chan struct{}
+	wake      chan struct{}
+	wg        sync.WaitGroup
 }
 
 // NewGoalGenerator creates a GoalGenerator that polls every interval.
@@ -137,6 +160,48 @@ func NewGoalGenerator(ss *store.SessionStore, ts *store.TaskStore, interval time
 		sem:        make(chan struct{}, goalConcurrency),
 		wake:       make(chan struct{}, 1),
 	}
+}
+
+// SetMetricsStore records every generation attempt for GET /api/goals/metrics.
+func (g *GoalGenerator) SetMetricsStore(m *store.GoalMetricsStore) {
+	g.metrics = m
+}
+
+// GoalGeneratorStatus is the generator's live state, for the metrics endpoint.
+type GoalGeneratorStatus struct {
+	Enabled         bool   `json:"enabled"`
+	CLIFound        bool   `json:"cli_found"`
+	TrackedSessions int    `json:"tracked_sessions"`
+	InFlight        int    `json:"in_flight"`
+	BackingOff      int    `json:"backing_off"`
+	Concurrency     int    `json:"concurrency"`
+	LastPoll        string `json:"last_poll,omitempty"`
+}
+
+// Status reports the generator's live state.
+func (g *GoalGenerator) Status(ctx context.Context) GoalGeneratorStatus {
+	settings, _ := g.sessionStore.GetSettings(ctx)
+	now := g.now()
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	st := GoalGeneratorStatus{
+		Enabled:         settings[GoalSettingKey] != "false",
+		CLIFound:        !g.noCLI,
+		TrackedSessions: len(g.states),
+		Concurrency:     cap(g.sem),
+	}
+	if !g.lastPoll.IsZero() {
+		st.LastPoll = g.lastPoll.UTC().Format(store.ISOFormat)
+	}
+	for _, s := range g.states {
+		if s.inFlight {
+			st.InFlight++
+		}
+		if !s.failedAt.IsZero() && now.Sub(s.failedAt) < goalFailureBackoff {
+			st.BackingOff++
+		}
+	}
+	return st
 }
 
 // Run starts the polling loop. Blocks until ctx is cancelled.
@@ -174,6 +239,10 @@ func (g *GoalGenerator) RequestGoal(sessionID string) {
 }
 
 func (g *GoalGenerator) pollOnce(ctx context.Context) {
+	g.pruneMetrics(ctx)
+	g.mu.Lock()
+	g.lastPoll = g.now()
+	g.mu.Unlock()
 	settings, _ := g.sessionStore.GetSettings(ctx)
 	if settings[GoalSettingKey] == "false" {
 		return
@@ -212,9 +281,10 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 			continue
 		}
 		g.mu.Lock()
-		if goalDue(*st, info.Size(), info.ModTime(), g.now()) {
+		if ok, trigger := goalDue(*st, info.Size(), info.ModTime(), g.now()); ok {
 			st.inFlight = true
 			st.force = false
+			st.trigger = trigger
 			due = append(due, ls)
 		}
 		g.mu.Unlock()
@@ -235,14 +305,26 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 	bin := g.resolveCLI(settings)
 	if bin == "" {
 		g.mu.Lock()
-		if !g.noCLI {
+		first := !g.noCLI
+		if first {
 			g.logger.Warn("claude CLI not found; agent goals fall back to the first prompt")
 			g.noCLI = true
 		}
+		var trigger string
 		for _, ls := range due {
-			g.states[ls.SessionID].inFlight = false
+			st := g.states[ls.SessionID]
+			st.inFlight = false
+			if trigger == "" {
+				trigger = st.trigger
+			}
 		}
 		g.mu.Unlock()
+		if first {
+			// Once per outage, not once per tick.
+			ls := due[0]
+			g.record(ctx, &store.GoalGeneration{SessionID: ls.SessionID, AgentName: ls.AgentName, AgentType: ls.AgentType,
+				Trigger: trigger, Outcome: store.GoalOutcomeNoCLI, Error: "claude CLI not found"})
+		}
 		return
 	}
 	g.mu.Lock()
@@ -265,19 +347,23 @@ func (g *GoalGenerator) pollOnce(ctx context.Context) {
 	}
 }
 
-// generate produces and stores one goal. It always clears inFlight.
+// generate produces and stores one goal, and records the attempt. It
+// always clears inFlight.
 func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.LiveSession) {
 	g.mu.Lock()
-	var path string
+	var path, trigger string
 	if st := g.states[ls.SessionID]; st != nil {
-		path = st.path
+		path, trigger = st.path, st.trigger
 	}
 	g.mu.Unlock()
 	var size int64
 	if info, err := os.Stat(path); err == nil {
 		size = info.Size()
 	}
-	ok, failed := false, false
+	attempt := &store.GoalGeneration{
+		SessionID: ls.SessionID, AgentName: ls.AgentName, AgentType: ls.AgentType,
+		Trigger: trigger, TranscriptBytes: size,
+	}
 	defer func() {
 		g.mu.Lock()
 		defer g.mu.Unlock()
@@ -287,18 +373,22 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 		}
 		st.inFlight = false
 		st.size = size
-		if ok {
+		switch {
+		case attempt.Outcome == "":
+			// Not attempted: no transcript to read, or no answer yet.
+		case store.IsGoalFailure(attempt.Outcome):
+			st.failedAt = g.now()
+		default:
 			st.generatedAt = g.now()
 			st.failedAt = time.Time{}
-		}
-		if failed {
-			st.failedAt = g.now()
 		}
 	}()
 
 	current, source := g.latestGoal(ctx, ls.SessionID)
 	if source == GoalSourceUser {
-		ok = true // the operator's goal stands; check again when there is more work
+		// The operator's goal stands; check again when there is more work.
+		attempt.Outcome = store.GoalOutcomeUserGoal
+		g.record(ctx, attempt)
 		return
 	}
 
@@ -317,24 +407,37 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 		return
 	}
 
-	prompt := fmt.Sprintf("%s\n\nFIRST INSTRUCTION:\n%s\n\nRECENT TRANSCRIPT:\n%s", goalPrompt, first, tail)
+	prompt := fmt.Sprintf("FIRST INSTRUCTION:\n%s\n\nRECENT TRANSCRIPT:\n%s", first, tail)
 	cctx, cancel := context.WithTimeout(ctx, goalCLITimeout)
 	defer cancel()
-	out, err := g.runCLI(cctx, bin, prompt)
+	start := time.Now()
+	res, err := g.runCLI(cctx, bin, prompt)
+	attempt.DurationMs = time.Since(start).Milliseconds()
+	attempt.CostUSD = res.CostUSD
+	attempt.InputTokens, attempt.OutputTokens = res.InputTokens, res.OutputTokens
+	attempt.CacheReadTokens, attempt.CacheWriteTokens = res.CacheReadTokens, res.CacheWriteTokens
+	defer g.record(ctx, attempt)
 	if err != nil {
-		failed = true
-		g.logger.Warn("goal generation failed", "session_id", ls.SessionID, "error", err)
+		attempt.Outcome = store.GoalOutcomeFailed
+		if errors.Is(cctx.Err(), context.DeadlineExceeded) {
+			attempt.Outcome = store.GoalOutcomeTimeout
+		}
+		attempt.Error = truncateRunes(err.Error(), 500)
+		g.logger.Warn("goal generation failed", "session_id", ls.SessionID, "outcome", attempt.Outcome, "error", err)
 		return
 	}
-	goal := cleanGoal(out)
+	goal := cleanGoal(res.Text)
 	if goal == "" {
-		failed = true
+		attempt.Outcome = store.GoalOutcomeBadOutput
+		attempt.Error = truncateRunes("unusable reply: "+strings.TrimSpace(res.Text), 500)
 		return
 	}
-	ok = true
+	attempt.Goal = goal
 	if goal == current {
+		attempt.Outcome = store.GoalOutcomeUnchanged
 		return
 	}
+	attempt.Outcome = store.GoalOutcomeStored
 	detail := fmt.Sprintf(`{"source":%q}`, GoalSourceAuto)
 	sid := ls.SessionID
 	if _, err := g.taskStore.InsertAgentEvent(ctx, &store.AgentEvent{
@@ -344,7 +447,37 @@ func (g *GoalGenerator) generate(ctx context.Context, bin string, ls *store.Live
 		Summary:    goal,
 		DetailJSON: &detail,
 	}); err != nil {
+		attempt.Outcome = store.GoalOutcomeFailed
+		attempt.Error = "store goal: " + err.Error()
 		g.logger.Error("failed to store goal", "session_id", ls.SessionID, "error", err)
+	}
+}
+
+// record saves one attempt for the metrics endpoint.
+func (g *GoalGenerator) record(ctx context.Context, a *store.GoalGeneration) {
+	if g.metrics == nil {
+		return
+	}
+	if err := g.metrics.Record(context.WithoutCancel(ctx), a); err != nil {
+		g.logger.Error("failed to record goal metrics", "error", err)
+	}
+}
+
+// pruneMetrics drops attempts past the retention window, at most hourly.
+func (g *GoalGenerator) pruneMetrics(ctx context.Context) {
+	if g.metrics == nil {
+		return
+	}
+	g.mu.Lock()
+	due := g.now().Sub(g.lastPrune) >= time.Hour
+	if due {
+		g.lastPrune = g.now()
+	}
+	g.mu.Unlock()
+	if due {
+		if _, err := g.metrics.Prune(ctx, g.now().Add(-store.GoalMetricsRetention)); err != nil {
+			g.logger.Error("failed to prune goal metrics", "error", err)
+		}
 	}
 }
 
@@ -452,14 +585,25 @@ func resolveClaudeCLI(settings map[string]string) string {
 	return agent.FindCLIInCommonPaths("claude")
 }
 
-// runGoalCLI asks the claude CLI for a goal with the cheapest model. It runs
-// in the temp dir with the tmux/Coral variables removed, so neither the
-// project's hooks and CLAUDE.md nor Coral's session detection see it.
-func runGoalCLI(ctx context.Context, bin, prompt string) (string, error) {
+// runGoalCLI asks the claude CLI for a goal with the cheapest model. The
+// goal rules replace Claude Code's system prompt, and tools, skills, MCP
+// servers and settings files (so hooks and CLAUDE.md) are all off: the call
+// is a bare completion billed to the user's existing login. Thinking is off:
+// with it Haiku spent up to 7K output tokens and a minute on an 8-word
+// answer; without it a call takes ~2 s and ~$0.0015. It runs in the temp dir
+// with the tmux/Coral variables removed, so Coral's session detection never
+// sees it.
+func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) {
 	cmd := executil.Command(ctx, bin,
 		"--print",
 		"--model", "haiku",
 		"--no-session-persistence",
+		"--output-format", "json",
+		"--system-prompt", goalPrompt,
+		"--tools", "",
+		"--disable-slash-commands",
+		"--strict-mcp-config",
+		"--setting-sources", "",
 		prompt,
 	)
 	cmd.Dir = os.TempDir()
@@ -469,9 +613,51 @@ func runGoalCLI(ctx context.Context, bin, prompt string) (string, error) {
 		}
 		cmd.Env = append(cmd.Env, kv)
 	}
+	cmd.Env = append(cmd.Env, "MAX_THINKING_TOKENS=0")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
+	res, perr := parseGoalCLIOutput(out)
 	if err != nil {
-		return "", fmt.Errorf("claude CLI failed: %w", err)
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = strings.TrimSpace(res.Text)
+		}
+		if msg != "" {
+			return res, fmt.Errorf("claude CLI failed: %w: %s", err, truncateRunes(msg, 300))
+		}
+		return res, fmt.Errorf("claude CLI failed: %w", err)
 	}
-	return string(out), nil
+	return res, perr
+}
+
+// parseGoalCLIOutput reads the CLI's --output-format json reply. An error
+// reply (is_error) is returned as an error carrying the CLI's message.
+func parseGoalCLIOutput(out []byte) (goalCLIResult, error) {
+	var r struct {
+		Result       string  `json:"result"`
+		IsError      bool    `json:"is_error"`
+		TotalCostUSD float64 `json:"total_cost_usd"`
+		Usage        struct {
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(out, &r); err != nil {
+		return goalCLIResult{Text: string(out)}, fmt.Errorf("unreadable CLI output: %w", err)
+	}
+	res := goalCLIResult{
+		Text:             r.Result,
+		CostUSD:          r.TotalCostUSD,
+		InputTokens:      r.Usage.InputTokens,
+		OutputTokens:     r.Usage.OutputTokens,
+		CacheReadTokens:  r.Usage.CacheReadInputTokens,
+		CacheWriteTokens: r.Usage.CacheCreationInputTokens,
+	}
+	if r.IsError {
+		return res, fmt.Errorf("claude CLI error: %s", truncateRunes(strings.TrimSpace(r.Result), 300))
+	}
+	return res, nil
 }

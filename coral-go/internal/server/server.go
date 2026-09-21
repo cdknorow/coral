@@ -59,6 +59,7 @@ type Server struct {
 	boardHandler    *routes.BoardHandler
 	historyHandler  *routes.HistoryHandler
 	sessHandler     *routes.SessionsHandler
+	goalMetrics     *routes.GoalMetricsHandler
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
 	proxy           *proxy.Proxy
@@ -185,10 +186,14 @@ func (s *Server) SetSummarizeFn(fn func(ctx context.Context, sessionID string) e
 	}
 }
 
-// SetGoalRequester wires the goal generator into the sessions handler.
-func (s *Server) SetGoalRequester(g routes.GoalRequester) {
+// SetGoalGenerator wires the goal generator into the sessions handler (the
+// sparkle endpoint) and the metrics endpoint.
+func (s *Server) SetGoalGenerator(g *background.GoalGenerator) {
 	if s.sessHandler != nil {
 		s.sessHandler.SetGoalRequester(g)
+	}
+	if s.goalMetrics != nil {
+		s.goalMetrics.SetStatusProvider(g)
 	}
 }
 
@@ -340,6 +345,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/sessions/live/{name}/git", sessHandler.Git)
 	r.Post("/api/sessions/live/{name}/send", sessHandler.Send)
 	r.Post("/api/sessions/live/{name}/goal", sessHandler.RequestGoal)
+	s.goalMetrics = routes.NewGoalMetricsHandler(s.db)
+	r.Get("/api/goals/metrics", s.goalMetrics.Metrics)
 	r.Post("/api/sessions/live/{name}/keys", sessHandler.Keys)
 	r.Post("/api/sessions/live/{name}/resize", sessHandler.Resize)
 	r.Post("/api/sessions/live/{name}/kill", sessHandler.Kill)
