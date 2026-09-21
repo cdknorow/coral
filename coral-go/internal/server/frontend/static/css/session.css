@@ -859,11 +859,16 @@
        status dot + its margin + the flex gap, so line 2 can start exactly
        under the agent name. */
     --row-dot-block: 16px;
-    padding: 5px 10px 5px 30px !important;
+    /* Rows are inset rounded tiles: 6px side margins, so the padding shrinks
+       by the same amount to keep the name at the task #155 indent. */
+    padding: 5px 4px 5px 26px !important;
+    margin-left: 6px;
+    margin-right: 6px;
+    border-radius: 6px;
     cursor: grab;
     box-sizing: border-box;
     min-height: 36px;
-    border-left: 2px solid transparent;
+    border-left: 0;
 }
 
 .session-group-item:hover,
@@ -1033,15 +1038,23 @@
 
 .session-group-item.active,
 .session-list li.session-group-item.active {
-    /* Selected row: accent edge + tinted surface so it stands out from hover.
-       The compound selector outranks the legacy `.session-list li.active`. */
-    border-left-color: var(--accent);
-    background: rgba(88, 166, 255, 0.10);
+    /* Selected row: a soft rounded accent tile, no edge bar. Stronger than
+       hover so the two never read alike. The compound selector outranks the
+       legacy `.session-list li.active`. */
+    border-left: 0;
+    background: rgba(88, 166, 255, 0.14);
 }
 
 .session-group-item.active:hover,
 .session-list li.session-group-item.active:hover {
-    background: rgba(88, 166, 255, 0.13);
+    background: rgba(88, 166, 255, 0.17);
+}
+
+/* The selected tile is darker than a plain row: lift its goal line back to
+   secondary so it keeps >= 4.5:1 there. */
+.session-group-item.active .session-goal,
+.session-group-item.active .session-goal-empty {
+    color: var(--text-secondary);
 }
 
 /* ── Agent Status Text ────────────────────────────────────── */
