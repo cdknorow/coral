@@ -11,7 +11,9 @@ The goal half of this spec shipped, simpler than planned:
 - `internal/background/goals.go` — `GoalGenerator`, polled every 30 s. Claude
   CLI only, run as a bare completion: `claude --print --model haiku
   --no-session-persistence --output-format json --system-prompt <rules>
-  --tools "" --disable-slash-commands --strict-mcp-config --setting-sources ""`
+  --tools "" --disable-slash-commands --strict-mcp-config --setting-sources user
+  --settings '{"disableAllHooks":true}'` (user settings hold a Bedrock/Vertex
+  login)
   with `MAX_THINKING_TOKENS=0`, in the temp dir with `TMUX*`/`CORAL_*`
   stripped. Measured 2026-09-21: the plain `-p` call sent ~22K tokens of
   Claude Code system prompt ($0.018), and Haiku's thinking added up to 7K

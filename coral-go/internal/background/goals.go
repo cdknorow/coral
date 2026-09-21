@@ -642,8 +642,9 @@ func resolveClaudeCLI(settings map[string]string) string {
 
 // runGoalCLI asks the claude CLI for a goal with the cheapest model. The
 // goal rules replace Claude Code's system prompt, and tools, skills, MCP
-// servers and settings files (so hooks and CLAUDE.md) are all off: the call
-// is a bare completion billed to the user's existing login. Thinking is off:
+// servers, hooks and project settings are all off: the call is a bare
+// completion billed to the user's existing login, which is why the user
+// settings stay on (a Bedrock or Vertex setup lives there). Thinking is off:
 // with it Haiku spent up to 7K output tokens and a minute on an 8-word
 // answer; without it a call takes ~2 s and ~$0.0015. It runs in the temp dir
 // with the tmux/Coral variables removed, so Coral's session detection never
@@ -658,7 +659,11 @@ func runGoalCLI(ctx context.Context, bin, prompt string) (goalCLIResult, error) 
 		"--tools", "",
 		"--disable-slash-commands",
 		"--strict-mcp-config",
-		"--setting-sources", "",
+		// User settings carry the login: Bedrock/Vertex env, awsAuthRefresh,
+		// apiKeyHelper. Their hooks are switched off; project and local
+		// settings are not read (the call runs in the temp dir anyway).
+		"--setting-sources", "user",
+		"--settings", `{"disableAllHooks":true}`,
 		prompt,
 	)
 	cmd.Dir = os.TempDir()
