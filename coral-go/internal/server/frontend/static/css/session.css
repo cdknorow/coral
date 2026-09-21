@@ -93,7 +93,7 @@
 .session-dot.sleeping { background: var(--warning); opacity: 0.5; }
 .session-dot.working {
     /* Working is GREEN. Green no longer means "done": a finished turn is
-       "Your turn" (hollow ring) and only killed rows are "Ended". */
+       "Your turn" (no dot) and only killed rows are "Ended". */
     background: var(--success, #3fb950);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
@@ -106,15 +106,10 @@
     background: var(--text-muted);
 }
 
-/* Your turn: hollow NEUTRAL ring. No hue, so it is never confused with
-   working-green, attention-amber or the blue selected surface, and it keeps
-   >= 3:1 contrast on the selected tint. */
+/* Your turn: no dot. The empty slot keeps names aligned; the tooltip and
+   aria-label carry the state. */
 .session-dot.your-turn {
     background: transparent;
-    box-shadow: inset 0 0 0 1.5px var(--text-primary);
-}
-.session-dot.your-turn.ctx-high {
-    box-shadow: inset 0 0 0 1.5px var(--text-primary), 0 0 0 2px rgba(248, 81, 73, 0.35);
 }
 
 /* Sleeping = muted moon, Ended = muted check. Glyphs, not coloured dots, so

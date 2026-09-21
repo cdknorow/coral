@@ -1374,8 +1374,8 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     // Branch is shown at folder level, not per agent
     const branchTag = "";
     // One pill at most, from the shared state table. Only the attention states
-    // carry a pill. "Your turn" has none: its hollow ring dot, the tooltip and
-    // the aria-label carry that state (operator request, task #175).
+    // carry a pill. "Your turn" has none: the tooltip and the aria-label carry
+    // that state (no dot) (operator request, task #175).
     const stateInfo = sessionStateInfo(s);
     const waitingBadge = stateInfo.pill
         ? ` <span class="badge waiting-badge session-state-pill session-attention-pill${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
