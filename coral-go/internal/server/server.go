@@ -399,6 +399,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/sessions/live/{name}/events", sessHandler.CreateEvent)
 	r.Get("/api/sessions/live/{name}/pending-tool", sessHandler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", sessHandler.SetPendingTool)
+	r.Get("/api/sessions/live/{name}/prompt-options", sessHandler.PromptOptions)
+	r.Post("/api/sessions/live/{name}/answer-prompt", sessHandler.AnswerPrompt)
 	r.Get("/api/sessions/live/{name}/events/counts", sessHandler.EventCounts)
 	r.Delete("/api/sessions/live/{name}/events", sessHandler.ClearEvents)
 	r.Post("/api/sessions/live/{name}/token-usage", sessHandler.RecordTokenUsage)

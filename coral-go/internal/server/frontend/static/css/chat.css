@@ -1014,3 +1014,44 @@
     font-size: 14px;
     margin: 48px auto;
 }
+
+/* Answer buttons: the prompt's options as the terminal shows them */
+.cni-answers {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 0 4px;
+}
+.cni-answer {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+.cni-answer:hover:not(:disabled) {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+}
+.cni-answer:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+.cni-answer.sending {
+    opacity: 1;
+    border-color: var(--accent);
+}
+.cni-answer-label {
+    font-weight: 600;
+}
+.cni-answer-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+}

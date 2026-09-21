@@ -59,6 +59,7 @@ type mockSessionTerminal struct {
 	sessions         map[string]*ptymanager.PaneInfo
 	outputs          map[string]string
 	sent             map[string][]string
+	raw              map[string][]string // keys sent with SendRawInput
 	killSessionCalls []string
 }
 
@@ -121,12 +122,16 @@ func (m *mockSessionTerminal) SendInput(_ context.Context, name, command, _, _ s
 	return nil
 }
 
-func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, _ []string, _, _ string) error {
+func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if _, ok := m.sessions[name]; !ok {
 		return fmt.Errorf("session %q not found", name)
 	}
+	if m.raw == nil {
+		m.raw = map[string][]string{}
+	}
+	m.raw[name] = append(m.raw[name], keys...)
 	return nil
 }
 
@@ -1212,6 +1217,8 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)
 	r.Post("/api/sessions/live/{name}/events", handler.CreateEvent)
+	r.Get("/api/sessions/live/{name}/prompt-options", handler.PromptOptions)
+	r.Post("/api/sessions/live/{name}/answer-prompt", handler.AnswerPrompt)
 	r.Post("/api/sessions/launch", handler.Launch)
 	r.Post("/api/sessions/launch-team", handler.LaunchTeam)
 

@@ -36,12 +36,15 @@ const STUB = `
   window.__origFetch = window.fetch.bind(window);
   window.fetch = (url, opts) => { const u=String(url); const rel=u.replace(/^https?:\\/\\/[^/]+/,''); const path=rel.split('?')[0]; const qs=new URLSearchParams(rel.split('?')[1]||''); const m=((opts&&opts.method)||'GET').toUpperCase();
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
+    if (m==='POST' && /\\/answer-prompt$/.test(path)) { window.__answers = (window.__answers||[]).concat([JSON.parse(opts.body)]);
+      return window.__answerFail ? Promise.resolve(new Response(JSON.stringify({ error: 'The prompt changed. Answer it in the terminal.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })) : json({ ok: true }); }
     if (m!=='GET') return json({ok:true});
     if (path==='/api/sessions/live') return json(window.__sessions);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
       const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, 400)).then(() => json(body)); }
     if (/\\/pending-tool$/.test(path)) return json({ pending: window.__pendingTool || null });
+    if (/\\/prompt-options$/.test(path)) return json(window.__promptScreen || { question: '', options: [] });
     if (/\\/resolve-path$/.test(path)) { window.__resolves = (window.__resolves||[]).concat([qs.get('filepath')]); return json({ filepath: 'resolved/' + qs.get('filepath').replace(/:.*$/, ''), line: 0 }); }
     if (/^\\/api\\/board\\//.test(path)) return json({});
     return window.__origFetch(url, opts); };`;
@@ -199,8 +202,23 @@ async function run() {
   let cd = await card();
   check('an open question shows as a card with its options, replacing the Working row', cd && cd.title === 'Question for you' && /Which layout\?/.test(cd.text) && JSON.stringify(cd.options) === '["Compact","Roomy"]' && !cd.working && cd.last, JSON.stringify(cd));
 
+  // Answer from the chat: buttons mirror the options on screen
+  await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true }, { n: 2, label: 'Roomy' }, { n: 3, label: 'Type something.', free_text: true }] }; true`);
+  await sleep(2600);
+  const btns = await ev(`Array.from(${C}.querySelectorAll('.chat-needs-input .cni-answer')).map(b => ({ n: b.dataset.n, label: b.querySelector('.cni-answer-label').textContent, desc: (b.querySelector('.cni-answer-desc') || {}).textContent || '' }))`);
+  check('the question card offers the on-screen options as buttons (text entry stays in the terminal)', JSON.stringify(btns) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows' }, { n: '2', label: 'Roomy', desc: '' }]), JSON.stringify(btns));
+  await ev(`window.__answerFail = true; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
+  await sleep(500);
+  const refused = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).some(b => b.disabled) })`);
+  check('a refused answer re-enables the buttons', refused.answers.length === 1 && !refused.disabled, JSON.stringify(refused));
+  await ev(`window.__answerFail = false; window.__answers = []; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
+  await sleep(300);
+  const sent = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).every(b => b.disabled) })`);
+  check('clicking an option sends its number and label, and locks the buttons', JSON.stringify(sent.answers) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 2, label: 'Roomy' }]) && sent.disabled, JSON.stringify(sent));
+  await ev(`window.__promptScreen = null; true`);
+
   // Open terminal switches this view without changing the saved Chat default
-  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input button').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
+  const openTerm = await ev(`(() => { const before = localStorage.getItem('coral-live-view-mode'); ${C}.querySelector('.chat-needs-input .cni-actions button').click(); const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), saved: localStorage.getItem('coral-live-view-mode'), before }; window.setLiveViewMode('chat'); return r; })()`);
   check('Open terminal shows the terminal without changing the saved view choice', !openTerm.chat && openTerm.saved === openTerm.before, JSON.stringify(openTerm));
 
   // A permission prompt: the Notification sets waiting_for_input; PreToolUse says what for

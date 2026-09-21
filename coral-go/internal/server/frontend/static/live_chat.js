@@ -428,6 +428,8 @@ export async function refreshLiveHistory() {
         syncWorkingIndicator(container, session);
         syncEmptyState(container);
         refreshPendingTool(session);
+        if (container.querySelector(":scope > .chat-needs-input")) refreshPromptOptions(session);
+        else promptOptionsBySession.delete(session.session_id);
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
         }
@@ -818,6 +820,26 @@ async function refreshPendingTool(session) {
     }
 }
 
+// The prompt's options as the terminal shows them right now (numbered, with
+// the digit that answers each), read by the server from a pane capture.
+const promptOptionsBySession = new Map(); // session_id -> [{ n, label, free_text }]
+let promptOptionsInFlight = false;
+
+async function refreshPromptOptions(session) {
+    if (promptOptionsInFlight || !session || !session.session_id) return;
+    promptOptionsInFlight = true;
+    try {
+        const qs = new URLSearchParams({ session_id: session.session_id, agent_type: session.agent_type || "" });
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/prompt-options?${qs}`);
+        if (resp.ok) {
+            const data = await resp.json();
+            promptOptionsBySession.set(session.session_id, { question: data.question || "", options: data.options || [] });
+        }
+    } catch { /* keep the last known value */ } finally {
+        promptOptionsInFlight = false;
+    }
+}
+
 // Tools whose whole purpose is to wait for the user
 const BLOCKING_TOOLS = { AskUserQuestion: "question", ExitPlanMode: "plan" };
 
@@ -826,17 +848,43 @@ function needsInputInfo(session) {
     const key = deriveSessionState(row);
     if (key === "ended" || key === "sleeping") return null;
     const pt = pendingToolBySession.get(session.session_id) || null;
-    if (pt && BLOCKING_TOOLS[pt.tool_name]) return { kind: BLOCKING_TOOLS[pt.tool_name], tool: pt };
-    if (row.waiting_for_input) return { kind: "permission", tool: pt, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
+    const screen = promptOptionsBySession.get(session.session_id) || null;
+    if (pt && BLOCKING_TOOLS[pt.tool_name]) return { kind: BLOCKING_TOOLS[pt.tool_name], tool: pt, screen };
+    if (row.waiting_for_input) return { kind: "permission", tool: pt, screen, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
     if (key === "check_terminal") return { kind: "startup" };
     return null;
+}
+
+// Answer buttons for the options on screen; text-entry options stay in the terminal.
+function answerButtonsHtml(info, descriptions = {}) {
+    const opts = ((info.screen && info.screen.options) || []).filter(o => !o.free_text);
+    if (!opts.length) return "";
+    return `<div class="cni-answers">` + opts.map(o => {
+        const desc = descriptions[o.label];
+        return `<button type="button" class="cni-answer" data-n="${o.n}" data-label="${escapeHtml(o.label)}">`
+            + `<span class="cni-answer-label">${escapeHtml(o.label)}</span>`
+            + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
+            + `</button>`;
+    }).join("") + `</div>`;
 }
 
 function needsInputHtml(info) {
     const inp = (info.tool && info.tool.input) || {};
     let title = "";
     let body = "";
-    if (info.kind === "question") {
+    const onScreen = ((info.screen && info.screen.options) || []).some(o => !o.free_text);
+    if (info.kind === "question" && onScreen) {
+        // The terminal shows one question at a time (then a review step):
+        // offer the options it is showing now.
+        title = "Question for you";
+        const descriptions = {};
+        for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
+            for (const o of Array.isArray(q.options) ? q.options : []) if (o.description) descriptions[o.label] = o.description;
+        }
+        body += `<div class="cni-question">${escapeHtml(info.screen.question || "")}</div>`;
+        body += answerButtonsHtml(info, descriptions);
+        body += `<div class="cni-hint">To type your own answer, use the terminal.</div>`;
+    } else if (info.kind === "question") {
         title = "Question for you";
         for (const q of Array.isArray(inp.questions) ? inp.questions : []) {
             body += `<div class="cni-question">${escapeHtml(q.question || "")}</div>`;
@@ -850,7 +898,8 @@ function needsInputHtml(info) {
     } else if (info.kind === "plan") {
         title = "Plan ready for your approval";
         if (inp.plan) body += `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
-        body += `<div class="cni-hint">Approve or refine it in the terminal.</div>`;
+        body += answerButtonsHtml(info);
+        body += `<div class="cni-hint">${onScreen ? "To ask for changes, use the terminal." : "Approve or refine it in the terminal."}</div>`;
     } else if (info.kind === "permission") {
         const tool = info.tool && info.tool.tool_name;
         title = tool ? `Needs your permission to use ${escapeHtml(tool)}` : "Needs your input";
@@ -858,7 +907,8 @@ function needsInputHtml(info) {
         const target = inp.command || inp.file_path || inp.path || inp.url || inp.query || inp.pattern || "";
         if (inp.description && inp.command) body += `<div class="cni-summary">${escapeHtml(inp.description)}</div>`;
         if (target) body += `<pre class="cni-target"><code>${escapeHtml(target)}</code></pre>`;
-        body += `<div class="cni-hint">Answer in the terminal.</div>`;
+        body += answerButtonsHtml(info);
+        if (!onScreen) body += `<div class="cni-hint">Answer in the terminal.</div>`;
     } else {
         title = "Waiting in the terminal";
         body = `<div class="cni-summary">The agent may be waiting at a startup prompt, such as trusting this folder or logging in.</div>`;
@@ -910,3 +960,37 @@ function syncEmptyState(container) {
         container.appendChild(el);
     }
 }
+
+// Clicking an answer: the server re-reads the terminal and sends the digit
+// only if that option is still on screen with this label.
+document.addEventListener("click", async (e) => {
+    const btn = e.target.closest && e.target.closest("#live-history-messages .cni-answer");
+    if (!btn || btn.disabled) return;
+    const session = state.currentSession;
+    if (!session || session.type !== "live") return;
+    const card = btn.closest(".chat-needs-input");
+    const buttons = card ? Array.from(card.querySelectorAll(".cni-answer")) : [btn];
+    buttons.forEach(b => { b.disabled = true; });
+    btn.classList.add("sending");
+    try {
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n: Number(btn.dataset.n), label: btn.dataset.label }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+            showToast(data.error || "Could not send the answer. Use the terminal.", true);
+            buttons.forEach(b => { b.disabled = false; });
+            btn.classList.remove("sending");
+            return;
+        }
+        // The card refreshes from the terminal: the next question, the review
+        // step, or gone once the tool runs.
+        promptOptionsBySession.delete(session.session_id);
+    } catch {
+        showToast("Could not send the answer. Use the terminal.", true);
+        buttons.forEach(b => { b.disabled = false; });
+        btn.classList.remove("sending");
+    }
+});
