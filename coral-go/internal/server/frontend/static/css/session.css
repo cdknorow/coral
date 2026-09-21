@@ -905,16 +905,6 @@
     opacity: 1;
 }
 
-/* "Your turn": quieter than attention. Neutral hairline pill, sentence case. */
-.session-group-item .badge.session-turn-pill {
-    text-transform: none;
-    letter-spacing: 0;
-    font-weight: 500;
-    background: transparent;
-    color: var(--text-secondary);
-    box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.4);
-}
-
 /* Line 2 = goal + optional unread count. The goal keeps its left inset so it
    still starts exactly under the agent name. */
 .session-line2 {

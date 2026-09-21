@@ -164,7 +164,7 @@ export const SESSION_STATES = {
     stuck:          { label: 'Stuck',          dot: 'stuck',     pill: 'Stuck',          pillClass: 'stuck',     chip: 'error',       attention: true },
     needs_input:    { label: 'Needs input',    dot: 'waiting',   pill: 'Needs input',    pillClass: '',          chip: 'needs-input', attention: true },
     check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
-    your_turn:      { label: 'Your turn',      dot: 'your-turn', pill: 'Your turn',      pillClass: 'your-turn', chip: 'your-turn',   attention: false },
+    your_turn:      { label: 'Your turn',      dot: 'your-turn', pill: null,             pillClass: '',          chip: '',            attention: false },
     working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
     idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
 };
@@ -1350,13 +1350,12 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
 
     // Branch is shown at folder level, not per agent
     const branchTag = "";
-    // One pill at most, from the shared state table. Attention pills keep the
-    // quiet amber/red surface; "Your turn" is a neutral, quieter pill.
+    // One pill at most, from the shared state table. Only the attention states
+    // carry a pill. "Your turn" has none: its hollow ring dot, the tooltip and
+    // the aria-label carry that state (operator request, task #175).
     const stateInfo = sessionStateInfo(s);
     const waitingBadge = stateInfo.pill
-        ? (stateInfo.attention
-            ? ` <span class="badge waiting-badge session-state-pill session-attention-pill${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
-            : ` <span class="badge session-state-pill session-turn-pill">${stateInfo.pill}</span>`)
+        ? ` <span class="badge waiting-badge session-state-pill session-attention-pill${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
         : '';
     // Context is secondary: any state pill owns line 1 and the ctx pill
     // collapses to the dot's ring, which survives on every glyph.
@@ -1386,7 +1385,12 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
             </span>`;
     }
     const isDone = !!state.killedSessions?.[s.session_id];
+    // A state without a chip class ("Your turn") renders no mobile chip. The meta
+    // row is emitted without whitespace so :empty can collapse it on the phone.
     const mobileStatus = getMobileStatusChip(s);
+    const mobileStatusChip = mobileStatus.className
+        ? `<span class="session-status-chip ${escapeAttr(mobileStatus.className)}">${escapeHtml(mobileStatus.label)}</span>`
+        : '';
     const lastActivity = formatStaleness(s.staleness_seconds);
     const needsAttention = sessionNeedsAttention(s);
     const mobileUnread = sessionUnreadCount(s);
@@ -1537,10 +1541,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
             <div class="session-mobile-banner-row">
                 ${mobileAttentionBanner}
             </div>
-            <div class="session-mobile-meta">
-                <span class="session-status-chip ${escapeAttr(mobileStatus.className)}">${escapeHtml(mobileStatus.label)}</span>
-                ${unreadBoardBadge}
-            </div>
+            <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
             ${(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
             ${branchTag}
         </div>

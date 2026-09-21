@@ -117,7 +117,7 @@ hover.
 | needs input (`waiting_for_input`) | filled amber dot; pill "Needs input" (quiet amber surface, sentence case); amber row tint; name full-strength |
 | check terminal (`not_started`) | filled amber dot; pill "Check terminal"; amber row tint |
 | stuck (`stuck`) | filled red dot; pill "Stuck" (error surface); row tint switches to the error tint (`.is-stuck`); outranks needs input |
-| your turn (`awaiting_user`; servers without the field: the stop-derived `done`) | hollow NEUTRAL ring (`--text-primary`, no hue); quieter neutral pill "Your turn"; no row tint; never green, never a check mark |
+| your turn (`awaiting_user`; servers without the field: the stop-derived `done`) | hollow NEUTRAL ring (`--text-primary`, no hue); **no pill and no mobile chip** (removed by operator request, task #175): the ring, the tooltip State row and the row `aria-label` carry "Your turn"; no row tint; never green, never a check mark |
 | sleeping | muted moon glyph in the dot slot (no amber); identity `--text-secondary`; goal line kept (40px, D-E); kebab shows Wake variant (existing) |
 | ended (killed/history rows only, `.session-done`) | muted check glyph, never green; identity line-through `--text-muted`; goal hidden (36px); click opens history (existing) |
 | working | filled GREEN dot (`--success`); no pill; nothing animates |
@@ -156,6 +156,37 @@ transition only: the first snapshot after load seeds silently, and the agent
 the operator is typing into never toasts itself.
 Operator switch: `localStorage['coral-count-your-turn'] = 'false'` disables
 Your-turn counting.
+
+### Server-side derivation: when "Needs input" is raised and cleared (task #174)
+
+All five state consumers derive state through one function,
+`internal/sessionstate.Derive`: the HTTP list row, the WebSocket row,
+`GET /api/sessions/{id}/resolve`, `GET /api/sessions/{id}/status` and the
+background idle detector that sends the `needs_input` webhook. A guard test
+fails the build if any production file compares an event type to
+`"notification"` again. The resolver and status endpoints emit
+`waiting_for_input`, `awaiting_user`, `waiting_reason` and `waiting_summary`
+explicitly, because the popout merges the resolver record over the live row.
+
+**Rule.** "Needs input" appears only for a request made directly to the user,
+and never for an agent that finished its turn and is idle.
+
+- Raised only by a notification whose text contains `needs your permission`,
+  `needs your approval`, or `needs your input` (the MCP input dialog).
+- `waiting for your input` / `waiting for input` is Claude Code's idle reminder,
+  sent about a minute after every turn ends. It maps to "Your turn". It never
+  downgrades a request that is still pending.
+- Any other notification text, such as `login successful`, is informational and
+  changes nothing.
+- Cleared by `prompt_submit`, `tool_use`, `session_reset`, and `stop`. A request
+  blocks the turn, so a `stop` can only be recorded after it was answered. This
+  covers a denied permission and an approved tool that failed, neither of which
+  produces a `tool_use` event. After `stop` the state is "Your turn".
+
+**Known limit.** Claude Code reports a tool only after it succeeds
+(`PostToolUse`). An approved tool that runs for a long time keeps showing
+"Needs input" until it finishes. `PreToolUse` fires before the permission
+prompt, so it cannot be used to clear the request earlier.
 
 ## Responsive
 
