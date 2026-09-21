@@ -1152,6 +1152,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/poll", handler.Poll)
 	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
 	r.Post("/api/sessions/live/{name}/send", handler.Send)
+	r.Post("/api/sessions/live/{name}/goal", handler.RequestGoal)
 	r.Post("/api/sessions/live/{name}/keys", handler.Keys)
 	r.Post("/api/sessions/live/{name}/resize", handler.Resize)
 	r.Post("/api/sessions/live/{name}/kill", handler.Kill)
@@ -1771,4 +1772,94 @@ func TestEditedFileCount_InLiveResponse(t *testing.T) {
 	assert.True(t, foundAgent2, "agent without edits should appear in response")
 	assert.Equal(t, float64(2), agent1Count, "agent with 2 distinct edited files should show count 2")
 	assert.Equal(t, float64(0), agent2Count, "agent with no edits should show count 0")
+}
+
+// ── Goal generation ─────────────────────────────────────────────────────
+
+type fakeGoalRequester struct{ requested []string }
+
+func (f *fakeGoalRequester) RequestGoal(sessionID string) {
+	f.requested = append(f.requested, sessionID)
+}
+
+func TestRequestGoal_AsksTheGeneratorAndNeverTypesIntoTheAgent(t *testing.T) {
+	server, handler, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "33333333-3333-4333-8444-555555555551"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "coral-go", WorkingDir: "/tmp/g"}))
+	terminal.addSession("claude-"+sid, "/tmp/g")
+	body := `{"agent_type":"claude","session_id":"` + sid + `"}`
+	post := func() *http.Response {
+		t.Helper()
+		resp, err := http.Post(server.URL+"/api/sessions/live/coral-go/goal", "application/json", strings.NewReader(body))
+		require.NoError(t, err)
+		t.Cleanup(func() { resp.Body.Close() })
+		return resp
+	}
+
+	assert.Equal(t, http.StatusConflict, post().StatusCode, "no generator running")
+
+	gen := &fakeGoalRequester{}
+	handler.SetGoalRequester(gen)
+	resp := post()
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode)
+	var got map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+	assert.Equal(t, true, got["goal_pending"])
+	assert.Equal(t, []string{sid}, gen.requested)
+
+	require.NoError(t, ss.SetSetting(ctx, "auto_goals", "false"))
+	assert.Equal(t, http.StatusConflict, post().StatusCode, "turned off")
+
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	for name, sent := range terminal.sent {
+		assert.Empty(t, sent, "nothing typed into %s", name)
+	}
+}
+
+func TestCreateEvent_TypedGoalIsMarkedAsTheOperators(t *testing.T) {
+	server, handler, _, _ := setupSessionsTestServer(t)
+	sid := "33333333-3333-4333-8444-555555555552"
+	resp, err := http.Post(server.URL+"/api/sessions/live/coral-go/events", "application/json",
+		strings.NewReader(`{"event_type":"goal","summary":"My goal","session_id":"`+sid+`"}`))
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	ev, err := handler.ts.GetLatestGoalEvent(context.Background(), sid)
+	require.NoError(t, err)
+	require.NotNil(t, ev)
+	require.NotNil(t, ev.DetailJSON)
+	assert.JSONEq(t, `{"source":"user"}`, *ev.DetailJSON)
+}
+
+func TestResolveGoal_NewestGoalEventWinsOverThePulseLine(t *testing.T) {
+	assert.Equal(t, "Short auto goal", resolveGoal("Long PULSE sentence from the start", "Short auto goal"))
+	assert.Equal(t, "PULSE only", resolveGoal("PULSE only", ""))
+	assert.Equal(t, "", resolveGoal("", ""))
+}
+
+func TestTrackStatusSummary_DoesNotReplayAKnownPulseLineAfterRestart(t *testing.T) {
+	_, handler, _, _ := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "33333333-3333-4333-8444-555555555553"
+	s := sid
+	_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "coral-go", SessionID: &s, EventType: "goal", Summary: "Old PULSE line"})
+	require.NoError(t, err)
+	auto := `{"source":"auto"}`
+	_, err = handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "coral-go", SessionID: &s, EventType: "goal", Summary: "Newer auto goal", DetailJSON: &auto})
+	require.NoError(t, err)
+
+	// A fresh process sees the old PULSE line in the log for the first time.
+	handler.trackStatusSummary(ctx, "coral-go", "", "Old PULSE line", sid)
+	ev, err := handler.ts.GetLatestGoalEvent(ctx, sid)
+	require.NoError(t, err)
+	assert.Equal(t, "Newer auto goal", ev.Summary)
+
+	// A genuinely new PULSE line is recorded and becomes the goal.
+	handler.trackStatusSummary(ctx, "coral-go", "", "New PULSE line", sid)
+	ev, err = handler.ts.GetLatestGoalEvent(ctx, sid)
+	require.NoError(t, err)
+	assert.Equal(t, "New PULSE line", ev.Summary)
 }

@@ -1,8 +1,32 @@
 # Transcript-Derived Goals
 
-**Status:** Planned
+**Status:** Goal line implemented (2026-09-21); `auto_name`, Codex transport and the settings UI are not
 **Depends on:** [Agent Bar Tweaks](../AGENT_BAR_TWEAKS.md) D1 (identity chain, `first_prompt` in both payload builders)
 **Replaces:** the `PULSE:SUMMARY` prompt injection in `requestGoal` / `refreshGoal`
+
+## As built (2026-09-21)
+
+The goal half of this spec shipped, simpler than planned:
+
+- `internal/background/goals.go` — `GoalGenerator`, polled every 30 s. Claude
+  CLI only (`claude --print --model haiku --no-session-persistence`, run in
+  the temp dir with `TMUX*`/`CORAL_*` stripped). Any agent type with a
+  readable transcript is summarized through it.
+- Goals are **≤ 8 words** (capped at 10 after cleanup), not 12.
+- Refresh: first goal once the agent has answered; then when the transcript
+  has grown **and** either it has been quiet 20 s (turn ended) with ≥ 2 min
+  since the last goal, or 5 min have passed. 10 min backoff after a failure.
+  Gating state is in memory, not `session_meta` (a restart regenerates once).
+- Storage is the existing `goal` agent event with `detail_json`
+  `{"source":"auto"}`; typed edits get `{"source":"user"}` and are never
+  replaced. Both payload builders show the **newest** goal event, falling
+  back to the PULSE line; PULSE changes are recorded as goal events from both
+  builders, and a PULSE line already on record is not replayed after restart.
+- `POST /api/sessions/live/{name}/goal` → `202 {"goal_pending": true}`;
+  `409` when the generator is not running or `auto_goals` = `"false"`. The
+  sparkle and header refresh call it; nothing is typed into the terminal.
+- No `auto_name`, no Codex path, no `goal_pending` spinner, no settings UI
+  (the `auto_goals` key can be set to `"false"` to disable).
 
 ## Overview
 

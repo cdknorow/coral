@@ -62,9 +62,54 @@ type SessionsHandler struct {
 	teamStore     *store.TeamStore       // for team persistence
 	tokenStore    *store.TokenUsageStore // for token usage tracking
 
+	goals GoalRequester // nil until the goal generator starts
+
 	// Deduplication state for status/summary events (mirrors Python _last_known)
 	lastKnownMu sync.RWMutex
 	lastKnown   map[string]lastKnownState
+}
+
+// GoalRequester asks the goal generator for a fresh goal for one session.
+type GoalRequester interface {
+	RequestGoal(sessionID string)
+}
+
+// SetGoalRequester wires the goal generator used by the RequestGoal endpoint.
+func (h *SessionsHandler) SetGoalRequester(g GoalRequester) {
+	h.goals = g
+}
+
+// RequestGoal asks the goal generator to regenerate a session's goal line.
+// The result arrives on the normal session updates.
+// POST /api/sessions/live/{name}/goal  body: {"agent_type", "session_id"}
+func (h *SessionsHandler) RequestGoal(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	var body struct {
+		AgentType string `json:"agent_type"`
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if body.SessionID == "" {
+		errBadRequest(w, "session_id required")
+		return
+	}
+	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+		writeExactTargetError(w, status, message)
+		return
+	}
+	if h.goals == nil {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "goal generation is not running"})
+		return
+	}
+	if settings, err := h.ss.GetSettings(r.Context()); err == nil && settings["auto_goals"] == "false" {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "goal generation is turned off"})
+		return
+	}
+	h.goals.RequestGoal(body.SessionID)
+	writeJSON(w, http.StatusAccepted, map[string]any{"goal_pending": true})
 }
 
 // SetBoardHandler sets the board handler reference for sleep/wake operations.
@@ -501,12 +546,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		state := DeriveSessionState(stateInput)
 
-		// Summary fallback to latest goal
-		if summary == "" && sid != "" {
-			if goal, ok := latestGoals[sid]; ok {
-				summary = goal
-			}
-		}
+		// The goal line is the newest goal event (the agent's PULSE line, the
+		// goal generator or an operator edit); the raw PULSE line is kept for
+		// event tracking below.
+		pulseSummary := summary
+		summary = resolveGoal(pulseSummary, latestGoals[sid])
 
 		// Board unread
 		tmuxName := agent.TmuxSession
@@ -595,7 +639,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		addContextUsage(entry, contextModel, latestTurnCtx[sid])
 
 		// Track status/summary for event deduplication
-		h.trackStatusSummary(ctx, agent.AgentName, status, summary, sid)
+		h.trackStatusSummary(ctx, agent.AgentName, status, pulseSummary, sid)
 
 		if sid != "" {
 			liveSIDs[sid] = true
@@ -840,18 +884,39 @@ func (h *SessionsHandler) trackStatusSummary(ctx interface{}, agentName, status,
 		key = agentName
 	}
 
-	prev := h.lastKnown[key]
+	prev, seen := h.lastKnown[key]
 	if status != "" && status != prev.Status {
 		h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{
 			AgentName: agentName, SessionID: &sessionID, EventType: "status", Summary: status,
 		})
 	}
-	if summary != "" && summary != prev.Summary {
+	// After a restart the log still holds the last PULSE line; re-inserting
+	// it would bury a newer goal, so a line already recorded is only seeded.
+	if summary != "" && summary != prev.Summary && !(!seen && h.goalRecorded(sessionID, summary)) {
 		h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{
 			AgentName: agentName, SessionID: &sessionID, EventType: "goal", Summary: summary,
 		})
 	}
 	h.lastKnown[key] = lastKnownState{Status: status, Summary: summary}
+}
+
+// goalRecorded reports whether the session already has a goal event with
+// this text.
+func (h *SessionsHandler) goalRecorded(sessionID, goal string) bool {
+	if sessionID == "" {
+		return false
+	}
+	ok, err := h.ts.HasGoalEvent(context.Background(), sessionID, goal)
+	return err == nil && ok
+}
+
+// resolveGoal picks a session's goal line: the newest goal event, else the
+// agent's PULSE summary from its log.
+func resolveGoal(pulseSummary, latestGoal string) string {
+	if latestGoal != "" {
+		return latestGoal
+	}
+	return pulseSummary
 }
 
 // Detail returns detailed info for a specific live session.
@@ -3241,6 +3306,11 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.ToolUseID != "" {
 		event.RefID = &body.ToolUseID
+	}
+	// A goal posted here without a source is the operator's edit; the goal
+	// generator never replaces it.
+	if body.EventType == "goal" && body.DetailJSON == nil {
+		body.DetailJSON = map[string]string{"source": "user"}
 	}
 	if body.DetailJSON != nil {
 		djBytes, err := json.Marshal(body.DetailJSON)

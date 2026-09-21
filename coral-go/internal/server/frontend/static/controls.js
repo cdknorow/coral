@@ -600,37 +600,27 @@ export function editGoal() {
 
 export function refreshGoal() {
     if (!state.currentSession || state.currentSession.type !== "live") return;
-    const name = state.currentSession.name;
-    const msg = 'Emit a ||PULSE:SUMMARY <your current goal>|| line now to update the dashboard with your current goal.';
-    fetch(`/api/sessions/live/${encodeURIComponent(name)}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            command: msg,
-            agent_type: state.currentSession.agent_type,
-            session_id: state.currentSession.session_id,
-        }),
-    }).then(() => {
-        showToast("Asked agent to update goal");
-    }).catch(() => {
-        showToast("Failed to send refresh request", true);
-    });
+    const s = state.currentSession;
+    requestGoal(s.name, s.agent_type, s.session_id);
 }
 
+// Asks the server's goal generator for a fresh goal line. It reads the
+// agent's transcript in the background; nothing is typed into the agent's
+// terminal. The new goal arrives on the normal session updates.
 export function requestGoal(name, agentType, sessionId) {
-    const msg = 'Emit a ||PULSE:SUMMARY <your current goal>|| line now to update the dashboard with your current goal.';
-    fetch(`/api/sessions/live/${encodeURIComponent(name)}/send`, {
+    fetch(`/api/sessions/live/${encodeURIComponent(name)}/goal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            command: msg,
-            agent_type: agentType,
-            session_id: sessionId,
-        }),
-    }).then(() => {
-        showToast("Asked agent to update goal");
+        body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
+    }).then(async (resp) => {
+        if (resp.ok) {
+            showToast("Updating goal…");
+            return;
+        }
+        const data = await resp.json().catch(() => ({}));
+        showToast(data.error || "Failed to update goal", true);
     }).catch(() => {
-        showToast("Failed to send refresh request", true);
+        showToast("Failed to update goal", true);
     });
 }
 

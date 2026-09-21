@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"path/filepath"
@@ -484,6 +485,30 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 	return result, nil
 }
 
+// GetLatestGoalEvent returns the newest goal event for a session, or nil.
+func (s *TaskStore) GetLatestGoalEvent(ctx context.Context, sessionID string) (*AgentEvent, error) {
+	var ev AgentEvent
+	err := s.db.GetContext(ctx, &ev,
+		`SELECT * FROM agent_events WHERE session_id = ? AND event_type = 'goal'
+		 ORDER BY created_at DESC, id DESC LIMIT 1`, sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &ev, nil
+}
+
+// HasGoalEvent reports whether a session has ever had a goal with this text.
+func (s *TaskStore) HasGoalEvent(ctx context.Context, sessionID, goal string) (bool, error) {
+	var n int
+	err := s.db.GetContext(ctx, &n,
+		`SELECT COUNT(*) FROM agent_events WHERE session_id = ? AND event_type = 'goal' AND summary = ?`,
+		sessionID, goal)
+	return n > 0, err
+}
+
 // GetLatestGoals returns the latest goal summary per session.
 func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (map[string]string, error) {
 	if len(sessionIDs) == 0 {
@@ -492,7 +517,7 @@ func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (ma
 	query, args, err := sqlx.In(
 		`SELECT session_id, summary FROM agent_events
 		 WHERE session_id IN (?) AND event_type = 'goal'
-		 ORDER BY created_at DESC`,
+		 ORDER BY created_at DESC, id DESC`,
 		sessionIDs)
 	if err != nil {
 		return nil, err

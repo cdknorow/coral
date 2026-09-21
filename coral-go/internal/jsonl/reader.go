@@ -211,6 +211,56 @@ func (r *SessionReader) ClearSession(sessionID string) {
 	r.mu.Unlock()
 }
 
+// ReadTail parses only the last maxBytes of a transcript file, dropping the
+// partial line the cut lands in. It is for callers that need the recent
+// conversation without caching the whole transcript.
+func ReadTail(path, agentType string, maxBytes int64) ([]map[string]any, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := info.Size() - maxBytes
+	if start < 0 {
+		start = 0
+	}
+	if _, err := f.Seek(start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	if start > 0 && len(lines) > 0 {
+		lines = lines[1:]
+	}
+	toolUseNames := make(map[string]string)
+	var messages []map[string]any
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		messages = append(messages, parseTranscriptEntry(entry, toolUseNames, agentType)...)
+	}
+	return messages, nil
+}
+
+// TranscriptPath returns the transcript file for a session, or "" when the
+// agent has not written one yet.
+func TranscriptPath(sessionID, workingDirectory, agentType string) string {
+	return resolveTranscriptPath(sessionID, workingDirectory, agentType)
+}
+
 // resolveTranscriptPath finds the transcript file for a session.
 func resolveTranscriptPath(sessionID, workingDirectory, agentType string) string {
 	switch agentType {

@@ -58,6 +58,7 @@ type Server struct {
 	tasksHandler    *routes.TasksHandler
 	boardHandler    *routes.BoardHandler
 	historyHandler  *routes.HistoryHandler
+	sessHandler     *routes.SessionsHandler
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
 	proxy           *proxy.Proxy
@@ -184,6 +185,13 @@ func (s *Server) SetSummarizeFn(fn func(ctx context.Context, sessionID string) e
 	}
 }
 
+// SetGoalRequester wires the goal generator into the sessions handler.
+func (s *Server) SetGoalRequester(g routes.GoalRequester) {
+	if s.sessHandler != nil {
+		s.sessHandler.SetGoalRequester(g)
+	}
+}
+
 // BoardHandler returns the board handler (used by notifier and sleep/wake).
 func (s *Server) BoardHandler() *routes.BoardHandler {
 	return s.boardHandler
@@ -299,6 +307,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// ── API Routes ──────────────────────────────────────────────
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)
+	s.sessHandler = sessHandler
 	sysHandler := routes.NewSystemHandler(s.db, s.cfg)
 	s.systemHandler = sysHandler
 	histHandler := routes.NewHistoryHandler(s.db, s.cfg, s.boardStore)
@@ -330,6 +339,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/sessions/live/{name}/search-files", sessHandler.SearchFiles)
 	r.Get("/api/sessions/live/{name}/git", sessHandler.Git)
 	r.Post("/api/sessions/live/{name}/send", sessHandler.Send)
+	r.Post("/api/sessions/live/{name}/goal", sessHandler.RequestGoal)
 	r.Post("/api/sessions/live/{name}/keys", sessHandler.Keys)
 	r.Post("/api/sessions/live/{name}/resize", sessHandler.Resize)
 	r.Post("/api/sessions/live/{name}/kill", sessHandler.Kill)

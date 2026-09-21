@@ -523,6 +523,12 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	}
 	srv.SetSummarizeFn(summarizeFn)
 
+	// Goal generator — keeps a short, current goal line for every live agent
+	// from its transcript (auto_goals setting, on unless "false")
+	goalGenerator := background.NewGoalGenerator(sessStore, taskStore, 30*time.Second)
+	safeGo(ctx, "goal_generator", func() { goalGenerator.Run(ctx) })
+	srv.SetGoalRequester(goalGenerator)
+
 	// Session reconciler — periodically detects crashed agents and marks them sleeping
 	reconciler := background.NewSessionReconciler(sessStore, agentRT, 30*time.Second)
 	safeGo(ctx, "session_reconciler", func() { reconciler.Run(ctx) })
