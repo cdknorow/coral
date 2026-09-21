@@ -165,13 +165,18 @@ export function renderMarkdown(content, options) {
     if (!content) return '';
     if (typeof marked !== 'undefined') {
         try {
+            // marked v5+ dropped the `highlight` option, so highlight fenced
+            // code through a renderer. Only blocks with a known language are
+            // colored; guessing (highlightAuto) is slow and often wrong.
             if (typeof hljs !== 'undefined' && !marked._hljsConfigured) {
-                marked.setOptions({
-                    highlight: (code, lang) => {
-                        if (lang && hljs.getLanguage(lang)) {
-                            return hljs.highlight(code, { language: lang }).value;
-                        }
-                        return hljs.highlightAuto(code).value;
+                marked.use({
+                    renderer: {
+                        code({ text, lang }) {
+                            const language = (lang || '').trim().split(/\s+/)[0];
+                            if (!language || !hljs.getLanguage(language)) return false;
+                            const html = hljs.highlight(text, { language, ignoreIllegals: true }).value;
+                            return `<pre><code class="hljs language-${escapeAttr(language)}">${html}</code></pre>\n`;
+                        },
                     },
                 });
                 marked._hljsConfigured = true;
