@@ -575,6 +575,9 @@ export function applyLiveViewMode(override) {
     if (toggle) toggle.hidden = !canChat;
     const wrapper = document.getElementById("capture-wrapper");
     if (wrapper) wrapper.classList.toggle("chat-mode", mode === "chat");
+    // The command pane drops terminal-only controls in chat mode
+    const pane = document.getElementById("command-pane");
+    if (pane) pane.classList.toggle("chat-mode", mode === "chat");
     for (const m of ["terminal", "chat"]) {
         const btn = document.getElementById(`live-view-btn-${m}`);
         if (!btn) continue;

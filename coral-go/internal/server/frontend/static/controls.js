@@ -262,10 +262,10 @@ export function renderQuickActions() {
     }).join("");
 
     const navButtons = `
-        <button class="btn-nav" onclick="sendRawKeys(['Escape'])" title="Escape" aria-label="Escape">Esc</button>
-        <button class="btn-nav" onclick="sendRawKeys(['Up'])" title="Arrow Up" aria-label="Arrow Up">&uarr;</button>
-        <button class="btn-nav" onclick="sendRawKeys(['Down'])" title="Arrow Down" aria-label="Arrow Down">&darr;</button>
-        <button class="btn-nav btn-enter" onclick="sendRawKeys(['Enter'])" data-tooltip="Sends an Enter keypress to the terminal" aria-label="Enter">&#9166;</button>
+        <button class="btn-nav btn-esc" onclick="sendRawKeys(['Escape'])" title="Escape" aria-label="Escape"><span class="esc-label-terminal">Esc</span><span class="esc-label-chat" data-tooltip="Sends Esc: stops what the agent is doing, or dismisses its prompt">Cancel</span></button>
+        <button class="btn-nav btn-nav-key" onclick="sendRawKeys(['Up'])" title="Arrow Up" aria-label="Arrow Up">&uarr;</button>
+        <button class="btn-nav btn-nav-key" onclick="sendRawKeys(['Down'])" title="Arrow Down" aria-label="Arrow Down">&darr;</button>
+        <button class="btn-nav btn-enter btn-nav-key" onclick="sendRawKeys(['Enter'])" data-tooltip="Sends an Enter keypress to the terminal" aria-label="Enter">&#9166;</button>
     `;
 
     toolbar.innerHTML = `

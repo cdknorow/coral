@@ -1207,3 +1207,20 @@
     font-size: 14px;
     margin: 48px auto;
 }
+
+/* Chat mode: the command pane keeps just Cancel (Esc) and Send. The mode
+   buttons, macros and raw arrow/Enter keys are terminal tools and read as
+   noise next to the chat. */
+#command-pane.chat-mode .toolbar-group-modes,
+#command-pane.chat-mode .toolbar-divider,
+#command-pane.chat-mode .toolbar-group-macros,
+#command-pane.chat-mode .btn-nav-key {
+    display: none;
+}
+.btn-esc .esc-label-chat,
+#command-pane.chat-mode .btn-esc .esc-label-terminal {
+    display: none;
+}
+#command-pane.chat-mode .btn-esc .esc-label-chat {
+    display: inline;
+}

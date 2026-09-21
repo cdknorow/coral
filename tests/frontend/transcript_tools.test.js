@@ -124,6 +124,15 @@ async function run() {
   const dflt = await ev(`(() => { localStorage.removeItem('coral-live-view-mode'); return import('/static/live_chat.js').then(m => { m.applyLiveViewMode(); return { mode: m.getLiveViewMode(), chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggle: !document.querySelector('.live-view-toggle').hidden }; }); })()`);
   check('Chat is the default center view', dflt.mode === 'chat' && dflt.chat && dflt.toggle, JSON.stringify(dflt));
 
+  // Chat mode: the command bar keeps just Cancel (Esc) and Send
+  const bar = () => ev(`Array.from(document.querySelectorAll('#command-toolbar button')).filter(b => b.offsetParent !== null && !b.closest('.send-btn-menu')).map(b => (b.innerText || b.getAttribute('aria-label') || '').trim())`);
+  const chatBar = await bar();
+  check('in chat mode the command bar shows only Cancel and Send', JSON.stringify(chatBar) === JSON.stringify(['Cancel', '', '']) || (chatBar.includes('Cancel') && !chatBar.includes('Esc') && chatBar.length <= 3 && !chatBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t))), JSON.stringify(chatBar));
+  await ev(`window.setLiveViewMode('terminal'); true`);
+  const termBar = await bar();
+  check('terminal mode keeps the full command bar with Esc', termBar.includes('Esc') && !termBar.includes('Cancel') && termBar.length > 6, JSON.stringify(termBar));
+  await ev(`window.setLiveViewMode('chat'); true`);
+
   // A sent message shows as Queued until the transcript records it
   await ev(`document.getElementById('command-input').value = 'Please also fix the header'; window.sendCommand(); true`);
   await sleep(300);
