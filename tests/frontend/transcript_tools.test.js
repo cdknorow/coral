@@ -38,6 +38,7 @@ const STUB = `
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
     if (m!=='GET') return json({ok:true});
     if (path==='/api/sessions/live') return json(window.__sessions);
+    if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
       const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, 400)).then(() => json(body)); }
     if (/\\/resolve-path$/.test(path)) { window.__resolves = (window.__resolves||[]).concat([qs.get('filepath')]); return json({ filepath: 'resolved/' + qs.get('filepath').replace(/:.*$/, ''), line: 0 }); }
@@ -62,6 +63,7 @@ async function run() {
       : { kind: el.classList.contains('human') ? 'user' : 'reply', final: el.classList.contains('turn-final'), text: el.innerText.trim() })`);
   await sleep(1500);
   let t = await top();
+  check('history loads in pages of 400 messages', (await ev(`window.__chatLimits || []`)).every(l => l === '400') && (await ev(`(window.__chatLimits || []).length`)) > 0, JSON.stringify(await ev(`window.__chatLimits`)));
   check('overlapping initial loads render the history once', t.filter(x => x.kind === 'user').length === 1, JSON.stringify(t.map(x => x.kind)));
   check('top level: group, user, group, final reply', JSON.stringify(t.map(x => x.kind)) === '["group","user","group","reply"]', JSON.stringify(t.map(x => x.kind)));
   check('groups are collapsed by default', t.filter(x => x.kind === 'group').every(g => !g.open));

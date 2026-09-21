@@ -11,6 +11,10 @@ let historyMessageCount = 0;
 let historyOffset = 0;      // pagination offset for "Load More"
 let historyHasMore = false;  // whether older messages exist
 let initialLoadDone = false; // whether the initial full load has completed
+let loadingMore = false;     // an older page is being fetched
+// Messages per page. Tool calls and results each count as one, and they are
+// folded away in the chat, so a page needs to be large to cover a few turns.
+const HISTORY_PAGE = 400;
 // Bumped on reset so responses for a previous session are dropped, and used to
 // keep a single refresh in flight: overlapping initial loads would otherwise
 // both render the full history.
@@ -373,7 +377,7 @@ export async function refreshLiveHistory() {
     if (!initialLoadDone) {
         // First load: fetch most recent messages with pagination
         params.set("after", "0");
-        params.set("limit", "100");
+        params.set("limit", String(HISTORY_PAGE));
         params.set("offset", "0");
     } else {
         // Subsequent polls: only fetch new messages
@@ -433,7 +437,17 @@ export async function refreshLiveHistory() {
 
 /** Load older messages (prepend above current messages). */
 export async function loadMoreHistory() {
-    if (!state.currentSession || !historyHasMore) return;
+    if (!state.currentSession || !historyHasMore || loadingMore) return;
+    loadingMore = true;
+    const generation = historyGeneration;
+    try {
+        await _loadMoreHistory(generation);
+    } finally {
+        loadingMore = false;
+    }
+}
+
+async function _loadMoreHistory(generation) {
 
     const session = state.currentSession;
     const container = document.getElementById("live-history-messages");
@@ -448,16 +462,18 @@ export async function loadMoreHistory() {
         params.set("working_directory", session.working_directory);
     }
     params.set("after", "0");
-    params.set("limit", "100");
+    params.set("limit", String(HISTORY_PAGE));
     params.set("offset", String(historyOffset));
 
     try {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`);
         const data = await resp.json();
+        if (generation !== historyGeneration) return; // switched agents meanwhile
 
         if (data.messages && data.messages.length > 0) {
             // Preserve scroll position: measure before inserting
             const prevScrollHeight = container.scrollHeight;
+            const prevScrollTop = container.scrollTop;
 
             // Find the insertion point (after the Load More button)
             const loadMoreBtn = container.querySelector(".load-more-btn");
@@ -477,7 +493,7 @@ export async function loadMoreHistory() {
             historyHasMore = data.has_more || false;
 
             // Restore scroll position so the view doesn't jump
-            container.scrollTop = container.scrollHeight - prevScrollHeight;
+            container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
         } else {
             historyHasMore = false;
         }
@@ -765,3 +781,11 @@ function syncWorkingIndicator(container, session) {
         container.appendChild(el);
     }
 }
+
+// Load older messages automatically when the reader scrolls near the top.
+const AUTO_LOAD_PX = 200;
+document.addEventListener("scroll", (e) => {
+    const el = e.target;
+    if (!el || el.id !== "live-history-messages") return;
+    if (el.scrollTop < AUTO_LOAD_PX && historyHasMore && initialLoadDone) loadMoreHistory();
+}, true);
