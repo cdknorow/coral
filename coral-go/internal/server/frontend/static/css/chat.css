@@ -917,3 +917,18 @@
 @media (prefers-reduced-motion: reduce) {
     .chat-working-dots i { animation: none; opacity: 0.7; }
 }
+
+/* An Esc interrupt: a small centred note, not a message from the user */
+.chat-note {
+    text-align: center;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 6px auto 16px;
+}
+.chat-note::before,
+.chat-note::after {
+    content: "—";
+    margin: 0 8px;
+    opacity: 0.6;
+}

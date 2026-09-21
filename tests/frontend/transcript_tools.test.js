@@ -121,8 +121,8 @@ async function run() {
   // A sent message shows as Queued until the transcript records it
   await ev(`document.getElementById('command-input').value = 'Please also fix the header'; window.sendCommand(); true`);
   await sleep(300);
-  const pend = await ev(`(() => { const p = ${C}.querySelector('.chat-bubble.human.pending'); return { shown: !!p, label: p && p.querySelector('.pending-label').textContent, last: ${C}.lastElementChild.classList.contains('pending-messages'), text: p && p.querySelector('.message-text').textContent.trim() }; })()`);
-  check('sent message appears at once, marked Queued, at the bottom', pend.shown && pend.label === 'Queued' && pend.last && pend.text === 'Please also fix the header', JSON.stringify(pend));
+  const pend = await ev(`(() => { const p = ${C}.querySelector('.chat-bubble.human.pending'); const kids = Array.from(${C}.children); return { shown: !!p, label: p && p.querySelector('.pending-label').textContent, tail: kids.slice(-2).map(e => e.className), text: p && p.querySelector('.message-text').textContent.trim() }; })()`);
+  check('a message sent to an idle agent appears at once as Sent, with Working below it', pend.shown && pend.label === 'Sent' && pend.text === 'Please also fix the header' && JSON.stringify(pend.tail) === '["pending-messages pending-sent","chat-working"]', JSON.stringify(pend));
   await ev(`window.__msgs.push({ type: 'assistant', text: 'Still working on the modal.' }); true`);
   await sleep(1500);
   const still = await ev(`({ pending: !!${C}.querySelector('.chat-bubble.human.pending'), last: ${C}.lastElementChild.classList.contains('pending-messages') })`);
@@ -159,6 +159,26 @@ async function run() {
   await sleep(1500);
   w = await W();
   check('the row hides when the turn ends', !w.shown, JSON.stringify(w));
+
+  // Sent while busy: Queued, below the Working row
+  await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = true; r.awaiting_user = false; return true; })`);
+  await ev(`document.getElementById('command-input').value = 'Then update the docs'; window.sendCommand(); true`);
+  await sleep(300);
+  const busy = await ev(`(() => { const q = ${C}.querySelector('.pending-queued .chat-bubble.pending'); const w = ${C}.querySelector(':scope > .chat-working'); return { label: q && q.querySelector('.pending-label').textContent, rowAbove: !!w && w.nextElementSibling === q.parentElement }; })()`);
+  check('a message sent while the agent is working is Queued, below the Working row', busy.label === 'Queued' && busy.rowAbove, JSON.stringify(busy));
+
+  // Esc: the interrupt shows as a note, and the queued message is now being worked on
+  await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; window.__msgs.push({ type: 'user', content: '[Request interrupted by user]', timestamp: new Date().toISOString() }); return true; })`);
+  await sleep(1500);
+  const intr = await ev(`(() => { const notes = Array.from(${C}.querySelectorAll('.chat-note')).map(n => n.textContent); const asUser = Array.from(${C}.querySelectorAll('.chat-bubble.human')).some(b => b.textContent.includes('Request interrupted'));
+    const p = ${C}.querySelector('.chat-bubble.pending'); const w = ${C}.querySelector(':scope > .chat-working');
+    return { notes, asUser, label: p && p.querySelector('.pending-label').textContent, rowBelow: !!w && !!p && w.previousElementSibling === p.parentElement }; })()`);
+  check('an interrupt shows as an "Interrupted" note, not a user message', intr.notes.includes('Interrupted') && !intr.asUser, JSON.stringify(intr));
+  check('after an interrupt the queued message flips to Sent and Working moves below it', intr.label === 'Sent' && intr.rowBelow, JSON.stringify(intr));
+  await ev(`window.__msgs.push({ type: 'user', content: 'Then update the docs', timestamp: new Date().toISOString() }, { type: 'assistant', text: 'Docs updated.', timestamp: new Date(Date.now() + 1000).toISOString() }); true`);
+  await sleep(1500);
+  const done = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.pending').length, working: !!${C}.querySelector(':scope > .chat-working') })`);
+  check('once it lands and the agent replies, nothing is pending and Working is gone', done.pending === 0 && !done.working, JSON.stringify(done));
 
   // A plain terminal has no transcript: always Terminal, toggle hidden
   const term = await ev(`Promise.all([import('/static/state.js'), import('/static/live_chat.js')]).then(([st, m]) => {

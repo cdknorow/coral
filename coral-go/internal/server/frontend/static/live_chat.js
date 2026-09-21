@@ -279,7 +279,9 @@ function stitchPages(lastOlder) {
 }
 
 function renderMessage(msg, container) {
-    if (msg.type === "user") {
+    if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
+        container.appendChild(makeBubble("chat-note", "Interrupted"));
+    } else if (msg.type === "user") {
         container.appendChild(makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
     } else if (msg.type === "assistant") {
@@ -387,7 +389,8 @@ export async function refreshLiveHistory() {
                 }
             }
             for (const msg of data.messages) {
-                if (msg.type === "user") settlePending(session.session_id, msg);
+                if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) noteInterrupt(session.session_id, msg);
+                else if (msg.type === "user") settlePending(session.session_id, msg);
                 else noteAgentActivity(session.session_id, msg);
             }
             historyMessageCount = data.total;
@@ -564,27 +567,51 @@ export function setLiveViewMode(mode) {
 // ── Pending (sent, not yet in the transcript) messages ───────────────────
 // A message typed into the command box only reaches the transcript once the
 // agent takes it, which can be a whole turn later. Until then it is shown at
-// the bottom of the chat as "Queued" so it does not seem to vanish.
+// the bottom of the chat so it does not seem to vanish: "Sent" when the agent
+// was free and is taking it now, "Queued" when it was busy and the message
+// waits behind the current work. The Working row sits between the two.
 
 const PENDING_TTL_MS = 15 * 60 * 1000;
-const pendingBySession = new Map(); // session_id -> [{ id, text, at }]
+const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued }]
 let pendingSeq = 0;
 
 const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
 
+// Claude Code records an Esc interrupt as a user entry like this
+const INTERRUPT_RE = /^\[Request interrupted by user[^\]]*\]$/;
+
 /** Record a message just sent to an agent so the chat can show it right away. */
 export function addPendingMessage(sessionId, text) {
     if (!sessionId || !normalizeMsg(text)) return;
+    const session = (state.liveSessions || []).find(s => s.session_id === sessionId)
+        || (state.currentSession && state.currentSession.session_id === sessionId ? state.currentSession : { session_id: sessionId });
+    const queued = agentIsBusy(session);
     const list = pendingBySession.get(sessionId) || [];
-    list.push({ id: ++pendingSeq, text, at: Date.now() });
+    list.push({ id: ++pendingSeq, text, at: Date.now(), queued });
     pendingBySession.set(sessionId, list);
-    lastSendAt.set(sessionId, Date.now());
+    if (!queued) lastSendAt.set(sessionId, Date.now());
     const container = document.getElementById("live-history-messages");
     if (container && state.currentSession && state.currentSession.session_id === sessionId) {
         syncPendingBubbles(container, sessionId);
         syncWorkingIndicator(container, state.currentSession);
         container.scrollTop = container.scrollHeight;
     }
+}
+
+// An interrupt ends the current work; Claude Code then submits whatever was
+// queued, so those messages are now being worked on.
+function noteInterrupt(sessionId, msg) {
+    const list = pendingBySession.get(sessionId);
+    const ts = Date.parse(msg.timestamp || "");
+    let released = false;
+    for (const p of list || []) {
+        if (p.queued && (Number.isNaN(ts) || p.at <= ts + 5000)) {
+            p.queued = false;
+            released = true;
+        }
+    }
+    if (released) lastSendAt.set(sessionId, Date.now());
+    else lastSendAt.delete(sessionId);
 }
 
 // Drop the pending messages this transcript entry accounts for. Messages
@@ -616,37 +643,52 @@ function settlePending(sessionId, msg) {
     // The transcript may hold a shortened form of a long message
     if (!settled) {
         const i = list.findIndex(p => eligible(p) && normalizeMsg(p.text).includes(whole));
-        if (i !== -1) list.splice(i, 1);
+        if (i !== -1) {
+            list.splice(i, 1);
+            settled++;
+        }
     }
+    // The agent took one of our messages: it is working on it from then on
+    if (settled) lastSendAt.set(sessionId, Number.isNaN(ts) ? Date.now() : ts);
+}
+
+function syncPendingGroup(container, cls, items, label) {
+    let wrap = container.querySelector(`:scope > .pending-messages.${cls}`);
+    if (!items.length) {
+        if (wrap) wrap.remove();
+        return null;
+    }
+    if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.className = `pending-messages ${cls}`;
+    }
+    const want = new Set(items.map(p => p.id));
+    for (const el of Array.from(wrap.children)) {
+        if (!want.has(Number(el.dataset.pendingId))) el.remove();
+    }
+    const have = new Set(Array.from(wrap.children).map(el => Number(el.dataset.pendingId)));
+    for (const p of items) {
+        if (have.has(p.id)) continue;
+        const el = makeBubble("chat-bubble human pending",
+            `<div class="message-text">${renderMarkdown(p.text)}</div><div class="pending-label" role="status">${label}</div>`);
+        el.dataset.pendingId = String(p.id);
+        // Keep send order even when a message moves between groups
+        const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);
+        wrap.insertBefore(el, next || null);
+    }
+    return wrap;
 }
 
 function syncPendingBubbles(container, sessionId) {
     const now = Date.now();
     const list = (pendingBySession.get(sessionId) || []).filter(p => now - p.at < PENDING_TTL_MS);
     pendingBySession.set(sessionId, list);
-    let wrap = container.querySelector(":scope > .pending-messages");
-    if (!list.length) {
-        if (wrap) wrap.remove();
-        return;
+    const sent = syncPendingGroup(container, "pending-sent", list.filter(p => !p.queued), "Sent");
+    const queued = syncPendingGroup(container, "pending-queued", list.filter(p => p.queued), "Queued");
+    // Always last, below any newly rendered messages: sent, then queued
+    for (const wrap of [sent, queued]) {
+        if (wrap && container.lastElementChild !== wrap) container.appendChild(wrap);
     }
-    if (!wrap) {
-        wrap = document.createElement("div");
-        wrap.className = "pending-messages";
-    }
-    const have = new Set(Array.from(wrap.children).map(el => Number(el.dataset.pendingId)));
-    const want = new Set(list.map(p => p.id));
-    for (const el of Array.from(wrap.children)) {
-        if (!want.has(Number(el.dataset.pendingId))) el.remove();
-    }
-    for (const p of list) {
-        if (have.has(p.id)) continue;
-        const el = makeBubble("chat-bubble human pending",
-            `<div class="message-text">${renderMarkdown(p.text)}</div><div class="pending-label" role="status">Queued</div>`);
-        el.dataset.pendingId = String(p.id);
-        wrap.appendChild(el);
-    }
-    // Always last, below any newly rendered messages
-    if (container.lastElementChild !== wrap) container.appendChild(wrap);
 }
 
 // ── Working indicator ────────────────────────────────────────────────────
@@ -675,6 +717,9 @@ function agentIsWorking(session) {
     return !!sent && Date.now() - sent < SEND_GRACE_MS;
 }
 
+// Busy for queueing purposes: working, or still on a message just sent
+const agentIsBusy = agentIsWorking;
+
 function syncWorkingIndicator(container, session) {
     let el = container.querySelector(":scope > .chat-working");
     if (!agentIsWorking(session)) {
@@ -694,10 +739,11 @@ function syncWorkingIndicator(container, session) {
     const detail = el.querySelector(".chat-working-detail");
     const text = latest ? ` \u00b7 ${latest}` : "";
     if (detail.textContent !== text) detail.textContent = text;
-    // Sits after the messages, above any queued messages
-    const pending = container.querySelector(":scope > .pending-messages");
-    if (pending) {
-        if (el.nextElementSibling !== pending) container.insertBefore(el, pending);
+    // Below what the agent is working on (including Sent messages), above
+    // anything Queued behind it
+    const queued = container.querySelector(":scope > .pending-messages.pending-queued");
+    if (queued) {
+        if (el.nextElementSibling !== queued) container.insertBefore(el, queued);
     } else if (container.lastElementChild !== el) {
         container.appendChild(el);
     }
