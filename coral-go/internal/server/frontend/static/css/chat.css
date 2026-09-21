@@ -683,11 +683,8 @@
 .live-history-center {
     --chat-prose-font: ui-serif, "Iowan Old Style", Charter, "Charter BT", Georgia, serif;
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
-    --chat-inline-code: #e5858a;
-}
-
-[data-theme="light"] .live-history-center {
-    --chat-inline-code: #b3262f;
+    /* Theme accent (the New Agent button's hue), brighter shade for legible text */
+    --chat-inline-code: var(--accent);
 }
 
 .capture-wrapper.chat-mode .live-history-center {
