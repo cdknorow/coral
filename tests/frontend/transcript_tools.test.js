@@ -99,6 +99,17 @@ async function run() {
   const shot = await Page.captureScreenshot({ format: 'png', clip: await ev(`(() => { const r = ${C}.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: Math.min(r.height, 900), scale: 1 }; })()`) });
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT, Buffer.from(shot.data, 'base64'));
 
+  // History Chat tab renders the same transcript through the same renderer:
+  // tool output folds into step groups instead of being shown as reply prose.
+  const hist = await ev(`import('/static/render.js').then(r => { r.renderHistoryChat(window.__msgs); const H = document.getElementById('history-messages');
+    const top = Array.from(H.children); return {
+      kinds: top.map(e => e.classList.contains('work-group') ? 'group' : e.classList.contains('human') ? 'user' : e.classList.contains('assistant') ? 'reply' : e.tagName),
+      outputInProse: Array.from(H.querySelectorAll(':scope > .chat-bubble.assistant')).some(b => /line 39|boom/.test(b.textContent)),
+      toolRows: H.querySelectorAll('.work-group .tool-call').length,
+      editBtns: H.querySelectorAll('.chat-bubble.human .edit-btn').length }; })`);
+  check('history: tool output is never rendered as reply prose', !hist.outputInProse && hist.toolRows >= 2, JSON.stringify(hist));
+  check('history: user turns keep Edit & Resubmit', hist.editBtns === hist.kinds.filter(k => k === 'user').length && hist.editBtns > 0, JSON.stringify(hist.kinds));
+
   await client.close();
   const failed = results.filter(r => r === 'FAIL').length;
   console.log(`\n${results.length - failed}/${results.length} passed`);

@@ -251,6 +251,11 @@ function renderMessage(msg, container) {
     }
 }
 
+/** Render a full transcript into an empty container (history Chat tab). */
+export function renderTranscript(messages, container) {
+    for (const msg of messages) renderMessage(msg, container);
+}
+
 export async function refreshLiveHistory() {
     if (!state.currentSession || state.currentSession.type !== "live") return;
     if (!platform.isNative && document.hidden) return;

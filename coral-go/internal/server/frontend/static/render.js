@@ -1,7 +1,8 @@
 /* Rendering functions for session lists, chat history, and status updates */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, labelCodeBlocks, getAgentColor, hexToRgba } from './utils.js';
+import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, getAgentColor, hexToRgba } from './utils.js';
+import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -2283,50 +2284,39 @@ export function renderHistoryChat(messages) {
     const container = document.getElementById("history-messages");
     container.innerHTML = "";
 
-    for (const entry of messages) {
-        const type = entry.type || "unknown";
-        // Handle both normalized format (content/text on entry) and raw JSONL (nested under entry.message)
-        const msg = entry.message || entry;
-        let content = "";
+    // Same renderer as the live Chat view: replies as prose, tool calls and
+    // their output folded into collapsed "N steps" groups.
+    renderTranscript(messages.map(normalizeHistoryEntry).filter(Boolean), container);
 
-        if (typeof msg.content === "string") {
-            content = msg.content;
-        } else if (typeof msg.text === "string") {
-            content = msg.text;
-        } else if (Array.isArray(msg.content)) {
-            content = msg.content
-                .filter(b => b.type === "text")
-                .map(b => b.text)
-                .join("\n");
-        }
-
-        if (!content.trim()) continue;
-
-        const isHuman = type === "human" || type === "user";
-        const bubbleClass = isHuman ? "human" : "assistant";
-        const roleLabel = isHuman ? "You" : "Assistant";
-
-        const bubble = document.createElement("div");
-        bubble.className = `chat-bubble ${bubbleClass}`;
-
-        let messageHtml;
-        if (isHuman) {
-            messageHtml = escapeHtml(content);
-        } else {
-            // renderMarkdown sanitizes and applies syntax highlighting
-            messageHtml = renderMarkdown(stripPulseLines(content));
-        }
-
-        bubble.innerHTML = `
-            <div class="role-label">${roleLabel}</div>
-            <div class="message-text${!isHuman ? " markdown-body" : ""}">${messageHtml}</div>
-            ${isHuman ? `<button class="edit-btn" onclick="editAndResubmit(this)">Edit & Resubmit</button>` : ""}
-        `;
-        labelCodeBlocks(bubble);
-        container.appendChild(bubble);
+    for (const bubble of container.querySelectorAll(".chat-bubble.human")) {
+        bubble.insertAdjacentHTML("beforeend",
+            `<button class="edit-btn" onclick="editAndResubmit(this)">Edit & Resubmit</button>`);
     }
-
     container.scrollTop = container.scrollHeight;
+}
+
+// The reader returns normalized entries; older raw JSONL entries (content
+// nested under entry.message) are reduced to plain user/assistant text.
+function normalizeHistoryEntry(entry) {
+    if (entry.message) {
+        const msg = entry.message;
+        let content = "";
+        if (typeof msg.content === "string") content = msg.content;
+        else if (typeof msg.text === "string") content = msg.text;
+        else if (Array.isArray(msg.content)) {
+            content = msg.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        }
+        if (!content.trim()) return null;
+        entry = (entry.type === "human" || entry.type === "user")
+            ? { type: "user", content }
+            : { type: "assistant", text: content };
+    }
+    if (entry.type === "human") return { ...entry, type: "user" };
+    if (entry.type === "assistant") {
+        const text = typeof entry.text === "string" ? entry.text : (typeof entry.content === "string" ? entry.content : "");
+        return { ...entry, text: stripPulseLines(text) };
+    }
+    return entry;
 }
 
 export function updateSessionStatus(status) {
