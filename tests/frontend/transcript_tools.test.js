@@ -114,6 +114,31 @@ async function run() {
   const refClick = await ev(`({ resolves: window.__resolves, opened: window.__opened, url: location.pathname })`);
   check('clicking a file ref resolves it and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === '/', JSON.stringify(refClick));
 
+  // Chat is the default center view
+  const dflt = await ev(`(() => { localStorage.removeItem('coral-live-view-mode'); return import('/static/live_chat.js').then(m => { m.applyLiveViewMode(); return { mode: m.getLiveViewMode(), chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggle: !document.querySelector('.live-view-toggle').hidden }; }); })()`);
+  check('Chat is the default center view', dflt.mode === 'chat' && dflt.chat && dflt.toggle, JSON.stringify(dflt));
+
+  // A sent message shows as Queued until the transcript records it
+  await ev(`document.getElementById('command-input').value = 'Please also fix the header'; window.sendCommand(); true`);
+  await sleep(300);
+  const pend = await ev(`(() => { const p = ${C}.querySelector('.chat-bubble.human.pending'); return { shown: !!p, label: p && p.querySelector('.pending-label').textContent, last: ${C}.lastElementChild.classList.contains('pending-messages'), text: p && p.querySelector('.message-text').textContent.trim() }; })()`);
+  check('sent message appears at once, marked Queued, at the bottom', pend.shown && pend.label === 'Queued' && pend.last && pend.text === 'Please also fix the header', JSON.stringify(pend));
+  await ev(`window.__msgs.push({ type: 'assistant', text: 'Still working on the modal.' }); true`);
+  await sleep(1500);
+  const still = await ev(`({ pending: !!${C}.querySelector('.chat-bubble.human.pending'), last: ${C}.lastElementChild.classList.contains('pending-messages') })`);
+  check('queued message stays at the bottom while the agent keeps replying', still.pending && still.last, JSON.stringify(still));
+  await ev(`window.__msgs.push({ type: 'user', content: 'Please also fix the header', timestamp: new Date().toISOString() }); true`);
+  await sleep(1500);
+  const settled = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.human.pending').length, real: Array.from(${C}.querySelectorAll('.chat-bubble.human:not(.pending)')).filter(b => b.textContent.includes('Please also fix the header')).length })`);
+  check('once the transcript records it, the queued bubble is replaced by the real one', settled.pending === 0 && settled.real === 1, JSON.stringify(settled));
+
+  // A plain terminal has no transcript: always Terminal, toggle hidden
+  const term = await ev(`Promise.all([import('/static/state.js'), import('/static/live_chat.js')]).then(([st, m]) => {
+    const prev = st.state.currentSession.agent_type; st.state.currentSession.agent_type = 'terminal'; m.applyLiveViewMode();
+    const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggleHidden: document.querySelector('.live-view-toggle').hidden };
+    st.state.currentSession.agent_type = prev; m.applyLiveViewMode(); return r; })`);
+  check('plain terminals always show the terminal, with no toggle', !term.chat && term.toggleHidden, JSON.stringify(term));
+
   // History Chat tab renders the same transcript through the same renderer:
   // tool output folds into step groups instead of being shown as reply prose.
   const hist = await ev(`import('/static/render.js').then(r => { r.renderHistoryChat(window.__msgs); const H = document.getElementById('history-messages');

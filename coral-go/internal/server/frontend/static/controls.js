@@ -7,6 +7,7 @@ import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
+import { addPendingMessage } from './live_chat.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -41,6 +42,7 @@ export async function sendCommand() {
 
     const command = parts.join(" ");
     if (!command) return;
+    const sentSessionId = state.currentSession.session_id;
 
     // Try WebSocket path first (sends text, then Enter separately)
     if (pendingAttachments.length === 0) {
@@ -48,6 +50,7 @@ export async function sendCommand() {
         if (xterm.sendTerminalInputWs(command)) {
             // Send Enter after delay so bracket paste + tmux processing completes
             setTimeout(() => xterm.sendTerminalInputWs("\r"), 300);
+            addPendingMessage(sentSessionId, command);
             input.value = "";
             const key = sessionKey(state.currentSession);
             if (key) delete state.sessionInputText[key];
@@ -75,6 +78,7 @@ export async function sendCommand() {
             showToast(result.error, true);
             console.error("Send error:", result.error);
         } else {
+            addPendingMessage(sentSessionId, command);
             input.value = "";
             clearAttachments();
             const key = sessionKey(state.currentSession);

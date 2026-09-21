@@ -856,3 +856,26 @@
     text-decoration: underline;
     text-underline-offset: 2px;
 }
+
+/* Sent but not yet in the transcript: dimmed bubble with a "Queued" label */
+.chat-bubble.human.pending {
+    opacity: 0.6;
+    border: 1px dashed var(--border-light);
+}
+.chat-bubble.human.pending .pending-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-align: right;
+    margin-top: 4px;
+    font-family: var(--font-sans);
+}
+.chat-bubble.human.pending .pending-label::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--warning);
+    vertical-align: 1px;
+}

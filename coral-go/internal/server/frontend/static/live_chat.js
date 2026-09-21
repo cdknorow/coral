@@ -385,6 +385,9 @@ export async function refreshLiveHistory() {
                     renderMessage(msg, container);
                 }
             }
+            for (const msg of data.messages) {
+                if (msg.type === "user") settlePending(session.session_id, msg);
+            }
             historyMessageCount = data.total;
         } else if (!initialLoadDone) {
             container.innerHTML = "";
@@ -393,6 +396,7 @@ export async function refreshLiveHistory() {
             _updateLoadMoreButton(container);
         }
 
+        syncPendingBubbles(container, session.session_id);
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
         }
@@ -504,17 +508,26 @@ export function resetLiveHistory() {
 
 const VIEW_MODE_KEY = "coral-live-view-mode";
 
+/** The chosen center view; Chat unless the user picked Terminal. */
 export function getLiveViewMode() {
     try {
-        return localStorage.getItem(VIEW_MODE_KEY) === "chat" ? "chat" : "terminal";
+        return localStorage.getItem(VIEW_MODE_KEY) === "terminal" ? "terminal" : "chat";
     } catch {
-        return "terminal";
+        return "chat";
     }
+}
+
+// Plain terminals have no transcript, so they always show the terminal.
+function hasTranscript(session) {
+    return !!session && session.agent_type !== "terminal";
 }
 
 /** Apply the persisted mode to the DOM and start/stop the transcript poll. */
 export function applyLiveViewMode() {
-    const mode = getLiveViewMode();
+    const canChat = hasTranscript(state.currentSession);
+    const mode = canChat ? getLiveViewMode() : "terminal";
+    const toggle = document.querySelector(".live-view-toggle");
+    if (toggle) toggle.hidden = !canChat;
     const wrapper = document.getElementById("capture-wrapper");
     if (wrapper) wrapper.classList.toggle("chat-mode", mode === "chat");
     for (const m of ["terminal", "chat"]) {
@@ -542,4 +555,74 @@ export function setLiveViewMode(mode) {
         if (container) container.scrollTop = container.scrollHeight;
         state.autoScroll = true;
     }
+}
+
+// ── Pending (sent, not yet in the transcript) messages ───────────────────
+// A message typed into the command box only reaches the transcript once the
+// agent takes it, which can be a whole turn later. Until then it is shown at
+// the bottom of the chat as "Queued" so it does not seem to vanish.
+
+const PENDING_TTL_MS = 15 * 60 * 1000;
+const pendingBySession = new Map(); // session_id -> [{ id, text, at }]
+let pendingSeq = 0;
+
+const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
+
+/** Record a message just sent to an agent so the chat can show it right away. */
+export function addPendingMessage(sessionId, text) {
+    if (!sessionId || !normalizeMsg(text)) return;
+    const list = pendingBySession.get(sessionId) || [];
+    list.push({ id: ++pendingSeq, text, at: Date.now() });
+    pendingBySession.set(sessionId, list);
+    const container = document.getElementById("live-history-messages");
+    if (container && state.currentSession && state.currentSession.session_id === sessionId) {
+        syncPendingBubbles(container, sessionId);
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// Drop the oldest pending message this transcript entry accounts for. Only
+// entries written after the send can match, so an earlier identical message
+// ("continue") does not clear a new one.
+function settlePending(sessionId, msg) {
+    const list = pendingBySession.get(sessionId);
+    if (!list || !list.length) return;
+    const got = normalizeMsg(msg.content);
+    const ts = Date.parse(msg.timestamp || "");
+    if (!got) return;
+    const i = list.findIndex(p => {
+        if (!Number.isNaN(ts) && ts < p.at - 10000) return false;
+        const want = normalizeMsg(p.text);
+        return got === want || got.includes(want) || want.includes(got);
+    });
+    if (i !== -1) list.splice(i, 1);
+}
+
+function syncPendingBubbles(container, sessionId) {
+    const now = Date.now();
+    const list = (pendingBySession.get(sessionId) || []).filter(p => now - p.at < PENDING_TTL_MS);
+    pendingBySession.set(sessionId, list);
+    let wrap = container.querySelector(":scope > .pending-messages");
+    if (!list.length) {
+        if (wrap) wrap.remove();
+        return;
+    }
+    if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.className = "pending-messages";
+    }
+    const have = new Set(Array.from(wrap.children).map(el => Number(el.dataset.pendingId)));
+    const want = new Set(list.map(p => p.id));
+    for (const el of Array.from(wrap.children)) {
+        if (!want.has(Number(el.dataset.pendingId))) el.remove();
+    }
+    for (const p of list) {
+        if (have.has(p.id)) continue;
+        const el = makeBubble("chat-bubble human pending",
+            `<div class="message-text">${renderMarkdown(p.text)}</div><div class="pending-label" role="status">Queued</div>`);
+        el.dataset.pendingId = String(p.id);
+        wrap.appendChild(el);
+    }
+    // Always last, below any newly rendered messages
+    if (container.lastElementChild !== wrap) container.appendChild(wrap);
 }
