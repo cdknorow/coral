@@ -397,7 +397,10 @@
     font-size: 12px;
     line-height: 14px;
     height: 14px;
-    color: var(--text-secondary); /* >= 4.5:1 on row, hover and selected surfaces */
+    /* Quiet italic, dimmer than secondary so the goal recedes behind the name,
+       but still >= 4.5:1 on row, hover and selected surfaces */
+    font-style: italic;
+    color: var(--text-goal, color-mix(in srgb, var(--text-secondary) 65%, var(--text-muted)));
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -409,7 +412,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: var(--text-secondary); /* >= 4.5:1; the italic label keeps it distinct from a real goal */
+    color: var(--text-goal, color-mix(in srgb, var(--text-secondary) 65%, var(--text-muted)));
     opacity: 1;
 }
 
