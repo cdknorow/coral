@@ -866,14 +866,6 @@
     border-left: 2px solid transparent;
 }
 
-/* Row separation (task #152): a 1px low-contrast boundary between SIBLING
-   rows only, drawn as an inset shadow so row heights (40/36px) and group
-   boundaries are untouched and nothing doubles at headers/cards. The neutral
-   grey reads on dark and light themes. */
-.session-group-item + .session-group-item {
-    box-shadow: inset 0 1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
-}
-
 .session-group-item:hover,
 .session-list li.session-group-item:hover {
     background: var(--bg-hover, rgba(255, 255, 255, 0.045));
@@ -1028,13 +1020,11 @@
 
 .session-group-header + .session-group-item {
     margin-top: 2px;
-    box-shadow: none; /* the header boundary already separates the first row */
 }
 
-/* Folder headers: modest spacing above each group and a hairline beneath */
+/* Folder headers: modest spacing above each group, no separator lines */
 .session-group-header:not(.board-card-header) {
     margin-top: 6px;
-    box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
 }
 #live-sessions-list > .session-group-header:first-child,
 #live-sessions-list > .session-board-card:first-child {
