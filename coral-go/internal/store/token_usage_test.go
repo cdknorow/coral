@@ -712,12 +712,12 @@ func TestTokenUsageSchema_ModelColumnIsMigratedIn(t *testing.T) {
 	assert.Equal(t, "gpt-5.6-sol", got)
 }
 
-func TestTokenUsageStore_GetUsageSummaryByAgent_NameFallback(t *testing.T) {
+func TestTokenUsageStore_GetUsageSummaryByAgent_NameAndFolder(t *testing.T) {
 	db := openTestDB(t)
 	s := NewTokenUsageStore(db)
 	ctx := context.Background()
 
-	// Unnamed solo agent: poller recorded an empty name.
+	// Unnamed solo agent: poller recorded an empty name; folder still known.
 	_, err := db.Exec(`INSERT INTO live_sessions (session_id, agent_type, agent_name, working_dir, created_at)
 		VALUES ('unnamed', 'codex', 'coral-go', '/tmp/coral-go', '2026-01-01T00:00:00Z')`)
 	require.NoError(t, err)
@@ -736,11 +736,14 @@ func TestTokenUsageStore_GetUsageSummaryByAgent_NameFallback(t *testing.T) {
 
 	rows, err := s.GetUsageSummaryByAgent(ctx, "")
 	require.NoError(t, err)
-	names := map[string]string{}
+	byID := map[string]AgentUsageSummary{}
 	for _, r := range rows {
-		names[r.SessionID] = r.AgentName
+		byID[r.SessionID] = r
 	}
-	assert.Equal(t, "coral-go", names["unnamed"])
-	assert.Equal(t, "Debugger", names["renamed"])
-	assert.Equal(t, "Old Name", names["orphan"])
+	assert.Equal(t, "", byID["unnamed"].AgentName)
+	assert.Equal(t, "coral-go", byID["unnamed"].Folder)
+	assert.Equal(t, "/tmp/coral-go", byID["unnamed"].WorkingDir)
+	assert.Equal(t, "Debugger", byID["renamed"].AgentName)
+	assert.Equal(t, "Old Name", byID["orphan"].AgentName)
+	assert.Equal(t, "", byID["orphan"].Folder)
 }

@@ -292,6 +292,7 @@ function _getFilterExtractor(table, field) {
         'model:model': r => r.model || '',
         'agent:agent_name': r => r.display_name || r.agent_name || '',
         'agent:board_name': r => r.board_name || '',
+        'agent:folder': r => r.folder || '',
         'team:board_name': r => r.board_name || '(no team)',
         'branch:branch': r => (r.repo_name && r.branch ? `${r.repo_name} : ${r.branch}` : r.branch) || '(unknown)',
         'branch:board_name': r => r.board_name || '(no team)',
@@ -375,8 +376,10 @@ export async function _refreshCostDashboard() {
             _renderAgentTable((data.by_agent || []).map(a => ({
                 session_id: a.session_id,
                 agent_name: a.agent_name,
-                display_name: a.agent_name || 'unknown',
+                display_name: a.agent_name || 'Agent',
                 board_name: a.board_name || '',
+                folder: a.folder || '',
+                working_dir: a.working_dir || '',
                 requests: a.requests || 0,
                 input_tokens: a.input_tokens || 0,
                 output_tokens: a.output_tokens || 0,
@@ -485,10 +488,12 @@ function _renderAgentTable(rows) {
     const filtered = _applyColFilters(rows, 'agent', {
         agent_name: r => r.display_name || r.agent_name || '',
         board_name: r => r.board_name || '',
+        folder: r => r.folder || '',
     });
     const sorted = _sortRows(filtered, 'agent', (r, f) => {
         if (f === 'agent_name') return r.display_name || r.agent_name || '';
         if (f === 'board_name') return r.board_name || '';
+        if (f === 'folder') return r.folder || '';
         if (f === 'first_seen') return r.first_seen || '';
         return r[f] || 0;
     });
@@ -502,6 +507,7 @@ function _renderAgentTable(rows) {
         <thead><tr>
             ${_sortHeader('agent', 'agent_name', 'Agent', '', true)}
             ${_sortHeader('agent', 'board_name', 'Team', '', true)}
+            ${_sortHeader('agent', 'folder', 'Folder', '', true)}
             ${_sortHeader('agent', 'first_seen', 'Launched', '')}
             ${_sortHeader('agent', 'duration', 'Duration', 'cost-col-right')}
             ${_sortHeader('agent', 'requests', 'Requests', 'cost-col-right')}
@@ -525,6 +531,9 @@ function _renderAgentTable(rows) {
             nameHtml = escapeHtml(displayName);
         }
         const teamHtml = r.board_name ? escapeHtml(r.board_name) : '\u2014';
+        const folderHtml = r.folder
+            ? `<span title="${escapeAttr(r.working_dir || r.folder)}">${escapeHtml(r.folder)}</span>`
+            : '\u2014';
         const launchTime = r.launched_at || r.first_seen;
         const endTime = r.stopped_at || r.last_seen;
         const launchedHtml = _formatTime(launchTime);
@@ -532,6 +541,7 @@ function _renderAgentTable(rows) {
         html += `<tr data-session-id="${escapeAttr(r.session_id || '')}">
             <td class="cost-agent-name">${nameHtml}</td>
             <td class="cost-agent-team">${teamHtml}</td>
+            <td class="cost-agent-team">${folderHtml}</td>
             <td>${launchedHtml}</td>
             <td class="cost-col-right">${durationHtml}</td>
             <td class="cost-col-right">${r.requests}</td>

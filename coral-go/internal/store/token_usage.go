@@ -54,6 +54,8 @@ type AgentUsageSummary struct {
 	AgentName        string  `db:"agent_name" json:"agent_name"`
 	AgentType        string  `db:"agent_type" json:"agent_type"`
 	BoardName        *string `db:"board_name" json:"board_name,omitempty"`
+	Folder           string  `db:"folder" json:"folder"`
+	WorkingDir       string  `db:"working_dir" json:"working_dir"`
 	InputTokens      int64   `db:"input_tokens" json:"input_tokens"`
 	OutputTokens     int64   `db:"output_tokens" json:"output_tokens"`
 	CacheReadTokens  int64   `db:"cache_read_tokens" json:"cache_read_tokens"`
@@ -215,12 +217,14 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 // GetUsageSummaryByAgent returns per-agent (session) usage aggregates since a given time.
 func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since string) ([]AgentUsageSummary, error) {
 	var summaries []AgentUsageSummary
-	// The poller stores only display_name, which is empty for agents that
-	// were never named. Resolve at read time so old rows are labelled too:
-	// current display name, then the recorded name, then the folder name.
+	// Prefer the session's current display name so renames show; unnamed
+	// agents come back empty and the UI labels them "Agent". The folder is
+	// reported separately so those rows can still be told apart.
 	query := `SELECT t.session_id,
-	          COALESCE(NULLIF(ls.display_name, ''), NULLIF(MAX(t.agent_name), ''), ls.agent_name, '') as agent_name,
+	          COALESCE(NULLIF(ls.display_name, ''), MAX(t.agent_name), '') as agent_name,
 	          t.agent_type, t.board_name,
+	          COALESCE(ls.agent_name, '') as folder,
+	          COALESCE(ls.working_dir, '') as working_dir,
 	          COALESCE(SUM(t.input_tokens), 0) as input_tokens,
 	          COALESCE(SUM(t.output_tokens), 0) as output_tokens,
 	          COALESCE(SUM(t.cache_read_tokens), 0) as cache_read_tokens,
