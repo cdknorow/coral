@@ -21,6 +21,25 @@ import (
 // spend more time scanning than working.
 const MinGitPollInterval = 15 * time.Second
 
+// GitPollIntervalSettingKey is the user setting for the poll cadence, in
+// seconds; "0" turns polling off.
+const GitPollIntervalSettingKey = "git_poll_interval_s"
+
+// GitPollInterval resolves the configured git poll cadence from settings. An
+// unset or unparseable value falls back to defaultSeconds; 0 or less means
+// polling is off.
+func GitPollInterval(settings map[string]string, defaultSeconds int) time.Duration {
+	raw := strings.TrimSpace(settings[GitPollIntervalSettingKey])
+	if raw == "" {
+		return time.Duration(defaultSeconds) * time.Second
+	}
+	secs, err := strconv.Atoi(raw)
+	if err != nil {
+		return time.Duration(defaultSeconds) * time.Second
+	}
+	return time.Duration(secs) * time.Second
+}
+
 // pausedRecheck is how often a paused poller re-reads its interval, so turning
 // polling back on takes effect without restarting Coral.
 const pausedRecheck = 30 * time.Second
@@ -157,8 +176,10 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 		changedFiles, err := queryChangedFiles(ctx, workdir)
 		filesDur := time.Since(filesStart)
 		if err != nil {
-			p.logger.Warn("git changed files query failed", "workdir", workdir, "duration_ms", filesDur.Milliseconds(), "error", err)
-			changedFiles = nil
+			// Leaving the last list in place would show it as current
+			// indefinitely; an empty cache makes the Files view recompute.
+			p.logger.Warn("git changed files query failed; clearing cached list", "workdir", workdir, "duration_ms", filesDur.Milliseconds(), "error", err)
+			changedFiles = []store.ChangedFile{}
 		} else {
 			p.logger.Debug("git changed files", "workdir", workdir, "file_count", len(changedFiles), "duration_ms", filesDur.Milliseconds())
 		}
@@ -193,15 +214,13 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 				p.logger.Warn("upsert snapshot failed", "agent", agent.AgentName, "error", err)
 			}
 
-			if changedFiles != nil {
-				// Cap file count to prevent DB thrashing on large monorepos
-				if len(changedFiles) > 2000 {
-					p.logger.Warn("capping changed files", "agent", agent.AgentName, "total", len(changedFiles), "cap", 2000)
-					changedFiles = changedFiles[:2000]
-				}
-				if err := p.store.ReplaceChangedFiles(ctx, agent.AgentName, workdir, changedFiles, sidPtr, "branch_point"); err != nil {
-					p.logger.Warn("replace changed files failed", "agent", agent.AgentName, "error", err)
-				}
+			// Cap file count to prevent DB thrashing on large monorepos
+			if len(changedFiles) > 2000 {
+				p.logger.Warn("capping changed files", "agent", agent.AgentName, "total", len(changedFiles), "cap", 2000)
+				changedFiles = changedFiles[:2000]
+			}
+			if err := p.store.ReplaceChangedFiles(ctx, agent.AgentName, workdir, changedFiles, sidPtr, "branch_point"); err != nil {
+				p.logger.Warn("replace changed files failed", "agent", agent.AgentName, "error", err)
 			}
 		}
 		p.logger.Debug("git db writes", "workdir", workdir, "agents", len(dirAgents), "duration_ms", time.Since(dbStart).Milliseconds())
@@ -305,7 +324,11 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	// git diff base --numstat
 	t2 := time.Now()
 	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "diff", base, "--numstat").Output()
-	if err == nil && len(out) > 0 {
+	if err != nil {
+		// A timeout or git failure: the list would be incomplete.
+		return nil, fmt.Errorf("git diff %s --numstat: %w", base, err)
+	}
+	if len(out) > 0 {
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -332,7 +355,10 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	lineCounts := 0
 	t3 := time.Now()
 	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "status", "--porcelain", "--untracked-files=normal").Output()
-	if err == nil && len(out) > 0 {
+	if err != nil {
+		return nil, fmt.Errorf("git status --porcelain: %w", err)
+	}
+	if len(out) > 0 {
 		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
 			if len(line) < 4 {
 				continue

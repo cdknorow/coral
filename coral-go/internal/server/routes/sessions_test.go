@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -1207,6 +1208,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/changes.diff", handler.ChangesDiff)
 	r.Post("/api/sessions/live/{name}/send", handler.Send)
 	r.Post("/api/sessions/live/{name}/goal", handler.RequestGoal)
+	r.Get("/api/sessions/live/{name}/files", handler.Files)
 	r.Post("/api/sessions/live/{name}/keys", handler.Keys)
 	r.Post("/api/sessions/live/{name}/resize", handler.Resize)
 	r.Post("/api/sessions/live/{name}/kill", handler.Kill)
@@ -1921,4 +1923,89 @@ func TestTrackStatusSummary_DoesNotReplayAKnownPulseLineAfterRestart(t *testing.
 	ev, err = handler.ts.GetLatestGoalEvent(ctx, sid)
 	require.NoError(t, err)
 	assert.Equal(t, "New PULSE line", ev.Summary)
+}
+
+// ── Changed files cache ─────────────────────────────────────────────────
+
+func gitRepoWithOneChange(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.email=t@t", "-c", "user.name=t", "-c", "commit.gpgsign=false"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	run("init", "-q", "-b", "main")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\n"), 0o644))
+	run("add", "a.txt")
+	run("commit", "-q", "-m", "init")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "a.txt"), []byte("one\ntwo\n"), 0o644))
+	return dir
+}
+
+func TestFiles_RecomputesAStaleCacheInsteadOfServingIt(t *testing.T) {
+	server, handler, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "44444444-4444-4444-8444-555555555551"
+	repo := gitRepoWithOneChange(t)
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "coral-go", WorkingDir: repo}))
+
+	// A cached list from before a rebase: 812 files.
+	stale := make([]store.ChangedFile, 812)
+	for i := range stale {
+		stale[i] = store.ChangedFile{Filepath: fmt.Sprintf("old/%d.go", i), Status: "M"}
+	}
+	s := sid
+	require.NoError(t, handler.gs.ReplaceChangedFiles(ctx, "coral-go", repo, stale, &s, "branch_point"))
+	get := func() []any {
+		t.Helper()
+		resp, err := http.Get(server.URL + "/api/sessions/live/coral-go/files?session_id=" + sid)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var body map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		files, _ := body["files"].([]any)
+		return files
+	}
+
+	assert.Len(t, get(), 812, "a fresh cache is served as is")
+
+	old := time.Now().Add(-time.Hour).UTC().Format(store.ISOFormat)
+	_, err := handler.db.ExecContext(ctx, `UPDATE git_changed_files SET recorded_at = ? WHERE session_id = ?`, old, sid)
+	require.NoError(t, err)
+	files := get()
+	require.Len(t, files, 1, "an hour-old cache is recomputed from git")
+	assert.Equal(t, "a.txt", files[0].(map[string]any)["filepath"])
+
+	cached, found, err := handler.gs.GetChangedFiles(ctx, "coral-go", &s, "branch_point")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Len(t, cached, 1, "and the cache is replaced")
+}
+
+func TestFilesCacheMaxAge(t *testing.T) {
+	_, handler, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	handler.cfg.GitPollerIntervalS = 120
+	assert.Equal(t, 4*time.Minute, handler.filesCacheMaxAge(ctx, "branch_point"), "two default poll intervals")
+	assert.Equal(t, filesCacheFloor, handler.filesCacheMaxAge(ctx, "previous_commit"), "the poller never refreshes other modes")
+
+	require.NoError(t, ss.SetSetting(ctx, "git_poll_interval_s", "5"))
+	assert.Equal(t, filesCacheFloor, handler.filesCacheMaxAge(ctx, "branch_point"), "2 x the 15 s minimum")
+	require.NoError(t, ss.SetSetting(ctx, "git_poll_interval_s", "600"))
+	assert.Equal(t, 20*time.Minute, handler.filesCacheMaxAge(ctx, "branch_point"))
+	require.NoError(t, ss.SetSetting(ctx, "git_poll_interval_s", "0"))
+	assert.Equal(t, filesCacheFloor, handler.filesCacheMaxAge(ctx, "branch_point"), "polling off")
+}
+
+func TestFilesCacheFresh(t *testing.T) {
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	at := func(ago time.Duration) []store.ChangedFile {
+		return []store.ChangedFile{{RecordedAt: now.Add(-ago).Format(store.ISOFormat)}}
+	}
+	assert.True(t, filesCacheFresh(at(time.Minute), 2*time.Minute, now))
+	assert.False(t, filesCacheFresh(at(3*time.Minute), 2*time.Minute, now))
+	assert.False(t, filesCacheFresh(nil, time.Hour, now))
+	assert.False(t, filesCacheFresh([]store.ChangedFile{{RecordedAt: "garbage"}}, time.Hour, now))
 }

@@ -27,6 +27,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/gitutil"
@@ -1270,10 +1271,49 @@ func (h *SessionsHandler) resolveGitRoot(ctx context.Context, name, agentType, s
 	return gitutil.ResolveGitRoot(ctx, workdir)
 }
 
+// filesCacheFloor is how long a changed-files list stays fresh when nothing
+// refreshes it in the background: a diff mode the git poller does not
+// compute, or polling turned off.
+const filesCacheFloor = 30 * time.Second
+
+// filesCacheMaxAge is how old a cached changed-files list may be before the
+// Files handler recomputes it. The git poller rewrites only the branch_point
+// list, every git_poll_interval_s, so that list stays fresh for two poll
+// intervals; any other list was written by a refresh and is kept briefly.
+func (h *SessionsHandler) filesCacheMaxAge(ctx context.Context, diffMode string) time.Duration {
+	if diffMode != "branch_point" {
+		return filesCacheFloor
+	}
+	settings, _ := h.ss.GetSettings(ctx)
+	interval := background.GitPollInterval(settings, h.cfg.GitPollerIntervalS)
+	if interval <= 0 {
+		return filesCacheFloor
+	}
+	if interval < background.MinGitPollInterval {
+		interval = background.MinGitPollInterval
+	}
+	return max(2*interval, filesCacheFloor)
+}
+
+// filesCacheFresh reports whether a cached list was written within maxAge.
+// Every row of one list shares its recorded_at.
+func filesCacheFresh(files []store.ChangedFile, maxAge time.Duration, now time.Time) bool {
+	if len(files) == 0 {
+		return false
+	}
+	recorded, err := time.Parse(store.ISOFormat, files[0].RecordedAt)
+	if err != nil {
+		return false
+	}
+	return now.Sub(recorded) <= maxAge
+}
+
 // Files returns changed files for a live agent.
 // GET /api/sessions/live/{name}/files
-// Returns cached results for the user's current diff mode. If no cache
-// exists for that mode, computes fresh results transparently.
+// Returns the cached list for the user's current diff mode while it is
+// fresh (see filesCacheMaxAge); otherwise computes it again, as a refresh
+// does, so a list from before a rebase, merge or branch switch is never
+// served as current.
 func (h *SessionsHandler) Files(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	sidPtr := querySessionID(r)
@@ -1284,10 +1324,7 @@ func (h *SessionsHandler) Files(w http.ResponseWriter, r *http.Request) {
 	}
 
 	files, found, err := h.gs.GetChangedFiles(r.Context(), name, sidPtr, diffMode)
-	if err != nil {
-		files = []store.ChangedFile{}
-	}
-	if found {
+	if err == nil && found && filesCacheFresh(files, h.filesCacheMaxAge(r.Context(), diffMode), time.Now()) {
 		writeJSON(w, http.StatusOK, map[string]any{"agent_name": name, "files": files, "diff_mode": diffMode})
 		return
 	}

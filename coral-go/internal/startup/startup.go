@@ -379,23 +379,15 @@ func selectBackend(backendType, logDir, coralDir string) (ptymanager.TerminalBac
 // prevents a single background service crash from taking down the entire
 // server process. When the context is cancelled (normal shutdown), the
 // goroutine exits without restarting.
-// gitPollInterval resolves the configured git poll cadence. An unset or
-// unparseable setting falls back to the built-in default; "0" means the user
-// has turned polling off and wants to refresh the file list by hand.
+// gitPollInterval resolves the configured git poll cadence (see
+// background.GitPollInterval); "0" means the user has turned polling off and
+// wants to refresh the file list by hand.
 func gitPollInterval(ctx context.Context, ss *store.SessionStore, defaultSeconds int) time.Duration {
 	settings, err := ss.GetSettings(ctx)
 	if err != nil {
 		return time.Duration(defaultSeconds) * time.Second
 	}
-	raw, ok := settings["git_poll_interval_s"]
-	if !ok || strings.TrimSpace(raw) == "" {
-		return time.Duration(defaultSeconds) * time.Second
-	}
-	secs, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil {
-		return time.Duration(defaultSeconds) * time.Second
-	}
-	return time.Duration(secs) * time.Second
+	return background.GitPollInterval(settings, defaultSeconds)
 }
 
 func safeGo(ctx context.Context, name string, fn func()) {
