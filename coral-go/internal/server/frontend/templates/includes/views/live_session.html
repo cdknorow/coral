@@ -48,12 +48,14 @@
                                     </span>
                                 </div>
                                 <div class="terminal-header-actions">
+                                    <!-- Popout viewer: this window is watching; click to take control -->
+                                    <button class="popout-viewer-chip" id="popout-viewer-chip" type="button" onclick="window._coralPopoutClaim()" title="Another window is controlling this agent. Click to take control." hidden>Viewing — take control</button>
                                     <!-- Center view toggle: raw terminal vs. rendered chat transcript -->
                                     <div class="live-view-toggle" role="group" aria-label="Center view">
-                                        <button type="button" class="live-view-toggle-btn active" id="live-view-btn-terminal" onclick="setLiveViewMode('terminal')" aria-pressed="true" title="Terminal view">
+                                        <button type="button" class="live-view-toggle-btn active" id="live-view-btn-terminal" onclick="setLiveViewMode('terminal')" aria-pressed="true" title="Terminal view" aria-label="Terminal view">
                                             <span class="material-icons">terminal</span><span>Terminal</span>
                                         </button>
-                                        <button type="button" class="live-view-toggle-btn" id="live-view-btn-chat" onclick="setLiveViewMode('chat')" aria-pressed="false" title="Chat view">
+                                        <button type="button" class="live-view-toggle-btn" id="live-view-btn-chat" onclick="setLiveViewMode('chat')" aria-pressed="false" title="Chat view" aria-label="Chat view">
                                             <span class="material-icons">chat</span><span>Chat</span>
                                         </button>
                                     </div>
@@ -72,7 +74,6 @@
                                     </button>
                                 </div>
                             </div>
-                            <button class="popout-viewer-chip" id="popout-viewer-chip" type="button" onclick="window._coralPopoutClaim()" hidden>Viewing — click to take control</button>
                             <!-- Semantic blocks view (existing) -->
                             <div id="pane-capture" class="output-scroll capture-text"></div>
                             <!-- xterm.js terminal view -->

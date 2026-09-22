@@ -295,7 +295,7 @@ async function run() {
   // A plain terminal has no transcript: always Terminal, toggle hidden
   const term = await ev(`Promise.all([import('/static/state.js'), import('/static/live_chat.js')]).then(([st, m]) => {
     const prev = st.state.currentSession.agent_type; st.state.currentSession.agent_type = 'terminal'; m.applyLiveViewMode();
-    const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggleHidden: document.querySelector('.live-view-toggle').hidden };
+    const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggleHidden: getComputedStyle(document.querySelector('.live-view-toggle')).display === 'none' };
     st.state.currentSession.agent_type = prev; m.applyLiveViewMode(); return r; })`);
   check('plain terminals always show the terminal, with no toggle', !term.chat && term.toggleHidden, JSON.stringify(term));
 

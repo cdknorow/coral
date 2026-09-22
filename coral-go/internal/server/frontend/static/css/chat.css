@@ -602,6 +602,10 @@
 
 /* ── Center Chat View (Terminal/Chat toggle) ───────────────── */
 
+.live-view-toggle[hidden] {
+    display: none; /* plain terminals: no transcript, no toggle */
+}
+
 .live-view-toggle {
     display: flex;
     border: 1px solid var(--border);
@@ -659,15 +663,15 @@
 
 
 
-/* Narrow center pane: icon-only toggle so the header identity keeps its room */
-.terminal-header {
-    container-type: inline-size;
+/* Icon-only toggle (the tooltips and aria-labels name the views) */
+.live-view-toggle-btn > span:not(.material-icons) {
+    display: none;
 }
-
-@container (max-width: 560px) {
-    .live-view-toggle-btn > span:not(.material-icons) {
-        display: none;
-    }
+.live-view-toggle-btn {
+    padding: 3px 7px;
+}
+.live-view-toggle-btn .material-icons {
+    font-size: 16px;
 }
 
 /* ── Chat prose: reading typography (live Chat view + history Chat tab) ── */
