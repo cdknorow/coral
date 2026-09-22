@@ -135,6 +135,10 @@ var columnMigrations = []struct {
 	// The task's details, for tasks the operator gives an agent (shown when
 	// the agent claims it).
 	{"agent_tasks", "body", "TEXT"},
+	// Board-task parity for the coral-agent CLI (task add --priority,
+	// complete/cancel --message).
+	{"agent_tasks", "priority", "TEXT DEFAULT 'medium'"},
+	{"agent_tasks", "completion_message", "TEXT"},
 	// Databases created before `finished` was part of the subagents table.
 	{"subagents", "finished", "INTEGER NOT NULL DEFAULT 0"},
 	{"subagents", "transcript_path", "TEXT"},

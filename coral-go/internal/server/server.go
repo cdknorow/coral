@@ -385,10 +385,13 @@ func (s *Server) buildRouter() chi.Router {
 	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.UpdateTask)
 	r.Delete("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.DeleteTask)
 	r.Post("/api/sessions/live/{name}/tasks/reorder", sessHandler.ReorderTasks)
-	// The agent's own view of its tasks (coral-board task claim outside a board)
-	r.Get("/api/agent-tasks", sessHandler.ListSessionAgentTasks)
-	r.Post("/api/agent-tasks/claim", sessHandler.ClaimSessionAgentTask)
-	r.Post("/api/agent-tasks/{taskID}/complete", sessHandler.CompleteSessionAgentTask)
+	// The agent's own tasks (coral-agent task ...), mirroring the board task API
+	r.Get("/api/agent/tasks", sessHandler.ListAgentTasksForAgent)
+	r.Post("/api/agent/tasks", sessHandler.AddAgentTaskForAgent)
+	r.Post("/api/agent/tasks/claim", sessHandler.ClaimAgentTaskForAgent)
+	r.Post("/api/agent/tasks/current", sessHandler.CurrentAgentTaskForAgent)
+	r.Post("/api/agent/tasks/{taskID}/complete", sessHandler.CompleteAgentTaskForAgent)
+	r.Post("/api/agent/tasks/{taskID}/cancel", sessHandler.CancelAgentTaskForAgent)
 	r.Get("/api/sessions/live/{name}/subagents", sessHandler.ListSubagents)
 	r.Get("/api/sessions/live/{name}/subagents/{subagentID}", sessHandler.GetSubagent)
 

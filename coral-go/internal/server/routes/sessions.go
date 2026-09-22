@@ -3161,12 +3161,19 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title     string `json:"title"`
 		Body      string `json:"body"`
+		Priority  string `json:"priority"`
 		SessionID string `json:"session_id"`
 		// Notify tells the agent to claim it (a short prompt typed into its
 		// terminal; see claimPrompt).
 		Notify bool `json:"notify"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "title is required")
+		return
+	}
+	// A title is one line (it is shown in lists and prompts)
+	body.Title = oneLineTitle(body.Title)
+	if body.Title == "" {
 		errBadRequest(w, "title is required")
 		return
 	}
@@ -3193,9 +3200,11 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	if body.Body != "" {
-		if err := h.ts.SetAgentTaskBody(r.Context(), task.ID, body.Body); err == nil {
-			task.Body = &body.Body
+	if body.Body != "" || body.Priority != "" {
+		if err := h.ts.SetAgentTaskDetails(r.Context(), task.ID, body.Body, body.Priority); err == nil {
+			if t, err := h.ts.GetAgentTask(r.Context(), task.ID); err == nil && t != nil {
+				task = t
+			}
 		}
 	}
 	resp := createdTaskResponse{AgentTask: task}

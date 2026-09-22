@@ -534,8 +534,8 @@ export function renderBoardTaskList() {
         ...t,
         _source: 'agent',
         // Normalize agent task fields to match board task shape
-        status: t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : 'pending',
-        priority: null,
+        status: t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : t.completed === 3 ? 'skipped' : 'pending',
+        priority: t.priority || null,
         assigned_to: t.display_name || t.agent_name || agentDisplayName || null,
         created_at: t.created_at,
     }));
@@ -884,7 +884,7 @@ async function _createSoloAgentTask(title, body, errEl) {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, body, session_id: session.session_id, notify }),
+            body: JSON.stringify({ title, body, priority: document.getElementById('create-task-priority')?.value || 'medium', session_id: session.session_id, notify }),
         });
         const task = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(task.error || `HTTP ${resp.status}`);

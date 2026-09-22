@@ -1122,8 +1122,6 @@
                 <label for="create-task-body">Description
                     <textarea id="create-task-body" rows="3" placeholder="Optional description"></textarea>
                 </label>
-                <!-- Board tasks only (hidden for an agent that is not on a board) -->
-                <div id="create-task-board-fields">
                 <label for="create-task-priority">Priority
                     <select id="create-task-priority">
                         <option value="critical">Critical</option>
@@ -1132,6 +1130,8 @@
                         <option value="low">Low</option>
                     </select>
                 </label>
+                <!-- Board tasks only (hidden for an agent that is not on a board) -->
+                <div id="create-task-board-fields">
                 <label for="create-task-assignee">Assigned To
                     <select id="create-task-assignee">
                         <option value="">Unassigned</option>

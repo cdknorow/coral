@@ -19,6 +19,8 @@ type AgentTask struct {
 	SessionID        *string `db:"session_id" json:"session_id,omitempty"`
 	Title            string  `db:"title" json:"title"`
 	Body             *string `db:"body" json:"body,omitempty"`
+	Priority          *string `db:"priority" json:"priority,omitempty"`
+	CompletionMessage *string `db:"completion_message" json:"completion_message,omitempty"`
 	Completed        int     `db:"completed" json:"completed"`
 	SortOrder        int     `db:"sort_order" json:"sort_order"`
 	CreatedAt        string  `db:"created_at" json:"created_at"`
@@ -84,7 +86,7 @@ func (s *TaskStore) ListAgentTasks(ctx context.Context, agentName string, sessio
 	args := append([]interface{}{agentName}, filterArgs...)
 	var tasks []AgentTask
 	err := s.db.SelectContext(ctx, &tasks,
-		`SELECT id, agent_name, session_id, title, body, completed, sort_order, created_at, updated_at,
+		`SELECT id, agent_name, session_id, title, body, priority, completion_message, completed, sort_order, created_at, updated_at,
 		        started_at, completed_at, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, display_name
 		 FROM agent_tasks WHERE agent_name = ?`+filter+` ORDER BY sort_order`,
 		args...)
@@ -136,14 +138,64 @@ func (s *TaskStore) GetAgentTask(ctx context.Context, taskID int64) (*AgentTask,
 	return &t, nil
 }
 
-// SetAgentTaskBody stores a task's details.
-func (s *TaskStore) SetAgentTaskBody(ctx context.Context, taskID int64, body string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET body = ?, updated_at = ? WHERE id = ?", body, nowUTC(), taskID)
-	return err
+// Agent task states (the completed column): pending, done, in progress, and
+// cancelled (reported as "skipped", like board tasks).
+const (
+	AgentTaskPending    = 0
+	AgentTaskDone       = 1
+	AgentTaskInProgress = 2
+	AgentTaskCancelled  = 3
+)
+
+// SetAgentTaskDetails stores a task's details and priority (empty = unchanged).
+func (s *TaskStore) SetAgentTaskDetails(ctx context.Context, taskID int64, body, priority string) error {
+	if body != "" {
+		if _, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET body = ?, updated_at = ? WHERE id = ?", body, nowUTC(), taskID); err != nil {
+			return err
+		}
+	}
+	if priority != "" {
+		if _, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET priority = ?, updated_at = ? WHERE id = ?", priority, nowUTC(), taskID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// ClaimNextAgentTask marks the agent's next pending task (lowest sort order)
-// in progress and returns it, or nil when none is pending. The claim is a
+// CurrentAgentTask returns the agent's task in progress, or nil.
+func (s *TaskStore) CurrentAgentTask(ctx context.Context, agentName string, sessionID *string) (*AgentTask, error) {
+	filter, filterArgs := sessionFilter(sessionID)
+	var t AgentTask
+	err := s.db.GetContext(ctx, &t,
+		"SELECT * FROM agent_tasks WHERE agent_name = ? AND completed = 2"+filter+" ORDER BY started_at DESC, id DESC LIMIT 1",
+		append([]interface{}{agentName}, filterArgs...)...)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// FinishAgentTask marks a task done or cancelled, with an optional message.
+func (s *TaskStore) FinishAgentTask(ctx context.Context, taskID int64, state int, message string) error {
+	if err := s.UpdateAgentTask(ctx, taskID, nil, &state, nil); err != nil {
+		return err
+	}
+	if message != "" {
+		_, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET completion_message = ? WHERE id = ?", message, taskID)
+		return err
+	}
+	return nil
+}
+
+// Claim order, as for board tasks: highest priority first, then oldest.
+const agentTaskClaimOrder = `CASE COALESCE(priority, 'medium') WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END, id ASC`
+
+// ClaimNextAgentTask marks the agent's next pending task (highest priority,
+// then oldest, as on a board) in progress and returns it, or nil when none is
+// pending. The claim is a
 // conditional update (only while the task is still pending), so concurrent
 // claims never get the same task: a claim that loses the race retries with
 // the next pending task.
@@ -152,7 +204,7 @@ func (s *TaskStore) ClaimNextAgentTask(ctx context.Context, agentName string, se
 	for attempt := 0; attempt < 50; attempt++ {
 		var id int64
 		err := s.db.GetContext(ctx, &id,
-			"SELECT id FROM agent_tasks WHERE agent_name = ? AND completed = 0"+filter+" ORDER BY sort_order, id LIMIT 1",
+			"SELECT id FROM agent_tasks WHERE agent_name = ? AND completed = 0"+filter+" ORDER BY "+agentTaskClaimOrder+" LIMIT 1",
 			append([]interface{}{agentName}, filterArgs...)...)
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -183,7 +235,7 @@ func (s *TaskStore) FindOpenAgentTask(ctx context.Context, agentName, title stri
 	filter, filterArgs := sessionFilter(sessionID)
 	var t AgentTask
 	err := s.db.GetContext(ctx, &t,
-		"SELECT * FROM agent_tasks WHERE agent_name = ? AND title = ? AND completed != 1"+filter+" ORDER BY id LIMIT 1",
+		"SELECT * FROM agent_tasks WHERE agent_name = ? AND title = ? AND completed IN (0, 2)"+filter+" ORDER BY id LIMIT 1",
 		append([]interface{}{agentName, title}, filterArgs...)...)
 	if err == sql.ErrNoRows {
 		return nil, nil
