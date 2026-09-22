@@ -1742,24 +1742,6 @@
     margin-top: 2px;
 }
 
-.settings-chat-highlight {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.settings-chat-highlight input[type="color"] {
-    width: 32px;
-    height: 26px;
-    padding: 0;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    background: none;
-    cursor: pointer;
-}
-.settings-chat-highlight input[type="color"][hidden] {
-    display: none;
-}
-
 .settings-hint {
     font-size: 11px;
     color: var(--text-muted);

@@ -120,6 +120,14 @@ async function run() {
   const refClick = await ev(`({ resolves: window.__resolves, opened: window.__opened, url: location.pathname })`);
   check('clicking a file ref resolves it and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === '/', JSON.stringify(refClick));
 
+  // Chat colors come from the theme (theme editor > Chat), nothing overrides them
+  const themed = await ev(`(() => { const root = document.documentElement.style; root.setProperty('--chat-prose-inline-code', 'rgb(1, 2, 3)'); root.setProperty('--chat-prose-human-bg', 'rgb(4, 5, 6)');
+    const code = ${C}.querySelector('.chat-bubble.assistant .message-text :not(pre) > code'); const bubble = ${C}.querySelector(':scope > .chat-bubble.human');
+    const r = { code: code && getComputedStyle(code).color, bubble: bubble && getComputedStyle(bubble).backgroundColor };
+    root.removeProperty('--chat-prose-inline-code'); root.removeProperty('--chat-prose-human-bg'); return r; })()`);
+  check('the theme\'s Chat colors drive inline code and the user bubble', themed.code === 'rgb(1, 2, 3)' && themed.bubble === 'rgb(4, 5, 6)', JSON.stringify(themed));
+  check('there is no separate Chat Highlight setting', await ev(`!document.getElementById('settings-chat-highlight')`));
+
   // Chat is the default center view
   const dflt = await ev(`(() => { localStorage.removeItem('coral-live-view-mode'); return import('/static/live_chat.js').then(m => { m.applyLiveViewMode(); return { mode: m.getLiveViewMode(), chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggle: !document.querySelector('.live-view-toggle').hidden }; }); })()`);
   check('Chat is the default center view', dflt.mode === 'chat' && dflt.chat && dflt.toggle, JSON.stringify(dflt));

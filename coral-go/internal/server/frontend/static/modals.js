@@ -2891,7 +2891,6 @@ export async function loadSettings() {
 
         // Apply scrollbar visibility
         document.body.classList.toggle('no-scrollbars', !s.show_scrollbars);
-        applyChatHighlight(s.chat_highlight_color);
 
         // Apply theme from settings (default to Dark if no theme configured)
         const themeName = (!s.custom_theme || s.custom_theme === "GhostV3") ? "Dark" : s.custom_theme;
@@ -3001,42 +3000,6 @@ export function applyTheme(theme) {
 }
 
 /** Remove all custom CSS variables from inline styles (reset before switching themes) */
-/**
- * Chat Highlight setting: "" (the theme's colors, the default), "accent" (theme accent)
- * or a "#rrggbb" color. It colors inline code and tints the user's bubble in
- * the chat view. Set on <body>, not <html>, so theme changes (which clear
- * inline variables on <html>) leave it alone.
- */
-export function applyChatHighlight(value) {
-    const style = document.body.style;
-    const color = value === "accent" ? "var(--accent)"
-        : /^#[0-9a-f]{6}$/i.test(value || "") ? value : "";
-    if (!color) {
-        style.removeProperty("--chat-highlight");
-        style.removeProperty("--chat-highlight-bubble");
-        return;
-    }
-    style.setProperty("--chat-highlight", color);
-    style.setProperty("--chat-highlight-bubble", `color-mix(in srgb, ${color} 22%, transparent)`);
-}
-
-function _chatHighlightValue() {
-    const mode = document.getElementById("settings-chat-highlight")?.value || "";
-    if (mode !== "custom") return mode;
-    return document.getElementById("settings-chat-highlight-color")?.value || "";
-}
-
-function _syncChatHighlightPicker() {
-    const picker = document.getElementById("settings-chat-highlight-color");
-    if (picker) picker.hidden = document.getElementById("settings-chat-highlight")?.value !== "custom";
-}
-
-// Live preview while the settings modal is open; Cancel restores the saved value.
-window._onChatHighlightModeChange = () => {
-    _syncChatHighlightPicker();
-    applyChatHighlight(_chatHighlightValue());
-};
-window._previewChatHighlight = () => applyChatHighlight(_chatHighlightValue());
 
 function clearCustomThemeVars() {
     const style = document.documentElement.style;
@@ -3192,14 +3155,6 @@ export async function showSettingsModal() {
     const proxyCodexCheck = document.getElementById("settings-proxy-enabled-codex");
     if (proxyCodexCheck) proxyCodexCheck.checked = !!s.proxy_enabled_codex;
 
-    // Chat Highlight
-    const hl = s.chat_highlight_color || "";
-    const hlSelect = document.getElementById("settings-chat-highlight");
-    const hlColor = document.getElementById("settings-chat-highlight-color");
-    if (hlSelect) hlSelect.value = hl.startsWith("#") ? "custom" : hl;
-    if (hlColor && hl.startsWith("#")) hlColor.value = hl;
-    _syncChatHighlightPicker();
-
     // Terminal Font Size
     const fontSizeSelect = document.getElementById("settings-terminal-font-size");
     if (fontSizeSelect) fontSizeSelect.value = s.terminal_font_size || "13";
@@ -3348,8 +3303,6 @@ export async function deactivateLicense() {
 
 export function hideSettingsModal() {
     document.getElementById("settings-modal").style.display = "none";
-    // Drop an unsaved Chat Highlight preview (after a save this is the new value).
-    applyChatHighlight(state.settings?.chat_highlight_color);
 }
 
 export async function applySettings() {
@@ -3369,7 +3322,6 @@ export async function applySettings() {
     const fitPaneWidth = document.getElementById("settings-fit-pane-width")?.checked || false;
     const notifyNeedsInput = document.getElementById("settings-notify-needs-input")?.checked || false;
     const terminalFontSize = document.getElementById("settings-terminal-font-size")?.value || "13";
-    const chatHighlight = _chatHighlightValue();
     const terminalScrollback = document.getElementById("settings-terminal-scrollback")?.value || "20000";
     const checkUpdates = document.getElementById("settings-check-updates")?.checked ?? true;
     localStorage.setItem("coral-update-check-enabled", checkUpdates ? "true" : "false");
@@ -3402,7 +3354,6 @@ export async function applySettings() {
         notify_needs_input: notifyNeedsInput,
         terminal_font_size: terminalFontSize,
         terminal_scrollback: terminalScrollback,
-        chat_highlight_color: chatHighlight,
         show_scrollbars: showScrollbars,
         cli_path_claude: cliPathClaude,
         cli_path_codex: cliPathCodex,
@@ -3468,7 +3419,6 @@ export async function applySettings() {
 
         // Apply scrollbar visibility
         document.body.classList.toggle('no-scrollbars', !showScrollbars);
-        applyChatHighlight(chatHighlight);
 
         // Refresh changed files if git diff mode changed
         if (gitDiffMode !== oldGitDiffMode && typeof refreshChangedFiles === 'function') {

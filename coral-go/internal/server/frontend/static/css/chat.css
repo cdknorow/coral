@@ -678,13 +678,11 @@
 .chat-prose {
     --chat-prose-font: ui-serif, "Iowan Old Style", Charter, "Charter BT", Georgia, serif;
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
-    /* Inline code defaults to the theme's --chat-prose-inline-code (#e5931f,
-       variables.css); the user's bubble is a neutral tint unless a theme sets
-       --chat-prose-human-bg. Blue is kept for links. */
-    /* --chat-highlight(-bubble) come from the Chat Highlight setting
-       (modals.js applyChatHighlight) and win over the theme. */
-    --chat-inline-code: var(--chat-highlight, var(--chat-prose-inline-code, var(--text-primary)));
-    --chat-prose-human: var(--chat-highlight-bubble, var(--chat-prose-human-bg, color-mix(in srgb, var(--text-primary) 9%, transparent)));
+    /* Chat colors come from the theme (theme editor > Chat):
+       --chat-prose-inline-code (base theme: #e5931f, variables.css) and
+       --chat-prose-human-bg (unset: a neutral tint). Blue is kept for links. */
+    --chat-inline-code: var(--chat-prose-inline-code, var(--text-primary));
+    --chat-prose-human: var(--chat-prose-human-bg, color-mix(in srgb, var(--text-primary) 9%, transparent));
 }
 
 .capture-wrapper.chat-mode .live-history-center,
