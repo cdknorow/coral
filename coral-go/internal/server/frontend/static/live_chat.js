@@ -532,10 +532,14 @@ function _updateLoadMoreButton(container) {
     }
 }
 
+// Returns the first load, so a caller can hold slower work (the git/file
+// queries) until the transcript is in. The browser allows only a handful of
+// connections per origin, and on a big repo those queries are seconds long.
 export function startLiveHistoryPoll() {
     stopLiveHistoryPoll();
-    refreshLiveHistory();
+    const firstLoad = refreshLiveHistory();
     historyPollInterval = setInterval(refreshLiveHistory, 1000);
+    return firstLoad;
 }
 
 export function stopLiveHistoryPoll() {
@@ -593,12 +597,13 @@ export function applyLiveViewMode(override) {
         btn.setAttribute("aria-pressed", String(m === mode));
     }
     if (mode === "chat") {
-        startLiveHistoryPoll();
+        return startLiveHistoryPoll();
     } else {
         stopLiveHistoryPoll();
         // The xterm canvas was hidden; refit now that it has a size again.
         setTimeout(fitTerminal, 0);
     }
+    return Promise.resolve();
 }
 
 export function setLiveViewMode(mode) {

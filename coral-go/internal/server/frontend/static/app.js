@@ -28,7 +28,7 @@ import { loadCustomViews, activateCustomView } from './custom_views.js';
 import { initRouter, pushView, restoreChatFromHash } from './router.js';
 import { initPopout, applyPopoutBodyClass, popoutRetry, togglePopoutPanel, popoutWake, popoutApi } from './popout.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
-import { setLiveViewMode, showTerminalView } from './live_chat.js';
+import { setLiveViewMode, showTerminalView, refreshLiveHistory } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
 import { copyBranchName, escapeHtml, showView } from './utils.js';
@@ -976,6 +976,10 @@ document.addEventListener("DOMContentLoaded", () => {
         document.addEventListener("visibilitychange", () => {
             if (!document.hidden && state.currentSession && state.currentSession.type === "live") {
                 refreshCapture();
+                // The transcript poll skips hidden windows, so a window that
+                // was in the background has no chat yet (or a stale one).
+                // Waiting for the next tick to notice shows an empty pane.
+                refreshLiveHistory();
             }
         });
     }

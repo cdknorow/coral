@@ -24,8 +24,13 @@ import { invalidateFileCache, fetchFileList } from './file_mention.js';
 import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
 import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
 
+// Bumped on every switch, so deferred work started for one agent can tell it
+// is no longer the selected one.
+let switchGeneration = 0;
+
 export async function selectLiveSession(name, agentType, sessionId) {
     dbg('selectLiveSession', { name, agentType, sessionId });
+    const generation = ++switchGeneration;
     stopCaptureRefresh();
     stopLiveHistoryPoll();
     disconnectTerminalWs();
@@ -212,7 +217,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     setTimeout(syncPaneWidth, 100);
 
     // Show terminal or chat in the center pane (starts the transcript poll in chat mode)
-    applyLiveViewMode();
+    const transcriptReady = applyLiveViewMode();
 
     // Load secondary data in background (non-blocking, after terminal is connected)
     loadAgentTasks(name, sessionId);
@@ -221,14 +226,23 @@ export async function selectLiveSession(name, agentType, sessionId) {
     loadBoardTasks(boardProject || null);
     loadAgentNotes(name, sessionId);
     loadAgentEvents(name, sessionId);
-    if (state.settings.refresh_files_on_switch) {
-        refreshChangedFiles();
-    } else {
-        loadChangedFiles(name, sessionId);
-    }
     // Cached patches belong to the agent we just left
     resetDiffCache();
-    fetchFileList();
+    // The git queries wait for the transcript: on a large repo they take
+    // seconds, and the browser's per-origin connection budget is small enough
+    // that they would hold up the chat request behind them (task: chat stuck
+    // behind the git diff poller). A failed or absent transcript never blocks
+    // them: they run on the next tick either way.
+    const loadFiles = () => {
+        if (generation !== switchGeneration) return; // switched agents meanwhile
+        if (state.settings.refresh_files_on_switch) {
+            refreshChangedFiles();
+        } else {
+            loadChangedFiles(name, sessionId);
+        }
+        fetchFileList();
+    };
+    Promise.resolve(transcriptReady).catch(() => {}).then(loadFiles);
 }
 
 export async function selectHistorySession(sessionId) {

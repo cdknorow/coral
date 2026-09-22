@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // decodeJSON decodes JSON from the request body into v.
@@ -140,14 +141,24 @@ var debugEnabled = sync.OnceValue(func() bool {
 // DebugRequestLogger returns middleware that logs session-related API calls
 // when CORAL_DEBUG=1 is set. Logs method, path, and query params for
 // /api/sessions/ and /ws/ endpoints.
+// slowRequestThreshold is where an API call stops being a delay and starts
+// being a symptom worth a log line. A variable so tests need not be slow.
+var slowRequestThreshold = time.Second
+
 func DebugRequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
 		if debugEnabled() {
-			path := r.URL.Path
 			if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/ws/") {
 				slog.Info("[debug] request", "method", r.Method, "path", path, "query", r.URL.RawQuery, "remote", r.RemoteAddr)
 			}
 		}
+		// A slow API call is what makes the UI seem stuck, and it is invisible
+		// after the fact. Websocket paths are long-lived by design.
+		start := time.Now()
 		next.ServeHTTP(w, r)
+		if d := time.Since(start); d >= slowRequestThreshold && strings.HasPrefix(path, "/api/") {
+			slog.Warn("slow request", "method", r.Method, "path", path, "query", r.URL.RawQuery, "duration_ms", d.Milliseconds())
+		}
 	})
 }
