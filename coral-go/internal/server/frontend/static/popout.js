@@ -219,14 +219,6 @@ export async function popoutWake() {
 function _wireHeader() {
     const openWin = document.getElementById('terminal-open-window-link');
     if (openWin) { openWin.hidden = true; openWin.removeAttribute('href'); }
-    const openMain = document.getElementById('popout-open-main-btn');
-    if (openMain) {
-        openMain.hidden = false;
-        if (_targetId) openMain.href = `/#chat/${_targetId}`;
-        else openMain.href = '/';
-        openMain.target = '_blank';
-        openMain.rel = 'noopener noreferrer';
-    }
     const toggle = document.getElementById('popout-panel-toggle-btn');
     if (toggle) {
         toggle.hidden = false;

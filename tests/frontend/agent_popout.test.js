@@ -200,7 +200,7 @@ const SHELL_PROBE = `(() => {
 // Where does the uuid appear? Allowed: body[data-target-session-id], action hrefs.
 const LEAK_PROBE = (uuid) => `(() => {
     const id = ${JSON.stringify(uuid)}; const out = { text: [], attrs: [], title: document.title.includes(id) };
-    const ALLOWED_HREF = (el) => el.tagName === 'A' && (['popout-open-main-btn', 'terminal-open-window-link', 'popout-restarted-link', 'popout-open-history'].includes(el.id) || el.classList.contains('overflow-menu-open-window'));
+    const ALLOWED_HREF = (el) => el.tagName === 'A' && (['terminal-open-window-link', 'popout-restarted-link', 'popout-open-history'].includes(el.id) || el.classList.contains('overflow-menu-open-window'));
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let n; while ((n = walker.nextNode())) { if (n.nodeValue.includes(id)) { const el = n.parentElement; const cs = el ? getComputedStyle(el) : null; if (!cs || (cs.display !== 'none' && cs.visibility !== 'hidden')) out.text.push((el && (el.id || el.className)) || 'text'); } }
     for (const el of document.querySelectorAll('*')) for (const a of el.attributes) {
@@ -280,7 +280,7 @@ async function run() {
     check('9 header carries no agent-type badge (decluttered)', s1.badge === '' && await t1.ev(`!document.getElementById('terminal-type-badge')`), s1.badge);
     check('9 state pill has an agreed data-state and matching text', ['working', 'idle', 'waiting', 'sleeping', 'ended', 'reconnecting', 'loading', 'not-found'].includes(s1.pill) && (s1.pill !== 'idle' || /^Idle$/i.test(s1.pillText.trim())) && (s1.pill !== 'working' || /^Working$/i.test(s1.pillText.trim())), JSON.stringify({ pill: s1.pill, text: s1.pillText.trim() }));
     check('10 document.title is "<glyph> <identity> · Coral" without the id', /Popout QA · Coral$/.test(s1.title) && !s1.title.includes(sid), s1.title);
-    check('11 Open in Coral is a noopener anchor to /#chat/<uuid>', s1.openMain && s1.openMain.tag === 'A' && s1.openMain.href === `/#chat/${sid}` && s1.openMain.target === '_blank' && /noopener/.test(s1.openMain.rel || '') && /noreferrer/.test(s1.openMain.rel || ''), JSON.stringify(s1.openMain));
+    check('11 the agent tab has no Open/Pop back into Coral button (removed)', s1.openMain === null, JSON.stringify(s1.openMain));
     check('11 panel toggle has aria-pressed and an accessible name', s1.toggle && (s1.toggle.pressed === 'true' || s1.toggle.pressed === 'false') && !!s1.toggle.name, JSON.stringify(s1.toggle));
     check('18 hooks present in popout mode (_coralPopout + existing test hooks)', Object.values(s1.hooks).every(Boolean), JSON.stringify(s1.hooks));
     check('18 targetSessionId() is the URL uuid; location.hash untouched (no #chat push)', s1.targetId === sid && s1.hash === '', JSON.stringify({ target: s1.targetId, hash: s1.hash }));

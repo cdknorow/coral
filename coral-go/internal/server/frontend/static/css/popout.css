@@ -118,7 +118,6 @@ body.popout-mode.popout-terminal-blocked .mobile-send-btn {
         z-index: 11;
     }
     body.popout-mode .terminal-session-label { max-width: 46vw; }
-    body.popout-mode #popout-open-main-btn span { display: none; }
     body.popout-mode .terminal-header-actions .terminal-header-btn {
         min-width: 36px;
         min-height: 36px;
@@ -154,8 +153,4 @@ body.popout-mode.popout-terminal-blocked .mobile-send-btn {
 .terminal-state-pill[data-state="working"],
 .terminal-state-pill[data-state=""] {
     display: none !important;
-}
-/* Open in Coral: icon only (the tooltip names it) */
-#popout-open-main-btn span {
-    display: none;
 }
