@@ -523,6 +523,10 @@ function _formatTaskTime(ts) {
     } catch { return ''; }
 }
 
+function _agentTaskStatus(t) {
+    return t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : t.completed === 3 ? 'skipped' : 'pending';
+}
+
 export function renderBoardTaskList() {
     const container = document.getElementById('board-task-list');
     if (!container) return;
@@ -534,7 +538,7 @@ export function renderBoardTaskList() {
         ...t,
         _source: 'agent',
         // Normalize agent task fields to match board task shape
-        status: t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : t.completed === 3 ? 'skipped' : 'pending',
+        status: _agentTaskStatus(t),
         priority: t.priority || null,
         assigned_to: t.display_name || t.agent_name || agentDisplayName || null,
         created_at: t.created_at,
@@ -662,7 +666,8 @@ export function renderBoardTaskList() {
         // The subagent id is read from the data attribute rather than inlined
         // into the handler, so it never has to be escaped as a JS string.
         const clickHandler = isSubagent ? ` onclick="showSubagentDetailModal(this.dataset.subagentId)" style="cursor:pointer"`
-            : isAgent ? '' : ` onclick="showTaskDetailModal(${t.id})" style="cursor:pointer"`;
+            : isAgent ? ` onclick="showAgentTaskDetailModal(${t.id})" style="cursor:pointer"`
+            : ` onclick="showTaskDetailModal(${t.id})" style="cursor:pointer"`;
         const typeCell = isSubagent
             ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons">account_tree</span>sub</span>`
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
@@ -928,7 +933,79 @@ export function showTaskDetailModal(taskId) {
     if (!modal || !content) return;
 
     titleEl.textContent = `Task #${task.id}`;
+    content.innerHTML = _taskDetailHtml(task, task.status === 'in_progress' ? _liveCosts[task.id] : null);
 
+    // Update footer with action buttons for editable tasks
+    const footer = document.getElementById('task-detail-modal-footer');
+    if (footer) {
+        const isEditable = task.status === 'pending' || task.status === 'in_progress' || task.status === 'blocked' || task.status === 'draft';
+        if (isEditable) {
+            const canComplete = task.status !== 'blocked' && task.status !== 'draft';
+            const showPublish = task.status === 'draft';
+            footer.innerHTML = `
+                <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${task.id})">Cancel Task</button>
+                <span style="flex:1"></span>
+                <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
+                <button class="btn" onclick="window.enableTaskEditMode(${task.id})">Edit</button>
+                ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${task.id})">Publish</button>` : ''}
+                ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id})">Complete</button>` : ''}`;
+        } else {
+            footer.innerHTML = `<button class="btn" onclick="window.hideTaskDetailModal()">Close</button>`;
+        }
+    }
+
+    _openTaskDetailModal(modal);
+}
+
+// Tasks created for an agent that is not on a board. They share the board
+// task modal but not its actions: no edit, dependencies or cancel.
+export function showAgentTaskDetailModal(taskId) {
+    _openSubagentId = null;
+    const sharedContent = document.getElementById('task-detail-content');
+    if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
+    const t = (state.currentAgentTasks || []).find(t => t.id === taskId);
+    const modal = document.getElementById('task-detail-modal');
+    const titleEl = document.getElementById('task-detail-modal-title');
+    const content = document.getElementById('task-detail-content');
+    if (!t || !modal || !content) return;
+
+    const agentDisplayName = state.currentSession ? (state.currentSession.display_name || state.currentSession.name) : '';
+    const task = {
+        ...t,
+        status: _agentTaskStatus(t),
+        assigned_to: t.display_name || t.agent_name || agentDisplayName || null,
+        claimed_at: t.started_at || null,
+        // Agent tasks report 0 until usage is attributed; don't show a $0 breakdown.
+        cost_usd: t.cost_usd > 0 ? t.cost_usd : null,
+    };
+
+    titleEl.textContent = `Task #${task.id}`;
+    content.innerHTML = _taskDetailHtml(task, null);
+
+    const footer = document.getElementById('task-detail-modal-footer');
+    if (footer) {
+        const open = task.status === 'pending' || task.status === 'in_progress';
+        footer.innerHTML = `
+            <span style="flex:1"></span>
+            <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
+            ${open ? `<button class="btn btn-success" onclick="window.hideTaskDetailModal(); window.toggleAgentTask(${task.id}, true)">Complete</button>` : ''}`;
+    }
+
+    _openTaskDetailModal(modal);
+}
+window.showAgentTaskDetailModal = showAgentTaskDetailModal;
+
+function _openTaskDetailModal(modal) {
+    modal.style.display = '';
+    // Close on backdrop click
+    modal.onclick = (e) => { if (e.target === modal) hideTaskDetailModal(); };
+    // Close on Escape
+    if (modal._escHandler) document.removeEventListener('keydown', modal._escHandler);
+    modal._escHandler = (e) => { if (e.key === 'Escape') hideTaskDetailModal(); };
+    document.addEventListener('keydown', modal._escHandler);
+}
+
+function _taskDetailHtml(task, liveCost) {
     const statusLabel = task.status === 'completed' ? 'Completed'
         : task.status === 'in_progress' ? 'In Progress'
         : task.status === 'skipped' ? 'Cancelled'
@@ -1063,8 +1140,8 @@ export function showTaskDetailModal(taskId) {
         </div>`;
     }
     // Live cost for in-progress tasks
-    if (task.status === 'in_progress' && _liveCosts[task.id]) {
-        const lc = _liveCosts[task.id];
+    if (liveCost) {
+        const lc = liveCost;
         const warningClass = lc.cost_usd >= 1.0 ? ' board-task-cost-warning' : '';
         html += `<div class="task-detail-section">
             <div class="task-detail-label">Running Cost</div>
@@ -1093,34 +1170,7 @@ export function showTaskDetailModal(taskId) {
             </div>
         </div>`;
     }
-    content.innerHTML = html;
-
-    // Update footer with action buttons for editable tasks
-    const footer = document.getElementById('task-detail-modal-footer');
-    if (footer) {
-        const isEditable = task.status === 'pending' || task.status === 'in_progress' || task.status === 'blocked' || task.status === 'draft';
-        if (isEditable) {
-            const canComplete = task.status !== 'blocked' && task.status !== 'draft';
-            const showPublish = task.status === 'draft';
-            footer.innerHTML = `
-                <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${task.id})">Cancel Task</button>
-                <span style="flex:1"></span>
-                <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-                <button class="btn" onclick="window.enableTaskEditMode(${task.id})">Edit</button>
-                ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${task.id})">Publish</button>` : ''}
-                ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id})">Complete</button>` : ''}`;
-        } else {
-            footer.innerHTML = `<button class="btn" onclick="window.hideTaskDetailModal()">Close</button>`;
-        }
-    }
-
-    modal.style.display = '';
-
-    // Close on backdrop click
-    modal.onclick = (e) => { if (e.target === modal) hideTaskDetailModal(); };
-    // Close on Escape
-    modal._escHandler = (e) => { if (e.key === 'Escape') hideTaskDetailModal(); };
-    document.addEventListener('keydown', modal._escHandler);
+    return html;
 }
 
 let _editOriginalTask = null;
