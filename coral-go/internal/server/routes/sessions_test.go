@@ -808,6 +808,22 @@ func TestSessionsLaunch_Success(t *testing.T) {
 	assert.NotEmpty(t, sessions)
 }
 
+// An omitted agent_type launches the operator's default, as + New Agent does.
+func TestSessionsLaunch_DefaultAgentTypeFromSettings(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServer(t)
+	require.NoError(t, ss.SetSetting(context.Background(), "default_agent_type", "terminal"))
+
+	body, _ := json.Marshal(map[string]any{"working_dir": t.TempDir()})
+	resp, err := http.Post(server.URL+"/api/sessions/launch", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, "terminal", result["agent_type"])
+}
+
 func TestSessionsLaunchTeam_MissingBoardName(t *testing.T) {
 	server, _, _, _ := setupSessionsTestServer(t)
 

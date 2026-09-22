@@ -2722,6 +2722,13 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "working_dir is required")
 		return
 	}
+	// No agent_type (e.g. `coral-agent launch`) means the operator's default,
+	// as the + New Agent modal pre-selects it.
+	if body.AgentType == "" {
+		if settings, err := h.ss.GetSettings(r.Context()); err == nil {
+			body.AgentType = settings["default_agent_type"]
+		}
+	}
 	// An unknown agent_type used to fall through to Claude and return 200
 	// ok:true, silently starting an agent the caller never asked for.
 	if err := agent.ValidateAgentType(body.AgentType); err != nil {
@@ -3783,6 +3790,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 
 	return map[string]any{
 		"ok": true, "session_id": sessionID, "session_name": sessionName,
+		"agent_type": agentType, "working_dir": absDir,
 		"log_file": logFile, "backend": backend,
 		// backend names the launch path and reads as "pty" even for a tmux
 		// session; terminal names what the session actually runs on. Reporting

@@ -1,6 +1,7 @@
-// Command coral-agent is the command-line interface an agent uses to work
-// with its own tasks in Coral: the tasks the operator gives an agent that is
-// not on a team board.
+// Command coral-agent is the command-line interface to Coral agents. `launch`
+// starts a new agent from any terminal, the same way + New Agent does. The
+// task commands are what an agent uses to work with its own tasks in Coral:
+// the tasks the operator gives an agent that is not on a team board.
 //
 // Its task commands mirror `coral-board task` (same subcommands, flags and
 // output), minus reassign, and call the matching agent task API
@@ -18,6 +19,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -28,9 +30,12 @@ import (
 var serverURL = hooks.CoralBase()
 
 func printUsage() {
-	fmt.Println(`coral-agent - your own tasks in Coral (agents not on a board)
+	fmt.Println(`coral-agent - launch Coral agents and work with your own tasks
 
 Commands:
+  launch [dir] [--type T] [--name N] [--model M] [--prompt P]
+                                 Launch an agent in dir (default: current
+                                 directory) with your default settings
   task add "title" [--body "details"] [--priority P]  Create a task
   task list                      List all tasks
   task claim                     Claim next available task
@@ -49,6 +54,8 @@ func main() {
 		os.Exit(1)
 	}
 	switch os.Args[1] {
+	case "launch":
+		cmdLaunch(os.Args[2:])
 	case "task":
 		cmdTask()
 	case "--help", "-h", "help":
@@ -103,6 +110,93 @@ Subcommands:
 		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
 		os.Exit(1)
 	}
+}
+
+// cmdLaunch starts an agent through the server's launch API, so it gets the
+// same defaults (agent type, model, permission mode) and shows up in the UI
+// like one started from + New Agent.
+func cmdLaunch(args []string) {
+	var dir string
+	var flagArgs []string
+	for i := 0; i < len(args); i++ {
+		if strings.HasPrefix(args[i], "-") {
+			flagArgs = append(flagArgs, args[i])
+			if !strings.Contains(args[i], "=") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flagArgs = append(flagArgs, args[i+1])
+				i++
+			}
+		} else if dir == "" {
+			dir = args[i]
+		}
+	}
+
+	fs := flag.NewFlagSet("launch", flag.ExitOnError)
+	agentType := fs.String("type", "", "Agent type: claude, codex, gemini, pi or terminal (default: your Coral setting)")
+	name := fs.String("name", "", "Display name")
+	model := fs.String("model", "", "Model (default: your Coral setting for the agent type)")
+	prompt := fs.String("prompt", "", "Initial prompt")
+	fs.Usage = func() {
+		fmt.Fprintln(os.Stderr, `Usage: coral-agent launch [dir] [--type T] [--name N] [--model M] [--prompt P]`)
+		fs.PrintDefaults()
+	}
+	fs.Parse(flagArgs)
+
+	if dir == "" {
+		dir = "."
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid directory %s: %v\n", dir, err)
+		os.Exit(1)
+	}
+	if info, err := os.Stat(absDir); err != nil || !info.IsDir() {
+		fmt.Fprintf(os.Stderr, "Not a directory: %s\n", absDir)
+		os.Exit(1)
+	}
+
+	body := map[string]any{"working_dir": absDir}
+	for key, val := range map[string]string{
+		"agent_type": *agentType, "display_name": *name, "model": *model, "prompt": *prompt,
+	} {
+		if val != "" {
+			body[key] = val
+		}
+	}
+
+	// Launching checks the agent CLI and starts its session, which can take a
+	// few seconds, so this call gets longer than the task calls.
+	data, status, err := apiCall("POST", "/api/sessions/launch", body, 60*time.Second)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	var result map[string]any
+	json.Unmarshal(data, &result)
+	if status != http.StatusOK {
+		msg, _ := result["error"].(string)
+		if msg == "" {
+			msg = string(data)
+		}
+		fmt.Fprintf(os.Stderr, "Error launching agent: %s\n", msg)
+		os.Exit(1)
+	}
+
+	// Older servers don't echo agent_type back.
+	launchedType, _ := result["agent_type"].(string)
+	if launchedType == "" {
+		launchedType = *agentType
+	}
+	sessionName, _ := result["session_name"].(string)
+	label := strings.TrimSpace(launchedType + " agent")
+	if *name != "" {
+		label = *name
+		if launchedType != "" {
+			label += " (" + launchedType + ")"
+		}
+	}
+	fmt.Printf("Launched %s in %s\n", label, absDir)
+	fmt.Printf("  Session: %s\n", sessionName)
+	fmt.Printf("  Open Coral to work with it: %s\n", serverURL)
 }
 
 // resolveSessionID identifies the calling agent (as coral-board's
@@ -317,13 +411,17 @@ func isNoTask(data []byte) bool {
 }
 
 func apiCallRaw(method, path string, body any) ([]byte, int, error) {
+	return apiCall(method, "/api/agent"+path, body, 10*time.Second)
+}
+
+func apiCall(method, path string, body any, timeout time.Duration) ([]byte, int, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, _ := json.Marshal(body)
 		bodyReader = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequest(method, serverURL+"/api/agent"+path, bodyReader)
+	req, err := http.NewRequest(method, serverURL+path, bodyReader)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -331,7 +429,7 @@ func apiCallRaw(method, path string, body any) ([]byte, int, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
