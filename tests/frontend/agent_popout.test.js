@@ -277,7 +277,7 @@ async function run() {
     check('8 .layout fills the viewport', s1.layoutH !== null && Math.abs(s1.layoutH - s1.innerH) <= 2, `${s1.layoutH} vs ${s1.innerH}`);
     check('8 workspace present: live view, command input, quick-action strip, tools pane, split + command handles', Object.values(s1.workspace).every(v => v === 'visible'), JSON.stringify(s1.workspace));
     check('9 slim header identity is the resolved display name', /Popout QA/.test(s1.identity) && !s1.identity.includes(sid) && !/terminal-[0-9a-f]{8}/.test(s1.identity), s1.identity.trim());
-    check('9 type badge shows terminal', /terminal/i.test(s1.badge), s1.badge);
+    check('9 header carries no agent-type badge (decluttered)', s1.badge === '' && await t1.ev(`!document.getElementById('terminal-type-badge')`), s1.badge);
     check('9 state pill has an agreed data-state and matching text', ['working', 'idle', 'waiting', 'sleeping', 'ended', 'reconnecting', 'loading', 'not-found'].includes(s1.pill) && (s1.pill !== 'idle' || /^Idle$/i.test(s1.pillText.trim())) && (s1.pill !== 'working' || /^Working$/i.test(s1.pillText.trim())), JSON.stringify({ pill: s1.pill, text: s1.pillText.trim() }));
     check('10 document.title is "<glyph> <identity> · Coral" without the id', /Popout QA · Coral$/.test(s1.title) && !s1.title.includes(sid), s1.title);
     check('11 Open in Coral is a noopener anchor to /#chat/<uuid>', s1.openMain && s1.openMain.tag === 'A' && s1.openMain.href === `/#chat/${sid}` && s1.openMain.target === '_blank' && /noopener/.test(s1.openMain.rel || '') && /noreferrer/.test(s1.openMain.rel || ''), JSON.stringify(s1.openMain));

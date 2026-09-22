@@ -512,7 +512,9 @@ async function run() {
         check('header uses board_job_title, not the path prompt', hdrG.name === 'Release Wrangler', hdrG.name);
         check('terminal label uses board_job_title', hdrG.term === 'Release Wrangler', hdrG.term);
         // Task #156: no session id anywhere in the selected-agent header except the
-        // Open Agent Tab navigation href; the branch chip gets the freed space.
+        // Open Agent Tab navigation href. The header carries no branch chip or
+        // agent-type badge (removed to declutter it); the branch stays in the
+        // session details and the row tooltip.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', repo_name: 'cdknorow/coral', branch: 'feature/agent-list-compact' } ] }); true`);
         await sleep(150);
         const hdrLeak = await evalInPage(`(() => {
@@ -526,32 +528,20 @@ async function run() {
                     leaks.push(el.tagName + '[' + a.name + ']');
                 }
             }
-            const chip = document.getElementById('terminal-branch-chip');
-            const txt = chip ? chip.querySelector('.branch-text') : null;
-            return { leaks, chipVisible: !!chip && !chip.hidden && getComputedStyle(chip).display !== 'none',
-                     chipText: txt ? txt.textContent : null, chipTitle: chip ? chip.getAttribute('title') : null, truncated: txt ? txt.scrollWidth > txt.clientWidth + 1 : null,
-                     label: document.getElementById('terminal-header-label').textContent };
+            return { leaks, branchInHeader: (hdr.textContent || '').includes('feature/agent-list-compact'),
+                     chip: !!document.getElementById('terminal-branch-chip'), badge: !!document.getElementById('terminal-type-badge') };
         })()`);
         check('selected-agent header leaks no session id (text, title, aria or other attributes)', hdrLeak.leaks.length === 0, JSON.stringify(hdrLeak.leaks));
-        check('branch chip shows the full branch at desktop width', hdrLeak.chipVisible && /feature\/agent-list-compact/.test(hdrLeak.chipText || '') && hdrLeak.truncated === false, JSON.stringify(hdrLeak));
-        check('branch chip text is the branch name only (no repo slug, no separator)', hdrLeak.chipText === 'feature/agent-list-compact', String(hdrLeak.chipText));
-        check('branch chip title is absent or the branch name only (no repo slug, colon, path or id)', hdrLeak.chipTitle === null || hdrLeak.chipTitle === 'feature/agent-list-compact', String(hdrLeak.chipTitle));
-        const chipAlign = await evalInPage(`(() => { const hdr = document.querySelector('#live-session-view .terminal-header'); const chip = document.getElementById('terminal-branch-chip'); const label = document.getElementById('terminal-header-label'); const actions = hdr.querySelector('.terminal-header-actions'); const c = chip.getBoundingClientRect(), l = label.getBoundingClientRect(), a = actions.getBoundingClientRect(), h = hdr.getBoundingClientRect(); return { chipLeft: c.left, chipRight: c.right, labelRight: l.right, actionsLeft: a.left, hdrRight: h.right, gapToActions: a.left - c.right, gapFromLabel: c.left - l.right }; })()`);
-        check('branch chip is right-aligned next to the header actions (#159), not glued to the identity', chipAlign.gapToActions >= 0 && chipAlign.gapToActions <= 16 && chipAlign.gapFromLabel >= 24, JSON.stringify(chipAlign));
-        // Identity has priority over the branch chip when the header is narrow (1024px, long branch).
+        check('the header shows no branch chip or agent-type badge', !hdrLeak.chip && !hdrLeak.badge && !hdrLeak.branchInHeader, JSON.stringify(hdrLeak));
+        // A long identity at 1024px: it keeps its room and nothing overflows.
         await Emulation.setDeviceMetricsOverride({ width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', display_name: 'Release Wrangler With A Long Name', repo_name: 'cdknorow/coral', branch: 'feature/agent-list-compact-with-a-really-long-branch-name-for-narrow-headers' } ] }); true`);
         await sleep(300);
-        const narrow = await evalInPage(`(() => { const hdr = document.querySelector('#live-session-view .terminal-header'); const label = document.getElementById('terminal-header-label'); const chip = document.getElementById('terminal-branch-chip'); const txt = chip ? chip.querySelector('.branch-text') : null; const actions = hdr.querySelector('.terminal-header-actions'); const hr = hdr.getBoundingClientRect(), ar = actions.getBoundingClientRect();
-            return { hdrW: hr.width, labelW: label.getBoundingClientRect().width, chipW: chip ? chip.getBoundingClientRect().width : 0, chipTruncated: txt ? txt.scrollWidth > txt.clientWidth + 1 : null, chipText: txt ? txt.textContent : null, chipTitle: chip ? chip.getAttribute('title') : null, overflow: hdr.scrollWidth - hdr.clientWidth, actionsInside: ar.right <= hr.right + 1 && ar.left >= hr.left }; })()`);
-        check('1024px: identity keeps >= 120px (or its full width), chip yields with ellipsis, header/actions do not overflow', (narrow.labelW >= 120 || narrow.labelW >= narrow.hdrW * 0.4) && narrow.overflow <= 1 && narrow.actionsInside && (narrow.chipW === 0 || narrow.chipTruncated === true) && !/cdknorow|:/.test(narrow.chipText || '') && !/cdknorow|:|\//.test((narrow.chipTitle || '').replace(/^feature\//, '')), JSON.stringify(narrow));
+        const narrow = await evalInPage(`(() => { const hdr = document.querySelector('#live-session-view .terminal-header'); const label = document.getElementById('terminal-header-label'); const actions = hdr.querySelector('.terminal-header-actions'); const hr = hdr.getBoundingClientRect(), ar = actions.getBoundingClientRect();
+            return { hdrW: hr.width, labelW: label.getBoundingClientRect().width, overflow: hdr.scrollWidth - hdr.clientWidth, actionsInside: ar.right <= hr.right + 1 && ar.left >= hr.left - 1 }; })()`);
+        check('1024px: identity keeps >= 120px (or its full width) and the header/actions do not overflow', (narrow.labelW >= 120 || narrow.labelW >= narrow.hdrW * 0.4) && narrow.overflow <= 1 && narrow.actionsInside, JSON.stringify(narrow));
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
         await sleep(200);
-        // branch removed -> chip has no title (and no stale branch text)
-        await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', repo_name: null, branch: null } ] }); true`);
-        await sleep(200);
-        const noBranch = await evalInPage(`(() => { const chip = document.getElementById('terminal-branch-chip'); const txt = chip ? chip.querySelector('.branch-text') : null; return { title: chip ? chip.getAttribute('title') : null, text: txt ? txt.textContent : '', visible: chip ? (!chip.hidden && getComputedStyle(chip).display !== 'none') : false }; })()`);
-        check('branch absent: chip title removed and no stale branch text', noBranch.title === null && (noBranch.text === '' || !noBranch.visible), JSON.stringify(noBranch));
         // restore the fixture: the 1024px probe renamed sid-g, which must not leak into later identity checks
         await setFixture(SESSIONS);
         await sleep(150);

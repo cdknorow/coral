@@ -12,8 +12,7 @@ body.popout-mode .mobile-tab-bar,
 body.popout-mode #welcome-screen,
 body.popout-mode #agentic-tab-board,
 body.popout-mode #session-ended-default,
-body.popout-mode #terminal-open-window-link,
-body.popout-mode #terminal-branch-chip {
+body.popout-mode #terminal-open-window-link {
     display: none !important;
 }
 
@@ -43,7 +42,6 @@ body.popout-mode .terminal-session-label {
     max-width: 40vw;
 }
 
-.terminal-type-badge,
 .terminal-state-pill {
     font-size: 10px;
     line-height: 16px;
@@ -156,16 +154,6 @@ body.popout-mode.popout-terminal-blocked .mobile-send-btn {
 .terminal-state-pill[data-state="working"],
 .terminal-state-pill[data-state=""] {
     display: none !important;
-}
-/* Agent type: quiet text, not a filled badge */
-.terminal-header .terminal-type-badge {
-    background: none !important;
-    border: none;
-    color: var(--text-muted) !important;
-    font-weight: 500;
-    text-transform: lowercase;
-    letter-spacing: 0;
-    padding: 0 2px;
 }
 /* Open in Coral: icon only (the tooltip names it) */
 #popout-open-main-btn span {

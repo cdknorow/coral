@@ -1702,52 +1702,19 @@
 .team-details-list dt { color: var(--text-muted); font-weight: 500; }
 .team-details-list dd { margin: 0; word-break: break-word; }
 
-/* Branch of the selected agent in the terminal header (dashboard only) */
-.terminal-branch-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 11px;
-    color: var(--text-secondary);
-    /* The session id left the header (task #156): the chip takes the freed
-       space and only truncates when the header is genuinely narrow. */
-    /* Yields first: the chip absorbs (almost) all shrink before the identity
-       loses a pixel, down to a 48px floor where it is still recognisable. */
-    flex: 0 1000 auto;
-    min-width: 48px;
-    max-width: none;
-    overflow: hidden;
-    /* Right-aligned (task #159): identity stays anchored left, the chip sits at
-       the right edge of the left group, immediately before the non-shrinking
-       actions; the space between them is the flexible separation. */
-    margin-left: auto;
-    margin-right: 8px; /* breathing room before the actions */
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.terminal-branch-chip[hidden] { display: none; }
-
-/* Selected-agent header: identity + branch share the left group and may
-   shrink; the actions on the right never do. */
+/* Selected-agent header: the identity may shrink; the actions on the right
+   never do. */
 .terminal-header-left {
     flex: 1 1 auto;
     min-width: 0;
     overflow: hidden;
 }
 .terminal-header-left .terminal-session-label {
-    /* Identity has priority over the branch chip: it keeps its natural width
-       (up to 70% of the group) and only ellipsizes once the chip is at its
-       floor; it never collapses below 120px while it has more to show. */
+    /* Keeps its natural width and ellipsizes only when the header is narrow;
+       never below 120px while it has more to show. */
     flex: 0 1 auto;
     min-width: min(120px, 100%);
-    max-width: 70%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.terminal-branch-chip svg { flex-shrink: 0; }
-.terminal-branch-chip .branch-text {
-    min-width: 0;
+    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

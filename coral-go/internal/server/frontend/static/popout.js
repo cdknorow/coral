@@ -232,8 +232,6 @@ function _wireHeader() {
         toggle.hidden = false;
         _syncPanelToggle();
     }
-    const badge = document.getElementById('terminal-type-badge');
-    if (badge) badge.hidden = true;
     const pill = document.getElementById('terminal-state-pill');
     if (pill) pill.hidden = false;
 }
@@ -267,13 +265,6 @@ function _renderIdentity(rec) {
     const identity = resolveSessionIdentity(rec || {});
     const label = document.getElementById('terminal-header-label');
     if (label) label.textContent = identity;
-    const badge = document.getElementById('terminal-type-badge');
-    if (badge) {
-        const t = (rec && rec.agent_type) || '';
-        badge.textContent = t;
-        badge.className = `badge terminal-type-badge ${t.toLowerCase()}`;
-        badge.hidden = !t;
-    }
     _updateTitle(identity);
 }
 
