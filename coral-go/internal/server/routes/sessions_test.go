@@ -1116,6 +1116,40 @@ func TestSessionsTasks_CRUD(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
+func TestSessionsTasks_SameTitleReusesOpenTask(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	terminal.addSession("claude-task-dedupe", "/tmp/test")
+	ctx := context.Background()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-task-dedupe", AgentType: "claude", WorkingDir: "/tmp/test", SessionID: "dedupe-1"})
+	base := server.URL + "/api/sessions/live/claude-task-dedupe/tasks"
+
+	create := func(title string) map[string]any {
+		resp, err := http.Post(base, "application/json", bytes.NewBufferString(`{"title": "`+title+`", "session_id": "dedupe-1"}`))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var task map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&task))
+		return task
+	}
+
+	// The operator creates a task; the agent's TaskCreate for it (same title) reuses it
+	first := create("Add a battle log")
+	again := create("Add a battle log")
+	assert.Equal(t, first["id"], again["id"], "an open task with the same title is reused, not duplicated")
+	other := create("Write the engine tests")
+	assert.NotEqual(t, first["id"], other["id"])
+
+	// Once completed, the same title starts a new task
+	req, _ := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/%v", base, first["id"]), bytes.NewBufferString(`{"completed": 1}`)) // the test router maps UpdateTask to PUT
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	fresh := create("Add a battle log")
+	assert.NotEqual(t, first["id"], fresh["id"], "a completed task is not reused")
+}
+
 func TestSessionsNotes_Create(t *testing.T) {
 	server, _, terminal, ss := setupSessionsTestServer(t)
 

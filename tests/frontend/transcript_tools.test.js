@@ -38,7 +38,7 @@ const STUB = `
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
     if (m==='POST' && /\\/answer-prompt$/.test(path)) { window.__answers = (window.__answers||[]).concat([JSON.parse(opts.body)]);
       return window.__answerFail ? Promise.resolve(new Response(JSON.stringify({ error: 'The prompt changed. Answer it in the terminal.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })) : json({ ok: true }); }
-    if (m!=='GET') return json({ok:true});
+    if (m!=='GET') { window.__posts = (window.__posts||[]).concat([[m, path, opts && opts.body ? JSON.parse(opts.body) : null]]); return json({ok:true}); }
     if (path==='/api/sessions/live') return json(window.__sessions);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
@@ -307,6 +307,25 @@ async function run() {
     const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggleHidden: getComputedStyle(document.querySelector('.live-view-toggle')).display === 'none' };
     st.state.currentSession.agent_type = prev; m.applyLiveViewMode(); return r; })`);
   check('plain terminals always show the terminal, with no toggle', !term.chat && term.toggleHidden, JSON.stringify(term));
+
+  // Tasks for an agent without a board: + Task is always there, creates an agent
+  // task and (by default) sends it to the agent
+  const tasksTab = await ev(`import('/static/agentic_state.js').then(a => { a.switchAgenticTab('tasks', 'top'); return import('/static/tasks.js'); }).then(t => { t.renderBoardTaskList(); const sec = document.getElementById('board-tasks-section');
+    return { shown: getComputedStyle(sec).display !== 'none', addBtn: !!sec.querySelector('.btn-create-task'), empty: (document.querySelector('#board-task-list .board-task-empty') || {}).textContent || '' }; })`);
+  check('a solo agent\'s Tasks tab shows + Task and an empty state', tasksTab.shown && tasksTab.addBtn && /No tasks yet/.test(tasksTab.empty), JSON.stringify(tasksTab));
+  await ev(`document.querySelector('#board-tasks-section .btn-create-task').click(); true`);
+  await sleep(300);
+  const dlg = await ev(`(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && !e.hidden && getComputedStyle(e).display !== 'none'; };
+    return { heading: document.getElementById('create-task-heading').textContent, boardFields: vis('create-task-board-fields'), sendRow: vis('create-task-send-row'), sendChecked: document.getElementById('create-task-send').checked }; })()`);
+  check('the Create Task dialog for a solo agent hides board fields and offers sending it to the agent', dlg.heading === 'New task for Lead Dev' && !dlg.boardFields && dlg.sendRow && dlg.sendChecked, JSON.stringify(dlg));
+  await ev(`window.__posts = []; document.getElementById('create-task-title').value = 'Add a battle log'; document.getElementById('create-task-body').value = 'Log each round.'; window.submitCreateTask(); true`);
+  await sleep(600);
+  const made = await ev(`({ posts: window.__posts, modalOpen: document.getElementById('create-task-modal').style.display !== 'none', pending: Array.from(${C}.querySelectorAll('.chat-bubble.pending .message-text')).map(e => e.textContent.trim()).pop() || '' })`);
+  const taskPost = (made.posts || []).find(p => /\/tasks$/.test(p[1]));
+  const sendPost = (made.posts || []).find(p => /\/send$/.test(p[1]));
+  check('submitting creates the agent task and sends it to the agent', !!taskPost && taskPost[2].title === 'Add a battle log' && taskPost[2].session_id === SID && !!sendPost && /^New task: Add a battle log/.test(sendPost[2].command) && /Log each round\./.test(sendPost[2].command) && /"Add a battle log"/.test(sendPost[2].command) && !made.modalOpen, JSON.stringify({ taskPost, sendPost, modalOpen: made.modalOpen }));
+  check('the sent task shows in the chat as a pending message', /^New task: Add a battle log/.test(made.pending), made.pending);
+  await ev(`import('/static/agentic_state.js').then(a => { a.switchAgenticTab('files', 'top'); return true; })`);
 
   // History Chat tab renders the same transcript through the same renderer:
   // tool output folds into step groups instead of being shown as reply prose.

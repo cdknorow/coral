@@ -122,6 +122,25 @@ func (s *TaskStore) CreateAgentTask(ctx context.Context, agentName, title string
 	}, nil
 }
 
+// FindOpenAgentTask returns the agent's not-yet-completed task with this exact
+// title (in the same session when one is given), or nil. Used to avoid a
+// duplicate row when the operator creates a task and the agent then adds the
+// same task to its own list (the task-sync hook posts it by title).
+func (s *TaskStore) FindOpenAgentTask(ctx context.Context, agentName, title string, sessionID *string) (*AgentTask, error) {
+	filter, filterArgs := sessionFilter(sessionID)
+	var t AgentTask
+	err := s.db.GetContext(ctx, &t,
+		"SELECT * FROM agent_tasks WHERE agent_name = ? AND title = ? AND completed != 1"+filter+" ORDER BY id LIMIT 1",
+		append([]interface{}{agentName, title}, filterArgs...)...)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 // UpdateAgentTask updates task fields (title, completed, sort_order).
 // When completed transitions to 2 (in_progress), started_at is set.
 // When completed transitions to 1 (done), completed_at is set and cost is computed

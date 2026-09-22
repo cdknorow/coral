@@ -1111,7 +1111,7 @@
     <div id="create-task-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
-                <h3>Create Task</h3>
+                <h3 id="create-task-heading">Create Task</h3>
                 <button class="modal-close-btn" onclick="window.hideCreateTaskModal()">&times;</button>
             </div>
             <div class="modal-body">
@@ -1122,6 +1122,8 @@
                 <label for="create-task-body">Description
                     <textarea id="create-task-body" rows="3" placeholder="Optional description"></textarea>
                 </label>
+                <!-- Board tasks only (hidden for an agent that is not on a board) -->
+                <div id="create-task-board-fields">
                 <label for="create-task-priority">Priority
                     <select id="create-task-priority">
                         <option value="critical">Critical</option>
@@ -1140,6 +1142,12 @@
                 <label class="create-task-draft-toggle">
                     <input type="checkbox" id="create-task-draft">
                     <span>Create as draft <span class="text-muted-sm">— not visible to agents until published</span></span>
+                </label>
+                </div>
+                <!-- Agent without a board: the task goes to this agent -->
+                <label class="create-task-draft-toggle" id="create-task-send-row" hidden>
+                    <input type="checkbox" id="create-task-send" checked>
+                    <span>Send it to the agent now <span class="text-muted-sm">— as a message, so it starts on it (queued if it is busy)</span></span>
                 </label>
             </div>
             <div class="modal-actions modal-footer">

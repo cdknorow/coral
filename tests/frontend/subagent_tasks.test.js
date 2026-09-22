@@ -227,7 +227,9 @@ async function run() {
   await open(B);
   rs = await rows();
   check("another agent does not inherit the previous agent's subagents", rs.filter(r => r.sub).length === 0, `sub rows=${rs.filter(r => r.sub).length}`);
-  check('an agent with nothing to show hides the section', await ev(`document.getElementById('board-tasks-section').style.display === 'none'`));
+  // A live agent with no tasks keeps the section (empty state + "+ Task") and none of A's rows
+  check('an agent with nothing to show gets the empty state, with + Task, and no stale rows', await ev(`(() => { const sec = document.getElementById('board-tasks-section'); const list = document.getElementById('board-task-list');
+    return sec.style.display !== 'none' && !!sec.querySelector('.btn-create-task') && !!list.querySelector('.board-task-empty') && list.querySelectorAll('.board-task-item').length === 0; })()`));
   check('subagents fetched by session id, not agent name', (await ev(`window.__subagentFetches`)).includes(B));
 
   await open(A);

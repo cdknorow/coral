@@ -2194,3 +2194,28 @@
 .file-diff-body .cm-activeLine:not(.cm-changedLine) { background: transparent !important; }
 .file-diff-body .cm-activeLineGutter:not(.cm-changedLineGutter) { background: transparent !important; }
 
+
+/* Tasks panel: empty state for a live agent (the + Task button stays reachable) */
+.board-task-empty {
+    padding: 14px 12px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    text-align: center;
+}
+
+/* Create Task dialog: board-only fields and the solo-agent send option */
+#create-task-board-fields[hidden],
+#create-task-send-row[hidden] {
+    display: none;
+}
+/* Title and close button on one line */
+#create-task-modal .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+#create-task-modal .modal-header h3 {
+    margin: 0;
+    min-width: 0;
+}

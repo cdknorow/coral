@@ -2,6 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown } from './utils.js';
+import { addPendingMessage } from './live_chat.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -566,11 +567,22 @@ export function renderBoardTaskList() {
     const section = document.getElementById('board-tasks-section');
 
     if (allTasks.length === 0) {
-        if (section) section.style.display = 'none';
         // Drop the previous agent's rows too; hiding alone leaves them in the DOM.
-        container.innerHTML = '';
         const countEl = document.getElementById('task-bar-count');
         if (countEl) countEl.textContent = '';
+        const live = state.currentSession && state.currentSession.type === 'live';
+        if (!live) {
+            if (section) section.style.display = 'none';
+            container.innerHTML = '';
+            return;
+        }
+        // A live agent always gets the section, so "+ Task" is reachable
+        if (section) section.style.display = '';
+        const headerLabel = section ? section.querySelector('.board-tasks-header > span:first-child') : null;
+        if (headerLabel) headerLabel.textContent = 'Tasks';
+        const toggle = document.getElementById('board-task-hide-toggle-container');
+        if (toggle) toggle.innerHTML = '';
+        container.innerHTML = '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>';
         return;
     }
     if (section) section.style.display = '';
@@ -742,10 +754,23 @@ export async function showCreateTaskModal() {
     const errEl = document.getElementById('create-task-error');
     if (errEl) errEl.style.display = 'none';
 
+    // Solo agent: no board fields; offer to send the task to the agent
+    const solo = _isSoloAgent();
+    const boardFields = document.getElementById('create-task-board-fields');
+    if (boardFields) boardFields.hidden = solo;
+    const sendRow = document.getElementById('create-task-send-row');
+    if (sendRow) sendRow.hidden = !solo;
+    const sendCheck = document.getElementById('create-task-send');
+    if (sendCheck) sendCheck.checked = true;
+    const heading = document.getElementById('create-task-heading');
+    if (heading) heading.textContent = solo
+        ? `New task for ${state.currentSession.display_name || state.currentSession.name}`
+        : 'Create Task';
+
     // Populate assignee dropdown from board subscribers
     const assigneeSelect = document.getElementById('create-task-assignee');
     assigneeSelect.innerHTML = '<option value="">Unassigned</option>';
-    const boardProject = _getBoardProject();
+    const boardProject = solo ? null : _getBoardProject();
     if (boardProject) {
         try {
             const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/subscribers`);
@@ -765,7 +790,7 @@ export async function showCreateTaskModal() {
     }
 
     // Populate dependency picker
-    _renderDepPicker('create-task-deps');
+    if (!solo) _renderDepPicker('create-task-deps');
 
     modal.style.display = '';
     document.getElementById('create-task-title').focus();
@@ -798,6 +823,10 @@ export async function submitCreateTask() {
     }
 
     const body = document.getElementById('create-task-body').value.trim();
+    if (_isSoloAgent()) {
+        await _createSoloAgentTask(title, body, errEl);
+        return;
+    }
     const priority = document.getElementById('create-task-priority').value;
     const assignedTo = document.getElementById('create-task-assignee').value;
     const boardProject = _getBoardProject();
@@ -840,6 +869,53 @@ export async function submitCreateTask() {
             errEl.style.display = '';
         }
     }
+}
+
+// A task for an agent without a board: it goes on the agent's task list in
+// Coral and, unless unchecked, is sent to the agent as a message asking it to
+// track the task under the same title. The agent's own task entry then syncs
+// onto this row by title (the server reuses the open task), so its progress
+// shows here.
+async function _createSoloAgentTask(title, body, errEl) {
+    const session = state.currentSession;
+    const send = document.getElementById('create-task-send')?.checked ?? true;
+    try {
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, session_id: session.session_id }),
+        });
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        if (send) {
+            const message = `New task: ${title}` + (body ? `\n\n${body}` : '')
+                + `\n\nAdd it to your task list with exactly this title, "${title}", so its progress shows in Coral, then work on it.`;
+            const sendResp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command: message, agent_type: session.agent_type, session_id: session.session_id }),
+            });
+            const sent = await sendResp.json().catch(() => ({}));
+            if (!sendResp.ok || sent.error) throw new Error(sent.error || 'The task was added, but sending it to the agent failed');
+            addPendingMessage(session.session_id, message);
+        }
+        hideCreateTaskModal();
+        await loadAgentTasks(session.name, session.session_id);
+        showToast(send ? 'Task added and sent to the agent' : 'Task added');
+    } catch (e) {
+        if (errEl) {
+            errEl.textContent = e.message || 'Failed to create task';
+            errEl.style.display = '';
+        }
+    }
+}
+
+// An agent that is not on a team board: tasks created for it are agent
+// tasks (its own list in Coral), not board tasks.
+function _isSoloAgent() {
+    return !!state.currentSession && state.currentSession.type === 'live' && !state.currentSession.board_project;
 }
 
 function _getBoardProject() {

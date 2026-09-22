@@ -3168,6 +3168,13 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	name := chi.URLParam(r, "name")
 
+	// One row per open task: the operator's task and the agent's own
+	// TaskCreate for it (synced by title) converge instead of duplicating.
+	if existing, err := h.ts.FindOpenAgentTask(r.Context(), name, body.Title, strPtr(body.SessionID)); err == nil && existing != nil {
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+
 	// Resolve display_name from live session
 	var displayName *string
 	var dn string
