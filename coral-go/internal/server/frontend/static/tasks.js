@@ -877,31 +877,22 @@ export async function submitCreateTask() {
 // shows the details; `coral-agent task complete <id>` marks it done.
 async function _createSoloAgentTask(title, body, errEl) {
     const session = state.currentSession;
-    const send = document.getElementById('create-task-send')?.checked ?? true;
+    const notify = document.getElementById('create-task-send')?.checked ?? true;
     try {
+        // With notify, the server types the claim prompt into the agent's
+        // terminal and returns it (see claimPrompt in routes/agent_tasks.go).
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, body, session_id: session.session_id }),
+            body: JSON.stringify({ title, body, session_id: session.session_id, notify }),
         });
         const task = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(task.error || `HTTP ${resp.status}`);
-        if (send) {
-            const ref = task.id ? `#${task.id}: ${title}` : title;
-            const message = `You have a new task in Coral (${ref}). Claim it with \`coral-agent task claim\` to see the details, `
-                + `then run \`coral-agent task complete${task.id ? ' ' + task.id : ' <id>'}\` when it's done.`;
-            const sendResp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/send`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: message, agent_type: session.agent_type, session_id: session.session_id }),
-            });
-            const sent = await sendResp.json().catch(() => ({}));
-            if (!sendResp.ok || sent.error) throw new Error(sent.error || 'The task was added, but sending it to the agent failed');
-            addPendingMessage(session.session_id, message);
-        }
+        if (task.notify_error) throw new Error(`The task was added, but telling the agent failed: ${task.notify_error}`);
+        if (task.notified) addPendingMessage(session.session_id, task.notified);
         hideCreateTaskModal();
         await loadAgentTasks(session.name, session.session_id);
-        showToast(send ? 'Task added; the agent was told to claim it' : 'Task added');
+        showToast(notify ? 'Task added; the agent was told to claim it' : 'Task added');
     } catch (e) {
         if (errEl) {
             errEl.textContent = e.message || 'Failed to create task';

@@ -3162,6 +3162,9 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		Title     string `json:"title"`
 		Body      string `json:"body"`
 		SessionID string `json:"session_id"`
+		// Notify tells the agent to claim it (a short prompt typed into its
+		// terminal; see claimPrompt).
+		Notify bool `json:"notify"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" {
 		errBadRequest(w, "title is required")
@@ -3195,7 +3198,11 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 			task.Body = &body.Body
 		}
 	}
-	writeJSON(w, http.StatusOK, task)
+	resp := createdTaskResponse{AgentTask: task}
+	if body.Notify {
+		resp.Notified, resp.NotifyError = h.notifyTaskCreated(r.Context(), name, body.SessionID, task)
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {

@@ -38,7 +38,9 @@ const STUB = `
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
     if (m==='POST' && /\\/answer-prompt$/.test(path)) { window.__answers = (window.__answers||[]).concat([JSON.parse(opts.body)]);
       return window.__answerFail ? Promise.resolve(new Response(JSON.stringify({ error: 'The prompt changed. Answer it in the terminal.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })) : json({ ok: true }); }
-    if (m!=='GET') { window.__posts = (window.__posts||[]).concat([[m, path, opts && opts.body ? JSON.parse(opts.body) : null]]); return json({ok:true}); }
+    if (m!=='GET') { const b = opts && opts.body ? JSON.parse(opts.body) : null; window.__posts = (window.__posts||[]).concat([[m, path, b]]);
+      if (m==='POST' && /\\/tasks$/.test(path) && b && b.notify) return json({ id: 7, title: b.title, completed: 0, notified: 'You have a new task in Coral (#7: ' + b.title + '). Claim it with coral-agent task claim to see the details, then run coral-agent task complete 7 when it is done.' });
+      return json({ok:true}); }
     if (path==='/api/sessions/live') return json(window.__sessions);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
@@ -323,8 +325,8 @@ async function run() {
   const made = await ev(`({ posts: window.__posts, modalOpen: document.getElementById('create-task-modal').style.display !== 'none', pending: Array.from(${C}.querySelectorAll('.chat-bubble.pending .message-text')).map(e => e.textContent.trim()).pop() || '' })`);
   const taskPost = (made.posts || []).find(p => /\/tasks$/.test(p[1]));
   const sendPost = (made.posts || []).find(p => /\/send$/.test(p[1]));
-  check('submitting stores the task (with its details) and tells the agent to claim it', !!taskPost && taskPost[2].title === 'Add a battle log' && taskPost[2].body === 'Log each round.' && taskPost[2].session_id === SID && !!sendPost && /^You have a new task in Coral \(Add a battle log\)/.test(sendPost[2].command) && /coral-agent task claim/.test(sendPost[2].command) && /coral-agent task complete/.test(sendPost[2].command) && !made.modalOpen, JSON.stringify({ taskPost, sendPost, modalOpen: made.modalOpen }));
-  check('the claim prompt shows in the chat as a pending message', /^You have a new task in Coral/.test(made.pending), made.pending);
+  check('submitting stores the task (with its details) and asks the server to tell the agent', !!taskPost && taskPost[2].title === 'Add a battle log' && taskPost[2].body === 'Log each round.' && taskPost[2].session_id === SID && taskPost[2].notify === true && !sendPost && !made.modalOpen, JSON.stringify({ taskPost, sendPost, modalOpen: made.modalOpen }));
+  check('the claim prompt the server sent shows in the chat as a pending message', /^You have a new task in Coral \(#7: Add a battle log\)/.test(made.pending) && /coral-agent task claim/.test(made.pending), made.pending);
   await ev(`import('/static/agentic_state.js').then(a => { a.switchAgenticTab('files', 'top'); return true; })`);
 
   // History Chat tab renders the same transcript through the same renderer:

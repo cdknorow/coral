@@ -3,8 +3,10 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -119,4 +121,35 @@ func taskBelongsTo(t *store.AgentTask, agentName, sessionID string) bool {
 		return false
 	}
 	return t.SessionID == nil || *t.SessionID == sessionID
+}
+
+// createdTaskResponse is a created agent task plus, when the agent was told
+// to claim it, the prompt that was sent (or why sending failed).
+type createdTaskResponse struct {
+	*store.AgentTask
+	Notified    string `json:"notified,omitempty"`
+	NotifyError string `json:"notify_error,omitempty"`
+}
+
+// claimPrompt is what an agent is told when the operator gives it a task:
+// short, naming the task and the commands to claim and finish it. The
+// details come with the claim.
+func claimPrompt(t *store.AgentTask) string {
+	title := strings.Join(strings.Fields(t.Title), " ")
+	return fmt.Sprintf("You have a new task in Coral (#%d: %s). Claim it with `coral-agent task claim` to see the details, then run `coral-agent task complete %d` when it's done.", t.ID, title, t.ID)
+}
+
+// notifyTaskCreated types the claim prompt into the agent's terminal.
+func (h *SessionsHandler) notifyTaskCreated(ctx context.Context, name, sessionID string, t *store.AgentTask) (string, string) {
+	agentType := ""
+	if sessionID != "" {
+		if ls, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && ls != nil {
+			agentType = ls.AgentType
+		}
+	}
+	prompt := claimPrompt(t)
+	if err := h.terminal.SendInput(ctx, name, prompt, agentType, sessionID); err != nil {
+		return "", err.Error()
+	}
+	return prompt, ""
 }

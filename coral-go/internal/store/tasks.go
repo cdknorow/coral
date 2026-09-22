@@ -143,24 +143,36 @@ func (s *TaskStore) SetAgentTaskBody(ctx context.Context, taskID int64, body str
 }
 
 // ClaimNextAgentTask marks the agent's next pending task (lowest sort order)
-// in progress and returns it, or nil when none is pending.
+// in progress and returns it, or nil when none is pending. The claim is a
+// conditional update (only while the task is still pending), so concurrent
+// claims never get the same task: a claim that loses the race retries with
+// the next pending task.
 func (s *TaskStore) ClaimNextAgentTask(ctx context.Context, agentName string, sessionID *string) (*AgentTask, error) {
 	filter, filterArgs := sessionFilter(sessionID)
-	var id int64
-	err := s.db.GetContext(ctx, &id,
-		"SELECT id FROM agent_tasks WHERE agent_name = ? AND completed = 0"+filter+" ORDER BY sort_order, id LIMIT 1",
-		append([]interface{}{agentName}, filterArgs...)...)
-	if err == sql.ErrNoRows {
-		return nil, nil
+	for attempt := 0; attempt < 50; attempt++ {
+		var id int64
+		err := s.db.GetContext(ctx, &id,
+			"SELECT id FROM agent_tasks WHERE agent_name = ? AND completed = 0"+filter+" ORDER BY sort_order, id LIMIT 1",
+			append([]interface{}{agentName}, filterArgs...)...)
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		now := nowUTC()
+		res, err := s.db.ExecContext(ctx,
+			"UPDATE agent_tasks SET completed = 2, started_at = ?, updated_at = ? WHERE id = ? AND completed = 0",
+			now, now, id)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n == 1 {
+			return s.GetAgentTask(ctx, id)
+		}
+		// Another claim took it first; try the next pending task
 	}
-	if err != nil {
-		return nil, err
-	}
-	inProgress := 2
-	if err := s.UpdateAgentTask(ctx, id, nil, &inProgress, nil); err != nil {
-		return nil, err
-	}
-	return s.GetAgentTask(ctx, id)
+	return nil, fmt.Errorf("could not claim a task after repeated conflicts")
 }
 
 // FindOpenAgentTask returns the agent's not-yet-completed task with this exact

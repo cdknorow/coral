@@ -2,9 +2,11 @@
 // It accepts the same flags as claude (--session-id, --settings, prompt file)
 // and runs a heartbeat loop that posts to and reads from the message board via
 // the Coral HTTP API. This keeps the tmux session alive and exercises the board.
+// Each line typed into it is echoed as "[mock-agent] input: ..." for tests.
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -84,6 +86,17 @@ func main() {
 		post(baseURL, boardName, sessionName,
 			fmt.Sprintf("Mock agent online (session=%s)", short(sessionID)))
 	}
+
+	// Echo every line typed into the agent (what Coral sends: prompts, task
+	// notifications) with a fixed prefix, so tests can check the pane for the
+	// exact input.
+	go func() {
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 64*1024), 1024*1024)
+		for sc.Scan() {
+			fmt.Printf("[mock-agent] input: %s\n", sc.Text())
+		}
+	}()
 
 	// Heartbeat loop: post & read every 5s
 	sig := make(chan os.Signal, 1)
