@@ -398,6 +398,7 @@ func (h *HistoryHandler) GetSessionTasks(w http.ResponseWriter, r *http.Request)
 // GET /api/sessions/history/{sessionID}
 func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sessionID")
+	agentType := "claude"
 
 	// Use the JSONL reader to load messages. Pass empty working dir
 	// so it searches all project directories for the session file.
@@ -407,11 +408,17 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 		// therefore may need the embedded Coral session marker for lookup.
 		h.jsonl.ClearSession(sid)
 		messages, _ = h.jsonl.ReadNewMessages(sid, "", "codex")
+		if len(messages) > 0 {
+			agentType = "codex"
+		}
 	}
 	if len(messages) == 0 {
 		// Try Gemini as fallback.
 		h.jsonl.ClearSession(sid)
 		messages, _ = h.jsonl.ReadNewMessages(sid, "", "gemini")
+		if len(messages) > 0 {
+			agentType = "gemini"
+		}
 	}
 	if messages == nil {
 		errNotFound(w, "Session '"+sid+"' not found")
@@ -423,6 +430,7 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"session_id": sid,
+		"agent_type": agentType,
 		"messages":   messages,
 	})
 }

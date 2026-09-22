@@ -1132,18 +1132,23 @@ func TestSessionsNotes_Create(t *testing.T) {
 }
 
 func TestSessionsEvents_CreateAndList(t *testing.T) {
-	server, _, terminal, ss := setupSessionsTestServer(t)
+	server, handler, terminal, ss := setupSessionsTestServer(t)
 
 	terminal.addSession("claude-test-events", "/tmp/test")
 	ctx := context.Background()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-test-events", AgentType: "claude", WorkingDir: "/tmp/test", SessionID: "test-evt-123"})
+	handler.pending.set("test-evt-123", pendingTool{ToolUseID: "tool-1", ToolName: "Read", At: time.Now().Add(-1500 * time.Millisecond)})
 
 	// Create event
-	body := bytes.NewBufferString(`{"event_type": "tool_use", "summary": "Read file", "session_id": "test-evt-123"}`)
+	body := bytes.NewBufferString(`{"event_type": "tool_use", "summary": "Read file", "session_id": "test-evt-123", "tool_use_id": "tool-1"}`)
 	resp, err := http.Post(server.URL+"/api/sessions/live/claude-test-events/events", "application/json", body)
 	require.NoError(t, err)
-	resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	var created store.AgentEvent
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
+	resp.Body.Close()
+	require.NotNil(t, created.DurationMs)
+	assert.GreaterOrEqual(t, *created.DurationMs, int64(1400))
 
 	// List events
 	resp, err = http.Get(server.URL + "/api/sessions/live/claude-test-events/events?session_id=test-evt-123")

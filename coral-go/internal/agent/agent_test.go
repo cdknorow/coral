@@ -358,7 +358,7 @@ func TestCodex_BasicLaunch(t *testing.T) {
 	if !strings.HasPrefix(cmd, "codex ") {
 		t.Errorf("expected codex command, got %q", cmd)
 	}
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"} {
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
 		if !strings.Contains(cmd, "hooks."+event) {
 			t.Errorf("expected Codex %s hook config, got %q", event, cmd)
 		}

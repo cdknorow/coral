@@ -3318,6 +3318,11 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "event_type and summary required")
 		return
 	}
+	if body.EventType == "tool_use" && body.DurationMs == nil && body.SessionID != "" {
+		if ms, ok := h.pending.durationMs(body.SessionID, body.ToolUseID, time.Now()); ok {
+			body.DurationMs = &ms
+		}
+	}
 
 	// If session_id is provided, look up the actual agent name from the live
 	// sessions DB. This is more reliable than the URL path name, which comes

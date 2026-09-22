@@ -294,7 +294,7 @@ export async function selectHistorySession(sessionId) {
 
     const data = await loadHistoryMessages(sessionId);
     if (data && data.messages) {
-        renderHistoryChat(data.messages);
+        renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude");
     }
 
     // Load notes, tags, commits, token usage, and history tabs in parallel

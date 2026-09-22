@@ -2302,13 +2302,13 @@ function stripPulseLines(text) {
     return text.replace(/^\|\|PULSE:(STATUS|SUMMARY|CONFIDENCE)\s[^\|]*\|\|$/gm, '').replace(/\n{3,}/g, '\n\n');
 }
 
-export function renderHistoryChat(messages) {
+export function renderHistoryChat(messages, agentType = "claude") {
     const container = document.getElementById("history-messages");
     container.innerHTML = "";
 
     // Same renderer as the live Chat view: replies as prose, tool calls and
     // their output folded into collapsed "N steps" groups.
-    renderTranscript(messages.map(normalizeHistoryEntry).filter(Boolean), container);
+    renderTranscript(messages.map(normalizeHistoryEntry).filter(Boolean), container, agentType);
 
     for (const bubble of container.querySelectorAll(".chat-bubble.human")) {
         bubble.insertAdjacentHTML("beforeend",

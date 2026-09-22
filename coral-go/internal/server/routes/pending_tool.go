@@ -49,6 +49,26 @@ func (p *pendingTools) get(sessionID string, now time.Time) (pendingTool, bool) 
 	return t, ok
 }
 
+// durationMs returns the server-observed duration of a matching tool call.
+// Some agents report duration_ms themselves; Codex currently does not, so its
+// PreToolUse and PostToolUse hook arrival times provide the fallback.
+func (p *pendingTools) durationMs(sessionID, toolUseID string, now time.Time) (int64, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	t, ok := p.m[sessionID]
+	if !ok || t.At.IsZero() || now.Before(t.At) || now.Sub(t.At) > pendingToolTTL {
+		return 0, false
+	}
+	if toolUseID != "" && t.ToolUseID != "" && toolUseID != t.ToolUseID {
+		return 0, false
+	}
+	ms := now.Sub(t.At).Milliseconds()
+	if ms < 1 {
+		ms = 1
+	}
+	return ms, true
+}
+
 // clear drops the pending tool for a session. With a tool_use_id, only that
 // call is cleared (a newer call that started meanwhile stays).
 func (p *pendingTools) clear(sessionID, toolUseID string) {

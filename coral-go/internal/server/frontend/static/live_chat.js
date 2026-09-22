@@ -5,6 +5,7 @@ import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast } from './utils.
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
+import { chatAgentAdapter } from './chat_agents.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -68,8 +69,9 @@ function toolLabel(tool) {
     return tool.input_summary || "";
 }
 
-function renderToolCard(tool) {
+function renderToolCard(tool, adapter) {
     const toolUseId = tool.tool_use_id || "";
+    const view = adapter.toolView(tool);
     let bodyHtml = "";
 
     if (tool.command) {
@@ -91,8 +93,8 @@ function renderToolCard(tool) {
     const label = toolLabel(tool);
     return `<details class="tool-call" data-tool-use-id="${escapeHtml(toolUseId)}">
         <summary class="tool-call-summary">
-            <span class="tool-call-icon">${getToolIcon(tool.name)}</span>
-            <span class="tool-call-name">${escapeHtml(tool.name)}</span>
+            <span class="tool-call-icon">${getToolIcon(view.icon)}</span>
+            <span class="tool-call-name" title="${escapeHtml(tool.name || "")}">${escapeHtml(view.name)}</span>
             <span class="tool-call-label" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
         </summary>
         <div class="tool-call-body">${bodyHtml}</div>
@@ -299,7 +301,8 @@ function stitchPages(lastOlder) {
     }
 }
 
-function renderMessage(msg, container) {
+function renderMessage(msg, container, agentType = "claude") {
+    const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
     } else if (msg.type === "user") {
@@ -307,15 +310,18 @@ function renderMessage(msg, container) {
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
     } else if (msg.type === "assistant") {
         if (msg.text) {
-            appendTurnFinal(container, makeBubble("chat-bubble assistant",
-                `<div class="message-text">${renderMarkdown(msg.text)}</div>`));
+            const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
+                `<div class="message-text">${renderMarkdown(msg.text)}</div>`);
+            if (adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
+            else appendTurnFinal(container, bubble);
         }
         for (const tool of msg.tool_uses || []) {
-            if (tool.name === "AskUserQuestion") {
+            const view = adapter.toolView(tool);
+            if (view.isQuestion) {
                 appendTurnFinal(container, makeBubble("chat-bubble assistant",
-                    `<div class="role-label">${getToolIcon(tool.name)} Question</div>` + renderQuestionCard(tool)));
+                    `<div class="role-label">${getToolIcon(view.icon)} ${escapeHtml(view.questionLabel)}</div>` + renderQuestionCard(tool)));
             } else {
-                appendWork(container, htmlToElement(renderToolCard(tool)));
+                appendWork(container, htmlToElement(renderToolCard(tool, adapter)));
             }
         }
     } else if (msg.type === "tool_result") {
@@ -333,10 +339,11 @@ function renderMessage(msg, container) {
         } else {
             // The matching tool call is on an older, not-yet-loaded page.
             const toolName = msg.tool_name || "Tool";
+            const view = adapter.toolView({ name: toolName });
             appendWork(container, htmlToElement(`<details class="tool-call${msg.is_error ? " tool-call-error" : ""}">
                     <summary class="tool-call-summary">
-                        <span class="tool-call-icon">${getToolIcon(toolName)}</span>
-                        <span class="tool-call-name">${escapeHtml(toolName)}</span>
+                        <span class="tool-call-icon">${getToolIcon(view.icon)}</span>
+                        <span class="tool-call-name" title="${escapeHtml(toolName)}">${escapeHtml(view.name)}</span>
                         <span class="tool-call-label">output</span>
                     </summary>
                     <div class="tool-call-body"><div class="tool-card-output">${outputHtml}</div></div>
@@ -346,8 +353,9 @@ function renderMessage(msg, container) {
 }
 
 /** Render a full transcript into an empty container (history Chat tab). */
-export function renderTranscript(messages, container) {
-    for (const msg of messages) renderMessage(msg, container);
+export function renderTranscript(messages, container, agentType = "claude") {
+    container.dataset.agentType = agentType;
+    for (const msg of messages) renderMessage(msg, container, agentType);
 }
 
 export async function refreshLiveHistory() {
@@ -397,7 +405,7 @@ export async function refreshLiveHistory() {
                 container.innerHTML = "";
                 // Initial load — render all and add "Load More" button if needed
                 for (const msg of data.messages) {
-                    renderMessage(msg, container);
+                    renderMessage(msg, container, session.agent_type);
                 }
                 historyHasMore = data.has_more || false;
                 historyOffset = data.messages.length;
@@ -406,7 +414,7 @@ export async function refreshLiveHistory() {
             } else {
                 // Poll — append new messages at the bottom
                 for (const msg of data.messages) {
-                    renderMessage(msg, container);
+                    renderMessage(msg, container, session.agent_type);
                 }
             }
             for (const msg of data.messages) {
@@ -486,7 +494,7 @@ async function _loadMoreHistory(generation) {
 
             const temp = document.createElement("div");
             for (const msg of data.messages) {
-                renderMessage(msg, temp);
+                renderMessage(msg, temp, session.agent_type);
             }
             const lastOlder = temp.lastElementChild;
             while (temp.firstChild) {

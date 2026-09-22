@@ -711,3 +711,36 @@ func TestTokenUsageSchema_ModelColumnIsMigratedIn(t *testing.T) {
 	got, _ := usageModel(t, db, "new", "2026-09-21T00:00:00Z")
 	assert.Equal(t, "gpt-5.6-sol", got)
 }
+
+func TestTokenUsageStore_GetUsageSummaryByAgent_NameFallback(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+
+	// Unnamed solo agent: poller recorded an empty name.
+	_, err := db.Exec(`INSERT INTO live_sessions (session_id, agent_type, agent_name, working_dir, created_at)
+		VALUES ('unnamed', 'codex', 'coral-go', '/tmp/coral-go', '2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
+	// Renamed after the usage was recorded: the current display name wins.
+	_, err = db.Exec(`INSERT INTO live_sessions (session_id, agent_type, agent_name, working_dir, created_at, display_name)
+		VALUES ('renamed', 'claude', 'coral-go', '/tmp/coral-go', '2026-01-01T00:00:00Z', 'Debugger')`)
+	require.NoError(t, err)
+
+	for _, u := range []*TokenUsage{
+		{SessionID: "unnamed", AgentType: "codex", InputTokens: 10},
+		{SessionID: "renamed", AgentName: "Agent", AgentType: "claude", InputTokens: 10},
+		{SessionID: "orphan", AgentName: "Old Name", AgentType: "claude", InputTokens: 10},
+	} {
+		require.NoError(t, s.RecordUsage(ctx, u))
+	}
+
+	rows, err := s.GetUsageSummaryByAgent(ctx, "")
+	require.NoError(t, err)
+	names := map[string]string{}
+	for _, r := range rows {
+		names[r.SessionID] = r.AgentName
+	}
+	assert.Equal(t, "coral-go", names["unnamed"])
+	assert.Equal(t, "Debugger", names["renamed"])
+	assert.Equal(t, "Old Name", names["orphan"])
+}

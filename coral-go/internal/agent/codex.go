@@ -345,10 +345,11 @@ func appendCodexCoralHooks(parts []string) []string {
 	hookConfig := map[string]string{
 		"hooks.SessionStart":     `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
 		"hooks.UserPromptSubmit": `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
+		"hooks.PreToolUse":       `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
 		"hooks.PostToolUse":      `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
 		"hooks.Stop":             `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
 	}
-	for _, key := range []string{"hooks.SessionStart", "hooks.UserPromptSubmit", "hooks.PostToolUse", "hooks.Stop"} {
+	for _, key := range []string{"hooks.SessionStart", "hooks.UserPromptSubmit", "hooks.PreToolUse", "hooks.PostToolUse", "hooks.Stop"} {
 		parts = append(parts, "-c", key+"="+hookConfig[key])
 	}
 	return parts

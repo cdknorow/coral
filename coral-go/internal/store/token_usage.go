@@ -215,7 +215,12 @@ func (s *TokenUsageStore) GetUsageSummary(ctx context.Context, since string) ([]
 // GetUsageSummaryByAgent returns per-agent (session) usage aggregates since a given time.
 func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since string) ([]AgentUsageSummary, error) {
 	var summaries []AgentUsageSummary
-	query := `SELECT t.session_id, t.agent_name, t.agent_type, t.board_name,
+	// The poller stores only display_name, which is empty for agents that
+	// were never named. Resolve at read time so old rows are labelled too:
+	// current display name, then the recorded name, then the folder name.
+	query := `SELECT t.session_id,
+	          COALESCE(NULLIF(ls.display_name, ''), NULLIF(MAX(t.agent_name), ''), ls.agent_name, '') as agent_name,
+	          t.agent_type, t.board_name,
 	          COALESCE(SUM(t.input_tokens), 0) as input_tokens,
 	          COALESCE(SUM(t.output_tokens), 0) as output_tokens,
 	          COALESCE(SUM(t.cache_read_tokens), 0) as cache_read_tokens,

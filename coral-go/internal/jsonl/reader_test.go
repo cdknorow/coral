@@ -164,6 +164,9 @@ func TestReadNewMessages_CodexEventMessages(t *testing.T) {
 	if msgs[1]["type"] != "assistant" || msgs[1]["text"] != "I found the issue." {
 		t.Fatalf("unexpected assistant message: %#v", msgs[1])
 	}
+	if msgs[1]["phase"] != "commentary" {
+		t.Fatalf("Codex message phase was not preserved: %#v", msgs[1])
+	}
 }
 
 func TestReadAllMessages_CodexRolloutToolCalls(t *testing.T) {
@@ -245,6 +248,71 @@ func TestReadAllMessages_CodexRolloutToolCalls(t *testing.T) {
 	}
 	if tool(9)["input_summary"] != "/repo/game/shot.png" {
 		t.Errorf("view_image summary should be its path: %#v", tool(9)["input_summary"])
+	}
+	if msgs[1]["phase"] != "commentary" || msgs[11]["phase"] != "final_answer" {
+		t.Errorf("Codex phases not preserved: commentary=%v final=%v", msgs[1]["phase"], msgs[11]["phase"])
+	}
+}
+
+func TestCodexFunctionCall_CompositeAndQuestionSummaries(t *testing.T) {
+	composite := codexFunctionCall("functions.exec", "call-1", `{"input":"const r = await tools.exec_command({cmd:\"pwd\"}); text(r.output);"}`)
+	if composite["input_summary"] != "exec_command" {
+		t.Fatalf("composite summary = %v, want nested tool name", composite["input_summary"])
+	}
+
+	question := codexFunctionCall("functions.request_user_input", "call-2", `{"questions":[{"question":"Which?","options":[]}]}`)
+	questions, ok := question["questions"].([]any)
+	if !ok || len(questions) != 1 {
+		t.Fatalf("questions not surfaced: %#v", question)
+	}
+
+	wrapped := codexCustomToolCall("exec", "call-3", `const r = await tools.view_image({path:"shot.png"}); image(r.image_url);`)
+	if wrapped["input_summary"] != "view_image" || wrapped["operation"] != "view_image" {
+		t.Fatalf("wrapped tool not normalized: %#v", wrapped)
+	}
+}
+
+func TestReadNewMessages_CurrentCodexResponseItems(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "019f-current-codex"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "09", "21")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+
+	entries := `{"timestamp":"2026-09-21T10:00:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>hidden</environment_context>"}]}}
+{"timestamp":"2026-09-21T10:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the chat."}]}}
+{"timestamp":"2026-09-21T10:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"I am inspecting it."}]}}
+{"timestamp":"2026-09-21T10:00:03.000Z","type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"call-1","input":"const r = await tools.exec_command({cmd:\"pwd\"}); text(r.output);"}}
+{"timestamp":"2026-09-21T10:00:04.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call-1","output":[{"type":"input_text","text":"Script completed\n"},{"type":"input_text","text":"done"}]}}
+{"timestamp":"2026-09-21T10:00:05.000Z","type":"response_item","payload":{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Fixed."}]}}
+`
+	path := filepath.Join(sessionDir, "rollout-2026-09-21T10-00-00-"+sessionID+".jsonl")
+	if err := os.WriteFile(path, []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs, total := NewSessionReader().ReadNewMessages(sessionID, "", "codex")
+	if total != 5 || len(msgs) != 5 {
+		t.Fatalf("current rollout parsed %d messages: %#v", total, msgs)
+	}
+	if msgs[0]["type"] != "user" || msgs[0]["content"] != "Fix the chat." {
+		t.Fatalf("injected context was not filtered: %#v", msgs[0])
+	}
+	if msgs[1]["phase"] != "commentary" || msgs[4]["phase"] != "final_answer" {
+		t.Fatalf("response_item phases missing: %#v", msgs)
+	}
+	tool := msgs[2]["tool_uses"].([]map[string]any)[0]
+	if tool["name"] != "exec" || tool["operation"] != "exec_command" || tool["input_summary"] != "exec_command" {
+		t.Fatalf("wrapped tool not converted: %#v", tool)
+	}
+	if msgs[3]["content"] != "Script completed\ndone" {
+		t.Fatalf("array tool output not converted: %#v", msgs[3])
+	}
+	if msgs[3]["tool_name"] != "exec_command" {
+		t.Fatalf("wrapped result did not retain its operation: %#v", msgs[3])
 	}
 }
 
@@ -331,6 +399,38 @@ func TestReadNewMessages_SkipsMetaUserText(t *testing.T) {
 	}
 	if got := reader.FirstUserPrompt(sessionID, "", "claude"); got != "Take a screenshot" {
 		t.Fatalf("FirstUserPrompt() = %q, want the typed prompt, not skill text", got)
+	}
+}
+
+func TestParseClaudeEntry_QueuedCommand(t *testing.T) {
+	// A message sent mid-turn is logged as a queued_command attachment.
+	human := map[string]any{
+		"type":      "attachment",
+		"timestamp": "2026-09-22T04:46:34.764Z",
+		"attachment": map[string]any{
+			"type":        "queued_command",
+			"prompt":      "hmm, maybe thats not true",
+			"commandMode": "prompt",
+			"origin":      map[string]any{"kind": "human"},
+		},
+	}
+	msgs := parseClaudeEntry(human, map[string]string{})
+	if len(msgs) != 1 || msgs[0]["type"] != "user" || msgs[0]["content"] != "hmm, maybe thats not true" {
+		t.Fatalf("queued human prompt = %v, want one user message", msgs)
+	}
+	if msgs[0]["timestamp"] != "2026-09-22T04:46:34.764Z" {
+		t.Fatalf("timestamp = %v", msgs[0]["timestamp"])
+	}
+
+	// Commands the system queued, and other attachments, stay hidden.
+	for _, att := range []map[string]any{
+		{"type": "queued_command", "prompt": "<task-notification>done</task-notification>", "commandMode": "task-notification", "origin": map[string]any{"kind": "task-notification"}},
+		{"type": "queued_command", "prompt": "x", "origin": map[string]any{"kind": "coordinator"}},
+		{"type": "skill_listing", "content": "skills"},
+	} {
+		if got := parseClaudeEntry(map[string]any{"type": "attachment", "attachment": att}, map[string]string{}); got != nil {
+			t.Fatalf("attachment %v parsed as %v, want nothing", att, got)
+		}
 	}
 }
 

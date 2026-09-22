@@ -5,12 +5,14 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
@@ -99,7 +101,18 @@ func (r *SessionReader) ReadNewMessages(sessionID, workingDirectory, agentType s
 			continue
 		}
 		parsed := parseTranscriptEntry(entry, c.toolUseNames, agentType)
-		newMessages = append(newMessages, parsed...)
+		for _, message := range parsed {
+			var previous map[string]any
+			if len(newMessages) > 0 {
+				previous = newMessages[len(newMessages)-1]
+			} else if len(c.messages) > 0 {
+				previous = c.messages[len(c.messages)-1]
+			}
+			if agentType == at.Codex && mergeDuplicateCodexMessage(previous, message) {
+				continue
+			}
+			newMessages = append(newMessages, message)
+		}
 	}
 
 	c.messages = append(c.messages, newMessages...)
@@ -251,7 +264,16 @@ func ReadFrom(path, agentType string, offset int64) ([]map[string]any, int64, er
 		if err := json.Unmarshal(line, &entry); err != nil {
 			continue
 		}
-		messages = append(messages, parseTranscriptEntry(entry, toolUseNames, agentType)...)
+		for _, message := range parseTranscriptEntry(entry, toolUseNames, agentType) {
+			var previous map[string]any
+			if len(messages) > 0 {
+				previous = messages[len(messages)-1]
+			}
+			if agentType == at.Codex && mergeDuplicateCodexMessage(previous, message) {
+				continue
+			}
+			messages = append(messages, message)
+		}
 	}
 	return messages, offset + int64(end) + 1, nil
 }
@@ -424,8 +446,38 @@ func parseClaudeEntry(entry map[string]any, toolUseNames map[string]string) []ma
 		return parseClaudeUserEntry(entry, timestamp, toolUseNames)
 	case "assistant":
 		return parseClaudeAssistantEntry(entry, timestamp, toolUseNames)
+	case "attachment":
+		return parseClaudeAttachmentEntry(entry, timestamp)
 	}
 	return nil
+}
+
+// parseClaudeAttachmentEntry reads a message the user sent while the agent was
+// mid-turn. Claude Code logs it as a queued_command attachment rather than a
+// user entry, so without this it never appears in the chat.
+func parseClaudeAttachmentEntry(entry map[string]any, timestamp string) []map[string]any {
+	att, _ := entry["attachment"].(map[string]any)
+	if att == nil {
+		return nil
+	}
+	if kind, _ := att["type"].(string); kind != "queued_command" {
+		return nil
+	}
+	// Only what a person typed: skip commands queued by the system (task
+	// notifications and the like).
+	if origin, ok := att["origin"].(map[string]any); ok {
+		if k, _ := origin["kind"].(string); k != "human" {
+			return nil
+		}
+	}
+	if mode, ok := att["commandMode"].(string); ok && mode != "prompt" {
+		return nil
+	}
+	prompt, _ := att["prompt"].(string)
+	if strings.TrimSpace(prompt) == "" || isSystemInjected(prompt) {
+		return nil
+	}
+	return []map[string]any{{"type": "user", "timestamp": timestamp, "content": prompt}}
 }
 
 func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames map[string]string) []map[string]any {
@@ -506,6 +558,7 @@ func parseClaudeUserEntry(entry map[string]any, timestamp string, toolUseNames m
 // be hidden from the chat view.
 func isSystemInjected(content string) bool {
 	systemTags := []string{
+		"<environment_context>",
 		"<system-reminder>",
 		"<task-notification>",
 		"<user-prompt-submit-hook>",
@@ -791,14 +844,35 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 		case "user_message":
 			return parseCodexUserEntry(message, timestamp, toolUseNames)
 		case "agent_message":
-			return parseCodexAssistantEntry(message, timestamp, toolUseNames)
+			messages := parseCodexAssistantEntry(message, timestamp, toolUseNames)
+			phase, _ := payload["phase"].(string)
+			if phase != "" {
+				for _, msg := range messages {
+					msg["phase"] = phase
+				}
+			}
+			return messages
 		}
 	case "response_item":
-		// Messages are also emitted as event_msg entries; only tool traffic is
-		// taken from response_item to avoid duplicating them.
 		name, _ := payload["name"].(string)
 		callID, _ := payload["call_id"].(string)
 		switch payloadType {
+		case "message":
+			role, _ := payload["role"].(string)
+			var messages []map[string]any
+			switch role {
+			case "user":
+				messages = parseCodexUserEntry(payload["content"], timestamp, toolUseNames)
+			case "assistant":
+				messages = parseCodexAssistantEntry(payload["content"], timestamp, toolUseNames)
+			}
+			phase, _ := payload["phase"].(string)
+			if phase != "" {
+				for _, msg := range messages {
+					msg["phase"] = phase
+				}
+			}
+			return messages
 		case "function_call", "custom_tool_call":
 			var tool map[string]any
 			if payloadType == "function_call" {
@@ -809,7 +883,11 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 				tool = codexCustomToolCall(name, callID, input)
 			}
 			if callID != "" {
-				toolUseNames[callID] = name
+				toolName := name
+				if operation, _ := tool["operation"].(string); operation != "" {
+					toolName = operation
+				}
+				toolUseNames[callID] = toolName
 			}
 			return []map[string]any{{
 				"type":      "assistant",
@@ -834,6 +912,45 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 	}
 
 	return nil
+}
+
+// Codex has used both event_msg and response_item records for the same visible
+// message. Some versions emit both a few milliseconds apart, while newer
+// versions emit only response_item. Merge only adjacent, equal messages in a
+// tight time window so both formats work without hiding intentional repeats.
+func mergeDuplicateCodexMessage(previous, current map[string]any) bool {
+	if previous == nil || current == nil || previous["type"] != current["type"] {
+		return false
+	}
+	kind, _ := current["type"].(string)
+	var previousText, currentText string
+	switch kind {
+	case "user":
+		previousText, _ = previous["content"].(string)
+		currentText, _ = current["content"].(string)
+	case "assistant":
+		previousText, _ = previous["text"].(string)
+		currentText, _ = current["text"].(string)
+	default:
+		return false
+	}
+	if previousText == "" || previousText != currentText {
+		return false
+	}
+	previousAt, previousErr := time.Parse(time.RFC3339Nano, stringValue(previous["timestamp"]))
+	currentAt, currentErr := time.Parse(time.RFC3339Nano, stringValue(current["timestamp"]))
+	if previousErr != nil || currentErr != nil || currentAt.Sub(previousAt).Abs() > time.Second {
+		return false
+	}
+	if previous["phase"] == nil && current["phase"] != nil {
+		previous["phase"] = current["phase"]
+	}
+	return true
+}
+
+func stringValue(value any) string {
+	text, _ := value.(string)
+	return text
 }
 
 func codexFunctionCall(name, callID, args string) map[string]any {
@@ -866,6 +983,20 @@ func codexFunctionCall(name, callID, args string) map[string]any {
 		tool["command"] = cmd
 		tool["input_summary"] = truncate(cmd, 200)
 	}
+	if strings.HasSuffix(name, "request_user_input") {
+		if questions, ok := argMap["questions"]; ok {
+			tool["questions"] = questions
+		}
+	}
+	// Codex's composite functions.exec tool carries JavaScript in "input".
+	// Keep the raw source out of the collapsed row and summarize the nested
+	// operation instead; the full arguments are still available in the rollout.
+	if input, _ := argMap["input"].(string); input != "" {
+		tool["input_summary"] = summarizeCodexCompositeInput(input)
+		if operations := codexNestedOperations(input); len(operations) == 1 {
+			tool["operation"] = operations[0]
+		}
+	}
 	for _, key := range []string{"file_path", "path"} {
 		if fp, _ := argMap[key].(string); fp != "" {
 			tool["input_summary"] = fp
@@ -876,12 +1007,19 @@ func codexFunctionCall(name, callID, args string) map[string]any {
 }
 
 var codexPatchFileRE = regexp.MustCompile(`(?m)^\*\*\* (?:Add|Update|Delete) File: (.+)$`)
+var codexNestedToolRE = regexp.MustCompile(`tools\.([A-Za-z0-9_]+)`)
 
 func codexCustomToolCall(name, callID, input string) map[string]any {
 	tool := map[string]any{
 		"name":          name,
 		"tool_use_id":   callID,
 		"input_summary": truncate(name+": "+input, 200),
+	}
+	if name == "exec" {
+		tool["input_summary"] = summarizeCodexCompositeInput(input)
+		if operations := codexNestedOperations(input); len(operations) == 1 {
+			tool["operation"] = operations[0]
+		}
 	}
 	if name == "apply_patch" {
 		var files []string
@@ -896,8 +1034,48 @@ func codexCustomToolCall(name, callID, input string) map[string]any {
 	return tool
 }
 
-// codexToolOutput accepts a plain string or a JSON-encoded {"output": ...} wrapper.
+func summarizeCodexCompositeInput(input string) string {
+	operations := codexNestedOperations(input)
+	if len(operations) == 1 {
+		return strings.ReplaceAll(operations[0], "__", " ")
+	}
+	if len(operations) > 1 {
+		return fmt.Sprintf("%d tool calls", len(operations))
+	}
+	return "tool call"
+}
+
+func codexNestedOperations(input string) []string {
+	matches := codexNestedToolRE.FindAllStringSubmatch(input, -1)
+	operations := make([]string, 0, len(matches))
+	for _, match := range matches {
+		operations = append(operations, match[1])
+	}
+	return operations
+}
+
+// codexToolOutput accepts current content-block arrays, plain strings, and the
+// JSON-encoded {"output": ...} wrapper used by older shell calls.
 func codexToolOutput(raw any) string {
+	if blocks, ok := raw.([]any); ok {
+		var parts []string
+		for _, block := range blocks {
+			item, ok := block.(map[string]any)
+			if !ok {
+				continue
+			}
+			kind, _ := item["type"].(string)
+			switch kind {
+			case "text", "input_text", "output_text":
+				if value, _ := item["text"].(string); value != "" {
+					parts = append(parts, value)
+				}
+			case "image", "input_image", "output_image":
+				parts = append(parts, "[image]")
+			}
+		}
+		return strings.Join(parts, "")
+	}
 	out, _ := raw.(string)
 	if strings.HasPrefix(strings.TrimSpace(out), "{") {
 		var wrapped map[string]any
