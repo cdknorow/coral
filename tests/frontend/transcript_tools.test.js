@@ -247,6 +247,15 @@ async function run() {
   await sleep(2600);
   cd = await card();
   check('short options without descriptions are chips', cd.layout === 'chips' && cd.options.length === 2, JSON.stringify(cd));
+  // A long question/label the screen cut short (wrapping): the card shows the hook's full text,
+  // while the answer still carries the on-screen label the server checks.
+  await ev(`window.__pendingTool = { tool_use_id: 'q3', tool_name: 'AskUserQuestion', input: { questions: [{ question: "There's only one player right now (the dev user, no real auth). Who is on the other side of a battle in the first version?", options: [{ label: 'Local hotseat on one shared screen for now', description: 'Two people take turns' }, { label: 'AI opponent' }] }] } };
+    window.__promptScreen = { question: 'the other side of a battle in the first version?', options: [{ n: 1, label: 'Local hotseat on one shared', selected: true, action: 'select' }, { n: 2, label: 'AI opponent', action: 'select' }] }; true`);
+  await sleep(2600);
+  cd = await card();
+  const firstBtn = await ev(`(() => { const b = ${C}.querySelector('.cni-options .cni-answer[data-n="1"]'); return b ? { shown: b.querySelector('.cni-answer-label').textContent, sent: b.dataset.label } : null; })()`);
+  check('a question or label the screen cut short shows in full from the hook', cd.question.startsWith("There's only one player right now") && firstBtn && firstBtn.shown === 'Local hotseat on one shared screen for now' && firstBtn.sent === 'Local hotseat on one shared', JSON.stringify({ q: cd.question, btn: firstBtn }));
+
   // The review step: each question with its answer, Submit primary
   await ev(`window.__promptScreen = { question: 'Ready to submit your answers?', options: [{ n: 1, label: 'Submit answers', selected: true, action: 'select' }, { n: 2, label: 'Cancel', action: 'select' }], review: [{ question: 'Which layout?', answer: 'Roomy' }, { question: 'Which theme?', answer: 'Dark' }] }; true`);
   await sleep(2600);

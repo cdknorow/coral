@@ -70,6 +70,20 @@ Ready to submit your answers?
   2. Cancel
 `
 
+// A long question wraps onto several lines (same indent) under the tab row.
+const screenWrappedQuestion = `←  ☐ Opponent  ☐ Stakes  ✔ Submit  →
+There's only one player right now (the dev user, no real auth). Who is on
+the other side of a battle in the first version?
+❯ 1. Local hotseat
+     Two people take turns on one screen
+  2. AI opponent
+     An LLM plays the other side
+  3. Type something.
+────────────────────────────────────────────────────────────────────
+  4. Chat about this
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel
+`
+
 const screenPlan = ` Here is Claude's plan:
 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
  Plan: create hello.txt
@@ -141,6 +155,11 @@ func TestParsePromptScreen(t *testing.T) {
 		{"Does the card now show this question text instead of 'Claude needs your permission'?", "Yes, question shown"},
 		{"What should come next for the chat view?", "More polish first"},
 	}, s.Review, "the focused (barred) item and a wrapped question are both read")
+
+	s, ok = parsePromptScreen(screenWrappedQuestion)
+	require.True(t, ok)
+	assert.Equal(t, "There's only one player right now (the dev user, no real auth). Who is on the other side of a battle in the first version?", s.Question, "a wrapped question is read in full")
+	assert.Equal(t, []string{"Local hotseat", "AI opponent", "Type something.", "Chat about this"}, labels(s.Options))
 
 	s, ok = parsePromptScreen(screenPlan)
 	require.True(t, ok, "the plan's own numbered steps must not be mistaken for the options")

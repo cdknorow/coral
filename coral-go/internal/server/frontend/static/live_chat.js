@@ -872,15 +872,18 @@ const KICKERS = {
     startup: "Waiting in the terminal",
 };
 
-function optionButtonHtml(o, desc) {
+// data-label is the on-screen label (what the server checks before
+// answering); the button shows the hook's full label when the screen's was
+// cut off by wrapping.
+function optionButtonHtml(o, desc, fullLabel) {
     return `<button type="button" class="cni-answer${o.selected ? " is-default" : ""}" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="select">`
         + `<kbd class="cni-key">${o.n}</kbd>`
-        + `<span class="cni-answer-text"><span class="cni-answer-label">${escapeHtml(o.label)}</span>`
+        + `<span class="cni-answer-text"><span class="cni-answer-label">${escapeHtml(fullLabel || o.label)}</span>`
         + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
         + `</span></button>`;
 }
 
-function answerControlsHtml(info, descriptions = {}) {
+function answerControlsHtml(info, descriptions = {}, fullLabels = {}) {
     const opts = (info.screen && info.screen.options) || [];
     if (!opts.length) return { body: "", foot: "" };
     const review = ((info.screen && info.screen.review) || []).length > 0;
@@ -893,9 +896,9 @@ function answerControlsHtml(info, descriptions = {}) {
         // Submit answers / Cancel: footer actions, Submit primary
         foot += selects.map((o, i) => `<button type="button" class="cni-answer btn btn-sm ${i === 0 ? "btn-primary" : ""}" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="select">${escapeHtml(o.label)}</button>`).join("");
     } else if (selects.length) {
-        const withDesc = selects.some(o => descriptions[o.label]);
+        const withDesc = selects.some(o => descriptions[fullLabels[o.label] || o.label] || descriptions[o.label]);
         body += `<div class="cni-options ${withDesc ? "cni-options-cards" : "cni-options-chips"}">`
-            + selects.map(o => optionButtonHtml(o, descriptions[o.label])).join("") + `</div>`;
+            + selects.map(o => optionButtonHtml(o, descriptions[fullLabels[o.label] || o.label] || descriptions[o.label], fullLabels[o.label])).join("") + `</div>`;
     }
     for (const o of texts) {
         const placeholder = /^type something/i.test(o.label) ? "Or type your own answer…" : `${o.label.replace(/\.$/, "")}…`;
@@ -926,10 +929,21 @@ function needsInputHtml(info) {
     let context = "";
     let descriptions = {};
 
+    let fullLabels = {};
     if (info.kind === "question") {
         const qs = Array.isArray(inp.questions) ? inp.questions : [];
         for (const q of qs) for (const o of Array.isArray(q.options) ? q.options : []) if (o.description) descriptions[o.label] = o.description;
-        question = screenQuestion || (qs[0] && qs[0].question) || "";
+        // The screen can cut a long question or label short (wrapping); use
+        // the hook's full text for whichever one matches what is on screen.
+        const norm = (t) => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
+        const onScreenQ = norm(screenQuestion);
+        const match = onScreenQ ? qs.find(q => { const h = norm(q.question); return h && (h === onScreenQ || h.endsWith(onScreenQ) || onScreenQ.endsWith(h) || h.includes(onScreenQ)); }) : null;
+        question = (match && match.question) || screenQuestion || (qs[0] && qs[0].question) || "";
+        const hookLabels = (match ? match.options : qs.flatMap(q => q.options || [])) || [];
+        for (const o of (screen.options || [])) {
+            const full = hookLabels.find(h => { const a = norm(h.label), b = norm(o.label); return a && b && a !== b && a.startsWith(b); });
+            if (full) fullLabels[o.label] = full.label;
+        }
         if (!onScreen && qs.length) {
             // No live options (yet): list the questions from the hook
             context = qs.map(q => `<div class="cni-static-q">${escapeHtml(q.question || "")}`
@@ -950,7 +964,7 @@ function needsInputHtml(info) {
         context = `<div class="cni-context-text">For example, trusting this folder or logging in. Answer it in the terminal.</div>`;
     }
 
-    const controls = answerControlsHtml(info, descriptions);
+    const controls = answerControlsHtml(info, descriptions, fullLabels);
     const hint = !onScreen && info.kind !== "startup" ? `<span class="cni-hint">Answer in the terminal</span>` : "";
     return `<div class="cni-head"><span class="cni-dot" aria-hidden="true"></span><span class="cni-kicker">${kicker}</span></div>`
         + (question ? `<div class="cni-question">${escapeHtml(question)}</div>` : "")

@@ -109,6 +109,21 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 		}
 		question = strings.TrimSpace(line)
 		questionAt = i
+		// A long question wraps onto lines above with the same indent; join
+		// them. Header/tab rows, review items, blanks and rules end it, and a
+		// different indent (a permission prompt's command above "Do you want
+		// to proceed?") is not part of it.
+		indent := indentOf(line)
+		for j := i - 1; j >= 0 && j >= i-8; j-- {
+			prev := lines[j]
+			t := strings.TrimSpace(prev)
+			if t == "" || separatorRe.MatchString(prev) || indentOf(prev) != indent || promptOptionRe.MatchString(prev) ||
+				strings.ContainsAny(t[:min(len(t), 4)], "☐☒←●→│✔❯⎿⏺") || t == "Review your answers" {
+				break
+			}
+			question = t + " " + question
+			questionAt = j
+		}
 		break
 	}
 	if len(opts) < 2 {
