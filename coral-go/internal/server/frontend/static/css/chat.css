@@ -1145,26 +1145,27 @@
     background: var(--bg-primary);
     overflow: hidden;
 }
+/* Stacked (question, then answer) so a long typed answer or question never
+   squeezes the other into a narrow column */
 .cni-review-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 16px;
-    align-items: baseline;
-    padding: 8px 12px;
+    padding: 9px 12px;
 }
 .cni-review-row + .cni-review-row {
     border-top: 1px solid var(--border);
 }
 .cni-review dt {
     color: var(--text-secondary);
-    font-size: 13px;
-    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.4;
+    margin: 0 0 3px;
+    overflow-wrap: anywhere;
 }
 .cni-review dd {
     margin: 0;
     font-weight: 600;
     font-size: 14px;
-    text-align: right;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
 }
 
 /* Footer: Open terminal (quiet) on the left, primary actions on the right */
