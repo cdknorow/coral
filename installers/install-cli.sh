@@ -43,7 +43,7 @@ if [ -z "$APP_BIN" ]; then
     exit 1
 fi
 
-TOOLS=(coral coral-board launch-coral coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync)
+TOOLS=(coral coral-board coral-agent launch-coral coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync)
 
 if ! mkdir -p "$LINK_DIR" 2>/dev/null; then
     echo "Error: cannot create $LINK_DIR"

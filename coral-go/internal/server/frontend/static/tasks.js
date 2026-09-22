@@ -871,11 +871,10 @@ export async function submitCreateTask() {
     }
 }
 
-// A task for an agent without a board: it goes on the agent's task list in
-// Coral and, unless unchecked, is sent to the agent as a message asking it to
-// track the task under the same title. The agent's own task entry then syncs
-// onto this row by title (the server reuses the open task), so its progress
-// shows here.
+// A task for an agent without a board goes on the agent's task list in Coral
+// (title and details). Unless unchecked, the agent gets a short prompt to
+// claim it with `coral-agent task claim`, which marks it in progress and
+// shows the details; `coral-agent task complete <id>` marks it done.
 async function _createSoloAgentTask(title, body, errEl) {
     const session = state.currentSession;
     const send = document.getElementById('create-task-send')?.checked ?? true;
@@ -883,15 +882,14 @@ async function _createSoloAgentTask(title, body, errEl) {
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, session_id: session.session_id }),
+            body: JSON.stringify({ title, body, session_id: session.session_id }),
         });
-        if (!resp.ok) {
-            const data = await resp.json().catch(() => ({}));
-            throw new Error(data.error || `HTTP ${resp.status}`);
-        }
+        const task = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(task.error || `HTTP ${resp.status}`);
         if (send) {
-            const message = `New task: ${title}` + (body ? `\n\n${body}` : '')
-                + `\n\nAdd it to your task list with exactly this title, "${title}", so its progress shows in Coral, then work on it.`;
+            const ref = task.id ? `#${task.id}: ${title}` : title;
+            const message = `You have a new task in Coral (${ref}). Claim it with \`coral-agent task claim\` to see the details, `
+                + `then run \`coral-agent task complete${task.id ? ' ' + task.id : ' <id>'}\` when it's done.`;
             const sendResp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/send`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -903,7 +901,7 @@ async function _createSoloAgentTask(title, body, errEl) {
         }
         hideCreateTaskModal();
         await loadAgentTasks(session.name, session.session_id);
-        showToast(send ? 'Task added and sent to the agent' : 'Task added');
+        showToast(send ? 'Task added; the agent was told to claim it' : 'Task added');
     } catch (e) {
         if (errEl) {
             errEl.textContent = e.message || 'Failed to create task';

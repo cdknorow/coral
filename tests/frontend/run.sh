@@ -155,5 +155,6 @@ node agent_list_compact.test.js
 node agent_state.test.js
 node agent_popout.test.js
 node subagent_tasks.test.js
+node agent_task_cli.test.js
 node transcript_tools.test.js
 node transcript_codex.test.js

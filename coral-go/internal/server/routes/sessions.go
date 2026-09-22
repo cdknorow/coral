@@ -3160,6 +3160,7 @@ func (h *SessionsHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title     string `json:"title"`
+		Body      string `json:"body"`
 		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" {
@@ -3188,6 +3189,11 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	if body.Body != "" {
+		if err := h.ts.SetAgentTaskBody(r.Context(), task.ID, body.Body); err == nil {
+			task.Body = &body.Body
+		}
 	}
 	writeJSON(w, http.StatusOK, task)
 }

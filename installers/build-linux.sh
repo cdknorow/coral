@@ -46,6 +46,9 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "
 echo "==> Compiling coral-board"
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-board" ./cmd/coral-board/
 
+echo "==> Compiling coral-agent"
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-agent" ./cmd/coral-agent/
+
 echo "==> Creating tarball"
 cd "$DIST_DIR"
 TARBALL="coral-linux-amd64-${VERSION}.tar.gz"

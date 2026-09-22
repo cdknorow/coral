@@ -385,6 +385,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.UpdateTask)
 	r.Delete("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.DeleteTask)
 	r.Post("/api/sessions/live/{name}/tasks/reorder", sessHandler.ReorderTasks)
+	// The agent's own view of its tasks (coral-board task claim outside a board)
+	r.Get("/api/agent-tasks", sessHandler.ListSessionAgentTasks)
+	r.Post("/api/agent-tasks/claim", sessHandler.ClaimSessionAgentTask)
+	r.Post("/api/agent-tasks/{taskID}/complete", sessHandler.CompleteSessionAgentTask)
 	r.Get("/api/sessions/live/{name}/subagents", sessHandler.ListSubagents)
 	r.Get("/api/sessions/live/{name}/subagents/{subagentID}", sessHandler.GetSubagent)
 

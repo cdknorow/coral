@@ -67,7 +67,7 @@ chmod +x "$APP_DIR/Contents/MacOS/coral"
 
 # Build all pure-Go companion binaries as universal
 echo "==> Compiling companion CLI binaries (universal)"
-for cmd in launch-coral coral-board coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
+for cmd in launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
     if [ -d "./cmd/$cmd" ]; then
         echo "    Building $cmd..."
         GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="$LDFLAGS" -o "$DIST_DIR/${cmd}-arm64" ./cmd/$cmd/

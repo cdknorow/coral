@@ -18,6 +18,7 @@ type AgentTask struct {
 	AgentName        string  `db:"agent_name" json:"agent_name"`
 	SessionID        *string `db:"session_id" json:"session_id,omitempty"`
 	Title            string  `db:"title" json:"title"`
+	Body             *string `db:"body" json:"body,omitempty"`
 	Completed        int     `db:"completed" json:"completed"`
 	SortOrder        int     `db:"sort_order" json:"sort_order"`
 	CreatedAt        string  `db:"created_at" json:"created_at"`
@@ -83,7 +84,7 @@ func (s *TaskStore) ListAgentTasks(ctx context.Context, agentName string, sessio
 	args := append([]interface{}{agentName}, filterArgs...)
 	var tasks []AgentTask
 	err := s.db.SelectContext(ctx, &tasks,
-		`SELECT id, agent_name, session_id, title, completed, sort_order, created_at, updated_at,
+		`SELECT id, agent_name, session_id, title, body, completed, sort_order, created_at, updated_at,
 		        started_at, completed_at, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, display_name
 		 FROM agent_tasks WHERE agent_name = ?`+filter+` ORDER BY sort_order`,
 		args...)
@@ -120,6 +121,46 @@ func (s *TaskStore) CreateAgentTask(ctx context.Context, agentName, title string
 		Completed: 0, SortOrder: nextOrder, DisplayName: displayName,
 		CreatedAt: now, UpdatedAt: now,
 	}, nil
+}
+
+// GetAgentTask returns one agent task by ID, or nil.
+func (s *TaskStore) GetAgentTask(ctx context.Context, taskID int64) (*AgentTask, error) {
+	var t AgentTask
+	err := s.db.GetContext(ctx, &t, "SELECT * FROM agent_tasks WHERE id = ?", taskID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// SetAgentTaskBody stores a task's details.
+func (s *TaskStore) SetAgentTaskBody(ctx context.Context, taskID int64, body string) error {
+	_, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET body = ?, updated_at = ? WHERE id = ?", body, nowUTC(), taskID)
+	return err
+}
+
+// ClaimNextAgentTask marks the agent's next pending task (lowest sort order)
+// in progress and returns it, or nil when none is pending.
+func (s *TaskStore) ClaimNextAgentTask(ctx context.Context, agentName string, sessionID *string) (*AgentTask, error) {
+	filter, filterArgs := sessionFilter(sessionID)
+	var id int64
+	err := s.db.GetContext(ctx, &id,
+		"SELECT id FROM agent_tasks WHERE agent_name = ? AND completed = 0"+filter+" ORDER BY sort_order, id LIMIT 1",
+		append([]interface{}{agentName}, filterArgs...)...)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	inProgress := 2
+	if err := s.UpdateAgentTask(ctx, id, nil, &inProgress, nil); err != nil {
+		return nil, err
+	}
+	return s.GetAgentTask(ctx, id)
 }
 
 // FindOpenAgentTask returns the agent's not-yet-completed task with this exact

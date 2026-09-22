@@ -323,8 +323,8 @@ async function run() {
   const made = await ev(`({ posts: window.__posts, modalOpen: document.getElementById('create-task-modal').style.display !== 'none', pending: Array.from(${C}.querySelectorAll('.chat-bubble.pending .message-text')).map(e => e.textContent.trim()).pop() || '' })`);
   const taskPost = (made.posts || []).find(p => /\/tasks$/.test(p[1]));
   const sendPost = (made.posts || []).find(p => /\/send$/.test(p[1]));
-  check('submitting creates the agent task and sends it to the agent', !!taskPost && taskPost[2].title === 'Add a battle log' && taskPost[2].session_id === SID && !!sendPost && /^New task: Add a battle log/.test(sendPost[2].command) && /Log each round\./.test(sendPost[2].command) && /"Add a battle log"/.test(sendPost[2].command) && !made.modalOpen, JSON.stringify({ taskPost, sendPost, modalOpen: made.modalOpen }));
-  check('the sent task shows in the chat as a pending message', /^New task: Add a battle log/.test(made.pending), made.pending);
+  check('submitting stores the task (with its details) and tells the agent to claim it', !!taskPost && taskPost[2].title === 'Add a battle log' && taskPost[2].body === 'Log each round.' && taskPost[2].session_id === SID && !!sendPost && /^You have a new task in Coral \(Add a battle log\)/.test(sendPost[2].command) && /coral-agent task claim/.test(sendPost[2].command) && /coral-agent task complete/.test(sendPost[2].command) && !made.modalOpen, JSON.stringify({ taskPost, sendPost, modalOpen: made.modalOpen }));
+  check('the claim prompt shows in the chat as a pending message', /^You have a new task in Coral/.test(made.pending), made.pending);
   await ev(`import('/static/agentic_state.js').then(a => { a.switchAgenticTab('files', 'top'); return true; })`);
 
   // History Chat tab renders the same transcript through the same renderer:

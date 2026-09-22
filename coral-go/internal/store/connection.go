@@ -132,6 +132,9 @@ var columnMigrations = []struct {
 	{"agent_tasks", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"agent_tasks", "cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"agent_tasks", "display_name", "TEXT"},
+	// The task's details, for tasks the operator gives an agent (shown when
+	// the agent claims it).
+	{"agent_tasks", "body", "TEXT"},
 	// Databases created before `finished` was part of the subagents table.
 	{"subagents", "finished", "INTEGER NOT NULL DEFAULT 0"},
 	{"subagents", "transcript_path", "TEXT"},

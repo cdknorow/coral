@@ -24,8 +24,8 @@ cask "coral" do
     Launch Coral from your Applications folder or Spotlight.
     The dashboard runs at http://localhost:8420.
 
-    The `coral` and `coral-board` command-line tools are not on your PATH by
-    default. To add them:
+    The `coral`, `coral-board` and `coral-agent` command-line tools are not on
+    your PATH by default. To add them:
       #{appdir}/Coral.app/Contents/MacOS/install-cli.sh
   EOS
 end

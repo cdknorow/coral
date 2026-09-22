@@ -39,7 +39,7 @@ jobs:
             BUILD_TAGS="-tags dev"
           fi
           mkdir -p ../dist/linux
-          for cmd in coral launch-coral coral-board coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
             [ -d "./cmd/$cmd" ] || continue
             CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
               $BUILD_TAGS \
@@ -99,7 +99,7 @@ jobs:
 
           # Pure Go binaries (no CGO)
           $env:CGO_ENABLED = "0"
-          foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-task-sync")) {
+          foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-task-sync")) {
             if (Test-Path "./cmd/$cmd") {
               go build $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
             }
@@ -128,7 +128,7 @@ jobs:
           WINDOWS_CERTIFICATE_PWD: ${{ secrets.WINDOWS_CERTIFICATE_PWD }}
         run: |
           $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
-          foreach ($exe in @("coral.exe", "launch-coral.exe", "coral-board.exe", "coral-tray.exe", "coral-app.exe")) {
+          foreach ($exe in @("coral.exe", "launch-coral.exe", "coral-board.exe", "coral-agent.exe", "coral-tray.exe", "coral-app.exe")) {
             $exePath = "dist\windows\bin\$exe"
             if (Test-Path $exePath) {
               & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
@@ -210,7 +210,7 @@ jobs:
           fi
           mkdir -p ../dist/macos
           # Pure Go binaries (no CGO needed)
-          for cmd in coral launch-coral coral-board coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
             CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-arm64" "./cmd/$cmd/"
             CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-amd64" "./cmd/$cmd/"
             lipo -create -output "../dist/macos/$cmd" "../dist/macos/${cmd}-arm64" "../dist/macos/${cmd}-amd64"
