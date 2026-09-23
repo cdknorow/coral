@@ -1227,3 +1227,11 @@
 #command-pane.chat-mode .btn-esc .esc-label-chat {
     display: inline;
 }
+
+/* Chat mode: the composer card narrows to the transcript's reading column */
+@media (min-width: 768px) {
+    #command-pane.chat-mode {
+        width: calc(100% - 56px);
+        max-width: 780px;
+    }
+}

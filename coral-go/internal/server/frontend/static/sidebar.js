@@ -117,52 +117,6 @@ export function initTaskBarResize() {
     });
 }
 
-/* Command pane drag-to-resize functionality */
-
-export function initCommandPaneResize() {
-    const handle = document.getElementById("command-pane-resize-handle");
-    const pane = document.getElementById("command-pane");
-    const column = document.querySelector(".live-left-column");
-
-    // Restore saved height from localStorage
-    const saved = localStorage.getItem(layoutKey('coral-cmdpane-height'));
-    if (saved) {
-        const h = parseInt(saved, 10);
-        if (h >= 80 && h <= 600) pane.style.height = h + "px";
-    }
-
-    let dragging = false;
-
-    handle.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        dragging = true;
-        handle.classList.add("dragging");
-        document.body.style.cursor = "row-resize";
-        document.body.style.userSelect = "none";
-    });
-
-    document.addEventListener("mousemove", (e) => {
-        if (!dragging) return;
-        const container = column || document.body;
-        const rect = container.getBoundingClientRect();
-        const newHeight = rect.bottom - e.clientY;
-        const clamped = Math.min(Math.max(newHeight, 80), rect.height * 0.6);
-        pane.style.height = clamped + "px";
-        fitTerminal();
-    });
-
-    document.addEventListener("mouseup", () => {
-        if (!dragging) return;
-        dragging = false;
-        handle.classList.remove("dragging");
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        // Persist height
-        localStorage.setItem(layoutKey('coral-cmdpane-height'), pane.offsetHeight);
-        fitTerminal();
-    });
-}
-
 /* Board chat input pane resize */
 
 export function initBoardChatResize() {

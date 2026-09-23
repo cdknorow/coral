@@ -347,9 +347,6 @@
         display: flex;
     }
 
-    .command-pane-resize-handle {
-        display: none !important;
-    }
 
     /* Board chat: compact on mobile */
     .board-chat-input-pane {
@@ -525,7 +522,6 @@
 
     /* Hide resize handles */
     .sidebar-resize-handle,
-    .command-pane-resize-handle,
     .task-bar-resize-handle,
     .agentic-block-resize-handle,
     .board-chat-resize-handle {

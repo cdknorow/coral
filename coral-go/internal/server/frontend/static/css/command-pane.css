@@ -2,33 +2,6 @@
    Command Pane — Editor, toolbar, textarea, macros
    ============================================================ */
 
-/* ── Resize Handle ─────────────────────────────────────────── */
-
-.command-pane-resize-handle {
-    height: 1px;
-    cursor: row-resize;
-    background: var(--border);
-    flex-shrink: 0;
-    transition: background 0.15s;
-    position: relative;
-    z-index: 5;
-}
-
-.command-pane-resize-handle::before {
-    content: '';
-    position: absolute;
-    top: -6px;
-    bottom: -6px;
-    left: 0;
-    right: 0;
-    cursor: row-resize;
-}
-
-.command-pane-resize-handle:hover,
-.command-pane-resize-handle.dragging {
-    background: var(--accent);
-}
-
 /* ── Command Pane ──────────────────────────────────────────── */
 
 .command-pane {
@@ -348,4 +321,112 @@
 .file-mention-dir-icon {
     margin-right: 4px;
     font-size: 11px;
+}
+
+/* ── Composer card (desktop) ──────────────────────────────── */
+/* The command pane is a rounded card under the terminal / transcript: the
+   text on top, the buttons in a row beneath it (modes and macros on the
+   left, keys and Send on the right). The box grows with its text
+   (live_chat.js autosizes it, capped at 40vh). Mobile keeps its compact
+   input bar (mobile.css). */
+
+@media (min-width: 768px) {
+    #command-pane {
+        height: auto !important;
+        min-height: 0;
+        max-height: none;
+        width: calc(100% - 24px);
+        margin: 4px auto 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+        transition: border-color 0.15s;
+    }
+    #command-pane:focus-within {
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    }
+    #command-pane .command-pane-body {
+        order: 0;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px 16px 0;
+    }
+    #command-pane .image-attachments {
+        border: none;
+        background: none;
+        padding: 0;
+    }
+    #command-pane textarea {
+        flex: none;
+        min-height: 44px;
+        max-height: 40vh;
+        padding: 0;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        font-family: var(--font-sans);
+        font-size: 14px;
+        overflow-y: auto;
+    }
+    #command-pane .command-pane-toolbar {
+        order: 1;
+        gap: 4px;
+        border-bottom: none;
+        padding: 6px 10px 10px;
+    }
+    #command-pane .toolbar-divider {
+        height: 16px;
+        margin: 0 4px;
+    }
+
+    /* Toolbar buttons read as quiet icons inside the card */
+    #command-pane .command-pane-toolbar .btn-nav:not(.btn-send) {
+        height: 30px;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 15px;
+        color: var(--text-muted);
+        font-weight: 500;
+    }
+    #command-pane .command-pane-toolbar .btn-nav:not(.btn-send):hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+    /* Macros keep an outline so they read as chips */
+    #command-pane .command-pane-toolbar .macro-btn-wrap .btn-nav,
+    #command-pane .command-pane-toolbar .btn-nav.btn-add-macro {
+        border-color: var(--border);
+        padding: 0 12px;
+    }
+    #command-pane .command-pane-toolbar .btn-nav.btn-add-macro {
+        border-style: dashed;
+        padding: 0;
+        min-width: 30px;
+    }
+
+    #command-pane .toolbar-send-split {
+        align-items: center;
+        gap: 2px;
+        margin-left: 4px;
+    }
+    #command-pane .command-pane-toolbar .btn-send-dropdown {
+        order: -1;
+        min-width: 24px;
+        border-radius: 15px !important;
+    }
+    #command-pane .btn-send {
+        width: 32px;
+        min-width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 50%;
+        box-shadow: none;
+    }
+    #command-pane .btn-send:hover {
+        transform: none;
+    }
+    #command-pane .drop-overlay {
+        border-radius: 16px;
+    }
 }

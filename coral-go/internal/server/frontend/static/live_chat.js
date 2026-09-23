@@ -590,6 +590,7 @@ export function applyLiveViewMode(override) {
     // The command pane drops terminal-only controls in chat mode
     const pane = document.getElementById("command-pane");
     if (pane) pane.classList.toggle("chat-mode", mode === "chat");
+    autosizeCommandInput();
     for (const m of ["terminal", "chat"]) {
         const btn = document.getElementById(`live-view-btn-${m}`);
         if (!btn) continue;
@@ -604,6 +605,47 @@ export function applyLiveViewMode(override) {
         setTimeout(fitTerminal, 0);
     }
     return Promise.resolve();
+}
+
+// On desktop the command box grows with its text, like a chat composer
+// (CSS caps it at 40vh). Mobile keeps its own compact input bar.
+const desktopComposer = window.matchMedia("(min-width: 768px)");
+
+function autosizeCommandInput() {
+    const input = document.getElementById("command-input");
+    if (!input) return;
+    const before = input.offsetHeight;
+    if (!desktopComposer.matches || !input.offsetParent) {
+        input.style.height = "";
+        return;
+    }
+    // Collapse first so scrollHeight measures the text, not the old height
+    input.style.height = "0px";
+    input.style.height = input.scrollHeight + "px";
+    if (input.offsetHeight === before) return;
+    if (document.getElementById("capture-wrapper")?.classList.contains("chat-mode")) {
+        // Keep the newest reply in view as the box grows
+        const messages = document.getElementById("live-history-messages");
+        if (messages && state.autoScroll) messages.scrollTop = messages.scrollHeight;
+    } else {
+        // The terminal area changed size; refit xterm to it
+        fitTerminal();
+    }
+}
+
+/** Autosize the command box on typing and on every programmatic value change
+ *  (send clears it, session switches restore drafts, macros fill it). */
+export function initCommandInputAutosize() {
+    const input = document.getElementById("command-input");
+    if (!input) return;
+    const desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+    Object.defineProperty(input, "value", {
+        configurable: true,
+        get() { return desc.get.call(this); },
+        set(v) { desc.set.call(this, v); autosizeCommandInput(); },
+    });
+    input.addEventListener("input", autosizeCommandInput);
+    window.addEventListener("resize", autosizeCommandInput);
 }
 
 export function setLiveViewMode(mode) {
