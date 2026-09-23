@@ -250,3 +250,49 @@ func TestAnswerPrompt(t *testing.T) {
 	code, _ = answer(0, "x")
 	assert.Equal(t, http.StatusBadRequest, code)
 }
+
+// Codex's startup menus, captured from a fresh install: the sign-in choice
+// (">" marks the selection) and the update offer ("›").
+const screenCodexSignIn = `
+  Welcome to Codex, OpenAI's command-line coding agent
+
+  Sign in with ChatGPT to use Codex as part of your paid plan
+  or connect an API key for usage-based billing
+
+> 1. Sign in with ChatGPT
+     Usage included with Plus, Pro, Business, and Enterprise plans
+
+  2. Sign in with Device Code
+     Sign in from another device with a one-time code
+
+  3. Provide your own API key
+     Pay for what you use
+
+  Press enter to continue
+`
+
+const screenCodexUpdate = `
+  ✨ Update available! 0.155.1 -> 0.156.1
+
+  Release notes: https://github.com/openai/codex/releases/latest
+
+› 1. Update now (runs ` + "`npm install -g @openai/codex`" + `)
+  2. Skip
+  3. Skip until next version
+
+  Press enter to continue
+`
+
+func TestParsePromptScreen_Codex(t *testing.T) {
+	s, ok := parsePromptScreen(screenCodexSignIn)
+	require.True(t, ok)
+	assert.Equal(t, "Sign in with ChatGPT to use Codex as part of your paid plan or connect an API key for usage-based billing", s.Question)
+	assert.Equal(t, []string{"Sign in with ChatGPT", "Sign in with Device Code", "Provide your own API key"}, labels(s.Options))
+	assert.True(t, s.Options[0].Selected)
+
+	s, ok = parsePromptScreen(screenCodexUpdate)
+	require.True(t, ok)
+	assert.Equal(t, "✨ Update available! 0.155.1 -> 0.156.1", s.Question, "the release-notes link is not the question")
+	assert.Equal(t, []string{"Update now (runs `npm install -g @openai/codex`)", "Skip", "Skip until next version"}, labels(s.Options))
+	assert.True(t, s.Options[0].Selected)
+}

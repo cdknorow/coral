@@ -563,7 +563,7 @@ export async function refreshLiveHistory() {
         syncWorkingIndicator(container, session);
         syncEmptyState(container);
         refreshPendingTool(session);
-        if (container.querySelector(":scope > .chat-needs-input")) refreshPromptOptions(session);
+        if (container.querySelector(":scope > .chat-needs-input") || readsPromptsFromScreen(session)) refreshPromptOptions(session);
         else promptOptionsBySession.delete(session.session_id);
         if (state.autoScroll) {
             container.scrollTop = container.scrollHeight;
@@ -1028,6 +1028,13 @@ async function refreshPromptOptions(session) {
 // Tools whose whole purpose is to wait for the user
 const BLOCKING_TOOLS = { AskUserQuestion: "question", ExitPlanMode: "plan" };
 
+// Codex has no Notification hook, so nothing reports its sign-in and update
+// menus or its approval prompts. For Codex the screen is read on every poll
+// and an open numbered prompt raises the card by itself.
+function readsPromptsFromScreen(session) {
+    return !!session && session.agent_type === "codex";
+}
+
 function needsInputInfo(session) {
     const row = (state.liveSessions || []).find(s => s.session_id === session.session_id) || session;
     const key = deriveSessionState(row);
@@ -1036,6 +1043,7 @@ function needsInputInfo(session) {
     const screen = promptOptionsBySession.get(session.session_id) || null;
     if (pt && BLOCKING_TOOLS[pt.tool_name]) return { kind: BLOCKING_TOOLS[pt.tool_name], tool: pt, screen };
     if (row.waiting_for_input) return { kind: "permission", tool: pt, screen, summary: String(row.waiting_summary || "").replace(/^Notification:\s*/, "") };
+    if (readsPromptsFromScreen(session) && screen && screen.options.length) return { kind: pt ? "permission" : "prompt", tool: pt, screen };
     if (key === "check_terminal") return { kind: "startup" };
     return null;
 }
@@ -1052,6 +1060,7 @@ const KICKERS = {
     plan: "Plan ready for your review",
     permission: "Permission needed",
     startup: "Waiting in the terminal",
+    prompt: "Needs your input",
 };
 
 // data-label is the on-screen label (what the server checks before
@@ -1141,6 +1150,8 @@ function needsInputHtml(info) {
         const target = inp.command || inp.file_path || inp.path || inp.url || inp.query || inp.pattern || "";
         if (inp.description && inp.command) context += `<div class="cni-context-text">${escapeHtml(inp.description)}</div>`;
         if (target) context += `<pre class="cni-target"><code>${escapeHtml(target)}</code></pre>`;
+    } else if (info.kind === "prompt") {
+        question = screenQuestion || "The agent is waiting for you";
     } else {
         question = "The agent may be waiting at a startup prompt";
         context = `<div class="cni-context-text">For example, trusting this folder or logging in. Answer it in the terminal.</div>`;

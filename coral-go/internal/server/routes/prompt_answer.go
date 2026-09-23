@@ -15,7 +15,9 @@ import (
 //
 // Claude Code's permission prompts, AskUserQuestion dialogs and plan
 // approvals draw a numbered option list at the bottom of the terminal, with
-// "❯" marking the selected option; pressing an option's digit answers it
+// "❯" marking the selected option; pressing an option's digit answers it.
+// Codex draws its sign-in menu and approval prompts the same way, marking
+// the selected option with ">" (or "›"), and takes the same digits
 // (a multi-question dialog advances to the next question, then to a
 // "Submit answers" review). The option list varies (permission choices
 // depend on the tool and mode), so it is read from the screen rather than
@@ -51,7 +53,7 @@ type promptScreen struct {
 var promptTextDelay = 300 * time.Millisecond
 
 var (
-	promptOptionRe = regexp.MustCompile(`^\s*(❯\s*)?(\d{1,2})\.\s+(.+?)\s*$`)
+	promptOptionRe = regexp.MustCompile(`^\s*([❯›>]\s*)?(\d{1,2})\.\s+(.+?)\s*$`)
 	separatorRe    = regexp.MustCompile(`^\s*[─━╌┄═]+\s*$`)
 )
 
@@ -75,7 +77,7 @@ func indentOf(s string) int {
 // options, their wrapped/description lines (indented five or more) and
 // separators, and stops at the prompt's own question line. A numbered list
 // elsewhere on screen (a plan's steps, a reply) is never reached, and a block
-// without the "❯" selection marker is not a prompt.
+// without a selection marker is not a prompt.
 func parsePromptScreen(capture string) (promptScreen, bool) {
 	lines := strings.Split(strings.ReplaceAll(capture, "\r", ""), "\n")
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
@@ -105,6 +107,11 @@ func parsePromptScreen(capture string) (promptScreen, bool) {
 			continue
 		}
 		if strings.TrimSpace(line) == "" || separatorRe.MatchString(line) || indentOf(line) >= 5 {
+			continue
+		}
+		// Codex's update menu puts a release-notes link between its
+		// "Update available!" heading and the options
+		if strings.HasPrefix(strings.TrimSpace(line), "Release notes:") {
 			continue
 		}
 		question = strings.TrimSpace(line)
