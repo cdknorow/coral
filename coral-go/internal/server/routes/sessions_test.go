@@ -23,6 +23,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -1062,6 +1063,138 @@ func TestSessionsResolvePath(t *testing.T) {
 	}
 }
 
+func TestSessionsResolvePathSuffix(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	server, handler, _, ss := setupSessionsTestServer(t)
+
+	// repo/
+	//   coral-go/                         <- agent working directory
+	//     internal/frontend/static/live_chat.js
+	//     internal/frontend/static/css/chat.css
+	//   legacy/static/live_chat.js        <- shallower, but outside the workdir
+	//   docs/deep/nested/notes.md
+	//   docs/notes.md
+	//   build/static/out.js               <- ignored
+	root := t.TempDir()
+	wd := filepath.Join(root, "coral-go")
+	for _, f := range []string{
+		"coral-go/internal/frontend/static/live_chat.js",
+		"coral-go/internal/frontend/static/css/chat.css",
+		"legacy/static/live_chat.js",
+		"docs/deep/nested/notes.md",
+		"docs/notes.md",
+		"build/static/out.js",
+	} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, f)), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, f), []byte("x"), 0o644))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte("build/\n"), 0o644))
+	require.NoError(t, exec.Command("git", "init", "-q", root).Run())
+	ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-suffix", AgentType: "claude", WorkingDir: wd, SessionID: "suffix-1"})
+
+	resolve := func(ref string) (int, string) {
+		q := url.Values{"filepath": {ref}, "session_id": {"suffix-1"}}
+		resp, err := http.Get(server.URL + "/api/sessions/live/claude-suffix/resolve-path?" + q.Encode())
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var body map[string]any
+		json.NewDecoder(resp.Body).Decode(&body)
+		fp, _ := body["filepath"].(string)
+		return resp.StatusCode, fp
+	}
+
+	for ref, want := range map[string]string{
+		"static/live_chat.js":        "coral-go/internal/frontend/static/live_chat.js", // under the workdir wins
+		"static/live_chat.js:12":     "coral-go/internal/frontend/static/live_chat.js",
+		"./static/css/chat.css":      "coral-go/internal/frontend/static/css/chat.css",
+		"nested/notes.md":            "docs/deep/nested/notes.md",
+		"notes.md":                   "docs/notes.md", // shallowest
+		"legacy/static/live_chat.js": "legacy/static/live_chat.js",
+	} {
+		code, fp := resolve(ref)
+		assert.Equal(t, http.StatusOK, code, ref)
+		assert.Equal(t, want, fp, ref)
+	}
+
+	// A file the agent has changed beats one under its working directory
+	sid := "suffix-1"
+	require.NoError(t, handler.gs.ReplaceChangedFiles(context.Background(), "claude-suffix", wd,
+		[]store.ChangedFile{{Filepath: "legacy/static/live_chat.js", Status: "M"}}, &sid, "branch_point"))
+	_, fp := resolve("static/live_chat.js")
+	assert.Equal(t, "legacy/static/live_chat.js", fp)
+
+	// Only whole folder names match, and ignored files are not searched
+	for _, ref := range []string{"tic/live_chat.js", "static/out.js", "*/live_chat.js", "../static/live_chat.js"} {
+		code, _ := resolve(ref)
+		assert.Equal(t, http.StatusNotFound, code, ref)
+	}
+}
+
+func TestSessionsOpenInEditor(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	type opened struct {
+		editor, path string
+		line         int
+	}
+	var calls []opened
+	origOpen, origList := openInEditor, installedEditors
+	openInEditor = func(id, absPath string, line int) error {
+		calls = append(calls, opened{id, absPath, line})
+		return nil
+	}
+	installedEditors = func() []executil.Editor { return []executil.Editor{{ID: "vscode", Name: "VS Code"}} }
+	t.Cleanup(func() { openInEditor, installedEditors = origOpen, origList })
+
+	server, _, _, ss := setupSessionsTestServer(t)
+	base := t.TempDir()
+	root := filepath.Join(base, "repo")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	require.NoError(t, exec.Command("git", "init", "-q", root).Run())
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.go"), []byte("package main"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(base, "outside.txt"), []byte("secret"), 0o644))
+	ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-editor", AgentType: "claude", WorkingDir: root, SessionID: "editor-1"})
+
+	post := func(body string) int {
+		resp, err := http.Post(server.URL+"/api/sessions/live/claude-editor/open-in-editor", "application/json", bytes.NewBufferString(body))
+		require.NoError(t, err)
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	assert.Equal(t, http.StatusOK, post(`{"filepath": "main.go:7", "session_id": "editor-1", "editor": "vscode"}`))
+	realRoot, _ := filepath.EvalSymlinks(root)
+	require.Len(t, calls, 1)
+	assert.Equal(t, opened{"vscode", filepath.Join(realRoot, "main.go"), 7}, calls[0])
+
+	assert.Equal(t, http.StatusNotFound, post(`{"filepath": "../outside.txt", "session_id": "editor-1", "editor": "vscode"}`))
+	assert.Equal(t, http.StatusBadRequest, post(`{"filepath": "main.go", "session_id": "editor-1"}`), "editor required")
+	assert.Len(t, calls, 1, "nothing outside the repo is opened")
+
+	resp, err := http.Get(server.URL + "/api/system/editors")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var body struct{ Editors []map[string]string }
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, []map[string]string{{"id": "vscode", "name": "VS Code"}}, body.Editors)
+}
+
+func TestIsLocalClient(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"127.0.0.1:5000":    true,
+		"[::1]:5000":        true,
+		"192.168.1.20:5000": false,
+		"garbage":           false,
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.RemoteAddr = addr
+		assert.Equal(t, want, isLocalClient(r), addr)
+	}
+}
+
 func TestSessionsPendingTool(t *testing.T) {
 	server, _, _, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
@@ -1271,6 +1404,8 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Post("/api/sessions/live/{name}/set-icon", handler.SetIcon)
 	r.Put("/api/sessions/live/{name}/name-color", handler.SetNameColor)
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
+	r.Post("/api/sessions/live/{name}/open-in-editor", handler.OpenInEditor)
+	r.Get("/api/system/editors", handler.ListEditors)
 	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)
 	r.Post("/api/sessions/live/{name}/events", handler.CreateEvent)

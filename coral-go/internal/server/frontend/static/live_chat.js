@@ -151,9 +151,14 @@ function looksLikeFileRef(text) {
     return path.includes("/") || path !== text || FILE_REF_EXTS.has(ext);
 }
 
-// Web links open in a new tab; links to relative paths and path-looking
-// inline code become file references (opened in the Files preview on click
-// in the live Chat view).
+// A path in plain prose (not in backticks). Needs a directory so words like
+// "e.g." or "README.md" in a sentence stay text; the lookbehind keeps it
+// from matching inside a URL or a longer token.
+const BARE_FILE_REF_RE = /(?<![\w\/:.@~-])(?:~?\.{0,2}\/)?(?:[\w@.+-]+\/)+[\w@.+-]*\w\.[A-Za-z]\w{0,7}(?::\d+(?:[-:]\d+)?)?(?![\w\/])/g;
+
+// Web links open in a new tab; links to relative paths, path-looking inline
+// code and bare paths in prose become file references (in the live Chat
+// view, clicking one offers to open it in the Files panel).
 function linkifyRefs(root) {
     for (const a of root.querySelectorAll("a[href]")) {
         const href = a.getAttribute("href");
@@ -173,33 +178,155 @@ function linkifyRefs(root) {
             code.classList.add("chat-file-ref");
         }
     }
+    linkifyBarePaths(root);
 }
 
-async function openFileRef(ref) {
+function linkifyBarePaths(root) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: (n) => n.parentElement.closest("a, code, pre, .role-label, .pending-label")
+            ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const nodes = [];
+    while (walker.nextNode()) {
+        if (/\/[^/\s]*\.\w/.test(walker.currentNode.nodeValue)) nodes.push(walker.currentNode);
+    }
+    for (const node of nodes) {
+        const text = node.nodeValue;
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        for (const m of text.matchAll(BARE_FILE_REF_RE)) {
+            if (!looksLikeFileRef(m[0])) continue;
+            frag.append(text.slice(last, m.index));
+            const span = document.createElement("span");
+            span.className = "chat-file-ref chat-file-ref-bare";
+            span.dataset.fileRef = m[0];
+            span.textContent = m[0];
+            frag.append(span);
+            last = m.index + m[0].length;
+        }
+        if (last === 0) continue;
+        frag.append(text.slice(last));
+        node.replaceWith(frag);
+    }
+}
+
+async function resolveFileRef(ref) {
     const s = state.currentSession;
-    if (!s || s.type !== "live") return;
+    if (!s || s.type !== "live") return null;
     try {
         const qs = new URLSearchParams({ filepath: ref, session_id: s.session_id || "" });
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/resolve-path?${qs}`);
         if (!resp.ok) {
             showToast(`File not found: ${ref}`, true);
-            return;
+            return null;
         }
-        const data = await resp.json();
-        if (window.openFilePreview) window.openFilePreview(data.filepath);
+        return (await resp.json()).filepath;
     } catch {
         showToast(`Could not open ${ref}`, true);
+        return null;
     }
+}
+
+// Desktop editors installed on the Coral host. Empty when this browser is on
+// another machine (the server only offers them to a local client).
+let editorsPromise = null;
+function installedEditors() {
+    if (!editorsPromise) {
+        editorsPromise = fetch("/api/system/editors")
+            .then(r => (r.ok ? r.json() : { editors: [] }))
+            .then(d => d.editors || [])
+            .catch(() => { editorsPromise = null; return []; });
+    }
+    return editorsPromise;
+}
+
+async function openRefInEditor(ref, editor) {
+    const s = state.currentSession;
+    if (!s || s.type !== "live") return;
+    try {
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/open-in-editor`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filepath: ref, session_id: s.session_id || "", editor: editor.id }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || `Could not open in ${editor.name}`, true);
+        }
+    } catch {
+        showToast(`Could not open in ${editor.name}`, true);
+    }
+}
+
+function closeFileRefMenu() {
+    document.querySelectorAll(".chat-file-menu").forEach(m => m.remove());
+}
+
+// The file options menu, anchored under the clicked reference. The path is
+// resolved first so the menu only appears for files that exist.
+async function showFileRefMenu(el) {
+    closeFileRefMenu();
+    const ref = el.dataset.fileRef;
+    const [filepath, editors] = await Promise.all([resolveFileRef(ref), installedEditors()]);
+    if (!filepath || !el.isConnected) return;
+
+    const menu = document.createElement("div");
+    menu.className = "chat-file-menu";
+    menu.setAttribute("role", "menu");
+    menu.innerHTML = `<div class="chat-file-menu-path" title="${escapeHtml(filepath)}">${escapeHtml(filepath)}</div>
+        <button type="button" role="menuitem" data-action="preview"><span class="material-icons">visibility</span>Preview in Coral</button>
+        <button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral</button>
+        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${i}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}
+        <button type="button" role="menuitem" data-action="copy"><span class="material-icons">content_copy</span>Copy path</button>`;
+    document.body.appendChild(menu);
+
+    const r = el.getBoundingClientRect();
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8));
+    const top = r.bottom + 4 + h > window.innerHeight - 8 ? r.top - h - 4 : r.bottom + 4;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+
+    menu.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-action]");
+        if (!btn) return;
+        closeFileRefMenu();
+        if (btn.dataset.action === "preview") window.openFilePreview?.(filepath);
+        else if (btn.dataset.action === "edit") window.openFileEdit?.(filepath);
+        else if (btn.dataset.action === "editor") openRefInEditor(ref, editors[btn.dataset.editor]);
+        else if (btn.dataset.action === "copy") window.copyFilePath?.(filepath);
+    });
+    menu.querySelector("button").focus();
 }
 
 // File references are only actionable in the live Chat view (it has an agent
 // and a Files panel to open them in).
 document.addEventListener("click", (e) => {
-    const el = e.target.closest && e.target.closest("#live-history-messages [data-file-ref]");
+    if (!e.target.closest) return;
+    if (!e.target.closest(".chat-file-menu")) closeFileRefMenu();
+    const el = e.target.closest("#live-history-messages [data-file-ref]");
     if (!el) return;
     e.preventDefault();
-    openFileRef(el.dataset.fileRef);
+    showFileRefMenu(el);
 });
+
+document.addEventListener("keydown", (e) => {
+    const menu = document.querySelector(".chat-file-menu");
+    if (!menu) return;
+    if (e.key === "Escape") {
+        closeFileRefMenu();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const items = Array.from(menu.querySelectorAll("button"));
+        const i = items.indexOf(document.activeElement);
+        const next = e.key === "ArrowDown" ? i + 1 : i - 1;
+        items[(next + items.length) % items.length].focus();
+    }
+});
+
+// The menu is placed against the viewport; scrolling the chat would leave it
+// behind.
+document.addEventListener("scroll", closeFileRefMenu, true);
 
 // Relative links in the history view have nowhere to go; keep them from
 // navigating the dashboard away.
