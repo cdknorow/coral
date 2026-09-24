@@ -1089,6 +1089,30 @@
     border: 1px solid rgba(163,113,247,0.35);
 }
 
+/* How long an in-progress task has been claimed */
+.board-task-claimed {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 16px;
+    vertical-align: 1px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    font-variant-numeric: tabular-nums;
+}
+.board-task-claimed .material-icons {
+    font-size: 11px;
+}
+.task-detail-claimed-for {
+    color: var(--text-muted);
+}
+
 /* Subagent detail modal */
 .subagent-detail-chip {
     width: auto;

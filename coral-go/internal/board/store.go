@@ -419,6 +419,25 @@ func (s *Store) GetSubscription(ctx context.Context, subscriberID string) (*Subs
 	return &sub, err
 }
 
+// GetProjectSubscription returns a subscriber's active subscription on one
+// board. The same subscriber_id (e.g. "Frontend Dev") can be subscribed on
+// several boards with different sessions, so task nudges must use this rather
+// than GetSubscription.
+func (s *Store) GetProjectSubscription(ctx context.Context, project, subscriberID string) (*Subscriber, error) {
+	var sub Subscriber
+	err := s.db.GetContext(ctx, &sub,
+		"SELECT * FROM board_subscribers WHERE project = ? AND subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", project, subscriberID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &sub, err
+}
+
+// GetTask returns one task on a board.
+func (s *Store) GetTask(ctx context.Context, project string, taskID int64) (*Task, error) {
+	return s.getTaskByID(ctx, project, taskID)
+}
+
 // GetSubscriptionBySessionName returns the active subscription for a specific tmux session.
 // This is more precise than GetSubscription when the same subscriber_id has
 // multiple active subscriptions across different boards.

@@ -156,6 +156,78 @@ func (h *BoardHandler) notifyOrchestratorsTaskCompleted(ctx context.Context, pro
 	}
 }
 
+// sendTaskNudge types text into a subscriber's terminal, using their
+// subscription on this board (the same name can be subscribed on others).
+func (h *BoardHandler) sendTaskNudge(ctx context.Context, project, subscriberID, text string) error {
+	if h.terminal == nil {
+		return fmt.Errorf("no terminal available")
+	}
+	sub, err := h.bs.GetProjectSubscription(ctx, project, subscriberID)
+	if err != nil {
+		return err
+	}
+	if sub == nil || sub.SessionName == "" {
+		return fmt.Errorf("%s has no running session on this board", subscriberID)
+	}
+	if err := h.terminal.SendInput(ctx, sub.SessionName, text, "", ""); err != nil {
+		slog.Warn("failed to nudge agent", "subscriber", subscriberID, "project", project, "session", sub.SessionName, "error", err)
+		return err
+	}
+	return nil
+}
+
+// NudgeTask reminds a task's assignee about it in their terminal: a pending
+// task is waiting for them, an in-progress one is still open. Nudges are
+// typed into the agent's prompt, so one sent while the agent could not take
+// input (e.g. while compacting) is lost; this lets the operator resend.
+// POST /api/board/{project}/tasks/{taskID}/nudge
+func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	ctx := r.Context()
+	task, err := h.bs.GetTask(ctx, project, taskID)
+	if err != nil || task == nil {
+		errNotFound(w, "Task not found")
+		return
+	}
+	assignee := ""
+	if task.AssignedTo != nil {
+		assignee = *task.AssignedTo
+	}
+	if assignee == "" {
+		errBadRequest(w, "Task is not assigned to anyone")
+		return
+	}
+
+	title := oneLineTitle(task.Title)
+	if rs := []rune(title); len(rs) > 120 {
+		title = string(rs[:119]) + "…"
+	}
+	var text string
+	switch task.Status {
+	case "pending":
+		if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID); hasActive {
+			text = fmt.Sprintf("[Task #%d reminder] %s — assigned to you and waiting; claim it with 'coral-board task claim' when your current task is done.", task.ID, title)
+		} else {
+			text = fmt.Sprintf("[Task #%d reminder] %s — assigned to you and waiting. Run 'coral-board task claim' to start.", task.ID, title)
+		}
+	case "in_progress":
+		text = fmt.Sprintf("[Task #%d reminder] %s — still in progress. Continue it, or run 'coral-board task complete %d' when it's done.", task.ID, title, task.ID)
+	default:
+		errBadRequest(w, fmt.Sprintf("Task #%d is %s; only pending and in-progress tasks can be nudged", task.ID, task.Status))
+		return
+	}
+	if err := h.sendTaskNudge(ctx, project, assignee, text); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "assignee": assignee})
+}
+
 // ListProjects returns all boards with subscriber and message counts.
 // GET /api/board/projects
 func (h *BoardHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -259,7 +331,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-subscribe the poster if 'as' is provided and they aren't subscribed yet
 	if body.As != "" && subscriberID != "" {
-		sub, _ := h.bs.GetSubscription(r.Context(), subscriberID)
+		sub, _ := h.bs.GetProjectSubscription(r.Context(), project, subscriberID)
 		if sub == nil {
 			h.bs.Subscribe(r.Context(), project, subscriberID, body.As, "", nil, nil, "all")
 		}
@@ -723,12 +795,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 				if assignee != "" {
 					hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID)
 					if !hasActive {
-						sub, err := h.bs.GetSubscription(ctx, assignee)
-						if err == nil && sub != nil && sub.SessionName != "" {
-							if err := h.terminal.SendInput(ctx, sub.SessionName, taskNudge, "", ""); err != nil {
-								slog.Warn("failed to nudge agent", "subscriber", assignee, "session", sub.SessionName, "error", err)
-							}
-						}
+						h.sendTaskNudge(ctx, project, assignee, taskNudge)
 					}
 				} else {
 					idle := h.bs.FindIdleSubscriber(ctx, project)
@@ -922,19 +989,12 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		// Check if the agent has more pending tasks. Unassigned pool tasks nudge
 		// workers, but not the orchestrator; explicitly assigned tasks still do.
 		nextTask := h.bs.NextPendingTaskForSubscriber(ctx, project, subscriberID)
-		sub, err := h.bs.GetSubscription(ctx, subscriberID)
+		sub, _ := h.bs.GetProjectSubscription(ctx, project, subscriberID)
 		if nextTask != nil && (taskAssignedToSubscriber(nextTask, subscriberID) || !isOrchestratorSubscriber(sub, subscriberID)) {
 			auditMsg := fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start",
 				subscriberID)
 			h.bs.PostMessage(ctx, project, "Coral Task Queue", auditMsg, nil)
-
-			if h.terminal != nil {
-				if err == nil && sub != nil && sub.SessionName != "" {
-					if err := h.terminal.SendInput(ctx, sub.SessionName, taskNudge, "", ""); err != nil {
-						slog.Warn("failed to nudge agent", "subscriber", subscriberID, "session", sub.SessionName, "error", err)
-					}
-				}
-			}
+			h.sendTaskNudge(ctx, project, subscriberID, taskNudge)
 		}
 	}()
 	writeJSON(w, http.StatusOK, task)
@@ -1090,11 +1150,8 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			}
 			h.bs.PostMessage(ctx, project, "Coral Task Queue", msg, nil)
 
-			if h.terminal != nil && assignee != "" {
-				sub, err := h.bs.GetSubscription(ctx, assignee)
-				if err == nil && sub != nil && sub.SessionName != "" {
-					h.terminal.SendInput(ctx, sub.SessionName, taskNudge, "", "")
-				}
+			if assignee != "" {
+				h.sendTaskNudge(ctx, project, assignee, taskNudge)
 			}
 		}
 	}()
@@ -1127,6 +1184,11 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		notification := h.buildAssignmentNotification(ctx, project, task, body.Assignee, true)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		if body.Assignee != "" {
+			if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, body.Assignee, task.ID); !hasActive {
+				h.sendTaskNudge(ctx, project, body.Assignee, taskNudge)
+			}
+		}
 
 		// Reassigning resets to pending — re-block downstream tasks that depended on this one
 		reblocked, _ := h.bs.ReblockDownstreamTasks(ctx, project, task.ID)
@@ -1180,13 +1242,10 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 			}
 			h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
 
-			if h.terminal != nil && assignee != "" {
+			if assignee != "" {
 				hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID)
 				if !hasActive {
-					sub, err := h.bs.GetSubscription(ctx, assignee)
-					if err == nil && sub != nil && sub.SessionName != "" {
-						h.terminal.SendInput(ctx, sub.SessionName, taskNudge, "", "")
-					}
+					h.sendTaskNudge(ctx, project, assignee, taskNudge)
 				}
 			}
 		}()
@@ -1212,13 +1271,8 @@ func (h *BoardHandler) notifyUnblockedTasks(ctx context.Context, project string,
 		h.bs.PostMessage(ctx, t.BoardID, "Coral Task Queue", msg, nil)
 
 		// Send terminal nudge to assignee
-		if h.terminal != nil && assignee != "" {
-			sub, err := h.bs.GetSubscription(ctx, assignee)
-			if err == nil && sub != nil && sub.SessionName != "" {
-				if err := h.terminal.SendInput(ctx, sub.SessionName, taskNudge, "", ""); err != nil {
-					slog.Warn("failed to nudge unblocked agent", "subscriber", assignee, "session", sub.SessionName, "error", err)
-				}
-			}
+		if assignee != "" {
+			h.sendTaskNudge(ctx, t.BoardID, assignee, taskNudge)
 		}
 	}
 }

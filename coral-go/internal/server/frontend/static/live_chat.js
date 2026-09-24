@@ -835,11 +835,13 @@ const INTERRUPT_RE = /^\[Request interrupted by user[^\]]*\]$/;
 // Messages Coral types into the agent's terminal: board and task nudges
 // (internal/background/notifier.go, routes/board.go, routes/agent_tasks.go).
 // The transcript records them as if the user sent them.
+// Not anchored at the end: two nudges typed at the same moment arrive as one
+// message ("...to start.You have 1 unread message...").
 const CORAL_NUDGE_RES = [
-    /^You have \d+ unread messages? on the message board\. Run 'coral-board read' to see them\.$/,
-    /^You have tasks available\. Run 'coral-board task claim' to start\.$/,
+    /^You have \d+ unread messages? on the message board\. Run 'coral-board read' to see them\./,
+    /^You have tasks available\. Run 'coral-board task claim' to start\./,
     /^You have a new task in Coral \(#\d+: [\s\S]*\)\. Claim it with `coral-agent task claim`/,
-    /^\[Task #\d+ completed by [^\]\n]+\] /,
+    /^\[Task #\d+ (?:completed by [^\]\n]+|reminder)\] /,
 ];
 
 function isCoralNudge(content) {

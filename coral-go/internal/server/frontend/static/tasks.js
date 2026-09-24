@@ -157,6 +157,19 @@ function _formatDuration(startIso, endIso) {
     return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+// How long an in-progress board task has been claimed, e.g. "42m" or "3h 5m".
+function _claimedFor(task) {
+    if (task.status !== 'in_progress' || !task.claimed_at) return null;
+    const ms = Date.now() - Date.parse(task.claimed_at);
+    if (!Number.isFinite(ms) || ms < 0) return null;
+    const mins = Math.floor(ms / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ${mins % 60}m`;
+    return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
 // Prompt and result are model-written and almost always markdown. They are
 // also untrusted, so this fails closed: without the sanitizer the text is
 // shown escaped rather than rendered. breaks:true keeps single newlines,
@@ -673,13 +686,16 @@ export function renderBoardTaskList() {
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
         const subagentBadge = isSubagent && t.subagent_type
             ? `<span class="board-task-subagent-badge">${escapeHtml(t.subagent_type)}</span>` : '';
+        const claimedFor = !isAgent && !isSubagent ? _claimedFor(t) : null;
+        const claimedBadge = claimedFor
+            ? `<span class="board-task-claimed" title="Claimed ${escapeAttr(formatTaskDate(t.claimed_at))}"><span class="material-icons">schedule</span>${claimedFor}</span>` : '';
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
             <span class="board-task-priority ${priorityClass}">${t.priority ? escapeHtml(t.priority) : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>
-            <span class="board-task-desc"${tooltip}>${subagentBadge}${title}</span>
+            <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${title}</span>
             <span class="${costClass}">${costText}</span>
             <span class="board-task-time">${timeStr}</span>
         </div>`;
@@ -942,10 +958,12 @@ export function showTaskDetailModal(taskId) {
         if (isEditable) {
             const canComplete = task.status !== 'blocked' && task.status !== 'draft';
             const showPublish = task.status === 'draft';
+            const canNudge = (task.status === 'pending' || task.status === 'in_progress') && !!task.assigned_to;
             footer.innerHTML = `
                 <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${task.id})">Cancel Task</button>
                 <span style="flex:1"></span>
                 <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
+                ${canNudge ? `<button class="btn" onclick="window.nudgeBoardTask(${task.id})" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button>` : ''}
                 <button class="btn" onclick="window.enableTaskEditMode(${task.id})">Edit</button>
                 ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${task.id})">Publish</button>` : ''}
                 ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id})">Complete</button>` : ''}`;
@@ -1056,9 +1074,10 @@ function _taskDetailHtml(task, liveCost) {
         </div>`;
 
     if (claimedAt) {
+        const claimedFor = _claimedFor(task);
         html += `<div class="task-detail-field">
             <span class="task-detail-label">Claimed</span>
-            <span class="task-detail-value">${claimedAt}</span>
+            <span class="task-detail-value">${claimedAt}${claimedFor ? ` <span class="task-detail-claimed-for">(${claimedFor} ago)</span>` : ''}</span>
         </div>`;
     }
     if (completedAt) {
@@ -1336,6 +1355,21 @@ export async function _doCompleteTask(taskId) {
         showToast('Task completed');
     } catch (e) {
         showToast(e.message || 'Failed to complete task', true);
+    }
+}
+
+// Resend the task's nudge to its assignee (a nudge typed while the agent was
+// busy, e.g. compacting, can be lost).
+export async function nudgeBoardTask(taskId) {
+    const boardProject = _getBoardProject();
+    if (!boardProject) return;
+    try {
+        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/nudge`, { method: 'POST' });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        showToast(`Nudged ${data.assignee || 'the assignee'}`);
+    } catch (e) {
+        showToast(e.message || 'Failed to nudge', true);
     }
 }
 
