@@ -20,9 +20,24 @@ type BoardNotifier struct {
 	discoverFn  func(ctx context.Context) ([]AgentInfo, error)
 	isPausedFn  func(project string) bool
 	notifiedMu  sync.Mutex
-	notified    map[string]int // session_id -> unread count at last notification
+	notified    map[string]notifyState // subscriber_id -> last nudge since the agent last read
 	notifyNowCh chan struct{}
+	remindAfter time.Duration    // resend when still unread this long after a nudge
+	now         func() time.Time // for tests
 }
+
+// notifyState records the nudge sent since the subscriber last read the board.
+type notifyState struct {
+	count int
+	at    time.Time
+}
+
+// defaultRemindAfter is how long unread messages sit after a nudge before
+// the agent is reminded. A nudge per new message piles up in a busy agent's
+// input queue, so there is one nudge per batch (until the agent reads), plus
+// this reminder in case the nudge was lost (typed while the agent was
+// compacting, or unread messages carried across a Coral restart).
+const defaultRemindAfter = 15 * time.Minute
 
 // NewBoardNotifier creates a new BoardNotifier.
 func NewBoardNotifier(boardStore *board.Store, runtime AgentRuntime, interval time.Duration) *BoardNotifier {
@@ -31,8 +46,10 @@ func NewBoardNotifier(boardStore *board.Store, runtime AgentRuntime, interval ti
 		runtime:     runtime,
 		interval:    interval,
 		logger:      slog.Default().With("service", "board_notifier"),
-		notified:    make(map[string]int),
+		notified:    make(map[string]notifyState),
 		notifyNowCh: make(chan struct{}, 1),
+		remindAfter: defaultRemindAfter,
+		now:         time.Now,
 	}
 }
 
@@ -48,7 +65,8 @@ func (n *BoardNotifier) SetIsPausedFn(fn func(project string) bool) {
 
 // SeedFromDB populates the notified map with current unread counts from the database.
 // Call once during startup before Run() to avoid re-notifying agents about
-// pre-existing unread messages after a server restart.
+// pre-existing unread messages after a server restart; they get the regular
+// reminder if the messages are still unread remindAfter later.
 func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
 	counts, err := n.boardStore.GetAllUnreadCounts(ctx)
 	if err != nil {
@@ -57,8 +75,9 @@ func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
 	}
 	n.notifiedMu.Lock()
 	defer n.notifiedMu.Unlock()
+	now := n.now()
 	for subscriberID, count := range counts {
-		n.notified[subscriberID] = count
+		n.notified[subscriberID] = notifyState{count: count, at: now}
 	}
 	n.logger.Info("seeded notifier from DB", "subscribers", len(counts))
 }
@@ -155,11 +174,13 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 			continue
 		}
 
+		// One nudge until the agent reads; more messages arriving meanwhile
+		// are covered by it (the agent reads them all at once).
 		n.notifiedMu.Lock()
-		alreadyNotified := n.notified[subscriberID] == unread
+		last, notified := n.notified[subscriberID]
 		n.notifiedMu.Unlock()
-		if alreadyNotified {
-			n.logger.Info("already notified", "subscriber_id", subscriberID, "unread", unread)
+		if notified && n.now().Sub(last.at) < n.remindAfter {
+			n.logger.Info("already notified", "subscriber_id", subscriberID, "unread", unread, "notified_unread", last.count)
 			continue
 		}
 
@@ -177,7 +198,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		}
 
 		n.notifiedMu.Lock()
-		n.notified[subscriberID] = unread
+		n.notified[subscriberID] = notifyState{count: unread, at: n.now()}
 		n.notifiedMu.Unlock()
 	}
 

@@ -196,3 +196,58 @@ func TestBoardNotifier_DeduplicatesNotifications(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, rt.sent, 1, "should not re-nudge for the same unread count")
 }
+
+// TestBoardNotifier_OneNudgePerBatch verifies more messages arriving before
+// the agent reads do not stack up nudges, a reminder goes out once they have
+// sat unread for remindAfter, and reading resets it.
+func TestBoardNotifier_OneNudgePerBatch(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+
+	clock := time.Date(2026, 9, 24, 8, 0, 0, 0, time.UTC)
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.now = func() time.Time { return clock }
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "dev-agent", AgentType: "claude", SessionID: "eeee-0001", DisplayName: "Dev"}}, nil
+	})
+
+	_, err := bs.Subscribe(ctx, "proj", "Dev", "Dev", "claude-eeee-0001", nil, nil, "")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj", "Poster", "Poster", "claude-eeee-0002", nil, nil, "")
+	require.NoError(t, err)
+	post := func() {
+		_, err := bs.PostMessage(ctx, "proj", "Poster", "@Dev another one", nil)
+		require.NoError(t, err)
+	}
+
+	post()
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+
+	// Eight more arrive while the agent is busy: still one nudge
+	for i := 0; i < 8; i++ {
+		post()
+		clock = clock.Add(time.Minute)
+		require.NoError(t, notifier.RunOnce(ctx))
+	}
+	assert.Len(t, rt.sent, 1, "new messages before a read do not re-nudge")
+
+	// Still unread well after the nudge: one reminder with the current count
+	clock = clock.Add(defaultRemindAfter)
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 2)
+	assert.Contains(t, rt.sent[1].text, "9 unread messages")
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Len(t, rt.sent, 2, "the reminder is not repeated right away")
+
+	// Reading clears it; the next message nudges again
+	_, err = bs.ReadMessages(ctx, "proj", "Dev", 100)
+	require.NoError(t, err)
+	require.NoError(t, notifier.RunOnce(ctx))
+	post()
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 3)
+	assert.Contains(t, rt.sent[2].text, "1 unread message")
+}

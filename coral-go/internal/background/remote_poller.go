@@ -124,7 +124,9 @@ func (p *RemoteBoardPoller) RunOnce(ctx context.Context) error {
 			continue
 		}
 
-		if sub.LastNotifiedUnread == data.Unread {
+		// One nudge until the agent reads (unread drops to 0); more messages
+		// arriving meanwhile would otherwise stack up nudges in its input.
+		if sub.LastNotifiedUnread != 0 {
 			continue
 		}
 

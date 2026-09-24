@@ -457,9 +457,7 @@ function renderMessage(msg, container, agentType = "claude") {
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
     } else if (msg.type === "user" && isCoralNudge(msg.content)) {
-        const text = String(msg.content).trim();
-        appendContent(container, makeBubble("chat-system",
-            `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
+        appendCoralNotice(container, String(msg.content).trim());
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
@@ -843,6 +841,30 @@ const CORAL_NUDGE_RES = [
     /^You have a new task in Coral \(#\d+: [\s\S]*\)\. Claim it with `coral-agent task claim`/,
     /^\[Task #\d+ (?:completed by [^\]\n]+|reminder)\] /,
 ];
+
+// Back-to-back notices (nudges that queued up while the agent was busy)
+// roll up into one showing the latest text and how many there were.
+function appendCoralNotice(container, text) {
+    const prev = lastContent(container);
+    if (prev && prev.classList.contains("chat-system")) {
+        const count = (Number(prev.dataset.count) || 1) + 1;
+        prev.dataset.count = String(count);
+        const textEl = prev.querySelector(".chat-system-text");
+        textEl.textContent = text;
+        textEl.title = text;
+        let badge = prev.querySelector(".chat-system-count");
+        if (!badge) {
+            badge = document.createElement("span");
+            badge.className = "chat-system-count";
+            prev.appendChild(badge);
+        }
+        badge.textContent = `×${count}`;
+        badge.title = `${count} notices from Coral in a row`;
+        return;
+    }
+    appendContent(container, makeBubble("chat-system",
+        `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
+}
 
 function isCoralNudge(content) {
     const text = String(content || "").trim();

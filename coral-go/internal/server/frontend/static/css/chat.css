@@ -1022,6 +1022,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+.chat-system-count {
+    flex: none;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
 
 /* Agent is waiting on the user: what it is asking, and a way to answer */
 .chat-needs-input {
