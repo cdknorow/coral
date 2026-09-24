@@ -211,6 +211,57 @@ export async function copyText(text) {
     return ok;
 }
 
+// Images the file preview shows as pictures (served by the ?raw=1 form of
+// file-content / file-original; keep in sync with previewImageTypes in
+// routes/sessions.go).
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+
+export function isImagePath(filepath) {
+    return IMAGE_EXT_RE.test(filepath || '');
+}
+
+/** Render images into container. `panes` is a list of { label, url, missing }:
+ *  one pane for a preview, Before/After for a diff. A pane whose image fails
+ *  to load shows its `missing` text instead (e.g. a file new since the base). */
+export function renderImagePanes(container, panes) {
+    container.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'image-panes' + (panes.length > 1 ? ' image-panes-compare' : '');
+    for (const pane of panes) {
+        const fig = document.createElement('figure');
+        fig.className = 'image-pane';
+        if (pane.label) {
+            const label = document.createElement('div');
+            label.className = 'image-pane-label';
+            label.textContent = pane.label;
+            fig.appendChild(label);
+        }
+        const frame = document.createElement('div');
+        frame.className = 'image-pane-frame';
+        const img = document.createElement('img');
+        img.alt = pane.label || '';
+        img.decoding = 'async';
+        const meta = document.createElement('figcaption');
+        meta.className = 'image-pane-meta';
+        img.addEventListener('load', () => {
+            meta.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+        });
+        img.addEventListener('error', () => {
+            frame.innerHTML = '';
+            const note = document.createElement('div');
+            note.className = 'image-pane-missing';
+            note.textContent = pane.missing || 'Image could not be loaded';
+            frame.appendChild(note);
+            meta.textContent = '';
+        });
+        img.src = pane.url;
+        frame.appendChild(img);
+        fig.append(frame, meta);
+        wrap.appendChild(fig);
+    }
+    container.appendChild(wrap);
+}
+
 export function labelCodeBlocks(root) {
     for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
         const lang = /language-([\w+#.-]+)/.exec(code.className);

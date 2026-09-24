@@ -1173,6 +1173,57 @@ func TestSessionsRestartSleeping(t *testing.T) {
 	assert.NotNil(t, old.StoppedAt, "the sleeping session is retired")
 }
 
+func TestSessionsRawImage(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	server, _, _, ss := setupSessionsTestServer(t)
+	root := t.TempDir()
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.email=t@t", "-c", "user.name=t"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	git("init", "-q")
+	png := []byte("\x89PNG\r\n\x1a\nold")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "logo.png"), png, 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "main.go"), []byte("package main"), 0o644))
+	git("add", ".")
+	git("commit", "-q", "-m", "init")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "logo.png"), []byte("\x89PNG\r\n\x1a\nnew"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "added.svg"), []byte("<svg/>"), 0o644))
+	ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-img", AgentType: "claude", WorkingDir: root, SessionID: "img-1"})
+
+	get := func(endpoint, fp string) (*http.Response, []byte) {
+		q := url.Values{"filepath": {fp}, "session_id": {"img-1"}, "raw": {"1"}}
+		resp, err := http.Get(server.URL + "/api/sessions/live/claude-img/" + endpoint + "?" + q.Encode())
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp, b
+	}
+
+	resp, b := get("file-content", "logo.png")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "image/png", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
+	assert.Equal(t, "\x89PNG\r\n\x1a\nnew", string(b))
+
+	resp, b = get("file-original", "logo.png")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "\x89PNG\r\n\x1a\nold", string(b), "the diff base version")
+
+	resp, _ = get("file-content", "added.svg")
+	assert.Equal(t, "image/svg+xml", resp.Header.Get("Content-Type"))
+	assert.Contains(t, resp.Header.Get("Content-Security-Policy"), "sandbox", "an SVG cannot run script")
+
+	resp, _ = get("file-original", "added.svg")
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "new files have no base version")
+
+	resp, _ = get("file-content", "main.go")
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "only images are served raw")
+}
+
 func TestSessionsOpenInEditor(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -1447,6 +1498,8 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Post("/api/sessions/live/{name}/open-in-editor", handler.OpenInEditor)
 	r.Post("/api/sessions/live/{name}/restart", handler.Restart)
+	r.Get("/api/sessions/live/{name}/file-content", handler.GetFileContent)
+	r.Get("/api/sessions/live/{name}/file-original", handler.GetFileOriginal)
 	r.Get("/api/system/editors", handler.ListEditors)
 	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)

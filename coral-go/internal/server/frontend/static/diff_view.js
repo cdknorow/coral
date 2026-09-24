@@ -3,7 +3,7 @@
  * diffs get the same syntax highlighting as the file preview pane. */
 
 import { state } from './state.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, isImagePath, renderImagePanes } from './utils.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 
 let _expanded = new Set();   // filepaths the user has opened
@@ -228,6 +228,18 @@ async function _mount(body) {
     const qs = new URLSearchParams({ filepath });
     if (s.session_id) qs.set('session_id', s.session_id);
     const base = `/api/sessions/live/${encodeURIComponent(s.name)}`;
+
+    // Images: the base and working-tree versions side by side
+    if (isImagePath(filepath)) {
+        const raw = new URLSearchParams(qs);
+        raw.set('raw', '1');
+        raw.set('t', Date.now());
+        renderImagePanes(body, [
+            { label: 'Before', url: `${base}/file-original?${raw}`, missing: 'New file' },
+            { label: 'After', url: `${base}/file-content?${raw}`, missing: 'Deleted' },
+        ]);
+        return;
+    }
 
     let original = '';
     let current = '';

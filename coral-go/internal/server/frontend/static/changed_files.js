@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, showToast } from './utils.js';
+import { escapeHtml, showToast, isImagePath, renderImagePanes } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
@@ -692,6 +692,17 @@ async function _openInlinePane(filepath, initialView) {
         <div class="inline-preview-cm" id="inline-preview-cm" style="display:none"></div>
     `;
 
+    // Images are shown as pictures (preview, or before/after in diff mode)
+    // and cannot be edited.
+    if (isImagePath(filepath)) {
+        _previewState.isImage = true;
+        const editBtn = document.getElementById('mode-btn-edit');
+        if (editBtn) editBtn.style.display = 'none';
+        _updateModeButtons('preview');
+        _renderImagePreview();
+        return;
+    }
+
     // Set active mode button and load content
     _updateModeButtons(initialView);
     if (initialView === 'edit') {
@@ -713,6 +724,31 @@ async function _openInlinePane(filepath, initialView) {
         _previewState.mode = 'preview';
         await _loadContentView(filepath, gen);
     }
+}
+
+/** URL of a file's bytes for an <img>; `endpoint` is file-content (the
+ *  working tree) or file-original (the diff base). */
+function _rawImageUrl(endpoint, filepath) {
+    const qs = _apiQs(filepath);
+    qs.set('raw', '1');
+    qs.set('t', Date.now()); // the image may have changed since the last look
+    return `/api/sessions/live/${encodeURIComponent(_agentName())}/${endpoint}?${qs}`;
+}
+
+function _renderImagePreview() {
+    const body = document.getElementById('inline-preview-body');
+    if (!body || !_previewState) return;
+    renderImagePanes(body, [{ url: _rawImageUrl('file-content', _previewState.filepath), missing: 'File not found' }]);
+}
+
+function _renderImageDiff() {
+    const body = document.getElementById('inline-preview-body');
+    if (!body || !_previewState) return;
+    const fp = _previewState.filepath;
+    renderImagePanes(body, [
+        { label: 'Before', url: _rawImageUrl('file-original', fp), missing: 'New file' },
+        { label: 'After', url: _rawImageUrl('file-content', fp), missing: 'Deleted' },
+    ]);
 }
 
 /** Check if this async operation is still for the current pane. */
@@ -858,6 +894,15 @@ window._togglePreviewStar = function() {
 /** Switch between diff, preview, and edit modes. */
 window._switchMode = async function(targetMode) {
     if (!_previewState || _previewState.mode === targetMode) return;
+
+    if (_previewState.isImage) {
+        if (targetMode === 'edit') return;
+        _previewState.mode = targetMode;
+        _updateModeButtons(targetMode);
+        if (targetMode === 'diff') _renderImageDiff();
+        else _renderImagePreview();
+        return;
+    }
 
     const body = document.getElementById('inline-preview-body');
     const cmContainer = document.getElementById('inline-preview-cm');

@@ -4209,12 +4209,47 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
+	if r.URL.Query().Get("raw") == "1" {
+		writeRawImage(w, fp, content)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"filepath":          fp,
 		"content":           string(content),
 		"working_directory": workdir,
 	})
+}
+
+// Image types the file preview can display, by extension.
+var previewImageTypes = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".avif": "image/avif",
+	".bmp":  "image/bmp",
+	".ico":  "image/x-icon",
+	".svg":  "image/svg+xml",
+}
+
+// writeRawImage serves an image's bytes for the preview's <img> tags (the
+// ?raw=1 form of file-content and file-original). Only image types are
+// served, and an SVG opened directly cannot run script on this origin.
+func writeRawImage(w http.ResponseWriter, fp string, data []byte) {
+	ct, ok := previewImageTypes[strings.ToLower(filepath.Ext(fp))]
+	if !ok {
+		errBadRequest(w, "raw content is only served for images")
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", ct)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	h.Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 // GetFileOriginal returns the original (git base) content of a file.
@@ -4254,14 +4289,23 @@ func (h *SessionsHandler) GetFileOriginal(w http.ResponseWriter, r *http.Request
 	// git show <ref>:<path> needs paths relative to the repo root, not the workdir.
 	prefix := gitutil.ShowPrefix(ctx, workdir)
 
+	raw := r.URL.Query().Get("raw") == "1"
 	out, err := exec.CommandContext(ctx, "git", "-C", workdir, "show", base+":"+prefix+fp).Output()
 	if err != nil {
+		if raw {
+			errNotFound(w, "File is new since the diff base")
+			return
+		}
 		// File doesn't exist in the base commit (new file)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"filepath":          fp,
 			"content":           "",
 			"working_directory": workdir,
 		})
+		return
+	}
+	if raw {
+		writeRawImage(w, fp, out)
 		return
 	}
 
