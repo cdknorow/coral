@@ -1,7 +1,7 @@
 /* Live history view — renders JSONL messages as a read-only conversation log */
 
 import { state } from './state.js';
-import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast } from './utils.js';
+import { escapeHtml, renderMarkdown, labelCodeBlocks, showToast, copyText } from './utils.js';
 import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
@@ -428,6 +428,30 @@ function stitchPages(lastOlder) {
     }
 }
 
+// Agent replies carry a copy button that copies the reply's markdown as the
+// agent wrote it (not the rendered text).
+const COPY_BUTTON = `<button type="button" class="chat-copy-btn" title="Copy" aria-label="Copy message"><span class="material-icons">content_copy</span></button>`;
+const bubbleSource = new WeakMap();
+
+document.addEventListener("click", async (e) => {
+    const btn = e.target.closest && e.target.closest(".chat-copy-btn");
+    if (!btn) return;
+    const bubble = btn.closest(".chat-bubble");
+    const text = bubbleSource.get(bubble) ?? bubble.querySelector(".message-text")?.innerText ?? "";
+    if (!(await copyText(text))) {
+        showToast("Could not copy", true);
+        return;
+    }
+    const icon = btn.querySelector(".material-icons");
+    icon.textContent = "check";
+    btn.classList.add("copied");
+    clearTimeout(btn._copiedTimer);
+    btn._copiedTimer = setTimeout(() => {
+        icon.textContent = "content_copy";
+        btn.classList.remove("copied");
+    }, 1500);
+});
+
 function renderMessage(msg, container, agentType = "claude") {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
@@ -438,7 +462,8 @@ function renderMessage(msg, container, agentType = "claude") {
     } else if (msg.type === "assistant") {
         if (msg.text) {
             const bubble = makeBubble(`chat-bubble assistant${msg.phase === "commentary" ? " commentary" : ""}`,
-                `<div class="message-text">${renderMarkdown(msg.text)}</div>`);
+                `<div class="message-text">${renderMarkdown(msg.text)}</div>${COPY_BUTTON}`);
+            bubbleSource.set(bubble, msg.text);
             if (adapter.assistantPlacement(msg) === "work") appendWork(container, bubble);
             else appendTurnFinal(container, bubble);
         }

@@ -189,6 +189,28 @@ export function renderMarkdown(content, options) {
 }
 
 /** Label fenced code blocks with their language (shown by .chat-prose CSS). */
+/** Copy text to the clipboard. navigator.clipboard needs a secure context
+ *  (https or localhost), so a dashboard opened over plain http from another
+ *  machine falls back to a hidden textarea. Resolves to whether it worked. */
+export async function copyText(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch { /* fall through to the fallback */ }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    return ok;
+}
+
 export function labelCodeBlocks(root) {
     for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
         const lang = /language-([\w+#.-]+)/.exec(code.className);

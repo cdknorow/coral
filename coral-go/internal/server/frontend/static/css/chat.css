@@ -1286,3 +1286,49 @@
         max-width: 780px;
     }
 }
+
+/* Copy button on agent replies: top-right of a bubble, or tucked into the
+   space under the reply's right edge in prose mode. Shown on hover or keyboard focus. */
+.chat-bubble.assistant .chat-copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+.chat-bubble.assistant .chat-copy-btn .material-icons {
+    font-size: 14px;
+}
+.chat-bubble.assistant:hover .chat-copy-btn,
+.chat-bubble.assistant .chat-copy-btn:focus-visible,
+.chat-bubble.assistant .chat-copy-btn.copied {
+    opacity: 1;
+}
+.chat-bubble.assistant .chat-copy-btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+.chat-bubble.assistant .chat-copy-btn.copied {
+    color: var(--success, var(--accent));
+}
+.chat-prose.chat-messages .chat-bubble.assistant .chat-copy-btn {
+    top: 100%;
+    right: -4px;
+    margin-top: 1px;
+}
+@media (hover: none) {
+    .chat-bubble.assistant .chat-copy-btn {
+        opacity: 0.6;
+    }
+}
