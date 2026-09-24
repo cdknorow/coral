@@ -228,6 +228,18 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "assignee": assignee})
 }
 
+// unescapeLineBreaks turns literal "\n" sequences into line breaks in a
+// message that has none. Agents posting through a shell often pass a
+// single-quoted string with \n escapes, which arrives as one long line with
+// the escapes shown verbatim. Two or more are required so a one-line message
+// that mentions "\n" (e.g. strings.Split(s, "\n")) is left alone.
+func unescapeLineBreaks(content string) string {
+	if strings.ContainsAny(content, "\r\n") || strings.Count(content, `\n`) < 2 {
+		return content
+	}
+	return strings.NewReplacer(`\r\n`, "\n", `\n`, "\n", `\t`, "\t").Replace(content)
+}
+
 // ListProjects returns all boards with subscriber and message counts.
 // GET /api/board/projects
 func (h *BoardHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +335,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "content required")
 		return
 	}
+	body.Content = unescapeLineBreaks(body.Content)
 
 	subscriberID := body.SubscriberID
 	if subscriberID == "" {

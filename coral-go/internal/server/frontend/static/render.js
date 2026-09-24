@@ -1,7 +1,7 @@
 /* Rendering functions for session lists, chat history, and status updates */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE } from './utils.js';
+import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
@@ -529,7 +529,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
                 <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 <span class="mb-message-time">${_formatTime(m.created_at)}</span>
             </div>
-            <div class="mb-message-body">${renderMarkdown(m.content)}</div>
+            <div class="mb-message-body">${renderMarkdown(boardMessageText(m.content))}</div>
         </div>`;
     }).join('');
     if (wasAtBottom) msgsEl.scrollTop = msgsEl.scrollHeight;

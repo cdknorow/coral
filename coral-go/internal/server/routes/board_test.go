@@ -1255,3 +1255,15 @@ func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > before }, 2*time.Second, 20*time.Millisecond)
 }
+
+func TestUnescapeLineBreaks(t *testing.T) {
+	for in, want := range map[string]string{
+		`FINDINGS.\n\nWHAT I MEASURED\n- one\n- two`: "FINDINGS.\n\nWHAT I MEASURED\n- one\n- two",
+		`a\r\nb\r\nc`:                            "a\nb\nc",
+		`col\tone\ncol\ttwo\n`:                   "col\tone\ncol\ttwo\n",
+		`split with strings.Split(s, "\n") here`: `split with strings.Split(s, "\n") here`, // a single mention
+		"real\nbreaks keep \\n \\n as written":   "real\nbreaks keep \\n \\n as written",
+	} {
+		assert.Equal(t, want, unescapeLineBreaks(in), in)
+	}
+}

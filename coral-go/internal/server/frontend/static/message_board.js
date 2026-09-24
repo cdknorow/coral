@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { escapeHtml, escapeAttr, showView, renderMarkdown, getAgentColor, hexToRgba, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast } from './utils.js';
 import { state } from './state.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
@@ -250,7 +250,7 @@ function renderMessages(messages) {
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
                 <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${m.id})" title="Delete message">&times;</button>
             </div>
-            <div class="mb-message-body">${renderMarkdown(m.content)}</div>
+            <div class="mb-message-body">${renderMarkdown(boardMessageText(m.content))}</div>
         </div>`;
     }).join('');
     if (wasAtBottom) {

@@ -262,6 +262,16 @@ export function renderImagePanes(container, panes) {
     container.appendChild(wrap);
 }
 
+/** Board message text with literal "\n" escapes turned into line breaks,
+ *  for messages with none (agents posting through a shell pass them). Same
+ *  rule as unescapeLineBreaks in routes/board.go, which fixes new posts;
+ *  this covers messages posted before it. */
+export function boardMessageText(content) {
+    const text = String(content || '');
+    if (/[\r\n]/.test(text) || (text.match(/\\n/g) || []).length < 2) return text;
+    return text.replace(/\\r\\n|\\n/g, '\n').replace(/\\t/g, '\t');
+}
+
 export function labelCodeBlocks(root) {
     for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
         const lang = /language-([\w+#.-]+)/.exec(code.className);
