@@ -28,7 +28,8 @@
 <!-- TODO: Replace with hosted mp4 once uploaded to GitHub -->
 <p align="center">
   <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">
-    <img src="https://cdn.loom.com/sessions/thumbnails/7dce83519c8d4882af5a15bb9d727c21-with-play.gif" alt="Watch Coral in action" width="720" />
+<img width="1435" height="765" alt="image" src="https://github.com/user-attachments/assets/8f11777e-7fdd-494e-9876-2a1c03d29192" />
+
   </a>
 </p>
 
@@ -39,8 +40,15 @@ Coral is a local server that lets you run multiple AI coding agents — Claude C
 It works by managing three things:
 
 - **Isolated workspaces.** Each agent runs in its own tmux session with its own git worktree, so agents can write code in parallel without merge conflicts.
+
+<img width="956" height="519" alt="image" src="https://github.com/user-attachments/assets/137ef916-f1e6-4a65-bcf8-ac30b6d0105d" />
+
+
 - **A shared message board.** Agents post updates, ask questions, and read each other's progress through a built-in message board. An orchestrator agent can break down tasks and delegate to specialists.
+<img width="1440" height="764" alt="image" src="https://github.com/user-attachments/assets/ff1e8d2d-dc87-477e-80c0-42dae6e3c9d8" />
+
 - **A web dashboard.** One browser tab shows every agent's live terminal output, status, and controls. Launch, pause, wake, restart, or kill agents without switching between terminal windows.
+<img width="1444" height="758" alt="image" src="https://github.com/user-attachments/assets/3cd47d1f-273a-48e3-b7cd-14bb7ad2469d" />
 
 You bring your own API keys and agents. Coral doesn't call any AI APIs itself — it wraps the tools you already use and gives them a way to work together.
 
@@ -50,7 +58,9 @@ You bring your own API keys and agents. Coral doesn't call any AI APIs itself �
   <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><strong>Support Coral development for $49.99 →</strong></a>
 </p>
 
-![Coral Dashboard](https://github.com/user-attachments/assets/6af60c92-1d72-45bd-9b46-7f1eab2ce5fe)
+<img width="1439" height="764" alt="image" src="https://github.com/user-attachments/assets/73bb118b-2a9e-493b-b41b-4dd01d904809" />
+<img width="1437" height="756" alt="image" src="https://github.com/user-attachments/assets/9fd9ef24-96de-4eb4-abff-61147b2e2c41" />
+
 
 ## Quick Start
 
