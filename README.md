@@ -28,7 +28,8 @@
 <!-- TODO: Replace with hosted mp4 once uploaded to GitHub -->
 <p align="center">
   <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">
-<img width="1435" height="765" alt="image" src="https://github.com/user-attachments/assets/8f11777e-7fdd-494e-9876-2a1c03d29192" />
+<img width="1443" height="766" alt="image" src="https://github.com/user-attachments/assets/e5845613-688a-416b-822b-8424959cb8d7" />
+
 
   </a>
 </p>
