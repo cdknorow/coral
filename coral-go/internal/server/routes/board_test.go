@@ -580,7 +580,7 @@ func TestBoardCompleteTask_NotifiesOrchestrator(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		for _, cmd := range terminal.sentCommands() {
-			if strings.Contains(cmd, "Backend Dev finished task #1: Implement API") {
+			if strings.Contains(cmd, "[Task #1 completed by Backend Dev] Implement API") {
 				return true
 			}
 		}

@@ -456,6 +456,10 @@ function renderMessage(msg, container, agentType = "claude") {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
+    } else if (msg.type === "user" && isCoralNudge(msg.content)) {
+        const text = String(msg.content).trim();
+        appendContent(container, makeBubble("chat-system",
+            `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
@@ -827,6 +831,21 @@ const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
 
 // Claude Code records an Esc interrupt as a user entry like this
 const INTERRUPT_RE = /^\[Request interrupted by user[^\]]*\]$/;
+
+// Messages Coral types into the agent's terminal: board and task nudges
+// (internal/background/notifier.go, routes/board.go, routes/agent_tasks.go).
+// The transcript records them as if the user sent them.
+const CORAL_NUDGE_RES = [
+    /^You have \d+ unread messages? on the message board\. Run 'coral-board read' to see them\.$/,
+    /^You have tasks available\. Run 'coral-board task claim' to start\.$/,
+    /^You have a new task in Coral \(#\d+: [\s\S]*\)\. Claim it with `coral-agent task claim`/,
+    /^\[Task #\d+ completed by [^\]\n]+\] /,
+];
+
+function isCoralNudge(content) {
+    const text = String(content || "").trim();
+    return CORAL_NUDGE_RES.some(re => re.test(text));
+}
 
 /** Record a message just sent to an agent so the chat can show it right away. */
 export function addPendingMessage(sessionId, text) {

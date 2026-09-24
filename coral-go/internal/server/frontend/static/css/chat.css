@@ -988,6 +988,41 @@
     opacity: 0.6;
 }
 
+/* A message Coral typed into the agent's terminal (board or task nudge):
+   a one-line notice instead of a bubble from the user */
+.chat-system {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    max-width: min(780px, 100%);
+    margin: 4px auto 16px;
+    padding: 4px 12px;
+    border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.4;
+}
+.chat-system .material-icons {
+    flex: none;
+    font-size: 14px;
+    color: var(--accent);
+}
+.chat-system-label {
+    flex: none;
+    font-weight: 600;
+    color: var(--accent);
+}
+.chat-system-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 /* Agent is waiting on the user: what it is asking, and a way to answer */
 .chat-needs-input {
     margin: 8px auto 22px;

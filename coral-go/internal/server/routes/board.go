@@ -143,7 +143,8 @@ func (h *BoardHandler) notifyOrchestratorsTaskCompleted(ctx context.Context, pro
 		slog.Warn("list subscribers for completion notification failed", "project", project, "task_id", task.ID, "error", err)
 		return
 	}
-	notification := fmt.Sprintf("%s finished task #%d: %s", subscriberID, task.ID, msg)
+	// Same form as the board post; the chat view shows it as a Coral notice.
+	notification := fmt.Sprintf("[Task #%d completed by %s] %s", task.ID, subscriberID, msg)
 	for i := range subs {
 		sub := &subs[i]
 		if sub.SubscriberID == subscriberID || sub.SessionName == "" || !isOrchestratorSubscriber(sub, sub.SubscriberID) {
