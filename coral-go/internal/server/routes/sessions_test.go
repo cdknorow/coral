@@ -1132,6 +1132,47 @@ func TestSessionsResolvePathSuffix(t *testing.T) {
 	}
 }
 
+func TestSessionsRestartSleeping(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "sleepy", AgentType: "claude", WorkingDir: wd, SessionID: "sleep-1", Prompt: strPtr("old prompt")})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "sleep-1", true))
+
+	resp, err := http.Post(server.URL+"/api/sessions/live/sleepy/restart", "application/json",
+		bytes.NewBufferString(`{"session_id": "sleep-1", "agent_type": "claude", "prompt": "my custom prompt"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.NotEmpty(t, body.SessionID)
+	assert.NotEqual(t, "sleep-1", body.SessionID)
+
+	// A fresh terminal in the agent's folder runs a new (not resumed) agent
+	term.mu.Lock()
+	pane := term.sessions[body.SessionName]
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.NotNil(t, pane, "a new terminal session is created")
+	assert.Equal(t, wd, pane.CurrentPath)
+	require.Len(t, sent, 1)
+	assert.NotContains(t, sent[0], "--resume")
+
+	// The new session is awake and keeps the custom prompt; the old one is gone
+	ls, err := ss.GetLiveSession(ctx, body.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	assert.Equal(t, 0, ls.IsSleeping)
+	assert.Equal(t, "my custom prompt", derefStrPtr(ls.Prompt))
+	old, _ := ss.GetLiveSession(ctx, "sleep-1")
+	require.NotNil(t, old)
+	assert.NotNil(t, old.StoppedAt, "the sleeping session is retired")
+}
+
 func TestSessionsOpenInEditor(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -1405,6 +1446,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Put("/api/sessions/live/{name}/name-color", handler.SetNameColor)
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Post("/api/sessions/live/{name}/open-in-editor", handler.OpenInEditor)
+	r.Post("/api/sessions/live/{name}/restart", handler.Restart)
 	r.Get("/api/system/editors", handler.ListEditors)
 	r.Get("/api/sessions/live/{name}/pending-tool", handler.GetPendingTool)
 	r.Post("/api/sessions/live/{name}/pending-tool", handler.SetPendingTool)

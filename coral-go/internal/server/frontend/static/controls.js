@@ -498,6 +498,10 @@ export async function confirmRestart() {
         if (result.error) {
             showToast(result.error, true);
         } else {
+            // A restarted sleeping agent is running again
+            state.currentSession.sleeping = false;
+            const sleepOverlay = document.getElementById("session-sleeping-overlay");
+            if (sleepOverlay) sleepOverlay.style.display = "none";
             // Update state with the new session_id (tmux session was renamed)
             if (result.session_id) {
                 state.currentSession.session_id = result.session_id;

@@ -2332,46 +2332,80 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		agentType = at.Claude
 	}
 
-	// Skip sleeping sessions — they should be woken via the wake endpoint, not restarted
+	// A sleeping agent has no terminal. Restarting one starts a fresh agent in
+	// a new terminal in its working directory, with the restart settings
+	// (prompt, model, capabilities); waking would resume the old conversation.
+	var sleeping *store.LiveSession
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(ctx, body.SessionID); err == nil && ls != nil && ls.IsSleeping == 1 {
-			errBadRequest(w, "Session is sleeping. Use wake endpoint to resume.")
-			return
+			sleeping = ls
 		}
-	}
-
-	pane, err := h.terminal.FindSession(ctx, name, agentType, body.SessionID)
-	if err != nil || pane == nil {
-		errNotFound(w, "Pane not found")
-		return
 	}
 
 	newSessionID := generateUUID()
 	newSessionName := naming.SessionName(agentType, newSessionID)
 	newLogPath := naming.LogFile(h.cfg.LogDir, agentType, newSessionID)
 
-	// Close old pipe-pane, respawn, rename
-	h.terminal.StopLogging(ctx, pane.Target)
-	if err := h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath); err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if err := h.terminal.RenameSession(ctx, pane.SessionName, newSessionName); err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
+	var workdir, target string
+	usePTY := false
+	if sleeping != nil {
+		if h.effectiveMaxAgents() > 0 {
+			if count, err := h.ss.CountActiveLiveSessions(ctx); err == nil && count >= h.effectiveMaxAgents() {
+				writeJSON(w, http.StatusForbidden, map[string]string{
+					"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
+				})
+				return
+			}
+		}
+		workdir = sleeping.WorkingDir
+		usePTY = sleeping.Backend != nil && *sleeping.Backend == "pty" && h.backend != nil
+		if usePTY {
+			if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
+				errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
+				return
+			}
+		} else {
+			os.WriteFile(newLogPath, []byte{}, 0644)
+			if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
+				errInternalServer(w, err.Error())
+				return
+			}
+			h.terminal.StartLogging(ctx, newSessionName, newLogPath)
+		}
+		target = newSessionName + ".0"
+	} else {
+		pane, err := h.terminal.FindSession(ctx, name, agentType, body.SessionID)
+		if err != nil || pane == nil {
+			errNotFound(w, "Pane not found")
+			return
+		}
+		workdir = pane.CurrentPath
 
-	target := fmt.Sprintf("%s:0.0", newSessionName)
-	time.Sleep(500 * time.Millisecond)
+		// Close old pipe-pane, respawn, rename
+		h.terminal.StopLogging(ctx, pane.Target)
+		if err := h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if err := h.terminal.RenameSession(ctx, pane.SessionName, newSessionName); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
 
-	// Clear scrollback, create log, setup pipe-pane
-	h.terminal.ClearHistory(ctx, target)
-	os.WriteFile(newLogPath, []byte{}, 0644)
-	h.terminal.StartLogging(ctx, target, newLogPath)
+		target = fmt.Sprintf("%s:0.0", newSessionName)
+		time.Sleep(500 * time.Millisecond)
+
+		// Clear scrollback, create log, setup pipe-pane
+		h.terminal.ClearHistory(ctx, target)
+		os.WriteFile(newLogPath, []byte{}, 0644)
+		h.terminal.StartLogging(ctx, target, newLogPath)
+	}
 
 	// Set pane title using native tmux command (avoids shell echo)
-	folderName := filepath.Base(strings.TrimRight(pane.CurrentPath, "/"))
-	h.terminal.SetPaneTitle(ctx, target, fmt.Sprintf("%s — %s", folderName, agentType))
+	folderName := filepath.Base(strings.TrimRight(workdir, "/"))
+	if !usePTY {
+		h.terminal.SetPaneTitle(ctx, target, fmt.Sprintf("%s — %s", folderName, agentType))
+	}
 
 	// Load stored config from the DB
 	agentImpl := agent.GetAgent(agentType)
@@ -2453,7 +2487,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		SessionName:     newSessionName,
 		ProtocolPath:    h.protocolPath(),
 		Flags:           allFlags,
-		WorkingDir:      pane.CurrentPath,
+		WorkingDir:      workdir,
 		BoardName:       storedBoard,
 		Role:            role,
 		Prompt:          storedPrompt,
@@ -2469,7 +2503,15 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		CoralPort:       h.cfg.Port,
 	}))
 	log.Printf("[launch] restart session=%s cmd=%s", target, cmd)
-	h.terminal.SendToTarget(ctx, target, cmd)
+	if usePTY {
+		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
+			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)
+		}
+		h.backend.SendInput(newSessionName, []byte(cmd))
+		h.backend.SendInput(newSessionName, []byte("\r"))
+	} else {
+		h.terminal.SendToTarget(ctx, target, cmd)
+	}
 
 	// Capture shell PID for process-tree-based identity resolution
 	var restartPID int
@@ -2487,7 +2529,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		SessionID:     newSessionID,
 		AgentType:     agentType,
 		AgentName:     folderName,
-		WorkingDir:    pane.CurrentPath,
+		WorkingDir:    workdir,
 		ResumeFromID:  strPtr(body.SessionID),
 		Flags:         store.MarshalFlags(allFlags),
 		Prompt:        strPtr(storedPrompt),
@@ -2502,6 +2544,13 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		PID:           restartPID,
 	})
 	h.ss.MigrateDisplayName(ctx, body.SessionID, newSessionID)
+	if sleeping != nil {
+		// The new row inherits the sleeping flag; this agent is running now.
+		h.ss.SetSessionSleeping(ctx, newSessionID, false)
+		if bn := derefStrPtr(sleeping.BoardName); bn != "" && h.boardHandler != nil {
+			h.boardHandler.SetPaused(bn, false)
+		}
+	}
 
 	// Re-subscribe to board if needed
 	if storedBoard != "" {
