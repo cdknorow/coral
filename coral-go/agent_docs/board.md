@@ -540,7 +540,7 @@ Resets a task to pending with an optional new assignee. Works on `pending` or `i
 
 ```
 pending → in_progress (claim)
-in_progress → completed (complete)
+pending | in_progress → completed (complete)
 in_progress → skipped (cancel)
 pending | in_progress → pending (reassign)
 ```

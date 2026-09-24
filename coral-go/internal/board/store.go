@@ -1343,20 +1343,22 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
 		costs.CacheReadTokens, costs.CacheWriteTokens, taskID)
 }
 
-// CompleteTask marks a task as completed.
+// CompleteTask marks a task as completed. Pending tasks can be completed
+// without being claimed first: the operator is never prompted to claim the
+// tasks assigned to them, and just marks them done.
 func (s *Store) CompleteTask(ctx context.Context, project string, taskID int64, subscriberID string, message *string) (*Task, error) {
 	now := nowUTC()
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE board_tasks
 		 SET status = 'completed', completed_by = ?, completion_message = ?, completed_at = ?
-		 WHERE id = ? AND board_id = ? AND status = 'in_progress'`,
+		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress')`,
 		subscriberID, message, now, taskID, project)
 	if err != nil {
 		return nil, err
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return nil, fmt.Errorf("task #%d cannot be completed (not in progress or not found)", taskID)
+		return nil, fmt.Errorf("task #%d cannot be completed (already finished, blocked, or not found)", taskID)
 	}
 
 	s.computeAndStoreTaskCost(ctx, taskID)

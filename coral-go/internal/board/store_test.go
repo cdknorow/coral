@@ -384,10 +384,26 @@ func TestCompleteTask(t *testing.T) {
 	assert.Equal(t, "All done", *completed.CompletionMessage)
 	assert.NotNil(t, completed.CompletedAt)
 
-	// Can't complete a task that's not in progress
+	// Can't complete a task twice
 	_, err = s.CompleteTask(ctx, "proj", claimed.ID, "bob", nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot be completed")
+}
+
+func TestCompleteTask_PendingWithoutClaim(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// A task assigned to the operator is never claimed; they just finish it
+	task, err := s.CreateTask(ctx, "proj", "Review the release", "", "medium", "orchestrator", "Operator")
+	require.NoError(t, err)
+	require.Equal(t, "pending", task.Status)
+
+	completed, err := s.CompleteTask(ctx, "proj", task.ID, "Operator", nil)
+	require.NoError(t, err)
+	assert.Equal(t, "completed", completed.Status)
+	require.NotNil(t, completed.CompletedBy)
+	assert.Equal(t, "Operator", *completed.CompletedBy)
 }
 
 func TestTaskLifecycle_EndToEnd(t *testing.T) {
