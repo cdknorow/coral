@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -1078,4 +1079,43 @@ func TestDeleteProject(t *testing.T) {
 	assert.Empty(t, subs)
 	count, _ := s.CountMessages(ctx, "proj")
 	assert.Equal(t, 0, count)
+}
+
+func TestMarkReadThrough(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "proj", "Dev", "Dev", "claude-dev", nil, nil, "all")
+	require.NoError(t, err)
+
+	var ids []int64
+	for i := 0; i < 10; i++ {
+		m, err := s.PostMessage(ctx, "proj", "Dev", fmt.Sprintf("update %d", i), nil)
+		require.NoError(t, err)
+		ids = append(ids, m.ID)
+	}
+	own, err := s.PostMessage(ctx, "proj", "Orchestrator", "my own post", nil)
+	require.NoError(t, err)
+	unread, _ := s.CheckUnread(ctx, "proj", "Orchestrator")
+	require.Equal(t, 10, unread)
+
+	// Looked at the newest three (#8, #9 and its own post): the first seven were skipped
+	skipped, first, last, err := s.MarkReadThrough(ctx, "proj", "Orchestrator", own.ID, ids[7])
+	require.NoError(t, err)
+	assert.Equal(t, 7, skipped)
+	assert.Equal(t, ids[0], first)
+	assert.Equal(t, ids[6], last)
+	unread, _ = s.CheckUnread(ctx, "proj", "Orchestrator")
+	assert.Equal(t, 0, unread)
+
+	// Never moves back
+	skipped, _, _, err = s.MarkReadThrough(ctx, "proj", "Orchestrator", ids[2], ids[2])
+	require.NoError(t, err)
+	assert.Equal(t, 0, skipped)
+	unread, _ = s.CheckUnread(ctx, "proj", "Orchestrator")
+	assert.Equal(t, 0, unread)
+
+	_, _, _, err = s.MarkReadThrough(ctx, "proj", "Nobody", own.ID, own.ID)
+	assert.Error(t, err)
 }

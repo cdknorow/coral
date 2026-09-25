@@ -546,6 +546,41 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 	return messages, nil
 }
 
+// MarkReadThrough moves a subscriber's read position forward to throughID
+// (never back), for readers that looked at the newest messages rather than
+// reading in order (coral-board read --last N). It reports the messages from
+// others that were unread and older than fromID, the oldest one shown, which
+// this skips without their having been displayed.
+func (s *Store) MarkReadThrough(ctx context.Context, project, subscriberID string, throughID, fromID int64) (skipped int, firstSkipped, lastSkipped int64, err error) {
+	var lastReadID int64
+	if err = s.db.GetContext(ctx, &lastReadID,
+		"SELECT last_read_id FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
+		project, subscriberID); err != nil {
+		if err == sql.ErrNoRows {
+			err = fmt.Errorf("%s is not subscribed to %s", subscriberID, project)
+		}
+		return 0, 0, 0, err
+	}
+	if throughID <= lastReadID {
+		return 0, 0, 0, nil
+	}
+	var r struct {
+		N     int   `db:"n"`
+		First int64 `db:"first"`
+		Last  int64 `db:"last"`
+	}
+	if err = s.db.GetContext(ctx, &r,
+		`SELECT COUNT(*) AS n, COALESCE(MIN(id), 0) AS first, COALESCE(MAX(id), 0) AS last FROM board_messages
+		 WHERE project = ? AND id > ? AND id < ? AND subscriber_id != ? AND subscriber_id NOT IN ('Coral Task Queue')`,
+		project, lastReadID, fromID, subscriberID); err != nil {
+		return 0, 0, 0, err
+	}
+	_, err = s.db.ExecContext(ctx,
+		"UPDATE board_subscribers SET last_read_id = ? WHERE project = ? AND subscriber_id = ? AND last_read_id < ?",
+		throughID, project, subscriberID, throughID)
+	return r.N, r.First, r.Last, err
+}
+
 // ListMessages returns recent messages (no cursor, no side effects).
 // If beforeID > 0, only messages with id < beforeID are returned (keyset pagination).
 func (s *Store) ListMessages(ctx context.Context, project string, limit, offset int, beforeID int64) ([]Message, error) {

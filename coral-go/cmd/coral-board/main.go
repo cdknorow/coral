@@ -290,7 +290,8 @@ func printUsage() {
 Commands:
   join <project> --as <role>   Subscribe to a board
   post "<message>" [--to "a,b"] Post a message (optionally @mention agents)
-  read [--last N] [--id N]     Read new messages (or a specific message by ID)
+  read [--last N] [--id N]     Read new messages, the newest N (marks older unread
+                               as read), or a specific message by ID
   check [--quiet]              Check unread count
   projects                     List all boards
   subscribers                  List board subscribers
@@ -463,6 +464,38 @@ func cmdRead() {
 		}
 		content, _ := m["content"].(string)
 		fmt.Printf("[%s] %s: %s\n", ts, role, content)
+	}
+
+	// --last shows the newest messages rather than reading in order; mark
+	// the board read up to them so the unread count (and the nudges about
+	// it) covers only what arrives next, and say what was passed over.
+	if useLast && messageID == 0 {
+		var fromID, throughID float64
+		for _, m := range messages {
+			id, _ := m["id"].(float64)
+			if fromID == 0 || id < fromID {
+				fromID = id
+			}
+			if id > throughID {
+				throughID = id
+			}
+		}
+		result, err := apiCall("POST", "/"+st.Project+"/messages/mark-read", map[string]any{
+			"subscriber_id": subscriberID,
+			"through_id":    int64(throughID),
+			"from_id":       int64(fromID),
+		})
+		if err == nil {
+			if n, _ := result["skipped"].(float64); n > 0 {
+				first, _ := result["first_skipped_id"].(float64)
+				last, _ := result["last_skipped_id"].(float64)
+				plural := "s"
+				if n == 1 {
+					plural = ""
+				}
+				fmt.Printf("\n(%.0f earlier unread message%s, #%.0f–#%.0f, skipped and marked read. Read one with: coral-board read --id <id>)\n", n, plural, first, last)
+			}
+		}
 	}
 }
 

@@ -586,6 +586,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/board/{project}/messages", boardHandler.PostMessage)
 	r.Get("/api/board/{project}/messages", boardHandler.ReadMessages)
 	r.Get("/api/board/{project}/messages/all", boardHandler.ListAllMessages)
+	r.Post("/api/board/{project}/messages/mark-read", boardHandler.MarkRead)
 	r.Get("/api/board/{project}/messages/check", boardHandler.CheckUnread)
 	r.Delete("/api/board/{project}/messages/{messageID}", boardHandler.DeleteMessage)
 	r.Get("/api/board/{project}/subscribers", boardHandler.ListSubscribers)

@@ -240,6 +240,34 @@ func unescapeLineBreaks(content string) string {
 	return strings.NewReplacer(`\r\n`, "\n", `\n`, "\n", `\t`, "\t").Replace(content)
 }
 
+// MarkRead moves a subscriber's read position forward to through_id after
+// they looked at the newest messages (coral-board read --last N), so the
+// unread count and nudges no longer include what they saw. from_id is the
+// oldest message shown; the response counts unread messages before it that
+// were skipped.
+// POST /api/board/{project}/messages/mark-read {subscriber_id, through_id, from_id}
+func (h *BoardHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	var body struct {
+		SubscriberID string `json:"subscriber_id"`
+		ThroughID    int64  `json:"through_id"`
+		FromID       int64  `json:"from_id"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" || body.ThroughID <= 0 {
+		errBadRequest(w, "subscriber_id and through_id are required")
+		return
+	}
+	if body.FromID <= 0 || body.FromID > body.ThroughID {
+		body.FromID = body.ThroughID
+	}
+	skipped, first, last, err := h.bs.MarkReadThrough(r.Context(), project, body.SubscriberID, body.ThroughID, body.FromID)
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"skipped": skipped, "first_skipped_id": first, "last_skipped_id": last})
+}
+
 // ListProjects returns all boards with subscriber and message counts.
 // GET /api/board/projects
 func (h *BoardHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
