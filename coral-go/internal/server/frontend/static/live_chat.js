@@ -135,9 +135,46 @@ function makeBubble(className, html) {
     div.className = className;
     div.innerHTML = html;
     labelCodeBlocks(div);
+    addCodeCopyButtons(div);
     linkifyRefs(div);
     return div;
 }
+
+// Each code block gets its own copy button. The block scrolls sideways, so
+// the button sits on a wrapper around it rather than inside it.
+function addCodeCopyButtons(root) {
+    for (const pre of root.querySelectorAll(".message-text pre")) {
+        if (pre.parentElement.classList.contains("code-block")) continue;
+        const wrap = document.createElement("div");
+        wrap.className = "code-block";
+        pre.replaceWith(wrap);
+        wrap.appendChild(pre);
+        wrap.insertAdjacentHTML("beforeend", `<button type="button" class="code-copy-btn" title="Copy code" aria-label="Copy code"><span class="material-icons">content_copy</span></button>`);
+    }
+}
+
+// Swap a copy button's icon to a check for a moment after copying.
+function flashCopied(btn) {
+    const icon = btn.querySelector(".material-icons");
+    icon.textContent = "check";
+    btn.classList.add("copied");
+    clearTimeout(btn._copiedTimer);
+    btn._copiedTimer = setTimeout(() => {
+        icon.textContent = "content_copy";
+        btn.classList.remove("copied");
+    }, 1500);
+}
+
+document.addEventListener("click", async (e) => {
+    const btn = e.target.closest && e.target.closest(".code-copy-btn");
+    if (!btn) return;
+    const code = btn.parentElement.querySelector("pre");
+    if (!(await copyText(code ? code.textContent.replace(/\n$/, "") : ""))) {
+        showToast("Could not copy", true);
+        return;
+    }
+    flashCopied(btn);
+});
 
 // A path-looking inline code span: has a directory, a :line suffix, or a
 // common source extension. Keeps `window.fetch` or `v1.2.3` from matching.
@@ -442,14 +479,7 @@ document.addEventListener("click", async (e) => {
         showToast("Could not copy", true);
         return;
     }
-    const icon = btn.querySelector(".material-icons");
-    icon.textContent = "check";
-    btn.classList.add("copied");
-    clearTimeout(btn._copiedTimer);
-    btn._copiedTimer = setTimeout(() => {
-        icon.textContent = "content_copy";
-        btn.classList.remove("copied");
-    }, 1500);
+    flashCopied(btn);
 });
 
 function renderMessage(msg, container, agentType = "claude") {

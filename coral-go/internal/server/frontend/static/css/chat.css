@@ -1377,3 +1377,56 @@
         opacity: 0.6;
     }
 }
+
+/* Code blocks in chat: a wrapper holds the copy button in the corner so it
+   stays put while the block scrolls sideways. The wrapper takes the block's
+   outer margin. */
+.chat-bubble .message-text .code-block {
+    position: relative;
+    margin: 8px 0;
+}
+.chat-prose.chat-messages .chat-bubble .message-text .code-block {
+    margin: 0 0 16px;
+}
+.chat-bubble .message-text .code-block > pre,
+.chat-prose.chat-messages .chat-bubble .message-text .code-block > pre {
+    margin: 0;
+}
+.code-block .code-copy-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-light, var(--border));
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s;
+}
+.code-block .code-copy-btn .material-icons {
+    font-size: 14px;
+}
+.code-block:hover .code-copy-btn,
+.code-block .code-copy-btn:focus-visible,
+.code-block .code-copy-btn.copied {
+    opacity: 1;
+}
+.code-block .code-copy-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+.code-block .code-copy-btn.copied {
+    color: var(--success, var(--accent));
+}
+@media (hover: none) {
+    .code-block .code-copy-btn {
+        opacity: 0.7;
+    }
+}
