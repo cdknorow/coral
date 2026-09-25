@@ -175,32 +175,25 @@
                     <header class="welcome-header">
                         <span class="welcome-eyebrow">Coral workspace</span>
                         <h1>What do you want to work on?</h1>
-                        <p>Start with a goal, or launch an agent directly.</p>
+                        <p>Launch a single agent, or a team that works together on a shared message board.</p>
                     </header>
-                    <div class="welcome-primary-actions">
-                        <button class="welcome-start-button" onclick="window.showTeamWizardModal()">
-                            <span class="welcome-start-icon material-icons">auto_awesome</span>
-                            <span class="welcome-start-copy"><strong>Create a team</strong><span>Describe a goal and Coral will assemble the right agents.</span></span>
-                            <span class="material-icons welcome-start-arrow">arrow_forward</span>
+                    <div class="welcome-launch-list">
+                        <button class="welcome-launch" onclick="showLaunchModal(); window._selectLaunchType('agent')">
+                            <span class="welcome-launch-icon material-icons">smart_toy</span>
+                            <span class="welcome-launch-copy"><strong>Launch agent</strong><span>One agent in a folder you choose.</span></span>
+                            <span class="material-icons welcome-launch-arrow">arrow_forward</span>
                         </button>
-                        <button class="welcome-agent-button" onclick="showLaunchModal()"><span class="material-icons">add</span>Launch one agent</button>
+                        <button class="welcome-launch" onclick="showLaunchModal(); window._selectLaunchType('team')">
+                            <span class="welcome-launch-icon material-icons">groups</span>
+                            <span class="welcome-launch-copy"><strong>Launch team</strong><span>Agents with roles on a shared board.</span></span>
+                            <span class="material-icons welcome-launch-arrow">arrow_forward</span>
+                        </button>
                     </div>
-                    <section class="welcome-section" aria-labelledby="welcome-templates-title">
-                        <div class="welcome-section-heading"><h2 id="welcome-templates-title">Start from a template</h2><span>Pre-built teams</span></div>
-                        <div class="welcome-template-list">
-                            <button class="welcome-template" onclick="window._launchTeamPreset('Coding Team')"><span class="welcome-template-icon material-icons">code</span><span class="welcome-template-copy"><strong>Build software</strong><small>5-agent coding team</small></span><span class="material-icons">chevron_right</span></button>
-                            <button class="welcome-template" onclick="window._launchTeamPreset('Consumer Research')"><span class="welcome-template-icon material-icons">travel_explore</span><span class="welcome-template-copy"><strong>Research an audience</strong><small>12 consumer perspectives</small></span><span class="material-icons">chevron_right</span></button>
-                            <button class="welcome-template" onclick="window._launchTeamPreset('Dungeon Master')"><span class="welcome-template-icon material-icons">castle</span><span class="welcome-template-copy"><strong>Run an adventure</strong><small>7-character RPG team</small></span><span class="material-icons">chevron_right</span></button>
-                        </div>
-                    </section>
-                    <section class="welcome-section" aria-labelledby="welcome-tools-title">
-                        <div class="welcome-section-heading"><h2 id="welcome-tools-title">Automate work</h2><span>Optional tools</span></div>
-                        <div class="welcome-tool-list">
-                            <button class="welcome-tool" onclick="window.showWorkflowCreateModal()"><span class="material-icons">account_tree</span><span><strong>New workflow</strong><small>Chain steps and agents</small></span></button>
-                            <button class="welcome-tool" onclick="window.showJobModal()"><span class="material-icons">schedule</span><span><strong>Schedule a job</strong><small>Run work automatically</small></span></button>
-                            <button class="welcome-tool" onclick="window._showMobileConnectModal()"><span class="material-icons">phone_iphone</span><span><strong>Connect mobile</strong><small>Continue from your phone</small></span></button>
-                        </div>
-                    </section>
+                    <nav class="welcome-links" aria-label="Learn more">
+                        <a href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener"><span class="material-icons">menu_book</span>Documentation</a>
+                        <a href="https://github.com/cdknorow/coral" target="_blank" rel="noopener"><span class="material-icons">code</span>GitHub</a>
+                        <a href="https://github.com/cdknorow/coral/discussions" target="_blank" rel="noopener"><span class="material-icons">forum</span>Forum</a>
+                    </nav>
                 </div>
             </div>
 
