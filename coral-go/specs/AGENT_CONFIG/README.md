@@ -160,10 +160,10 @@ This gives us proper separation — system context via `developer_instructions`,
 
 | Coral Capability | Codex Mapping |
 |---|---|
-| `shell` (no deny) | `--sandbox workspace-write -a on-request` (i.e. `--full-auto`) |
-| `shell` + deny list | `--sandbox workspace-write -a untrusted` |
-| `file_read` only | `--sandbox read-only -a untrusted` |
-| `file_read` + `file_write` | `--sandbox workspace-write -a untrusted` |
+| `shell` (no deny) | `--sandbox workspace-write -a never` (automatic, sandboxed execution) |
+| `shell` + deny list | `--sandbox workspace-write -a on-request` |
+| `file_read` only | `--sandbox read-only -a on-request` |
+| `file_read` + `file_write` | `--sandbox workspace-write -a on-request` |
 | Full access (no restrictions) | `--dangerously-bypass-approvals-and-sandbox` |
 | `web_access` | `--search` |
 
@@ -182,12 +182,12 @@ This gives us proper separation — system context via `developer_instructions`,
 
 New session:
 ```
-CORAL_SESSION_NAME="codex-<uuid>" CORAL_SUBSCRIBER_ID="<role>" codex -c developer_instructions="$(cat '/tmp/coral_codex_instructions_<id>.md')" --sandbox workspace-write -a on-request [flags] "$(cat '/tmp/coral_codex_prompt_<id>.txt')"
+CORAL_SESSION_NAME="codex-<uuid>" CORAL_SUBSCRIBER_ID="<role>" codex -c developer_instructions="$(cat '/tmp/coral_codex_instructions_<id>.md')" --sandbox workspace-write -a never [flags] "$(cat '/tmp/coral_codex_prompt_<id>.txt')"
 ```
 
 Resume:
 ```
-CORAL_SESSION_NAME="codex-<uuid>" CORAL_SUBSCRIBER_ID="<role>" codex resume <sessionID> -c developer_instructions="$(cat '/tmp/coral_codex_instructions_<id>.md')" --sandbox workspace-write -a on-request [flags] "$(cat '/tmp/coral_codex_prompt_<id>.txt')"
+CORAL_SESSION_NAME="codex-<uuid>" CORAL_SUBSCRIBER_ID="<role>" codex resume <sessionID> -c developer_instructions="$(cat '/tmp/coral_codex_instructions_<id>.md')" --sandbox workspace-write -a never [flags] "$(cat '/tmp/coral_codex_prompt_<id>.txt')"
 ```
 
 Two temp files per session:

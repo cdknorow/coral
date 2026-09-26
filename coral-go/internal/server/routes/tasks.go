@@ -96,8 +96,8 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		switch body.AgentType {
 		case at.Codex:
 			skipFlag = "--full-auto"
-		case at.Gemini:
-			skipFlag = "--yolo"
+		case at.Agy, at.Antigravity, at.Gemini:
+			skipFlag = "--dangerously-skip-permissions"
 		default:
 			skipFlag = "--dangerously-skip-permissions"
 		}

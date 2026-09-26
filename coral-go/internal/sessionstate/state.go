@@ -52,14 +52,14 @@ type State struct {
 // downgrades a request that is still pending.
 func Derive(in Input) State {
 	state := State{NotStarted: in.NotStarted, Sleeping: in.Sleeping}
-	var latestType, latestSummary string
+	var latestType string
 	clearRequest := func() {
 		state.NeedsInput = false
 		state.WaitingReason = ""
 		state.WaitingSummary = ""
 	}
 	for _, event := range in.Events {
-		latestType, latestSummary = event.Type, event.Summary
+		latestType = event.Type
 		switch event.Type {
 		case "session_reset", "prompt_submit", "tool_use":
 			clearRequest()
@@ -82,7 +82,7 @@ func Derive(in Input) State {
 		}
 	}
 	state.Working = (latestType == "tool_use" || latestType == "prompt_submit") &&
-		in.StalenessSeconds < 120 && !strings.HasPrefix(latestSummary, "Ran: sleep")
+		in.StalenessSeconds < 120
 	// No authoritative stuck signal exists in the event schema yet. Keep the
 	// field explicit and false rather than inventing a timeout heuristic.
 	state.Stuck = false

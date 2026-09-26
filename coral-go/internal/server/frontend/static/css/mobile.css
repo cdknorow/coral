@@ -271,12 +271,32 @@
     }
 
     .main-content {
+        min-width: 0;
         width: 100%;
     }
 
-    /* Show mobile agent list view */
+    /* Navigation owns visibility so the list cannot overlap another view. */
     .mobile-agent-list {
-        display: flex;
+        min-height: 0;
+    }
+
+    .mobile-agent-list > * {
+        flex-shrink: 0;
+    }
+
+    .top-nav-tabs {
+        flex: 1;
+        min-width: 0;
+        gap: 8px;
+        margin: 0 8px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+    }
+
+    .top-nav-tab,
+    .top-bar-brand,
+    .top-bar-actions {
+        flex-shrink: 0;
     }
 
     /* Show mobile back button in session header */

@@ -389,6 +389,9 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/sessions/live/{name}/tasks/reorder", sessHandler.ReorderTasks)
 	// The agent's own tasks (coral-agent task ...), mirroring the board task API
 	r.Get("/api/agent/tasks", sessHandler.ListAgentTasksForAgent)
+	r.Get("/api/agent/tasks/{taskID}", sessHandler.GetAgentTaskForAgent)
+	r.Patch("/api/agent/tasks/{taskID}", sessHandler.UpdateAgentTaskForAgent)
+	r.Post("/api/agent/tasks/{taskID}/publish", sessHandler.PublishAgentTaskForAgent)
 	r.Post("/api/agent/tasks", sessHandler.AddAgentTaskForAgent)
 	r.Post("/api/agent/tasks/claim", sessHandler.ClaimAgentTaskForAgent)
 	r.Post("/api/agent/tasks/current", sessHandler.CurrentAgentTaskForAgent)
@@ -442,6 +445,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Team persistence
 	teamsHandler := routes.NewTeamsHandler(s.db)
 	r.Get("/api/teams/all", teamsHandler.ListTeams)
+	r.Get("/api/teams/detail/{name}/availability", sessHandler.TeamAvailability)
 	r.Get("/api/teams/detail/{name}", teamsHandler.GetTeam)
 	r.Delete("/api/teams/detail/{name}", teamsHandler.DeleteTeam)
 	r.Post("/api/teams/detail/{name}/resurrect", sessHandler.ResurrectTeam)
@@ -570,6 +574,7 @@ func (s *Server) buildRouter() chi.Router {
 	boardHandler := routes.NewBoardHandler(s.boardStore)
 	boardHandler.SetTerminal(s.terminal)
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
+	go boardHandler.RecoverTaskNotifications(context.Background())
 	s.boardHandler = boardHandler
 	sessHandler.SetBoardHandler(boardHandler)
 	sessHandler.SetLicenseManager(s.licenseMgr)
@@ -578,6 +583,7 @@ func (s *Server) buildRouter() chi.Router {
 	sessHandler.SetTokenStore(store.NewTokenUsageStore(s.db))
 	notifStore := routes.NewNotificationStore()
 	sessHandler.SetNotificationStore(notifStore)
+	go sessHandler.RecoverPersonalTaskNotifications(context.Background())
 	notifHandler := routes.NewNotificationHandler(notifStore)
 	r.Post("/api/notifications", notifHandler.Create)
 	r.Get("/api/board/projects", boardHandler.ListProjects)
@@ -604,9 +610,13 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/board/tasks", boardHandler.ListAllTasks)
 	// Board tasks (per-project)
 	r.Post("/api/board/{project}/tasks", boardHandler.CreateTask)
+	r.Get("/api/board/{project}/status", sessHandler.TeamAvailability)
+ r.Get("/api/board/{project}/working-mode", boardHandler.GetWorkingMode)
+ r.Put("/api/board/{project}/working-mode", boardHandler.SetWorkingMode)
 	r.Get("/api/board/{project}/tasks", boardHandler.ListTasks)
 	r.Post("/api/board/{project}/tasks/claim", boardHandler.ClaimTask)
 	r.Post("/api/board/{project}/tasks/current", boardHandler.ActiveTask)
+	r.Get("/api/board/{project}/tasks/{taskID}", boardHandler.GetTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/complete", boardHandler.CompleteTaskByID)
 	r.Post("/api/board/{project}/tasks/{taskID}/cancel", boardHandler.CancelTaskByID)
 	r.Patch("/api/board/{project}/tasks/{taskID}", boardHandler.UpdateTask)
@@ -951,7 +961,7 @@ const activationPage = `<!DOCTYPE html>
       <ul class="price-features">
         <li>Every feature, no time limit</li>
         <li>Unlimited teams and agents</li>
-        <li>Claude Code, Codex, Gemini CLI and Pi.dev</li>
+        <li>Claude Code, Codex, Antigravity CLI (agy) and Pi.dev</li>
         <li>Real-time dashboard and message boards</li>
         <li>Agent team templates &mdash; generate a team from a plain-English description, import one from a folder</li>
         <li>Token and cost tracking per agent and per session</li>

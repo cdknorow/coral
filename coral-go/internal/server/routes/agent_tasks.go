@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -42,17 +43,19 @@ func (h *SessionsHandler) sessionAgentName(ctx context.Context, sessionID string
 
 // agentTaskView is an agent task in the board task JSON shape.
 type agentTaskView struct {
-	ID                int64   `json:"id"`
-	Title             string  `json:"title"`
-	Body              *string `json:"body,omitempty"`
-	Status            string  `json:"status"`
-	Priority          string  `json:"priority"`
-	AssignedTo        *string `json:"assigned_to"`
-	CompletionMessage *string `json:"completion_message,omitempty"`
-	CreatedAt         string  `json:"created_at"`
-	ClaimedAt         *string `json:"claimed_at,omitempty"`
-	CompletedAt       *string `json:"completed_at,omitempty"`
-	SessionID         *string `json:"session_id,omitempty"`
+	Workflow          board.TaskWorkflow `json:"workflow"`
+	BlockedBy         []board.TaskDep    `json:"blocked_by,omitempty"`
+	ID                int64              `json:"id"`
+	Title             string             `json:"title"`
+	Body              *string            `json:"body,omitempty"`
+	Status            string             `json:"status"`
+	Priority          string             `json:"priority"`
+	AssignedTo        *string            `json:"assigned_to"`
+	CompletionMessage *string            `json:"completion_message,omitempty"`
+	CreatedAt         string             `json:"created_at"`
+	ClaimedAt         *string            `json:"claimed_at,omitempty"`
+	CompletedAt       *string            `json:"completed_at,omitempty"`
+	SessionID         *string            `json:"session_id,omitempty"`
 }
 
 var agentTaskStatus = map[int]string{
@@ -60,6 +63,8 @@ var agentTaskStatus = map[int]string{
 	store.AgentTaskDone:       "completed",
 	store.AgentTaskInProgress: "in_progress",
 	store.AgentTaskCancelled:  "skipped",
+	store.AgentTaskBlocked:    "blocked",
+	store.AgentTaskDraft:      "draft",
 }
 
 func viewAgentTask(t *store.AgentTask) agentTaskView {
@@ -76,6 +81,7 @@ func viewAgentTask(t *store.AgentTask) agentTaskView {
 		status = "pending"
 	}
 	return agentTaskView{
+		Workflow: t.Workflow, BlockedBy: t.BlockedBy,
 		ID: t.ID, Title: t.Title, Body: t.Body, Status: status, Priority: priority,
 		AssignedTo: &assignee, CompletionMessage: t.CompletionMessage, CreatedAt: t.CreatedAt,
 		ClaimedAt: t.StartedAt, CompletedAt: t.CompletedAt, SessionID: t.SessionID,
@@ -93,11 +99,17 @@ func (h *SessionsHandler) agentFromRequest(w http.ResponseWriter, r *http.Reques
 }
 
 type agentTaskRequest struct {
-	SessionID string `json:"session_id"`
-	Title     string `json:"title"`
-	Body      string `json:"body"`
-	Priority  string `json:"priority"`
-	Message   string `json:"message"`
+	SessionID string               `json:"session_id"`
+	Title     string               `json:"title"`
+	Body      string               `json:"body"`
+	Priority  string               `json:"priority"`
+	Message   string               `json:"message"`
+	TaskID    int64                `json:"task_id"`
+	BlockedBy json.RawMessage      `json:"blocked_by"`
+	Workflow  board.TaskWorkflow   `json:"workflow"`
+	Draft     bool                 `json:"draft"`
+	Outcome   string               `json:"outcome"`
+	Artifacts []board.TaskArtifact `json:"artifacts"`
 }
 
 func decodeAgentTaskRequest(w http.ResponseWriter, r *http.Request) (agentTaskRequest, bool) {
@@ -145,13 +157,20 @@ func (h *SessionsHandler) AddAgentTaskForAgent(w http.ResponseWriter, r *http.Re
 	if !ok {
 		return
 	}
-	task, err := h.ts.CreateAgentTask(r.Context(), name, body.Title, &body.SessionID, nil)
+	var deps []board.TaskDep
+	var err error
+	if len(body.BlockedBy) > 0 {
+		deps, err = parseBlockedBy(body.BlockedBy, store.AgentTaskProject(name, &body.SessionID))
+	}
 	if err != nil {
-		errInternalServer(w, err.Error())
+		errBadRequest(w, err.Error())
 		return
 	}
-	h.ts.SetAgentTaskDetails(r.Context(), task.ID, body.Body, body.Priority)
-	task, _ = h.ts.GetAgentTask(r.Context(), task.ID)
+	task, err := h.ts.CreateAgentTaskWithWorkflow(r.Context(), name, body.Title, &body.SessionID, nil, body.Body, body.Priority, &board.CreateTaskOpts{BlockedBy: deps, MaxDepth: 32, Workflow: body.Workflow, Draft: body.Draft})
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusCreated, viewAgentTask(task))
 }
 
@@ -167,9 +186,13 @@ func (h *SessionsHandler) ClaimAgentTaskForAgent(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	task, err := h.ts.ClaimNextAgentTask(r.Context(), name, &body.SessionID)
+	task, err := h.ts.ClaimNextAgentTask(r.Context(), name, &body.SessionID, body.TaskID)
 	if err != nil {
-		errInternalServer(w, err.Error())
+		if strings.Contains(err.Error(), "current task") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		} else {
+			errBadRequest(w, err.Error())
+		}
 		return
 	}
 	if task == nil {
@@ -237,11 +260,115 @@ func (h *SessionsHandler) finishAgentTask(w http.ResponseWriter, r *http.Request
 		errNotFound(w, "No such task for this agent")
 		return
 	}
-	if err := h.ts.FinishAgentTask(r.Context(), taskID, state, body.Message); err != nil {
-		errInternalServer(w, err.Error())
+	if err := h.ts.FinishAgentTaskWithArtifacts(r.Context(), taskID, state, body.Message, body.Outcome, body.Artifacts); err != nil {
+		errBadRequest(w, err.Error())
 		return
 	}
 	task, _ = h.ts.GetAgentTask(r.Context(), taskID)
+	go h.notifyPersonalTaskReadiness(context.Background(), taskID)
+	writeJSON(w, http.StatusOK, viewAgentTask(task))
+}
+
+// Zero drains startup recovery notices; ordinary calls drain this prerequisite.
+func (h *SessionsHandler) notifyPersonalTaskReadiness(ctx context.Context, id int64) {
+	tasks, err := h.db.TaskEngine.ResolveDownstreamTasks(ctx, "", id)
+	if err != nil {
+		return
+	}
+	for _, task := range tasks {
+		own, err := h.ts.GetAgentTask(ctx, task.ID)
+		if err == nil && own != nil && own.SessionID != nil {
+			h.notifyTaskCreated(ctx, own.AgentName, *own.SessionID, own)
+		}
+	}
+}
+
+func (h *SessionsHandler) RecoverPersonalTaskNotifications(ctx context.Context) {
+	h.notifyPersonalTaskReadiness(ctx, 0)
+}
+
+func (h *SessionsHandler) personalTaskForRequest(w http.ResponseWriter, r *http.Request, sid string) (*store.AgentTask, bool) {
+	name, ok := h.agentFromRequest(w, r, sid)
+	if !ok {
+		return nil, false
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil || id <= 0 {
+		errBadRequest(w, "invalid task id")
+		return nil, false
+	}
+	task, err := h.ts.GetAgentTask(r.Context(), id)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return nil, false
+	}
+	if !taskBelongsTo(task, name, sid) {
+		errNotFound(w, "No such task for this agent")
+		return nil, false
+	}
+	return task, true
+}
+
+func (h *SessionsHandler) GetAgentTaskForAgent(w http.ResponseWriter, r *http.Request) {
+	task, ok := h.personalTaskForRequest(w, r, r.URL.Query().Get("session_id"))
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, viewAgentTask(task))
+}
+
+func (h *SessionsHandler) UpdateAgentTaskForAgent(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SessionID string          `json:"session_id"`
+		Title     *string         `json:"title"`
+		Body      *string         `json:"body"`
+		Priority  *string         `json:"priority"`
+		BlockedBy json.RawMessage `json:"blocked_by"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	task, ok := h.personalTaskForRequest(w, r, body.SessionID)
+	if !ok {
+		return
+	}
+	updates := board.TaskUpdate{Title: body.Title, Body: body.Body, Priority: body.Priority}
+	if len(body.BlockedBy) > 0 {
+		deps, err := parseBlockedBy(body.BlockedBy, store.AgentTaskProject(task.AgentName, task.SessionID))
+		if err != nil {
+			errBadRequest(w, err.Error())
+			return
+		}
+		updates.BlockedBy = &deps
+	}
+	updated, err := h.ts.UpdateAgentTaskWorkflow(r.Context(), task.ID, updates)
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, viewAgentTask(updated))
+}
+
+func (h *SessionsHandler) PublishAgentTaskForAgent(w http.ResponseWriter, r *http.Request) {
+	body, ok := decodeAgentTaskRequest(w, r)
+	if !ok {
+		return
+	}
+	task, ok := h.personalTaskForRequest(w, r, body.SessionID)
+	if !ok {
+		return
+	}
+	_, err := h.db.TaskEngine.PublishTask(r.Context(), store.AgentTaskProject(task.AgentName, task.SessionID), task.ID)
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	task, err = h.ts.GetAgentTask(r.Context(), task.ID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, viewAgentTask(task))
 }
 

@@ -127,8 +127,8 @@ func TranslatePermissions(agentType string, caps *Capabilities) any {
 		return TranslateToClaudePermissions(caps)
 	case at.Codex:
 		return TranslateToCodexPermissions(caps)
-	case at.Gemini:
-		return TranslateToGeminiPermissions(caps)
+	case at.Agy, at.Antigravity, at.Gemini:
+		return TranslateToAgyPermissions(caps)
 	case at.Pi:
 		return nil
 	default:
@@ -174,7 +174,7 @@ func TranslateToCodexPermissions(caps *Capabilities) *CodexPermissions {
 		return perms
 	}
 
-	// Shell with no deny → --full-auto (workspace-write + on-request)
+	// Shell with no deny → automatic workspace writes without approval prompts.
 	if allowSet[CapShell] && !hasDeny {
 		perms.FullAuto = true
 		return perms
@@ -214,14 +214,19 @@ func TranslateToCodexPermissions(caps *Capabilities) *CodexPermissions {
 	return perms
 }
 
-// GeminiPermissions represents Gemini CLI permission settings.
-type GeminiPermissions struct {
-	ApprovalMode string `json:"approval_mode,omitempty"` // "default", "auto_edit", "yolo", "plan"
-	Sandbox      bool   `json:"sandbox,omitempty"`
+// AgyPermissions represents Antigravity CLI (agy) permission settings.
+type AgyPermissions struct {
+	DangerouslySkipPermissions bool   `json:"dangerously_skip_permissions,omitempty"`
+	Mode                       string `json:"mode,omitempty"`          // "accept-edits", "plan"
+	ApprovalMode               string `json:"approval_mode,omitempty"` // backward-compatibility alias ("default", "auto_edit", "yolo", "plan")
+	Sandbox                    bool   `json:"sandbox,omitempty"`
 }
 
-// TranslateToGeminiPermissions converts Coral capabilities to Gemini CLI flags.
-func TranslateToGeminiPermissions(caps *Capabilities) *GeminiPermissions {
+// Deprecated: use AgyPermissions.
+type GeminiPermissions = AgyPermissions
+
+// TranslateToAgyPermissions converts Coral capabilities to Antigravity CLI (agy) flags.
+func TranslateToAgyPermissions(caps *Capabilities) *AgyPermissions {
 	if caps.IsEmpty() {
 		return nil
 	}
@@ -231,33 +236,38 @@ func TranslateToGeminiPermissions(caps *Capabilities) *GeminiPermissions {
 		allowSet[cap] = true
 	}
 
-	// Full access (shell + file_write + no deny) → yolo
+	// Full access (shell + file_write + no deny) → dangerously-skip-permissions
 	if allowSet[CapShell] && allowSet[CapFileWrite] && len(caps.Deny) == 0 {
-		return &GeminiPermissions{ApprovalMode: "yolo"}
+		return &AgyPermissions{DangerouslySkipPermissions: true, ApprovalMode: "yolo"}
 	}
 
-	// Shell + file_write with restrictions → auto_edit
+	// Shell + file_write with restrictions → accept-edits
 	if allowSet[CapShell] && allowSet[CapFileWrite] {
-		return &GeminiPermissions{ApprovalMode: "auto_edit"}
+		return &AgyPermissions{Mode: "accept-edits", ApprovalMode: "auto_edit"}
 	}
 
-	// Shell without file_write → auto_edit (shell implies some write)
+	// Shell without file_write → accept-edits (shell implies some write)
 	if allowSet[CapShell] {
-		return &GeminiPermissions{ApprovalMode: "auto_edit"}
+		return &AgyPermissions{Mode: "accept-edits", ApprovalMode: "auto_edit"}
 	}
 
 	// file_read only → plan mode (read-only)
 	if allowSet[CapFileRead] && !allowSet[CapFileWrite] && !allowSet[CapShell] {
-		return &GeminiPermissions{ApprovalMode: "plan"}
+		return &AgyPermissions{Mode: "plan", ApprovalMode: "plan"}
 	}
 
-	// file_read + file_write → auto_edit
+	// file_read + file_write → accept-edits
 	if allowSet[CapFileRead] && allowSet[CapFileWrite] {
-		return &GeminiPermissions{ApprovalMode: "auto_edit"}
+		return &AgyPermissions{Mode: "accept-edits", ApprovalMode: "auto_edit"}
 	}
 
 	// Default
-	return &GeminiPermissions{ApprovalMode: "default"}
+	return &AgyPermissions{ApprovalMode: "default"}
+}
+
+// Deprecated: use TranslateToAgyPermissions.
+func TranslateToGeminiPermissions(caps *Capabilities) *GeminiPermissions {
+	return TranslateToAgyPermissions(caps)
 }
 
 // Preset permission profiles for built-in agent roles.

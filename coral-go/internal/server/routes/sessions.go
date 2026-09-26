@@ -4,15 +4,16 @@ package routes
 import (
 	"bytes"
 	"context"
-	"errors"
 	crand "crypto/rand"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -191,7 +192,7 @@ func (h *SessionsHandler) resolveModel(ctx context.Context, agentType, requestMo
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(settings["default_model_"+agentType])
+	return defaultModelFromSettings(settings, agentType, requestModel)
 }
 
 // defaultModelFromSettings looks up default_model_<agentType> in an already-loaded
@@ -207,7 +208,15 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 	if agentType == "" || settings == nil {
 		return ""
 	}
-	return strings.TrimSpace(settings["default_model_"+agentType])
+	model := strings.TrimSpace(settings["default_model_"+agentType])
+	if model == "" {
+		if agentType == at.Agy || agentType == at.Antigravity {
+			model = strings.TrimSpace(settings["default_model_"+at.Gemini])
+		} else if agentType == at.Gemini {
+			model = strings.TrimSpace(settings["default_model_"+at.Agy])
+		}
+	}
+	return model
 }
 
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
@@ -548,6 +557,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		for _, ev := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
+		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
 		state := DeriveSessionState(stateInput)
 
 		// The goal line is the newest goal event (the agent's PULSE line, the
@@ -1028,6 +1038,40 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
 	workingDir := r.URL.Query().Get("working_directory")
+
+	// If missing metadata, attempt lookup by session_id or name
+	if (agentType == "" || workingDir == "" || sessionID == "") && h.ss != nil {
+		targetID := sessionID
+		if targetID == "" {
+			targetID = name
+		}
+		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
+			if agentType == "" && ls.AgentType != "" {
+				agentType = ls.AgentType
+			}
+			if workingDir == "" && ls.WorkingDir != "" {
+				workingDir = ls.WorkingDir
+			}
+			if sessionID == "" {
+				sessionID = ls.SessionID
+			}
+		} else if all, err := h.ss.GetAllLiveSessions(r.Context()); err == nil {
+			for _, s := range all {
+				if s.AgentName == name || s.SessionID == name {
+					if agentType == "" && s.AgentType != "" {
+						agentType = s.AgentType
+					}
+					if workingDir == "" && s.WorkingDir != "" {
+						workingDir = s.WorkingDir
+					}
+					if sessionID == "" {
+						sessionID = s.SessionID
+					}
+					break
+				}
+			}
+		}
+	}
 
 	if agentType == "" {
 		agentType = at.Claude
@@ -3216,10 +3260,13 @@ func (h *SessionsHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 
 func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title     string `json:"title"`
-		Body      string `json:"body"`
-		Priority  string `json:"priority"`
-		SessionID string `json:"session_id"`
+		Title     string             `json:"title"`
+		Body      string             `json:"body"`
+		Priority  string             `json:"priority"`
+		SessionID string             `json:"session_id"`
+		Workflow  board.TaskWorkflow `json:"workflow"`
+		BlockedBy json.RawMessage    `json:"blocked_by"`
+		Draft     bool               `json:"draft"`
 		// Notify tells the agent to claim it (a short prompt typed into its
 		// terminal; see claimPrompt).
 		Notify bool `json:"notify"`
@@ -3252,20 +3299,21 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		displayName = &dn
 	}
 
-	task, err := h.ts.CreateAgentTask(r.Context(), name, body.Title, strPtr(body.SessionID), displayName)
-	if err != nil {
-		errInternalServer(w, err.Error())
-		return
-	}
-	if body.Body != "" || body.Priority != "" {
-		if err := h.ts.SetAgentTaskDetails(r.Context(), task.ID, body.Body, body.Priority); err == nil {
-			if t, err := h.ts.GetAgentTask(r.Context(), task.ID); err == nil && t != nil {
-				task = t
-			}
+	var deps []board.TaskDep
+	if len(body.BlockedBy) > 0 {
+		deps, err = parseBlockedBy(body.BlockedBy, store.AgentTaskProject(name, strPtr(body.SessionID)))
+		if err != nil {
+			errBadRequest(w, err.Error())
+			return
 		}
 	}
+	task, err := h.ts.CreateAgentTaskWithWorkflow(r.Context(), name, body.Title, strPtr(body.SessionID), displayName, body.Body, body.Priority, &board.CreateTaskOpts{Workflow: body.Workflow, BlockedBy: deps, Draft: body.Draft, MaxDepth: 32})
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	resp := createdTaskResponse{AgentTask: task}
-	if body.Notify {
+	if body.Notify && task.Status == "pending" {
 		resp.Notified, resp.NotifyError = h.notifyTaskCreated(r.Context(), name, body.SessionID, task)
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -3283,16 +3331,17 @@ func (h *SessionsHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.ts.UpdateAgentTask(r.Context(), taskID, body.Title, body.Completed, body.SortOrder); err != nil {
-		errInternalServer(w, err.Error())
+		errBadRequest(w, err.Error())
 		return
 	}
+	go h.notifyPersonalTaskReadiness(context.Background(), taskID)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (h *SessionsHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	taskID, _ := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err := h.ts.DeleteAgentTask(r.Context(), taskID); err != nil {
-		errInternalServer(w, err.Error())
+		errBadRequest(w, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -3597,7 +3646,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 
 	// Resolve custom CLI path from settings
 	userSettings, _ := h.ss.GetSettings(ctx)
-	cliPath := userSettings[agent.CLIPathSettingKey(agentType)]
+	cliPath := agent.ResolveCLIPath(userSettings, agentType)
 
 	// Check CLI availability before launching (skip for terminal type)
 	if agentType != at.Terminal {
@@ -4043,13 +4092,29 @@ func writeResolveErr(w http.ResponseWriter, err error) {
 }
 
 func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, ref string) (resolvedFileRef, error) {
-	fp, line := ref, 0
-	if m := fileRefLineRe.FindStringSubmatch(ref); m != nil {
+	fp, line := strings.TrimSpace(ref), 0
+	if unescaped, err := url.PathUnescape(fp); err == nil {
+		fp = unescaped
+	}
+	if strings.HasPrefix(strings.ToLower(fp), "file://localhost/") {
+		fp = fp[len("file://localhost"):]
+	}
+	fp = strings.TrimPrefix(fp, "file://")
+
+	if m := fileRefHashLineRe.FindStringSubmatch(fp); m != nil {
 		fp = m[1]
 		line, _ = strconv.Atoi(m[2])
+	} else if m := fileRefLineRe.FindStringSubmatch(fp); m != nil {
+		fp = m[1]
+		line, _ = strconv.Atoi(m[2])
+	} else if idx := strings.Index(fp, "#"); idx != -1 {
+		fp = fp[:idx]
 	}
 
 	root := h.resolveGitRoot(ctx, name, "", sessionID)
+	if root == "" {
+		root = h.resolveWorkdir(ctx, name, "", sessionID)
+	}
 	if root == "" {
 		return resolvedFileRef{}, errNoWorkdir
 	}
@@ -4167,8 +4232,11 @@ func suffixMatches(ctx context.Context, root, workdir, ref string, changed map[s
 	return matches
 }
 
-// A trailing :line, :line:col or :line-line on a file reference.
-var fileRefLineRe = regexp.MustCompile(`^(.+?):(\d+)(?:[-:]\d+)?$`)
+// A trailing :line, :line:col, :line-line, or #Lline hash on a file reference.
+var (
+	fileRefLineRe     = regexp.MustCompile(`^(.+?):(\d+)(?:[-:]\d+)?$`)
+	fileRefHashLineRe = regexp.MustCompile(`^(.+?)#(?:L)?(\d+)(?:[-:]L?\d+)?$`)
+)
 
 // GetFileContent returns the raw content of a file in the agent's working tree.
 // GET /api/sessions/live/{name}/file-content?filepath=...&session_id=...
@@ -4849,7 +4917,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	agent.TryPrepareResume(agentImpl, ls.SessionID, ls.WorkingDir)
 
 	userSettings, _ := h.ss.GetSettings(ctx)
-	cliPath := userSettings[agent.CLIPathSettingKey(ls.AgentType)]
+	cliPath := agent.ResolveCLIPath(userSettings, ls.AgentType)
 
 	role := displayName
 	if role == "" {

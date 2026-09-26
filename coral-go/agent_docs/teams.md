@@ -234,3 +234,99 @@ curl -X POST http://localhost:8420/api/teams/detail/api-team/resurrect
 # 8. Or delete the stopped team
 curl -X DELETE http://localhost:8420/api/teams/detail/api-team
 ```
+
+
+## Agent availability
+
+`GET /api/board/{project}/status` returns a routing snapshot for a local
+team/board. Agents can read it with `coral-board status` (current board) or
+`coral-board status --board NAME`. The original
+`GET /api/teams/detail/{name}/availability` remains a compatibility alias. Open **Agent availability** from the team's three-dot menu to view
+it, including task titles and unassigned work. Use **Refresh** for a new snapshot.
+
+The response contains `board`, compatibility `team`, UTC `observed_at`, `summary` counts, `agents`, and
+`unassigned_tasks`. Each agent includes `name`, optional `session_id`,
+`subscriber_id`, `agent_type`, `role`, `availability`, boolean `available`,
+`reason`, and open `tasks`. Task entries contain `id`, `scope` (`personal` or
+`board`), `title`, and `status`; IDs must be interpreted with their scope.
+
+| Availability | Meaning |
+|---|---|
+| `available` | Confirmed idle, live, subscribed agent with no active or pending assigned work |
+| `busy` | In-progress personal/board task, or reported runtime activity |
+| `queued` | Has pending assigned work |
+| `needs_input` | Waiting for user input or approval |
+| `sleeping` | Session is asleep |
+| `offline` | No observed local runtime/session |
+| `unknown` | No confirmed idle signal, or remote state cannot be observed locally |
+| `unavailable` | Terminal or no active board subscription |
+
+Blocked and draft tasks are shown but do not by themselves reserve an idle agent.
+Sleeping/offline/input states take precedence over task occupancy; inspect
+`tasks` to see assignments in those states. Unassigned tasks are listed once at
+team level. Completed/cancelled tasks are omitted. Runtime activity uses Coral's
+session event state. For Codex, explicit transcript turn-start/completion events
+also supply state when newer than hook events, including sessions with missing
+hooks. The main session list, WebSocket updates, and individual session views
+use this same detection. An explicit unfinished turn remains working even when
+terminal output is quiet. Newer input/approval hooks take precedence. Absent idle evidence is
+treated conservatively.
+
+This read-only endpoint does not claim tasks or reserve agents. State can change
+before routing; use the atomic task claim APIs to start work. The snapshot spans
+runtime and task stores and is not a transaction across them. Responses disable
+caching. An unknown/empty board returns empty arrays; storage or runtime discovery
+failure returns HTTP 500 rather than reporting agents as free. Local registered
+sessions and active board subscribers are included; stopped unsubscribed members
+are not a historical team roster.
+
+
+## Team working modes
+
+Choose **Team working mode** from the team's three-dot menu. Available modes:
+
+- **None** (default): no additional mode instructions.
+- **Shared checkout**: coordinate file ownership, preserve teammates' changes,
+  and commit only the task's changes.
+- **Worktrees**: use an isolated task worktree/branch and publish the exact commit
+  and artifacts for downstream consumers.
+
+An independent **dependent-queue guidance** checkbox adds instructions for
+separate implementation/test/release tasks, explicit prerequisites, named
+outputs, and consuming upstream evidence. Optional custom instructions append
+team conventions (maximum 4096 UTF-8 bytes). To add no team instructions, select
+None, disable dependency guidance, and leave custom instructions empty. Existing
+Coral task workflow instructions still apply.
+
+This setting supplies instructions; it does not create worktrees, branches,
+dependencies, or artifacts automatically. It applies to board tasks. Personal
+queues do not inherit a team board's setting.
+
+```text
+GET /api/board/{project}/working-mode
+PUT /api/board/{project}/working-mode
+```
+
+PUT replaces the setting:
+
+```json
+{
+  "mode": "worktrees",
+  "dependency_guidance": true,
+  "custom_instructions": "Run make check before publishing a commit."
+}
+```
+
+Both endpoints return these fields plus generated `instructions`. Mode values
+are `none`, `shared_checkout`, and `worktrees`. Omitted fields reset to defaults;
+caller-supplied generated `instructions` are ignored. Invalid modes or oversized
+custom instructions return HTTP 400 without changing the saved setting.
+`coral-board status` also includes the current `working_mode`.
+
+On a task's **first claim**, Coral snapshots the mode in `workflow.team_mode`
+and appends its generated text to `workflow.instructions`, in the same
+transaction as the claim. The CLI, claim API, current/detail responses, and task
+dashboard therefore show the same instructions. Later setting changes affect
+unclaimed tasks, not an existing claim. Reassignment/reclaim preserves the
+original snapshot. A new retry task receives the setting in effect when it is
+first claimed. Existing active and completed tasks are not retroactively changed.

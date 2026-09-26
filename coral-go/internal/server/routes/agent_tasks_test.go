@@ -88,8 +88,8 @@ func TestAgentTasks_MirrorBoardTaskAPI(t *testing.T) {
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, third["id"], claimed["id"], "cancelled tasks are skipped by claim")
 	code, none := post("/api/agent/tasks/claim", map[string]any{"session_id": "solo-1"})
-	assert.Equal(t, http.StatusNotFound, code)
-	assert.Equal(t, "No available tasks", none["error"])
+	assert.Equal(t, http.StatusConflict, code)
+	assert.Contains(t, none["error"], "current task")
 
 	// list: {"tasks": [...]} with board statuses
 	statuses := map[any]string{}
@@ -108,6 +108,8 @@ func TestAgentTasks_MirrorBoardTaskAPI(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		_, c := post("/api/agent/tasks/claim", map[string]any{"session_id": "other-1"})
 		order = append(order, c["title"].(string))
+		code, _ := post(fmt.Sprintf("/api/agent/tasks/%v/complete", c["id"]), map[string]any{"session_id": "other-1"})
+		require.Equal(t, http.StatusOK, code)
 	}
 	assert.Equal(t, []string{"Critical one", "High one", "Medium one", "Low one"}, order)
 

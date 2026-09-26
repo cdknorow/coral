@@ -708,16 +708,16 @@ func TestResolveDownstreamTasks_MultipleBlockers(t *testing.T) {
 	assert.Equal(t, "pending", unblocked[0].Status)
 }
 
-func TestResolveDownstreamTasks_CancelledBlockerUnblocks(t *testing.T) {
+func TestResolveDownstreamTasks_CancelledBlockerRequiresTerminationCondition(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 
 	taskA, _ := s.CreateTask(ctx, "proj", "Task A", "", "medium", "alice")
 	taskB, _ := s.CreateTaskWithOpts(ctx, "proj", "Task B", "", "medium", "alice",
-		&CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: taskA.ID, BoardID: "proj"}}, MaxDepth: 3})
+		&CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: taskA.ID, BoardID: "proj", Condition: "termination"}}, MaxDepth: 3})
 	assert.Equal(t, "blocked", taskB.Status)
 
-	// Cancel A — B should unblock (skipped counts as resolved)
+	// Cancellation satisfies an explicit termination dependency, not success.
 	s.CancelTask(ctx, "proj", taskA.ID, "alice", nil)
 
 	unblocked, err := s.ResolveDownstreamTasks(ctx, "proj", taskA.ID)

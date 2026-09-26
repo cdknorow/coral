@@ -411,7 +411,7 @@ func TestWSTerminal_ReplayContainsRecentOutput(t *testing.T) {
 	// Produce 500 lines of output so the replay is non-trivial
 	tmuxName := spawnTestSession(t, backend, "scroll-agent", "22222222-3333-4444-5555-666666666666",
 		"seq 1 500")
-	waitForReplayContent(t, backend, "scroll-agent", "500")
+	waitForReplayContent(t, backend, "scroll-agent", "\n500")
 
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()

@@ -60,7 +60,10 @@ var (
 func optionAction(label string) string {
 	lower := strings.ToLower(strings.TrimSpace(label))
 	switch {
-	case strings.HasPrefix(lower, "type something"), strings.HasPrefix(lower, "tell claude what to change"):
+	case strings.HasPrefix(lower, "type something"),
+		strings.HasPrefix(lower, "tell claude what to change"),
+		strings.HasPrefix(lower, "tell agent what to change"),
+		strings.HasPrefix(lower, "tell antigravity what to change"):
 		return "text"
 	case strings.HasPrefix(lower, "chat about this"):
 		return "chat"

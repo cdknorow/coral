@@ -187,7 +187,7 @@ const SHELL_PROBE = `(() => {
         title: document.title, hash: location.hash, path: location.pathname,
         hooks: { popout: !!p && typeof p.isPopout === 'function' && typeof p.targetSessionId === 'function' && typeof p.getState === 'function' && typeof p.isOwner === 'function' && typeof p.claimOwnership === 'function', set: typeof window._coralSetLiveSessions === 'function', ws: typeof window._coralHandleWsMessage === 'function', get: typeof window._coralGetLiveSessions === 'function', select: typeof window.selectLiveSession === 'function' },
         state: p && p.getState ? p.getState() : null, isOwner: p && p.isOwner ? p.isOwner() : null, targetId: p && p.targetSessionId ? p.targetSessionId() : null,
-        workspace: { live: vis('#live-session-view'), cmd: vis('#command-input'), toolbar: vis('#command-toolbar'), panel: vis('#agentic-state'), splitHandle: vis('#task-bar-resize-handle'), cmdHandle: vis('#command-pane-resize-handle') },
+        workspace: { live: vis('#live-session-view'), cmd: vis('#command-input'), toolbar: vis('#command-toolbar'), panel: vis('#agentic-state'), splitHandle: vis('#task-bar-resize-handle'), commandPane: vis('#command-pane') },
         inputDisabled: !!(document.getElementById('command-input') && document.getElementById('command-input').disabled),
         overlays: { notFound: vis('#popout-not-found'), ended: vis('#popout-ended'), endedOverlay: vis('#session-ended-overlay'), sleeping: vis('#session-sleeping-overlay'), lost: vis('#session-lost-connection'), chip: vis('#popout-viewer-chip'), waiting: vis('#waiting-banner') },
         restartedHref: (() => { const a = document.getElementById('popout-restarted-link'); return a ? a.getAttribute('href') : null; })(),
@@ -275,7 +275,7 @@ async function run() {
     check('1 popout boot attrs + popout-mode class', s1.mode === 'agent' && s1.target === sid && s1.popoutClass, JSON.stringify({ mode: s1.mode, target: s1.target, cls: s1.popoutClass }));
     check('8 chrome absent/hidden (top bar, sidebar, handle, tablet toggle, mobile bar/list, welcome)', Object.values(s1.chrome).every(v => v !== 'visible'), JSON.stringify(s1.chrome));
     check('8 .layout fills the viewport', s1.layoutH !== null && Math.abs(s1.layoutH - s1.innerH) <= 2, `${s1.layoutH} vs ${s1.innerH}`);
-    check('8 workspace present: live view, command input, quick-action strip, tools pane, split + command handles', Object.values(s1.workspace).every(v => v === 'visible'), JSON.stringify(s1.workspace));
+    check('8 workspace present: live view, command input, quick-action strip, tools pane, split handle and command pane', Object.values(s1.workspace).every(v => v === 'visible'), JSON.stringify(s1.workspace));
     check('9 slim header identity is the resolved display name', /Popout QA/.test(s1.identity) && !s1.identity.includes(sid) && !/terminal-[0-9a-f]{8}/.test(s1.identity), s1.identity.trim());
     check('9 header carries no agent-type badge (decluttered)', s1.badge === '' && await t1.ev(`!document.getElementById('terminal-type-badge')`), s1.badge);
     check('9 state pill has an agreed data-state and matching text', ['working', 'idle', 'waiting', 'sleeping', 'ended', 'reconnecting', 'loading', 'not-found'].includes(s1.pill) && (s1.pill !== 'idle' || /^Idle$/i.test(s1.pillText.trim())) && (s1.pill !== 'working' || /^Working$/i.test(s1.pillText.trim())), JSON.stringify({ pill: s1.pill, text: s1.pillText.trim() }));

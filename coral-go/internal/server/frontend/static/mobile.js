@@ -1,6 +1,7 @@
 /* Mobile navigation and view management */
 
 import { state } from './state.js';
+import { showView } from './utils.js';
 
 const MOBILE_BREAKPOINT = 767;
 
@@ -34,39 +35,10 @@ function switchMobileTab(tab) {
         t.classList.toggle('active', t.dataset.tab === tab);
     });
 
-    // Hide all mobile-level views
-    const agentList = document.getElementById('mobile-agent-list');
-    const welcomeScreen = document.getElementById('welcome-screen');
-    const liveView = document.getElementById('live-session-view');
-    const historyView = document.getElementById('history-session-view');
-    const boardView = document.getElementById('messageboard-view');
-    const schedulerView = document.getElementById('scheduler-view');
-
-    if (agentList) agentList.style.display = 'none';
-    if (welcomeScreen) welcomeScreen.style.display = 'none';
-    if (liveView) liveView.style.display = 'none';
-    if (historyView) historyView.style.display = 'none';
-    if (boardView) boardView.style.display = 'none';
-    if (schedulerView) schedulerView.style.display = 'none';
-
-    switch (tab) {
-        case 'agents':
-            if (agentList) agentList.style.display = 'flex';
-            break;
-        case 'chat':
-            // Show the current live session (agent terminal output)
-            if (liveView && state.currentSession && state.currentSession.type === 'live') {
-                liveView.style.display = 'flex';
-            } else if (agentList) {
-                // No session selected — show agent list so user can pick one
-                agentList.style.display = 'flex';
-            }
-            break;
-        case 'board':
-            // Show the message board view
-            if (boardView) boardView.style.display = 'flex';
-            break;
-    }
+    const view = tab === 'board' ? 'messageboard-view'
+        : tab === 'chat' && state.currentSession?.type === 'live' ? 'live-session-view'
+        : 'mobile-agent-list';
+    showView(view);
 }
 window.switchMobileTab = switchMobileTab;
 
@@ -123,14 +95,7 @@ function _showMobileHistory(agentList) {
 function mobileBack() {
     if (!isMobile()) return;
 
-    // Go back to agent list
-    const liveView = document.getElementById('live-session-view');
-    const historyView = document.getElementById('history-session-view');
-    const agentList = document.getElementById('mobile-agent-list');
-
-    if (liveView) liveView.style.display = 'none';
-    if (historyView) historyView.style.display = 'none';
-    if (agentList) agentList.style.display = 'flex';
+    showView('mobile-agent-list');
 
     // Hide panel overlay and panel tab
     const agenticState = document.getElementById('agentic-state');
@@ -389,7 +354,20 @@ export function initMobile() {
     _initKeyboardDetection();
 
     // Listen for resize to toggle mobile/desktop
+    let wasMobile = isMobile();
     window.addEventListener('resize', () => {
+        const mobile = isMobile();
+        if (mobile !== wasMobile) {
+            const list = document.getElementById('mobile-agent-list');
+            const welcome = document.getElementById('welcome-screen');
+            if (mobile) {
+                syncMobileAgentList();
+                if (welcome && welcome.style.display !== 'none') showView('mobile-agent-list');
+            } else if (list && list.style.display !== 'none') {
+                showView('welcome-screen');
+            }
+            wasMobile = mobile;
+        }
         const tabBar = document.querySelector('.mobile-tab-bar');
         if (!tabBar) return;
 

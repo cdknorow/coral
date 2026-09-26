@@ -1,5 +1,8 @@
 # Message Board Task List API
 
+> Historical design proposal. Some commands and behavior below have been superseded.
+> For the implemented contract, see [current queue behavior](task-queue-behavior.md) and [task workflows](../../agent_docs/task-workflows.md).
+
 ## Overview
 
 An atomic task management system built into `coral-board` that allows multi-agent teams to coordinate work without contention. Tasks live alongside the message board and provide server-side locking so two agents can never claim the same task simultaneously.

@@ -83,10 +83,10 @@ function renderToolCard(tool, adapter) {
         bodyHtml += `<div class="diff-content">${renderPatchLines(tool.patch)}</div>`;
     }
 
-    if (tool.name === "Edit" && (tool.old_string || tool.new_string)) {
+    if ((tool.name === "Edit" || view.name === "Edit" || view.icon === "Edit") && (tool.old_string || tool.new_string)) {
         bodyHtml += `<div class="diff-content">${renderDiffLines(tool.old_string || "", tool.new_string || "")}</div>`;
     }
-    if (tool.name === "Write" && tool.write_content) {
+    if ((tool.name === "Write" || view.name === "Write" || view.icon === "Write") && tool.write_content) {
         bodyHtml += `<pre class="tool-result-content">${escapeHtml(tool.write_content)}</pre>`;
     }
 
@@ -114,10 +114,12 @@ function renderQuestionCard(tool) {
             if (q.options && q.options.length > 0) {
                 bodyHtml += `<div class="tool-question-options">`;
                 for (const opt of q.options) {
+                    const label = typeof opt === "string" ? opt : (opt.label || opt.text || "");
+                    const desc = typeof opt === "object" && opt ? opt.description : "";
                     bodyHtml += `<div class="tool-question-option">`;
-                    bodyHtml += `<span class="tool-question-option-label">${escapeHtml(opt.label)}</span>`;
-                    if (opt.description) {
-                        bodyHtml += `<span class="tool-question-option-desc">${escapeHtml(opt.description)}</span>`;
+                    bodyHtml += `<span class="tool-question-option-label">${escapeHtml(label)}</span>`;
+                    if (desc) {
+                        bodyHtml += `<span class="tool-question-option-desc">${escapeHtml(desc)}</span>`;
                     }
                     bodyHtml += `</div>`;
                 }
@@ -181,11 +183,26 @@ document.addEventListener("click", async (e) => {
 const FILE_REF_RE = /^(?:~?\.{0,2}\/)?(?:[\w@.+-]+\/)*[\w@.+-]+\.[A-Za-z][\w]{0,7}(?::\d+(?:[-:]\d+)?)?$/;
 const FILE_REF_EXTS = new Set(["md", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "py", "rb", "rs", "java", "kt", "swift", "c", "h", "cc", "cpp", "hpp", "cs", "php", "sh", "zsh", "bash", "json", "yaml", "yml", "toml", "ini", "css", "scss", "html", "sql", "txt", "mod", "sum", "lock", "xml", "svg", "vue", "svelte"]);
 
+function normalizeFileRef(raw) {
+    if (!raw) return "";
+    let s = String(raw).trim();
+    if (/^file:\/\//i.test(s)) {
+        s = s.replace(/^file:\/\/(?:localhost)?/i, "");
+        if (!s.startsWith("/")) s = "/" + s;
+    }
+    // Convert markdown hash line anchor #L123, #L123-L145, #123 to :123
+    s = s.replace(/#(?:L)?(\d+)(?:[-:]L?\d+)?$/i, ":$1");
+    // Strip any remaining hash
+    s = s.replace(/#.*$/, "");
+    return s;
+}
+
 function looksLikeFileRef(text) {
-    if (!FILE_REF_RE.test(text) || /^https?:/i.test(text)) return false;
-    const path = text.replace(/:\d+(?:[-:]\d+)?$/, "");
+    const s = normalizeFileRef(text);
+    if (!s || !FILE_REF_RE.test(s) || /^https?:/i.test(s)) return false;
+    const path = s.replace(/:\d+(?:[-:]\d+)?$/, "");
     const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
-    return path.includes("/") || path !== text || FILE_REF_EXTS.has(ext);
+    return path.includes("/") || path !== s || FILE_REF_EXTS.has(ext);
 }
 
 // A path in plain prose (not in backticks). Needs a directory so words like
@@ -202,16 +219,20 @@ function linkifyRefs(root) {
         if (/^(https?:|mailto:)/i.test(href)) {
             a.target = "_blank";
             a.rel = "noopener noreferrer";
-        } else if (!href.startsWith("#") && looksLikeFileRef(decodeURIComponent(href))) {
-            a.dataset.fileRef = decodeURIComponent(href);
-            a.classList.add("chat-file-ref");
+        } else if (!href.startsWith("#")) {
+            let raw = href;
+            try { raw = decodeURIComponent(href); } catch {}
+            if (/^file:/i.test(raw) || looksLikeFileRef(raw)) {
+                a.dataset.fileRef = normalizeFileRef(raw);
+                a.classList.add("chat-file-ref");
+            }
         }
     }
     for (const code of root.querySelectorAll(":not(pre) > code")) {
         if (code.closest("a")) continue;
         const text = code.textContent.trim();
         if (looksLikeFileRef(text)) {
-            code.dataset.fileRef = text;
+            code.dataset.fileRef = normalizeFileRef(text);
             code.classList.add("chat-file-ref");
         }
     }
@@ -236,7 +257,7 @@ function linkifyBarePaths(root) {
             frag.append(text.slice(last, m.index));
             const span = document.createElement("span");
             span.className = "chat-file-ref chat-file-ref-bare";
-            span.dataset.fileRef = m[0];
+            span.dataset.fileRef = normalizeFileRef(m[0]);
             span.textContent = m[0];
             frag.append(span);
             last = m.index + m[0].length;
@@ -257,7 +278,8 @@ async function resolveFileRef(ref) {
             showToast(`File not found: ${ref}`, true);
             return null;
         }
-        return (await resp.json()).filepath;
+        const data = await resp.json();
+        return { filepath: data.filepath, line: data.line || 0 };
     } catch {
         showToast(`Could not open ${ref}`, true);
         return null;
@@ -304,15 +326,25 @@ function closeFileRefMenu() {
 async function showFileRefMenu(el) {
     closeFileRefMenu();
     const ref = el.dataset.fileRef;
-    const [filepath, editors] = await Promise.all([resolveFileRef(ref), installedEditors()]);
-    if (!filepath || !el.isConnected) return;
+    el.classList.add("chat-file-ref-loading");
+    let res, editors;
+    try {
+        [res, editors] = await Promise.all([resolveFileRef(ref), installedEditors()]);
+    } finally {
+        el.classList.remove("chat-file-ref-loading");
+    }
+    if (!res || !el.isConnected) return;
+    const filepath = typeof res === "string" ? res : res.filepath;
+    const line = typeof res === "object" && res.line ? res.line : 0;
+    if (!filepath) return;
 
+    const displayPath = line > 0 ? `${filepath}:${line}` : filepath;
     const menu = document.createElement("div");
     menu.className = "chat-file-menu";
     menu.setAttribute("role", "menu");
-    menu.innerHTML = `<div class="chat-file-menu-path" title="${escapeHtml(filepath)}">${escapeHtml(filepath)}</div>
-        <button type="button" role="menuitem" data-action="preview"><span class="material-icons">visibility</span>Preview in Coral</button>
-        <button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral</button>
+    menu.innerHTML = `<div class="chat-file-menu-path" title="${escapeHtml(displayPath)}">${escapeHtml(displayPath)}</div>
+        <button type="button" role="menuitem" data-action="preview"><span class="material-icons">visibility</span>Preview in Coral${line > 0 ? ` (line ${line})` : ""}</button>
+        <button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral${line > 0 ? ` (line ${line})` : ""}</button>
         ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${i}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}
         <button type="button" role="menuitem" data-action="copy"><span class="material-icons">content_copy</span>Copy path</button>`;
     document.body.appendChild(menu);
@@ -328,8 +360,8 @@ async function showFileRefMenu(el) {
         const btn = e.target.closest("button[data-action]");
         if (!btn) return;
         closeFileRefMenu();
-        if (btn.dataset.action === "preview") window.openFilePreview?.(filepath);
-        else if (btn.dataset.action === "edit") window.openFileEdit?.(filepath);
+        if (btn.dataset.action === "preview") window.openFilePreview?.(filepath, line);
+        else if (btn.dataset.action === "edit") window.openFileEdit?.(filepath, line);
         else if (btn.dataset.action === "editor") openRefInEditor(ref, editors[btn.dataset.editor]);
         else if (btn.dataset.action === "copy") window.copyFilePath?.(filepath);
     });
@@ -852,8 +884,49 @@ export function setLiveViewMode(mode) {
 // waits behind the current work. The Working row sits between the two.
 
 const PENDING_TTL_MS = 15 * 60 * 1000;
+const STORAGE_KEY_PENDING = "coral-pending-messages";
 const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued }]
 let pendingSeq = 0;
+
+function loadPendingFromStorage() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_PENDING);
+        if (!raw) return;
+        const obj = JSON.parse(raw);
+        const now = Date.now();
+        for (const [sid, list] of Object.entries(obj)) {
+            if (Array.isArray(list)) {
+                const valid = list.filter(p => p && p.text && (now - (p.at || 0) < PENDING_TTL_MS));
+                if (valid.length > 0) {
+                    pendingBySession.set(sid, valid);
+                    for (const p of valid) {
+                        if (p.id > pendingSeq) pendingSeq = p.id;
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("[coral] Failed to load pending messages from storage", e);
+    }
+}
+
+function savePendingToStorage() {
+    try {
+        const obj = {};
+        const now = Date.now();
+        for (const [sid, list] of pendingBySession.entries()) {
+            const valid = (list || []).filter(p => now - (p.at || 0) < PENDING_TTL_MS);
+            if (valid.length > 0) {
+                obj[sid] = valid;
+            }
+        }
+        localStorage.setItem(STORAGE_KEY_PENDING, JSON.stringify(obj));
+    } catch (e) {
+        console.warn("[coral] Failed to save pending messages to storage", e);
+    }
+}
+
+loadPendingFromStorage();
 
 const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
 
@@ -910,6 +983,7 @@ export function addPendingMessage(sessionId, text) {
     const list = pendingBySession.get(sessionId) || [];
     list.push({ id: ++pendingSeq, text, at: Date.now(), queued });
     pendingBySession.set(sessionId, list);
+    savePendingToStorage();
     if (!queued) lastSendAt.set(sessionId, Date.now());
     const container = document.getElementById("live-history-messages");
     if (container && state.currentSession && state.currentSession.session_id === sessionId) {
@@ -931,8 +1005,12 @@ function noteInterrupt(sessionId, msg) {
             released = true;
         }
     }
-    if (released) lastSendAt.set(sessionId, Date.now());
-    else lastSendAt.delete(sessionId);
+    if (released) {
+        lastSendAt.set(sessionId, Date.now());
+        savePendingToStorage();
+    } else {
+        lastSendAt.delete(sessionId);
+    }
 }
 
 // Drop the pending messages this transcript entry accounts for. Messages
@@ -970,7 +1048,10 @@ function settlePending(sessionId, msg) {
         }
     }
     // The agent took one of our messages: it is working on it from then on
-    if (settled) lastSendAt.set(sessionId, Number.isNaN(ts) ? Date.now() : ts);
+    if (settled) {
+        lastSendAt.set(sessionId, Number.isNaN(ts) ? Date.now() : ts);
+        savePendingToStorage();
+    }
 }
 
 function syncPendingGroup(container, cls, items, label) {
@@ -1004,6 +1085,7 @@ function syncPendingBubbles(container, sessionId) {
     const now = Date.now();
     const list = (pendingBySession.get(sessionId) || []).filter(p => now - p.at < PENDING_TTL_MS);
     pendingBySession.set(sessionId, list);
+    savePendingToStorage();
     const sent = syncPendingGroup(container, "pending-sent", list.filter(p => !p.queued), "Sent");
     const queued = syncPendingGroup(container, "pending-queued", list.filter(p => p.queued), "Queued");
     // Always last, below any newly rendered messages: sent, then queued
@@ -1124,13 +1206,23 @@ async function refreshPromptOptions(session) {
 }
 
 // Tools whose whole purpose is to wait for the user
-const BLOCKING_TOOLS = { AskUserQuestion: "question", ExitPlanMode: "plan" };
+const BLOCKING_TOOLS = {
+    AskUserQuestion: "question",
+    ask_question: "question",
+    ExitPlanMode: "plan",
+};
 
 // Codex has no Notification hook, so nothing reports its sign-in and update
 // menus or its approval prompts. For Codex the screen is read on every poll
-// and an open numbered prompt raises the card by itself.
+// and an open numbered prompt raises the card by itself. Antigravity/Agy and
+// Gemini also display interactive numbered prompts directly on screen.
 function readsPromptsFromScreen(session) {
-    return !!session && session.agent_type === "codex";
+    return !!session && (
+        session.agent_type === "codex" ||
+        session.agent_type === "agy" ||
+        session.agent_type === "antigravity" ||
+        session.agent_type === "gemini"
+    );
 }
 
 function needsInputInfo(session) {
@@ -1160,6 +1252,14 @@ const KICKERS = {
     startup: "Waiting in the terminal",
     prompt: "Needs your input",
 };
+
+function agentDisplayName(session) {
+    const at = (session && session.agent_type) || "claude";
+    if (at === "agy" || at === "antigravity" || at === "gemini") return "Antigravity";
+    if (at === "codex") return "Codex";
+    if (at === "pi") return "Pi";
+    return "Claude";
+}
 
 // data-label is the on-screen label (what the server checks before
 // answering); the button shows the hook's full label when the screen's was
@@ -1208,12 +1308,13 @@ function reviewHtml(info) {
         `<div class="cni-review-row"><dt>${escapeHtml(it.question)}</dt><dd>${escapeHtml(it.answer || "—")}</dd></div>`).join("") + `</dl>`;
 }
 
-function needsInputHtml(info) {
+function needsInputHtml(info, session) {
     const inp = (info.tool && info.tool.input) || {};
     const screen = info.screen || {};
     const onScreen = (screen.options || []).length > 0;
     const screenQuestion = onScreen ? (screen.question || "") : "";
-    let kicker = KICKERS[info.kind] || "Needs your input";
+    const name = agentDisplayName(session);
+    let kicker = (info.kind === "question") ? `${name} is asking` : (KICKERS[info.kind] || "Needs your input");
     let question = "";
     let context = "";
     let descriptions = {};
@@ -1221,7 +1322,13 @@ function needsInputHtml(info) {
     let fullLabels = {};
     if (info.kind === "question") {
         const qs = Array.isArray(inp.questions) ? inp.questions : [];
-        for (const q of qs) for (const o of Array.isArray(q.options) ? q.options : []) if (o.description) descriptions[o.label] = o.description;
+        for (const q of qs) {
+            for (const o of Array.isArray(q.options) ? q.options : []) {
+                const label = typeof o === "string" ? o : (o && o.label);
+                const desc = typeof o === "object" && o ? o.description : "";
+                if (label && desc) descriptions[label] = desc;
+            }
+        }
         // The screen can cut a long question or label short (wrapping); use
         // the hook's full text for whichever one matches what is on screen.
         const norm = (t) => String(t || "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -1230,16 +1337,20 @@ function needsInputHtml(info) {
         question = (match && match.question) || screenQuestion || (qs[0] && qs[0].question) || "";
         const hookLabels = (match ? match.options : qs.flatMap(q => q.options || [])) || [];
         for (const o of (screen.options || [])) {
-            const full = hookLabels.find(h => { const a = norm(h.label), b = norm(o.label); return a && b && a !== b && a.startsWith(b); });
-            if (full) fullLabels[o.label] = full.label;
+            const full = hookLabels.find(h => {
+                const hLabel = typeof h === "string" ? h : (h && h.label);
+                const a = norm(hLabel), b = norm(o.label);
+                return a && b && a !== b && a.startsWith(b);
+            });
+            if (full) fullLabels[o.label] = typeof full === "string" ? full : full.label;
         }
         if (!onScreen && qs.length) {
             // No live options (yet): list the questions from the hook
             context = qs.map(q => `<div class="cni-static-q">${escapeHtml(q.question || "")}`
-                + (Array.isArray(q.options) && q.options.length ? `<ul>${q.options.map(o => `<li>${escapeHtml(o.label || "")}</li>`).join("")}</ul>` : "") + `</div>`).slice(1).join("");
+                + (Array.isArray(q.options) && q.options.length ? `<ul>${q.options.map(o => `<li>${escapeHtml(typeof o === "string" ? o : (o && o.label) || "")}</li>`).join("")}</ul>` : "") + `</div>`).slice(1).join("");
         }
     } else if (info.kind === "plan") {
-        question = screenQuestion ? "Ready to proceed with this plan?" : "Claude has a plan ready";
+        question = screenQuestion ? "Ready to proceed with this plan?" : `${name} has a plan ready`;
         if (inp.plan) context = `<div class="cni-plan message-text">${renderMarkdown(inp.plan)}</div>`;
     } else if (info.kind === "permission") {
         const tool = info.tool && info.tool.tool_name;
@@ -1283,7 +1394,7 @@ function syncNeedsInputCard(container, session) {
         const open = Array.from(el.querySelectorAll(".cni-text-form")).find(f => f.querySelector("input").value || document.activeElement === f.querySelector("input"));
         const typing = open ? { n: open.dataset.n, value: open.querySelector("input").value, focused: document.activeElement === open.querySelector("input") } : null;
         el.dataset.key = key;
-        el.innerHTML = needsInputHtml(info);
+        el.innerHTML = needsInputHtml(info, session);
         const form = typing && el.querySelector(`.cni-text-form[data-n="${typing.n}"]`);
         if (form) {
             const input = form.querySelector("input");

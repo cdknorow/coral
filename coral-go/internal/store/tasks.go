@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/board"
 	"log"
 	"path/filepath"
 	"strings"
@@ -14,25 +15,28 @@ import (
 
 // AgentTask represents a checklist item for an agent.
 type AgentTask struct {
-	ID               int64   `db:"id" json:"id"`
-	AgentName        string  `db:"agent_name" json:"agent_name"`
-	SessionID        *string `db:"session_id" json:"session_id,omitempty"`
-	Title            string  `db:"title" json:"title"`
-	Body             *string `db:"body" json:"body,omitempty"`
-	Priority          *string `db:"priority" json:"priority,omitempty"`
-	CompletionMessage *string `db:"completion_message" json:"completion_message,omitempty"`
-	Completed        int     `db:"completed" json:"completed"`
-	SortOrder        int     `db:"sort_order" json:"sort_order"`
-	CreatedAt        string  `db:"created_at" json:"created_at"`
-	UpdatedAt        string  `db:"updated_at" json:"updated_at"`
-	StartedAt        *string `db:"started_at" json:"started_at,omitempty"`
-	CompletedAt      *string `db:"completed_at" json:"completed_at,omitempty"`
-	CostUSD          float64 `db:"cost_usd" json:"cost_usd"`
-	InputTokens      int     `db:"input_tokens" json:"input_tokens"`
-	OutputTokens     int     `db:"output_tokens" json:"output_tokens"`
-	CacheReadTokens  int     `db:"cache_read_tokens" json:"cache_read_tokens"`
-	CacheWriteTokens int     `db:"cache_write_tokens" json:"cache_write_tokens"`
-	DisplayName      *string `db:"display_name" json:"display_name,omitempty"`
+	Status            string             `db:"-" json:"status"`
+	Workflow          board.TaskWorkflow `db:"-" json:"workflow"`
+	BlockedBy         []board.TaskDep    `db:"-" json:"blocked_by,omitempty"`
+	ID                int64              `db:"id" json:"id"`
+	AgentName         string             `db:"agent_name" json:"agent_name"`
+	SessionID         *string            `db:"session_id" json:"session_id,omitempty"`
+	Title             string             `db:"title" json:"title"`
+	Body              *string            `db:"body" json:"body,omitempty"`
+	Priority          *string            `db:"priority" json:"priority,omitempty"`
+	CompletionMessage *string            `db:"completion_message" json:"completion_message,omitempty"`
+	Completed         int                `db:"completed" json:"completed"`
+	SortOrder         int                `db:"sort_order" json:"sort_order"`
+	CreatedAt         string             `db:"created_at" json:"created_at"`
+	UpdatedAt         string             `db:"updated_at" json:"updated_at"`
+	StartedAt         *string            `db:"started_at" json:"started_at,omitempty"`
+	CompletedAt       *string            `db:"completed_at" json:"completed_at,omitempty"`
+	CostUSD           float64            `db:"cost_usd" json:"cost_usd"`
+	InputTokens       int                `db:"input_tokens" json:"input_tokens"`
+	OutputTokens      int                `db:"output_tokens" json:"output_tokens"`
+	CacheReadTokens   int                `db:"cache_read_tokens" json:"cache_read_tokens"`
+	CacheWriteTokens  int                `db:"cache_write_tokens" json:"cache_write_tokens"`
+	DisplayName       *string            `db:"display_name" json:"display_name,omitempty"`
 }
 
 // AgentNote represents a note for an agent.
@@ -90,39 +94,20 @@ func (s *TaskStore) ListAgentTasks(ctx context.Context, agentName string, sessio
 		        started_at, completed_at, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, display_name
 		 FROM agent_tasks WHERE agent_name = ?`+filter+` ORDER BY sort_order`,
 		args...)
-	return tasks, err
+	if err != nil {
+		return nil, err
+	}
+	for i := range tasks {
+		if err := s.hydrateAgentTask(ctx, &tasks[i]); err != nil {
+			return nil, err
+		}
+	}
+	return tasks, nil
 }
 
 // CreateAgentTask creates a new task with auto-incrementing sort order.
 func (s *TaskStore) CreateAgentTask(ctx context.Context, agentName, title string, sessionID *string, displayName *string) (*AgentTask, error) {
-	now := nowUTC()
-
-	// Get next sort order
-	filter, filterArgs := sessionFilter(sessionID)
-	var nextOrder int
-	err := s.db.GetContext(ctx, &nextOrder,
-		"SELECT COALESCE(MAX(sort_order), -1) + 1 FROM agent_tasks WHERE agent_name = ?"+filter,
-		append([]interface{}{agentName}, filterArgs...)...)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, err
-	}
-
-	result, err := s.db.ExecContext(ctx,
-		`INSERT INTO agent_tasks (agent_name, session_id, title, sort_order, display_name, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		agentName, sessionID, title, nextOrder, displayName, now, now)
-	if err != nil {
-		return nil, err
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("get task insert ID: %w", err)
-	}
-	return &AgentTask{
-		ID: id, AgentName: agentName, Title: title,
-		Completed: 0, SortOrder: nextOrder, DisplayName: displayName,
-		CreatedAt: now, UpdatedAt: now,
-	}, nil
+	return s.CreateAgentTaskWithWorkflow(ctx, agentName, title, sessionID, displayName, "", "medium", nil)
 }
 
 // GetAgentTask returns one agent task by ID, or nil.
@@ -135,6 +120,9 @@ func (s *TaskStore) GetAgentTask(ctx context.Context, taskID int64) (*AgentTask,
 	if err != nil {
 		return nil, err
 	}
+	if err := s.hydrateAgentTask(ctx, &t); err != nil {
+		return nil, err
+	}
 	return &t, nil
 }
 
@@ -145,21 +133,21 @@ const (
 	AgentTaskDone       = 1
 	AgentTaskInProgress = 2
 	AgentTaskCancelled  = 3
+	AgentTaskBlocked    = 4
+	AgentTaskDraft      = 5
 )
 
 // SetAgentTaskDetails stores a task's details and priority (empty = unchanged).
 func (s *TaskStore) SetAgentTaskDetails(ctx context.Context, taskID int64, body, priority string) error {
+	updates := board.TaskUpdate{}
 	if body != "" {
-		if _, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET body = ?, updated_at = ? WHERE id = ?", body, nowUTC(), taskID); err != nil {
-			return err
-		}
+		updates.Body = &body
 	}
 	if priority != "" {
-		if _, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET priority = ?, updated_at = ? WHERE id = ?", priority, nowUTC(), taskID); err != nil {
-			return err
-		}
+		updates.Priority = &priority
 	}
-	return nil
+	_, err := s.UpdateAgentTaskWorkflow(ctx, taskID, updates)
+	return err
 }
 
 // CurrentAgentTask returns the agent's task in progress, or nil.
@@ -175,56 +163,46 @@ func (s *TaskStore) CurrentAgentTask(ctx context.Context, agentName string, sess
 	if err != nil {
 		return nil, err
 	}
+	if t.Workflow.Instructions == "" {
+		if err := s.hydrateAgentTask(ctx, &t); err != nil {
+			return nil, err
+		}
+	}
 	return &t, nil
 }
 
 // FinishAgentTask marks a task done or cancelled, with an optional message.
 func (s *TaskStore) FinishAgentTask(ctx context.Context, taskID int64, state int, message string) error {
-	if err := s.UpdateAgentTask(ctx, taskID, nil, &state, nil); err != nil {
-		return err
-	}
-	if message != "" {
-		_, err := s.db.ExecContext(ctx, "UPDATE agent_tasks SET completion_message = ? WHERE id = ?", message, taskID)
-		return err
-	}
-	return nil
+	return s.FinishAgentTaskWithArtifacts(ctx, taskID, state, message, "success", nil)
 }
 
 // Claim order, as for board tasks: highest priority first, then oldest.
 const agentTaskClaimOrder = `CASE COALESCE(priority, 'medium') WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 2 END, id ASC`
 
-// ClaimNextAgentTask marks the agent's next pending task (highest priority,
-// then oldest, as on a board) in progress and returns it, or nil when none is
-// pending. The claim is a
-// conditional update (only while the task is still pending), so concurrent
-// claims never get the same task: a claim that loses the race retries with
-// the next pending task.
-func (s *TaskStore) ClaimNextAgentTask(ctx context.Context, agentName string, sessionID *string) (*AgentTask, error) {
-	filter, filterArgs := sessionFilter(sessionID)
-	for attempt := 0; attempt < 50; attempt++ {
-		var id int64
-		err := s.db.GetContext(ctx, &id,
-			"SELECT id FROM agent_tasks WHERE agent_name = ? AND completed = 0"+filter+" ORDER BY "+agentTaskClaimOrder+" LIMIT 1",
-			append([]interface{}{agentName}, filterArgs...)...)
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		now := nowUTC()
-		res, err := s.db.ExecContext(ctx,
-			"UPDATE agent_tasks SET completed = 2, started_at = ?, updated_at = ? WHERE id = ? AND completed = 0",
-			now, now, id)
-		if err != nil {
-			return nil, err
-		}
-		if n, _ := res.RowsAffected(); n == 1 {
-			return s.GetAgentTask(ctx, id)
-		}
-		// Another claim took it first; try the next pending task
+// ClaimNextAgentTask uses the shared workflow engine to claim one ready task.
+// It rejects additional claims until the session's active task is finished.
+func (s *TaskStore) ClaimNextAgentTask(ctx context.Context, agentName string, sessionID *string, requested ...int64) (*AgentTask, error) {
+	if active, err := s.CurrentAgentTask(ctx, agentName, sessionID); err != nil {
+		return nil, err
+	} else if active != nil {
+		return nil, fmt.Errorf("complete your current task before claiming a new one")
 	}
-	return nil, fmt.Errorf("could not claim a task after repeated conflicts")
+	var task *board.Task
+	var err error
+	if len(requested) > 0 && requested[0] > 0 {
+		own, e := s.GetAgentTask(ctx, requested[0])
+		if e != nil {
+			return nil, e
+		}
+		if own == nil || own.AgentName != agentName || sessionID != nil && (own.SessionID == nil || *own.SessionID != *sessionID) {
+			return nil, fmt.Errorf("requested task is not available to this agent")
+		}
+	}
+	task, err = s.db.TaskEngine.ClaimTask(ctx, AgentTaskProject(agentName, sessionID), agentName, requested...)
+	if err != nil || task == nil {
+		return nil, err
+	}
+	return s.GetAgentTask(ctx, task.ID)
 }
 
 // FindOpenAgentTask returns the agent's not-yet-completed task with this exact
@@ -235,13 +213,18 @@ func (s *TaskStore) FindOpenAgentTask(ctx context.Context, agentName, title stri
 	filter, filterArgs := sessionFilter(sessionID)
 	var t AgentTask
 	err := s.db.GetContext(ctx, &t,
-		"SELECT * FROM agent_tasks WHERE agent_name = ? AND title = ? AND completed IN (0, 2)"+filter+" ORDER BY id LIMIT 1",
+		"SELECT * FROM agent_tasks WHERE agent_name = ? AND title = ? AND completed IN (0, 2, 4, 5)"+filter+" ORDER BY id LIMIT 1",
 		append([]interface{}{agentName, title}, filterArgs...)...)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if t.Workflow.Instructions == "" {
+		if err := s.hydrateAgentTask(ctx, &t); err != nil {
+			return nil, err
+		}
 	}
 	return &t, nil
 }
@@ -251,45 +234,38 @@ func (s *TaskStore) FindOpenAgentTask(ctx context.Context, agentName, title stri
 // When completed transitions to 1 (done), completed_at is set and cost is computed
 // from token_usage records between started_at and completed_at.
 func (s *TaskStore) UpdateAgentTask(ctx context.Context, taskID int64, title *string, completed *int, sortOrder *int) error {
-	now := nowUTC()
-	sets := []string{"updated_at = ?"}
-	args := []interface{}{now}
-	if title != nil {
-		sets = append(sets, "title = ?")
-		args = append(args, *title)
-	}
-	if completed != nil {
-		sets = append(sets, "completed = ?")
-		args = append(args, *completed)
-		if *completed == 2 {
-			// Transitioning to in_progress — record start time
-			sets = append(sets, "started_at = ?")
-			args = append(args, now)
-		} else if *completed == 1 {
-			// Transitioning to done — record completion time, set started_at if not already set
-			sets = append(sets, "completed_at = ?")
-			args = append(args, now)
-			sets = append(sets, "started_at = COALESCE(started_at, ?)")
-			args = append(args, now)
-		}
-	}
-	if sortOrder != nil {
-		sets = append(sets, "sort_order = ?")
-		args = append(args, *sortOrder)
-	}
-	args = append(args, taskID)
-	_, err := s.db.ExecContext(ctx,
-		fmt.Sprintf("UPDATE agent_tasks SET %s WHERE id = ?", strings.Join(sets, ", ")),
-		args...)
+	task, err := s.GetAgentTask(ctx, taskID)
 	if err != nil {
 		return err
 	}
-
-	// Compute cost from token_usage if task just completed
-	if completed != nil && *completed == 1 {
-		s.computeAgentTaskCost(ctx, taskID, now)
+	if task == nil {
+		return fmt.Errorf("task not found")
 	}
-	return nil
+	if title != nil {
+		if _, err := s.UpdateAgentTaskWorkflow(ctx, taskID, board.TaskUpdate{Title: title}); err != nil {
+			return err
+		}
+	}
+	if completed != nil {
+		switch *completed {
+		case AgentTaskDone, AgentTaskCancelled:
+			if err := s.FinishAgentTask(ctx, taskID, *completed, ""); err != nil {
+				return err
+			}
+		case AgentTaskInProgress:
+			if task.Completed != AgentTaskInProgress {
+				if _, err := s.ClaimNextAgentTask(ctx, task.AgentName, task.SessionID, taskID); err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("use a new retry task instead of resetting task status")
+		}
+	}
+	if sortOrder != nil {
+		_, err = s.db.ExecContext(ctx, "UPDATE agent_tasks SET sort_order=? WHERE id=?", *sortOrder, taskID)
+	}
+	return err
 }
 
 // computeAgentTaskCost sums token_usage records for the task's session
@@ -341,42 +317,42 @@ func (s *TaskStore) computeAgentTaskCost(ctx context.Context, taskID int64, comp
 
 // CompleteAgentTaskByTitle marks a task as completed by title match.
 func (s *TaskStore) CompleteAgentTaskByTitle(ctx context.Context, agentName, title string, sessionID *string) error {
-	now := nowUTC()
-	filter, filterArgs := sessionFilter(sessionID)
-
-	// Find the task ID first so we can compute cost after completion
-	var taskID int64
-	getArgs := append([]interface{}{agentName, title}, filterArgs...)
-	err := s.db.GetContext(ctx, &taskID,
-		`SELECT id FROM agent_tasks WHERE agent_name = ? AND title = ?`+filter+` AND completed = 0 LIMIT 1`,
-		getArgs...)
-	if err != nil {
-		// Task not found or already completed — still attempt the update
-		args := append([]interface{}{now, now, now, agentName, title}, filterArgs...)
-		_, err = s.db.ExecContext(ctx,
-			`UPDATE agent_tasks SET completed = 1, completed_at = ?, started_at = COALESCE(started_at, ?), updated_at = ?
-			 WHERE agent_name = ? AND title = ?`+filter+` AND completed = 0`,
-			args...)
+	task, err := s.FindOpenAgentTask(ctx, agentName, title, sessionID)
+	if err != nil || task == nil {
 		return err
 	}
-
-	args := append([]interface{}{now, now, now, agentName, title}, filterArgs...)
-	_, err = s.db.ExecContext(ctx,
-		`UPDATE agent_tasks SET completed = 1, completed_at = ?, started_at = COALESCE(started_at, ?), updated_at = ?
-		 WHERE agent_name = ? AND title = ?`+filter+` AND completed = 0`,
-		args...)
-	if err != nil {
-		return err
-	}
-
-	s.computeAgentTaskCost(ctx, taskID, now)
-	return nil
+	return s.FinishAgentTask(ctx, task.ID, AgentTaskDone, "")
 }
 
 // DeleteAgentTask deletes a task by ID.
 func (s *TaskStore) DeleteAgentTask(ctx context.Context, taskID int64) error {
-	_, err := s.db.ExecContext(ctx, "DELETE FROM agent_tasks WHERE id = ?", taskID)
-	return err
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var status string
+	if err := tx.GetContext(ctx, &status, "SELECT status FROM board_tasks WHERE id=?", taskID); err != nil {
+		return err
+	}
+	if status == "completed" || status == "skipped" || status == "in_progress" {
+		return fmt.Errorf("only unstarted tasks can be deleted; finished results are immutable")
+	}
+	var incoming int
+	if err := tx.GetContext(ctx, &incoming, `SELECT
+ (SELECT COUNT(*) FROM task_dependencies WHERE blocked_by_task_id=?) +
+ (SELECT COUNT(*) FROM task_workflows WHERE json_extract(data,'$.parent_task_id')=? OR json_extract(data,'$.retry_of')=?)`, taskID, taskID, taskID); err != nil {
+		return err
+	}
+	if incoming > 0 {
+		return fmt.Errorf("task is required by other tasks; cancel it instead")
+	}
+	for _, query := range []string{"DELETE FROM task_dependency_rules WHERE task_id=?", "DELETE FROM task_dependencies WHERE task_id=?", "DELETE FROM task_ready_notifications WHERE task_id=?", "DELETE FROM task_workflows WHERE task_id=?", "DELETE FROM board_tasks WHERE id=?"} {
+		if _, err := tx.ExecContext(ctx, query, taskID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ReorderAgentTasks sets sort_order based on the provided ID order.
@@ -790,10 +766,16 @@ func (s *TaskStore) GetEditedFilesBySession(ctx context.Context, sessionIDs []st
 func (s *TaskStore) ListTasksBySession(ctx context.Context, sessionID string) ([]AgentTask, error) {
 	var tasks []AgentTask
 	err := s.db.SelectContext(ctx, &tasks,
-		`SELECT id, agent_name, session_id, title, completed, sort_order, created_at, updated_at,
-		        started_at, completed_at, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, display_name
-		 FROM agent_tasks WHERE session_id = ? ORDER BY sort_order`, sessionID)
-	return tasks, err
+		`SELECT * FROM agent_tasks WHERE session_id = ? ORDER BY sort_order`, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range tasks {
+		if err := s.hydrateAgentTask(ctx, &tasks[i]); err != nil {
+			return nil, err
+		}
+	}
+	return tasks, nil
 }
 
 // ListNotesBySession returns notes for a historical session.

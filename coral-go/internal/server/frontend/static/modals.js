@@ -76,14 +76,17 @@ function _getDefaultModels() {
             .then(r => r.ok ? r.json() : { settings: {} })
             .then(data => {
                 const s = data.settings || {};
+                const agyModel = (s.default_model_agy || s.default_model_gemini || '').trim();
                 return {
                     claude: (s.default_model_claude || '').trim(),
                     codex: (s.default_model_codex || '').trim(),
-                    gemini: (s.default_model_gemini || '').trim(),
+                    agy: agyModel,
+                    antigravity: agyModel,
+                    gemini: (s.default_model_gemini || s.default_model_agy || '').trim(),
                     pi: (s.default_model_pi || '').trim(),
                 };
             })
-            .catch(() => ({ claude: '', codex: '', gemini: '', pi: '' }));
+            .catch(() => ({ claude: '', codex: '', agy: '', antigravity: '', gemini: '', pi: '' }));
     }
     return _defaultModelsPromise;
 }
@@ -583,7 +586,9 @@ window.saveTeamAgentFromModal = saveTeamAgentFromModal;
 
 const CLI_INSTALL_INSTRUCTIONS = {
     claude: { name: 'claude', cmd: 'npm install -g @anthropic-ai/claude-code' },
-    gemini: { name: 'gemini', cmd: 'pip install google-gemini-cli' },
+    agy: { name: 'agy', cmd: 'curl -fsSL https://antigravity.google/install.sh | bash' },
+    antigravity: { name: 'agy', cmd: 'curl -fsSL https://antigravity.google/install.sh | bash' },
+    gemini: { name: 'agy', cmd: 'curl -fsSL https://antigravity.google/install.sh | bash' },
     codex: { name: 'codex', cmd: 'npm install -g @openai/codex' },
     pi: { name: 'pi', cmd: 'npm install -g @mariozechner/pi-coding-agent' },
 };
@@ -617,8 +622,10 @@ window._checkAgentCLI = _checkAgentCLI;
 /** Map agent type to its permission bypass flag. */
 const PERM_FLAGS = {
     claude: '--dangerously-skip-permissions',
+    agy: '--dangerously-skip-permissions',
+    antigravity: '--dangerously-skip-permissions',
+    gemini: '--dangerously-skip-permissions',
     codex: '--full-auto',
-    gemini: '--yolo',
     pi: '',
 };
 
@@ -640,10 +647,16 @@ function _getPermissionFlagsForAgentMode(agentType, mode) {
     const permMode = mode || (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
     if (!permMode || permMode === 'default' || agentType === 'pi' || agentType === 'terminal') return '';
     if (agentType === 'claude') return `--permission-mode ${permMode}`;
-    if (agentType === 'gemini') return '--yolo';
+    if (agentType === 'agy' || agentType === 'antigravity' || agentType === 'gemini') {
+        if (permMode === 'plan') return '--mode plan';
+        if (permMode === 'acceptEdits') return '--mode accept-edits';
+        return '--dangerously-skip-permissions';
+    }
     if (agentType === 'codex') {
         if (permMode === 'bypassPermissions') return '--dangerously-bypass-approvals-and-sandbox';
-        if (permMode === 'plan') return '--sandbox read-only -a untrusted';
+        if (permMode === 'plan') return '--sandbox read-only -a on-request';
+        if (permMode === 'acceptEdits') return '--sandbox workspace-write -a on-request';
+        if (permMode === 'auto' || permMode === 'dontAsk') return '--sandbox workspace-write -a never';
         return '--sandbox workspace-write -a on-request';
     }
     return PERM_FLAGS[agentType] || '';
@@ -652,19 +665,22 @@ function _getPermissionFlagsForAgentMode(agentType, mode) {
 function _stripPermFlags(flagsStr) {
     const known = new Set(Object.values(PERM_FLAGS).filter(Boolean));
     known.add('--dangerously-bypass-approvals-and-sandbox');
+    known.add('--dangerously-skip-permissions');
+    known.add('--yolo');
     const tokens = (flagsStr || '').split(/\s+/).filter(Boolean);
     const kept = [];
     for (let i = 0; i < tokens.length; i++) {
         const flag = tokens[i];
         if (known.has(flag) || flag === '--search') continue;
-        if (flag === '--permission-mode' || flag === '--sandbox' || flag === '--approval-mode' || flag === '-a') {
+        if (flag === '--permission-mode' || flag === '--sandbox' || flag === '--approval-mode' || flag === '-a' || flag === '--mode') {
             i++;
             continue;
         }
         if (
             flag.startsWith('--permission-mode=') ||
             flag.startsWith('--sandbox=') ||
-            flag.startsWith('--approval-mode=')
+            flag.startsWith('--approval-mode=') ||
+            flag.startsWith('--mode=')
         ) {
             continue;
         }
@@ -740,8 +756,11 @@ window._updatePermModeDescription = _updatePermModeDescription;
 function _hasPermFlag(flagsStr) {
     return Object.values(PERM_FLAGS).filter(Boolean).some(f => flagsStr.includes(f)) ||
         flagsStr.includes('--dangerously-bypass-approvals-and-sandbox') ||
+        flagsStr.includes('--dangerously-skip-permissions') ||
+        flagsStr.includes('--yolo') ||
         /--permission-mode(?:\s+|=)\S+/.test(flagsStr) ||
         /--sandbox(?:\s+|=)\S+/.test(flagsStr) ||
+        /--mode(?:\s+|=)\S+/.test(flagsStr) ||
         /(?:^|\s)(?:-a|--approval-mode)(?:\s+|=)\S+/.test(flagsStr);
 }
 
@@ -795,7 +814,7 @@ window._verifyAllCLIs = async function() {
     await Promise.all([
         _checkOneCLI('settings-cli-path-claude', 'cli-result-claude'),
         _checkOneCLI('settings-cli-path-codex', 'cli-result-codex'),
-        _checkOneCLI('settings-cli-path-gemini', 'cli-result-gemini'),
+        _checkOneCLI('settings-cli-path-agy', 'cli-result-agy'),
         _checkOneCLI('settings-cli-path-pi', 'cli-result-pi'),
     ]);
     if (btn) { btn.disabled = false; btn.textContent = 'Verify All'; }
@@ -1735,7 +1754,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
             <label>Agent Type:
                 <select class="acf-agent-type" onchange="window._checkAgentCLI && window._checkAgentCLI(this.value)">
                     <option value="claude"${agentTypeVal === 'claude' || !agentTypeVal ? ' selected' : ''}>Claude</option>
-                    <option value="gemini"${agentTypeVal === 'gemini' ? ' selected' : ''}>Gemini</option>
+                    <option value="agy"${agentTypeVal === 'agy' || agentTypeVal === 'antigravity' || agentTypeVal === 'gemini' ? ' selected' : ''}>Antigravity</option>
                     <option value="codex"${agentTypeVal === 'codex' ? ' selected' : ''}>Codex</option>
                     <option value="pi"${agentTypeVal === 'pi' ? ' selected' : ''}>Pi</option>
                     <option value="terminal"${agentTypeVal === 'terminal' ? ' selected' : ''}>Terminal</option>
@@ -3113,21 +3132,23 @@ export async function showSettingsModal() {
     // CLI Paths
     const cliClaude = document.getElementById("settings-cli-path-claude");
     const cliCodex = document.getElementById("settings-cli-path-codex");
-    const cliGemini = document.getElementById("settings-cli-path-gemini");
+    const cliAgy = document.getElementById("settings-cli-path-agy");
     const cliPi = document.getElementById("settings-cli-path-pi");
     if (cliClaude) cliClaude.value = s.cli_path_claude || "";
     if (cliCodex) cliCodex.value = s.cli_path_codex || "";
-    if (cliGemini) cliGemini.value = s.cli_path_gemini || "";
+    const agyCliPath = s.cli_path_agy || s.cli_path_gemini || "";
+    if (cliAgy) cliAgy.value = agyCliPath;
     if (cliPi) cliPi.value = s.cli_path_pi || "";
 
     // Default Models — populate combo inputs + datalists from /api/agent-models
     const defClaude = document.getElementById("settings-default-model-claude");
     const defCodex = document.getElementById("settings-default-model-codex");
-    const defGemini = document.getElementById("settings-default-model-gemini");
+    const defAgy = document.getElementById("settings-default-model-agy");
     const defPi = document.getElementById("settings-default-model-pi");
     if (defClaude) defClaude.value = s.default_model_claude || "";
     if (defCodex) defCodex.value = s.default_model_codex || "";
-    if (defGemini) defGemini.value = s.default_model_gemini || "";
+    const agyModel = s.default_model_agy || s.default_model_gemini || "";
+    if (defAgy) defAgy.value = agyModel;
     if (defPi) defPi.value = s.default_model_pi || "";
     _getAgentModels().then(models => {
         // _getAgentModels swallows errors and resolves with {} on failure; on
@@ -3139,7 +3160,7 @@ export async function showSettingsModal() {
         }
         _fillModelDatalist(document.getElementById("settings-models-claude"), "claude", models);
         _fillModelDatalist(document.getElementById("settings-models-codex"), "codex", models);
-        _fillModelDatalist(document.getElementById("settings-models-gemini"), "gemini", models);
+        _fillModelDatalist(document.getElementById("settings-models-agy"), "agy", models);
         _fillModelDatalist(document.getElementById("settings-models-pi"), "pi", models);
     });
 
@@ -3313,11 +3334,11 @@ export async function applySettings() {
     const workingDir = document.getElementById("settings-working-dir")?.value.trim() || "";
     const cliPathClaude = document.getElementById("settings-cli-path-claude")?.value.trim() || "";
     const cliPathCodex = document.getElementById("settings-cli-path-codex")?.value.trim() || "";
-    const cliPathGemini = document.getElementById("settings-cli-path-gemini")?.value.trim() || "";
+    const cliPathAgy = document.getElementById("settings-cli-path-agy")?.value.trim() || "";
     const cliPathPi = document.getElementById("settings-cli-path-pi")?.value.trim() || "";
     const defaultModelClaude = document.getElementById("settings-default-model-claude")?.value.trim() || "";
     const defaultModelCodex = document.getElementById("settings-default-model-codex")?.value.trim() || "";
-    const defaultModelGemini = document.getElementById("settings-default-model-gemini")?.value.trim() || "";
+    const defaultModelAgy = document.getElementById("settings-default-model-agy")?.value.trim() || "";
     const defaultModelPi = document.getElementById("settings-default-model-pi")?.value.trim() || "";
     const fitPaneWidth = document.getElementById("settings-fit-pane-width")?.checked || false;
     const notifyNeedsInput = document.getElementById("settings-notify-needs-input")?.checked || false;
@@ -3357,11 +3378,13 @@ export async function applySettings() {
         show_scrollbars: showScrollbars,
         cli_path_claude: cliPathClaude,
         cli_path_codex: cliPathCodex,
-        cli_path_gemini: cliPathGemini,
+        cli_path_agy: cliPathAgy,
+        cli_path_gemini: cliPathAgy,
         cli_path_pi: cliPathPi,
         default_model_claude: defaultModelClaude,
         default_model_codex: defaultModelCodex,
-        default_model_gemini: defaultModelGemini,
+        default_model_agy: defaultModelAgy,
+        default_model_gemini: defaultModelAgy,
         default_model_pi: defaultModelPi,
         proxy_enabled: proxyEnabled,
         proxy_enabled_claude: proxyEnabled,

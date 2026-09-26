@@ -31,6 +31,7 @@ func TestGetAgent(t *testing.T) {
 		expected string
 	}{
 		{"claude", "claude"},
+		{"agy", "agy"},
 		{"gemini", "gemini"},
 		{"codex", "codex"},
 		{"pi", "pi"},
@@ -56,7 +57,8 @@ func TestSupportsResume(t *testing.T) {
 	}{
 		{"claude", true},
 		{"codex", true},
-		{"gemini", false},
+		{"agy", true},
+		{"gemini", true},
 		{"pi", true},
 	}
 	for _, tt := range tests {
@@ -76,7 +78,8 @@ func TestHistoryGlobPattern(t *testing.T) {
 	}{
 		{"claude", "*.jsonl"},
 		{"codex", "rollout-*.jsonl"},
-		{"gemini", "session-*.json"},
+		{"agy", "transcript.jsonl"},
+		{"gemini", "transcript.jsonl"},
 		{"pi", "*/*.jsonl"},
 	}
 	for _, tt := range tests {
@@ -138,7 +141,7 @@ func TestParseCodexSession_EventMessages(t *testing.T) {
 // ── CLIInfo Tests ───────────────────────────────────────────
 
 func TestGetCLIInfo(t *testing.T) {
-	for _, agentType := range []string{"claude", "gemini", "codex", "pi"} {
+	for _, agentType := range []string{"claude", "agy", "codex", "pi"} {
 		info := GetCLIInfo(agentType)
 		if info == nil {
 			t.Errorf("GetCLIInfo(%q) returned nil", agentType)
@@ -355,16 +358,8 @@ func TestBuildBoardSystemPrompt_PromptOnly(t *testing.T) {
 func TestCodex_BasicLaunch(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{})
-	if !strings.HasPrefix(cmd, "codex ") {
+	if cmd != "codex" {
 		t.Errorf("expected codex command, got %q", cmd)
-	}
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
-		if !strings.Contains(cmd, "hooks."+event) {
-			t.Errorf("expected Codex %s hook config, got %q", event, cmd)
-		}
-	}
-	if !strings.Contains(cmd, "coral-hook-agentic-state") {
-		t.Errorf("expected Coral activity hook, got %q", cmd)
 	}
 }
 
@@ -408,7 +403,7 @@ func TestInstructionPromptsIncludeCoralSessionMarker(t *testing.T) {
 		extension string
 	}{
 		{"claude", &ClaudeAgent{}, "settings", "json"},
-		{"gemini", &GeminiAgent{}, "gemini_sys", "md"},
+		{"agy", &AgyAgent{}, "agy_prompt", "txt"},
 		{"codex", &CodexAgent{}, "codex_instructions", "md"},
 		{"pi", &PiAgent{}, "pi_sys", "md"},
 	}
@@ -488,7 +483,7 @@ func TestCodex_SystemPromptSeparation(t *testing.T) {
 func TestCodex_WithCapabilities_FullAuto(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{Capabilities: &Capabilities{Allow: []string{CapShell}}})
-	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a on-request") {
+	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a never") {
 		t.Errorf("expected full-auto equivalent flags, got %q", cmd)
 	}
 	if strings.Contains(cmd, "--full-auto") {
@@ -509,7 +504,7 @@ func TestCodex_WithCapabilities_BypassSandbox(t *testing.T) {
 func TestCodex_WithCapabilities_ReadOnly(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{Capabilities: &Capabilities{Allow: []string{CapFileRead}}})
-	if !strings.Contains(cmd, "--sandbox read-only") || !strings.Contains(cmd, "-a untrusted") {
+	if !strings.Contains(cmd, "--sandbox read-only") || !strings.Contains(cmd, "-a on-request") {
 		t.Errorf("expected read-only sandbox, got %q", cmd)
 	}
 }
@@ -519,7 +514,7 @@ func TestCodex_WithCapabilities_ReadWrite(t *testing.T) {
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead, CapFileWrite}},
 	})
-	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a untrusted") {
+	if !strings.Contains(cmd, "--sandbox workspace-write") || !strings.Contains(cmd, "-a on-request") {
 		t.Errorf("expected workspace-write sandbox, got %q", cmd)
 	}
 }
@@ -575,14 +570,14 @@ func TestCodex_FlagTranslation(t *testing.T) {
 	cmd := a.BuildLaunchCommand(LaunchParams{Flags: []string{"--dangerously-skip-permissions"}})
 	if strings.Contains(cmd, "--dangerously-skip-permissions") ||
 		!strings.Contains(cmd, "--sandbox workspace-write") ||
-		!strings.Contains(cmd, "-a on-request") {
+		!strings.Contains(cmd, "-a never") {
 		t.Errorf("expected flag translation, got %q", cmd)
 	}
 
 	cmd = a.BuildLaunchCommand(LaunchParams{Flags: []string{"--full-auto"}})
 	if strings.Contains(cmd, "--full-auto") ||
 		!strings.Contains(cmd, "--sandbox workspace-write") ||
-		!strings.Contains(cmd, "-a on-request") {
+		!strings.Contains(cmd, "-a never") {
 		t.Errorf("expected --full-auto alias translation, got %q", cmd)
 	}
 }
@@ -609,7 +604,7 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 		{
 			name:    "team flag equals auto",
 			params:  LaunchParams{Flags: []string{"--permission-mode=auto"}},
-			want:    []string{"--sandbox workspace-write", "-a on-request"},
+			want:    []string{"--sandbox workspace-write", "-a never"},
 			notWant: []string{"--permission-mode"},
 		},
 		{
@@ -618,7 +613,7 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 				PermissionMode: "bypassPermissions",
 				Flags:          []string{"--permission-mode", "auto"},
 			},
-			want:    []string{"--sandbox workspace-write", "-a on-request"},
+			want:    []string{"--sandbox workspace-write", "-a never"},
 			notWant: []string{"--dangerously-bypass-approvals-and-sandbox", "--permission-mode"},
 		},
 		{
@@ -633,7 +628,7 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 		{
 			name:    "plan",
 			params:  LaunchParams{PermissionMode: "plan"},
-			want:    []string{"--sandbox read-only", "-a untrusted"},
+			want:    []string{"--sandbox read-only", "-a on-request"},
 			notWant: []string{"--permission-mode", "plan"},
 		},
 		{
@@ -643,7 +638,7 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 				Flags:          []string{"--permission-mode", "auto"},
 				Capabilities:   &Capabilities{Allow: []string{CapFileRead}},
 			},
-			want:    []string{"--sandbox read-only", "-a untrusted"},
+			want:    []string{"--sandbox read-only", "-a on-request"},
 			notWant: []string{"--dangerously-bypass-approvals-and-sandbox", "--full-auto", "--permission-mode"},
 		},
 	}
@@ -666,124 +661,122 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 	}
 }
 
-// ── Gemini BuildLaunchCommand Tests ─────────────────────────
+// ── Agy BuildLaunchCommand Tests ─────────────────────────────
 
-func TestGemini_BasicLaunch(t *testing.T) {
-	a := &GeminiAgent{}
-	if cmd := a.BuildLaunchCommand(LaunchParams{}); cmd != "gemini" {
-		t.Errorf("expected bare 'gemini', got %q", cmd)
+func TestAgy_BasicLaunch(t *testing.T) {
+	a := &AgyAgent{}
+	if cmd := a.BuildLaunchCommand(LaunchParams{}); cmd != "agy" {
+		t.Errorf("expected bare 'agy', got %q", cmd)
 	}
 }
 
-func TestGemini_WithFlags(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_WithFlags(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{Flags: []string{"--verbose"}})
 	if !strings.Contains(cmd, "--verbose") {
 		t.Errorf("expected --verbose, got %q", cmd)
 	}
 }
 
-func TestGemini_ResumeDisabled(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_Resume(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{ResumeSessionID: "some-id"})
-	// Gemini resume is disabled — --resume should NOT appear
-	if strings.Contains(cmd, "--resume") {
-		t.Errorf("gemini should not have --resume flag (disabled), got %q", cmd)
+	if !strings.Contains(cmd, "--conversation some-id") {
+		t.Errorf("agy should have --conversation flag for resume, got %q", cmd)
 	}
 }
 
-func TestGemini_WithPromptTempFile(t *testing.T) {
-	a := &GeminiAgent{}
-	sid := "gemini-prompt-test1"
+func TestAgy_WithPromptTempFile(t *testing.T) {
+	a := &AgyAgent{}
+	sid := "agy-prompt-test1"
 	cmd := a.BuildLaunchCommand(LaunchParams{SessionID: sid, Prompt: "Analyze the codebase"})
-	promptFile := findTempFile(t, "gemini_prompt", sid, "txt")
+	promptFile := findTempFile(t, "agy_prompt", sid, "txt")
 	content, _ := os.ReadFile(promptFile)
 	if !strings.Contains(string(content), "Analyze the codebase") {
 		t.Errorf("expected prompt in temp file, got %q", string(content))
 	}
-	if !strings.Contains(cmd, "gemini_prompt") {
-		t.Errorf("expected gemini_prompt reference, got %q", cmd)
+	if !strings.Contains(cmd, "agy_prompt") || !strings.Contains(cmd, "-i") {
+		t.Errorf("expected agy_prompt reference with -i, got %q", cmd)
 	}
 }
 
-func TestGemini_WithBoardWorker(t *testing.T) {
-	a := &GeminiAgent{}
-	sid := "gemini-board-w1"
+func TestAgy_WithBoardWorker(t *testing.T) {
+	a := &AgyAgent{}
+	sid := "agy-board-w1"
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		SessionID: sid, Prompt: "Build API", BoardName: "team-board", Role: "developer",
 	})
-	if !strings.Contains(cmd, "GEMINI_SYSTEM_MD=") {
-		t.Errorf("expected GEMINI_SYSTEM_MD, got %q", cmd)
+	if !strings.Contains(cmd, "CORAL_SUBSCRIBER_ID='developer'") {
+		t.Errorf("expected CORAL_SUBSCRIBER_ID, got %q", cmd)
 	}
-	promptFile := findTempFile(t, "gemini_prompt", sid, "txt")
+	promptFile := findTempFile(t, "agy_prompt", sid, "txt")
 	content, _ := os.ReadFile(promptFile)
 	if !strings.Contains(string(content), "team-board") {
 		t.Errorf("expected board name in prompt, got %q", string(content))
 	}
 }
 
-// ── Gemini Permission Tests ─────────────────────────────────
+// ── Agy Permission Tests ─────────────────────────────────────
 
-func TestGemini_WithCapabilities_Yolo(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_WithCapabilities_Yolo(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapShell, CapFileWrite}},
 	})
-	if !strings.Contains(cmd, "--approval-mode yolo") {
-		t.Errorf("expected yolo, got %q", cmd)
+	if !strings.Contains(cmd, "--dangerously-skip-permissions") {
+		t.Errorf("expected --dangerously-skip-permissions, got %q", cmd)
 	}
 }
 
-func TestGemini_WithCapabilities_AutoEdit(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_WithCapabilities_AutoEdit(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapShell, CapFileWrite}, Deny: []string{CapGitWrite}},
 	})
-	if !strings.Contains(cmd, "--approval-mode auto_edit") {
-		t.Errorf("expected auto_edit, got %q", cmd)
+	if !strings.Contains(cmd, "--mode accept-edits") {
+		t.Errorf("expected --mode accept-edits, got %q", cmd)
 	}
 }
 
-func TestGemini_WithCapabilities_Plan(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_WithCapabilities_Plan(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead}},
 	})
-	if !strings.Contains(cmd, "--approval-mode plan") {
-		t.Errorf("expected plan, got %q", cmd)
+	if !strings.Contains(cmd, "--mode plan") {
+		t.Errorf("expected --mode plan, got %q", cmd)
 	}
 }
 
-func TestGemini_WithCapabilities_ReadWrite(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_WithCapabilities_ReadWrite(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		Capabilities: &Capabilities{Allow: []string{CapFileRead, CapFileWrite}},
 	})
-	if !strings.Contains(cmd, "--approval-mode auto_edit") {
-		t.Errorf("expected auto_edit, got %q", cmd)
+	if !strings.Contains(cmd, "--mode accept-edits") {
+		t.Errorf("expected --mode accept-edits, got %q", cmd)
 	}
 }
 
-func TestGemini_WithCapabilities_Nil(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_WithCapabilities_Nil(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{})
-	if strings.Contains(cmd, "--approval-mode") {
-		t.Errorf("should not have --approval-mode, got %q", cmd)
+	if strings.Contains(cmd, "--mode") || strings.Contains(cmd, "--dangerously-skip-permissions") {
+		t.Errorf("should not have permission flags for nil caps, got %q", cmd)
 	}
 }
 
-func TestGemini_ResumeWithPermissions(t *testing.T) {
-	a := &GeminiAgent{}
+func TestAgy_ResumeWithPermissions(t *testing.T) {
+	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{
 		ResumeSessionID: "resume-xyz",
 		Capabilities:    &Capabilities{Allow: []string{CapShell, CapFileWrite}},
 	})
-	// Resume is disabled, but permissions should still be emitted
-	if strings.Contains(cmd, "--resume") {
-		t.Errorf("gemini should not have --resume flag (disabled), got %q", cmd)
+	if !strings.Contains(cmd, "--conversation resume-xyz") {
+		t.Errorf("expected --conversation resume-xyz, got %q", cmd)
 	}
-	if !strings.Contains(cmd, "--approval-mode yolo") {
-		t.Errorf("expected yolo even without resume, got %q", cmd)
+	if !strings.Contains(cmd, "--dangerously-skip-permissions") {
+		t.Errorf("expected --dangerously-skip-permissions, got %q", cmd)
 	}
 }
 
@@ -953,29 +946,29 @@ func TestTranslateToCodexPermissions_WebOnlyIsReadOnly(t *testing.T) {
 	}
 }
 
-// ── Gemini Permission Translation Tests ─────────────────────
+// ── Agy Permission Translation Tests ─────────────────────────
 
-func TestTranslateToGeminiPermissions_Nil(t *testing.T) {
-	if TranslateToGeminiPermissions(nil) != nil {
+func TestTranslateToAgyPermissions_Nil(t *testing.T) {
+	if TranslateToAgyPermissions(nil) != nil {
 		t.Error("expected nil")
 	}
 }
 
-func TestTranslateToGeminiPermissions_Empty(t *testing.T) {
-	if TranslateToGeminiPermissions(&Capabilities{}) != nil {
+func TestTranslateToAgyPermissions_Empty(t *testing.T) {
+	if TranslateToAgyPermissions(&Capabilities{}) != nil {
 		t.Error("expected nil")
 	}
 }
 
-func TestTranslateToGeminiPermissions_Yolo(t *testing.T) {
-	result := TranslateToGeminiPermissions(&Capabilities{Allow: []string{CapShell, CapFileWrite}})
+func TestTranslateToAgyPermissions_Yolo(t *testing.T) {
+	result := TranslateToAgyPermissions(&Capabilities{Allow: []string{CapShell, CapFileWrite}})
 	if result == nil || result.ApprovalMode != "yolo" {
 		t.Error("expected yolo")
 	}
 }
 
-func TestTranslateToGeminiPermissions_AutoEdit(t *testing.T) {
-	result := TranslateToGeminiPermissions(&Capabilities{
+func TestTranslateToAgyPermissions_AutoEdit(t *testing.T) {
+	result := TranslateToAgyPermissions(&Capabilities{
 		Allow: []string{CapShell, CapFileWrite}, Deny: []string{CapGitWrite},
 	})
 	if result == nil || result.ApprovalMode != "auto_edit" {
@@ -983,17 +976,24 @@ func TestTranslateToGeminiPermissions_AutoEdit(t *testing.T) {
 	}
 }
 
-func TestTranslateToGeminiPermissions_Plan(t *testing.T) {
-	result := TranslateToGeminiPermissions(&Capabilities{Allow: []string{CapFileRead}})
+func TestTranslateToAgyPermissions_Plan(t *testing.T) {
+	result := TranslateToAgyPermissions(&Capabilities{Allow: []string{CapFileRead}})
 	if result == nil || result.ApprovalMode != "plan" {
 		t.Error("expected plan")
 	}
 }
 
-func TestTranslateToGeminiPermissions_Default(t *testing.T) {
-	result := TranslateToGeminiPermissions(&Capabilities{Allow: []string{CapWebAccess}})
+func TestTranslateToAgyPermissions_Default(t *testing.T) {
+	result := TranslateToAgyPermissions(&Capabilities{Allow: []string{CapWebAccess}})
 	if result == nil || result.ApprovalMode != "default" {
 		t.Error("expected default")
+	}
+}
+
+func TestTranslateToGeminiPermissions_Compat(t *testing.T) {
+	result := TranslateToGeminiPermissions(&Capabilities{Allow: []string{CapShell, CapFileWrite}})
+	if result == nil || result.ApprovalMode != "yolo" {
+		t.Error("expected yolo via deprecated alias")
 	}
 }
 
@@ -1023,9 +1023,9 @@ func TestTranslatePermissions_Codex(t *testing.T) {
 	}
 }
 
-func TestTranslatePermissions_Gemini(t *testing.T) {
-	if _, ok := TranslatePermissions("gemini", &Capabilities{Allow: []string{CapFileRead}}).(*GeminiPermissions); !ok {
-		t.Error("expected *GeminiPermissions")
+func TestTranslatePermissions_Agy(t *testing.T) {
+	if _, ok := TranslatePermissions("agy", &Capabilities{Allow: []string{CapFileRead}}).(*AgyPermissions); !ok {
+		t.Error("expected *AgyPermissions")
 	}
 }
 
@@ -1117,17 +1117,17 @@ func TestPresetTranslations(t *testing.T) {
 			},
 		},
 		{
-			name:      "frontend gemini",
-			agentType: "gemini",
+			name:      "frontend agy",
+			agentType: "agy",
 			preset:    "frontend_dev",
 			check: func(t *testing.T, got any) {
 				t.Helper()
-				perms, ok := got.(*GeminiPermissions)
+				perms, ok := got.(*AgyPermissions)
 				if !ok || perms == nil {
-					t.Fatalf("expected *GeminiPermissions, got %T", got)
+					t.Fatalf("expected *AgyPermissions, got %T", got)
 				}
 				if perms.ApprovalMode != "auto_edit" {
-					t.Fatalf("unexpected gemini perms: %+v", perms)
+					t.Fatalf("unexpected agy perms: %+v", perms)
 				}
 			},
 		},
@@ -1193,10 +1193,10 @@ func TestCodex_EnvVarsExported(t *testing.T) {
 	}
 }
 
-func TestGemini_EnvVarsExported(t *testing.T) {
-	a := &GeminiAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: "gemini-xyz789", Role: "qa"})
-	if !strings.Contains(cmd, "export CORAL_SESSION_NAME='gemini-xyz789' &&") {
+func TestAgy_EnvVarsExported(t *testing.T) {
+	a := &AgyAgent{}
+	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: "agy-xyz789", Role: "qa"})
+	if !strings.Contains(cmd, "export CORAL_SESSION_NAME='agy-xyz789' &&") {
 		t.Errorf("expected exported single-quoted session name, got %q", cmd)
 	}
 	if !strings.Contains(cmd, "export CORAL_SUBSCRIBER_ID='qa' &&") {
@@ -1888,9 +1888,9 @@ func TestLaunchCommands_PreserveURLAndPathEnvValues(t *testing.T) {
 		CoralDir:    "/Users/someone/.coral",
 	}
 	for name, a := range map[string]Agent{
-		"codex":  &CodexAgent{},
-		"gemini": &GeminiAgent{},
-		"pi":     &PiAgent{},
+		"codex": &CodexAgent{},
+		"agy":   &AgyAgent{},
+		"pi":    &PiAgent{},
 	} {
 		cmd := a.BuildLaunchCommand(params)
 		for _, want := range []string{

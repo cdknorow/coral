@@ -83,7 +83,7 @@ func TestEveryAgentPassesTheCoralEnvironmentToItsCLI(t *testing.T) {
 		CoralPort:   8455,
 		CoralDir:    "/tmp/coral-t1",
 	}
-	for _, agentType := range []string{"claude", "codex", "gemini", "pi"} {
+	for _, agentType := range []string{"claude", "codex", "agy", "pi"} {
 		t.Run(agentType, func(t *testing.T) {
 			impl := GetAgent(agentType)
 			if impl == nil {

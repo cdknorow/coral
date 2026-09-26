@@ -36,7 +36,7 @@ func TestLiveSession_BackendField(t *testing.T) {
 	// Register a session with nil backend (should use DB default 'tmux')
 	err = ss.RegisterLiveSession(ctx, &LiveSession{
 		SessionID:  "sess-nil-1",
-		AgentType:  "gemini",
+		AgentType:  "agy",
 		AgentName:  "myproject3",
 		WorkingDir: "/tmp/test3",
 	})

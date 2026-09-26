@@ -66,6 +66,11 @@ func TestSystemStatus(t *testing.T) {
 }
 
 func TestUpdateCheck(t *testing.T) {
+	mockGitHubAPI(t, "v0.13.1", http.StatusOK)
+	origVersion := config.Version
+	config.Version = "0.13.1"
+	t.Cleanup(func() { config.Version = origVersion })
+
 	server, _ := setupSystemTestServer(t)
 
 	resp, err := http.Get(server.URL + "/api/system/update-check")

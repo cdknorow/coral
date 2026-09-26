@@ -31,7 +31,7 @@ func TestListPanes_ParsesOutput(t *testing.T) {
 
 func TestListPanes_ParsesFormat(t *testing.T) {
 	// Test the parsing logic directly by simulating tmux output format
-	output := "My Title|claude-abc123|claude-abc123:0.0|/Users/test/repo\nOther Title|gemini-def456|gemini-def456:0.0|/tmp/work"
+	output := "My Title|claude-abc123|claude-abc123:0.0|/Users/test/repo\nOther Title|agy-def456|agy-def456:0.0|/tmp/work"
 
 	var panes []Pane
 	for _, line := range strings.Split(output, "\n") {
@@ -59,7 +59,7 @@ func TestListPanes_ParsesFormat(t *testing.T) {
 	assert.Equal(t, "/Users/test/repo", panes[0].CurrentPath)
 
 	assert.Equal(t, "Other Title", panes[1].PaneTitle)
-	assert.Equal(t, "gemini-def456", panes[1].SessionName)
+	assert.Equal(t, "agy-def456", panes[1].SessionName)
 }
 
 func TestNewClient_Defaults(t *testing.T) {
@@ -102,7 +102,7 @@ func TestFindPane_MatchesBySessionID(t *testing.T) {
 	// This test verifies the matching logic without needing real tmux
 	panes := []Pane{
 		{SessionName: "claude-550e8400-e29b-41d4-a716-446655440000", CurrentPath: "/tmp/repo1", Target: "t:0.0"},
-		{SessionName: "gemini-aabb0011-e29b-41d4-a716-446655440000", CurrentPath: "/tmp/repo2", Target: "t:0.1"},
+		{SessionName: "agy-aabb0011-e29b-41d4-a716-446655440000", CurrentPath: "/tmp/repo2", Target: "t:0.1"},
 	}
 
 	// Simulate FindPane matching logic
@@ -130,7 +130,7 @@ func TestLogPathDerivation(t *testing.T) {
 		expected  string
 	}{
 		{"claude", "abc-123", "claude_coral_abc-123.log"},
-		{"gemini", "def-456", "gemini_coral_def-456.log"},
+		{"agy", "def-456", "agy_coral_def-456.log"},
 	}
 
 	for _, tt := range tests {

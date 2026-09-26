@@ -148,9 +148,8 @@ edits over the board.
 
 ### `agent_type` was ignored and I got Claude
 
-`GetAgent` (`internal/agent/agent.go:157-168`) is a switch over `gemini`, `codex`, and
-`pi`, with `default:` returning Claude. Any unrecognized value **silently** starts a Claude
-session and returns `ok: true`. Only `claude`, `codex`, `gemini`, and `pi` are valid.
+`GetAgent` (`internal/agent/agent.go`) is a switch over `agy`, `antigravity`, `codex`, and
+`pi`, with `default:` returning Claude. Only `claude`, `agy`, `codex`, and `pi` are valid (`gemini` is deprecated and maps to `agy`).
 
 ### Agent launch fails with a tmux error
 

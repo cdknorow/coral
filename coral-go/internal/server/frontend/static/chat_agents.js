@@ -61,11 +61,45 @@ class CodexChatAdapter extends ChatAgentAdapter {
     }
 }
 
+class AgyChatAdapter extends ChatAgentAdapter {
+    toolView(tool) {
+        const sourceName = tool.name || "Tool";
+        const raw = tool.operation || sourceName;
+        const leaf = raw.split(/__|\./).pop();
+        const views = {
+            run_command: ["Command", "Bash"],
+            view_file: ["View", "Read"],
+            write_to_file: ["Write", "Write"],
+            replace_file_content: ["Edit", "Edit"],
+            ask_question: ["Question", "AskUserQuestion"],
+            read_url_content: ["Web", "WebSearch"],
+            search_web: ["WebSearch", "WebSearch"],
+            invoke_subagent: ["Subagent", "Agent"],
+            send_message: ["Message", "Agent"],
+            manage_subagents: ["Subagents", "Agent"],
+            schedule: ["Schedule", "Tool"],
+            manage_task: ["Task", "Tool"],
+            generate_image: ["Image", "Write"],
+            define_subagent: ["Define Subagent", "Agent"],
+        };
+        const [name, icon] = views[raw] || views[leaf] || [leaf || raw, raw];
+        return {
+            name,
+            icon,
+            isQuestion: raw === "ask_question" || leaf === "ask_question" || raw === "AskUserQuestion" || leaf === "AskUserQuestion",
+            questionLabel: "Question",
+        };
+    }
+}
+
 const DEFAULT_ADAPTER = new ChatAgentAdapter();
+const agyAdapter = new AgyChatAdapter();
 const ADAPTERS = new Map([
     ["claude", new ClaudeChatAdapter()],
+    ["agy", agyAdapter],
+    ["antigravity", agyAdapter],
+    ["gemini", agyAdapter],
     ["codex", new CodexChatAdapter()],
-    ["gemini", new GeminiChatAdapter()],
     ["pi", new PiChatAdapter()],
 ]);
 

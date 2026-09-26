@@ -172,6 +172,7 @@ Returns the available CSS variable groups and their human-readable labels. Usefu
     },
     "Agent Badges": {
       "--badge-claude": "Claude badge",
+      "--badge-agy": "Antigravity badge",
       "--badge-gemini": "Gemini badge"
     },
     "Syntax Highlighting": { "...": "..." },
@@ -190,7 +191,7 @@ Returns the available CSS variable groups and their human-readable labels. Usefu
 POST /api/themes/generate
 ```
 
-Uses an LLM (Claude, Gemini, or Codex) to generate theme colors from a text description. Requires at least one CLI tool installed (`claude`, `gemini`, or `codex`).
+Uses an LLM (Claude, Antigravity, or Codex) to generate theme colors from a text description. Requires at least one CLI tool installed (`claude`, `agy`, or `codex`).
 
 **Request Body:**
 ```json
@@ -205,7 +206,7 @@ Uses an LLM (Claude, Gemini, or Codex) to generate theme colors from a text desc
 |-------|------|----------|-------------|
 | `description` | string | yes | Text description of the desired theme |
 | `base` | string | no | `"dark"` (default) or `"light"` |
-| `agent_type` | string | no | Preferred LLM: `"claude"`, `"gemini"`, or `"codex"`. Falls back to any available CLI. |
+| `agent_type` | string | no | Preferred LLM: `"claude"`, `"agy"`, or `"codex"`. Falls back to any available CLI. |
 
 **Response:**
 ```json

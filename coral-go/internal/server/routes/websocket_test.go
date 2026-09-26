@@ -234,7 +234,7 @@ func TestWSCoral_SleepingSessionFields(t *testing.T) {
 	displayName := "My Agent"
 	err := ss.RegisterLiveSession(ctx, &store.LiveSession{
 		SessionID:   "sleep-fields-001",
-		AgentType:   "gemini",
+		AgentType:   "agy",
 		AgentName:   "field-agent",
 		WorkingDir:  "/tmp/fields",
 		IsSleeping:  1,

@@ -43,11 +43,15 @@ func TestAgentTasksCRUD(t *testing.T) {
 	tasks, _ = s.ListAgentTasks(ctx, "agent-1", nil)
 	assert.Equal(t, task2.ID, tasks[0].ID)
 
-	// Delete
+	// Finished task evidence is immutable; only an unstarted, unreferenced
+	// task can be removed from the personal checklist.
 	err = s.DeleteAgentTask(ctx, task1.ID)
+	require.Error(t, err)
+	scratch, err := s.CreateAgentTask(ctx, "agent-1", "Scratch", nil, nil)
 	require.NoError(t, err)
+	require.NoError(t, s.DeleteAgentTask(ctx, scratch.ID))
 	tasks, _ = s.ListAgentTasks(ctx, "agent-1", nil)
-	assert.Len(t, tasks, 1)
+	assert.Len(t, tasks, 2)
 }
 
 func TestAgentTasksWithSession(t *testing.T) {

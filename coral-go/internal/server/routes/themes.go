@@ -61,6 +61,7 @@ var bundledThemes = map[string]string{
     "--warning": "#fbbf24",
     "--error": "#f87171",
     "--badge-claude": "#a78bfa",
+    "--badge-agy": "#f472b6",
     "--badge-gemini": "#f472b6",
     "--sh-keyword": "#a78bfa",
     "--sh-string": "#86efac",
@@ -134,6 +135,7 @@ var bundledThemes = map[string]string{
     "--warning": "#ffb781",
     "--error": "#ffb4ab",
     "--badge-claude": "#7c3aed",
+    "--badge-agy": "#2563eb",
     "--badge-gemini": "#2563eb",
     "--sh-keyword": "#f87171",
     "--sh-string": "#a6c8ff",
@@ -192,6 +194,7 @@ var bundledThemes = map[string]string{
     "--accent": "#5173a9",
     "--accent-dim": "#5173a9",
     "--badge-claude": "#0061ff",
+    "--badge-agy": "#ea8226",
     "--badge-gemini": "#ea8226",
     "--border": "#404040",
     "--border-light": "#323232",
@@ -468,7 +471,7 @@ func (h *ThemesHandler) GenerateTheme(w http.ResponseWriter, r *http.Request) {
 	// Find an available LLM CLI — try requested type first, then fall back
 	cliPath, cliArgs := resolveThemeCLI(body.AgentType)
 	if cliPath == "" {
-		errInternalServer(w, "No LLM CLI found — install Claude Code (npm install -g @anthropic-ai/claude-code) or Gemini CLI")
+		errInternalServer(w, "No LLM CLI found — install Claude Code (npm install -g @anthropic-ai/claude-code) or Antigravity CLI (agy)")
 		return
 	}
 
@@ -535,16 +538,25 @@ func resolveThemeCLI(agentType string) (path string, args []string) {
 	}
 	options := []cliOption{
 		{"claude", []string{"--print", "--model", "haiku", "--no-session-persistence"}},
+		{"agy", []string{"--print"}},
 		{"gemini", []string{"--print"}},
 		{"codex", []string{"--print"}},
 	}
 
-	// Try requested type first
+	// Try requested type first (normalizing agy/gemini)
 	if agentType != "" {
-		for _, opt := range options {
-			if opt.binary == agentType {
-				if p, err := exec.LookPath(opt.binary); err == nil {
-					return p, opt.args
+		targets := []string{agentType}
+		if agentType == "agy" || agentType == "antigravity" {
+			targets = []string{"agy", "gemini"}
+		} else if agentType == "gemini" {
+			targets = []string{"agy", "gemini"}
+		}
+		for _, target := range targets {
+			for _, opt := range options {
+				if opt.binary == target {
+					if p, err := exec.LookPath(opt.binary); err == nil {
+						return p, opt.args
+					}
 				}
 			}
 		}
@@ -585,7 +597,7 @@ var themeVariableGroups = map[string]map[string]string{
 	"Text":            {"--text-primary": "Primary text", "--text-secondary": "Secondary text", "--text-muted": "Muted text"},
 	"Accent / Brand":  {"--accent": "Accent", "--accent-dim": "Accent dim"},
 	"Semantic Status": {"--success": "Success", "--warning": "Warning", "--error": "Error"},
-	"Agent Badges":    {"--badge-claude": "Claude badge", "--badge-gemini": "Gemini badge"},
+	"Agent Badges":    {"--badge-claude": "Claude badge", "--badge-agy": "Antigravity badge", "--badge-gemini": "Gemini badge"},
 	"Syntax Highlighting": {
 		"--sh-keyword": "Keyword", "--sh-string": "String", "--sh-comment": "Comment",
 		"--sh-number": "Number", "--sh-builtin": "Builtin", "--sh-decorator": "Decorator",

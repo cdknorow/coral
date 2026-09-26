@@ -5,11 +5,13 @@ package agenttypes
 
 // Agent type identifiers.
 const (
-	Claude   = "claude"
-	Gemini   = "gemini"
-	Codex    = "codex"
-	Pi       = "pi"
-	Terminal = "terminal"
+	Claude      = "claude"
+	Agy         = "agy"
+	Antigravity = "antigravity"
+	Gemini      = "gemini"
+	Codex       = "codex"
+	Pi          = "pi"
+	Terminal    = "terminal"
 )
 
 // CoralSessionMarkerPrefix prefixes a session marker injected into per-agent

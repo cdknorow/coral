@@ -115,6 +115,7 @@ export function showNotificationToast(agentLabel, detail, onClick) {
 }
 
 const VIEW_IDS = [
+    "mobile-agent-list",
     "welcome-screen",
     "live-session-view",
     "history-session-view",
@@ -129,6 +130,7 @@ const VIEW_IDS = [
 ];
 
 const VIEW_DISPLAY = {
+    "mobile-agent-list": "flex",
     "welcome-screen": "flex",
     "live-session-view": "flex",
     "history-session-view": "flex",
@@ -160,6 +162,11 @@ export function showView(activeId) {
 }
 
 // options is passed through to marked.parse for this call only, e.g.
+export const DOMPURIFY_CONFIG = {
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    ADD_ATTR: ['target', 'rel', 'data-file-ref', 'data-action', 'data-pending-id'],
+};
+
 // { breaks: true } to keep single newlines as line breaks.
 export function renderMarkdown(content, options) {
     if (!content) return '';
@@ -182,7 +189,7 @@ export function renderMarkdown(content, options) {
                 marked._hljsConfigured = true;
             }
             const html = options ? marked.parse(content, options) : marked.parse(content);
-            return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html;
+            return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html, DOMPURIFY_CONFIG) : html;
         } catch { /* fall through */ }
     }
     return escapeHtml(content);

@@ -311,6 +311,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		for _, event := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, StateEvent{Type: event.EventType, Summary: event.Summary})
 		}
+		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
 		state := DeriveSessionState(stateInput)
 
 		var waitingReason, waitingSummary any

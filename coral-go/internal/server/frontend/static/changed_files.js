@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, isImagePath, renderImagePanes } from './utils.js';
+import { escapeHtml, showToast, isImagePath, renderImagePanes, DOMPURIFY_CONFIG } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
@@ -522,7 +522,7 @@ let _cmView = null;       // active EditorView instance (edit mode)
 let _cmMergeView = null;  // active merge view instance (diff mode)
 
 /** Create an editable CodeMirror editor. Returns false if CM is unavailable. */
-function _createCmEditor(container, content, langName) {
+function _createCmEditor(container, content, langName, line) {
     const cm = getCm();
     if (!cm) return false;
 
@@ -542,6 +542,15 @@ function _createCmEditor(container, content, langName) {
             state: cm.EditorState.create({ doc: content, extensions }),
             parent: container,
         });
+        if (line && line > 0) {
+            const doc = _cmView.state.doc;
+            const targetLine = Math.min(Math.max(1, line), doc.lines);
+            const lineObj = doc.line(targetLine);
+            _cmView.dispatch({
+                selection: { anchor: lineObj.from },
+                scrollIntoView: true,
+            });
+        }
         return true;
     } catch (e) {
         console.error('[coral] CodeMirror editor creation failed:', e);
@@ -605,15 +614,15 @@ let _previewState = null; // { filepath, mode, content, hasDiff, diffText, gen }
 let _previewGen = 0;      // generation counter to guard against stale async writes
 
 /** Show inline preview for a file (clicking the preview icon). */
-export function openFilePreview(filepath) {
+export function openFilePreview(filepath, line) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
-    _openInlinePane(filepath, 'preview');
+    _openInlinePane(filepath, 'preview', line);
 }
 
 /** Open file directly in edit mode (clicking the edit icon). */
-export function openFileEdit(filepath) {
+export function openFileEdit(filepath, line) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
-    _openInlinePane(filepath, 'edit');
+    _openInlinePane(filepath, 'edit', line);
 }
 
 /** Create a new file via the API and open it in the editor. */
@@ -647,7 +656,7 @@ window._createFile = async function(filePath) {
     }
 };
 
-async function _openInlinePane(filepath, initialView) {
+async function _openInlinePane(filepath, initialView, line) {
     // On mobile, use a full-screen overlay instead of the sidebar pane
     const isMobile = window.innerWidth <= 767;
     let panel;
@@ -662,6 +671,12 @@ async function _openInlinePane(filepath, initialView) {
     } else {
         panel = document.getElementById('agentic-panel-files');
         if (!panel) return;
+        const agenticState = document.getElementById('agentic-state');
+        if (agenticState && agenticState.classList.contains('collapsed')) {
+            agenticState.classList.remove('collapsed');
+            const btn = document.getElementById('agentic-collapse-btn');
+            if (btn) btn.classList.remove('collapsed');
+        }
         // Switch to files tab if not active
         if (window.switchAgenticTab) window.switchAgenticTab('files', 'top');
     }
@@ -669,7 +684,7 @@ async function _openInlinePane(filepath, initialView) {
     const { name } = splitPath(filepath);
     const gen = ++_previewGen;
 
-    _previewState = { filepath, mode: 'preview', content: '', originalContent: null, hasDiff: false, gen };
+    _previewState = { filepath, line: line || 0, mode: initialView, content: '', originalContent: null, hasDiff: false, gen };
 
     // Render the pane shell
     panel.innerHTML = `
@@ -717,12 +732,12 @@ async function _openInlinePane(filepath, initialView) {
                 const saveBtn = document.getElementById('preview-save-btn');
                 if (saveBtn) saveBtn.style.display = '';
                 const langName = getLangFromPath(filepath);
-                await _createCmEditor(cmContainer, _previewState.content, langName);
+                await _createCmEditor(cmContainer, _previewState.content, langName, line);
             }
         }
     } else {
         _previewState.mode = 'preview';
-        await _loadContentView(filepath, gen);
+        await _loadContentView(filepath, gen, line);
     }
 }
 
@@ -814,12 +829,13 @@ async function _loadDiffView(filepath, gen) {
 }
 
 /** Render file content with syntax highlighting into the given container. */
-function _renderContentView(container, content, filepath) {
+function _renderContentView(container, content, filepath, line) {
     const lang = getLangFromPath(filepath);
     // Render markdown files as formatted HTML
     if (lang === 'markdown' && typeof marked !== 'undefined') {
         const html = marked.parse(content);
-        container.innerHTML = `<div class="notes-rendered" style="padding:12px 14px;overflow-y:auto">${typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html}</div>`;
+        container.innerHTML = `<div class="notes-rendered" style="padding:12px 14px;overflow-y:auto">${typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html, DOMPURIFY_CONFIG) : html}</div>`;
+        if (line && line > 0) _scrollToLine(container, content, line);
         return;
     }
     const escaped = escapeHtml(content);
@@ -829,9 +845,34 @@ function _renderContentView(container, content, filepath) {
         const block = container.querySelector('pre code');
         if (block) window.hljs.highlightElement(block);
     }
+    if (line && line > 0) {
+        _scrollToLine(container, content, line);
+    }
 }
 
-async function _loadContentView(filepath, gen) {
+function _scrollToLine(container, content, line) {
+    if (!line || line <= 1) return;
+    const doScroll = () => {
+        const lines = content.split('\n');
+        const totalLines = lines.length;
+        if (totalLines <= 1) return;
+        const pre = container.querySelector('pre.inline-preview-code');
+        if (pre) {
+            const approxLineHeight = pre.scrollHeight / totalLines;
+            const targetScroll = Math.max(0, (line - 1) * approxLineHeight - (container.clientHeight / 3));
+            container.scrollTop = targetScroll;
+        } else {
+            const ratio = (line - 1) / totalLines;
+            container.scrollTop = Math.max(0, ratio * container.scrollHeight - (container.clientHeight / 3));
+        }
+    };
+    requestAnimationFrame(() => {
+        doScroll();
+        setTimeout(doScroll, 50);
+    });
+}
+
+async function _loadContentView(filepath, gen, line) {
     const body = document.getElementById('inline-preview-body');
     if (!body) return;
 
@@ -852,7 +893,7 @@ async function _loadContentView(filepath, gen) {
         const content = data.content || '';
         _previewState.content = content;
 
-        _renderContentView(body, content, filepath);
+        _renderContentView(body, content, filepath, line);
     } catch (e) {
         if (_isStale(gen)) return;
         body.innerHTML = '<div class="inline-preview-error">Failed to load file</div>';
@@ -922,7 +963,7 @@ window._switchMode = async function(targetMode) {
     if (targetMode === 'edit') {
         body.style.display = 'none';
         cmContainer.style.display = 'block';
-        const ok = await _createCmEditor(cmContainer, _previewState.content, langName);
+        const ok = await _createCmEditor(cmContainer, _previewState.content, langName, _previewState.line);
         if (!ok) {
             // Fallback: plain textarea
             cmContainer.style.display = 'none';
@@ -945,18 +986,18 @@ window._switchMode = async function(targetMode) {
                 // Fallback: show plain content
                 cmContainer.style.display = 'none';
                 body.style.display = '';
-                _renderContentView(body, _previewState.content, _previewState.filepath);
+                _renderContentView(body, _previewState.content, _previewState.filepath, _previewState.line);
             }
         } else {
             cmContainer.style.display = 'none';
             body.style.display = '';
-            _renderContentView(body, _previewState.content, _previewState.filepath);
+            _renderContentView(body, _previewState.content, _previewState.filepath, _previewState.line);
         }
     } else {
         // preview — show syntax-highlighted content
         cmContainer.style.display = 'none';
         body.style.display = '';
-        _renderContentView(body, _previewState.content, _previewState.filepath);
+        _renderContentView(body, _previewState.content, _previewState.filepath, _previewState.line);
     }
 };
 

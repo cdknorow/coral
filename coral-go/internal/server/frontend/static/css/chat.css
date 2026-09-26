@@ -861,6 +861,10 @@
 .live-history-center .chat-file-ref {
     cursor: pointer;
 }
+.live-history-center .chat-file-ref.chat-file-ref-loading {
+    opacity: 0.6;
+    cursor: wait;
+}
 .live-history-center code.chat-file-ref:hover,
 .live-history-center .chat-file-ref-bare:hover {
     text-decoration: underline;

@@ -341,7 +341,7 @@ Set `proxy_enabled=true` in Coral settings (`PUT /api/settings`). When enabled, 
 | Agent Type | Environment Variable | Value |
 |------------|---------------------|-------|
 | Claude | `ANTHROPIC_BASE_URL` | `http://127.0.0.1:{port}/proxy/{sessionID}` |
-| Gemini | `GEMINI_API_BASE` | `http://127.0.0.1:{port}/proxy/{sessionID}` |
+| Antigravity (`agy`) | `GOOGLE_GEMINI_BASE_URL`, `GEMINI_API_BASE` | `http://127.0.0.1:{port}/proxy/{sessionID}` |
 | Codex | `OPENAI_BASE_URL` | `http://127.0.0.1:{port}/proxy/{sessionID}` |
 
 Each agent gets a unique URL with its session ID embedded in the path.

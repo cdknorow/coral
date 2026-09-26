@@ -63,7 +63,7 @@ func TestGitSnapshotAllLatest(t *testing.T) {
 		Branch: "main", CommitHash: "aaa", SessionID: &sid1,
 	})
 	s.UpsertGitSnapshot(ctx, &GitSnapshot{
-		AgentName: "repo-b", AgentType: "gemini", WorkingDirectory: "/b",
+		AgentName: "repo-b", AgentType: "agy", WorkingDirectory: "/b",
 		Branch: "dev", CommitHash: "bbb", SessionID: &sid2,
 	})
 

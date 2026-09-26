@@ -1,4 +1,4 @@
-// Package agent provides agent implementations for Claude, Gemini, and Codex.
+// Package agent provides agent implementations for Claude, Antigravity (agy), Codex, and Pi.
 package agent
 
 import (
@@ -45,7 +45,7 @@ type LaunchParams struct {
 	Capabilities     *Capabilities
 	Tools            []string               // allowed tools (e.g. ["TodoWrite", "Bash(npm *)"])
 	MCPServers       map[string]any         // MCP server configs keyed by name
-	Hooks            map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Gemini/Codex)
+	Hooks            map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Antigravity/Codex)
 	CLIPath          string                 // custom path to agent binary (empty = default from PATH)
 	PermissionMode   string                 // --permission-mode value (empty or "default" means omit the flag)
 	ProxyBaseURL     string                 // proxy base URL (e.g. "http://127.0.0.1:8420/proxy/{session_id}")
@@ -219,7 +219,7 @@ func ExtractCoralSessionID(v any) string {
 
 // Agent defines the interface for all agent implementations.
 type Agent interface {
-	// AgentType returns the short identifier (e.g. "claude", "gemini").
+	// AgentType returns the short identifier (e.g. "claude", "agy").
 	AgentType() string
 	// SupportsResume returns whether the agent supports resuming a previous session.
 	SupportsResume() bool
@@ -249,8 +249,10 @@ func TryPrepareResume(ag Agent, sessionID, workingDir string) {
 // GetAgent returns the agent implementation for the given type.
 func GetAgent(agentType string) Agent {
 	switch agentType {
+	case at.Agy, at.Antigravity:
+		return &AgyAgent{}
 	case at.Gemini:
-		return &GeminiAgent{}
+		return &AgyAgent{customType: at.Gemini}
 	case at.Codex:
 		return &CodexAgent{}
 	case at.Pi:
@@ -276,7 +278,7 @@ func GetAgent(agentType string) Agent {
 // launch path skips command building for it entirely — but it is a valid
 // agent_type at the API and rejecting it would break terminal sessions.
 func LaunchableAgentTypes() []string {
-	return []string{at.Claude, at.Codex, at.Gemini, at.Pi, at.Terminal}
+	return []string{at.Claude, at.Codex, at.Agy, at.Gemini, at.Pi, at.Terminal}
 }
 
 // ValidateAgentType checks an agent_type supplied by a caller.
@@ -287,7 +289,7 @@ func LaunchableAgentTypes() []string {
 // Coral does not support returned 200 ok:true and started a real Claude
 // session, spending the user's tokens on an agent they never asked for.
 func ValidateAgentType(agentType string) error {
-	if agentType == "" {
+	if agentType == "" || agentType == at.Antigravity {
 		return nil // not specified; the caller's default applies
 	}
 	for _, known := range LaunchableAgentTypes() {
@@ -307,10 +309,12 @@ type CLIInfo struct {
 
 // agentCLIs maps agent types to their required CLI tools and install instructions.
 var agentCLIs = map[string]CLIInfo{
-	at.Claude: {Binary: "claude", InstallCommand: "npm install -g @anthropic-ai/claude-code"},
-	at.Gemini: {Binary: "gemini", InstallCommand: "pip install google-gemini-cli"},
-	at.Codex:  {Binary: "codex", InstallCommand: "npm install -g @openai/codex"},
-	at.Pi:     {Binary: "pi", InstallCommand: "npm install -g @mariozechner/pi-coding-agent"},
+	at.Claude:      {Binary: "claude", InstallCommand: "npm install -g @anthropic-ai/claude-code"},
+	at.Agy:         {Binary: "agy", InstallCommand: "curl -fsSL https://antigravity.google/install.sh | bash"},
+	at.Antigravity: {Binary: "agy", InstallCommand: "curl -fsSL https://antigravity.google/install.sh | bash"},
+	at.Gemini:      {Binary: "agy", InstallCommand: "curl -fsSL https://antigravity.google/install.sh | bash"},
+	at.Codex:       {Binary: "codex", InstallCommand: "npm install -g @openai/codex"},
+	at.Pi:          {Binary: "pi", InstallCommand: "npm install -g @mariozechner/pi-coding-agent"},
 }
 
 // GetCLIInfo returns CLI info for an agent type, or nil if unknown.
@@ -324,6 +328,24 @@ func GetCLIInfo(agentType string) *CLIInfo {
 // CLIPathSettingKey returns the settings key for the agent's custom CLI path.
 func CLIPathSettingKey(agentType string) string {
 	return "cli_path_" + agentType
+}
+
+// ResolveCLIPath returns the configured CLI path for an agent type from settings,
+// with cross-compatibility fallback between "agy" and "gemini".
+func ResolveCLIPath(settings map[string]string, agentType string) string {
+	if settings == nil {
+		return ""
+	}
+	if p := strings.TrimSpace(settings[CLIPathSettingKey(agentType)]); p != "" {
+		return p
+	}
+	if agentType == at.Agy || agentType == at.Antigravity {
+		return strings.TrimSpace(settings[CLIPathSettingKey(at.Gemini)])
+	}
+	if agentType == at.Gemini {
+		return strings.TrimSpace(settings[CLIPathSettingKey(at.Agy)])
+	}
+	return ""
 }
 
 // resolveBinary returns cliPath if non-empty, otherwise the default binary name.
@@ -429,12 +451,20 @@ const DefaultOrchestratorSystemPrompt = "Post a message with coral-board post \"
 	"include exact file paths, line numbers, what to change, acceptance criteria, and any context the assignee needs.\n" +
 	"  coral-board task add \"title\" --body \"detailed description\" --assignee \"Agent Name\" — create and assign a task\n" +
 	"  coral-board task list — see all tasks and their status\n" +
-	"  coral-board task complete <id> --message \"summary of what was done\" — agents should do this when done"
+	"  coral-board task complete <id> --message \"summary of what was done\" — agents should do this when done\n" +
+	DefaultTaskWorkflowGuidance
 
 const DefaultWorkerSystemPrompt = "Post a message with coral-board post \"<your introduction>\" that introduces yourself, " +
 	"then STOP and wait. Do NOT poll the message board in a loop. Coral will notify you when there are new messages.\n\n" +
 	"You can check for assigned tasks with coral-board task list or coral-board task claim. " +
-	"When you finish a task, mark it complete: coral-board task complete <id> --message \"what was done\""
+	"When you finish a task, mark it complete: coral-board task complete <id> --message \"what was done\"\n" +
+	DefaultTaskWorkflowGuidance
+
+const DefaultTaskWorkflowGuidance = "Read the workflow instructions, required outputs, and upstream artifacts returned by task claim/current. " +
+	"Use separate dependent tasks for Build, Test, and Release; task add supports --blocked-by JSON, --outputs, --workflow, --stage, and --workflow-instructions. " +
+	"Complete with --artifacts manifest.json (an array of named artifacts with uri or content and optional revision/digest). " +
+	"Use --outcome failed for failed work; never report failed verification as success. " +
+	"Use task detail <id> to read prior evidence. Wait for Coral's dependency notification instead of polling."
 
 // Default action prompts (appended to user prompt as CLI positional arg).
 const DefaultOrchestratorActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Post a message with coral-board post "<your introduction>" that introduces yourself, then discuss your proposed plan with the operator (the human user) before posting assignments.

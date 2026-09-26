@@ -16,7 +16,7 @@
                             </svg>
                         </div>
                         <div class="launch-type-label">AI Agent</div>
-                        <div class="launch-type-desc">Launch Claude or Gemini with system prompt and tools</div>
+                        <div class="launch-type-desc">Launch Claude, Antigravity, or Codex with system prompt and tools</div>
                     </button>
                     <button class="launch-type-card" onclick="window._selectLaunchType('team')">
                         <div class="launch-type-icon">
@@ -261,7 +261,7 @@
                                         <label>Agent Type:
                                             <select id="team-agent-type">
                                                 <option value="claude">Claude</option>
-                                                <option value="gemini">Gemini</option>
+                                                <option value="agy">Antigravity (agy)</option>
                                                 <option value="codex">Codex</option>
                                                 <option value="pi">Pi</option>
                                             </select>
@@ -542,7 +542,7 @@
                 <dd>
                     <select id="settings-agent-type" class="settings-select">
                         <option value="claude">Claude</option>
-                        <option value="gemini">Gemini</option>
+                        <option value="agy">Antigravity (agy)</option>
                         <option value="codex">Codex</option>
                         <option value="pi">Pi</option>
                     </select>
@@ -584,9 +584,9 @@
                         <span id="cli-result-codex" class="cli-verify-result"></span>
                     </label>
                     <label class="settings-cli-row">
-                        <span class="settings-cli-label">Gemini</span>
-                        <input type="text" id="settings-cli-path-gemini" class="settings-input settings-mono-input" placeholder="gemini">
-                        <span id="cli-result-gemini" class="cli-verify-result"></span>
+                        <span class="settings-cli-label">Antigravity</span>
+                        <input type="text" id="settings-cli-path-agy" class="settings-input settings-mono-input" placeholder="agy">
+                        <span id="cli-result-agy" class="cli-verify-result"></span>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Pi</span>
@@ -611,9 +611,9 @@
                         <datalist id="settings-models-codex"></datalist>
                     </label>
                     <label class="settings-cli-row">
-                        <span class="settings-cli-label">Gemini</span>
-                        <input type="text" id="settings-default-model-gemini" class="settings-input settings-mono-input" list="settings-models-gemini" placeholder="Leave blank for none" autocomplete="off">
-                        <datalist id="settings-models-gemini"></datalist>
+                        <span class="settings-cli-label">Antigravity</span>
+                        <input type="text" id="settings-default-model-agy" class="settings-input settings-mono-input" list="settings-models-agy" placeholder="Leave blank for none" autocomplete="off">
+                        <datalist id="settings-models-agy"></datalist>
                     </label>
                     <label class="settings-cli-row">
                         <span class="settings-cli-label">Pi</span>
@@ -877,7 +877,7 @@
                         <label>Agent Type:
                             <select id="job-modal-agent" onchange="window._updatePermFlagButtons && window._updatePermFlagButtons(this)">
                                 <option value="claude">Claude</option>
-                                <option value="gemini">Gemini</option>
+                                <option value="agy">Antigravity (agy)</option>
                                 <option value="codex">Codex</option>
                                 <option value="pi">Pi</option>
                             </select>
@@ -1139,6 +1139,25 @@
                 </label>
                 <label>Blocked By <span class="text-muted-sm">(optional)</span></label>
                 <div id="create-task-deps" class="dep-picker"></div>
+                <label for="create-task-condition">Proceed when prerequisites
+                    <select id="create-task-condition"><option value="success">Succeed</option><option value="failure">Fail</option><option value="termination">Finish (any outcome)</option></select>
+                </label>
+                <label for="create-task-inputs">Required upstream artifacts
+                    <input id="create-task-inputs" placeholder="build, test_report (comma separated)">
+                </label>
+                <label for="create-task-workflow">Workflow
+                    <input id="create-task-workflow" placeholder="Build → Test → Release">
+                </label>
+                <label for="create-task-stage">Stage
+                    <input id="create-task-stage" placeholder="Build, Test, or Release">
+                </label>
+                <label for="create-task-outputs">Required completion artifacts
+                    <input id="create-task-outputs" placeholder="build, test_report (comma separated)">
+                </label>
+                <label for="create-task-instructions">Additional workflow instructions
+                    <textarea id="create-task-instructions" rows="3" placeholder="Project-specific checks and hand-off requirements"></textarea>
+                </label>
+                <p class="text-muted-sm">Coral adds default instructions to every task: consume the specified inputs, publish evidence, report failures honestly, and keep completed stages immutable.</p>
                 <label class="create-task-draft-toggle">
                     <input type="checkbox" id="create-task-draft">
                     <span>Create as draft <span class="text-muted-sm">— not visible to agents until published</span></span>

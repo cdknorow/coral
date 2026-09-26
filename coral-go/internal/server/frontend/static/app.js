@@ -1,6 +1,8 @@
+import { showTeamWorkingMode } from './team_working_mode.js';
+import { showTeamAvailability } from './team_availability.js';
 /* Coral Dashboard — Entry Point */
 
-import { state } from './state.js';
+import { state, sessionKey, saveSessionDraft } from './state.js';
 import { loadLiveSessions, loadHistorySessions, loadHistorySessionsPaged } from './api.js';
 import { filterState, deserializeFromUrl, serializeToUrl,
          hasActiveFilters, countActiveFilters, resetFilters }
@@ -231,6 +233,9 @@ function switchNavTab(tab) {
         } else {
             showView('welcome-screen');
         }
+    } else if (tab === 'agents' && window.innerWidth <= 767) {
+        syncMobileAgentList();
+        showView('mobile-agent-list');
     } else if (tab === 'agents') {
         // Restore previously selected session or show welcome
         if (state.currentSession && state.currentSession.type === 'live') {
@@ -471,7 +476,7 @@ Object.assign(window, {
     copyFolderPath, killBoard, dismissBoardKilled, setBoardAccentColor, resetTeam,
     moveSessionUp, moveSessionDown,
     toggleTeamSleep, toggleAgentSleep, sleepAllAgents, wakeAllAgents,
-    showTeamDetails, hideTeamDetails, buildSessionTooltip,
+    showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamWorkingMode,
     shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage,
     showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal,
     killSessionDirect, dismissKilledSession, showInfoDirect, attachDirect, restartDirect,
@@ -640,14 +645,11 @@ function pollStartupStatus() {
 // ── Home Navigation ──────────────────────────────────────────────────────
 window._goHome = function() {
     window.location.hash = '';
-    showView("welcome-screen");
+    showView(window.innerWidth <= 767 ? "mobile-agent-list" : "welcome-screen");
     // Deselect sidebar items
     document.querySelectorAll('.sidebar .session-item.active, .sidebar .session-item.selected').forEach(el => {
         el.classList.remove('active', 'selected');
     });
-    // On mobile, show agent list
-    const agentList = document.querySelector('.mobile-agent-list');
-    if (agentList) agentList.style.display = '';
 };
 
 // ── Initialization ────────────────────────────────────────────────────────
@@ -898,11 +900,16 @@ document.addEventListener("DOMContentLoaded", () => {
     initCommandInputAutosize();
 
     // Enter sends command, Shift+Enter inserts newline
-    document.getElementById("command-input").addEventListener("keydown", (e) => {
+    const cmdInput = document.getElementById("command-input");
+    cmdInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             sendCommand();
         }
+    });
+    cmdInput.addEventListener("input", () => {
+        const key = sessionKey(state.currentSession);
+        if (key) saveSessionDraft(key, cmdInput.value);
     });
 
     // Global keyboard shortcuts removed — terminal input now handled by

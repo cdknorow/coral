@@ -1,5 +1,8 @@
 # Spec: Agent Internal Task Tracking
 
+> Historical design proposal. Some commands and behavior below have been superseded.
+> For the implemented contract, see [personal task CLI and API](../../agent_docs/agent-tasks.md) and [current queue behavior](../BOARD_TASKS/task-queue-behavior.md).
+
 ## Problem
 
 Claude agents create internal task lists (via `TaskCreate`/`TaskUpdate` in Claude Code) to plan and track their own work. These tasks represent granular work items — "Fix auth bug", "Write tests", "Refactor handler" — that map directly to API cost. Today Coral only tracks **board-level tasks** (assignments posted to the message board). Agent-internal tasks are invisible, even though they represent the actual unit of work and cost.

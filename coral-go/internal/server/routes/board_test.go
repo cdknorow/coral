@@ -497,9 +497,13 @@ func TestBoardCompleteTask_DoesNotNudgeOrchestratorForUnassignedTask(t *testing.
 	require.Eventually(t, func() bool {
 		return boardMessagesContain(t, base, "[Task #1 completed by Orchestrator]")
 	}, 2*time.Second, 50*time.Millisecond)
-	assert.Never(t, func() bool {
-		return boardMessagesContain(t, base, "@Orchestrator You have tasks available")
-	}, 300*time.Millisecond, 50*time.Millisecond)
+	// Keep HTTP checks on this goroutine so no final timer callback outlives
+	// the test and races httptest.Server cleanup.
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		require.False(t, boardMessagesContain(t, base, "@Orchestrator You have tasks available"))
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func TestBoardCompleteTask_NudgesWorkerForUnassignedTask(t *testing.T) {
@@ -581,7 +585,7 @@ func TestBoardCompleteTask_NotifiesOrchestrator(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		for _, cmd := range terminal.sentCommands() {
-			if strings.Contains(cmd, "[Task #1 completed by Backend Dev] Implement API") {
+			if strings.Contains(cmd, "[Task #1 completed by Backend Dev]") && strings.Contains(cmd, "Outcome: success") && strings.Contains(cmd, "Implement API") {
 				return true
 			}
 		}
@@ -930,7 +934,7 @@ func TestBoardCompleteTask_UnblocksDownstream(t *testing.T) {
 	}
 }
 
-func TestBoardCancelTask_UnblocksDownstream(t *testing.T) {
+func TestBoardCancelTask_DoesNotSatisfySuccessDependency(t *testing.T) {
 	server, _ := setupBoardTestServer(t)
 	base := server.URL + "/api/board/myproject"
 
@@ -943,12 +947,12 @@ func TestBoardCancelTask_UnblocksDownstream(t *testing.T) {
 		bytes.NewReader([]byte(`{"title":"Task B","created_by":"Orchestrator","blocked_by":[1]}`)))
 	resp.Body.Close()
 
-	// Cancel A — should unblock B
+	// Cancel A — B must remain blocked.
 	postJSON(t, base+"/tasks/1/cancel", map[string]string{
 		"subscriber_id": "Operator",
 	}).Body.Close()
 
-	// Verify B is now pending
+	// Verify B still requires a successful result.
 	resp2, err := http.Get(base + "/tasks")
 	require.NoError(t, err)
 	defer resp2.Body.Close()
@@ -958,7 +962,7 @@ func TestBoardCancelTask_UnblocksDownstream(t *testing.T) {
 	for _, raw := range tasks {
 		task, _ := raw.(map[string]any)
 		if task["title"] == "Task B" {
-			assert.Equal(t, "pending", task["status"])
+			assert.Equal(t, "blocked", task["status"])
 		}
 	}
 }

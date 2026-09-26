@@ -442,6 +442,7 @@
 }
 
 .badge.claude { background: var(--badge-claude); color: var(--text-on-accent); }
+.badge.agy, .badge.antigravity { background: var(--badge-agy); color: var(--text-on-accent); }
 .badge.gemini { background: var(--badge-gemini); color: var(--text-on-accent); }
 .badge.codex { background: var(--badge-codex); color: var(--text-on-accent); }
 .badge.board-badge { background: #2ea043; color: var(--text-on-accent); }

@@ -58,7 +58,7 @@ func TestDerive(t *testing.T) {
 		{"session reset clears your turn", []Event{stop, reset}, false, false, false},
 		{"a new request after a new prompt is pending again", []Event{note(permission), stop, prompt, note(permission)}, true, false, false},
 		{"work then stop again is your turn", []Event{stop, prompt, tool, stop}, false, true, false},
-		{"sleep loop is not working", []Event{{Type: "tool_use", Summary: "Ran: sleep 1"}}, false, false, false},
+		{"sleep loop is working", []Event{{Type: "tool_use", Summary: "Ran: sleep 1"}}, false, false, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

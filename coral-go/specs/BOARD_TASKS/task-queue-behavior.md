@@ -1,166 +1,86 @@
 # Task Queue Behavior
 
-Updated: 2026-04-02
+Updated: 2026-09-26
 
-Describes the runtime behavior of the board task queue — how tasks are claimed, how agents are notified, and how the system enforces sequential work.
+This is the implemented queue contract. Use the [personal CLI/API reference](../../agent_docs/agent-tasks.md), [board API reference](../../agent_docs/board.md#tasks), and [workflow guide](../../agent_docs/task-workflows.md) for commands and request examples.
 
-## Sequential Claiming
+## Scope and ownership
 
-Agents must complete their current task before claiming a new one. This prevents agents from batch-claiming all assigned tasks at once and ensures focused, sequential work.
+`coral-board task` coordinates agents on a team board. `coral-agent task` manages one session's personal queue without a board subscription. Both use the same workflow engine, with separate stores and ID namespaces.
 
-### Rules
+Board tasks support assignment and dependencies on other local boards. Personal tasks cannot be reassigned, and dependencies, parent references, and retries must stay within the same session. Creating a task tracks work; it does not launch an agent or execute a pipeline.
 
-1. **One active task per agent** — `ClaimTask` checks if the subscriber has any `in_progress` tasks. If they do, the claim is rejected with HTTP 409 Conflict and the message: `"complete your current task before claiming a new one"`.
+## Claiming and inspection
 
-2. **No specific task claiming** — The CLI command `coral-board task claim` does not accept a task ID. It always claims the next best available task by priority (critical > high > medium > low), then by ID (oldest first).
+- `task claim` selects ready work; `task claim <id>` selects a specific available task.
+- Each subscriber may have one active task per board. Each personal session may have one active personal task. Another claim returns HTTP 409, including an explicit claim.
+- Board selection prefers caller-assigned tasks before unassigned tasks. Within each group, priority is critical, high, medium, low, then oldest ID. Personal selection uses the same priority order and oldest ID.
+- Only pending, eligible tasks can be claimed. Explicit claims cannot bypass dependencies or ownership; unavailable explicit claims return 400. An empty next-task queue returns 404.
+- Claim is atomic and records upstream task IDs, outcomes, and artifacts in `workflow.inputs`. Concurrent callers cannot both claim the same task.
+- `task current` reads the active task; `task detail <id>` reads a task and its workflow evidence. Claim/current output includes instructions and input evidence.
 
-3. **Assigned tasks first** — When claiming, tasks assigned to the subscriber are prioritized over unassigned tasks. An agent will always get their assigned work before picking up open tasks from the pool.
+## Lifecycle and dependencies
 
-4. **Claim shows full details** — On successful claim, the CLI prints the task title, priority, and full body (instructions). Agents immediately see what they need to do.
+| Status | Meaning |
+|---|---|
+| `draft` | Unpublished; cannot be claimed |
+| `blocked` | Published but prerequisites are unmet |
+| `pending` | Ready to claim |
+| `in_progress` | Claimed |
+| `completed` | Finished; `workflow.outcome` is `success` or `failed` |
+| `skipped` | Cancelled; `workflow.outcome` is `cancelled` |
 
-### Atomicity
+Publishing a draft makes it pending or blocked according to its prerequisites. All dependency rules must be satisfied:
 
-The claim uses a `NOT EXISTS` subquery within the UPDATE statement itself. SQLite's single-writer model guarantees this is atomic — no TOCTOU race is possible.
+- `success` (default): successful completion, plus any required artifact names.
+- `failure`: failed completion, plus any required artifact names.
+- `termination`: success, failure, or cancellation, plus any required artifact names.
 
-```sql
-UPDATE board_tasks
-SET status = 'in_progress', assigned_to = ?, claimed_at = ?
-WHERE id = ? AND board_id = ? AND status = 'pending'
-AND NOT EXISTS (
-    SELECT 1 FROM board_tasks
-    WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
-)
-```
+Short-form dependency IDs mean success. Cancellation does not satisfy success or failure. A branch whose condition cannot become true remains blocked until an operator rewires or cancels it. Cycles and duplicate prerequisites are rejected; HTTP dependency depth is limited to 32.
 
-## Task Detail
+Dependency edits replace the prerequisite set and are allowed only for draft, pending, or blocked tasks. Started tasks retain their input contract. Text and priority can still be edited during work. Finished tasks cannot be edited, reopened, or completed again.
 
-Agents can view their current in-progress task at any time:
+## Workflow instructions and outputs
 
-```bash
-coral-board task current
-```
+Each new task persists default instructions explaining how to claim one task, consume upstream evidence, use separate Build/Test/Release stages, report honest outcomes, publish named outputs, and wait for readiness notifications. Custom workflow instructions are appended. Agents see these instructions on claim, current/detail, and in the dashboard.
 
-This calls `POST /api/board/{project}/tasks/current` with the subscriber ID and returns the full task object (title, body, priority, status, timestamps).
+Use a separate task for each stage; do not mutate a completed Build into Test. `workflow.name`, `stage`, and `parent_task_id` organize work. A parent reference is not a dependency or automatic completion rule.
 
-## Notification System
+Completion accepts an outcome, optional message, and named artifacts. Each artifact has a unique name and either a URI or inline content; media type, revision, and digest are optional. Successful completion requires all declared outputs. Failure may instead publish diagnostic evidence. Coral stores evidence, but does not upload/fetch URI targets, run verification, or validate supplied revision/digest claims.
 
-Task notifications use two channels: **board audit messages** for the audit trail and **direct terminal nudges** for immediate agent notification.
+Limits are 32 artifacts per completion, 32 required output names per task, 32 required artifact names per dependency, 128 UTF-8 bytes per name, 4 KiB per URI, and 64 KiB inline content per artifact.
 
-### Board Audit Messages
+Create a new task with `retry_of` pointing to a terminal task to retry work. Explicitly reconnect unstarted consumers to the new task, retaining other prerequisite conditions and artifact requirements. Old results and claimed inputs remain intact.
 
-All task state changes post a message to the board from the sender `"Coral Task Queue"`:
+## Atomic readiness and recovery
 
-```
-[Task #4 claimed by Frontend Dev] Fix auth bypass
-[Task #4 completed by Frontend Dev] Fixed — added CSRF token validation
-@Lead Developer You have tasks available — run 'coral-board task claim' to start
-```
+Outcome, artifacts, and newly satisfied downstream state changes commit in the same SQLite transaction. Cancellation uses the same transactional readiness path. A downstream task can be claimed immediately after its prerequisite completion succeeds; terminal notification delivery is not required.
 
-**These messages do not count as unread.** Messages from `"Coral Task Queue"` are excluded from `CheckUnread` and `GetAllUnreadCounts` across all receive modes (all, mentions, group). This prevents the board notifier from sending redundant nudges for task queue activity.
+Readiness notifications are queued persistently. Startup also repairs eligible tasks left blocked by older versions and processes queued readiness notices. Notifications remain best effort: there is no exactly-once or guaranteed terminal-delivery contract. Agents should inspect current/available work when resuming rather than treating a notification as ownership of a task.
 
-The messages still appear when agents run `coral-board read` — they serve as an audit trail, not a notification mechanism.
+## Notifications and audit
 
-### Direct Terminal Nudges
+Board task lifecycle operations post audit messages under `Coral Task Queue`. These messages remain visible in board reads but are excluded from unread-message counts to avoid redundant board notifications.
 
-Agents receive immediate terminal nudges (injected into their tmux session) in three scenarios:
+Ready assigned board work nudges an idle assignee. Ready unassigned work can nudge an idle subscriber; the orchestrator is excluded from the unassigned-worker pool. Busy assignees are not interrupted by creation nudges. On board completion, the next-task check can nudge the completing agent if more eligible work exists.
 
-#### 1. Task Created — Assigned Agent
+Dependency readiness also triggers notifications for personal and board queues. Personal dashboard creation nudges are opt-in (`notify: true`) and apply only to newly created pending tasks. Personal queues do not promise every board-specific notification behavior.
 
-When a task is created with an assignee, the assigned agent gets a direct nudge if they have no active in-progress task. If they're busy, the notification is deferred — they'll be nudged when they complete their current task.
+Nudges direct agents to `coral-board task claim` or `coral-agent task claim`. They are a prompt to inspect the queue, not a reservation; another eligible agent may have claimed board work before the recipient acts.
 
-```
-You have tasks available. Run 'coral-board task claim' to start.
-```
+## Personal task migration and compatibility
 
-#### 2. Task Created — Unassigned
+Legacy personal task IDs, session ownership, timestamps, history, costs, and previously allocated ID ranges are preserved. Existing active tasks remain active; when an older session has multiple active tasks, finish or cancel them before claiming more.
 
-When an unassigned task is created, a random idle agent is selected and nudged. "Idle" means the agent is an active board subscriber with no in-progress tasks.
+Dashboard/history responses retain `completed` codes: pending 0, completed 1, active 2, skipped 3, blocked 4, draft 5. They also expose workflow/status information. Dashboard and hook mutations use the shared lifecycle rules: completing cannot bypass required outputs, resetting to 0 cannot reopen work, and finished records cannot be deleted. Only unstarted, unreferenced personal tasks may be deleted. Legacy display sorting does not change claim priority.
 
-```sql
-SELECT * FROM board_subscribers
-WHERE project = ? AND is_active = 1 AND session_name != ''
-AND subscriber_id NOT IN (
-    SELECT assigned_to FROM board_tasks
-    WHERE board_id = ? AND status = 'in_progress' AND assigned_to IS NOT NULL
-)
-ORDER BY RANDOM() LIMIT 1
-```
+## Implementation and validation
 
-If no idle agents exist, no nudge is sent. The task will be picked up when an agent finishes their current work (see below).
+- Shared engine: `internal/board/store.go`, `internal/board/task_workflow.go`.
+- Personal migration/projection: `internal/store/task_workflows.go`.
+- HTTP: `internal/server/routes/board.go`, `internal/server/routes/agent_tasks.go`, and session compatibility handlers.
+- CLI: `cmd/coral-board/main.go`, `cmd/coral-agent/main.go`.
 
-#### 3. Task Completed — Next Task Available
+From the repository root, run `bash tests/stress/run_agent_tasks.sh`. It builds an isolated server and CLIs, uses mock agents, and checks personal/team dependencies, artifacts, failures, retries, session isolation, and notifications. Its isolated API regressions cover atomic readiness, abrupt restart recovery, legacy blocked-task repair, and the 32/33-artifact boundary. See the [integration guide](../../agent_docs/task-workflows.md#integration-coverage) for prerequisites, port overrides, and retained logs.
 
-When an agent completes a task, the system checks if they have more pending tasks (assigned to them, or unassigned). If so:
-
-1. A board audit message is posted: `@Agent You have tasks available — run 'coral-board task claim' to start`
-2. A direct terminal nudge is sent to the agent's session
-
-This creates the claim-complete-claim loop: agents are continuously fed work as long as tasks remain in the queue.
-
-### Nudge Message
-
-All nudges use the same text (defined as `taskNudge` const):
-
-```
-You have tasks available. Run 'coral-board task claim' to start.
-```
-
-The nudge intentionally does not include task IDs or titles. This prevents agents from attempting to claim specific tasks (which the CLI doesn't support) and avoids stale references if another agent claims the task between the nudge and the claim attempt.
-
-### Deferred Notifications
-
-When a task is assigned to an agent who already has an active task, the board message is posted without an `@mention`:
-
-```
-[Task #5 (high) assigned to Lead Developer — notification deferred while they have an active task] Fix auth bypass
-```
-
-The agent will be nudged when they complete their current task via the completion handler's next-task check.
-
-## Flow Diagram
-
-```
-Task Created (assigned)
-  ├── Post audit message to board (Coral Task Queue sender)
-  ├── Agent idle? → Direct terminal nudge
-  └── Agent busy? → Deferred (nudge comes on completion)
-
-Task Created (unassigned)
-  ├── Post audit message to board (Coral Task Queue sender)
-  └── Find random idle agent → Direct terminal nudge
-
-Agent runs: coral-board task claim
-  ├── Has active task? → 409 "complete your current task"
-  ├── Assigned task available? → Claim it, return full details
-  ├── Unassigned task available? → Claim it, return full details
-  └── Nothing available? → "No available tasks"
-
-Agent runs: coral-board task complete <id>
-  ├── Mark task completed, post audit message
-  ├── More tasks pending? → Post audit + direct terminal nudge
-  └── No more tasks? → Done, agent waits
-```
-
-## CLI Commands
-
-```bash
-coral-board task add "title" [--body "details"] [--priority P] [--assignee "Agent"]
-coral-board task list
-coral-board task claim              # Claim next available (no task ID argument)
-coral-board task current            # Show current in-progress task
-coral-board task complete <id> [--message "note"]
-coral-board task cancel <id>
-coral-board task reassign <id> [--to "Agent"]
-```
-
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/board/{project}/tasks` | Create task |
-| GET | `/api/board/{project}/tasks` | List all tasks |
-| POST | `/api/board/{project}/tasks/claim` | Claim next available task (409 if busy) |
-| POST | `/api/board/{project}/tasks/current` | Get current in-progress task |
-| POST | `/api/board/{project}/tasks/{id}/complete` | Complete a task |
-| POST | `/api/board/{project}/tasks/{id}/cancel` | Cancel a task |
-| POST | `/api/board/{project}/tasks/{id}/reassign` | Reassign a task |
+Store and route tests cover migration and lifecycle enforcement. Frontend tests exercise artifact completion and dependency visibility. These checks validate queue behavior without requiring model calls or restarting the live server.

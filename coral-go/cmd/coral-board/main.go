@@ -4,10 +4,10 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
-	"flag"
 	"net/url"
 	"os"
 	"os/exec"
@@ -265,6 +265,11 @@ func main() {
 		cmdProjects()
 	case "subscribers":
 		cmdSubscribers()
+	case "status":
+		if err := runBoardStatus(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "leave":
 		cmdLeave()
 	case "delete":
@@ -295,6 +300,7 @@ Commands:
   check [--quiet]              Check unread count
   projects                     List all boards
   subscribers                  List board subscribers
+  status [--board NAME]         JSON snapshot of agent availability and open work
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   leave                        Unsubscribe from board
   delete                       Delete board and messages
@@ -672,11 +678,11 @@ type exportEntry struct {
 
 // exportData is the canonical JSON structure for a board export.
 type exportData struct {
-	Project     string            `json:"project"`
-	ExportedAt  string            `json:"exported_at"`
+	Project     string             `json:"project"`
+	ExportedAt  string             `json:"exported_at"`
 	Subscribers []exportSubscriber `json:"subscribers"`
-	Messages    []exportEntry     `json:"messages"`
-	Stats       exportStats       `json:"stats"`
+	Messages    []exportEntry      `json:"messages"`
+	Stats       exportStats        `json:"stats"`
 }
 
 type exportSubscriber struct {
@@ -930,14 +936,14 @@ func htmlEscape(s string) string {
 }
 
 var (
-	reCodeBlock   = regexp.MustCompile("(?s)```(\\w*)\\n(.*?)```")
-	reHeading     = regexp.MustCompile(`(?m)^(#{1,4})\s+(.+)$`)
-	reBold        = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	reItalic      = regexp.MustCompile(`(?:^|[^*])\*([^*]+?)\*(?:[^*]|$)`)
-	reInlineCode  = regexp.MustCompile("`([^`]+)`")
-	reUlItem      = regexp.MustCompile(`(?m)^[-*]\s+(.+)$`)
-	reOlItem      = regexp.MustCompile(`(?m)^\d+\.\s+(.+)$`)
-	reBlockquote  = regexp.MustCompile(`(?m)^>\s*(.+)$`)
+	reCodeBlock  = regexp.MustCompile("(?s)```(\\w*)\\n(.*?)```")
+	reHeading    = regexp.MustCompile(`(?m)^(#{1,4})\s+(.+)$`)
+	reBold       = regexp.MustCompile(`\*\*(.+?)\*\*`)
+	reItalic     = regexp.MustCompile(`(?:^|[^*])\*([^*]+?)\*(?:[^*]|$)`)
+	reInlineCode = regexp.MustCompile("`([^`]+)`")
+	reUlItem     = regexp.MustCompile(`(?m)^[-*]\s+(.+)$`)
+	reOlItem     = regexp.MustCompile(`(?m)^\d+\.\s+(.+)$`)
+	reBlockquote = regexp.MustCompile(`(?m)^>\s*(.+)$`)
 )
 
 // simpleMarkdownToHTML converts common markdown to HTML for the CLI export.
@@ -1146,9 +1152,31 @@ Subcommands:
 	case "list":
 		cmdTaskList(st)
 	case "claim":
-		cmdTaskClaim(st)
-	case "current", "detail":
+		cmdTaskClaim(st, taskArgs...)
+	case "current":
 		cmdTaskCurrent(st)
+	case "detail":
+		if len(taskArgs) == 0 {
+			cmdTaskCurrent(st)
+			return
+		}
+		id, err := strconv.ParseInt(taskArgs[0], 10, 64)
+		if err != nil || id <= 0 {
+			fmt.Fprintln(os.Stderr, "task detail requires a positive task ID")
+			os.Exit(1)
+		}
+		data, status, err := apiCallRaw("GET", fmt.Sprintf("/%s/tasks/%d", st.Project, id), nil)
+		if err != nil || status != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "Unable to read task: %v %s\n", err, data)
+			os.Exit(1)
+		}
+		var task map[string]any
+		if err := json.Unmarshal(data, &task); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		pretty, _ := json.MarshalIndent(task, "", "  ")
+		fmt.Println(string(pretty))
 	case "complete":
 		cmdTaskComplete(st, taskArgs)
 	case "cancel":
@@ -1161,11 +1189,18 @@ Subcommands:
 Subcommands:
   add "title" [--body "details"] [--priority P] [--assignee "Agent Name"]
   list
-  claim
+  claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
-  complete <id> [--message "note"]
+  detail <id>                      Read task instructions, inputs and results
+  complete <id> [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   cancel <id> [--message "reason"]
-  reassign <id> [--to "Agent Name"]`)
+  reassign <id> [--to "Agent Name"]
+
+Workflow options for add:
+  --workflow "name" --stage "Build" --outputs "build,test_report"
+  --blocked-by '[{"task_id":1,"condition":"success","required_artifacts":["build"]}]'
+  --workflow-instructions "project-specific guidance" --parent <id> --retry-of <id>
+Conditions: success (default), failure, termination. Completed results are immutable.`)
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
@@ -1194,6 +1229,13 @@ func cmdTaskAdd(st *boardState, args []string) {
 	priority := fs.String("priority", "medium", "Task priority (critical, high, medium, low)")
 	taskBody := fs.String("body", "", "Detailed description/instructions")
 	assignee := fs.String("assignee", "", "Assign task to a specific agent")
+	blockedBy := fs.String("blocked-by", "", "Dependency JSON: [1] or [{\"task_id\":1,\"condition\":\"success\",\"required_artifacts\":[\"build\"]}]")
+	outputs := fs.String("outputs", "", "Comma-separated required output artifact names")
+	workflow := fs.String("workflow", "", "Workflow name (e.g. Build -> Test -> Release)")
+	stage := fs.String("stage", "", "Stage name")
+	instructions := fs.String("workflow-instructions", "", "Additional instructions appended to Coral's default task workflow")
+	parent := fs.Int64("parent", 0, "Parent task ID")
+	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
 	fs.Parse(reordered)
 
 	if title == "" {
@@ -1213,6 +1255,21 @@ func cmdTaskAdd(st *boardState, args []string) {
 	if *assignee != "" {
 		reqBody["assigned_to"] = *assignee
 	}
+	if *blockedBy != "" {
+		var deps any
+		if err := json.Unmarshal([]byte(*blockedBy), &deps); err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid --blocked-by JSON:", err)
+			os.Exit(1)
+		}
+		reqBody["blocked_by"] = deps
+	}
+	var required []string
+	for _, name := range strings.Split(*outputs, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			required = append(required, name)
+		}
+	}
+	reqBody["workflow"] = map[string]any{"name": *workflow, "stage": *stage, "instructions": *instructions, "required_outputs": required, "parent_task_id": *parent, "retry_of": *retryOf}
 
 	data, status, err := apiCallRaw("POST", "/"+st.Project+"/tasks", reqBody)
 	if err != nil {
@@ -1266,9 +1323,17 @@ func cmdTaskList(st *boardState) {
 	}
 }
 
-func cmdTaskClaim(st *boardState) {
+func cmdTaskClaim(st *boardState, args ...string) {
 	subscriberID := resolveSubscriberID()
-	body := map[string]string{"subscriber_id": subscriberID}
+	body := map[string]any{"subscriber_id": subscriberID}
+	if len(args) > 0 {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil || id <= 0 {
+			fmt.Fprintln(os.Stderr, "task claim requires a positive task ID")
+			os.Exit(1)
+		}
+		body["task_id"] = id
+	}
 
 	data, status, err := apiCallRaw("POST", "/"+st.Project+"/tasks/claim", body)
 	if err != nil {
@@ -1292,6 +1357,7 @@ func cmdTaskClaim(st *boardState) {
 	taskBody, _ := task["body"].(string)
 	priority, _ := task["priority"].(string)
 	fmt.Printf("Claimed Task #%.0f (%s): %s\n", id, priority, title)
+	printTaskWorkflow(task)
 	if taskBody != "" {
 		fmt.Printf("\n%s\n", taskBody)
 	}
@@ -1324,6 +1390,7 @@ func cmdTaskCurrent(st *boardState) {
 	priority, _ := task["priority"].(string)
 	status_, _ := task["status"].(string)
 	fmt.Printf("Task #%.0f (%s) [%s]: %s\n", id, priority, status_, title)
+	printTaskWorkflow(task)
 	if taskBody != "" {
 		fmt.Printf("\n%s\n", taskBody)
 	}
@@ -1343,11 +1410,27 @@ func cmdTaskComplete(st *boardState, args []string) {
 
 	fs := flag.NewFlagSet("task-complete", flag.ExitOnError)
 	message := fs.String("message", "", "Completion message")
+	outcome := fs.String("outcome", "success", "success or failed")
+	artifactsFile := fs.String("artifacts", "", "JSON file containing named artifacts (name, uri or content, revision, digest)")
 	fs.Parse(args[1:])
 
 	subscriberID := resolveSubscriberID()
 	body := map[string]any{
 		"subscriber_id": subscriberID,
+		"outcome":       *outcome,
+	}
+	if *artifactsFile != "" {
+		data, err := os.ReadFile(*artifactsFile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		var artifacts []map[string]any
+		if err := json.Unmarshal(data, &artifacts); err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid artifacts JSON:", err)
+			os.Exit(1)
+		}
+		body["artifacts"] = artifacts
 	}
 	if *message != "" {
 		body["message"] = *message
@@ -1366,7 +1449,16 @@ func cmdTaskComplete(st *boardState, args []string) {
 	var task map[string]any
 	json.Unmarshal(data, &task)
 	title, _ := task["title"].(string)
-	fmt.Printf("Completed Task #%d: %s\n", taskID, title)
+	fmt.Printf("Finished Task #%d (%s): %s\n", taskID, *outcome, title)
+}
+
+func printTaskWorkflow(task map[string]any) {
+	if workflow, ok := task["workflow"]; ok {
+		data, err := json.MarshalIndent(workflow, "", "  ")
+		if err == nil {
+			fmt.Printf("\nWorkflow instructions, inputs and outputs:\n%s\n", data)
+		}
+	}
 }
 
 func cmdTaskCancel(st *boardState, args []string) {

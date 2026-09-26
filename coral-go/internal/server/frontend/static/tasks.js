@@ -1,7 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, renderMarkdown } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
 
 // ── Board task polling ───────────────────────────────────────────────
@@ -184,6 +184,7 @@ function _subagentMarkdown(text) {
     // makes the browser call out the moment the modal opens: a silent way to
     // leak data through the URL. A report has no need for images.
     const html = DOMPurify.sanitize(renderMarkdown(text, { breaks: true, gfm: true }), {
+        ALLOWED_URI_REGEXP: DOMPURIFY_CONFIG.ALLOWED_URI_REGEXP,
         FORBID_TAGS: ['img', 'picture', 'source', 'video', 'audio', 'track', 'svg', 'math', 'style', 'link', 'form', 'input', 'button', 'textarea', 'select'],
         FORBID_ATTR: ['style', 'srcset', 'background', 'poster'],
     });
@@ -351,26 +352,28 @@ export async function addAgentTask() {
 export async function toggleAgentTask(taskId, completed) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     try {
-        await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+        const response = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: completed ? 1 : 0 }),
         });
+        if (!response.ok) { const data = await response.json(); throw new Error(data.error || 'Failed to update task'); }
         await loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
     } catch (e) {
-        showToast('Failed to update task', true);
+        showToast(e.message || 'Failed to update task', true);
     }
 }
 
 export async function deleteAgentTask(taskId) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     try {
-        await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+        const response = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
             method: 'DELETE',
         });
+        if (!response.ok) {const data = await response.json(); throw new Error(data.error || 'Failed to delete task');}
         await loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
     } catch (e) {
-        showToast('Failed to delete task', true);
+        showToast(e.message || 'Failed to delete task', true);
     }
 }
 
@@ -537,6 +540,7 @@ function _formatTaskTime(ts) {
 }
 
 function _agentTaskStatus(t) {
+    if (t.status) return t.status;
     return t.completed === 1 ? 'completed' : t.completed === 2 ? 'in_progress' : t.completed === 3 ? 'skipped' : 'pending';
 }
 
@@ -643,14 +647,16 @@ export function renderBoardTaskList() {
         const tooltip = isSubagent ? ` title="${escapeAttr(_subagentTooltip(t))}"`
             : t.body ? ` title="${escapeAttr(t.body)}"` : '';
         const timeStr = _formatTaskTime(t.created_at);
-        const statusIcon = t.status === 'completed'
+        const statusIcon = t.workflow?.outcome === 'failed'
+            ? '<span class="material-icons board-task-status-icon skipped" title="Failed">error</span>'
+            : t.status === 'completed'
             ? '<span class="material-icons board-task-status-icon completed">check_circle</span>'
             : t.status === 'in_progress'
             ? '<span class="task-spinner" title="In progress"></span>'
             : t.status === 'skipped'
             ? '<span class="material-icons board-task-status-icon skipped">block</span>'
             : t.status === 'blocked'
-            ? '<span class="material-icons board-task-status-icon blocked" title="Blocked">lock</span>'
+            ? '<span class="material-icons board-task-status-icon blocked" title="Blocked: waiting for prerequisites" role="img" aria-label="Blocked: waiting for prerequisites">hourglass_empty</span>'
             : t.status === 'draft'
             ? '<span class="material-icons board-task-status-icon draft" title="Draft">edit_note</span>'
             : '<span class="material-icons board-task-status-icon pending">radio_button_unchecked</span>';
@@ -689,13 +695,15 @@ export function renderBoardTaskList() {
         const claimedFor = !isAgent && !isSubagent ? _claimedFor(t) : null;
         const claimedBadge = claimedFor
             ? `<span class="board-task-claimed" title="Claimed ${escapeAttr(formatTaskDate(t.claimed_at))}"><span class="material-icons">schedule</span>${claimedFor}</span>` : '';
+        const blockedBadge = t.status === 'blocked'
+            ? '<span class="board-task-blocked-label" title="Waiting for prerequisites">Blocked</span>' : '';
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
             <span class="board-task-priority ${priorityClass}">${t.priority ? escapeHtml(t.priority) : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>
-            <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${title}</span>
+            <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${blockedBadge}${title}</span>
             <span class="${costClass}">${costText}</span>
             <span class="board-task-time">${timeStr}</span>
         </div>`;
@@ -717,7 +725,7 @@ function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = null) {
     const container = document.getElementById(containerId);
     if (!container) return;
     const tasks = (state.currentBoardTasks || []).filter(t =>
-        t.status !== 'completed' && t.status !== 'skipped' && t.id !== excludeTaskId
+        t.id !== excludeTaskId
     );
     const selected = new Set(selectedIds.map(Number));
 
@@ -769,6 +777,12 @@ export async function showCreateTaskModal() {
     // Reset form
     document.getElementById('create-task-title').value = '';
     document.getElementById('create-task-body').value = '';
+    for (const field of ['workflow', 'stage', 'outputs', 'inputs', 'instructions']) {
+        const el = document.getElementById(`create-task-${field}`);
+        if (el) el.value = '';
+    }
+    const condition = document.getElementById('create-task-condition');
+    if (condition) condition.value = 'success';
     document.getElementById('create-task-priority').value = 'medium';
     const draftCheck = document.getElementById('create-task-draft');
     if (draftCheck) draftCheck.checked = false;
@@ -870,7 +884,17 @@ export async function submitCreateTask() {
             assigned_to: assignedTo,
             created_by: 'Operator',
         };
-        if (blockedBy.length > 0) payload.blocked_by = blockedBy;
+        const names = id => (document.getElementById(id)?.value || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (blockedBy.length > 0) payload.blocked_by = blockedBy.map(task_id => ({
+            task_id, condition: document.getElementById('create-task-condition')?.value || 'success',
+            required_artifacts: names('create-task-inputs'),
+        }));
+        payload.workflow = {
+            name: document.getElementById('create-task-workflow')?.value.trim() || '',
+            stage: document.getElementById('create-task-stage')?.value.trim() || '',
+            required_outputs: names('create-task-outputs'),
+            instructions: document.getElementById('create-task-instructions')?.value.trim() || '',
+        };
         if (isDraft) payload.draft = true;
         const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks`, {
             method: 'POST',
@@ -990,6 +1014,7 @@ export function showAgentTaskDetailModal(taskId) {
     const agentDisplayName = state.currentSession ? (state.currentSession.display_name || state.currentSession.name) : '';
     const task = {
         ...t,
+        _source: 'agent',
         status: _agentTaskStatus(t),
         assigned_to: t.display_name || t.agent_name || agentDisplayName || null,
         claimed_at: t.started_at || null,
@@ -1006,7 +1031,7 @@ export function showAgentTaskDetailModal(taskId) {
         footer.innerHTML = `
             <span style="flex:1"></span>
             <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-            ${open ? `<button class="btn btn-success" onclick="window.hideTaskDetailModal(); window.toggleAgentTask(${task.id}, true)">Complete</button>` : ''}`;
+            ${open ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id}, true)">Complete</button>` : ''}`;
     }
 
     _openTaskDetailModal(modal);
@@ -1024,13 +1049,13 @@ function _openTaskDetailModal(modal) {
 }
 
 function _taskDetailHtml(task, liveCost) {
-    const statusLabel = task.status === 'completed' ? 'Completed'
+    const statusLabel = task.workflow?.outcome === 'failed' ? 'Failed' : task.status === 'completed' ? 'Completed'
         : task.status === 'in_progress' ? 'In Progress'
         : task.status === 'skipped' ? 'Cancelled'
         : task.status === 'blocked' ? 'Blocked'
         : task.status === 'draft' ? 'Draft'
         : 'Pending';
-    const statusClass = task.status === 'completed' ? 'task-detail-status-completed'
+    const statusClass = task.workflow?.outcome === 'failed' ? 'task-detail-status-cancelled' : task.status === 'completed' ? 'task-detail-status-completed'
         : task.status === 'in_progress' ? 'task-detail-status-inprogress'
         : task.status === 'skipped' ? 'task-detail-status-cancelled'
         : task.status === 'blocked' ? 'task-detail-status-blocked'
@@ -1057,6 +1082,18 @@ function _taskDetailHtml(task, liveCost) {
             <div class="task-detail-label">Description</div>
             <div class="task-detail-body">${escapeHtml(task.body)}</div>
         </div>`;
+    }
+
+    const workflow = task.workflow;
+    if (workflow) {
+        const artifactHtml = a => `<div class="task-detail-body"><strong>${escapeHtml(a.name)}</strong>${a.revision ? ` · ${escapeHtml(a.revision)}` : ''}${a.digest ? ` · ${escapeHtml(a.digest)}` : ''}${a.uri ? `<div>${escapeHtml(a.uri)}</div>` : ''}${a.content ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(a.content)}</pre>` : ''}</div>`;
+        html += `<details class="task-detail-section"><summary>Workflow${workflow.name ? `: ${escapeHtml(workflow.name)}` : ''}${workflow.stage ? ` · ${escapeHtml(workflow.stage)}` : ''}</summary>
+            <div class="task-detail-body">${escapeHtml(workflow.instructions || '')}</div>
+            <div>Required outputs: ${escapeHtml((workflow.required_outputs || []).join(', ') || 'None')}</div>
+            ${workflow.parent_task_id ? `<div>Parent task #${Number(workflow.parent_task_id)}</div>` : ''}
+            ${workflow.retry_of ? `<div>Retry of task #${Number(workflow.retry_of)}</div>` : ''}</details>`;
+        for (const input of workflow.inputs || []) html += `<details class="task-detail-section"><summary>Input from ${escapeHtml(input.board_id)} #${Number(input.task_id)} (${escapeHtml(input.outcome)})</summary>${(input.artifacts || []).map(artifactHtml).join('')}</details>`;
+        if (workflow.artifacts?.length) html += `<div class="task-detail-section"><div class="task-detail-label">Completion artifacts</div>${workflow.artifacts.map(artifactHtml).join('')}</div>`;
     }
 
     html += `<div class="task-detail-fields">
@@ -1117,13 +1154,14 @@ function _taskDetailHtml(task, liveCost) {
                 : dep.status === 'blocked' ? 'blocked'
                 : dep.status === 'draft' ? 'draft'
                 : 'pending';
-            const isCrossBoard = dep.board_id && dep.board_id !== boardProject;
+            const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== boardProject;
             const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_id)} ` : '';
             const depTitle = dep.title ? ` — ${escapeHtml(dep.title)}` : '';
-            const clickable = !isCrossBoard ? ` onclick="showTaskDetailModal(${dep.task_id})" style="cursor:pointer"` : '';
+            const clickable = !isCrossBoard ? ` onclick="${task._source === 'agent' ? 'showAgentTaskDetailModal' : 'showTaskDetailModal'}(${dep.task_id})" style="cursor:pointer"` : '';
             return `<div class="task-dep-item">
                 <span class="task-dep-status ${depStatusClass}">${depStatusLabel}</span>
                 <a class="task-dep-link"${clickable}>${boardPrefix}#${dep.task_id}${depTitle}</a>
+                <span>${escapeHtml(dep.condition || 'success')}${dep.required_artifacts?.length ? ` · requires ${escapeHtml(dep.required_artifacts.join(', '))}` : ''}</span>
             </div>`;
         }).join('');
         html += `<div class="task-detail-section">
@@ -1283,7 +1321,7 @@ export async function saveTaskEdit(taskId) {
         const oldDeps = (task.blocked_by || []).map(d => d.task_id).sort();
         const sortedNew = [...newDeps].sort();
         if (JSON.stringify(oldDeps) !== JSON.stringify(sortedNew)) {
-            updates.blocked_by = newDeps;
+            updates.blocked_by = newDeps.map(id => (task.blocked_by || []).find(d => d.task_id === id) || { task_id: id, condition: 'success' });
         }
     }
 
@@ -1321,37 +1359,60 @@ export function cancelTaskEdit() {
     }
 }
 
-export function completeBoardTask(taskId) {
+export function completeBoardTask(taskId, personal = false) {
     const footer = document.getElementById('task-detail-modal-footer');
     if (!footer) return;
     footer.innerHTML = `
         <div class="task-confirm-inline">
             <input type="text" id="task-complete-message" placeholder="Completion message (optional)" class="task-confirm-input">
+            <label>Outcome <select id="task-complete-outcome"><option value="success">Success</option><option value="failed">Failed</option></select></label>
+            <label>Artifact name <input id="task-artifact-name" placeholder="build or test_report"></label>
+            <label>Artifact URL or reference <input id="task-artifact-uri" placeholder="Durable URL or artifact reference"></label>
+            <label>Revision <input id="task-artifact-revision" placeholder="Commit or build version"></label>
+            <label>Artifact content <textarea id="task-artifact-content" rows="3" placeholder="Report or evidence (optional if a reference is provided)"></textarea></label>
+            <label>Or attach an artifact manifest <input type="file" id="task-artifacts-file" accept="application/json,.json"></label>
             <div class="task-confirm-buttons">
-                <button class="btn" onclick="window._restoreTaskFooter(${taskId})">Back</button>
-                <button class="btn btn-success" onclick="window._doCompleteTask(${taskId})">Complete</button>
+                <button class="btn" onclick="window.${personal ? 'showAgentTaskDetailModal' : '_restoreTaskFooter'}(${taskId})">Back</button>
+                <button class="btn btn-success" onclick="window._doCompleteTask(${taskId}, ${personal})">Complete</button>
             </div>
         </div>`;
     document.getElementById('task-complete-message').focus();
 }
 
-export async function _doCompleteTask(taskId) {
+export async function _doCompleteTask(taskId, personal = false) {
     const boardProject = _getBoardProject();
-    if (!boardProject) return;
+    if (personal ? !state.currentSession?.session_id : !boardProject) return;
     const msgEl = document.getElementById('task-complete-message');
     const message = msgEl ? msgEl.value.trim() : '';
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/complete`, {
+        let artifacts = [];
+        const file = document.getElementById('task-artifacts-file')?.files[0];
+        if (file) {
+            if (file.size > 3 * 1024 * 1024) throw new Error('Artifact manifest is too large');
+            artifacts = JSON.parse(await file.text());
+            if (!Array.isArray(artifacts)) throw new Error('Artifact manifest must contain an array');
+        }
+        const name = document.getElementById('task-artifact-name')?.value.trim();
+        if (name) artifacts.push({ name,
+            uri: document.getElementById('task-artifact-uri').value.trim(),
+            revision: document.getElementById('task-artifact-revision').value.trim(),
+            content: document.getElementById('task-artifact-content').value,
+        });
+        const outcome = document.getElementById('task-complete-outcome')?.value || 'success';
+        const endpoint = personal ? `/api/agent/tasks/${taskId}/complete` : `/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/complete`;
+        const identity = personal ? { session_id: state.currentSession.session_id } : { subscriber_id: 'Operator' };
+        const resp = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subscriber_id: 'Operator', message: message || undefined }),
+            body: JSON.stringify({ ...identity, message: message || undefined, outcome, artifacts }),
         });
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
             throw new Error(data.error || `HTTP ${resp.status}`);
         }
         hideTaskDetailModal();
-        await loadBoardTasks(boardProject);
+        if (personal) await loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
+        else await loadBoardTasks(boardProject);
         showToast('Task completed');
     } catch (e) {
         showToast(e.message || 'Failed to complete task', true);

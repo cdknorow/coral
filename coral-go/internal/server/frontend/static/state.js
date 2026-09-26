@@ -1,4 +1,25 @@
-/* Shared application state */
+const STORAGE_KEY_DRAFTS = "coral-input-drafts";
+
+function loadDrafts() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY_DRAFTS);
+        return raw ? JSON.parse(raw) : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveSessionDraft(key, text) {
+    if (!key) return;
+    if (text) {
+        state.sessionInputText[key] = text;
+    } else {
+        delete state.sessionInputText[key];
+    }
+    try {
+        localStorage.setItem(STORAGE_KEY_DRAFTS, JSON.stringify(state.sessionInputText));
+    } catch {}
+}
 
 export const state = {
     currentSession: null,       // { type: "live"|"history", name: string, agent_type?: string, session_id?: string }
@@ -9,7 +30,7 @@ export const state = {
     liveSessions: [],           // cached live session list
     historySessionsList: [],    // cached history session list (from last paginated fetch)
     currentCommands: {},        // commands for current session's agent type
-    sessionInputText: {},       // per-session draft text: { "sessionKey": "partial text" }
+    sessionInputText: loadDrafts(), // per-session draft text: { "sessionKey": "partial text" }
     currentAgentTasks: [],      // tasks for the currently selected live agent
     currentSubagents: [],       // subagents launched by the currently selected live agent
     currentAgentNotes: [],      // user notes for the currently selected live agent

@@ -456,7 +456,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Session indexer
 	scanners := []agent.HistoryScanner{
 		&agent.ClaudeAgent{},
-		&agent.GeminiAgent{},
+		&agent.AgyAgent{},
 		&agent.CodexAgent{},
 	}
 	indexer := background.NewSessionIndexer(

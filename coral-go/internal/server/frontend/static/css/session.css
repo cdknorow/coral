@@ -1786,3 +1786,29 @@
     border-color: var(--bg-primary);
     box-shadow: 0 0 0 2px var(--text-primary);
 }
+
+/* Team routing snapshot */
+.team-availability-dialog { position: fixed; inset: 0; margin: auto; width: min(760px, calc(100vw - 32px)); max-height: 85dvh; box-sizing: border-box; overflow: auto; padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-secondary); color: var(--text-primary); }
+.team-availability-dialog::backdrop { background: rgba(0,0,0,.55); }
+.team-availability-dialog header, .availability-toolbar, .availability-agent-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.team-availability-dialog h2, .team-availability-dialog header p { margin: 0 0 6px; }
+.team-availability-dialog button { cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; }
+.team-availability-dialog button:disabled { opacity: .5; }
+.availability-toolbar { margin: 18px 0; font-size: 13px; }
+.availability-summary { display: flex; gap: 12px; flex-wrap: wrap; }
+.availability-summary div { display: flex; flex-direction: column; min-width: 65px; padding: 10px; border-radius: 8px; background: var(--bg-tertiary); }
+.availability-summary strong { font-size: 24px; }
+.availability-summary span, .availability-note, .availability-agent p, .availability-agent small, .availability-unassigned li span { color: var(--text-secondary); font-size: 12px; }
+.availability-agents { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(280px,100%),1fr)); gap: 12px; }
+.availability-agent { padding: 14px; border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
+.availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
+.availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; }
+.availability-badge.is-free { color: var(--success, #62c98a); }
+.team-availability-dialog ul { padding-left: 18px; font-size: 13px; }
+.team-availability-dialog li { margin: 8px 0; }
+@media(max-width: 480px) { .team-availability-dialog { padding: 16px; } }
+
+.working-mode-form { display: grid; gap: 16px; }
+.working-mode-form label { display: block; }
+.working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.working-mode-form p { font-size: 13px; color: var(--text-secondary); margin: 0; }

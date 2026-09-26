@@ -1,6 +1,6 @@
 /* Quick actions, command sending, mode toggling, and session controls */
 
-import { state, sessionKey } from './state.js';
+import { state, sessionKey, saveSessionDraft } from './state.js';
 import { claimOwnership } from './ownership.js';
 import { popoutTerminalBlocked } from './popout.js';
 import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
@@ -53,7 +53,7 @@ export async function sendCommand() {
             addPendingMessage(sentSessionId, command);
             input.value = "";
             const key = sessionKey(state.currentSession);
-            if (key) delete state.sessionInputText[key];
+            if (key) saveSessionDraft(key, "");
             showToast(`Sent: ${command}`);
             xterm.focusTerminal();
             return;
@@ -82,7 +82,7 @@ export async function sendCommand() {
             input.value = "";
             clearAttachments();
             const key = sessionKey(state.currentSession);
-            if (key) delete state.sessionInputText[key];
+            if (key) saveSessionDraft(key, "");
             showToast(`Sent: ${command}`);
             _getXtermModule().then(m => m.focusTerminal());
         }

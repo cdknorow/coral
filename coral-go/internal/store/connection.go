@@ -4,6 +4,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"github.com/cdknorow/coral/internal/board"
 	"os"
 	"path/filepath"
 
@@ -14,6 +15,7 @@ import (
 // DB wraps an sqlx.DB with schema management and migration support.
 type DB struct {
 	*sqlx.DB
+	TaskEngine *board.Store
 }
 
 // Open creates a new DB connection to the given SQLite path.
@@ -44,6 +46,10 @@ func OpenWithContext(ctx context.Context, dbPath string) (*DB, error) {
 	if err := d.ensureSchema(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("ensure schema: %w", err)
+	}
+	if err := d.initAgentTaskEngine(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("initialize personal task workflows: %w", err)
 	}
 
 	return d, nil

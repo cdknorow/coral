@@ -1,6 +1,6 @@
 /* Session selection and management */
 
-import { state, sessionKey } from './state.js';
+import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
@@ -40,7 +40,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     const input = document.getElementById("command-input");
     const oldKey = sessionKey(state.currentSession);
     if (oldKey) {
-        state.sessionInputText[oldKey] = input.value;
+        saveSessionDraft(oldKey, input.value);
     }
 
     // Look up display_name and working_directory from live sessions data
@@ -254,7 +254,7 @@ export async function selectHistorySession(sessionId) {
     const input = document.getElementById("command-input");
     const oldKey = sessionKey(state.currentSession);
     if (oldKey) {
-        state.sessionInputText[oldKey] = input.value;
+        saveSessionDraft(oldKey, input.value);
     }
 
     state.currentSession = { type: "history", name: sessionId };

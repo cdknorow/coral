@@ -46,33 +46,36 @@ type GroupInfo struct {
 
 // Task represents a board task.
 type Task struct {
-	ID                int64   `db:"id" json:"id"`
-	BoardID           string  `db:"board_id" json:"board_id"`
-	Title             string  `db:"title" json:"title"`
-	Body              *string `db:"body" json:"body,omitempty"`
-	Status            string  `db:"status" json:"status"`
-	Priority          string  `db:"priority" json:"priority"`
-	CreatedBy         string  `db:"created_by" json:"created_by"`
-	AssignedTo        *string `db:"assigned_to" json:"assigned_to"`
-	CompletedBy       *string `db:"completed_by" json:"completed_by"`
-	CompletionMessage *string `db:"completion_message" json:"completion_message,omitempty"`
-	CreatedAt         string  `db:"created_at" json:"created_at"`
-	ClaimedAt         *string `db:"claimed_at" json:"claimed_at,omitempty"`
-	CompletedAt       *string `db:"completed_at" json:"completed_at,omitempty"`
-	SessionID         *string  `db:"session_id" json:"session_id,omitempty"`
-	CostUSD           *float64 `db:"cost_usd" json:"cost_usd,omitempty"`
-	InputTokens       *int     `db:"input_tokens" json:"input_tokens,omitempty"`
-	OutputTokens      *int     `db:"output_tokens" json:"output_tokens,omitempty"`
-	CacheReadTokens   *int     `db:"cache_read_tokens" json:"cache_read_tokens,omitempty"`
-	CacheWriteTokens  *int     `db:"cache_write_tokens" json:"cache_write_tokens,omitempty"`
-	BlockedBy         []TaskDep `db:"-" json:"blocked_by,omitempty"`
+	ID                int64        `db:"id" json:"id"`
+	BoardID           string       `db:"board_id" json:"board_id"`
+	Title             string       `db:"title" json:"title"`
+	Body              *string      `db:"body" json:"body,omitempty"`
+	Status            string       `db:"status" json:"status"`
+	Priority          string       `db:"priority" json:"priority"`
+	CreatedBy         string       `db:"created_by" json:"created_by"`
+	AssignedTo        *string      `db:"assigned_to" json:"assigned_to"`
+	CompletedBy       *string      `db:"completed_by" json:"completed_by"`
+	CompletionMessage *string      `db:"completion_message" json:"completion_message,omitempty"`
+	CreatedAt         string       `db:"created_at" json:"created_at"`
+	ClaimedAt         *string      `db:"claimed_at" json:"claimed_at,omitempty"`
+	CompletedAt       *string      `db:"completed_at" json:"completed_at,omitempty"`
+	SessionID         *string      `db:"session_id" json:"session_id,omitempty"`
+	CostUSD           *float64     `db:"cost_usd" json:"cost_usd,omitempty"`
+	InputTokens       *int         `db:"input_tokens" json:"input_tokens,omitempty"`
+	OutputTokens      *int         `db:"output_tokens" json:"output_tokens,omitempty"`
+	CacheReadTokens   *int         `db:"cache_read_tokens" json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens  *int         `db:"cache_write_tokens" json:"cache_write_tokens,omitempty"`
+	BlockedBy         []TaskDep    `db:"-" json:"blocked_by,omitempty"`
+	Workflow          TaskWorkflow `db:"-" json:"workflow"`
 }
 
 type TaskDep struct {
-	TaskID  int64  `json:"task_id"`
-	BoardID string `json:"board_id"`
-	Title   string `json:"title,omitempty"`
-	Status  string `json:"status,omitempty"`
+	TaskID            int64    `json:"task_id"`
+	BoardID           string   `json:"board_id"`
+	Title             string   `json:"title,omitempty"`
+	Status            string   `json:"status,omitempty"`
+	Condition         string   `json:"condition,omitempty"`
+	RequiredArtifacts []string `json:"required_artifacts,omitempty"`
 }
 
 // Message represents a board message.
@@ -126,6 +129,10 @@ func NewStore(dbPath string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := s.recoverTaskReadiness(context.Background()); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("recover task readiness: %w", err)
+	}
 	return s, nil
 }
 
@@ -133,6 +140,19 @@ func NewStore(dbPath string) (*Store, error) {
 func (s *Store) Close() error {
 	return s.db.Close()
 }
+
+// UseDatabase initializes the task engine on a caller-owned SQLite connection.
+// Personal tasks use this engine in their own database, separate from team boards.
+// The caller retains responsibility for closing db.
+func UseDatabase(ctx context.Context, db *sqlx.DB) (*Store, error) {
+	s := &Store{db: db}
+	if err := s.ensureSchema(ctx); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Store) RecoverTaskReadiness(ctx context.Context) error { return s.recoverTaskReadiness(ctx) }
 
 func (s *Store) ensureSchema(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `
@@ -270,7 +290,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	// SQLite doesn't support ALTER CONSTRAINT, so we recreate the table.
 	s.migrateTasksCheckConstraint(ctx)
 
-	return nil
+	return s.initTaskWorkflows(ctx)
 }
 
 func (s *Store) migrateTasksCheckConstraint(ctx context.Context) {
@@ -655,6 +675,7 @@ func (s *Store) CountMessages(ctx context.Context, project string) (int, error) 
 //   - "all"      → all unread messages from others
 //   - "mentions" → only messages with @notify-all, @<subscriber_id>, or @<job_title>
 //   - anything else → treat as group-id, count only messages from group members
+//
 // mentionTerms returns the canonical list of mention patterns for a subscriber.
 // Used by both CheckUnread (SQL LIKE) and GetAllUnreadCounts (Go string matching).
 func mentionTerms(subscriberID, jobTitle string) []string {
@@ -1024,6 +1045,9 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_subscribers WHERE project = ?", project); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM board_working_modes WHERE board_id = ?", project); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_groups WHERE project = ?", project); err != nil {
 		return err
 	}
@@ -1040,6 +1064,13 @@ func (s *Store) getTaskByID(ctx context.Context, project string, taskID int64) (
 	if err != nil {
 		return nil, err
 	}
+	if err := s.hydrateWorkflow(ctx, &t); err != nil {
+		return nil, err
+	}
+	t.BlockedBy, err = s.GetTaskDependencies(ctx, t.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &t, nil
 }
 
@@ -1048,6 +1079,7 @@ type CreateTaskOpts struct {
 	BlockedBy []TaskDep
 	MaxDepth  int
 	Draft     bool
+	Workflow  TaskWorkflow
 }
 
 // CreateTask inserts a task and returns it.
@@ -1057,6 +1089,14 @@ func (s *Store) CreateTask(ctx context.Context, project, title, body, priority, 
 
 // CreateTaskWithOpts inserts a task with optional dependency configuration.
 func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, priority, createdBy string, opts *CreateTaskOpts, assignedTo ...string) (*Task, error) {
+	w := TaskWorkflow{}
+	if opts != nil {
+		w = opts.Workflow
+	}
+	w, err := s.prepareWorkflow(ctx, project, w)
+	if err != nil {
+		return nil, err
+	}
 	if priority == "" {
 		priority = "medium"
 	}
@@ -1071,10 +1111,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 		assignPtr = &assignedTo[0]
 	}
 
-	initialStatus := "pending"
-	if opts != nil && opts.Draft {
-		initialStatus = "draft"
-	}
+	initialStatus := "draft"
 
 	result, err := s.db.ExecContext(ctx,
 		`INSERT INTO board_tasks (board_id, title, body, status, priority, created_by, assigned_to, created_at)
@@ -1084,28 +1121,26 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 		return nil, err
 	}
 	taskID, _ := result.LastInsertId()
+	// Keep new tasks unclaimable until configuration and dependencies are stored.
+	if err := saveWorkflow(ctx, s.db, taskID, w); err != nil {
+		return nil, err
+	}
 
-	if opts != nil && len(opts.BlockedBy) > 0 && !opts.Draft {
+	if opts != nil && len(opts.BlockedBy) > 0 {
 		maxDepth := opts.MaxDepth
 		if maxDepth <= 0 {
 			maxDepth = 3
 		}
 		if err := s.AddTaskDependencies(ctx, project, taskID, opts.BlockedBy, maxDepth); err != nil {
+			s.db.ExecContext(ctx, "DELETE FROM task_workflows WHERE task_id = ?", taskID)
+			s.db.ExecContext(ctx, "DELETE FROM board_tasks WHERE id = ?", taskID)
 			return nil, err
-		}
-	} else if opts != nil && len(opts.BlockedBy) > 0 && opts.Draft {
-		// Store deps but don't evaluate status — draft stays draft
-		for _, d := range opts.BlockedBy {
-			boardID := d.BoardID
-			if boardID == "" {
-				boardID = project
-			}
-			s.db.ExecContext(ctx,
-				"INSERT INTO task_dependencies (task_id, blocked_by_task_id, blocked_by_board_id) VALUES (?, ?, ?)",
-				taskID, d.TaskID, boardID)
 		}
 	}
 
+	if opts == nil || !opts.Draft {
+		return s.PublishTask(ctx, project, taskID)
+	}
 	return s.getTaskByID(ctx, project, taskID)
 }
 
@@ -1141,6 +1176,9 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 
 // populateTaskDeps batch-loads dependencies for a slice of tasks.
 func (s *Store) populateTaskDeps(ctx context.Context, tasks []Task) {
+	for i := range tasks {
+		s.hydrateWorkflow(ctx, &tasks[i])
+	}
 	if len(tasks) == 0 {
 		return
 	}
@@ -1180,6 +1218,7 @@ func (s *Store) populateTaskDeps(ctx context.Context, tasks []Task) {
 			continue
 		}
 		dep := TaskDep{TaskID: r.BlockedByTaskID, BoardID: r.BlockedByBoardID}
+		s.loadDependencyRule(ctx, t.ID, &dep)
 		if r.Title != nil {
 			dep.Title = *r.Title
 		}
@@ -1235,7 +1274,11 @@ func (s *Store) ActiveTaskForSubscriber(ctx context.Context, project, subscriber
 	if err != nil {
 		return nil
 	}
-	return &task
+	result, err := s.getTaskByID(ctx, project, task.ID)
+	if err != nil {
+		return nil
+	}
+	return result
 }
 
 // NextPendingTaskForSubscriber returns the next pending task assigned to or
@@ -1267,7 +1310,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 // Tasks are ordered by priority (critical > high > medium > low), then by ID.
 // Returns nil if no tasks are available.
 // An agent cannot claim a new task while they have an in-progress task.
-func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string) (*Task, error) {
+func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, requestedID ...int64) (*Task, error) {
 	now := nowUTC()
 	priorityOrder := `CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`
 
@@ -1281,30 +1324,57 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string) (*T
 
 	// Find the best candidate: prefer tasks assigned to this subscriber, then unassigned
 	var taskID int64
-	err := s.db.GetContext(ctx, &taskID,
-		`SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ?
+	if len(requestedID) > 0 && requestedID[0] > 0 {
+		if err := s.db.GetContext(ctx, &taskID, `SELECT id FROM board_tasks WHERE id = ? AND board_id = ? AND status = 'pending' AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')`, requestedID[0], project, subscriberID); err != nil {
+			return nil, fmt.Errorf("requested task is not available to this subscriber")
+		}
+	}
+	if taskID == 0 {
+		err := s.db.GetContext(ctx, &taskID,
+			`SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ?
 		 ORDER BY `+priorityOrder+` LIMIT 1`,
-		project, subscriberID)
-	if err != nil {
-		err = s.db.GetContext(ctx, &taskID,
-			`SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '')
-			 ORDER BY `+priorityOrder+` LIMIT 1`,
-			project)
+			project, subscriberID)
 		if err != nil {
-			return nil, nil // no available tasks
+			err = s.db.GetContext(ctx, &taskID,
+				`SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '')
+			 ORDER BY `+priorityOrder+` LIMIT 1`,
+				project)
+			if err != nil {
+				return nil, nil // no available tasks
+			}
 		}
 	}
 
+	// Check prerequisites and freeze inputs in the same transaction as claim.
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	inputs, ready, depErr := dependencyInputs(ctx, tx, taskID)
+	if depErr != nil {
+		return nil, depErr
+	}
+	if !ready {
+		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND status = 'pending'", taskID); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
 	// Atomically claim: the NOT EXISTS subquery prevents a subscriber from having
 	// two in_progress tasks even under concurrent requests (single-writer SQLite).
-	result, err := s.db.ExecContext(ctx,
+	result, err := tx.ExecContext(ctx,
 		`UPDATE board_tasks SET status = 'in_progress', assigned_to = ?, claimed_at = ?
 		 WHERE id = ? AND board_id = ? AND status = 'pending'
+		   AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')
 		   AND NOT EXISTS (
 		     SELECT 1 FROM board_tasks
 		     WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
 		   )`,
-		subscriberID, now, taskID, project, project, subscriberID)
+		subscriberID, now, taskID, project, subscriberID, project, subscriberID)
 	if err != nil {
 		return nil, err
 	}
@@ -1312,13 +1382,34 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string) (*T
 	if n == 0 {
 		// Either lost the race on this task, or subscriber already has an active task
 		var hasActive int
-		s.db.GetContext(ctx, &hasActive,
+		tx.GetContext(ctx, &hasActive,
 			`SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'`,
 			project, subscriberID)
 		if hasActive > 0 {
 			return nil, fmt.Errorf("complete your current task before claiming a new one")
 		}
 		return nil, nil // lost race on the task itself
+	}
+	w, err := loadWorkflow(ctx, tx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if w.TeamMode == nil {
+		mode, err := loadWorkingMode(ctx, tx, project)
+		if err != nil {
+			return nil, err
+		}
+		w.TeamMode = &mode
+		if mode.Instructions != "" {
+			w.Instructions += "\n\nTeam working instructions:\n" + mode.Instructions
+		}
+	}
+	w.Inputs = inputs
+	if err := saveWorkflow(ctx, tx, taskID, w); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 
 	// Resolve session_id: board_subscribers (board DB) → live_sessions (sessions DB).
@@ -1356,8 +1447,8 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
 	}
 	// Fetch the task's session_id and time window.
 	var task struct {
-		SessionID *string `db:"session_id"`
-		ClaimedAt *string `db:"claimed_at"`
+		SessionID   *string `db:"session_id"`
+		ClaimedAt   *string `db:"claimed_at"`
 		CompletedAt *string `db:"completed_at"`
 	}
 	if err := s.db.GetContext(ctx, &task,
@@ -1401,23 +1492,7 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
 // without being claimed first: the operator is never prompted to claim the
 // tasks assigned to them, and just marks them done.
 func (s *Store) CompleteTask(ctx context.Context, project string, taskID int64, subscriberID string, message *string) (*Task, error) {
-	now := nowUTC()
-	result, err := s.db.ExecContext(ctx,
-		`UPDATE board_tasks
-		 SET status = 'completed', completed_by = ?, completion_message = ?, completed_at = ?
-		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress')`,
-		subscriberID, message, now, taskID, project)
-	if err != nil {
-		return nil, err
-	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		return nil, fmt.Errorf("task #%d cannot be completed (already finished, blocked, or not found)", taskID)
-	}
-
-	s.computeAndStoreTaskCost(ctx, taskID)
-
-	return s.getTaskByID(ctx, project, taskID)
+	return s.CompleteTaskWithArtifacts(ctx, project, taskID, subscriberID, message, "success", nil)
 }
 
 // ReassignTask resets a task back to pending, optionally with a new assignee.
@@ -1465,6 +1540,9 @@ func (s *Store) UpdateTask(ctx context.Context, project string, taskID int64, up
 		return nil, "", fmt.Errorf("task #%d cannot be edited (status: %s)", taskID, task.Status)
 	}
 	prevStatus := task.Status
+	if updates.BlockedBy != nil && task.Status == "in_progress" {
+		return nil, "", fmt.Errorf("dependencies can only change before a task starts")
+	}
 
 	setClauses := []string{}
 	args := []any{}
@@ -1501,34 +1579,24 @@ func (s *Store) UpdateTask(ctx context.Context, project string, taskID int64, up
 		}
 	}
 
-	if len(setClauses) > 0 {
-		query := fmt.Sprintf("UPDATE board_tasks SET %s WHERE id = ? AND board_id = ?",
-			strings.Join(setClauses, ", "))
-		args = append(args, taskID, project)
-		if _, err = s.db.ExecContext(ctx, query, args...); err != nil {
-			return nil, "", err
-		}
-	}
-
 	// Handle blocked_by updates
 	if updates.BlockedBy != nil {
 		if maxDepth <= 0 {
 			maxDepth = 3
 		}
-		deps := *updates.BlockedBy
-		if len(deps) == 0 {
-			// Clear all dependencies
-			if _, err := s.db.ExecContext(ctx, "DELETE FROM task_dependencies WHERE task_id = ?", taskID); err != nil {
-				return nil, "", err
-			}
-			// Unblock if currently blocked
-			s.db.ExecContext(ctx,
-				"UPDATE board_tasks SET status = 'pending' WHERE id = ? AND board_id = ? AND status = 'blocked'",
-				taskID, project)
-		} else {
-			if err := s.AddTaskDependencies(ctx, project, taskID, deps, maxDepth); err != nil {
-				return nil, "", err
-			}
+		if err := s.AddTaskDependencies(ctx, project, taskID, *updates.BlockedBy, maxDepth); err != nil {
+			return nil, "", err
+		}
+	}
+	if len(setClauses) > 0 {
+		query := fmt.Sprintf("UPDATE board_tasks SET %s WHERE id = ? AND board_id = ? AND status NOT IN ('completed', 'skipped')", strings.Join(setClauses, ", "))
+		args = append(args, taskID, project)
+		result, err := s.db.ExecContext(ctx, query, args...)
+		if err != nil {
+			return nil, "", err
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			return nil, "", fmt.Errorf("task has already finished")
 		}
 	}
 
@@ -1549,25 +1617,24 @@ func (s *Store) PublishTask(ctx context.Context, project string, taskID int64) (
 		return nil, fmt.Errorf("task #%d is not a draft (status: %s)", taskID, task.Status)
 	}
 
-	// Check if task has unresolved dependencies
-	deps, err := s.GetTaskDependencies(ctx, taskID)
+	// Check if task has unresolved dependencies.
+	_, ready, err := dependencyInputs(ctx, s.db, taskID)
 	if err != nil {
 		return nil, err
 	}
-
 	newStatus := "pending"
-	for _, d := range deps {
-		if d.Status != "completed" && d.Status != "skipped" {
-			newStatus = "blocked"
-			break
-		}
+	if !ready {
+		newStatus = "blocked"
 	}
 
-	_, err = s.db.ExecContext(ctx,
-		"UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ?",
+	result, err := s.db.ExecContext(ctx,
+		"UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ? AND status = 'draft'",
 		newStatus, taskID, project)
 	if err != nil {
 		return nil, err
+	}
+	if n, _ := result.RowsAffected(); n == 0 {
+		return nil, fmt.Errorf("task is no longer a draft")
 	}
 
 	return s.getTaskByID(ctx, project, taskID)
@@ -1576,7 +1643,12 @@ func (s *Store) PublishTask(ctx context.Context, project string, taskID int64) (
 // CancelTask marks a task as skipped. Can cancel pending, in_progress, or blocked tasks.
 func (s *Store) CancelTask(ctx context.Context, project string, taskID int64, subscriberID string, message *string) (*Task, error) {
 	now := nowUTC()
-	result, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx,
 		`UPDATE board_tasks
 		 SET status = 'skipped', completed_by = ?, completion_message = ?, completed_at = ?
 		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')`,
@@ -1587,6 +1659,12 @@ func (s *Store) CancelTask(ctx context.Context, project string, taskID int64, su
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return nil, fmt.Errorf("task #%d cannot be cancelled (already completed or not found)", taskID)
+	}
+	if err := resolveCompletedTask(ctx, tx, taskID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 
 	s.computeAndStoreTaskCost(ctx, taskID)
@@ -1599,10 +1677,10 @@ func (s *Store) CancelTask(ctx context.Context, project string, taskID int64, su
 // GetTaskDependencies returns the blocked_by deps for a task with title/status populated.
 func (s *Store) GetTaskDependencies(ctx context.Context, taskID int64) ([]TaskDep, error) {
 	var deps []struct {
-		BlockedByTaskID int64  `db:"blocked_by_task_id"`
-		BlockedByBoardID string `db:"blocked_by_board_id"`
-		Title           *string `db:"title"`
-		Status          *string `db:"status"`
+		BlockedByTaskID  int64   `db:"blocked_by_task_id"`
+		BlockedByBoardID string  `db:"blocked_by_board_id"`
+		Title            *string `db:"title"`
+		Status           *string `db:"status"`
 	}
 	err := s.db.SelectContext(ctx, &deps,
 		`SELECT td.blocked_by_task_id, td.blocked_by_board_id, bt.title, bt.status
@@ -1624,6 +1702,9 @@ func (s *Store) GetTaskDependencies(ctx context.Context, taskID int64) ([]TaskDe
 		if d.Status != nil {
 			result[i].Status = *d.Status
 		}
+		if err := s.loadDependencyRule(ctx, taskID, &result[i]); err != nil {
+			return nil, err
+		}
 	}
 	return result, nil
 }
@@ -1631,12 +1712,31 @@ func (s *Store) GetTaskDependencies(ctx context.Context, taskID int64) ([]TaskDe
 // AddTaskDependencies inserts dependency rows and sets status to 'blocked'
 // if any blockers are unresolved. Validates circular deps and depth limit.
 func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID int64, deps []TaskDep, maxDepth int) error {
-	if len(deps) == 0 {
-		return nil
-	}
-
 	// Fill in default board_id
+	var taskStatus string
+	if err := s.db.GetContext(ctx, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
+		return err
+	}
+	if taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
+		return fmt.Errorf("dependencies can only change before a task starts")
+	}
+	seen := map[int64]bool{}
 	for i := range deps {
+		if seen[deps[i].TaskID] {
+			return fmt.Errorf("duplicate dependency #%d", deps[i].TaskID)
+		}
+		seen[deps[i].TaskID] = true
+		if deps[i].Condition == "" {
+			deps[i].Condition = "success"
+		}
+		switch deps[i].Condition {
+		case "success", "failure", "termination":
+		default:
+			return fmt.Errorf("dependency condition must be success, failure, or termination")
+		}
+		if err := validNames(deps[i].RequiredArtifacts); err != nil {
+			return err
+		}
 		if deps[i].BoardID == "" {
 			deps[i].BoardID = project
 		}
@@ -1662,59 +1762,65 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 		return err
 	}
 
-	// Delete existing deps and insert new ones
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM task_dependencies WHERE task_id = ?", taskID); err != nil {
+	// Replace dependencies and their conditions atomically.
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// A claim may have raced the validation before this transaction.
+	if err := tx.GetContext(ctx, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
+		return err
+	}
+	if taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
+		return fmt.Errorf("dependencies can only change before a task starts")
+	}
+	if err := validateTaskCycles(ctx, tx, taskID, deps); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM task_dependency_rules WHERE task_id = ?", taskID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM task_dependencies WHERE task_id = ?", taskID); err != nil {
 		return err
 	}
 	for _, d := range deps {
-		if _, err := s.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			"INSERT INTO task_dependencies (task_id, blocked_by_task_id, blocked_by_board_id) VALUES (?, ?, ?)",
 			taskID, d.TaskID, d.BoardID); err != nil {
 			return err
 		}
-	}
-
-	// Check if any blockers are unresolved → set status to blocked
-	hasUnresolved := false
-	for _, d := range deps {
-		var status string
-		if err := s.db.GetContext(ctx, &status,
-			"SELECT status FROM board_tasks WHERE id = ?", d.TaskID); err == nil {
-			if status != "completed" && status != "skipped" {
-				hasUnresolved = true
-				break
-			}
-		}
-	}
-
-	if hasUnresolved {
-		_, err := s.db.ExecContext(ctx,
-			"UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND board_id = ? AND status IN ('pending', 'blocked')",
-			taskID, project)
-		if err != nil {
-			return err
-		}
-	} else {
-		// All resolved — ensure task is pending (not blocked)
-		_, err := s.db.ExecContext(ctx,
-			"UPDATE board_tasks SET status = 'pending' WHERE id = ? AND board_id = ? AND status = 'blocked'",
-			taskID, project)
-		if err != nil {
+		if err := saveDependencyRule(ctx, tx, taskID, d); err != nil {
 			return err
 		}
 	}
 
-	return nil
+	_, ready, err := dependencyInputs(ctx, tx, taskID)
+	if err != nil {
+		return err
+	}
+	status := "blocked"
+	if ready {
+		status = "pending"
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = ? WHERE id = ? AND board_id = ? AND status IN ('pending', 'blocked')", status, taskID, project); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) validateNoCycles(ctx context.Context, taskID int64, deps []TaskDep) error {
+	return validateTaskCycles(ctx, s.db, taskID, deps)
+}
+
+func validateTaskCycles(ctx context.Context, db sqlx.QueryerContext, taskID int64, deps []TaskDep) error {
 	visited := map[int64]bool{taskID: true}
 	var walk func(id int64) error
 	walk = func(id int64) error {
 		var upstreamDeps []struct {
 			BlockedByTaskID int64 `db:"blocked_by_task_id"`
 		}
-		if err := s.db.SelectContext(ctx, &upstreamDeps,
+		if err := sqlx.SelectContext(ctx, db, &upstreamDeps,
 			"SELECT blocked_by_task_id FROM task_dependencies WHERE task_id = ?", id); err != nil {
 			return err
 		}
@@ -1726,6 +1832,7 @@ func (s *Store) validateNoCycles(ctx context.Context, taskID int64, deps []TaskD
 			if err := walk(u.BlockedByTaskID); err != nil {
 				return err
 			}
+			delete(visited, u.BlockedByTaskID)
 		}
 		return nil
 	}
@@ -1738,51 +1845,48 @@ func (s *Store) validateNoCycles(ctx context.Context, taskID int64, deps []TaskD
 		if err := walk(d.TaskID); err != nil {
 			return err
 		}
+		delete(visited, d.TaskID)
 	}
 	return nil
 }
 
-// ResolveDownstreamTasks checks all tasks blocked by completedTaskID.
-// If all their blockers are now resolved, transitions them from blocked → pending.
+// ResolveDownstreamTasks consumes readiness notifications for completedTaskID.
+// Readiness itself is committed atomically with completion or cancellation.
+// A zero ID drains recovered notifications from all boards after startup.
 func (s *Store) ResolveDownstreamTasks(ctx context.Context, project string, completedTaskID int64) ([]Task, error) {
-	var downstreamIDs []int64
-	if err := s.db.SelectContext(ctx, &downstreamIDs,
-		"SELECT DISTINCT task_id FROM task_dependencies WHERE blocked_by_task_id = ?", completedTaskID); err != nil {
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
 		return nil, err
 	}
-
+	defer tx.Rollback()
+	var rows []struct {
+		ID      int64  `db:"id"`
+		BoardID string `db:"board_id"`
+		Status  string `db:"status"`
+	}
+	if err := tx.SelectContext(ctx, &rows, `SELECT b.id, b.board_id, b.status
+	 FROM task_ready_notifications n JOIN board_tasks b ON b.id = n.task_id
+	 WHERE ? = 0 OR EXISTS (SELECT 1 FROM task_dependencies d WHERE d.task_id = b.id AND d.blocked_by_task_id = ?)`, completedTaskID, completedTaskID); err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM task_ready_notifications WHERE task_id = ?", row.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
 	var unblocked []Task
-	for _, tid := range downstreamIDs {
-		// Check if all blockers are now resolved
-		var unresolvedCount int
-		if err := s.db.GetContext(ctx, &unresolvedCount,
-			`SELECT COUNT(*) FROM task_dependencies td
-			 JOIN board_tasks bt ON bt.id = td.blocked_by_task_id
-			 WHERE td.task_id = ? AND bt.status NOT IN ('completed', 'skipped')`, tid); err != nil {
+	for _, row := range rows {
+		if row.Status != "pending" {
 			continue
 		}
-		if unresolvedCount > 0 {
-			continue
-		}
-
-		// All resolved — transition to pending
-		result, err := s.db.ExecContext(ctx,
-			"UPDATE board_tasks SET status = 'pending' WHERE id = ? AND status = 'blocked'", tid)
+		t, err := s.getTaskByID(ctx, row.BoardID, row.ID)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		n, _ := result.RowsAffected()
-		if n == 0 {
-			continue
-		}
-
-		// Get the task's board_id to look it up
-		var boardID string
-		if err := s.db.GetContext(ctx, &boardID,
-			"SELECT board_id FROM board_tasks WHERE id = ?", tid); err != nil {
-			continue
-		}
-		if t, err := s.getTaskByID(ctx, boardID, tid); err == nil {
+		if t.Status == "pending" {
 			unblocked = append(unblocked, *t)
 		}
 	}
@@ -1801,14 +1905,11 @@ func (s *Store) ReblockDownstreamTasks(ctx context.Context, project string, regr
 	var reblocked []Task
 	for _, tid := range downstreamIDs {
 		// Check if this task has any unresolved blockers
-		var unresolvedCount int
-		if err := s.db.GetContext(ctx, &unresolvedCount,
-			`SELECT COUNT(*) FROM task_dependencies td
-			 JOIN board_tasks bt ON bt.id = td.blocked_by_task_id
-			 WHERE td.task_id = ? AND bt.status NOT IN ('completed', 'skipped')`, tid); err != nil {
+		_, ready, err := dependencyInputs(ctx, s.db, tid)
+		if err != nil {
 			continue
 		}
-		if unresolvedCount == 0 {
+		if ready {
 			continue
 		}
 

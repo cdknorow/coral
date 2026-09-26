@@ -2,6 +2,10 @@
 
 Submit one-shot agent tasks, monitor their progress, and cancel running jobs via the `/api/tasks/*` endpoints.
 
+For persistent work queues, see [Personal Tasks](agent-tasks.md) and
+[Board Tasks](board.md#tasks). Their dependency and artifact workflow is
+described in [Task Workflows](task-workflows.md).
+
 Each job launches an agent in a per-run git worktree, sends it a prompt, and monitors it until completion.
 
 > **Known defect — jobs fail on the documented default.** `base_branch` defaults to `main`,
@@ -34,7 +38,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 |---|---|---|---|
 | `prompt` | string | **required** | The instruction sent to the agent. |
 | `repo_path` | string | **required** | Absolute path to the git repository. |
-| `agent_type` | string | `"claude"` | Agent to use (`claude`, `codex`, `gemini`, or `pi`). **In v1.0.8 any other value silently falls back to `claude`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
+| `agent_type` | string | `"claude"` | Agent to use (`claude`, `codex`, `agy` (Antigravity), or `pi`). **In v1.0.8 any other value silently falls back to `claude`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
 | `base_branch` | string | `"main"` | Branch to create the worktree from. |
 | `create_worktree` | bool | `true` | Create a fresh git worktree **per run** (`<repo>_task_run_<runID>`). Unlike team launches, jobs are designed to be isolated from each other — but see the defect note above. |
 | `cleanup_worktree` | bool | `true` | Remove the worktree when the run finishes. |

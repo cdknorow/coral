@@ -21,10 +21,12 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Workflow Quickstart](workflow-quickstart.md) — Build your first workflow in 5 minutes
 - [Workflows](workflows.md) — Multi-step workflow definitions and execution
 - [Scheduled Jobs](scheduled-jobs.md) — Cron-based scheduled job management
-- [Tasks](jobs.md) — One-shot task execution
+- [Jobs](jobs.md) — One-shot agent execution
 
 ### Collaboration
-- [Message Board](board.md) — Multi-agent message board, subscriptions, groups, board tasks
+- [Personal Tasks](agent-tasks.md) — `coral-agent task` commands, HTTP API, and migration
+- [Task Workflows](task-workflows.md) — Dependencies, Build → Test → Release, artifacts, retries, and default instructions
+- [Message Board](board.md) — Multi-agent message board, subscriptions, groups, board status/routing, board tasks
 - [Notifications](notifications.md) — Push toast and alert notifications to the Coral UI
 - [Webhooks](webhooks.md) — Webhook management and delivery tracking
 

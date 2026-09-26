@@ -69,7 +69,7 @@ async function run() {
 
   await ev(`${C}.querySelector('.work-group > summary').click(); true`);
   await sleep(100);
-  const calls = await ev(`Array.from(${C}.querySelector('.work-group').querySelectorAll('.tool-call')).map(d => ({ id: d.dataset.toolUseId || null, name: d.querySelector('.tool-call-name').textContent,
+  const calls = await ev(`Array.from(${C}.querySelector('.work-group').querySelectorAll('.tool-call')).map(d => ({ id: d.dataset.toolUseId || null, name: d.querySelector('.tool-call-name').getAttribute('title'),
       label: d.querySelector('.tool-call-label').textContent, open: d.open, h: d.getBoundingClientRect().height,
       command: (d.querySelector('.tool-card-command')||{}).textContent || null, output: (d.querySelector('.tool-card-output')||{}).textContent || null,
       adds: d.querySelectorAll('.diff-line.diff-add').length, dels: d.querySelectorAll('.diff-line.diff-del').length }))`);
@@ -81,13 +81,13 @@ async function run() {
   check('apply_patch row lists files and renders the patch as a diff', by('apply_patch').label === 'index.html, styles.css' && by('apply_patch').adds >= 3 && by('apply_patch').dels === 1, JSON.stringify(by('apply_patch')));
   check('commentary visible once the group is opened', await ev(`${C}.innerText.includes("I'll inspect the project structure first.")`));
 
-  // Live: a new turn streams in; its first reply looks final until work follows.
+  // Live: explicitly marked commentary stays in the work group while the turn runs.
   const ts = (s) => `2026-09-20T10:${s}Z`;
   append({ timestamp: ts('02:00.000'), type: 'event_msg', payload: { type: 'user_message', message: 'Add falling snow.', images: [] } },
          { timestamp: ts('02:01.000'), type: 'event_msg', payload: { type: 'agent_message', message: "I'll add a particle system.", phase: 'commentary' } });
   let last;
-  for (let i = 0; i < 30; i++) { t = await top(); last = t[t.length - 1]; if (last.text === "I'll add a particle system.") break; await sleep(200); }
-  check('streamed reply shows as final while the turn is in progress', last.final && last.text === "I'll add a particle system.", JSON.stringify(last));
+  for (let i = 0; i < 30; i++) { t = await top(); last = t[t.length - 1]; if (last.kind === 'group' && last.steps === '1 step') break; await sleep(200); }
+  check('streamed commentary remains a work step, not a final answer', last.kind === 'group' && last.steps === '1 step', JSON.stringify(last));
 
   append({ timestamp: ts('02:02.000'), type: 'response_item', payload: { type: 'function_call', name: 'exec_command', arguments: JSON.stringify({ cmd: 'npm test' }), call_id: 'call_live1' } },
          { timestamp: ts('02:03.000'), type: 'response_item', payload: { type: 'function_call_output', call_id: 'call_live1', output: 'ok' } },

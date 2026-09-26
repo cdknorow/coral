@@ -23,8 +23,8 @@ All fields are optional. Values apply to every agent unless overridden at the ag
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `agent_type` | string | `"claude"` | CLI to use: `"claude"`, `"codex"`, `"gemini"`, or `"pi"`. **In v1.0.8 any other value silently falls back to `"claude"`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
-| `model` | string | CLI default | Model identifier, vendor-specific (e.g. `"opus"`, `"sonnet"`, `"gemini-2.5-pro"`). |
+| `agent_type` | string | `"claude"` | CLI to use: `"claude"`, `"codex"`, `"agy"` (Antigravity), or `"pi"`. **In v1.0.8 any other value silently falls back to `"claude"`** — fixed in the repo (unreleased), where an unknown value is rejected. Omitting the field still means `claude`. |
+| `model` | string | CLI default | Model identifier, vendor-specific (e.g. `"opus"`, `"sonnet"`, `"gemini-3.8-flash-high"`). |
 | `permissions` | object | none | Coral-level capability permissions (see [Permissions](#permissions)). |
 | `flags` | string[] | `[]` | Extra CLI flags passed to every agent. |
 | `env` | object | `{}` | Extra environment variables (string key-value pairs). |
@@ -114,7 +114,7 @@ Capabilities are translated to each CLI's native permission format at launch:
 |------------|-------------|
 | `claude` | Mapped to Claude Code tool permissions (e.g. `file_read` -> `Read`, `Glob`, `Grep`) |
 | `codex` | Mapped to sandbox_mode, approval_policy flags |
-| `gemini` | Mapped to approval_mode, sandbox flags |
+| `agy` | Mapped to `--mode` and `--dangerously-skip-permissions` flags |
 
 ## Hooks
 
@@ -146,9 +146,9 @@ Hooks run shell commands at agent lifecycle events. They follow the Claude Code 
 
 **Agent-native (Claude only):** `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SubagentStop` -- these are injected into Claude's settings.json and handled by the agent process. `PreToolUse` and `PostToolUse` provide tool-level granularity with `matcher` filtering.
 
-**Coral-managed (all agents):** `StepComplete`, `StepFailed` -- these are fired by Coral's workflow runner after a step finishes. They work for Claude, Gemini, Codex, and shell steps.
+**Coral-managed (all agents):** `StepComplete`, `StepFailed` -- these are fired by Coral's workflow runner after a step finishes. They work for Claude, Antigravity (`agy`), Codex, and shell steps.
 
-**Cross-agent support for Stop:** For Gemini and Codex agents, `Stop` hooks are fired by Coral's runner after the agent process exits (since these CLIs have no native hooks system).
+**Cross-agent support for Stop:** For Antigravity and Codex agents, `Stop` hooks are fired by Coral's runner after the agent process exits (since these CLIs have no native hooks system).
 
 ### Merge Behavior
 
@@ -161,7 +161,7 @@ The `model` field is vendor-specific and passed through to the agent CLI via `--
 | agent_type | Model examples |
 |------------|---------------|
 | `claude` | `opus`, `sonnet`, `haiku`, `claude-sonnet-4-6` |
-| `gemini` | `gemini-2.5-pro`, `gemini-2.5-flash` |
+| `agy` | `gemini-3.8-flash-high`, `gemini-3.8-flash-medium`, `gemini-3.1-pro-high`, `claude-sonnet-4-6` |
 | `codex` | `o3`, `o4-mini`, `gpt-4.1` |
 
 If `model` is omitted, the agent CLI uses its own default.
@@ -294,8 +294,8 @@ Mixed-vendor team with full customization:
     {
       "name": "Frontend Dev",
       "prompt": "Build React components and pages.",
-      "agent_type": "gemini",
-      "model": "gemini-2.5-pro",
+      "agent_type": "agy",
+      "model": "gemini-3.8-flash-high",
       "permissions_preset": "frontend_dev",
       "env": {
         "BROWSER": "none"

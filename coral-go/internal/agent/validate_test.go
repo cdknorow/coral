@@ -18,6 +18,8 @@ func TestValidateAgentType(t *testing.T) {
 		wantErr   bool
 	}{
 		{"claude", at.Claude, false},
+		{"agy", at.Agy, false},
+		{"antigravity", at.Antigravity, false},
 		{"codex", at.Codex, false},
 		{"gemini", at.Gemini, false},
 		{"pi", at.Pi, false},
@@ -96,7 +98,7 @@ func TestGetAgentDefaultsToClaudeOnlyForAnUnspecifiedType(t *testing.T) {
 // LaunchableAgentTypes drives both the validation and the error message, so it
 // has to stay in step with the constants it is derived from.
 func TestLaunchableAgentTypesCoversEveryDeclaredType(t *testing.T) {
-	declared := []string{at.Claude, at.Codex, at.Gemini, at.Pi, at.Terminal}
+	declared := []string{at.Claude, at.Codex, at.Agy, at.Gemini, at.Pi, at.Terminal}
 	launchable := LaunchableAgentTypes()
 	if len(launchable) != len(declared) {
 		t.Fatalf("LaunchableAgentTypes has %d entries, agenttypes declares %d", len(launchable), len(declared))

@@ -67,7 +67,22 @@ func (h *HistoryHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 
 	var sourceTypes []string
 	if raw := q.Get("source_types"); raw != "" {
-		sourceTypes = strings.Split(raw, ",")
+		seen := make(map[string]bool)
+		for _, s := range strings.Split(raw, ",") {
+			st := strings.TrimSpace(s)
+			if st == "" || seen[st] {
+				continue
+			}
+			seen[st] = true
+			sourceTypes = append(sourceTypes, st)
+			if (st == "agy" || st == "antigravity") && !seen["gemini"] {
+				seen["gemini"] = true
+				sourceTypes = append(sourceTypes, "gemini")
+			} else if st == "gemini" && !seen["agy"] {
+				seen["agy"] = true
+				sourceTypes = append(sourceTypes, "agy")
+			}
+		}
 	}
 
 	var minDur, maxDur *int
@@ -399,25 +414,41 @@ func (h *HistoryHandler) GetSessionTasks(w http.ResponseWriter, r *http.Request)
 func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sessionID")
 	agentType := "claude"
+	workingDir := ""
 
-	// Use the JSONL reader to load messages. Pass empty working dir
-	// so it searches all project directories for the session file.
-	messages, _ := h.jsonl.ReadNewMessages(sid, "", "claude")
+	if h.ss != nil {
+		if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
+			if ls.AgentType != "" {
+				agentType = ls.AgentType
+			}
+			if ls.WorkingDir != "" {
+				workingDir = ls.WorkingDir
+			}
+		}
+	}
+
+	// Use the JSONL reader to load messages.
+	messages, _ := h.jsonl.ReadNewMessages(sid, workingDir, agentType)
+	if len(messages) == 0 && agentType != "claude" {
+		// Fallback to claude
+		h.jsonl.ClearSession(sid)
+		messages, _ = h.jsonl.ReadNewMessages(sid, workingDir, "claude")
+	}
 	if len(messages) == 0 {
 		// Try Codex, whose transcript filename uses its native session ID and
 		// therefore may need the embedded Coral session marker for lookup.
 		h.jsonl.ClearSession(sid)
-		messages, _ = h.jsonl.ReadNewMessages(sid, "", "codex")
+		messages, _ = h.jsonl.ReadNewMessages(sid, workingDir, "codex")
 		if len(messages) > 0 {
 			agentType = "codex"
 		}
 	}
 	if len(messages) == 0 {
-		// Try Gemini as fallback.
+		// Try Agy / Antigravity as fallback.
 		h.jsonl.ClearSession(sid)
-		messages, _ = h.jsonl.ReadNewMessages(sid, "", "gemini")
+		messages, _ = h.jsonl.ReadNewMessages(sid, workingDir, "agy")
 		if len(messages) > 0 {
-			agentType = "gemini"
+			agentType = "agy"
 		}
 	}
 	if messages == nil {

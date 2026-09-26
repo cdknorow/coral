@@ -2,6 +2,9 @@ package routes
 
 import (
 	"context"
+	"time"
+
+	"github.com/cdknorow/coral/internal/store"
 
 	"github.com/cdknorow/coral/internal/sessionstate"
 )
@@ -30,6 +33,37 @@ func (h *SessionsHandler) deriveSingleSessionState(ctx context.Context, sessionI
 		for _, ev := range events[sessionID] {
 			in.Events = append(in.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
+		if session, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && session != nil {
+			h.applyTranscriptState(&in, events[sessionID], session.AgentType, sessionID, session.WorkingDir)
+		}
 	}
 	return DeriveSessionState(in)
+}
+
+// All session payloads use the same transcript fallback when hooks are missing.
+func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events []store.AgentEvent, agentType, sessionID, workingDir string) {
+	if agentType != "codex" {
+		return
+	}
+	kind, at := h.jsonl.ReadCodexTurnEvent(sessionID, workingDir)
+	mergeTranscriptTurnEvent(input, events, kind, at)
+}
+
+// Hook signals win ties (their timestamps can have second precision). A newer
+// transcript turn boundary repairs missing hooks without masking newer prompts.
+func mergeTranscriptTurnEvent(input *SessionStateInput, events []store.AgentEvent, kind string, at time.Time) {
+	if kind == "" || at.IsZero() {
+		return
+	}
+	for _, e := range events {
+		timestamp, err := time.Parse(time.RFC3339Nano, e.CreatedAt)
+		if err != nil || !at.Truncate(time.Second).After(timestamp.Truncate(time.Second)) {
+			return
+		}
+	}
+	input.Events = append(input.Events, StateEvent{Type: kind})
+	// Explicit turn state is stronger evidence than terminal log age; a long
+	// model/tool operation can be silent while the turn remains in progress.
+	input.StalenessSeconds = 0
+	input.NotStarted = false
 }

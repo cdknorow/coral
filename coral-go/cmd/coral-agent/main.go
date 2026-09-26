@@ -3,8 +3,8 @@
 // task commands are what an agent uses to work with its own tasks in Coral:
 // the tasks the operator gives an agent that is not on a team board.
 //
-// Its task commands mirror `coral-board task` (same subcommands, flags and
-// output), minus reassign, and call the matching agent task API
+// Its task commands use the same workflow engine as coral-board task, scoped
+// to a personal session, and call the matching agent task API
 // (/api/agent/tasks/...). The agent is identified by its Coral session (tmux
 // session name or the CORAL_SESSION_NAME variable Coral exports), the same way
 // Coral's hooks resolve it. Team boards keep using coral-board.
@@ -88,9 +88,15 @@ Subcommands:
 	case "list":
 		cmdTaskList()
 	case "claim":
-		cmdTaskClaim()
-	case "current", "detail":
+		cmdTaskClaim(taskArgs...)
+	case "current":
 		cmdTaskCurrent()
+	case "detail":
+		cmdTaskDetail(taskArgs)
+	case "edit":
+		cmdTaskEdit(taskArgs)
+	case "publish":
+		cmdTaskPublish(taskArgs)
 	case "complete":
 		cmdTaskFinish(taskArgs, "complete")
 	case "cancel":
@@ -105,6 +111,20 @@ Subcommands:
   current                          Show your current in-progress task
   complete <id> [--message "note"]
   cancel <id> [--message "reason"]`)
+		fmt.Println(`
+Workflow commands:
+  claim [id]                     Claim a specific ready task; one active task per session
+  detail <id>                    Read instructions, prerequisites and artifacts
+  edit <id> [--body TEXT] [--priority P] [--blocked-by JSON]
+  publish <id>                   Publish a draft
+
+Add options:
+  --blocked-by '[{"task_id":1,"condition":"success","required_artifacts":["build"]}]'
+  --outputs "build,report" --workflow NAME --stage NAME
+  --workflow-instructions TEXT --parent ID --retry-of ID
+Completion options:
+  --outcome success|failed --artifacts manifest.json
+Completed results are immutable. Dependencies must belong to this agent session.`)
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
@@ -131,7 +151,7 @@ func cmdLaunch(args []string) {
 	}
 
 	fs := flag.NewFlagSet("launch", flag.ExitOnError)
-	agentType := fs.String("type", "", "Agent type: claude, codex, gemini, pi or terminal (default: your Coral setting)")
+	agentType := fs.String("type", "", "Agent type: claude, codex, agy, pi or terminal (default: your Coral setting)")
 	name := fs.String("name", "", "Display name")
 	model := fs.String("model", "", "Model (default: your Coral setting for the agent type)")
 	prompt := fs.String("prompt", "", "Initial prompt")
@@ -229,6 +249,13 @@ func cmdTaskAdd(args []string) {
 	fs := flag.NewFlagSet("task-add", flag.ExitOnError)
 	priority := fs.String("priority", "medium", "Task priority (critical, high, medium, low)")
 	taskBody := fs.String("body", "", "Detailed description/instructions")
+	blockedBy := fs.String("blocked-by", "", "Dependency IDs or rule objects as JSON")
+	outputs := fs.String("outputs", "", "Comma-separated required artifact names")
+	workflow := fs.String("workflow", "", "Workflow name")
+	stage := fs.String("stage", "", "Workflow stage")
+	instructions := fs.String("workflow-instructions", "", "Additional workflow instructions")
+	parent := fs.Int64("parent", 0, "Parent task ID")
+	retry := fs.Int64("retry-of", 0, "Finished task ID to retry")
 	fs.Parse(reordered)
 
 	if title == "" {
@@ -244,6 +271,21 @@ func cmdTaskAdd(args []string) {
 	if *taskBody != "" {
 		reqBody["body"] = *taskBody
 	}
+	if *blockedBy != "" {
+		var deps any
+		if err := json.Unmarshal([]byte(*blockedBy), &deps); err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid --blocked-by JSON:", err)
+			os.Exit(1)
+		}
+		reqBody["blocked_by"] = deps
+	}
+	var names []string
+	for _, name := range strings.Split(*outputs, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
+		}
+	}
+	reqBody["workflow"] = map[string]any{"name": *workflow, "stage": *stage, "instructions": *instructions, "required_outputs": names, "parent_task_id": *parent, "retry_of": *retry}
 
 	data, status, err := apiCallRaw("POST", "/tasks", reqBody)
 	if err != nil {
@@ -296,8 +338,11 @@ func cmdTaskList() {
 	}
 }
 
-func cmdTaskClaim() {
-	body := map[string]string{"session_id": resolveSessionID()}
+func cmdTaskClaim(args ...string) {
+	body := map[string]any{"session_id": resolveSessionID()}
+	if len(args) > 0 {
+		body["task_id"] = positiveTaskID(args[0])
+	}
 
 	data, status, err := apiCallRaw("POST", "/tasks/claim", body)
 	if err != nil {
@@ -321,6 +366,7 @@ func cmdTaskClaim() {
 	taskBody, _ := task["body"].(string)
 	priority, _ := task["priority"].(string)
 	fmt.Printf("Claimed Task #%.0f (%s): %s\n", id, priority, title)
+	printTaskWorkflow(task)
 	if taskBody != "" {
 		fmt.Printf("\n%s\n", taskBody)
 	}
@@ -352,6 +398,7 @@ func cmdTaskCurrent() {
 	priority, _ := task["priority"].(string)
 	status_, _ := task["status"].(string)
 	fmt.Printf("Task #%.0f (%s) [%s]: %s\n", id, priority, status_, title)
+	printTaskWorkflow(task)
 	if taskBody != "" {
 		fmt.Printf("\n%s\n", taskBody)
 	}
@@ -377,9 +424,27 @@ func cmdTaskFinish(args []string, verb string) {
 
 	fs := flag.NewFlagSet("task-"+verb, flag.ExitOnError)
 	message := fs.String(flagName, "", flagHelp)
+	outcome := fs.String("outcome", "success", "success or failed")
+	artifactsFile := fs.String("artifacts", "", "JSON artifact manifest")
 	fs.Parse(args[1:])
 
 	body := map[string]any{"session_id": resolveSessionID()}
+	if verb == "complete" {
+		body["outcome"] = *outcome
+		if *artifactsFile != "" {
+			data, err := os.ReadFile(*artifactsFile)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			var artifacts []map[string]any
+			if err := json.Unmarshal(data, &artifacts); err != nil {
+				fmt.Fprintln(os.Stderr, "Invalid artifacts JSON:", err)
+				os.Exit(1)
+			}
+			body["artifacts"] = artifacts
+		}
+	}
 	if *message != "" {
 		body["message"] = *message
 	}
@@ -397,7 +462,93 @@ func cmdTaskFinish(args []string, verb string) {
 	var task map[string]any
 	json.Unmarshal(data, &task)
 	title, _ := task["title"].(string)
-	fmt.Printf("%s Task #%d: %s\n", done, taskID, title)
+	if verb == "complete" {
+		fmt.Printf("Finished Task #%d (%s): %s\n", taskID, *outcome, title)
+	} else {
+		fmt.Printf("%s Task #%d: %s\n", done, taskID, title)
+	}
+}
+
+func printTaskWorkflow(task map[string]any) {
+	if workflow, ok := task["workflow"]; ok {
+		data, _ := json.MarshalIndent(workflow, "", "  ")
+		fmt.Printf("\nWorkflow instructions, inputs and outputs:\n%s\n", data)
+	}
+}
+
+func positiveTaskID(arg string) int64 {
+	id, err := strconv.ParseInt(arg, 10, 64)
+	if err != nil || id <= 0 {
+		fmt.Fprintln(os.Stderr, "Task ID must be a positive integer")
+		os.Exit(1)
+	}
+	return id
+}
+
+func cmdTaskDetail(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "Usage: coral-agent task detail <id>")
+		os.Exit(1)
+	}
+	id := positiveTaskID(args[0])
+	data, status, err := apiCallRaw("GET", fmt.Sprintf("/tasks/%d?session_id=%s", id, url.QueryEscape(resolveSessionID())), nil)
+	if err != nil || status != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error reading task: %s %v\n", data, err)
+		os.Exit(1)
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, data, "", "  "); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	fmt.Println(pretty.String())
+}
+
+func cmdTaskEdit(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: coral-agent task edit <id> [--title TEXT] [--body TEXT] [--priority P] [--blocked-by JSON]")
+		os.Exit(1)
+	}
+	id := positiveTaskID(args[0])
+	fs := flag.NewFlagSet("task-edit", flag.ExitOnError)
+	fs.String("title", "", "Task title")
+	fs.String("body", "", "Task details")
+	fs.String("priority", "", "Task priority")
+	fs.String("blocked-by", "", "Dependency JSON")
+	fs.Parse(args[1:])
+	body := map[string]any{"session_id": resolveSessionID()}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "blocked-by" {
+			var deps any
+			if err := json.Unmarshal([]byte(f.Value.String()), &deps); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			body["blocked_by"] = deps
+		} else {
+			body[f.Name] = f.Value.String()
+		}
+	})
+	data, status, err := apiCallRaw("PATCH", fmt.Sprintf("/tasks/%d", id), body)
+	if err != nil || status != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error editing task: %s %v\n", data, err)
+		os.Exit(1)
+	}
+	fmt.Printf("Updated Task #%d\n", id)
+}
+
+func cmdTaskPublish(args []string) {
+	if len(args) != 1 {
+		fmt.Fprintln(os.Stderr, "Usage: coral-agent task publish <id>")
+		os.Exit(1)
+	}
+	id := positiveTaskID(args[0])
+	data, status, err := apiCallRaw("POST", fmt.Sprintf("/tasks/%d/publish", id), map[string]string{"session_id": resolveSessionID()})
+	if err != nil || status != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error publishing task: %s %v\n", data, err)
+		os.Exit(1)
+	}
+	fmt.Printf("Published Task #%d\n", id)
 }
 
 // isNoTask tells an empty queue (404 "No available tasks"/"No active task")

@@ -40,6 +40,13 @@ func TestEveryExtractorPopulatesFTSBody(t *testing.T) {
 			wantTerm:  "Coralville",
 		},
 		{
+			agentType: "agy",
+			filename:  "uuid-agy/.system_generated/logs/transcript.jsonl",
+			content: `{"step_index":0,"type":"USER_INPUT","content":"please check the Coralville deployment","created_at":"2026-08-28T00:00:00Z"}
+{"step_index":1,"type":"PLANNER_RESPONSE","content":"done","created_at":"2026-08-28T00:00:01Z"}`,
+			wantTerm: "Coralville",
+		},
+		{
 			agentType: "pi",
 			filename:  "sess-pi.jsonl",
 			content: `{"type":"message","role":"user","content":"please check the Coralville deployment","timestamp":"2026-08-28T00:00:00Z"}

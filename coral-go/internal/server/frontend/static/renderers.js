@@ -330,7 +330,9 @@ const ENGINES = {
 /** Default renderer name per agent type. */
 const AGENT_DEFAULTS = {
     claude: "xterm",
-    gemini: "plain",
+    agy: "xterm",
+    antigravity: "xterm",
+    gemini: "xterm",
     codex: "xterm",
     pi: "xterm",
 };

@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
 #
-# Stress / integration test for agent tasks (agents not on a team board).
+# Stress / integration test for solo agent tasks and team task workflows.
 #
 # A dummy agent (mock-agent standing in for the Claude CLI) is given tasks
 # from the "dashboard" API. The test checks what is typed into the agent by
 # reading its terminal, then drives the agent side with the real coral-agent
 # CLI: claim, current, list, complete, plus concurrent claims and isolation
 # between agents.
+# Also runs real HTTP API regressions for atomic readiness, abrupt restart
+# recovery, and the 32-artifact configuration boundary using the same build.
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORAL_DIR="$REPO_ROOT/coral-go"
-PORT=8474
+PORT=${CORAL_TEST_PORT:-8474}
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
 PASS=0
@@ -23,11 +25,21 @@ SERVER_PID=""
 # ── Helpers ──────────────────────────────────────────────────────────
 
 cleanup() {
+    local exit_code=$?
+    for entry in "${NAME_A:-}:${SID_A:-}" "${NAME_B:-other-agent}:${SID_B:-}"; do
+        if [[ -n "${entry##*:}" ]]; then
+            api POST "/api/sessions/live/${entry%:*}/kill" -d "{\"agent_type\":\"claude\",\"session_id\":\"${entry##*:}\"}" >/dev/null 2>&1 || true
+        fi
+    done
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    rm -rf "$TMPDIR_AT" 2>/dev/null || true
+    if [[ $exit_code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
+        log "Test data and server log: ${TMPDIR_AT:-}"
+    else
+        rm -rf "${TMPDIR_AT:-}" 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
@@ -98,6 +110,10 @@ task_states() {  # name sid -> "id:completed id:completed ..."
 # ── Setup ────────────────────────────────────────────────────────────
 
 TMPDIR_AT="$(mktemp -d)"
+if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    log "ERROR: Port $PORT is already in use; set CORAL_TEST_PORT to a free port."
+    exit 1
+fi
 export CORAL_DATA_DIR="$TMPDIR_AT/coral-data"
 mkdir -p "$CORAL_DATA_DIR"
 
@@ -106,9 +122,10 @@ cd "$CORAL_DIR"
 go build -tags dev -o "$TMPDIR_AT/coral" ./cmd/coral/
 go build -o "$TMPDIR_AT/mock-agent" ./cmd/mock-agent/
 go build -o "$TMPDIR_AT/coral-agent" ./cmd/coral-agent/
+go build -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
 
 log "Starting coral server on port $PORT..."
-env -u CORAL_PORT -u CORAL_URL "$TMPDIR_AT/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 
@@ -167,12 +184,14 @@ OUT=$(as_agent "$SESS_A" task claim)
 check "claim: Claimed Task #N (priority): title, then the details" 'echo "$OUT" | grep -qx "Claimed Task #$ID1 (medium): Add a battle log" && echo "$OUT" | grep -q "Log each round with both cards and the winner."' "$OUT"
 OUT=$(as_agent "$SESS_A" task current)
 check "current: Task #N (priority) [in_progress]: title" 'echo "$OUT" | grep -qx "Task #$ID1 (medium) \[in_progress\]: Add a battle log"' "$OUT"
-OUT=$(as_agent "$SESS_A" task claim)
-check "the next claim is task 2 with its details" 'echo "$OUT" | grep -qx "Claimed Task #$ID2 (medium): Write engine tests" && echo "$OUT" | grep -q "Cover ties and forfeits."' "$OUT"
+if OUT=$(as_agent "$SESS_A" task claim 2>&1); then CODE=0; else CODE=$?; fi
+check "claim refuses a second active task" '[[ $CODE -ne 0 ]] && echo "$OUT" | grep -q "current task"'
 OUT=$(as_agent "$SESS_A" task complete "$ID1" --message "Logged in battle_log.go")
-check "complete: Completed Task #N: title" '[[ "$OUT" == "Completed Task #$ID1: Add a battle log" ]]' "$OUT"
-OUT=$(as_agent "$SESS_A" task complete "$ID1")
-check "completing again is harmless" '[[ "$OUT" == "Completed Task #$ID1: Add a battle log" ]]' "$OUT"
+check "complete reports the outcome" '[[ "$OUT" == "Finished Task #$ID1 (success): Add a battle log" ]]' "$OUT"
+if OUT=$(as_agent "$SESS_A" task complete "$ID1" 2>&1); then CODE=0; else CODE=$?; fi
+check "completed results cannot be overwritten" '[[ $CODE -ne 0 ]]'
+OUT=$(as_agent "$SESS_A" task claim)
+check "after completion the next claim is task 2" 'echo "$OUT" | grep -qx "Claimed Task #$ID2 (medium): Write engine tests"'
 OUT=$(as_agent "$SESS_A" task cancel "$ID4" --message "Not needed")
 check "cancel: Cancelled Task #N: title" '[[ "$OUT" == "Cancelled Task #$ID4: Quiet task" ]]' "$OUT"
 STATES=$(task_states "$NAME_A" "$SID_A")
@@ -185,17 +204,23 @@ check "the completion message is stored" '[[ "$MSG" == "Logged in battle_log.go"
 # ── Test 6: claim order follows priority, like a board ───────────────
 
 log "Test 6: Claim order is by priority, then age..."
+as_agent "$SESS_A" task complete "$ID2" >/dev/null
 for p in low critical medium high; do as_agent "$SESS_A" task add "Priority $p" --priority "$p" >/dev/null; done
 OUT=$(as_agent "$SESS_A" task add "Added by the agent" --body "Self-assigned details" --priority low)
 check "task add: Created Task #N: title" 'echo "$OUT" | grep -qE "^Created Task #[0-9]+: Added by the agent$"' "$OUT"
 ORDER=""
 for i in 1 2 3 4 5; do
-    ORDER="$ORDER|$(as_agent "$SESS_A" task claim | head -1 | sed 's/^Claimed Task #[0-9]* (\([a-z]*\)): \(.*\)/\2/')"
+    OUT=$(as_agent "$SESS_A" task claim)
+    ORDER="$ORDER|$(echo "$OUT" | sed -n 's/^Claimed Task #[0-9]* ([a-z]*): //p')"
+    CLAIM_ID=$(echo "$OUT" | sed -n 's/^Claimed Task #\([0-9]*\) .*/\1/p')
+    as_agent "$SESS_A" task complete "$CLAIM_ID" >/dev/null
 done
 # Pending before: task 3 (medium, older), then the new ones
 check "claims go critical, high, medium (oldest first), low (oldest first)" '[[ "$ORDER" == "|Priority critical|Priority high|Fix the login form|Priority medium|Priority low" ]]' "$ORDER"
 OUT=$(as_agent "$SESS_A" task claim)
 check "the agent-added task (low, newest) comes last, with its details" 'echo "$OUT" | grep -qx "Claimed Task #[0-9]* (low): Added by the agent" && echo "$OUT" | grep -q "Self-assigned details"' "$OUT"
+CLAIM_ID=$(echo "$OUT" | sed -n 's/^Claimed Task #\([0-9]*\) .*/\1/p')
+as_agent "$SESS_A" task complete "$CLAIM_ID" >/dev/null
 OUT=$(as_agent "$SESS_A" task claim)
 check "with nothing available: No available tasks (exit 0, as coral-board)" '[[ "$OUT" == "No available tasks" ]]' "$OUT"
 
@@ -204,6 +229,7 @@ check "with nothing available: No available tasks (exit 0, as coral-board)" '[[ 
 log "Test 7: A second agent cannot see or touch the first agent's tasks..."
 L2=$(launch_agent "$TMPDIR_AT/work-b/other-agent" "Other Agent")
 SID_B=$(echo "$L2" | jget "d.get('session_id','')")
+NAME_B=$(echo "$L2" | jget "d.get('name') or d.get('agent_name') or 'other-agent'")
 SESS_B=$(echo "$L2" | jget "d.get('session_name') or ('claude-' + d.get('session_id',''))")
 check "second dummy agent launched" '[[ -n "$SID_B" ]]' "$L2"
 OUT=$(as_agent "$SESS_B" task list)
@@ -214,7 +240,7 @@ set +e
 OUT=$(as_agent "$SESS_B" task complete "$ID2" 2>&1); CODE=$?
 set -e
 check "the second agent cannot complete the first agent's task" '[[ $CODE -ne 0 ]] && echo "$OUT" | grep -q "Error completing task" && echo "$OUT" | grep -q "No such task"' "$OUT"
-check "task 2 is still in progress" 'echo " $(task_states "$NAME_A" "$SID_A") " | grep -q " $ID2:2 "'
+check "task 2 completion is unchanged" 'echo " $(task_states "$NAME_A" "$SID_A") " | grep -q " $ID2:1 "'
 
 # ── Test 8: concurrent claims never hand out the same task twice ─────
 
@@ -233,16 +259,15 @@ wait "${CLAIM_PIDS[@]}" || true
 CLAIMED=$(cat "$TMPDIR_AT"/claims/*.out | sed -n 's/^Claimed Task #\([0-9]*\) .*/\1/p' | sort -n)
 N_CLAIMED=$(echo "$CLAIMED" | grep -c . || true)
 N_UNIQUE=$(echo "$CLAIMED" | sort -u | grep -c . || true)
-N_EMPTY=$(grep -lx "No available tasks" "$TMPDIR_AT"/claims/*.out 2>/dev/null | wc -l | tr -d ' ')
 N_ERRORS=$(cat "$TMPDIR_AT"/claims/*.code | grep -vc "^0$" || true)
-check "$CLAIMERS concurrent claims on $PENDING pending tasks: each task claimed once" '[[ $N_CLAIMED -eq $PENDING && $N_UNIQUE -eq $PENDING ]]' "claimed=$N_CLAIMED unique=$N_UNIQUE"
-check "the extra claimers are told nothing is available, and none errored" '[[ $N_EMPTY -eq 5 && $N_ERRORS -eq 0 ]]' "empty=$N_EMPTY errors=$N_ERRORS"
-check "no task is left pending" '[[ $(task_states "$NAME_A" "$SID_A" | tr " " "\n" | grep -c ":0$" || true) -eq 0 ]]'
+check "$CLAIMERS concurrent claims permit exactly one active task" '[[ $N_CLAIMED -eq 1 && $N_UNIQUE -eq 1 ]]' "claimed=$N_CLAIMED unique=$N_UNIQUE"
+check "other concurrent claims are rejected" '[[ $N_ERRORS -eq $((CLAIMERS - 1)) ]]' "errors=$N_ERRORS"
+check "remaining tasks stay pending" '[[ $(task_states "$NAME_A" "$SID_A" | tr " " "\n" | grep -c ":0$" || true) -eq $((PENDING - 1)) ]]'
 
 # ── Test 9: finish everything ────────────────────────────────────────
 
 log "Test 9: Complete all in-progress tasks..."
-for id in $(task_states "$NAME_A" "$SID_A" | tr ' ' '\n' | sed -n 's/^\([0-9]*\):2$/\1/p'); do
+for id in $(task_states "$NAME_A" "$SID_A" | tr ' ' '\n' | sed -n 's/^\([0-9]*\):[02]$/\1/p'); do
     as_agent "$SESS_A" task complete "$id" >/dev/null
 done
 STATES=$(task_states "$NAME_A" "$SID_A")
@@ -253,10 +278,30 @@ check "all $TOTAL tasks are finished (1 cancelled, the rest done)" '[[ $OPEN -eq
 OUT=$(as_agent "$SESS_A" task current)
 check "current reports no active task" '[[ "$OUT" == "No active task" ]]' "$OUT"
 
+# Exercise team workflows with the same live mock agents and real board CLI.
+source "$SCRIPT_DIR/personal_task_workflows.sh"
+source "$SCRIPT_DIR/agent_task_workflows.sh"
+
+# ── Test 13: readiness recovery and artifact configuration limits ──────
+# This helper owns a separate server/database because it kills and restarts
+# its server and seeds a legacy crash state. Keep the live mock agents intact.
+log "Test 13: API regressions for restart recovery and artifact limits..."
+if CORAL_BIN="$TMPDIR_AT/coral" \
+    CORAL_TEST_ARTIFACT_DIR="$TMPDIR_AT" \
+    CORAL_TEST_RESULT_FILE="$TMPDIR_AT/workflow-api-result.json" \
+    python3 "$SCRIPT_DIR/test_task_workflow_api.py" >"$TMPDIR_AT/workflow-api.log" 2>&1; then
+    cat "$TMPDIR_AT/workflow-api.log"
+    API_PASSED=$(jget "d['passed'] if d['success'] else 0" <"$TMPDIR_AT/workflow-api-result.json")
+    PASS=$((PASS + API_PASSED))
+    log "API regression phase: $API_PASSED checks passed"
+else
+    cat "$TMPDIR_AT/workflow-api.log"
+    fail "API regression phase failed; see $TMPDIR_AT/workflow-api.log"
+fi
+
 # ── Cleanup ──────────────────────────────────────────────────────────
 
-api POST "/api/sessions/live/$NAME_A/kill" -d "{\"agent_type\": \"claude\", \"session_id\": \"$SID_A\"}" >/dev/null || true
-[[ -n "$SID_B" ]] && api POST "/api/sessions/live/other-agent/kill" -d "{\"agent_type\": \"claude\", \"session_id\": \"$SID_B\"}" >/dev/null || true
+# The EXIT trap cleans up mock agents and the isolated server on every path.
 
 echo
 log "Results: $PASS passed, $FAIL failed"

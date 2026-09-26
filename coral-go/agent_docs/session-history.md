@@ -23,7 +23,7 @@ Paginated, filterable list of historical sessions. Supports both agent sessions 
 | `type` | string | `all` | Filter by type: `all`, `agent`, or `group` |
 | `tag_ids` | string | | Comma-separated tag IDs to filter by |
 | `tag_logic` | string | | Tag matching logic (e.g., `and`, `or`) |
-| `source_types` | string | | Comma-separated source types (e.g., `claude,gemini`) |
+| `source_types` | string | | Comma-separated source types (e.g., `claude,agy`) |
 | `date_from` | string | | Start date filter (ISO format) |
 | `date_to` | string | | End date filter (ISO format) |
 | `min_duration_sec` | int | | Minimum session duration in seconds |

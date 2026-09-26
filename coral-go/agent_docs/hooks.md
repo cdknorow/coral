@@ -49,13 +49,13 @@ These events are handled natively by Claude Code via the settings.json hooks sys
 |-------|---------------|-------|
 | `PreToolUse` | Before a tool executes | Exit code 2 blocks the tool call |
 | `PostToolUse` | After a tool executes | Use `matcher` to filter by tool name |
-| `Stop` | When the agent session stops | Also fired by Coral runner for Gemini/Codex |
+| `Stop` | When the agent session stops | Also fired by Coral runner for Antigravity/Codex |
 | `Notification` | On notification events | Claude-only |
 | `SubagentStop` | When a subagent completes | Claude-only |
 
 ### Coral-Managed Events (all agent types + shell steps)
 
-These events are managed by Coral's workflow runner. They work for all step types (shell, Claude, Gemini, Codex) and fire after the step process exits.
+These events are managed by Coral's workflow runner. They work for all step types (shell, Claude, Antigravity, Codex) and fire after the step process exits.
 
 | Event | When it fires | Notes |
 |-------|---------------|-------|
@@ -66,8 +66,8 @@ These events are managed by Coral's workflow runner. They work for all step type
 
 ## Event Support by Agent Type
 
-| Event | Claude | Gemini | Codex | Shell Steps |
-|-------|--------|--------|-------|-------------|
+| Event | Claude | Antigravity (agy) | Codex | Shell Steps |
+|-------|--------|-------------------|-------|-------------|
 | `PreToolUse` | Native | -- | -- | -- |
 | `PostToolUse` | Native | -- | -- | -- |
 | `Stop` | Native | Runner-managed | Runner-managed | -- |

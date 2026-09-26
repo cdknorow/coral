@@ -1047,7 +1047,12 @@ func TestSessionsResolvePath(t *testing.T) {
 		"app/main.go:12":              "app/main.go", // with a line
 		"main.go:3-9":                 "app/main.go", // with a range
 		filepath.Join(app, "main.go"): "app/main.go", // absolute
-		"README.md":                   "README.md",
+		"file://" + filepath.Join(app, "main.go"):                       "app/main.go", // file:// URL
+		"file://localhost" + filepath.Join(app, "main.go") + "#L12-L30": "app/main.go", // file://localhost URL with #L range
+		"file://" + filepath.Join(app, "main.go") + "#L12-L30":          "app/main.go", // file:// URL with #L range
+		"app/main.go#L12":     "app/main.go", // markdown line hash
+		"app/main.go#L12-L45": "app/main.go", // markdown line hash range
+		"README.md":           "README.md",
 	} {
 		code, body := resolve(ref)
 		assert.Equal(t, http.StatusOK, code, ref)
@@ -1512,6 +1517,9 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	// Task routes
 	r.Get("/api/sessions/live/{name}/tasks", handler.ListTasks)
 	r.Get("/api/agent/tasks", handler.ListAgentTasksForAgent)
+	r.Get("/api/agent/tasks/{taskID}", handler.GetAgentTaskForAgent)
+	r.Patch("/api/agent/tasks/{taskID}", handler.UpdateAgentTaskForAgent)
+	r.Post("/api/agent/tasks/{taskID}/publish", handler.PublishAgentTaskForAgent)
 	r.Post("/api/agent/tasks", handler.AddAgentTaskForAgent)
 	r.Post("/api/agent/tasks/claim", handler.ClaimAgentTaskForAgent)
 	r.Post("/api/agent/tasks/current", handler.CurrentAgentTaskForAgent)
@@ -1521,6 +1529,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/subagents", handler.ListSubagents)
 	r.Get("/api/sessions/live/{name}/subagents/{subagentID}", handler.GetSubagent)
 	r.Put("/api/sessions/live/{name}/tasks/{taskID}", handler.UpdateTask)
+	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", handler.UpdateTask)
 	r.Delete("/api/sessions/live/{name}/tasks/{taskID}", handler.DeleteTask)
 
 	// Note routes

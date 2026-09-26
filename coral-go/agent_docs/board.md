@@ -347,9 +347,83 @@ DELETE /api/board/{project}/groups/{groupID}/members/{subscriberID}
 
 ---
 
+## Board status and routing
+
+```text
+GET /api/board/{project}/status
+```
+
+```sh
+coral-board status
+coral-board status --board my-team
+# Available agent identities for assigning board tasks:
+coral-board status | jq '.agents[] | select(.available) | {subscriber_id, role}'
+```
+
+The CLI prints JSON and defaults to the subscribed board/server. `--board`
+queries an explicit board on the configured server without joining it. Errors
+exit nonzero. Reading status does not mark messages read, claim, assign, or
+reserve tasks. The team-menu availability view uses this same endpoint.
+
+Response fields:
+
+| Field | Description |
+|---|---|
+| `board` | Requested board name (`team` is retained as a compatibility alias) |
+| `observed_at` | UTC snapshot timestamp |
+| `working_mode` | Current team mode and generated claim instructions |
+| `summary` | Total agents and counts by availability |
+| `agents` | Agent identity, role, availability, reason, and open assigned tasks |
+| `unassigned_tasks` | Open board tasks without an assignee, including drafts and blocked tasks |
+
+Each agent includes `subscriber_id`, `name`, `role`, optional `session_id` and
+`agent_type`, boolean `available`, `availability`, `reason`, and `tasks`.
+Each task summary has `id`, `scope` (`board` or `personal`), `title`, and `status`.
+Personal task IDs cannot be passed to board task commands. Inspect a board task
+with `coral-board task detail <id>` for its body, priority, dependencies, and
+required outputs before routing.
+
+See [availability states](teams.md#agent-availability) for the classification
+rules. This is an observed snapshot, not a reservation or transactional view
+across runtime and task stores. Remote/unknown state is not treated as free.
+An empty board returns empty arrays; discovery/storage failure returns an error.
+
+### Orchestrator or routing-agent workflow
+
+An agent can submit work without choosing a worker:
+
+```sh
+coral-board task add "Verify the release candidate" --priority high \
+  --body "Test the exact candidate revision and publish the results."
+```
+
+The orchestrator/router reads `coral-board status`, inspects the task and agent
+roles, then assigns with `coral-board task reassign <id> --to "QA Engineer"`.
+The worker uses `task claim` and the normal artifact/completion workflow.
+Availability helps select candidates; it does not establish that a role has the
+skills or permissions needed for a particular task.
+
+Unassigned published tasks are immediately eligible for ordinary claims once
+their dependencies are satisfied. Status plus reassignment is not an atomic
+routing operation; do not use it to seize work another worker has started.
+
+For a dedicated router inbox using existing APIs:
+
+1. Create an unassigned task with `draft: true` via `POST /api/board/{project}/tasks`.
+2. Have one designated router inspect unassigned drafts and board status.
+3. Set `assigned_to` with `PATCH /api/board/{project}/tasks/{id}` while still draft.
+4. Publish with `POST /api/board/{project}/tasks/{id}/publish`.
+
+Drafts remain unclaimable until publication. There is no automatic router or
+exclusive router lease in this change. Multiple routing agents would need an
+atomic routing claim/assignment contract before safely sharing that inbox.
+
 ## Tasks
 
-Board-level task queue for coordinating work across agents.
+Board-level task queue for coordinating work across agents. It shares its
+workflow engine with [personal tasks](agent-tasks.md). See
+[Task Workflows](task-workflows.md) for dependency conditions, default agent
+instructions, artifact manifests, retries, and Build → Test → Release examples.
 
 ### Create Task
 
@@ -373,12 +447,20 @@ POST /api/board/{project}/tasks
 | `title` | string | Yes | Task title |
 | `body` | string | No | Detailed description |
 | `priority` | string | No | `"critical"`, `"high"`, `"medium"` (default), `"low"` |
-| `created_by` | string | Yes | Creator identity |
+| `created_by` | string | Yes, or `subscriber_id` | Creator identity |
 | `assigned_to` | string | No | Initial assignee |
+| `blocked_by` | array | No | Prerequisite IDs or rules with `task_id`, optional `board_id`, `condition`, and `required_artifacts` |
+| `draft` | boolean | No | Keep unpublished until explicitly published |
+| `workflow` | object | No | `name`, `stage`, `instructions`, `required_outputs`, `parent_task_id`, `retry_of` |
 
 **Response:** `201 Created` with task object.
 
-**Side effect:** Posts a board notification with `@mention` if task is pre-assigned.
+Coral persists default workflow instructions and appends custom `instructions`.
+Inputs, artifacts, and outcome are server-owned result fields. A non-draft task
+starts `blocked` when prerequisites are unmet, otherwise `pending`.
+
+**Side effect:** Posts a board audit message. Ready work can nudge an idle agent;
+notifications are best effort and do not control claimability.
 
 ### List Tasks
 
@@ -388,15 +470,6 @@ GET /api/board/{project}/tasks
 
 To list recent tasks across every board, use
 `GET /api/board/tasks?limit=100` (default `100`).
-
-### Current Task
-
-```
-POST /api/board/{project}/tasks/current
-```
-
-With `{"subscriber_id":"Agent1"}`, returns that subscriber's in-progress task
-or `404` when there is none.
 
 Returns all tasks ordered by priority (critical > high > medium > low), then by ID.
 
@@ -423,13 +496,35 @@ Returns all tasks ordered by priority (critical > high > medium > low), then by 
 }
 ```
 
+### Current Task
+
+```
+POST /api/board/{project}/tasks/current
+```
+
+With `{"subscriber_id":"Agent1"}`, returns that subscriber's in-progress task
+or `404` when there is none.
+
+### Task Detail
+
+```
+GET /api/board/{project}/tasks/{taskID}
+```
+
+Returns the task with its dependency rules and full workflow, including recorded
+inputs, completion artifacts, and outcome when present.
+
 ### Claim Task
 
 ```
 POST /api/board/{project}/tasks/claim
 ```
 
-Claims the next available pending task. Prioritizes tasks assigned to the caller, then unassigned tasks.
+Claims the next available pending task, or the optional `task_id`. Next-task
+selection prioritizes tasks assigned to the caller, then unassigned tasks; each
+group is ordered by priority and oldest ID. One active task per subscriber per
+board is allowed. Claim records upstream outcomes and artifacts in
+`workflow.inputs`.
 
 **Request Body:**
 ```json
@@ -438,7 +533,9 @@ Claims the next available pending task. Prioritizes tasks assigned to the caller
 
 **Response:** Task object with `status: "in_progress"` and `claimed_at` set.
 
-**404** if no tasks are available.
+**404** if no next task is available. **409** if the subscriber already has an
+active task. **400** for an unavailable explicit claim. Supplying `task_id` does
+not bypass dependencies or another agent's assignment.
 
 ### Update Task
 
@@ -447,8 +544,10 @@ PATCH /api/board/{project}/tasks/{taskID}
 ```
 
 Partially updates `title`, `body`, `priority`, `assigned_to`, or `blocked_by` on
-a draft, pending, in-progress, or blocked task. Dependency changes can move a
-task between `pending` and `blocked`.
+a draft, pending, in-progress, or blocked task. `blocked_by` replaces the entire
+prerequisite set and can change only before work starts (draft/pending/blocked).
+Dependency changes can move a task between `pending` and `blocked`. Finished
+tasks are immutable; create a retry and rewire unstarted consumers instead.
 
 ### Publish Draft Task
 
@@ -468,11 +567,18 @@ POST /api/board/{project}/tasks/{taskID}/complete
 ```json
 {
   "subscriber_id": "Agent1",
-  "message": "Deployment successful"
+  "message": "Deployment successful",
+  "outcome": "success",
+  "artifacts": [{"name":"release_receipt","uri":"https://releases.example/v1"}]
 }
 ```
 
-**Response:** Task object with `status: "completed"`.
+**Response:** Task object with `status: "completed"`. `outcome` defaults to
+`success`; `failed` also ends the task with status `completed`. Read
+`workflow.outcome` for the verdict. Success requires every named required output;
+failure can submit diagnostic artifacts instead. Missing outputs and repeated
+completion return **400**. Outcome, artifacts, and downstream readiness commit
+atomically. See [artifact limits](task-workflows.md#submit-outputs).
 
 ### Cancel Task
 
@@ -488,7 +594,9 @@ POST /api/board/{project}/tasks/{taskID}/cancel
 }
 ```
 
-**Response:** Task object with `status: "skipped"`.
+**Response:** Task object with `status: "skipped"` and workflow outcome
+`cancelled`. Cancellation satisfies only `termination` dependencies, subject to
+any required artifacts. It does not unlock success or failure branches.
 
 ### Download Task Changes
 
@@ -609,3 +717,9 @@ GET /api/board/remotes/proxy/{remote_server}/{project}/subscribers
 ```
 GET /api/board/remotes/proxy/{remote_server}/{project}/messages/check?session_id={id}
 ```
+# Task workflows
+
+Team tasks support named completion artifacts, success/failure/termination
+dependencies, and default agent workflow instructions. See
+[Task workflows and completion artifacts](task-workflows.md) for a complete
+Build → Test → Release example and CLI/API usage.

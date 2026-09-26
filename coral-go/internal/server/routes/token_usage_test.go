@@ -65,7 +65,7 @@ func TestListUsage_WithRecords(t *testing.T) {
 		TotalTokens: 1650, CostUSD: 0.05, NumTurns: 3,
 	}))
 	require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{
-		SessionID: "s2", AgentName: "agent-b", AgentType: "gemini",
+		SessionID: "s2", AgentName: "agent-b", AgentType: "agy",
 		InputTokens: 2000, OutputTokens: 1000, TotalTokens: 3000, CostUSD: 0.02,
 	}))
 
@@ -265,7 +265,7 @@ func TestUsageSummary_GroupsByAgentType(t *testing.T) {
 		InputTokens: 2000, OutputTokens: 800, TotalTokens: 2800, CostUSD: 0.08,
 	}))
 	require.NoError(t, ts.RecordUsage(ctx, &store.TokenUsage{
-		SessionID: "s3", AgentName: "a3", AgentType: "gemini",
+		SessionID: "s3", AgentName: "a3", AgentType: "agy",
 		InputTokens: 500, OutputTokens: 200, TotalTokens: 700, CostUSD: 0.01,
 	}))
 

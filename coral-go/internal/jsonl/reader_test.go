@@ -1,10 +1,13 @@
 package jsonl
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	at "github.com/cdknorow/coral/internal/agenttypes"
 )
 
 func TestReadNewMessages_Claude(t *testing.T) {
@@ -595,5 +598,365 @@ func TestReadFrom_ConsumesOnlyCompleteLines(t *testing.T) {
 	msgs, _, err = ReadFrom(path, "claude", off2+1000)
 	if err != nil || len(msgs) != 2 {
 		t.Fatalf("an offset past the end starts over: msgs=%v err=%v", msgs, err)
+	}
+}
+
+func TestParseAgyEntry_UserInput(t *testing.T) {
+	entry := map[string]any{
+		"step_index": float64(0),
+		"type":       "USER_INPUT",
+		"content":    "Fix the bug in auth",
+		"created_at": "2026-09-26T12:00:00Z",
+	}
+	tools := make(map[string]string)
+	msgs := parseAgyEntry(entry, tools)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	m := msgs[0]
+	if m["type"] != "user" || m["content"] != "Fix the bug in auth" || m["timestamp"] != "2026-09-26T12:00:00Z" {
+		t.Errorf("unexpected message: %+v", m)
+	}
+}
+
+func TestParseAgyEntry_PlannerResponseWithTools(t *testing.T) {
+	entry := map[string]any{
+		"step_index": float64(1),
+		"type":       "PLANNER_RESPONSE",
+		"content":    "Looking at files",
+		"created_at": "2026-09-26T12:00:05Z",
+		"tool_calls": []any{
+			map[string]any{
+				"name": "view_file",
+				"args": map[string]any{"path": "auth.go"},
+			},
+		},
+	}
+	tools := make(map[string]string)
+	msgs := parseAgyEntry(entry, tools)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	m := msgs[0]
+	if m["type"] != "assistant" || m["content"] != "Looking at files" {
+		t.Errorf("unexpected message: %+v", m)
+	}
+	toolUses, ok := m["tool_uses"].([]map[string]any)
+	if !ok || len(toolUses) != 1 {
+		t.Fatalf("expected 1 tool use, got %+v", m["tool_uses"])
+	}
+	if toolUses[0]["name"] != "view_file" {
+		t.Errorf("expected view_file, got %v", toolUses[0]["name"])
+	}
+}
+
+func TestParseAgyEntry_GenericToolResult(t *testing.T) {
+	entry := map[string]any{
+		"step_index": float64(2),
+		"type":       "GENERIC",
+		"content":    "file content here",
+		"created_at": "2026-09-26T12:00:06Z",
+	}
+	tools := make(map[string]string)
+	msgs := parseAgyEntry(entry, tools)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	m := msgs[0]
+	if m["type"] != "tool_result" || m["content"] != "file content here" {
+		t.Errorf("unexpected message: %+v", m)
+	}
+}
+
+func TestResolveAgyTranscript(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("ANTIGRAVITY_DATA_DIR", tmpDir)
+
+	convDir := filepath.Join(tmpDir, "conv-123", ".system_generated", "logs")
+	if err := os.MkdirAll(convDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	logFile := filepath.Join(convDir, "transcript.jsonl")
+	if err := os.WriteFile(logFile, []byte(`{"step_index":0,"type":"USER_INPUT","content":"hi"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	found := resolveAgyTranscript("conv-123")
+	if found != logFile {
+		t.Errorf("expected %q, got %q", logFile, found)
+	}
+
+	foundPath := resolveTranscriptPath("conv-123", "", at.Agy)
+	if foundPath != logFile {
+		t.Errorf("expected resolveTranscriptPath to return %q, got %q", logFile, foundPath)
+	}
+}
+
+func TestParseAgyEntry_UserInputCleaning(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{
+			name: "wrapped in USER_REQUEST with metadata",
+			content: `<USER_REQUEST>
+Fix the bug in auth
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-26T08:03:43-07:00.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+Setting changed
+</USER_SETTINGS_CHANGE>`,
+			want: "Fix the bug in auth",
+		},
+		{
+			name: "coral session marker and metadata",
+			content: `Coral session metadata:
+[CORAL_SESSION_ID: session-xyz-123]
+This metadata is for Coral bookkeeping only. Do not mention it to the user.
+
+Refactor the database queries`,
+			want: "Refactor the database queries",
+		},
+		{
+			name: "only metadata and context summary returns empty",
+			content: `<CONTEXT_SUMMARY>
+Summary of conversation
+</CONTEXT_SUMMARY>
+<ADDITIONAL_METADATA>
+Time metadata
+</ADDITIONAL_METADATA>`,
+			want: "",
+		},
+	}
+
+	tools := make(map[string]string)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := map[string]any{
+				"step_index": float64(0),
+				"type":       "USER_INPUT",
+				"content":    tt.content,
+				"created_at": "2026-09-26T12:00:00Z",
+			}
+			msgs := parseAgyEntry(entry, tools)
+			if tt.want == "" {
+				if len(msgs) != 0 {
+					t.Fatalf("expected message to be filtered out, got %+v", msgs)
+				}
+				return
+			}
+			if len(msgs) != 1 {
+				t.Fatalf("expected 1 message, got %d", len(msgs))
+			}
+			if msgs[0]["content"] != tt.want {
+				t.Errorf("got %q, want %q", msgs[0]["content"], tt.want)
+			}
+		})
+	}
+}
+
+func TestParseAgyEntry_RichToolCallsAndResultLinking(t *testing.T) {
+	tools := make(map[string]string)
+
+	// Step 1: run_command with escaped quotes in args
+	step1 := map[string]any{
+		"step_index": float64(1),
+		"type":       "PLANNER_RESPONSE",
+		"content":    "Running command",
+		"created_at": "2026-09-26T12:00:01Z",
+		"tool_calls": []any{
+			map[string]any{
+				"name": "run_command",
+				"args": map[string]any{
+					"CommandLine": `"git status"`,
+					"toolAction":  `"Checking git status"`,
+					"toolSummary": `"Git status check"`,
+				},
+			},
+		},
+	}
+	msgs1 := parseAgyEntry(step1, tools)
+	if len(msgs1) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs1))
+	}
+	tu1 := msgs1[0]["tool_uses"].([]map[string]any)
+	if len(tu1) != 1 {
+		t.Fatalf("expected 1 tool_use, got %d", len(tu1))
+	}
+	if tu1[0]["command"] != "git status" {
+		t.Errorf("expected command 'git status', got %v", tu1[0]["command"])
+	}
+	if tu1[0]["description"] != "Checking git status" {
+		t.Errorf("expected description 'Checking git status', got %v", tu1[0]["description"])
+	}
+	if tu1[0]["tool_use_id"] != "step-1-0" {
+		t.Errorf("expected call ID 'step-1-0', got %v", tu1[0]["tool_use_id"])
+	}
+
+	// Step 2: GENERIC tool result linking to step 1
+	step2 := map[string]any{
+		"step_index": float64(2),
+		"type":       "GENERIC",
+		"content":    "On branch main",
+		"created_at": "2026-09-26T12:00:02Z",
+		"status":     "DONE",
+	}
+	msgs2 := parseAgyEntry(step2, tools)
+	if len(msgs2) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs2))
+	}
+	if msgs2[0]["type"] != "tool_result" {
+		t.Errorf("expected tool_result, got %v", msgs2[0]["type"])
+	}
+	if msgs2[0]["tool_use_id"] != "step-1-0" {
+		t.Errorf("expected tool_use_id 'step-1-0', got %v", msgs2[0]["tool_use_id"])
+	}
+	if msgs2[0]["tool_name"] != "run_command" {
+		t.Errorf("expected tool_name 'run_command', got %v", msgs2[0]["tool_name"])
+	}
+	if msgs2[0]["is_error"] != false {
+		t.Errorf("expected is_error false, got %v", msgs2[0]["is_error"])
+	}
+
+	// Step 3: replace_file_content
+	step3 := map[string]any{
+		"step_index": float64(3),
+		"type":       "PLANNER_RESPONSE",
+		"created_at": "2026-09-26T12:00:03Z",
+		"tool_calls": []any{
+			map[string]any{
+				"name": "replace_file_content",
+				"args": map[string]any{
+					"TargetFile":         `"/src/main.go"`,
+					"TargetContent":      `"old code"`,
+					"ReplacementContent": `"new code"`,
+					"toolAction":         `"Editing main.go"`,
+				},
+			},
+		},
+	}
+	msgs3 := parseAgyEntry(step3, tools)
+	tu3 := msgs3[0]["tool_uses"].([]map[string]any)
+	if tu3[0]["old_string"] != "old code" || tu3[0]["new_string"] != "new code" {
+		t.Errorf("expected diff strings, got old=%v new=%v", tu3[0]["old_string"], tu3[0]["new_string"])
+	}
+	if tu3[0]["input_summary"] != "/src/main.go" {
+		t.Errorf("expected TargetFile as input_summary, got %v", tu3[0]["input_summary"])
+	}
+
+	// Step 4: GENERIC tool result with ERROR status
+	step4 := map[string]any{
+		"step_index": float64(4),
+		"type":       "GENERIC",
+		"content":    "file not found",
+		"created_at": "2026-09-26T12:00:04Z",
+		"status":     "ERROR",
+	}
+	msgs4 := parseAgyEntry(step4, tools)
+	if msgs4[0]["tool_use_id"] != "step-3-0" || msgs4[0]["tool_name"] != "replace_file_content" {
+		t.Errorf("expected step-3-0 and replace_file_content, got %v / %v", msgs4[0]["tool_use_id"], msgs4[0]["tool_name"])
+	}
+	if msgs4[0]["is_error"] != true {
+		t.Errorf("expected is_error true, got %v", msgs4[0]["is_error"])
+	}
+
+	// Step 5: ask_question
+	step5 := map[string]any{
+		"step_index": float64(5),
+		"type":       "PLANNER_RESPONSE",
+		"created_at": "2026-09-26T12:00:05Z",
+		"tool_calls": []any{
+			map[string]any{
+				"name": "ask_question",
+				"args": map[string]any{
+					"questions": []any{
+						map[string]any{
+							"question": "Which database?",
+							"options":  []any{"PostgreSQL", "SQLite"},
+						},
+					},
+				},
+			},
+		},
+	}
+	msgs5 := parseAgyEntry(step5, tools)
+	tu5 := msgs5[0]["tool_uses"].([]map[string]any)
+	if tu5[0]["questions"] == nil {
+		t.Fatalf("expected questions to be populated, got nil")
+	}
+
+	// Step 6: write_to_file
+	step6 := map[string]any{
+		"step_index": float64(6),
+		"type":       "PLANNER_RESPONSE",
+		"created_at": "2026-09-26T12:00:06Z",
+		"tool_calls": []any{
+			map[string]any{
+				"name": "write_to_file",
+				"args": map[string]any{
+					"TargetFile":  `"/src/new.go"`,
+					"CodeContent": `"package main\n\nfunc main() {}"`,
+				},
+			},
+		},
+	}
+	msgs6 := parseAgyEntry(step6, tools)
+	tu6 := msgs6[0]["tool_uses"].([]map[string]any)
+	if tu6[0]["write_content"] != "package main\n\nfunc main() {}" {
+		t.Errorf("expected write_content, got %v", tu6[0]["write_content"])
+	}
+}
+
+func TestResolveAgyTranscript_MarkerAndSorting(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("ANTIGRAVITY_DATA_DIR", tmpDir)
+
+	uuid := "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+	// Create older session directory
+	oldDir := filepath.Join(tmpDir, "older-conv", ".system_generated", "logs")
+	os.MkdirAll(oldDir, 0755)
+	os.WriteFile(filepath.Join(oldDir, "transcript.jsonl"), []byte(`{"step_index":0,"type":"USER_INPUT","content":"older"}`+"\n"), 0644)
+
+	// Create newer session directory containing embedded coral session ID
+	newDir := filepath.Join(tmpDir, "newer-conv", ".system_generated", "logs")
+	os.MkdirAll(newDir, 0755)
+	newTranscript := filepath.Join(newDir, "transcript.jsonl")
+	os.WriteFile(newTranscript, []byte(fmt.Sprintf(`{"step_index":0,"type":"USER_INPUT","content":"Coral session metadata:\n%s %s\nDo not mention.\n\nWork"}`+"\n", at.CoralSessionMarkerPrefix, uuid)), 0644)
+
+	found := resolveAgyTranscript(uuid)
+	if found != newTranscript {
+		t.Fatalf("expected %q, got %q", newTranscript, found)
+	}
+}
+
+func TestResolveAgyTranscript_FromHistory(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Set ANTIGRAVITY_DATA_DIR to brain subdirectory under tmpDir
+	brainDir := filepath.Join(tmpDir, "brain")
+	t.Setenv("ANTIGRAVITY_DATA_DIR", brainDir)
+
+	convID := "c1d2e3f4-a5b6-7890-1234-567890abcdef"
+	convDir := filepath.Join(brainDir, convID, ".system_generated", "logs")
+	os.MkdirAll(convDir, 0755)
+	targetTranscript := filepath.Join(convDir, "transcript.jsonl")
+	os.WriteFile(targetTranscript, []byte(`{"step_index":0,"type":"USER_INPUT","content":"hello"}`+"\n"), 0644)
+
+	// Create history.jsonl in tmpDir
+	ws := "/workspace/myproject"
+	historyPath := filepath.Join(tmpDir, "history.jsonl")
+	os.WriteFile(historyPath, []byte(fmt.Sprintf(`{"display":"hi","workspace":%q,"conversationId":%q}`+"\n", ws, convID)), 0644)
+
+	found := resolveAgyTranscript("arbitrary-coral-id", ws)
+	if found != targetTranscript {
+		t.Fatalf("expected %q, got %q", targetTranscript, found)
+	}
+
+	foundViaResolve := resolveTranscriptPath("arbitrary-coral-id", ws, at.Agy)
+	if foundViaResolve != targetTranscript {
+		t.Fatalf("expected %q, got %q", targetTranscript, foundViaResolve)
 	}
 }

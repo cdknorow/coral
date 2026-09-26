@@ -762,14 +762,15 @@ func (h *BoardHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Request)
 func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	project := chi.URLParam(r, "project")
 	var body struct {
-		Title        string          `json:"title"`
-		Body         string          `json:"body"`
-		Priority     string          `json:"priority"`
-		CreatedBy    string          `json:"created_by"`
-		SubscriberID string          `json:"subscriber_id"`
-		AssignedTo   string          `json:"assigned_to"`
-		BlockedBy    json.RawMessage `json:"blocked_by,omitempty"`
-		Draft        bool            `json:"draft,omitempty"`
+		Title        string             `json:"title"`
+		Body         string             `json:"body"`
+		Priority     string             `json:"priority"`
+		CreatedBy    string             `json:"created_by"`
+		SubscriberID string             `json:"subscriber_id"`
+		AssignedTo   string             `json:"assigned_to"`
+		BlockedBy    json.RawMessage    `json:"blocked_by,omitempty"`
+		Draft        bool               `json:"draft,omitempty"`
+		Workflow     board.TaskWorkflow `json:"workflow,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -791,16 +792,14 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		body.Priority = "medium"
 	}
 
-	var opts *board.CreateTaskOpts
+	opts := &board.CreateTaskOpts{Draft: body.Draft, Workflow: body.Workflow}
 	if len(body.BlockedBy) > 0 {
 		deps, err := parseBlockedBy(body.BlockedBy, project)
 		if err != nil {
 			errBadRequest(w, err.Error())
 			return
 		}
-		opts = &board.CreateTaskOpts{BlockedBy: deps, MaxDepth: 3, Draft: body.Draft}
-	} else if body.Draft {
-		opts = &board.CreateTaskOpts{Draft: true}
+		opts.BlockedBy, opts.MaxDepth = deps, 32
 	}
 
 	task, err := h.bs.CreateTaskWithOpts(r.Context(), project, body.Title, body.Body, body.Priority, createdBy, opts, body.AssignedTo)
@@ -915,6 +914,20 @@ func (h *BoardHandler) ListAllTasks(w http.ResponseWriter, r *http.Request) {
 }
 
 // ActiveTask returns the subscriber's current in-progress task.
+func (h *BoardHandler) GetTask(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil || id <= 0 {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	task, err := h.bs.GetTask(r.Context(), chi.URLParam(r, "project"), id)
+	if err != nil {
+		errNotFound(w, "task not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, task)
+}
+
 // POST /api/board/{project}/tasks/current
 func (h *BoardHandler) ActiveTask(w http.ResponseWriter, r *http.Request) {
 	project := chi.URLParam(r, "project")
@@ -943,6 +956,7 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 	project := chi.URLParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
+		TaskID       int64  `json:"task_id,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -952,12 +966,12 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
-	task, err := h.bs.ClaimTask(r.Context(), project, body.SubscriberID)
+	task, err := h.bs.ClaimTask(r.Context(), project, body.SubscriberID, body.TaskID)
 	if err != nil {
 		if err.Error() == "complete your current task before claiming a new one" {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		} else {
-			errInternalServer(w, err.Error())
+			errBadRequest(w, err.Error())
 		}
 		return
 	}
@@ -983,8 +997,10 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		SubscriberID string  `json:"subscriber_id"`
-		Message      *string `json:"message"`
+		SubscriberID string               `json:"subscriber_id"`
+		Message      *string              `json:"message"`
+		Outcome      string               `json:"outcome,omitempty"`
+		Artifacts    []board.TaskArtifact `json:"artifacts,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -994,7 +1010,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
-	task, err := h.bs.CompleteTask(r.Context(), project, taskID, body.SubscriberID, body.Message)
+	task, err := h.bs.CompleteTaskWithArtifacts(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts)
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -1020,9 +1036,9 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		if completionMsg != "" {
 			msg = completionMsg
 		}
-		notification := fmt.Sprintf("[Task #%d completed by %s] %s", completedTask.ID, subscriberID, msg)
+		notification := fmt.Sprintf("[Task #%d completed by %s] Outcome: %s; %d artifacts. %s", completedTask.ID, subscriberID, completedTask.Workflow.Outcome, len(completedTask.Workflow.Artifacts), msg)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
-		h.notifyOrchestratorsTaskCompleted(ctx, project, subscriberID, completedTask, msg)
+		h.notifyOrchestratorsTaskCompleted(ctx, project, subscriberID, completedTask, fmt.Sprintf("Outcome: %s. %s", completedTask.Workflow.Outcome, msg))
 
 		// Resolve downstream blocked tasks
 		h.notifyUnblockedTasks(ctx, project, completedTask.ID)
@@ -1073,7 +1089,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		notification := fmt.Sprintf("[Task #%d cancelled by %s] %s", task.ID, body.SubscriberID, task.Title)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
 
-		// Cancelled tasks resolve dependencies (nothing left to wait for)
+		// Only termination dependencies are satisfied by cancellation.
 		h.notifyUnblockedTasks(ctx, project, task.ID)
 	}()
 	writeJSON(w, http.StatusOK, task)
@@ -1160,7 +1176,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		update.BlockedBy = &deps
 	}
 
-	task, prevStatus, err := h.bs.UpdateTask(r.Context(), project, taskID, update, 3)
+	task, prevStatus, err := h.bs.UpdateTask(r.Context(), project, taskID, update, 32)
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -1294,7 +1310,15 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, task)
 }
 
-// notifyUnblockedTasks resolves downstream tasks and sends notifications + nudges.
+// RecoverTaskNotifications delivers queued readiness notices after a restart.
+// Terminal delivery remains best effort; persisted readiness does not depend on it.
+func (h *BoardHandler) RecoverTaskNotifications(ctx context.Context) {
+	if h.bs != nil {
+		h.notifyUnblockedTasks(ctx, "", 0)
+	}
+}
+
+// notifyUnblockedTasks consumes queued transitions and sends notifications + nudges.
 func (h *BoardHandler) notifyUnblockedTasks(ctx context.Context, project string, completedTaskID int64) {
 	unblocked, err := h.bs.ResolveDownstreamTasks(ctx, project, completedTaskID)
 	if err != nil || len(unblocked) == 0 {

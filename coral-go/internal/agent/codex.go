@@ -238,8 +238,6 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, fmt.Sprintf(`-c developer_instructions="$(cat '%s')"`, sysFile))
 	}
 
-	parts = appendCodexCoralHooks(parts)
-
 	// Note: Codex's sandbox may strip env vars from child processes.
 	// coral-board handles this via board_state file fallback (reads job_title
 	// from ~/.coral/board_state_{session}.json when CORAL_SUBSCRIBER_ID is unavailable).
@@ -259,7 +257,7 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 				parts = append(parts, "--sandbox", perms.SandboxMode)
 			}
 			if perms.ApprovalPolicy != "" {
-				parts = append(parts, "-a", perms.ApprovalPolicy)
+				parts = append(parts, "-a", normalizeCodexApprovalPolicy(perms.ApprovalPolicy))
 			}
 		}
 		if perms.Search {
@@ -313,7 +311,31 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 			}
 			continue
 		}
-		if flag == "--sandbox" || strings.HasPrefix(flag, "--sandbox=") || flag == "-a" || flag == "--approval-mode" || strings.HasPrefix(flag, "--approval-mode=") {
+		if flag == "-a" && i+1 < len(params.Flags) {
+			// Older Coral permission profiles used Codex's former "untrusted"
+			// policy. Current Codex accepts only on-request or never.
+			parts = append(parts, flag, normalizeCodexApprovalPolicy(params.Flags[i+1]))
+			i++
+			permissionApplied = true
+			continue
+		}
+		if strings.HasPrefix(flag, "-a=") {
+			parts = append(parts, "-a="+normalizeCodexApprovalPolicy(strings.TrimPrefix(flag, "-a=")))
+			permissionApplied = true
+			continue
+		}
+		if flag == "--approval-mode" && i+1 < len(params.Flags) {
+			parts = append(parts, flag, normalizeCodexApprovalPolicy(params.Flags[i+1]))
+			i++
+			permissionApplied = true
+			continue
+		}
+		if strings.HasPrefix(flag, "--approval-mode=") {
+			parts = append(parts, "--approval-mode="+normalizeCodexApprovalPolicy(strings.TrimPrefix(flag, "--approval-mode=")))
+			permissionApplied = true
+			continue
+		}
+		if flag == "--sandbox" || strings.HasPrefix(flag, "--sandbox=") {
 			permissionApplied = true
 		}
 		if claudeOnlyFlags[flag] {
@@ -341,22 +363,15 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	return strings.Join(ShellQuoteParts(parts), " ")
 }
 
-func appendCodexCoralHooks(parts []string) []string {
-	hookConfig := map[string]string{
-		"hooks.SessionStart":     `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
-		"hooks.UserPromptSubmit": `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
-		"hooks.PreToolUse":       `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
-		"hooks.PostToolUse":      `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
-		"hooks.Stop":             `[{hooks=[{type="command",command="coral-hook-agentic-state"}]}]`,
+func normalizeCodexApprovalPolicy(policy string) string {
+	if policy == "untrusted" {
+		return "on-request"
 	}
-	for _, key := range []string{"hooks.SessionStart", "hooks.UserPromptSubmit", "hooks.PreToolUse", "hooks.PostToolUse", "hooks.Stop"} {
-		parts = append(parts, "-c", key+"="+hookConfig[key])
-	}
-	return parts
+	return policy
 }
 
 func appendCodexFullAuto(parts []string) []string {
-	return append(parts, "--sandbox", "workspace-write", "-a", "on-request")
+	return append(parts, "--sandbox", "workspace-write", "-a", "never")
 }
 
 func appendCodexPermissionMode(parts []string, bypassSandbox bool, mode string) ([]string, bool, bool) {
@@ -378,7 +393,7 @@ func appendCodexPermissionMode(parts []string, bypassSandbox bool, mode string) 
 		parts = append(parts, "--sandbox", "workspace-write", "-a", "on-request")
 		return parts, bypassSandbox, true
 	case "plan":
-		parts = append(parts, "--sandbox", "read-only", "-a", "untrusted")
+		parts = append(parts, "--sandbox", "read-only", "-a", "on-request")
 		return parts, bypassSandbox, true
 	default:
 		slog.Warn("dropping unsupported permission mode for Codex agent", "mode", mode)

@@ -66,7 +66,7 @@ async function run() {
   const C = `document.getElementById('live-history-messages')`;
   const top = () => ev(`Array.from(${C}.children).map(el => el.classList.contains('work-group')
       ? { kind: 'group', open: el.open, steps: el.querySelector('.work-group-count').textContent, latest: el.querySelector('.work-group-latest').textContent }
-      : { kind: el.classList.contains('human') ? 'user' : 'reply', final: el.classList.contains('turn-final'), text: el.innerText.trim() })`);
+      : { kind: el.classList.contains('human') ? 'user' : 'reply', final: el.classList.contains('turn-final'), text: (el.querySelector('.message-text') || el).innerText.trim() })`);
   await sleep(1500);
   let t = await top();
   check('history loads in pages of 400 messages', (await ev(`window.__chatLimits || []`)).every(l => l === '400') && (await ev(`(window.__chatLimits || []).length`)) > 0, JSON.stringify(await ev(`window.__chatLimits`)));
@@ -119,8 +119,11 @@ async function run() {
   check('web links open in a new tab without opener access', refs.ext && refs.ext.target === '_blank' && /noopener/.test(refs.ext.rel), JSON.stringify(refs.ext));
   await ev(`Array.from(${C}.querySelectorAll('[data-file-ref]')).find(e => e.dataset.fileRef.startsWith('coral-go')).click(); true`);
   await sleep(300);
+  for (let i = 0; i < 30; i++) { if (await ev(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`)) break; await sleep(100); }
+  check('clicking a file ref opens its action menu', await ev(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`));
+  await ev(`document.querySelector('.chat-file-menu [data-action="preview"]').click(); true`);
   const refClick = await ev(`({ resolves: window.__resolves, opened: window.__opened, url: location.pathname })`);
-  check('clicking a file ref resolves it and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === '/', JSON.stringify(refClick));
+  check('Preview in Coral resolves the file and opens the Files preview', JSON.stringify(refClick.resolves) === '["coral-go/static/render.js:1558"]' && JSON.stringify(refClick.opened) === '["resolved/coral-go/static/render.js"]' && refClick.url === '/', JSON.stringify(refClick));
 
   // Chat colors come from the theme (theme editor > Chat), nothing overrides them
   const themed = await ev(`(() => { const root = document.documentElement.style; root.setProperty('--chat-prose-inline-code', 'rgb(1, 2, 3)'); root.setProperty('--chat-prose-human-bg', 'rgb(4, 5, 6)');

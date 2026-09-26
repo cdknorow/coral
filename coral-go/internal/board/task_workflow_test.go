@@ -1,0 +1,260 @@
+package board
+
+import (
+	"context"
+	"fmt"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestWorkflowReadinessSurvivesRestart(t *testing.T) {
+	for _, outcome := range []string{"success", "failed", "cancelled"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx := context.Background()
+			path := filepath.Join(t.TempDir(), "board.db")
+			s, err := NewStore(path)
+			require.NoError(t, err)
+			defer func() { s.Close() }()
+			up, err := s.CreateTask(ctx, "upstream", "Build", "", "medium", "lead")
+			require.NoError(t, err)
+			children := map[string]int64{}
+			for _, condition := range []string{"success", "failure", "termination"} {
+				child, err := s.CreateTaskWithOpts(ctx, "downstream", condition, "", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: up.ID, BoardID: "upstream", Condition: condition}}})
+				require.NoError(t, err)
+				children[condition] = child.ID
+			}
+			if outcome == "cancelled" {
+				_, err = s.CancelTask(ctx, "upstream", up.ID, "builder", nil)
+			} else {
+				_, err = s.CompleteTaskWithArtifacts(ctx, "upstream", up.ID, "builder", nil, outcome, nil)
+			}
+			require.NoError(t, err)
+			check := func() {
+				for condition, id := range children {
+					child, err := s.GetTask(ctx, "downstream", id)
+					require.NoError(t, err)
+					want := "blocked"
+					if condition == "termination" || condition == "success" && outcome == "success" || condition == "failure" && outcome == "failed" {
+						want = "pending"
+					}
+					require.Equal(t, want, child.Status)
+				}
+			}
+			check() // No notifier was invoked: readiness is already committed.
+			require.NoError(t, s.Close())
+			s, err = NewStore(path)
+			require.NoError(t, err)
+			check()
+			notices, err := s.ResolveDownstreamTasks(ctx, "", 0)
+			require.NoError(t, err)
+			want := 2
+			if outcome == "cancelled" {
+				want = 1
+			}
+			require.Len(t, notices, want)
+			notices, err = s.ResolveDownstreamTasks(ctx, "", 0)
+			require.NoError(t, err)
+			require.Empty(t, notices)
+			_, err = s.ClaimTask(ctx, "downstream", "worker", children["termination"])
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestWorkflowStartupRepairsLegacyBlockedTasks(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "board.db")
+	s, err := NewStore(path)
+	require.NoError(t, err)
+	defer func() { s.Close() }()
+	up, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
+	require.NoError(t, err)
+	child, err := s.CreateTaskWithOpts(ctx, "team", "Test", "", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: up.ID}}})
+	require.NoError(t, err)
+	// Seed precisely the state left by old versions when the callback was lost.
+	_, err = s.db.ExecContext(ctx, "UPDATE board_tasks SET status = 'completed' WHERE id = ?", up.ID)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+	s, err = NewStore(path)
+	require.NoError(t, err)
+	got, err := s.GetTask(ctx, "team", child.ID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", got.Status)
+}
+
+func TestWorkflowCompletionRollsBackIfReadinessFails(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	up, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
+	require.NoError(t, err)
+	_, err = s.CreateTaskWithOpts(ctx, "team", "Test", "", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: up.ID}}})
+	require.NoError(t, err)
+	_, err = s.db.Exec(`CREATE TRIGGER fail_ready BEFORE INSERT ON task_ready_notifications BEGIN SELECT RAISE(ABORT, 'injected readiness failure'); END`)
+	require.NoError(t, err)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", up.ID, "builder", nil, "success", []TaskArtifact{{Name: "build", Content: "candidate"}})
+	require.ErrorContains(t, err, "injected readiness failure")
+	got, err := s.GetTask(ctx, "team", up.ID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", got.Status)
+	require.Empty(t, got.Workflow.Artifacts)
+}
+
+func TestWorkflowRequiredArtifactLimits(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	names := make([]string, 33)
+	for i := range names {
+		names[i] = fmt.Sprintf("output-%d", i)
+	}
+	_, err := s.CreateTaskWithOpts(ctx, "team", "Invalid", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{RequiredOutputs: names}})
+	require.ErrorContains(t, err, "at most 32")
+	tasks, err := s.ListTasks(ctx, "team")
+	require.NoError(t, err)
+	require.Empty(t, tasks)
+	up, err := s.CreateTaskWithOpts(ctx, "team", "Build", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{RequiredOutputs: names[:32]}})
+	require.NoError(t, err)
+	child, err := s.CreateTaskWithOpts(ctx, "team", "Test", "", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: up.ID, RequiredArtifacts: names[:32]}}})
+	require.NoError(t, err)
+	deps := []TaskDep{{TaskID: up.ID, RequiredArtifacts: names}}
+	_, _, err = s.UpdateTask(ctx, "team", child.ID, TaskUpdate{BlockedBy: &deps}, 32)
+	require.ErrorContains(t, err, "at most 32")
+	got, err := s.GetTask(ctx, "team", child.ID)
+	require.NoError(t, err)
+	require.Len(t, got.BlockedBy[0].RequiredArtifacts, 32)
+	var artifacts []TaskArtifact
+	for _, name := range names[:32] {
+		artifacts = append(artifacts, TaskArtifact{Name: name, Content: "evidence"})
+	}
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", up.ID, "builder", nil, "success", artifacts)
+	require.NoError(t, err)
+	got, err = s.GetTask(ctx, "team", child.ID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", got.Status)
+}
+
+func TestArtifactWorkflowBuildTestRelease(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	build, err := s.CreateTaskWithOpts(ctx, "team", "Build", "Implement", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{Name: "Ship", Stage: "Build", Instructions: "Use the project test suite.", RequiredOutputs: []string{"build"}}})
+	require.NoError(t, err)
+	require.Contains(t, build.Workflow.Instructions, DefaultTaskWorkflowInstructions)
+	require.Contains(t, build.Workflow.Instructions, "Use the project test suite.")
+	test, err := s.CreateTaskWithOpts(ctx, "team", "Test", "Verify", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: build.ID, RequiredArtifacts: []string{"build"}}}, Workflow: TaskWorkflow{Stage: "Test", RequiredOutputs: []string{"test_report"}}})
+	require.NoError(t, err)
+	release, err := s.CreateTaskWithOpts(ctx, "team", "Release", "Publish", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: build.ID, RequiredArtifacts: []string{"build"}}, {TaskID: test.ID, RequiredArtifacts: []string{"test_report"}}}})
+	require.NoError(t, err) // diamond DAG: Release depends on Build directly and through Test
+	require.Equal(t, "blocked", release.Status)
+	_, err = s.ClaimTask(ctx, "team", "tester", test.ID)
+	require.Error(t, err)
+	_, err = s.CompleteTask(ctx, "team", build.ID, "builder", nil)
+	require.ErrorContains(t, err, "required output")
+	unchanged, _ := s.GetTask(ctx, "team", build.ID)
+	require.Equal(t, "pending", unchanged.Status)
+	artifact := TaskArtifact{Name: "build", URI: "https://example.test/builds/42", Revision: "tree-42", Digest: "sha256:42"}
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", build.ID, "builder", nil, "success", []TaskArtifact{artifact})
+	require.NoError(t, err)
+	unblocked, err := s.ResolveDownstreamTasks(ctx, "team", build.ID)
+	require.NoError(t, err)
+	require.Len(t, unblocked, 1)
+	require.Equal(t, test.ID, unblocked[0].ID)
+	claimed, err := s.ClaimTask(ctx, "team", "tester", test.ID)
+	require.NoError(t, err)
+	require.Equal(t, artifact, claimed.Workflow.Inputs[0].Artifacts[0])
+	current := s.ActiveTaskForSubscriber(ctx, "team", "tester")
+	require.Equal(t, claimed.Workflow, current.Workflow)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", test.ID, "tester", nil, "success", []TaskArtifact{{Name: "test_report", Content: "Passed", Revision: "tree-42"}})
+	require.NoError(t, err)
+	unblocked, err = s.ResolveDownstreamTasks(ctx, "team", test.ID)
+	require.NoError(t, err)
+	require.Len(t, unblocked, 1)
+	require.Equal(t, release.ID, unblocked[0].ID)
+	claimed, err = s.ClaimTask(ctx, "team", "releaser", release.ID)
+	require.NoError(t, err)
+	require.Len(t, claimed.Workflow.Inputs, 2)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", build.ID, "builder", nil, "success", []TaskArtifact{{Name: "build", Content: "different revision"}})
+	require.Error(t, err) // evidence is immutable
+	deps := []TaskDep{{TaskID: build.ID}}
+	_, _, err = s.UpdateTask(ctx, "team", release.ID, TaskUpdate{BlockedBy: &deps}, 32)
+	require.Error(t, err) // an executing release cannot switch its inputs
+}
+
+func TestWorkflowFailureCancellationAndRetry(t *testing.T) {
+	for _, outcome := range []string{"failed", "cancelled"} {
+		t.Run(outcome, func(t *testing.T) {
+			s := testStore(t)
+			ctx := context.Background()
+			build, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
+			require.NoError(t, err)
+			children := map[string]*Task{}
+			for _, condition := range []string{"success", "failure", "termination"} {
+				child, err := s.CreateTaskWithOpts(ctx, "team", condition, "", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: build.ID, Condition: condition}}})
+				require.NoError(t, err)
+				children[condition] = child
+			}
+			if outcome == "cancelled" {
+				_, err = s.CancelTask(ctx, "team", build.ID, "builder", nil)
+			} else {
+				_, err = s.CompleteTaskWithArtifacts(ctx, "team", build.ID, "builder", nil, "failed", nil)
+			}
+			require.NoError(t, err)
+			_, err = s.ResolveDownstreamTasks(ctx, "team", build.ID)
+			require.NoError(t, err)
+			for condition, child := range children {
+				got, err := s.GetTask(ctx, "team", child.ID)
+				require.NoError(t, err)
+				want := "blocked"
+				if condition == "termination" || condition == "failure" && outcome == "failed" {
+					want = "pending"
+				}
+				require.Equal(t, want, got.Status, condition)
+			}
+			retry, err := s.CreateTaskWithOpts(ctx, "team", "Build retry", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{RetryOf: build.ID}})
+			require.NoError(t, err)
+			_, err = s.CompleteTask(ctx, "team", retry.ID, "builder", nil)
+			require.NoError(t, err)
+			_, err = s.ResolveDownstreamTasks(ctx, "team", retry.ID)
+			require.NoError(t, err)
+			old, _ := s.GetTask(ctx, "team", children["success"].ID)
+			require.Equal(t, "blocked", old.Status)
+			newDeps := []TaskDep{{TaskID: retry.ID}}
+			rewired, _, err := s.UpdateTask(ctx, "team", old.ID, TaskUpdate{BlockedBy: &newDeps}, 32)
+			require.NoError(t, err)
+			require.Equal(t, "pending", rewired.Status)
+		})
+	}
+}
+
+func TestWorkflowValidationAndPersistence(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "board.db")
+	s, err := NewStore(path)
+	require.NoError(t, err)
+	build, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
+	require.NoError(t, err)
+	for _, condition := range []string{"typo", "success"} {
+		dep := TaskDep{TaskID: build.ID, Condition: condition}
+		if condition == "success" {
+			dep.TaskID = 9999
+		}
+		_, err = s.CreateTaskWithOpts(ctx, "team", "Invalid", "", "medium", "lead", &CreateTaskOpts{Draft: true, BlockedBy: []TaskDep{dep}})
+		require.Error(t, err)
+	}
+	tasks, err := s.ListTasks(ctx, "team")
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", build.ID, "lead", nil, "success", []TaskArtifact{{Name: "report", Content: "immutable result"}})
+	require.NoError(t, err)
+	child, err := s.CreateTaskWithOpts(ctx, "team", "Test", "", "medium", "lead", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: build.ID, RequiredArtifacts: []string{"missing"}}}})
+	require.NoError(t, err)
+	require.Equal(t, "blocked", child.Status)
+	require.NoError(t, s.Close())
+	s, err = NewStore(path)
+	require.NoError(t, err)
+	defer s.Close()
+	got, err := s.GetTask(ctx, "team", build.ID)
+	require.NoError(t, err)
+	require.Equal(t, "immutable result", got.Workflow.Artifacts[0].Content)
+	require.NotEmpty(t, got.Workflow.Instructions)
+}

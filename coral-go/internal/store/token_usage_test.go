@@ -128,7 +128,7 @@ func TestTokenUsageStore_GetUsageSummary(t *testing.T) {
 	})
 	require.NoError(t, err)
 	err = s.RecordUsage(ctx, &TokenUsage{
-		SessionID: "s2", AgentName: "a2", AgentType: "gemini", TotalTokens: 2000, CostUSD: 0.01,
+		SessionID: "s2", AgentName: "a2", AgentType: "agy", TotalTokens: 2000, CostUSD: 0.01,
 	})
 	require.NoError(t, err)
 
@@ -142,7 +142,7 @@ func TestTokenUsageStore_GetUsageSummary(t *testing.T) {
 			assert.Equal(t, int64(1000), s.TotalTokens)
 			assert.Equal(t, 1, s.NumSessions)
 		}
-		if s.AgentType == "gemini" {
+		if s.AgentType == "agy" {
 			assert.Equal(t, int64(2000), s.TotalTokens)
 		}
 	}

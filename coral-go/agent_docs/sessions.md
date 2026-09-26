@@ -580,7 +580,9 @@ Unknown models return `{"ok":true,"context_window":0,"skipped":true}`.
 
 ## Agent Tasks
 
-Per-agent task lists (visible in the session detail panel).
+Personal task queues visible in the session detail panel. For agent automation,
+use the [coral-agent CLI and API](agent-tasks.md). These compatibility endpoints
+share its dependency, artifact, and immutable completion rules.
 
 ### GET `/api/sessions/live/{name}/tasks`
 
@@ -595,11 +597,16 @@ Per-agent task lists (visible in the session detail panel).
     "session_id": "abc123",
     "title": "Implement feature X",
     "completed": 0,
+    "status": "pending",
     "sort_order": 0,
     "created_at": "2025-01-15T10:30:00Z"
   }
 ]
 ```
+
+Responses also include `workflow` and `blocked_by` when present. Numeric
+`completed` values are pending `0`, completed `1`, in progress `2`, skipped `3`,
+blocked `4`, and draft `5`. Check `workflow.outcome` for success versus failure.
 
 ### POST `/api/sessions/live/{name}/tasks`
 
@@ -608,6 +615,11 @@ Per-agent task lists (visible in the session detail panel).
 {"title": "New task", "session_id": "abc123"}
 ```
 
+Also accepts `body`, `priority`, `workflow`, `blocked_by`, `draft`, and `notify`.
+Returns **200** with the existing open task of the same title or the newly
+created task. `notify: true` nudges the agent only for a newly created pending
+task; blocked and draft work does not generate this creation nudge.
+
 ### PATCH `/api/sessions/live/{name}/tasks/{taskID}`
 
 **Request Body:**
@@ -615,9 +627,16 @@ Per-agent task lists (visible in the session detail panel).
 {"title": "Updated title", "completed": 1, "sort_order": 2}
 ```
 
-All fields are optional.
+All fields are optional. `completed: 1` completes successfully, `2` claims, and
+`3` cancels. Setting `0` to reset/reopen is rejected. These transitions enforce
+the same active-task and required-output checks as the agent API. Use
+`/api/agent/tasks/{id}/complete` to submit artifacts or a failed outcome.
+`sort_order` changes display order, not priority-based claim order.
 
 ### DELETE `/api/sessions/live/{name}/tasks/{taskID}`
+
+Only unstarted tasks without incoming dependency, parent, or retry references
+can be deleted. Active and finished tasks cannot be deleted.
 
 ### POST `/api/sessions/live/{name}/tasks/reorder`
 

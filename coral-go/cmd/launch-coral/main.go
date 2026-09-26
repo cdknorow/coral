@@ -9,7 +9,7 @@
 //
 //	launch-coral .                     # Start web server only
 //	launch-coral . claude agents       # Launch Claude agents + web server
-//	launch-coral /path/to/root gemini agents
+//	launch-coral /path/to/root agy agents
 package main
 
 import (

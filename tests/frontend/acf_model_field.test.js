@@ -97,7 +97,7 @@ async function run() {
     await putSettings({
         default_model_claude: '',
         default_model_codex: '',
-        default_model_gemini: '',
+        default_model_agy: '',
         default_model_terminal: '',
     });
     await evalInPage(`window._invalidateDefaultModels && window._invalidateDefaultModels()`);
@@ -110,8 +110,8 @@ async function run() {
     check('S1 dirty flag starts false', await dirtyFlag() === 'false');
 
     // ─── S2: switch to agent type with no default → clears ────────
-    await switchType('gemini');
-    check('S2 switch to gemini (no default) → clears', await modelValue() === '');
+    await switchType('agy');
+    check('S2 switch to agy (no default) → clears', await modelValue() === '');
 
     // ─── S3: switch back → default re-appears ─────────────────────
     await switchType('claude');
@@ -129,7 +129,7 @@ async function run() {
     check('S4 trusted input sets dirty=true', await dirtyFlag() === 'true');
 
     // ─── S5: custom value preserved across agent-type round-trip ──
-    await switchType('gemini');
+    await switchType('agy');
     await switchType('claude');
     check('S5 custom value preserved across type round-trip', await modelValue() === 'my-custom-model');
 
@@ -177,7 +177,7 @@ async function run() {
     await new Promise(r => setTimeout(r, 300));
     check('S10 setAgentConfig with stored model → dirty=true', await dirtyFlag() === 'true');
     check('S10 setAgentConfig with stored model → value preserved', await modelValue() === 'claude-opus-4-7');
-    await switchType('gemini');
+    await switchType('agy');
     check('S10 dirty=true preserves value across type switch', await modelValue() === 'claude-opus-4-7');
 
     await client.close();

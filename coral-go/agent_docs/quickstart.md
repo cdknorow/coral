@@ -17,7 +17,7 @@ it says so.
 |---|---|
 | **tmux** | Required on macOS and Linux. Coral starts without it, but agent launch fails. Not needed on Windows, which defaults to a native PTY backend — though that backend is unexercised and Windows is unsupported; see [Platform support](#platform-support). |
 | **git** | Worktree and branch features need a real repository. |
-| **An agent CLI** | At least one of `claude`, `codex`, `gemini`, or `pi` — **installed and authenticated**. Coral drives these tools; it does not install, configure, or authenticate them. |
+| **An agent CLI** | At least one of `claude`, `codex`, `agy` (Antigravity), or `pi` — **installed and authenticated**. Coral drives these tools; it does not install, configure, or authenticate them. |
 
 Coral supports exactly four agent CLIs:
 
@@ -25,7 +25,7 @@ Coral supports exactly four agent CLIs:
 |---|---|---|
 | Claude Code | `claude` | `npm install -g @anthropic-ai/claude-code` |
 | Codex | `codex` | `npm install -g @openai/codex` |
-| Gemini CLI | `gemini` | `pip install google-gemini-cli` |
+| Antigravity CLI | `agy` | `curl -fsSL https://antigravity.google/install.sh \| bash` |
 | Pi.dev | `pi` | `npm install -g @mariozechner/pi-coding-agent` |
 
 Adding a fifth requires editing `GetAgent` in `internal/agent/agent.go` and recompiling.

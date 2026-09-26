@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -287,8 +288,8 @@ func TranscriptPath(sessionID, workingDirectory, agentType string) string {
 // resolveTranscriptPath finds the transcript file for a session.
 func resolveTranscriptPath(sessionID, workingDirectory, agentType string) string {
 	switch agentType {
-	case at.Gemini:
-		return resolveGeminiTranscript(sessionID)
+	case at.Agy, at.Antigravity, at.Gemini:
+		return resolveAgyTranscript(sessionID, workingDirectory)
 	case at.Codex:
 		return resolveCodexTranscript(sessionID)
 	default:
@@ -329,23 +330,124 @@ func resolveClaudeTranscript(sessionID, workingDirectory string) string {
 	return ""
 }
 
-func resolveGeminiTranscript(sessionID string) string {
+func resolveAgyTranscript(sessionID string, workingDirectory ...string) string {
 	home, _ := os.UserHomeDir()
-	basePath := filepath.Join(home, ".gemini", "tmp")
-	entries, err := os.ReadDir(basePath)
-	if err != nil {
-		return ""
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	basePath := os.Getenv("ANTIGRAVITY_DATA_DIR")
+	if basePath == "" {
+		basePath = filepath.Join(home, ".gemini", "antigravity-cli", "brain")
+	} else if filepath.Base(basePath) != "brain" {
+		if info, err := os.Stat(filepath.Join(basePath, "brain")); err == nil && info.IsDir() {
+			basePath = filepath.Join(basePath, "brain")
 		}
-		candidate := filepath.Join(basePath, entry.Name(), "chats", sessionID+".json")
-		if _, err := os.Stat(candidate); err == nil {
+	}
+
+	// Direct match: brain/<sessionID>/.system_generated/logs/transcript.jsonl
+	direct := filepath.Join(basePath, sessionID, ".system_generated", "logs", "transcript.jsonl")
+	if _, err := os.Stat(direct); err == nil {
+		return direct
+	}
+
+	// Search brain directories for embedded coral session ID, newest first
+	if entries, err := os.ReadDir(basePath); err == nil {
+		type dirEntryWithTime struct {
+			name    string
+			modTime time.Time
+		}
+		var dirs []dirEntryWithTime
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			if info, err := entry.Info(); err == nil {
+				dirs = append(dirs, dirEntryWithTime{name: entry.Name(), modTime: info.ModTime()})
+			}
+		}
+		sort.Slice(dirs, func(i, j int) bool {
+			return dirs[i].modTime.After(dirs[j].modTime)
+		})
+		for _, d := range dirs {
+			candidate := filepath.Join(basePath, d.name, ".system_generated", "logs", "transcript.jsonl")
+			if _, err := os.Stat(candidate); err == nil {
+				if agyTranscriptCoralSessionID(candidate) == sessionID {
+					return candidate
+				}
+			}
+		}
+	}
+
+	// Fallback: match by workingDirectory in history.jsonl
+	var workdir string
+	if len(workingDirectory) > 0 {
+		workdir = workingDirectory[0]
+	}
+	if workdir != "" {
+		agyHome := filepath.Dir(basePath)
+		historyPath := filepath.Join(agyHome, "history.jsonl")
+		if candidate := resolveAgyTranscriptFromHistory(historyPath, basePath, workdir); candidate != "" {
 			return candidate
 		}
 	}
+
+	// Fallback to legacy Gemini tmp directory
+	legacyBase := os.Getenv("GEMINI_TMP_DIR")
+	if legacyBase == "" {
+		legacyBase = filepath.Join(home, ".gemini", "tmp")
+	}
+	if entries, err := os.ReadDir(legacyBase); err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			candidate := filepath.Join(legacyBase, entry.Name(), "chats", sessionID+".json")
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
 	return ""
+}
+
+func resolveAgyTranscriptFromHistory(historyPath, basePath, workingDirectory string) string {
+	f, err := os.Open(historyPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	var lines []string
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			lines = append(lines, line)
+		}
+	}
+
+	cleanTarget := filepath.Clean(workingDirectory)
+	for i := len(lines) - 1; i >= 0; i-- {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(lines[i]), &entry); err != nil {
+			continue
+		}
+		ws, _ := entry["workspace"].(string)
+		if ws == "" {
+			continue
+		}
+		if filepath.Clean(ws) == cleanTarget {
+			if convID, _ := entry["conversationId"].(string); convID != "" {
+				candidate := filepath.Join(basePath, convID, ".system_generated", "logs", "transcript.jsonl")
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func resolveGeminiTranscript(sessionID string, workingDirectory ...string) string {
+	return resolveAgyTranscript(sessionID, workingDirectory...)
 }
 
 func resolveCodexTranscript(sessionID string) string {
@@ -423,11 +525,41 @@ func codexTranscriptCoralSessionID(path string) string {
 	return ""
 }
 
+func agyTranscriptCoralSessionID(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	lineCount := 0
+	for scanner.Scan() {
+		lineCount++
+		if lineCount > 25 {
+			break
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		if sessionID := agent.ExtractCoralSessionID(entry); sessionID != "" {
+			return sessionID
+		}
+	}
+	return ""
+}
+
 // parseTranscriptEntry converts a raw JSONL entry into normalized frontend messages.
 func parseTranscriptEntry(entry map[string]any, toolUseNames map[string]string, agentType string) []map[string]any {
 	switch agentType {
-	case at.Gemini:
-		return parseGeminiEntry(entry)
+	case at.Agy, at.Antigravity, at.Gemini:
+		return parseAgyEntry(entry, toolUseNames)
 	case at.Codex:
 		return parseCodexEntry(entry, toolUseNames)
 	default:
@@ -758,6 +890,244 @@ func truncateContent(s string) string {
 		return s[:10000] + "\n... (truncated)"
 	}
 	return s
+}
+
+var (
+	agyUserRequestRE = regexp.MustCompile(`(?s)<USER_REQUEST>(.*?)</USER_REQUEST>`)
+	agyMetadataRE    = regexp.MustCompile(`(?s)<(?:ADDITIONAL_METADATA|USER_SETTINGS_CHANGE|CONTEXT_SUMMARY|system-reminder|environment_context)>.*?</(?:ADDITIONAL_METADATA|USER_SETTINGS_CHANGE|CONTEXT_SUMMARY|system-reminder|environment_context)>`)
+	coralMetaBlockRE = regexp.MustCompile(`(?s)Coral session metadata:.*?This metadata is for Coral bookkeeping only\. Do not mention it to the user\.\s*`)
+	coralMarkerRE    = regexp.MustCompile(`\[CORAL_SESSION_ID:[^\]]+\]\s*`)
+)
+
+func cleanAgyUserInput(content string) string {
+	if m := agyUserRequestRE.FindStringSubmatch(content); len(m) > 1 {
+		content = m[1]
+	} else {
+		content = agyMetadataRE.ReplaceAllString(content, "")
+	}
+	content = coralMetaBlockRE.ReplaceAllString(content, "")
+	content = coralMarkerRE.ReplaceAllString(content, "")
+	return strings.TrimSpace(content)
+}
+
+func cleanAgyArgString(raw any) string {
+	switch v := raw.(type) {
+	case string:
+		if strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`) && len(v) >= 2 {
+			var unquoted string
+			if err := json.Unmarshal([]byte(v), &unquoted); err == nil {
+				return unquoted
+			}
+		}
+		return v
+	case fmt.Stringer:
+		return v.String()
+	default:
+		if raw == nil {
+			return ""
+		}
+		return fmt.Sprintf("%v", raw)
+	}
+}
+
+// parseAgyEntry handles Antigravity CLI (agy) JSONL transcript format,
+// falling back to legacy Gemini JSON array format when needed.
+func parseAgyEntry(entry map[string]any, toolUseNames map[string]string) []map[string]any {
+	if _, hasType := entry["type"]; !hasType {
+		if _, hasParts := entry["parts"]; hasParts {
+			return parseGeminiEntry(entry)
+		}
+	}
+
+	etype, _ := entry["type"].(string)
+	timestamp, _ := entry["created_at"].(string)
+	if timestamp == "" {
+		timestamp, _ = entry["timestamp"].(string)
+	}
+
+	switch etype {
+	case "USER_INPUT":
+		content, _ := entry["content"].(string)
+		cleaned := cleanAgyUserInput(content)
+		if cleaned == "" || isSystemInjected(cleaned) {
+			return nil
+		}
+		return []map[string]any{{"type": "user", "timestamp": timestamp, "content": cleaned}}
+
+	case "PLANNER_RESPONSE":
+		content, _ := entry["content"].(string)
+		var toolUses []map[string]any
+		if tcs, ok := entry["tool_calls"].([]any); ok {
+			for i, rawTc := range tcs {
+				tc, ok := rawTc.(map[string]any)
+				if !ok {
+					continue
+				}
+				name, _ := tc["name"].(string)
+				callID := fmt.Sprintf("step-%v-%d", entry["step_index"], i)
+				toolUseNames[callID] = name
+				toolUseNames["__last_call_id"] = callID
+				toolUseNames["__last_tool_name"] = name
+
+				args, _ := tc["args"].(map[string]any)
+				if args == nil {
+					args = map[string]any{}
+				}
+
+				toolEntry := map[string]any{
+					"name":        name,
+					"tool_use_id": callID,
+				}
+
+				desc := cleanAgyArgString(args["toolAction"])
+				if desc == "" {
+					desc = cleanAgyArgString(args["toolSummary"])
+				}
+				if desc == "" {
+					desc = cleanAgyArgString(args["Description"])
+				}
+				if desc != "" {
+					toolEntry["description"] = desc
+				}
+
+				switch name {
+				case "run_command":
+					cmd := cleanAgyArgString(args["CommandLine"])
+					if cmd != "" {
+						toolEntry["command"] = cmd
+						toolEntry["input_summary"] = truncate(cmd, 200)
+					}
+				case "replace_file_content":
+					targetFile := cleanAgyArgString(args["TargetFile"])
+					if oldStr := cleanAgyArgString(args["TargetContent"]); oldStr != "" {
+						toolEntry["old_string"] = oldStr
+					}
+					if newStr := cleanAgyArgString(args["ReplacementContent"]); newStr != "" {
+						toolEntry["new_string"] = newStr
+					}
+					if targetFile != "" {
+						toolEntry["input_summary"] = targetFile
+					}
+				case "write_to_file":
+					targetFile := cleanAgyArgString(args["TargetFile"])
+					if code := cleanAgyArgString(args["CodeContent"]); code != "" {
+						toolEntry["write_content"] = truncateContent(code)
+					}
+					if targetFile != "" {
+						toolEntry["input_summary"] = targetFile
+					}
+				case "view_file":
+					if path := cleanAgyArgString(args["AbsolutePath"]); path != "" {
+						startLine := cleanAgyArgString(args["StartLine"])
+						endLine := cleanAgyArgString(args["EndLine"])
+						if startLine != "" && endLine != "" {
+							toolEntry["input_summary"] = fmt.Sprintf("%s:%s-%s", path, startLine, endLine)
+						} else if startLine != "" {
+							toolEntry["input_summary"] = fmt.Sprintf("%s:%s", path, startLine)
+						} else {
+							toolEntry["input_summary"] = path
+						}
+					}
+				case "read_url_content":
+					if u := cleanAgyArgString(args["Url"]); u != "" {
+						toolEntry["input_summary"] = u
+					}
+				case "search_web":
+					if q := cleanAgyArgString(args["query"]); q != "" {
+						toolEntry["input_summary"] = q
+					}
+				case "ask_question":
+					if rawQ, ok := args["questions"]; ok {
+						if qStr, ok := rawQ.(string); ok && strings.HasPrefix(strings.TrimSpace(qStr), "[") {
+							var parsed any
+							if err := json.Unmarshal([]byte(qStr), &parsed); err == nil {
+								toolEntry["questions"] = parsed
+							} else {
+								toolEntry["questions"] = qStr
+							}
+						} else {
+							toolEntry["questions"] = rawQ
+						}
+					}
+				case "invoke_subagent", "send_message", "manage_subagents":
+					if rec := cleanAgyArgString(args["Recipient"]); rec != "" {
+						toolEntry["input_summary"] = rec
+					} else if tn := cleanAgyArgString(args["TypeName"]); tn != "" {
+						toolEntry["input_summary"] = tn
+					} else if role := cleanAgyArgString(args["Role"]); role != "" {
+						toolEntry["input_summary"] = role
+					}
+				}
+
+				if toolEntry["input_summary"] == nil || toolEntry["input_summary"] == "" {
+					if desc != "" {
+						toolEntry["input_summary"] = desc
+					} else {
+						for _, key := range []string{"TargetFile", "AbsolutePath", "CommandLine", "Url", "query", "Prompt", "Message", "path"} {
+							if val := cleanAgyArgString(args[key]); val != "" {
+								toolEntry["input_summary"] = truncate(val, 200)
+								break
+							}
+						}
+					}
+					if toolEntry["input_summary"] == nil || toolEntry["input_summary"] == "" {
+						if b, err := json.Marshal(args); err == nil && len(args) > 0 {
+							toolEntry["input_summary"] = truncate(name+": "+string(b), 200)
+						} else {
+							toolEntry["input_summary"] = name
+						}
+					}
+				}
+
+				toolUses = append(toolUses, toolEntry)
+			}
+		}
+		if content == "" && len(toolUses) == 0 {
+			return nil
+		}
+		return []map[string]any{{
+			"type":      "assistant",
+			"timestamp": timestamp,
+			"content":   content,
+			"text":      content,
+			"tool_uses": toolUses,
+		}}
+
+	case "GENERIC":
+		content, _ := entry["content"].(string)
+		if strings.TrimSpace(content) == "" {
+			return nil
+		}
+		var callID, toolName string
+		if stepIdx, ok := entry["step_index"].(float64); ok {
+			candidateID := fmt.Sprintf("step-%d-0", int(stepIdx)-1)
+			if name, ok := toolUseNames[candidateID]; ok {
+				callID = candidateID
+				toolName = name
+			}
+		}
+		if callID == "" {
+			callID = toolUseNames["__last_call_id"]
+			toolName = toolUseNames["__last_tool_name"]
+		}
+		isError := false
+		if status, _ := entry["status"].(string); status == "ERROR" {
+			isError = true
+		}
+		return []map[string]any{{
+			"type":        "tool_result",
+			"timestamp":   timestamp,
+			"content":     truncateContent(content),
+			"tool_name":   toolName,
+			"tool_use_id": callID,
+			"is_error":    isError,
+		}}
+	}
+
+	if _, ok := entry["role"]; ok {
+		return parseGeminiEntry(entry)
+	}
+	return nil
 }
 
 // parseGeminiEntry handles Gemini JSON transcript format.
