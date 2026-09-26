@@ -635,7 +635,7 @@ export async function refreshLiveHistory() {
             }
             for (const msg of data.messages) {
                 if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) noteInterrupt(session.session_id, msg);
-                else if (msg.type === "user") settlePending(session.session_id, msg);
+                else if (msg.type === "user") rememberUserMessage(session.session_id, msg);
                 else noteAgentActivity(session.session_id, msg);
             }
             historyMessageCount = data.total;
@@ -887,6 +887,7 @@ const PENDING_TTL_MS = 15 * 60 * 1000;
 const STORAGE_KEY_PENDING = "coral-pending-messages";
 const pendingBySession = new Map(); // session_id -> [{ id, text, at, queued }]
 let pendingSeq = 0;
+const recentUserEntriesBySession = new Map();
 
 function loadPendingFromStorage() {
     try {
@@ -929,6 +930,25 @@ function savePendingToStorage() {
 loadPendingFromStorage();
 
 const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
+
+// Codex can record attached images separately or wrap their paths in image
+// metadata. Match the accompanying text, not the transport representation.
+function pendingMatchText(text) {
+    const normalized = normalizeMsg(String(text || "")
+        .replace(/<image\b[^>]*\bpath="([^"]+)"[^>]*>[\s\S]*?<\/image>/g, '$1')
+        .replace(/\[Image #\d+\]/g, ''));
+    const body = normalized.replace(/^(?:\/\S*\/uploads\/\S+\s+)+/, '').trim();
+    return body || normalized;
+}
+
+function rememberUserMessage(sessionId, msg) {
+    const entries = recentUserEntriesBySession.get(sessionId) || [];
+    const entry = { ...msg, receivedAt: Date.now(), remaining: pendingMatchText(msg.content) };
+    entries.push(entry);
+    recentUserEntriesBySession.set(sessionId, entries.slice(-200));
+    settlePending(sessionId, entry);
+}
+
 
 // Claude Code records an Esc interrupt as a user entry like this
 const INTERRUPT_RE = /^\[Request interrupted by user[^\]]*\]$/;
@@ -975,14 +995,19 @@ function isCoralNudge(content) {
 }
 
 /** Record a message just sent to an agent so the chat can show it right away. */
-export function addPendingMessage(sessionId, text) {
+export function addPendingMessage(sessionId, text, sentAt = Date.now()) {
     if (!sessionId || !normalizeMsg(text)) return;
     const session = (state.liveSessions || []).find(s => s.session_id === sessionId)
         || (state.currentSession && state.currentSession.session_id === sessionId ? state.currentSession : { session_id: sessionId });
     const queued = agentIsBusy(session);
     const list = pendingBySession.get(sessionId) || [];
-    list.push({ id: ++pendingSeq, text, at: Date.now(), queued });
+    list.push({ id: ++pendingSeq, text, at: sentAt, queued });
     pendingBySession.set(sessionId, list);
+    // A fast transcript poll may beat the send response. Reconcile against
+    // unconsumed recent receipts instead of waiting for another transcript entry.
+    for (const entry of recentUserEntriesBySession.get(sessionId) || []) {
+        if (entry.receivedAt >= sentAt && !Number.isNaN(Date.parse(entry.timestamp || ""))) settlePending(sessionId, entry);
+    }
     savePendingToStorage();
     if (!queued) lastSendAt.set(sessionId, Date.now());
     const container = document.getElementById("live-history-messages");
@@ -1021,7 +1046,7 @@ function noteInterrupt(sessionId, msg) {
 function settlePending(sessionId, msg) {
     const list = pendingBySession.get(sessionId);
     if (!list || !list.length) return;
-    let rest = normalizeMsg(msg.content);
+    let rest = msg.remaining;
     const ts = Date.parse(msg.timestamp || "");
     if (!rest) return;
     const whole = rest;
@@ -1029,7 +1054,7 @@ function settlePending(sessionId, msg) {
     let settled = 0;
     for (let i = 0; i < list.length;) {
         const p = list[i];
-        const want = normalizeMsg(p.text);
+        const want = pendingMatchText(p.text);
         const at = eligible(p) && want ? rest.indexOf(want) : -1;
         if (at !== -1) {
             rest = rest.slice(0, at) + rest.slice(at + want.length);
@@ -1041,12 +1066,14 @@ function settlePending(sessionId, msg) {
     }
     // The transcript may hold a shortened form of a long message
     if (!settled) {
-        const i = list.findIndex(p => eligible(p) && normalizeMsg(p.text).includes(whole));
+        const i = list.findIndex(p => eligible(p) && pendingMatchText(p.text).includes(whole));
         if (i !== -1) {
             list.splice(i, 1);
             settled++;
+            rest = "";
         }
     }
+    msg.remaining = rest;
     // The agent took one of our messages: it is working on it from then on
     if (settled) {
         lastSendAt.set(sessionId, Number.isNaN(ts) ? Date.now() : ts);

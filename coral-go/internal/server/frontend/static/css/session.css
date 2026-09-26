@@ -538,6 +538,29 @@
     box-shadow: inset 0 -1px 0 var(--sidebar-separator, rgba(127, 127, 127, 0.18));
 }
 
+/* Teams use a lightweight header rather than a framed card. */
+.session-board-card.session-team-group,
+.session-board-card.session-team-group:hover {
+    border: none;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+.session-team-group > .board-card-header {
+    border-radius: 4px;
+    box-shadow: none;
+}
+.session-team-group > .board-card-header .group-name-line {
+    color: var(--team-accent, var(--accent));
+}
+.team-group-icon {
+    flex-shrink: 0;
+    margin-right: 3px;
+}
+.session-team-group.team-sleeping > .board-card-header .group-name-line {
+    color: var(--text-secondary);
+}
+
 .board-card-subline {
     font-size: 9px;
     font-weight: 400;

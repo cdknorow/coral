@@ -43,6 +43,7 @@ export async function sendCommand() {
     const command = parts.join(" ");
     if (!command) return;
     const sentSessionId = state.currentSession.session_id;
+    const sentAt = Date.now();
 
     // Try WebSocket path first (sends text, then Enter separately)
     if (pendingAttachments.length === 0) {
@@ -50,7 +51,7 @@ export async function sendCommand() {
         if (xterm.sendTerminalInputWs(command)) {
             // Send Enter after delay so bracket paste + tmux processing completes
             setTimeout(() => xterm.sendTerminalInputWs("\r"), 300);
-            addPendingMessage(sentSessionId, command);
+            addPendingMessage(sentSessionId, command, sentAt);
             input.value = "";
             const key = sessionKey(state.currentSession);
             if (key) saveSessionDraft(key, "");
@@ -78,7 +79,7 @@ export async function sendCommand() {
             showToast(result.error, true);
             console.error("Send error:", result.error);
         } else {
-            addPendingMessage(sentSessionId, command);
+            addPendingMessage(sentSessionId, command, sentAt);
             input.value = "";
             clearAttachments();
             const key = sessionKey(state.currentSession);

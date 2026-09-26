@@ -343,6 +343,24 @@ async function run() {
   check('history: tool output is never rendered as reply prose', !hist.outputInProse && hist.toolRows >= 2, JSON.stringify(hist));
   check('history: user turns keep Edit & Resubmit', hist.editBtns === hist.kinds.filter(k => k === 'user').length && hist.editBtns > 0, JSON.stringify(hist.kinds));
 
+  await ev(`window.__msgs.push({type:'user',content:${JSON.stringify(made.pending)},timestamp:new Date().toISOString()}); true`);
+  await sleep(2000);
+  // Image paths and transcript envelopes must not leave acknowledged sends stuck.
+  await ev(`import('/static/live_chat.js').then(m => { m.addPendingMessage(${JSON.stringify(SID)}, '/Users/test/.coral/uploads/shot.png Remove team borders and shadows.'); window.__msgs.push({type:'user', content:'<image name=[Image #1] path="/Users/test/.coral/uploads/shot.png"></image>[Image #1]', timestamp:new Date().toISOString()}, {type:'user', content:'About the sidebar: Remove team borders and shadows.', timestamp:new Date().toISOString()}); })`);
+  await sleep(2000);
+  check('image attachment recorded separately still settles its message text', await ev(`!${C}.querySelector('.pending-messages')`));
+  check('acknowledged image send is removed from persisted pending state', await ev(`!(JSON.parse(localStorage.getItem('coral-pending-messages') || '{}')[${JSON.stringify(SID)}] || []).length`));
+
+  await ev(`window.fastSendAt = Date.now(); window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
+  await sleep(2000);
+  await ev(`import('/static/live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement', window.fastSendAt))`);
+  check('transcript receipt arriving before send response settles immediately', await ev(`!${C}.querySelector('.pending-messages')`));
+  await ev(`import('/static/live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement'))`);
+  check('one transcript receipt cannot acknowledge a repeated send twice', await ev(`!!${C}.querySelector('.pending-messages')`));
+  await ev(`window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
+  await sleep(2000);
+  check('repeated send settles only on its own receipt', await ev(`!${C}.querySelector('.pending-messages')`));
+
   await client.close();
   const failed = results.filter(r => r === 'FAIL').length;
   console.log(`\n${results.length - failed}/${results.length} passed`);

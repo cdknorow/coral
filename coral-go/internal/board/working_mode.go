@@ -25,9 +25,9 @@ func (m *WorkingMode) normalize() error {
 	case "none":
 		m.Instructions = ""
 	case "shared_checkout":
-		m.Instructions = "Work in the team's shared checkout. Coordinate file ownership before editing; preserve teammates' uncommitted changes. Commit only your task's changes and report the exact revision."
+		m.Instructions = "In the shared checkout, coordinate file ownership, preserve teammates' changes, and commit only your task's work."
 	case "worktrees":
-		m.Instructions = "Work in an isolated Git worktree and branch for this task; reuse an existing isolated task checkout when appropriate. Start from the agreed base revision. Do not change another agent's checkout. Publish the exact commit and hand-off artifacts; downstream agents must consume that revision."
+		m.Instructions = "Use an isolated Git worktree and branch from the agreed base; reuse your task's checkout if available. Leave teammates' checkouts untouched and publish the exact commit."
 	default:
 		return fmt.Errorf("mode must be none, shared_checkout, or worktrees")
 	}
@@ -36,7 +36,7 @@ func (m *WorkingMode) normalize() error {
 		return fmt.Errorf("custom instructions must be at most 4096 bytes")
 	}
 	if m.DependencyGuidance {
-		m.Instructions = joinModeInstruction(m.Instructions, "Use separate dependent tasks for implementation, testing, and release. Declare prerequisites and named required outputs. Consume the upstream revision and artifacts returned on claim. Publish evidence on completion; wait for readiness notifications rather than polling blocked tasks.")
+		m.Instructions = joinModeInstruction(m.Instructions, "Connect stages as separate dependent tasks with explicit prerequisites and named required outputs.")
 	}
 	m.Instructions = joinModeInstruction(m.Instructions, m.CustomInstructions)
 	return nil
@@ -61,7 +61,11 @@ func loadWorkingMode(ctx context.Context, db sqlx.QueryerContext, project string
 	if err != nil {
 		return m, err
 	}
-	err = json.Unmarshal([]byte(data), &m)
+	if err = json.Unmarshal([]byte(data), &m); err != nil {
+		return m, err
+	}
+	// Regenerate current guidance; claim snapshots in task_workflows stay intact.
+	err = m.normalize()
 	return m, err
 }
 func (s *Store) GetWorkingMode(ctx context.Context, project string) (WorkingMode, error) {
