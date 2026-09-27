@@ -377,6 +377,18 @@ func getLogStatus(logPath string) map[string]any {
 	return result
 }
 
+func usageLimitNotice(logPath string) string {
+	info := getLogStatus(logPath)
+	lines, _ := info["recent_lines"].([]string)
+	for _, line := range lines {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "usage limit") || strings.Contains(lower, "weekly limit") {
+			return "This agent reached its weekly usage limit and cannot continue until the limit resets."
+		}
+	}
+	return ""
+}
+
 // ── List / Detail ───────────────────────────────────────────────────────
 
 // List returns all live agent sessions with enriched metadata.
@@ -462,7 +474,6 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if boardSubs == nil {
 		boardSubs = map[string]*board.Subscriber{}
 	}
-
 	// Fetch board unread counts
 	var allUnread map[string]int
 	if h.bs != nil {
@@ -1091,6 +1102,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// windows polling the same session; each client's own count is used instead.
 	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
 	messages, total := h.jsonl.ReadAllMessages(id, workingDir, agentType)
+	limitNotice := usageLimitNotice(h.findLogPath(agentType, sessionID))
 	if after > 0 {
 		messages = messages[min(after, len(messages)):]
 	}
@@ -1116,14 +1128,15 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		hasMore := start > 0
 		messages = messages[start:end]
 		writeJSON(w, http.StatusOK, map[string]any{
-			"messages": messages,
-			"total":    total,
-			"has_more": hasMore,
+			"messages":     messages,
+			"total":        total,
+			"has_more":     hasMore,
+			"limit_notice": limitNotice,
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"messages": messages, "total": total})
+	writeJSON(w, http.StatusOK, map[string]any{"messages": messages, "total": total, "limit_notice": limitNotice})
 }
 
 // Info returns enriched metadata for the session info modal.

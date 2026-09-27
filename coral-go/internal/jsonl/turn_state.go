@@ -41,6 +41,7 @@ func CodexTurnEvent(path string) (event string, at time.Time) {
 	}
 	lines := bytes.Split(data, []byte{'\n'})
 	// A trailing partial record is not committed evidence.
+	active := false
 	for _, line := range lines[:len(lines)-1] {
 		var entry struct {
 			Timestamp string `json:"timestamp"`
@@ -50,16 +51,30 @@ func CodexTurnEvent(path string) (event string, at time.Time) {
 			} `json:"payload"`
 		}
 		if json.Unmarshal(line, &entry) != nil || entry.Type != "event_msg" {
+			// Codex writes response/tool records between task_started and
+			// task_complete. They are transcript activity even when no Coral
+			// hook event has been emitted for the latest write.
+			var activity struct {
+				Timestamp string `json:"timestamp"`
+			}
+			if active && json.Unmarshal(line, &activity) == nil {
+				if timestamp, err := time.Parse(time.RFC3339Nano, activity.Timestamp); err == nil {
+					event, at = "prompt_submit", timestamp
+				}
+			}
 			continue
 		}
 		kind := ""
 		switch entry.Payload.Type {
 		case "task_started", "user_message":
 			kind = "prompt_submit"
+			active = true
 		case "task_complete":
 			kind = "stop"
+			active = false
 		case "turn_aborted":
 			kind = "session_reset"
+			active = false
 		}
 		if kind == "" {
 			continue

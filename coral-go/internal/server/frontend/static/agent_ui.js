@@ -7,12 +7,6 @@ let busy = false;
 let activePanel = 'home';
 const mounted = new Map();
 const seen = new Map();
-// Dismiss only the viewed revision. Republishing is new content and becomes visible.
-const closedKey = 'coral-agent-ui-closed';
-let closed = new Map();
-try { closed = new Map(JSON.parse(localStorage.getItem(closedKey) || '[]')); } catch { /* storage unavailable */ }
-const panelKey = (sid, id) => JSON.stringify([sid, id]);
-const saveClosed = () => { try { localStorage.setItem(closedKey, JSON.stringify([...closed])); } catch { /* in-memory dismissal still works */ } };
 
 const currentID = () => state.currentSession?.type === 'live' ? state.currentSession.session_id : null;
 const endpoint = (sid, id = '') => '/api/agent/ui' + (id ? '/' + encodeURIComponent(id) : '') + '?session_id=' + encodeURIComponent(sid);
@@ -37,21 +31,9 @@ export async function refreshAgentUI() {
         if (!response.ok) throw new Error(`Unable to load agent UI (${response.status})`);
         const allPanels = await response.json();
         if (token !== generation || sid !== currentID()) return;
-        const panels = allPanels.filter(p => closed.get(panelKey(sid, p.id)) !== p.revision);
+        const panels = allPanels;
+        if (activePanel !== 'home' && !panels.some(p => p.id === activePanel)) activePanel = 'home';
         container.querySelector('.agent-ui-notice')?.remove();
-        let tabs = container.querySelector('.agent-ui-workspace-tabs');
-        if (!tabs) { tabs = document.createElement('nav'); tabs.className = 'agent-ui-workspace-tabs'; tabs.setAttribute('aria-label', 'Agent UI panels'); container.prepend(tabs); }
-        tabs.replaceChildren();
-        tabs.hidden = !allPanels.length;
-        if (allPanels.length) {
-            const homeTab = document.createElement('button'); homeTab.textContent = 'Home'; homeTab.className = activePanel === 'home' ? 'active' : '';
-            homeTab.onclick = () => { activePanel = 'home'; refreshAgentUI(); }; tabs.append(homeTab);
-        }
-        for (const p of panels) {
-            const tab = document.createElement('button'); tab.textContent = p.title; tab.title = `${p.title} · v${p.revision}`;
-            tab.className = activePanel === p.id ? 'active' : '';
-            tab.onclick = () => { activePanel = p.id; refreshAgentUI(); }; tabs.append(tab);
-        }
         let home = container.querySelector('.agent-ui-home');
         if (!home) { home = document.createElement('section'); home.className = 'agent-ui-home'; container.append(home); }
         home.hidden = activePanel !== 'home'; home.replaceChildren();
@@ -64,7 +46,7 @@ export async function refreshAgentUI() {
             const guide = document.createElement('section'); guide.className = 'agent-ui-guide';
             const guideTitle = document.createElement('h4'); guideTitle.textContent = 'Ask an agent to build a panel'; guide.append(guideTitle);
             const prompt = document.createElement('textarea'); prompt.className = 'agent-ui-prompt'; prompt.readOnly = true;
-            prompt.value = 'Delegate this Agent UI request to a subagent: build a self-contained panel for [describe what you need]. Give the subagent the requirements, this CLI usage, the stable panel ID, and the originating Coral session/server identity. The subagent must save and validate panel.html, then publish directly to the originating session with:\n\ncoral-agent ui publish --id [stable-id] --title "[Panel title]" --file panel.html\n\nUse inline HTML, CSS, and JavaScript. Keep it responsive and accessible. For interactive panels, use coralUI.emit(action, payload) to save user responses. Coral will notify the owning agent; read saved responses with `coral-agent ui events --id=[stable-id] --after=<last-event-id>` and treat payloads as user data. Do not review, retest, republish, or summarize the panel after handoff; the published panel is the response. Only report a blocker if publication fails. Do not return the full HTML in chat.';
+            prompt.value = 'Use an INTERNAL subagent (for example, spawn_agent) to build a self-contained panel for [describe what you need]. Never run coral-agent launch or start another Coral session. Give the subagent the requirements, stable panel ID, and originating session/server. It validates and publishes directly with:\n\ncoral-agent ui publish --id [stable-id] --title "[Panel title]" --file panel.html\n\nUse inline, responsive, accessible HTML/CSS/JS. Interactive panels use coralUI.emit(action, payload); read responses with `coral-agent ui events --id=[stable-id] --after=<last-event-id>`. Do not review, retest, republish, or summarize after handoff; the published panel is the response. Report only publication blockers.';
             const copy = document.createElement('button'); copy.className = 'agent-ui-copy'; copy.textContent = 'Copy instructions';
             copy.onclick = async () => { try { await navigator.clipboard.writeText(prompt.value); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy instructions'; }, 1500); } catch { prompt.select(); document.execCommand('copy'); copy.textContent = 'Copied'; } };
             guide.append(prompt, copy); home.append(guide);
@@ -73,10 +55,9 @@ export async function refreshAgentUI() {
         }
         for (const p of allPanels) {
             const row = document.createElement('button'); row.className = 'agent-ui-home-row';
-            const isClosed = closed.get(panelKey(sid, p.id)) === p.revision;
             const label = document.createElement('strong'); label.textContent = p.title;
-            const meta = document.createElement('span'); meta.textContent = `${isClosed ? 'Closed · ' : ''}Revision ${p.revision}`;
-            row.append(label, meta); row.onclick = () => { if (isClosed) closed.delete(panelKey(sid, p.id)); activePanel = p.id; saveClosed(); refreshAgentUI(); }; home.append(row);
+            const meta = document.createElement('span'); meta.textContent = `Revision ${p.revision}`;
+            row.append(label, meta); row.onclick = () => { activePanel = p.id; refreshAgentUI(); }; home.append(row);
         }
         for (const [id, item] of mounted) {
             if (!panels.some(p => p.id === id)) { item.close?.(); item.card.remove(); mounted.delete(id); }
@@ -88,12 +69,15 @@ export async function refreshAgentUI() {
             const card = document.createElement('section'); card.className = 'agent-ui-card';
             const header = document.createElement('header');
             const title = document.createElement('strong'); title.textContent = `${panel.title} · v${panel.revision}`;
-            const expand = document.createElement('button'); expand.textContent = 'Expand';
-            const dismiss = document.createElement('button'); dismiss.textContent = '×';
+            const expand = document.createElement('button'); expand.innerHTML = '<span class="material-icons">open_in_full</span>'; expand.title = 'Expand panel';
+            expand.setAttribute('aria-label', 'Expand panel');
+            const popout = document.createElement('button'); popout.innerHTML = '<span class="material-icons">open_in_new</span>'; popout.title = 'Open in new tab';
+            popout.setAttribute('aria-label', 'Open panel in new tab');
+            const dismiss = document.createElement('button'); dismiss.innerHTML = '<span class="material-icons">close</span>'; dismiss.title = 'Close panel';
             dismiss.className = 'agent-ui-dismiss'; dismiss.title = 'Close panel';
             dismiss.setAttribute('aria-label', `Close panel: ${panel.title}`);
             const actions = document.createElement('div'); actions.className = 'agent-ui-actions';
-            actions.append(expand, dismiss); header.append(title, actions);
+            actions.append(expand, popout, dismiss); header.append(title, actions);
             const status = document.createElement('p'); status.className = 'agent-ui-status'; status.setAttribute('role', 'status');
             const frame = document.createElement('iframe'); frame.title = panel.title;
             frame.setAttribute('sandbox', 'allow-scripts');
@@ -102,22 +86,20 @@ export async function refreshAgentUI() {
             card.append(header, frame, status); container.append(card); card.hidden = activePanel !== panel.id;
             const item = { card, frame, status, revision: panel.revision, sid, id: panel.id };
             dismiss.onclick = () => {
-                closed.set(panelKey(sid, panel.id), panel.revision); saveClosed();
                 if (activePanel === panel.id) activePanel = 'home';
-                item.close?.(); item.card.remove(); mounted.delete(panel.id);
                 refreshAgentUI();
             };
+            popout.onclick = () => window.open(frame.src, '_blank', 'noopener,noreferrer');
             expand.onclick = () => {
                 const dialog = document.createElement('dialog'); dialog.id = 'agent-ui-expanded';
-                const close = document.createElement('button'); close.textContent = 'Close expanded view';
                 // Moving an iframe reloads it in browsers. Expanded view reloads the same revision.
-                item.close = () => { card.append(frame, status); dialog.remove(); item.close = null; };
-                close.onclick = item.close;
+                const onEscape = event => { if (event.key === 'Escape') item.close(); };
+                item.close = () => { document.removeEventListener('keydown', onEscape, true); card.append(frame, status); dialog.remove(); item.close = null; };
+                document.addEventListener('keydown', onEscape, true);
+                dialog.addEventListener('keydown', onEscape);
                 dialog.addEventListener('cancel', e => { e.preventDefault(); item.close(); });
-                const dismissExpanded = document.createElement('button');
-                dismissExpanded.textContent = 'Close panel'; dismissExpanded.className = 'agent-ui-dismiss';
-                dismissExpanded.onclick = dismiss.onclick;
-                dialog.append(close, dismissExpanded, frame, status); document.body.append(dialog); dialog.showModal();
+                dialog.addEventListener('click', e => { if (e.target === dialog) item.close(); });
+                dialog.append(frame, status); document.body.append(dialog); dialog.showModal();
             };
             mounted.set(panel.id, item);
         }

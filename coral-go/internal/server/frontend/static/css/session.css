@@ -1827,6 +1827,8 @@
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
 .availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; }
 .availability-badge.is-free { color: var(--success, #62c98a); }
+.availability-badge { color: var(--text-secondary); }
+.availability-task_idle .availability-badge, .availability-summary-task_idle { color: #d29922; }
 .team-availability-dialog ul { padding-left: 18px; font-size: 13px; }
 .team-availability-dialog li { margin: 8px 0; }
 @media(max-width: 480px) { .team-availability-dialog { padding: 16px; } }

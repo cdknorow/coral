@@ -140,7 +140,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		}
 		return agents[i].Name < agents[j].Name
 	})
-	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "offline": 0, "unknown": 0, "unavailable": 0}
+	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "offline": 0, "unknown": 0, "unavailable": 0}
 	for _, a := range agents {
 		summary[a.Availability]++
 	}
@@ -186,9 +186,12 @@ func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscr
 	case state.NeedsInput:
 		a.Availability = "needs_input"
 		a.Reason = "Waiting for user input or approval"
-	case active:
+	case active && state.Working:
 		a.Availability = "busy"
-		a.Reason = "Has an in-progress task"
+		a.Reason = "Has an in-progress task and is working"
+	case active:
+		a.Availability = "task_idle"
+		a.Reason = "Agent has task but is idle"
 	case state.Working:
 		a.Availability = "busy"
 		a.Reason = "Agent is working outside a claimed task"

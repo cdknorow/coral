@@ -73,7 +73,7 @@ func TestTeamAvailabilityQueuesAndRuntime(t *testing.T) {
 		Summary    map[string]int     `json:"summary"`
 	}
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	expected := map[string]string{"free": "available", "board-busy": "busy", "personal-busy": "busy", "queued": "queued", "working": "busy", "input": "needs_input", "sleeping": "sleeping", "offline": "offline", "unknown": "unknown"}
+	expected := map[string]string{"free": "available", "board-busy": "task_idle", "personal-busy": "task_idle", "queued": "queued", "working": "busy", "input": "needs_input", "sleeping": "sleeping", "offline": "offline", "unknown": "unknown"}
 	require.Len(t, result.Agents, len(expected))
 	for _, a := range result.Agents {
 		require.Equal(t, expected[a.Name], a.Availability, a.Name)
@@ -101,7 +101,7 @@ func TestAvailabilityBlockedAndDraftDoNotReserveAgent(t *testing.T) {
 	require.True(t, a.Available)
 	a.Tasks = append(a.Tasks, availabilityTask{Status: "in_progress"})
 	classifyAvailability(&a, store.LiveSession{AgentType: "claude"}, true, true, SessionState{AwaitingUser: true}, true)
-	require.Equal(t, "busy", a.Availability)
+	require.Equal(t, "task_idle", a.Availability)
 }
 
 func TestAvailabilityTranscriptFallbackRespectsNewerHooks(t *testing.T) {

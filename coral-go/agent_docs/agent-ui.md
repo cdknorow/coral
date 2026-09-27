@@ -16,7 +16,10 @@ Home when switching agents.
 
 ## Agent handoff rule
 
-For Agent UI requests, delegate directly to a subagent. The subagent owns
+For Agent UI requests, delegate directly to an **internal subagent** using the
+host agent's delegation mechanism (for example, `spawn_agent`). Do not run
+`coral-agent launch`, start another Coral agent, or create a second Coral
+session for this work. The internal subagent owns
 building the panel, performing appropriate validation, and publishing it with
 `coral-agent ui publish`. The requesting agent does not review, retest, or publish
 the panel afterward, and does not send progress updates or a completion summary

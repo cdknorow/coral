@@ -13,6 +13,7 @@ func TestCodexTurnEvent(t *testing.T) {
 	cases := []struct{ name, data, want string }{
 		{"missing hooks", complete, "stop"},
 		{"new turn", complete + `{"timestamp":"2026-09-26T16:30:00Z","type":"event_msg","payload":{"type":"task_started"}}` + "\n", "prompt_submit"},
+		{"active transcript", complete + `{"timestamp":"2026-09-26T16:30:00Z","type":"event_msg","payload":{"type":"task_started"}}` + "\n" + `{"timestamp":"2026-09-26T16:30:01Z","type":"response_item","payload":{"type":"message"}}` + "\n", "prompt_submit"},
 		{"partial new record", complete + `{"timestamp":`, "stop"},
 		{"no lifecycle", `{"type":"event_msg","payload":{"type":"item_completed"}}` + "\n", ""},
 		{"invalid timestamp", `{"timestamp":"bad","type":"event_msg","payload":{"type":"task_complete"}}` + "\n", ""},

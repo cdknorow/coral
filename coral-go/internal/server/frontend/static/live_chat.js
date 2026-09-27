@@ -568,6 +568,20 @@ function renderMessage(msg, container, agentType = "claude") {
     }
 }
 
+function syncUsageLimitNotice(container, notice) {
+    const existing = container.querySelector('.chat-usage-limit-notice');
+    if (!notice) {
+        existing?.remove();
+        return;
+    }
+    if (existing) {
+        existing.querySelector('.message-text').textContent = notice;
+        return;
+    }
+    const bubble = makeBubble('chat-note chat-usage-limit-notice', `<span class="material-icons">warning</span><span class="message-text">${escapeHtml(notice)}</span>`);
+    container.append(bubble);
+}
+
 /** Render a full transcript into an empty container (history Chat tab). */
 export function renderTranscript(messages, container, agentType = "claude") {
     container.dataset.agentType = agentType;
@@ -645,6 +659,7 @@ export async function refreshLiveHistory() {
             initialLoadDone = true;
             _updateLoadMoreButton(container);
         }
+        syncUsageLimitNotice(container, data.limit_notice || '');
 
         // Pending first: it settles its place at the bottom, then the working row goes above it
         syncPendingBubbles(container, session.session_id);
