@@ -149,6 +149,9 @@
                                 <button class="agentic-tab" onclick="switchAgenticTab('activity', 'top')" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
                                     <span class="material-icons">timeline</span>
                                 </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('agent-ui', 'top')" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
+                                    <span class="material-icons">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
+                                </button>
                                 <!-- Custom view tabs (disabled for now) -->
                                 <span id="custom-view-tabs" style="display:none"></span>
                                 <!-- <button class="agentic-tab agentic-tab-add" onclick="window._showCreateViewModal()" id="agentic-tab-add-view" title="Add custom view" aria-label="Add custom view">
@@ -206,6 +209,7 @@
                                 </div>
                             </div>
                             <!-- Custom view panels inserted here dynamically -->
+                            <div id="agentic-panel-agent-ui" class="agentic-panel"></div>
                             <div id="custom-view-panels"></div>
                         </div>
                     </div>

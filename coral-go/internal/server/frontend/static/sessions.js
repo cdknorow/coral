@@ -1,3 +1,4 @@
+import { refreshAgentUI } from './agent_ui.js';
 /* Session selection and management */
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
@@ -55,6 +56,8 @@ export async function selectLiveSession(name, agentType, sessionId) {
         capabilities: agentData?.capabilities || null,
         board_project: agentData?.board_project || null,
     };
+
+    refreshAgentUI();
 
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);
@@ -258,6 +261,7 @@ export async function selectHistorySession(sessionId) {
     }
 
     state.currentSession = { type: "history", name: sessionId };
+    refreshAgentUI();
 
     // Update URL hash for bookmarking
     window.location.hash = '#session/' + sessionId;

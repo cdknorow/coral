@@ -1,0 +1,27 @@
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:20px;background:#171b24;color:#e5eaf5;font:14px system-ui,sans-serif}h1{font-size:21px;margin:0 0 6px}p{color:#aebbd0;line-height:1.5;margin:0 0 16px}.diagram{max-width:520px;margin:auto}svg{width:100%;display:block}g[role=button]{cursor:pointer;outline:none}g[role=button]:hover rect,g[role=button]:focus rect,g.selected rect{stroke:#d9e7ff;stroke-width:2.5}text{pointer-events:none}.title{font-size:17px;font-weight:650;fill:#f3f6ff}.sub{font-size:12px;fill:#afbdd3}.arrow{stroke:#7797bb;stroke-width:2;fill:none;marker-end:url(#tip)}#detail{border-top:1px solid #37465b;padding-top:16px;min-height:90px}h2{font-size:15px;margin:0 0 6px}button{border:1px solid #708cd0;border-radius:8px;background:#263c65;color:#f1f5ff;padding:10px 14px;cursor:pointer}button:disabled{opacity:.6}#status{font-size:12px;margin-top:10px}
+</style>
+<div class="diagram">
+<h1>Coral Agent UI</h1><p>Publish a visual. Collect a response.<br>Select a step to explore the flow.</p>
+<svg viewBox="0 0 370 640" role="group" aria-label="Agent publishes a panel through Coral to the sidebar; user responses enter an event queue for the agent to read">
+<defs><marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="#7797bb"/></marker></defs>
+<path class="arrow" d="M202 104V142"/><path class="arrow" d="M202 222V260"/><path class="arrow" d="M202 340V378"/><path class="arrow" d="M202 458V496"/>
+<path class="arrow" stroke-dasharray="5 5" d="M63 536H20V65H63"/>
+<text x="29" y="620" class="sub">Agent reads events, then can update the panel.</text>
+<g role="button" tabindex="0" data-step="agent" class="selected" aria-label="Agent: publish HTML or an image"><rect x="63" y="24" width="278" height="80" rx="13" fill="#233750" stroke="#6698d0"/><text x="82" y="56" class="title">1 · Agent</text><text x="82" y="80" class="sub">coral-agent ui publish</text></g>
+<g role="button" tabindex="0" data-step="api" aria-label="Coral API: validate and persist a revision"><rect x="63" y="142" width="278" height="80" rx="13" fill="#29324d" stroke="#7a88c7"/><text x="82" y="174" class="title">2 · Coral API + storage</text><text x="82" y="198" class="sub">Session · panel ID · revision</text></g>
+<g role="button" tabindex="0" data-step="sidebar" aria-label="Sidebar: show isolated interactive panel"><rect x="63" y="260" width="278" height="80" rx="13" fill="#263c3e" stroke="#66ada4"/><text x="82" y="292" class="title">3 · Agent UI sidebar</text><text x="82" y="316" class="sub">Isolated HTML, SVG, or image</text></g>
+<g role="button" tabindex="0" data-step="response" aria-label="User response: validated interaction bridge"><rect x="63" y="378" width="278" height="80" rx="13" fill="#42372c" stroke="#bf9968"/><text x="82" y="410" class="title">4 · User interaction</text><text x="82" y="434" class="sub">coralUI.emit(action, payload)</text></g>
+<g role="button" tabindex="0" data-step="events" aria-label="Event queue: agent reads responses"><rect x="63" y="496" width="278" height="80" rx="13" fill="#392d46" stroke="#aa84c4"/><text x="82" y="528" class="title">5 · Durable event queue</text><text x="82" y="552" class="sub">coral-agent ui events --after N</text></g>
+</svg>
+<div id="detail" aria-live="polite"><h2 id="heading">Agent</h2><p id="description">The agent creates a self-contained HTML diagram, interactive panel, or image and publishes it using a stable panel ID.</p></div>
+<button id="ask">Ask the agent about this step</button><p id="status" role="status"></p>
+</div>
+<script>
+const details={agent:['Agent','The agent creates a self-contained HTML diagram, interactive panel, or image and publishes it using a stable panel ID.'],api:['Coral API + storage','Coral validates the content and stores it for this session. Republishing the same ID increments its revision; the panel survives reloads and restarts.'],sidebar:['Agent UI sidebar','The sidebar discovers published panels without switching your tab. Scripts run in an isolated frame, with no parent DOM access or network requests.'],response:['User interaction','Clicks and form submissions cross a narrow message bridge. Coral checks the mounted frame and revision before saving the action and payload.'],events:['Durable event queue','The agent explicitly reads stored responses using an event cursor. Coral notifies an awake agent when a response is saved. Reading events does not remove them; notifications are best-effort.']};
+let selected='agent';
+function select(node){selected=node.dataset.step;document.querySelectorAll('g[data-step]').forEach(g=>g.classList.toggle('selected',g===node));heading.textContent=details[selected][0];description.textContent=details[selected][1];document.getElementById('status').textContent='';}
+document.querySelectorAll('g[data-step]').forEach(g=>{g.onclick=()=>select(g);g.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(g);}};});
+const statusEl=document.getElementById('status');
+document.getElementById('ask').onclick=async function(){this.disabled=true;try{await coralUI.emit('explain-step',{step:selected});statusEl.textContent='Question saved for the agent to read.';}catch(e){statusEl.textContent=e.message;}finally{this.disabled=false;}};
+</script>

@@ -156,6 +156,57 @@ func (h *BoardHandler) notifyOrchestratorsTaskCompleted(ctx context.Context, pro
 	}
 }
 
+// notifyOrchestratorOfCancelledDependency reports downstream tasks whose
+// non-termination dependency can no longer be satisfied after cancellation.
+// The task remains blocked; the orchestrator must update or rewire it.
+func (h *BoardHandler) notifyOrchestratorOfCancelledDependency(ctx context.Context, project, subscriberID string, cancelled *board.Task) {
+	if cancelled == nil {
+		return
+	}
+	downstream, err := h.bs.ListDownstreamTasks(ctx, project, cancelled.ID)
+	if err != nil {
+		slog.Warn("list downstream tasks for cancellation notification failed", "project", project, "task_id", cancelled.ID, "error", err)
+		return
+	}
+	for i := range downstream {
+		task := &downstream[i]
+		deps, err := h.bs.GetTaskDependencies(ctx, task.ID)
+		if err != nil {
+			slog.Warn("load downstream dependencies for cancellation notification failed", "project", project, "task_id", task.ID, "error", err)
+			continue
+		}
+		condition := ""
+		for _, dep := range deps {
+			if dep.TaskID == cancelled.ID && dep.BoardID == project && dep.Condition != "termination" && !dep.Satisfied {
+				condition = dep.Condition
+				break
+			}
+		}
+		if condition == "" {
+			continue
+		}
+		msg := fmt.Sprintf("[Task #%d stalled] %s depends on cancelled task #%d (%s); its %s dependency cannot be satisfied. Update or rewire the task.", task.ID, task.Title, cancelled.ID, cancelled.Title, condition)
+		h.bs.PostMessage(ctx, task.BoardID, "Coral Task Queue", "@Orchestrator "+msg, nil)
+		if h.terminal == nil {
+			continue
+		}
+		subs, err := h.bs.ListSubscribers(ctx, task.BoardID)
+		if err != nil {
+			slog.Warn("list subscribers for cancellation notification failed", "project", project, "task_id", task.ID, "error", err)
+			continue
+		}
+		for j := range subs {
+			sub := &subs[j]
+			if sub.SubscriberID == subscriberID || sub.SessionName == "" || !isOrchestratorSubscriber(sub, sub.SubscriberID) {
+				continue
+			}
+			if err := h.terminal.SendInput(ctx, sub.SessionName, msg, "", ""); err != nil {
+				slog.Warn("failed to notify orchestrator of stalled task", "orchestrator", sub.SubscriberID, "session", sub.SessionName, "task_id", task.ID, "error", err)
+			}
+		}
+	}
+}
+
 // sendTaskNudge types text into a subscriber's terminal, using their
 // subscription on this board (the same name can be subscribed on others).
 func (h *BoardHandler) sendTaskNudge(ctx context.Context, project, subscriberID, text string) error {
@@ -465,7 +516,9 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 		subscriberID = r.URL.Query().Get("session_id") // legacy compat
 	}
 	limit := queryInt(r, "limit", 50)
-	messages, err := h.bs.ReadMessages(r.Context(), project, subscriberID, limit)
+	allParam := r.URL.Query().Get("all")
+	readAll := allParam == "true" || allParam == "1"
+	messages, err := h.bs.ReadMessages(r.Context(), project, subscriberID, limit, readAll)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -882,6 +935,9 @@ func formatBlockerList(deps []board.TaskDep) string {
 	parts := make([]string, len(deps))
 	for i, d := range deps {
 		parts[i] = fmt.Sprintf("#%d", d.TaskID)
+		if d.BlockedReason != "" {
+			parts[i] += " (" + d.BlockedReason + ")"
+		}
 	}
 	return strings.Join(parts, ", ")
 }
@@ -971,12 +1027,22 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 		if err.Error() == "complete your current task before claiming a new one" {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		} else {
-			errBadRequest(w, err.Error())
+			blocked, lookupErr := h.bs.BlockedTasksForSubscriber(r.Context(), project, body.SubscriberID, body.TaskID)
+			if lookupErr != nil {
+				errInternalServer(w, lookupErr.Error())
+				return
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "blocked_tasks": blocked})
 		}
 		return
 	}
 	if task == nil {
-		errNotFound(w, "no available tasks")
+		blocked, err := h.bs.BlockedTasksForSubscriber(r.Context(), project, body.SubscriberID, body.TaskID)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no available tasks", "blocked_tasks": blocked})
 		return
 	}
 	// Post board notification asynchronously to avoid DB contention
@@ -1088,6 +1154,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		notification := fmt.Sprintf("[Task #%d cancelled by %s] %s", task.ID, body.SubscriberID, task.Title)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		h.notifyOrchestratorOfCancelledDependency(ctx, project, body.SubscriberID, task)
 
 		// Only termination dependencies are satisfied by cancellation.
 		h.notifyUnblockedTasks(ctx, project, task.ID)

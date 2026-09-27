@@ -76,16 +76,16 @@ func TestPostAndReadMessages(t *testing.T) {
 	sub(s, ctx, "proj", "agent-1", "Dev A")
 	sub(s, ctx, "proj", "agent-2", "Dev B")
 
-	// Agent-1 posts
-	msg, err := s.PostMessage(ctx, "proj", "agent-1", "Hello team!", nil)
+	// Agent-1 posts tagging agent-2
+	msg, err := s.PostMessage(ctx, "proj", "agent-1", "@Dev B Hello team!", nil)
 	require.NoError(t, err)
-	assert.Equal(t, "Hello team!", msg.Content)
+	assert.Equal(t, "@Dev B Hello team!", msg.Content)
 
-	// Agent-2 reads — should see agent-1's message
+	// Agent-2 reads — should see agent-1's message since tagged
 	messages, err := s.ReadMessages(ctx, "proj", "agent-2", 50)
 	require.NoError(t, err)
 	assert.Len(t, messages, 1)
-	assert.Equal(t, "Hello team!", messages[0].Content)
+	assert.Equal(t, "@Dev B Hello team!", messages[0].Content)
 	assert.Equal(t, "Dev A", messages[0].JobTitle)
 
 	// Agent-1 reads — should NOT see own message
@@ -97,6 +97,127 @@ func TestPostAndReadMessages(t *testing.T) {
 	messages, err = s.ReadMessages(ctx, "proj", "agent-2", 50)
 	require.NoError(t, err)
 	assert.Empty(t, messages)
+}
+
+func TestReadMessages_DefaultTaggedAndAll(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	// Worker (non-orchestrator) and Orchestrator
+	_, err := s.Subscribe(ctx, "proj", "worker-1", "Backend Dev", "tmux-worker-1", nil, nil, "")
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "proj", "worker-2", "Frontend Dev", "tmux-worker-2", nil, nil, "")
+	require.NoError(t, err)
+	_, err = s.Subscribe(ctx, "proj", "orch", "Orchestrator", "tmux-orch", nil, nil, "")
+	require.NoError(t, err)
+
+	// 1. Post untagged message from worker-2
+	_, err = s.PostMessage(ctx, "proj", "worker-2", "I am working on the navbar", nil)
+	require.NoError(t, err)
+
+	// Default read for worker-1 should NOT return untagged message
+	msgs, err := s.ReadMessages(ctx, "proj", "worker-1", 50)
+	require.NoError(t, err)
+	assert.Empty(t, msgs, "default read for worker should only return explicitly tagged messages")
+
+	// Read with readAll=true for worker-1 SHOULD return untagged message
+	msgs, err = s.ReadMessages(ctx, "proj", "worker-1", 50, true)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1, "readAll=true should return untagged messages")
+	assert.Equal(t, "I am working on the navbar", msgs[0].Content)
+
+	// Default read for orchestrator SHOULD return untagged message
+	orchMsgs, err := s.ReadMessages(ctx, "proj", "orch", 50)
+	require.NoError(t, err)
+	require.Len(t, orchMsgs, 1, "orchestrator should see all messages by default")
+	assert.Equal(t, "I am working on the navbar", orchMsgs[0].Content)
+
+	// 2. Post message explicitly tagging worker-1 via @job_title
+	_, err = s.PostMessage(ctx, "proj", "orch", "@Backend Dev please implement the users API", nil)
+	require.NoError(t, err)
+
+	// worker-1 default read should see it
+	msgs, err = s.ReadMessages(ctx, "proj", "worker-1", 50)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "@Backend Dev please implement the users API", msgs[0].Content)
+
+	// worker-2 default read should NOT see it (tagged for worker-1, not worker-2)
+	msgs2, err := s.ReadMessages(ctx, "proj", "worker-2", 50)
+	require.NoError(t, err)
+	assert.Empty(t, msgs2, "worker-2 should not see message tagged for Backend Dev")
+
+	// 3. Post message tagging worker-1 via @subscriberID
+	_, err = s.PostMessage(ctx, "proj", "worker-2", "@worker-1 check PR #42", nil)
+	require.NoError(t, err)
+
+	msgs, err = s.ReadMessages(ctx, "proj", "worker-1", 50)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "@worker-1 check PR #42", msgs[0].Content)
+
+	// 4. Post message tagging via space-stripped name (@BackendDev)
+	_, err = s.PostMessage(ctx, "proj", "orch", "@BackendDev nice work", nil)
+	require.NoError(t, err)
+
+	msgs, err = s.ReadMessages(ctx, "proj", "worker-1", 50)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "@BackendDev nice work", msgs[0].Content)
+
+	// 5. Post message with name: prefix
+	_, err = s.PostMessage(ctx, "proj", "orch", "Backend Dev: please check status", nil)
+	require.NoError(t, err)
+
+	msgs, err = s.ReadMessages(ctx, "proj", "worker-1", 50)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "Backend Dev: please check status", msgs[0].Content)
+
+	// 6. Post broadcast message (@all)
+	_, err = s.PostMessage(ctx, "proj", "orch", "@all standup in 10 minutes", nil)
+	require.NoError(t, err)
+
+	msgs, err = s.ReadMessages(ctx, "proj", "worker-1", 50)
+	require.NoError(t, err)
+	require.Len(t, msgs, 1)
+	assert.Equal(t, "@all standup in 10 minutes", msgs[0].Content)
+
+	msgs2, err = s.ReadMessages(ctx, "proj", "worker-2", 50)
+	require.NoError(t, err)
+	require.Len(t, msgs2, 1)
+	assert.Equal(t, "@all standup in 10 minutes", msgs2[0].Content)
+}
+
+func TestContainsExplicitTag(t *testing.T) {
+	tests := []struct {
+		content      string
+		subscriberID string
+		jobTitle     string
+		want         bool
+	}{
+		{"Hey @Dev, check this out", "Dev", "Dev", true},
+		{"Hey @Dev: check this out", "Dev", "Dev", true},
+		{"Hey @dev check this out", "Dev", "Dev", true},
+		{"Hey @Developer check this out", "Dev", "Dev", false},
+		{"contact dev@developer.com", "Dev", "Dev", false},
+		{"Dev: here is the file", "Dev", "Dev", true},
+		{"myDev: here is the file", "Dev", "Dev", false},
+		{"@Backend Dev please review", "agent-1", "Backend Dev", true},
+		{"@BackendDev please review", "agent-1", "Backend Dev", true},
+		{"Backend Dev: please review", "agent-1", "Backend Dev", true},
+		{"Backend Dev — please review", "agent-1", "Backend Dev", true},
+		{"@agent-1 please review", "agent-1", "Backend Dev", true},
+		{"Just finished task 5", "agent-1", "Backend Dev", false},
+		{"@Frontend Dev please review", "agent-1", "Backend Dev", false},
+		{"@all build is green", "agent-1", "Backend Dev", true},
+		{"@notify-all server restarting", "agent-1", "Backend Dev", true},
+	}
+
+	for _, tc := range tests {
+		got := containsExplicitTag(tc.content, tc.subscriberID, tc.jobTitle)
+		assert.Equal(t, tc.want, got, "containsExplicitTag(%q, %q, %q)", tc.content, tc.subscriberID, tc.jobTitle)
+	}
 }
 
 func TestListMessages(t *testing.T) {

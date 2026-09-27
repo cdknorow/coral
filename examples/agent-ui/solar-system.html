@@ -1,0 +1,25 @@
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b1020;color:#eef2ff;font:14px system-ui,sans-serif;padding:18px}h1{font-size:22px;margin:0 0 5px}.intro{color:#9facce;margin:0 0 12px;line-height:1.5}svg{width:100%;max-height:55vh;display:block;margin:auto}.orbit{fill:none;stroke:#344262;stroke-dasharray:3 5}.planet{cursor:pointer;outline:none}.planet:focus circle,.planet:hover circle{stroke:white;stroke-width:3}#info{border-top:1px solid #344262;padding-top:12px}h2{font-size:18px;margin:0 0 6px}#description{line-height:1.5;color:#bfcae0;min-height:42px}button{background:#7164e8;color:white;border:0;border-radius:8px;padding:10px 14px;font:inherit;cursor:pointer}button:disabled{opacity:.6}#status{color:#bdc9e3;font-size:12px;min-height:18px}
+</style>
+<h1>A little solar system</h1><p class="intro">Same panel, new content. Select a planet to explore.<br>Illustrative layout; sizes and distances are not to scale.</p>
+<svg viewBox="0 0 400 390" role="group" aria-label="Interactive illustration of the Sun, Mercury, Venus, Earth and Mars">
+<defs><radialGradient id="sun"><stop stop-color="#fff5a6"/><stop offset="1" stop-color="#ffad42"/></radialGradient></defs>
+<g fill="#c1c9e8" opacity=".6"><circle cx="24" cy="30" r="1.4"/><circle cx="360" cy="42" r="1"/><circle cx="322" cy="335" r="1.6"/><circle cx="49" cy="298" r="1"/><circle cx="175" cy="15" r="1.3"/><circle cx="380" cy="226" r="1.2"/><circle cx="84" cy="363" r="1.3"/></g>
+<circle class="orbit" cx="200" cy="190" r="57"/><circle class="orbit" cx="200" cy="190" r="92"/><circle class="orbit" cx="200" cy="190" r="130"/><circle class="orbit" cx="200" cy="190" r="171"/>
+<circle cx="200" cy="190" r="39" fill="#ffb44e" opacity=".09"/><circle cx="200" cy="190" r="29" fill="url(#sun)"/><text x="200" y="240" fill="#ffd28a" text-anchor="middle" font-size="12">SUN</text>
+<g class="planet" role="button" tabindex="0" data-planet="Mercury" aria-label="Explore Mercury"><circle cx="245" cy="155" r="8" fill="#b6aba4"/><text x="258" y="143" fill="#d4d9ea" font-size="12">Mercury</text></g>
+<g class="planet" role="button" tabindex="0" data-planet="Venus" aria-label="Explore Venus"><circle cx="124" cy="139" r="14" fill="#e5b777"/><text x="92" y="114" fill="#ead2ad" font-size="12">Venus</text></g>
+<g class="planet" role="button" tabindex="0" data-planet="Earth" aria-label="Explore Earth"><circle cx="289" cy="285" r="17" fill="#55a5ef"/><path d="M279 272l12 5-3 10 10 6-7 7-10-6-5-12z" fill="#6cd4a0"/><text x="309" y="314" fill="#9ed2ff" font-size="12">Earth</text></g>
+<g class="planet" role="button" tabindex="0" data-planet="Mars" aria-label="Explore Mars"><circle cx="47" cy="266" r="12" fill="#df7962"/><circle cx="43" cy="262" r="3" fill="#bb5947"/><text x="24" y="300" fill="#f3ab97" font-size="12">Mars</text></g>
+</svg>
+<div id="info" aria-live="polite"><h2 id="planet-name">Earth</h2><p id="description">Our home planet, with liquid-water oceans and one natural moon.</p></div>
+<button id="choose">Choose Earth</button><p id="status" role="status"></p>
+<script>
+(()=>{
+const facts={Mercury:'The closest planet to the Sun and the smallest planet in our solar system.',Venus:'Wrapped in a thick atmosphere, Venus is the hottest planet in our solar system.',Earth:'Our home planet, with liquid-water oceans and one natural moon.',Mars:'The red planet: a rocky world with two small moons, Phobos and Deimos.'};
+let selected='Earth';const button=document.getElementById('choose'),status=document.getElementById('status');
+function select(node){selected=node.dataset.planet;document.getElementById('planet-name').textContent=selected;document.getElementById('description').textContent=facts[selected];button.textContent='Choose '+selected;status.textContent='';}
+document.querySelectorAll('.planet').forEach(node=>{node.onclick=()=>select(node);node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(node);}};});
+button.onclick=async()=>{button.disabled=true;try{const result=await coralUI.emit('choose-planet',{planet:selected});status.textContent=result.notified?'Saved! The agent was notified.':'Saved! Your choice is waiting in the event queue.';}catch(e){status.textContent=e.message;}finally{button.disabled=false;}};
+})();
+</script>

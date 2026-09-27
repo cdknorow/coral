@@ -214,6 +214,85 @@ func TestBoardPause_CheckUnreadReturnsZero(t *testing.T) {
 	assert.Equal(t, float64(0), body["unread"])
 }
 
+func TestReadMessages_DefaultTaggedAndAll_Route(t *testing.T) {
+	server, _ := setupBoardTestServer(t)
+	base := server.URL + "/api/board/testproject"
+
+	// Subscribe worker Dev, worker QA, and Orchestrator
+	resp := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "agent-1",
+		"job_title":     "Dev",
+	})
+	resp.Body.Close()
+	resp2 := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "agent-2",
+		"job_title":     "QA",
+	})
+	resp2.Body.Close()
+	resp3 := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "orch-1",
+		"job_title":     "Orchestrator",
+	})
+	resp3.Body.Close()
+
+	// 1. Post untagged message from agent-1
+	postResp := postJSON(t, base+"/messages", map[string]string{
+		"subscriber_id": "agent-1",
+		"content":       "Working on task 1",
+	})
+	postResp.Body.Close()
+
+	// Worker agent-2 default read -> empty (untagged)
+	r1, err := http.Get(base + "/messages?subscriber_id=agent-2")
+	require.NoError(t, err)
+	defer r1.Body.Close()
+	var msgs1 []map[string]any
+	json.NewDecoder(r1.Body).Decode(&msgs1)
+	assert.Empty(t, msgs1, "worker default read should omit untagged messages")
+
+	// Worker agent-2 read with ?all=true -> returns 1 message
+	r2, err := http.Get(base + "/messages?subscriber_id=agent-2&all=true")
+	require.NoError(t, err)
+	defer r2.Body.Close()
+	var msgs2 []map[string]any
+	json.NewDecoder(r2.Body).Decode(&msgs2)
+	require.Len(t, msgs2, 1, "worker read with all=true should return untagged messages")
+	assert.Equal(t, "Working on task 1", msgs2[0]["content"])
+
+	// Orchestrator default read -> returns 1 message (all by default)
+	r3, err := http.Get(base + "/messages?subscriber_id=orch-1")
+	require.NoError(t, err)
+	defer r3.Body.Close()
+	var msgs3 []map[string]any
+	json.NewDecoder(r3.Body).Decode(&msgs3)
+	require.Len(t, msgs3, 1, "orchestrator default read should return all unread messages")
+	assert.Equal(t, "Working on task 1", msgs3[0]["content"])
+
+	// 2. Post message tagged for QA
+	postResp2 := postJSON(t, base+"/messages", map[string]string{
+		"subscriber_id": "orch-1",
+		"content":       "@QA please verify task 1",
+	})
+	postResp2.Body.Close()
+
+	// Worker agent-2 default read -> returns tagged message
+	r4, err := http.Get(base + "/messages?subscriber_id=agent-2")
+	require.NoError(t, err)
+	defer r4.Body.Close()
+	var msgs4 []map[string]any
+	json.NewDecoder(r4.Body).Decode(&msgs4)
+	require.Len(t, msgs4, 1)
+	assert.Equal(t, "@QA please verify task 1", msgs4[0]["content"])
+
+	// Worker agent-1 default read -> empty (tagged for QA, not Dev)
+	r5, err := http.Get(base + "/messages?subscriber_id=agent-1")
+	require.NoError(t, err)
+	defer r5.Body.Close()
+	var msgs5 []map[string]any
+	json.NewDecoder(r5.Body).Decode(&msgs5)
+	assert.Empty(t, msgs5, "agent-1 should not see message tagged for QA")
+}
+
 func TestBoardDelete_ClearsPauseState(t *testing.T) {
 	server, _ := setupBoardTestServer(t)
 	base := server.URL + "/api/board/testproject"
@@ -964,6 +1043,41 @@ func TestBoardCancelTask_DoesNotSatisfySuccessDependency(t *testing.T) {
 		if task["title"] == "Task B" {
 			assert.Equal(t, "blocked", task["status"])
 		}
+	}
+}
+
+func TestBoardCancelTask_NotifiesOrchestratorOfStalledDownstream(t *testing.T) {
+	server, _ := setupBoardTestServer(t)
+	base := server.URL + "/api/board/myproject"
+
+	postJSON(t, base+"/tasks", map[string]string{"title": "Cancelled upstream", "created_by": "Orchestrator"}).Body.Close()
+	resp := postJSON(t, base+"/tasks", map[string]any{"title": "Stalled downstream", "created_by": "Orchestrator", "blocked_by": []int{1}})
+	resp.Body.Close()
+	resp = postJSON(t, base+"/tasks/1/cancel", map[string]string{"subscriber_id": "Operator"})
+	resp.Body.Close()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		resp, err := http.Get(base + "/messages/all?limit=100")
+		require.NoError(t, err)
+		var messages []board.Message
+		err = json.NewDecoder(resp.Body).Decode(&messages)
+		resp.Body.Close()
+		require.NoError(t, err)
+		found := false
+		for _, message := range messages {
+			if strings.Contains(message.Content, "[Task #2 stalled]") && strings.Contains(message.Content, "Update or rewire") {
+				found = true
+				break
+			}
+		}
+		if found {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for stalled-task notification")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

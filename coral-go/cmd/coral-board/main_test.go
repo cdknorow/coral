@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -248,4 +249,84 @@ func TestInit_CORAL_PORT(t *testing.T) {
 func TestPrintUsage_NoPanic(t *testing.T) {
 	// Just verify it doesn't panic
 	printUsage()
+}
+
+func TestCmdRead_URLRouting(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantPath   string
+		wantQuery  string
+	}{
+		{
+			name:      "default read without flags",
+			args:      []string{"coral-board", "read"},
+			wantPath:  "/api/board/test-proj/messages",
+			wantQuery: "limit=50&subscriber_id=Dev",
+		},
+		{
+			name:      "--all flag includes all=true",
+			args:      []string{"coral-board", "read", "--all"},
+			wantPath:  "/api/board/test-proj/messages",
+			wantQuery: "all=true&limit=50&subscriber_id=Dev",
+		},
+		{
+			name:      "-a flag includes all=true",
+			args:      []string{"coral-board", "read", "-a"},
+			wantPath:  "/api/board/test-proj/messages",
+			wantQuery: "all=true&limit=50&subscriber_id=Dev",
+		},
+		{
+			name:      "--last N routes to /messages/all",
+			args:      []string{"coral-board", "read", "--last", "10"},
+			wantPath:  "/api/board/test-proj/messages/all",
+			wantQuery: "limit=10",
+		},
+		{
+			name:      "--id N routes to /messages/all?id=N",
+			args:      []string{"coral-board", "read", "--id", "42"},
+			wantPath:  "/api/board/test-proj/messages/all",
+			wantQuery: "id=42",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			isolateBoardEnv(t)
+			saveState(&boardState{Project: "test-proj", JobTitle: "Dev"})
+
+			var recordedPath, recordedRawQuery string
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				recordedPath = r.URL.Path
+				recordedRawQuery = r.URL.RawQuery
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Query().Get("id") != "" {
+					w.Write([]byte(`[{"id":42,"content":"hello"}]`))
+				} else {
+					w.Write([]byte("[]"))
+				}
+			}))
+			defer ts.Close()
+
+			oldURL := serverURL
+			serverURL = ts.URL
+			defer func() { serverURL = oldURL }()
+
+			oldArgs := os.Args
+			os.Args = tc.args
+			defer func() { os.Args = oldArgs }()
+
+			cmdRead()
+
+			if recordedPath != tc.wantPath {
+				t.Errorf("Path = %q, want %q", recordedPath, tc.wantPath)
+			}
+			// Compare query parameters
+			for _, part := range strings.Split(tc.wantQuery, "&") {
+				if !strings.Contains(recordedRawQuery, part) {
+					t.Errorf("RawQuery %q does not contain %q", recordedRawQuery, part)
+				}
+			}
+		})
+	}
 }

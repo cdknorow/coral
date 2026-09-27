@@ -1,0 +1,20 @@
+<style>
+body{font:14px system-ui;color:#e7eaf0;background:#202329;margin:0;padding:20px}h2{font-size:18px}svg{width:100%;height:auto}button{padding:10px 14px;margin:4px;border:0;border-radius:6px;background:#91baff;color:#101827;cursor:pointer}p{line-height:1.5}#result{min-height:2em}
+</style>
+<h2>Choose a release workflow</h2>
+<svg viewBox="0 0 500 100" role="img" aria-label="Build, then Test, then Release">
+<g fill="#34445d" stroke="#91baff"><rect x="5" y="20" width="130" height="60" rx="8"/><rect x="185" y="20" width="130" height="60" rx="8"/><rect x="365" y="20" width="130" height="60" rx="8"/></g>
+<g fill="#e7eaf0" font-size="18" text-anchor="middle"><text x="70" y="56">Build</text><text x="250" y="56">Test</text><text x="430" y="56">Release</text><text x="160" y="56">→</text><text x="340" y="56">→</text></g>
+</svg>
+<p>Select how you'd like the agent to prepare the workflow. This records your preference; it does not release anything.</p>
+<button data-option="separate-tasks">Separate dependent tasks</button>
+<button data-option="review-first">Review the plan first</button>
+<p id="result" role="status"></p>
+<script>
+document.querySelectorAll('button').forEach(button=>button.onclick=async()=>{
+ const result=document.getElementById('result');button.disabled=true;
+ try {await coralUI.emit('workflow-choice',{option:button.dataset.option});result.textContent='Your preference was saved.';}
+ catch(error){result.textContent=error.message;}
+ finally{button.disabled=false;}
+});
+</script>

@@ -191,15 +191,43 @@ func (h *SessionsHandler) ClaimAgentTaskForAgent(w http.ResponseWriter, r *http.
 		if strings.Contains(err.Error(), "current task") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		} else {
-			errBadRequest(w, err.Error())
+			blocked, lookupErr := h.personalTaskBlockages(r, name, body.SessionID, body.TaskID)
+			if lookupErr != nil {
+				errInternalServer(w, lookupErr.Error())
+				return
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error(), "blocked_tasks": blocked})
 		}
 		return
 	}
 	if task == nil {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": "No available tasks"})
+		blocked, err := h.personalTaskBlockages(r, name, body.SessionID, body.TaskID)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "No available tasks", "blocked_tasks": blocked})
 		return
 	}
 	writeJSON(w, http.StatusOK, viewAgentTask(task))
+}
+
+func (h *SessionsHandler) personalTaskBlockages(r *http.Request, name, sid string, requestedID int64) ([]board.TaskBlockage, error) {
+	tasks, err := h.ts.ListAgentTasks(r.Context(), name, &sid)
+	if err != nil {
+		return nil, err
+	}
+	blocked := []board.TaskBlockage{}
+	for _, t := range tasks {
+		v := viewAgentTask(&t)
+		if v.Status == "blocked" && (requestedID == 0 || v.ID == requestedID) {
+			blocked = append(blocked, board.DescribeTaskBlockage(v.ID, v.Title, v.BlockedBy))
+			if len(blocked) == 20 {
+				break
+			}
+		}
+	}
+	return blocked, nil
 }
 
 // CurrentAgentTaskForAgent returns the calling agent's task in progress.

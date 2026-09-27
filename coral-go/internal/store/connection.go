@@ -157,6 +157,19 @@ var columnMigrations = []struct {
 }
 
 const schemaSQL = `
+CREATE TABLE IF NOT EXISTS agent_ui_panels (
+ session_id TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL,
+ html TEXT NOT NULL, revision INTEGER NOT NULL, updated_at TEXT NOT NULL,
+ PRIMARY KEY(session_id,id)
+);
+CREATE TABLE IF NOT EXISTS agent_ui_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+ panel_id TEXT NOT NULL, revision INTEGER NOT NULL, action TEXT NOT NULL,
+ payload TEXT NOT NULL, created_at TEXT NOT NULL,
+ FOREIGN KEY(session_id,panel_id) REFERENCES agent_ui_panels(session_id,id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_agent_ui_events ON agent_ui_events(session_id,panel_id,id);
+
 CREATE TABLE IF NOT EXISTS session_meta (
 	session_id   TEXT PRIMARY KEY,
 	notes_md     TEXT DEFAULT '',

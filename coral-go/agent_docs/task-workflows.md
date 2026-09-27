@@ -124,6 +124,10 @@ dependencies. A branch whose condition cannot become true stays blocked so the
 operator can inspect, rewire, or cancel it. Completion/failure remains represented
 by task status `completed` plus `workflow.outcome` (`success` or `failed`);
 cancellation uses existing status `skipped` and outcome `cancelled`.
+When cancellation leaves a non-`termination` downstream dependency unsatisfied,
+Coral posts a `[Task #N stalled]` notice addressed to the Orchestrator. The notice
+names the cancelled prerequisite and tells the Orchestrator to update or rewire
+the downstream task; Coral does not silently rewrite that dependency.
 
 ## Retries and evidence history
 
@@ -183,3 +187,28 @@ the repository root. This covers immediate readiness, restart recovery, and
 required-artifact limits. Standalone runs retain the test database and server
 log; runs through the stress harness follow its retention settings and include
 the API checks in its final pass/fail summary.
+
+## Why a completed prerequisite can still block a task
+
+Readiness requires both the dependency condition and every named artifact. A
+successful task that publishes `diagnostic` and `verification` does not satisfy
+a dependency requiring `candidate` and `verification`. Refreshing the queue
+cannot supply the missing evidence.
+
+Dependency responses include `satisfied`, upstream `outcome`, `missing_artifacts`,
+and `blocked_reason`. A claim with no available work includes up to 20
+`blocked_tasks` for the caller (or unassigned tasks), with IDs, titles and readable
+reasons; both task CLIs print them. Explicit blocked-task claims also include the
+explanation. The dashboard marks unmet dependencies even if the upstream task
+shows completed. These diagnostics do not change task state or bypass checks.
+
+If the artifact name in the dependency is wrong, explicitly correct the
+unstarted downstream task's dependency. If evidence really is missing, create a
+new producer task and rewire the unstarted consumer to that result. Completed
+artifacts remain immutable. Do not remove dependencies merely to force a claim.
+
+When an upstream task declares `required_outputs`, Coral validates dependency
+creation and edits against that contract. Requiring an undeclared output is
+rejected before the consumer is created or changed. Legacy producers with no
+declared output contract remain accepted for compatibility and are checked
+against their actual immutable artifacts at readiness time.

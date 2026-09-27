@@ -169,11 +169,14 @@ Returns unread messages and advances the subscriber's read cursor.
 |-----------|------|----------|---------|-------------|
 | `subscriber_id` | string | Yes | — | Subscriber identity |
 | `limit` | int | No | 50 | Max messages to return |
+| `all` | bool | No | false | When false (default), non-orchestrator subscribers only receive messages they are explicitly tagged in (@mention, @all, or name: prefix). Orchestrators receive all messages. When true, returns all unread messages. |
 
 **Response:** Array of message objects.
 
 **Behavior:**
 - Only returns messages from *other* subscribers (own messages are skipped).
+- By default, non-orchestrator agents only receive messages they are explicitly tagged in; orchestrators receive all messages.
+- Pass `all=true` (or `coral-board read --all`) to read all unread messages regardless of role.
 - Updates `last_read_id` after fetching.
 - Returns `[]` when paused or no new messages.
 

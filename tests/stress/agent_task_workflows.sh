@@ -21,6 +21,16 @@ wait_task_status() {
     done
     return 1
 }
+wait_board_message() {
+    local needle="$1" attempt
+    for attempt in $(seq 1 40); do
+        if api GET "/api/board/workflow-integration/messages/all?limit=500" | grep -Fq "$needle"; then
+            return 0
+        fi
+        sleep 0.25
+    done
+    return 1
+}
 reject_board() {
     # Keep expected errors visible in retained test data.
     if "$@" >"$TMPDIR_AT/last-rejection.log" 2>&1; then return 1; fi
@@ -88,6 +98,7 @@ CANCEL_SUCCESS=$(builder task add "Do not ship cancellation" --blocked-by "[$CAN
 CANCEL_CLEANUP=$(builder task add "Clean cancelled candidate" --blocked-by "[{\"task_id\":$CANCELLED_BUILD,\"condition\":\"termination\"}]" | task_id)
 builder task cancel "$CANCELLED_BUILD" >/dev/null
 check "cancellation unlocks cleanup but never success" 'wait_task_status "$CANCEL_CLEANUP" pending && [[ $(workflow_status "$CANCEL_SUCCESS") == blocked ]]'
+check "cancellation notifies orchestrator about stalled success consumer" 'wait_board_message "[Task #$CANCEL_SUCCESS stalled]"'
 
 log "Test 12: Concurrent completions preserve one immutable result..."
 RACE=$(builder task add "Concurrent artifact submissions" --assignee Builder --outputs build | task_id)
@@ -111,3 +122,17 @@ if [[ $(echo "$WINNERS" | grep -c .) == 1 ]]; then
     DETAIL=$(workflow_detail "$RACE")
     check "stored content and revision belong to the winning submission" '[[ $(echo "$DETAIL" | jget "d[\"workflow\"][\"artifacts\"][0][\"content\"]") == "candidate-$WINNER" && $(echo "$DETAIL" | jget "d[\"workflow\"][\"artifacts\"][0][\"revision\"]") == "revision-$WINNER" ]]'
 fi
+
+log "Test 13: Dependency output contracts reject impossible handoffs..."
+CONTRACT_PRODUCER=$(builder task add "Contract producer" --assignee Builder --outputs diagnostic,verification | task_id)
+check "mismatched dependency contract is rejected" 'reject_board builder task add "Impossible consumer" --blocked-by "[{\"task_id\":'$CONTRACT_PRODUCER',\"required_artifacts\":[\"candidate\",\"verification\"]}]"'
+check "contract rejection names the undeclared artifact" 'grep -q "cannot require artifact.*candidate" "$TMPDIR_AT/last-rejection.log"'
+CONTRACT_BUILD=$(builder task add "Declared candidate producer" --assignee Builder --outputs candidate,verification | task_id)
+CONTRACT_TEST=$(builder task add "Valid contract consumer" --assignee Tester --blocked-by "[{\"task_id\":$CONTRACT_BUILD,\"required_artifacts\":[\"candidate\",\"verification\"]}]" | task_id)
+check "declared dependency contract is accepted and starts blocked" '[[ $(workflow_status "$CONTRACT_TEST") == blocked ]]'
+builder task claim "$CONTRACT_BUILD" >/dev/null
+cat >"$TMPDIR_AT/contract-build.json" <<'JSON'
+[{"name":"candidate","uri":"artifact://candidate/contract.tar.gz","revision":"contract-abc123"},{"name":"verification","content":"Contract checks passed","revision":"contract-abc123"}]
+JSON
+builder task complete "$CONTRACT_BUILD" --artifacts "$TMPDIR_AT/contract-build.json" --message "Candidate and verification handoff" >/dev/null
+check "valid declared contract unlocks after matching artifacts" 'wait_task_status "$CONTRACT_TEST" pending'

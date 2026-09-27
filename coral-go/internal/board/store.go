@@ -70,6 +70,10 @@ type Task struct {
 }
 
 type TaskDep struct {
+	Satisfied         bool     `json:"satisfied"`
+	Outcome           string   `json:"outcome,omitempty"`
+	MissingArtifacts  []string `json:"missing_artifacts,omitempty"`
+	BlockedReason     string   `json:"blocked_reason,omitempty"`
 	TaskID            int64    `json:"task_id"`
 	BoardID           string   `json:"board_id"`
 	Title             string   `json:"title,omitempty"`
@@ -350,8 +354,16 @@ func nowUTC() string {
 // Subscribe adds or updates a subscriber on a board project.
 // subscriberID is the stable identity (role name). sessionName is the current tmux/pty session.
 func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, sessionName string, webhookURL, originServer *string, receiveMode string, canPeek ...bool) (*Subscriber, error) {
+	peekFlag := 0
+	if len(canPeek) > 0 && canPeek[0] {
+		peekFlag = 1
+	}
 	if receiveMode == "" {
-		receiveMode = "mentions"
+		if isOrchestrator(subscriberID, jobTitle, peekFlag) {
+			receiveMode = "all"
+		} else {
+			receiveMode = "mentions"
+		}
 	}
 	now := nowUTC()
 
@@ -365,12 +377,6 @@ func (s *Store) Subscribe(ctx context.Context, project, subscriberID, jobTitle, 
 		_ = s.db.GetContext(ctx, &carryForwardCursor,
 			"SELECT COALESCE(MAX(last_read_id), 0) FROM board_subscribers WHERE project = ?",
 			project)
-	}
-
-	// Resolve can_peek flag from variadic arg
-	peekFlag := 0
-	if len(canPeek) > 0 && canPeek[0] {
-		peekFlag = 1
 	}
 
 	// session_id mirrors subscriber_id so UNIQUE(project, session_id) enforces subscriber uniqueness.
@@ -515,32 +521,90 @@ func (s *Store) PostMessage(ctx context.Context, project, subscriberID, content 
 }
 
 // ReadMessages returns unread messages for a subscriber (cursor-based).
-func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, limit int) ([]Message, error) {
-	// Get subscriber cursor
-	var lastReadID int64
-	err := s.db.GetContext(ctx, &lastReadID,
-		"SELECT last_read_id FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
+// By default, for non-orchestrator subscribers, only messages where they are
+// explicitly tagged (or @all / @notify-all) are returned.
+// For orchestrators or when readAll is true, all unread messages from others are returned.
+func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, limit int, readAll ...bool) ([]Message, error) {
+	// Get subscriber cursor and role info
+	var sub struct {
+		LastReadID  int64  `db:"last_read_id"`
+		JobTitle    string `db:"job_title"`
+		ReceiveMode string `db:"receive_mode"`
+		CanPeek     int    `db:"can_peek"`
+	}
+	err := s.db.GetContext(ctx, &sub,
+		"SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID)
 	if err != nil {
 		return nil, nil // Not subscribed
 	}
 
-	// Fetch new messages from others
+	wantAll := len(readAll) > 0 && readAll[0]
+	isOrch := isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek)
+	filterTagged := !wantAll && !isOrch
+
+	if !wantAll && sub.ReceiveMode == "none" {
+		return nil, nil
+	}
+
 	var messages []Message
-	err = s.db.SelectContext(ctx, &messages,
-		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.created_at,
-		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
-		 FROM board_messages m
-		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
-		 WHERE m.project = ? AND m.id > ? AND m.subscriber_id != ?
-		 ORDER BY m.id ASC LIMIT ?`,
-		project, lastReadID, subscriberID, limit)
-	if err != nil {
-		return nil, err
+	if filterTagged {
+		terms := mentionTerms(subscriberID, sub.JobTitle)
+		patterns := make([]string, len(terms))
+		for i, t := range terms {
+			patterns[i] = "%" + t + "%"
+		}
+
+		whereClauses := make([]string, len(patterns))
+		args := []interface{}{project, sub.LastReadID, subscriberID}
+		for i, p := range patterns {
+			whereClauses[i] = "m.content LIKE ? COLLATE NOCASE"
+			args = append(args, p)
+		}
+		fetchLimit := limit * 2
+		if fetchLimit < 50 {
+			fetchLimit = 50
+		}
+		args = append(args, fetchLimit)
+
+		query := fmt.Sprintf(
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.created_at,
+			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
+			 FROM board_messages m
+			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
+			 WHERE m.project = ? AND m.id > ? AND m.subscriber_id != ? AND (%s)
+			 ORDER BY m.id ASC LIMIT ?`,
+			strings.Join(whereClauses, " OR "))
+		var candidates []Message
+		err = s.db.SelectContext(ctx, &candidates, query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, msg := range candidates {
+			if containsExplicitTag(msg.Content, subscriberID, sub.JobTitle) {
+				messages = append(messages, msg)
+				if len(messages) >= limit {
+					break
+				}
+			}
+		}
+	} else {
+		err = s.db.SelectContext(ctx, &messages,
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.created_at,
+			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
+			 FROM board_messages m
+			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
+			 WHERE m.project = ? AND m.id > ? AND m.subscriber_id != ?
+			 ORDER BY m.id ASC LIMIT ?`,
+			project, sub.LastReadID, subscriberID, limit)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Advance cursor past returned messages and own messages
-	newCursor := lastReadID
+	newCursor := sub.LastReadID
 	if len(messages) > 0 {
 		for _, m := range messages {
 			if m.ID > newCursor {
@@ -548,6 +612,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			}
 		}
 	}
+
 	// Skip past own messages
 	var ownMax int64
 	s.db.GetContext(ctx, &ownMax,
@@ -557,7 +622,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		newCursor = ownMax
 	}
 
-	if newCursor > lastReadID {
+	if newCursor > sub.LastReadID {
 		s.db.ExecContext(ctx,
 			"UPDATE board_subscribers SET last_read_id = ? WHERE project = ? AND subscriber_id = ?",
 			newCursor, project, subscriberID)
@@ -677,19 +742,94 @@ func (s *Store) CountMessages(ctx context.Context, project string) (int, error) 
 //   - anything else → treat as group-id, count only messages from group members
 //
 // mentionTerms returns the canonical list of mention patterns for a subscriber.
-// Used by both CheckUnread (SQL LIKE) and GetAllUnreadCounts (Go string matching).
+// Used by CheckUnread (SQL LIKE), GetAllUnreadCounts (Go string matching), and ReadMessages.
 func mentionTerms(subscriberID, jobTitle string) []string {
-	terms := []string{"@notify-all", "@notify_all", "@notifyall", "@all",
-		"@" + subscriberID}
-	if jobTitle != "" {
-		terms = append(terms,
-			"@"+jobTitle,
-			jobTitle+":",
-			jobTitle+" —",
-			jobTitle+"—",
-		)
+	terms := []string{"@notify-all", "@notify_all", "@notifyall", "@all"}
+	seen := make(map[string]bool)
+	for _, t := range terms {
+		seen[strings.ToLower(t)] = true
 	}
+
+	addTerm := func(t string) {
+		t = strings.TrimSpace(t)
+		if t == "" {
+			return
+		}
+		lower := strings.ToLower(t)
+		if !seen[lower] {
+			seen[lower] = true
+			terms = append(terms, t)
+		}
+	}
+
+	for _, name := range []string{subscriberID, jobTitle} {
+		if name == "" {
+			continue
+		}
+		addTerm("@" + name)
+		clean := strings.ReplaceAll(name, " ", "")
+		if clean != "" {
+			addTerm("@" + clean)
+		}
+		addTerm(name + ":")
+		addTerm(name + " —")
+		addTerm(name + "—")
+	}
+
 	return terms
+}
+
+func isAlphaNum(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// containsExplicitTag returns true if content explicitly mentions or tags subscriberID/jobTitle,
+// or includes broadcast tags like @all, @notify-all.
+func containsExplicitTag(content, subscriberID, jobTitle string) bool {
+	contentLower := strings.ToLower(content)
+	terms := mentionTerms(subscriberID, jobTitle)
+	for _, term := range terms {
+		tLower := strings.ToLower(term)
+		idx := 0
+		for {
+			pos := strings.Index(contentLower[idx:], tLower)
+			if pos == -1 {
+				break
+			}
+			matchPos := idx + pos
+			endPos := matchPos + len(tLower)
+			idx = endPos
+
+			// Check word boundary before match: should not be preceded by alphanumeric (e.g. user@domain.com or mydev:)
+			if matchPos > 0 && isAlphaNum(contentLower[matchPos-1]) {
+				continue
+			}
+
+			// Check word boundary at the end if the term starts with '@' (e.g. @Dev in @Developer)
+			if strings.HasPrefix(term, "@") {
+				if endPos < len(contentLower) && isAlphaNum(contentLower[endPos]) {
+					continue
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// isOrchestrator returns true if the subscriber identity or job title indicates an orchestrator,
+// or if canPeek is enabled.
+func isOrchestrator(subscriberID, jobTitle string, canPeek int) bool {
+	if canPeek != 0 {
+		return true
+	}
+	if strings.Contains(strings.ToLower(subscriberID), "orchestrator") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(jobTitle), "orchestrator") {
+		return true
+	}
+	return false
 }
 
 func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (int, error) {
@@ -870,17 +1010,12 @@ func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) 
 					count++
 				}
 			case "mentions":
-				terms := mentionTerms(sub.SubscriberID, sub.JobTitle)
 				for _, msg := range msgs {
 					if msg.ID <= sub.LastReadID || msg.SubscriberID == sub.SubscriberID || msg.SubscriberID == "Coral Task Queue" {
 						continue
 					}
-					contentLower := strings.ToLower(msg.Content)
-					for _, term := range terms {
-						if strings.Contains(contentLower, strings.ToLower(term)) {
-							count++
-							break
-						}
+					if containsExplicitTag(msg.Content, sub.SubscriberID, sub.JobTitle) {
+						count++
 					}
 				}
 			default:
@@ -1709,6 +1844,31 @@ func (s *Store) GetTaskDependencies(ctx context.Context, taskID int64) ([]TaskDe
 	return result, nil
 }
 
+// ListDownstreamTasks returns tasks that directly depend on an upstream task.
+// It is used for cancellation diagnostics and does not change readiness.
+func (s *Store) ListDownstreamTasks(ctx context.Context, project string, upstreamID int64) ([]Task, error) {
+	var rows []struct {
+		ID      int64  `db:"id"`
+		BoardID string `db:"board_id"`
+	}
+	if err := s.db.SelectContext(ctx, &rows, `SELECT DISTINCT b.id, b.board_id
+		FROM task_dependencies d JOIN board_tasks b ON b.id = d.task_id
+		WHERE d.blocked_by_task_id = ? AND d.blocked_by_board_id = ?`, upstreamID, project); err != nil {
+		return nil, err
+	}
+	result := make([]Task, 0, len(rows))
+	for _, row := range rows {
+		task, err := s.getTaskByID(ctx, row.BoardID, row.ID)
+		if err != nil {
+			return nil, err
+		}
+		if task != nil {
+			result = append(result, *task)
+		}
+	}
+	return result, nil
+}
+
 // AddTaskDependencies inserts dependency rows and sets status to 'blocked'
 // if any blockers are unresolved. Validates circular deps and depth limit.
 func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID int64, deps []TaskDep, maxDepth int) error {
@@ -1749,6 +1909,27 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 			"SELECT COUNT(*) FROM board_tasks WHERE id = ? AND board_id = ?", d.TaskID, d.BoardID)
 		if err != nil || exists == 0 {
 			return fmt.Errorf("blocker task #%d not found on board %s", d.TaskID, d.BoardID)
+		}
+		// When the producer has declared an output contract, reject a consumer
+		// dependency that asks for a name the producer never promised to publish.
+		// Older tasks with no declared outputs remain compatible and are checked
+		// against their immutable completion artifacts at readiness time.
+		if len(d.RequiredArtifacts) > 0 {
+			upstream, err := loadWorkflow(ctx, s.db, d.TaskID)
+			if err != nil {
+				return err
+			}
+			if len(upstream.RequiredOutputs) > 0 {
+				declared := make(map[string]bool, len(upstream.RequiredOutputs))
+				for _, name := range upstream.RequiredOutputs {
+					declared[name] = true
+				}
+				for _, name := range d.RequiredArtifacts {
+					if !declared[name] {
+						return fmt.Errorf("dependency #%d cannot require artifact %q: upstream declares outputs [%s]", d.TaskID, name, strings.Join(upstream.RequiredOutputs, ", "))
+					}
+				}
+			}
 		}
 	}
 

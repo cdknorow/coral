@@ -552,6 +552,8 @@ func (s *Server) buildRouter() chi.Router {
 	// Uploads
 	r.Post("/api/upload", routes.UploadFile)
 
+	sessHandler.RegisterAgentUI(r)
+
 	// Custom views
 	viewsHandler := routes.NewViewsHandler(s.db)
 	r.Get("/api/views", viewsHandler.ListViews)
@@ -611,8 +613,8 @@ func (s *Server) buildRouter() chi.Router {
 	// Board tasks (per-project)
 	r.Post("/api/board/{project}/tasks", boardHandler.CreateTask)
 	r.Get("/api/board/{project}/status", sessHandler.TeamAvailability)
- r.Get("/api/board/{project}/working-mode", boardHandler.GetWorkingMode)
- r.Put("/api/board/{project}/working-mode", boardHandler.SetWorkingMode)
+	r.Get("/api/board/{project}/working-mode", boardHandler.GetWorkingMode)
+	r.Put("/api/board/{project}/working-mode", boardHandler.SetWorkingMode)
 	r.Get("/api/board/{project}/tasks", boardHandler.ListTasks)
 	r.Post("/api/board/{project}/tasks/claim", boardHandler.ClaimTask)
 	r.Post("/api/board/{project}/tasks/current", boardHandler.ActiveTask)

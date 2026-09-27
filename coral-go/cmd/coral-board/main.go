@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
 	"net/http"
 	"net/url"
@@ -295,7 +296,8 @@ func printUsage() {
 Commands:
   join <project> --as <role>   Subscribe to a board
   post "<message>" [--to "a,b"] Post a message (optionally @mention agents)
-  read [--last N] [--id N]     Read new messages, the newest N (marks older unread
+  read [--all] [--last N] [--id N]     Read new messages (tagged only by default; --all
+                               for all), the newest N (marks older unread
                                as read), or a specific message by ID
   check [--quiet]              Check unread count
   projects                     List all boards
@@ -347,7 +349,7 @@ func cmdJoin() {
 		os.Exit(1)
 	}
 
-	saveState(&boardState{Project: project, JobTitle: jobTitle})
+	saveState(&boardState{Project: project, JobTitle: jobTitle, ServerURL: serverURL})
 	fmt.Printf("Joined '%s' as '%s' (subscriber: %s)\n", project, jobTitle, subscriberID)
 }
 
@@ -429,12 +431,22 @@ func cmdRead() {
 		}
 	}
 
+	// Check for --all
+	readAll := false
+	for _, arg := range os.Args {
+		if arg == "--all" || arg == "-a" {
+			readAll = true
+		}
+	}
+
 	subscriberID := resolveSubscriberID()
 	var path string
 	if messageID > 0 {
 		path = fmt.Sprintf("/%s/messages/all?id=%d", st.Project, messageID)
 	} else if useLast {
 		path = fmt.Sprintf("/%s/messages/all?limit=%d", st.Project, lastN)
+	} else if readAll {
+		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50&all=true", st.Project, url.QueryEscape(subscriberID))
 	} else {
 		path = fmt.Sprintf("/%s/messages?subscriber_id=%s&limit=50", st.Project, url.QueryEscape(subscriberID))
 	}
@@ -1343,10 +1355,12 @@ func cmdTaskClaim(st *boardState, args ...string) {
 
 	if status == http.StatusNotFound {
 		fmt.Println("No available tasks")
+		taskcli.PrintBlocked(os.Stdout, data)
 		return
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", string(data))
+		taskcli.PrintBlocked(os.Stderr, data)
 		os.Exit(1)
 	}
 

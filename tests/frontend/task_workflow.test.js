@@ -42,6 +42,14 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
         const result = await ev(`fetch('/api/board/workflow-browser/tasks/' + testTaskID).then(r => r.json())`);
         assert.equal(result.workflow.outcome, 'success');
         assert.equal(result.workflow.artifacts[0].name, 'build');
+        await ev(`(async()=>{
+            const r=await fetch('/api/board/workflow-browser/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'Missing candidate consumer',created_by:'tester',blocked_by:[{task_id:testTaskID,required_artifacts:['candidate']}]})});
+            if(!r.ok)throw new Error(await r.text());const child=await r.json();
+            await testTasks.loadBoardTasks('workflow-browser');testTasks.showTaskDetailModal(child.id);
+        })()`);
+        assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('missing required artifacts: candidate')`));
+        assert.equal(await ev(`document.querySelector('#task-detail-content .task-dep-status').textContent`),'unmet');
+
         await ev(`(async () => {
             const {state} = await import('/static/state.js');
             const r = await fetch('/api/sessions/launch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({working_dir:'/tmp',agent_type:'terminal',display_name:'Personal workflow browser'})});

@@ -158,17 +158,31 @@ func (s *Store) loadDependencyRule(ctx context.Context, id int64, d *TaskDep) er
 	var row struct {
 		Condition string `db:"condition"`
 		Required  string `db:"required_artifacts"`
+		Status    string `db:"status"`
+		Data      string `db:"data"`
 	}
-	err := s.db.GetContext(ctx, &row, "SELECT condition, required_artifacts FROM task_dependency_rules WHERE task_id = ? AND upstream_id = ?", id, d.TaskID)
+	err := s.db.GetContext(ctx, &row, `SELECT COALESCE(r.condition,'success') AS condition, COALESCE(r.required_artifacts,'[]') AS required_artifacts, b.status, COALESCE(w.data,'{}') AS data
+ FROM board_tasks b LEFT JOIN task_dependency_rules r ON r.upstream_id=b.id AND r.task_id=?
+ LEFT JOIN task_workflows w ON w.task_id=b.id WHERE b.id=? AND b.board_id=?`, id, d.TaskID, d.BoardID)
 	if err == sql.ErrNoRows {
-		d.Condition = "success"
+		d.Satisfied = false
+		d.BlockedReason = "upstream task not found"
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 	d.Condition = row.Condition
-	return json.Unmarshal([]byte(row.Required), &d.RequiredArtifacts)
+	if err := json.Unmarshal([]byte(row.Required), &d.RequiredArtifacts); err != nil {
+		return err
+	}
+	var workflow TaskWorkflow
+	if err := json.Unmarshal([]byte(row.Data), &workflow); err != nil {
+		return err
+	}
+	d.Outcome, d.MissingArtifacts, d.BlockedReason = dependencyStatus(row.Status, workflow, d.Condition, d.RequiredArtifacts)
+	d.Satisfied = d.BlockedReason == ""
+	return nil
 }
 
 func saveDependencyRule(ctx context.Context, db sqlx.ExecerContext, id int64, d TaskDep) error {
@@ -253,31 +267,13 @@ func dependencyInputs(ctx context.Context, db sqlx.QueryerContext, taskID int64)
 		if err != nil {
 			return nil, false, err
 		}
-		outcome := w.Outcome
-		if row.Status == "completed" && outcome == "" {
-			outcome = "success"
-		}
-		if row.Status == "skipped" {
-			outcome = "cancelled"
-		}
-		terminal := row.Status == "completed" || row.Status == "skipped"
-		if !terminal || (row.Condition == "success" && outcome != "success") || (row.Condition == "failure" && outcome != "failed") {
-			return nil, false, nil
-		}
 		var required []string
 		if err := json.Unmarshal([]byte(row.Required), &required); err != nil {
 			return nil, false, err
 		}
-		for _, name := range required {
-			found := false
-			for _, a := range w.Artifacts {
-				if a.Name == name {
-					found = true
-				}
-			}
-			if !found {
-				return nil, false, nil
-			}
+		outcome, _, reason := dependencyStatus(row.Status, w, row.Condition, required)
+		if reason != "" {
+			return nil, false, nil
 		}
 		inputs = append(inputs, TaskInput{TaskID: row.ID, BoardID: row.Board, Outcome: outcome, Artifacts: w.Artifacts})
 	}

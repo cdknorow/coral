@@ -1,3 +1,4 @@
+import { initAgentUI } from './agent_ui.js';
 import { showTeamWorkingMode } from './team_working_mode.js';
 import { showTeamAvailability } from './team_availability.js';
 /* Coral Dashboard — Entry Point */
@@ -690,6 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     loadAllFolderTags();
     loadCustomViews();
+    initAgentUI();
     if (!popout) initRouter();
     connectCoralWs();
     if (!popout) checkForUpdates();

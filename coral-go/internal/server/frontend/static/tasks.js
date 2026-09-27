@@ -509,6 +509,7 @@ window._toggleTaskSort = _toggleTaskSort;
 window._toggleHideCompleted = _toggleHideCompleted;
 
 const _priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+const _priorityRank = { critical: 1, high: 2, medium: 3, low: 4 };
 
 function _formatCost(usd, precise) {
     if (usd == null) return '$0.00';
@@ -582,6 +583,8 @@ export function renderBoardTaskList() {
             cmp = aCost - bCost;
         } else if (_taskSortField === 'type') {
             cmp = (a._source || '').localeCompare(b._source || '');
+        } else if (_taskSortField === 'id') {
+            cmp = (a.id || 0) - (b.id || 0);
         }
         return _taskSortAsc ? cmp : -cmp;
     });
@@ -624,7 +627,8 @@ export function renderBoardTaskList() {
 
     const header = `
         <div class="board-task-item board-task-header">
-            <span class="board-task-status-col"></span>
+            <span class="board-task-status-col">Status</span>
+            <span class="board-task-id board-task-sort" onclick="_toggleTaskSort('id')">ID${arrow('id')}</span>
             <span class="board-task-priority board-task-sort" onclick="_toggleTaskSort('priority')">Priority${arrow('priority')}</span>
             <span class="board-task-type board-task-sort" onclick="_toggleTaskSort('type')">Type${arrow('type')}</span>
             <span class="board-task-assignee board-task-sort" onclick="_toggleTaskSort('assignee')">Agent${arrow('assignee')}</span>
@@ -638,28 +642,29 @@ export function renderBoardTaskList() {
         const isSubagent = t._source === 'subagent';
         const statusClass = t.status === 'completed' ? 'completed'
             : t.status === 'in_progress' ? 'in-progress'
-            : t.status === 'skipped' ? 'completed'
+            : t.status === 'skipped' ? 'cancelled'
             : t.status === 'blocked' ? 'blocked'
             : t.status === 'draft' ? 'draft' : '';
         const priorityClass = t.priority ? 'board-task-priority-' + t.priority : 'board-task-priority-none';
         const assignee = t.assigned_to || '\u2014';
+        const taskIdLabel = t.id != null ? `#${t.id}` : '\u2014';
         const title = escapeHtml(t.title || t.description || '');
         const tooltip = isSubagent ? ` title="${escapeAttr(_subagentTooltip(t))}"`
             : t.body ? ` title="${escapeAttr(t.body)}"` : '';
         const timeStr = _formatTaskTime(t.created_at);
         const statusIcon = t.workflow?.outcome === 'failed'
-            ? '<span class="material-icons board-task-status-icon skipped" title="Failed">error</span>'
+            ? '<span class="board-task-status-wrap completed"><span class="material-icons board-task-status-icon completed" title="Finished">check_circle</span><span class="board-task-status-label">Finished</span></span>'
             : t.status === 'completed'
-            ? '<span class="material-icons board-task-status-icon completed">check_circle</span>'
+            ? '<span class="board-task-status-wrap completed"><span class="material-icons board-task-status-icon completed" title="Finished">check_circle</span><span class="board-task-status-label">Finished</span></span>'
             : t.status === 'in_progress'
-            ? '<span class="task-spinner" title="In progress"></span>'
+            ? '<span class="board-task-status-wrap in-progress"><span class="task-spinner" title="Open · Working"></span><span class="board-task-status-label">Open <b>· Working</b></span></span>'
             : t.status === 'skipped'
-            ? '<span class="material-icons board-task-status-icon skipped">block</span>'
+            ? '<span class="board-task-status-wrap cancelled"><span class="material-icons board-task-status-icon cancelled" title="Cancelled">cancel</span><span class="board-task-status-label">Cancelled</span></span>'
             : t.status === 'blocked'
-            ? '<span class="material-icons board-task-status-icon blocked" title="Blocked: waiting for prerequisites" role="img" aria-label="Blocked: waiting for prerequisites">hourglass_empty</span>'
+            ? '<span class="board-task-status-wrap blocked"><span class="material-icons board-task-status-icon blocked" title="Open · Blocked: waiting for prerequisites" role="img" aria-label="Open · Blocked: waiting for prerequisites">hourglass_empty</span><span class="board-task-status-label">Open <b>· Blocked</b></span></span>'
             : t.status === 'draft'
-            ? '<span class="material-icons board-task-status-icon draft" title="Draft">edit_note</span>'
-            : '<span class="material-icons board-task-status-icon pending">radio_button_unchecked</span>';
+            ? '<span class="board-task-status-wrap pending"><span class="material-icons board-task-status-icon draft" title="Open · Draft">edit_note</span><span class="board-task-status-label">Open <b>· Draft</b></span></span>'
+            : '<span class="board-task-status-wrap pending"><span class="material-icons board-task-status-icon pending" title="Open">radio_button_unchecked</span><span class="board-task-status-label">Open</span></span>';
         let costText = '';
         let costClass = 'board-task-cost';
         if (isSubagent) {
@@ -700,7 +705,8 @@ export function renderBoardTaskList() {
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
-            <span class="board-task-priority ${priorityClass}">${t.priority ? escapeHtml(t.priority) : '\u2014'}</span>
+            <span class="board-task-id" title="Task ID">${taskIdLabel}</span>
+            <span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(t.priority || 'none')}">${t.priority ? (_priorityRank[t.priority] || '\u2014') : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>
             <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${blockedBadge}${title}</span>
@@ -1049,13 +1055,13 @@ function _openTaskDetailModal(modal) {
 }
 
 function _taskDetailHtml(task, liveCost) {
-    const statusLabel = task.workflow?.outcome === 'failed' ? 'Failed' : task.status === 'completed' ? 'Completed'
-        : task.status === 'in_progress' ? 'In Progress'
+    const statusLabel = task.workflow?.outcome === 'failed' ? 'Finished' : task.status === 'completed' ? 'Finished'
+        : task.status === 'in_progress' ? 'Open · In Progress'
         : task.status === 'skipped' ? 'Cancelled'
-        : task.status === 'blocked' ? 'Blocked'
-        : task.status === 'draft' ? 'Draft'
-        : 'Pending';
-    const statusClass = task.workflow?.outcome === 'failed' ? 'task-detail-status-cancelled' : task.status === 'completed' ? 'task-detail-status-completed'
+        : task.status === 'blocked' ? 'Open · Blocked'
+        : task.status === 'draft' ? 'Open · Draft'
+        : 'Open';
+    const statusClass = task.status === 'completed' ? 'task-detail-status-completed'
         : task.status === 'in_progress' ? 'task-detail-status-inprogress'
         : task.status === 'skipped' ? 'task-detail-status-cancelled'
         : task.status === 'blocked' ? 'task-detail-status-blocked'
@@ -1071,10 +1077,11 @@ function _taskDetailHtml(task, liveCost) {
     const completedBy = task.completed_by || null;
 
     let html = `
-        <div class="task-detail-title">${escapeHtml(task.title)}</div>
+        <div class="task-detail-title">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
         <div class="task-detail-meta">
-            <span class="task-detail-status ${statusClass}">${statusLabel}</span>
-            <span class="board-task-priority ${priorityClass}">${escapeHtml(task.priority || 'medium')}</span>
+            <span class="task-detail-meta-item"><span class="task-detail-meta-label">Lifecycle</span><span class="task-detail-status ${statusClass}">${statusLabel}</span></span>
+            <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${_priorityRank[task.priority] || '\u2014'}</span></span>
+            ${task.workflow?.outcome === 'failed' ? '<span class="task-detail-meta-item"><span class="task-detail-meta-label">Result</span><span class="task-detail-outcome-failed">Failed</span></span>' : ''}
         </div>`;
 
     if (task.body) {
@@ -1135,6 +1142,12 @@ function _taskDetailHtml(task, liveCost) {
             <span class="task-detail-value">${escapeHtml(task.completion_message)}</span>
         </div>`;
     }
+    if (task.workflow?.outcome === 'failed' && !task.completion_message) {
+        html += `<div class="task-detail-field task-detail-field-wide task-detail-failure-reason">
+            <span class="task-detail-label">Result details</span>
+            <span class="task-detail-value">No failure reason was provided.</span>
+        </div>`;
+    }
 
     html += `</div>`;
 
@@ -1142,13 +1155,15 @@ function _taskDetailHtml(task, liveCost) {
     if (task.blocked_by && task.blocked_by.length > 0) {
         const boardProject = _getBoardProject();
         const depsHtml = task.blocked_by.map(dep => {
-            const depStatusClass = dep.status === 'completed' ? 'task-dep-status-completed'
+            const depStatusClass = dep.satisfied === false ? 'task-dep-status-blocked'
+                : dep.status === 'completed' ? 'task-dep-status-completed'
                 : dep.status === 'in_progress' ? 'task-dep-status-inprogress'
                 : dep.status === 'skipped' ? 'task-dep-status-cancelled'
                 : dep.status === 'blocked' ? 'task-dep-status-blocked'
                 : dep.status === 'draft' ? 'task-dep-status-draft'
                 : 'task-dep-status-pending';
-            const depStatusLabel = dep.status === 'completed' ? 'completed'
+            const depStatusLabel = dep.satisfied === false ? 'unmet'
+                : dep.status === 'completed' ? 'completed'
                 : dep.status === 'in_progress' ? 'in progress'
                 : dep.status === 'skipped' ? 'cancelled'
                 : dep.status === 'blocked' ? 'blocked'
@@ -1161,7 +1176,7 @@ function _taskDetailHtml(task, liveCost) {
             return `<div class="task-dep-item">
                 <span class="task-dep-status ${depStatusClass}">${depStatusLabel}</span>
                 <a class="task-dep-link"${clickable}>${boardPrefix}#${dep.task_id}${depTitle}</a>
-                <span>${escapeHtml(dep.condition || 'success')}${dep.required_artifacts?.length ? ` · requires ${escapeHtml(dep.required_artifacts.join(', '))}` : ''}</span>
+                <span>${escapeHtml(dep.condition || 'success')}${dep.required_artifacts?.length ? ` · requires ${escapeHtml(dep.required_artifacts.join(', '))}` : ''}${dep.blocked_reason ? ` · ${escapeHtml(dep.blocked_reason)}` : ''}</span>
             </div>`;
         }).join('');
         html += `<div class="task-detail-section">

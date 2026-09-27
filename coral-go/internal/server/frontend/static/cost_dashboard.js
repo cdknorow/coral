@@ -696,6 +696,7 @@ function _renderTaskTable(tasks) {
     let html = `<table class="cost-table">
         <thead><tr>
             <th style="width:24px"></th>
+            <th>ID</th>
             ${_sortHeader('task', 'title', 'Task', '')}
             ${_sortHeader('task', 'assigned_to', 'Agent', '', true)}
             ${_sortHeader('task', 'priority', 'Priority', '', true)}
@@ -714,6 +715,7 @@ function _renderTaskTable(tasks) {
         const duration = _formatDuration(t.claimed_at, t.completed_at);
         html += `<tr onclick="_showCostTaskDetail(${t.id})" style="cursor:pointer">
             <td>${statusIcon(t.status)}</td>
+            <td class="cost-task-id">#${t.id}</td>
             <td>${escapeHtml(t.title || '')}</td>
             <td class="cost-agent-name">${escapeHtml(t.assigned_to || '\u2014')}</td>
             <td><span class="board-task-priority ${priorityClass}">${escapeHtml(t.priority || 'medium')}</span></td>

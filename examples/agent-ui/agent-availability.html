@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agent availability</title>
+<style>
+:root{color-scheme:dark;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#101217;color:#e9edf5}*{box-sizing:border-box}body{margin:0;padding:24px;max-width:1100px;margin-inline:auto}h1{font-size:26px;letter-spacing:-.8px;margin:0}h2{font-size:16px;margin:0}p{margin:0}.eyebrow{font-size:11px;letter-spacing:1.6px;color:#91a0b7;text-transform:uppercase;font-weight:650}.subtle{color:#9da9bb;font-size:12px}.intro{margin:8px 0 20px;color:#b7c1d1}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}.stat{border:1px solid #2b313e;border-radius:12px;background:#181c24;padding:13px 16px}.stat strong{font-size:28px;letter-spacing:-1px;display:block}.stat:first-child strong{color:#83dfb1}.stat span{font-size:12px;color:#a6b1c2}.filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:17px}input[type=search],select{background:#1a1f29;color:#e9edf5;border:1px solid #343d4c;border-radius:8px;padding:10px 12px;font:inherit;min-width:0}input[type=search]{flex:1;min-width:150px}select{max-width:100%}.toggle{display:flex;align-items:center;gap:8px;white-space:nowrap;color:#c4cede}input[type=checkbox]{accent-color:#83dfb1;width:16px;height:16px}button{font:inherit;cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #91bbff;outline-offset:3px}.result-line{display:flex;justify-content:space-between;gap:10px;margin-bottom:10px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:10px}.card{background:#191e27;border:1px solid #303846;border-radius:12px;overflow:hidden}.card.free{border-color:#305848}.card.open{border-color:#7590b9}.card-button{width:100%;color:inherit;background:transparent;border:0;text-align:left;padding:15px}.row{display:flex;align-items:center;justify-content:space-between;gap:10px}.name{font-weight:650;font-size:15px;overflow-wrap:anywhere}.badge{border-radius:20px;padding:3px 8px;font-size:11px;color:#c2ccdd;background:#30394a;white-space:nowrap}.free .badge{background:#24483b;color:#99ebc2}.meta{color:#9eacc0;font-size:12px;margin:7px 0;overflow-wrap:anywhere}.preview{color:#c8d1df;font-size:12px;overflow-wrap:anywhere}.details{border-top:1px solid #303846;padding:15px}.details dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:12px;margin:0 0 12px}.details dt{color:#9eacc0}.details dd{margin:0;overflow-wrap:anywhere}.tasks{padding:0;list-style:none;margin:8px 0 12px}.tasks li{border-left:2px solid #43536b;padding:5px 0 5px 10px;margin-bottom:8px;overflow-wrap:anywhere;font-size:12px}.ask{background:#29384e;color:#dceaff;border:1px solid #496080;border-radius:7px;padding:8px 10px;font-size:12px}.ask:disabled{opacity:.6;cursor:default}.feedback{font-size:12px;color:#b9cbea;margin-top:9px;overflow-wrap:anywhere}.empty{padding:30px 20px;border:1px dashed #3a4352;border-radius:12px;text-align:center;color:#b1bdd0;grid-column:1/-1}footer{margin-top:22px;border-top:1px solid #2a303b;padding-top:13px;color:#8594ab;font-size:11px}.team-note{margin-top:16px;color:#9da9bb;font-size:12px;overflow-wrap:anywhere}[hidden]{display:none!important}@media(max-width:420px){body{padding:16px}.stat{padding:10px}.stat strong{font-size:24px}.filters select{flex:1}.toggle{padding:4px 0}}
+</style>
+</head>
+<body>
+<header><p class="eyebrow">Team pulse · read-only snapshot</p><h1>Which agents are free?</h1><p class="intro" id="intro">Loading availability…</p></header>
+<section class="stats" aria-label="Availability totals"><div class="stat"><strong id="free-count">—</strong><span>Free agents</span></div><div class="stat"><strong id="other-count">—</strong><span>Not marked free</span></div><div class="stat"><strong id="total-count">—</strong><span>Total agents</span></div></section>
+<div class="filters"><input type="search" id="search" aria-label="Search agents, roles, or tasks" placeholder="Search agents, roles, tasks…"><select id="team" aria-label="Filter by team"><option value="">All teams</option></select><label class="toggle"><input type="checkbox" id="free-only" checked>Free only</label></div>
+<div class="result-line subtle"><span id="results" role="status" aria-live="polite"></span><span>Select an agent for details</span></div>
+<main id="agents" class="grid" aria-label="Agents"></main>
+<p id="team-note" class="team-note"></p>
+<footer><p id="timestamp"></p><p>Free means the status API explicitly reported available = true. This snapshot does not refresh automatically.</p></footer>
+<script type="application/json" id="snapshot">__AVAILABILITY_DATA__</script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const text = value => value == null ? '' : String(value);
+  const make = (tag, className, value) => { const node = document.createElement(tag); if (className) node.className = className; if (value != null) node.textContent = text(value); return node; };
+  const when = value => { const date = new Date(value); return value && !Number.isNaN(date.getTime()) ? date.toLocaleString() : 'Time unavailable'; };
+  let data;
+  try { data = JSON.parse($('snapshot').textContent); } catch (_) { $('intro').textContent = 'This snapshot could not be loaded.'; $('agents').append(make('p','empty','Availability data is unavailable. Request a new snapshot.')); return; }
+  const teams = Array.isArray(data.teams) ? data.teams : [];
+  const records = teams.flatMap(team => (Array.isArray(team.agents) ? team.agents : []).map(agent => ({ agent, team })));
+  let selected = null;
+  const feedbackKey = 'agent-availability-feedback:' + text(data.observed_at);
+  let savedFeedback = [];
+  try { const stored = JSON.parse(sessionStorage.getItem(feedbackKey) || '[]'); if (Array.isArray(stored)) savedFeedback = stored; } catch (_) {}
+  const feedback = new Map(savedFeedback);
+  const saveFeedback = () => { try { sessionStorage.setItem(feedbackKey,JSON.stringify(Array.from(feedback))); } catch (_) {} };
+  const pending = new Set();
+  const keyOf = record => JSON.stringify([record.team.board,record.agent.session_id,record.agent.subscriber_id]);
+  const tasksOf = agent => Array.isArray(agent.tasks) ? agent.tasks : [];
+  const labelOf = agent => agent.name || agent.subscriber_id || agent.session_id || 'Unnamed agent';
+  const statusOf = agent => agent.available === true ? 'Free' : text(agent.availability || (agent.available === false ? 'Unavailable' : 'Unknown'));
+  for (const team of teams) { const option = make('option','',team.board || 'Unnamed team'); option.value = text(team.board); $('team').append(option); }
+  $('timestamp').textContent = 'Observed ' + when(data.observed_at);
+  $('intro').textContent = records.some(r => r.agent.available === true) ? 'Available agents, with their reported status and current work.' : 'No agents are explicitly marked free in this snapshot.';
+  function render() {
+    const board = $('team').value;
+    const scoped = records.filter(r => !board || text(r.team.board) === board);
+    const free = scoped.filter(r => r.agent.available === true).length;
+    $('free-count').textContent = free; $('other-count').textContent = scoped.length-free; $('total-count').textContent = scoped.length;
+    const query = $('search').value.trim().toLowerCase();
+    const visible = scoped.filter(({agent,team}) => (!$('free-only').checked || agent.available === true) && [labelOf(agent),agent.role,agent.agent_type,team.board,agent.reason,agent.availability,...tasksOf(agent).flatMap(t => [t.title,t.id,t.scope,t.status])].map(text).join(' ').toLowerCase().includes(query)).sort((a,b) => Number(b.agent.available === true)-Number(a.agent.available === true) || text(labelOf(a.agent)).localeCompare(text(labelOf(b.agent))));
+    $('results').textContent = visible.length + ' of ' + scoped.length + ' agents shown';
+    $('agents').replaceChildren();
+    if (!visible.length) $('agents').append(make('p','empty',!records.length ? 'No agents were reported in this snapshot.' : query ? 'No agents match this search. Try another name, role, or task.' : 'No free agents in this selection. Turn off “Free only” to see other statuses.'));
+    visible.forEach(record => {
+      const {agent,team} = record, key = keyOf(record), tasks = tasksOf(agent), open = selected === key;
+      const card = make('article','card' + (agent.available === true ? ' free' : '') + (open ? ' open' : ''));
+      const button = make('button','card-button'); button.type = 'button'; button.setAttribute('aria-expanded',String(open));
+      const row = make('div','row'); row.append(make('span','name',labelOf(agent)),make('span','badge',statusOf(agent))); button.append(row,make('p','meta',[team.board,agent.role || agent.agent_type].filter(Boolean).join(' · ')),make('p','preview',agent.reason || (tasks.length ? tasks.length + ' reported task' + (tasks.length === 1 ? '' : 's') : 'No tasks reported')));
+      button.addEventListener('click',() => { selected = open ? null : key; render(); const target = Array.from($('agents').children).find(el => el.dataset.key === key); if (target) target.querySelector('button').focus(); }); card.dataset.key = key; card.append(button);
+      if (open) {
+        const detail = make('section','details'), dl = make('dl');
+        for (const [label,value] of [['Reported status',agent.availability || 'Unknown'],['Reason',agent.reason || 'No reason reported'],['Agent type',agent.agent_type || 'Not reported'],['Observed',when(team.observed_at || data.observed_at)]]) dl.append(make('dt','',label),make('dd','',value));
+        detail.append(dl,make('h2','','Current tasks'));
+        if (!tasks.length) detail.append(make('p','subtle','No tasks reported.'));
+        else { const list = make('ul','tasks'); tasks.forEach(task => { const item = make('li'); item.append(make('p','',task.title || task.id || 'Untitled task'),make('p','subtle',[task.status,task.scope,task.id].filter(Boolean).join(' · '))); list.append(item); }); detail.append(list); }
+        const ask = make('button','ask',pending.has(key) ? 'Saving…' : 'Ask about this agent'); ask.type = 'button'; ask.disabled = pending.has(key) || !agent.session_id;
+        ask.addEventListener('click',async () => {
+          pending.add(key); feedback.set(key,'Saving request…'); render();
+          try {
+            if (!window.coralUI || typeof window.coralUI.emit !== 'function') throw new Error('The Coral event bridge is unavailable in this preview.');
+            const result = await window.coralUI.emit('inspect-agent-availability',{board:team.board,session_id:agent.session_id,observed_at:team.observed_at || data.observed_at});
+            feedback.set(key,result && result.notified === true ? 'Request saved. The agent that published this panel was notified.' : 'Request saved. Notification was not delivered; the agent can still read the request.' + (result && result.notify_error ? ' ' + text(result.notify_error) : ''));
+          } catch (error) { feedback.set(key,'Request could not be saved: ' + text(error.message || error)); }
+          finally { pending.delete(key); saveFeedback(); render(); }
+        });
+        const message = make('p','feedback',feedback.get(key) || 'Sends a question to the agent that published this panel; does not assign work.'); message.setAttribute('role','status'); detail.append(ask,message); card.append(detail);
+      }
+      $('agents').append(card);
+    });
+    const selectedTeams = teams.filter(team => !board || text(team.board) === board);
+    $('team-note').textContent = selectedTeams.map(team => text(team.board || 'Unnamed team') + ': ' + (Array.isArray(team.unassigned_tasks) ? team.unassigned_tasks.length + ' unassigned task' + (team.unassigned_tasks.length === 1 ? '' : 's') : 'unassigned task count unavailable')).join(' · ');
+  }
+  $('search').addEventListener('input',render); $('team').addEventListener('change',render); $('free-only').addEventListener('change',render); render();
+})();
+</script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+import { refreshAgentUI } from './agent_ui.js';
 /* Agentic State — event loading, timeline rendering, tab switching, filtering */
 
 import { state } from './state.js';
@@ -369,6 +370,8 @@ export function switchAgenticTab(tabName, blockId) {
     if (blockId) {
         localStorage.setItem(`coral-agentic-tab-${blockId}`, tabName);
     }
+
+    if (tabName === 'agent-ui') refreshAgentUI();
 
     // Start/stop board task polling based on tab
     if (tabName === 'tasks') {

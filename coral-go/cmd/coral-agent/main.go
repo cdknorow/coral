@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
 	"net/http"
 	"net/url"
@@ -33,6 +34,7 @@ func printUsage() {
 	fmt.Println(`coral-agent - launch Coral agents and work with your own tasks
 
 Commands:
+  ui <publish|list|events|remove>  Publish interactive sidebar panels
   launch [dir] [--type T] [--name N] [--model M] [--prompt P]
                                  Launch an agent in dir (default: current
                                  directory) with your default settings
@@ -54,6 +56,8 @@ func main() {
 		os.Exit(1)
 	}
 	switch os.Args[1] {
+	case "ui":
+		cmdUI(os.Args[2:])
 	case "launch":
 		cmdLaunch(os.Args[2:])
 	case "task":
@@ -352,10 +356,12 @@ func cmdTaskClaim(args ...string) {
 
 	if status == http.StatusNotFound && isNoTask(data) {
 		fmt.Println("No available tasks")
+		taskcli.PrintBlocked(os.Stdout, data)
 		return
 	}
 	if status != http.StatusOK {
 		fmt.Fprintf(os.Stderr, "Error claiming task: %s\n", string(data))
+		taskcli.PrintBlocked(os.Stderr, data)
 		os.Exit(1)
 	}
 

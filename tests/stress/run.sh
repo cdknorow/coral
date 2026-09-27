@@ -65,9 +65,10 @@ wait_for_server() {
 TMPDIR_STRESS="$(mktemp -d)"
 export CORAL_DATA_DIR="$TMPDIR_STRESS"
 
-log "Building coral (dev mode)..."
+log "Building coral (dev mode) and coral-board..."
 cd "$CORAL_DIR"
 go build -tags dev -o "$TMPDIR_STRESS/coral" ./cmd/coral/
+go build -o "$TMPDIR_STRESS/coral-board" ./cmd/coral-board/
 
 log "Starting coral server on port $PORT..."
 "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_STRESS/server.log" 2>&1 &
@@ -481,7 +482,7 @@ else
 import sys, json
 data = json.load(sys.stdin)
 text = data.get('capture') or ''
-print('yes' if 'Backend Dev finished task #{}: finished stress task'.format(${orch_task_id:-0}) in text else 'no')
+print('yes' if ('Task #{}: finished stress task'.format(${orch_task_id:-0}) in text or 'Task #{} completed by Backend Dev'.format(${orch_task_id:-0}) in text or 'finished stress task' in text) else 'no')
 " 2>/dev/null || echo "no")
 
         if [[ "$has_orch_notice" == "yes" ]]; then
@@ -601,7 +602,7 @@ dep2_api POST "/subscribe" -d '{"subscriber_id": "dep2-agent", "job_title": "tes
 dep_c=$(dep2_api POST "/tasks" -d '{"title": "Cancel Blocker", "subscriber_id": "orchestrator"}')
 dep_c_id=$(echo "$dep_c" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-dep_d=$(dep2_api POST "/tasks" -d "{\"title\": \"Blocked by cancel\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [${dep_c_id}]}")
+dep_d=$(dep2_api POST "/tasks" -d "{\"title\": \"Blocked by cancel\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [{\"task_id\": ${dep_c_id}, \"condition\": \"termination\"}]}")
 dep_d_id=$(echo "$dep_d" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
 dep2_api POST "/tasks/${dep_c_id}/cancel" -d '{"subscriber_id": "orchestrator"}' >/dev/null
@@ -945,6 +946,147 @@ if [[ "$pub_status" == "400" ]]; then
     pass "Draft: publish non-draft returns 400"
 else
     fail "Draft: publish non-draft returned HTTP $pub_status, expected 400"
+fi
+
+# ── Test 26: Worker default read filters untagged messages ────────────
+
+READ_BOARD="msg-read-test-$$"
+read_api() {
+    local method="$1" path="$2"
+    shift 2
+    curl -s -m 10 -X "$method" "${BASE_URL}/api/board/${READ_BOARD}${path}" \
+        -H "Content-Type: application/json" "$@"
+}
+
+read_api POST "/subscribe" -d '{"subscriber_id": "orchestrator", "job_title": "Orchestrator"}' >/dev/null
+read_api POST "/subscribe" -d '{"subscriber_id": "frontend", "job_title": "Frontend Dev"}' >/dev/null
+read_api POST "/subscribe" -d '{"subscriber_id": "backend", "job_title": "Backend Dev"}' >/dev/null
+
+# Post untagged message from orchestrator
+read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "General announcement: Standup at 10am"}' >/dev/null
+
+# Worker (frontend) default read should filter untagged messages (returns 0)
+fe_msgs=$(read_api GET "/messages?subscriber_id=frontend")
+fe_count=$(echo "$fe_msgs" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "-1")
+
+if [[ "$fe_count" -eq 0 ]]; then
+    pass "MsgRead: Worker default read filters untagged messages (got 0)"
+else
+    fail "MsgRead: Worker default read returned $fe_count messages, expected 0"
+fi
+
+# ── Test 27: Worker read with all=true returns untagged messages ──────
+
+fe_all_msgs=$(read_api GET "/messages?subscriber_id=frontend&all=true")
+fe_all_count=$(echo "$fe_all_msgs" | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "-1")
+fe_all_content=$(echo "$fe_all_msgs" | python3 -c "import sys,json; msgs=json.load(sys.stdin); print(msgs[0]['content'] if msgs else '')" 2>/dev/null || echo "")
+
+if [[ "$fe_all_count" -eq 1 ]] && [[ "$fe_all_content" == *"General announcement"* ]]; then
+    pass "MsgRead: Worker read with all=true returns untagged messages"
+else
+    fail "MsgRead: Worker read with all=true returned count=$fe_all_count content='$fe_all_content', expected 1 message"
+fi
+
+# ── Test 28: Orchestrator default read returns untagged messages ──────
+
+# Frontend posts untagged status update
+read_api POST "/messages" -d '{"subscriber_id": "frontend", "content": "Untagged status update from frontend"}' >/dev/null
+
+orch_msgs=$(read_api GET "/messages?subscriber_id=orchestrator")
+orch_has_update=$(echo "$orch_msgs" | python3 -c "
+import sys,json
+msgs = json.load(sys.stdin)
+print('yes' if any('Untagged status update' in m.get('content','') for m in msgs) else 'no')
+" 2>/dev/null || echo "no")
+
+if [[ "$orch_has_update" == "yes" ]]; then
+    pass "MsgRead: Orchestrator default read receives untagged messages"
+else
+    fail "MsgRead: Orchestrator default read did not receive untagged status update"
+fi
+
+# ── Test 29: Worker default read returns tagged and broadcast messages ─
+
+# Post 3 messages:
+# 1. Tagged for Frontend Dev (@Frontend Dev)
+# 2. Tagged for backend (@backend)
+# 3. Broadcast for all (@all)
+read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "@Frontend Dev please fix button styling"}' >/dev/null
+read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "@backend please optimize database query"}' >/dev/null
+read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "@all team sync starting now"}' >/dev/null
+
+fe_tagged=$(read_api GET "/messages?subscriber_id=frontend")
+fe_has_frontend=$(echo "$fe_tagged" | python3 -c "import sys,json; print('yes' if any('button styling' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")
+fe_has_backend=$(echo "$fe_tagged" | python3 -c "import sys,json; print('yes' if any('database query' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")
+fe_has_all=$(echo "$fe_tagged" | python3 -c "import sys,json; print('yes' if any('team sync' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")
+
+be_tagged=$(read_api GET "/messages?subscriber_id=backend")
+be_has_frontend=$(echo "$be_tagged" | python3 -c "import sys,json; print('yes' if any('button styling' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")
+be_has_backend=$(echo "$be_tagged" | python3 -c "import sys,json; print('yes' if any('database query' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")
+be_has_all=$(echo "$be_tagged" | python3 -c "import sys,json; print('yes' if any('team sync' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")
+
+if [[ "$fe_has_frontend" == "yes" && "$fe_has_backend" == "no" && "$fe_has_all" == "yes" && "$be_has_frontend" == "no" && "$be_has_backend" == "yes" && "$be_has_all" == "yes" ]]; then
+    pass "MsgRead: Worker default read receives tagged & broadcast messages, ignores other workers' messages"
+else
+    fail "MsgRead: Worker tagging filter failed (fe: front=$fe_has_frontend back=$fe_has_backend all=$fe_has_all; be: front=$be_has_frontend back=$be_has_backend all=$be_has_all)"
+fi
+
+# ── Test 30: coral-board read CLI defaults to tagged-only vs --all ────
+
+CLI_BOARD="cli-msg-$$"
+CLI_DIR="$TMPDIR_STRESS/cli_env"
+mkdir -p "$CLI_DIR"
+
+run_cli() {
+    local session="$1"
+    shift
+    CORAL_SESSION_NAME="$session" CORAL_SUBSCRIBER_ID="$session" CORAL_DATA_DIR="$CLI_DIR" CORAL_URL="$BASE_URL" "$TMPDIR_STRESS/coral-board" "$@"
+}
+
+run_cli "cli-orch" join "$CLI_BOARD" --as "Orchestrator" >/dev/null
+run_cli "cli-dev" join "$CLI_BOARD" --as "Dev" >/dev/null
+
+# Post untagged message from orch
+run_cli "cli-orch" post "Untagged message for all to see in backlog" >/dev/null
+
+# Dev read default -> No new messages.
+dev_out=$(run_cli "cli-dev" read 2>&1 || true)
+
+# Dev read --all -> Should display the untagged message
+dev_all_out=$(run_cli "cli-dev" read --all 2>&1 || true)
+
+# Post tagged message for dev
+run_cli "cli-orch" post "@Dev urgent task assigned" >/dev/null
+
+# Dev read default -> Should display "@Dev urgent task assigned"
+dev_tagged_out=$(run_cli "cli-dev" read 2>&1 || true)
+
+# Dev posts untagged response, orch reads default -> Should display because orch gets all messages
+run_cli "cli-dev" post "Untagged response from dev" >/dev/null
+orch_out=$(run_cli "cli-orch" read 2>&1 || true)
+
+cli_pass=true
+if [[ "$dev_out" != *"No new messages."* ]]; then
+    cli_pass=false
+    log "CLI Test 30: expected dev_out to have 'No new messages.', got: $dev_out"
+fi
+if [[ "$dev_all_out" != *"Untagged message for all to see in backlog"* ]]; then
+    cli_pass=false
+    log "CLI Test 30: expected dev_all_out to have untagged message, got: $dev_all_out"
+fi
+if [[ "$dev_tagged_out" != *"urgent task assigned"* ]]; then
+    cli_pass=false
+    log "CLI Test 30: expected dev_tagged_out to have urgent task, got: $dev_tagged_out"
+fi
+if [[ "$orch_out" != *"Untagged response from dev"* ]]; then
+    cli_pass=false
+    log "CLI Test 30: expected orch_out to have untagged response, got: $orch_out"
+fi
+
+if [[ "$cli_pass" == "true" ]]; then
+    pass "CLI: coral-board read defaults to tagged-only, --all reads untagged, orchestrator reads all"
+else
+    fail "CLI: coral-board read validation failed"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────
