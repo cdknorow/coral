@@ -271,6 +271,8 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+	case "working-mode":
+		cmdWorkingMode(os.Args[2:])
 	case "leave":
 		cmdLeave()
 	case "delete":
@@ -305,6 +307,8 @@ Commands:
   projects                     List all boards
   subscribers                  List board subscribers
   status [--board NAME]         JSON snapshot of agent availability and open work
+  working-mode [--board NAME] [--custom-instructions TEXT]
+                               Read or update custom team rules (mode unchanged)
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   wait [--from <agent>] [--task <id>] [--commit <hash>] [--reason <text>]
        [--timeout <dur>] [--status] [--cancel] [--block]
@@ -328,6 +332,59 @@ Commands:
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
   CORAL_PORT  Server port (overrides CORAL_URL)`)
+}
+
+func cmdWorkingMode(args []string) {
+	st := loadState()
+	fs := flag.NewFlagSet("working-mode", flag.ExitOnError)
+	boardName := fs.String("board", "", "Team board (defaults to current board)")
+	custom := fs.String("custom-instructions", "", "Custom team rules")
+	if err := fs.Parse(args); err != nil {
+		return
+	}
+	project := *boardName
+	if project == "" && st != nil {
+		project = st.Project
+	}
+	if project == "" {
+		fmt.Fprintln(os.Stderr, "working-mode requires --board outside a joined board")
+		os.Exit(1)
+	}
+	path := "/" + url.PathEscape(project) + "/working-mode"
+	data, status, err := apiCallRaw("GET", path, nil)
+	if *custom == "" {
+		if err != nil || status != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "Error reading working mode: %s\n", string(data))
+			os.Exit(1)
+		}
+		var out any
+		json.Unmarshal(data, &out)
+		pretty, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(pretty))
+		return
+	}
+	if err != nil || status != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error reading working mode: %s\n", string(data))
+		os.Exit(1)
+	}
+	var current struct {
+		Mode               string `json:"mode"`
+		DependencyGuidance bool   `json:"dependency_guidance"`
+	}
+	if err := json.Unmarshal(data, &current); err != nil {
+		fmt.Fprintln(os.Stderr, "Error reading current working mode:", err)
+		os.Exit(1)
+	}
+	body := map[string]any{"mode": current.Mode, "dependency_guidance": current.DependencyGuidance, "custom_instructions": *custom}
+	data, status, err = apiCallRaw("PUT", path, body)
+	if err != nil || status < 200 || status >= 300 {
+		fmt.Fprintf(os.Stderr, "Error updating working mode: %s\n", string(data))
+		os.Exit(1)
+	}
+	var out any
+	json.Unmarshal(data, &out)
+	pretty, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Println(string(pretty))
 }
 
 func cmdJoin() {

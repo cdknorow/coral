@@ -578,6 +578,11 @@ func (s *Server) buildRouter() chi.Router {
 	boardHandler.SetTerminal(s.terminal)
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	go boardHandler.RecoverTaskNotifications(context.Background())
+	go func() {
+		if err := boardHandler.RestoreSubscriberReminders(context.Background()); err != nil {
+			log.Printf("restore subscriber reminders: %v", err)
+		}
+	}()
 	s.boardHandler = boardHandler
 	sessHandler.SetBoardHandler(boardHandler)
 	sessHandler.SetLicenseManager(s.licenseMgr)

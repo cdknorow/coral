@@ -59,23 +59,26 @@ func Derive(in Input) State {
 		state.WaitingSummary = ""
 	}
 	for _, event := range in.Events {
-		latestType = event.Type
 		switch event.Type {
 		case "session_reset", "prompt_submit", "tool_use":
+			latestType = event.Type
 			clearRequest()
 			state.AwaitingUser = false
 		case "stop":
+			latestType = event.Type
 			clearRequest()
 			state.AwaitingUser = true
 		case "notification":
 			switch Classify(event.Summary) {
 			case NotificationNeedsInput:
+				latestType = "notification"
 				state.NeedsInput = true
 				state.AwaitingUser = false
 				state.WaitingReason = "notification"
 				state.WaitingSummary = event.Summary
 			case NotificationAwaitingUser:
 				if !state.NeedsInput {
+					latestType = "notification"
 					state.AwaitingUser = true
 				}
 			}

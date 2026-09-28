@@ -186,7 +186,53 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": summary, "unassigned_tasks": unassigned})
+	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": summary, "unassigned_tasks": unassigned, "health_report": availabilityHealthReport(tasks)})
+}
+
+func availabilityHealthReport(tasks []board.Task) []string {
+	var report []string
+	assigned := map[string]int{}
+	parallel := 0
+	for _, t := range tasks {
+		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "in_progress" {
+			assigned[*t.AssignedTo]++
+		}
+		if t.Status == "pending" && t.AssignedTo == nil && len(t.BlockedBy) == 0 {
+			parallel++
+		}
+		if t.Status == "blocked" {
+			allDone, canceled := true, false
+			for _, d := range t.BlockedBy {
+				if d.Status != "completed" && d.Status != "skipped" {
+					allDone = false
+				}
+				canceled = canceled || d.Status == "canceled"
+			}
+			if allDone {
+				report = append(report, fmt.Sprintf("#%d is blocked after all prerequisites completed", t.ID))
+			}
+			if canceled {
+				report = append(report, fmt.Sprintf("#%d depends on canceled work", t.ID))
+			}
+		}
+	}
+	if len(assigned) > 1 {
+		vals := []int{}
+		for _, n := range assigned {
+			vals = append(vals, n)
+		}
+		sort.Ints(vals)
+		if vals[len(vals)-1] >= vals[0]+2 {
+			report = append(report, "Active assignment load is imbalanced")
+		}
+	}
+	if parallel > 1 {
+		report = append(report, fmt.Sprintf("%d unassigned tasks can potentially run in parallel", parallel))
+	}
+	if len(report) == 0 {
+		return []string{"No queue health issues detected."}
+	}
+	return report
 }
 
 func openAvailabilityTask(status string) bool {

@@ -500,6 +500,13 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	}
 	boardNotifier.SeedFromDB(ctx)
 	safeGo(ctx, "board_notifier", func() { boardNotifier.Run(ctx) })
+	// Board health scanning is opt-in for now; enable it with the
+	// `board_health_monitor` user setting set to `true`.
+	boardSettings, _ := sessStore.GetSettings(ctx)
+	if boardSettings["board_health_monitor"] == "true" {
+		healthMonitor := background.NewBoardHealthMonitor(srv.BoardStore(), 10*time.Minute)
+		safeGo(ctx, "board_health_monitor", func() { healthMonitor.Run(ctx) })
+	}
 
 	// Remote board poller
 	remotePoller := background.NewRemoteBoardPoller(rbStore, agentRT, 30*time.Second)

@@ -93,6 +93,7 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		h.stopSubscriberReminder(project, body.SubscriberID)
+		_ = h.bs.DeleteSubscriberReminder(r.Context(), project, body.SubscriberID)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": false})
 		return
 	}
@@ -112,8 +113,27 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "agent has no running session on this board")
 		return
 	}
+	if err := h.bs.UpsertSubscriberReminder(r.Context(), board.SubscriberReminder{Project: project, SubscriberID: body.SubscriberID, Message: body.Message, IntervalSeconds: body.IntervalSeconds}); err != nil {
+		errInternalServer(w, "could not persist reminder")
+		return
+	}
 	h.startSubscriberReminder(project, body.SubscriberID, body.Message, time.Duration(body.IntervalSeconds)*time.Second)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": true, "subscriber_id": body.SubscriberID, "interval_seconds": body.IntervalSeconds})
+}
+
+// RestoreSubscriberReminders reloads durable reminders after a server restart.
+func (h *BoardHandler) RestoreSubscriberReminders(ctx context.Context) error {
+	rows, err := h.bs.ListSubscriberReminders(ctx)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if sub, _ := h.bs.GetProjectSubscription(ctx, r.Project, r.SubscriberID); sub == nil || sub.SessionName == "" {
+			continue
+		}
+		h.startSubscriberReminder(r.Project, r.SubscriberID, r.Message, time.Duration(r.IntervalSeconds)*time.Second)
+	}
+	return nil
 }
 
 func (h *BoardHandler) subscriberReminderKey(project, subscriber string) string {

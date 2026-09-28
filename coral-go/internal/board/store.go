@@ -103,6 +103,13 @@ type ProjectInfo struct {
 	MessageCount    int    `db:"message_count" json:"message_count"`
 }
 
+type SubscriberReminder struct {
+	Project         string `db:"project"`
+	SubscriberID    string `db:"subscriber_id"`
+	Message         string `db:"message"`
+	IntervalSeconds int    `db:"interval_seconds"`
+}
+
 // Store provides message board operations with its own SQLite database.
 type Store struct {
 	db         *sqlx.DB
@@ -145,6 +152,22 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+func (s *Store) UpsertSubscriberReminder(ctx context.Context, r SubscriberReminder) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO board_reminders(project,subscriber_id,message,interval_seconds) VALUES(?,?,?,?) ON CONFLICT(project,subscriber_id) DO UPDATE SET message=excluded.message, interval_seconds=excluded.interval_seconds`, r.Project, r.SubscriberID, r.Message, r.IntervalSeconds)
+	return err
+}
+
+func (s *Store) DeleteSubscriberReminder(ctx context.Context, project, subscriber string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM board_reminders WHERE project=? AND subscriber_id=?`, project, subscriber)
+	return err
+}
+
+func (s *Store) ListSubscriberReminders(ctx context.Context) ([]SubscriberReminder, error) {
+	var out []SubscriberReminder
+	err := s.db.SelectContext(ctx, &out, `SELECT project,subscriber_id,message,interval_seconds FROM board_reminders`)
+	return out, err
+}
+
 // UseDatabase initializes the task engine on a caller-owned SQLite connection.
 // Personal tasks use this engine in their own database, separate from team boards.
 // The caller retains responsibility for closing db.
@@ -180,6 +203,13 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			created_at  TEXT NOT NULL
 		);
 		CREATE INDEX IF NOT EXISTS idx_board_messages_project ON board_messages(project, id);
+		CREATE TABLE IF NOT EXISTS board_reminders (
+			project TEXT NOT NULL,
+			subscriber_id TEXT NOT NULL,
+			message TEXT NOT NULL,
+			interval_seconds INTEGER NOT NULL,
+			PRIMARY KEY(project, subscriber_id)
+		);
 		CREATE TABLE IF NOT EXISTS board_groups (
 			id         INTEGER PRIMARY KEY AUTOINCREMENT,
 			project    TEXT NOT NULL,
