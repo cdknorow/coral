@@ -31,17 +31,32 @@ func TestRequestMetricsRecordsAPIIdentityAndExcludesMetricsRoutes(t *testing.T) 
 	r.Post("/api/call-metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	})
+	r.Post("/proxy/{sessionID}/v1/responses", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/board/death-or-trade/tasks", bytes.NewBufferString(`{"subscriber_id":"Frontend Dev"}`))
 	req.Header.Set("Content-Type", "application/json")
 	r.ServeHTTP(httptest.NewRecorder(), req)
 	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/api/call-metrics", nil))
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/proxy/claude-session/v1/responses", nil))
 
 	rows, err := db.CallMetricSummary(context.Background(), time.Now().UTC().Add(-time.Hour))
 	require.NoError(t, err)
-	require.Len(t, rows, 1)
-	require.Equal(t, "/api/board/{project}/tasks", rows[0].Operation)
-	require.Equal(t, "Frontend Dev", rows[0].AgentName)
-	require.Equal(t, "death-or-trade", rows[0].BoardName)
-	require.Equal(t, 1, rows[0].Calls)
+	require.Len(t, rows, 2)
+	var apiRow, proxyRow store.CallMetricSummary
+	for _, row := range rows {
+		if row.CallType == "api" {
+			apiRow = row
+		} else {
+			proxyRow = row
+		}
+	}
+	require.Equal(t, "/api/board/{project}/tasks", apiRow.Operation)
+	require.Equal(t, "Frontend Dev", apiRow.AgentName)
+	require.Equal(t, "death-or-trade", apiRow.BoardName)
+	require.Equal(t, 1, apiRow.Calls)
+	require.Equal(t, "proxy", proxyRow.CallType)
+	require.Equal(t, "/proxy/{sessionID}/v1/responses", proxyRow.Operation)
+	require.Equal(t, "claude-session", proxyRow.AgentName)
 }

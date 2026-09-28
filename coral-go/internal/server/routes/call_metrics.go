@@ -48,13 +48,16 @@ func (h *CallMetricsHandler) Record(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, metric)
 }
 
-// RequestMetrics records API traffic at the server boundary. This keeps
-// instrumentation independent of every CLI and browser client. The metrics
-// endpoints themselves are excluded to avoid recursively counting the logger.
+// RequestMetrics records API and LLM proxy traffic at the server boundary.
+// This keeps instrumentation independent of every CLI and browser client.
+// The metrics endpoints themselves are excluded to avoid recursively counting
+// the logger.
 func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if db == nil || !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/call-metrics") {
+			isAPI := strings.HasPrefix(r.URL.Path, "/api/")
+			isProxy := strings.HasPrefix(r.URL.Path, "/proxy/")
+			if db == nil || (!isAPI && !isProxy) || strings.HasPrefix(r.URL.Path, "/api/call-metrics") {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -62,12 +65,19 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			started := time.Now()
 			rw := &metricResponseWriter{ResponseWriter: w}
 			next.ServeHTTP(rw, r)
+			if identity.agentName == "" {
+				identity.agentName = firstNonEmpty(chi.URLParam(r, "name"), chi.URLParam(r, "sessionID"))
+			}
 			pattern := r.URL.Path
 			if route := chi.RouteContext(r.Context()).RoutePattern(); route != "" {
 				pattern = route
 			}
+			callType := "api"
+			if isProxy {
+				callType = "proxy"
+			}
 			metric := &store.CallMetric{
-				CallType: identity.callType, Operation: pattern,
+				CallType: callType, Operation: pattern,
 				AgentName: identity.agentName, SessionID: identity.sessionID,
 				BoardName: chi.URLParam(r, "project"), Method: r.Method,
 				StatusCode: rw.statusCode(), DurationMs: time.Since(started).Milliseconds(),
@@ -81,17 +91,16 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 }
 
 type requestMetricIdentityData struct {
-	callType  string
 	agentName string
 	sessionID string
 }
 
 func requestMetricIdentity(r *http.Request) requestMetricIdentityData {
-	identity := requestMetricIdentityData{callType: "api"}
+	identity := requestMetricIdentityData{}
 	identity.agentName = firstNonEmpty(r.Header.Get("X-Coral-Agent"), r.Header.Get("X-Coral-Subscriber-ID"), r.URL.Query().Get("subscriber_id"))
 	identity.sessionID = firstNonEmpty(r.Header.Get("X-Coral-Session-ID"), r.URL.Query().Get("session_id"))
 	if identity.agentName == "" {
-		identity.agentName = chi.URLParam(r, "name")
+		identity.agentName = firstNonEmpty(chi.URLParam(r, "name"), chi.URLParam(r, "sessionID"))
 	}
 	// Most CLI mutations carry subscriber_id in a small JSON body. Read and
 	// restore it so handlers receive the exact original request stream.
