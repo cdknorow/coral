@@ -39,6 +39,14 @@ type CallMetricSummary struct {
 
 func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetricSummary, error) {
 	var out []CallMetricSummary
-	err := s.SelectContext(ctx, &out, `SELECT operation,call_type,COALESCE(agent_name,''),COALESCE(board_name,''),COUNT(*),SUM(is_error),COALESCE(AVG(duration_ms),0) FROM call_metrics WHERE created_at >= ? GROUP BY operation,call_type,agent_name,board_name ORDER BY calls DESC`, since.UTC().Format(time.RFC3339Nano))
+	err := s.SelectContext(ctx, &out, `SELECT operation, call_type,
+		COALESCE(agent_name, '') AS agent_name,
+		COALESCE(board_name, '') AS board_name,
+		COUNT(*) AS calls,
+		SUM(is_error) AS errors,
+		COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
+		FROM call_metrics WHERE created_at >= ?
+		GROUP BY operation, call_type, agent_name, board_name
+		ORDER BY COUNT(*) DESC`, since.UTC().Format(time.RFC3339Nano))
 	return out, err
 }

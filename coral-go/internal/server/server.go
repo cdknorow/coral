@@ -282,6 +282,8 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Debug request logger (session/ws calls only, when CORAL_DEBUG=1)
 	r.Use(routes.DebugRequestLogger)
+	// Record API traffic centrally so clients do not need to post metrics.
+	r.Use(routes.RequestMetrics(s.db))
 
 	// Health check — the native app polls this every 5s to detect crashes.
 	// Auth middleware bypasses localhost; license middleware ungates this path.

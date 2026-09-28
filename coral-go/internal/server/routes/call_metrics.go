@@ -1,10 +1,17 @@
 package routes
 
 import (
-	"github.com/cdknorow/coral/internal/store"
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/go-chi/chi/v5"
 )
 
 type CallMetricsHandler struct{ db *store.DB }
@@ -39,4 +46,106 @@ func (h *CallMetricsHandler) Record(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, metric)
+}
+
+// RequestMetrics records API traffic at the server boundary. This keeps
+// instrumentation independent of every CLI and browser client. The metrics
+// endpoints themselves are excluded to avoid recursively counting the logger.
+func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if db == nil || !strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/api/call-metrics") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			identity := requestMetricIdentity(r)
+			started := time.Now()
+			rw := &metricResponseWriter{ResponseWriter: w}
+			next.ServeHTTP(rw, r)
+			pattern := r.URL.Path
+			if route := chi.RouteContext(r.Context()).RoutePattern(); route != "" {
+				pattern = route
+			}
+			metric := &store.CallMetric{
+				CallType: identity.callType, Operation: pattern,
+				AgentName: identity.agentName, SessionID: identity.sessionID,
+				BoardName: chi.URLParam(r, "project"), Method: r.Method,
+				StatusCode: rw.statusCode(), DurationMs: time.Since(started).Milliseconds(),
+				IsError: rw.statusCode() >= http.StatusInternalServerError,
+			}
+			// Request logging must not change the response or turn a successful API
+			// call into an error if the metrics database is unavailable.
+			_ = db.RecordCallMetric(context.Background(), metric)
+		})
+	}
+}
+
+type requestMetricIdentityData struct {
+	callType  string
+	agentName string
+	sessionID string
+}
+
+func requestMetricIdentity(r *http.Request) requestMetricIdentityData {
+	identity := requestMetricIdentityData{callType: "api"}
+	identity.agentName = firstNonEmpty(r.Header.Get("X-Coral-Agent"), r.Header.Get("X-Coral-Subscriber-ID"), r.URL.Query().Get("subscriber_id"))
+	identity.sessionID = firstNonEmpty(r.Header.Get("X-Coral-Session-ID"), r.URL.Query().Get("session_id"))
+	if identity.agentName == "" {
+		identity.agentName = chi.URLParam(r, "name")
+	}
+	// Most CLI mutations carry subscriber_id in a small JSON body. Read and
+	// restore it so handlers receive the exact original request stream.
+	if identity.agentName == "" && strings.Contains(r.Header.Get("Content-Type"), "application/json") && (r.ContentLength <= 65536 || r.ContentLength < 0) {
+		body, err := io.ReadAll(r.Body)
+		if err == nil {
+			r.Body = io.NopCloser(bytes.NewReader(body))
+			var fields struct {
+				SubscriberID string `json:"subscriber_id"`
+				SessionID    string `json:"session_id"`
+			}
+			if json.Unmarshal(body, &fields) == nil {
+				identity.agentName = fields.SubscriberID
+				if identity.sessionID == "" {
+					identity.sessionID = fields.SessionID
+				}
+			}
+		}
+	}
+	return identity
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+type metricResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *metricResponseWriter) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *metricResponseWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func (w *metricResponseWriter) statusCode() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
 }
