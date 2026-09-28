@@ -527,6 +527,24 @@ CREATE TABLE IF NOT EXISTS token_usage (
     recorded_at     TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS call_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_type TEXT NOT NULL,
+    operation TEXT NOT NULL,
+    agent_name TEXT,
+    session_id TEXT,
+    team_id INTEGER,
+    board_name TEXT,
+    method TEXT,
+    status_code INTEGER,
+    duration_ms INTEGER,
+    is_error INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_call_metrics_created ON call_metrics(created_at);
+CREATE INDEX IF NOT EXISTS idx_call_metrics_agent ON call_metrics(agent_name, created_at);
+CREATE INDEX IF NOT EXISTS idx_call_metrics_board ON call_metrics(board_name, created_at);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_session_time ON token_usage(session_id, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_token_usage_team ON token_usage(team_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_time ON token_usage(recorded_at);

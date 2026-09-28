@@ -311,8 +311,22 @@ window._costOpenFilter = _openFilter;
 export async function showCostDashboard() {
     showView('cost-dashboard-view');
     await _refreshCostDashboard();
+    await _refreshCallMetrics();
     stopCostDashboard(); // clear any existing timer
     _costRefreshTimer = setInterval(_refreshCostDashboard, 15000);
+}
+
+async function _refreshCallMetrics() {
+    const el = document.getElementById('call-metrics-summary');
+    if (!el) return;
+    try {
+        const response = await fetch('/api/call-metrics/summary?hours=24', { cache: 'no-store' });
+        if (!response.ok) throw new Error('metrics unavailable');
+        const data = await response.json();
+        const rows = data.rows || [];
+        if (!rows.length) { el.innerHTML = '<div class="cost-empty">No call metrics yet</div>'; return; }
+        el.innerHTML = `<table class="cost-table"><thead><tr><th>Operation</th><th>Type</th><th>Agent</th><th>Team</th><th>Calls</th><th>Errors</th><th>Avg ms</th></tr></thead><tbody>${rows.map(r => `<tr><td>${escapeHtml(r.operation)}</td><td>${escapeHtml(r.call_type)}</td><td>${escapeHtml(r.agent_name || '—')}</td><td>${escapeHtml(r.board_name || '—')}</td><td>${r.calls}</td><td>${r.errors}</td><td>${Math.round(r.avg_duration_ms || 0)}</td></tr>`).join('')}</tbody></table>`;
+    } catch { el.innerHTML = '<div class="cost-empty">Call metrics unavailable</div>'; }
 }
 
 export function stopCostDashboard() {
