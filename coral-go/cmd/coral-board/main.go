@@ -1208,6 +1208,8 @@ Subcommands:
   add "title" [--body "details"] [--priority P]
   list
   claim
+  submit-review <id> --reason "review pending" [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
+  release-review <id> --reason "slot released pending review" (orchestrator only)
   complete <id> [--message "note"]`)
 		os.Exit(1)
 	}
@@ -1252,6 +1254,8 @@ Subcommands:
 		}
 		pretty, _ := json.MarshalIndent(task, "", "  ")
 		fmt.Println(string(pretty))
+	case "submit-review", "release-review":
+		cmdTaskReview(st, taskArgs, sub)
 	case "complete":
 		cmdTaskComplete(st, taskArgs)
 	case "cancel":
@@ -1267,6 +1271,8 @@ Subcommands:
   claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
   detail <id>                      Read task instructions, inputs and results
+  submit-review <id> --reason "review pending" [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
+  release-review <id> --reason "slot released pending review" (orchestrator only)
   complete <id> [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   cancel <id> [--message "reason"]
   reassign <id> [--to "Agent Name"]
@@ -1387,6 +1393,9 @@ func cmdTaskList(st *boardState) {
 		task, _ := t.(map[string]any)
 		id, _ := task["id"].(float64)
 		tStatus, _ := task["status"].(string)
+		if workflow, ok := task["workflow"].(map[string]any); ok && workflow["completion_review"] != nil && tStatus == "in_progress" {
+			tStatus = "review_requested"
+		}
 		tPriority, _ := task["priority"].(string)
 		tAssignee := "—"
 		if a, ok := task["assigned_to"].(string); ok && a != "" {
@@ -2317,4 +2326,48 @@ func formatWaitTarget(waitType, targetID string) string {
 		}
 		return "board update"
 	}
+}
+
+// Review operations are explicit: a rejected completion is never automatically
+// retried through another endpoint or treated as accepted.
+func cmdTaskReview(st *boardState, args []string, action string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, "Usage: coral-board task", action, "<id> --reason <reason> [--message <message>] [--artifacts manifest.json]")
+		os.Exit(1)
+	}
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Invalid task ID")
+		os.Exit(1)
+	}
+	fs := flag.NewFlagSet(action, flag.ExitOnError)
+	reason := fs.String("reason", "", "Reason review is needed or capacity is being released")
+	message := fs.String("message", "", "Candidate completion message")
+	outcome := fs.String("outcome", "success", "Proposed outcome: success or failed")
+	manifest := fs.String("artifacts", "", "Candidate artifact manifest")
+	fs.Parse(args[1:])
+	if strings.TrimSpace(*reason) == "" {
+		fmt.Fprintln(os.Stderr, "--reason is required")
+		os.Exit(1)
+	}
+	body := map[string]any{"subscriber_id": resolveSubscriberID(), "reason": *reason, "message": *message, "outcome": *outcome}
+	if *manifest != "" {
+		data, err := os.ReadFile(*manifest)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		var artifacts []map[string]any
+		if err := json.Unmarshal(data, &artifacts); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		body["artifacts"] = artifacts
+	}
+	data, status, err := apiCallRaw("POST", fmt.Sprintf("/%s/tasks/%d/%s", st.Project, id, action), body)
+	if err != nil || status != http.StatusOK {
+		fmt.Fprintln(os.Stderr, "Review action failed:", err, string(data))
+		os.Exit(1)
+	}
+	fmt.Printf("Task #%d: %s recorded. Completion has not been accepted.\n", id, action)
 }

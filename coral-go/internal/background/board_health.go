@@ -14,17 +14,36 @@ import (
 // BoardHealthMonitor periodically audits task queues and sends a deduplicated
 // report to each board's Orchestrator.
 type BoardHealthMonitor struct {
-	store    *board.Store
-	interval time.Duration
-	mu       sync.Mutex
-	last     map[string]string
+	store         *board.Store
+	interval      time.Duration
+	runtime       AgentRuntime
+	idleAfter     time.Duration
+	escalateAfter time.Duration
+	mu            sync.Mutex
+	last          map[string]string
+	idleNotified  map[int64]time.Time
+	now           func() time.Time
 }
 
 func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHealthMonitor {
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
-	return &BoardHealthMonitor{store: store, interval: interval, last: make(map[string]string)}
+	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now}
+}
+
+// SetRuntime enables direct reminders to local assignees. The monitor still
+// records board messages when no runtime is available.
+func (m *BoardHealthMonitor) SetRuntime(runtime AgentRuntime) { m.runtime = runtime }
+
+// SetIdleThresholds configures the first reminder and orchestrator escalation.
+func (m *BoardHealthMonitor) SetIdleThresholds(remindAfter, escalateAfter time.Duration) {
+	if remindAfter > 0 {
+		m.idleAfter = remindAfter
+	}
+	if escalateAfter > 0 {
+		m.escalateAfter = escalateAfter
+	}
 }
 
 func (m *BoardHealthMonitor) Run(ctx context.Context) error {
@@ -107,6 +126,7 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 		issues = append(issues, fmt.Sprintf("%d unblocked tasks can potentially run in parallel", parallel))
 	}
 	if len(issues) == 0 {
+		m.scanIdleTasks(ctx, project)
 		return
 	}
 	report := "[Coral board health] @Orchestrator\n" + strings.Join(issues, "\n- ")
@@ -121,4 +141,54 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 	m.last[project] = report
 	m.mu.Unlock()
 	_, _ = m.store.PostMessage(ctx, project, "Coral Health Monitor", report, nil)
+	m.scanIdleTasks(ctx, project)
+}
+
+func (m *BoardHealthMonitor) scanIdleTasks(ctx context.Context, project string) {
+	now := m.now()
+	reminderBefore := now.Add(-m.idleAfter)
+	tasks, err := m.store.IdleTasks(ctx, project, reminderBefore)
+	if err != nil {
+		return
+	}
+	for _, task := range tasks {
+		if task.AssignedTo == nil || *task.AssignedTo == "" {
+			continue
+		}
+		assignee := *task.AssignedTo
+		m.mu.Lock()
+		_, seen := m.idleNotified[task.ID]
+		m.mu.Unlock()
+		if !seen {
+			msg := fmt.Sprintf("[Task #%d idle] %s is still active but has had no recorded activity. Post a status, blocker, or completion update. Use the task reminder snooze if tests or long-running work are active.", task.ID, task.Title)
+			_, _ = m.store.PostMessage(ctx, project, "Coral Health Monitor", "@"+assignee+" "+msg, nil)
+			if sub, _ := m.store.GetProjectSubscription(ctx, project, assignee); sub != nil && m.runtime != nil && sub.SessionName != "" {
+				_ = m.runtime.SendInput(ctx, sub.SessionName, msg)
+			}
+			m.mu.Lock()
+			m.idleNotified[task.ID] = now
+			m.mu.Unlock()
+			continue
+		}
+	}
+	escalationBefore := now.Add(-m.escalateAfter)
+	escalationTasks, err := m.store.IdleTasks(ctx, project, escalationBefore)
+	if err != nil {
+		return
+	}
+	for _, task := range escalationTasks {
+		if task.AssignedTo == nil || *task.AssignedTo == "" {
+			continue
+		}
+		assignee := *task.AssignedTo
+		key := fmt.Sprintf("escalated:%d", task.ID)
+		m.mu.Lock()
+		if m.last[key] != "" {
+			m.mu.Unlock()
+			continue
+		}
+		m.last[key] = now.UTC().Format(time.RFC3339)
+		m.mu.Unlock()
+		_, _ = m.store.PostMessage(ctx, project, "Coral Health Monitor", fmt.Sprintf("@Orchestrator [Task #%d stale] %s remains in_progress after an inactivity reminder to %s. Review status, blocker, or reassignment; Coral did not change ownership or completion.", task.ID, task.Title, assignee), nil)
+	}
 }

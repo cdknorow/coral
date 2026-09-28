@@ -118,6 +118,9 @@ func TestWSCoral_SubsequentDiffsOnlyOnChange(t *testing.T) {
 
 func TestWSCoral_NewSessionDiffIncludesFirstPrompt(t *testing.T) {
 	server, handler := setupTestServer(t)
+	// Install the fixture before the websocket starts reading the handler.
+	terminal := newMockTerminal()
+	handler.terminal = terminal
 	wsURL := "ws" + server.URL[4:] + "/ws/coral"
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
@@ -140,9 +143,7 @@ func TestWSCoral_NewSessionDiffIncludesFirstPrompt(t *testing.T) {
 		[]byte("{\"type\":\"user\",\"message\":{\"content\":\"Investigate the websocket payload\"}}\n"),
 		0644,
 	))
-	terminal := newMockTerminal()
 	terminal.addSession(name, t.TempDir())
-	handler.terminal = terminal
 
 	var diff struct {
 		Type    string           `json:"type"`

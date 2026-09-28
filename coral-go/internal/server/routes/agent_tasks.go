@@ -59,12 +59,13 @@ type agentTaskView struct {
 }
 
 var agentTaskStatus = map[int]string{
-	store.AgentTaskPending:    "pending",
-	store.AgentTaskDone:       "completed",
-	store.AgentTaskInProgress: "in_progress",
-	store.AgentTaskCancelled:  "skipped",
-	store.AgentTaskBlocked:    "blocked",
-	store.AgentTaskDraft:      "draft",
+	store.AgentTaskPending:       "pending",
+	store.AgentTaskDone:          "completed",
+	store.AgentTaskInProgress:    "in_progress",
+	store.AgentTaskCancelled:     "skipped",
+	store.AgentTaskBlocked:       "blocked",
+	store.AgentTaskDraft:         "draft",
+	store.AgentTaskReviewPending: "review_pending",
 }
 
 func viewAgentTask(t *store.AgentTask) agentTaskView {

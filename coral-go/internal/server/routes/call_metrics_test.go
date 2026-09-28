@@ -60,3 +60,41 @@ func TestRequestMetricsRecordsAPIIdentityAndExcludesMetricsRoutes(t *testing.T) 
 	require.Equal(t, "/proxy/{sessionID}/v1/responses", proxyRow.Operation)
 	require.Equal(t, "claude-session", proxyRow.AgentName)
 }
+
+func TestRequestMetricsResolvesSessionToAgentDisplayName(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`INSERT INTO live_sessions(session_id, agent_type, agent_name, display_name, working_dir, created_at) VALUES(?,?,?,?,?,?)`,
+		"session-1", "codex", "death_or_trade", "Lead Developer", "/tmp", time.Now().UTC().Format(time.RFC3339Nano))
+	require.NoError(t, err)
+
+	r := chi.NewRouter()
+	r.Use(RequestMetrics(db))
+	r.Get("/api/sessions/live/{name}/poll", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/live/death_or_trade/poll?session_id=session-1", nil)
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	rows, err := db.CallMetricSummary(context.Background(), time.Now().UTC().Add(-time.Hour))
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "Lead Developer", rows[0].AgentName)
+}
+
+func TestCallMetricSummaryResolvesHistoricalSessionTeam(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`INSERT INTO live_sessions(session_id, agent_type, agent_name, display_name, board_name, working_dir, created_at) VALUES(?,?,?,?,?,?,?)`,
+		"session-1", "codex", "death_or_trade", "Frontend Dev", "death-or-trade-ai-auto", "/tmp", time.Now().UTC().Format(time.RFC3339Nano))
+	require.NoError(t, err)
+	require.NoError(t, db.RecordCallMetric(context.Background(), &store.CallMetric{CallType: "api", Operation: "/api/example", AgentName: "death_or_trade", SessionID: "session-1", CreatedAt: time.Now().UTC().Format(time.RFC3339Nano)}))
+
+	rows, err := db.CallMetricSummary(context.Background(), time.Now().UTC().Add(-time.Hour))
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "Frontend Dev", rows[0].AgentName)
+	require.Equal(t, "death-or-trade-ai-auto", rows[0].BoardName)
+}

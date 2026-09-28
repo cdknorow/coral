@@ -27,11 +27,11 @@ completion for personal tasks too.
 See [Personal Tasks: CLI and API](agent-tasks.md) for the complete command and
 HTTP reference, session identity, error responses, and migration behavior.
 
-Every new personal or board task stores Coral's default workflow instructions. They explain
-how to consume upstream evidence, use separate Build/Test/Release stages, report
-failures, publish named outputs, and wait for dependency notifications instead of
-polling. `--workflow-instructions` appends project-specific instructions. Claim,
-current, detail, and the dashboard show the resulting instructions.
+Every new personal or board task stores Coral's default workflow instructions. They
+point agents to task requirements and upstream results, and explain how to report
+results, failures, and required artifacts. `--workflow-instructions` appends
+project-specific instructions. Claim, current, detail, and the dashboard show the
+resulting instructions.
 
 Teams can add [working-mode instructions](teams.md#team-working-modes) for shared
 checkouts or worktrees, optional dependency guidance, and custom conventions.

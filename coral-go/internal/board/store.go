@@ -230,7 +230,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			title TEXT NOT NULL,
 			body TEXT,
 			status TEXT NOT NULL DEFAULT 'pending'
-				CHECK (status IN ('pending', 'in_progress', 'completed', 'skipped', 'blocked', 'draft')),
+				CHECK (status IN ('pending', 'in_progress', 'completed', 'skipped', 'blocked', 'draft', 'review_pending')),
 			priority TEXT NOT NULL DEFAULT 'medium'
 				CHECK (priority IN ('critical', 'high', 'medium', 'low')),
 			created_by TEXT NOT NULL,
@@ -239,7 +239,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			completion_message TEXT,
 			created_at TEXT NOT NULL,
 			claimed_at TEXT,
-			completed_at TEXT
+			completed_at TEXT,
+			last_activity_at TEXT,
+			idle_snoozed_until TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_board_status ON board_tasks(board_id, status);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_assigned ON board_tasks(board_id, assigned_to);
@@ -276,6 +278,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_messages ADD COLUMN subscriber_id TEXT",
 		"ALTER TABLE board_groups ADD COLUMN subscriber_id TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN session_id TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN last_activity_at TEXT",
+		"ALTER TABLE board_tasks ADD COLUMN idle_snoozed_until TEXT",
 		"ALTER TABLE board_tasks ADD COLUMN cost_usd REAL",
 		"ALTER TABLE board_tasks ADD COLUMN input_tokens INTEGER",
 		"ALTER TABLE board_tasks ADD COLUMN output_tokens INTEGER",
@@ -322,7 +326,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 
 	// Migrate CHECK constraint to include 'blocked' status for existing databases.
 	// SQLite doesn't support ALTER CONSTRAINT, so we recreate the table.
-	s.migrateTasksCheckConstraint(ctx)
+	if err := s.migrateTasksCheckConstraint(ctx); err != nil {
+		return err
+	}
 
 	if err := s.ensureWaitsSchema(ctx); err != nil {
 		return err
@@ -331,52 +337,56 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	return s.initTaskWorkflows(ctx)
 }
 
-func (s *Store) migrateTasksCheckConstraint(ctx context.Context) {
-	var tableSQL string
-	err := s.db.GetContext(ctx, &tableSQL,
-		"SELECT sql FROM sqlite_master WHERE type='table' AND name='board_tasks'")
-	if err != nil || (strings.Contains(tableSQL, "'blocked'") && strings.Contains(tableSQL, "'draft'")) {
-		return // already migrated or new DB
+// Rebuild from the existing schema so all columns, indexes, and personal-task
+// projection triggers survive a status constraint upgrade. DDL is atomic.
+func (s *Store) migrateTasksCheckConstraint(ctx context.Context) error {
+	var schema string
+	if err := s.db.GetContext(ctx, &schema, "SELECT sql FROM sqlite_master WHERE type='table' AND name='board_tasks'"); err != nil {
+		return err
 	}
-
-	log.Printf("[board] migrating board_tasks CHECK constraint to include 'blocked' and 'draft'")
-	migrations := []string{
-		`CREATE TABLE board_tasks_new (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			board_id TEXT NOT NULL,
-			title TEXT NOT NULL,
-			body TEXT,
-			status TEXT NOT NULL DEFAULT 'pending'
-				CHECK (status IN ('pending', 'in_progress', 'completed', 'skipped', 'blocked', 'draft')),
-			priority TEXT NOT NULL DEFAULT 'medium'
-				CHECK (priority IN ('critical', 'high', 'medium', 'low')),
-			created_by TEXT NOT NULL,
-			assigned_to TEXT,
-			completed_by TEXT,
-			completion_message TEXT,
-			created_at TEXT NOT NULL,
-			claimed_at TEXT,
-			completed_at TEXT,
-			session_id TEXT,
-			cost_usd REAL,
-			input_tokens INTEGER,
-			output_tokens INTEGER,
-			cache_read_tokens INTEGER,
-			cache_write_tokens INTEGER
-		)`,
-		`INSERT INTO board_tasks_new SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks`,
-		`DROP TABLE board_tasks`,
-		`ALTER TABLE board_tasks_new RENAME TO board_tasks`,
-		`CREATE INDEX IF NOT EXISTS idx_board_tasks_board_status ON board_tasks(board_id, status)`,
-		`CREATE INDEX IF NOT EXISTS idx_board_tasks_assigned ON board_tasks(board_id, assigned_to)`,
+	if strings.Contains(schema, "'review_pending'") {
+		return nil
 	}
-	for _, sql := range migrations {
-		if _, err := s.db.ExecContext(ctx, sql); err != nil {
-			log.Printf("[board] CHECK constraint migration failed: %v", err)
-			return
+	var objects []string
+	if err := s.db.SelectContext(ctx, &objects, "SELECT sql FROM sqlite_master WHERE tbl_name='board_tasks' AND type IN ('index','trigger') AND sql IS NOT NULL"); err != nil {
+		return err
+	}
+	// Foreign keys must be disabled outside the transaction during a table rebuild.
+	// The store uses one connection; startup runs before it is exposed to callers.
+	var foreignKeys int
+	if err := s.db.GetContext(ctx, &foreignKeys, "PRAGMA foreign_keys"); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return err
+	}
+	defer s.db.ExecContext(ctx, fmt.Sprintf("PRAGMA foreign_keys=%d", foreignKeys))
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var sequence int64
+	if err := tx.GetContext(ctx, &sequence, "SELECT COALESCE(MAX(seq),0) FROM sqlite_sequence WHERE name='board_tasks'"); err != nil {
+		return err
+	}
+	schema = strings.Replace(schema, "board_tasks", "board_tasks_new", 1)
+	schema = strings.Replace(schema, "'skipped'", "'skipped', 'review_pending'", 1)
+	if !strings.Contains(schema, "'blocked'") {
+		schema = strings.Replace(schema, "'skipped'", "'skipped', 'blocked'", 1)
+	}
+	if !strings.Contains(schema, "'draft'") {
+		schema = strings.Replace(schema, "'skipped'", "'skipped', 'draft'", 1)
+	}
+	for _, statement := range append([]string{schema, "INSERT INTO board_tasks_new SELECT * FROM board_tasks", "DROP TABLE board_tasks", "ALTER TABLE board_tasks_new RENAME TO board_tasks"}, objects...) {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("migrate task review status: %w", err)
 		}
 	}
-	log.Printf("[board] CHECK constraint migration complete")
+	if _, err := tx.ExecContext(ctx, "UPDATE sqlite_sequence SET seq=MAX(seq,?) WHERE name='board_tasks'", sequence); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func nowUTC() string {
@@ -1544,11 +1554,11 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 			continue
 		}
 		result, err := tx.ExecContext(ctx,
-			`UPDATE board_tasks SET status = 'in_progress', assigned_to = ?, claimed_at = ?
+			`UPDATE board_tasks SET status = 'in_progress', assigned_to = ?, claimed_at = ?, last_activity_at = ?
 			 WHERE id = ? AND board_id = ? AND status = 'pending'
 			   AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')
 			   AND NOT EXISTS (SELECT 1 FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress')`,
-			subscriberID, now, taskID, project, subscriberID, project, subscriberID)
+			subscriberID, now, now, taskID, project, subscriberID, project, subscriberID)
 		if err != nil {
 			tx.Rollback()
 			return nil, err
@@ -1600,6 +1610,46 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 		return s.getTaskByID(ctx, project, taskID)
 	}
 	return nil, nil
+}
+
+// TouchActiveTask records activity by an agent without changing task state.
+// It is intentionally best-effort: activity tracking must never block the
+// agent's normal board operation.
+func (s *Store) TouchActiveTask(ctx context.Context, project, subscriberID string) error {
+	if project == "" || subscriberID == "" {
+		return nil
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE board_tasks SET last_activity_at = ?
+		WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'`, nowUTC(), project, subscriberID)
+	return err
+}
+
+// TouchTask records activity for a specific active task.
+func (s *Store) TouchTask(ctx context.Context, project string, taskID int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE board_tasks SET last_activity_at = ?
+		WHERE board_id = ? AND id = ? AND status = 'in_progress'`, nowUTC(), project, taskID)
+	return err
+}
+
+// SnoozeTaskReminder suppresses inactivity reminders until the supplied time.
+func (s *Store) SnoozeTaskReminder(ctx context.Context, project string, taskID int64, until time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE board_tasks SET idle_snoozed_until = ?
+		WHERE board_id = ? AND id = ? AND status = 'in_progress'`, until.UTC().Format(time.RFC3339), project, taskID)
+	return err
+}
+
+// IdleTasks returns active tasks that have had no recorded activity since the
+// supplied time. Older databases use claimed_at until activity is recorded.
+func (s *Store) IdleTasks(ctx context.Context, project string, before time.Time) ([]Task, error) {
+	var tasks []Task
+	err := s.db.SelectContext(ctx, &tasks, `SELECT id, board_id, title, body, status, priority,
+		created_by, assigned_to, completed_by, completion_message, created_at, claimed_at,
+		completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens,
+		cache_write_tokens FROM board_tasks
+		WHERE board_id = ? AND status = 'in_progress' AND COALESCE(last_activity_at, claimed_at) IS NOT NULL
+		AND COALESCE(last_activity_at, claimed_at) < ?
+		AND (idle_snoozed_until IS NULL OR idle_snoozed_until <= ?)`, project, before.UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339))
+	return tasks, err
 }
 
 // computeAndStoreTaskCost queries the sessions DB for proxy request costs
@@ -1668,7 +1718,7 @@ func (s *Store) ReassignTask(ctx context.Context, project string, taskID int64, 
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE board_tasks
 		 SET status = 'pending', assigned_to = ?, claimed_at = NULL, session_id = NULL
-		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress')`,
+		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress') AND NOT EXISTS (SELECT 1 FROM task_workflows w WHERE w.task_id=board_tasks.id AND json_extract(w.data,'$.completion_review') IS NOT NULL)`,
 		assignPtr, taskID, project)
 	if err != nil {
 		return nil, err
@@ -1699,7 +1749,7 @@ func (s *Store) UpdateTask(ctx context.Context, project string, taskID int64, up
 	if err != nil {
 		return nil, "", fmt.Errorf("task #%d not found", taskID)
 	}
-	if task.Status == "completed" || task.Status == "skipped" {
+	if task.Status == "completed" || task.Status == "skipped" || task.Status == "review_pending" {
 		return nil, "", fmt.Errorf("task #%d cannot be edited (status: %s)", taskID, task.Status)
 	}
 	prevStatus := task.Status
@@ -1752,7 +1802,7 @@ func (s *Store) UpdateTask(ctx context.Context, project string, taskID int64, up
 		}
 	}
 	if len(setClauses) > 0 {
-		query := fmt.Sprintf("UPDATE board_tasks SET %s WHERE id = ? AND board_id = ? AND status NOT IN ('completed', 'skipped')", strings.Join(setClauses, ", "))
+		query := fmt.Sprintf("UPDATE board_tasks SET %s WHERE id = ? AND board_id = ? AND status NOT IN ('completed', 'skipped', 'review_pending') AND NOT EXISTS (SELECT 1 FROM task_workflows w WHERE w.task_id=board_tasks.id AND json_extract(w.data,'$.completion_review') IS NOT NULL)", strings.Join(setClauses, ", "))
 		args = append(args, taskID, project)
 		result, err := s.db.ExecContext(ctx, query, args...)
 		if err != nil {
@@ -1814,7 +1864,7 @@ func (s *Store) CancelTask(ctx context.Context, project string, taskID int64, su
 	result, err := tx.ExecContext(ctx,
 		`UPDATE board_tasks
 		 SET status = 'skipped', completed_by = ?, completion_message = ?, completed_at = ?
-		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')`,
+		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft', 'review_pending')`,
 		subscriberID, message, now, taskID, project)
 	if err != nil {
 		return nil, err
@@ -1833,6 +1883,54 @@ func (s *Store) CancelTask(ctx context.Context, project string, taskID int64, su
 	s.computeAndStoreTaskCost(ctx, taskID)
 
 	return s.getTaskByID(ctx, project, taskID)
+}
+
+// StallDownstreamTasks marks pending descendants of a terminal prerequisite as
+// blocked. Ownership is preserved so the orchestrator can rewire or retry the
+// work; blocked rows are never claimable.
+func (s *Store) StallDownstreamTasks(ctx context.Context, project string, upstreamID int64) ([]Task, error) {
+	queue := []int64{upstreamID}
+	seen := map[int64]bool{upstreamID: true}
+	var stalled []Task
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		var downstream []struct {
+			ID        int64  `db:"task_id"`
+			Condition string `db:"condition"`
+		}
+		if err := s.db.SelectContext(ctx, &downstream, `SELECT DISTINCT d.task_id,
+			COALESCE(r.condition, 'success') AS condition FROM task_dependencies d
+			JOIN board_tasks t ON t.id = d.task_id
+			LEFT JOIN task_dependency_rules r ON r.task_id = d.task_id AND r.upstream_id = d.blocked_by_task_id
+			WHERE d.blocked_by_task_id = ? AND d.blocked_by_board_id = ?`, id, project); err != nil {
+			return nil, err
+		}
+		for _, child := range downstream {
+			childID := child.ID
+			if !seen[childID] {
+				seen[childID] = true
+				queue = append(queue, childID)
+			}
+			if child.Condition == "termination" {
+				continue
+			}
+			var status string
+			if err := s.db.GetContext(ctx, &status, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", childID, project); err != nil {
+				continue
+			}
+			if status != "pending" {
+				continue
+			}
+			if _, err := s.db.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND board_id = ? AND status = 'pending'", childID, project); err != nil {
+				return nil, err
+			}
+			if task, err := s.getTaskByID(ctx, project, childID); err == nil {
+				stalled = append(stalled, *task)
+			}
+		}
+	}
+	return stalled, nil
 }
 
 // ── Task Dependencies ────────────────────────────────────────────
@@ -1905,7 +2003,7 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 	if err := s.db.GetContext(ctx, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
 		return err
 	}
-	if taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
+	if taskStatus == "review_pending" || taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
 		return fmt.Errorf("dependencies can only change before a task starts")
 	}
 	seen := map[int64]bool{}
@@ -1981,7 +2079,7 @@ func (s *Store) AddTaskDependencies(ctx context.Context, project string, taskID 
 	if err := tx.GetContext(ctx, &taskStatus, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project); err != nil {
 		return err
 	}
-	if taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
+	if taskStatus == "review_pending" || taskStatus == "in_progress" || taskStatus == "completed" || taskStatus == "skipped" {
 		return fmt.Errorf("dependencies can only change before a task starts")
 	}
 	if err := validateTaskCycles(ctx, tx, taskID, deps); err != nil {

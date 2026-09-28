@@ -37,13 +37,15 @@ type Config struct {
 	LogDir    string
 
 	// Background task intervals (seconds)
-	IndexerIntervalS         int
-	IndexerStartupDelayS     int
-	GitPollerIntervalS       int
+	IndexerIntervalS           int
+	IndexerStartupDelayS       int
+	GitPollerIntervalS         int
 	WebhookDispatcherIntervalS int
-	IdleDetectorIntervalS    int
-	BoardNotifierIntervalS   int
-	RemotePollerIntervalS    int
+	IdleDetectorIntervalS      int
+	BoardNotifierIntervalS     int
+	TaskIdleReminderS          int
+	TaskIdleEscalationS        int
+	RemotePollerIntervalS      int
 
 	// WebSocket
 	WSPollIntervalS int
@@ -94,6 +96,8 @@ func Load(dataDir ...string) *Config {
 		WebhookDispatcherIntervalS: 15,
 		IdleDetectorIntervalS:      60,
 		BoardNotifierIntervalS:     30,
+		TaskIdleReminderS:          envIntOrDefault("CORAL_TASK_IDLE_REMINDER_SECONDS", 1800),
+		TaskIdleEscalationS:        envIntOrDefault("CORAL_TASK_IDLE_ESCALATION_SECONDS", 3600),
 		RemotePollerIntervalS:      30,
 
 		WSPollIntervalS: 5,

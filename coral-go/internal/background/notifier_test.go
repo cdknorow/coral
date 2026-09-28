@@ -197,6 +197,29 @@ func TestBoardNotifier_DeduplicatesNotifications(t *testing.T) {
 	assert.Len(t, rt.sent, 1, "should not re-nudge for the same unread count")
 }
 
+func TestBoardNotifier_OrchestratorGetsNudgeForNewUnreadBatch(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-1", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-1", nil, nil, "")
+	require.NoError(t, err)
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "orch", AgentType: "claude", SessionID: "orch-1", DisplayName: "Orchestrator"}}, nil
+	})
+	_, err = bs.PostMessage(ctx, "proj", "Worker", "first", nil)
+	require.NoError(t, err)
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	_, err = bs.PostMessage(ctx, "proj", "Worker", "second", nil)
+	require.NoError(t, err)
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 2, "new messages should immediately nudge the orchestrator")
+}
+
 // TestBoardNotifier_OneNudgePerBatch verifies more messages arriving before
 // the agent reads do not stack up nudges, a reminder goes out once they have
 // sat unread for remindAfter, and reading resets it.

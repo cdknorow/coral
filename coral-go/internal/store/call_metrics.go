@@ -39,14 +39,17 @@ type CallMetricSummary struct {
 
 func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetricSummary, error) {
 	var out []CallMetricSummary
-	err := s.SelectContext(ctx, &out, `SELECT operation, call_type,
-		COALESCE(agent_name, '') AS agent_name,
-		COALESCE(board_name, '') AS board_name,
+	err := s.SelectContext(ctx, &out, `SELECT cm.operation, cm.call_type,
+		COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, '') AS agent_name,
+		COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '') AS board_name,
 		COUNT(*) AS calls,
-		SUM(is_error) AS errors,
-		COALESCE(AVG(duration_ms), 0) AS avg_duration_ms
-		FROM call_metrics WHERE created_at >= ?
-		GROUP BY operation, call_type, agent_name, board_name
+		SUM(cm.is_error) AS errors,
+		COALESCE(AVG(cm.duration_ms), 0) AS avg_duration_ms
+		FROM call_metrics cm LEFT JOIN live_sessions ls ON ls.session_id = cm.session_id
+		WHERE cm.created_at >= ?
+		GROUP BY cm.operation, cm.call_type,
+		COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, ''),
+		COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '')
 		ORDER BY COUNT(*) DESC`, since.UTC().Format(time.RFC3339Nano))
 	return out, err
 }

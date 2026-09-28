@@ -179,7 +179,10 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		n.notifiedMu.Lock()
 		last, notified := n.notified[subscriberID]
 		n.notifiedMu.Unlock()
-		if notified && n.now().Sub(last.at) < n.remindAfter {
+		// A larger unread batch means new board activity arrived. Notify
+		// immediately; only suppress repeated scans of the same batch during
+		// the reminder window.
+		if notified && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
 			n.logger.Info("already notified", "subscriber_id", subscriberID, "unread", unread, "notified_unread", last.count)
 			continue
 		}

@@ -410,6 +410,37 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "assignee": assignee})
 }
 
+// SnoozeTaskReminder suppresses inactivity reminders for an active task.
+// POST body: {"seconds": 1800}
+func (h *BoardHandler) SnoozeTaskReminder(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	var body struct {
+		Seconds int `json:"seconds"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Seconds <= 0 || body.Seconds > 7*24*60*60 {
+		errBadRequest(w, "seconds must be between 1 and 604800")
+		return
+	}
+	if task, err := h.bs.GetTask(r.Context(), project, taskID); err != nil || task == nil {
+		errNotFound(w, "Task not found")
+		return
+	} else if task.Status != "in_progress" {
+		errBadRequest(w, "only in-progress tasks can be snoozed")
+		return
+	}
+	until := time.Now().Add(time.Duration(body.Seconds) * time.Second)
+	if err := h.bs.SnoozeTaskReminder(r.Context(), project, taskID, until); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "snoozed_until": until.UTC().Format(time.RFC3339)})
+}
+
 // RemindTask starts or stops a server-side periodic reminder for a task.
 // POST body: {"interval_seconds": 300}; DELETE stops the reminder.
 func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
@@ -629,6 +660,9 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	// A message from an assignee is evidence of progress on its active task.
+	// Keep this separate from task state so posting never completes work.
+	_ = h.bs.TouchActiveTask(r.Context(), project, subscriberID)
 
 	// Fire-and-forget webhook dispatch
 	go h.dispatchWebhooks(project, subscriberID, msg)
@@ -873,6 +907,7 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "target subscriber not found on this board")
 		return
 	}
+	_ = h.bs.TouchActiveTask(r.Context(), project, targetSub.SubscriberID)
 
 	if h.terminal == nil {
 		errInternalServer(w, "terminal backend not available")
@@ -1351,10 +1386,21 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.persistTaskArtifact(r.Context(), task)
+	stalled, stallErr := h.bs.StallDownstreamTasks(r.Context(), project, task.ID)
+	if stallErr != nil {
+		slog.Warn("failed to reconcile downstream tasks after cancellation", "project", project, "task_id", task.ID, "error", stallErr)
+	}
 	go func() {
 		ctx := context.Background()
 		notification := fmt.Sprintf("[Task #%d cancelled by %s] %s", task.ID, body.SubscriberID, task.Title)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		// Reconcile the full descendant graph immediately. Pending descendants
+		// become blocked/stalled and retain their owner for orchestrator repair.
+		if stallErr == nil {
+			for _, child := range stalled {
+				h.bs.PostMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@Orchestrator [Task #%d stalled] %s depends on cancelled task #%d; rewire or create a retry before claiming it.", child.ID, child.Title, task.ID), nil)
+			}
+		}
 		h.notifyOrchestratorOfCancelledDependency(ctx, project, body.SubscriberID, task)
 
 		// Only termination dependencies are satisfied by cancellation.
@@ -1453,6 +1499,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
+	_ = h.bs.TouchTask(r.Context(), project, taskID)
 	go func() {
 		ctx := context.Background()
 		nudged := false

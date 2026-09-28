@@ -258,7 +258,7 @@ func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since stri
 	// reported separately so those rows can still be told apart.
 	query := `SELECT t.session_id,
 	          COALESCE(NULLIF(ls.display_name, ''), MAX(t.agent_name), '') as agent_name,
-	          t.agent_type, t.board_name,
+	          t.agent_type, COALESCE(NULLIF(t.board_name, ''), ls.board_name) as board_name,
 	          COALESCE(ls.agent_name, '') as folder,
 	          COALESCE(ls.working_dir, '') as working_dir,
 	          COALESCE(SUM(t.input_tokens), 0) as input_tokens,
@@ -287,40 +287,42 @@ func (s *TokenUsageStore) GetUsageSummaryByAgent(ctx context.Context, since stri
 
 // ListUsage returns aggregated token usage per session (sum of all per-turn records).
 func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]TokenUsage, error) {
-	query := `SELECT MAX(id) as id, session_id, MAX(agent_name) as agent_name, MAX(agent_type) as agent_type,
-	          MAX(team_id) as team_id, MAX(board_name) as board_name,
-	          COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens,
-	          COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens, COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-	          COALESCE(SUM(total_tokens), 0) as total_tokens, COALESCE(SUM(cost_usd), 0) as cost_usd,
+	query := `SELECT MAX(t.id) as id, t.session_id,
+	          COALESCE(NULLIF(MAX(ls.display_name), ''), MAX(t.agent_name)) as agent_name,
+	          MAX(t.agent_type) as agent_type,
+	          MAX(t.team_id) as team_id, COALESCE(NULLIF(MAX(t.board_name), ''), MAX(ls.board_name)) as board_name,
+	          COALESCE(SUM(t.input_tokens), 0) as input_tokens, COALESCE(SUM(t.output_tokens), 0) as output_tokens,
+	          COALESCE(SUM(t.cache_read_tokens), 0) as cache_read_tokens, COALESCE(SUM(t.cache_write_tokens), 0) as cache_write_tokens,
+	          COALESCE(SUM(t.total_tokens), 0) as total_tokens, COALESCE(SUM(t.cost_usd), 0) as cost_usd,
 	          COUNT(*) as num_turns,
-	          COALESCE(MIN(NULLIF(session_start_at, '')), '') as session_start_at,
-	          COALESCE(MAX(NULLIF(last_activity_at, '')), '') as last_activity_at,
-	          CASE WHEN MIN(NULLIF(session_start_at, '')) IS NOT NULL AND MAX(NULLIF(last_activity_at, '')) IS NOT NULL
-	               THEN MAX(0, CAST(ROUND((julianday(MAX(NULLIF(last_activity_at, ''))) - julianday(MIN(NULLIF(session_start_at, '')))) * 86400) AS INTEGER))
+	          COALESCE(MIN(NULLIF(t.session_start_at, '')), '') as session_start_at,
+	          COALESCE(MAX(NULLIF(t.last_activity_at, '')), '') as last_activity_at,
+	          CASE WHEN MIN(NULLIF(t.session_start_at, '')) IS NOT NULL AND MAX(NULLIF(t.last_activity_at, '')) IS NOT NULL
+	               THEN MAX(0, CAST(ROUND((julianday(MAX(NULLIF(t.last_activity_at, ''))) - julianday(MIN(NULLIF(t.session_start_at, '')))) * 86400) AS INTEGER))
 	               ELSE 0 END as execution_time_sec,
-	          MAX(recorded_at) as recorded_at,
-	          COALESCE(MAX(source), 'jsonl') as source
-	   FROM token_usage WHERE ` + sourceDedup + ` AND 1=1`
+	          MAX(t.recorded_at) as recorded_at,
+	          COALESCE(MAX(t.source), 'jsonl') as source
+	   FROM token_usage t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl')) AND 1=1`
 	var args []interface{}
 
 	if f.SessionID != "" {
-		query += " AND session_id = ?"
+		query += " AND t.session_id = ?"
 		args = append(args, f.SessionID)
 	}
 	if f.TeamID != nil {
-		query += " AND team_id = ?"
+		query += " AND t.team_id = ?"
 		args = append(args, *f.TeamID)
 	}
 	if f.BoardName != "" {
-		query += " AND board_name = ?"
+		query += " AND COALESCE(NULLIF(t.board_name, ''), ls.board_name) = ?"
 		args = append(args, f.BoardName)
 	}
 	if f.Since != "" {
-		query += " AND recorded_at >= ?"
+		query += " AND t.recorded_at >= ?"
 		args = append(args, f.Since)
 	}
 
-	query += ` GROUP BY session_id ORDER BY MAX(recorded_at) DESC`
+	query += ` GROUP BY t.session_id ORDER BY MAX(t.recorded_at) DESC`
 
 	var results []TokenUsage
 	err := s.db.SelectContext(ctx, &results, query, args...)
@@ -532,21 +534,22 @@ func (s *TokenUsageStore) GetUsageSummaryByBranch(ctx context.Context, since str
 
 // GetUsageSummaryByBoard returns per-board (team) usage aggregates since a given time.
 func (s *TokenUsageStore) GetUsageSummaryByBoard(ctx context.Context, since string) ([]BoardUsageSummary, error) {
-	query := `SELECT COALESCE(board_name, '') as board_name,
-	          COALESCE(SUM(input_tokens), 0) as input_tokens,
-	          COALESCE(SUM(output_tokens), 0) as output_tokens,
-	          COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
-	          COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-	          COALESCE(SUM(total_tokens), 0) as total_tokens,
-	          COALESCE(SUM(cost_usd), 0) as cost_usd,
-	          COUNT(DISTINCT session_id) as num_agents
-	   FROM token_usage WHERE ` + sourceDedup + ` AND 1=1`
+	query := `SELECT COALESCE(NULLIF(t.board_name, ''), ls.board_name, '') as board_name,
+	          COALESCE(SUM(t.input_tokens), 0) as input_tokens,
+	          COALESCE(SUM(t.output_tokens), 0) as output_tokens,
+	          COALESCE(SUM(t.cache_read_tokens), 0) as cache_read_tokens,
+	          COALESCE(SUM(t.cache_write_tokens), 0) as cache_write_tokens,
+	          COALESCE(SUM(t.total_tokens), 0) as total_tokens,
+	          COALESCE(SUM(t.cost_usd), 0) as cost_usd,
+	          COUNT(DISTINCT t.session_id) as num_agents
+	   FROM token_usage t LEFT JOIN live_sessions ls ON ls.session_id = t.session_id
+	   WHERE (COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl')) AND 1=1`
 	var args []interface{}
 	if since != "" {
-		query += " AND recorded_at >= ?"
+		query += " AND t.recorded_at >= ?"
 		args = append(args, since)
 	}
-	query += ` GROUP BY COALESCE(board_name, '') ORDER BY cost_usd DESC`
+	query += ` GROUP BY COALESCE(NULLIF(t.board_name, ''), ls.board_name, '') ORDER BY cost_usd DESC`
 	var summaries []BoardUsageSummary
 	err := s.db.SelectContext(ctx, &summaries, query, args...)
 	return summaries, err

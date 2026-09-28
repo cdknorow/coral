@@ -568,6 +568,25 @@ func TestTokenUsageStore_GetUsageSummaryByBoard(t *testing.T) {
 	assert.Equal(t, 1, teams[1].NumAgents)
 }
 
+func TestTokenUsageStore_GetUsageSummaryByBoardResolvesSessionTeam(t *testing.T) {
+	db := openTestDB(t)
+	s := NewTokenUsageStore(db)
+	ctx := context.Background()
+
+	_, err := db.Exec(`INSERT INTO live_sessions(session_id, agent_type, agent_name, display_name, board_name, working_dir, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, "historical-session", "codex", "death_or_trade", "Orchestrator", "death-or-trade-ai-auto", "/tmp", "2026-01-01T00:00:00Z")
+	require.NoError(t, err)
+	require.NoError(t, s.RecordUsage(ctx, &TokenUsage{
+		SessionID: "historical-session", AgentName: "death_or_trade", TotalTokens: 100,
+		RecordedAt: "2026-01-01T10:00:00Z",
+	}))
+
+	teams, err := s.GetUsageSummaryByBoard(ctx, "")
+	require.NoError(t, err)
+	require.Len(t, teams, 1)
+	assert.Equal(t, "death-or-trade-ai-auto", teams[0].BoardName)
+}
+
 func TestTokenUsageStore_GetUsageSummaryByBoard_WithSince(t *testing.T) {
 	db := openTestDB(t)
 	s := NewTokenUsageStore(db)

@@ -318,6 +318,41 @@ check "direct-ID claim selects the requested ready task" 'echo "$OUT" | grep -q 
 tester task complete "$DIRECT_TARGET" >/dev/null
 DIRECT_OTHER_STATUS=$(api GET "/api/board/claim-regressions/tasks/$DIRECT_OTHER" | jget "d['status']")
 check "direct-ID claim leaves other queue rows pending" '[[ "$DIRECT_OTHER_STATUS" == pending ]]'
+# Keep the queue clean for the cancellation propagation case below.
+OUT=$(tester task claim "$DIRECT_OTHER")
+tester task complete "$DIRECT_OTHER" >/dev/null
+
+# ── Test 14b: cancellation stalls descendants and never leaks into FIFO ───
+
+log "Test 14b: canceled prerequisites stall descendants and FIFO skips them..."
+CANCEL_ROOT=$(builder task add "Canceled prerequisite root" --priority critical | task_id)
+CANCEL_CHILD=$(builder task add "Stalled dependent" --priority critical --blocked-by "[$CANCEL_ROOT]" --assignee Tester | task_id)
+CANCEL_GRANDCHILD=$(builder task add "Stalled grandchild" --priority critical --blocked-by "[$CANCEL_CHILD]" --assignee Tester | task_id)
+builder task cancel "$CANCEL_ROOT" --message "superseded" >/dev/null
+CHILD_STATUS=$(api GET "/api/board/claim-regressions/tasks/$CANCEL_CHILD" | jget "d['status']")
+GRANDCHILD_STATUS=$(api GET "/api/board/claim-regressions/tasks/$CANCEL_GRANDCHILD" | jget "d['status']")
+check "canceling a prerequisite leaves the direct dependent blocked" '[[ "$CHILD_STATUS" == blocked ]]' "$CHILD_STATUS"
+check "canceling a prerequisite propagates blocked state to descendants" '[[ "$GRANDCHILD_STATUS" == blocked ]]' "$GRANDCHILD_STATUS"
+INDEPENDENT_AFTER_CANCEL=$(builder task add "Runnable after canceled graph" --priority low | task_id)
+OUT=$(tester task claim)
+check "FIFO skips assigned blocked descendants after cancellation" 'echo "$OUT" | grep -q "Runnable after canceled graph" && echo "$OUT" | grep -qv "Stalled"' "$OUT"
+tester task complete "$INDEPENDENT_AFTER_CANCEL" >/dev/null
+set +e
+OUT=$(tester task claim "$CANCEL_CHILD" 2>&1)
+CODE=$?
+set -e
+check "direct-ID claim refuses a stalled dependent" '[[ $CODE -ne 0 ]] && echo "$OUT" | grep -qiE "blocked|available|dependency"' "$OUT"
+
+# Repeated concurrent requests cover evidence submissions, authorized releases,
+# claims, and final outcomes on isolated boards in this live server.
+log "Concurrent completion-review recovery (multiple rounds)..."
+if python3 "$SCRIPT_DIR/test_completion_review.py" "$BASE_URL" >"$TMPDIR_AT/completion-review.log" 2>&1; then
+    cat "$TMPDIR_AT/completion-review.log"
+    pass "concurrent completion-review recovery across multiple rounds"
+else
+    cat "$TMPDIR_AT/completion-review.log"
+    fail "concurrent completion-review recovery"
+fi
 
 # ── Test 15: readiness recovery and artifact configuration limits ──────
 # This helper owns a separate server/database because it kills and restarts

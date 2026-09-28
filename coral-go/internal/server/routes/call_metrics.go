@@ -65,6 +65,15 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			started := time.Now()
 			rw := &metricResponseWriter{ResponseWriter: w}
 			next.ServeHTTP(rw, r)
+			// Browser requests commonly carry only the session ID. Resolve it to
+			// the agent display name before falling back to route parameters;
+			// otherwise many rows are grouped under a generic session/board name.
+			if identity.sessionID != "" {
+				var name string
+				if err := db.GetContext(r.Context(), &name, `SELECT COALESCE(NULLIF(display_name, ''), agent_name) FROM live_sessions WHERE session_id = ?`, identity.sessionID); err == nil {
+					identity.agentName = name
+				}
+			}
 			if identity.agentName == "" {
 				identity.agentName = firstNonEmpty(chi.URLParam(r, "name"), chi.URLParam(r, "sessionID"))
 			}
@@ -99,9 +108,6 @@ func requestMetricIdentity(r *http.Request) requestMetricIdentityData {
 	identity := requestMetricIdentityData{}
 	identity.agentName = firstNonEmpty(r.Header.Get("X-Coral-Agent"), r.Header.Get("X-Coral-Subscriber-ID"), r.URL.Query().Get("subscriber_id"))
 	identity.sessionID = firstNonEmpty(r.Header.Get("X-Coral-Session-ID"), r.URL.Query().Get("session_id"))
-	if identity.agentName == "" {
-		identity.agentName = firstNonEmpty(chi.URLParam(r, "name"), chi.URLParam(r, "sessionID"))
-	}
 	// Most CLI mutations carry subscriber_id in a small JSON body. Read and
 	// restore it so handlers receive the exact original request stream.
 	if identity.agentName == "" && strings.Contains(r.Header.Get("Content-Type"), "application/json") && (r.ContentLength <= 65536 || r.ContentLength < 0) {

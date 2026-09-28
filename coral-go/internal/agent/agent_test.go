@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -358,8 +359,8 @@ func TestBuildBoardSystemPrompt_PromptOnly(t *testing.T) {
 func TestCodex_BasicLaunch(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{})
-	if cmd != "codex" {
-		t.Errorf("expected codex command, got %q", cmd)
+	if !strings.HasPrefix(cmd, "codex ") {
+		t.Errorf("expected codex command with Coral hooks, got %q", cmd)
 	}
 }
 
@@ -1190,6 +1191,19 @@ func TestCodex_EnvVarsExported(t *testing.T) {
 	}
 	if !strings.Contains(cmd, "export CORAL_SUBSCRIBER_ID='developer' &&") {
 		t.Errorf("expected exported single-quoted role, got %q", cmd)
+	}
+}
+
+func TestCodex_InjectsCoralAgenticHooks(t *testing.T) {
+	cmd := (&CodexAgent{}).BuildLaunchCommand(LaunchParams{SessionID: "codex-hooks-test", SessionName: "codex-hooks-test"})
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "Stop"} {
+		want := fmt.Sprintf("hooks.%s=", event)
+		if !strings.Contains(cmd, want) {
+			t.Errorf("Codex launch command missing Coral %s hook: %s", event, cmd)
+		}
+	}
+	if strings.Count(cmd, "coral-hook-agentic-state") != 5 {
+		t.Errorf("expected one Coral activity hook per event, got %d", strings.Count(cmd, "coral-hook-agentic-state"))
 	}
 }
 

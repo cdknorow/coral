@@ -656,6 +656,10 @@ export function renderBoardTaskList() {
             ? '<span class="board-task-status-wrap completed"><span class="material-icons board-task-status-icon completed" title="Finished">check_circle</span><span class="board-task-status-label">Finished</span></span>'
             : t.status === 'completed'
             ? '<span class="board-task-status-wrap completed"><span class="material-icons board-task-status-icon completed" title="Finished">check_circle</span><span class="board-task-status-label">Finished</span></span>'
+            : t.status === 'review_pending'
+            ? '<span class="board-task-status-wrap blocked"><span class="material-icons board-task-status-icon blocked">rate_review</span><span class="board-task-status-label">Open <b>· Review pending</b></span></span>'
+            : t.workflow?.completion_review && t.status === 'in_progress'
+            ? '<span class="board-task-status-wrap blocked"><span class="material-icons board-task-status-icon blocked">rate_review</span><span class="board-task-status-label">Open <b>· Review requested</b></span></span>'
             : t.status === 'in_progress'
             ? '<span class="board-task-status-wrap in-progress"><span class="task-spinner" title="Open · Working"></span><span class="board-task-status-label">Open <b>· Working</b></span></span>'
             : t.status === 'skipped'
@@ -984,7 +988,7 @@ export function showTaskDetailModal(taskId) {
     // Update footer with action buttons for editable tasks
     const footer = document.getElementById('task-detail-modal-footer');
     if (footer) {
-        const isEditable = task.status === 'pending' || task.status === 'in_progress' || task.status === 'blocked' || task.status === 'draft';
+        const isEditable = !task.workflow?.completion_review && (task.status === 'pending' || task.status === 'in_progress' || task.status === 'blocked' || task.status === 'draft');
         if (isEditable) {
             const canComplete = task.status !== 'blocked' && task.status !== 'draft';
             const showPublish = task.status === 'draft';
@@ -1056,6 +1060,8 @@ function _openTaskDetailModal(modal) {
 
 function _taskDetailHtml(task, liveCost) {
     const statusLabel = task.workflow?.outcome === 'failed' ? 'Finished' : task.status === 'completed' ? 'Finished'
+        : task.status === 'review_pending' ? 'Open · Review pending (slot released)'
+        : task.workflow?.completion_review && task.status === 'in_progress' ? 'Open · Completion review requested (slot occupied)'
         : task.status === 'in_progress' ? 'Open · In Progress'
         : task.status === 'skipped' ? 'Cancelled'
         : task.status === 'blocked' ? 'Open · Blocked'
@@ -1108,6 +1114,14 @@ function _taskDetailHtml(task, liveCost) {
             ${workflow.parent_task_id ? `<div>Parent task #${Number(workflow.parent_task_id)}</div>` : ''}
             ${workflow.retry_of ? `<div>Retry of task #${Number(workflow.retry_of)}</div>` : ''}</details>`;
         for (const input of workflow.inputs || []) html += `<details class="task-detail-section"><summary>Input from ${escapeHtml(input.board_id)} #${Number(input.task_id)} (${escapeHtml(input.outcome)})</summary>${(input.artifacts || []).map(artifactHtml).join('')}</details>`;
+        if (workflow.completion_review) {
+            const review = workflow.completion_review;
+            html += `<div class="task-detail-section"><div class="task-detail-label">Completion candidate · not an accepted result</div>
+                <div class="task-detail-body">Submitted by ${escapeHtml(review.submitted_by)} · ${escapeHtml(review.submitted_at)}<br>
+                Proposed outcome: ${escapeHtml(review.proposed_outcome)}<br>${escapeHtml(review.reason)}<br>${escapeHtml(review.message || '')}</div>
+                ${(review.artifacts || []).map(artifactHtml).join('')}
+                ${review.released_by ? `<div>Slot released by ${escapeHtml(review.released_by)} · ${escapeHtml(review.released_at)}: ${escapeHtml(review.release_reason)}</div>` : '<div>The worker slot is still occupied. An orchestrator can release it with coral-board task release-review.</div>'}</div>`;
+        }
         if (workflow.artifacts?.length) html += `<div class="task-detail-section"><div class="task-detail-label">Completion artifacts</div>${workflow.artifacts.map(artifactHtml).join('')}</div>`;
     }
 

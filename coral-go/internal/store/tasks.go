@@ -129,12 +129,13 @@ func (s *TaskStore) GetAgentTask(ctx context.Context, taskID int64) (*AgentTask,
 // Agent task states (the completed column): pending, done, in progress, and
 // cancelled (reported as "skipped", like board tasks).
 const (
-	AgentTaskPending    = 0
-	AgentTaskDone       = 1
-	AgentTaskInProgress = 2
-	AgentTaskCancelled  = 3
-	AgentTaskBlocked    = 4
-	AgentTaskDraft      = 5
+	AgentTaskPending       = 0
+	AgentTaskDone          = 1
+	AgentTaskInProgress    = 2
+	AgentTaskCancelled     = 3
+	AgentTaskBlocked       = 4
+	AgentTaskDraft         = 5
+	AgentTaskReviewPending = 6
 )
 
 // SetAgentTaskDetails stores a task's details and priority (empty = unchanged).

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -431,6 +432,28 @@ func TestClaimTask(t *testing.T) {
 	task, err = s.ClaimTask(ctx, "empty", "bob")
 	require.NoError(t, err)
 	assert.Nil(t, task)
+}
+
+func TestTaskActivityTouchAndIdleTasks(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	_, err := s.CreateTask(ctx, "proj", "Long-running work", "", "medium", "alice")
+	require.NoError(t, err)
+	claimed, err := s.ClaimTask(ctx, "proj", "bob")
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+
+	old := time.Now().UTC().Add(-2 * time.Hour).Format(time.RFC3339)
+	_, err = s.db.ExecContext(ctx, "UPDATE board_tasks SET last_activity_at = ? WHERE id = ?", old, claimed.ID)
+	require.NoError(t, err)
+	idle, err := s.IdleTasks(ctx, "proj", time.Now().UTC().Add(-time.Hour))
+	require.NoError(t, err)
+	require.Len(t, idle, 1)
+
+	require.NoError(t, s.TouchActiveTask(ctx, "proj", "bob"))
+	idle, err = s.IdleTasks(ctx, "proj", time.Now().UTC().Add(-time.Hour))
+	require.NoError(t, err)
+	require.Empty(t, idle)
 }
 
 func TestClaimTask_PriorityOrder(t *testing.T) {

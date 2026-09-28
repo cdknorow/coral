@@ -525,6 +525,8 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	boardSettings, _ := sessStore.GetSettings(ctx)
 	if boardSettings["board_health_monitor"] == "true" {
 		healthMonitor := background.NewBoardHealthMonitor(srv.BoardStore(), 10*time.Minute)
+		healthMonitor.SetRuntime(agentRT)
+		healthMonitor.SetIdleThresholds(time.Duration(cfg.TaskIdleReminderS)*time.Second, time.Duration(cfg.TaskIdleEscalationS)*time.Second)
 		safeGo(ctx, "board_health_monitor", func() { healthMonitor.Run(ctx) })
 	}
 

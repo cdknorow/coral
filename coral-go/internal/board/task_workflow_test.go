@@ -63,6 +63,33 @@ func TestWorkflowReadinessSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestCancelStallsPendingDescendantsAndTheyCannotBeClaimed(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upstream, err := s.CreateTask(ctx, "team", "Build", "", "medium", "lead")
+	require.NoError(t, err)
+	child, err := s.CreateTaskWithOpts(ctx, "team", "Test", "", "medium", "qa", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: upstream.ID}}})
+	require.NoError(t, err)
+	require.Equal(t, "blocked", child.Status)
+	// Simulate stale metadata left by an older queue implementation.
+	_, err = s.db.ExecContext(ctx, "UPDATE board_tasks SET status='pending' WHERE id=?", child.ID)
+	require.NoError(t, err)
+	_, err = s.CancelTask(ctx, "team", upstream.ID, "lead", nil)
+	require.NoError(t, err)
+	stalled, err := s.StallDownstreamTasks(ctx, "team", upstream.ID)
+	require.NoError(t, err)
+	// The cancellation path is idempotent; if the row was already reconciled,
+	// it remains blocked and is still excluded from claims.
+	if len(stalled) == 0 {
+		got, getErr := s.GetTask(ctx, "team", child.ID)
+		require.NoError(t, getErr)
+		require.Equal(t, "blocked", got.Status)
+	}
+	claimed, err := s.ClaimTask(ctx, "team", "qa")
+	require.NoError(t, err)
+	require.Nil(t, claimed)
+}
+
 func TestWorkflowStartupRepairsLegacyBlockedTasks(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "board.db")

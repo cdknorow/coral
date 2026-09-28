@@ -14,7 +14,7 @@ check "blocked personal task cannot be claimed" 'personal_reject personal claim 
 check "other agent cannot read personal workflow" 'personal_reject as_agent "$SESS_B" task detail "$PB"'
 check "other agent cannot depend on personal workflow" 'personal_reject as_agent "$SESS_B" task add "Cross-session dependency" --blocked-by "[$PB]"'
 OUT=$(personal claim "$PB")
-check "personal claim includes default and custom instructions" 'echo "$OUT" | grep -q "retry_of" && echo "$OUT" | grep -q "Pin the candidate revision"'
+check "personal claim includes default and custom instructions" 'echo "$OUT" | grep -q "Use your judgment" && echo "$OUT" | grep -q "Pin the candidate revision"'
 check "required personal output enforced" 'personal_reject personal complete "$PB"'
 cat >"$TMPDIR_AT/personal-build.json" <<'JSON'
 [{"name":"build","content":"Personal candidate","revision":"personal-rev-1"}]

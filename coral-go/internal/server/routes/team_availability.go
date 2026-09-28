@@ -27,6 +27,7 @@ type availableAgent struct {
 	Availability            string                `json:"availability"`
 	Available               bool                  `json:"available"`
 	Reason                  string                `json:"reason"`
+	TaskState               string                `json:"task_state,omitempty"`
 	Tasks                   []availabilityTask    `json:"tasks"`
 	WaitingOn               *board.RegisteredWait `json:"waiting_on,omitempty"`
 	Reminder                bool                  `json:"reminder,omitempty"`
@@ -131,7 +132,23 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		if a.SubscriberID != "" {
 			activeWait = waitsBySubscriber[a.SubscriberID]
 		}
+		for _, task := range a.Tasks {
+			if task.Status == "in_progress" {
+				a.TaskState = "active"
+			} else if a.TaskState == "" && task.Status == "blocked" {
+				a.TaskState = "blocked"
+			}
+		}
+		if activeWait != nil {
+			a.TaskState = "awaiting-review"
+		}
 		classifyAvailability(&a, s, live[s.SessionID], subscribed && sub.IsActive != 0, DeriveSessionState(input), len(input.Events) > 0, activeWait)
+		if a.TaskState == "active" {
+			state := DeriveSessionState(input)
+			if !state.Working {
+				a.TaskState = "idle"
+			}
+		}
 		agents = append(agents, a)
 	}
 	for _, sub := range subs {

@@ -20,12 +20,10 @@ workflow runs, see [Workflows](workflows.md).
 1. Run `coral-agent task claim`, or `claim <id>` for a specific ready task.
 2. Read the body, `workflow.instructions`, required outputs, and upstream
    artifacts returned by the claim. Claim records the prerequisite results.
-3. Work on that task. Use the upstream revision/digest in its evidence.
-4. Complete with an honest outcome and a named artifact manifest. Required
-   outputs must be present for success; use `--outcome failed` when work fails.
-5. Keep Build, Test, and Release as separate tasks. Wait for readiness
-   notifications instead of polling blocked tasks. Retry finished work with a
-   new task and explicitly reconnect unstarted consumers.
+3. Use your judgment to accomplish the task and preserve the relevant evidence.
+4. Complete with `--message`; use `--outcome failed` when the work is
+   unsuccessful. If outputs are required, provide them with `--artifacts`
+   using inline content or durable links.
 
 Only one personal task can be in progress per session. A second claim is
 rejected, even when the queue has other pending work. Claim order is priority

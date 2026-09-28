@@ -461,11 +461,9 @@ const DefaultWorkerSystemPrompt = "Post a message with coral-board post \"<your 
 	"When you finish a task, mark it complete: coral-board task complete <id> --message \"what was done\"\n" +
 	DefaultTaskWorkflowGuidance
 
-const DefaultTaskWorkflowGuidance = "Read the workflow instructions, required outputs, and upstream artifacts returned by task claim/current. " +
-	"Use separate dependent tasks for Build, Test, and Release; task add supports --blocked-by JSON, --outputs, --workflow, --stage, and --workflow-instructions. " +
-	"Complete with --artifacts manifest.json (an array of named artifacts with a durable uri or inline content and optional revision/digest). Upload local files with coral-agent artifact upload <file> and use its coral:// URI. Never submit local filesystem paths or temporary-file links in task results or user-facing summaries; users and downstream agents cannot reach your checkout. " +
-	"Use --outcome failed for failed work; never report failed verification as success. " +
-	"Use task detail <id> to read prior evidence. When waiting on dependencies or reviews, register a wait with coral-board wait and stop your turn instead of polling or sleeping."
+const DefaultTaskWorkflowGuidance = "Use task detail/current to read requirements, dependency results, and upstream context. " +
+	"Complete with --message for results, --outcome failed for unsuccessful work, and --artifacts manifest.json when outputs are required. " +
+	"Artifacts may use inline content or durable links; upload shared files with coral-agent artifact upload <file>."
 
 // Default action prompts (appended to user prompt as CLI positional arg).
 const DefaultOrchestratorActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Post a message with coral-board post "<your introduction>" that introduces yourself, then discuss your proposed plan with the operator (the human user) before posting assignments.

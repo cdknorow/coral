@@ -54,7 +54,7 @@ check "test and release start blocked" '[[ $(workflow_status "$TEST") == blocked
 check "blocked task cannot be claimed explicitly" 'reject_board tester task claim "$TEST"'
 check "another worker cannot claim the assigned build" 'reject_board tester task claim "$BUILD"'
 OUT=$(builder task claim "$BUILD")
-check "claim includes default and additional workflow instructions" 'echo "$OUT" | grep -q "Use the exact candidate revision" && echo "$OUT" | grep -q "retry_of"'
+check "claim includes default and additional workflow instructions" 'echo "$OUT" | grep -q "Use the exact candidate revision" && echo "$OUT" | grep -q "Use your judgment"'
 check "required build artifact enforced on completion" 'reject_board builder task complete "$BUILD"'
 check "rejected completion leaves build in progress and test blocked" '[[ $(workflow_status "$BUILD") == in_progress && $(workflow_status "$TEST") == blocked ]]'
 cat >"$TMPDIR_AT/build.json" <<'JSON'
