@@ -282,10 +282,47 @@ check "current reports no active task" '[[ "$OUT" == "No active task" ]]' "$OUT"
 source "$SCRIPT_DIR/personal_task_workflows.sh"
 source "$SCRIPT_DIR/agent_task_workflows.sh"
 
-# ── Test 13: readiness recovery and artifact configuration limits ──────
+# ── Test 14: FIFO claimability honors cancellation, dependencies, and ownership ──
+
+log "Test 14: FIFO claimability skips terminal/blocked rows and honors assigned work..."
+builder join claim-regressions --as Builder >/dev/null
+tester join claim-regressions --as Tester >/dev/null
+
+CANCELLED_FIFO=$(builder task add "Cancelled FIFO row" --priority critical | task_id)
+builder task cancel "$CANCELLED_FIFO" >/dev/null
+ASSIGNED_FIFO=$(builder task add "Assigned ready row" --priority low --assignee Builder | task_id)
+GLOBAL_FIFO=$(builder task add "Global critical row" --priority critical | task_id)
+OUT=$(builder task claim)
+check "FIFO prefers the agent's assigned ready task over global priority" 'echo "$OUT" | grep -q "Claimed Task #$ASSIGNED_FIFO"'
+builder task complete "$ASSIGNED_FIFO" >/dev/null
+OUT=$(builder task claim)
+check "FIFO skips cancelled rows and claims the remaining global task" 'echo "$OUT" | grep -q "Claimed Task #$GLOBAL_FIFO"'
+builder task complete "$GLOBAL_FIFO" >/dev/null
+
+FAILED_FIFO=$(builder task add "Failed prerequisite" --priority critical | task_id)
+BLOCKED_FIFO=$(builder task add "Success-only dependent" --blocked-by "[$FAILED_FIFO]" | task_id)
+builder task claim "$FAILED_FIFO" >/dev/null
+builder task complete "$FAILED_FIFO" --outcome failed --message "candidate rejected" >/dev/null
+READY_FIFO=$(builder task add "Independent ready row" --priority low | task_id)
+set +e
+OUT=$(tester task claim 2>&1)
+CODE=$?
+set -e
+check "FIFO does not claim a task whose prerequisite failed" '[[ $CODE -eq 0 ]] && [[ "$OUT" == *"Independent ready row"* ]] && [[ "$OUT" != *"Success-only dependent"* ]]' "$OUT"
+tester task complete "$READY_FIFO" >/dev/null
+
+DIRECT_OTHER=$(builder task add "Earlier direct-ID row" --priority critical | task_id)
+DIRECT_TARGET=$(builder task add "Direct-ID target" --priority low | task_id)
+OUT=$(tester task claim "$DIRECT_TARGET")
+check "direct-ID claim selects the requested ready task" 'echo "$OUT" | grep -q "Claimed Task #$DIRECT_TARGET"'
+tester task complete "$DIRECT_TARGET" >/dev/null
+DIRECT_OTHER_STATUS=$(api GET "/api/board/claim-regressions/tasks/$DIRECT_OTHER" | jget "d['status']")
+check "direct-ID claim leaves other queue rows pending" '[[ "$DIRECT_OTHER_STATUS" == pending ]]'
+
+# ── Test 15: readiness recovery and artifact configuration limits ──────
 # This helper owns a separate server/database because it kills and restarts
 # its server and seeds a legacy crash state. Keep the live mock agents intact.
-log "Test 13: API regressions for restart recovery and artifact limits..."
+log "Test 15: API regressions for restart recovery and artifact limits..."
 if CORAL_BIN="$TMPDIR_AT/coral" \
     CORAL_TEST_ARTIFACT_DIR="$TMPDIR_AT" \
     CORAL_TEST_RESULT_FILE="$TMPDIR_AT/workflow-api-result.json" \

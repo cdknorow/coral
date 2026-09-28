@@ -1240,3 +1240,59 @@ func TestMarkReadThrough(t *testing.T) {
 	_, _, _, err = s.MarkReadThrough(ctx, "proj", "Nobody", own.ID, own.ID)
 	assert.Error(t, err)
 }
+
+func TestClaimTaskSkipsCancelledRowsAndPrefersAssignedReadyWork(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	cancelled, err := s.CreateTask(ctx, "proj", "Cancelled cleanup", "", "critical", "alice")
+	require.NoError(t, err)
+	_, err = s.CancelTask(ctx, "proj", cancelled.ID, "orch", nil)
+	require.NoError(t, err)
+	assigned, err := s.CreateTask(ctx, "proj", "Assigned work", "", "low", "alice", "frontend")
+	require.NoError(t, err)
+	_, err = s.CreateTask(ctx, "proj", "Global work", "", "critical", "alice")
+	require.NoError(t, err)
+	claimed, err := s.ClaimTask(ctx, "proj", "frontend")
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	require.Equal(t, assigned.ID, claimed.ID)
+}
+
+func TestClaimTaskSkipsStalePendingFailedPrerequisite(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	upstream, err := s.CreateTask(ctx, "proj", "Build", "", "medium", "alice")
+	require.NoError(t, err)
+	child, err := s.CreateTaskWithOpts(ctx, "proj", "Test", "", "medium", "alice", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: upstream.ID}}}, "qa")
+	require.NoError(t, err)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "proj", upstream.ID, "alice", nil, "failed", nil)
+	require.NoError(t, err)
+	// Simulate stale queue metadata left by an older server version.
+	_, err = s.db.ExecContext(ctx, "UPDATE board_tasks SET status='pending' WHERE id=?", child.ID)
+	require.NoError(t, err)
+	ready, err := s.CreateTask(ctx, "proj", "Independent QA", "", "low", "alice")
+	require.NoError(t, err)
+	claimed, err := s.ClaimTask(ctx, "proj", "qa")
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	require.Equal(t, ready.ID, claimed.ID)
+	got, err := s.GetTask(ctx, "proj", child.ID)
+	require.NoError(t, err)
+	require.Equal(t, "blocked", got.Status)
+}
+
+func TestClaimTaskDirectIDClaimsRequestedReadyTask(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	first, err := s.CreateTask(ctx, "proj", "Earlier queue row", "", "critical", "alice")
+	require.NoError(t, err)
+	requested, err := s.CreateTask(ctx, "proj", "Requested task", "", "low", "alice")
+	require.NoError(t, err)
+	claimed, err := s.ClaimTask(ctx, "proj", "qa", requested.ID)
+	require.NoError(t, err)
+	require.NotNil(t, claimed)
+	require.Equal(t, requested.ID, claimed.ID)
+	pending, err := s.GetTask(ctx, "proj", first.ID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", pending.Status)
+}

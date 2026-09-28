@@ -1496,7 +1496,6 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 	now := nowUTC()
 	priorityOrder := `CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`
 
-	// Fast-path rejection: check for active task before attempting the claim
 	var activeCount int
 	if err := s.db.GetContext(ctx, &activeCount,
 		`SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'`,
@@ -1504,121 +1503,103 @@ func (s *Store) ClaimTask(ctx context.Context, project, subscriberID string, req
 		return nil, fmt.Errorf("complete your current task before claiming a new one")
 	}
 
-	// Find the best candidate: prefer tasks assigned to this subscriber, then unassigned
-	var taskID int64
+	// Assigned pending work is always considered before the unassigned pool.
+	// Keep all candidates so a stale pending row with unmet dependencies cannot
+	// hide a later ready task.
+	var candidateIDs []int64
 	if len(requestedID) > 0 && requestedID[0] > 0 {
-		if err := s.db.GetContext(ctx, &taskID, `SELECT id FROM board_tasks WHERE id = ? AND board_id = ? AND status = 'pending' AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')`, requestedID[0], project, subscriberID); err != nil {
+		if err := s.db.SelectContext(ctx, &candidateIDs, `SELECT id FROM board_tasks WHERE id = ? AND board_id = ? AND status = 'pending' AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')`, requestedID[0], project, subscriberID); err != nil || len(candidateIDs) == 0 {
 			return nil, fmt.Errorf("requested task is not available to this subscriber")
 		}
-	}
-	if taskID == 0 {
-		err := s.db.GetContext(ctx, &taskID,
-			`SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ?
-		 ORDER BY `+priorityOrder+` LIMIT 1`,
-			project, subscriberID)
-		if err != nil {
-			err = s.db.GetContext(ctx, &taskID,
-				`SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '')
-			 ORDER BY `+priorityOrder+` LIMIT 1`,
-				project)
-			if err != nil {
-				return nil, nil // no available tasks
-			}
+	} else {
+		var assigned, unassigned []int64
+		if err := s.db.SelectContext(ctx, &assigned, `SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ? ORDER BY `+priorityOrder, project, subscriberID); err != nil {
+			return nil, err
 		}
+		if err := s.db.SelectContext(ctx, &unassigned, `SELECT id FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '') ORDER BY `+priorityOrder, project); err != nil {
+			return nil, err
+		}
+		candidateIDs = append(assigned, unassigned...)
 	}
 
-	// Check prerequisites and freeze inputs in the same transaction as claim.
-	tx, err := s.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-	inputs, ready, depErr := dependencyInputs(ctx, tx, taskID)
-	if depErr != nil {
-		return nil, depErr
-	}
-	if !ready {
-		if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND status = 'pending'", taskID); err != nil {
+	for _, taskID := range candidateIDs {
+		tx, err := s.db.BeginTxx(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		inputs, ready, err := dependencyInputs(ctx, tx, taskID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if !ready {
+			// Reconcile stale queue metadata and continue searching this claim.
+			if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET status = 'blocked' WHERE id = ? AND status = 'pending'", taskID); err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+			if err := tx.Commit(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		result, err := tx.ExecContext(ctx,
+			`UPDATE board_tasks SET status = 'in_progress', assigned_to = ?, claimed_at = ?
+			 WHERE id = ? AND board_id = ? AND status = 'pending'
+			   AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')
+			   AND NOT EXISTS (SELECT 1 FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress')`,
+			subscriberID, now, taskID, project, subscriberID, project, subscriberID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		n, _ := result.RowsAffected()
+		if n == 0 {
+			var hasActive int
+			tx.GetContext(ctx, &hasActive, `SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'`, project, subscriberID)
+			tx.Rollback()
+			if hasActive > 0 {
+				return nil, fmt.Errorf("complete your current task before claiming a new one")
+			}
+			continue
+		}
+		w, err := loadWorkflow(ctx, tx, taskID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if w.TeamMode == nil {
+			mode, err := loadWorkingMode(ctx, tx, project)
+			if err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+			w.TeamMode = &mode
+			if mode.Instructions != "" {
+				w.Instructions += "\n\nTeam working instructions:\n" + mode.Instructions
+			}
+		}
+		w.Inputs = inputs
+		if err := saveWorkflow(ctx, tx, taskID, w); err != nil {
+			tx.Rollback()
 			return nil, err
 		}
 		if err := tx.Commit(); err != nil {
 			return nil, err
 		}
-		return nil, nil
-	}
-	// Atomically claim: the NOT EXISTS subquery prevents a subscriber from having
-	// two in_progress tasks even under concurrent requests (single-writer SQLite).
-	result, err := tx.ExecContext(ctx,
-		`UPDATE board_tasks SET status = 'in_progress', assigned_to = ?, claimed_at = ?
-		 WHERE id = ? AND board_id = ? AND status = 'pending'
-		   AND (assigned_to = ? OR assigned_to IS NULL OR assigned_to = '')
-		   AND NOT EXISTS (
-		     SELECT 1 FROM board_tasks
-		     WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
-		   )`,
-		subscriberID, now, taskID, project, subscriberID, project, subscriberID)
-	if err != nil {
-		return nil, err
-	}
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		// Either lost the race on this task, or subscriber already has an active task
-		var hasActive int
-		tx.GetContext(ctx, &hasActive,
-			`SELECT COUNT(*) FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'`,
-			project, subscriberID)
-		if hasActive > 0 {
-			return nil, fmt.Errorf("complete your current task before claiming a new one")
-		}
-		return nil, nil // lost race on the task itself
-	}
-	w, err := loadWorkflow(ctx, tx, taskID)
-	if err != nil {
-		return nil, err
-	}
-	if w.TeamMode == nil {
-		mode, err := loadWorkingMode(ctx, tx, project)
-		if err != nil {
-			return nil, err
-		}
-		w.TeamMode = &mode
-		if mode.Instructions != "" {
-			w.Instructions += "\n\nTeam working instructions:\n" + mode.Instructions
-		}
-	}
-	w.Inputs = inputs
-	if err := saveWorkflow(ctx, tx, taskID, w); err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	// Resolve session_id: board_subscribers (board DB) → live_sessions (sessions DB).
-	// session_name is "{agentType}-{sessionUUID}" (e.g. "claude-514f6f49-...").
-	// Extract the UUID via naming.SessionIDFromName and verify it exists.
-	if s.sessionsDB != nil {
-		var sessionName string
-		err := s.db.GetContext(ctx, &sessionName,
-			`SELECT session_name FROM board_subscribers
-			 WHERE subscriber_id = ? AND project = ? AND is_active = 1 LIMIT 1`,
-			subscriberID, project)
-		if err == nil && sessionName != "" {
-			sessionUUID := naming.SessionIDFromName(sessionName)
-			var exists int
-			err = s.sessionsDB.GetContext(ctx, &exists,
-				`SELECT 1 FROM live_sessions WHERE session_id = ? AND status = 'active' LIMIT 1`,
-				sessionUUID)
-			if err == nil {
-				s.db.ExecContext(ctx,
-					`UPDATE board_tasks SET session_id = ? WHERE id = ?`,
-					sessionUUID, taskID)
+		if s.sessionsDB != nil {
+			var sessionName string
+			if err := s.db.GetContext(ctx, &sessionName, `SELECT session_name FROM board_subscribers WHERE subscriber_id = ? AND project = ? AND is_active = 1 LIMIT 1`, subscriberID, project); err == nil && sessionName != "" {
+				sessionUUID := naming.SessionIDFromName(sessionName)
+				var exists int
+				if err := s.sessionsDB.GetContext(ctx, &exists, `SELECT 1 FROM live_sessions WHERE session_id = ? AND status = 'active' LIMIT 1`, sessionUUID); err == nil {
+					s.db.ExecContext(ctx, `UPDATE board_tasks SET session_id = ? WHERE id = ?`, sessionUUID, taskID)
+				}
 			}
 		}
-		// If lookup fails, session_id stays NULL — claiming still succeeds.
+		return s.getTaskByID(ctx, project, taskID)
 	}
-
-	return s.getTaskByID(ctx, project, taskID)
+	return nil, nil
 }
 
 // computeAndStoreTaskCost queries the sessions DB for proxy request costs
