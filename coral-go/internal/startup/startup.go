@@ -49,6 +49,8 @@ type RunningServer struct {
 	Server     *server.Server
 	DB         *store.DB
 	Backend    ptymanager.TerminalBackend
+	instance   *instanceLock
+	lockPath   string
 }
 
 // Shutdown gracefully shuts down the HTTP server and cleans up resources.
@@ -67,6 +69,10 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 func (rs *RunningServer) Close() {
 	if rs.DB != nil {
 		rs.DB.Close()
+	}
+	if rs.instance != nil {
+		rs.instance.close(rs.lockPath)
+		rs.instance = nil
 	}
 }
 
@@ -102,6 +108,17 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create database directory: %w", err)
 	}
+	lockPath := filepath.Join(coralDir, "coral-server.lock")
+	instance, err := acquireInstanceLock(lockPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot start Coral: %w (stop the existing server or use a different data directory)", err)
+	}
+	releaseOnError := true
+	defer func() {
+		if releaseOnError {
+			instance.close(lockPath)
+		}
+	}()
 
 	// Check if tmux is available when using tmux backend. We don't fail
 	// startup if it's missing — the dashboard still loads and the UI shows
@@ -173,11 +190,14 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		}
 	}()
 
+	releaseOnError = false
 	return &RunningServer{
 		HTTPServer: httpServer,
 		Server:     srv,
 		DB:         db,
 		Backend:    backend,
+		instance:   instance,
+		lockPath:   lockPath,
 	}, nil
 }
 
