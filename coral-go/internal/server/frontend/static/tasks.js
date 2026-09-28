@@ -993,7 +993,7 @@ export function showTaskDetailModal(taskId) {
                 <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${task.id})">Cancel Task</button>
                 <span style="flex:1"></span>
                 <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-                ${canNudge ? `<button class="btn" onclick="window.nudgeBoardTask(${task.id})" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button>` : ''}
+                ${canNudge ? `<button class="btn" onclick="window.nudgeBoardTask(${task.id})" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button><button class="btn" onclick="window.remindBoardTask(${task.id})" title="Send periodic reminders to ${escapeAttr(task.assigned_to)}">Remind</button><button class="btn" onclick="window.stopBoardTaskReminder(${task.id})" title="Stop periodic reminders">Stop reminders</button>` : ''}
                 <button class="btn" onclick="window.enableTaskEditMode(${task.id})">Edit</button>
                 ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${task.id})">Publish</button>` : ''}
                 ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id})">Complete</button>` : ''}`;
@@ -1093,7 +1093,15 @@ function _taskDetailHtml(task, liveCost) {
 
     const workflow = task.workflow;
     if (workflow) {
-        const artifactHtml = a => `<div class="task-detail-body"><strong>${escapeHtml(a.name)}</strong>${a.revision ? ` · ${escapeHtml(a.revision)}` : ''}${a.digest ? ` · ${escapeHtml(a.digest)}` : ''}${a.uri ? `<div>${escapeHtml(a.uri)}</div>` : ''}${a.content ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(a.content)}</pre>` : ''}</div>`;
+        const artifactHtml = a => {
+            const uri = String(a.uri || '');
+            const coralMatch = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
+            const href = coralMatch ? `/api/artifacts/${coralMatch[1]}` : uri;
+            const uriDisplay = (/^https?:\/\//i.test(uri) || coralMatch)
+                ? `<a href="${coralMatch ? '#' : escapeAttr(href)}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ` onclick="event.preventDefault(); window.hideTaskDetailModal?.(); window.openFilePreview?.('${escapeAttr(uri)}')"` : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
+                : escapeHtml(uri);
+            return `<div class="task-detail-body"><strong>${escapeHtml(a.name)}</strong>${a.revision ? ` · ${escapeHtml(a.revision)}` : ''}${a.digest ? ` · ${escapeHtml(a.digest)}` : ''}${uri ? `<div>${uriDisplay}</div>` : ''}${a.content ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(a.content)}</pre>` : ''}</div>`;
+        };
         html += `<details class="task-detail-section"><summary>Workflow${workflow.name ? `: ${escapeHtml(workflow.name)}` : ''}${workflow.stage ? ` · ${escapeHtml(workflow.stage)}` : ''}</summary>
             <div class="task-detail-body">${escapeHtml(workflow.instructions || '')}</div>
             <div>Required outputs: ${escapeHtml((workflow.required_outputs || []).join(', ') || 'None')}</div>
@@ -1447,6 +1455,34 @@ export async function nudgeBoardTask(taskId) {
     } catch (e) {
         showToast(e.message || 'Failed to nudge', true);
     }
+}
+
+export async function remindBoardTask(taskId) {
+    const boardProject = _getBoardProject();
+    if (!boardProject) return;
+    const minutes = Number(window.prompt('Send a reminder every how many minutes?', '5'));
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    const intervalSeconds = Math.round(minutes * 60);
+    if (intervalSeconds < 30 || intervalSeconds > 86400) {
+        showToast('Reminder interval must be between 0.5 minutes and 24 hours', true);
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/reminder`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ interval_seconds: intervalSeconds }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        showToast(`Periodic reminders started for ${data.assignee || 'the assignee'}`);
+    } catch (e) { showToast(e.message || 'Failed to start reminders', true); }
+}
+
+export async function stopBoardTaskReminder(taskId) {
+    const boardProject = _getBoardProject();
+    if (!boardProject) return;
+    await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/reminder`, { method: 'DELETE' });
+    showToast('Periodic reminders stopped');
 }
 
 export function cancelBoardTask(taskId) {

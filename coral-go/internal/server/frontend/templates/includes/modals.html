@@ -568,6 +568,7 @@
                     <div class="settings-api-key-row">
                         <input type="text" id="settings-api-key" class="settings-input settings-mono-input" readonly placeholder="Loading...">
                         <button class="btn btn-small settings-copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('settings-api-key').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                        <button class="btn btn-small" type="button" onclick="window._showMobileConnectModal()" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:14px;vertical-align:middle">qr_code_2</span> Mobile QR</button>
                     </div>
                     <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
                 </dd>
@@ -1088,8 +1089,9 @@
     </div>
 
     <!-- Mobile Connect Modal -->
-    <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
-        <div class="modal-content modal-sm" style="text-align:center">
+    <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content modal-sm" style="text-align:center;position:relative">
+            <button class="modal-close-btn" onclick="document.getElementById('mobile-connect-modal').style.display='none'" aria-label="Close" style="position:absolute;top:12px;right:16px">&times;</button>
             <h3>Coral Mobile</h3>
             <p class="text-secondary-sm" style="margin:8px 0 16px">
                 Open this URL on your phone's browser, then tap <strong>Add to Home Screen</strong> for an app-like experience.

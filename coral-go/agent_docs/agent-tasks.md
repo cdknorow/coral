@@ -51,6 +51,7 @@ Coral's session UUID, not a model provider's conversation/thread ID.
 | `coral-agent task publish <id>` | Publish a draft created through the API |
 | `coral-agent task complete <id> [options]` | Commit outcome and artifacts |
 | `coral-agent task cancel <id> --message "reason"` | Cancel unfinished work |
+| `coral-agent artifact upload <file>` | Store a durable, reachable artifact |
 
 `add` supports `--body`, `--priority`, `--blocked-by` (JSON), `--outputs`
 (comma-separated names), `--workflow`, `--stage`, `--workflow-instructions`,
@@ -62,8 +63,21 @@ stored workflow configuration or reopen a finished task. There is currently no
 `complete` supports `--message`, `--outcome success|failed`, and
 `--artifacts manifest.json`. The manifest is a JSON array, not a file to upload
 as a binary. Each entry needs a unique `name` and either `uri` or `content`.
-`revision`, `digest`, and `media_type` are optional. See the
+`revision`, `digest`, and `media_type` are optional. Do not use a local checkout
+path, `/tmp` path, or `file://` link as `uri`; those files are not reachable by
+the user or downstream agents. Use inline `content` for small reports or a
+durable URL for larger artifacts. See the
 [artifact contract](task-workflows.md#submit-outputs) for limits and provenance.
+
+To make a local file reachable to users and downstream agents, upload it to
+Coral first:
+
+```sh
+coral-agent artifact upload report.md
+```
+
+Use the returned `coral://artifacts/<digest>` URI in the manifest. The matching
+`/api/artifacts/<digest>` URL is available to the browser.
 
 An empty queue prints `No available tasks` and exits successfully. `current`
 with no active task prints `No active task`. Unknown sessions and rejected

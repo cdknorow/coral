@@ -7,6 +7,7 @@ import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { syncMobileAgentList } from './mobile.js';
+import { getCachedAgentAvailability, refreshTeamAvailability } from './team_availability.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -167,6 +168,7 @@ export const SESSION_STATES = {
     check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
     your_turn:      { label: 'Ready for input', dot: 'your-turn', pill: null,            pillClass: '',          chip: '',            attention: false },
     working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
+    task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: 'Task assigned · idle', pillClass: 'task-idle', chip: 'idle', attention: true },
     idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
 };
 
@@ -187,6 +189,7 @@ export function deriveSessionState(s, opts = {}) {
     if (s.stuck) return 'stuck';
     if (s.waiting_for_input) return 'needs_input';
     if (s.not_started) return 'check_terminal';
+    if (getCachedAgentAvailability(s)?.availability === 'task_idle') return 'task_idle';
     if (_isAwaitingUser(s)) return 'your_turn';
     if (s.working) return 'working';
     return 'idle';
@@ -1395,6 +1398,10 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     // shows on the goal line below when there is no summary.
     const identity = resolveSessionIdentity(s);
     const displayLabel = identity;
+    const reminder = getCachedAgentAvailability(s);
+    const reminderTag = reminder?.reminder
+        ? `<span class="agent-reminder-icon" title="Periodic reminder every ${Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60))} min" aria-label="Periodic reminder active">⏰</span>`
+        : '';
     let goalLine = "";
     if (goalText) {
         goalLine = `<span class="session-goal${isCompact ? ' session-goal-compact' : ''}" title="${escapeAttr(goalText)}">${escapeHtml(goalText)}</span>`;
@@ -1559,7 +1566,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
         <div class="session-info">
             <div class="session-name-row">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
-                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${typeTag}${dirChip}</span>
+                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>
                 <span class="session-name-spacer"></span>
                 ${waitingBadge}${ctxPill}
                 ${goalBtn}
@@ -2131,6 +2138,16 @@ export function renderLiveSessions(sessions) {
 
     // Sync mobile agent list
     syncMobileAgentList();
+
+    // Keep sidebar status aligned with the team availability API. The first
+    // render uses the transcript state; the cached API snapshot replaces it
+    // asynchronously when an assigned task is idle.
+    const teams = [...new Set(sessions.map(s => s.board_project).filter(Boolean))];
+    for (const team of teams) {
+        refreshTeamAvailability(team).then(snapshot => {
+            if (snapshot) renderLiveSessions(sessions);
+        });
+    }
 }
 
 function _attachDragListeners(list) {
@@ -2263,6 +2280,9 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
             : "";
         const agentName = s.display_name || s.agent_name || "";
         const agentTag = agentName ? `<span class="sidebar-agent-name">${escapeHtml(agentName)}</span>` : "";
+        const reminderTag = getCachedAgentAvailability(s)?.reminder
+            ? `<span class="agent-reminder-icon" title="Periodic reminder active" aria-label="Periodic reminder active">⏰</span>`
+            : "";
         const sourceTypeTag = s.source_type ? `<span class="sidebar-source-type">${escapeHtml(s.source_type)}</span>` : "";
         const branchDisplay = _repoBranch(s.repo_name, s.branch);
         const branchTag = branchDisplay ? `<span class="sidebar-branch">${escapeHtml(branchDisplay)}</span>` : "";
@@ -2271,7 +2291,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
         const timeTag = timeStr ? `<span class="session-time">${escapeHtml(timeStr)}</span>` : "";
         const durStr = s.duration_sec != null ? formatDuration(s.duration_sec) : '';
         const durTag = durStr ? `<span class="session-dur">${escapeHtml(durStr)}</span>` : '';
-        const bottomMeta = [agentTag, sourceTypeTag, branchTag].filter(Boolean).join('');
+        const bottomMeta = [agentTag, reminderTag, sourceTypeTag, branchTag].filter(Boolean).join('');
         return `<li class="${isActive ? 'active' : ''}" onclick="selectHistorySession('${escapeAttr(s.session_id)}')">
             <div class="session-row-top">${timeTag}${durTag}${typeTag}${tagDots}</div>
             <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>

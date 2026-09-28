@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"strings"
 	"time"
+
+	at "github.com/cdknorow/coral/internal/agenttypes"
 )
 
 // CodexTurnEvent reads an explicit lifecycle signal from a bounded transcript
@@ -104,3 +107,177 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 	r.mu.Unlock()
 	return CodexTurnEvent(path)
 }
+
+// AgyTurnEvent reads an explicit lifecycle signal from a bounded transcript
+// tail for Antigravity (and legacy Gemini) sessions.
+func AgyTurnEvent(path string) (event string, at time.Time, summary string) {
+	if path == "" {
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return
+	}
+	const limit int64 = 1024 * 1024
+	start := info.Size() - limit
+	if start < 0 {
+		start = 0
+	}
+	if _, err = f.Seek(start, io.SeekStart); err != nil {
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(f, limit))
+	if err != nil {
+		return
+	}
+
+	trimmed := bytes.TrimSpace(data)
+	if bytes.HasPrefix(trimmed, []byte{'['}) || strings.HasSuffix(path, ".json") {
+		return geminiLegacyTurnEvent(data)
+	}
+
+	if start > 0 {
+		i := bytes.IndexByte(data, '\n')
+		if i < 0 {
+			return
+		}
+		data = data[i+1:]
+	}
+	lines := bytes.Split(data, []byte{'\n'})
+	if len(lines) == 0 {
+		return
+	}
+	// A trailing partial record is not committed evidence.
+	candidates := lines
+	if len(lines) > 1 {
+		candidates = lines[:len(lines)-1]
+	}
+
+	for _, line := range candidates {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		var entry struct {
+			StepIndex int    `json:"step_index"`
+			Source    string `json:"source"`
+			Type      string `json:"type"`
+			Status    string `json:"status"`
+			CreatedAt string `json:"created_at"`
+			Timestamp string `json:"timestamp"`
+			ToolCalls []struct {
+				Name string `json:"name"`
+			} `json:"tool_calls"`
+		}
+		if json.Unmarshal(line, &entry) != nil {
+			continue
+		}
+		tsStr := entry.CreatedAt
+		if tsStr == "" {
+			tsStr = entry.Timestamp
+		}
+		if tsStr == "" {
+			continue
+		}
+		timestamp, err := time.Parse(time.RFC3339Nano, tsStr)
+		if err != nil {
+			timestamp, err = time.Parse(time.RFC3339, tsStr)
+			if err != nil {
+				continue
+			}
+		}
+
+		switch entry.Type {
+		case "USER_INPUT":
+			event = "prompt_submit"
+			at = timestamp
+			summary = ""
+
+		case "PLANNER_RESPONSE":
+			if entry.Status == "ERROR" {
+				event = "stop"
+				at = timestamp
+				summary = ""
+				continue
+			}
+			if len(entry.ToolCalls) > 0 {
+				isAsk := false
+				for _, tc := range entry.ToolCalls {
+					if tc.Name == "ask_question" {
+						isAsk = true
+						break
+					}
+				}
+				if isAsk {
+					event = "notification"
+					summary = "Antigravity needs your input"
+				} else {
+					event = "tool_use"
+					summary = ""
+				}
+				at = timestamp
+			} else {
+				// No tool calls means the model concluded its turn and is waiting for user
+				event = "stop"
+				at = timestamp
+				summary = ""
+			}
+
+		case "GENERIC":
+			// Tool output / execution result
+			event = "tool_use"
+			at = timestamp
+			summary = ""
+		}
+	}
+	return
+}
+
+func geminiLegacyTurnEvent(data []byte) (event string, at time.Time, summary string) {
+	var messages []struct {
+		Role      string `json:"role"`
+		Timestamp string `json:"timestamp"`
+	}
+	if err := json.Unmarshal(data, &messages); err != nil || len(messages) == 0 {
+		return
+	}
+	last := messages[len(messages)-1]
+	tsStr := last.Timestamp
+	if tsStr != "" {
+		if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
+			at = t
+		} else if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
+			at = t
+		}
+	}
+	switch last.Role {
+	case "user":
+		event = "prompt_submit"
+	case "model":
+		event = "stop"
+	}
+	return
+}
+
+// ReadAgyTurnEvent reuses the session reader's resolved path so frequent UI
+// updates do not rescan the transcript directory for every agent.
+func (r *SessionReader) ReadAgyTurnEvent(sessionID, workingDir string) (string, time.Time, string) {
+	r.mu.Lock()
+	c := r.cache[sessionID]
+	if c == nil {
+		c = &sessionCache{toolUseNames: make(map[string]string)}
+		r.cache[sessionID] = c
+	}
+	if c.path == "" {
+		c.path = resolveTranscriptPath(sessionID, workingDir, at.Agy)
+	}
+	path := c.path
+	r.mu.Unlock()
+	return AgyTurnEvent(path)
+}
+

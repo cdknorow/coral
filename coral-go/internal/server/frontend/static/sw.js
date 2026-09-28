@@ -1,6 +1,6 @@
 /* Coral Service Worker — caches app shell for fast loads */
 
-const CACHE_NAME = 'coral-v2';
+const CACHE_NAME = 'coral-v3';
 const SHELL_ASSETS = [
     '/',
     '/static/style.css',

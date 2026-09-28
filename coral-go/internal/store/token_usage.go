@@ -93,6 +93,42 @@ type TokenUsageStore struct {
 	db *DB
 }
 
+// RepriceZeroCosts fills historical usage rows whose model is now recognized.
+// Older pollers stored zero when a provider-specific model alias was unknown.
+func (s *TokenUsageStore) RepriceZeroCosts(ctx context.Context, price func(model string, input, output, cacheRead, cacheWrite int) float64) error {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM token_usage WHERE cost_usd = 0 AND model IS NOT NULL AND model <> ''`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type row struct {
+		id   int64
+		cost float64
+	}
+	var updates []row
+	for rows.Next() {
+		var id int64
+		var model string
+		var in, out, read, write int
+		if err := rows.Scan(&id, &model, &in, &out, &read, &write); err != nil {
+			return err
+		}
+		cost := price(model, in, out, read, write)
+		if cost > 0 {
+			updates = append(updates, row{id, cost})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, u := range updates {
+		if _, err := s.db.ExecContext(ctx, `UPDATE token_usage SET cost_usd = ? WHERE id = ? AND cost_usd = 0`, u.cost, u.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // NewTokenUsageStore creates a new TokenUsageStore.
 func NewTokenUsageStore(db *DB) *TokenUsageStore {
 	return &TokenUsageStore{db: db}

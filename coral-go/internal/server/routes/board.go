@@ -25,13 +25,16 @@ const taskNudge = "You have tasks available. Run 'coral-board task claim' to sta
 
 // BoardHandler handles message board HTTP endpoints.
 type BoardHandler struct {
-	bs                *board.Store
-	terminal          ptymanager.SessionTerminal
-	mu                sync.RWMutex
-	paused            map[string]bool // in-memory set of paused project names
-	notifyFn          func()          // triggers immediate board notification pass
-	coralDir          string
-	writeTaskArtifact func(context.Context, *board.Task, string) error
+	bs                          *board.Store
+	terminal                    ptymanager.SessionTerminal
+	mu                          sync.RWMutex
+	paused                      map[string]bool // in-memory set of paused project names
+	notifyFn                    func()          // triggers immediate board notification pass
+	coralDir                    string
+	writeTaskArtifact           func(context.Context, *board.Task, string) error
+	reminderMu                  sync.Mutex
+	reminders                   map[string]context.CancelFunc
+	subscriberReminderIntervals map[string]int
 }
 
 // SetTaskArtifactWriter configures persistence of task patches under .coral.
@@ -55,9 +58,117 @@ func (h *BoardHandler) persistTaskArtifact(ctx context.Context, task *board.Task
 
 func NewBoardHandler(bs *board.Store) *BoardHandler {
 	return &BoardHandler{
-		bs:     bs,
-		paused: make(map[string]bool),
+		bs:                          bs,
+		paused:                      make(map[string]bool),
+		reminders:                   make(map[string]context.CancelFunc),
+		subscriberReminderIntervals: make(map[string]int),
 	}
+}
+
+func (h *BoardHandler) reminderKey(project string, taskID int64) string {
+	return project + ":" + strconv.FormatInt(taskID, 10)
+}
+
+func (h *BoardHandler) stopReminder(project string, taskID int64) {
+	h.reminderMu.Lock()
+	if cancel := h.reminders[h.reminderKey(project, taskID)]; cancel != nil {
+		cancel()
+		delete(h.reminders, h.reminderKey(project, taskID))
+	}
+	h.reminderMu.Unlock()
+}
+
+// RemindSubscriber schedules a custom periodic instruction for a board agent.
+// POST /api/board/{project}/reminder with subscriber_id, message and interval_seconds.
+func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	var body struct {
+		SubscriberID    string `json:"subscriber_id"`
+		Message         string `json:"message"`
+		IntervalSeconds int    `json:"interval_seconds"`
+	}
+	if r.Method == http.MethodDelete {
+		if err := decodeJSON(r, &body); err != nil {
+			errBadRequest(w, "invalid JSON")
+			return
+		}
+		h.stopSubscriberReminder(project, body.SubscriberID)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": false})
+		return
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if strings.TrimSpace(body.SubscriberID) == "" || strings.TrimSpace(body.Message) == "" {
+		errBadRequest(w, "subscriber_id and message are required")
+		return
+	}
+	if body.IntervalSeconds < 30 || body.IntervalSeconds > 86400 {
+		errBadRequest(w, "interval_seconds must be between 30 and 86400")
+		return
+	}
+	if sub, _ := h.bs.GetProjectSubscription(r.Context(), project, body.SubscriberID); sub == nil || sub.SessionName == "" {
+		errBadRequest(w, "agent has no running session on this board")
+		return
+	}
+	h.startSubscriberReminder(project, body.SubscriberID, body.Message, time.Duration(body.IntervalSeconds)*time.Second)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": true, "subscriber_id": body.SubscriberID, "interval_seconds": body.IntervalSeconds})
+}
+
+func (h *BoardHandler) subscriberReminderKey(project, subscriber string) string {
+	return "agent:" + project + ":" + subscriber
+}
+
+func (h *BoardHandler) HasSubscriberReminder(project, subscriber string) bool {
+	h.reminderMu.Lock()
+	defer h.reminderMu.Unlock()
+	return h.reminders[h.subscriberReminderKey(project, subscriber)] != nil
+}
+func (h *BoardHandler) SubscriberReminderInterval(project, subscriber string) (int, bool) {
+	h.reminderMu.Lock()
+	defer h.reminderMu.Unlock()
+	seconds, ok := h.subscriberReminderIntervals[h.subscriberReminderKey(project, subscriber)]
+	return seconds, ok && h.reminders[h.subscriberReminderKey(project, subscriber)] != nil
+}
+func (h *BoardHandler) stopSubscriberReminder(project, subscriber string) {
+	h.reminderMu.Lock()
+	if c := h.reminders[h.subscriberReminderKey(project, subscriber)]; c != nil {
+		c()
+		delete(h.reminders, h.subscriberReminderKey(project, subscriber))
+	}
+	delete(h.subscriberReminderIntervals, h.subscriberReminderKey(project, subscriber))
+	h.reminderMu.Unlock()
+}
+func (h *BoardHandler) startSubscriberReminder(project, subscriber, message string, interval time.Duration) {
+	h.stopSubscriberReminder(project, subscriber)
+	ctx, cancel := context.WithCancel(context.Background())
+	key := h.subscriberReminderKey(project, subscriber)
+	h.reminderMu.Lock()
+	if h.reminders == nil {
+		h.reminders = make(map[string]context.CancelFunc)
+	}
+	if h.subscriberReminderIntervals == nil {
+		h.subscriberReminderIntervals = make(map[string]int)
+	}
+	h.reminders[key] = cancel
+	h.subscriberReminderIntervals[key] = int(interval / time.Second)
+	h.reminderMu.Unlock()
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer h.stopSubscriberReminder(project, subscriber)
+		for {
+			select {
+			case <-ticker.C:
+				if h.sendTaskNudge(ctx, project, subscriber, "[Coral reminder] "+message) != nil {
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 // SetTerminal sets the terminal backend for peek functionality.
@@ -279,6 +390,70 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "assignee": assignee})
 }
 
+// RemindTask starts or stops a server-side periodic reminder for a task.
+// POST body: {"interval_seconds": 300}; DELETE stops the reminder.
+func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	if r.Method == http.MethodDelete {
+		h.stopReminder(project, taskID)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": false})
+		return
+	}
+	var body struct {
+		IntervalSeconds int `json:"interval_seconds"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if body.IntervalSeconds < 30 || body.IntervalSeconds > 86400 {
+		errBadRequest(w, "interval_seconds must be between 30 and 86400")
+		return
+	}
+	task, err := h.bs.GetTask(r.Context(), project, taskID)
+	if err != nil || task == nil {
+		errNotFound(w, "Task not found")
+		return
+	}
+	if task.AssignedTo == nil || *task.AssignedTo == "" {
+		errBadRequest(w, "Task is not assigned to anyone")
+		return
+	}
+	if task.Status != "pending" && task.Status != "in_progress" {
+		errBadRequest(w, fmt.Sprintf("Task #%d is %s; reminders require a pending or in-progress task", task.ID, task.Status))
+		return
+	}
+	h.stopReminder(project, taskID)
+	ctx, cancel := context.WithCancel(context.Background())
+	h.reminderMu.Lock()
+	h.reminders[h.reminderKey(project, taskID)] = cancel
+	h.reminderMu.Unlock()
+	interval := time.Duration(body.IntervalSeconds) * time.Second
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		defer h.stopReminder(project, taskID)
+		for {
+			select {
+			case <-ticker.C:
+				current, getErr := h.bs.GetTask(ctx, project, taskID)
+				if getErr != nil || current == nil || current.AssignedTo == nil || (current.Status != "pending" && current.Status != "in_progress") {
+					return
+				}
+				_ = h.sendTaskNudge(ctx, project, *current.AssignedTo, fmt.Sprintf("[Task #%d reminder] %s — periodic reminder; run 'coral-board task current' or 'coral-board task claim'.", current.ID, oneLineTitle(current.Title)))
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": true, "interval_seconds": body.IntervalSeconds, "assignee": *task.AssignedTo})
+}
+
 // unescapeLineBreaks turns literal "\n" sequences into line breaks in a
 // message that has none. Agents posting through a shell often pass a
 // single-quoted string with \n escapes, which arrives as one long line with
@@ -442,6 +617,9 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	if h.notifyFn != nil {
 		h.notifyFn()
 	}
+
+	// Resolve any active registered waits for this message
+	go h.resolveMessageWaits(project, subscriberID, body.Content)
 
 	writeJSON(w, http.StatusOK, msg)
 }
@@ -1109,6 +1287,9 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		// Resolve downstream blocked tasks
 		h.notifyUnblockedTasks(ctx, project, completedTask.ID)
 
+		// Resolve active task waits
+		h.resolveTaskWaits(project, completedTask.ID, completedTask.Title, "completed")
+
 		// Check if the agent has more pending tasks. Unassigned pool tasks nudge
 		// workers, but not the orchestrator; explicitly assigned tasks still do.
 		nextTask := h.bs.NextPendingTaskForSubscriber(ctx, project, subscriberID)
@@ -1158,6 +1339,9 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 
 		// Only termination dependencies are satisfied by cancellation.
 		h.notifyUnblockedTasks(ctx, project, task.ID)
+
+		// Resolve active task waits
+		h.resolveTaskWaits(project, task.ID, task.Title, "cancelled")
 	}()
 	writeJSON(w, http.StatusOK, task)
 }
@@ -1243,6 +1427,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		update.BlockedBy = &deps
 	}
 
+	before, _ := h.bs.GetTask(r.Context(), project, taskID)
 	task, prevStatus, err := h.bs.UpdateTask(r.Context(), project, taskID, update, 32)
 	if err != nil {
 		errBadRequest(w, err.Error())
@@ -1250,6 +1435,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() {
 		ctx := context.Background()
+		nudged := false
 		notification := fmt.Sprintf("[Task #%d edited] %s", task.ID, task.Title)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
 
@@ -1276,6 +1462,22 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 
 			if assignee != "" {
 				h.sendTaskNudge(ctx, project, assignee, taskNudge)
+				nudged = true
+			}
+		}
+		if raw.AssignedTo != nil && task.Status == "pending" {
+			previous := ""
+			if before != nil && before.AssignedTo != nil {
+				previous = *before.AssignedTo
+			}
+			current := ""
+			if task.AssignedTo != nil {
+				current = *task.AssignedTo
+			}
+			if !nudged && current != "" && current != previous {
+				if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, current, task.ID); !hasActive {
+					h.sendTaskNudge(ctx, project, current, taskNudge)
+				}
 			}
 		}
 	}()
@@ -1406,6 +1608,9 @@ func (h *BoardHandler) notifyUnblockedTasks(ctx context.Context, project string,
 		if assignee != "" {
 			h.sendTaskNudge(ctx, t.BoardID, assignee, taskNudge)
 		}
+
+		// Resolve active task waits
+		h.resolveTaskWaits(t.BoardID, t.ID, t.Title, "unblocked")
 	}
 }
 
@@ -1432,4 +1637,195 @@ func (h *BoardHandler) TaskLiveCost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cost)
+}
+
+// RegisterWait parks an agent by registering an active wait condition.
+// POST /api/board/{project}/waits
+func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	var body struct {
+		SubscriberID string `json:"subscriber_id"`
+		SessionName  string `json:"session_name,omitempty"`
+		WaitType     string `json:"wait_type"`
+		TargetID     string `json:"target_id"`
+		Reason       string `json:"reason"`
+		Timeout      string `json:"timeout,omitempty"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if body.SubscriberID == "" {
+		errBadRequest(w, "subscriber_id required")
+		return
+	}
+	if body.SessionName == "" {
+		if sub, err := h.bs.GetProjectSubscription(r.Context(), project, body.SubscriberID); err == nil && sub != nil {
+			body.SessionName = sub.SessionName
+		}
+	}
+	timeout := board.DefaultWaitTimeout
+	if body.Timeout != "" {
+		if d, err := time.ParseDuration(body.Timeout); err == nil && d > 0 {
+			timeout = d
+		}
+	}
+	wait, err := h.bs.RegisterWait(r.Context(), project, body.SubscriberID, body.SessionName, body.WaitType, body.TargetID, body.Reason, timeout)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusCreated, wait)
+}
+
+// GetActiveWait returns active registered wait(s) for a subscriber or board.
+// GET /api/board/{project}/waits
+func (h *BoardHandler) GetActiveWait(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	subscriberID := r.URL.Query().Get("subscriber_id")
+	if subscriberID != "" {
+		wait, err := h.bs.GetActiveWait(r.Context(), project, subscriberID)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"wait": wait})
+		return
+	}
+	waits, err := h.bs.ListActiveWaits(r.Context(), project)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"waits": waits})
+}
+
+// CancelWait cancels an active wait for a subscriber.
+// DELETE /api/board/{project}/waits
+func (h *BoardHandler) CancelWait(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	subscriberID := r.URL.Query().Get("subscriber_id")
+	if subscriberID == "" {
+		var body struct {
+			SubscriberID string `json:"subscriber_id"`
+		}
+		_ = decodeJSON(r, &body)
+		subscriberID = body.SubscriberID
+	}
+	if subscriberID == "" {
+		errBadRequest(w, "subscriber_id required")
+		return
+	}
+	if err := h.bs.CancelActiveWait(r.Context(), project, subscriberID); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"cancelled": true})
+}
+
+// PollWait long-polls until an active wait is resolved, expired, or cancelled.
+// GET /api/board/{project}/waits/poll
+func (h *BoardHandler) PollWait(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	subscriberID := r.URL.Query().Get("subscriber_id")
+	if subscriberID == "" {
+		errBadRequest(w, "subscriber_id required")
+		return
+	}
+	timeoutSec := 30
+	if raw := r.URL.Query().Get("timeout"); raw != "" {
+		if sec, err := strconv.Atoi(raw); err == nil && sec > 0 {
+			if sec > 60 {
+				sec = 60
+			}
+			timeoutSec = sec
+		}
+	}
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			wait, err := h.bs.GetActiveWait(r.Context(), project, subscriberID)
+			if err != nil {
+				errInternalServer(w, err.Error())
+				return
+			}
+			if wait == nil {
+				writeJSON(w, http.StatusOK, map[string]any{"status": "resolved"})
+				return
+			}
+			if time.Now().After(deadline) {
+				writeJSON(w, http.StatusOK, map[string]any{"status": "timeout", "wait": wait})
+				return
+			}
+		}
+	}
+}
+
+func (h *BoardHandler) resolveMessageWaits(project, senderID, content string) {
+	ctx := context.Background()
+	resolved, err := h.bs.ResolveMatchingMessageWaits(ctx, project, senderID, content)
+	if err != nil || len(resolved) == 0 {
+		return
+	}
+	preview := content
+	if len(preview) > 60 {
+		preview = preview[:57] + "..."
+	}
+	for _, w := range resolved {
+		sessionName := w.SessionName
+		if sub, err := h.bs.GetProjectSubscription(ctx, project, w.SubscriberID); err == nil && sub != nil && sub.SessionName != "" {
+			sessionName = sub.SessionName
+		}
+		if h.terminal != nil && sessionName != "" {
+			nudge := fmt.Sprintf("[Wait resolved] %s posted on '%s': %q. Run 'coral-board read' to see the message.", senderID, project, preview)
+			if err := h.terminal.SendInput(ctx, sessionName, nudge, "", ""); err != nil {
+				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
+			}
+		}
+	}
+}
+
+func (h *BoardHandler) resolveTaskWaits(project string, taskID int64, taskTitle, event string) {
+	ctx := context.Background()
+	resolved, err := h.bs.ResolveMatchingTaskWaits(ctx, project, taskID)
+	if err != nil || len(resolved) == 0 {
+		return
+	}
+	for _, w := range resolved {
+		sessionName := w.SessionName
+		if sub, err := h.bs.GetProjectSubscription(ctx, project, w.SubscriberID); err == nil && sub != nil && sub.SessionName != "" {
+			sessionName = sub.SessionName
+		}
+		if h.terminal != nil && sessionName != "" {
+			nudge := fmt.Sprintf("[Wait resolved] Task #%d (%s) is now %s. Run 'coral-board task detail %d' to review.", taskID, taskTitle, event, taskID)
+			if err := h.terminal.SendInput(ctx, sessionName, nudge, "", ""); err != nil {
+				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
+			}
+		}
+	}
+}
+
+func (h *BoardHandler) ResolveCommitWaits(ctx context.Context, project, commitHash string) {
+	resolved, err := h.bs.ResolveMatchingCommitWaits(ctx, project, commitHash)
+	if err != nil || len(resolved) == 0 {
+		return
+	}
+	for _, w := range resolved {
+		sessionName := w.SessionName
+		if sub, err := h.bs.GetProjectSubscription(ctx, project, w.SubscriberID); err == nil && sub != nil && sub.SessionName != "" {
+			sessionName = sub.SessionName
+		}
+		if h.terminal != nil && sessionName != "" {
+			nudge := fmt.Sprintf("[Wait resolved] Commit %s landed on '%s'.", commitHash, project)
+			if err := h.terminal.SendInput(ctx, sessionName, nudge, "", ""); err != nil {
+				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
+			}
+		}
+	}
 }

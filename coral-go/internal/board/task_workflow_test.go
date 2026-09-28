@@ -180,6 +180,19 @@ func TestArtifactWorkflowBuildTestRelease(t *testing.T) {
 	require.Error(t, err) // an executing release cannot switch its inputs
 }
 
+func TestTaskArtifactsRejectLocalPaths(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	task, err := s.CreateTask(ctx, "team", "Publish", "", "medium", "lead")
+	require.NoError(t, err)
+	for _, uri := range []string{"/private/tmp/report.md", "~/report.md", "./report.md", "../report.md", "file:///tmp/report.md"} {
+		_, err = s.CompleteTaskWithArtifacts(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{{Name: "report", URI: uri}})
+		require.ErrorContains(t, err, "local filesystem path")
+	}
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{{Name: "report", Content: "report contents"}})
+	require.NoError(t, err)
+}
+
 func TestWorkflowFailureCancellationAndRetry(t *testing.T) {
 	for _, outcome := range []string{"failed", "cancelled"} {
 		t.Run(outcome, func(t *testing.T) {
@@ -212,18 +225,47 @@ func TestWorkflowFailureCancellationAndRetry(t *testing.T) {
 			}
 			retry, err := s.CreateTaskWithOpts(ctx, "team", "Build retry", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{RetryOf: build.ID}})
 			require.NoError(t, err)
+			// Creating a retry automatically reconnects the unstarted success
+			// dependent, so it no longer remains pinned to the failed attempt.
+			rewired, _ := s.GetTask(ctx, "team", children["success"].ID)
+			require.Equal(t, "blocked", rewired.Status)
+			require.Len(t, rewired.BlockedBy, 1)
+			require.Equal(t, retry.ID, rewired.BlockedBy[0].TaskID)
 			_, err = s.CompleteTask(ctx, "team", retry.ID, "builder", nil)
 			require.NoError(t, err)
 			_, err = s.ResolveDownstreamTasks(ctx, "team", retry.ID)
 			require.NoError(t, err)
 			old, _ := s.GetTask(ctx, "team", children["success"].ID)
-			require.Equal(t, "blocked", old.Status)
-			newDeps := []TaskDep{{TaskID: retry.ID}}
-			rewired, _, err := s.UpdateTask(ctx, "team", old.ID, TaskUpdate{BlockedBy: &newDeps}, 32)
-			require.NoError(t, err)
-			require.Equal(t, "pending", rewired.Status)
+			require.Equal(t, "pending", old.Status)
 		})
 	}
+}
+
+func TestRecoverRewiresDependentsPinnedToSupersededAttempt(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	qa, err := s.CreateTask(ctx, "team", "QA attempt", "", "medium", "qa")
+	require.NoError(t, err)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", qa.ID, "qa", nil, "failed", []TaskArtifact{{Name: "candidate", Content: "8fa27d3"}})
+	require.NoError(t, err)
+	retry, err := s.CreateTaskWithOpts(ctx, "team", "QA retry", "", "medium", "qa", &CreateTaskOpts{Workflow: TaskWorkflow{RetryOf: qa.ID}})
+	require.NoError(t, err)
+	// Simulate a dependent created by an older server while the retry already existed.
+	ml, err := s.CreateTaskWithOpts(ctx, "team", "ML", "", "medium", "ml", &CreateTaskOpts{BlockedBy: []TaskDep{{TaskID: qa.ID}}})
+	require.NoError(t, err)
+	require.Equal(t, qa.ID, ml.BlockedBy[0].TaskID)
+	require.NoError(t, s.RecoverTaskReadiness(ctx))
+	rewired, err := s.GetTask(ctx, "team", ml.ID)
+	require.NoError(t, err)
+	require.Equal(t, retry.ID, rewired.BlockedBy[0].TaskID)
+	require.Equal(t, "blocked", rewired.Status)
+	_, err = s.CompleteTask(ctx, "team", retry.ID, "qa", nil)
+	require.NoError(t, err)
+	_, err = s.ResolveDownstreamTasks(ctx, "team", retry.ID)
+	require.NoError(t, err)
+	ready, err := s.GetTask(ctx, "team", ml.ID)
+	require.NoError(t, err)
+	require.Equal(t, "pending", ready.Status)
 }
 
 func TestWorkflowValidationAndPersistence(t *testing.T) {

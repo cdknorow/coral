@@ -528,6 +528,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 
 	// Token poller — extracts token usage from Codex/Claude transcripts for cost tracking
 	tokenUsageStore := store.NewTokenUsageStore(db)
+	// Reprice rows recorded before provider aliases (Codex/Antigravity model
+	// names) were added so analytics reflects existing usage as well as new turns.
+	_ = tokenUsageStore.RepriceZeroCosts(ctx, func(model string, input, output, cacheRead, cacheWrite int) float64 {
+		return proxy.CalculateCost(model, proxy.TokenUsage{InputTokens: input, OutputTokens: output, CacheReadTokens: cacheRead, CacheWriteTokens: cacheWrite})
+	})
 	tokenPoller := background.NewTokenPoller(sessStore, tokenUsageStore, 30*time.Second)
 	tokenPoller.SetSubagentStore(store.NewSubagentStore(db))
 	safeGo(ctx, "token_poller", func() { tokenPoller.Run(ctx) })

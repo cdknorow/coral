@@ -382,6 +382,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/sessions/live/{sessionID}/wake", sessHandler.WakeSession)
 
 	// Agent tasks
+	sessHandler.RegisterAgentArtifacts(r)
 	r.Get("/api/sessions/live/{name}/tasks", sessHandler.ListTasks)
 	r.Post("/api/sessions/live/{name}/tasks", sessHandler.CreateTask)
 	r.Patch("/api/sessions/live/{name}/tasks/{taskID}", sessHandler.UpdateTask)
@@ -607,6 +608,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/board/{project}/groups/{groupID}/members", boardHandler.ListGroupMembers)
 	r.Post("/api/board/{project}/groups/{groupID}/members", boardHandler.AddGroupMember)
 	r.Delete("/api/board/{project}/groups/{groupID}/members/{sessionID}", boardHandler.RemoveGroupMember)
+	r.Post("/api/board/{project}/waits", boardHandler.RegisterWait)
+	r.Get("/api/board/{project}/waits", boardHandler.GetActiveWait)
+	r.Delete("/api/board/{project}/waits", boardHandler.CancelWait)
+	r.Get("/api/board/{project}/waits/poll", boardHandler.PollWait)
 
 	// Board tasks (global)
 	r.Get("/api/board/tasks", boardHandler.ListAllTasks)
@@ -624,6 +629,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Patch("/api/board/{project}/tasks/{taskID}", boardHandler.UpdateTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/reassign", boardHandler.ReassignTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/nudge", boardHandler.NudgeTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/reminder", boardHandler.RemindTask)
+	r.Delete("/api/board/{project}/tasks/{taskID}/reminder", boardHandler.RemindTask)
+	r.Post("/api/board/{project}/reminder", boardHandler.RemindSubscriber)
+	r.Delete("/api/board/{project}/reminder", boardHandler.RemindSubscriber)
 	r.Post("/api/board/{project}/tasks/{taskID}/publish", boardHandler.PublishTask)
 	r.Get("/api/board/{project}/tasks/{taskID}/cost", boardHandler.TaskLiveCost)
 	r.Get("/api/board/{project}/tasks/{taskID}/changes.diff", boardHandler.TaskChangesDiff)

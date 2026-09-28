@@ -216,6 +216,12 @@ const BARE_FILE_REF_RE = /(?<![\w\/:.@~-])(?:~?\.{0,2}\/)?(?:[\w@.+-]+\/)+[\w@.+
 function linkifyRefs(root) {
     for (const a of root.querySelectorAll("a[href]")) {
         const href = a.getAttribute("href");
+        const artifactHref = /^\/api\/artifacts\/([a-f0-9]{64})$/i.exec(href || '');
+        if (/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(href || '') || artifactHref) {
+            a.dataset.fileRef = artifactHref ? `coral://artifacts/${artifactHref[1]}` : href;
+            a.classList.add("chat-file-ref");
+            continue;
+        }
         if (/^(https?:|mailto:)/i.test(href)) {
             a.target = "_blank";
             a.rel = "noopener noreferrer";
@@ -231,10 +237,47 @@ function linkifyRefs(root) {
     for (const code of root.querySelectorAll(":not(pre) > code")) {
         if (code.closest("a")) continue;
         const text = code.textContent.trim();
-        if (looksLikeFileRef(text)) {
+        if (/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(text)) {
+            code.dataset.fileRef = text;
+            code.classList.add("chat-file-ref");
+        } else if (looksLikeFileRef(text)) {
             code.dataset.fileRef = normalizeFileRef(text);
             code.classList.add("chat-file-ref");
         }
+    }
+    // Artifact URIs are often returned in fenced code blocks so they can be
+    // copied reliably. Keep those exact values actionable as well.
+    for (const code of root.querySelectorAll("pre code")) {
+        const text = code.textContent.trim();
+        if (/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(text)) {
+            code.dataset.fileRef = text;
+            code.classList.add("chat-file-ref");
+        }
+    }
+    // Plain-text artifact URIs (for example, a final response without
+    // Markdown link syntax) should use the same interaction menu.
+    const artifactWalker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: n => n.parentElement.closest('a, code, pre, [data-file-ref]')
+            ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    const artifactNodes = [];
+    while (artifactWalker.nextNode()) {
+        if (/coral:\/\/artifacts\/[a-f0-9]{64}/i.test(artifactWalker.currentNode.nodeValue)) artifactNodes.push(artifactWalker.currentNode);
+    }
+    for (const node of artifactNodes) {
+        const frag = document.createDocumentFragment();
+        let last = 0;
+        for (const match of node.nodeValue.matchAll(/coral:\/\/artifacts\/[a-f0-9]{64}/gi)) {
+            frag.append(node.nodeValue.slice(last, match.index));
+            const span = document.createElement('span');
+            span.className = 'chat-file-ref chat-file-ref-bare';
+            span.dataset.fileRef = match[0];
+            span.textContent = match[0];
+            frag.append(span);
+            last = match.index + match[0].length;
+        }
+        frag.append(node.nodeValue.slice(last));
+        node.replaceWith(frag);
     }
     linkifyBarePaths(root);
 }
@@ -275,7 +318,10 @@ async function resolveFileRef(ref) {
         const qs = new URLSearchParams({ filepath: ref, session_id: s.session_id || "" });
         const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/resolve-path?${qs}`);
         if (!resp.ok) {
-            showToast(`File not found: ${ref}`, true);
+            const localArtifact = /^(?:file:\/\/)?(?:\/private\/tmp\/|\/tmp\/|~\/)/i.test(ref);
+            showToast(localArtifact
+                ? `Artifact isn't reachable: ${ref}. Ask the agent for inline content or a durable URL.`
+                : `File not found: ${ref}`, true);
             return null;
         }
         const data = await resp.json();
@@ -326,10 +372,13 @@ function closeFileRefMenu() {
 async function showFileRefMenu(el) {
     closeFileRefMenu();
     const ref = el.dataset.fileRef;
+    const artifactRef = /^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(ref || '');
     el.classList.add("chat-file-ref-loading");
     let res, editors;
     try {
-        [res, editors] = await Promise.all([resolveFileRef(ref), installedEditors()]);
+        [res, editors] = artifactRef
+            ? [{ filepath: ref, line: 0 }, []]
+            : await Promise.all([resolveFileRef(ref), installedEditors()]);
     } finally {
         el.classList.remove("chat-file-ref-loading");
     }
@@ -344,9 +393,9 @@ async function showFileRefMenu(el) {
     menu.setAttribute("role", "menu");
     menu.innerHTML = `<div class="chat-file-menu-path" title="${escapeHtml(displayPath)}">${escapeHtml(displayPath)}</div>
         <button type="button" role="menuitem" data-action="preview"><span class="material-icons">visibility</span>Preview in Coral${line > 0 ? ` (line ${line})` : ""}</button>
-        <button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral${line > 0 ? ` (line ${line})` : ""}</button>
-        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${i}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}
-        <button type="button" role="menuitem" data-action="copy"><span class="material-icons">content_copy</span>Copy path</button>`;
+        ${artifactRef ? '' : `<button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral${line > 0 ? ` (line ${line})` : ""}</button>
+        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${i}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}`}
+        <button type="button" role="menuitem" data-action="copy"><span class="material-icons">content_copy</span>${artifactRef ? 'Copy artifact URI' : 'Copy path'}</button>`;
     document.body.appendChild(menu);
 
     const r = el.getBoundingClientRect();
@@ -363,7 +412,7 @@ async function showFileRefMenu(el) {
         if (btn.dataset.action === "preview") window.openFilePreview?.(filepath, line);
         else if (btn.dataset.action === "edit") window.openFileEdit?.(filepath, line);
         else if (btn.dataset.action === "editor") openRefInEditor(ref, editors[btn.dataset.editor]);
-        else if (btn.dataset.action === "copy") window.copyFilePath?.(filepath);
+        else if (btn.dataset.action === "copy") artifactRef ? copyText(ref) : window.copyFilePath?.(filepath);
     });
     menu.querySelector("button").focus();
 }
@@ -519,7 +568,7 @@ function renderMessage(msg, container, agentType = "claude") {
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
     } else if (msg.type === "user" && isCoralNudge(msg.content)) {
-        appendCoralNotice(container, String(msg.content).trim());
+        appendCoralNotice(container, normalizeNudgeText(msg.content));
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
@@ -974,10 +1023,12 @@ const INTERRUPT_RE = /^\[Request interrupted by user[^\]]*\]$/;
 // Not anchored at the end: two nudges typed at the same moment arrive as one
 // message ("...to start.You have 1 unread message...").
 const CORAL_NUDGE_RES = [
-    /^You have \d+ unread messages? on the message board\. Run 'coral-board read' to see them\./,
-    /^You have tasks available\. Run 'coral-board task claim' to start\./,
-    /^You have a new task in Coral \(#\d+: [\s\S]*\)\. Claim it with `coral-agent task claim`/,
-    /^\[Task #\d+ (?:completed by [^\]\n]+|reminder)\] /,
+    /^You have \d+ unread messages? on the message board/i,
+    /^You have tasks available/i,
+    /^You have a new task in Coral \(#\d+:/i,
+    /^\[Task #\d+[^\]]*\]/i,
+    /^\[Wait resolved\]/i,
+    /^\[Coral\b[^\]]*\]/i,
 ];
 
 // Back-to-back notices (nudges that queued up while the agent was busy)
@@ -1004,8 +1055,17 @@ function appendCoralNotice(container, text) {
         `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
 }
 
+function normalizeNudgeText(content) {
+    let text = String(content || "").trim();
+    // In CLI agents (e.g. Antigravity CLI in plan/goal mode), the agent prefixes
+    // terminal input with one or more slash commands (e.g. "/plan ").
+    text = text.replace(/^(?:\/[a-zA-Z0-9_-]+\s*)+/, "").trim();
+    // If preceded by a notification tag like "@QA Engineer " or "@notify-all "
+    return text.replace(/^@[^@\n\r]+?\s+(?=(?:You have|\[Task #|\[Wait resolved\]|\[Coral\b))/i, "").trim();
+}
+
 function isCoralNudge(content) {
-    const text = String(content || "").trim();
+    const text = normalizeNudgeText(content);
     return CORAL_NUDGE_RES.some(re => re.test(text));
 }
 

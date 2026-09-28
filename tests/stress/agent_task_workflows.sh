@@ -36,9 +36,17 @@ reject_board() {
     if "$@" >"$TMPDIR_AT/last-rejection.log" 2>&1; then return 1; fi
 }
 
-log "Test 10: Build -> Test -> Release with live mock agents..."
 builder join workflow-integration --as Builder >/dev/null
 tester join workflow-integration --as Tester >/dev/null
+
+log "Test 10: Reassigning a task nudges the new owner..."
+ASSIGN_TASK=$(builder task add "Assignment nudge" --body "The new owner should be notified." | task_id)
+api PATCH "/api/board/workflow-integration/tasks/$ASSIGN_TASK" -d '{"assigned_to":"Tester"}' >/dev/null
+check "assignment change reaches the new owner's terminal" 'wait_for_input "$NAME_B" "$SID_B" "[mock-agent] input: You have tasks available."'
+tester task claim "$ASSIGN_TASK" >/dev/null
+tester task complete "$ASSIGN_TASK" >/dev/null
+
+log "Test 11: Build -> Test -> Release with live mock agents..."
 BUILD=$(builder task add "Build candidate" --assignee Builder --workflow delivery --stage Build --outputs build --workflow-instructions "Use the exact candidate revision." | task_id)
 TEST=$(builder task add "Test candidate" --assignee Tester --workflow delivery --stage Test --outputs report --blocked-by "[{\"task_id\":$BUILD,\"required_artifacts\":[\"build\"]}]" | task_id)
 RELEASE=$(builder task add "Release candidate" --assignee Builder --workflow delivery --stage Release --outputs release --blocked-by "[{\"task_id\":$BUILD,\"required_artifacts\":[\"build\"]},{\"task_id\":$TEST,\"required_artifacts\":[\"report\"]}]" | task_id)
@@ -90,9 +98,9 @@ RETRY=$(builder task add "Rebuild candidate" --assignee Builder --retry-of "$BRO
 builder task claim "$RETRY" >/dev/null
 builder task complete "$RETRY" --artifacts "$TMPDIR_AT/build.json" >/dev/null
 check "retry is a new task linked to original failure" '[[ "$RETRY" != "$BROKEN" && $(workflow_detail "$RETRY" | jget "d[\"workflow\"][\"retry_of\"]") == "$BROKEN" ]]'
-check "retry success does not silently replace failed input" '[[ $(workflow_status "$SUCCESSOR") == blocked ]]'
-api PATCH "/api/board/workflow-integration/tasks/$SUCCESSOR" -d "{\"blocked_by\":[$RETRY]}" >/dev/null
-check "explicit dependency rewire unlocks retry consumer" 'wait_task_status "$SUCCESSOR" pending'
+check "retry automatically rewires the unstarted consumer" '[[ $(workflow_status "$SUCCESSOR") == pending && $(workflow_detail "$SUCCESSOR" | jget "d[\"blocked_by\"][0][\"task_id\"]") == "$RETRY" ]]'
+check "rewired consumer is claimable without a manual dependency edit" 'builder task claim "$SUCCESSOR" >/dev/null'
+builder task complete "$SUCCESSOR" >/dev/null
 CANCELLED_BUILD=$(builder task add "Cancelled candidate" | task_id)
 CANCEL_SUCCESS=$(builder task add "Do not ship cancellation" --blocked-by "[$CANCELLED_BUILD]" | task_id)
 CANCEL_CLEANUP=$(builder task add "Clean cancelled candidate" --blocked-by "[{\"task_id\":$CANCELLED_BUILD,\"condition\":\"termination\"}]" | task_id)

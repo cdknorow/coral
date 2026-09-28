@@ -1197,6 +1197,8 @@ func TestSessionsRawImage(t *testing.T) {
 	git("commit", "-q", "-m", "init")
 	require.NoError(t, os.WriteFile(filepath.Join(root, "logo.png"), []byte("\x89PNG\r\n\x1a\nnew"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "added.svg"), []byte("<svg/>"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sample.mp3"), []byte("audio bytes"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sample.mp4"), []byte("video bytes"), 0o644))
 	ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-img", AgentType: "claude", WorkingDir: root, SessionID: "img-1"})
 
 	get := func(endpoint, fp string) (*http.Response, []byte) {
@@ -1226,7 +1228,18 @@ func TestSessionsRawImage(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode, "new files have no base version")
 
 	resp, _ = get("file-content", "main.go")
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "only images are served raw")
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode, "only previewable media are served raw")
+
+	resp, b = get("file-content", "sample.mp3")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "audio/mpeg", resp.Header.Get("Content-Type"))
+	assert.Contains(t, resp.Header.Get("Content-Security-Policy"), "media-src 'self'")
+	assert.Equal(t, "audio bytes", string(b))
+
+	resp, b = get("file-content", "sample.mp4")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "video/mp4", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "video bytes", string(b))
 }
 
 func TestSessionsOpenInEditor(t *testing.T) {

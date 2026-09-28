@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,3 +109,98 @@ func TestSingleSessionEndpointsNeverWaitWhileSleeping(t *testing.T) {
 		assert.Equalf(t, "sleeping", got["state"], "%s", path)
 	}
 }
+
+func TestSingleSessionEndpointsAntigravityTranscript(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	home := t.TempDir()
+	t.Setenv("ANTIGRAVITY_DATA_DIR", home)
+	sid := "00000000-0000-4000-8000-0000000006c1"
+	convID := "agy-conv-single-test"
+	dir := filepath.Join(home, "brain", convID, ".system_generated", "logs")
+	require.NoError(t, os.MkdirAll(dir, 0700))
+
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID: sid, AgentType: "agy", AgentName: "agy-worker", WorkingDir: "/tmp",
+	}))
+	terminal.addSession("agy-"+sid, "/tmp")
+
+	path := filepath.Join(dir, "transcript.jsonl")
+	// Step 0: prompt with embedded CORAL_SESSION_ID
+	data := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-09-28T03:00:00Z","content":"CORAL_SESSION_ID: ` + sid + `"}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+
+	getStatus := func() map[string]any {
+		resp, err := http.Get(server.URL + "/api/sessions/" + sid + "/status")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var got map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&got))
+		return got
+	}
+
+	getLive := func() map[string]any {
+		resp, err := http.Get(server.URL + "/api/sessions/live")
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var sessions []map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&sessions))
+		for _, s := range sessions {
+			if s["session_id"] == sid {
+				return s
+			}
+		}
+		return nil
+	}
+
+	// Active turn (just received user prompt)
+	st := getStatus()
+	assert.Equal(t, "active", st["state"])
+	assert.Equal(t, false, st["awaiting_user"])
+	assert.Equal(t, false, st["waiting_for_input"])
+	live := getLive()
+	require.NotNil(t, live)
+	assert.Equal(t, true, live["working"])
+	assert.Equal(t, false, live["awaiting_user"])
+
+	// Turn ends (model responds with no tools)
+	data += `{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-28T03:00:02Z","tool_calls":[]}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+	st = getStatus()
+	assert.Equal(t, "done", st["state"])
+	assert.Equal(t, true, st["awaiting_user"])
+	assert.Equal(t, false, st["waiting_for_input"])
+	live = getLive()
+	require.NotNil(t, live)
+	assert.Equal(t, false, live["working"])
+	assert.Equal(t, true, live["awaiting_user"])
+
+	// New turn with tool call -> working
+	data += `{"step_index":2,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-09-28T03:00:05Z"}` + "\n"
+	data += `{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-28T03:00:06Z","tool_calls":[{"name":"run_command"}]}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+	st = getStatus()
+	assert.Equal(t, "active", st["state"])
+	assert.Equal(t, false, st["awaiting_user"])
+	assert.Equal(t, false, st["waiting_for_input"])
+	live = getLive()
+	require.NotNil(t, live)
+	assert.Equal(t, true, live["working"])
+	assert.Equal(t, false, live["awaiting_user"])
+
+	// Model asks question -> waiting_for_input
+	data += `{"step_index":4,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-28T03:00:08Z","tool_calls":[{"name":"ask_question"}]}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+	st = getStatus()
+	assert.Equal(t, "waiting_for_input", st["state"])
+	assert.Equal(t, false, st["awaiting_user"])
+	assert.Equal(t, true, st["waiting_for_input"])
+	live = getLive()
+	require.NotNil(t, live)
+	assert.Equal(t, false, live["working"])
+	assert.Equal(t, false, live["awaiting_user"])
+	assert.Equal(t, true, live["waiting_for_input"])
+}
+

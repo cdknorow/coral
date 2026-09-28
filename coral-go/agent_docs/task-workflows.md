@@ -87,6 +87,24 @@ coral-board task detail 101
 ```
 
 Each artifact needs a unique name and either a durable `uri` or inline `content`.
+Local checkout paths, `/tmp` files, and `file://` links are not artifacts: users
+and downstream agents cannot reach another agent's filesystem. Put small reports
+in `content`, or publish large files to durable storage and include its URL.
+
+Coral also provides durable local storage for agent-produced files:
+
+```sh
+result=$(coral-agent artifact upload report.md)
+# Copy the returned `uri` (coral://artifacts/<digest>) into the task manifest.
+```
+
+The upload endpoint is `POST /api/agent/artifacts?session_id=...` with the file
+bytes as the body and `X-Artifact-Name` plus optional `X-Artifact-Media-Type`
+headers. Coral returns a digest, a `coral://` URI, and a browser URL. Retrieve
+the artifact with `GET /api/artifacts/<digest>`. Uploads are limited to 64 MiB;
+the content is immutable and addressed by its SHA-256 digest.
+In Coral chat and task details, the returned `coral://` URI opens in the Files
+preview panel; users do not need filesystem access to the agent's checkout.
 Small reports can use `content`; large logs/builds should use durable external
 storage. Coral stores the manifest and inline text in the board database; it
 does not upload files referenced by a URI, fetch them, execute tests, or verify

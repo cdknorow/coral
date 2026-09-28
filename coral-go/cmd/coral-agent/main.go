@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -35,6 +36,7 @@ func printUsage() {
 
 Commands:
   ui <publish|list|events|remove>  Publish interactive sidebar panels
+  artifact upload <file>           Store a durable Coral artifact
   launch [dir] [--type T] [--name N] [--model M] [--prompt P]
                                  Launch an agent in dir (default: current
                                  directory) with your default settings
@@ -60,6 +62,8 @@ func main() {
 		cmdUI(os.Args[2:])
 	case "launch":
 		cmdLaunch(os.Args[2:])
+	case "artifact":
+		cmdArtifact(os.Args[2:])
 	case "task":
 		cmdTask()
 	case "--help", "-h", "help":
@@ -69,6 +73,45 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+func cmdArtifact(args []string) {
+	if len(args) < 2 || args[0] != "upload" {
+		fmt.Fprintln(os.Stderr, "Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]")
+		os.Exit(1)
+	}
+	file := args[1]
+	fs := flag.NewFlagSet("artifact-upload", flag.ExitOnError)
+	name := fs.String("name", filepath.Base(file), "Artifact filename")
+	mediaType := fs.String("media-type", mime.TypeByExtension(filepath.Ext(file)), "Artifact media type")
+	fs.Parse(args[2:])
+	data, err := os.ReadFile(file)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	sid := resolveSessionID()
+	req, err := http.NewRequest(http.MethodPost, serverURL+"/api/agent/artifacts?session_id="+url.QueryEscape(sid), bytes.NewReader(data))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	req.Header.Set("X-Artifact-Name", *name)
+	if *mediaType != "" {
+		req.Header.Set("X-Artifact-Media-Type", *mediaType)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		fmt.Fprintf(os.Stderr, "Artifact upload failed: %s\n", strings.TrimSpace(string(body)))
+		os.Exit(1)
+	}
+	fmt.Println(string(body))
 }
 
 func cmdTask() {

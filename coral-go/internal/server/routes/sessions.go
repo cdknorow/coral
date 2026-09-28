@@ -4291,7 +4291,7 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if r.URL.Query().Get("raw") == "1" {
-		writeRawImage(w, fp, content)
+		writeRawFilePreview(w, fp, content)
 		return
 	}
 
@@ -4315,6 +4315,12 @@ var previewImageTypes = map[string]string{
 	".svg":  "image/svg+xml",
 }
 
+var previewMediaTypes = map[string]string{
+	".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg",
+	".m4a": "audio/mp4", ".aac": "audio/aac", ".flac": "audio/flac",
+	".mp4": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg", ".mov": "video/quicktime", ".m4v": "video/mp4",
+}
+
 // writeRawImage serves an image's bytes for the preview's <img> tags (the
 // ?raw=1 form of file-content and file-original). Only image types are
 // served, and an SVG opened directly cannot run script on this origin.
@@ -4324,13 +4330,45 @@ func writeRawImage(w http.ResponseWriter, fp string, data []byte) {
 		errBadRequest(w, "raw content is only served for images")
 		return
 	}
+	writeRawPreview(w, ct, data, true)
+}
+
+func writeRawPreview(w http.ResponseWriter, ct string, data []byte, image bool) {
 	h := w.Header()
 	h.Set("Content-Type", ct)
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	if image {
+		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
+	} else {
+		// Audio/video are inert media resources; allow the native player to
+		// fetch the bytes without applying a document sandbox.
+		h.Set("Content-Security-Policy", "default-src 'none'; media-src 'self'")
+	}
 	h.Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
+}
+
+func writeRawMedia(w http.ResponseWriter, fp string, data []byte) {
+	ct, ok := previewMediaTypes[strings.ToLower(filepath.Ext(fp))]
+	if !ok {
+		errBadRequest(w, "raw content is only served for previewable media")
+		return
+	}
+	writeRawPreview(w, ct, data, false)
+}
+
+func writeRawFilePreview(w http.ResponseWriter, fp string, data []byte) {
+	ext := strings.ToLower(filepath.Ext(fp))
+	if _, ok := previewImageTypes[ext]; ok {
+		writeRawImage(w, fp, data)
+		return
+	}
+	if _, ok := previewMediaTypes[ext]; ok {
+		writeRawMedia(w, fp, data)
+		return
+	}
+	errBadRequest(w, "raw content is only served for previewable media")
 }
 
 // GetFileOriginal returns the original (git base) content of a file.
@@ -4386,7 +4424,7 @@ func (h *SessionsHandler) GetFileOriginal(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if raw {
-		writeRawImage(w, fp, out)
+		writeRawFilePreview(w, fp, out)
 		return
 	}
 

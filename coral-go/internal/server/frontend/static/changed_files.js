@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, isImagePath, renderImagePanes, DOMPURIFY_CONFIG } from './utils.js';
+import { escapeHtml, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
@@ -616,7 +616,50 @@ let _previewGen = 0;      // generation counter to guard against stale async wri
 /** Show inline preview for a file (clicking the preview icon). */
 export function openFilePreview(filepath, line) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
+    if (/^coral:\/\/artifacts\/[a-f0-9]{64}$/i.test(filepath || '')) {
+        _openArtifactPreview(filepath);
+        return;
+    }
     _openInlinePane(filepath, 'preview', line);
+}
+
+/** Preview a Coral-managed artifact in the same Files panel as repository files. */
+async function _openArtifactPreview(uri) {
+    const match = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
+    if (!match) return;
+    const isMobile = window.innerWidth <= 767;
+    let panel = isMobile ? document.createElement('div') : document.getElementById('agentic-panel-files');
+    if (isMobile) { panel.className = 'mobile-file-preview-overlay'; document.body.appendChild(panel); }
+    if (!panel) return;
+    if (!isMobile && window.switchAgenticTab) window.switchAgenticTab('files', 'top');
+    _previewState = { artifact: true, filepath: uri, mode: 'preview', gen: ++_previewGen };
+    panel.innerHTML = `<div class="inline-preview-header">
+        <button class="inline-preview-back" onclick="window._closeInlinePreview()" title="Back to file list"><span class="material-icons">arrow_back</span></button>
+        <span class="inline-preview-filepath" title="${escapeHtml(uri)}">Artifact preview</span>
+    </div><div class="inline-preview-body" id="inline-preview-body"><div class="inline-preview-loading">Loading...</div></div>`;
+    const body = panel.querySelector('#inline-preview-body');
+    try {
+        const resp = await fetch(`/api/artifacts/${match[1]}`);
+        if (!resp.ok) throw new Error(`Artifact unavailable (${resp.status})`);
+        const type = (resp.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].toLowerCase();
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const filename = (disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i) || [])[1] || '';
+        const artifactPath = filename || uri;
+        if (type.startsWith('audio/') || type.startsWith('video/')) {
+            const media = document.createElement(type.startsWith('video/') ? 'video' : 'audio');
+            media.controls = true; media.autoplay = false; media.preload = 'metadata';
+            media.src = resp.url; media.className = 'artifact-preview-media';
+            body.replaceChildren(media);
+        } else if (type.startsWith('image/')) {
+            renderImagePanes(body, [{ url: resp.url, missing: 'Artifact unavailable' }]);
+        } else {
+            // Render Markdown artifacts with the same formatted view used by
+            // repository .md files.
+            _renderContentView(body, await resp.text(), type === 'text/markdown' || /\.md(?:own)?$/i.test(filename) ? (filename || 'artifact.md') : artifactPath);
+        }
+    } catch (error) {
+        body.innerHTML = `<div class="inline-preview-error">${escapeHtml(error.message)}</div>`;
+    }
 }
 
 /** Open file directly in edit mode (clicking the edit icon). */
@@ -718,6 +761,16 @@ async function _openInlinePane(filepath, initialView, line) {
         return;
     }
 
+    // Audio and video use native browser playback controls and cannot be edited.
+    if (isMediaPath(filepath)) {
+        _previewState.isMedia = true;
+        const editBtn = document.getElementById('mode-btn-edit');
+        if (editBtn) editBtn.style.display = 'none';
+        _updateModeButtons('preview');
+        _renderMediaPreview();
+        return;
+    }
+
     // Set active mode button and load content
     _updateModeButtons(initialView);
     if (initialView === 'edit') {
@@ -748,6 +801,22 @@ function _rawImageUrl(endpoint, filepath) {
     qs.set('raw', '1');
     qs.set('t', Date.now()); // the image may have changed since the last look
     return `/api/sessions/live/${encodeURIComponent(_agentName())}/${endpoint}?${qs}`;
+}
+
+function _renderMediaPreview() {
+    const body = document.getElementById('inline-preview-body');
+    if (!body || !_previewState) return;
+    renderMediaPanes(body, [{ url: _rawImageUrl('file-content', _previewState.filepath), missing: 'File not found' }]);
+}
+
+function _renderMediaDiff() {
+    const body = document.getElementById('inline-preview-body');
+    if (!body || !_previewState) return;
+    const fp = _previewState.filepath;
+    renderMediaPanes(body, [
+        { label: 'Before', url: _rawImageUrl('file-original', fp), missing: 'New file' },
+        { label: 'After', url: _rawImageUrl('file-content', fp), missing: 'Deleted' },
+    ]);
 }
 
 function _renderImagePreview() {
@@ -936,11 +1005,14 @@ window._togglePreviewStar = function() {
 window._switchMode = async function(targetMode) {
     if (!_previewState || _previewState.mode === targetMode) return;
 
-    if (_previewState.isImage) {
+    if (_previewState.isImage || _previewState.isMedia) {
         if (targetMode === 'edit') return;
         _previewState.mode = targetMode;
         _updateModeButtons(targetMode);
-        if (targetMode === 'diff') _renderImageDiff();
+        if (_previewState.isMedia) {
+            if (targetMode === 'diff') _renderMediaDiff();
+            else _renderMediaPreview();
+        } else if (targetMode === 'diff') _renderImageDiff();
         else _renderImagePreview();
         return;
     }

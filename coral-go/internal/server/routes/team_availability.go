@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -18,15 +19,18 @@ type availabilityTask struct {
 }
 
 type availableAgent struct {
-	SessionID    string             `json:"session_id,omitempty"`
-	SubscriberID string             `json:"subscriber_id,omitempty"`
-	Name         string             `json:"name"`
-	AgentType    string             `json:"agent_type,omitempty"`
-	Role         string             `json:"role,omitempty"`
-	Availability string             `json:"availability"`
-	Available    bool               `json:"available"`
-	Reason       string             `json:"reason"`
-	Tasks        []availabilityTask `json:"tasks"`
+	SessionID               string                `json:"session_id,omitempty"`
+	SubscriberID            string                `json:"subscriber_id,omitempty"`
+	Name                    string                `json:"name"`
+	AgentType               string                `json:"agent_type,omitempty"`
+	Role                    string                `json:"role,omitempty"`
+	Availability            string                `json:"availability"`
+	Available               bool                  `json:"available"`
+	Reason                  string                `json:"reason"`
+	Tasks                   []availabilityTask    `json:"tasks"`
+	WaitingOn               *board.RegisteredWait `json:"waiting_on,omitempty"`
+	Reminder                bool                  `json:"reminder,omitempty"`
+	ReminderIntervalSeconds int                   `json:"reminder_interval_seconds,omitempty"`
 }
 
 // TeamAvailability reports observed runtime and queue state; it does not reserve work.
@@ -79,6 +83,11 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
+	waits, _ := h.bs.ListActiveWaits(ctx, name)
+	waitsBySubscriber := make(map[string]*board.RegisteredWait)
+	for i := range waits {
+		waitsBySubscriber[waits[i].SubscriberID] = &waits[i]
+	}
 	agents := []availableAgent{}
 	seen := map[string]bool{}
 	for _, s := range sessions {
@@ -94,6 +103,9 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 			a.SubscriberID = sub.SubscriberID
 			a.Role = sub.JobTitle
 			seen[sub.SubscriberID] = true
+		}
+		if a.SubscriberID != "" && h.boardHandler != nil {
+			a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, a.SubscriberID)
 		}
 		personal, err := h.ts.ListAgentTasks(ctx, s.AgentName, &s.SessionID)
 		if err != nil {
@@ -115,7 +127,11 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 			input.Events = append(input.Events, StateEvent{Type: e.EventType, Summary: e.Summary})
 		}
 		h.applyTranscriptState(&input, events[s.SessionID], s.AgentType, s.SessionID, s.WorkingDir)
-		classifyAvailability(&a, s, live[s.SessionID], subscribed && sub.IsActive != 0, DeriveSessionState(input), len(input.Events) > 0)
+		var activeWait *board.RegisteredWait
+		if a.SubscriberID != "" {
+			activeWait = waitsBySubscriber[a.SubscriberID]
+		}
+		classifyAvailability(&a, s, live[s.SessionID], subscribed && sub.IsActive != 0, DeriveSessionState(input), len(input.Events) > 0, activeWait)
 		agents = append(agents, a)
 	}
 	for _, sub := range subs {
@@ -123,6 +139,9 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 			continue
 		}
 		a := availableAgent{SubscriberID: sub.SubscriberID, Name: sub.SubscriberID, Role: sub.JobTitle, Availability: "offline", Reason: "No registered local session", Tasks: []availabilityTask{}}
+		if h.boardHandler != nil {
+			a.ReminderIntervalSeconds, a.Reminder = h.boardHandler.SubscriberReminderInterval(name, sub.SubscriberID)
+		}
 		if sub.OriginServer != nil && *sub.OriginServer != "" {
 			a.Availability = "unknown"
 			a.Reason = "Remote agent availability is not observed locally"
@@ -130,6 +149,17 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		for _, t := range tasks {
 			if t.AssignedTo != nil && *t.AssignedTo == sub.SubscriberID && openAvailabilityTask(t.Status) {
 				a.Tasks = append(a.Tasks, availabilityTask{t.ID, "board", t.Title, t.Status})
+			}
+		}
+		activeWait := waitsBySubscriber[sub.SubscriberID]
+		if activeWait != nil {
+			a.WaitingOn = activeWait
+			a.Availability = "waiting"
+			target := activeWait.TargetLabel()
+			if activeWait.Reason != "" {
+				a.Reason = fmt.Sprintf("Waiting for %s (%s)", target, activeWait.Reason)
+			} else {
+				a.Reason = fmt.Sprintf("Waiting for %s", target)
 			}
 		}
 		agents = append(agents, a)
@@ -140,7 +170,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		}
 		return agents[i].Name < agents[j].Name
 	})
-	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "offline": 0, "unknown": 0, "unavailable": 0}
+	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "offline": 0, "unknown": 0, "unavailable": 0, "waiting": 0}
 	for _, a := range agents {
 		summary[a.Availability]++
 	}
@@ -163,12 +193,16 @@ func openAvailabilityTask(status string) bool {
 	return status == "pending" || status == "in_progress" || status == "blocked" || status == "draft"
 }
 
-func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscribed bool, state SessionState, known bool) {
+func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscribed bool, state SessionState, known bool, activeWait ...*board.RegisteredWait) {
 	a.Available = false
 	active, pending := false, false
 	for _, t := range a.Tasks {
 		active = active || t.Status == "in_progress"
 		pending = pending || t.Status == "pending"
+	}
+	var wait *board.RegisteredWait
+	if len(activeWait) > 0 && activeWait[0] != nil {
+		wait = activeWait[0]
 	}
 	switch {
 	case s.IsSleeping != 0:
@@ -183,6 +217,15 @@ func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscr
 	case s.BoardServer != nil && *s.BoardServer != "":
 		a.Availability = "unknown"
 		a.Reason = "Remote board tasks are not observed locally"
+	case wait != nil:
+		a.Availability = "waiting"
+		a.WaitingOn = wait
+		target := wait.TargetLabel()
+		if wait.Reason != "" {
+			a.Reason = fmt.Sprintf("Waiting for %s (%s)", target, wait.Reason)
+		} else {
+			a.Reason = fmt.Sprintf("Waiting for %s", target)
+		}
 	case state.NeedsInput:
 		a.Availability = "needs_input"
 		a.Reason = "Waiting for user input or approval"

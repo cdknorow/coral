@@ -328,6 +328,15 @@ func TestCalculateCostBreakdown_BreakdownStoresPricing(t *testing.T) {
 	assert.Equal(t, 3.75, b.Pricing.CacheWritePerMTok)
 }
 
+func TestConfiguredAgentModelAliasesHavePricing(t *testing.T) {
+	usage := TokenUsage{InputTokens: 1_000_000, OutputTokens: 1_000_000}
+	for _, model := range []string{"gpt-6-sol", "gpt-6-astra", "codex-auto-review", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.1-pro-high"} {
+		b := CalculateCostBreakdown(model, usage)
+		assert.True(t, b.PricingFound, model)
+		assert.Greater(t, b.TotalCostUSD, 0.0, model)
+	}
+}
+
 // ── Rate card ────────────────────────────────────────────────
 // Prices per million tokens from the providers' pricing pages (see the comment
 // on Pricing for the URLs). A failure here means the table drifted from what

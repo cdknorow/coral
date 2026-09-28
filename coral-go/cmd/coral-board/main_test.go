@@ -330,3 +330,123 @@ func TestCmdRead_URLRouting(t *testing.T) {
 		})
 	}
 }
+
+func TestCmdWait_Register(t *testing.T) {
+	isolateBoardEnv(t)
+	saveState(&boardState{Project: "wait-proj", JobTitle: "Dev"})
+
+	var recordedMethod, recordedPath string
+	var recordedBody map[string]string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recordedMethod = r.Method
+		recordedPath = r.URL.Path
+		json.NewDecoder(r.Body).Decode(&recordedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":1,"status":"active","expires_at":"2026-09-27T12:00:00Z"}`))
+	}))
+	defer ts.Close()
+
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+
+	oldArgs := os.Args
+	os.Args = []string{"coral-board", "wait", "--from", "Orchestrator", "--reason", "waiting for accepted revision"}
+	defer func() { os.Args = oldArgs }()
+
+	cmdWait()
+
+	if recordedMethod != "POST" {
+		t.Errorf("Method = %q, want POST", recordedMethod)
+	}
+	if recordedPath != "/api/board/wait-proj/waits" {
+		t.Errorf("Path = %q, want /api/board/wait-proj/waits", recordedPath)
+	}
+	if recordedBody["wait_type"] != "message" {
+		t.Errorf("wait_type = %q, want message", recordedBody["wait_type"])
+	}
+	if recordedBody["target_id"] != "Orchestrator" {
+		t.Errorf("target_id = %q, want Orchestrator", recordedBody["target_id"])
+	}
+	if recordedBody["reason"] != "waiting for accepted revision" {
+		t.Errorf("reason = %q, want 'waiting for accepted revision'", recordedBody["reason"])
+	}
+}
+
+func TestCmdWait_TaskRegister(t *testing.T) {
+	isolateBoardEnv(t)
+	saveState(&boardState{Project: "wait-proj", JobTitle: "Dev"})
+
+	var recordedBody map[string]string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&recordedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":2,"status":"active","expires_at":"2026-09-27T12:00:00Z"}`))
+	}))
+	defer ts.Close()
+
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+
+	oldArgs := os.Args
+	os.Args = []string{"coral-board", "wait", "--task", "876"}
+	defer func() { os.Args = oldArgs }()
+
+	cmdWait()
+
+	if recordedBody["wait_type"] != "task" {
+		t.Errorf("wait_type = %q, want task", recordedBody["wait_type"])
+	}
+	if recordedBody["target_id"] != "876" {
+		t.Errorf("target_id = %q, want 876", recordedBody["target_id"])
+	}
+}
+
+func TestCmdWait_StatusAndCancel(t *testing.T) {
+	isolateBoardEnv(t)
+	saveState(&boardState{Project: "wait-proj", JobTitle: "Dev"})
+
+	var recordedMethods []string
+	var recordedPaths []string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recordedMethods = append(recordedMethods, r.Method)
+		recordedPaths = append(recordedPaths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == "GET" {
+			w.Write([]byte(`{"wait":{"wait_type":"message","target_id":"Lead","reason":"review","expires_at":"2026-09-27T12:00:00Z","status":"active"}}`))
+		} else if r.Method == "DELETE" {
+			w.Write([]byte(`{"cancelled":true}`))
+		}
+	}))
+	defer ts.Close()
+
+	oldURL := serverURL
+	serverURL = ts.URL
+	defer func() { serverURL = oldURL }()
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+
+	os.Args = []string{"coral-board", "wait", "--status"}
+	cmdWait()
+
+	os.Args = []string{"coral-board", "wait", "--cancel"}
+	cmdWait()
+
+	if len(recordedMethods) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(recordedMethods))
+	}
+	if recordedMethods[0] != "GET" || recordedPaths[0] != "/api/board/wait-proj/waits" {
+		t.Errorf("call 0: %s %s, want GET /api/board/wait-proj/waits", recordedMethods[0], recordedPaths[0])
+	}
+	if recordedMethods[1] != "DELETE" || recordedPaths[1] != "/api/board/wait-proj/waits" {
+		t.Errorf("call 1: %s %s, want DELETE /api/board/wait-proj/waits", recordedMethods[1], recordedPaths[1])
+	}
+}
+

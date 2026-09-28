@@ -73,6 +73,12 @@ document.getElementById('choose').onclick = async () => {
 </script>
 ```
 
+Use `coralUI.emit` sparingly. Emit only when the agent needs feedback to make a
+decision or take an action. Keep navigation, tabs, expand/collapse, playback,
+display toggles, dismissals, and other passive UI interactions in the panel's
+local state. Group related answers into one event instead of emitting one event
+per control, and do not emit acknowledgements that carry no useful information.
+
 `emit` resolves only after storage succeeds. Event actions use 1–64 letters,
 digits, underscores or hyphens; requests must fit in 16 KiB. The event queue is
 non-destructive: save the last processed event `id`, then pass it as `--after`.
@@ -95,7 +101,7 @@ and two choices. Publish it, click a choice in Coral, then read its events.
 All routes require `?session_id=YOUR_SESSION_ID`, using the existing local API
 trust boundary. Session identifiers scope records; they are not credentials.
 
-- `GET /api/agent/ui`: metadata array (`id`, `session_id`, `title`, `revision`, `updated_at`).
+- `GET /api/agent/ui`: metadata array (`id`, `session_id`, `title`, `revision`, `updated_at`, `event_count`). `event_count` is the total number of saved interactions across all panel revisions and can expose unexpectedly noisy panels.
 - `PUT /api/agent/ui/{id}`: JSON `{ "title": "Title", "html": "..." }`; returns metadata.
 - `DELETE /api/agent/ui/{id}`: removes panel and events.
 - `GET /api/agent/ui/{id}/content?session_id=...&revision=N`: isolated HTML.

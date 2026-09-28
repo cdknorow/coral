@@ -95,10 +95,20 @@ function _showMobileHistory(agentList) {
 function mobileBack() {
     if (!isMobile()) return;
 
+    // If panel overlay is currently open, close it first and return to chat
+    const agenticState = document.getElementById('agentic-state');
+    if (agenticState && agenticState.classList.contains('mobile-panel-overlay')) {
+        if (window.toggleAgenticPanel) {
+            window.toggleAgenticPanel(false);
+        } else {
+            agenticState.classList.remove('mobile-panel-overlay');
+        }
+        return;
+    }
+
     showView('mobile-agent-list');
 
     // Hide panel overlay and panel tab
-    const agenticState = document.getElementById('agentic-state');
     if (agenticState) agenticState.classList.remove('mobile-panel-overlay');
     const panelTab = document.getElementById('mobile-tab-panel');
     if (panelTab) panelTab.style.display = 'none';
@@ -178,10 +188,15 @@ export function wrapSelectLiveSession() {
         // Call original
         orig(name, agentType, sessionId);
 
-        // On mobile, hide agent list to show full session view
+        // On mobile, hide agent list to show full session view and reset panel overlay
         if (isMobile()) {
             const agentList = document.getElementById('mobile-agent-list');
             if (agentList) agentList.style.display = 'none';
+            const agenticState = document.getElementById('agentic-state');
+            if (agenticState) {
+                agenticState.classList.remove('mobile-panel-overlay');
+                if (window.toggleAgenticPanel) window.toggleAgenticPanel(false);
+            }
         }
 
         // On tablet, close the sidebar overlay
@@ -277,9 +292,11 @@ function _initSwipeNavigation() {
         // Only detect horizontal swipes (dx much larger than dy)
         if (Math.abs(dx) < 60 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
 
-        // Only swipe when viewing a live session
+        // Only swipe when viewing a live session and side panel is closed
         const liveView = document.getElementById('live-session-view');
         if (!liveView || liveView.style.display === 'none') return;
+        const panel = document.getElementById('agentic-state');
+        if (panel && panel.classList.contains('mobile-panel-overlay')) return;
 
         const sessions = state.liveSessions || [];
         if (sessions.length < 2) return;
@@ -372,6 +389,11 @@ export function initMobile() {
         if (!tabBar) return;
 
         if (!isMobile()) {
+            // Restore side panel if resized to desktop
+            const agenticState = document.getElementById('agentic-state');
+            if (agenticState && agenticState.classList.contains('mobile-panel-overlay')) {
+                agenticState.classList.remove('mobile-panel-overlay');
+            }
             // Ensure tab bar stays hidden on desktop (CSS handles mobile)
             tabBar.style.display = '';
             // Restore sidebar visibility

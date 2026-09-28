@@ -90,6 +90,7 @@
 }
 
 .session-dot.stale    { background: var(--text-muted); }
+.session-dot.task-idle { background: #d29922; }
 .session-dot.sleeping { background: var(--warning); opacity: 0.5; }
 .session-dot.working {
     /* Working is GREEN. Green no longer means "done": a finished turn is
@@ -1825,10 +1826,10 @@
 .availability-agents { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(280px,100%),1fr)); gap: 12px; }
 .availability-agent { padding: 14px; border: 1px solid var(--border); border-radius: 10px; overflow-wrap: anywhere; }
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
-.availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; }
+.availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; color: var(--text-secondary); }
 .availability-badge.is-free { color: var(--success, #62c98a); }
-.availability-badge { color: var(--text-secondary); }
 .availability-task_idle .availability-badge, .availability-summary-task_idle { color: #d29922; }
+.availability-waiting .availability-badge, .availability-summary-waiting { color: #58a6ff; }
 .team-availability-dialog ul { padding-left: 18px; font-size: 13px; }
 .team-availability-dialog li { margin: 8px 0; }
 @media(max-width: 480px) { .team-availability-dialog { padding: 16px; } }

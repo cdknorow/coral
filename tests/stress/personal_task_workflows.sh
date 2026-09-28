@@ -42,9 +42,8 @@ check "personal failure selects failure branch" '[[ $(personal_status "$PC") == 
 PX=$(personal add "Personal retry" --retry-of "$PF" | personal_id)
 personal claim "$PX" >/dev/null
 personal complete "$PX" >/dev/null
-check "personal retry keeps old consumer blocked" '[[ $(personal_status "$PC") == blocked ]]'
-personal edit "$PC" --blocked-by "[$PX]" >/dev/null
-check "personal dependency rewiring unlocks consumer" '[[ $(personal_status "$PC") == pending ]]'
-check "personal retry link persists" '[[ $(personal detail "$PX" | jget "d[\"workflow\"][\"retry_of\"]") == "$PF" ]]'
+check "personal retry automatically rewires the consumer" '[[ $(personal_status "$PC") == pending && $(personal detail "$PC" | jget "d[\"blocked_by\"][0][\"task_id\"]") == "$PX" ]]'
+personal claim "$PC" >/dev/null
 personal complete "$PC" >/dev/null
+check "personal retry link persists" '[[ $(personal detail "$PX" | jget "d[\"workflow\"][\"retry_of\"]") == "$PF" ]]'
 personal complete "$PD" >/dev/null

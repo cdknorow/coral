@@ -10,12 +10,13 @@ import (
 var ErrUIStale = errors.New("panel missing or revision has changed")
 
 type AgentUIPanel struct {
-	SessionID string `db:"session_id" json:"session_id"`
-	ID        string `db:"id" json:"id"`
-	Title     string `db:"title" json:"title"`
-	HTML      string `db:"html" json:"-"`
-	Revision  int64  `db:"revision" json:"revision"`
-	UpdatedAt string `db:"updated_at" json:"updated_at"`
+	SessionID  string `db:"session_id" json:"session_id"`
+	ID         string `db:"id" json:"id"`
+	Title      string `db:"title" json:"title"`
+	HTML       string `db:"html" json:"-"`
+	Revision   int64  `db:"revision" json:"revision"`
+	UpdatedAt  string `db:"updated_at" json:"updated_at"`
+	EventCount int64  `db:"-" json:"event_count"`
 }
 type AgentUIEvent struct {
 	ID        int64  `db:"id" json:"id"`
@@ -37,7 +38,25 @@ func (e AgentUIEvent) MarshalJSON() ([]byte, error) {
 func (d *DB) ListAgentUI(ctx context.Context, sid string) ([]AgentUIPanel, error) {
 	panels := []AgentUIPanel{}
 	err := d.SelectContext(ctx, &panels, `SELECT session_id,id,title,revision,updated_at FROM agent_ui_panels WHERE session_id=? ORDER BY updated_at DESC,id`, sid)
+	if err != nil {
+		return panels, err
+	}
+	for i := range panels {
+		panels[i].EventCount, err = d.AgentUIEventCount(ctx, sid, panels[i].ID)
+		if err != nil {
+			return panels, err
+		}
+	}
 	return panels, err
+}
+
+// AgentUIEventCount returns the number of persisted interactions for a panel.
+// It intentionally includes events from older revisions so noisy panels remain
+// diagnosable after an update.
+func (d *DB) AgentUIEventCount(ctx context.Context, sid, id string) (int64, error) {
+	var count int64
+	err := d.GetContext(ctx, &count, `SELECT COUNT(*) FROM agent_ui_events WHERE session_id=? AND panel_id=?`, sid, id)
+	return count, err
 }
 func (d *DB) GetAgentUI(ctx context.Context, sid, id string) (*AgentUIPanel, error) {
 	var p AgentUIPanel

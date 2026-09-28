@@ -164,3 +164,99 @@ func TestTeamAvailabilityCodexWithoutHooks(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
 	check("busy")
 }
+
+func TestTeamAvailabilityAgyWithoutHooks(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	home := t.TempDir()
+	t.Setenv("ANTIGRAVITY_DATA_DIR", home)
+	sid := uuid.NewString()
+	convID := uuid.NewString()
+	dir := filepath.Join(home, "brain", convID, ".system_generated", "logs")
+	require.NoError(t, os.MkdirAll(dir, 0700))
+	team := "seo-team"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentName: "seo", AgentType: "agy", BoardName: &team, WorkingDir: "/tmp"}))
+	terminal.addSession("agy-"+sid, "/tmp")
+	_, err := h.bs.Subscribe(context.Background(), team, "SEO Strategist", "SEO", "agy-"+sid, nil, nil, "all")
+	require.NoError(t, err)
+
+	path := filepath.Join(dir, "transcript.jsonl")
+	// Step 0: prompt with embedded CORAL_SESSION_ID so resolveAgyTranscript finds it
+	data := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-09-28T03:00:00Z","content":"CORAL_SESSION_ID: ` + sid + `"}` + "\n"
+	// Step 1: PLANNER_RESPONSE with no tools -> turn ended
+	data += `{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-28T03:00:01Z","tool_calls":[]}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+
+	router := chi.NewRouter()
+	router.Get("/api/teams/detail/{name}/availability", h.TeamAvailability)
+	check := func(want string) {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/api/teams/detail/seo-team/availability", nil))
+		require.Equal(t, 200, w.Code)
+		var out struct {
+			Agents []availableAgent `json:"agents"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &out))
+		require.Len(t, out.Agents, 1)
+		require.Equal(t, want, out.Agents[0].Availability)
+	}
+	check("available")
+
+	// Model starts working on a tool
+	data += `{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-28T03:00:05Z","tool_calls":[{"name":"run_command"}]}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+	check("busy")
+
+	// Model asks user a question -> needs_input
+	data += `{"step_index":3,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-28T03:00:08Z","tool_calls":[{"name":"ask_question"}]}` + "\n"
+	require.NoError(t, os.WriteFile(path, []byte(data), 0600))
+	check("needs_input")
+}
+
+func TestTeamAvailabilityWithActiveWait(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	team := "wait-team"
+	sid := uuid.NewString()
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{
+		SessionID:  sid,
+		AgentName:  "Worker",
+		AgentType:  "claude",
+		BoardName:  &team,
+		WorkingDir: "/tmp",
+	}))
+	terminal.addSession("claude-"+sid, "/tmp")
+	_, err := h.bs.Subscribe(ctx, team, "Worker", "Developer", "claude-"+sid, nil, nil, "all")
+	require.NoError(t, err)
+
+	// Add an in-progress task for the worker
+	_, err = h.bs.CreateTask(ctx, team, "Feature work", "", "high", "lead", "Worker")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, team, "Worker")
+	require.NoError(t, err)
+
+	// Register a wait for Orchestrator
+	_, err = h.bs.RegisterWait(ctx, team, "Worker", "claude-"+sid, "message", "Orchestrator", "waiting for review", 10*time.Minute)
+	require.NoError(t, err)
+
+	router := chi.NewRouter()
+	router.Get("/api/teams/detail/{name}/availability", h.TeamAvailability)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/teams/detail/wait-team/availability", nil))
+	require.Equal(t, 200, w.Code)
+
+	var result struct {
+		Agents  []availableAgent `json:"agents"`
+		Summary map[string]int   `json:"summary"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	require.Len(t, result.Agents, 1)
+	require.Equal(t, "waiting", result.Agents[0].Availability)
+	require.False(t, result.Agents[0].Available)
+	require.NotNil(t, result.Agents[0].WaitingOn)
+	require.Equal(t, "message", result.Agents[0].WaitingOn.WaitType)
+	require.Equal(t, "Orchestrator", result.Agents[0].WaitingOn.TargetID)
+	require.Equal(t, "Waiting for message from 'Orchestrator' (waiting for review)", result.Agents[0].Reason)
+	require.Equal(t, 1, result.Summary["waiting"])
+}
+

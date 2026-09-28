@@ -58,8 +58,8 @@
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
                                     </a>
                                     <!-- Popout: back to the full dashboard (noopener new tab). -->
-                                    <!-- Popout: the existing side-panel expand/collapse control. -->
-                                    <button class="terminal-header-btn" id="popout-panel-toggle-btn" type="button" onclick="togglePopoutPanel()" title="Toggle side panel" aria-label="Hide side panel" aria-pressed="true" hidden>
+                                    <!-- Side panel expand/collapse control -->
+                                    <button class="terminal-header-btn session-panel-toggle-btn" id="popout-panel-toggle-btn" type="button" onclick="toggleAgenticPanel()" title="Toggle side panel" aria-label="Toggle side panel" aria-pressed="false">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M10 2.5v11"/></svg>
                                     </button>
                                 </div>
@@ -154,9 +154,9 @@
                                 </button>
                                 <!-- Custom view tabs (disabled for now) -->
                                 <span id="custom-view-tabs" style="display:none"></span>
-                                <!-- <button class="agentic-tab agentic-tab-add" onclick="window._showCreateViewModal()" id="agentic-tab-add-view" title="Add custom view" aria-label="Add custom view">
-                                    <span class="material-icons">add</span>
-                                </button> -->
+                                <button class="agentic-tab agentic-tab-close" id="agentic-mobile-close-btn" onclick="toggleAgenticPanel(false)" title="Back to Chat" aria-label="Close side panel and return to chat">
+                                    <span class="material-icons">close</span>
+                                </button>
                             </div>
                             <!-- Files tab -->
                             <div id="agentic-panel-files" class="agentic-panel active">

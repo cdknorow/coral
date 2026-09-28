@@ -11,6 +11,8 @@ CORAL_DIR="$REPO_ROOT/coral-go"
 PORT=8471
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
+export CORAL_PORT="$PORT"
+export CORAL_URL="$BASE_URL"
 BOARD="stress-test-$$"
 NUM_AGENTS=5
 NUM_TASKS=20
@@ -1040,7 +1042,7 @@ mkdir -p "$CLI_DIR"
 run_cli() {
     local session="$1"
     shift
-    CORAL_SESSION_NAME="$session" CORAL_SUBSCRIBER_ID="$session" CORAL_DATA_DIR="$CLI_DIR" CORAL_URL="$BASE_URL" "$TMPDIR_STRESS/coral-board" "$@"
+    CORAL_SESSION_NAME="$session" CORAL_SUBSCRIBER_ID="$session" CORAL_DATA_DIR="$CLI_DIR" CORAL_PORT="$PORT" CORAL_URL="$BASE_URL" "$TMPDIR_STRESS/coral-board" "$@"
 }
 
 run_cli "cli-orch" join "$CLI_BOARD" --as "Orchestrator" >/dev/null
@@ -1087,6 +1089,55 @@ if [[ "$cli_pass" == "true" ]]; then
     pass "CLI: coral-board read defaults to tagged-only, --all reads untagged, orchestrator reads all"
 else
     fail "CLI: coral-board read validation failed"
+fi
+
+# ── Test 31: coral-board wait CLI: register, status, cancel, and resolution ────
+
+# Register wait
+wait_reg_out=$(run_cli "cli-dev" wait --from "cli-orch" --reason "waiting for review" 2>&1 || true)
+
+# Query wait status
+wait_stat_out=$(run_cli "cli-dev" wait --status 2>&1 || true)
+
+# Check availability status API on server
+avail_out=$(curl -s "$BASE_URL/api/board/$CLI_BOARD/status")
+
+# Cancel wait
+wait_cancel_out=$(run_cli "cli-dev" wait --cancel 2>&1 || true)
+wait_post_cancel_out=$(run_cli "cli-dev" wait --status 2>&1 || true)
+
+# Re-register wait and verify resolution when message arrives
+run_cli "cli-dev" wait --from "cli-orch" --reason "waiting for second review" >/dev/null
+run_cli "cli-orch" post "@cli-dev second review accepted" >/dev/null
+sleep 0.5
+wait_resolved_out=$(run_cli "cli-dev" wait --status 2>&1 || true)
+
+wait_pass=true
+if [[ "$wait_reg_out" != *"Registered wait on"* || "$wait_reg_out" != *"STOP now and yield your turn"* ]]; then
+    wait_pass=false
+    log "CLI Test 31: register output missing expected instructions: $wait_reg_out"
+fi
+if [[ "$wait_stat_out" != *"Waiting for: message from 'cli-orch'"* || "$wait_stat_out" != *"waiting for review"* ]]; then
+    wait_pass=false
+    log "CLI Test 31: status output missing expected details: $wait_stat_out"
+fi
+if [[ "$avail_out" != *'"waiting"'* ]]; then
+    wait_pass=false
+    log "CLI Test 31: server availability does not reflect waiting status: $avail_out"
+fi
+if [[ "$wait_cancel_out" != *"Cancelled active wait"* || "$wait_post_cancel_out" != *"No active wait"* ]]; then
+    wait_pass=false
+    log "CLI Test 31: cancellation failed: cancel=$wait_cancel_out, post_cancel=$wait_post_cancel_out"
+fi
+if [[ "$wait_resolved_out" != *"No active wait"* ]]; then
+    wait_pass=false
+    log "CLI Test 31: wait did not resolve after matching message: $wait_resolved_out"
+fi
+
+if [[ "$wait_pass" == "true" ]]; then
+    pass "CLI: coral-board wait registers, reports status, cancels, and auto-resolves on message"
+else
+    fail "CLI: coral-board wait validation failed"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

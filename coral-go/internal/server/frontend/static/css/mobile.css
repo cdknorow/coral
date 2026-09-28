@@ -253,9 +253,13 @@
         font-size: 14px;
     }
 
-    /* Panel toggle: hide on mobile (use bottom tab bar Panel tab instead) */
+    /* Panel toggle: hide on mobile unless viewing an active live session */
     #panel-toggle-btn {
         display: none !important;
+    }
+
+    body.live-session-active #panel-toggle-btn {
+        display: flex !important;
     }
 
     /* Top bar settings dropdown: ensure it fits on small screens */
@@ -322,8 +326,30 @@
 
     .agentic-state,
     .agentic-state-panel,
+    .agentic-collapse-btn,
     .task-bar-resize-handle {
         display: none !important;
+    }
+
+    /* Terminal header panel toggle button on mobile */
+    #popout-panel-toggle-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 26px;
+        padding: 3px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+    }
+
+    #popout-panel-toggle-btn.active,
+    #popout-panel-toggle-btn[aria-pressed="true"] {
+        color: var(--accent);
+        background: var(--accent-dim);
+        border-color: var(--accent);
     }
 
     /* Command pane: compact sticky input bar at bottom on mobile */
@@ -1035,6 +1061,7 @@
 @media (max-width: 767px) {
     .agentic-state.mobile-panel-overlay {
         display: flex !important;
+        flex-direction: column !important;
         position: fixed;
         top: 49px;
         left: 0;
@@ -1047,25 +1074,94 @@
         background: var(--bg-secondary);
     }
 
-    /* Panel tabs: larger, evenly spaced on mobile */
+    .agentic-state.mobile-panel-overlay .agentic-block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    /* Panel tabs: horizontally scrollable, touch friendly */
     .agentic-state.mobile-panel-overlay .agentic-state-tabs {
-        justify-content: space-evenly;
-        padding: 8px 4px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 0 4px;
         gap: 2px;
+        height: 44px;
+        min-height: 44px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        scrollbar-width: none;
+        border-bottom: 1px solid var(--border);
+        background: var(--bg-secondary);
+        flex-shrink: 0;
+    }
+
+    .agentic-state.mobile-panel-overlay .agentic-state-tabs::-webkit-scrollbar {
+        display: none;
     }
 
     .agentic-state.mobile-panel-overlay .agentic-tab {
         min-width: 44px;
-        min-height: 44px;
-        flex: 1;
+        min-height: 40px;
+        height: 40px;
+        padding: 0 8px;
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
         justify-content: center;
+        border-radius: 6px;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+    }
+
+    .agentic-state.mobile-panel-overlay .agentic-tab.active {
+        color: var(--accent);
+        background: var(--accent-dim);
+    }
+
+    .agentic-state.mobile-panel-overlay #agentic-mobile-close-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        margin-left: auto;
+        position: sticky;
+        right: 0;
+        min-width: 44px;
+        min-height: 40px;
+        height: 40px;
+        padding: 0 8px;
+        background: var(--bg-secondary);
+        color: var(--text-muted);
+        z-index: 2;
+    }
+
+    .agentic-state.mobile-panel-overlay #agentic-mobile-close-btn:hover,
+    .agentic-state.mobile-panel-overlay #agentic-mobile-close-btn:active {
+        color: var(--text-primary);
+        background: var(--bg-hover);
     }
 
     /* Panel content fills remaining space */
     .agentic-state.mobile-panel-overlay .agentic-panel.active {
         flex: 1;
+        display: flex;
+        flex-direction: column;
         min-height: 0;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .agentic-state.mobile-panel-overlay #agentic-panel-board.active {
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
     }
 
     /* When panel is shown, hide the task-bar-resize-handle */

@@ -159,11 +159,12 @@ export function showView(activeId) {
     }
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', FULL_WIDTH_VIEWS.has(activeId));
+    document.body.classList.toggle('live-session-active', activeId === 'live-session-view');
 }
 
 // options is passed through to marked.parse for this call only, e.g.
 export const DOMPURIFY_CONFIG = {
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file|coral):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     ADD_ATTR: ['target', 'rel', 'data-file-ref', 'data-action', 'data-pending-id'],
 };
 
@@ -218,13 +219,17 @@ export async function copyText(text) {
     return ok;
 }
 
-// Images the file preview shows as pictures (served by the ?raw=1 form of
-// file-content / file-original; keep in sync with previewImageTypes in
-// routes/sessions.go).
+// File types supported by the raw preview endpoints (keep in sync with the
+// preview type maps in routes/sessions.go).
 const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+const MEDIA_EXT_RE = /\.(mp3|wav|ogg|oga|m4a|aac|flac|mp4|webm|ogv|mov|m4v)$/i;
 
 export function isImagePath(filepath) {
     return IMAGE_EXT_RE.test(filepath || '');
+}
+
+export function isMediaPath(filepath) {
+    return MEDIA_EXT_RE.test(filepath || '');
 }
 
 /** Render images into container. `panes` is a list of { label, url, missing }:
@@ -264,6 +269,47 @@ export function renderImagePanes(container, panes) {
         img.src = pane.url;
         frame.appendChild(img);
         fig.append(frame, meta);
+        wrap.appendChild(fig);
+    }
+    container.appendChild(wrap);
+}
+
+/** Render playable audio/video files into container. `panes` accepts the same
+ * shape as renderImagePanes so media diffs can show Before/After players. */
+export function renderMediaPanes(container, panes) {
+    container.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'media-panes' + (panes.length > 1 ? ' media-panes-compare' : '');
+    for (const pane of panes) {
+        const fig = document.createElement('figure');
+        fig.className = 'media-pane';
+        if (pane.label) {
+            const label = document.createElement('div');
+            label.className = 'image-pane-label';
+            label.textContent = pane.label;
+            fig.appendChild(label);
+        }
+        const frame = document.createElement('div');
+        frame.className = 'media-pane-frame';
+        // The media URL is an API endpoint, so inspect its filepath query
+        // parameter rather than the endpoint path itself.
+        let mediaPath = pane.url;
+        try { mediaPath = new URL(pane.url, window.location.href).searchParams.get('filepath') || pane.url; } catch { /* use URL text */ }
+        const isVideo = /\.(mp4|webm|ogv|mov|m4v)$/i.test(mediaPath);
+        const media = document.createElement(isVideo ? 'video' : 'audio');
+        media.controls = true;
+        media.preload = 'metadata';
+        media.setAttribute('playsinline', '');
+        media.addEventListener('error', () => {
+            frame.innerHTML = '';
+            const note = document.createElement('div');
+            note.className = 'image-pane-missing';
+            note.textContent = pane.missing || 'Media could not be loaded';
+            frame.appendChild(note);
+        });
+        media.src = pane.url;
+        frame.appendChild(media);
+        fig.appendChild(frame);
         wrap.appendChild(fig);
     }
     container.appendChild(wrap);

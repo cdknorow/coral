@@ -231,16 +231,7 @@ function _wireHeader() {
 function _isPhone() { return window.innerWidth <= 767; }
 
 export function togglePopoutPanel() {
-    const panel = document.getElementById('agentic-state');
-    if (!panel) return;
-    if (_isPhone()) {
-        panel.classList.toggle('mobile-panel-overlay');
-        panel.classList.remove('collapsed');
-    } else {
-        toggleAgenticPanel();
-    }
-    _syncPanelToggle();
-    setTimeout(fitTerminal, 50);
+    toggleAgenticPanel();
 }
 
 function _syncPanelToggle() {

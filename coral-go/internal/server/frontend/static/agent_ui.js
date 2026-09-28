@@ -46,7 +46,7 @@ export async function refreshAgentUI() {
             const guide = document.createElement('section'); guide.className = 'agent-ui-guide';
             const guideTitle = document.createElement('h4'); guideTitle.textContent = 'Ask an agent to build a panel'; guide.append(guideTitle);
             const prompt = document.createElement('textarea'); prompt.className = 'agent-ui-prompt'; prompt.readOnly = true;
-            prompt.value = 'Use an INTERNAL subagent (for example, spawn_agent) to build a self-contained panel for [describe what you need]. Never run coral-agent launch or start another Coral session. Give the subagent the requirements, stable panel ID, and originating session/server. It validates and publishes directly with:\n\ncoral-agent ui publish --id [stable-id] --title "[Panel title]" --file panel.html\n\nUse inline, responsive, accessible HTML/CSS/JS. Interactive panels use coralUI.emit(action, payload); read responses with `coral-agent ui events --id=[stable-id] --after=<last-event-id>`. Do not review, retest, republish, or summarize after handoff; the published panel is the response. Report only publication blockers.';
+            prompt.value = 'Use an INTERNAL subagent (for example, spawn_agent) to build a self-contained panel for [describe what you need]. Never run coral-agent launch or start another Coral session. Give the subagent the requirements, stable panel ID, and originating session/server. It validates and publishes directly with:\n\ncoral-agent ui publish --id [stable-id] --title "[Panel title]" --file panel.html\n\nUse inline, responsive, accessible HTML/CSS/JS. Use coralUI.emit(action, payload) only for a decision or interaction that needs agent feedback; keep navigation, display toggles, playback, and other passive UI local. Group related answers into one event. Read responses with `coral-agent ui events --id=[stable-id] --after=<last-event-id>`. Do not review, retest, republish, or summarize after handoff; the published panel is the response. Report only publication blockers.';
             const copy = document.createElement('button'); copy.className = 'agent-ui-copy'; copy.textContent = 'Copy instructions';
             copy.onclick = async () => { try { await navigator.clipboard.writeText(prompt.value); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy instructions'; }, 1500); } catch { prompt.select(); document.execCommand('copy'); copy.textContent = 'Copied'; } };
             guide.append(prompt, copy); home.append(guide);
@@ -56,7 +56,7 @@ export async function refreshAgentUI() {
         for (const p of allPanels) {
             const row = document.createElement('button'); row.className = 'agent-ui-home-row';
             const label = document.createElement('strong'); label.textContent = p.title;
-            const meta = document.createElement('span'); meta.textContent = `Revision ${p.revision}`;
+            const meta = document.createElement('span'); meta.textContent = `Revision ${p.revision} · ${Number(p.event_count || 0)} event${Number(p.event_count || 0) === 1 ? '' : 's'}`;
             row.append(label, meta); row.onclick = () => { activePanel = p.id; refreshAgentUI(); }; home.append(row);
         }
         for (const [id, item] of mounted) {
@@ -69,6 +69,10 @@ export async function refreshAgentUI() {
             const card = document.createElement('section'); card.className = 'agent-ui-card';
             const header = document.createElement('header');
             const title = document.createElement('strong'); title.textContent = `${panel.title} · v${panel.revision}`;
+            const metric = document.createElement('span'); metric.className = 'agent-ui-event-count';
+            metric.textContent = `${Number(panel.event_count || 0)} event${Number(panel.event_count || 0) === 1 ? '' : 's'}`;
+            metric.title = 'Persisted interactions from this panel';
+            title.append(' ', metric);
             const expand = document.createElement('button'); expand.innerHTML = '<span class="material-icons">open_in_full</span>'; expand.title = 'Expand panel';
             expand.setAttribute('aria-label', 'Expand panel');
             const popout = document.createElement('button'); popout.innerHTML = '<span class="material-icons">open_in_new</span>'; popout.title = 'Open in new tab';
@@ -76,18 +80,38 @@ export async function refreshAgentUI() {
             const dismiss = document.createElement('button'); dismiss.innerHTML = '<span class="material-icons">close</span>'; dismiss.title = 'Close panel';
             dismiss.className = 'agent-ui-dismiss'; dismiss.title = 'Close panel';
             dismiss.setAttribute('aria-label', `Close panel: ${panel.title}`);
+            const remove = document.createElement('button'); remove.innerHTML = '<span class="material-icons">delete</span>'; remove.title = 'Delete panel';
+            remove.className = 'agent-ui-delete'; remove.setAttribute('aria-label', `Delete panel: ${panel.title}`);
             const actions = document.createElement('div'); actions.className = 'agent-ui-actions';
-            actions.append(expand, popout, dismiss); header.append(title, actions);
+            actions.append(expand, popout, dismiss, remove); header.append(title, actions);
             const status = document.createElement('p'); status.className = 'agent-ui-status'; status.setAttribute('role', 'status');
             const frame = document.createElement('iframe'); frame.title = panel.title;
             frame.setAttribute('sandbox', 'allow-scripts');
             frame.setAttribute('referrerpolicy', 'no-referrer');
             frame.src = endpoint(sid, panel.id).replace('?','/content?') + '&revision=' + panel.revision;
             card.append(header, frame, status); container.append(card); card.hidden = activePanel !== panel.id;
-            const item = { card, frame, status, revision: panel.revision, sid, id: panel.id };
+            const item = { card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
             dismiss.onclick = () => {
                 if (activePanel === panel.id) activePanel = 'home';
                 refreshAgentUI();
+            };
+            remove.onclick = async () => {
+                if (!window.confirm(`Delete “${panel.title}”? This removes the panel and its saved responses.`)) return;
+                remove.disabled = true;
+                try {
+                    const response = await fetch(endpoint(sid, panel.id), { method: 'DELETE' });
+                    if (!response.ok) {
+                        const result = await response.json().catch(() => ({}));
+                        throw new Error(result.error || `Delete failed (${response.status})`);
+                    }
+                    item.close?.();
+                    mounted.delete(panel.id);
+                    activePanel = 'home';
+                    await refreshAgentUI();
+                } catch (error) {
+                    remove.disabled = false;
+                    status.textContent = error.message;
+                }
             };
             popout.onclick = () => window.open(frame.src, '_blank', 'noopener,noreferrer');
             expand.onclick = () => {
@@ -138,6 +162,8 @@ export function initAgentUI() {
             });
             result = await response.json();
             if (!response.ok) throw new Error(result.error || `Interaction failed (${response.status})`);
+            item.eventCount += 1;
+            item.metric.textContent = `${item.eventCount} event${item.eventCount === 1 ? '' : 's'}`;
             item.status.textContent = result.notified
                 ? 'Response saved; agent notified.'
                 : 'Response saved; agent not notified' + (result.notify_error ? ': ' + result.notify_error : '.') + ' You can ask the agent to read it.';

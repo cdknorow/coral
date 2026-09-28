@@ -50,10 +50,18 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 	r.Post("/api/board/{project}/tasks/{taskID}/publish", handler.PublishTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/reassign", handler.ReassignTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/nudge", handler.NudgeTask)
+	r.Post("/api/board/{project}/tasks/{taskID}/reminder", handler.RemindTask)
+	r.Delete("/api/board/{project}/tasks/{taskID}/reminder", handler.RemindTask)
+	r.Post("/api/board/{project}/reminder", handler.RemindSubscriber)
+	r.Delete("/api/board/{project}/reminder", handler.RemindSubscriber)
 	r.Post("/api/board/{project}/pause", handler.PauseBoard)
 	r.Post("/api/board/{project}/resume", handler.ResumeBoard)
 	r.Get("/api/board/{project}/paused", handler.GetPaused)
 	r.Delete("/api/board/{project}", handler.DeleteBoard)
+	r.Post("/api/board/{project}/waits", handler.RegisterWait)
+	r.Get("/api/board/{project}/waits", handler.GetActiveWait)
+	r.Delete("/api/board/{project}/waits", handler.CancelWait)
+	r.Get("/api/board/{project}/waits/poll", handler.PollWait)
 
 	server := httptest.NewServer(r)
 	t.Cleanup(server.Close)
@@ -512,6 +520,44 @@ func TestBoardReassignTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 		content, _ := last["content"].(string)
 		return content == "[Task #2 reassigned to Backend Dev — notification deferred while they have an active task] Unassigned task"
 	}, 2*time.Second, 50*time.Millisecond)
+}
+
+func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	mockTerm := newMockTerminal()
+	mockTerm.addSession("tmux-frontend", "/tmp/frontend")
+	handler.SetTerminal(mockTerm)
+	base := server.URL + "/api/board/assignment-nudge"
+
+	resp := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Frontend Dev",
+		"job_title":     "Frontend Dev",
+		"session_name":  "tmux-frontend",
+	})
+	resp.Body.Close()
+	resp = postJSON(t, base+"/tasks", map[string]string{
+		"title":      "Unassigned work",
+		"created_by": "Orchestrator",
+	})
+	var task board.Task
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&task))
+	resp.Body.Close()
+	require.Equal(t, http.StatusCreated, resp.StatusCode)
+
+	resp = patchJSON(t, base+fmt.Sprintf("/tasks/%d", task.ID), map[string]string{"assigned_to": "Frontend Dev"})
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	require.Eventually(t, func() bool {
+		mockTerm.mu.Lock()
+		defer mockTerm.mu.Unlock()
+		for _, input := range mockTerm.sent["tmux-frontend"] {
+			if input == taskNudge {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond)
 }
 
 func boardMessagesContain(t *testing.T, base, needle string) bool {
@@ -1372,6 +1418,38 @@ func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > before }, 2*time.Second, 20*time.Millisecond)
+}
+
+func TestBoardRemindTask_StartsAndStopsPeriodicReminder(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	base := server.URL + "/api/board/myproject"
+	terminal := newMockTerminal()
+	terminal.addSession("claude-backend", "/tmp/a")
+	handler.SetTerminal(terminal)
+	postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Backend Dev", "job_title": "Backend Dev", "session_name": "claude-backend",
+	}).Body.Close()
+	postJSON(t, base+"/tasks", map[string]string{
+		"title": "Periodic work", "created_by": "Orchestrator", "assigned_to": "Backend Dev",
+	}).Body.Close()
+
+	resp := postJSON(t, base+"/tasks/1/reminder", map[string]any{"interval_seconds": 30})
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, true, result["active"])
+
+	req, err := http.NewRequest(http.MethodDelete, base+"/tasks/1/reminder", nil)
+	require.NoError(t, err)
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp = postJSON(t, base+"/tasks/1/reminder", map[string]any{"interval_seconds": 10})
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
 func TestUnescapeLineBreaks(t *testing.T) {

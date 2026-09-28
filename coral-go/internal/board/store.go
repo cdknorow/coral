@@ -294,6 +294,10 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	// SQLite doesn't support ALTER CONSTRAINT, so we recreate the table.
 	s.migrateTasksCheckConstraint(ctx)
 
+	if err := s.ensureWaitsSchema(ctx); err != nil {
+		return err
+	}
+
 	return s.initTaskWorkflows(ctx)
 }
 
@@ -1274,7 +1278,20 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 	}
 
 	if opts == nil || !opts.Draft {
-		return s.PublishTask(ctx, project, taskID)
+		task, err := s.PublishTask(ctx, project, taskID)
+		if err != nil {
+			return nil, err
+		}
+		if w.RetryOf != 0 {
+			if err := s.RewireRetryDependents(ctx); err != nil {
+				return nil, err
+			}
+			task, err = s.getTaskByID(ctx, project, taskID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return task, nil
 	}
 	return s.getTaskByID(ctx, project, taskID)
 }

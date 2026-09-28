@@ -111,7 +111,18 @@ var Pricing = map[string]ModelPricing{
 // segment matching to a canonical pricing row. It is empty now that every
 // priced generation has its own row; it stays as the place to put a true
 // alias (a differently named ID for the same model) if one appears.
-var modelAliases = map[string]string{}
+var modelAliases = map[string]string{
+	// Coral's Codex launcher labels the configured GPT-5.6 tiers as gpt-6-*.
+	// They use the same rate card until provider-side model IDs are exposed.
+	"gpt-6-sol":         "gpt-5.6-sol",
+	"gpt-6-astra":       "gpt-5.6-sol",
+	"codex-auto-review": "gpt-5.6-sol",
+	// Antigravity's quality-tier names map to the corresponding published
+	// Gemini rate families.
+	"gemini-3.8-flash-high":   "gemini-2.5-flash",
+	"gemini-3.8-flash-medium": "gemini-2.5-flash",
+	"gemini-3.1-pro-high":     "gemini-2.5-pro",
+}
 
 // modelContextWindows records authoritative context sizes even when Coral has
 // no verified pricing row for a model (and therefore must not invent costs).

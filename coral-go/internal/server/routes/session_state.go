@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/store"
 
 	"github.com/cdknorow/coral/internal/sessionstate"
@@ -42,16 +43,19 @@ func (h *SessionsHandler) deriveSingleSessionState(ctx context.Context, sessionI
 
 // All session payloads use the same transcript fallback when hooks are missing.
 func (h *SessionsHandler) applyTranscriptState(input *SessionStateInput, events []store.AgentEvent, agentType, sessionID, workingDir string) {
-	if agentType != "codex" {
-		return
+	switch agentType {
+	case at.Codex:
+		kind, atTime := h.jsonl.ReadCodexTurnEvent(sessionID, workingDir)
+		mergeTranscriptTurnEvent(input, events, kind, atTime)
+	case at.Agy, at.Antigravity, at.Gemini:
+		kind, atTime, summary := h.jsonl.ReadAgyTurnEvent(sessionID, workingDir)
+		mergeTranscriptTurnEvent(input, events, kind, atTime, summary)
 	}
-	kind, at := h.jsonl.ReadCodexTurnEvent(sessionID, workingDir)
-	mergeTranscriptTurnEvent(input, events, kind, at)
 }
 
 // Hook signals win ties (their timestamps can have second precision). A newer
 // transcript turn boundary repairs missing hooks without masking newer prompts.
-func mergeTranscriptTurnEvent(input *SessionStateInput, events []store.AgentEvent, kind string, at time.Time) {
+func mergeTranscriptTurnEvent(input *SessionStateInput, events []store.AgentEvent, kind string, at time.Time, summary ...string) {
 	if kind == "" || at.IsZero() {
 		return
 	}
@@ -61,7 +65,11 @@ func mergeTranscriptTurnEvent(input *SessionStateInput, events []store.AgentEven
 			return
 		}
 	}
-	input.Events = append(input.Events, StateEvent{Type: kind})
+	var summ string
+	if len(summary) > 0 {
+		summ = summary[0]
+	}
+	input.Events = append(input.Events, StateEvent{Type: kind, Summary: summ})
 	// Explicit turn state is stronger evidence than terminal log age; a long
 	// model/tool operation can be silent while the turn remains in progress.
 	input.StalenessSeconds = 0

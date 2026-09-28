@@ -730,6 +730,55 @@ Time metadata
 </ADDITIONAL_METADATA>`,
 			want: "",
 		},
+		{
+			name: "plan mode prefix on task reminder",
+			content: `<USER_REQUEST>
+/plan [Task #978 reminder] SEO and competitor growth audit — assigned to you and waiting. Run 'coral-board task claim' to start.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-27T19:50:21-07:00.
+</ADDITIONAL_METADATA>`,
+			want: "[Task #978 reminder] SEO and competitor growth audit — assigned to you and waiting. Run 'coral-board task claim' to start.",
+		},
+		{
+			name: "goal mode prefix on board unread nudge",
+			content: `<USER_REQUEST>
+/goal You have 2 unread messages on the message board. Run 'coral-board read' to see them.
+</USER_REQUEST>`,
+			want: "You have 2 unread messages on the message board. Run 'coral-board read' to see them.",
+		},
+		{
+			name: "plan mode prefix on wait resolved",
+			content: `/plan [Wait resolved] Task #42 (DB Migration) is now completed. Run 'coral-board task detail 42' to review.`,
+			want: "[Wait resolved] Task #42 (DB Migration) is now completed. Run 'coral-board task detail 42' to review.",
+		},
+		{
+			name: "regular user plan slash command is preserved",
+			content: `<USER_REQUEST>
+/plan Please design the new database schema
+</USER_REQUEST>`,
+			want: "/plan Please design the new database schema",
+		},
+		{
+			name: "plan mode prefix on mention-tagged task available",
+			content: `/plan @QA Engineer You have tasks available — run 'coral-board task claim' to start`,
+			want: "@QA Engineer You have tasks available — run 'coral-board task claim' to start",
+		},
+		{
+			name: "plan mode prefix on personal task notification",
+			content: `/plan You have a new task in Coral (#42: Review PR). Claim it with ` + "`coral-agent task claim`" + ` to see the details, then run ` + "`coral-agent task complete 42`" + ` when it's done.`,
+			want: "You have a new task in Coral (#42: Review PR). Claim it with `coral-agent task claim` to see the details, then run `coral-agent task complete 42` when it's done.",
+		},
+		{
+			name: "plan mode prefix on coral UI action",
+			content: `/plan [Coral UI action #1] A user responded to panel p1 (revision 1).`,
+			want: "[Coral UI action #1] A user responded to panel p1 (revision 1).",
+		},
+		{
+			name: "multiple slash prefixes on board unread reminder",
+			content: `/plan /goal You have 1 unread message on the message board. Run 'coral-board read' to see them.`,
+			want: "You have 1 unread message on the message board. Run 'coral-board read' to see them.",
+		},
 	}
 
 	tools := make(map[string]string)

@@ -356,10 +356,33 @@ export function initAgenticPanelCollapse() {
     }
 }
 
-export function toggleAgenticPanel() {
+export function toggleAgenticPanel(forceState) {
     const panel = document.getElementById('agentic-state');
     if (!panel) return;
-    const isCollapsed = panel.classList.toggle('collapsed');
+    if (window.innerWidth <= 767) {
+        let isOverlay;
+        if (typeof forceState === 'boolean') {
+            isOverlay = forceState;
+            panel.classList.toggle('mobile-panel-overlay', isOverlay);
+        } else {
+            isOverlay = panel.classList.toggle('mobile-panel-overlay');
+        }
+        panel.classList.remove('collapsed');
+        _syncPanelToggleBtn(isOverlay);
+        if (isOverlay) {
+            // Ensure an active panel is selected if none active
+            const activePanel = panel.querySelector('.agentic-panel.active');
+            if (!activePanel) {
+                const filesTab = document.getElementById('agentic-tab-files');
+                if (filesTab) filesTab.click();
+            }
+        }
+        return;
+    }
+    const isCollapsed = typeof forceState === 'boolean' ? !forceState : panel.classList.toggle('collapsed');
+    if (typeof forceState === 'boolean') {
+        panel.classList.toggle('collapsed', isCollapsed);
+    }
     localStorage.setItem(layoutKey('coral-agentic-collapsed'), isCollapsed);
     _syncPanelToggleBtn(!isCollapsed);
     // Fit terminal immediately and again after CSS transition completes
@@ -368,11 +391,12 @@ export function toggleAgenticPanel() {
     setTimeout(() => fitTerminal(), 300);
 }
 
-function _syncPanelToggleBtn(isOpen) {
+export function _syncPanelToggleBtn(isOpen) {
     const btn = document.getElementById('panel-toggle-btn');
     if (btn) btn.classList.toggle('active', isOpen);
     const popoutBtn = document.getElementById('popout-panel-toggle-btn');
-    if (popoutBtn && window.innerWidth > 767) {
+    if (popoutBtn) {
+        popoutBtn.classList.toggle('active', isOpen);
         popoutBtn.setAttribute('aria-pressed', isOpen ? 'true' : 'false');
         popoutBtn.setAttribute('aria-label', isOpen ? 'Hide side panel' : 'Show side panel');
         popoutBtn.title = popoutBtn.getAttribute('aria-label');

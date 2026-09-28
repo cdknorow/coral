@@ -456,15 +456,16 @@ const DefaultOrchestratorSystemPrompt = "Post a message with coral-board post \"
 
 const DefaultWorkerSystemPrompt = "Post a message with coral-board post \"<your introduction>\" that introduces yourself, " +
 	"then STOP and wait. Do NOT poll the message board in a loop. Coral will notify you when there are new messages.\n\n" +
+	"Whenever you are waiting for a teammate, orchestrator review, task dependency, or commit: run coral-board wait --from \"Agent Name\" (or --task <id>, --commit <hash>) and STOP YOUR TURN IMMEDIATELY. Never run sleep, polling loops, or wait in code. Coral will automatically notify and wake you up when the event occurs.\n\n" +
 	"You can check for assigned tasks with coral-board task list or coral-board task claim. " +
 	"When you finish a task, mark it complete: coral-board task complete <id> --message \"what was done\"\n" +
 	DefaultTaskWorkflowGuidance
 
 const DefaultTaskWorkflowGuidance = "Read the workflow instructions, required outputs, and upstream artifacts returned by task claim/current. " +
 	"Use separate dependent tasks for Build, Test, and Release; task add supports --blocked-by JSON, --outputs, --workflow, --stage, and --workflow-instructions. " +
-	"Complete with --artifacts manifest.json (an array of named artifacts with uri or content and optional revision/digest). " +
+	"Complete with --artifacts manifest.json (an array of named artifacts with a durable uri or inline content and optional revision/digest). Upload local files with coral-agent artifact upload <file> and use its coral:// URI. Never submit local filesystem paths or temporary-file links in task results or user-facing summaries; users and downstream agents cannot reach your checkout. " +
 	"Use --outcome failed for failed work; never report failed verification as success. " +
-	"Use task detail <id> to read prior evidence. Wait for Coral's dependency notification instead of polling."
+	"Use task detail <id> to read prior evidence. When waiting on dependencies or reviews, register a wait with coral-board wait and stop your turn instead of polling or sleeping."
 
 // Default action prompts (appended to user prompt as CLI positional arg).
 const DefaultOrchestratorActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Post a message with coral-board post "<your introduction>" that introduces yourself, then discuss your proposed plan with the operator (the human user) before posting assignments.
@@ -482,7 +483,7 @@ Use coral-board post for general conversation, discussion, status updates, and q
 
 const DefaultWorkerActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Do not start any actions until you receive instructions from the Orchestrator on the message board. Post a message with coral-board post "<your introduction>" that introduces yourself, then STOP.
 
-CRITICAL: Do NOT poll or loop on 'coral-board read'. Coral will automatically notify you (as a user message) when new messages arrive — only run 'coral-board read' after receiving a notification. Between notifications, do nothing and wait.
+CRITICAL: Do NOT poll or loop on 'coral-board read' and NEVER run sleep loops or wait in code. Coral will automatically notify you (as a user message) when new messages arrive — only run 'coral-board read' after receiving a notification. Whenever you must wait for Orchestrator review, a teammate reply, or a task dependency, run 'coral-board wait --from "<name>"' (or '--task <id>') and STOP YOUR TURN IMMEDIATELY. Coral will wake you up via terminal notification when the event occurs.
 
 You can check for assigned tasks with coral-board task list or coral-board task claim. When you finish a task, mark it complete: coral-board task complete <id> --message "what was done"`
 
