@@ -13,6 +13,7 @@
     border-bottom: 1px solid var(--topbar-border);
     position: relative;
     z-index: 20;
+    flex-shrink: 0;
 }
 
 .top-bar-brand {
@@ -191,7 +192,9 @@
 
 .layout {
     display: flex;
-    height: calc(100vh - 43px);
+    flex: 1;
+    min-height: 0;
+    height: auto;
 }
 
 /* ── Sidebar ───────────────────────────────────────────────── */
@@ -609,6 +612,7 @@
 
 .main-content {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;

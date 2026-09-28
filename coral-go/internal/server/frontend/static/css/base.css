@@ -13,7 +13,11 @@ body {
     background: var(--bg-primary);
     color: var(--text-primary);
     height: 100vh;
+    height: 100dvh;
+    height: var(--visual-viewport-height, 100dvh);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 /* ── Scrollbar ─────────────────────────────────────────────── */

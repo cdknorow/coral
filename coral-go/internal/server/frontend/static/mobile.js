@@ -321,16 +321,27 @@ function _initSwipeNavigation() {
     }, { passive: true });
 }
 
-// ── Virtual Keyboard Detection ────────────────────────────────────────────
+// ── Virtual Keyboard Detection & Viewport Height Tracking ─────────────────
 
 function _initKeyboardDetection() {
     if (!window.visualViewport) return;
 
+    const updateViewportHeight = () => {
+        if (!isMobile()) {
+            document.documentElement.style.removeProperty('--visual-viewport-height');
+            return;
+        }
+        const height = window.visualViewport.height;
+        document.documentElement.style.setProperty('--visual-viewport-height', `${height}px`);
+    };
+
     // Track the initial viewport height to detect keyboard open/close
     let initialHeight = window.visualViewport.height;
+    updateViewportHeight();
 
     window.visualViewport.addEventListener('resize', () => {
         if (!isMobile()) return;
+        updateViewportHeight();
 
         // Keyboard is open when viewport shrinks significantly (>100px)
         const heightDiff = initialHeight - window.visualViewport.height;
@@ -339,11 +350,26 @@ function _initKeyboardDetection() {
         document.body.classList.toggle('keyboard-open', keyboardOpen);
     });
 
+    window.visualViewport.addEventListener('scroll', () => {
+        // Prevent unwanted visualViewport scroll offset on mobile
+        if (window.visualViewport.pageTop > 0) {
+            window.scrollTo(0, 0);
+        }
+    });
+
     // Update initial height on orientation change
     window.addEventListener('orientationchange', () => {
         setTimeout(() => {
             initialHeight = window.visualViewport.height;
+            updateViewportHeight();
         }, 300);
+    });
+
+    window.addEventListener('resize', () => {
+        if (!document.body.classList.contains('keyboard-open')) {
+            initialHeight = window.visualViewport.height;
+        }
+        updateViewportHeight();
     });
 }
 
