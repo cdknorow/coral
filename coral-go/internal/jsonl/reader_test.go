@@ -172,6 +172,53 @@ func TestReadNewMessages_CodexEventMessages(t *testing.T) {
 	}
 }
 
+func TestReadNewMessages_CodexImageAndTextMessages(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "019e90eb-a08a-7511-a410-23e7ae3e9999"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "09", "29")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+
+	jsonlPath := filepath.Join(sessionDir, "rollout-2026-09-29T12-00-00-"+sessionID+".jsonl")
+	entries := `{"timestamp":"2026-09-29T12:00:01.000Z","type":"event_msg","payload":{"type":"user_message","message":"","images":["/Users/test/.coral/uploads/image1.png"]}}
+{"timestamp":"2026-09-29T12:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Here is text with image","images":["/Users/test/.coral/uploads/image2.png"]}}
+{"timestamp":"2026-09-29T12:00:03.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_image","image_url":{"url":"/Users/test/.coral/uploads/image3.png"}}]}}
+{"timestamp":"2026-09-29T12:00:04.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_image","image_url":{"url":"/Users/test/.coral/uploads/image4.png"}},{"type":"input_text","text":"Caption for image 4"}]}}
+`
+	if err := os.WriteFile(jsonlPath, []byte(entries), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := NewSessionReader()
+	msgs, total := reader.ReadNewMessages(sessionID, "", "codex")
+
+	if total != 4 {
+		t.Fatalf("expected 4 messages, got %d: %#v", total, msgs)
+	}
+	if len(msgs) != 4 {
+		t.Fatalf("expected 4 new messages, got %d", len(msgs))
+	}
+	// Image only in event_msg should extract image path
+	if msgs[0]["type"] != "user" || msgs[0]["content"] != "/Users/test/.coral/uploads/image1.png" {
+		t.Fatalf("unexpected msgs[0]: %#v", msgs[0])
+	}
+	// Image + text in event_msg should extract text
+	if msgs[1]["type"] != "user" || msgs[1]["content"] != "Here is text with image" {
+		t.Fatalf("unexpected msgs[1]: %#v", msgs[1])
+	}
+	// Image only in response_item should extract image URL/path
+	if msgs[2]["type"] != "user" || msgs[2]["content"] != "/Users/test/.coral/uploads/image3.png" {
+		t.Fatalf("unexpected msgs[2]: %#v", msgs[2])
+	}
+	// Image + text in response_item should preserve text
+	if msgs[3]["type"] != "user" || msgs[3]["content"] != "/Users/test/.coral/uploads/image4.png\nCaption for image 4" {
+		t.Fatalf("unexpected msgs[3]: %#v", msgs[3])
+	}
+}
+
 func TestReadAllMessages_CodexRolloutToolCalls(t *testing.T) {
 	dir := t.TempDir()
 	sessionID := "019e9db7-58df-7082-a954-7305c01b1489"

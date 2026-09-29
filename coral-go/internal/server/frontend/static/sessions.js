@@ -6,7 +6,7 @@ import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
 import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
-import { renderQuickActions, updateSidebarActive } from './controls.js';
+import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
@@ -62,6 +62,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);
     input.value = state.sessionInputText[newKey] || "";
+    renderAttachments();
     input.focus();
 
     // Show live view, hide others

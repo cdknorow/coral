@@ -139,9 +139,40 @@ func parseCodexSession(fpath string, mtime float64) (*IndexedSession, error) {
 	}, nil
 }
 
+func extractCodexFirstText(content any) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		for _, block := range c {
+			if b, ok := block.(map[string]any); ok {
+				bt, _ := b["type"].(string)
+				if bt == "text" || bt == "input_text" {
+					if t, _ := b["text"].(string); t != "" {
+						return t
+					}
+				}
+				if bt == "input_image" {
+					if imgURL, ok := b["image_url"].(map[string]any); ok {
+						if u, ok := imgURL["url"].(string); ok && u != "" {
+							return u
+						}
+					}
+				}
+				if bt == "image" {
+					if p, ok := b["path"].(string); ok && p != "" {
+						return p
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func codexIndexMessage(entry map[string]any) (role, text string) {
 	if role, _ := entry["role"].(string); role == "user" || role == "assistant" {
-		return role, extractFirstText(entry["content"])
+		return role, extractCodexFirstText(entry["content"])
 	}
 
 	if entryType, _ := entry["type"].(string); entryType != "event_msg" {
@@ -152,6 +183,16 @@ func codexIndexMessage(entry map[string]any) (role, text string) {
 		return "", ""
 	}
 	message, _ := payload["message"].(string)
+	if strings.TrimSpace(message) == "" {
+		if imgs, ok := payload["images"].([]any); ok && len(imgs) > 0 {
+			for _, img := range imgs {
+				if p, ok := img.(string); ok && p != "" {
+					message = p
+					break
+				}
+			}
+		}
+	}
 	if strings.TrimSpace(message) == "" {
 		return "", ""
 	}

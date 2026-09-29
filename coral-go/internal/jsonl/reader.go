@@ -1295,6 +1295,19 @@ func parseCodexEventEntry(entry map[string]any, toolUseNames map[string]string) 
 		message, _ := payload["message"].(string)
 		switch payloadType {
 		case "user_message":
+			if strings.TrimSpace(message) == "" {
+				if imgs, ok := payload["images"].([]any); ok && len(imgs) > 0 {
+					var paths []string
+					for _, img := range imgs {
+						if p, ok := img.(string); ok && p != "" {
+							paths = append(paths, p)
+						}
+					}
+					if len(paths) > 0 {
+						message = strings.Join(paths, " ")
+					}
+				}
+			}
 			return parseCodexUserEntry(message, timestamp, toolUseNames)
 		case "agent_message":
 			messages := parseCodexAssistantEntry(message, timestamp, toolUseNames)
@@ -1560,6 +1573,18 @@ func parseCodexUserEntry(content any, timestamp string, toolUseNames map[string]
 			if bt == "text" || bt == "input_text" {
 				if text, _ := b["text"].(string); text != "" {
 					textParts = append(textParts, text)
+				}
+			} else if bt == "input_image" || bt == "image" {
+				var imgPath string
+				if urlStr, _ := b["image_url"].(string); urlStr != "" {
+					imgPath = urlStr
+				} else if urlMap, _ := b["image_url"].(map[string]any); urlMap != nil {
+					imgPath, _ = urlMap["url"].(string)
+				} else if p, _ := b["path"].(string); p != "" {
+					imgPath = p
+				}
+				if imgPath != "" {
+					textParts = append(textParts, imgPath)
 				}
 			} else if bt == "function_call_output" || bt == "tool_result" {
 				callID, _ := b["call_id"].(string)

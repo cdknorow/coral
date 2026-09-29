@@ -16,11 +16,37 @@ async function _getXtermModule() {
     return _xtermModule;
 }
 
-// Attached image paths (cleared on send)
-const pendingAttachments = [];
+// Active upload promises scoped by session_id
+const activeUploadPromisesBySession = new Map(); // session_id -> Promise[]
+let _isSending = false;
+
+// Attached image paths scoped by session_id (cleared on send)
+const pendingAttachmentsBySession = new Map(); // session_id -> [{ path, filename, previewUrl }]
+
+export function getPendingAttachments(session = state.currentSession) {
+    const sid = session?.session_id;
+    if (!sid) return [];
+    if (!pendingAttachmentsBySession.has(sid)) {
+        pendingAttachmentsBySession.set(sid, []);
+    }
+    return pendingAttachmentsBySession.get(sid);
+}
+
+// Proxied for any external access expecting an array
+export const pendingAttachments = new Proxy([], {
+    get(target, prop) {
+        const list = getPendingAttachments();
+        if (prop === 'length') return list.length;
+        if (typeof prop === 'string' && !isNaN(prop)) return list[Number(prop)];
+        const val = list[prop];
+        return typeof val === 'function' ? val.bind(list) : val;
+    }
+});
 
 export async function sendCommand() {
-    if (!state.currentSession || state.currentSession.type !== "live") {
+    if (_isSending) return;
+    const targetSession = state.currentSession;
+    if (!targetSession || targetSession.type !== "live") {
         showToast("No live session selected", true);
         return;
     }
@@ -30,66 +56,93 @@ export async function sendCommand() {
     }
     claimOwnership(); // sending from a viewer window takes interactive control
 
-    const input = document.getElementById("command-input");
-    const textPart = input.value.trim();
+    const targetSessionId = targetSession.session_id;
+    const targetSessionName = targetSession.name;
+    const targetAgentType = targetSession.agent_type;
 
-    // Build the full command: image paths + text, space-separated
-    const parts = [];
-    for (const att of pendingAttachments) {
-        parts.push(att.path);
-    }
-    if (textPart) parts.push(textPart);
-
-    const command = parts.join(" ");
-    if (!command) return;
-    const sentSessionId = state.currentSession.session_id;
-    const sentAt = Date.now();
-
-    // Try WebSocket path first (sends text, then Enter separately)
-    if (pendingAttachments.length === 0) {
-        const xterm = await _getXtermModule();
-        if (xterm.sendTerminalInputWs(command)) {
-            // Send Enter after delay so bracket paste + tmux processing completes
-            setTimeout(() => xterm.sendTerminalInputWs("\r"), 300);
-            addPendingMessage(sentSessionId, command, sentAt);
-            input.value = "";
-            const key = sessionKey(state.currentSession);
-            if (key) saveSessionDraft(key, "");
-            showToast(`Sent: ${command}`);
-            xterm.focusTerminal();
-            return;
-        }
-    }
-
-    // Fall back to POST endpoint
+    _isSending = true;
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/send`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command, agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
-        });
-        if (!resp.ok) {
-            const text = await resp.text();
-            showToast(`Server error ${resp.status}: ${text}`, true);
-            console.error("Send failed:", resp.status, text);
+        const activeUploads = activeUploadPromisesBySession.get(targetSessionId);
+        if (activeUploads && activeUploads.length > 0) {
+            showToast("Waiting for image upload to complete...");
+            const results = await Promise.all(activeUploads);
+            if (results.some(ok => ok === false)) {
+                showToast("Image upload failed, message not sent", true);
+                return;
+            }
+        }
+
+        // Verify session did not change while waiting for uploads
+        if (!state.currentSession || state.currentSession.session_id !== targetSessionId) {
+            showToast("Session changed while uploading, send cancelled", true);
             return;
         }
-        const result = await resp.json();
-        if (result.error) {
-            showToast(result.error, true);
-            console.error("Send error:", result.error);
-        } else {
-            addPendingMessage(sentSessionId, command, sentAt);
-            input.value = "";
-            clearAttachments();
-            const key = sessionKey(state.currentSession);
-            if (key) saveSessionDraft(key, "");
-            showToast(`Sent: ${command}`);
-            _getXtermModule().then(m => m.focusTerminal());
+
+        const input = document.getElementById("command-input");
+        const textPart = input.value.trim();
+
+        // Build the full command: image paths + text, space-separated
+        const sessionAttachments = getPendingAttachments(targetSession);
+        const parts = [];
+        for (const att of sessionAttachments) {
+            parts.push(att.path);
         }
-    } catch (e) {
-        showToast("Failed to send command", true);
-        console.error("Send exception:", e);
+        if (textPart) parts.push(textPart);
+
+        const command = parts.join(" ");
+        if (!command) return;
+        const sentSessionId = targetSessionId;
+        const sentAt = Date.now();
+        const hasAttachments = sessionAttachments.length > 0;
+
+        // Try WebSocket path first (sends text, then Enter separately)
+        if (!hasAttachments) {
+            const xterm = await _getXtermModule();
+            if (xterm.sendTerminalInputWs(command)) {
+                // Send Enter after delay so bracket paste + tmux processing completes
+                setTimeout(() => xterm.sendTerminalInputWs("\r"), 300);
+                addPendingMessage(sentSessionId, command, sentAt);
+                input.value = "";
+                const key = sessionKey(targetSession);
+                if (key) saveSessionDraft(key, "");
+                showToast(`Sent: ${command}`);
+                xterm.focusTerminal();
+                return;
+            }
+        }
+
+        // Fall back to POST endpoint
+        try {
+            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(targetSessionName)}/send`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ command, agent_type: targetAgentType, session_id: sentSessionId }),
+            });
+            if (!resp.ok) {
+                const text = await resp.text();
+                showToast(`Server error ${resp.status}: ${text}`, true);
+                console.error("Send failed:", resp.status, text);
+                return;
+            }
+            const result = await resp.json();
+            if (result.error) {
+                showToast(result.error, true);
+                console.error("Send error:", result.error);
+            } else {
+                addPendingMessage(sentSessionId, command, sentAt);
+                input.value = "";
+                clearAttachments(targetSession);
+                const key = sessionKey(targetSession);
+                if (key) saveSessionDraft(key, "");
+                showToast(`Sent: ${command}`);
+                _getXtermModule().then(m => m.focusTerminal());
+            }
+        } catch (e) {
+            showToast("Failed to send command", true);
+            console.error("Send exception:", e);
+        }
+    } finally {
+        _isSending = false;
     }
 }
 
@@ -819,51 +872,83 @@ function hasImageFiles(e) {
     return false;
 }
 
-async function uploadAndInsertImage(file) {
-    const formData = new FormData();
-    formData.append("file", file);
+export async function uploadAndInsertImage(file, session = state.currentSession) {
+    const targetSession = session || state.currentSession;
+    const sid = targetSession?.session_id;
+    if (!sid) return false;
+
+    const uploadPromise = (async () => {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            showToast(`Uploading ${file.name}...`);
+            const resp = await fetch("/api/upload", {
+                method: "POST",
+                body: formData,
+            });
+            if (!resp.ok) {
+                const text = await resp.text();
+                showToast(`Failed to upload image: ${text || resp.status}`, true);
+                return false;
+            }
+            const result = await resp.json();
+            if (result.error) {
+                showToast(result.error, true);
+                return false;
+            }
+
+            // Create a local object URL for the thumbnail preview
+            const previewUrl = URL.createObjectURL(file);
+            const list = getPendingAttachments(targetSession);
+            list.push({
+                path: result.path,
+                filename: result.filename,
+                previewUrl,
+            });
+            if (state.currentSession?.session_id === sid) {
+                renderAttachments(targetSession);
+                document.getElementById("command-input")?.focus();
+            }
+            showToast(`Attached: ${result.filename}`);
+            return true;
+        } catch (e) {
+            showToast("Failed to upload image", true);
+            console.error("Upload error:", e);
+            return false;
+        }
+    })();
+
+    const activeList = activeUploadPromisesBySession.get(sid) || [];
+    activeList.push(uploadPromise);
+    activeUploadPromisesBySession.set(sid, activeList);
 
     try {
-        showToast(`Uploading ${file.name}...`);
-        const resp = await fetch("/api/upload", {
-            method: "POST",
-            body: formData,
-        });
-        const result = await resp.json();
-        if (result.error) {
-            showToast(result.error, true);
-            return;
+        return await uploadPromise;
+    } finally {
+        const currentList = activeUploadPromisesBySession.get(sid) || [];
+        const nextList = currentList.filter(p => p !== uploadPromise);
+        if (nextList.length > 0) {
+            activeUploadPromisesBySession.set(sid, nextList);
+        } else {
+            activeUploadPromisesBySession.delete(sid);
         }
-
-        // Create a local object URL for the thumbnail preview
-        const previewUrl = URL.createObjectURL(file);
-        pendingAttachments.push({
-            path: result.path,
-            filename: result.filename,
-            previewUrl,
-        });
-        renderAttachments();
-
-        document.getElementById("command-input").focus();
-        showToast(`Attached: ${result.filename}`);
-    } catch (e) {
-        showToast("Failed to upload image", true);
-        console.error("Upload error:", e);
     }
 }
 
-function renderAttachments() {
+export function renderAttachments(session = state.currentSession) {
     const container = document.getElementById("image-attachments");
     if (!container) return;
 
-    if (pendingAttachments.length === 0) {
+    const list = getPendingAttachments(session);
+    if (list.length === 0) {
         container.innerHTML = "";
         container.style.display = "none";
         return;
     }
 
     container.style.display = "flex";
-    container.innerHTML = pendingAttachments.map((att, i) => `
+    container.innerHTML = list.map((att, i) => `
         <div class="image-attachment" title="${escapeAttr(att.path)}">
             <img src="${att.previewUrl}" alt="${escapeAttr(att.filename)}" />
             <span class="image-attachment-name">${escapeHtml(att.filename)}</span>
@@ -872,18 +957,26 @@ function renderAttachments() {
     `).join("");
 }
 
-export function removeAttachment(index) {
-    const removed = pendingAttachments.splice(index, 1);
+export function removeAttachment(index, session = state.currentSession) {
+    const targetSession = session || state.currentSession;
+    const list = getPendingAttachments(targetSession);
+    const removed = list.splice(index, 1);
     if (removed[0]?.previewUrl) URL.revokeObjectURL(removed[0].previewUrl);
-    renderAttachments();
+    renderAttachments(targetSession);
 }
 
-function clearAttachments() {
-    for (const att of pendingAttachments) {
+function clearAttachments(session = state.currentSession) {
+    const targetSession = session || state.currentSession;
+    const sid = targetSession?.session_id;
+    if (!sid) return;
+    const list = pendingAttachmentsBySession.get(sid) || [];
+    for (const att of list) {
         if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     }
-    pendingAttachments.length = 0;
-    renderAttachments();
+    pendingAttachmentsBySession.set(sid, []);
+    if (state.currentSession?.session_id === sid) {
+        renderAttachments(targetSession);
+    }
 }
 
 export function updateSidebarActive() {

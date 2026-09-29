@@ -991,6 +991,7 @@ function savePendingToStorage() {
     }
 }
 
+
 loadPendingFromStorage();
 
 const normalizeMsg = (t) => String(t || "").replace(/\s+/g, " ").trim();
@@ -1001,7 +1002,7 @@ function pendingMatchText(text) {
     const normalized = normalizeMsg(String(text || "")
         .replace(/<image\b[^>]*\bpath="([^"]+)"[^>]*>[\s\S]*?<\/image>/g, '$1')
         .replace(/\[Image #\d+\]/g, ''));
-    const body = normalized.replace(/^(?:\/\S*\/uploads\/\S+\s+)+/, '').trim();
+    const body = normalized.replace(/^(?:(?:\/(?:[^\/]+\/)*uploads\/[^\s]+|\/\S*\/uploads\/\S+)\s+)+/, '').trim();
     return body || normalized;
 }
 

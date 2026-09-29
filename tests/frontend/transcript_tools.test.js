@@ -38,7 +38,12 @@ const STUB = `
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
     if (m==='POST' && /\\/answer-prompt$/.test(path)) { window.__answers = (window.__answers||[]).concat([JSON.parse(opts.body)]);
       return window.__answerFail ? Promise.resolve(new Response(JSON.stringify({ error: 'The prompt changed. Answer it in the terminal.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })) : json({ ok: true }); }
-    if (m!=='GET') { const b = opts && opts.body ? JSON.parse(opts.body) : null; window.__posts = (window.__posts||[]).concat([[m, path, b]]);
+    if (path === '/api/upload') {
+      if (window.__failUpload) return Promise.resolve(new Response(JSON.stringify({ error: 'Upload failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } }));
+      const delay = window.__uploadDelay || 50;
+      return new Promise(r => setTimeout(r, delay)).then(() => json({ path: '/Users/test/.coral/uploads/shot.png', filename: 'shot.png' }));
+    }
+    if (m!=='GET') { const b = opts && opts.body && typeof opts.body === 'string' ? JSON.parse(opts.body) : null; window.__posts = (window.__posts||[]).concat([[m, path, b]]);
       if (m==='POST' && /\\/tasks$/.test(path) && b && b.notify) return json({ id: 7, title: b.title, completed: 0, notified: 'You have a new task in Coral (#7: ' + b.title + '). Claim it with coral-agent task claim to see the details, then run coral-agent task complete 7 when it is done.' });
       return json({ok:true}); }
     if (path==='/api/sessions/live') return json(window.__sessions);
@@ -360,6 +365,114 @@ async function run() {
   await ev(`window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
   await sleep(2000);
   check('repeated send settles only on its own receipt', await ev(`!${C}.querySelector('.pending-messages')`));
+
+  // Codex Scenario A & B: Image-only followed by subsequent text, and paths with spaces
+  await ev(`import('/static/live_chat.js').then(m => {
+    m.addPendingMessage(${JSON.stringify(SID)}, '/Users/test user/.coral/uploads/image 1.png');
+    m.addPendingMessage(${JSON.stringify(SID)}, 'Inspect this diagram');
+  })`);
+  check('separate image and subsequent text both show pending bubbles', await ev(`${C}.querySelectorAll('.pending-messages .chat-bubble.pending').length === 2`));
+  // Codex receipt for image-only entry
+  await ev(`window.__msgs.push({type:'user', content:'/Users/test user/.coral/uploads/image 1.png', timestamp:new Date().toISOString()}); true`);
+  await sleep(2000);
+  check('image receipt settles image-only pending message leaving text pending', await ev(`(() => {
+    const bubbles = ${C}.querySelectorAll('.pending-messages .chat-bubble.pending');
+    return bubbles.length === 1 && bubbles[0].textContent.includes('Inspect this diagram');
+  })()`));
+  // Codex receipt for subsequent text
+  await ev(`window.__msgs.push({type:'user', content:'Inspect this diagram', timestamp:new Date().toISOString()}); true`);
+  await sleep(2000);
+  check('subsequent text receipt settles text pending message completely', await ev(`!${C}.querySelector('.pending-messages')`));
+
+  // Actual payload verification for in-flight image upload + text send
+  await ev(`window.__posts = []; window.__failUpload = false; window.__uploadDelay = 300;
+    const file = new File(['fake image data'], 'shot.png', { type: 'image/png' });
+    import('/static/controls.js').then(c => {
+      c.uploadAndInsertImage(file);
+      document.getElementById('command-input').value = 'Please inspect this';
+      return c.sendCommand();
+    });
+  `);
+  await sleep(1000);
+  const pairedSendPost = await ev(`(window.__posts || []).find(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
+  check('in-flight upload and typed text produces atomic paired send payload', !!pairedSendPost && pairedSendPost[2] && pairedSendPost[2].command === '/Users/test/.coral/uploads/shot.png Please inspect this', JSON.stringify(pairedSendPost));
+
+  // Upload failure aborts send, prevents partial caption-only dispatch, and preserves input
+  await ev(`window.__posts = []; window.__failUpload = true; window.__uploadDelay = 100;
+    const failFile = new File(['fake data'], 'bad.png', { type: 'image/png' });
+    import('/static/controls.js').then(c => {
+      document.getElementById('command-input').value = 'Do not send without image';
+      c.uploadAndInsertImage(failFile);
+      return c.sendCommand();
+    });
+  `);
+  await sleep(600);
+  const failPost = await ev(`(window.__posts || []).find(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
+  const keptInput = await ev(`document.getElementById('command-input').value`);
+  check('upload failure aborts send without dispatching lone caption', !failPost && keptInput === 'Do not send without image', JSON.stringify({ failPost, keptInput }));
+
+  // Repeat-send debouncing while upload is in-flight
+  await ev(`window.__posts = []; window.__failUpload = false; window.__uploadDelay = 500;
+    const file2 = new File(['fake data'], 'shot2.png', { type: 'image/png' });
+    import('/static/controls.js').then(c => {
+      document.getElementById('command-input').value = 'Repeat send check';
+      c.uploadAndInsertImage(file2);
+      c.sendCommand();
+      c.sendCommand();
+    });
+  `);
+  await sleep(1000);
+  const repeatSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
+  check('repeat send while awaiting upload fires only once', repeatSends.length === 1 && repeatSends[0][2].command.includes('Repeat send check'), JSON.stringify(repeatSends));
+
+  // Session-switch safety while upload is in-flight
+  await ev(`window.__posts = []; window.__failUpload = false; window.__uploadDelay = 600;
+    const file3 = new File(['fake data'], 'shot3.png', { type: 'image/png' });
+    import('/static/controls.js').then(c => {
+      document.getElementById('command-input').value = 'Session switch check';
+      c.uploadAndInsertImage(file3);
+      c.sendCommand();
+      // Switch active session while upload is in-flight
+      return import('/static/state.js');
+    }).then(s => {
+      s.state.currentSession = { session_id: 'switched-session-id', name: 'other-session', type: 'live', agent_type: 'codex' };
+    });
+  `);
+  await sleep(1000);
+  const switchedSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
+  check('session switch while awaiting upload cancels send without dispatching to switched session', switchedSends.length === 0, JSON.stringify(switchedSends));
+  // Restore currentSession
+  await ev(`import('/static/state.js').then(s => { s.state.currentSession = (window.__sessions || []).find(x => x.session_id === ${JSON.stringify(SID)}) || s.state.currentSession; })`);
+
+  // Lead Developer finding #1366: upload started in session 1 then switching to session 2 before completion
+  await ev(`window.__posts = []; window.__uploadDelay = 400;
+    const file4 = new File(['fake data'], 'shot4.png', { type: 'image/png' });
+    const s1 = (window.__sessions || []).find(x => x.session_id === ${JSON.stringify(SID)});
+    import('/static/controls.js').then(c => {
+      // Start upload in session 1
+      c.uploadAndInsertImage(file4, s1);
+      // Switch to session 2 before upload completes
+      return import('/static/sessions.js');
+    }).then(sm => {
+      return sm.selectLiveSession('session-two', 'claude', 'sid-two');
+    });
+  `);
+  // Wait for upload to finish while in session 2
+  await sleep(800);
+  // Send from session 2
+  await ev(`import('/static/controls.js').then(c => {
+    document.getElementById('command-input').value = 'Message in session two';
+    return c.sendCommand();
+  })`);
+  await sleep(600);
+  const s2Send = await ev(`(window.__posts || []).find(p => p[0] === 'POST' && /\\/send$/.test(p[1]) && p[2] && p[2].session_id === 'sid-two')`);
+  check('upload started in session 1 does not leak attachment into session 2 send', !!s2Send && s2Send[2].command === 'Message in session two' && !s2Send[2].command.includes('shot4.png'), JSON.stringify(s2Send));
+
+  // Switch back to session 1; verify attachment is retained and sent to session 1
+  await ev(`import('/static/sessions.js').then(sm => sm.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)}))`);
+  await sleep(400);
+  const s1Attachments = await ev(`import('/static/controls.js').then(c => c.getPendingAttachments().length)`);
+  check('session 1 retains its uploaded attachment after returning', s1Attachments >= 1, String(s1Attachments));
 
   await client.close();
   const failed = results.filter(r => r === 'FAIL').length;
