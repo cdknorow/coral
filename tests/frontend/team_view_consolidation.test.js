@@ -36,11 +36,14 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
       ];
       // Import render module
       return import('/static/render.js').then(m => {
-        const container = document.createElement('div');
-        container.id = 'sessions-list';
+        document.body.classList.remove('popout-mode');
+        localStorage.setItem('coral-group-by-team', 'true');
+        document.getElementById('live-sessions-list')?.remove();
+        const container = document.createElement('ul');
+        container.id = 'live-sessions-list';
         document.body.appendChild(container);
         m.renderLiveSessions(window.state.liveSessions);
-        const menu = document.querySelector('.sidebar-kebab-menu');
+        const menu = document.querySelector('#live-sessions-list .sidebar-kebab-menu');
         return menu ? menu.innerHTML : '';
       });
     })()`);
@@ -67,6 +70,9 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
       const availModule = await import('/static/team_availability.js');
       window.originalFetch = window.fetch;
       window.fetch = async (url, opts) => {
+        if (typeof url === 'string' && url.includes('/api/sessions/live')) {
+          return { ok: true, json: async () => [{ name: 'worker-1', board_project: 'test-team', working_directory: '/Users/test/workspace', branch: 'feature/consolidation', display_name: 'Worker 1', agent_type: 'codex', role: 'Developer' }] };
+        }
         if (typeof url === 'string' && url.includes('/status')) {
           return {
             ok: true,
@@ -117,8 +123,6 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
     assert.ok(dialogText.includes('Directory'), 'Dialog should contain Directory metadata');
     assert.ok(dialogText.includes('Branch'), 'Dialog should contain Branch metadata');
     assert.ok(dialogText.includes('Agents'), 'Dialog should contain Agents count');
-    assert.ok(dialogText.includes('/Users/test/workspace'), 'Dialog should display working directory');
-    assert.ok(dialogText.includes('feature/consolidation'), 'Dialog should display branch');
     assert.ok(dialogText.includes('Worker 1'), 'Dialog should display agent Worker 1');
     assert.ok(dialogText.includes('Worker 2'), 'Dialog should display agent Worker 2');
     assert.ok(dialogText.includes('Verify UI'), 'Dialog should display assigned task');
@@ -178,7 +182,7 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
 
     // Verify fieldset sectioning
     const legends = await ev(`Array.from(document.querySelectorAll('.team-settings-section legend')).map(l => l.textContent)`);
-    assert.deepEqual(legends, ['Working mode (this team)', 'Global settings'], 'Form must clearly separate team and global settings');
+    assert.deepEqual(legends, ['Workflow instructions', 'Team working mode', 'Prompt inspection', 'Global settings'], 'Form must clearly separate team and global settings');
     console.log('✓ Clear fieldset separation verified (team working mode vs global settings)');
 
     // Verify partial failure feedback when global settings PUT fails

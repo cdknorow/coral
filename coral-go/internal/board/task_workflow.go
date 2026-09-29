@@ -48,6 +48,7 @@ type TaskWorkflow struct {
 
 func (s *Store) initTaskWorkflows(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS board_working_modes (board_id TEXT PRIMARY KEY, data TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS board_workflow_presets (board_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, instructions TEXT NOT NULL, PRIMARY KEY(board_id,id));
  CREATE TABLE IF NOT EXISTS task_workflows (
 	 task_id INTEGER PRIMARY KEY REFERENCES board_tasks(id), data TEXT NOT NULL);
 	 CREATE TABLE IF NOT EXISTS task_dependency_rules (

@@ -1224,6 +1224,9 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_subscribers WHERE project = ?", project); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM board_workflow_presets WHERE board_id = ?", project); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_working_modes WHERE board_id = ?", project); err != nil {
 		return err
 	}

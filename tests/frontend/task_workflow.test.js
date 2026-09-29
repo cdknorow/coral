@@ -29,7 +29,7 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
             tasks.showTaskDetailModal(window.testTaskID);
         })()`);
         assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('Use revision-specific evidence.')`));
-        assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('Completion results are immutable')`));
+        assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('Required outputs: build')`));
         await ev(`testTasks.completeBoardTask(testTaskID); testTasks._doCompleteTask(testTaskID)`);
         assert.ok(await ev(`document.body.textContent.includes('required output')`), 'missing artifact is rejected');
         await ev(`document.getElementById('task-artifact-name').value = 'build';
@@ -43,12 +43,10 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
         assert.equal(result.workflow.outcome, 'success');
         assert.equal(result.workflow.artifacts[0].name, 'build');
         await ev(`(async()=>{
-            const r=await fetch('/api/board/workflow-browser/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'Missing candidate consumer',created_by:'tester',blocked_by:[{task_id:testTaskID,required_artifacts:['candidate']}]})});
-            if(!r.ok)throw new Error(await r.text());const child=await r.json();
-            await testTasks.loadBoardTasks('workflow-browser');testTasks.showTaskDetailModal(child.id);
+            const r=await fetch('/api/board/workflow-browser/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'Missing candidate consumer',created_by:'Operator',blocked_by:[{task_id:testTaskID,required_artifacts:['candidate']}]})});
+            const error=await r.json(); window.invalidDependencyError=error.error || '';
         })()`);
-        assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('missing required artifacts: candidate')`));
-        assert.equal(await ev(`document.querySelector('#task-detail-content .task-dep-status').textContent`),'unmet');
+        assert.equal(await ev(`window.invalidDependencyError`), 'dependency #1 cannot require artifact "candidate": upstream declares outputs [build]');
 
         await ev(`(async () => {
             const {state} = await import('/static/state.js');

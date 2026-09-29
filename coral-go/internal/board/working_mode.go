@@ -21,16 +21,6 @@ func (m *WorkingMode) normalize() error {
 	if m.Mode == "" {
 		m.Mode = "none"
 	}
-	switch m.Mode {
-	case "none":
-		m.Instructions = ""
-	case "shared_checkout":
-		m.Instructions = "In the shared checkout, coordinate file ownership, preserve teammates' changes, and commit only your task's work."
-	case "worktrees":
-		m.Instructions = "Use an isolated Git worktree and branch from the agreed base; reuse your task's checkout if available. Leave teammates' checkouts untouched and publish the exact commit."
-	default:
-		return fmt.Errorf("mode must be none, shared_checkout, or worktrees")
-	}
 	m.CustomInstructions = strings.TrimSpace(m.CustomInstructions)
 	if len(m.CustomInstructions) > 4096 {
 		return fmt.Errorf("custom instructions must be at most 4096 bytes")
@@ -56,7 +46,8 @@ func loadWorkingMode(ctx context.Context, db sqlx.QueryerContext, project string
 	var data string
 	err := sqlx.GetContext(ctx, db, &data, "SELECT data FROM board_working_modes WHERE board_id = ?", project)
 	if err == sql.ErrNoRows {
-		return m, nil
+		err = nil
+		data = `{}`
 	}
 	if err != nil {
 		return m, err
@@ -64,7 +55,12 @@ func loadWorkingMode(ctx context.Context, db sqlx.QueryerContext, project string
 	if err = json.Unmarshal([]byte(data), &m); err != nil {
 		return m, err
 	}
-	// Regenerate current guidance; claim snapshots in task_workflows stay intact.
+	// Resolve current preset guidance; claim snapshots remain immutable.
+	preset, err := loadWorkflowPreset(ctx, db, project, m.Mode)
+	if err != nil {
+		return m, err
+	}
+	m.Instructions = preset.Instructions
 	err = m.normalize()
 	return m, err
 }
@@ -72,6 +68,11 @@ func (s *Store) GetWorkingMode(ctx context.Context, project string) (WorkingMode
 	return loadWorkingMode(ctx, s.db, project)
 }
 func (s *Store) SetWorkingMode(ctx context.Context, project string, m WorkingMode) (WorkingMode, error) {
+	preset, err := loadWorkflowPreset(ctx, s.db, project, m.Mode)
+	if err != nil {
+		return m, err
+	}
+	m.Instructions = preset.Instructions
 	if err := m.normalize(); err != nil {
 		return m, err
 	}

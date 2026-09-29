@@ -209,6 +209,60 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
     transform: rotate(180deg);
 }
 
+/* Reversible Team settings workspace: replace only the right pane while the
+   selected agent's chat/terminal remains mounted on the left. */
+.agentic-state.team-settings-workspace-active {
+    width: min(760px, 92vw);
+    min-width: 320px;
+    max-width: 92vw;
+}
+.agentic-state.team-settings-workspace-active > .agentic-block,
+.agentic-state.team-settings-workspace-active > .agentic-block-resize-handle,
+.agentic-state.team-settings-workspace-active > .agentic-collapse-btn {
+    display: none;
+}
+.team-settings-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    padding: 18px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+.team-settings-workspace > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+.team-settings-workspace > header h2 { margin: 0 0 4px; font-size: 20px; }
+.team-settings-workspace > header p { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.team-settings-workspace-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.team-settings-workspace-actions button { cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; }
+.team-settings-workspace-actions button:hover { background: var(--bg-hover); }
+.team-settings-workspace .working-mode-form { flex: 1; }
+.team-view-workspace .availability-content { flex: 1; min-height: 0; overflow: auto; padding-right: 4px; }
+.team-view-workspace .availability-toolbar { flex-shrink: 0; }
+
+@media(max-width: 767px) {
+    .agentic-state.team-settings-workspace-active {
+        position: fixed;
+        inset: 49px 0 0;
+        width: 100% !important;
+        max-width: none;
+        min-width: 0;
+        z-index: 60;
+    }
+    .team-settings-workspace { padding: 14px; }
+    .team-settings-workspace > header h2 { font-size: 18px; }
+}
+
 /* ── Event Filter Bar ──────────────────────────────────────── */
 
 .event-filter-bar {
@@ -949,6 +1003,8 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
        every row gets the same width, so backgrounds and borders line up and
        long descriptions still truncate instead of stretching their row. */
     min-width: 642px;
+    width: 100%;
+    box-sizing: border-box;
     gap: 10px;
     padding: 6px 12px;
     font-size: 12px;
@@ -1303,11 +1359,11 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 }
 
 .board-task-desc {
-    flex: 1;
+    flex: 0 0 160px;
     /* The only flexible column. .board-task-item's min-width guarantees it at
        least 160px; without that it collapsed to zero at the default panel
        width and every task lost its title. */
-    min-width: 0;
+    min-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

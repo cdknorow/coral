@@ -1,6 +1,6 @@
 import { initAgentUI } from './agent_ui.js';
-import { showTeamWorkingMode } from './team_working_mode.js';
-import { showTeamAvailability } from './team_availability.js';
+import { showTeamWorkingMode, showTeamWorkingModeWorkspace } from './team_working_mode.js';
+import { showTeamAvailability, showTeamAvailabilityWorkspace } from './team_availability.js';
 /* Coral Dashboard — Entry Point */
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
@@ -477,7 +477,7 @@ Object.assign(window, {
     copyFolderPath, killBoard, dismissBoardKilled, setBoardAccentColor, resetTeam,
     moveSessionUp, moveSessionDown,
     toggleTeamSleep, toggleAgentSleep, sleepAllAgents, wakeAllAgents,
-    showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamWorkingMode,
+    showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace,
     shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage,
     showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal,
     killSessionDirect, dismissKilledSession, showInfoDirect, attachDirect, restartDirect,
@@ -1014,6 +1014,18 @@ document.addEventListener("DOMContentLoaded", () => {
         if (sessionId) {
             // Delay slightly to allow history list to populate first
             setTimeout(() => selectHistorySession(sessionId), 500);
+        }
+    }
+    if (!popout) {
+        const workspaceMatch = hash.match(/^#team-(settings|view)=(.+)$/);
+        if (workspaceMatch) {
+            const workspaceTeam = decodeURIComponent(workspaceMatch[2]);
+            const restoreWorkspace = () => {
+                if (!document.getElementById('agentic-state')) return setTimeout(restoreWorkspace, 250);
+                if (workspaceMatch[1] === 'settings') showTeamWorkingModeWorkspace(workspaceTeam, { restore: true });
+                else showTeamAvailabilityWorkspace(workspaceTeam, { restore: true });
+            };
+            setTimeout(restoreWorkspace, 250);
         }
     }
 });

@@ -291,7 +291,7 @@ are not a historical team roster.
 ## Team working modes
 
 Choose **Team settings** from a team's three-dot menu in the sidebar, then
-use the **Working mode (this team)** section. In v1.3.6 and earlier, this entry is named
+use **Workflow instructions** to edit presets and **Team working mode** to select the active preset and extra guidance. In v1.3.6 and earlier, this entry is named
 **Team working mode**; the Team view/Team settings consolidation is a later
 UI change.
 The setting is stored per board, not globally and not per worker. It supplies
@@ -301,7 +301,7 @@ engine-enforced lifecycle and permissions.
 
 | Setting | Default | Effect and practical use |
 |---|---|---|
-| `mode: none` (None) | Selected | Adds no checkout convention. Useful for research or teams that already specify repository conventions elsewhere. It does not remove base task instructions. |
+| `mode: none` (None) | Selected | The shipped default adds no checkout convention. A team-local override can add instructions. Useful for research or teams that already specify repository conventions elsewhere. It does not remove base task instructions. |
 | `mode: shared_checkout` (Shared checkout) | Off | Asks agents to coordinate file ownership, preserve teammates' changes and commit only their own work. Useful when everyone works in one checkout; agents must still coordinate overlapping edits. |
 | `mode: worktrees` (Worktrees) | Off | Asks agents to use an isolated Git worktree/branch from an agreed base, reuse their task checkout, leave other checkouts untouched and publish the exact commit. Useful for parallel implementation; someone must still integrate and verify the combined result. |
 | `dependency_guidance` (Include dependent-queue guidance) | `false` | Appends guidance to connect stages as separate dependent tasks with explicit prerequisites and named outputs. It does not create tasks or require every job to use Build/Test/Release. Operator/Orchestrator planning permissions still apply. |
@@ -310,7 +310,7 @@ engine-enforced lifecycle and permissions.
 
 The mode choices are mutually exclusive; dependency guidance and custom text
 are independent. Selecting None with custom text still adds that custom text.
-To add no team instructions, use None, disable the checkbox, and clear custom
+To add no team instructions, reset None to its shipped empty default, select it, disable the checkbox, and clear custom
 text. Required outputs, dependency conditions, active-slot capacity and planning
 permissions remain enforced regardless of these settings.
 
@@ -343,7 +343,7 @@ PUT replaces the setting:
 ```
 
 Both endpoints return these fields plus generated `instructions`. Mode values
-are `none`, `shared_checkout`, and `worktrees`. Omitted fields reset to defaults;
+are the built-in IDs `none`, `shared_checkout`, and `worktrees`, or an existing custom preset ID on this board. Omitted fields reset to defaults;
 caller-supplied generated `instructions` are ignored. Invalid modes or oversized
 custom instructions return HTTP 400 without changing the saved setting.
 `coral-board status` also includes the current `working_mode`.
@@ -355,6 +355,82 @@ dashboard therefore show the same instructions. Later setting changes affect
 unclaimed tasks, not an existing claim. Reassignment/reclaim preserves the
 original snapshot. A new retry task receives the setting in effect when it is
 first claimed. Existing active and completed tasks are not retroactively changed.
+
+
+### Editable workflow presets
+
+Here, a **workflow** means a team instruction preset. It is separate from launch
+workflows (`coral-board workflow`) and from task dependencies and release stages.
+Users and agents may create or edit these presets. This permission does not grant
+workers permission to create or reassign team tasks; those operations still
+require Operator or a registered Orchestrator.
+
+**New preset** creates a custom preset. Give it a name and instructions, then
+save the preset. Select it as the working mode and save team settings to use it.
+Editing a built-in saves an override on this team only. **Reset built-in** removes
+that preset's override and restores the shipped instructions; it preserves
+custom presets, the selected mode, extra team guidance, global settings, and all
+historical task snapshots. Empty preset instructions are allowed. Edits to the
+currently selected preset apply to subsequent first claims immediately, without
+requiring the mode to be saved again. Existing claimed tasks retain their snapshot.
+
+```text
+GET  /api/board/{project}/working-mode/presets
+POST /api/board/{project}/working-mode/presets
+PUT  /api/board/{project}/working-mode/presets/{id}
+POST /api/board/{project}/working-mode/presets/{id}/reset
+```
+
+The list response contains `presets` and `working_mode`. Each preset has `id`,
+`name`, `builtin`, `default_instructions`, `instructions`, and `overridden`.
+`default_instructions` is the shipped text for built-ins (empty for custom
+presets); `instructions` is the current effective preset text. `overridden`
+distinguishes an explicitly empty built-in override from the shipped default.
+Create accepts `{ "id": "review", "name": "Review", "instructions": "Review changes." }`;
+edit accepts `name` and `instructions` (a built-in keeps its shipped name).
+Create returns HTTP 201, duplicates return 409, and invalid edits/reset requests
+return 400. IDs match `[a-z][a-z0-9_-]{0,63}`. Names must be 1–80 UTF-8 bytes,
+and instructions at most 4096 UTF-8 bytes, after trimming surrounding whitespace.
+Edits replace the preset content; concurrent edits use the last saved value.
+There is no delete operation. Reset supports built-ins only.
+
+Agents can use the CLI, specifying `--board` outside a joined board:
+
+```bash
+coral-board working-mode --presets
+coral-board working-mode --create review --name 'Review' --instructions-file review.txt
+coral-board working-mode --edit review --name 'Careful review' --instructions 'Inspect changes and run relevant checks.'
+coral-board working-mode --mode review --dependency-guidance=true
+coral-board working-mode --custom-instructions ''
+coral-board working-mode --edit worktrees --instructions 'Use the agreed branch base.'
+coral-board working-mode --reset worktrees
+```
+
+CLI mode updates preserve omitted fields; explicit empty custom instructions
+clear the field and `--dependency-guidance=false` disables the extra guidance.
+Preset editing and active-mode selection are separate operations.
+
+### Inspecting role and task prompts
+
+Team settings displays **Orchestrator**, **Agent / worker**, and **Task defaults**.
+The read-only API is `GET /api/settings/prompt-inspection?board={project}`.
+Role entries include `system_default`, `action_default`, the current global
+`override`, `effective_system`, `effective_action`, `scope`, and `applicability`.
+The task entry includes `default_instructions`, `scope`, and `applicability`.
+
+Role previews use the same builders as a new board session, without any
+agent-specific base prompt. System and action fragments are separate launch
+channels. A nonempty global `default_prompt_orchestrator` or
+`default_prompt_worker` override replaces both respective role fragments. The
+system preview includes the board introduction; the action preview resolves
+`{board_name}`. These values are global and read-only in Team settings; editing a
+workflow preset does not edit a role prompt or change an existing agent session.
+
+The task default is stored at task creation, with any per-task additional
+instructions. The effective team guidance is selected preset text, optional
+dependency guidance, then extra team instructions. It is appended to the task on
+first claim. A preview cannot include unknown per-task additions; inspect task
+detail/current for the actual stored instructions of a particular task.
 
 
 ### Board health monitor setting

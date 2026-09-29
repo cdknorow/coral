@@ -54,6 +54,10 @@ These are snapshotted on first claim and retained through reassignment.
    high, medium, low priority and then task ID. `task claim ID` chooses a
    particular eligible task. Claims recheck dependencies atomically; a stale
    pending row cannot bypass a prerequisite or hide later ready work.
+   Task-specific assignment notices and reminders include `task claim ID` so the
+   command selects the named task. Generic availability notices keep `task claim`
+   and normal queue ordering. A named claim still enforces ownership, prerequisites,
+   and the one-active-task limit; it never cancels other queued assignments.
 3. Only `in_progress` consumes the worker's active slot: one per subscriber per
    board, or one per personal session. Assigned pending work is planned backlog,
    not active load. Draft, blocked and review-pending work cannot be claimed.
@@ -305,6 +309,27 @@ When cancellation leaves a non-`termination` downstream dependency unsatisfied,
 Coral posts a `[Task #N stalled]` notice addressed to the Orchestrator. The notice
 names the cancelled prerequisite and tells the Orchestrator to update or rewire
 the downstream task; Coral does not silently rewrite that dependency.
+
+## Obsolete work and explicit queue cleanup
+
+An older task is not automatically superseded by a newer assignment, similar
+title, integration commit, or board message. Claim eligibility comes from stored
+status, assignment, and satisfied dependencies. If two ready tasks have the same
+owner and priority, a generic claim returns the older task even when a notice
+names the newer one; use the notice's explicit `task claim ID` command.
+
+When work is already covered by accepted integration, ask the Operator or
+Orchestrator to inspect the older task and its unstarted dependents. They should
+record the accepted replacement/evidence, cancel truly redundant work, and
+explicitly rewire success-dependent tasks to the accepted result where appropriate.
+Cancellation is not successful completion and does not satisfy success dependencies.
+If the obsolete task was already claimed, resolve that active slot before claiming
+another task. Do not silently complete duplicate work or bypass prerequisite checks.
+
+`retry_of` explicitly relates a new attempt to a **finished** predecessor; the
+predecessor is already unclaimable. It is not a way to supersede pending work.
+Sibling retries remain separate attempts; neither automatically retires the other.
+There is no separate machine-readable “integrated” or “superseded” task status.
 
 ## Retries and evidence history
 

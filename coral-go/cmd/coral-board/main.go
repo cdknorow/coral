@@ -307,7 +307,9 @@ Commands:
   projects                     List all boards
   subscribers                  List board subscribers
   status [--board NAME]         JSON snapshot of agent availability and open work
-  working-mode [--board NAME] [--custom-instructions TEXT]
+  working-mode [--board NAME] [--mode ID] [--custom-instructions TEXT]
+  working-mode --presets | --create ID | --edit ID | --reset ID
+                               Use --name NAME --instructions TEXT when creating/editing
                                Read or update custom team rules (mode unchanged)
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
   wait [--from <agent>] [--task <id>] [--commit <hash>] [--reason <text>]
@@ -335,56 +337,132 @@ Environment:
 }
 
 func cmdWorkingMode(args []string) {
-	st := loadState()
-	fs := flag.NewFlagSet("working-mode", flag.ExitOnError)
+	if err := runWorkingMode(args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func runWorkingMode(args []string) error {
+	fs := flag.NewFlagSet("working-mode", flag.ContinueOnError)
 	boardName := fs.String("board", "", "Team board (defaults to current board)")
-	custom := fs.String("custom-instructions", "", "Custom team rules")
+	custom := fs.String("custom-instructions", "", "Custom team rules; empty clears them")
+	mode := fs.String("mode", "", "Select a built-in or custom workflow preset")
+	guidance := fs.Bool("dependency-guidance", false, "Include guidance about dependent tasks")
+	presets := fs.Bool("presets", false, "List presets and effective team instructions")
+	create := fs.String("create", "", "Create custom preset ID")
+	edit := fs.String("edit", "", "Edit preset ID (built-ins become team-local overrides)")
+	reset := fs.String("reset", "", "Reset built-in preset ID to shipped instructions")
+	name := fs.String("name", "", "Custom preset display name")
+	instructions := fs.String("instructions", "", "Preset instructions; empty is allowed")
+	file := fs.String("instructions-file", "", "Read preset instructions from a UTF-8 file")
 	if err := fs.Parse(args); err != nil {
-		return
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("unexpected working-mode arguments")
+	}
+	seen := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
+	operations := 0
+	for _, key := range []string{"presets", "create", "edit", "reset"} {
+		if seen[key] {
+			operations++
+		}
+	}
+	selection := seen["mode"] || seen["custom-instructions"] || seen["dependency-guidance"]
+	if operations > 1 || operations > 0 && selection {
+		return fmt.Errorf("use one preset operation or update the selected working mode")
+	}
+	editing := seen["create"] || seen["edit"]
+	if !editing && (seen["name"] || seen["instructions"] || seen["instructions-file"]) {
+		return fmt.Errorf("preset content requires --create or --edit")
+	}
+	if seen["instructions"] && seen["instructions-file"] {
+		return fmt.Errorf("use --instructions or --instructions-file, not both")
+	}
+	if editing && !seen["instructions"] && !seen["instructions-file"] {
+		return fmt.Errorf("--create and --edit require --instructions or --instructions-file")
 	}
 	project := *boardName
-	if project == "" && st != nil {
-		project = st.Project
+	if project == "" {
+		if st := loadState(); st != nil {
+			project = st.Project
+		}
 	}
 	if project == "" {
-		fmt.Fprintln(os.Stderr, "working-mode requires --board outside a joined board")
-		os.Exit(1)
+		return fmt.Errorf("working-mode requires --board outside a joined board")
 	}
 	path := "/" + url.PathEscape(project) + "/working-mode"
-	data, status, err := apiCallRaw("GET", path, nil)
-	if *custom == "" {
-		if err != nil || status != http.StatusOK {
-			fmt.Fprintf(os.Stderr, "Error reading working mode: %s\n", string(data))
-			os.Exit(1)
+	request := func(method, target string, body any) ([]byte, error) {
+		data, status, err := apiCallRaw(method, target, body)
+		if err != nil {
+			return nil, err
 		}
-		var out any
-		json.Unmarshal(data, &out)
-		pretty, _ := json.MarshalIndent(out, "", "  ")
-		fmt.Println(string(pretty))
-		return
+		if status < 200 || status >= 300 {
+			return nil, fmt.Errorf("working-mode: HTTP %d: %s", status, data)
+		}
+		return data, nil
 	}
-	if err != nil || status != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error reading working mode: %s\n", string(data))
-		os.Exit(1)
+	method := "GET"
+	var body any
+	if *presets {
+		path += "/presets"
 	}
-	var current struct {
-		Mode               string `json:"mode"`
-		DependencyGuidance bool   `json:"dependency_guidance"`
+	if editing {
+		if seen["instructions-file"] {
+			data, err := os.ReadFile(*file)
+			if err != nil {
+				return err
+			}
+			*instructions = string(data)
+		}
+		body = map[string]string{"id": *create, "name": *name, "instructions": *instructions}
+		path += "/presets"
+		method = "POST"
+		if seen["edit"] {
+			method = "PUT"
+			path += "/" + url.PathEscape(*edit)
+		}
+	} else if seen["reset"] {
+		method = "POST"
+		path += "/presets/" + url.PathEscape(*reset) + "/reset"
+	} else if selection {
+		data, err := request("GET", path, nil)
+		if err != nil {
+			return err
+		}
+		var current map[string]any
+		if err := json.Unmarshal(data, &current); err != nil {
+			return err
+		}
+		if seen["mode"] {
+			current["mode"] = *mode
+		}
+		if seen["custom-instructions"] {
+			current["custom_instructions"] = *custom
+		}
+		if seen["dependency-guidance"] {
+			current["dependency_guidance"] = *guidance
+		}
+		delete(current, "instructions")
+		body = current
+		method = "PUT"
 	}
-	if err := json.Unmarshal(data, &current); err != nil {
-		fmt.Fprintln(os.Stderr, "Error reading current working mode:", err)
-		os.Exit(1)
-	}
-	body := map[string]any{"mode": current.Mode, "dependency_guidance": current.DependencyGuidance, "custom_instructions": *custom}
-	data, status, err = apiCallRaw("PUT", path, body)
-	if err != nil || status < 200 || status >= 300 {
-		fmt.Fprintf(os.Stderr, "Error updating working mode: %s\n", string(data))
-		os.Exit(1)
+	data, err := request(method, path, body)
+	if err != nil {
+		return err
 	}
 	var out any
-	json.Unmarshal(data, &out)
-	pretty, _ := json.MarshalIndent(out, "", "  ")
+	if err := json.Unmarshal(data, &out); err != nil {
+		return err
+	}
+	pretty, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return err
+	}
 	fmt.Println(string(pretty))
+	return nil
 }
 
 func cmdJoin() {

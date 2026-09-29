@@ -1761,8 +1761,8 @@ export function renderLiveSessions(sessions) {
         const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailability('${escapeAttr(boardName)}')">◉ Team view</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingMode('${escapeAttr(boardName)}')">Team settings</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${escapeAttr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${escapeAttr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
@@ -2025,8 +2025,8 @@ export function renderLiveSessions(sessions) {
                 const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
                     <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
                     <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailability('${escapeAttr(boardName)}')">◉ Team view</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingMode('${escapeAttr(boardName)}')">Team settings</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${escapeAttr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${escapeAttr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
                         <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                             Add Agent

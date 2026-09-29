@@ -23,6 +23,12 @@ import (
 
 const taskNudge = "You have tasks available. Run 'coral-board task claim' to start."
 
+// A task-specific notice must claim that task, not a different FIFO candidate.
+// Generic availability notices continue to use taskNudge and normal queue order.
+func taskClaimNudge(taskID int64) string {
+	return fmt.Sprintf("[Task #%d available] Run 'coral-board task claim %d' to claim it when your current task is done.", taskID, taskID)
+}
+
 // BoardHandler handles message board HTTP endpoints.
 type BoardHandler struct {
 	bs                          *board.Store
@@ -243,9 +249,9 @@ func (h *BoardHandler) buildAssignmentNotification(ctx context.Context, project 
 	}
 
 	if reassigned {
-		return fmt.Sprintf("@%s [Task #%d reassigned to you] %s — run 'coral-board task claim' to start", assignee, task.ID, task.Title)
+		return fmt.Sprintf("@%s [Task #%d reassigned to you] %s — run 'coral-board task claim %d' to start", assignee, task.ID, task.Title, task.ID)
 	}
-	return fmt.Sprintf("@%s [Task #%d (%s)] %s — assigned to you, run 'coral-board task claim' to start", assignee, task.ID, task.Priority, task.Title)
+	return fmt.Sprintf("@%s [Task #%d (%s)] %s — assigned to you, run 'coral-board task claim %d' to start", assignee, task.ID, task.Priority, task.Title, task.ID)
 }
 
 func taskAssignedToSubscriber(task *board.Task, subscriberID string) bool {
@@ -393,9 +399,9 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 	switch task.Status {
 	case "pending":
 		if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID); hasActive {
-			text = fmt.Sprintf("[Task #%d reminder] %s — assigned to you and waiting; claim it with 'coral-board task claim' when your current task is done.", task.ID, title)
+			text = fmt.Sprintf("[Task #%d reminder] %s — assigned to you and waiting; claim it with 'coral-board task claim %d' when your current task is done.", task.ID, title, task.ID)
 		} else {
-			text = fmt.Sprintf("[Task #%d reminder] %s — assigned to you and waiting. Run 'coral-board task claim' to start.", task.ID, title)
+			text = fmt.Sprintf("[Task #%d reminder] %s — assigned to you and waiting. Run 'coral-board task claim %d' to start.", task.ID, title, task.ID)
 		}
 	case "in_progress":
 		text = fmt.Sprintf("[Task #%d reminder] %s — still in progress. Continue it, or run 'coral-board task complete %d' when it's done.", task.ID, title, task.ID)
@@ -1147,7 +1153,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 				if assignee != "" {
 					hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID)
 					if !hasActive {
-						h.sendTaskNudge(ctx, project, assignee, taskNudge)
+						h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
 					}
 				} else {
 					idle := h.bs.FindIdleSubscriber(ctx, project)
@@ -1558,7 +1564,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			h.bs.PostMessage(ctx, project, "Coral Task Queue", msg, nil)
 
 			if assignee != "" {
-				h.sendTaskNudge(ctx, project, assignee, taskNudge)
+				h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
 				nudged = true
 			}
 		}
@@ -1573,7 +1579,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			}
 			if !nudged && current != "" && current != previous {
 				if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, current, task.ID); !hasActive {
-					h.sendTaskNudge(ctx, project, current, taskNudge)
+					h.sendTaskNudge(ctx, project, current, taskClaimNudge(task.ID))
 				}
 			}
 		}
@@ -1612,7 +1618,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
 		if body.Assignee != "" {
 			if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, body.Assignee, task.ID); !hasActive {
-				h.sendTaskNudge(ctx, project, body.Assignee, taskNudge)
+				h.sendTaskNudge(ctx, project, body.Assignee, taskClaimNudge(task.ID))
 			}
 		}
 
@@ -1671,7 +1677,7 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 			if assignee != "" {
 				hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID)
 				if !hasActive {
-					h.sendTaskNudge(ctx, project, assignee, taskNudge)
+					h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
 				}
 			}
 		}()
@@ -1706,7 +1712,7 @@ func (h *BoardHandler) notifyUnblockedTasks(ctx context.Context, project string,
 
 		// Send terminal nudge to assignee
 		if assignee != "" {
-			h.sendTaskNudge(ctx, t.BoardID, assignee, taskNudge)
+			h.sendTaskNudge(ctx, t.BoardID, assignee, taskClaimNudge(t.ID))
 		}
 
 		// Resolve active task waits

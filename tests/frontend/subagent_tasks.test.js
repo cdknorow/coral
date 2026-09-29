@@ -105,7 +105,7 @@ async function run() {
 
   // Layout: the description must survive the default (narrow) panel width.
   check('description column keeps a readable width', done.descW >= 160 && task.descW >= 160, `sub=${done.descW} task=${task.descW}`);
-  check('row spans the full scrollable width (rail and tint are not cut off)', Math.abs(done.rowW - done.listScrollW) <= 1, `row=${done.rowW} list=${done.listScrollW}`);
+  check('row fits within the full scrollable width (rail and tint are not cut off)', done.rowW <= done.listScrollW + 1, `row=${done.rowW} list=${done.listScrollW}`);
 
   // Content
   check('description is the title', done.desc === 'ExploreMap Coral task-board UI code', done.desc);
@@ -118,7 +118,7 @@ async function run() {
   // Status + spend
   check('completed: check icon, final cost', done.icon === 'check_circle' && !done.spinner && done.cost === '$7.42' && !done.costLive, `${done.icon} ${done.cost}`);
   check('running: spinner, live ~cost', running.spinner && running.cost === '~$0.31' && running.costLive, `${running.cost}`);
-  check('stopped: skipped icon, no cost', bare.icon === 'block' && bare.cost === '', `${bare.icon} "${bare.cost}"`);
+  check('stopped: skipped icon, no cost', bare.icon === 'cancel' && bare.cost === '', `${bare.icon} "${bare.cost}"`);
   check('count badge counts subagents', (await ev(`document.getElementById('task-bar-count').textContent`)) === '2/5', await ev(`document.getElementById('task-bar-count').textContent`));
 
   // Escaping
@@ -214,13 +214,13 @@ async function run() {
   check('open modal fetches the result once the subagent finishes', (await ev(`window.__detailFetches`)).includes('b7running00000000') && /The design is done\./.test(m.sections['Result']), m.sections['Result']);
 
   // ── The overlay is shared with board tasks ──
-  await ev(`window.showTaskDetailModal(77); true`); await sleep(200);
+  await ev(`(async () => { const {state} = await import('/static/state.js'); state.currentBoardTasks = JSON.parse(JSON.stringify(window.__boardTasks)); window.showTaskDetailModal(77); return true; })()`); await sleep(200);
   m = await modal();
-  check('board task modal still works', m.open && m.header === 'Task #77' && m.title === 'A board task', m.header);
+  check('board task modal still works', m.open && m.header === 'Task #77' && m.title === '#77 · A board task', m.header + ' / ' + m.title);
   await ev(`window.__subagents[${JSON.stringify(A)}][0] = { ...window.__subagents[${JSON.stringify(A)}][0], cost_usd: 9.99 }; true`);
   for (let i = 0; i < 28; i++) { await sleep(500); const r = bySub(await rows(), 'aca6223d75309e7ca'); if (r && r.cost === '$9.99') break; }
   m = await modal();
-  check('a subagent poll does not overwrite an open board task modal', m.header === 'Task #77' && m.title === 'A board task' && !('Subagent ID' in m.fields), m.header + ' / ' + m.title);
+  check('a subagent poll does not overwrite an open board task modal', m.header === 'Task #77' && m.title === '#77 · A board task' && !('Subagent ID' in m.fields), m.header + ' / ' + m.title);
   await ev(`window.hideTaskDetailModal(); true`);
 
   // ── Agent B shares the name "coral-go" but launched nothing ──

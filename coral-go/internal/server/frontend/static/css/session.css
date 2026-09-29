@@ -1813,8 +1813,10 @@
 
 /* Team routing snapshot */
 .team-availability-dialog { position: fixed; inset: 0; margin: auto; width: min(760px, calc(100vw - 32px)); max-height: 85dvh; box-sizing: border-box; overflow: auto; padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-secondary); color: var(--text-primary); }
+.team-availability-dialog#team-working-mode-dialog { overflow: hidden; display: flex; flex-direction: column; }
 .team-availability-dialog::backdrop { background: rgba(0,0,0,.55); }
 .team-availability-dialog header, .availability-toolbar, .availability-agent-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+#team-working-mode-dialog > header, #team-working-mode-dialog .team-settings-tabs, #team-working-mode-dialog .working-mode-status { flex-shrink: 0; }
 .team-availability-dialog h2, .team-availability-dialog header p { margin: 0 0 6px; }
 .team-availability-dialog button { cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; }
 .team-availability-dialog button:disabled { opacity: .5; }
@@ -1841,7 +1843,7 @@
 .team-availability-dialog li { margin: 8px 0; }
 @media(max-width: 600px) { .team-availability-dialog { padding: 16px; } .team-view-details { grid-template-columns:1fr 1fr; } .availability-agent { grid-template-columns:1fr auto; } .availability-agent > p, .availability-agent > ul { grid-column:1 / -1; } }
 
-.working-mode-form { display: grid; gap: 16px; }
+.working-mode-form { display: grid; gap: 16px; overflow: auto; min-height: 0; padding: 2px 4px 2px 0; }
 .working-mode-form label { display: block; }
 .working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .working-mode-form p { font-size: 13px; color: var(--text-secondary); margin: 0; }
@@ -1849,3 +1851,27 @@
 .team-settings-section legend { font-size: 12px; font-weight: 600; color: var(--text-primary); padding: 0 4px; }
 .team-settings-section.global-settings-section { background: var(--bg-tertiary); }
 .working-mode-hint { font-size: 12px !important; color: var(--text-secondary); margin: 0; line-height: 1.4; }
+.working-mode-status { min-height: 18px; color: var(--text-secondary); font-size: 13px; }
+.working-mode-status.is-error { color: var(--error, #f85149); }
+.team-settings-tabs { display: flex; gap: 4px; margin: 8px 0 16px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); }
+.team-settings-tabs [role="tab"] { flex: 1; border: 0; background: transparent; color: var(--text-secondary); font-size: 13px; padding: 8px 10px; }
+.team-settings-tabs [role="tab"][aria-selected="true"] { background: var(--bg-primary); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.team-settings-tabs [role="tab"]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.team-settings-panel { display: grid; gap: 16px; }
+.team-settings-panel[hidden] { display: none; }
+.team-settings-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+.workflow-preset-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.working-mode-form input[name="preset_name"] { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.prompt-inspection-content { display: grid; gap: 10px; }
+.prompt-inspection-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); }
+.prompt-inspection-card h4 { margin: 0 0 6px; font-size: 14px; }
+.prompt-inspection-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--text-secondary); font-size: 12px !important; }
+.prompt-inspection-fragment { margin-top: 10px; }
+.prompt-inspection-fragment summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.prompt-inspection-fragment pre { max-height: 120px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0 0; padding: 8px; border-radius: 5px; background: var(--bg-primary); color: var(--text-primary); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+@media(max-width: 600px) { .prompt-inspection-meta { flex-direction: column; gap: 4px; } }
+@media(max-width: 600px) { .team-settings-tabs { overflow-x: auto; } .team-settings-tabs [role="tab"] { flex: 0 0 auto; white-space: nowrap; } }
+.team-settings-actions { position: sticky; bottom: 0; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 12px 0 2px; background: linear-gradient(var(--bg-secondary), var(--bg-secondary)); }
+.team-settings-actions button { flex: 0 0 auto; }
+.team-settings-actions span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
+@media(max-width: 600px) { .team-settings-actions { align-items: stretch; flex-direction: column; } }

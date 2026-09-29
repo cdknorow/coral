@@ -155,7 +155,10 @@ node agent_list_compact.test.js
 node mobile_navigation.test.js
 node task_workflow.test.js
 node team_availability.test.js
+node team_menu_icon_spacing.test.js
+node team_workspace_activation.test.js
 node team_working_mode.test.js
+node team_workflow_presets.test.js
 node team_view_consolidation.test.js
 node agent_state.test.js
 node agent_popout.test.js

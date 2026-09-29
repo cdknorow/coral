@@ -558,7 +558,7 @@ func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
 		mockTerm.mu.Lock()
 		defer mockTerm.mu.Unlock()
 		for _, input := range mockTerm.sent["tmux-frontend"] {
-			if input == taskNudge {
+			if input == taskClaimNudge(task.ID) {
 				return true
 			}
 		}
@@ -1416,7 +1416,7 @@ func TestBoardNudgeTask(t *testing.T) {
 	code, text := nudge(1)
 	assert.Equal(t, http.StatusOK, code)
 	assert.Contains(t, text, "[Task #1 reminder] Add the loader")
-	assert.Contains(t, text, "coral-board task claim")
+	assert.Contains(t, text, "coral-board task claim 1")
 
 	postJSON(t, base+"/tasks/claim", map[string]string{"subscriber_id": "Backend Dev"}).Body.Close()
 	code, text = nudge(1)
