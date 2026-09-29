@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -1253,29 +1254,44 @@ func renderHTML(buf *bytes.Buffer, d *exportData) {
 // apiCallRaw performs an HTTP request and returns the response body, status code, and error.
 // Unlike apiCall, it preserves the status code for conflict/not-found handling.
 func apiCallRaw(method, path string, body any) ([]byte, int, error) {
-	var bodyReader io.Reader
-	if body != nil {
-		data, _ := json.Marshal(body)
-		bodyReader = bytes.NewReader(data)
-	}
-
-	req, err := http.NewRequest(method, serverURL+"/api/board"+path, bodyReader)
-	if err != nil {
-		return nil, 0, err
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, err)
+	var lastErr error
+	for _, endpoint := range requestURLs(serverURL + "/api/board" + path) {
+		var bodyReader io.Reader
+		if body != nil {
+			data, _ := json.Marshal(body)
+			bodyReader = bytes.NewReader(data)
+		}
+		req, err := http.NewRequest(method, endpoint, bodyReader)
+		if err != nil {
+			return nil, 0, err
+		}
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+		respData, _ := io.ReadAll(resp.Body)
+		return respData, resp.StatusCode, nil
 	}
-	defer resp.Body.Close()
+	return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, lastErr)
+}
 
-	respData, _ := io.ReadAll(resp.Body)
-	return respData, resp.StatusCode, nil
+// requestURLs adds a narrowly scoped IPv4 retry for localhost. Managed macOS
+// sandboxes may reject IPv6 loopback (::1) while allowing the IPv4 listener;
+// explicit hosts and HTTP-level failures are left unchanged.
+func requestURLs(endpoint string) []string {
+	urls := []string{endpoint}
+	u, err := url.Parse(endpoint)
+	if err != nil || !strings.EqualFold(u.Hostname(), "localhost") {
+		return urls
+	}
+	u.Host = net.JoinHostPort("127.0.0.1", u.Port())
+	return append(urls, u.String())
 }
 
 func cmdTask() {

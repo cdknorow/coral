@@ -253,10 +253,10 @@ func TestPrintUsage_NoPanic(t *testing.T) {
 
 func TestCmdRead_URLRouting(t *testing.T) {
 	tests := []struct {
-		name       string
-		args       []string
-		wantPath   string
-		wantQuery  string
+		name      string
+		args      []string
+		wantPath  string
+		wantQuery string
 	}{
 		{
 			name:      "default read without flags",
@@ -450,3 +450,22 @@ func TestCmdWait_StatusAndCancel(t *testing.T) {
 	}
 }
 
+func TestRequestURLs_LocalhostAddsIPv4RetryOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"localhost", "http://localhost:8420/api/board/p/tasks", []string{"http://localhost:8420/api/board/p/tasks", "http://127.0.0.1:8420/api/board/p/tasks"}},
+		{"explicit IPv4", "http://127.0.0.1:8420/api", []string{"http://127.0.0.1:8420/api"}},
+		{"remote host", "http://coral.example/api", []string{"http://coral.example/api"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := requestURLs(tt.in)
+			if strings.Join(got, "\n") != strings.Join(tt.want, "\n") {
+				t.Fatalf("requestURLs(%q) = %#v, want %#v", tt.in, got, tt.want)
+			}
+		})
+	}
+}
