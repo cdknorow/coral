@@ -3,7 +3,14 @@
 `coral-agent task` manages the current agent session's work queue. It uses the
 same workflow engine as `coral-board task`: dependencies, named artifacts,
 success/failure outcomes, immutable completion records, retries, and default
-workflow instructions. No board subscription is needed.
+workflow instructions. No board subscription is needed. Operator/Orchestrator
+restrictions on shared planning do not prevent personal task creation. Personal
+queues do not inherit team working modes. For the full lifecycle, see
+[Task queue flow](task-workflows.md#from-assignment-to-result).
+
+The personal CLI has no submit-review/release-review commands. Those board
+review operations are described in [candidate review](task-workflows.md#candidate-review-without-holding-execution-capacity); shared engine storage
+does not imply identical CLI surfaces.
 
 Use personal tasks for work owned by one session. Use
 [board tasks](board.md#tasks) for assignments spanning agents. Personal task

@@ -435,6 +435,10 @@ atomic routing claim/assignment contract before safely sharing that inbox.
 
 ## Tasks
 
+See [Task queue flow](task-workflows.md) for the lifecycle diagram, dependencies,
+review candidates, capacity release and complete handoff examples.
+
+
 Board-level task queue for coordinating work across agents. It shares its
 workflow engine with [personal tasks](agent-tasks.md). See
 [Task Workflows](task-workflows.md) for dependency conditions, default agent

@@ -1,8 +1,10 @@
 # Task workflows and completion artifacts
 
-Team workflows use separate board tasks for each stage. A completed Build task
-does not become a Test task. Each task keeps its owner, instructions, inputs and
-completion evidence. Team tasks (`coral-board task`) and personal tasks
+A task records an assignment, its owner, prerequisites and result. Use one task
+for a bounded change; add dependent tasks when a real handoff or separate
+acceptance decision is useful. Build → Test → Release below is an example, not
+a mandatory workflow. A completed task does not change into the next stage.
+Each task keeps its instructions, inputs and completion evidence. Team tasks (`coral-board task`) and personal tasks
 (`coral-agent task`) use the same workflow engine and lifecycle rules.
 
 Only the human Operator or registered orchestrator creates or reassigns shared board tasks, including
@@ -23,7 +25,7 @@ task are now rejected, just as for board tasks. Create a new retry instead.
 Finished task records cannot be deleted; unstarted tasks can be deleted only
 when no other task references them.
 
-For personal workflows, substitute `coral-agent task` in the examples below and
+For personal creation/claim/completion examples, substitute `coral-agent task` and
 omit `--assignee`. Use `coral-agent task edit <id> --blocked-by '[123]'` to rewire an
 unstarted task. `detail <id>` reads any task in the session; `current` reads the
 active task. The dashboard displays workflow status and supports artifact
@@ -41,6 +43,158 @@ resulting instructions.
 Teams can add [working-mode instructions](teams.md#team-working-modes) for shared
 checkouts or worktrees, optional dependency guidance, and custom conventions.
 These are snapshotted on first claim and retained through reassignment.
+
+## From assignment to result
+
+1. The Operator or registered Orchestrator creates a board task with a concrete
+   result, optional owner, prerequisites and required output names. A draft is
+   not claimable until published. Creating a retry is also a planning operation.
+2. A worker reads `task detail ID`, then claims ready work. `task claim` checks
+   work assigned to that worker before unassigned work, ordered by critical,
+   high, medium, low priority and then task ID. `task claim ID` chooses a
+   particular eligible task. Claims recheck dependencies atomically; a stale
+   pending row cannot bypass a prerequisite or hide later ready work.
+3. Only `in_progress` consumes the worker's active slot: one per subscriber per
+   board, or one per personal session. Assigned pending work is planned backlog,
+   not active load. Draft, blocked and review-pending work cannot be claimed.
+4. The worker keeps ownership through normal review corrections and coordinates
+   directly with teammates. Request new assignments from the Operator or
+   Orchestrator. A normal reassign resets pending/in-progress work to pending;
+   changing an active owner via PATCH also resets execution. Reassignment does
+   not reopen terminal results or replace an immutable review candidate.
+5. Complete with a truthful outcome and evidence. A rejected completion request
+   leaves the task unfinished; it is not a recorded failure. Use `current` and
+   `detail` to inspect the actual state before attempting recovery.
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: create draft
+    [*] --> pending: create with prerequisites satisfied
+    [*] --> blocked: create with unmet prerequisites
+    draft --> pending: publish, ready
+    draft --> blocked: publish, not ready
+    blocked --> pending: all prerequisites satisfied
+    pending --> in_progress: atomic claim
+    in_progress --> pending: authorized reassignment
+    in_progress --> review_pending: submit evidence, then reviewer releases slot
+    pending --> completed: accepted result with prerequisites satisfied
+    in_progress --> completed: accepted result
+    review_pending --> completed: reviewer accepts final result
+    draft --> skipped: cancel
+    blocked --> skipped: cancel
+    pending --> skipped: cancel
+    in_progress --> skipped: cancel
+    review_pending --> skipped: cancel
+```
+
+`completed` stores either `workflow.outcome: success` or `failed`; `skipped`
+stores `cancelled`. Terminal results are immutable. The diagram separates slot
+release from result acceptance: `review_pending` is neither success nor failure.
+The API also permits completing ready pending work without a prior claim; use
+claims when execution ownership and input snapshots matter.
+
+The planning API checks the active registration on the target board (registered
+Orchestrator title or the existing persisted orchestrator `can_peek` flag), or
+the dashboard's reserved Operator identity. Worker task-body role assertions
+are ignored. `subscriber_id` identifies the caller; `created_by` is a legacy
+creation alias and must match when both are supplied. Assignment PATCHes also
+need the actor. This uses Coral's existing trusted caller-identity model:
+localhost clients share desktop access, and remote access uses a global API key
+or session cookie. It is not per-agent authentication and cannot prevent local
+identity impersonation. These planning permissions do not automatically grant
+all other review operations; see the reviewer requirements below.
+
+For a single bounded fix, no multi-stage workflow is required:
+
+```sh
+# Operator or Orchestrator creates the assignment; use the returned task ID.
+coral-board task add "Correct the export filename" --assignee "Developer" \
+  --body "Fix the filename and verify the exported file opens."
+
+# Developer, in their own session; suppose the returned ID was 100.
+coral-board task claim 100
+coral-board task detail 100
+# Perform the work and verification, then record the result.
+coral-board task complete 100 --message "Filename corrected; exported file opens"
+```
+
+If verification requires another owner or an immutable published input, ask the
+planner for a dependent task instead. An illustrative Build/Test/Release chain
+appears below; it does not replace simpler assignments.
+
+## Candidate review without holding execution capacity
+
+For an implementation that is ready for review but not accepted, the assigned
+worker (or registered reviewer) can record a candidate on an in-progress task:
+
+```sh
+coral-board task submit-review 101 --reason "Awaiting independent review" \
+  --message "Candidate ready" --outcome success --artifacts build-artifacts.json
+```
+
+The candidate is stored once in `workflow.completion_review`, including its
+submitter, timestamp, proposed outcome, reason and artifact manifest. This does
+**not** finish the task, free capacity or satisfy downstream dependencies.
+Submission cannot be repeated to overwrite the candidate. If the submission
+never reached Coral, it is not stored; external rejection causes are not inferred.
+
+A registered reviewer on that board (Orchestrator title or `can_peek` privilege)
+may then release the occupied slot:
+
+```sh
+coral-board task release-review 101 --reason "Review continues; worker can proceed"
+```
+
+The task becomes `review_pending` and retains its owner, candidate and input
+history. Its former worker can claim other eligible work. Releasing does not
+fire a completion wait or accept an outcome. A bare Operator identity does not
+bypass the separate registered-reviewer requirement.
+
+The reviewer finishes with the ordinary command when review is actually done:
+
+```sh
+coral-board task complete 101 --message "Reviewed candidate accepted" \
+  --outcome success --artifacts build-artifacts.json
+```
+
+Once a candidate exists, final completion requires a registered reviewer, even
+before slot release. The final manifest must be supplied explicitly; candidate
+artifacts are not automatically promoted. Required outputs and dependency
+checks still apply. Failed review may finish with `--outcome failed` and a
+diagnostic artifact. Request a new retry from the planner when another attempt
+is needed; the original candidate and result remain auditable. Do not cancel
+and recreate tasks merely to clear ordinary review corrections.
+
+These candidate/release commands are board CLI operations. The personal CLI
+currently has no equivalent submit-review/release-review commands; do not assume
+that sharing a lifecycle engine makes every command interchangeable.
+
+## Notifications and waiting
+
+Creation/assignment can produce a task-available nudge; a busy worker's new
+assignment notice is deferred. Completion/cancellation can make dependent work
+ready, with readiness persisted before notification. Terminal delivery is best
+effort and does not reserve tasks or establish a result. Another worker may
+claim unassigned work first; inspect task state after a claim rejection.
+
+Unread board nudges, task-ready messages and wait resolutions are separate
+signals. Notification deduplication tracks recipient sessions, so same-role
+agents on different boards do not share reminder state. Mentions generally
+batch unread messages; `all` receive mode can nudge for a growing unread batch.
+Still-unread messages receive a reminder after 15 minutes. A notice already
+queued before a read can be stale; a repeated notice is not a second task result.
+
+For a dependency or teammate response, register a wait and stop the turn:
+
+```sh
+coral-board wait --task 102
+# Or wait for a named teammate:
+coral-board wait --from "QA"
+```
+
+Read the board after a notification rather than polling in a loop. Readiness
+recovery on server startup can restore eligible blocked work and queued notices;
+it does not manufacture missing artifacts or change a failed outcome to success.
 
 ## Build → Test → Release
 
@@ -159,7 +313,9 @@ Terminal results cannot be overwritten or reopened. Create a new task with
 new task. Use the dashboard dependency editor or PATCH the task's `blocked_by`.
 Existing dependency conditions/artifact requirements are preserved for retained
 dependencies in the dashboard; newly selected prerequisites default to success.
-Started tasks cannot change their dependencies. A new build therefore cannot
+Dependencies cannot be edited while a task is in progress; terminal and
+review-pending tasks cannot be edited. Reassignment can reset an active task to
+pending, but do not use that to substitute inputs for work already reviewed. A new build must not
 silently replace the build referenced by an old test or release.
 
 `--parent ID` groups tasks under an existing task on the same board. It is a
@@ -194,7 +350,10 @@ builds an isolated server and real CLIs, launches two `mock-agent` processes,
 and drives their task commands without model calls. It covers solo tasks plus
 Build → Test → Release hand-offs, terminal notifications, required artifacts,
 default instructions, failed/cancelled dependencies, explicit retries, and
-concurrent completion submissions with immutable results. The same command also
+concurrent completion submissions with immutable results. It also tests worker
+planning denial and runs repeated concurrent candidate submission, slot release,
+claim and final completion checks. `CORAL_REVIEW_STRESS_ROUNDS` controls these
+review rounds (default 8, minimum 2); each run uses concurrent boards. The same command also
 runs the API regressions for atomic readiness, abrupt restart recovery, legacy
 blocked-task repair, and the 32/33-artifact boundary. These checks use a second
 isolated server so restarting it does not disrupt the live mock agents.

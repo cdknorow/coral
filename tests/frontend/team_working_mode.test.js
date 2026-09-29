@@ -14,7 +14,7 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
   assert.ok(await ev(`document.querySelector('.working-mode-status').textContent.includes('Saved')`));
   const claimed=await ev(`(async()=>{
    const post=async(path,body)=>{const r=await fetch('/api/board/working-mode-browser'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!r.ok)throw new Error(await r.text());return r.json()};
-   const task=await post('/tasks',{title:'Test mode',created_by:'lead'});
+   const task=await post('/tasks',{title:'Test mode',created_by:'Operator'});
    window.modeTaskID=task.id;
    return post('/tasks/claim',{subscriber_id:'dev',task_id:task.id});
   })()`);

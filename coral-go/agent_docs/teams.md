@@ -238,10 +238,17 @@ curl -X DELETE http://localhost:8420/api/teams/detail/api-team
 
 ## Agent availability
 
+**Team view** combines team metadata (agent count, directory and branch),
+observed activity/readiness, assigned work, reminders, unassigned work and health
+findings. It replaces the separate Agent availability and Team details menu
+entries. User-changeable configuration belongs in **Team settings**; contextual
+actions remain with the team/agent controls. The availability API and state
+definitions below are unchanged by this layout.
+
 `GET /api/board/{project}/status` returns a routing snapshot for a local
 team/board. Agents can read it with `coral-board status` (current board) or
 `coral-board status --board NAME`. The original
-`GET /api/teams/detail/{name}/availability` remains a compatibility alias. Open **Agent availability** from the team's three-dot menu to view
+`GET /api/teams/detail/{name}/availability` remains a compatibility alias. Open **Team view** from the team's three-dot menu to view
 it, including task titles and unassigned work. Use **Refresh** for a new snapshot.
 
 The response contains `board`, compatibility `team`, UTC `observed_at`, `summary` counts, `agents`, and
@@ -283,24 +290,42 @@ are not a historical team roster.
 
 ## Team working modes
 
-Choose **Team working mode** from the team's three-dot menu. Available modes:
+Choose **Team settings** from a team's three-dot menu in the sidebar, then
+use the **Working mode (this team)** section. In v1.3.6 and earlier, this entry is named
+**Team working mode**; the Team view/Team settings consolidation is a later
+UI change.
+The setting is stored per board, not globally and not per worker. It supplies
+instructions when a task is first claimed; it is not a repository isolation or
+queue enforcement mechanism. See [Task queue flow](task-workflows.md) for the
+engine-enforced lifecycle and permissions.
 
-- **None** (default): no additional mode instructions.
-- **Shared checkout**: coordinate file ownership, preserve teammates' changes,
-  and commit only the task's changes.
-- **Worktrees**: use an isolated task worktree/branch and publish the exact commit
-  and artifacts for downstream consumers.
+| Setting | Default | Effect and practical use |
+|---|---|---|
+| `mode: none` (None) | Selected | Adds no checkout convention. Useful for research or teams that already specify repository conventions elsewhere. It does not remove base task instructions. |
+| `mode: shared_checkout` (Shared checkout) | Off | Asks agents to coordinate file ownership, preserve teammates' changes and commit only their own work. Useful when everyone works in one checkout; agents must still coordinate overlapping edits. |
+| `mode: worktrees` (Worktrees) | Off | Asks agents to use an isolated Git worktree/branch from an agreed base, reuse their task checkout, leave other checkouts untouched and publish the exact commit. Useful for parallel implementation; someone must still integrate and verify the combined result. |
+| `dependency_guidance` (Include dependent-queue guidance) | `false` | Appends guidance to connect stages as separate dependent tasks with explicit prerequisites and named outputs. It does not create tasks or require every job to use Build/Test/Release. Operator/Orchestrator planning permissions still apply. |
+| `custom_instructions` | Empty string | Appends team conventions after the mode and dependency guidance. Leading/trailing whitespace is trimmed; maximum 4096 UTF-8 bytes, not characters. Example: “Run make check before publishing a commit.” |
+| `instructions` in the response | Generated | Read-only composed guidance: mode text, optional dependency guidance, then custom text, separated by newlines. A caller-provided value is ignored. |
 
-An independent **dependent-queue guidance** checkbox adds instructions for
-separate implementation/test/release tasks, explicit prerequisites, named
-outputs, and consuming upstream evidence. Optional custom instructions append
-team conventions (maximum 4096 UTF-8 bytes). To add no team instructions, select
-None, disable dependency guidance, and leave custom instructions empty. Existing
-Coral task workflow instructions still apply.
+The mode choices are mutually exclusive; dependency guidance and custom text
+are independent. Selecting None with custom text still adds that custom text.
+To add no team instructions, use None, disable the checkbox, and clear custom
+text. Required outputs, dependency conditions, active-slot capacity and planning
+permissions remain enforced regardless of these settings.
 
-This setting supplies instructions; it does not create worktrees, branches,
-dependencies, or artifacts automatically. It applies to board tasks. Personal
-queues do not inherit a team board's setting.
+For a small documentation correction, `none` with no dependency guidance may be
+sufficient. For two developers in one checkout, choose `shared_checkout` and
+agree which files each owns. For parallel branches, choose `worktrees` and
+specify the integration base and acceptance checks in custom instructions.
+Enable dependency guidance when a separately assigned verifier needs a specific
+published result. These are conventions, not automatic worktree creation,
+branch merging, artifact validation or mandatory workflow stages.
+
+Personal queues do not inherit a team board's working mode. Per-task additional
+workflow instructions are separate: they are stored with the task at creation;
+the team instructions are appended on its first claim. Changing a team's mode
+does not launch agents or rewrite their original session prompts.
 
 ```text
 GET /api/board/{project}/working-mode
@@ -330,3 +355,27 @@ dashboard therefore show the same instructions. Later setting changes affect
 unclaimed tasks, not an existing claim. Reassignment/reclaim preserves the
 original snapshot. A new retry task receives the setting in effect when it is
 first claimed. Existing active and completed tasks are not retroactively changed.
+
+
+### Board health monitor setting
+
+The **Global settings** section of Team settings exposes **Run global board
+health monitor**. Unlike the working-mode
+fields above, this is the **global** `board_health_monitor` user setting, stored
+through `GET /api/settings` and `PUT /api/settings` as the strings `"true"` or
+`"false"`. It is not a per-team convention and is not snapshotted into tasks.
+The default is off (absent or not `"true"`). Saving it from one team's dialog
+changes the global value visible from other teams' dialogs.
+
+The server reads this switch at startup. A changed value takes effect on the
+next server start; it does not start or stop the background monitor immediately.
+When enabled at startup, the monitor scans board health every 10 minutes and
+can report inactivity/reminder/escalation findings. It does not automatically
+reassign tasks, accept completion or repair dependency graphs. Observed health
+findings and ordinary board/task notifications are separate features.
+
+Saving Team settings writes the per-board mode and the global health setting
+through separate requests, not one atomic transaction. If saving reports an
+error, the feedback identifies whether working mode, global health, or both
+failed. Reopen the dialog to inspect the persisted values. The first-claim
+snapshot rule applies only to working-mode guidance, not to the health switch.

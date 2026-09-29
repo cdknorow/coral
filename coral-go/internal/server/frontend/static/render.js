@@ -1761,12 +1761,8 @@ export function renderLiveSessions(sessions) {
         const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailability('${escapeAttr(boardName)}')">◉ Agent availability</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingMode('${escapeAttr(boardName)}')">Team working mode</button>
-                <button class="overflow-menu-item overflow-menu-team-details" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamDetails('${escapeAttr(boardName)}')">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
-                    Team details
-                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailability('${escapeAttr(boardName)}')">◉ Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingMode('${escapeAttr(boardName)}')">Team settings</button>
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
@@ -2029,12 +2025,8 @@ export function renderLiveSessions(sessions) {
                 const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
                     <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
                     <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailability('${escapeAttr(boardName)}')">◉ Agent availability</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingMode('${escapeAttr(boardName)}')">Team working mode</button>
-                <button class="overflow-menu-item overflow-menu-team-details" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamDetails('${escapeAttr(boardName)}')">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
-                    Team details
-                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailability('${escapeAttr(boardName)}')">◉ Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingMode('${escapeAttr(boardName)}')">Team settings</button>
                         <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                             Add Agent
