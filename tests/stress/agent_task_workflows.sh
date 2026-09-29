@@ -9,6 +9,7 @@ as_board() {
         "$TMPDIR_AT/coral-board" "$@"
 }
 builder() { as_board "$SESS_A" Builder "$@"; }
+planner() { as_board "task-planner-$SID_A" Orchestrator "$@"; }
 tester() { as_board "$SESS_B" Tester "$@"; }
 task_id() { sed -n 's/^Created Task #\([0-9]*\):.*/\1/p'; }
 workflow_detail() { builder task detail "$1"; }
@@ -38,18 +39,21 @@ reject_board() {
 
 builder join workflow-integration --as Builder >/dev/null
 tester join workflow-integration --as Tester >/dev/null
+planner join workflow-integration --as Orchestrator >/dev/null
+
+check "workers cannot create shared tasks" 'reject_board builder task add "Unauthorized worker task"'
 
 log "Test 10: Reassigning a task nudges the new owner..."
-ASSIGN_TASK=$(builder task add "Assignment nudge" --body "The new owner should be notified." | task_id)
-api PATCH "/api/board/workflow-integration/tasks/$ASSIGN_TASK" -d '{"assigned_to":"Tester"}' >/dev/null
+ASSIGN_TASK=$(planner task add "Assignment nudge" --body "The new owner should be notified." | task_id)
+api PATCH "/api/board/workflow-integration/tasks/$ASSIGN_TASK" -d '{"subscriber_id":"Orchestrator","assigned_to":"Tester"}' >/dev/null
 check "assignment change reaches the new owner's terminal" 'wait_for_input "$NAME_B" "$SID_B" "[mock-agent] input: You have tasks available."'
 tester task claim "$ASSIGN_TASK" >/dev/null
 tester task complete "$ASSIGN_TASK" >/dev/null
 
 log "Test 11: Build -> Test -> Release with live mock agents..."
-BUILD=$(builder task add "Build candidate" --assignee Builder --workflow delivery --stage Build --outputs build --workflow-instructions "Use the exact candidate revision." | task_id)
-TEST=$(builder task add "Test candidate" --assignee Tester --workflow delivery --stage Test --outputs report --blocked-by "[{\"task_id\":$BUILD,\"required_artifacts\":[\"build\"]}]" | task_id)
-RELEASE=$(builder task add "Release candidate" --assignee Builder --workflow delivery --stage Release --outputs release --blocked-by "[{\"task_id\":$BUILD,\"required_artifacts\":[\"build\"]},{\"task_id\":$TEST,\"required_artifacts\":[\"report\"]}]" | task_id)
+BUILD=$(planner task add "Build candidate" --assignee Builder --workflow delivery --stage Build --outputs build --workflow-instructions "Use the exact candidate revision." | task_id)
+TEST=$(planner task add "Test candidate" --assignee Tester --workflow delivery --stage Test --outputs report --blocked-by "[{\"task_id\":$BUILD,\"required_artifacts\":[\"build\"]}]" | task_id)
+RELEASE=$(planner task add "Release candidate" --assignee Builder --workflow delivery --stage Release --outputs release --blocked-by "[{\"task_id\":$BUILD,\"required_artifacts\":[\"build\"]},{\"task_id\":$TEST,\"required_artifacts\":[\"report\"]}]" | task_id)
 check "test and release start blocked" '[[ $(workflow_status "$TEST") == blocked && $(workflow_status "$RELEASE") == blocked ]]'
 check "blocked task cannot be claimed explicitly" 'reject_board tester task claim "$TEST"'
 check "another worker cannot claim the assigned build" 'reject_board tester task claim "$BUILD"'
@@ -84,32 +88,32 @@ check "completed build evidence cannot be overwritten" 'reject_board builder tas
 check "original build revision remains intact" '[[ $(workflow_detail "$BUILD" | jget "d[\"workflow\"][\"artifacts\"][0][\"revision\"]") == candidate-abc123 ]]'
 
 log "Test 11: Failure branches, fresh retries and cancellation..."
-BROKEN=$(builder task add "Broken candidate" --assignee Builder --outputs build | task_id)
-SUCCESSOR=$(builder task add "Consume candidate" --blocked-by "[$BROKEN]" | task_id)
-RECOVERY=$(builder task add "Diagnose failure" --assignee Tester --blocked-by "[{\"task_id\":$BROKEN,\"condition\":\"failure\"}]" | task_id)
-TERMINAL=$(builder task add "Clean candidate" --blocked-by "[{\"task_id\":$BROKEN,\"condition\":\"termination\"}]" | task_id)
+BROKEN=$(planner task add "Broken candidate" --assignee Builder --outputs build | task_id)
+SUCCESSOR=$(planner task add "Consume candidate" --blocked-by "[$BROKEN]" | task_id)
+RECOVERY=$(planner task add "Diagnose failure" --assignee Tester --blocked-by "[{\"task_id\":$BROKEN,\"condition\":\"failure\"}]" | task_id)
+TERMINAL=$(planner task add "Clean candidate" --blocked-by "[{\"task_id\":$BROKEN,\"condition\":\"termination\"}]" | task_id)
 builder task claim "$BROKEN" >/dev/null
 builder task complete "$BROKEN" --outcome failed --message "Compiler rejected candidate" >/dev/null
 check "failure unlocks recovery and cleanup, not success branch" 'wait_task_status "$RECOVERY" pending && wait_task_status "$TERMINAL" pending && [[ $(workflow_status "$SUCCESSOR") == blocked ]]'
 tester task claim "$RECOVERY" >/dev/null
 check "recovery receives failed upstream outcome" 'tester task current | grep -q '\''"outcome": "failed"'\'''
 tester task complete "$RECOVERY" >/dev/null
-RETRY=$(builder task add "Rebuild candidate" --assignee Builder --retry-of "$BROKEN" --outputs build | task_id)
+RETRY=$(planner task add "Rebuild candidate" --assignee Builder --retry-of "$BROKEN" --outputs build | task_id)
 builder task claim "$RETRY" >/dev/null
 builder task complete "$RETRY" --artifacts "$TMPDIR_AT/build.json" >/dev/null
 check "retry is a new task linked to original failure" '[[ "$RETRY" != "$BROKEN" && $(workflow_detail "$RETRY" | jget "d[\"workflow\"][\"retry_of\"]") == "$BROKEN" ]]'
 check "retry automatically rewires the unstarted consumer" '[[ $(workflow_status "$SUCCESSOR") == pending && $(workflow_detail "$SUCCESSOR" | jget "d[\"blocked_by\"][0][\"task_id\"]") == "$RETRY" ]]'
 check "rewired consumer is claimable without a manual dependency edit" 'builder task claim "$SUCCESSOR" >/dev/null'
 builder task complete "$SUCCESSOR" >/dev/null
-CANCELLED_BUILD=$(builder task add "Cancelled candidate" | task_id)
-CANCEL_SUCCESS=$(builder task add "Do not ship cancellation" --blocked-by "[$CANCELLED_BUILD]" | task_id)
-CANCEL_CLEANUP=$(builder task add "Clean cancelled candidate" --blocked-by "[{\"task_id\":$CANCELLED_BUILD,\"condition\":\"termination\"}]" | task_id)
+CANCELLED_BUILD=$(planner task add "Cancelled candidate" | task_id)
+CANCEL_SUCCESS=$(planner task add "Do not ship cancellation" --blocked-by "[$CANCELLED_BUILD]" | task_id)
+CANCEL_CLEANUP=$(planner task add "Clean cancelled candidate" --blocked-by "[{\"task_id\":$CANCELLED_BUILD,\"condition\":\"termination\"}]" | task_id)
 builder task cancel "$CANCELLED_BUILD" >/dev/null
 check "cancellation unlocks cleanup but never success" 'wait_task_status "$CANCEL_CLEANUP" pending && [[ $(workflow_status "$CANCEL_SUCCESS") == blocked ]]'
 check "cancellation notifies orchestrator about stalled success consumer" 'wait_board_message "[Task #$CANCEL_SUCCESS stalled]"'
 
 log "Test 12: Concurrent completions preserve one immutable result..."
-RACE=$(builder task add "Concurrent artifact submissions" --assignee Builder --outputs build | task_id)
+RACE=$(planner task add "Concurrent artifact submissions" --assignee Builder --outputs build | task_id)
 builder task claim "$RACE" >/dev/null
 mkdir -p "$TMPDIR_AT/completions"
 COMPLETION_PIDS=()
@@ -132,11 +136,11 @@ if [[ $(echo "$WINNERS" | grep -c .) == 1 ]]; then
 fi
 
 log "Test 13: Dependency output contracts reject impossible handoffs..."
-CONTRACT_PRODUCER=$(builder task add "Contract producer" --assignee Builder --outputs diagnostic,verification | task_id)
-check "mismatched dependency contract is rejected" 'reject_board builder task add "Impossible consumer" --blocked-by "[{\"task_id\":'$CONTRACT_PRODUCER',\"required_artifacts\":[\"candidate\",\"verification\"]}]"'
+CONTRACT_PRODUCER=$(planner task add "Contract producer" --assignee Builder --outputs diagnostic,verification | task_id)
+check "mismatched dependency contract is rejected" 'reject_board planner task add "Impossible consumer" --blocked-by "[{\"task_id\":'$CONTRACT_PRODUCER',\"required_artifacts\":[\"candidate\",\"verification\"]}]"'
 check "contract rejection names the undeclared artifact" 'grep -q "cannot require artifact.*candidate" "$TMPDIR_AT/last-rejection.log"'
-CONTRACT_BUILD=$(builder task add "Declared candidate producer" --assignee Builder --outputs candidate,verification | task_id)
-CONTRACT_TEST=$(builder task add "Valid contract consumer" --assignee Tester --blocked-by "[{\"task_id\":$CONTRACT_BUILD,\"required_artifacts\":[\"candidate\",\"verification\"]}]" | task_id)
+CONTRACT_BUILD=$(planner task add "Declared candidate producer" --assignee Builder --outputs candidate,verification | task_id)
+CONTRACT_TEST=$(planner task add "Valid contract consumer" --assignee Tester --blocked-by "[{\"task_id\":$CONTRACT_BUILD,\"required_artifacts\":[\"candidate\",\"verification\"]}]" | task_id)
 check "declared dependency contract is accepted and starts blocked" '[[ $(workflow_status "$CONTRACT_TEST") == blocked ]]'
 builder task claim "$CONTRACT_BUILD" >/dev/null
 cat >"$TMPDIR_AT/contract-build.json" <<'JSON'

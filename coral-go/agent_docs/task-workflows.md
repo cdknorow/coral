@@ -5,6 +5,11 @@ does not become a Test task. Each task keeps its owner, instructions, inputs and
 completion evidence. Team tasks (`coral-board task`) and personal tasks
 (`coral-agent task`) use the same workflow engine and lifecycle rules.
 
+Only the human Operator or registered orchestrator creates or reassigns shared board tasks, including
+retries and drafts. Workers keep ownership through corrections and coordinate
+directly; ask the orchestrator for additional assignments. Claim and completion
+remain available to workers. Personal planning is unchanged.
+
 Personal tasks are scoped to the current agent session. They support the same
 dependency conditions, required outputs, immutable artifacts, outcomes, retries,
 and default instructions. One personal task may be in progress at a time.
@@ -39,7 +44,7 @@ These are snapshotted on first claim and retained through reassignment.
 
 ## Build → Test → Release
 
-Create each task and substitute the returned IDs in the following commands:
+The orchestrator creates each task and substitutes the returned IDs in the following commands:
 
 ```sh
 coral-board task add "Build release candidate" --assignee "Developer" \
@@ -121,7 +126,7 @@ successful-stage outputs and instead include diagnostic artifacts.
 coral-board task complete 102 --outcome failed --message "Regression found" --artifacts failure-report.json
 ```
 
-In the dashboard, create tasks with workflow/stage names, required output names,
+For authorized shared planning or personal planning, create tasks with workflow/stage names, required output names,
 dependency conditions, and additional workflow instructions. Complete a task with
 an outcome and a named artifact, or attach a JSON manifest for multiple outputs.
 Task details show instructions, dependency conditions, inputs, and results.

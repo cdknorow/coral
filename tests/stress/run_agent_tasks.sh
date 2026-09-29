@@ -287,11 +287,12 @@ source "$SCRIPT_DIR/agent_task_workflows.sh"
 log "Test 14: FIFO claimability skips terminal/blocked rows and honors assigned work..."
 builder join claim-regressions --as Builder >/dev/null
 tester join claim-regressions --as Tester >/dev/null
+planner join claim-regressions --as Orchestrator >/dev/null
 
-CANCELLED_FIFO=$(builder task add "Cancelled FIFO row" --priority critical | task_id)
+CANCELLED_FIFO=$(planner task add "Cancelled FIFO row" --priority critical | task_id)
 builder task cancel "$CANCELLED_FIFO" >/dev/null
-ASSIGNED_FIFO=$(builder task add "Assigned ready row" --priority low --assignee Builder | task_id)
-GLOBAL_FIFO=$(builder task add "Global critical row" --priority critical | task_id)
+ASSIGNED_FIFO=$(planner task add "Assigned ready row" --priority low --assignee Builder | task_id)
+GLOBAL_FIFO=$(planner task add "Global critical row" --priority critical | task_id)
 OUT=$(builder task claim)
 check "FIFO prefers the agent's assigned ready task over global priority" 'echo "$OUT" | grep -q "Claimed Task #$ASSIGNED_FIFO"'
 builder task complete "$ASSIGNED_FIFO" >/dev/null
@@ -299,11 +300,11 @@ OUT=$(builder task claim)
 check "FIFO skips cancelled rows and claims the remaining global task" 'echo "$OUT" | grep -q "Claimed Task #$GLOBAL_FIFO"'
 builder task complete "$GLOBAL_FIFO" >/dev/null
 
-FAILED_FIFO=$(builder task add "Failed prerequisite" --priority critical | task_id)
-BLOCKED_FIFO=$(builder task add "Success-only dependent" --blocked-by "[$FAILED_FIFO]" | task_id)
+FAILED_FIFO=$(planner task add "Failed prerequisite" --priority critical | task_id)
+BLOCKED_FIFO=$(planner task add "Success-only dependent" --blocked-by "[$FAILED_FIFO]" | task_id)
 builder task claim "$FAILED_FIFO" >/dev/null
 builder task complete "$FAILED_FIFO" --outcome failed --message "candidate rejected" >/dev/null
-READY_FIFO=$(builder task add "Independent ready row" --priority low | task_id)
+READY_FIFO=$(planner task add "Independent ready row" --priority low | task_id)
 set +e
 OUT=$(tester task claim 2>&1)
 CODE=$?
@@ -311,8 +312,8 @@ set -e
 check "FIFO does not claim a task whose prerequisite failed" '[[ $CODE -eq 0 ]] && [[ "$OUT" == *"Independent ready row"* ]] && [[ "$OUT" != *"Success-only dependent"* ]]' "$OUT"
 tester task complete "$READY_FIFO" >/dev/null
 
-DIRECT_OTHER=$(builder task add "Earlier direct-ID row" --priority critical | task_id)
-DIRECT_TARGET=$(builder task add "Direct-ID target" --priority low | task_id)
+DIRECT_OTHER=$(planner task add "Earlier direct-ID row" --priority critical | task_id)
+DIRECT_TARGET=$(planner task add "Direct-ID target" --priority low | task_id)
 OUT=$(tester task claim "$DIRECT_TARGET")
 check "direct-ID claim selects the requested ready task" 'echo "$OUT" | grep -q "Claimed Task #$DIRECT_TARGET"'
 tester task complete "$DIRECT_TARGET" >/dev/null
@@ -325,15 +326,15 @@ tester task complete "$DIRECT_OTHER" >/dev/null
 # ── Test 14b: cancellation stalls descendants and never leaks into FIFO ───
 
 log "Test 14b: canceled prerequisites stall descendants and FIFO skips them..."
-CANCEL_ROOT=$(builder task add "Canceled prerequisite root" --priority critical | task_id)
-CANCEL_CHILD=$(builder task add "Stalled dependent" --priority critical --blocked-by "[$CANCEL_ROOT]" --assignee Tester | task_id)
-CANCEL_GRANDCHILD=$(builder task add "Stalled grandchild" --priority critical --blocked-by "[$CANCEL_CHILD]" --assignee Tester | task_id)
+CANCEL_ROOT=$(planner task add "Canceled prerequisite root" --priority critical | task_id)
+CANCEL_CHILD=$(planner task add "Stalled dependent" --priority critical --blocked-by "[$CANCEL_ROOT]" --assignee Tester | task_id)
+CANCEL_GRANDCHILD=$(planner task add "Stalled grandchild" --priority critical --blocked-by "[$CANCEL_CHILD]" --assignee Tester | task_id)
 builder task cancel "$CANCEL_ROOT" --message "superseded" >/dev/null
 CHILD_STATUS=$(api GET "/api/board/claim-regressions/tasks/$CANCEL_CHILD" | jget "d['status']")
 GRANDCHILD_STATUS=$(api GET "/api/board/claim-regressions/tasks/$CANCEL_GRANDCHILD" | jget "d['status']")
 check "canceling a prerequisite leaves the direct dependent blocked" '[[ "$CHILD_STATUS" == blocked ]]' "$CHILD_STATUS"
 check "canceling a prerequisite propagates blocked state to descendants" '[[ "$GRANDCHILD_STATUS" == blocked ]]' "$GRANDCHILD_STATUS"
-INDEPENDENT_AFTER_CANCEL=$(builder task add "Runnable after canceled graph" --priority low | task_id)
+INDEPENDENT_AFTER_CANCEL=$(planner task add "Runnable after canceled graph" --priority low | task_id)
 OUT=$(tester task claim)
 check "FIFO skips assigned blocked descendants after cancellation" 'echo "$OUT" | grep -q "Runnable after canceled graph" && echo "$OUT" | grep -qv "Stalled"' "$OUT"
 tester task complete "$INDEPENDENT_AFTER_CANCEL" >/dev/null

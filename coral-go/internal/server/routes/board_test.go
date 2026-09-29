@@ -73,6 +73,7 @@ func setupBoardTestServer(t *testing.T) (*httptest.Server, *BoardHandler) {
 
 func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "eval", "Orchestrator")
 	coralDir := t.TempDir()
 	handler.SetTaskArtifactWriter(coralDir, func(_ context.Context, _ *board.Task, path string) error {
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -82,7 +83,7 @@ func TestBoardCompleteTask_PersistsChangesArtifact(t *testing.T) {
 	})
 	base := server.URL + "/api/board/eval/tasks"
 
-	resp := postJSON(t, base, map[string]string{"title": "Evaluate", "created_by": "harness"})
+	resp := postJSON(t, base, map[string]string{"title": "Evaluate", "created_by": "Orchestrator"})
 	resp.Body.Close()
 	resp = postJSON(t, base+"/claim", map[string]string{"subscriber_id": "Lead"})
 	resp.Body.Close()
@@ -421,7 +422,8 @@ func TestBoardListProjects(t *testing.T) {
 }
 
 func TestBoardCreateTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	resp := postJSON(t, base+"/subscribe", map[string]string{
@@ -471,7 +473,8 @@ func TestBoardCreateTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 }
 
 func TestBoardReassignTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	resp := postJSON(t, base+"/subscribe", map[string]string{
@@ -526,6 +529,7 @@ func TestBoardReassignTask_DefersAssigneeNotificationWhenBusy(t *testing.T) {
 
 func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "assignment-nudge", "Orchestrator")
 	mockTerm := newMockTerminal()
 	mockTerm.addSession("tmux-frontend", "/tmp/frontend")
 	handler.SetTerminal(mockTerm)
@@ -546,7 +550,7 @@ func TestBoardUpdateTask_AssigneeChangeNudgesNewOwner(t *testing.T) {
 	resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
 
-	resp = patchJSON(t, base+fmt.Sprintf("/tasks/%d", task.ID), map[string]string{"assigned_to": "Frontend Dev"})
+	resp = patchJSON(t, base+fmt.Sprintf("/tasks/%d", task.ID), map[string]string{"subscriber_id": "Orchestrator", "assigned_to": "Frontend Dev"})
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -588,7 +592,8 @@ func boardMessagesContain(t *testing.T, base, needle string) bool {
 }
 
 func TestBoardCompleteTask_DoesNotNudgeOrchestratorForUnassignedTask(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	resp := postJSON(t, base+"/subscribe", map[string]string{
@@ -599,7 +604,7 @@ func TestBoardCompleteTask_DoesNotNudgeOrchestratorForUnassignedTask(t *testing.
 
 	resp = postJSON(t, base+"/tasks", map[string]string{
 		"title":       "Coordinate work",
-		"created_by":  "Operator",
+		"created_by":  "Orchestrator",
 		"assigned_to": "Orchestrator",
 	})
 	resp.Body.Close()
@@ -634,7 +639,8 @@ func TestBoardCompleteTask_DoesNotNudgeOrchestratorForUnassignedTask(t *testing.
 }
 
 func TestBoardCompleteTask_NudgesWorkerForUnassignedTask(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	resp := postJSON(t, base+"/subscribe", map[string]string{
@@ -674,6 +680,7 @@ func TestBoardCompleteTask_NudgesWorkerForUnassignedTask(t *testing.T) {
 
 func TestBoardCompleteTask_NotifiesOrchestrator(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
 	terminal.addSession("claude-orchestrator", "/tmp/test")
@@ -732,7 +739,8 @@ func patchJSON(t *testing.T, url string, payload any) *http.Response {
 }
 
 func TestBoardUpdateTask_PartialEdit(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create a task
@@ -780,7 +788,8 @@ func TestBoardUpdateTask_PartialEdit(t *testing.T) {
 }
 
 func TestBoardUpdateTask_CompletedTaskRejected(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create and complete a task
@@ -820,7 +829,8 @@ func TestBoardUpdateTask_InvalidTaskID(t *testing.T) {
 }
 
 func TestBoardCompleteTask_ViaHTTP(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Subscribe worker so claim works
@@ -872,7 +882,8 @@ func TestBoardCompleteTask_ViaHTTP(t *testing.T) {
 }
 
 func TestBoardCancelTask_ViaHTTP(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create task
@@ -903,7 +914,8 @@ func TestBoardCancelTask_ViaHTTP(t *testing.T) {
 // ── Dependency Tests (Route Level) ──────────────────────────────
 
 func TestBoardCreateTask_WithBlockedBy_Shorthand(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create blocker task
@@ -946,7 +958,8 @@ func TestBoardCreateTask_WithBlockedBy_Shorthand(t *testing.T) {
 }
 
 func TestBoardCreateTask_WithBlockedBy_FullFormat(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create blocker
@@ -968,7 +981,8 @@ func TestBoardCreateTask_WithBlockedBy_FullFormat(t *testing.T) {
 }
 
 func TestBoardCreateTask_BlockedByResolved_StartsPending(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Subscribe worker so claim works
@@ -999,7 +1013,8 @@ func TestBoardCreateTask_BlockedByResolved_StartsPending(t *testing.T) {
 }
 
 func TestBoardCreateTask_CircularDependencyRejected(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create A
@@ -1022,7 +1037,8 @@ func TestBoardCreateTask_CircularDependencyRejected(t *testing.T) {
 }
 
 func TestBoardCompleteTask_UnblocksDownstream(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	postJSON(t, base+"/subscribe", map[string]string{
@@ -1062,7 +1078,8 @@ func TestBoardCompleteTask_UnblocksDownstream(t *testing.T) {
 }
 
 func TestBoardCancelTask_DoesNotSatisfySuccessDependency(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create A, create B blocked by A
@@ -1095,7 +1112,8 @@ func TestBoardCancelTask_DoesNotSatisfySuccessDependency(t *testing.T) {
 }
 
 func TestBoardCancelTask_NotifiesOrchestratorOfStalledDownstream(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	postJSON(t, base+"/tasks", map[string]string{"title": "Cancelled upstream", "created_by": "Orchestrator"}).Body.Close()
@@ -1130,7 +1148,8 @@ func TestBoardCancelTask_NotifiesOrchestratorOfStalledDownstream(t *testing.T) {
 }
 
 func TestBoardUpdateTask_BlockedByViaPatcH(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create A and B (both pending)
@@ -1165,7 +1184,8 @@ func TestBoardUpdateTask_BlockedByViaPatcH(t *testing.T) {
 // ── Draft Tests (Route Level) ───────────────────────────────────
 
 func TestBoardCreateDraftTask(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	resp, err := http.Post(base+"/tasks", "application/json",
@@ -1179,17 +1199,18 @@ func TestBoardCreateDraftTask(t *testing.T) {
 }
 
 func TestBoardCreateDraftTask_WithDeps(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create blocker first
 	postJSON(t, base+"/tasks", map[string]string{
-		"title": "Blocker", "created_by": "Orch",
+		"title": "Blocker", "created_by": "Orchestrator",
 	}).Body.Close()
 
 	// Create draft with deps — should stay draft (not evaluate deps)
 	resp, err := http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft with deps","created_by":"Orch","draft":true,"blocked_by":[1]}`)))
+		bytes.NewReader([]byte(`{"title":"Draft with deps","created_by":"Orchestrator","draft":true,"blocked_by":[1]}`)))
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusCreated, resp.StatusCode)
@@ -1199,7 +1220,8 @@ func TestBoardCreateDraftTask_WithDeps(t *testing.T) {
 }
 
 func TestBoardDraftCannotBeClaimed(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	postJSON(t, base+"/subscribe", map[string]string{
@@ -1208,9 +1230,9 @@ func TestBoardDraftCannotBeClaimed(t *testing.T) {
 
 	// Create draft and a pending task
 	http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft","created_by":"Orch","draft":true,"priority":"high"}`)))
+		bytes.NewReader([]byte(`{"title":"Draft","created_by":"Orchestrator","draft":true,"priority":"high"}`)))
 	postJSON(t, base+"/tasks", map[string]string{
-		"title": "Pending", "created_by": "Orch", "priority": "low",
+		"title": "Pending", "created_by": "Orchestrator", "priority": "low",
 	}).Body.Close()
 
 	// Claim should skip draft, pick pending
@@ -1225,12 +1247,13 @@ func TestBoardDraftCannotBeClaimed(t *testing.T) {
 }
 
 func TestBoardPublishDraft_NoDeps(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create draft
 	resp, _ := http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft to publish","created_by":"Orch","draft":true}`)))
+		bytes.NewReader([]byte(`{"title":"Draft to publish","created_by":"Orchestrator","draft":true}`)))
 	var created map[string]any
 	json.NewDecoder(resp.Body).Decode(&created)
 	resp.Body.Close()
@@ -1246,17 +1269,18 @@ func TestBoardPublishDraft_NoDeps(t *testing.T) {
 }
 
 func TestBoardPublishDraft_WithUnresolvedDeps(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	// Create blocker
 	postJSON(t, base+"/tasks", map[string]string{
-		"title": "Blocker", "created_by": "Orch",
+		"title": "Blocker", "created_by": "Orchestrator",
 	}).Body.Close()
 
 	// Create draft blocked by task 1
 	resp, _ := http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft blocked","created_by":"Orch","draft":true,"blocked_by":[1]}`)))
+		bytes.NewReader([]byte(`{"title":"Draft blocked","created_by":"Orchestrator","draft":true,"blocked_by":[1]}`)))
 	var created map[string]any
 	json.NewDecoder(resp.Body).Decode(&created)
 	resp.Body.Close()
@@ -1273,11 +1297,12 @@ func TestBoardPublishDraft_WithUnresolvedDeps(t *testing.T) {
 }
 
 func TestBoardPublishNonDraft_Fails(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	postJSON(t, base+"/tasks", map[string]string{
-		"title": "Pending task", "created_by": "Orch",
+		"title": "Pending task", "created_by": "Orchestrator",
 	}).Body.Close()
 
 	resp := postJSON(t, base+"/tasks/1/publish", nil)
@@ -1286,11 +1311,12 @@ func TestBoardPublishNonDraft_Fails(t *testing.T) {
 }
 
 func TestBoardDraftCanBeCancelled(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft cancel","created_by":"Orch","draft":true}`)))
+		bytes.NewReader([]byte(`{"title":"Draft cancel","created_by":"Orchestrator","draft":true}`)))
 
 	resp := postJSON(t, base+"/tasks/1/cancel", map[string]string{
 		"subscriber_id": "Orch",
@@ -1303,11 +1329,12 @@ func TestBoardDraftCanBeCancelled(t *testing.T) {
 }
 
 func TestBoardDraftCanBeEdited(t *testing.T) {
-	server, _ := setupBoardTestServer(t)
+	server, plannerHandler := setupBoardTestServer(t)
+	registerTaskPlanner(t, plannerHandler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 
 	http.Post(base+"/tasks", "application/json",
-		bytes.NewReader([]byte(`{"title":"Draft edit","created_by":"Orch","draft":true}`)))
+		bytes.NewReader([]byte(`{"title":"Draft edit","created_by":"Orchestrator","draft":true}`)))
 
 	resp := patchJSON(t, base+"/tasks/1", map[string]any{
 		"title":    "Updated draft",
@@ -1331,6 +1358,8 @@ func (m *mockSessionTerminal) sentTo(session string) []string {
 
 func TestBoardTaskNudge_UsesTheTasksBoard(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
+	registerTaskPlanner(t, handler, "other", "Orchestrator")
 	terminal := newMockTerminal()
 	terminal.addSession("claude-mine", "/tmp/a")
 	terminal.addSession("claude-other", "/tmp/b")
@@ -1358,6 +1387,7 @@ func TestBoardTaskNudge_UsesTheTasksBoard(t *testing.T) {
 
 func TestBoardNudgeTask(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
 	terminal.addSession("claude-backend", "/tmp/a")
@@ -1404,6 +1434,7 @@ func TestBoardNudgeTask(t *testing.T) {
 
 func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
 	terminal.addSession("claude-backend", "/tmp/a")
@@ -1416,7 +1447,7 @@ func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	before := len(terminal.sentTo("claude-backend"))
 
-	resp := postJSON(t, base+"/tasks/1/reassign", map[string]string{"assignee": "Backend Dev"})
+	resp := postJSON(t, base+"/tasks/1/reassign", map[string]string{"subscriber_id": "Orchestrator", "assignee": "Backend Dev"})
 	resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Eventually(t, func() bool { return len(terminal.sentTo("claude-backend")) > before }, 2*time.Second, 20*time.Millisecond)
@@ -1424,6 +1455,7 @@ func TestBoardReassignTask_NudgesNewAssignee(t *testing.T) {
 
 func TestBoardRemindTask_StartsAndStopsPeriodicReminder(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
+	registerTaskPlanner(t, handler, "myproject", "Orchestrator")
 	base := server.URL + "/api/board/myproject"
 	terminal := newMockTerminal()
 	terminal.addSession("claude-backend", "/tmp/a")
@@ -1464,4 +1496,10 @@ func TestUnescapeLineBreaks(t *testing.T) {
 	} {
 		assert.Equal(t, want, unescapeLineBreaks(in), in)
 	}
+}
+
+func registerTaskPlanner(t *testing.T, h *BoardHandler, project, actor string) {
+	t.Helper()
+	_, err := h.bs.Subscribe(context.Background(), project, actor, "Orchestrator", "", nil, nil, "all")
+	require.NoError(t, err)
 }

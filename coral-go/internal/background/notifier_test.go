@@ -274,3 +274,77 @@ func TestBoardNotifier_OneNudgePerBatch(t *testing.T) {
 	require.Len(t, rt.sent, 3)
 	assert.Contains(t, rt.sent[2].text, "1 unread message")
 }
+
+// TestBoardNotifier_MultiSessionNoDuplicateNudge verifies that when multiple
+// sessions share the same role title (e.g. Orchestrator on proj-A with 0 unreads
+// and Orchestrator on proj-B with 1 unread), the 0-unread session does not
+// clobber the notification state of the other session and trigger repeated nudges.
+func TestBoardNotifier_MultiSessionNoDuplicateNudge(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+
+	// Session 1: Orchestrator on proj-A (0 unread messages)
+	_, err := bs.Subscribe(ctx, "proj-A", "Orchestrator", "Orchestrator", "codex-orch-1", nil, nil, "all")
+	require.NoError(t, err)
+
+	// Session 2: Orchestrator on proj-B (1 unread message)
+	_, err = bs.Subscribe(ctx, "proj-B", "Orchestrator", "Orchestrator", "codex-orch-2", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj-B", "Worker", "Worker", "codex-worker-2", nil, nil, "")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "proj-B", "Worker", "hello orchestrator", nil)
+	require.NoError(t, err)
+
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{
+			{AgentName: "orch-1", AgentType: "codex", SessionID: "orch-1", DisplayName: "Orchestrator"},
+			{AgentName: "orch-2", AgentType: "codex", SessionID: "orch-2", DisplayName: "Orchestrator"},
+		}, nil
+	})
+
+	// Pass 1: should send exactly one nudge to codex-orch-2
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	assert.Equal(t, "codex-orch-2", rt.sent[0].session)
+
+	// Pass 2: no new messages, should NOT send another nudge
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Len(t, rt.sent, 1, "should not send duplicate nudge when unread count has not changed")
+
+	// Pass 3: still no new messages, should NOT send another nudge
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Len(t, rt.sent, 1, "should not send duplicate nudge on subsequent passes")
+}
+
+// TestBoardNotifier_SeedFromDBPreventsInitialDuplicate verifies that pre-existing
+// unread counts loaded on startup via SeedFromDB are keyed by session_name and
+// prevent immediate duplicate nudges on the first notifier pass.
+func TestBoardNotifier_SeedFromDBPreventsInitialDuplicate(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "codex-orch-1", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "codex-worker-1", nil, nil, "")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "proj", "Worker", "pre-existing unread message", nil)
+	require.NoError(t, err)
+
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "orch", AgentType: "codex", SessionID: "orch-1", DisplayName: "Orchestrator"}}, nil
+	})
+
+	// Seed notifier from DB as done during startup
+	notifier.SeedFromDB(ctx)
+
+	// First pass after restart: should NOT immediately nudge for pre-existing unread messages
+	require.NoError(t, notifier.RunOnce(ctx))
+	assert.Empty(t, rt.sent, "pre-existing unread messages should be seeded and not trigger immediate nudge on startup")
+}

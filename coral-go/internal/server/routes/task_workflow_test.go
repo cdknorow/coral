@@ -14,6 +14,7 @@ import (
 
 func TestBoardTaskWorkflowAPI(t *testing.T) {
 	server, h := setupBoardTestServer(t)
+	registerTaskPlanner(t, h, "pipeline", "lead")
 	base := server.URL + "/api/board/pipeline/tasks"
 	create := func(payload map[string]any) board.Task {
 		payload["created_by"] = "lead"

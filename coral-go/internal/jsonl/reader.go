@@ -28,6 +28,7 @@ type SessionReader struct {
 
 type sessionCache struct {
 	path         string
+	pathVerified bool
 	offset       int64
 	messages     []map[string]any
 	toolUseNames map[string]string // tool_use_id → tool_name
@@ -53,6 +54,17 @@ func NewSessionReader() *SessionReader {
 // ReadNewMessages reads new messages since the last call for the given session.
 // Returns (new_messages, total_count).
 func (r *SessionReader) ReadNewMessages(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
+	return r.readNewMessages(sessionID, workingDirectory, agentType, false)
+}
+
+// ReadNewMessagesForLive reads a live session with strict Coral identity
+// matching for Antigravity transcripts. Native history callers should use
+// ReadNewMessages, which preserves conversation-ID lookup semantics.
+func (r *SessionReader) ReadNewMessagesForLive(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
+	return r.readNewMessages(sessionID, workingDirectory, agentType, true)
+}
+
+func (r *SessionReader) readNewMessages(sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -64,10 +76,27 @@ func (r *SessionReader) ReadNewMessages(sessionID, workingDirectory, agentType s
 
 	// Resolve path on first call
 	if c.path == "" {
-		c.path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+		c.path = resolveTranscriptPathMode(sessionID, workingDirectory, agentType, strictLive)
 		if c.path == "" {
 			return nil, 0
 		}
+	}
+	// A live Coral session must never inherit a transcript selected only by
+	// workspace. Older readers could cache that fallback while a new
+	// Antigravity transcript was still being created. Revalidate any existing
+	// unverified path and discard its parsed messages before retrying resolution.
+	if strictLive && isAgyAgentType(agentType) && !c.pathVerified {
+		if agyTranscriptCoralSessionID(c.path) != sessionID {
+			c.path = ""
+			c.offset = 0
+			c.messages = nil
+			c.toolUseNames = make(map[string]string)
+			c.path = resolveTranscriptPathMode(sessionID, workingDirectory, agentType, true)
+			if c.path == "" {
+				return nil, 0
+			}
+		}
+		c.pathVerified = true
 	}
 
 	// Read new data from file
@@ -127,6 +156,18 @@ func (r *SessionReader) ReadAllMessages(sessionID, workingDirectory, agentType s
 	// ReadNewMessages updates the cache with any new data
 	r.ReadNewMessages(sessionID, workingDirectory, agentType)
 
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cache[sessionID]
+	if c == nil {
+		return nil, 0
+	}
+	return c.messages, len(c.messages)
+}
+
+// ReadAllMessagesForLive is the strict counterpart used by the live chat API.
+func (r *SessionReader) ReadAllMessagesForLive(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
+	r.ReadNewMessagesForLive(sessionID, workingDirectory, agentType)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	c := r.cache[sessionID]
@@ -287,8 +328,15 @@ func TranscriptPath(sessionID, workingDirectory, agentType string) string {
 
 // resolveTranscriptPath finds the transcript file for a session.
 func resolveTranscriptPath(sessionID, workingDirectory, agentType string) string {
+	return resolveTranscriptPathMode(sessionID, workingDirectory, agentType, false)
+}
+
+func resolveTranscriptPathMode(sessionID, workingDirectory, agentType string, strictLive bool) string {
 	switch agentType {
 	case at.Agy, at.Antigravity, at.Gemini:
+		if strictLive {
+			return resolveAgyTranscriptStrict(sessionID, workingDirectory)
+		}
 		return resolveAgyTranscript(sessionID, workingDirectory)
 	case at.Codex:
 		return resolveCodexTranscript(sessionID)
@@ -331,6 +379,14 @@ func resolveClaudeTranscript(sessionID, workingDirectory string) string {
 }
 
 func resolveAgyTranscript(sessionID string, workingDirectory ...string) string {
+	return resolveAgyTranscriptMode(sessionID, false, workingDirectory...)
+}
+
+func resolveAgyTranscriptStrict(sessionID string, workingDirectory ...string) string {
+	return resolveAgyTranscriptMode(sessionID, true, workingDirectory...)
+}
+
+func resolveAgyTranscriptMode(sessionID string, strictLive bool, workingDirectory ...string) string {
 	home, _ := os.UserHomeDir()
 	basePath := os.Getenv("ANTIGRAVITY_DATA_DIR")
 	if basePath == "" {
@@ -344,7 +400,9 @@ func resolveAgyTranscript(sessionID string, workingDirectory ...string) string {
 	// Direct match: brain/<sessionID>/.system_generated/logs/transcript.jsonl
 	direct := filepath.Join(basePath, sessionID, ".system_generated", "logs", "transcript.jsonl")
 	if _, err := os.Stat(direct); err == nil {
-		return direct
+		if !strictLive || agyTranscriptCoralSessionID(direct) == sessionID {
+			return direct
+		}
 	}
 
 	// Search brain directories for embedded coral session ID, newest first
@@ -384,8 +442,18 @@ func resolveAgyTranscript(sessionID string, workingDirectory ...string) string {
 		agyHome := filepath.Dir(basePath)
 		historyPath := filepath.Join(agyHome, "history.jsonl")
 		if candidate := resolveAgyTranscriptFromHistory(historyPath, basePath, workdir); candidate != "" {
-			return candidate
+			// A live Coral ID is authoritative. A workspace-only history match
+			// may belong to an older session and must not be cached under this ID.
+			if !strictLive || agyTranscriptCoralSessionID(candidate) == sessionID {
+				return candidate
+			}
 		}
+	}
+
+	// Legacy Gemini files have no Coral marker and cannot be trusted for an
+	// explicit live session. Native/no-ID callers still retain this fallback.
+	if strictLive {
+		return ""
 	}
 
 	// Fallback to legacy Gemini tmp directory
@@ -405,6 +473,15 @@ func resolveAgyTranscript(sessionID string, workingDirectory ...string) string {
 		}
 	}
 	return ""
+}
+
+func isAgyAgentType(agentType string) bool {
+	switch agentType {
+	case at.Agy, at.Antigravity, at.Gemini:
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveAgyTranscriptFromHistory(historyPath, basePath, workingDirectory string) string {

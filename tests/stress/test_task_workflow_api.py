@@ -80,6 +80,7 @@ def main():
 
     try:
         start()
+        api("POST", "/api/board/api-regression/subscribe", {"subscriber_id": "api-test", "job_title": "Orchestrator"})
         names = [f"output-{i}" for i in range(33)]
         error = api("POST", tasks, {"title": "Impossible outputs", "created_by": "api-test",
             "workflow": {"required_outputs": names}}, 400)

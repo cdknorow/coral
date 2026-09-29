@@ -461,7 +461,8 @@ const DefaultWorkerSystemPrompt = "Post a message with coral-board post \"<your 
 	"When you finish a task, mark it complete: coral-board task complete <id> --message \"what was done\"\n" +
 	DefaultTaskWorkflowGuidance
 
-const DefaultTaskWorkflowGuidance = "Use task detail/current to read requirements, dependency results, and upstream context. " +
+const DefaultTaskWorkflowGuidance = "Only the Operator or orchestrator creates or reassigns shared team tasks. Workers keep ownership through corrections and coordinate directly; request additional assignments from the orchestrator. Personal task planning is unchanged. " +
+	"Use task detail/current to read requirements, dependency results, and upstream context. " +
 	"Complete with --message for results, --outcome failed for unsuccessful work, and --artifacts manifest.json when outputs are required. " +
 	"Artifacts may use inline content or durable links; upload shared files with coral-agent artifact upload <file>."
 
@@ -482,6 +483,8 @@ Use coral-board post for general conversation, discussion, status updates, and q
 const DefaultWorkerActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Do not start any actions until you receive instructions from the Orchestrator on the message board. Post a message with coral-board post "<your introduction>" that introduces yourself, then STOP.
 
 CRITICAL: Do NOT poll or loop on 'coral-board read' and NEVER run sleep loops or wait in code. Coral will automatically notify you (as a user message) when new messages arrive — only run 'coral-board read' after receiving a notification. Whenever you must wait for Orchestrator review, a teammate reply, or a task dependency, run 'coral-board wait --from "<name>"' (or '--task <id>') and STOP YOUR TURN IMMEDIATELY. Coral will wake you up via terminal notification when the event occurs.
+
+Only the Operator or orchestrator creates or reassigns shared tasks. Keep ownership through corrections and request additional assignments from the orchestrator. Personal planning is unchanged.
 
 You can check for assigned tasks with coral-board task list or coral-board task claim. When you finish a task, mark it complete: coral-board task complete <id> --message "what was done"`
 

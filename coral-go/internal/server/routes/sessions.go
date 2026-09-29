@@ -1101,7 +1101,16 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// client, so "new since the last read" would split new messages between
 	// windows polling the same session; each client's own count is used instead.
 	after, _ := strconv.Atoi(r.URL.Query().Get("after"))
-	messages, total := h.jsonl.ReadAllMessages(id, workingDir, agentType)
+	// Live requests carry an exact session ID. Antigravity's native
+	// conversation IDs can also be UUIDs, so strict marker validation belongs
+	// only on this explicit live-session path, not generic history browsing.
+	var messages []map[string]any
+	var total int
+	if sessionID != "" {
+		messages, total = h.jsonl.ReadAllMessagesForLive(id, workingDir, agentType)
+	} else {
+		messages, total = h.jsonl.ReadAllMessages(id, workingDir, agentType)
+	}
 	limitNotice := usageLimitNotice(h.findLogPath(agentType, sessionID))
 	if after > 0 {
 		messages = messages[min(after, len(messages)):]

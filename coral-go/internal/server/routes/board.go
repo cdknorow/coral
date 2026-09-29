@@ -1043,6 +1043,23 @@ func (h *BoardHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Request)
 
 // ── Task endpoints ───────────────────────────────────────────────────
 
+// requireTaskPlanner follows the local board identity model: subscriber_id
+// identifies the caller, while privileges come from the active registration
+// on this board. Personal task endpoints use a separate store/scope.
+func (h *BoardHandler) requireTaskPlanner(w http.ResponseWriter, r *http.Request, project, actor string) bool {
+	// Operator is the reserved identity used by the desktop dashboard. Server
+	// auth already gates remote requests; local clients share the desktop trust
+	// boundary. This is not cryptographic attestation of a human caller.
+	if actor == "Operator" {
+		return true
+	}
+	if err := h.bs.RequireTaskReviewer(r.Context(), project, actor); err != nil {
+		errForbidden(w, "only Operator or an active registered orchestrator may create or reassign shared tasks; coordinate with your orchestrator")
+		return false
+	}
+	return true
+}
+
 // CreateTask creates a new task on a board.
 // POST /api/board/{project}/tasks
 func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
@@ -1072,6 +1089,15 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if createdBy == "" {
 		errBadRequest(w, "created_by or subscriber_id required")
+		return
+	}
+	// subscriber_id is the request actor; created_by remains a legacy alias.
+	// Never let an attribution field override an explicitly supplied actor.
+	if body.SubscriberID != "" && createdBy != body.SubscriberID {
+		errForbidden(w, "created_by must match subscriber_id")
+		return
+	}
+	if !h.requireTaskPlanner(w, r, project, createdBy) {
 		return
 	}
 	if body.Priority == "" {
@@ -1466,17 +1492,21 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var raw struct {
-		Title      *string         `json:"title,omitempty"`
-		Body       *string         `json:"body,omitempty"`
-		Priority   *string         `json:"priority,omitempty"`
-		AssignedTo *string         `json:"assigned_to,omitempty"`
-		BlockedBy  json.RawMessage `json:"blocked_by,omitempty"`
+		SubscriberID string          `json:"subscriber_id"`
+		Title        *string         `json:"title,omitempty"`
+		Body         *string         `json:"body,omitempty"`
+		Priority     *string         `json:"priority,omitempty"`
+		AssignedTo   *string         `json:"assigned_to,omitempty"`
+		BlockedBy    json.RawMessage `json:"blocked_by,omitempty"`
 	}
 	if err := decodeJSON(r, &raw); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
 
+	if raw.AssignedTo != nil && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
+		return
+	}
 	update := board.TaskUpdate{
 		Title:      raw.Title,
 		Body:       raw.Body,
@@ -1566,6 +1596,9 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if !h.requireTaskPlanner(w, r, project, body.SubscriberID) {
 		return
 	}
 	task, err := h.bs.ReassignTask(r.Context(), project, taskID, body.Assignee)

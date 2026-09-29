@@ -391,16 +391,28 @@ rules. This is an observed snapshot, not a reservation or transactional view
 across runtime and task stores. Remote/unknown state is not treated as free.
 An empty board returns empty arrays; discovery/storage failure returns an error.
 
-### Orchestrator or routing-agent workflow
+### Orchestrator planning workflow
 
-An agent can submit work without choosing a worker:
+Only the human Operator or an active registered orchestrator can create or reassign shared tasks.
+Workers request assignments from the orchestrator and retain ownership through
+corrections. Personal task planning remains separate. Authorization uses the
+board registration (Orchestrator role or existing can_peek privilege), never a
+role field in a task request. The local API uses subscriber_id to identify the
+caller; created_by is a legacy creation alias and must match when both are set.
+PATCH assignment changes also require subscriber_id and the same privilege.
+The dashboard uses the reserved Operator identity. Remote access is gated by
+the server API key/session cookie; localhost clients share the desktop trust
+boundary. Subscriber identity is caller-supplied, not a per-agent authenticated
+principal, so these checks do not prevent local identity impersonation.
+
+The orchestrator can submit work without choosing a worker:
 
 ```sh
 coral-board task add "Verify the release candidate" --priority high \
   --body "Test the exact candidate revision and publish the results."
 ```
 
-The orchestrator/router reads `coral-board status`, inspects the task and agent
+The orchestrator reads `coral-board status`, inspects the task and agent
 roles, then assigns with `coral-board task reassign <id> --to "QA Engineer"`.
 The worker uses `task claim` and the normal artifact/completion workflow.
 Availability helps select candidates; it does not establish that a role has the

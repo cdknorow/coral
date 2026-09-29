@@ -1350,7 +1350,10 @@ export async function saveTaskEdit(taskId) {
     if (title !== task.title) updates.title = title;
     if (body !== (task.body || '')) updates.body = body;
     if (priority !== task.priority) updates.priority = priority;
-    if (assignedTo !== (task.assigned_to || '')) updates.assigned_to = assignedTo;
+    if (assignedTo !== (task.assigned_to || '')) {
+        updates.assigned_to = assignedTo;
+        updates.subscriber_id = 'Operator';
+    }
 
     const depPickerEl = document.getElementById('task-edit-deps');
     if (depPickerEl) {

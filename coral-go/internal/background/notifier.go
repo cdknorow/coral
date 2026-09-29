@@ -20,7 +20,7 @@ type BoardNotifier struct {
 	discoverFn  func(ctx context.Context) ([]AgentInfo, error)
 	isPausedFn  func(project string) bool
 	notifiedMu  sync.Mutex
-	notified    map[string]notifyState // subscriber_id -> last nudge since the agent last read
+	notified    map[string]notifyState // session_name -> last nudge since the agent last read
 	notifyNowCh chan struct{}
 	remindAfter time.Duration    // resend when still unread this long after a nudge
 	now         func() time.Time // for tests
@@ -76,10 +76,10 @@ func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
 	n.notifiedMu.Lock()
 	defer n.notifiedMu.Unlock()
 	now := n.now()
-	for subscriberID, count := range counts {
-		n.notified[subscriberID] = notifyState{count: count, at: now}
+	for sessName, count := range counts {
+		n.notified[sessName] = notifyState{count: count, at: now}
 	}
-	n.logger.Info("seeded notifier from DB", "subscribers", len(counts))
+	n.logger.Info("seeded notifier from DB", "sessions", len(counts))
 }
 
 // NotifyNow triggers an immediate notification pass without waiting for the next tick.
@@ -122,7 +122,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 
 	n.logger.Info("notification pass", "agent_count", len(agents))
 
-	liveBoardIDs := make(map[string]bool)
+	liveSessions := make(map[string]bool)
 
 	for _, a := range agents {
 		if a.SessionID == "" {
@@ -134,12 +134,12 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 			continue
 		}
 
+		sessName := naming.SessionName(a.AgentType, a.SessionID)
+		liveSessions[sessName] = true
 		subscriberID := naming.SubscriberID(a.DisplayName, a.AgentType)
-		liveBoardIDs[subscriberID] = true
 
 		// Look up by session name first (precise match for current session),
 		// fall back to subscriber_id (for backwards compatibility).
-		sessName := naming.SessionName(a.AgentType, a.SessionID)
 		sub, err := n.boardStore.GetSubscriptionBySessionName(ctx, sessName)
 		if err != nil || sub == nil {
 			sub, err = n.boardStore.GetSubscription(ctx, subscriberID)
@@ -165,11 +165,11 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 			continue
 		}
 
-		n.logger.Info("unread check", "subscriber_id", subscriberID, "unread", unread, "project", sub.Project)
+		n.logger.Info("unread check", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "project", sub.Project)
 
 		if unread == 0 {
 			n.notifiedMu.Lock()
-			delete(n.notified, subscriberID)
+			delete(n.notified, sessName)
 			n.notifiedMu.Unlock()
 			continue
 		}
@@ -177,13 +177,13 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		// One nudge until the agent reads; more messages arriving meanwhile
 		// are covered by it (the agent reads them all at once).
 		n.notifiedMu.Lock()
-		last, notified := n.notified[subscriberID]
+		last, notified := n.notified[sessName]
 		n.notifiedMu.Unlock()
 		// A larger unread batch means new board activity arrived. Notify
 		// immediately; only suppress repeated scans of the same batch during
 		// the reminder window.
 		if notified && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
-			n.logger.Info("already notified", "subscriber_id", subscriberID, "unread", unread, "notified_unread", last.count)
+			n.logger.Info("already notified", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "notified_unread", last.count)
 			continue
 		}
 
@@ -201,15 +201,15 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		}
 
 		n.notifiedMu.Lock()
-		n.notified[subscriberID] = notifyState{count: unread, at: n.now()}
+		n.notified[sessName] = notifyState{count: unread, at: n.now()}
 		n.notifiedMu.Unlock()
 	}
 
 	// Clean up stale entries
 	n.notifiedMu.Lock()
-	for sid := range n.notified {
-		if !liveBoardIDs[sid] {
-			delete(n.notified, sid)
+	for sname := range n.notified {
+		if !liveSessions[sname] {
+			delete(n.notified, sname)
 		}
 	}
 	n.notifiedMu.Unlock()

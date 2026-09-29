@@ -1009,3 +1009,79 @@ func TestResolveAgyTranscript_FromHistory(t *testing.T) {
 		t.Fatalf("expected %q, got %q", targetTranscript, foundViaResolve)
 	}
 }
+
+func TestResolveAgyTranscript_ExplicitCoralIDRejectsWorkspaceFallbackUntilExactTranscriptAppears(t *testing.T) {
+	tmpDir := t.TempDir()
+	brainDir := filepath.Join(tmpDir, "brain")
+	t.Setenv("ANTIGRAVITY_DATA_DIR", brainDir)
+	ws := "/workspace/shared"
+	coralID := "14c7245b-9fb4-67de-871c-a03f6186ed30"
+	oldID := "old-conversation"
+	oldDir := filepath.Join(brainDir, oldID, ".system_generated", "logs")
+	if err := os.MkdirAll(oldDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(oldDir, "transcript.jsonl"), []byte(`{"step_index":0,"type":"USER_INPUT","content":"old"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	historyPath := filepath.Join(tmpDir, "history.jsonl")
+	if err := os.WriteFile(historyPath, []byte(fmt.Sprintf(`{"workspace":%q,"conversationId":%q}`+"\n", ws, oldID)), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The fresh transcript is not present yet. A same-workspace history row
+	// must not be bound to the new live Coral session.
+	if got := resolveAgyTranscriptStrict(coralID, ws); got != "" {
+		t.Fatalf("resolved unrelated workspace transcript: %q", got)
+	}
+
+	newDir := filepath.Join(brainDir, "new-conversation", ".system_generated", "logs")
+	if err := os.MkdirAll(newDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	newPath := filepath.Join(newDir, "transcript.jsonl")
+	content := fmt.Sprintf(`{"step_index":0,"type":"USER_INPUT","content":"%s %s fresh"}`+"\n", at.CoralSessionMarkerPrefix, coralID)
+	if err := os.WriteFile(newPath, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveAgyTranscriptStrict(coralID, ws); got != newPath {
+		t.Fatalf("resolved %q, want exact transcript %q", got, newPath)
+	}
+}
+
+func TestSessionReader_AgyDoesNotKeepPoisonedPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	brainDir := filepath.Join(tmpDir, "brain")
+	t.Setenv("ANTIGRAVITY_DATA_DIR", brainDir)
+	coralID := "14c7245b-9fb4-67de-871c-a03f6186ed30"
+	path := filepath.Join(brainDir, coralID, ".system_generated", "logs", "transcript.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"step_index":0,"type":"USER_INPUT","content":"unrelated"}`+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	r := NewSessionReader()
+	if _, total := r.ReadNewMessages(coralID, "/workspace/shared", at.Agy); total != 1 {
+		t.Fatalf("failed to seed stale cache, total=%d", total)
+	}
+	c := r.cache[coralID]
+	c.toolUseNames["stale-tool"] = "Read"
+	if c.offset == 0 || len(c.messages) == 0 {
+		t.Fatal("stale cache was not populated")
+	}
+	if _, total := r.ReadNewMessagesForLive(coralID, "/workspace/shared", at.Agy); total != 0 {
+		t.Fatalf("strict live read retained unrelated transcript, total=%d", total)
+	}
+	if len(c.messages) != 0 || c.offset != 0 || len(c.toolUseNames) != 0 {
+		t.Fatalf("poisoned cache was not cleared: %#v", c)
+	}
+	content := fmt.Sprintf(`{"step_index":0,"type":"USER_INPUT","content":"%s %s fresh"}`+"\n", at.CoralSessionMarkerPrefix, coralID)
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	msgs, total := r.ReadNewMessagesForLive(coralID, "/workspace/shared", at.Agy)
+	if total != 1 || len(msgs) != 1 || !strings.Contains(msgs[0]["content"].(string), "fresh") {
+		t.Fatalf("expected exact transcript to be discovered after replacement, total=%d msgs=%#v", total, msgs)
+	}
+}
