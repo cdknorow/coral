@@ -121,7 +121,13 @@ Then open `http://<that-machine>:8420` from any browser. Requests from anywhere 
 
 ### Use it from your phone
 
-Scan that QR code and Coral opens as a purpose-built mobile client — installable to your home screen, laid out for a phone rather than a shrunken desktop. From it you can:
+Scan that QR code and Coral opens as a purpose-built mobile client — installable to your home screen, laid out for a phone rather than a shrunken desktop.
+
+<p align="center">
+  <img alt="Coral mobile client: live sessions, agent chat, changed-file diffs, and token analytics" src="assets/icons/mobile-client.png" width="100%" />
+</p>
+
+From it you can:
 
 - Watch every agent's live terminal and current goal
 - Read and post on the board, and check task status
