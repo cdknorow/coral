@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -91,4 +92,103 @@ func TestBoardHealthMonitor_NoIssuesProducesNoHeartbeat(t *testing.T) {
 	// This monitor reports findings and idle reminders; it is not a periodic
 	// job-status heartbeat when a board is healthy.
 	require.Zero(t, count)
+}
+
+func TestBoardHealthMonitor_ActiveWorkProducesPeriodicStatus(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "active")
+	ctx := context.Background()
+	task, err := s.CreateTask(ctx, "active", "Build status", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "active", "Worker", task.ID)
+	require.NoError(t, err)
+
+	m := NewBoardHealthMonitor(s, time.Hour)
+	m.scan(ctx)
+	m.scan(ctx)
+
+	messages, err := s.ListMessages(ctx, "active", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 2, "each monitor cadence emits one active-work status")
+	require.Contains(t, messages[0].Content, "active work: 1 in_progress task(s) across 1 agent(s)")
+	require.Contains(t, messages[0].Content, "Worker (1)")
+	require.NotContains(t, messages[0].Content, "@Worker")
+	workerMessages, err := s.ReadMessages(ctx, "active", "Worker", 50)
+	require.NoError(t, err)
+	require.Empty(t, workerMessages, "assignee counts must not create worker mentions")
+}
+
+func TestBoardHealthMonitor_PersistentFindingDoesNotStarveStatus(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "finding-active")
+	ctx := context.Background()
+	active, err := s.CreateTask(ctx, "finding-active", "Active", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "finding-active", "Worker", active.ID)
+	require.NoError(t, err)
+	healthMonitorIssue(t, s, "finding-active")
+
+	m := NewBoardHealthMonitor(s, time.Hour)
+	m.scan(ctx)
+	m.scan(ctx)
+	messages, err := s.ListMessages(ctx, "finding-active", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 2)
+	require.Contains(t, messages[0].Content, "[Coral board health]")
+	require.Contains(t, messages[1].Content, "[Coral team status]")
+}
+
+func TestBoardHealthMonitor_UsesRegisteredOrchestratorAndSkipsAbsent(t *testing.T) {
+	ctx := context.Background()
+	custom := healthMonitorStore(t)
+	_, err := custom.Subscribe(ctx, "custom", "Lead Coordinator", "Orchestrator", "custom-orch", nil, nil, "")
+	require.NoError(t, err)
+	task, err := custom.CreateTask(ctx, "custom", "Active", "", "medium", "Lead Coordinator", "Worker")
+	require.NoError(t, err)
+	_, err = custom.ClaimTask(ctx, "custom", "Worker", task.ID)
+	require.NoError(t, err)
+	m := NewBoardHealthMonitor(custom, time.Hour)
+	m.scan(ctx)
+	messages, err := custom.ListMessages(ctx, "custom", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	require.Contains(t, messages[0].Content, "@Lead Coordinator")
+	require.NotContains(t, messages[0].Content, "@Orchestrator")
+
+	absent := healthMonitorStore(t)
+	_, err = absent.Subscribe(ctx, "absent", "Worker", "Worker", "absent-worker", nil, nil, "")
+	require.NoError(t, err)
+	task, err = absent.CreateTask(ctx, "absent", "Active", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = absent.ClaimTask(ctx, "absent", "Worker", task.ID)
+	require.NoError(t, err)
+	NewBoardHealthMonitor(absent, time.Hour).scan(ctx)
+	count, err := absent.CountMessages(ctx, "absent")
+	require.NoError(t, err)
+	require.Zero(t, count)
+}
+
+func TestBoardHealthMonitor_FailedFindingPostRetries(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "retry")
+	healthMonitorIssue(t, s, "retry")
+	ctx := context.Background()
+	m := NewBoardHealthMonitor(s, time.Hour)
+	failed := true
+	m.SetPostMessageFn(func(context.Context, string, string, string, *string) (*board.Message, error) {
+		if failed {
+			return nil, errors.New("forced post failure")
+		}
+		return nil, nil
+	})
+	m.scan(ctx)
+	count, err := s.CountMessages(ctx, "retry")
+	require.NoError(t, err)
+	require.Zero(t, count)
+	failed = false
+	m.SetPostMessageFn(s.PostMessage)
+	m.scan(ctx)
+	count, err = s.CountMessages(ctx, "retry")
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
 }

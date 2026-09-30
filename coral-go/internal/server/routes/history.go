@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -416,6 +417,16 @@ func (h *HistoryHandler) GetSessionDetail(w http.ResponseWriter, r *http.Request
 	agentType := "claude"
 	workingDir := ""
 
+	// The history index is authoritative for provider identity. A session ID
+	// can be a Coral marker (Codex/Antigravity) rather than the native file ID;
+	// defaulting to Claude first can pin the wrong reader cache and hide the
+	// transcript from the history view.
+	if h.ss != nil {
+		if idx, err := h.ss.GetIndexedSession(r.Context(), sid); err == nil && idx != nil && idx.SourceType != "" {
+			agentType = idx.SourceType
+		}
+	}
+
 	if h.ss != nil {
 		if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
 			if ls.AgentType != "" {
@@ -501,7 +512,7 @@ func (h *HistoryHandler) GetSessionFiles(w http.ResponseWriter, r *http.Request)
 			Filepath: fp,
 			Status:   "agent_only",
 			Agents:   agents,
-			Source:    "agent_events",
+			Source:   "agent_events",
 		})
 	}
 
@@ -513,12 +524,21 @@ func (h *HistoryHandler) GetSessionFiles(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"session_id": sid, "files": files})
 }
 
-
 // GetResumeInfo returns metadata needed to resume a historical session.
 // GET /api/sessions/history/{sessionID}/resume-info
 func (h *HistoryHandler) GetResumeInfo(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sessionID")
 	result := map[string]any{"session_id": sid}
+	if h.ss != nil {
+		if idx, err := h.ss.GetIndexedSession(r.Context(), sid); err == nil && idx != nil {
+			if idx.SourceType != "" {
+				result["agent_type"] = idx.SourceType
+			}
+			if nativeID := nativeResumeID(idx.SourceType, idx.SourceFile, sid); nativeID != "" {
+				result["resume_session_id"] = nativeID
+			}
+		}
+	}
 
 	if ls, err := h.ss.GetLiveSession(r.Context(), sid); err == nil && ls != nil {
 		result["working_dir"] = ls.WorkingDir
@@ -528,4 +548,21 @@ func (h *HistoryHandler) GetResumeInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+func nativeResumeID(agentType, sourceFile, fallback string) string {
+	switch agentType {
+	case "codex":
+		base := filepath.Base(sourceFile)
+		return strings.TrimSuffix(base, filepath.Ext(base))
+	case "agy", "antigravity", "gemini":
+		// Native Antigravity transcripts live at <brain>/<conversation>/
+		// .system_generated/logs/transcript.jsonl. Legacy Gemini IDs are
+		// already represented by the indexed session ID.
+		if strings.HasSuffix(filepath.ToSlash(sourceFile), "/.system_generated/logs/transcript.jsonl") {
+			logs := filepath.Dir(sourceFile)
+			return filepath.Base(filepath.Dir(filepath.Dir(logs)))
+		}
+	}
+	return fallback
 }

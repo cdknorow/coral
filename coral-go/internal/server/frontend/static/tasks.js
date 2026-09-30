@@ -59,17 +59,21 @@ async function _fetchLiveCosts(boardProject) {
     renderBoardTaskList();
 }
 
-export async function loadAgentTasks(agentName, sessionId) {
+export async function loadAgentTasks(agentName, sessionId, options) {
     if (!agentName) return;
+    const sid = sessionId || (state.currentSession && state.currentSession.session_id);
     try {
         const params = new URLSearchParams();
-        const sid = sessionId || (state.currentSession && state.currentSession.session_id);
         if (sid) params.set("session_id", sid);
         const qs = params.toString() ? `?${params}` : "";
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/tasks${qs}`);
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/tasks${qs}`, options);
         if (!resp.ok) throw new Error(`tasks fetch failed: ${resp.status}`);
-        state.currentAgentTasks = await resp.json();
+        const tasks = await resp.json();
+        if (sid && state.currentSession?.session_id !== sid) return;
+        state.currentAgentTasks = tasks;
     } catch (e) {
+        if (e?.name === 'AbortError') return;
+        if (sid && state.currentSession?.session_id !== sid) return;
         state.currentAgentTasks = [];
     }
     renderTaskList();
@@ -80,7 +84,7 @@ export async function loadAgentTasks(agentName, sessionId) {
 // new fetch returns, and lets a slow response for an old session be ignored.
 let _subagentsSessionId = null;
 
-export async function loadSubagents(agentName, sessionId) {
+export async function loadSubagents(agentName, sessionId, options) {
     const sid = sessionId || (state.currentSession && state.currentSession.session_id);
     if (!agentName || !sid) {
         _subagentsSessionId = null;
@@ -95,10 +99,11 @@ export async function loadSubagents(agentName, sessionId) {
     }
     let subagents = [];
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/subagents?session_id=${encodeURIComponent(sid)}`);
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/subagents?session_id=${encodeURIComponent(sid)}`, options);
         if (!resp.ok) throw new Error(`subagents fetch failed: ${resp.status}`);
         subagents = await resp.json();
     } catch (e) {
+        if (e?.name === 'AbortError') return;
         subagents = [];
     }
     if (sid !== _subagentsSessionId) return; // the user moved to another session meanwhile

@@ -23,13 +23,21 @@ type BoardHealthMonitor struct {
 	last          map[string]string
 	idleNotified  map[int64]time.Time
 	now           func() time.Time
+	postMessage   func(context.Context, string, string, string, *string) (*board.Message, error)
 }
 
 func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHealthMonitor {
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
-	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now}
+	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostMessage}
+}
+
+// SetPostMessageFn provides an isolated delivery seam for retry tests.
+func (m *BoardHealthMonitor) SetPostMessageFn(fn func(context.Context, string, string, string, *string) (*board.Message, error)) {
+	if fn != nil {
+		m.postMessage = fn
+	}
 }
 
 // SetRuntime enables direct reminders to local assignees. The monitor still
@@ -127,21 +135,77 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 	}
 	if len(issues) == 0 {
 		m.scanIdleTasks(ctx, project)
+		m.postActiveStatus(ctx, project, orchestratorRecipients(subs), assigned)
 		return
 	}
-	report := "[Coral board health] @Orchestrator\n" + strings.Join(issues, "\n- ")
-	if len(subs) == 0 {
+	recipients := orchestratorRecipients(subs)
+	if len(recipients) == 0 {
+		m.scanIdleTasks(ctx, project)
 		return
 	}
+	recipientTags := strings.Join(recipientMentions(recipients), " ")
+	report := "[Coral board health] " + recipientTags + "\n" + strings.Join(issues, "\n- ")
+	emitted := false
 	m.mu.Lock()
-	if m.last[project] == report {
-		m.mu.Unlock()
+	duplicate := m.last[project] == report
+	m.mu.Unlock()
+	if !duplicate {
+		if _, err := m.postMessage(ctx, project, "Coral Health Monitor", report, nil); err == nil {
+			m.mu.Lock()
+			m.last[project] = report
+			m.mu.Unlock()
+			emitted = true
+		}
+	}
+	m.scanIdleTasks(ctx, project)
+	if !emitted {
+		m.postActiveStatus(ctx, project, recipients, assigned)
+	}
+}
+
+// postActiveStatus emits one team summary per monitor cadence when work is
+// active. Queued assignments are planned work; only in_progress tasks count.
+func (m *BoardHealthMonitor) postActiveStatus(ctx context.Context, project string, recipients []string, assigned map[string]int) {
+	if len(assigned) == 0 || len(recipients) == 0 {
 		return
 	}
-	m.last[project] = report
-	m.mu.Unlock()
-	_, _ = m.store.PostMessage(ctx, project, "Coral Health Monitor", report, nil)
-	m.scanIdleTasks(ctx, project)
+	owners := make([]string, 0, len(assigned))
+	total := 0
+	for owner, count := range assigned {
+		owners = append(owners, owner)
+		total += count
+	}
+	sort.Strings(owners)
+	parts := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		// Assignee counts are display data, not notification recipients. Do not
+		// prefix worker identities with @ or the board notifier will mention them.
+		parts = append(parts, fmt.Sprintf("%s (%d)", owner, assigned[owner]))
+	}
+	report := fmt.Sprintf("[Coral team status] %s\nactive work: %d in_progress task(s) across %d agent(s)\n- %s", strings.Join(recipientMentions(recipients), " "), total, len(owners), strings.Join(parts, ", "))
+	_, _ = m.postMessage(ctx, project, "Coral Health Monitor", report, nil)
+}
+
+func orchestratorRecipients(subs []board.Subscriber) []string {
+	seen := make(map[string]bool)
+	var recipients []string
+	for _, sub := range subs {
+		if sub.IsActive == 0 || (sub.CanPeek == 0 && !strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator")) || seen[sub.SubscriberID] {
+			continue
+		}
+		seen[sub.SubscriberID] = true
+		recipients = append(recipients, sub.SubscriberID)
+	}
+	sort.Strings(recipients)
+	return recipients
+}
+
+func recipientMentions(recipients []string) []string {
+	mentions := make([]string, len(recipients))
+	for i, recipient := range recipients {
+		mentions[i] = "@" + recipient
+	}
+	return mentions
 }
 
 func (m *BoardHealthMonitor) scanIdleTasks(ctx context.Context, project string) {

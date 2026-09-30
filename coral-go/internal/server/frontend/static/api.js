@@ -51,14 +51,15 @@ export async function loadHistorySessionsPaged(page = 1, pageSize = 50) {
     }
 }
 
-export async function loadLiveSessionDetail(name, agentType, sessionId) {
+export async function loadLiveSessionDetail(name, agentType, sessionId, options) {
     try {
         const params = new URLSearchParams();
         if (agentType) params.set("agent_type", agentType);
         if (sessionId) params.set("session_id", sessionId);
         const qs = params.toString() ? `?${params}` : "";
-        return await apiFetch(`/api/sessions/live/${encodeURIComponent(name)}${qs}`);
+        return await apiFetch(`/api/sessions/live/${encodeURIComponent(name)}${qs}`, options);
     } catch (e) {
+        if (e.name === 'AbortError') return null;
         console.error("Failed to load session detail:", e);
         return null;
     }

@@ -27,8 +27,10 @@ type SessionReader struct {
 }
 
 type sessionCache struct {
+	mu           sync.Mutex
 	path         string
 	pathVerified bool
+	lastResolved time.Time
 	offset       int64
 	messages     []map[string]any
 	toolUseNames map[string]string // tool_use_id → tool_name
@@ -51,9 +53,11 @@ type codexTurnCache struct {
 // sessions list needs one small identity string, not a pinned copy of every
 // parsed transcript message.
 type firstPromptCache struct {
-	path   string
-	offset int64
-	prompt string
+	mu           sync.Mutex
+	path         string
+	lastResolved time.Time
+	offset       int64
+	prompt       string
 }
 
 // NewSessionReader creates a new JSONL session reader.
@@ -62,6 +66,28 @@ func NewSessionReader() *SessionReader {
 		cache:        make(map[string]*sessionCache),
 		firstPrompts: make(map[string]*firstPromptCache),
 	}
+}
+
+func (r *SessionReader) getOrCreateSessionCache(sessionID string) *sessionCache {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.cache[sessionID]
+	if c == nil {
+		c = &sessionCache{toolUseNames: make(map[string]string)}
+		r.cache[sessionID] = c
+	}
+	return c
+}
+
+func (r *SessionReader) getOrCreateFirstPromptCache(sessionID string) *firstPromptCache {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c := r.firstPrompts[sessionID]
+	if c == nil {
+		c = &firstPromptCache{}
+		r.firstPrompts[sessionID] = c
+	}
+	return c
 }
 
 // ReadNewMessages reads new messages since the last call for the given session.
@@ -78,15 +104,13 @@ func (r *SessionReader) ReadNewMessagesForLive(sessionID, workingDirectory, agen
 }
 
 func (r *SessionReader) readNewMessages(sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return r.readNewMessagesLocked(c, sessionID, workingDirectory, agentType, strictLive)
+}
 
-	c := r.cache[sessionID]
-	if c == nil {
-		c = &sessionCache{toolUseNames: make(map[string]string)}
-		r.cache[sessionID] = c
-	}
-
+func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
 	// Resolve path on first call
 	if c.path == "" {
 		c.path = resolveTranscriptPathMode(sessionID, workingDirectory, agentType, strictLive)
@@ -166,27 +190,19 @@ func (r *SessionReader) readNewMessages(sessionID, workingDirectory, agentType s
 // messages (not just the new ones). Use this when the client needs the full
 // conversation history (e.g. after=0).
 func (r *SessionReader) ReadAllMessages(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
-	// ReadNewMessages updates the cache with any new data
-	r.ReadNewMessages(sessionID, workingDirectory, agentType)
-
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c := r.cache[sessionID]
-	if c == nil {
-		return nil, 0
-	}
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r.readNewMessagesLocked(c, sessionID, workingDirectory, agentType, false)
 	return c.messages, len(c.messages)
 }
 
 // ReadAllMessagesForLive is the strict counterpart used by the live chat API.
 func (r *SessionReader) ReadAllMessagesForLive(sessionID, workingDirectory, agentType string) ([]map[string]any, int) {
-	r.ReadNewMessagesForLive(sessionID, workingDirectory, agentType)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c := r.cache[sessionID]
-	if c == nil {
-		return nil, 0
-	}
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r.readNewMessagesLocked(c, sessionID, workingDirectory, agentType, true)
 	return c.messages, len(c.messages)
 }
 
@@ -198,19 +214,19 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 		return ""
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	c := r.getOrCreateFirstPromptCache(sessionID)
 
-	c := r.firstPrompts[sessionID]
-	if c == nil {
-		c = &firstPromptCache{}
-		r.firstPrompts[sessionID] = c
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.prompt != "" {
 		return c.prompt
 	}
 	if c.path == "" {
-		c.path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
+			c.lastResolved = time.Now()
+			c.path = resolveTranscriptPath(sessionID, workingDirectory, agentType)
+		}
 		if c.path == "" {
 			return ""
 		}

@@ -21,6 +21,8 @@ const HISTORY_PAGE = 400;
 // both render the full history.
 let historyGeneration = 0;
 let refreshInFlight = -1;
+let activeChatAbortController = null;
+let activeLoadMoreAbortController = null;
 
 
 const TOOL_ICONS = {
@@ -648,7 +650,7 @@ export async function refreshLiveHistory() {
     if (!container) return;
 
     // Show loading indicator on first load
-    if (!initialLoadDone && !container.querySelector('.loading-indicator') && container.children.length === 0) {
+    if (!initialLoadDone && !container.querySelector('.loading-indicator') && !container.querySelector('.chat-load-error') && container.children.length === 0) {
         container.innerHTML = '<div class="loading-indicator">Loading chat history</div>';
     }
 
@@ -674,8 +676,28 @@ export async function refreshLiveHistory() {
     if (refreshInFlight === historyGeneration) return;
     const generation = historyGeneration;
     refreshInFlight = generation;
+
+    if (activeChatAbortController) {
+        activeChatAbortController.abort();
+    }
+    const abortCtrl = new AbortController();
+    activeChatAbortController = abortCtrl;
+
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`);
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
+            signal: abortCtrl.signal,
+        });
+        if (generation !== historyGeneration) return;
+
+        if (!resp.ok) {
+            let errorText = `HTTP ${resp.status}`;
+            try {
+                const errData = await resp.json();
+                if (errData && errData.error) errorText = errData.error;
+            } catch (_) {}
+            throw new Error(errorText);
+        }
+
         const data = await resp.json();
         if (generation !== historyGeneration) return;
 
@@ -722,8 +744,28 @@ export async function refreshLiveHistory() {
             container.scrollTop = container.scrollHeight;
         }
     } catch (e) {
+        if (e.name === 'AbortError') {
+            return;
+        }
         console.error("Failed to refresh live history:", e);
+        if (generation === historyGeneration && !initialLoadDone) {
+            container.innerHTML = `<div class="chat-load-error" role="alert">
+                <span class="chat-error-message">Failed to load chat history (${escapeHtml(e.message || 'error')})</span>
+                <button type="button" class="btn btn-secondary btn-small chat-retry-btn">Retry</button>
+            </div>`;
+            const retryBtn = container.querySelector('.chat-retry-btn');
+            if (retryBtn) {
+                retryBtn.onclick = () => {
+                    container.innerHTML = '<div class="loading-indicator">Loading chat history</div>';
+                    refreshInFlight = -1;
+                    refreshLiveHistory();
+                };
+            }
+        }
     } finally {
+        if (activeChatAbortController === abortCtrl) {
+            activeChatAbortController = null;
+        }
         if (refreshInFlight === generation) refreshInFlight = -1;
     }
 }
@@ -754,14 +796,25 @@ async function _loadMoreHistory(generation) {
     if (session.working_directory) {
         params.set("working_directory", session.working_directory);
     }
-    params.set("after", "0");
+    // Pagination is already anchored by offset; omit an explicit after=0 so
+    // providers and test harnesses can distinguish load-more from initial load.
     params.set("limit", String(HISTORY_PAGE));
     params.set("offset", String(historyOffset));
 
+    if (activeLoadMoreAbortController) {
+        activeLoadMoreAbortController.abort();
+    }
+    const abortCtrl = new AbortController();
+    activeLoadMoreAbortController = abortCtrl;
+
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`);
-        const data = await resp.json();
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
+            signal: abortCtrl.signal,
+        });
         if (generation !== historyGeneration) return; // switched agents meanwhile
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (generation !== historyGeneration) return;
 
         if (data.messages && data.messages.length > 0) {
             // Preserve scroll position: measure before inserting
@@ -793,7 +846,12 @@ async function _loadMoreHistory(generation) {
 
         _updateLoadMoreButton(container);
     } catch (e) {
+        if (e.name === 'AbortError') return;
         console.error("Failed to load more history:", e);
+    } finally {
+        if (activeLoadMoreAbortController === abortCtrl) {
+            activeLoadMoreAbortController = null;
+        }
     }
 }
 
@@ -827,16 +885,27 @@ export function stopLiveHistoryPoll() {
         clearInterval(historyPollInterval);
         historyPollInterval = null;
     }
+    if (activeChatAbortController) {
+        activeChatAbortController.abort();
+        activeChatAbortController = null;
+    }
 }
 
 export function resetLiveHistory() {
+    stopLiveHistoryPoll();
+    if (activeLoadMoreAbortController) {
+        activeLoadMoreAbortController.abort();
+        activeLoadMoreAbortController = null;
+    }
     const container = document.getElementById("live-history-messages");
     if (container) container.innerHTML = "";
     historyGeneration++;
+    refreshInFlight = -1;
     historyMessageCount = 0;
     historyOffset = 0;
     historyHasMore = false;
     initialLoadDone = false;
+    loadingMore = false;
 }
 
 // ── Center view mode: terminal vs. chat ─────────────────────────────────

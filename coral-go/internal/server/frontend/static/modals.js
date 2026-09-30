@@ -2777,6 +2777,7 @@ export async function showResumeModal() {
     let resumeDir = "";
     let boardName = "";
     let displayName = "";
+    let resumeSessionId = sessionId;
     try {
         const resp = await fetch(`/api/sessions/history/${encodeURIComponent(sessionId)}/resume-info`);
         if (resp.ok) {
@@ -2784,6 +2785,7 @@ export async function showResumeModal() {
             if (info.working_dir) resumeDir = info.working_dir;
             if (info.board_name) boardName = info.board_name;
             if (info.agent_type) agentType = info.agent_type;
+            if (info.resume_session_id) resumeSessionId = info.resume_session_id;
             if (info.display_name) displayName = info.display_name;
         }
     } catch (_) { /* best-effort */ }
@@ -2805,6 +2807,7 @@ export async function showResumeModal() {
     const modal = document.getElementById("resume-modal");
     modal.dataset.agentType = agentType;
     modal.dataset.displayName = displayName || historyEntry?.display_name || "";
+    modal.dataset.resumeSessionId = resumeSessionId;
     modal.style.display = "flex";
 }
 
@@ -2830,6 +2833,7 @@ export async function resumeLaunchNew() {
 
     const modal = document.getElementById("resume-modal");
     const agentType = modal.dataset.agentType || "claude";
+    const resumeSessionId = modal.dataset.resumeSessionId || sessionId;
     const displayName = modal.dataset.displayName || "";
     const boardCheck = document.getElementById("resume-board-check");
     const boardNameEl = document.getElementById("resume-board-name");
@@ -2842,7 +2846,7 @@ export async function resumeLaunchNew() {
         const payload = {
             working_dir: dir,
             agent_type: agentType,
-            resume_session_id: sessionId,
+            resume_session_id: resumeSessionId,
         };
         if (displayName) payload.display_name = displayName;
         if (boardName) payload.board_name = boardName;

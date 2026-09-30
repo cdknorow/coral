@@ -385,6 +385,24 @@ func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex
 	})
 }
 
+// GetIndexedSession returns the persisted source metadata for a history ID.
+// History IDs may be Coral marker IDs rather than provider-native IDs, so
+// callers must use the source file to recover provider-specific identity.
+func (s *SessionStore) GetIndexedSession(ctx context.Context, sessionID string) (*SessionIndex, error) {
+	var idx SessionIndex
+	err := s.db.GetContext(ctx, &idx,
+		`SELECT session_id, source_type, source_file, first_timestamp, last_timestamp,
+			message_count, display_summary, agent_name, display_name, indexed_at, file_mtime
+		 FROM session_index WHERE session_id = ?`, sessionID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &idx, nil
+}
+
 // UpsertFTS updates the FTS5 index for a session.
 func (s *SessionStore) UpsertFTS(ctx context.Context, sessionID, body string) error {
 	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {

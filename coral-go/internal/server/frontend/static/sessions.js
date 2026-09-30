@@ -134,6 +134,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
 
     // Fetch full detail in background (non-blocking) for pane capture
     loadLiveSessionDetail(name, agentType, sessionId).then(detail => {
+        if (generation !== switchGeneration) return;
         if (detail && detail.pane_capture) {
             const paneEl = document.getElementById("pane-capture");
             paneEl.textContent = detail.pane_capture;
@@ -250,6 +251,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
 }
 
 export async function selectHistorySession(sessionId) {
+    const generation = ++switchGeneration;
     stopCaptureRefresh();
     leaveSessionOwnership();
     disposeTerminal();
@@ -312,6 +314,7 @@ export async function selectHistorySession(sessionId) {
     switchHistoryTab('chat');
 
     const data = await loadHistoryMessages(sessionId);
+    if (generation !== switchGeneration) return;
     if (data && data.messages) {
         renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude");
     }

@@ -96,16 +96,20 @@ function isEventVisible(ev) {
     return true;
 }
 
-export async function loadAgentEvents(agentName, sessionId) {
+export async function loadAgentEvents(agentName, sessionId, options) {
     if (!agentName) return;
+    const sid = sessionId || (state.currentSession && state.currentSession.session_id);
     try {
         const params = new URLSearchParams({ limit: 50 });
-        const sid = sessionId || (state.currentSession && state.currentSession.session_id);
         if (sid) params.set("session_id", sid);
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/events?${params}`);
+        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/events?${params}`, options);
         if (!resp.ok) throw new Error(`events fetch failed: ${resp.status}`);
-        state.currentAgentEvents = await resp.json();
+        const events = await resp.json();
+        if (sid && state.currentSession?.session_id !== sid) return;
+        state.currentAgentEvents = events;
     } catch (e) {
+        if (e?.name === 'AbortError') return;
+        if (sid && state.currentSession?.session_id !== sid) return;
         state.currentAgentEvents = [];
     }
     renderEventTimeline();

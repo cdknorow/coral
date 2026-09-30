@@ -96,15 +96,14 @@ func CodexTurnEvent(path string) (event string, at time.Time) {
 // ReadCodexTurnEvent reuses the session reader's resolved path so frequent UI
 // updates do not rescan the transcript directory for every agent.
 func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string, time.Time) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c := r.cache[sessionID]
-	if c == nil {
-		c = &sessionCache{toolUseNames: make(map[string]string)}
-		r.cache[sessionID] = c
-	}
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.path == "" {
-		c.path = resolveTranscriptPath(sessionID, workingDir, "codex")
+		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
+			c.lastResolved = time.Now()
+			c.path = resolveTranscriptPath(sessionID, workingDir, "codex")
+		}
 	}
 	return readCodexTurnEventIncremental(c.path, &c.codexState)
 }
@@ -358,16 +357,15 @@ func geminiLegacyTurnEvent(data []byte) (event string, at time.Time, summary str
 // ReadAgyTurnEvent reuses the session reader's resolved path so frequent UI
 // updates do not rescan the transcript directory for every agent.
 func (r *SessionReader) ReadAgyTurnEvent(sessionID, workingDir string) (string, time.Time, string) {
-	r.mu.Lock()
-	c := r.cache[sessionID]
-	if c == nil {
-		c = &sessionCache{toolUseNames: make(map[string]string)}
-		r.cache[sessionID] = c
-	}
+	c := r.getOrCreateSessionCache(sessionID)
+	c.mu.Lock()
 	if c.path == "" {
-		c.path = resolveTranscriptPath(sessionID, workingDir, at.Agy)
+		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
+			c.lastResolved = time.Now()
+			c.path = resolveTranscriptPath(sessionID, workingDir, at.Agy)
+		}
 	}
 	path := c.path
-	r.mu.Unlock()
+	c.mu.Unlock()
 	return AgyTurnEvent(path)
 }

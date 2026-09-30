@@ -445,10 +445,27 @@ changes the global value visible from other teams' dialogs.
 
 The server reads this switch at startup. A changed value takes effect on the
 next server start; it does not start or stop the background monitor immediately.
-When enabled at startup, the monitor scans board health every 10 minutes and
-can report inactivity/reminder/escalation findings. It does not automatically
+When enabled at startup, the monitor scans each board every 10 minutes and
+can report inactivity/reminder/escalation findings. While a board has active
+work, defined as one or more `in_progress` tasks, each scan also posts one
+board-scoped `[Coral team status] @Orchestrator` summary listing active task
+counts by assignee. Queued assignments do not count as active work. An idle
+board receives no healthy heartbeat, and a finding scan emits the finding
+report instead of an additional summary for that tick. Reports remain stored
+on their originating board; the monitor does not copy status across teams.
+The board notifier may nudge a subscribed Orchestrator for the stored post,
+subject to its normal unread/watermark behavior. It does not automatically
 reassign tasks, accept completion or repair dependency graphs. Observed health
-findings and ordinary board/task notifications are separate features.
+findings, active-work summaries, and ordinary board/task notifications are
+separate features.
+
+Activation for `death-or-trade-ai-auto` is deliberately explicit: save the
+existing global `board_health_monitor=true` setting, restart the server so
+startup reads it, and confirm the Orchestrator subscription is active. Verify
+an active task and the resulting board post before relying on notifications.
+Because this setting is global and defaults off, enabling it also scans other
+boards with active work; a future per-board opt-in can narrow that scope without
+silently changing existing teams.
 
 Saving Team settings writes the per-board mode and the global health setting
 through separate requests, not one atomic transaction. If saving reports an
