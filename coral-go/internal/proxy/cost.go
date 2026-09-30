@@ -352,3 +352,26 @@ func LookupContextWindow(model string) int {
 	}
 	return 0
 }
+
+// KnownModelProvider identifies models Coral has an authoritative pricing row
+// for. Unknown/custom model IDs intentionally return false so provider-specific
+// deployments and aliases are not rejected by name heuristics.
+func KnownModelProvider(model string) (string, bool) {
+	normalized := stripProviderDecoration(normalizeModel(model))
+	if canonical, ok := modelAliases[normalized]; ok {
+		normalized = canonical
+	}
+	if _, ok := Pricing[normalized]; !ok {
+		return "", false
+	}
+	switch {
+	case strings.HasPrefix(normalized, "claude-"):
+		return "anthropic", true
+	case strings.HasPrefix(normalized, "gpt-"), normalized == "o3":
+		return "openai", true
+	case strings.HasPrefix(normalized, "gemini-"):
+		return "google", true
+	default:
+		return "", false
+	}
+}

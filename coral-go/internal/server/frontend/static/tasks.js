@@ -652,23 +652,27 @@ export function renderBoardTaskList() {
         const tooltip = isSubagent ? ` title="${escapeAttr(_subagentTooltip(t))}"`
             : t.body ? ` title="${escapeAttr(t.body)}"` : '';
         const timeStr = _formatTaskTime(t.created_at);
+        const statusWrap = (className, detail, icon, label) =>
+            `<span class="board-task-status-wrap ${className}" title="${escapeAttr(detail)}" aria-label="${escapeAttr(detail)}" role="img" tabindex="0">${icon}<span class="board-task-status-label">${label}</span></span>`;
+        const activelyClaimed = t.status === 'in_progress' && Boolean(t.claimed_at);
+        const workingDetail = activelyClaimed ? 'Claimed · Working' : 'Open · Working';
         const statusIcon = t.workflow?.outcome === 'failed'
-            ? '<span class="board-task-status-wrap completed"><span class="material-icons board-task-status-icon completed" title="Finished">check_circle</span><span class="board-task-status-label">Finished</span></span>'
+            ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
             : t.status === 'completed'
-            ? '<span class="board-task-status-wrap completed"><span class="material-icons board-task-status-icon completed" title="Finished">check_circle</span><span class="board-task-status-label">Finished</span></span>'
+            ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
             : t.status === 'review_pending'
-            ? '<span class="board-task-status-wrap blocked"><span class="material-icons board-task-status-icon blocked">rate_review</span><span class="board-task-status-label">Open <b>· Review pending</b></span></span>'
+            ? statusWrap('blocked', 'Open · Review pending', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review pending</b>')
             : t.workflow?.completion_review && t.status === 'in_progress'
-            ? '<span class="board-task-status-wrap blocked"><span class="material-icons board-task-status-icon blocked">rate_review</span><span class="board-task-status-label">Open <b>· Review requested</b></span></span>'
+            ? statusWrap('blocked', 'Open · Review requested', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review requested</b>')
             : t.status === 'in_progress'
-            ? '<span class="board-task-status-wrap in-progress"><span class="task-spinner" title="Open · Working"></span><span class="board-task-status-label">Open <b>· Working</b></span></span>'
+            ? statusWrap('in-progress', workingDetail, '<span class="task-spinner" aria-hidden="true"></span>', activelyClaimed ? 'Claimed' : 'Open')
             : t.status === 'skipped'
-            ? '<span class="board-task-status-wrap cancelled"><span class="material-icons board-task-status-icon cancelled" title="Cancelled">cancel</span><span class="board-task-status-label">Cancelled</span></span>'
+            ? statusWrap('cancelled', 'Cancelled', '<span class="material-icons board-task-status-icon cancelled" aria-hidden="true">cancel</span>', 'Cancelled')
             : t.status === 'blocked'
-            ? '<span class="board-task-status-wrap blocked"><span class="material-icons board-task-status-icon blocked" title="Open · Blocked: waiting for prerequisites" role="img" aria-label="Open · Blocked: waiting for prerequisites">hourglass_empty</span><span class="board-task-status-label">Open <b>· Blocked</b></span></span>'
+            ? statusWrap('blocked', 'Open · Blocked: waiting for prerequisites', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">hourglass_empty</span>', 'Open')
             : t.status === 'draft'
-            ? '<span class="board-task-status-wrap pending"><span class="material-icons board-task-status-icon draft" title="Open · Draft">edit_note</span><span class="board-task-status-label">Open <b>· Draft</b></span></span>'
-            : '<span class="board-task-status-wrap pending"><span class="material-icons board-task-status-icon pending" title="Open">radio_button_unchecked</span><span class="board-task-status-label">Open</span></span>';
+            ? statusWrap('pending', 'Open · Draft', '<span class="material-icons board-task-status-icon draft" aria-hidden="true">edit_note</span>', 'Open <b>· Draft</b>')
+            : statusWrap('pending', 'Open', '<span class="material-icons board-task-status-icon pending" aria-hidden="true">radio_button_unchecked</span>', 'Open');
         let costText = '';
         let costClass = 'board-task-cost';
         if (isSubagent) {
@@ -704,8 +708,9 @@ export function renderBoardTaskList() {
         const claimedFor = !isAgent && !isSubagent ? _claimedFor(t) : null;
         const claimedBadge = claimedFor
             ? `<span class="board-task-claimed" title="Claimed ${escapeAttr(formatTaskDate(t.claimed_at))}"><span class="material-icons">schedule</span>${claimedFor}</span>` : '';
-        const blockedBadge = t.status === 'blocked'
-            ? '<span class="board-task-blocked-label" title="Waiting for prerequisites">Blocked</span>' : '';
+        // Blocked is conveyed by the status icon and its focusable detail;
+        // avoid repeating a red text badge in the task description column.
+        const blockedBadge = '';
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
@@ -1399,23 +1404,44 @@ export function cancelTaskEdit() {
     }
 }
 
+function _taskRequiredOutputs(task) {
+    const outputs = task?.workflow?.required_outputs || task?.required_outputs || [];
+    const list = Array.isArray(outputs) ? outputs : [outputs];
+    return list.map(output => typeof output === 'string' ? output : output?.name).filter(Boolean);
+}
+
 export function completeBoardTask(taskId, personal = false) {
     const footer = document.getElementById('task-detail-modal-footer');
-    if (!footer) return;
-    footer.innerHTML = `
-        <div class="task-confirm-inline">
-            <input type="text" id="task-complete-message" placeholder="Completion message (optional)" class="task-confirm-input">
-            <label>Outcome <select id="task-complete-outcome"><option value="success">Success</option><option value="failed">Failed</option></select></label>
-            <label>Artifact name <input id="task-artifact-name" placeholder="build or test_report"></label>
-            <label>Artifact URL or reference <input id="task-artifact-uri" placeholder="Durable URL or artifact reference"></label>
-            <label>Revision <input id="task-artifact-revision" placeholder="Commit or build version"></label>
-            <label>Artifact content <textarea id="task-artifact-content" rows="3" placeholder="Report or evidence (optional if a reference is provided)"></textarea></label>
-            <label>Or attach an artifact manifest <input type="file" id="task-artifacts-file" accept="application/json,.json"></label>
-            <div class="task-confirm-buttons">
-                <button class="btn" onclick="window.${personal ? 'showAgentTaskDetailModal' : '_restoreTaskFooter'}(${taskId})">Back</button>
-                <button class="btn btn-success" onclick="window._doCompleteTask(${taskId}, ${personal})">Complete</button>
+    const content = document.getElementById('task-detail-content');
+    if (!footer || !content) return;
+    const task = personal
+        ? (state.currentAgentTasks || []).find(item => item.id === taskId)
+        : (state.currentBoardTasks || []).find(item => item.id === taskId);
+    const requiredOutputs = _taskRequiredOutputs(task);
+    const requiredLabel = requiredOutputs.length
+        ? `<section class="task-completion-required" aria-label="Required outputs"><strong>Required outputs</strong><ul>${requiredOutputs.map(output => `<li>${escapeHtml(output)}</li>`).join('')}</ul><p>Provide each named output below or in the manifest before completing.</p></section>`
+        : '<p class="task-completion-hint">Add a concise outcome and message. Evidence is optional unless the task specifies required outputs.</p>';
+    content.insertAdjacentHTML('beforeend', `
+        <section class="task-completion-form" aria-label="Complete task">
+            <div class="task-confirm-inline">
+                <label for="task-complete-message">Completion message <textarea id="task-complete-message" rows="3" placeholder="What was completed and how was it verified?"></textarea></label>
+                <label for="task-complete-outcome">Outcome <select id="task-complete-outcome"><option value="success">Success</option><option value="failed">Failed</option></select></label>
+                ${requiredLabel}
+                <details class="task-completion-evidence" ${requiredOutputs.length ? 'open' : ''}>
+                    <summary>${requiredOutputs.length ? 'Evidence and artifacts (required)' : 'Add evidence or artifact metadata (optional)'}</summary>
+                    <label for="task-artifact-name">Artifact name ${requiredOutputs.length ? '<span class="text-muted-sm">(match a required output)</span>' : ''}<input id="task-artifact-name" placeholder="build or test_report"></label>
+                    <label for="task-artifact-uri">Artifact URL or reference<input id="task-artifact-uri" placeholder="Durable URL or artifact reference"></label>
+                    <label for="task-artifact-revision">Revision<input id="task-artifact-revision" placeholder="Commit or build version"></label>
+                    <label for="task-artifact-content">Artifact content<textarea id="task-artifact-content" rows="3" placeholder="Report or evidence (optional if a reference is provided)"></textarea></label>
+                    <label for="task-artifacts-file">Attach an artifact manifest<input type="file" id="task-artifacts-file" accept="application/json,.json"></label>
+                </details>
+                <div id="task-complete-error" class="modal-error" role="alert" hidden></div>
             </div>
-        </div>`;
+        </section>`);
+    footer.innerHTML = `
+        <button class="btn" onclick="window.${personal ? 'showAgentTaskDetailModal' : '_restoreTaskFooter'}(${taskId})">Back</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-success" onclick="window._doCompleteTask(${taskId}, ${personal})">Complete</button>`;
     document.getElementById('task-complete-message').focus();
 }
 
@@ -1438,6 +1464,13 @@ export async function _doCompleteTask(taskId, personal = false) {
             revision: document.getElementById('task-artifact-revision').value.trim(),
             content: document.getElementById('task-artifact-content').value,
         });
+        const task = personal
+            ? (state.currentAgentTasks || []).find(item => item.id === taskId)
+            : (state.currentBoardTasks || []).find(item => item.id === taskId);
+        const requiredOutputs = _taskRequiredOutputs(task);
+        const suppliedNames = new Set(artifacts.map(artifact => artifact?.name).filter(Boolean));
+        const missingOutputs = requiredOutputs.filter(output => !suppliedNames.has(output));
+        if (missingOutputs.length) throw new Error(`Required outputs missing: ${missingOutputs.join(', ')}`);
         const outcome = document.getElementById('task-complete-outcome')?.value || 'success';
         const endpoint = personal ? `/api/agent/tasks/${taskId}/complete` : `/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/complete`;
         const identity = personal ? { session_id: state.currentSession.session_id } : { subscriber_id: 'Operator' };
@@ -1455,6 +1488,8 @@ export async function _doCompleteTask(taskId, personal = false) {
         else await loadBoardTasks(boardProject);
         showToast('Task completed');
     } catch (e) {
+        const errorEl = document.getElementById('task-complete-error');
+        if (errorEl) { errorEl.textContent = e.message || 'Failed to complete task'; errorEl.hidden = false; }
         showToast(e.message || 'Failed to complete task', true);
     }
 }

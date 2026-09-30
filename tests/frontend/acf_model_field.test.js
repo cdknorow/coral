@@ -162,7 +162,7 @@ async function run() {
     await freshACF();
     check('S9 cache invalidation picks up new default', await modelValue() === 'claude-haiku-4-5-20251001');
 
-    // ─── S10: restart (setAgentConfig with stored model) → preserved ─
+    // ─── S10: restart (setAgentConfig with known stored model) → replaceable ─
     await evalInPage(`
         (function(){
             const old = document.getElementById('qa-test-acf');
@@ -175,10 +175,10 @@ async function run() {
         })();
     `);
     await new Promise(r => setTimeout(r, 300));
-    check('S10 setAgentConfig with stored model → dirty=true', await dirtyFlag() === 'true');
+    check('S10 known stored model remains replaceable', await dirtyFlag() === 'false');
     check('S10 setAgentConfig with stored model → value preserved', await modelValue() === 'claude-opus-4-7');
     await switchType('agy');
-    check('S10 dirty=true preserves value across type switch', await modelValue() === 'claude-opus-4-7');
+    check('S10 provider switch replaces known stored model', await modelValue() === '');
 
     await client.close();
 

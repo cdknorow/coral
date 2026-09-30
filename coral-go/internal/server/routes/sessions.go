@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -2394,18 +2395,40 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	agentType := body.AgentType
+	var storedSession *store.LiveSession
+	if body.SessionID != "" {
+		if ls, err := h.ss.GetLiveSession(ctx, body.SessionID); err == nil && ls != nil {
+			storedSession = ls
+			// Restart requests from older clients may omit agent_type. Keep the
+			// persisted provider instead of silently switching Codex to Claude.
+			if agentType == "" && ls.AgentType != "" {
+				agentType = ls.AgentType
+			}
+		}
+	}
 	if agentType == "" {
 		agentType = at.Claude
+	}
+
+	// Validate the resolved model before touching the terminal or allocating a
+	// replacement session. Restart carries the persisted model when the caller
+	// omits one, so provider switches must reject stale cross-provider models
+	// before any process or database state is mutated.
+	preflightModel := strings.TrimSpace(body.Model)
+	if preflightModel == "" && storedSession != nil {
+		preflightModel = strings.TrimSpace(derefStrPtr(storedSession.Model))
+	}
+	if err := validateAgentModel(agentType, preflightModel); err != nil {
+		errBadRequest(w, err.Error())
+		return
 	}
 
 	// A sleeping agent has no terminal. Restarting one starts a fresh agent in
 	// a new terminal in its working directory, with the restart settings
 	// (prompt, model, capabilities); waking would resume the old conversation.
 	var sleeping *store.LiveSession
-	if body.SessionID != "" {
-		if ls, err := h.ss.GetLiveSession(ctx, body.SessionID); err == nil && ls != nil && ls.IsSleeping == 1 {
-			sleeping = ls
-		}
+	if storedSession != nil && storedSession.IsSleeping == 1 {
+		sleeping = storedSession
 	}
 
 	newSessionID := generateUUID()
@@ -3665,6 +3688,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	if agentType == "" {
 		agentType = at.Claude
 	}
+	if err := validateAgentModel(agentType, model); err != nil {
+		return nil, err
+	}
 
 	// Resolve custom CLI path from settings
 	userSettings, _ := h.ss.GetSettings(ctx)
@@ -3920,6 +3946,31 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	}, nil
 }
 
+// validateAgentModel rejects only known Coral model IDs whose provider is
+// incompatible with the selected agent implementation. Unknown IDs remain
+// valid for custom/provider-specific configurations.
+func validateAgentModel(agentType, model string) error {
+	provider, known := proxy.KnownModelProvider(model)
+	if !known {
+		return nil
+	}
+	var expected string
+	switch agentType {
+	case at.Claude:
+		expected = "anthropic"
+	case at.Codex:
+		expected = "openai"
+	case at.Agy, at.Antigravity, at.Gemini:
+		expected = "google"
+	default:
+		return nil
+	}
+	if provider != expected {
+		return fmt.Errorf("model %q belongs to %s provider and cannot launch with %s agent; choose a compatible model or leave custom IDs unchanged", model, provider, agentType)
+	}
+	return nil
+}
+
 // launchedSessionPID resolves the process identifier from what actually owns
 // the launched session. The persisted backend label describes the launch path
 // and can be "pty" even when h.backend is a TmuxBackend, so it must not be the
@@ -3994,16 +4045,29 @@ func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType,
 // writeBoardStateFile writes the local board state file that coral-board CLI
 // reads to determine which board a session is subscribed to.
 func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config) {
-	stateDir := cfg.CoralDir()
+	stateDir := ".coral"
+	if home, err := os.UserHomeDir(); err == nil {
+		stateDir = filepath.Join(home, ".coral")
+	}
+	if cfg != nil {
+		stateDir = cfg.CoralDir()
+	}
 	os.MkdirAll(stateDir, 0755)
 
 	state := map[string]string{
 		"project":   boardName,
 		"job_title": role,
 	}
-	// Include server_url if not on default port
-	if cfg != nil && cfg.Port != 8420 {
-		state["server_url"] = fmt.Sprintf("http://localhost:%d", cfg.Port)
+	// Persist the explicit loopback URL even on the default port. Codex's
+	// sandbox can strip CORAL_URL/CORAL_PORT from child processes; without
+	// this persisted value coral-board falls back to localhost, which may
+	// resolve to IPv6 ::1 and be denied while IPv4 loopback is available.
+	if cfg != nil {
+		host := cfg.Host
+		if host == "" || host == "0.0.0.0" || host == "::" || host == "localhost" {
+			host = "127.0.0.1"
+		}
+		state["server_url"] = fmt.Sprintf("http://%s", net.JoinHostPort(host, strconv.Itoa(cfg.Port)))
 	}
 
 	data, _ := json.Marshal(state)

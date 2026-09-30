@@ -524,3 +524,20 @@ func TestStripProviderDecoration(t *testing.T) {
 		assert.Equal(t, want, stripProviderDecoration(in), in)
 	}
 }
+
+func TestKnownModelProviderOnlyClassifiesAuthoritativeModels(t *testing.T) {
+	for _, tc := range []struct {
+		model, want string
+	}{
+		{"claude-opus-5", "anthropic"},
+		{"us.anthropic.claude-opus-5-v1:0", "anthropic"},
+		{"gpt-6-sol", "openai"},
+		{"gemini-2.5-pro", "google"},
+	} {
+		got, ok := KnownModelProvider(tc.model)
+		assert.True(t, ok, tc.model)
+		assert.Equal(t, tc.want, got, tc.model)
+	}
+	_, ok := KnownModelProvider("my-private-model")
+	assert.False(t, ok, "custom IDs remain unclassified")
+}

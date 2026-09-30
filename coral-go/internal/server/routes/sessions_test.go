@@ -1178,6 +1178,117 @@ func TestSessionsRestartSleeping(t *testing.T) {
 	assert.NotNil(t, old.StoppedAt, "the sleeping session is retired")
 }
 
+func TestSessionsRestartInfersStoredAgentTypeWhenOmitted(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-sleepy", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-sleep-1", Model: strPtr("gpt-6-sol"),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-sleep-1", true))
+
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-sleepy/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-sleep-1"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.NotEmpty(t, body.SessionID)
+	assert.Contains(t, body.SessionName, "codex-")
+
+	term.mu.Lock()
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "codex")
+	assert.Contains(t, sent[0], "--model gpt-6-sol")
+	assert.NotContains(t, sent[0], "claude")
+}
+
+func TestValidateAgentModelRejectsKnownCrossProviderOnly(t *testing.T) {
+	assert.Error(t, validateAgentModel("codex", "claude-opus-5"))
+	assert.NoError(t, validateAgentModel("codex", "my-private-model"))
+	assert.NoError(t, validateAgentModel("codex", "gpt-6-sol"))
+}
+
+func TestSessionsLaunch_RejectsCrossProviderModel(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	wd := t.TempDir()
+	resp, err := http.Post(server.URL+"/api/sessions/launch", "application/json",
+		bytes.NewBufferString(fmt.Sprintf(`{"working_dir":%q,"agent_type":"codex","model":"claude-opus-5"}`, wd)))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "belongs to anthropic provider and cannot launch with codex agent")
+}
+
+func TestSessionsRestart_RejectsCrossProviderModelBeforeMutation(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-test", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-test-1", Model: strPtr("gpt-6-sol"),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-test-1", true))
+
+	// Attempting restart with cross-provider model (claude-opus-5 on codex)
+	// must fail before creating a terminal or replacing the stored session.
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-test/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-test-1","model":"claude-opus-5"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "belongs to anthropic provider")
+
+	term.mu.Lock()
+	sentCount := len(term.sent)
+	term.mu.Unlock()
+	assert.Zero(t, sentCount)
+	ls, err := ss.GetLiveSession(ctx, "codex-test-1")
+	require.NoError(t, err)
+	assert.NotNil(t, ls)
+	assert.Nil(t, ls.StoppedAt)
+}
+
+func TestSessionsRestart_RejectsProviderSwitchStaleModelBeforeMutation(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	// An existing Claude session running claude-opus-5
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "claude-worker", AgentType: "claude", WorkingDir: wd,
+		SessionID: "claude-worker-1", Model: strPtr("claude-opus-5"),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "claude-worker-1", true))
+
+	// Operator restarts and switches agent_type to codex, but omits model. The
+	// persisted Claude model must not be reused for a Codex process.
+	resp, err := http.Post(server.URL+"/api/sessions/live/claude-worker/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"claude-worker-1","agent_type":"codex"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Contains(t, string(body), "belongs to anthropic provider")
+	term.mu.Lock()
+	sentCount := len(term.sent)
+	term.mu.Unlock()
+	assert.Zero(t, sentCount)
+	ls, err := ss.GetLiveSession(ctx, "claude-worker-1")
+	require.NoError(t, err)
+	assert.NotNil(t, ls)
+	assert.Nil(t, ls.StoppedAt)
+}
+
 func TestSessionsRawImage(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
@@ -2321,4 +2432,121 @@ func TestFilesCacheFresh(t *testing.T) {
 	assert.False(t, filesCacheFresh(at(3*time.Minute), 2*time.Minute, now))
 	assert.False(t, filesCacheFresh(nil, time.Hour, now))
 	assert.False(t, filesCacheFresh([]store.ChangedFile{{RecordedAt: "garbage"}}, time.Hour, now))
+}
+
+func TestWriteBoardStateFilePersistsLoopbackURLOnDefaultPort(t *testing.T) {
+	cfg := config.Load(t.TempDir())
+	cfg.Host = "0.0.0.0"
+	cfg.Port = 8420
+
+	writeBoardStateFile("codex-test-session", "death-or-trade-ai-auto", "Frontend Dev", cfg)
+	data, err := os.ReadFile(filepath.Join(cfg.CoralDir(), "board_state_codex-test-session.json"))
+	require.NoError(t, err)
+	var state map[string]string
+	require.NoError(t, json.Unmarshal(data, &state))
+	assert.Equal(t, "death-or-trade-ai-auto", state["project"])
+	assert.Equal(t, "Frontend Dev", state["job_title"])
+	assert.Equal(t, "http://127.0.0.1:8420", state["server_url"])
+}
+
+func TestWriteBoardStateFileNilConfigUsesHomeCoralDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	writeBoardStateFile("nil-config-session", "fixture-board", "Fixture", nil)
+	data, err := os.ReadFile(filepath.Join(home, ".coral", "board_state_nil-config-session.json"))
+	require.NoError(t, err)
+	var state map[string]string
+	require.NoError(t, json.Unmarshal(data, &state))
+	assert.Equal(t, "fixture-board", state["project"])
+	assert.Equal(t, "Fixture", state["job_title"])
+	assert.Empty(t, state["server_url"])
+}
+
+func TestWriteBoardStateFile_HostsAndPorts(t *testing.T) {
+	tests := []struct {
+		name        string
+		host        string
+		port        int
+		nilCfg      bool
+		wantURL     string
+		hasURLField bool
+	}{
+		{
+			name:        "default_port_wildcard_v4",
+			host:        "0.0.0.0",
+			port:        8420,
+			wantURL:     "http://127.0.0.1:8420",
+			hasURLField: true,
+		},
+		{
+			name:        "default_port_wildcard_v6",
+			host:        "::",
+			port:        8420,
+			wantURL:     "http://127.0.0.1:8420",
+			hasURLField: true,
+		},
+		{
+			name:        "default_port_empty_host",
+			host:        "",
+			port:        8420,
+			wantURL:     "http://127.0.0.1:8420",
+			hasURLField: true,
+		},
+		{
+			name:        "default_port_localhost",
+			host:        "localhost",
+			port:        8420,
+			wantURL:     "http://127.0.0.1:8420",
+			hasURLField: true,
+		},
+		{
+			name:        "nondefault_port_wildcard",
+			host:        "0.0.0.0",
+			port:        9100,
+			wantURL:     "http://127.0.0.1:9100",
+			hasURLField: true,
+		},
+		{
+			name:        "explicit_ipv4_nondefault_port",
+			host:        "192.168.1.50",
+			port:        9200,
+			wantURL:     "http://192.168.1.50:9200",
+			hasURLField: true,
+		},
+		{
+			name:        "explicit_ipv6_host",
+			host:        "2001:db8::1",
+			port:        8420,
+			wantURL:     "http://[2001:db8::1]:8420",
+			hasURLField: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			cfg := config.Load(tempDir)
+			cfg.Host = tc.host
+			cfg.Port = tc.port
+
+			session := "session-" + tc.name
+			writeBoardStateFile(session, "test-board", "Dev", cfg)
+
+			statePath := filepath.Join(cfg.CoralDir(), fmt.Sprintf("board_state_%s.json", session))
+			data, err := os.ReadFile(statePath)
+			require.NoError(t, err)
+			var state map[string]string
+			require.NoError(t, json.Unmarshal(data, &state))
+
+			assert.Equal(t, "test-board", state["project"])
+			assert.Equal(t, "Dev", state["job_title"])
+			if tc.hasURLField {
+				assert.Equal(t, tc.wantURL, state["server_url"])
+			} else {
+				_, exists := state["server_url"]
+				assert.False(t, exists, "server_url should be absent")
+			}
+		})
+	}
 }

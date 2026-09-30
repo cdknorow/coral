@@ -154,6 +154,9 @@ node agent_bar_tweaks.test.js
 node agent_list_compact.test.js
 node mobile_navigation.test.js
 node task_workflow.test.js
+node task_completion_modal.test.js
+node task_status_hover.test.js
+node agent_model_provider_switch.test.js
 node team_availability.test.js
 node team_menu_icon_spacing.test.js
 node team_view_responsive_rows.test.js

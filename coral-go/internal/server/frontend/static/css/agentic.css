@@ -249,6 +249,27 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 .team-settings-workspace .working-mode-form { flex: 1; }
 .team-view-workspace .availability-content { flex: 1; min-height: 0; overflow: auto; padding-right: 4px; }
 .team-view-workspace .availability-toolbar { flex-shrink: 0; }
+.team-view-workspace .availability-agents { container-type: inline-size; }
+
+/* Team view lives in a resizable pane, so row layout must respond to the
+   pane's width rather than the browser viewport. Keep names readable and
+   stack the reason/tasks when the pane cannot support three columns. */
+.team-view-workspace .availability-agent { grid-template-columns: minmax(240px, 1fr) minmax(220px, 2fr) auto; }
+.team-view-workspace .availability-agent-heading,
+.team-view-workspace .availability-agent-heading > div { min-width: 0; }
+.team-view-workspace .availability-agent-heading strong { display: block; overflow-wrap: break-word; word-break: normal; }
+.team-view-workspace .availability-agent-heading small { overflow-wrap: break-word; word-break: normal; }
+@container (max-width: 720px) {
+    .team-view-workspace .availability-agent { grid-template-columns: minmax(0, 1fr) auto; }
+    .team-view-workspace .availability-agent > p,
+    .team-view-workspace .availability-agent > ul,
+    .team-view-workspace .availability-agent > .btn { grid-column: 1 / -1; }
+}
+@container (max-width: 420px) {
+    .team-view-workspace .availability-agent { grid-template-columns: 1fr; }
+    .team-view-workspace .availability-agent-heading { align-items: flex-start; flex-direction: column; }
+    .team-view-workspace .availability-agent-heading .availability-badge { align-self: flex-start; }
+}
 
 @media(max-width: 767px) {
     .agentic-state.team-settings-workspace-active {
@@ -951,6 +972,29 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
     width: 100%;
 }
 
+/* Completion fields belong to the scrolling task body; keep the footer to a
+   compact action bar so Complete is reachable on short screens. */
+.task-completion-form {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.task-completion-form .task-confirm-inline { gap: 12px; }
+.task-completion-form label { margin-bottom: 0; }
+.task-completion-form textarea { resize: vertical; min-height: 72px; }
+.task-completion-hint,
+.task-completion-required { color: var(--text-secondary); font-size: 12px; margin: 0; }
+.task-completion-required { padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); }
+.task-completion-required strong { color: var(--text-primary); }
+.task-completion-required ul { margin: 6px 0; padding-left: 18px; }
+.task-completion-required p { margin: 6px 0 0; }
+.task-completion-evidence { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+.task-completion-evidence summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.task-completion-evidence[open] summary { margin-bottom: 10px; color: var(--text-primary); }
+.task-completion-evidence label { margin-top: 10px; }
+.task-completion-evidence label:first-of-type { margin-top: 0; }
+.task-completion-form .modal-error { margin-top: 0; }
+
 .task-confirm-text {
     font-size: 13px;
     color: var(--text-secondary);
@@ -1056,6 +1100,18 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
     gap: 8px;
     width: 96px;
     flex-shrink: 0;
+}
+
+/* Working and blocked details stay available on hover and keyboard focus
+   without adding noisy red labels to every task row. */
+.board-task-status-wrap[tabindex="0"] {
+    cursor: help;
+    border-radius: 4px;
+}
+
+.board-task-status-wrap[tabindex="0"]:focus-visible {
+    outline: 2px solid var(--accent, #58a6ff);
+    outline-offset: 2px;
 }
 
 .board-task-status-label {

@@ -95,6 +95,27 @@ function _invalidateDefaultModels() {
 }
 window._invalidateDefaultModels = _invalidateDefaultModels;
 
+// A persisted model is not automatically a user edit. Treat known provider
+// defaults/models as replaceable when the provider changes, while preserving
+// an explicitly chosen custom model across the switch.
+function _classifyLoadedACFModel(container, agentType, model) {
+    if (!container || !model) return;
+    const input = container.querySelector('.acf-model');
+    const initialModel = model;
+    Promise.all([_getDefaultModels(), _getAgentModels()]).then(([defaults, models]) => {
+        if (container.dataset.acfModelDirty === 'true' || input?.value !== initialModel) return;
+        const knownModels = Array.isArray(models?.[agentType]) ? models[agentType] : [];
+        const isKnown = defaults?.[agentType] === initialModel || knownModels.includes(initialModel);
+        container.dataset.acfModelDirty = isKnown ? 'false' : 'true';
+        container.dataset.acfModelClassifying = 'false';
+    }).catch(() => {
+        // If the catalog cannot be read, preserve the explicit value rather
+        // than risking data loss.
+        container.dataset.acfModelClassifying = 'false';
+        container.dataset.acfModelDirty = 'true';
+    });
+}
+
 function _syncMobileLaunchSections(step) {
     const isMobile = window.innerWidth <= 767;
     const root = step ? document.getElementById(`launch-step-${step}`) : document.getElementById("launch-modal");
@@ -1807,10 +1828,12 @@ function renderAgentConfigForm(containerId, opts = {}) {
         _renderPresetButtons(`${uid}-presets`, `(function(v){ window._applyACFPresetFor('${containerId}', v) })`);
     }
 
-    // Seed the 'dirty' flag: an explicit modelVal from the caller (restart,
-    // preset, saved team config) means the user already has a choice we must
-    // preserve across agent-type changes. An empty modelVal lets pre-fill run.
-    container.dataset.acfModelDirty = modelVal ? 'true' : 'false';
+    // Loaded values are classified against the provider's known defaults and
+    // model catalog. Known values may be replaced on provider switch; custom
+    // values remain user-owned. Hold pre-fill until classification completes.
+    container.dataset.acfModelDirty = 'false';
+    container.dataset.acfModelClassifying = modelVal ? 'true' : 'false';
+    if (modelVal) _classifyLoadedACFModel(container, agentTypeVal, modelVal);
 
     // Any user keystroke / paste / clear marks the field dirty so subsequent
     // agent-type changes won't clobber it. Guard with e.isTrusted so our
@@ -1818,7 +1841,10 @@ function renderAgentConfigForm(containerId, opts = {}) {
     const modelInput = container.querySelector('.acf-model');
     if (modelInput) {
         modelInput.addEventListener('input', (e) => {
-            if (e.isTrusted) container.dataset.acfModelDirty = 'true';
+            if (e.isTrusted) {
+                container.dataset.acfModelClassifying = 'false';
+                container.dataset.acfModelDirty = 'true';
+            }
         });
     }
 
@@ -1854,14 +1880,14 @@ function _syncACFModelField(container) {
         _getAgentModels().then(models => _fillModelDatalist(datalist, agentType, models));
     }
     if (!modelInput) return;
-    if (container.dataset.acfModelDirty === 'true') return; // user owns the value
+    if (container.dataset.acfModelClassifying === 'true' || container.dataset.acfModelDirty === 'true') return; // user owns or we are classifying the value
     if (agentType === 'terminal') {
         modelInput.value = '';
         return;
     }
     _getDefaultModels().then(defaults => {
         // If the user started typing during the fetch, don't clobber their input.
-        if (container.dataset.acfModelDirty === 'true') return;
+        if (container.dataset.acfModelDirty === 'true' || container.dataset.acfModelClassifying === 'true') return;
         // Re-check the agent type — the user may have switched again mid-fetch.
         const currentType = typeSel?.value || 'claude';
         if (currentType === 'terminal') {
@@ -1922,10 +1948,9 @@ function setAgentConfig(containerId, values) {
     const modelEl = container.querySelector('.acf-model');
     if (modelEl) {
         modelEl.value = v.model || '';
-        // Explicit non-empty model from the caller (restart, saved config)
-        // means "user owns this value" — protect it from pre-fill on subsequent
-        // type changes. Otherwise clear the flag so pre-fill runs below.
-        container.dataset.acfModelDirty = v.model ? 'true' : 'false';
+        container.dataset.acfModelClassifying = v.model ? 'true' : 'false';
+        container.dataset.acfModelDirty = 'false';
+        if (v.model) _classifyLoadedACFModel(container, typeEl?.value || 'claude', v.model);
     }
     const promptEl = container.querySelector('.acf-prompt');
     if (promptEl) promptEl.value = v.prompt || '';

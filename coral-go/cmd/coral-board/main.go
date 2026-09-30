@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/cdknorow/coral/internal/taskcli"
@@ -18,18 +19,35 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
 var serverURL = "http://localhost:8420"
 
 func init() {
-	if v := os.Getenv("CORAL_URL"); v != "" {
-		serverURL = strings.TrimRight(v, "/")
+	serverURL = endpointFromEnv(os.Getenv("CORAL_URL"), os.Getenv("CORAL_HOST"), os.Getenv("CORAL_PORT"))
+}
+
+// endpointFromEnv resolves the client endpoint without allowing a legacy port
+// variable to overwrite an explicit URL. CORAL_HOST/CORAL_PORT are only the
+// fallback for launch environments that do not provide CORAL_URL.
+func endpointFromEnv(explicitURL, host, port string) string {
+	if explicitURL = strings.TrimRight(strings.TrimSpace(explicitURL), "/"); explicitURL != "" {
+		return explicitURL
 	}
-	if v := os.Getenv("CORAL_PORT"); v != "" {
-		serverURL = "http://localhost:" + v
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "localhost"
+	} else if host == "0.0.0.0" || host == "::" {
+		// Wildcard bind addresses are not dialable client endpoints.
+		host = "127.0.0.1"
 	}
+	port = strings.TrimSpace(port)
+	if port == "" {
+		port = "8420"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 // State file stores current project/job_title per session.
@@ -1256,7 +1274,10 @@ func renderHTML(buf *bytes.Buffer, d *exportData) {
 func apiCallRaw(method, path string, body any) ([]byte, int, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	var lastErr error
-	for _, endpoint := range requestURLs(serverURL + "/api/board" + path) {
+	for i, endpoint := range requestURLs(serverURL + "/api/board" + path) {
+		if i > 0 && !retryLoopbackTransport(method, lastErr) {
+			break
+		}
 		var bodyReader io.Reader
 		if body != nil {
 			data, _ := json.Marshal(body)
@@ -1279,6 +1300,17 @@ func apiCallRaw(method, path string, body any) ([]byte, int, error) {
 		return respData, resp.StatusCode, nil
 	}
 	return nil, 0, fmt.Errorf("cannot reach Coral server at %s: %v", serverURL, lastErr)
+}
+
+// retryLoopbackTransport permits fallback only for idempotent GET requests and
+// non-permission transport failures. Permission errors remain actionable
+// sandbox-policy errors, and mutating requests are never replayed after an
+// ambiguous transmission.
+func retryLoopbackTransport(method string, err error) bool {
+	if !strings.EqualFold(method, http.MethodGet) {
+		return false
+	}
+	return !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.EPERM) && !errors.Is(err, syscall.EACCES)
 }
 
 // requestURLs adds a narrowly scoped IPv4 retry for localhost. Managed macOS
