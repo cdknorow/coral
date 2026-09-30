@@ -1095,6 +1095,24 @@ function _taskDetailHtml(task, liveCost) {
             ${task.workflow?.outcome === 'failed' ? '<span class="task-detail-meta-item"><span class="task-detail-meta-label">Result</span><span class="task-detail-outcome-failed">Failed</span></span>' : ''}
         </div>`;
 
+    const revision = Number(task.revision || 1);
+    const amendments = task.workflow?.amendments || [];
+    const preview = value => {
+        const text = String(value || '').replace(/\s+/g, ' ').trim();
+        return text.length > 180 ? `${text.slice(0, 177)}…` : text || '(empty)';
+    };
+    html += `<div class="task-detail-section task-detail-revision" data-task-revision="${revision}">
+        <div class="task-detail-label">Instruction revision</div>
+        <div class="task-detail-body">Current revision <strong>${revision}</strong>${amendments.length ? ` · ${amendments.length} amendment${amendments.length === 1 ? '' : 's'}` : ''}</div>
+        ${amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${amendments.map(amendment => {
+            const previous = amendment.previous_snapshot || {};
+            const effective = amendment.effective_snapshot || {};
+            const changes = amendment.changes || {};
+            const fields = Object.keys(changes).map(field => `<div><strong>${escapeHtml(field === 'workflow_instructions' ? 'Instructions' : 'Description')}</strong>: ${escapeHtml(preview(previous[field]))} → ${escapeHtml(preview(effective[field] ?? changes[field]))}</div>`).join('');
+            return `<div class="task-amendment-entry"><strong>Revision ${Number(amendment.revision)}</strong> · ${escapeHtml(amendment.actor || 'Planner')} · ${escapeHtml(amendment.created_at || '')}<br><span>${escapeHtml(amendment.reason || '')}</span>${fields}</div>`;
+        }).join('')}</details>` : ''}
+    </div>`;
+
     if (task.body) {
         html += `<div class="task-detail-section">
             <div class="task-detail-label">Description</div>
@@ -1307,13 +1325,22 @@ export async function enableTaskEditMode(taskId) {
     ).join('');
 
     const showDepPicker = task.status === 'blocked' || task.status === 'pending' || task.status === 'draft';
+    const workflowInstructions = task.workflow?.effective_instructions || task.workflow?.instructions || '';
+    const revision = Number(task.revision || 1);
     content.innerHTML = `
         <div id="task-edit-error" class="modal-error" style="display:none"></div>
+        <div class="task-edit-revision">Editing revision <strong>${revision}</strong>. Changes to description or instructions require a reason.</div>
         <label for="task-edit-title">Title
             <input type="text" id="task-edit-title" value="${escapeAttr(task.title)}">
         </label>
         <label for="task-edit-body">Description
             <textarea id="task-edit-body" rows="3">${escapeHtml(task.body || '')}</textarea>
+        </label>
+        <label for="task-edit-instructions">Workflow instructions
+            <textarea id="task-edit-instructions" rows="3">${escapeHtml(workflowInstructions)}</textarea>
+        </label>
+        <label for="task-edit-reason">Amendment reason
+            <input type="text" id="task-edit-reason" placeholder="Why should this instruction change?">
         </label>
         <label for="task-edit-priority">Priority
             <select id="task-edit-priority">${priorityOptions}</select>
@@ -1353,7 +1380,11 @@ export async function saveTaskEdit(taskId) {
 
     const updates = {};
     if (title !== task.title) updates.title = title;
-    if (body !== (task.body || '')) updates.body = body;
+    const workflowInstructions = document.getElementById('task-edit-instructions')?.value.trim() || '';
+    const originalInstructions = task.workflow?.effective_instructions || task.workflow?.instructions || '';
+    const amendmentChanges = {};
+    if (body !== (task.body || '')) amendmentChanges.body = body;
+    if (workflowInstructions !== originalInstructions) amendmentChanges.workflow_instructions = workflowInstructions;
     if (priority !== task.priority) updates.priority = priority;
     if (assignedTo !== (task.assigned_to || '')) {
         updates.assigned_to = assignedTo;
@@ -1370,7 +1401,7 @@ export async function saveTaskEdit(taskId) {
         }
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length === 0 && Object.keys(amendmentChanges).length === 0) {
         cancelTaskEdit();
         return;
     }
@@ -1379,14 +1410,29 @@ export async function saveTaskEdit(taskId) {
     if (!boardProject) return;
 
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updates),
-        });
-        if (!resp.ok) {
-            const data = await resp.json().catch(() => ({}));
-            throw new Error(data.error || `HTTP ${resp.status}`);
+        if (Object.keys(amendmentChanges).length) {
+            const reason = document.getElementById('task-edit-reason')?.value.trim() || '';
+            if (!reason) throw new Error('An amendment reason is required for description or instruction changes');
+            const amendmentResp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/amend`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subscriber_id: 'Operator', base_revision: Number(task.revision || 1), reason, changes: amendmentChanges }),
+            });
+            if (!amendmentResp.ok) {
+                const data = await amendmentResp.json().catch(() => ({}));
+                throw new Error(data.error || `HTTP ${amendmentResp.status}`);
+            }
+        }
+        if (Object.keys(updates).length) {
+            const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates),
+            });
+            if (!resp.ok) {
+                const data = await resp.json().catch(() => ({}));
+                throw new Error(data.error || `HTTP ${resp.status}`);
+            }
         }
         _editOriginalTask = null;
         await loadBoardTasks(boardProject);
@@ -1423,6 +1469,7 @@ export function completeBoardTask(taskId, personal = false) {
         : '<p class="task-completion-hint">Add a concise outcome and message. Evidence is optional unless the task specifies required outputs.</p>';
     content.insertAdjacentHTML('beforeend', `
         <section class="task-completion-form" aria-label="Complete task">
+            <p class="task-completion-revision">Submitting the task as revision <strong>${Number(task?.revision || 1)}</strong>.</p>
             <div class="task-confirm-inline">
                 <label for="task-complete-message">Completion message <textarea id="task-complete-message" rows="3" placeholder="What was completed and how was it verified?"></textarea></label>
                 <label for="task-complete-outcome">Outcome <select id="task-complete-outcome"><option value="success">Success</option><option value="failed">Failed</option></select></label>
@@ -1436,6 +1483,7 @@ export function completeBoardTask(taskId, personal = false) {
                     <label for="task-artifacts-file">Attach an artifact manifest<input type="file" id="task-artifacts-file" accept="application/json,.json"></label>
                 </details>
                 <div id="task-complete-error" class="modal-error" role="alert" hidden></div>
+                <button id="task-complete-refresh" class="btn task-completion-refresh" type="button" hidden>Refresh task before retrying</button>
             </div>
         </section>`);
     footer.innerHTML = `
@@ -1474,14 +1522,17 @@ export async function _doCompleteTask(taskId, personal = false) {
         const outcome = document.getElementById('task-complete-outcome')?.value || 'success';
         const endpoint = personal ? `/api/agent/tasks/${taskId}/complete` : `/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/complete`;
         const identity = personal ? { session_id: state.currentSession.session_id } : { subscriber_id: 'Operator' };
+        const expectedRevision = !personal && task ? Number(task.revision || 1) : undefined;
         const resp = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...identity, message: message || undefined, outcome, artifacts }),
+            body: JSON.stringify({ ...identity, message: message || undefined, outcome, artifacts, ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }),
         });
         if (!resp.ok) {
             const data = await resp.json().catch(() => ({}));
-            throw new Error(data.error || `HTTP ${resp.status}`);
+            const error = new Error(data.error || `HTTP ${resp.status}`);
+            error.status = resp.status;
+            throw error;
         }
         hideTaskDetailModal();
         if (personal) await loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
@@ -1490,6 +1541,19 @@ export async function _doCompleteTask(taskId, personal = false) {
     } catch (e) {
         const errorEl = document.getElementById('task-complete-error');
         if (errorEl) { errorEl.textContent = e.message || 'Failed to complete task'; errorEl.hidden = false; }
+        const refresh = document.getElementById('task-complete-refresh');
+        if (refresh && e.status === 409) {
+            refresh.hidden = false;
+            refresh.onclick = async () => {
+                if (personal) {
+                    await loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
+                    showAgentTaskDetailModal(taskId);
+                } else {
+                    await loadBoardTasks(boardProject);
+                    showTaskDetailModal(taskId);
+                }
+            };
+        }
         showToast(e.message || 'Failed to complete task', true);
     }
 }

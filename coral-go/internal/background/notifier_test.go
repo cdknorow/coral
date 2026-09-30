@@ -220,6 +220,33 @@ func TestBoardNotifier_OrchestratorGetsNudgeForNewUnreadBatch(t *testing.T) {
 	require.Len(t, rt.sent, 2, "new messages should immediately nudge the orchestrator")
 }
 
+func TestBoardNotifier_NewMessageAfterReadWithSameUnreadCount(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	notifier := NewBoardNotifier(bs, rt, 10*time.Second)
+	notifier.SetIsPausedFn(func(_ string) bool { return false })
+	_, err := bs.Subscribe(ctx, "proj", "Orchestrator", "Orchestrator", "claude-orch-same", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "proj", "Worker", "Worker", "claude-worker-same", nil, nil, "")
+	require.NoError(t, err)
+	notifier.SetDiscoverFn(func(_ context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentName: "orch", AgentType: "claude", SessionID: "orch-same", DisplayName: "Orchestrator"}}, nil
+	})
+	_, err = bs.PostMessage(ctx, "proj", "Worker", "first", nil)
+	require.NoError(t, err)
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	// The first message is read, then a new message arrives before the next
+	// notifier pass. Both batches have count=1, but the second ID is new.
+	_, err = bs.ReadMessages(ctx, "proj", "Orchestrator", 50)
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "proj", "Worker", "second", nil)
+	require.NoError(t, err)
+	require.NoError(t, notifier.RunOnce(ctx))
+	require.Len(t, rt.sent, 2, "new message ID must re-notify after the prior batch was read")
+}
+
 // TestBoardNotifier_OneNudgePerBatch verifies more messages arriving before
 // the agent reads do not stack up nudges, a reminder goes out once they have
 // sat unread for remindAfter, and reading resets it.

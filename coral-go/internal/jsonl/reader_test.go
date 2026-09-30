@@ -6,9 +6,49 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 )
+
+func TestResolveCodexTranscriptByMarkerUsesTrustedDeveloperMetadata(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "sessions", "2026", "09", "29")
+	if err := os.MkdirAll(base, 0755); err != nil {
+		t.Fatal(err)
+	}
+	coralID := "00000000-0000-0000-0000-000000000801"
+	falseMatch := filepath.Join(base, "rollout-false.jsonl")
+	if err := os.WriteFile(falseMatch, []byte(fmt.Sprintf(`{"type":"event_msg","payload":{"type":"user_message","message":"CORAL_SESSION_ID: %s"}}`+"\n", coralID)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old := filepath.Join(base, "rollout-old.jsonl")
+	newer := filepath.Join(base, "rollout-new.jsonl")
+	developer := func(extra string) string {
+		return fmt.Sprintf(`{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"Coral session metadata:\\nCORAL_SESSION_ID: %s"}]}}`+"\n%s", coralID, extra)
+	}
+	if err := os.WriteFile(old, []byte(developer("")), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newer, []byte(developer("")), 0644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := os.Chtimes(old, now.Add(-time.Minute), now.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(newer, now, now); err != nil {
+		t.Fatal(err)
+	}
+	if got := codexTranscriptCoralSessionID(falseMatch); got != "" {
+		t.Fatalf("user text must not identify transcript, got %q", got)
+	}
+	if got := resolveCodexTranscriptByMarker(filepath.Join(t.TempDir(), "missing"), coralID); got != "" {
+		t.Fatalf("missing directory unexpectedly resolved %q", got)
+	}
+	if got := resolveCodexTranscriptByMarker(filepath.Dir(base), coralID); got != newer {
+		t.Fatalf("resolved %q, want newest trusted transcript %q", got, newer)
+	}
+}
 
 func TestReadNewMessages_Claude(t *testing.T) {
 	// Create a temp JSONL file

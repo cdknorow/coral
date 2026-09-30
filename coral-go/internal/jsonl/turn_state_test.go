@@ -1,10 +1,13 @@
 package jsonl
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestCodexTurnEvent(t *testing.T) {
@@ -25,6 +28,60 @@ func TestCodexTurnEvent(t *testing.T) {
 			require.Equal(t, c.want, kind)
 		})
 	}
+}
+
+func TestCodexTurnEventLongTurnBeyondOriginalTail(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "long-rollout.jsonl")
+	start := `{"timestamp":"2026-09-30T04:00:00Z","type":"event_msg","payload":{"type":"task_started"}}` + "\n"
+	// More than the former 1 MiB scan window, with committed response records
+	// between the lifecycle boundaries. The active turn must remain visible.
+	var b strings.Builder
+	b.WriteString(start)
+	for i := 0; i < 18000; i++ {
+		b.WriteString(fmt.Sprintf(`{"timestamp":"2026-09-30T04:00:%02d.%03dZ","type":"response_item","payload":{"type":"message","text":"%s"}}`+"\n", (i/1000)%60, i%1000, strings.Repeat("x", 100)))
+	}
+	if err := os.WriteFile(p, []byte(b.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kind, at := CodexTurnEvent(p)
+	require.Equal(t, "prompt_submit", kind)
+	require.False(t, at.IsZero())
+
+	// A completion inside the bounded window wins, and a subsequent turn
+	// correctly takes ownership of the state again.
+	completed := b.String() + `{"timestamp":"2026-09-30T04:30:00Z","type":"event_msg","payload":{"type":"task_complete"}}` + "\n"
+	completed += `{"timestamp":"2026-09-30T04:31:00Z","type":"event_msg","payload":{"type":"task_started"}}` + "\n"
+	if err := os.WriteFile(p, []byte(completed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kind, at = CodexTurnEvent(p)
+	require.Equal(t, "prompt_submit", kind)
+	require.Equal(t, "2026-09-30T04:31:00Z", at.Format(time.RFC3339))
+}
+
+func TestReadCodexTurnEventIncrementalLongTurnGrowthAndReplacement(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "incremental-rollout.jsonl")
+	start := `{"timestamp":"2026-09-30T05:00:00Z","type":"event_msg","payload":{"type":"task_started"}}` + "\n"
+	filler := strings.Repeat(`{"timestamp":"2026-09-30T05:00:01Z","type":"response_item","payload":{"type":"message","text":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}`+"\n", 70000)
+	if err := os.WriteFile(p, []byte(start+filler), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var state codexTurnCache
+	kind, at := readCodexTurnEventIncremental(p, &state)
+	require.Equal(t, "prompt_submit", kind)
+	require.Equal(t, "2026-09-30T05:00:01Z", at.Format(time.RFC3339))
+	if err := os.WriteFile(p, []byte(start+filler+`{"timestamp":"2026-09-30T05:01:00Z","type":"event_msg","payload":{"type":"task_complete"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kind, _ = readCodexTurnEventIncremental(p, &state)
+	require.Equal(t, "stop", kind)
+	// Replacement with a different header resets the cached lifecycle state.
+	if err := os.WriteFile(p, []byte(`{"timestamp":"2026-09-30T06:00:00Z","type":"event_msg","payload":{"type":"task_started"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	kind, at = readCodexTurnEventIncremental(p, &state)
+	require.Equal(t, "prompt_submit", kind)
+	require.Equal(t, "2026-09-30T06:00:00Z", at.Format(time.RFC3339))
 }
 
 func TestAgyTurnEvent(t *testing.T) {
@@ -99,4 +156,3 @@ func TestAgyTurnEvent(t *testing.T) {
 		})
 	}
 }
-

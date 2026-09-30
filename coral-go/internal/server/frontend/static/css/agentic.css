@@ -994,6 +994,9 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 .task-completion-evidence label { margin-top: 10px; }
 .task-completion-evidence label:first-of-type { margin-top: 0; }
 .task-completion-form .modal-error { margin-top: 0; }
+.task-completion-revision,
+.task-edit-revision { color: var(--text-secondary); font-size: 12px; margin: 0 0 10px; }
+.task-completion-refresh { margin-top: 6px; }
 
 .task-confirm-text {
     font-size: 13px;
@@ -1637,6 +1640,12 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 .task-detail-section {
     margin-bottom: 16px;
 }
+
+.task-detail-revision { border-left: 2px solid var(--accent, #58a6ff); padding-left: 10px; }
+.task-amendment-history { margin-top: 8px; }
+.task-amendment-history summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; }
+.task-amendment-entry { margin-top: 8px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.task-amendment-entry div { margin-top: 4px; overflow-wrap: anywhere; }
 
 .task-detail-body {
     font-size: 13px;

@@ -39,6 +39,14 @@ func (s *Store) RequireTaskReviewer(ctx context.Context, project, actor string) 
 // free the worker slot. The immutable candidate can be submitted before a
 // completion attempt, or separately after an externally rejected attempt.
 func (s *Store) SubmitCompletionReview(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact) (*Task, error) {
+	return s.submitCompletionReviewAtRevision(ctx, project, id, actor, message, outcome, reason, artifacts, nil)
+}
+
+func (s *Store) SubmitCompletionReviewAtRevision(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
+	return s.submitCompletionReviewAtRevision(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision)
+}
+
+func (s *Store) submitCompletionReviewAtRevision(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
 	if strings.TrimSpace(reason) == "" || len(reason) > 4096 || len(message) > 65536 {
 		return nil, fmt.Errorf("a review reason is required (maximum 4096 characters); message maximum is 65536")
 	}
@@ -60,9 +68,13 @@ func (s *Store) SubmitCompletionReview(ctx context.Context, project string, id i
 	var row struct {
 		Status     string  `db:"status"`
 		AssignedTo *string `db:"assigned_to"`
+		Revision   int     `db:"revision"`
 	}
-	if err := tx.GetContext(ctx, &row, "SELECT status,assigned_to FROM board_tasks WHERE id=? AND board_id=?", id, project); err != nil {
+	if err := tx.GetContext(ctx, &row, "SELECT status,assigned_to,revision FROM board_tasks WHERE id=? AND board_id=?", id, project); err != nil {
 		return nil, err
+	}
+	if row.Revision > 1 && (expectedRevision == nil || *expectedRevision != row.Revision) {
+		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before submitting review", id, row.Revision)
 	}
 	if row.Status != "in_progress" {
 		return nil, fmt.Errorf("only an in-progress task can submit completion evidence")

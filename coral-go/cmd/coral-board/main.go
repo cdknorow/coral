@@ -1334,7 +1334,7 @@ Subcommands:
   add "title" [--body "details"] [--priority P]
   list
   claim
-  submit-review <id> --reason "review pending" [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
+  submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   release-review <id> --reason "slot released pending review" (orchestrator only)
   complete <id> [--message "note"]`)
 		os.Exit(1)
@@ -1388,6 +1388,8 @@ Subcommands:
 		cmdTaskCancel(st, taskArgs)
 	case "reassign":
 		cmdTaskReassign(st, taskArgs)
+	case "amend":
+		cmdTaskAmend(st, taskArgs)
 	case "--help", "-h", "help":
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task <subcommand> [args]
 
@@ -1397,11 +1399,12 @@ Subcommands:
   claim [id]                       Claim a specific task or the next available one
   current                          Show your current in-progress task
   detail <id>                      Read task instructions, inputs and results
-  submit-review <id> --reason "review pending" [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
+  submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   release-review <id> --reason "slot released pending review" (orchestrator only)
   complete <id> [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   cancel <id> [--message "reason"]
   reassign <id> [--to "Agent Name"]
+  amend <id> --revision N --reason "..." [--body "..." --workflow-instructions "..."]
 
 Workflow options for add:
   --workflow "name" --stage "Build" --outputs "build,test_report"
@@ -1601,7 +1604,8 @@ func cmdTaskCurrent(st *boardState) {
 	taskBody, _ := task["body"].(string)
 	priority, _ := task["priority"].(string)
 	status_, _ := task["status"].(string)
-	fmt.Printf("Task #%.0f (%s) [%s]: %s\n", id, priority, status_, title)
+	revision, _ := task["revision"].(float64)
+	fmt.Printf("Task #%.0f (revision %.0f, %s) [%s]: %s\n", id, revision, priority, status_, title)
 	printTaskWorkflow(task)
 	if taskBody != "" {
 		fmt.Printf("\n%s\n", taskBody)
@@ -1624,12 +1628,16 @@ func cmdTaskComplete(st *boardState, args []string) {
 	message := fs.String("message", "", "Completion message")
 	outcome := fs.String("outcome", "success", "success or failed")
 	artifactsFile := fs.String("artifacts", "", "JSON file containing named artifacts (name, uri or content, revision, digest)")
+	expectedRevision := fs.Int("revision", 0, "Expected task revision after amendments")
 	fs.Parse(args[1:])
 
 	subscriberID := resolveSubscriberID()
 	body := map[string]any{
 		"subscriber_id": subscriberID,
 		"outcome":       *outcome,
+	}
+	if *expectedRevision > 0 {
+		body["expected_revision"] = *expectedRevision
 	}
 	if *artifactsFile != "" {
 		data, err := os.ReadFile(*artifactsFile)
@@ -1753,6 +1761,51 @@ func cmdTaskReassign(st *boardState, args []string) {
 	} else {
 		fmt.Printf("Reassigned Task #%d (now unassigned): %s\n", taskID, title)
 	}
+}
+
+func cmdTaskAmend(st *boardState, args []string) {
+	if len(args) < 1 {
+		fmt.Fprintln(os.Stderr, `Usage: coral-board task amend <id> --revision N --reason "..." [--body "..."]`)
+		os.Exit(1)
+	}
+	taskID, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
+		os.Exit(1)
+	}
+	fs := flag.NewFlagSet("task-amend", flag.ExitOnError)
+	revision := fs.Int("revision", 0, "Expected current task revision")
+	reason := fs.String("reason", "", "Why this amendment is authoritative")
+	bodyText := fs.String("body", "", "Replacement task body")
+	instructions := fs.String("workflow-instructions", "", "Replacement task-specific instructions")
+	fs.Parse(args[1:])
+	if *revision <= 0 || strings.TrimSpace(*reason) == "" {
+		fmt.Fprintln(os.Stderr, "--revision and --reason are required")
+		os.Exit(1)
+	}
+	changes := map[string]any{}
+	if *bodyText != "" {
+		changes["body"] = *bodyText
+	}
+	if *instructions != "" {
+		changes["workflow_instructions"] = *instructions
+	}
+	if len(changes) == 0 {
+		fmt.Fprintln(os.Stderr, "at least --body or --workflow-instructions is required")
+		os.Exit(1)
+	}
+	data, status, err := apiCallRaw("PATCH", fmt.Sprintf("/%s/tasks/%d/amend", st.Project, taskID), map[string]any{"subscriber_id": resolveSubscriberID(), "base_revision": *revision, "reason": *reason, "changes": changes})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if status != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Error amending task: %s\n", string(data))
+		os.Exit(1)
+	}
+	var task map[string]any
+	_ = json.Unmarshal(data, &task)
+	fmt.Printf("Amended Task #%d to revision %.0f: %s\n", taskID, task["revision"], task["title"])
 }
 
 // ── Workflow subcommands ─────────────────────────────────────────────
@@ -2469,6 +2522,7 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	reason := fs.String("reason", "", "Reason review is needed or capacity is being released")
 	message := fs.String("message", "", "Candidate completion message")
+	revision := fs.Int("revision", 0, "Expected task revision after amendments (submit-review)")
 	outcome := fs.String("outcome", "success", "Proposed outcome: success or failed")
 	manifest := fs.String("artifacts", "", "Candidate artifact manifest")
 	fs.Parse(args[1:])
@@ -2477,6 +2531,9 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 		os.Exit(1)
 	}
 	body := map[string]any{"subscriber_id": resolveSubscriberID(), "reason": *reason, "message": *message, "outcome": *outcome}
+	if *revision > 0 {
+		body["expected_revision"] = *revision
+	}
 	if *manifest != "" {
 		data, err := os.ReadFile(*manifest)
 		if err != nil {

@@ -1328,10 +1328,11 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		SubscriberID string               `json:"subscriber_id"`
-		Message      *string              `json:"message"`
-		Outcome      string               `json:"outcome,omitempty"`
-		Artifacts    []board.TaskArtifact `json:"artifacts,omitempty"`
+		SubscriberID     string               `json:"subscriber_id"`
+		Message          *string              `json:"message"`
+		Outcome          string               `json:"outcome,omitempty"`
+		Artifacts        []board.TaskArtifact `json:"artifacts,omitempty"`
+		ExpectedRevision *int                 `json:"expected_revision,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -1341,9 +1342,13 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
-	task, err := h.bs.CompleteTaskWithArtifacts(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts)
+	task, err := h.bs.CompleteTaskWithArtifactsAtRevision(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts, body.ExpectedRevision)
 	if err != nil {
-		errBadRequest(w, err.Error())
+		if strings.Contains(err.Error(), "revision") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		} else {
+			errBadRequest(w, err.Error())
+		}
 		return
 	}
 	h.persistTaskArtifact(r.Context(), task)
@@ -1509,6 +1514,10 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	if raw.Body != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "task body changes require the revisioned /amend endpoint with a reason and base_revision"})
+		return
+	}
 
 	if raw.AssignedTo != nil && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
 		return
@@ -1583,6 +1592,47 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+	}()
+	writeJSON(w, http.StatusOK, task)
+}
+
+// AmendTask applies a planner-authorized, revision-checked body/instruction amendment.
+// PATCH /api/board/{project}/tasks/{taskID}/amend
+func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
+	project := chi.URLParam(r, "project")
+	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
+	if err != nil {
+		errBadRequest(w, "invalid task ID")
+		return
+	}
+	var body struct {
+		SubscriberID string                 `json:"subscriber_id"`
+		BaseRevision int                    `json:"base_revision"`
+		Reason       string                 `json:"reason"`
+		Changes      map[string]interface{} `json:"changes"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if !h.requireTaskPlanner(w, r, project, body.SubscriberID) {
+		return
+	}
+	task, err := h.bs.AmendTask(r.Context(), project, taskID, body.SubscriberID, body.BaseRevision, body.Reason, body.Changes)
+	if err != nil {
+		if strings.Contains(err.Error(), "revision") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		} else {
+			errBadRequest(w, err.Error())
+		}
+		return
+	}
+	go func() {
+		notice := fmt.Sprintf("[Task #%d amended to revision %d] %s", task.ID, task.Revision, task.Title)
+		if task.AssignedTo != nil && *task.AssignedTo != "" {
+			notice += fmt.Sprintf(" — @%s reread task detail before acting", *task.AssignedTo)
+		}
+		h.bs.PostMessage(context.Background(), project, "Coral Task Queue", notice, nil)
 	}()
 	writeJSON(w, http.StatusOK, task)
 }

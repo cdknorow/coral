@@ -3493,12 +3493,14 @@ async function _ensureDefaultPrompts() {
         const res = await fetch("/api/settings/default-prompts");
         _defaultPrompts = await res.json();
     } catch {
-        // Fallback — should never happen in practice
+        // Do not keep a second, abbreviated prompt contract here. The runtime
+        // defaults remain authoritative; an unavailable endpoint is explicit.
         _defaultPrompts = {
-            default_prompt_orchestrator: 'IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Post a message with coral-board post "<your introduction>" that introduces yourself, then discuss your proposed plan with the operator (the human user) before posting assignments.\n\nCRITICAL: Do NOT poll or loop on \'coral-board read\'. After posting your introduction or any message, STOP. Coral will send you a notification (as a user message) when new messages arrive. Only run \'coral-board read\' after receiving such a notification.',
-            default_prompt_worker: 'IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Do not start any actions until you receive instructions from the Orchestrator on the message board. Post a message with coral-board post "<your introduction>" that introduces yourself, then STOP.\n\nCRITICAL: Do NOT poll or loop on \'coral-board read\'. Coral will automatically notify you (as a user message) when new messages arrive — only run \'coral-board read\' after receiving a notification. Between notifications, do nothing and wait.',
-            team_reminder_orchestrator: 'Remember to coordinate with your team and check the message board for updates',
-            team_reminder_worker: 'Remember to work with your team',
+            unavailable: true,
+            default_prompt_orchestrator: '',
+            default_prompt_worker: '',
+            team_reminder_orchestrator: '',
+            team_reminder_worker: '',
         };
     }
     return _defaultPrompts;
@@ -3506,6 +3508,10 @@ async function _ensureDefaultPrompts() {
 
 export async function showDefaultPromptsModal() {
     const defaults = await _ensureDefaultPrompts();
+    if (defaults.unavailable) {
+        showToast("Default prompts are unavailable; reload and try again.", true);
+        return;
+    }
     const s = state.settings || {};
     const orchEl = document.getElementById("settings-prompt-orchestrator");
     const workerEl = document.getElementById("settings-prompt-worker");

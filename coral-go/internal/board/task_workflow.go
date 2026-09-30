@@ -33,17 +33,20 @@ type TaskInput struct {
 }
 
 type TaskWorkflow struct {
-	CompletionReview *CompletionReview `json:"completion_review,omitempty"`
-	TeamMode         *WorkingMode      `json:"team_mode,omitempty"`
-	Instructions     string            `json:"instructions"`
-	Name             string            `json:"name,omitempty"`
-	Stage            string            `json:"stage,omitempty"`
-	ParentTaskID     int64             `json:"parent_task_id,omitempty"`
-	RetryOf          int64             `json:"retry_of,omitempty"`
-	RequiredOutputs  []string          `json:"required_outputs,omitempty"`
-	Inputs           []TaskInput       `json:"inputs,omitempty"`
-	Artifacts        []TaskArtifact    `json:"artifacts,omitempty"`
-	Outcome          string            `json:"outcome,omitempty"`
+	CompletionReview      *CompletionReview `json:"completion_review,omitempty"`
+	TeamMode              *WorkingMode      `json:"team_mode,omitempty"`
+	Instructions          string            `json:"instructions"`
+	Name                  string            `json:"name,omitempty"`
+	Stage                 string            `json:"stage,omitempty"`
+	ParentTaskID          int64             `json:"parent_task_id,omitempty"`
+	RetryOf               int64             `json:"retry_of,omitempty"`
+	RequiredOutputs       []string          `json:"required_outputs,omitempty"`
+	Inputs                []TaskInput       `json:"inputs,omitempty"`
+	Artifacts             []TaskArtifact    `json:"artifacts,omitempty"`
+	Outcome               string            `json:"outcome,omitempty"`
+	Amendments            []TaskAmendment   `json:"amendments,omitempty"`
+	EffectiveInstructions string            `json:"effective_instructions,omitempty"`
+	AcknowledgedRevision  int               `json:"acknowledged_revision,omitempty"`
 }
 
 func (s *Store) initTaskWorkflows(ctx context.Context) error {
@@ -318,6 +321,16 @@ func (s *Store) hydrateWorkflow(ctx context.Context, t *Task) error {
 	if err != nil {
 		return err
 	}
+	w.Amendments, err = s.loadTaskAmendments(ctx, t.ID)
+	if err != nil {
+		return err
+	}
+	w.EffectiveInstructions = w.Instructions
+	for _, amendment := range w.Amendments {
+		if value, ok := amendment.Changes["workflow_instructions"].(string); ok && strings.TrimSpace(value) != "" {
+			w.EffectiveInstructions += "\n\nTask amendment (revision " + fmt.Sprint(amendment.Revision) + "):\n" + value
+		}
+	}
 	if w.Outcome == "" {
 		if t.Status == "completed" {
 			w.Outcome = "success"
@@ -375,6 +388,15 @@ func dependencyInputs(ctx context.Context, db sqlx.QueryerContext, taskID int64)
 // CompleteTaskWithArtifacts commits the outcome and evidence atomically. A
 // terminal task cannot be edited or reassigned, so downstream inputs stay pinned.
 func (s *Store) CompleteTaskWithArtifacts(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact) (*Task, error) {
+	return s.completeTaskWithArtifactsAtRevision(ctx, project, taskID, subscriberID, message, outcome, artifacts, nil)
+}
+
+// CompleteTaskWithArtifactsAtRevision rejects stale work after an amendment.
+func (s *Store) CompleteTaskWithArtifactsAtRevision(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
+	return s.completeTaskWithArtifactsAtRevision(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision)
+}
+
+func (s *Store) completeTaskWithArtifactsAtRevision(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
 	if outcome == "" {
 		outcome = "success"
 	}
@@ -394,6 +416,13 @@ func (s *Store) CompleteTaskWithArtifacts(ctx context.Context, project string, t
 	w, err := loadWorkflow(ctx, tx, taskID)
 	if err != nil {
 		return nil, err
+	}
+	var revision int
+	if err := tx.GetContext(ctx, &revision, "SELECT revision FROM board_tasks WHERE id=? AND board_id=?", taskID, project); err != nil {
+		return nil, err
+	}
+	if revision > 1 && (expectedRevision == nil || *expectedRevision != revision) {
+		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before completing", taskID, revision)
 	}
 	if w.CompletionReview != nil && reviewerErr != nil {
 		return nil, reviewerErr

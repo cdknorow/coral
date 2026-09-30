@@ -32,6 +32,19 @@ type sessionCache struct {
 	offset       int64
 	messages     []map[string]any
 	toolUseNames map[string]string // tool_use_id → tool_name
+	codexState   codexTurnCache
+}
+
+type codexTurnCache struct {
+	initialized bool
+	size        int64
+	modTime     time.Time
+	head        string
+	offset      int64
+	partial     []byte
+	event       string
+	at          time.Time
+	active      bool
 }
 
 // firstPromptCache is deliberately separate from sessionCache. The live
@@ -560,7 +573,11 @@ func resolveCodexTranscript(sessionID string) string {
 }
 
 func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
-	var match string
+	type candidate struct {
+		path string
+		mod  time.Time
+	}
+	var matches []candidate
 	_ = filepath.Walk(basePath, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info == nil || info.IsDir() {
 			return nil
@@ -569,12 +586,15 @@ func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
 			return nil
 		}
 		if codexTranscriptCoralSessionID(path) == sessionID {
-			match = path
-			return filepath.SkipAll
+			matches = append(matches, candidate{path: path, mod: info.ModTime()})
 		}
 		return nil
 	})
-	return match
+	if len(matches) == 0 {
+		return ""
+	}
+	sort.Slice(matches, func(i, j int) bool { return matches[i].mod.After(matches[j].mod) })
+	return matches[0].path
 }
 
 func codexTranscriptCoralSessionID(path string) string {
@@ -595,7 +615,17 @@ func codexTranscriptCoralSessionID(path string) string {
 		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue
 		}
-		if sessionID := agent.ExtractCoralSessionID(entry); sessionID != "" {
+		// The marker is injected into Codex's developer instructions. Restrict
+		// association to that trusted record; scanning arbitrary user/assistant
+		// text lets a transcript mention another UUID and steal its identity.
+		if entry["type"] != "response_item" {
+			continue
+		}
+		payload, _ := entry["payload"].(map[string]any)
+		if payload == nil || payload["type"] != "message" || payload["role"] != "developer" {
+			continue
+		}
+		if sessionID := agent.ExtractCoralSessionID(payload["content"]); sessionID != "" {
 			return sessionID
 		}
 	}

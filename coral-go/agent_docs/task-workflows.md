@@ -61,14 +61,41 @@ These are snapshotted on first claim and retained through reassignment.
 3. Only `in_progress` consumes the worker's active slot: one per subscriber per
    board, or one per personal session. Assigned pending work is planned backlog,
    not active load. Draft, blocked and review-pending work cannot be claimed.
-4. The worker keeps ownership through normal review corrections and coordinates
-   directly with teammates. Request new assignments from the Operator or
-   Orchestrator. A normal reassign resets pending/in-progress work to pending;
+4. The worker keeps ownership through normal review corrections and reports
+   shared handoffs to the Orchestrator by default. Direct worker coordination
+   requires an explicit Operator/orchestrator exception. Request new assignments
+   from the Operator or Orchestrator. A normal reassign resets pending/in-progress work to pending;
    changing an active owner via PATCH also resets execution. Reassignment does
    not reopen terminal results or replace an immutable review candidate.
+   Keep ordinary corrections on the current task, owner, branch/worktree, and
+   prerequisite chain. If a correction changes scope, owner, prerequisite, or
+   acceptance input, tell the Orchestrator the exact decision needed instead of
+   creating a duplicate shared task. A useful handoff includes the task ID,
+   status, command/result, tested revision, and artifact identity when applicable.
 5. Complete with a truthful outcome and evidence. A rejected completion request
    leaves the task unfinished; it is not a recorded failure. Use `current` and
-   `detail` to inspect the actual state before attempting recovery.
+   `detail` to inspect the actual state before attempting recovery. Carry the
+   assigned outcome across turns and corrections: a smaller slice is progress,
+   not proof that the whole task is complete. Follow the latest explicit
+   Operator/orchestrator amendment, reread current task detail and artifacts,
+   and take the next safe authorized action when available. Report success only
+   after checking the assigned requirements against current evidence; otherwise
+   report the limitation or failure honestly. A wait needs a specific current
+   condition and next action; an observation timeout does not prove that work
+   stopped and must not trigger a duplicate restart.
+
+### Versioned task amendments
+
+Planner-authored body or task-specific instruction corrections use
+`PATCH /api/board/{project}/tasks/{id}/amend` with `base_revision`, a reason, and
+replacement fields. The append-only history preserves original text and the
+effective revision. A stale revision returns a conflict; reread `detail` before
+acting. Completion and review of an amended task require the expected revision.
+Dependency, required-output, owner, and working-mode changes keep their existing
+mechanisms; material changes after work starts should use a linked task. Claim,
+current, or another revision-bearing action acknowledges an amendment—there is no
+mandatory ack message or new lifecycle state. Terminal and review-pending records
+remain immutable, and first-claim working-mode snapshots are never rewritten.
 
 ```mermaid
 stateDiagram-v2

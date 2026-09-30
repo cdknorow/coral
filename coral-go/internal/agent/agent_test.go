@@ -334,6 +334,29 @@ func TestBuildBoardSystemPrompt_Orchestrator(t *testing.T) {
 	}
 }
 
+func TestDefaultPromptGuidanceKeepsCorrectionsAndHandoffsActionable(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"orchestrator": DefaultOrchestratorSystemPrompt,
+		"worker":       DefaultWorkerSystemPrompt,
+	} {
+		if !strings.Contains(prompt, "ordinary corrections") || !strings.Contains(prompt, "useful evidence") {
+			t.Errorf("%s prompt missing correction/evidence guidance", name)
+		}
+		if strings.Contains(prompt, "After posting your introduction or any message, STOP") {
+			t.Errorf("%s prompt still unconditionally stops after progress posts", name)
+		}
+	}
+	if !strings.Contains(DefaultOrchestratorSystemPrompt, "latest authoritative task detail") ||
+		!strings.Contains(DefaultOrchestratorSystemPrompt, "Create a linked task only when scope") {
+		t.Error("orchestrator prompt missing authoritative scope and linked-task guidance")
+	}
+	if !strings.Contains(DefaultTaskWorkflowGuidance, "smaller slice is progress") ||
+		!strings.Contains(DefaultTaskWorkflowGuidance, "Report success only after checking") ||
+		!strings.Contains(DefaultTaskWorkflowGuidance, "observation timeout does not prove") {
+		t.Error("task guidance missing outcome fidelity and evidence-based continuation rules")
+	}
+}
+
 func TestBuildBoardSystemPrompt_WithOverrides(t *testing.T) {
 	overrides := map[string]string{"default_prompt_worker": "Custom worker instructions"}
 	prompt := BuildBoardSystemPrompt("board1", "dev", "", overrides, "")

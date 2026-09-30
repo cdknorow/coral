@@ -644,6 +644,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/board/{project}/tasks/{taskID}/release-review", boardHandler.ReleaseCompletionReview)
 	r.Post("/api/board/{project}/tasks/{taskID}/cancel", boardHandler.CancelTaskByID)
 	r.Patch("/api/board/{project}/tasks/{taskID}", boardHandler.UpdateTask)
+	r.Patch("/api/board/{project}/tasks/{taskID}/amend", boardHandler.AmendTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/reassign", boardHandler.ReassignTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/nudge", boardHandler.NudgeTask)
 	r.Post("/api/board/{project}/tasks/{taskID}/snooze", boardHandler.SnoozeTaskReminder)

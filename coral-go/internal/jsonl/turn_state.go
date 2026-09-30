@@ -12,7 +12,9 @@ import (
 )
 
 // CodexTurnEvent reads an explicit lifecycle signal from a bounded transcript
-// tail. It never infers idle from silence, assistant text, or file age.
+// tail. The window is deliberately larger than a typical turn because Codex
+// can emit more than 1 MiB of tool/output records before task_complete. It
+// never infers idle from silence, assistant text, or file age.
 func CodexTurnEvent(path string) (event string, at time.Time) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -23,7 +25,7 @@ func CodexTurnEvent(path string) (event string, at time.Time) {
 	if err != nil {
 		return
 	}
-	const limit int64 = 1024 * 1024
+	const limit int64 = 8 * 1024 * 1024
 	start := info.Size() - limit
 	if start < 0 {
 		start = 0
@@ -95,6 +97,7 @@ func CodexTurnEvent(path string) (event string, at time.Time) {
 // updates do not rescan the transcript directory for every agent.
 func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string, time.Time) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	c := r.cache[sessionID]
 	if c == nil {
 		c = &sessionCache{toolUseNames: make(map[string]string)}
@@ -103,9 +106,97 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 	if c.path == "" {
 		c.path = resolveTranscriptPath(sessionID, workingDir, "codex")
 	}
-	path := c.path
-	r.mu.Unlock()
-	return CodexTurnEvent(path)
+	return readCodexTurnEventIncremental(c.path, &c.codexState)
+}
+
+// readCodexTurnEventIncremental tracks lifecycle records by byte offset. A
+// cold read scans the transcript once (including turns larger than the bounded
+// UI tail); ordinary refreshes read only newly appended complete lines. Header
+// and size checks reset the tracker when a rollout is replaced or truncated.
+func readCodexTurnEventIncremental(path string, state *codexTurnCache) (string, time.Time) {
+	if path == "" {
+		return "", time.Time{}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", time.Time{}
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", time.Time{}
+	}
+	headerBuf := make([]byte, 512)
+	n, _ := f.ReadAt(headerBuf, 0)
+	header := string(headerBuf[:n])
+	reset := !state.initialized || info.Size() < state.offset ||
+		(state.initialized && info.Size() == state.size && !info.ModTime().Equal(state.modTime)) ||
+		(state.initialized && header != state.head)
+	if reset {
+		*state = codexTurnCache{initialized: true, head: header}
+	}
+	if _, err := f.Seek(state.offset, io.SeekStart); err != nil {
+		return state.event, state.at
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return state.event, state.at
+	}
+	if len(data) == 0 {
+		state.size, state.modTime = info.Size(), info.ModTime()
+		return state.event, state.at
+	}
+	rawLen := len(data)
+	data = append(state.partial, data...)
+	lines := bytes.Split(data, []byte{'\n'})
+	state.partial = append(state.partial[:0], lines[len(lines)-1]...)
+	for _, line := range lines[:len(lines)-1] {
+		updateCodexTurnState(state, line)
+	}
+	// The file read began at offset, so advance by the raw bytes read. A
+	// trailing partial line is retained and will be re-read and completed on
+	// the next append.
+	state.offset += int64(rawLen)
+	state.size, state.modTime = info.Size(), info.ModTime()
+	return state.event, state.at
+}
+
+func updateCodexTurnState(state *codexTurnCache, line []byte) {
+	var entry struct {
+		Timestamp string `json:"timestamp"`
+		Type      string `json:"type"`
+		Payload   struct {
+			Type string `json:"type"`
+		} `json:"payload"`
+	}
+	if json.Unmarshal(line, &entry) == nil && entry.Type == "event_msg" {
+		kind := ""
+		switch entry.Payload.Type {
+		case "task_started", "user_message":
+			kind, state.active = "prompt_submit", true
+		case "task_complete":
+			kind, state.active = "stop", false
+		case "turn_aborted":
+			kind, state.active = "session_reset", false
+		}
+		if kind != "" {
+			if timestamp, err := time.Parse(time.RFC3339Nano, entry.Timestamp); err == nil {
+				state.event, state.at = kind, timestamp
+			}
+		}
+		return
+	}
+	if !state.active {
+		return
+	}
+	var activity struct {
+		Timestamp string `json:"timestamp"`
+	}
+	if json.Unmarshal(line, &activity) == nil {
+		if timestamp, err := time.Parse(time.RFC3339Nano, activity.Timestamp); err == nil {
+			state.event, state.at = "prompt_submit", timestamp
+		}
+	}
 }
 
 // AgyTurnEvent reads an explicit lifecycle signal from a bounded transcript
@@ -280,4 +371,3 @@ func (r *SessionReader) ReadAgyTurnEvent(sessionID, workingDir string) (string, 
 	r.mu.Unlock()
 	return AgyTurnEvent(path)
 }
-

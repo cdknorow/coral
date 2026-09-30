@@ -28,8 +28,9 @@ type BoardNotifier struct {
 
 // notifyState records the nudge sent since the subscriber last read the board.
 type notifyState struct {
-	count int
-	at    time.Time
+	count    int
+	latestID int64
+	at       time.Time
 }
 
 // defaultRemindAfter is how long unread messages sit after a nudge before
@@ -63,12 +64,13 @@ func (n *BoardNotifier) SetIsPausedFn(fn func(project string) bool) {
 	n.isPausedFn = fn
 }
 
-// SeedFromDB populates the notified map with current unread counts from the database.
+// SeedFromDB populates the notified map with the current unread count and
+// eligible-message watermark from the database.
 // Call once during startup before Run() to avoid re-notifying agents about
 // pre-existing unread messages after a server restart; they get the regular
 // reminder if the messages are still unread remindAfter later.
 func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
-	counts, err := n.boardStore.GetAllUnreadCounts(ctx)
+	states, err := n.boardStore.GetAllUnreadStates(ctx)
 	if err != nil {
 		n.logger.Warn("failed to seed notifier state", "error", err)
 		return
@@ -76,10 +78,10 @@ func (n *BoardNotifier) SeedFromDB(ctx context.Context) {
 	n.notifiedMu.Lock()
 	defer n.notifiedMu.Unlock()
 	now := n.now()
-	for sessName, count := range counts {
-		n.notified[sessName] = notifyState{count: count, at: now}
+	for sessName, state := range states {
+		n.notified[sessName] = notifyState{count: state.Count, latestID: state.LatestID, at: now}
 	}
-	n.logger.Info("seeded notifier from DB", "sessions", len(counts))
+	n.logger.Info("seeded notifier from DB", "sessions", len(states))
 }
 
 // NotifyNow triggers an immediate notification pass without waiting for the next tick.
@@ -173,6 +175,11 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 			n.notifiedMu.Unlock()
 			continue
 		}
+		latestID, err := n.boardStore.LatestUnreadMessageID(ctx, sub.Project, subscriberID)
+		if err != nil {
+			n.logger.Info("latest unread lookup failed", "subscriber_id", subscriberID, "error", err)
+			continue
+		}
 
 		// One nudge until the agent reads; more messages arriving meanwhile
 		// are covered by it (the agent reads them all at once).
@@ -182,7 +189,12 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		// A larger unread batch means new board activity arrived. Notify
 		// immediately; only suppress repeated scans of the same batch during
 		// the reminder window.
-		if notified && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
+		// The all-messages subscription (used by the orchestrator) needs an
+		// identity watermark: after it reads batch A, batch B can arrive with
+		// the same unread count before the next pass. Worker subscriptions use
+		// mention-based coalescing and retain their one-nudge-per-batch policy.
+		newBatch := sub.ReceiveMode == "all" && last.latestID > 0 && latestID > last.latestID
+		if notified && !newBatch && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
 			n.logger.Info("already notified", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "notified_unread", last.count)
 			continue
 		}
@@ -201,7 +213,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		}
 
 		n.notifiedMu.Lock()
-		n.notified[sessName] = notifyState{count: unread, at: n.now()}
+		n.notified[sessName] = notifyState{count: unread, latestID: latestID, at: n.now()}
 		n.notifiedMu.Unlock()
 	}
 

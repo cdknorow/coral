@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/go-chi/chi/v5"
@@ -18,19 +19,24 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body struct {
-		SubscriberID string               `json:"subscriber_id"`
-		Message      string               `json:"message"`
-		Outcome      string               `json:"outcome"`
-		Reason       string               `json:"reason"`
-		Artifacts    []board.TaskArtifact `json:"artifacts"`
+		SubscriberID     string               `json:"subscriber_id"`
+		Message          string               `json:"message"`
+		Outcome          string               `json:"outcome"`
+		Reason           string               `json:"reason"`
+		Artifacts        []board.TaskArtifact `json:"artifacts"`
+		ExpectedRevision *int                 `json:"expected_revision,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
 		return
 	}
-	task, err := h.bs.SubmitCompletionReview(r.Context(), project, id, body.SubscriberID, body.Message, body.Outcome, body.Reason, body.Artifacts)
+	task, err := h.bs.SubmitCompletionReviewAtRevision(r.Context(), project, id, body.SubscriberID, body.Message, body.Outcome, body.Reason, body.Artifacts, body.ExpectedRevision)
 	if err != nil {
-		errBadRequest(w, err.Error())
+		if strings.Contains(err.Error(), "revision") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		} else {
+			errBadRequest(w, err.Error())
+		}
 		return
 	}
 	h.bs.PostMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("[Task #%d completion review requested] Candidate saved; completion is not accepted. An orchestrator may release the worker slot with task release-review. Reason: %s", id, body.Reason), nil)

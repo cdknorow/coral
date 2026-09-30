@@ -47,6 +47,7 @@ type GroupInfo struct {
 // Task represents a board task.
 type Task struct {
 	ID                int64        `db:"id" json:"id"`
+	Revision          int          `db:"revision" json:"revision"`
 	BoardID           string       `db:"board_id" json:"board_id"`
 	Title             string       `db:"title" json:"title"`
 	Body              *string      `db:"body" json:"body,omitempty"`
@@ -114,6 +115,14 @@ type SubscriberReminder struct {
 type Store struct {
 	db         *sqlx.DB
 	sessionsDB *sqlx.DB // optional reference to the main sessions DB for cross-DB queries
+}
+
+// UnreadState is the startup notification baseline for one active session.
+// LatestID identifies the newest message currently eligible for that
+// subscriber, allowing the notifier to distinguish a later same-count batch.
+type UnreadState struct {
+	Count    int
+	LatestID int64
 }
 
 // SetSessionsDB sets an optional reference to the main sessions database,
@@ -226,6 +235,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	_, err = s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS board_tasks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			revision INTEGER NOT NULL DEFAULT 1,
 			board_id TEXT NOT NULL,
 			title TEXT NOT NULL,
 			body TEXT,
@@ -245,6 +255,18 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_board_status ON board_tasks(board_id, status);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_assigned ON board_tasks(board_id, assigned_to);
+		CREATE TABLE IF NOT EXISTS task_amendments (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id INTEGER NOT NULL REFERENCES board_tasks(id),
+			revision INTEGER NOT NULL,
+			actor TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			reason TEXT NOT NULL,
+			changes_json TEXT NOT NULL,
+			previous_snapshot_json TEXT NOT NULL,
+			effective_snapshot_json TEXT NOT NULL,
+			UNIQUE(task_id, revision)
+		);
 	`)
 	if err != nil {
 		return err
@@ -285,6 +307,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_tasks ADD COLUMN output_tokens INTEGER",
 		"ALTER TABLE board_tasks ADD COLUMN cache_read_tokens INTEGER",
 		"ALTER TABLE board_tasks ADD COLUMN cache_write_tokens INTEGER",
+		"ALTER TABLE board_tasks ADD COLUMN revision INTEGER NOT NULL DEFAULT 1",
 	}
 	for _, ddl := range alterColumns {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
@@ -646,7 +669,6 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			return nil, err
 		}
 	}
-
 	// Advance cursor past returned messages and own messages
 	newCursor := sub.LastReadID
 	if len(messages) > 0 {
@@ -881,9 +903,10 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 		LastReadID  int64  `db:"last_read_id"`
 		JobTitle    string `db:"job_title"`
 		ReceiveMode string `db:"receive_mode"`
+		CanPeek     int    `db:"can_peek"`
 	}
 	err := s.db.GetContext(ctx, &sub,
-		"SELECT last_read_id, job_title, receive_mode FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
+		"SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID)
 	if err != nil {
 		return 0, nil
@@ -956,6 +979,41 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 		strings.Join(placeholders, ","))
 	err = s.db.GetContext(ctx, &count, query, args...)
 	return count, err
+}
+
+// LatestUnreadMessageID returns the newest message eligible for a subscriber's
+// current receive mode without advancing its cursor. It lets delivery code
+// distinguish a new one-message batch from the previous one-message batch.
+func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID string) (int64, error) {
+	var sub struct {
+		LastReadID  int64  `db:"last_read_id"`
+		JobTitle    string `db:"job_title"`
+		ReceiveMode string `db:"receive_mode"`
+		CanPeek     int    `db:"can_peek"`
+	}
+	if err := s.db.GetContext(ctx, &sub, "SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
+		return 0, nil
+	}
+	if sub.ReceiveMode == "none" {
+		return 0, nil
+	}
+	args := []interface{}{project, sub.LastReadID, subscriberID}
+	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue'"
+	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
+		terms := mentionTerms(subscriberID, sub.JobTitle)
+		parts := make([]string, 0, len(terms))
+		for _, term := range terms {
+			parts = append(parts, "m.content LIKE ? COLLATE NOCASE")
+			args = append(args, "%"+term+"%")
+		}
+		if len(parts) == 0 {
+			return 0, nil
+		}
+		where += " AND (" + strings.Join(parts, " OR ") + ")"
+	}
+	var latest int64
+	err := s.db.GetContext(ctx, &latest, "SELECT COALESCE(MAX(m.id),0) FROM board_messages m WHERE "+where, args...)
+	return latest, err
 }
 
 // GetAllUnreadCounts returns unread counts for all subscribers, respecting each subscriber's receive_mode.
@@ -1079,6 +1137,34 @@ func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) 
 	}
 
 	return result, nil
+}
+
+// GetAllUnreadStates returns unread counts together with the latest eligible
+// message ID for each active session. The notifier uses this pair when seeding
+// after startup so a new same-count batch is not mistaken for the seeded one.
+func (s *Store) GetAllUnreadStates(ctx context.Context) (map[string]UnreadState, error) {
+	counts, err := s.GetAllUnreadCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	states := make(map[string]UnreadState, len(counts))
+	var subs []struct {
+		Project      string `db:"project"`
+		SubscriberID string `db:"subscriber_id"`
+		SessionName  string `db:"session_name"`
+	}
+	if err := s.db.SelectContext(ctx, &subs,
+		"SELECT project, subscriber_id, session_name FROM board_subscribers WHERE is_active = 1"); err != nil {
+		return nil, err
+	}
+	for _, sub := range subs {
+		latest, err := s.LatestUnreadMessageID(ctx, sub.Project, sub.SubscriberID)
+		if err != nil {
+			return nil, err
+		}
+		states[sub.SessionName] = UnreadState{Count: counts[sub.SessionName], LatestID: latest}
+	}
+	return states, nil
 }
 
 // ── Groups ───────────────────────────────────────────────────────────
@@ -1242,7 +1328,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 func (s *Store) getTaskByID(ctx context.Context, project string, taskID int64) (*Task, error) {
 	var t Task
 	err := s.db.GetContext(ctx, &t,
-		"SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
+		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
 	if err != nil {
 		return nil, err
 	}
@@ -1343,7 +1429,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
 	err := s.db.SelectContext(ctx, &tasks,
-		`SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE board_id = ?
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE board_id = ?
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
 	if err != nil {
@@ -1360,7 +1446,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	}
 	var tasks []Task
 	err := s.db.SelectContext(ctx, &tasks,
-		`SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
 		 ORDER BY created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -1463,7 +1549,7 @@ func (s *Store) FindIdleSubscriber(ctx context.Context, project string) *Subscri
 func (s *Store) ActiveTaskForSubscriber(ctx context.Context, project, subscriberID string) *Task {
 	var task Task
 	err := s.db.GetContext(ctx, &task,
-		`SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 		 FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
 		 ORDER BY claimed_at DESC LIMIT 1`, project, subscriberID)
 	if err != nil {
@@ -1483,7 +1569,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	var task Task
 	// Check assigned tasks first
 	err := s.db.GetContext(ctx, &task,
-		`SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND assigned_to = ?
 		 ORDER BY `+priorityOrder+` LIMIT 1`, project, subscriberID)
 	if err == nil {
@@ -1491,7 +1577,7 @@ func (s *Store) NextPendingTaskForSubscriber(ctx context.Context, project, subsc
 	}
 	// Then unassigned
 	err = s.db.GetContext(ctx, &task,
-		`SELECT id, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 		 FROM board_tasks WHERE board_id = ? AND status = 'pending' AND (assigned_to IS NULL OR assigned_to = '')
 		 ORDER BY `+priorityOrder+` LIMIT 1`, project)
 	if err == nil {
@@ -1645,7 +1731,7 @@ func (s *Store) SnoozeTaskReminder(ctx context.Context, project string, taskID i
 // supplied time. Older databases use claimed_at until activity is recorded.
 func (s *Store) IdleTasks(ctx context.Context, project string, before time.Time) ([]Task, error) {
 	var tasks []Task
-	err := s.db.SelectContext(ctx, &tasks, `SELECT id, board_id, title, body, status, priority,
+	err := s.db.SelectContext(ctx, &tasks, `SELECT id, revision, board_id, title, body, status, priority,
 		created_by, assigned_to, completed_by, completion_message, created_at, claimed_at,
 		completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens,
 		cache_write_tokens FROM board_tasks
