@@ -791,6 +791,27 @@ func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) 
 	return &msg, nil
 }
 
+// SearchMessageHits returns bounded board messages containing query text. It
+// exposes the immutable message ID used by chat search navigation.
+func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) ([]Message, error) {
+	if limit < 1 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	var messages []Message
+	err := s.db.SelectContext(ctx, &messages,
+		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
+		        COALESCE(bs.job_title, m.subscriber_id, 'Unknown') as job_title,
+		        m.target_group_id
+		 FROM board_messages m
+		 LEFT JOIN board_subscribers bs ON m.project = bs.project AND m.subscriber_id = bs.subscriber_id
+		 WHERE lower(m.content) LIKE lower(?)
+		 ORDER BY m.id DESC LIMIT ?`, "%"+query+"%", limit)
+	return messages, err
+}
+
 // CountMessages returns the total message count for a project.
 func (s *Store) CountMessages(ctx context.Context, project string) (int, error) {
 	var count int

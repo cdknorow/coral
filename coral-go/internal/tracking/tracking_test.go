@@ -99,6 +99,17 @@ func TestTrackOnceEmitsOnlyOnceEvenWhenCalledRepeatedly(t *testing.T) {
 	}
 }
 
+func TestTelemetryDisabledPreventsCapture(t *testing.T) {
+	rec, _ := newTestTracking(t)
+	SetTelemetryEnabled(false)
+	t.Cleanup(func() { SetTelemetryEnabled(true) })
+	TrackEvent(EventAppOpened, nil)
+	waitForAsync()
+	if got := len(rec.all()); got != 0 {
+		t.Fatalf("telemetry disabled but captured %d events", got)
+	}
+}
+
 func TestTrackOnceSurvivesARestart(t *testing.T) {
 	rec, dir := newTestTracking(t)
 

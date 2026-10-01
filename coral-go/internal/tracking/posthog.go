@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -26,6 +27,7 @@ var posthogURL = "https://us.i.posthog.com/capture/"
 
 var (
 	cachedInstallID string
+	installIDMu     sync.RWMutex
 	installIDOnce   sync.Once
 	// coralDir is where all tracking state lives. It has no default: until
 	// SetCoralDir is called this package reads nothing, writes nothing, and
@@ -33,7 +35,8 @@ var (
 	coralDir string
 
 	// asyncWG tracks in-flight tracking goroutines so tests can wait on them.
-	asyncWG sync.WaitGroup
+	asyncWG           sync.WaitGroup
+	telemetryDisabled atomic.Bool
 )
 
 // SetCoralDir sets the data directory used for tracking state files. Call it
@@ -42,6 +45,13 @@ var (
 func SetCoralDir(dir string) {
 	coralDir = dir
 }
+
+// SetTelemetryEnabled controls all PostHog work for this process. It is
+// deliberately independent of the build-time key so an operator can opt out
+// without changing unrelated application behavior.
+func SetTelemetryEnabled(enabled bool) { telemetryDisabled.Store(!enabled) }
+
+func telemetryEnabled() bool { return !telemetryDisabled.Load() }
 
 // CoralDir returns the data directory tracking state is written to, or "" if
 // it has not been configured. Exposed so the telemetry disclosure can show the
@@ -54,8 +64,12 @@ func getInstallID() string {
 		if !stateDirReady() {
 			return
 		}
+		installIDMu.Lock()
 		cachedInstallID = readFile(filepath.Join(resolveCoralDir(), ".install_id"))
+		installIDMu.Unlock()
 	})
+	installIDMu.RLock()
+	defer installIDMu.RUnlock()
 	return cachedInstallID
 }
 
@@ -63,7 +77,7 @@ func getInstallID() string {
 // an event to PostHog. Also sends an 'app_opened' heartbeat for DAU.
 // Runs in a goroutine, never blocks.
 func TrackInstallAsync() {
-	if config.PostHogKey == "" {
+	if config.PostHogKey == "" || !telemetryEnabled() {
 		return
 	}
 	asyncGo(func() {
@@ -78,13 +92,16 @@ func TrackInstallAsync() {
 // TrackEvent sends a named event to PostHog with optional extra properties.
 // Non-blocking — runs in a goroutine. Safe to call from any context.
 func TrackEvent(eventName string, extraProps map[string]string) {
+	if !telemetryEnabled() {
+		return
+	}
 	asyncGo(func() { trackEventSync(eventName, extraProps) })
 }
 
 // trackEventSync is the synchronous body of TrackEvent. It is the single place
 // every event acquires its standard properties.
 func trackEventSync(eventName string, extraProps map[string]string) {
-	if config.PostHogKey == "" {
+	if config.PostHogKey == "" || !telemetryEnabled() {
 		return
 	}
 	id := getInstallID()
@@ -143,7 +160,9 @@ func trackInstall() {
 		os.WriteFile(idFile, []byte(installID), 0600)
 		os.WriteFile(versionFile, []byte(currentVersion), 0600)
 		// Update cache
+		installIDMu.Lock()
 		cachedInstallID = installID
+		installIDMu.Unlock()
 		postEvent(EventInstall, installID, map[string]any{
 			"version": currentVersion,
 			"edition": config.TierName,
@@ -154,7 +173,9 @@ func trackInstall() {
 	}
 
 	// Update cache
+	installIDMu.Lock()
 	cachedInstallID = installID
+	installIDMu.Unlock()
 
 	if currentVersion != "" && storedVersion != currentVersion {
 		// Version upgrade

@@ -403,6 +403,13 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/agent/tasks/current", sessHandler.CurrentAgentTaskForAgent)
 	r.Post("/api/agent/tasks/{taskID}/complete", sessHandler.CompleteAgentTaskForAgent)
 	r.Post("/api/agent/tasks/{taskID}/cancel", sessHandler.CancelAgentTaskForAgent)
+
+	// Agent session history search & context (coral-agent history search / context)
+	r.Get("/api/agent/history/search", sessHandler.SearchAgentHistory)
+	r.Get("/api/agent/history/context", sessHandler.GetAgentHistoryContext)
+	r.Get("/api/sessions/live/{name}/history/search", sessHandler.SearchAgentHistoryForLive)
+	r.Get("/api/sessions/live/{name}/history/context", sessHandler.GetAgentHistoryContextForLive)
+
 	r.Get("/api/sessions/live/{name}/subagents", sessHandler.ListSubagents)
 	r.Get("/api/sessions/live/{name}/subagents/{subagentID}", sessHandler.GetSubagent)
 
@@ -430,6 +437,7 @@ func (s *Server) buildRouter() chi.Router {
 	// System / settings
 	r.Get("/api/settings", sysHandler.GetSettings)
 	r.Put("/api/settings", sysHandler.PutSettings)
+	r.Get("/api/system/privacy", sysHandler.GetPrivacyStatus)
 	r.Get("/api/settings/default-prompts", sysHandler.GetDefaultPrompts)
 	r.Get("/api/settings/prompt-inspection", sysHandler.GetPromptInspection)
 	r.Get("/api/agent-models", sysHandler.GetAgentModels)
@@ -481,6 +489,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// History
 	r.Get("/api/sessions/history", histHandler.ListSessions)
+	r.Get("/api/sessions/history/search", histHandler.SearchChats)
 	r.Get("/api/sessions/history/{sessionID}", histHandler.GetSessionDetail)
 	r.Get("/api/sessions/history/{sessionID}/agent-notes", histHandler.GetSessionAgentNotes)
 	r.Get("/api/sessions/history/{sessionID}/notes", histHandler.GetSessionNotes)

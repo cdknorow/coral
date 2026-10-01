@@ -636,7 +636,15 @@ function syncUsageLimitNotice(container, notice) {
 /** Render a full transcript into an empty container (history Chat tab). */
 export function renderTranscript(messages, container, agentType = "claude") {
     container.dataset.agentType = agentType;
-    for (const msg of messages) renderMessage(msg, container, agentType);
+    for (const msg of messages) {
+        const before = container.children.length;
+        renderMessage(msg, container, agentType);
+        if (msg.__coralMessageIndex != null) {
+            for (let i = before; i < container.children.length; i++) {
+                container.children[i].dataset.messageIndex = String(msg.__coralMessageIndex);
+            }
+        }
+    }
 }
 
 export async function refreshLiveHistory() {

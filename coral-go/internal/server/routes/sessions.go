@@ -2379,6 +2379,13 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "changes_artifact": changesArtifact, "changes_artifact_error": artifactError})
 }
 
+func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal, target, command string) error {
+	if err := terminal.SendToTarget(ctx, target, command); err != nil {
+		return fmt.Errorf("launch command delivery to %s failed: %w", target, err)
+	}
+	return nil
+}
+
 // Restart restarts the agent session.
 // POST /api/sessions/live/{name}/restart
 func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
@@ -2388,7 +2395,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		ExtraFlags   string              `json:"extra_flags"`
 		SessionID    string              `json:"session_id"`
 		Prompt       string              `json:"prompt"`
-		Model        string              `json:"model"`
+		Model        *string             `json:"model"`
 		Capabilities *agent.Capabilities `json:"capabilities"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
@@ -2413,9 +2420,13 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	// Validate the resolved model before touching the terminal or allocating a
 	// replacement session. Restart carries the persisted model when the caller
 	// omits one, so provider switches must reject stale cross-provider models
-	// before any process or database state is mutated.
-	preflightModel := strings.TrimSpace(body.Model)
-	if preflightModel == "" && storedSession != nil {
+	// before any process or database state is mutated. When the caller explicitly
+	// provides an empty model (""), they intend to clear the explicit override so
+	// the agent falls back to its configured/default model.
+	var preflightModel string
+	if body.Model != nil {
+		preflightModel = strings.TrimSpace(*body.Model)
+	} else if storedSession != nil {
 		preflightModel = strings.TrimSpace(derefStrPtr(storedSession.Model))
 	}
 	if err := validateAgentModel(agentType, preflightModel); err != nil {
@@ -2533,9 +2544,15 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if body.Prompt != "" {
 		storedPrompt = body.Prompt
 	}
-	if body.Model != "" {
-		storedModel = body.Model
-		storedContextWindow = proxy.LookupContextWindow(body.Model)
+	if body.Model != nil {
+		trimmedModel := strings.TrimSpace(*body.Model)
+		if trimmedModel != "" {
+			storedModel = trimmedModel
+			storedContextWindow = proxy.LookupContextWindow(trimmedModel)
+		} else {
+			storedModel = ""
+			storedContextWindow = 0
+		}
 	}
 	if body.Capabilities != nil {
 		storedCaps = body.Capabilities
@@ -2550,11 +2567,15 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	// Also strip --model from old flags (we'll re-add from storedModel)
 	var finalFlags []string
 	for i := 0; i < len(cleanFlags); i++ {
-		if cleanFlags[i] == "--model" || cleanFlags[i] == "-m" {
+		flag := cleanFlags[i]
+		if flag == "--model" || flag == "-m" {
 			i++ // skip the value
 			continue
 		}
-		finalFlags = append(finalFlags, cleanFlags[i])
+		if strings.HasPrefix(flag, "--model=") || strings.HasPrefix(flag, "-m=") {
+			continue
+		}
+		finalFlags = append(finalFlags, flag)
 	}
 	if storedModel != "" {
 		finalFlags = append(finalFlags, "--model", storedModel)
@@ -2596,10 +2617,18 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		if pb, ok := h.backend.(*ptymanager.PTYBackend); ok && !pb.WaitReady(newSessionName, 5*time.Second) {
 			log.Printf("[launch] pty shell not ready after 5s, sending anyway: %s", newSessionName)
 		}
-		h.backend.SendInput(newSessionName, []byte(cmd))
-		h.backend.SendInput(newSessionName, []byte("\r"))
+		// Route through the terminal abstraction so oversized commands use the
+		// protected script handoff instead of hitting the shell's canonical
+		// input limit while a fresh PTY is initializing.
+		if err := sendLaunchCommand(ctx, h.terminal, newSessionName, cmd); err != nil {
+			errInternalServer(w, fmt.Sprintf("pty launch command failed: %v", err))
+			return
+		}
 	} else {
-		h.terminal.SendToTarget(ctx, target, cmd)
+		if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+			errInternalServer(w, fmt.Sprintf("launch command failed: %v", err))
+			return
+		}
 	}
 
 	// Capture shell PID for process-tree-based identity resolution
@@ -2613,6 +2642,27 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Prepare DB flags and model pointers. When storedModel is empty (either
+	// explicitly cleared via empty/whitespace body.Model, or inherited as empty),
+	// use a non-nil pointer to "" so ReplaceLiveSession preserves the cleared
+	// state across subsequent restarts rather than carrying forward any prior model.
+	// Similarly, serialize empty flags as "[]" so cleared flags are not reverted.
+	var storedModelPtr *string
+	if storedModel == "" {
+		emptyModel := ""
+		storedModelPtr = &emptyModel
+	} else {
+		storedModelPtr = strPtr(storedModel)
+	}
+
+	var storedFlagsJSON *string
+	if len(allFlags) > 0 {
+		storedFlagsJSON = store.MarshalFlags(allFlags)
+	} else {
+		emptyJSON := "[]"
+		storedFlagsJSON = &emptyJSON
+	}
+
 	// Replace live session in DB (carry forward stored fields)
 	h.ss.ReplaceLiveSession(ctx, body.SessionID, &store.LiveSession{
 		SessionID:     newSessionID,
@@ -2620,13 +2670,13 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		AgentName:     folderName,
 		WorkingDir:    workdir,
 		ResumeFromID:  strPtr(body.SessionID),
-		Flags:         store.MarshalFlags(allFlags),
+		Flags:         storedFlagsJSON,
 		Prompt:        strPtr(storedPrompt),
 		BoardName:     strPtr(storedBoard),
 		BoardServer:   strPtr(storedBoardServer),
 		BoardType:     strPtr(storedBoardType),
 		Capabilities:  storedCapsJSON,
-		Model:         strPtr(storedModel),
+		Model:         storedModelPtr,
 		ContextWindow: storedContextWindow,
 		Tools:         storedToolsJSON,
 		MCPServers:    storedMCPServersJSON,
@@ -2751,7 +2801,10 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		CoralHost:       h.cfg.Host,
 		CoralPort:       h.cfg.Port,
 	}))
-	h.terminal.SendToTarget(ctx, target, cmd)
+	if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
 
 	// Capture shell PID
 	var resumePID int
@@ -3812,11 +3865,8 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 			} else {
 				time.Sleep(500 * time.Millisecond)
 			}
-			if err := h.backend.SendInput(sessionName, []byte(cmd)); err != nil {
-				log.Printf("[launch] pty SendInput (text) failed: %s: %v", sessionName, err)
-			}
-			if err := h.backend.SendInput(sessionName, []byte("\r")); err != nil {
-				log.Printf("[launch] pty SendInput (enter) failed: %s: %v", sessionName, err)
+			if err := sendLaunchCommand(ctx, h.terminal, sessionName, cmd); err != nil {
+				return nil, fmt.Errorf("pty launch command failed: %w", err)
 			}
 		}
 	} else {
@@ -3895,7 +3945,9 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		if !isTerminal {
 			cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
 			log.Printf("[launch] tmux session=%s agent=%s cmd=%s", sessionName, agentType, cmd)
-			h.terminal.SendToTarget(ctx, sessionName+".0", cmd)
+			if err := sendLaunchCommand(ctx, h.terminal, sessionName+".0", cmd); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -5109,8 +5161,9 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 				} else {
 					time.Sleep(500 * time.Millisecond)
 				}
-				h.backend.SendInput(sessionName, []byte(cmd))
-				h.backend.SendInput(sessionName, []byte("\r"))
+				if err := sendLaunchCommand(ctx, h.terminal, sessionName, cmd); err != nil {
+					return fmt.Errorf("pty wake command failed: %w", err)
+				}
 			}
 		} else {
 			// tmux backend: create session with the EXISTING session name
@@ -5123,7 +5176,9 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 			folderName := filepath.Base(ls.WorkingDir)
 			h.terminal.SetPaneTitle(ctx, sessionName+".0", fmt.Sprintf("%s — %s", folderName, ls.AgentType))
 
-			h.terminal.SendToTarget(ctx, sessionName+".0", cmd)
+			if err := sendLaunchCommand(ctx, h.terminal, sessionName+".0", cmd); err != nil {
+				return err
+			}
 
 			// Capture shell PID
 			if tmuxTerm, ok := h.terminal.(*ptymanager.TmuxSessionTerminal); ok {

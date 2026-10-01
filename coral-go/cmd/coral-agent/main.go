@@ -46,6 +46,9 @@ Commands:
   task current                   Show your current in-progress task
   task complete <id> [--message "note"]  Complete a task
   task cancel <id> [--message "reason"]  Cancel a task
+  history search <query> [flags] Search conversation history (post-compaction)
+  history context [sess] <idx>   Retrieve surrounding conversation context
+  search <query> [flags]         Shortcut for 'history search'
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
@@ -66,6 +69,10 @@ func main() {
 		cmdArtifact(os.Args[2:])
 	case "task":
 		cmdTask()
+	case "history":
+		cmdHistory(os.Args[2:])
+	case "search":
+		cmdHistorySearch(os.Args[2:])
 	case "--help", "-h", "help":
 		printUsage()
 	default:

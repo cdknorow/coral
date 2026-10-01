@@ -55,6 +55,7 @@ import { initNative } from './platform/native.js';
 import { initMacOS } from './platform/macos.js';
 import { initWindows } from './platform/windows.js';
 import { initBrowser } from './platform/browser.js';
+import { searchChats } from './chat_search.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 
@@ -95,6 +96,7 @@ Object.assign(window, {
     exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates,
     // sessions
     selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon,
+    searchChats,
     // xterm
     getTerminal, connectTerminalWs, disconnectTerminalWs,
     // notes
@@ -527,7 +529,8 @@ function loadHistoryPage(page) {
 
 function loadHistoryFiltered() {
     serializeToUrl(historyPage);
-    loadHistorySessionsPaged(historyPage, 50);
+    if (filterState.q) searchChats(filterState.q, historyPage);
+    else loadHistorySessionsPaged(historyPage, 50);
     updateFilterBadge();
 }
 

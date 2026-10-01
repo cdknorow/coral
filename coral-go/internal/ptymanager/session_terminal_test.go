@@ -34,6 +34,20 @@ func spawnTestSession(t *testing.T, backend *PTYBackend, name string) {
 	require.NoError(t, err)
 }
 
+func waitForPTYOutput(t *testing.T, backend *PTYBackend, name, marker string, timeout time.Duration) string {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		output, err := backend.Replay(name)
+		if err == nil && strings.Contains(string(output), marker) {
+			return string(output)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	output, _ := backend.Replay(name)
+	return string(output)
+}
+
 // ── ListSessions ──────────────────────────────────────────────────────
 
 func TestPTYSessionTerminal_ListSessions_Empty(t *testing.T) {
@@ -200,6 +214,22 @@ func TestPTYSessionTerminal_SendToTarget(t *testing.T) {
 	// SendToTarget uses the session name as target in PTY mode
 	err := terminal.SendToTarget(context.Background(), "target-test", "echo target-ok")
 	require.NoError(t, err)
+}
+
+func TestPTYSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
+	skipIfWindows(t)
+	terminal, backend := newTestTerminal(t)
+	spawnTestSession(t, backend, "long-target-test")
+	time.Sleep(200 * time.Millisecond)
+
+	marker := "LONG_PTY_HANDOFF_MARKER"
+	value := strings.Repeat("x", inlineCommandLimit+300) + marker
+	command := "printf '%s' '" + value + "'"
+	require.Greater(t, len(command), inlineCommandLimit)
+	require.NoError(t, terminal.SendToTarget(context.Background(), "long-target-test", command))
+
+	output := waitForPTYOutput(t, backend, "long-target-test", marker, 5*time.Second)
+	assert.Contains(t, output, marker)
 }
 
 // ── ResizeSession ────────────────────────────────────────────────────

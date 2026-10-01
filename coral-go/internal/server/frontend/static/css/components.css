@@ -1748,6 +1748,8 @@
     color: var(--text-muted);
     margin-top: 2px;
 }
+.settings-hint[data-state="restart-required"] { color: var(--warning, #d99a2b); }
+.settings-hint[data-state="error"] { color: var(--danger, #d9534f); }
 
 .cli-verify-result {
     font-size: 11px;
@@ -3487,4 +3489,3 @@
     flex-shrink: 0;
 }
 .tmux-missing-banner-close:hover { opacity: 1; }
-

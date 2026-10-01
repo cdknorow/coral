@@ -250,7 +250,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     Promise.resolve(transcriptReady).catch(() => {}).then(loadFiles);
 }
 
-export async function selectHistorySession(sessionId) {
+export async function selectHistorySession(sessionId, locator = null) {
     const generation = ++switchGeneration;
     stopCaptureRefresh();
     leaveSessionOwnership();
@@ -313,10 +313,23 @@ export async function selectHistorySession(sessionId) {
     // Open the transcript by default; summaries may not exist yet.
     switchHistoryTab('chat');
 
-    const data = await loadHistoryMessages(sessionId);
+    let data = await loadHistoryMessages(sessionId);
+    let messageBaseIndex = 0;
     if (generation !== switchGeneration) return;
     if (data && data.messages) {
-        renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude");
+        messageBaseIndex = Math.max(0, (data.total || data.messages.length) - data.messages.length);
+        // Search locators identify the absolute message index. Fetch a page
+        // around that index so a hit in an older conversation is never opened
+        // at the newest page or an ambiguous text match.
+        if (locator && Number.isInteger(locator.message_index) && data.total > 0) {
+            const limit = 80;
+            const end = Math.min(data.total, locator.message_index + 40);
+            const offset = Math.max(0, data.total - end);
+            const focused = await loadHistoryMessages(sessionId, { limit, offset });
+            if (generation !== switchGeneration) return;
+            if (focused?.messages?.length) { data = focused; messageBaseIndex = Math.max(0, data.total - end); }
+        }
+        renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude", messageBaseIndex, locator?.message_index);
     }
 
     // Load notes, tags, commits, token usage, and history tabs in parallel

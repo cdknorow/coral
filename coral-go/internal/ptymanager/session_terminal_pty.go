@@ -73,6 +73,17 @@ func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys [
 
 func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
 	// Target is session name in PTY mode
+	if len(command) > inlineCommandLimit {
+		invocation, cleanup, err := commandInvocation(command)
+		if err != nil {
+			return err
+		}
+		if err := p.backend.SendInput(target, []byte(invocation+"\n")); err != nil {
+			cleanup()
+			return err
+		}
+		return nil
+	}
 	return p.backend.SendInput(target, []byte(command+"\n"))
 }
 

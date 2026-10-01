@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -21,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
@@ -55,6 +57,16 @@ func TestAddContextUsage_NullsUnknownAndComputesKnown(t *testing.T) {
 	assert.Equal(t, 29, known["context_pct"])
 }
 
+func TestSendLaunchCommandPropagatesDeliveryFailure(t *testing.T) {
+	terminal := newMockTerminal()
+	terminal.sendErr = errors.New("injected delivery failure")
+
+	err := sendLaunchCommand(context.Background(), terminal, "fresh-target", "long command")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "injected delivery failure")
+	assert.Empty(t, terminal.sent)
+}
+
 // mockSessionTerminal implements ptymanager.SessionTerminal for testing.
 type mockSessionTerminal struct {
 	mu               sync.Mutex
@@ -63,6 +75,7 @@ type mockSessionTerminal struct {
 	sent             map[string][]string
 	raw              map[string][]string // keys sent with SendRawInput
 	killSessionCalls []string
+	sendErr          error
 }
 
 func newMockTerminal() *mockSessionTerminal {
@@ -140,6 +153,9 @@ func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys 
 func (m *mockSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.sendErr != nil {
+		return m.sendErr
+	}
 	m.sent[target] = append(m.sent[target], command)
 	return nil
 }
@@ -1287,6 +1303,289 @@ func TestSessionsRestart_RejectsProviderSwitchStaleModelBeforeMutation(t *testin
 	require.NoError(t, err)
 	assert.NotNil(t, ls)
 	assert.Nil(t, ls.StoppedAt)
+}
+
+func TestSessionsRestart_ExplicitEmptyModelClearsStoredModel(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	flags := []string{"--model", "gpt-6-sol", "--custom-flag", "--dangerously-bypass-approvals-and-sandbox"}
+	caps := &agent.Capabilities{Allow: []string{agent.CapShell, agent.CapFileRead, agent.CapFileWrite, agent.CapGitWrite}}
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-dot", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-dot-1", Model: strPtr("gpt-6-sol"),
+		Flags:        store.MarshalFlags(flags),
+		Capabilities: store.MarshalCapabilities(caps),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-dot-1", true))
+
+	// Restart with explicit empty model ("")
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-dot/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-dot-1","model":""}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.NotEmpty(t, body.SessionID)
+
+	term.mu.Lock()
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "codex")
+	assert.NotContains(t, sent[0], "--model")
+	assert.NotContains(t, sent[0], "gpt-6-sol")
+	assert.Contains(t, sent[0], "--custom-flag")
+	assert.Contains(t, sent[0], "--dangerously-bypass-approvals-and-sandbox")
+
+	// Verify database record has Model cleared, ContextWindow cleared, Flags stripped of --model, and Capabilities preserved
+	ls, err := ss.GetLiveSession(ctx, body.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	assert.Empty(t, derefStrPtr(ls.Model))
+	assert.Equal(t, 0, ls.ContextWindow)
+	storedFlags := store.UnmarshalFlags(ls.Flags)
+	assert.NotContains(t, storedFlags, "--model")
+	assert.NotContains(t, storedFlags, "gpt-6-sol")
+	assert.Contains(t, storedFlags, "--custom-flag")
+	require.NotNil(t, ls.Capabilities)
+	var lsCaps agent.Capabilities
+	require.NoError(t, json.Unmarshal([]byte(*ls.Capabilities), &lsCaps))
+	assert.Equal(t, caps.Allow, lsCaps.Allow)
+}
+
+func TestSessionsRestart_WhitespaceModelClearsStoredModel(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	flags := []string{"--model", "gpt-6-sol", "--custom-flag"}
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-ws", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-ws-1", Model: strPtr("gpt-6-sol"),
+		Flags: store.MarshalFlags(flags),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-ws-1", true))
+
+	// Restart with whitespace-only model ("   ")
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-ws/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-ws-1","model":"   "}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.NotEmpty(t, body.SessionID)
+
+	term.mu.Lock()
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "codex")
+	assert.NotContains(t, sent[0], "--model")
+	assert.NotContains(t, sent[0], "gpt-6-sol")
+	assert.Contains(t, sent[0], "--custom-flag")
+
+	// Verify database record has Model cleared, ContextWindow cleared, Flags stripped of --model
+	ls, err := ss.GetLiveSession(ctx, body.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	assert.Empty(t, derefStrPtr(ls.Model))
+	assert.Equal(t, 0, ls.ContextWindow)
+	storedFlags := store.UnmarshalFlags(ls.Flags)
+	assert.NotContains(t, storedFlags, "--model")
+	assert.NotContains(t, storedFlags, "gpt-6-sol")
+	assert.Contains(t, storedFlags, "--custom-flag")
+}
+
+func TestSessionsRestart_WhitespaceClearFollowedByOmittedModelRestart(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	flags := []string{"--model", "gpt-6-sol", "--custom-flag"}
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-chain", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-chain-1", Model: strPtr("gpt-6-sol"),
+		Flags: store.MarshalFlags(flags),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-chain-1", true))
+
+	// Step 1: Restart with whitespace model ("  \t  ") to clear it
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-chain/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-chain-1","model":"  \t  "}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body1 struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body1))
+	require.NotEmpty(t, body1.SessionID)
+
+	term.mu.Lock()
+	sent1 := term.sent[body1.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent1, 1)
+	assert.NotContains(t, sent1[0], "--model")
+	assert.NotContains(t, sent1[0], "gpt-6-sol")
+	assert.Contains(t, sent1[0], "--custom-flag")
+
+	ls1, err := ss.GetLiveSession(ctx, body1.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls1)
+	assert.Empty(t, derefStrPtr(ls1.Model))
+	assert.Equal(t, 0, ls1.ContextWindow)
+
+	// Step 2: Subsequent restart omitting model field.
+	// The prior model (gpt-6-sol) must NOT reappear; the cleared state must persist.
+	require.NoError(t, ss.SetSessionSleeping(ctx, body1.SessionID, true))
+	resp2, err := http.Post(server.URL+"/api/sessions/live/codex-chain/restart", "application/json",
+		bytes.NewBufferString(fmt.Sprintf(`{"session_id":"%s"}`, body1.SessionID)))
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	require.Equal(t, http.StatusOK, resp2.StatusCode)
+
+	var body2 struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp2.Body).Decode(&body2))
+	require.NotEmpty(t, body2.SessionID)
+
+	term.mu.Lock()
+	sent2 := term.sent[body2.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent2, 1)
+	assert.NotContains(t, sent2[0], "--model", "subsequent omitted-model restart must not restore stale model")
+	assert.NotContains(t, sent2[0], "gpt-6-sol")
+	assert.Contains(t, sent2[0], "--custom-flag")
+
+	ls2, err := ss.GetLiveSession(ctx, body2.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls2)
+	assert.Empty(t, derefStrPtr(ls2.Model), "subsequent omitted-model restart must keep model cleared")
+	assert.Equal(t, 0, ls2.ContextWindow)
+}
+
+func TestSessionsRestart_OmittedModelInheritsStoredModel(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-dot", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-dot-2", Model: strPtr("gpt-6-sol"),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-dot-2", true))
+
+	// Restart with omitted model field
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-dot/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-dot-2"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	term.mu.Lock()
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "--model gpt-6-sol")
+
+	ls, err := ss.GetLiveSession(ctx, body.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	require.NotNil(t, ls.Model)
+	assert.Equal(t, "gpt-6-sol", *ls.Model)
+}
+
+func TestSessionsRestart_ExplicitModelUpdatesStoredModel(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "codex-dot", AgentType: "codex", WorkingDir: wd,
+		SessionID: "codex-dot-3", Model: strPtr("gpt-6-sol"),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "codex-dot-3", true))
+
+	// Restart with explicit new model
+	resp, err := http.Post(server.URL+"/api/sessions/live/codex-dot/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"codex-dot-3","model":"gpt-4o"}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	term.mu.Lock()
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "--model gpt-4o")
+	assert.NotContains(t, sent[0], "gpt-6-sol")
+
+	ls, err := ss.GetLiveSession(ctx, body.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	require.NotNil(t, ls.Model)
+	assert.Equal(t, "gpt-4o", *ls.Model)
+}
+
+func TestSessionsRestart_ProviderSwitchWithExplicitEmptyModelSucceeds(t *testing.T) {
+	server, _, term, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	wd := t.TempDir()
+	ss.RegisterLiveSession(ctx, &store.LiveSession{
+		AgentName: "claude-switch", AgentType: "claude", WorkingDir: wd,
+		SessionID: "claude-switch-1", Model: strPtr("claude-opus-5"),
+	})
+	require.NoError(t, ss.SetSessionSleeping(ctx, "claude-switch-1", true))
+
+	// Operator switches provider to codex and explicitly clears model ("")
+	resp, err := http.Post(server.URL+"/api/sessions/live/claude-switch/restart", "application/json",
+		bytes.NewBufferString(`{"session_id":"claude-switch-1","agent_type":"codex","model":""}`))
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		SessionID   string `json:"session_id"`
+		SessionName string `json:"session_name"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+
+	term.mu.Lock()
+	sent := term.sent[body.SessionName+".0"]
+	term.mu.Unlock()
+	require.Len(t, sent, 1)
+	assert.Contains(t, sent[0], "codex")
+	assert.NotContains(t, sent[0], "claude-opus-5")
+	assert.NotContains(t, sent[0], "--model")
+
+	ls, err := ss.GetLiveSession(ctx, body.SessionID)
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	assert.Equal(t, "codex", ls.AgentType)
+	assert.Empty(t, derefStrPtr(ls.Model))
 }
 
 func TestSessionsRawImage(t *testing.T) {

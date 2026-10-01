@@ -256,3 +256,131 @@ latest recorded working directory.
 Returns the metadata available for resuming the session: `session_id` and, when
 the session is still registered, `working_dir`, `agent_type`, `board_name`, and
 `display_name`.
+
+---
+
+## Agent Session History Search & Context (Post-Compaction Recovery)
+
+When an agent's context window is compacted or when resuming work across restarts, agents can search their own prior conversation history and proven ancestry (`resume_from_id` lineage) to recover facts, instructions, or configuration details previously conveyed by or to the user.
+
+### Trust Boundary & Authorization
+
+- **Caller Scope**: Endpoints require `session_id`, authenticated against active Coral agent sessions.
+- **Lineage Boundary**: Search strictly defaults to the caller's own session plus its proven `resume_from_id` ancestor chain.
+- **Cross-Agent Isolation**: Querying arbitrary session IDs outside the caller's proven ancestry is rejected with HTTP 403 Forbidden. Shared workspace fallback is forbidden.
+- **Honest Availability**: When transcript files are not ready or missing, the API returns status `"partial"` or `"unavailable"` with diagnostic status per session rather than misleading zero results.
+
+### GET `/api/agent/history/search`
+
+Search messages across the caller's own session and its proven resumed ancestors.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_id` | string | required | Caller's authenticated Coral session ID |
+| `query` / `q` | string | required | Literal keywords or quoted phrases (`"exact phrase"`) |
+| `roles` | string | `assistant,user` | Comma-separated roles to search (`assistant`, `user`) |
+| `include_ancestors` | bool | `true` | Include proven `resume_from_id` ancestor sessions |
+| `target_session_id` | string | | Scope to a specific session in the caller's lineage |
+| `limit` | int | 20 | Maximum matches to return (max 100) |
+| `offset` | int | 0 | Pagination offset |
+| `max_excerpt_chars`| int | 300 | Maximum excerpt length (50-1000 chars) |
+
+**Response:**
+```json
+{
+  "query": "port 8420",
+  "status": "complete",
+  "total_matches": 2,
+  "has_more": false,
+  "limit": 20,
+  "offset": 0,
+  "results": [
+    {
+      "session_id": "14c7245b-...",
+      "is_current": true,
+      "message_index": 14,
+      "role": "assistant",
+      "timestamp": "2026-09-30T10:00:00Z",
+      "excerpt": "...I have confirmed the server starts on deployment port 8420...",
+      "match_offsets": [[40, 49]],
+      "match_terms": ["port", "8420"]
+    }
+  ],
+  "sessions_searched": [
+    {
+      "session_id": "14c7245b-...",
+      "role": "current",
+      "status": "ready",
+      "messages_searched": 28
+    }
+  ]
+}
+```
+
+### GET `/api/agent/history/context`
+
+Retrieve a sliding window of conversation turns surrounding a target turn so matched statements can be fully verified with surrounding context.
+
+**Query Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_id` | string | required | Caller's authenticated Coral session ID |
+| `message_index` | int | required | 0-indexed turn position within the session |
+| `target_session_id` | string | caller ID | Session ID containing the turn (must be in lineage) |
+| `window` | int | 2 | Surrounding messages before and after (1-10) |
+
+**Response:**
+```json
+{
+  "session_id": "14c7245b-...",
+  "target_index": 14,
+  "total_messages": 28,
+  "window": 2,
+  "messages": [
+    {
+      "message_index": 12,
+      "role": "user",
+      "timestamp": "2026-09-30T09:58:00Z",
+      "content": "What port should we bind?",
+      "is_target": false
+    },
+    {
+      "message_index": 14,
+      "role": "assistant",
+      "timestamp": "2026-09-30T10:00:00Z",
+      "content": "I have confirmed the server starts on deployment port 8420.",
+      "is_target": true
+    }
+  ]
+}
+```
+
+---
+
+## CLI Usage (`coral-agent`)
+
+Coral agents can execute history searches directly from their environment without leaving their terminal.
+
+```bash
+# Search conversation history for facts or instructions
+coral-agent history search "deployment port"
+
+# Search only what you told the user (assistant messages)
+coral-agent history search "database credentials" --roles assistant
+
+# Limit results or paginate
+coral-agent history search "migration" --limit 5 --offset 5
+
+# Inspect surrounding context turns around turn #14
+coral-agent history context 14
+
+# Inspect context in an ancestor session
+coral-agent history context <ancestor_session_id> 14
+
+# Output raw JSON for scripting
+coral-agent history search "api key" --json
+```
+

@@ -2880,6 +2880,31 @@ export async function resumeLaunchNew() {
 
 // ── Settings Modal ────────────────────────────────────────────────────────
 
+function settingBool(value, fallback = true) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return !['false', '0', 'off', 'disabled'].includes(value.trim().toLowerCase());
+    return fallback;
+}
+
+function renderRemoteAccessStatus(status, loadError = false) {
+    const el = document.getElementById('settings-remote-access-status');
+    if (!el) return;
+    if (loadError) {
+        el.textContent = 'Could not read the running access state. The saved value was not changed.';
+        el.dataset.state = 'error';
+        return;
+    }
+    const saved = status?.remote_access_enabled !== false;
+    const effective = status?.remote_access_effective !== false;
+    const restart = status?.remote_access_restart_required === true || saved !== effective;
+    if (restart) {
+        el.textContent = `Saved: ${saved ? 'enabled' : 'disabled'}. Running now: ${effective ? 'remote access enabled' : 'local-only'}; restart required to apply the saved value.`;
+    } else {
+        el.textContent = `Saved and running: ${effective ? 'remote access enabled' : 'local-only'}.`;
+    }
+    el.dataset.state = restart ? 'restart-required' : 'current';
+}
+
 export async function loadSettings() {
     try {
         const resp = await fetch("/api/settings");
@@ -2936,6 +2961,22 @@ export async function loadSettings() {
             s.git_diff_mode = 'previous_commit';
         }
         state.settings = s;
+
+        const telemetry = document.getElementById('settings-telemetry-enabled');
+        if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+        try {
+            const privacyResp = await fetch('/api/system/privacy');
+            if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
+            state.privacyStatus = await privacyResp.json();
+            const remote = document.getElementById('settings-remote-access-enabled');
+            if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, true);
+            renderRemoteAccessStatus(state.privacyStatus);
+        } catch (error) {
+            state.privacyStatus = null;
+            const remote = document.getElementById('settings-remote-access-enabled');
+            if (remote) remote.checked = settingBool(s.remote_access_enabled, true);
+            renderRemoteAccessStatus(null, true);
+        }
 
         // Apply scrollbar visibility
         document.body.classList.toggle('no-scrollbars', !s.show_scrollbars);
@@ -3091,6 +3132,20 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", ()
 
 export async function showSettingsModal() {
     const s = state.settings || {};
+    const telemetry = document.getElementById('settings-telemetry-enabled');
+    if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+    const remote = document.getElementById('settings-remote-access-enabled');
+    if (remote) remote.checked = settingBool(s.remote_access_enabled, true);
+    renderRemoteAccessStatus(state.privacyStatus);
+    try {
+        const privacyResp = await fetch('/api/system/privacy');
+        if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
+        state.privacyStatus = await privacyResp.json();
+        if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, true);
+        renderRemoteAccessStatus(state.privacyStatus);
+    } catch (_) {
+        renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
+    }
 
     // Theme — populate with built-in options + saved custom themes
     const themeSelect = document.getElementById("settings-theme");
@@ -3382,6 +3437,8 @@ export async function applySettings() {
     const fileSearchLimit = document.getElementById("settings-file-search-limit")?.value || "500";
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
     const gitPollIntervalS = document.getElementById("settings-git-poll-interval")?.value ?? "120";
+    const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
+    const remoteAccessEnabled = document.getElementById("settings-remote-access-enabled")?.checked ?? settingBool(state.settings?.remote_access_enabled, true);
 
     // Parse theme selection — "custom:<name>" or built-in "dark"/"light"/"system"
     let theme, customTheme;
@@ -3422,17 +3479,25 @@ export async function applySettings() {
         file_search_limit: fileSearchLimit,
         git_diff_mode: gitDiffMode,
         git_poll_interval_s: gitPollIntervalS,
+        telemetry_enabled: telemetryEnabled,
+        remote_access_enabled: remoteAccessEnabled,
     };
 
     const oldGitDiffMode = state.settings?.git_diff_mode || 'previous_commit';
 
     try {
-        await fetch("/api/settings", {
+        const response = await fetch("/api/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         });
+        if (!response.ok) throw new Error(`settings save failed (${response.status})`);
         state.settings = { ...state.settings, ...payload };
+        if (state.privacyStatus) {
+            state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
+            state.privacyStatus.remote_access_restart_required = state.privacyStatus.remote_access_effective !== remoteAccessEnabled;
+        }
+        renderRemoteAccessStatus(state.privacyStatus);
         // Defaults may have changed — force next ACF open to re-fetch.
         _invalidateDefaultModels();
 
@@ -3480,6 +3545,7 @@ export async function applySettings() {
         showToast("Settings saved");
     } catch (e) {
         showToast("Failed to save settings", true);
+        return;
     }
 
     hideSettingsModal();

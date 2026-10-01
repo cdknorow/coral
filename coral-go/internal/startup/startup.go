@@ -28,6 +28,7 @@ import (
 	"github.com/cdknorow/coral/internal/server"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 const devStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-01"
@@ -129,19 +130,20 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		}
 	}
 
+	// Open database
+	db, err := store.Open(cfg.DBPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open database: %w", err)
+	}
+	applyPrivacySettings(ctx, db, cfg)
+
 	// Bind the port now and keep the listener open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve).
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
+		db.Close()
 		return nil, fmt.Errorf("port %d is already in use: %w", cfg.Port, err)
-	}
-
-	// Open database
-	db, err := store.Open(cfg.DBPath)
-	if err != nil {
-		ln.Close()
-		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
 	// Apply terminal_replay_bytes setting from user_settings before any
@@ -199,6 +201,23 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		instance:   instance,
 		lockPath:   lockPath,
 	}, nil
+}
+
+// applyPrivacySettings loads persisted privacy controls before binding. Remote
+// access is enabled by default for backwards compatibility; disabling it is a
+// restart-applied local-only bind. Telemetry is independently applied to the
+// tracking package and never affects essential server behavior.
+func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config) {
+	// Fail closed for telemetry if settings cannot be read during startup.
+	tracking.SetTelemetryEnabled(false)
+	settings, err := store.NewSessionStore(db).GetSettings(ctx)
+	if err != nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "false") {
+		cfg.Host = "127.0.0.1"
+	}
+	tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false"))
 }
 
 // reconcileOrphanedSessions checks all non-sleeping live sessions against

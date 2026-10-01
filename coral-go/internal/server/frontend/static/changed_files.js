@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG } from './utils.js';
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
@@ -612,6 +612,59 @@ function _getCmContent() {
 
 let _previewState = null; // { filepath, mode, content, hasDiff, diffText, gen }
 let _previewGen = 0;      // generation counter to guard against stale async writes
+let _artifactAbortController = null;
+const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
+
+function _artifactSizeLabel(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size';
+    if (bytes < 1024) return `${bytes} bytes`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function _renderArtifactFallback(container, { filename, type, size, url, reason }) {
+    if (!container) return;
+    const safeName = escapeHtml(filename || 'artifact');
+    const safeType = escapeHtml(type || 'application/octet-stream');
+    const safeSize = escapeHtml(_artifactSizeLabel(size));
+    const safeReason = escapeHtml(reason);
+    container.innerHTML = `<div class="inline-preview-artifact-fallback">
+        <strong>${safeName}</strong>
+        <span>${safeType} · ${safeSize}</span>
+        <p>${safeReason}</p>
+        <a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" download>Download artifact</a>
+    </div>`;
+}
+
+async function _readArtifactText(response, maxBytes, signal) {
+    if (!response.body || !response.body.getReader) {
+        const text = await response.text();
+        if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error('Artifact is too large to preview');
+        return text;
+    }
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+        for (;;) {
+            if (signal?.aborted) throw new DOMException('Preview cancelled', 'AbortError');
+            const { value, done } = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                await reader.cancel();
+                throw new Error('Artifact is too large to preview');
+            }
+            chunks.push(value);
+        }
+    } finally {
+        reader.releaseLock();
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return new TextDecoder().decode(bytes);
+}
 
 /** Show inline preview for a file (clicking the preview icon). */
 export function openFilePreview(filepath, line) {
@@ -631,20 +684,27 @@ async function _openArtifactPreview(uri) {
     let panel = isMobile ? document.createElement('div') : document.getElementById('agentic-panel-files');
     if (isMobile) { panel.className = 'mobile-file-preview-overlay'; document.body.appendChild(panel); }
     if (!panel) return;
+    _artifactAbortController?.abort();
+    _artifactAbortController = new AbortController();
+    const signal = _artifactAbortController.signal;
     if (!isMobile && window.switchAgenticTab) window.switchAgenticTab('files', 'top');
     _previewState = { artifact: true, filepath: uri, mode: 'preview', gen: ++_previewGen };
+    const gen = _previewState.gen;
     panel.innerHTML = `<div class="inline-preview-header">
         <button class="inline-preview-back" onclick="window._closeInlinePreview()" title="Back to file list"><span class="material-icons">arrow_back</span></button>
         <span class="inline-preview-filepath" title="${escapeHtml(uri)}">Artifact preview</span>
     </div><div class="inline-preview-body" id="inline-preview-body"><div class="inline-preview-loading">Loading...</div></div>`;
     const body = panel.querySelector('#inline-preview-body');
     try {
-        const resp = await fetch(`/api/artifacts/${match[1]}`);
+        const resp = await fetch(`/api/artifacts/${match[1]}`, { signal });
         if (!resp.ok) throw new Error(`Artifact unavailable (${resp.status})`);
         const type = (resp.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].toLowerCase();
         const disposition = resp.headers.get('Content-Disposition') || '';
         const filename = (disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i) || [])[1] || '';
         const artifactPath = filename || uri;
+        const sizeHeader = Number(resp.headers.get('Content-Length'));
+        const size = Number.isFinite(sizeHeader) && sizeHeader >= 0 ? sizeHeader : -1;
+        if (_isStale(gen)) return;
         if (type.startsWith('audio/') || type.startsWith('video/')) {
             const media = document.createElement(type.startsWith('video/') ? 'video' : 'audio');
             media.controls = true; media.autoplay = false; media.preload = 'metadata';
@@ -652,13 +712,22 @@ async function _openArtifactPreview(uri) {
             body.replaceChildren(media);
         } else if (type.startsWith('image/')) {
             renderImagePanes(body, [{ url: resp.url, missing: 'Artifact unavailable' }]);
+        } else if (!type.startsWith('text/') && !type.includes('json') && !type.includes('xml') && !/\.(?:md|markdown|txt|log|json|xml|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/i.test(filename)) {
+            _renderArtifactFallback(body, { filename, type, size, url: resp.url, reason: 'This binary artifact is not rendered inline.' });
+        } else if (size > MAX_ARTIFACT_PREVIEW_BYTES) {
+            _renderArtifactFallback(body, { filename, type, size, url: resp.url, reason: `Preview is limited to ${_artifactSizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
         } else {
             // Render Markdown artifacts with the same formatted view used by
             // repository .md files.
-            _renderContentView(body, await resp.text(), type === 'text/markdown' || /\.md(?:own)?$/i.test(filename) ? (filename || 'artifact.md') : artifactPath);
+            const content = await _readArtifactText(resp, MAX_ARTIFACT_PREVIEW_BYTES, signal);
+            if (_isStale(gen)) return;
+            _renderContentView(body, content, type === 'text/markdown' || /\.md(?:own)?$/i.test(filename) ? (filename || 'artifact.md') : artifactPath);
         }
     } catch (error) {
+        if (error?.name === 'AbortError' || _isStale(_previewState?.gen)) return;
         body.innerHTML = `<div class="inline-preview-error">${escapeHtml(error.message)}</div>`;
+    } finally {
+        if (_artifactAbortController?.signal === signal) _artifactAbortController = null;
     }
 }
 
@@ -1117,6 +1186,8 @@ window._savePreviewFile = async function() {
 
 /** Close inline preview and restore the files list. */
 window._closeInlinePreview = function() {
+    _artifactAbortController?.abort();
+    _artifactAbortController = null;
     _destroyCmEditor();
     _previewState = null;
 

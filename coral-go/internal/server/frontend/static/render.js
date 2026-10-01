@@ -2324,19 +2324,40 @@ function stripPulseLines(text) {
     return text.replace(/^\|\|PULSE:(STATUS|SUMMARY|CONFIDENCE)\s[^\|]*\|\|$/gm, '').replace(/\n{3,}/g, '\n\n');
 }
 
-export function renderHistoryChat(messages, agentType = "claude") {
+export function renderHistoryChat(messages, agentType = "claude", baseIndex = 0, focusIndex = null) {
     const container = document.getElementById("history-messages");
     container.innerHTML = "";
 
     // Same renderer as the live Chat view: replies as prose, tool calls and
     // their output folded into collapsed "N steps" groups.
-    renderTranscript(messages.map(normalizeHistoryEntry).filter(Boolean), container, agentType);
+    const normalized = messages.map((entry, index) => {
+        const value = normalizeHistoryEntry(entry);
+        if (value) value.__coralMessageIndex = baseIndex + index;
+        return value;
+    }).filter(Boolean);
+    renderTranscript(normalized, container, agentType);
 
     for (const bubble of container.querySelectorAll(".chat-bubble.human")) {
         bubble.insertAdjacentHTML("beforeend",
             `<button class="edit-btn" onclick="editAndResubmit(this)">Edit & Resubmit</button>`);
     }
     container.scrollTop = container.scrollHeight;
+    if (focusIndex != null) {
+        requestAnimationFrame(() => {
+            const target = container.querySelector(`[data-message-index="${CSS.escape(String(focusIndex))}"]`);
+            if (target) {
+                target.classList.add('chat-search-target');
+                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                target.setAttribute('tabindex', '-1');
+                target.focus({ preventScroll: true });
+            } else {
+                const notice = document.createElement('div');
+                notice.className = 'chat-search-status';
+                notice.textContent = 'The matching message is no longer available.';
+                container.prepend(notice);
+            }
+        });
+    }
 }
 
 // The reader returns normalized entries; older raw JSONL entries (content

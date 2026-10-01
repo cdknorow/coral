@@ -15,6 +15,7 @@ let _totalMessages = 0;
 let _loadedOffset = 0;
 let _selectMode = false;
 let _selectedIds = new Set();
+let pendingMessageId = null;
 
 // ── API helpers ──────────────────────────────────────────────────────────
 
@@ -69,8 +70,9 @@ function renderBoardSidebar(projects) {
 
 // ── View switching ───────────────────────────────────────────────────────
 
-export function selectBoardProject(project) {
+export function selectBoardProject(project, messageId = null) {
     currentProject = project;
+    pendingMessageId = messageId != null ? String(messageId) : null;
 
     // Hide other views, show messageboard
     showView("messageboard-view");
@@ -243,7 +245,7 @@ function renderMessages(messages) {
         const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
         const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${m.id}" ${_selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleMessageSelect(${m.id}, this.checked)">` : '';
         return `
-        <div class="mb-message ${spacing}${alignClass}${selectedClass}" style="border-left:3px solid ${hexToRgba(color, 0.55)}; border-bottom:2px solid ${hexToRgba(color, 0.3)}">
+        <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="border-left:3px solid ${hexToRgba(color, 0.55)}; border-bottom:2px solid ${hexToRgba(color, 0.3)}">
             <div class="mb-message-header">
                 ${checkbox}
                 <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
@@ -253,6 +255,18 @@ function renderMessages(messages) {
             <div class="mb-message-body">${renderMarkdown(boardMessageText(m.content))}</div>
         </div>`;
     }).join('');
+    if (pendingMessageId) {
+        const target = container.querySelector(`[data-message-id="${CSS.escape(pendingMessageId)}"]`);
+        if (target) {
+            target.classList.add('chat-search-target');
+            target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            pendingMessageId = null;
+        } else if (_loadedOffset > 0) {
+            // Search hits may be older than the initial latest page. Keep
+            // loading real pages until the stable message id is present.
+            loadEarlierMessages();
+        }
+    }
     if (wasAtBottom) {
         container.scrollTop = container.scrollHeight;
     } else {

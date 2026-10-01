@@ -65,9 +65,13 @@ export async function loadLiveSessionDetail(name, agentType, sessionId, options)
     }
 }
 
-export async function loadHistoryMessages(sessionId) {
+export async function loadHistoryMessages(sessionId, options = {}) {
     try {
-        return await apiFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}`);
+        const params = new URLSearchParams();
+        if (options.limit != null) params.set('limit', String(options.limit));
+        if (options.offset != null) params.set('offset', String(options.offset));
+        const qs = params.toString() ? `?${params}` : '';
+        return await apiFetch(`/api/sessions/history/${encodeURIComponent(sessionId)}${qs}`);
     } catch (e) {
         console.error("Failed to load history messages:", e);
         return null;

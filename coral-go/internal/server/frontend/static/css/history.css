@@ -313,3 +313,14 @@
     white-space: nowrap;
     font-size: 11px;
 }
+.chat-search-results { padding: 6px 8px; }
+.chat-search-result { margin: 0 0 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
+.chat-search-result-header { display:flex; justify-content:space-between; gap:8px; color:var(--text-muted); font-size:11px; padding:4px 2px; }
+.chat-search-result-header strong { color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-search-hit { display:block; width:100%; text-align:left; border:0; border-radius:5px; padding:7px 8px; color:var(--text-primary); background:transparent; cursor:pointer; }
+.chat-search-hit:hover, .chat-search-hit:focus-visible { background:var(--bg-hover); outline:2px solid var(--accent-secondary); outline-offset:-2px; }
+.chat-search-hit-meta { display:block; color:var(--text-muted); font-size:10px; margin-bottom:3px; }
+.chat-search-hit-excerpt { display:block; font-size:12px; line-height:1.35; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
+.chat-search-hit mark { background:color-mix(in srgb, var(--accent-secondary) 35%, transparent); color:inherit; border-radius:2px; }
+.chat-search-status { padding:10px; color:var(--text-muted); font-size:12px; }
+.chat-search-target { outline:2px solid var(--accent-secondary); outline-offset:3px; }

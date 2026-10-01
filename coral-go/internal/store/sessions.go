@@ -1011,10 +1011,11 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 		// Carry forward flags, prompt, board from old session if not set
 		var old LiveSession
 		err := tx.GetContext(ctx, &old,
-			"SELECT flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools, mcp_servers FROM live_sessions WHERE session_id = ?",
+			"SELECT agent_type, flags, prompt, board_name, board_server, icon, name_color, is_sleeping, board_type, display_name, is_job, backend, capabilities, model, context_window, tools, mcp_servers FROM live_sessions WHERE session_id = ?",
 			oldSessionID)
 		if err == nil {
-			if newSession.Flags == nil {
+			sameProvider := newSession.AgentType == "" || newSession.AgentType == old.AgentType
+			if newSession.Flags == nil && sameProvider {
 				newSession.Flags = old.Flags
 			}
 			if newSession.Prompt == nil {
@@ -1038,13 +1039,13 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 			if newSession.DisplayName == nil {
 				newSession.DisplayName = old.DisplayName
 			}
-			if newSession.Capabilities == nil {
+			if newSession.Capabilities == nil && sameProvider {
 				newSession.Capabilities = old.Capabilities
 			}
-			if newSession.Model == nil {
+			if newSession.Model == nil && sameProvider {
 				newSession.Model = old.Model
 			}
-			if newSession.ContextWindow == 0 {
+			if newSession.Model == nil && newSession.ContextWindow == 0 && sameProvider {
 				newSession.ContextWindow = old.ContextWindow
 			}
 			if newSession.Tools == nil {
@@ -1479,3 +1480,142 @@ func nowUTC() string {
 func NowUTC() string {
 	return nowUTC()
 }
+
+// SessionLineageItem represents an authenticated session or ancestor in a resume chain.
+type SessionLineageItem struct {
+	SessionID    string  `db:"session_id" json:"session_id"`
+	AgentType    string  `db:"agent_type" json:"agent_type"`
+	AgentName    string  `db:"agent_name" json:"agent_name"`
+	WorkingDir   string  `db:"working_dir" json:"working_dir"`
+	DisplayName  *string `db:"display_name" json:"display_name,omitempty"`
+	ResumeFromID *string `db:"resume_from_id" json:"resume_from_id,omitempty"`
+	SourceFile   string  `db:"source_file" json:"source_file,omitempty"`
+	IsCurrent    bool    `db:"-" json:"is_current"`
+}
+
+// GetSessionAncestry returns the caller session and all proven ancestor sessions
+// reached via resume_from_id links in live_sessions and session_index.
+func (s *SessionStore) GetSessionAncestry(ctx context.Context, sessionID string) ([]SessionLineageItem, error) {
+	if sessionID == "" {
+		return nil, nil
+	}
+
+	ls, err := s.GetLiveSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if ls == nil {
+		// Not in live_sessions; check if it exists in session_index
+		idx, err := s.GetIndexedSession(ctx, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		if idx == nil {
+			return nil, nil
+		}
+		var dispName *string
+		if idx.DisplayName != "" {
+			dispName = &idx.DisplayName
+		}
+		return []SessionLineageItem{{
+			SessionID:   idx.SessionID,
+			AgentType:   idx.SourceType,
+			AgentName:   idx.AgentName,
+			DisplayName: dispName,
+			SourceFile:  idx.SourceFile,
+			IsCurrent:   true,
+		}}, nil
+	}
+
+	rootItem := SessionLineageItem{
+		SessionID:    ls.SessionID,
+		AgentType:    ls.AgentType,
+		AgentName:    ls.AgentName,
+		WorkingDir:   ls.WorkingDir,
+		DisplayName:  ls.DisplayName,
+		ResumeFromID: ls.ResumeFromID,
+		IsCurrent:    true,
+	}
+	if idx, _ := s.GetIndexedSession(ctx, ls.SessionID); idx != nil {
+		rootItem.SourceFile = idx.SourceFile
+	}
+	lineage := []SessionLineageItem{rootItem}
+
+	visited := map[string]bool{ls.SessionID: true}
+	currResume := ls.ResumeFromID
+
+	for i := 0; i < 50 && currResume != nil && *currResume != ""; i++ {
+		ancestorID := strings.TrimSpace(*currResume)
+		if ancestorID == "" || visited[ancestorID] {
+			break
+		}
+		visited[ancestorID] = true
+
+		// 1. Try live_sessions first
+		ancLS, err := s.GetLiveSession(ctx, ancestorID)
+		if err == nil && ancLS != nil {
+			item := SessionLineageItem{
+				SessionID:    ancLS.SessionID,
+				AgentType:    ancLS.AgentType,
+				AgentName:    ancLS.AgentName,
+				WorkingDir:   ancLS.WorkingDir,
+				DisplayName:  ancLS.DisplayName,
+				ResumeFromID: ancLS.ResumeFromID,
+				IsCurrent:    false,
+			}
+			if idx, _ := s.GetIndexedSession(ctx, ancLS.SessionID); idx != nil {
+				item.SourceFile = idx.SourceFile
+			}
+			lineage = append(lineage, item)
+			currResume = ancLS.ResumeFromID
+			continue
+		}
+
+		// 2. Try session_index by exact session_id
+		ancIdx, err := s.GetIndexedSession(ctx, ancestorID)
+		if err == nil && ancIdx != nil {
+			var dispName *string
+			if ancIdx.DisplayName != "" {
+				dispName = &ancIdx.DisplayName
+			}
+			item := SessionLineageItem{
+				SessionID:   ancIdx.SessionID,
+				AgentType:   ancIdx.SourceType,
+				AgentName:   ancIdx.AgentName,
+				DisplayName: dispName,
+				SourceFile:  ancIdx.SourceFile,
+				IsCurrent:   false,
+			}
+			lineage = append(lineage, item)
+			break
+		}
+
+		// 3. Try session_index by native identifier in source_file
+		var matchedIdx SessionIndex
+		err = s.db.GetContext(ctx, &matchedIdx,
+			`SELECT session_id, source_type, source_file, first_timestamp, last_timestamp,
+			        message_count, display_summary, agent_name, display_name, indexed_at, file_mtime
+			 FROM session_index WHERE source_file LIKE ? LIMIT 1`, "%"+ancestorID+"%")
+		if err == nil && matchedIdx.SessionID != "" {
+			var dispName *string
+			if matchedIdx.DisplayName != "" {
+				dispName = &matchedIdx.DisplayName
+			}
+			item := SessionLineageItem{
+				SessionID:   matchedIdx.SessionID,
+				AgentType:   matchedIdx.SourceType,
+				AgentName:   matchedIdx.AgentName,
+				DisplayName: dispName,
+				SourceFile:  matchedIdx.SourceFile,
+				IsCurrent:   false,
+			}
+			lineage = append(lineage, item)
+			break
+		}
+
+		break
+	}
+
+	return lineage, nil
+}
+

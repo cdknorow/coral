@@ -572,6 +572,22 @@
                     </div>
                     <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>
                 </dd>
+                <dt class="toggle-dt">
+                    <label for="settings-telemetry-enabled">Usage analytics</label>
+                    <span class="toggle-desc">Allow anonymous product usage analytics. This applies immediately.</span>
+                </dt>
+                <dd>
+                    <input type="checkbox" id="settings-telemetry-enabled" aria-describedby="settings-telemetry-help">
+                    <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
+                </dd>
+                <dt class="toggle-dt">
+                    <label for="settings-remote-access-enabled">Remote access</label>
+                    <span class="toggle-desc">Allow connections from other devices.</span>
+                </dt>
+                <dd>
+                    <input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status">
+                    <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
+                </dd>
                 <dt>CLI Paths</dt>
                 <dd class="settings-cli-paths">
                     <label class="settings-cli-row">

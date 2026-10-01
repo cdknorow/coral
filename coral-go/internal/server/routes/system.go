@@ -28,6 +28,7 @@ import (
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/cdknorow/coral/internal/tracking"
 )
 
 // Indexer is the interface for triggering an index refresh.
@@ -138,8 +139,32 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 				ptymanager.SetReplayBytes(n)
 			}
 		}
+		if k == "telemetry_enabled" {
+			tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(s), "false"))
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// GetPrivacyStatus reports persisted privacy settings and the effective
+// running bind state. Remote access changes are restart-applied.
+// GET /api/system/privacy
+func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.ss.GetSettings(r.Context())
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	telemetryEnabled := !strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false")
+	remoteEnabled := !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "false")
+	effectiveRemote := h.cfg.Host != "127.0.0.1" && h.cfg.Host != "::1" && h.cfg.Host != "localhost"
+	writeJSON(w, http.StatusOK, map[string]any{
+		"telemetry_enabled":              telemetryEnabled,
+		"remote_access_enabled":          remoteEnabled,
+		"remote_access_effective":        effectiveRemote,
+		"remote_access_restart_required": remoteEnabled != effectiveRemote,
+		"effective_host":                 h.cfg.Host,
+	})
 }
 
 // ── Default Prompt Constants ─────────────────────────────────────────
@@ -700,7 +725,6 @@ type generateJob struct {
 	Error     string         `json:"error,omitempty"`
 	CreatedAt time.Time      `json:"-"`
 }
-
 
 // GenerateTeam kicks off an async Claude CLI call and returns a job ID.
 // POST /api/teams/generate

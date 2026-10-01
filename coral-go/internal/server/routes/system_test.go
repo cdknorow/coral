@@ -37,6 +37,7 @@ func setupSystemTestServer(t *testing.T) (*httptest.Server, *SystemHandler) {
 	r.Get("/api/system/update-check", handler.UpdateCheck)
 	r.Get("/api/settings", handler.GetSettings)
 	r.Put("/api/settings", handler.PutSettings)
+	r.Get("/api/system/privacy", handler.GetPrivacyStatus)
 	r.Get("/api/tags", handler.ListTags)
 	r.Post("/api/tags", handler.CreateTag)
 	r.Delete("/api/tags/{tagID}", handler.DeleteTag)
@@ -117,6 +118,37 @@ func TestSettings_GetPut(t *testing.T) {
 	json.NewDecoder(resp3.Body).Decode(&getBody2)
 	settings2 := getBody2["settings"].(map[string]any)
 	assert.Equal(t, "dark", settings2["theme"])
+}
+
+func TestPrivacyStatusAndSettings(t *testing.T) {
+	server, handler := setupSystemTestServer(t)
+	handler.cfg.Host = "0.0.0.0"
+
+	resp, err := http.Get(server.URL + "/api/system/privacy")
+	require.NoError(t, err)
+	var initial map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&initial))
+	resp.Body.Close()
+	assert.Equal(t, true, initial["telemetry_enabled"])
+	assert.Equal(t, true, initial["remote_access_enabled"])
+	assert.Equal(t, true, initial["remote_access_effective"])
+
+	payload := bytes.NewBufferString(`{"telemetry_enabled":false,"remote_access_enabled":false}`)
+	req, _ := http.NewRequest("PUT", server.URL+"/api/settings", payload)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+
+	resp, err = http.Get(server.URL + "/api/system/privacy")
+	require.NoError(t, err)
+	var stopped map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&stopped))
+	resp.Body.Close()
+	assert.Equal(t, false, stopped["telemetry_enabled"])
+	assert.Equal(t, false, stopped["remote_access_enabled"])
+	assert.Equal(t, true, stopped["remote_access_effective"])
+	assert.Equal(t, true, stopped["remote_access_restart_required"])
 }
 
 func TestTags_CRUD(t *testing.T) {

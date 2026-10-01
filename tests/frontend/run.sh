@@ -158,6 +158,7 @@ node task_completion_modal.test.js
 node task_status_hover.test.js
 node task_amendment_ui.test.js
 node agent_model_provider_switch.test.js
+node restart_modal_model.test.js
 node team_availability.test.js
 node team_menu_icon_spacing.test.js
 node team_view_responsive_rows.test.js
@@ -172,3 +173,6 @@ node agent_task_cli.test.js
 node agent_ui.test.js
 node transcript_tools.test.js
 node transcript_codex.test.js
+node chat_search_unit.test.js
+node privacy_settings.test.js
+node privacy_verification_e2e.test.js

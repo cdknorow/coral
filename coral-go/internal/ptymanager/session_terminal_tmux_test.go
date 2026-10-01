@@ -238,6 +238,21 @@ func TestTmuxSessionTerminal_SendToTarget(t *testing.T) {
 	assert.Contains(t, output, "TARGET_OK")
 }
 
+func TestTmuxSessionTerminal_SendToTarget_LongCommandUsesHandoff(t *testing.T) {
+	terminal := newTmuxTestTerminal(t)
+	ctx := context.Background()
+	spawnTmuxSession(t, terminal, "long-target-tmux", t.TempDir())
+
+	marker := "LONG_TMUX_HANDOFF_MARKER"
+	value := strings.Repeat("x", 1200) + marker
+	command := "printf '%s' '" + value + "'"
+	require.Greater(t, len(command), 900)
+	require.NoError(t, terminal.SendToTarget(ctx, "long-target-tmux:0.0", command))
+
+	output := waitForCapture(t, terminal, "long-target-tmux", marker, 5*time.Second)
+	assert.Contains(t, output, marker)
+}
+
 // ── ResizeSession ────────────────────────────────────────────────────
 
 func TestTmuxSessionTerminal_ResizeSession(t *testing.T) {
