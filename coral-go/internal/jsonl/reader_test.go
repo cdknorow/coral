@@ -1172,3 +1172,36 @@ func TestSessionReader_AgyDoesNotKeepPoisonedPath(t *testing.T) {
 		t.Fatalf("expected exact transcript to be discovered after replacement, total=%d msgs=%#v", total, msgs)
 	}
 }
+
+func TestSessionReader_CodexLiveResumeLineage(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("CODEX_HOME", root)
+	day := filepath.Join(root, "sessions", "2026", "10", "01")
+	if err := os.MkdirAll(day, 0755); err != nil {
+		t.Fatal(err)
+	}
+	currentID := "6a5f808a-8aac-67aa-9d56-0d762cdef399"
+	ancestorID := "dd5b2ed5-4971-65de-21e4-650366e19900"
+	writeCodex := func(path, marker, text string) {
+		t.Helper()
+		content := fmt.Sprintf(`{"timestamp":"2026-10-01T00:00:00Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"CORAL_SESSION_ID: %s"}]}}
+{"timestamp":"2026-10-01T00:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"%s"}}
+`, marker, text)
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ancestorPath := filepath.Join(day, "rollout-2026-10-01T00-00-00-native-ancestor.jsonl")
+	writeCodex(ancestorPath, ancestorID, "ancestor")
+	r := NewSessionReader()
+	msgs, total := r.ReadAllMessagesForLiveWithLineage(currentID, "/workspace/death-or-trade", at.Codex, ancestorID)
+	if total != 1 || len(msgs) != 1 || msgs[0]["content"] != "ancestor" {
+		t.Fatalf("lineage fallback = total %d messages %#v", total, msgs)
+	}
+	currentPath := filepath.Join(day, "rollout-2026-10-01T00-00-01-native-current.jsonl")
+	writeCodex(currentPath, currentID, "current")
+	msgs, total = r.ReadAllMessagesForLiveWithLineage(currentID, "/workspace/death-or-trade", at.Codex, ancestorID)
+	if total != 2 || len(msgs) != 2 || msgs[0]["content"] != "ancestor" || msgs[1]["content"] != "current" {
+		t.Fatalf("lineage merge = total %d messages %#v", total, msgs)
+	}
+}

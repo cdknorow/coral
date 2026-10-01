@@ -281,6 +281,29 @@ func TestSessionsList_Empty(t *testing.T) {
 	assert.Empty(t, sessions)
 }
 
+func TestCachedLogStatusConcurrentAndInvalidatesOnAppend(t *testing.T) {
+	server, handler, _, _ := setupSessionsTestServer(t)
+	defer server.Close()
+	path := filepath.Join(t.TempDir(), "agent.log")
+	require.NoError(t, os.WriteFile(path, []byte("PULSE status=working summary=first\n"), 0644))
+
+	const readers = 24
+	var wg sync.WaitGroup
+	for i := 0; i < readers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			status := handler.cachedLogStatus(path)
+			assert.NotNil(t, status)
+		}()
+	}
+	wg.Wait()
+
+	require.NoError(t, os.WriteFile(path, []byte("PULSE status=working summary=second\n"), 0644))
+	status := handler.cachedLogStatus(path)
+	assert.Contains(t, fmt.Sprint(status["recent_lines"]), "second")
+}
+
 func TestSessionsList_WithSessions(t *testing.T) {
 	server, _, terminal, _ := setupSessionsTestServer(t)
 
@@ -447,6 +470,77 @@ func TestSessionsChat_MultipleClientsEachSeeNewMessages(t *testing.T) {
 	assert.Empty(t, a, "nothing new on the next poll")
 	a, _ = chat(99)
 	assert.Empty(t, a, "after beyond the end is clamped")
+}
+
+func TestSessionsChat_CodexResumeLineageRoute(t *testing.T) {
+	server, _, _, ss := setupSessionsTestServer(t)
+	root := t.TempDir()
+	t.Setenv("CODEX_HOME", root)
+	day := filepath.Join(root, "sessions", "2026", "10", "01")
+	require.NoError(t, os.MkdirAll(day, 0755))
+	currentID := "6a5f808a-8aac-67aa-9d56-0d762cdef399"
+	ancestorID := "dd5b2ed5-4971-65de-21e4-650366e19900"
+	workingDir := "/workspace/death-or-trade"
+	line := func(marker, text string) string {
+		return fmt.Sprintf(`{"timestamp":"2026-10-01T00:00:00Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"CORAL_SESSION_ID: %s"}]}}
+{"timestamp":"2026-10-01T00:00:01Z","type":"event_msg","payload":{"type":"user_message","message":"%s"}}
+`, marker, text)
+	}
+	ancestorPath := filepath.Join(day, "rollout-2026-10-01T00-00-00-ancestor.jsonl")
+	require.NoError(t, os.WriteFile(ancestorPath, []byte(line(ancestorID, "ancestor message")), 0644))
+	resume := ancestorID
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
+		SessionID: currentID, AgentType: "codex", AgentName: "death_or_trade", WorkingDir: workingDir, ResumeFromID: &resume,
+	}))
+
+	read := func(query url.Values) (messages []map[string]any, total int, hasMore bool) {
+		t.Helper()
+		resp, err := http.Get(server.URL + "/api/sessions/live/death_or_trade/chat?" + query.Encode())
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+			Total    int              `json:"total"`
+			HasMore  bool             `json:"has_more"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		return body.Messages, body.Total, body.HasMore
+	}
+	q := url.Values{"agent_type": {"codex"}, "working_directory": {workingDir}, "session_id": {currentID}, "after": {"0"}}
+	messages, total, hasMore := read(q)
+	require.Equal(t, 1, total)
+	require.False(t, hasMore)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "ancestor message", messages[0]["content"])
+
+	currentPath := filepath.Join(day, "rollout-2026-10-01T00-00-01-current.jsonl")
+	require.NoError(t, os.WriteFile(currentPath, []byte(line(currentID, "late current message")), 0644))
+	messages, total, _ = read(q)
+	require.Equal(t, 2, total)
+	require.Len(t, messages, 2)
+	assert.Equal(t, "ancestor message", messages[0]["content"])
+	assert.Equal(t, "late current message", messages[1]["content"])
+
+	page := url.Values{"agent_type": {"codex"}, "working_directory": {workingDir}, "session_id": {currentID}, "after": {"0"}, "limit": {"1"}, "offset": {"0"}}
+	messages, total, hasMore = read(page)
+	require.Equal(t, 2, total)
+	require.True(t, hasMore)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "late current message", messages[0]["content"])
+	page.Set("offset", "1")
+	messages, _, hasMore = read(page)
+	require.False(t, hasMore)
+	require.Len(t, messages, 1)
+	assert.Equal(t, "ancestor message", messages[0]["content"])
+
+	otherPath := filepath.Join(day, "rollout-2026-10-01T00-00-02-unrelated.jsonl")
+	require.NoError(t, os.WriteFile(otherPath, []byte(line("unrelated-session", "must stay isolated")), 0644))
+	messages, total, _ = read(q)
+	require.Equal(t, 2, total)
+	for _, message := range messages {
+		assert.NotEqual(t, "must stay isolated", message["content"])
+	}
 }
 
 func TestSessionsCapture_NotFound(t *testing.T) {

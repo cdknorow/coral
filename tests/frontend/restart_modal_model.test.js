@@ -87,6 +87,8 @@ if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('isolated server required
     assert.equal(s1Req.agent_type, 'codex');
     assert.equal(s1Req.model, '', 'cleared model must be explicitly sent as empty string (""), not omitted');
     assert.ok('model' in s1Req, 'model key must be present in payload');
+    assert.equal((await ev(`window.testState.currentSession.session_id`)), 'new-sid-999', 'restart must select the replacement Coral session');
+    assert.equal((await ev(`window.testState.currentSession.name`)), 'codex-new', 'restart must select the replacement tmux session name');
 
     // S2: Stored model 'gpt-6-sol' -> User changes model to 'gpt-4o' -> confirmRestart sends model: "gpt-4o"
     await ev(`(async () => {

@@ -73,6 +73,25 @@ type SessionsHandler struct {
 	// Deduplication state for status/summary events (mirrors Python _last_known)
 	lastKnownMu sync.RWMutex
 	lastKnown   map[string]lastKnownState
+
+	// logStatusCache avoids rereading each agent's bounded log tail on every
+	// sidebar poll. Entries are invalidated by size/mtime and capped so a
+	// burst of short-lived sessions cannot grow memory without bound.
+	logStatusMu       sync.Mutex
+	logStatusCache    map[string]cachedLogStatus
+	logWarmMu         sync.Mutex
+	logWarm           map[string]bool
+	logWarmSem        chan struct{}
+	transcriptWarmMu  sync.Mutex
+	transcriptWarm    map[string]bool
+	transcriptPending map[string]bool
+	transcriptWarmSem chan struct{}
+}
+
+type cachedLogStatus struct {
+	size    int64
+	modTime time.Time
+	value   map[string]any
 }
 
 // GoalRequester asks the goal generator for a fresh goal for one session.
@@ -223,18 +242,140 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
-		db:        db,
-		ss:        store.NewSessionStore(db),
-		ts:        store.NewTaskStore(db),
-		subagents: store.NewSubagentStore(db),
-		gs:        store.NewGitStore(db),
-		bs:        bs,
-		cfg:       cfg,
-		terminal:  terminal,
-		jsonl:     jsonl.NewSessionReader(),
-		backend:   backend,
-		lastKnown: make(map[string]lastKnownState),
+		db:                db,
+		ss:                store.NewSessionStore(db),
+		ts:                store.NewTaskStore(db),
+		subagents:         store.NewSubagentStore(db),
+		gs:                store.NewGitStore(db),
+		bs:                bs,
+		cfg:               cfg,
+		terminal:          terminal,
+		jsonl:             jsonl.NewSessionReader(),
+		backend:           backend,
+		lastKnown:         make(map[string]lastKnownState),
+		logStatusCache:    make(map[string]cachedLogStatus),
+		logWarm:           make(map[string]bool),
+		logWarmSem:        make(chan struct{}, 4),
+		transcriptWarm:    make(map[string]bool),
+		transcriptPending: make(map[string]bool),
+		transcriptWarmSem: make(chan struct{}, 4),
 	}
+}
+
+func cloneLogStatus(value map[string]any) map[string]any {
+	clone := make(map[string]any, len(value))
+	for key, item := range value {
+		if lines, ok := item.([]string); ok {
+			clone[key] = append([]string(nil), lines...)
+		} else {
+			clone[key] = item
+		}
+	}
+	return clone
+}
+
+func (h *SessionsHandler) cachedLogStatus(path string) map[string]any {
+	if path == "" {
+		return getLogStatus(path)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return getLogStatus(path)
+	}
+	h.logStatusMu.Lock()
+	if cached, ok := h.logStatusCache[path]; ok && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
+		value := cloneLogStatus(cached.value)
+		h.logStatusMu.Unlock()
+		return value
+	}
+	h.logStatusMu.Unlock()
+	value := getLogStatus(path)
+	h.logStatusMu.Lock()
+	if len(h.logStatusCache) >= 512 {
+		for key := range h.logStatusCache {
+			delete(h.logStatusCache, key)
+			break
+		}
+	}
+	h.logStatusCache[path] = cachedLogStatus{size: info.Size(), modTime: info.ModTime(), value: cloneLogStatus(value)}
+	h.logStatusMu.Unlock()
+	return value
+}
+
+func (h *SessionsHandler) readyLogStatus(path string) (map[string]any, bool) {
+	if path == "" {
+		return nil, false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, false
+	}
+	h.logStatusMu.Lock()
+	defer h.logStatusMu.Unlock()
+	cached, ok := h.logStatusCache[path]
+	if !ok || cached.size != info.Size() || !cached.modTime.Equal(info.ModTime()) {
+		return nil, false
+	}
+	return cloneLogStatus(cached.value), true
+}
+
+func (h *SessionsHandler) warmLogStatus(path string) {
+	if path == "" {
+		return
+	}
+	h.logWarmMu.Lock()
+	if h.logWarm[path] {
+		h.logWarmMu.Unlock()
+		return
+	}
+	h.logWarm[path] = true
+	h.logWarmMu.Unlock()
+	go func() {
+		defer func() {
+			h.logWarmMu.Lock()
+			delete(h.logWarm, path)
+			h.logWarmMu.Unlock()
+		}()
+		h.logWarmSem <- struct{}{}
+		_ = h.cachedLogStatus(path)
+		<-h.logWarmSem
+	}()
+}
+
+func (h *SessionsHandler) warmTranscript(agent AgentInfo) {
+	if agent.SessionID == "" {
+		return
+	}
+	h.transcriptWarmMu.Lock()
+	if h.transcriptWarm[agent.SessionID] || h.transcriptPending[agent.SessionID] {
+		h.transcriptWarmMu.Unlock()
+		return
+	}
+	h.transcriptPending[agent.SessionID] = true
+	h.transcriptWarmMu.Unlock()
+	go func() {
+		defer func() {
+			h.transcriptWarmMu.Lock()
+			delete(h.transcriptPending, agent.SessionID)
+			h.transcriptWarm[agent.SessionID] = true
+			h.transcriptWarmMu.Unlock()
+		}()
+		h.transcriptWarmSem <- struct{}{}
+		switch agent.AgentType {
+		case at.Codex:
+			h.jsonl.ReadCodexTurnEvent(agent.SessionID, agent.WorkingDir)
+		case at.Agy, at.Antigravity, at.Gemini:
+			h.jsonl.ReadAgyTurnEvent(agent.SessionID, agent.WorkingDir)
+		}
+		h.jsonl.FirstUserPrompt(agent.SessionID, agent.WorkingDir, agent.AgentType)
+		<-h.transcriptWarmSem
+	}()
+}
+
+func (h *SessionsHandler) transcriptReady(sessionID string) bool {
+	h.transcriptWarmMu.Lock()
+	defer h.transcriptWarmMu.Unlock()
+	return h.transcriptWarm[sessionID]
 }
 
 // ── Agent Discovery ─────────────────────────────────────────────────────
@@ -395,11 +536,15 @@ func usageLimitNotice(logPath string) string {
 // List returns all live agent sessions with enriched metadata.
 // GET /api/sessions/live
 func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
+	trace := newPhaseTrace("live-list")
+	defer trace.finish()
+	trace.begin("terminal_discovery")
 	agents, err := h.discoverAgents(r)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
+	trace.end("terminal_discovery", "agents", len(agents))
 
 	ctx := r.Context()
 
@@ -410,30 +555,34 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			sessionIDs = append(sessionIDs, a.SessionID)
 		}
 	}
+	trace.begin("db_identity")
 	displayNames, _ := h.ss.GetDisplayNames(ctx, sessionIDs)
 	icons, _ := h.ss.GetIcons(ctx, sessionIDs)
+	nameColors, _ := h.ss.GetNameColors(ctx, sessionIDs)
+	trace.end("db_identity", dbPoolAttrs(h.db)...)
 	if icons == nil {
 		icons = map[string]string{}
 	}
-	nameColors, _ := h.ss.GetNameColors(ctx, sessionIDs)
 
 	// Batch fetch git state, file counts, events, and goals
+	trace.begin("db_enrichment")
 	gitState, _ := h.gs.GetAllLatestGitState(ctx)
+	fileCounts, _ := h.ts.GetAllEditedFileCounts(ctx)
+	latestEvents, _ := h.ts.GetLatestEventTypes(ctx, sessionIDs)
+	stateEvents, _ := h.ts.GetSessionStateEvents(ctx, sessionIDs)
 	if gitState == nil {
 		gitState = map[string]*store.GitSnapshot{}
 	}
-	fileCounts, _ := h.ts.GetAllEditedFileCounts(ctx)
 	if fileCounts == nil {
 		fileCounts = map[string]int{}
 	}
-	latestEvents, _ := h.ts.GetLatestEventTypes(ctx, sessionIDs)
 	if latestEvents == nil {
 		latestEvents = map[string][2]string{}
 	}
-	stateEvents, _ := h.ts.GetSessionStateEvents(ctx, sessionIDs)
 	if stateEvents == nil {
 		stateEvents = map[string][]store.AgentEvent{}
 	}
+	trace.end("db_enrichment", dbPoolAttrs(h.db)...)
 	// Launch times, used to bound how long after launch a stalled start is
 	// reported. See agentNeverStarted.
 	createdAtMap := map[string]string{}
@@ -456,6 +605,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var latestGoals map[string]string
+	trace.begin("db_goals_board")
 	latestGoals, err = h.ts.GetLatestGoals(ctx, sessionIDs)
 	if err != nil {
 		slog.Warn("failed to get latest goals", "error", err)
@@ -486,6 +636,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if allUnread == nil {
 		allUnread = map[string]int{}
 	}
+	trace.end("db_goals_board", dbPoolAttrs(h.db)...)
 
 	// Fallback: board_name from live_sessions DB for agents not yet subscribed
 	liveBoardNames := make(map[string][2]string) // session_id -> [board_name, display_name]
@@ -497,6 +648,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		ContextWindow int
 	}
 	liveExtras := make(map[string]liveExtra) // session_id -> extra fields
+	trace.begin("db_live_session_extras")
 	{
 		var rows []struct {
 			SessionID     string  `db:"session_id"`
@@ -527,11 +679,34 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	trace.end("db_live_session_extras", dbPoolAttrs(h.db)...)
 
 	var sessions []map[string]any
 	liveSIDs := make(map[string]bool) // track session IDs already in results
+	// Keep the response path bounded for large teams: cold log enrichment is
+	// warmed asynchronously and appears on the next sidebar refresh.
+	largeList := len(agents) > 8
+	trace.begin("state_transcript_enrichment")
 	for _, agent := range agents {
-		logInfo := getLogStatus(agent.LogPath)
+		agentStarted := time.Now()
+		var logInfo map[string]any
+		logReady := true
+		if largeList {
+			var ready bool
+			logInfo, ready = h.readyLogStatus(agent.LogPath)
+			if !ready {
+				logReady = false
+				h.warmLogStatus(agent.LogPath)
+				logInfo = getLogStatus("")
+			}
+		} else {
+			logInfo = h.cachedLogStatus(agent.LogPath)
+		}
+		trace.agentDetail("log_status", agent.SessionID, time.Since(agentStarted))
+		if largeList {
+			h.warmTranscript(agent)
+		}
+		skipExpensive := largeList && (!logReady || !h.transcriptReady(agent.SessionID))
 
 		status, _ := logInfo["status"].(string)
 		summary, _ := logInfo["summary"].(string)
@@ -569,7 +744,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		for _, ev := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
-		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
+		transcriptStarted := time.Now()
+		if !skipExpensive {
+			h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
+		}
+		trace.agentDetail("transcript_state", sid, time.Since(transcriptStarted))
 		state := DeriveSessionState(stateInput)
 
 		// The goal line is the newest goal event (the agent's PULSE line, the
@@ -602,6 +781,12 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			iconVal = ic
 		}
 
+		firstPrompt := ""
+		if !skipExpensive {
+			promptStarted := time.Now()
+			firstPrompt = h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType)
+			trace.agentDetail("first_prompt", sid, time.Since(promptStarted))
+		}
 		entry := map[string]any{
 			"name":                  agent.AgentName,
 			"agent_type":            agent.AgentType,
@@ -632,7 +817,8 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_is_orchestrator": boardSubscriberFlag(boardSub),
 			"log_path":              agent.LogPath,
 			"sleeping":              liveSleeping[sid],
-			"first_prompt":          h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
+			"first_prompt":          firstPrompt,
+			"enrichment_pending":    skipExpensive,
 		}
 		// Include prompt, model, and capabilities from live_sessions DB
 		if extra, ok := liveExtras[sid]; ok {
@@ -672,6 +858,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		sessions = append(sessions, entry)
 	}
+	trace.end("state_transcript_enrichment", "rows", len(sessions), "large_list", largeList)
 
 	// Add placeholder entries for sleeping sessions without active tmux
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
@@ -1050,6 +1237,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
 	workingDir := r.URL.Query().Get("working_directory")
+	var resumeFromID string
 
 	// If missing metadata, attempt lookup by session_id or name
 	if (agentType == "" || workingDir == "" || sessionID == "") && h.ss != nil {
@@ -1058,6 +1246,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			targetID = name
 		}
 		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
+			resumeFromID = derefStrPtr(ls.ResumeFromID)
 			if agentType == "" && ls.AgentType != "" {
 				agentType = ls.AgentType
 			}
@@ -1070,6 +1259,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		} else if all, err := h.ss.GetAllLiveSessions(r.Context()); err == nil {
 			for _, s := range all {
 				if s.AgentName == name || s.SessionID == name {
+					resumeFromID = derefStrPtr(s.ResumeFromID)
 					if agentType == "" && s.AgentType != "" {
 						agentType = s.AgentType
 					}
@@ -1082,6 +1272,14 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+		}
+	}
+	// Live chat clients normally provide all session metadata explicitly. Even
+	// in that case, load the persisted resume lineage so a replacement session
+	// can read its trusted ancestor rollout until the new marker is emitted.
+	if resumeFromID == "" && h.ss != nil && sessionID != "" {
+		if ls, err := h.ss.GetLiveSession(r.Context(), sessionID); err == nil && ls != nil {
+			resumeFromID = derefStrPtr(ls.ResumeFromID)
 		}
 	}
 
@@ -1108,7 +1306,11 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	var messages []map[string]any
 	var total int
 	if sessionID != "" {
-		messages, total = h.jsonl.ReadAllMessagesForLive(id, workingDir, agentType)
+		if resumeFromID != "" {
+			messages, total = h.jsonl.ReadAllMessagesForLiveWithLineage(id, workingDir, agentType, resumeFromID)
+		} else {
+			messages, total = h.jsonl.ReadAllMessagesForLive(id, workingDir, agentType)
+		}
 	} else {
 		messages, total = h.jsonl.ReadAllMessages(id, workingDir, agentType)
 	}

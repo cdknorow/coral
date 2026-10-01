@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
@@ -12,11 +13,11 @@ import (
 // SessionIndexer scans history files for all registered agents and upserts
 // into session_index + session_fts.
 type SessionIndexer struct {
-	store         *store.SessionStore
-	scanners      []agent.HistoryScanner
-	interval      time.Duration
-	startupDelay  time.Duration
-	logger        *slog.Logger
+	store        *store.SessionStore
+	scanners     []agent.HistoryScanner
+	interval     time.Duration
+	startupDelay time.Duration
+	logger       *slog.Logger
 }
 
 // NewSessionIndexer creates a new SessionIndexer.
@@ -32,11 +33,18 @@ func NewSessionIndexer(sessionStore *store.SessionStore, scanners []agent.Histor
 
 // Run starts the indexing loop. Blocks until context is cancelled.
 func (idx *SessionIndexer) Run(ctx context.Context) error {
+	phaseLogging := os.Getenv("CORAL_DEBUG_PHASES") == "1"
+	if phaseLogging {
+		idx.logger.Info("indexer startup delay begin", "startup_delay_ms", idx.startupDelay.Milliseconds())
+	}
 	// Wait for startup delay
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-time.After(idx.startupDelay):
+	}
+	if phaseLogging {
+		idx.logger.Info("indexer startup delay complete")
 	}
 
 	ticker := time.NewTicker(idx.interval)
@@ -61,6 +69,7 @@ func (idx *SessionIndexer) Run(ctx context.Context) error {
 
 // RunOnce performs a single indexing pass over all registered scanners.
 func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
+	started := time.Now()
 	knownMtimes, err := idx.store.GetIndexedMtimes(ctx)
 	if err != nil {
 		return err
@@ -97,7 +106,7 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 			SourceType:     s.SourceType,
 			SourceFile:     s.SourceFile,
 			FirstTimestamp: s.FirstTimestamp,
-			LastTimestamp:   s.LastTimestamp,
+			LastTimestamp:  s.LastTimestamp,
 			MessageCount:   s.MessageCount,
 			DisplaySummary: s.DisplaySummary,
 			FileMtime:      s.FileMtime,
@@ -120,7 +129,11 @@ func (idx *SessionIndexer) RunOnce(ctx context.Context) error {
 		indexed++
 	}
 
-	idx.logger.Info("indexer pass complete", "indexed", indexed)
+	if os.Getenv("CORAL_DEBUG_PHASES") == "1" {
+		idx.logger.Info("indexer pass complete", "indexed", indexed, "scanners", len(idx.scanners), "sessions", len(allSessions), "duration_ms", time.Since(started).Milliseconds())
+	} else {
+		idx.logger.Info("indexer pass complete", "indexed", indexed)
+	}
 	return nil
 }
 

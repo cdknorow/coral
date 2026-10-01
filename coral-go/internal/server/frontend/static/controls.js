@@ -7,7 +7,7 @@ import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
-import { addPendingMessage } from './live_chat.js';
+import { addPendingMessage, resetLiveHistory } from './live_chat.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -560,10 +560,20 @@ export async function confirmRestart() {
             if (result.session_id) {
                 state.currentSession.session_id = result.session_id;
             }
-            if (result.agent_name) {
-                state.currentSession.name = result.agent_name;
-                document.getElementById("session-name").textContent = result.agent_name;
+            if (config.agentType) {
+                state.currentSession.agent_type = config.agentType;
             }
+            // Restart renames the tmux session and returns its canonical name.
+            // Keep the browser target aligned with the replacement session.
+            const restartedName = result.session_name || result.agent_name;
+            if (restartedName) {
+                state.currentSession.name = restartedName;
+                document.getElementById("session-name").textContent = restartedName;
+            }
+            // The replacement session has an independent transcript and count.
+            // Drop the old reader generation before the next poll, otherwise an
+            // empty/new transcript is queried with the old session's offset.
+            resetLiveHistory({ resume: true });
             // Clear activity data immediately so the UI shows zero for the new session
             state.currentAgentEvents = [];
             renderEventTimeline();

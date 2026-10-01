@@ -206,6 +206,30 @@ func (r *SessionReader) ReadAllMessagesForLive(sessionID, workingDirectory, agen
 	return c.messages, len(c.messages)
 }
 
+// ReadAllMessagesForLiveWithLineage reads the exact live transcript and, when
+// it has an explicit persisted ancestor, prepends that ancestor's transcript.
+// Resume/restart can leave the provider writing the native rollout under the
+// ancestor Coral marker until the replacement session emits its first marker.
+// The caller supplies only trusted resume_from_id values; this never falls
+// back to newest-workspace or arbitrary transcript discovery.
+func (r *SessionReader) ReadAllMessagesForLiveWithLineage(sessionID, workingDirectory, agentType string, ancestorIDs ...string) ([]map[string]any, int) {
+	current, _ := r.ReadAllMessagesForLive(sessionID, workingDirectory, agentType)
+	for _, ancestorID := range ancestorIDs {
+		if ancestorID == "" || ancestorID == sessionID {
+			continue
+		}
+		ancestor, _ := r.ReadAllMessagesForLive(ancestorID, workingDirectory, agentType)
+		if len(ancestor) == 0 {
+			continue
+		}
+		merged := make([]map[string]any, 0, len(ancestor)+len(current))
+		merged = append(merged, ancestor...)
+		merged = append(merged, current...)
+		return merged, len(merged)
+	}
+	return current, len(current)
+}
+
 // FirstUserPrompt returns the earliest non-empty user message in a session.
 // Messages are read through the normal parser so system-injected user content
 // is excluded consistently with the chat transcript.

@@ -36,6 +36,8 @@ type availableAgent struct {
 
 // TeamAvailability reports observed runtime and queue state; it does not reserve work.
 func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Request) {
+	trace := newPhaseTrace("board-status")
+	defer trace.finish()
 	ctx := r.Context()
 	name := chi.URLParam(r, "name")
 	if name == "" {
@@ -45,11 +47,14 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, "board store unavailable")
 		return
 	}
+	trace.begin("db_sessions")
 	sessions, err := h.ss.GetAllLiveSessions(ctx)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
+	trace.end("db_sessions", append([]any{"rows", len(sessions)}, dbPoolAttrs(h.db)...)...)
+	trace.begin("db_board_snapshot")
 	subs, err := h.bs.ListSubscribers(ctx, name)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -60,11 +65,14 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
+	trace.end("db_board_snapshot", append([]any{"subscribers", len(subs), "tasks", len(tasks)}, dbPoolAttrs(h.db)...)...)
+	trace.begin("terminal_discovery")
 	runtime, err := h.discoverAgents(r)
 	if err != nil {
 		errInternalServer(w, "cannot determine live agent availability")
 		return
 	}
+	trace.end("terminal_discovery", "agents", len(runtime))
 	live := map[string]bool{}
 	for _, a := range runtime {
 		live[a.SessionID] = true
@@ -79,11 +87,13 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 			ids = append(ids, s.SessionID)
 		}
 	}
+	trace.begin("state_events")
 	events, err := h.ts.GetSessionStateEvents(ctx, ids)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
+	trace.end("state_events", append([]any{"sessions", len(ids)}, dbPoolAttrs(h.db)...)...)
 	waits, _ := h.bs.ListActiveWaits(ctx, name)
 	waitsBySubscriber := make(map[string]*board.RegisteredWait)
 	for i := range waits {

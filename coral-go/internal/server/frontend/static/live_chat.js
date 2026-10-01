@@ -899,7 +899,11 @@ export function stopLiveHistoryPoll() {
     }
 }
 
-export function resetLiveHistory() {
+// Reset transcript state when the selected live session changes. A restart
+// keeps the same pane but allocates a new Coral session ID; callers can ask us
+// to resume an already-running poll so the new transcript is loaded from zero.
+export function resetLiveHistory({ resume = false } = {}) {
+    const wasPolling = !!historyPollInterval;
     stopLiveHistoryPoll();
     if (activeLoadMoreAbortController) {
         activeLoadMoreAbortController.abort();
@@ -914,6 +918,9 @@ export function resetLiveHistory() {
     historyHasMore = false;
     initialLoadDone = false;
     loadingMore = false;
+    if (resume) {
+        if (wasPolling) startLiveHistoryPoll();
+    }
 }
 
 // ── Center view mode: terminal vs. chat ─────────────────────────────────
