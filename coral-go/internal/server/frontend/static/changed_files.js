@@ -613,7 +613,10 @@ function _getCmContent() {
 let _previewState = null; // { filepath, mode, content, hasDiff, diffText, gen }
 let _previewGen = 0;      // generation counter to guard against stale async writes
 let _artifactAbortController = null;
+let _artifactManifestStack = [];
 const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
+const MAX_ARTIFACT_MANIFEST_ENTRIES = 200;
+const CORAL_ARTIFACT_URI_RE = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i;
 
 function _artifactSizeLabel(bytes) {
     if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size';
@@ -666,6 +669,105 @@ async function _readArtifactText(response, maxBytes, signal) {
     return new TextDecoder().decode(bytes);
 }
 
+function _parseArtifactManifest(content) {
+    let value;
+    try { value = JSON.parse(content); } catch { return null; }
+    if (!Array.isArray(value) || value.length === 0 || value.length > MAX_ARTIFACT_MANIFEST_ENTRIES) return null;
+    const entries = [];
+    for (const item of value) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+        const name = typeof item.name === 'string' ? item.name.trim() : '';
+        const uri = typeof item.uri === 'string' ? item.uri.trim() : '';
+        const match = CORAL_ARTIFACT_URI_RE.exec(uri);
+        const mediaType = typeof item.media_type === 'string' ? item.media_type.trim() : '';
+        if (!name || name.length > 160 || !match || (mediaType && mediaType.length > 120)) return null;
+        entries.push({ name, uri: `coral://artifacts/${match[1].toLowerCase()}`, media_type: mediaType });
+    }
+    return { entries, raw: content };
+}
+
+function _artifactEntryType(entry) {
+    if (entry.media_type) return entry.media_type;
+    const name = entry.name.toLowerCase();
+    if (/\.md(?:own)?$/.test(name)) return 'Markdown';
+    if (/\.json$/.test(name)) return 'JSON';
+    if (/\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/.test(name)) return 'Image';
+    if (/\.(?:txt|log|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/.test(name)) return 'Text';
+    return 'Artifact';
+}
+
+function _renderArtifactManifest(body, manifest) {
+    if (!body) return;
+    const rows = manifest.entries.map((entry, index) => {
+        const digest = CORAL_ARTIFACT_URI_RE.exec(entry.uri)[1];
+        return `<li class="artifact-manifest-entry">
+        <div class="artifact-manifest-main"><button type="button" class="artifact-manifest-open" data-manifest-index="${index}">
+            <span class="artifact-manifest-name">${escapeHtml(entry.name)}</span>
+            <span class="artifact-manifest-type">${escapeHtml(_artifactEntryType(entry))}</span>
+        </button><a class="artifact-manifest-download" href="/api/artifacts/${digest}" download="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
+        <span class="artifact-manifest-uri">${escapeHtml(entry.uri)}</span>
+    </li>`;
+    }).join('');
+    body.innerHTML = `<div class="artifact-manifest-toolbar"><strong>${manifest.entries.length} file${manifest.entries.length === 1 ? '' : 's'}</strong><div class="artifact-manifest-actions"><button type="button" class="inline-preview-mode-btn artifact-manifest-raw">View raw JSON</button><button type="button" class="inline-preview-mode-btn artifact-manifest-download-raw">Download JSON</button></div></div><ul class="artifact-manifest-list">${rows}</ul>`;
+    body.querySelectorAll('.artifact-manifest-open').forEach(button => button.addEventListener('click', () => {
+        const entry = manifest.entries[Number(button.dataset.manifestIndex)];
+        if (entry) _openArtifactPreview(entry.uri, { fromManifest: true });
+    }));
+    body.querySelector('.artifact-manifest-raw')?.addEventListener('click', () => _showArtifactManifestRaw());
+    body.querySelector('.artifact-manifest-download-raw')?.addEventListener('click', () => _downloadArtifactManifest());
+}
+
+function _downloadArtifactManifest() {
+    if (!_previewState?.manifest) return;
+    const blob = new Blob([_previewState.manifest.raw], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = _previewState.filename || 'manifest.json';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function _showArtifactManifestRaw() {
+    const state = _previewState;
+    const body = document.getElementById('inline-preview-body');
+    if (!state?.manifest || !body) return;
+    _renderContentView(body, state.manifest.raw, state.filename || 'manifest.json');
+    const back = document.createElement('button');
+    back.type = 'button'; back.className = 'artifact-manifest-back'; back.textContent = 'Back to file collection';
+    back.addEventListener('click', () => _renderCurrentArtifactManifest());
+    body.prepend(back);
+}
+
+function _renderCurrentArtifactManifest() {
+    if (!_previewState?.manifest) return;
+    const body = document.getElementById('inline-preview-body');
+    _renderArtifactManifest(body, _previewState.manifest);
+}
+
+function _artifactBack() {
+    _artifactAbortController?.abort();
+    _artifactAbortController = null;
+    if (_artifactManifestStack.length) {
+        _previewState = _artifactManifestStack.pop();
+        const title = document.querySelector('#agentic-panel-files .inline-preview-filepath, .mobile-file-preview-overlay .inline-preview-filepath');
+        if (title) {
+            title.textContent = _previewState.manifest ? 'Artifact manifest' : 'Artifact preview';
+            title.title = _previewState.filepath || '';
+        }
+        const body = document.getElementById('inline-preview-body');
+        if (body) _renderArtifactState(body);
+        return;
+    }
+    window._closeInlinePreview();
+}
+
+function _renderArtifactState(body) {
+    if (!_previewState) return;
+    body.innerHTML = '';
+    if (_previewState.manifest) _renderArtifactManifest(body, _previewState.manifest);
+}
+
 /** Show inline preview for a file (clicking the preview icon). */
 export function openFilePreview(filepath, line) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
@@ -677,21 +779,27 @@ export function openFilePreview(filepath, line) {
 }
 
 /** Preview a Coral-managed artifact in the same Files panel as repository files. */
-async function _openArtifactPreview(uri) {
-    const match = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
+async function _openArtifactPreview(uri, options = {}) {
+    const match = CORAL_ARTIFACT_URI_RE.exec(uri);
     if (!match) return;
     const isMobile = window.innerWidth <= 767;
     let panel = isMobile ? document.createElement('div') : document.getElementById('agentic-panel-files');
     if (isMobile) { panel.className = 'mobile-file-preview-overlay'; document.body.appendChild(panel); }
     if (!panel) return;
     _artifactAbortController?.abort();
+    if (options.fromManifest && _previewState) {
+        _artifactManifestStack.push(_previewState);
+        if (_artifactManifestStack.length > 8) _artifactManifestStack.shift();
+    } else if (!options.fromManifest) {
+        _artifactManifestStack = [];
+    }
     _artifactAbortController = new AbortController();
     const signal = _artifactAbortController.signal;
     if (!isMobile && window.switchAgenticTab) window.switchAgenticTab('files', 'top');
     _previewState = { artifact: true, filepath: uri, mode: 'preview', gen: ++_previewGen };
     const gen = _previewState.gen;
     panel.innerHTML = `<div class="inline-preview-header">
-        <button class="inline-preview-back" onclick="window._closeInlinePreview()" title="Back to file list"><span class="material-icons">arrow_back</span></button>
+        <button class="inline-preview-back" onclick="window._artifactBack()" title="Back"><span class="material-icons">arrow_back</span></button>
         <span class="inline-preview-filepath" title="${escapeHtml(uri)}">Artifact preview</span>
     </div><div class="inline-preview-body" id="inline-preview-body"><div class="inline-preview-loading">Loading...</div></div>`;
     const body = panel.querySelector('#inline-preview-body');
@@ -721,7 +829,16 @@ async function _openArtifactPreview(uri) {
             // repository .md files.
             const content = await _readArtifactText(resp, MAX_ARTIFACT_PREVIEW_BYTES, signal);
             if (_isStale(gen)) return;
-            _renderContentView(body, content, type === 'text/markdown' || /\.md(?:own)?$/i.test(filename) ? (filename || 'artifact.md') : artifactPath);
+            const manifest = type.includes('json') ? _parseArtifactManifest(content) : null;
+            if (manifest) {
+                _previewState.manifest = manifest;
+                _previewState.filename = filename || 'manifest.json';
+                const title = panel.querySelector('.inline-preview-filepath');
+                if (title) { title.textContent = 'Artifact manifest'; title.title = _previewState.filename; }
+                _renderArtifactManifest(body, manifest);
+            } else {
+                _renderContentView(body, content, type === 'text/markdown' || /\.md(?:own)?$/i.test(filename) ? (filename || 'artifact.md') : artifactPath);
+            }
         }
     } catch (error) {
         if (error?.name === 'AbortError' || _isStale(_previewState?.gen)) return;
@@ -1190,6 +1307,7 @@ window._closeInlinePreview = function() {
     _artifactAbortController = null;
     _destroyCmEditor();
     _previewState = null;
+    _artifactManifestStack = [];
 
     // Remove mobile overlay if present
     document.querySelectorAll('.mobile-file-preview-overlay').forEach(el => el.remove());
@@ -1219,6 +1337,8 @@ window._closeInlinePreview = function() {
         loadChangedFiles(state.currentSession.name, state.currentSession.session_id);
     }
 };
+
+window._artifactBack = _artifactBack;
 
 /* ── Refresh & Render ──────────────────────────────────────── */
 
