@@ -3,6 +3,7 @@ package background
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 
 // mockRuntime records SendInput calls for verification.
 type mockRuntime struct {
+	mu   sync.Mutex
 	sent []sendCall
 }
 
@@ -23,6 +25,8 @@ type sendCall struct {
 
 func (m *mockRuntime) SpawnAgent(_ context.Context, _, _, _, _ string) error { return nil }
 func (m *mockRuntime) SendInput(_ context.Context, name, text string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.sent = append(m.sent, sendCall{session: name, text: text})
 	return nil
 }
