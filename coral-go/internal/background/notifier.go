@@ -140,16 +140,19 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		liveSessions[sessName] = true
 		subscriberID := naming.SubscriberID(a.DisplayName, a.AgentType)
 
-		// Look up by session name first (precise match for current session),
-		// fall back to subscriber_id (for backwards compatibility).
+		// A discovered session must have an authoritative subscription binding.
+		// Do not fall back to subscriber_id: legacy rows may have an empty or
+		// stale session_name, and inferring ownership from a display name can
+		// deliver another agent's unread messages.
 		sub, err := n.boardStore.GetSubscriptionBySessionName(ctx, sessName)
-		if err != nil || sub == nil {
-			sub, err = n.boardStore.GetSubscription(ctx, subscriberID)
-		}
 		if err != nil || sub == nil {
 			n.logger.Info("no subscription found", "subscriber_id", subscriberID, "session_name", sessName, "error", err)
 			continue
 		}
+		// The session-name lookup is authoritative across restarts. Discovery
+		// display names can lag replacement metadata, so never use the derived
+		// identity for unread queries after an exact subscription match.
+		subscriberID = sub.SubscriberID
 		// Skip remote subscribers
 		if sub.OriginServer != nil && *sub.OriginServer != "" {
 			n.logger.Info("skipping remote subscriber", "subscriber_id", subscriberID)

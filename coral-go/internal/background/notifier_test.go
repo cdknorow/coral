@@ -92,6 +92,87 @@ func TestBoardNotifier_StaleSubscription(t *testing.T) {
 		"nudge text should mention unread messages")
 }
 
+func TestBoardNotifier_SessionIdentityOverridesStaleDisplayName(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	project := "death-or-trade-ai-auto"
+	n := NewBoardNotifier(bs, rt, time.Second)
+	n.SetIsPausedFn(func(string) bool { return false })
+	_, err := bs.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "codex-orch", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, project, "QA Engineer", "QA Engineer", "codex-qa", nil, nil, "mentions")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "codex-poster", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, project, "Poster", "@Orchestrator inspect the queue", nil)
+	require.NoError(t, err)
+
+	// Replacement metadata can briefly report stale display names. Exact
+	// session-name subscription identity must still route unread checks to the
+	// matching board subscriber, rather than nudging QA for Orchestrator mail.
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{
+			{AgentType: "codex", SessionID: "orch", DisplayName: "QA Engineer"},
+			{AgentType: "codex", SessionID: "qa", DisplayName: "Orchestrator"},
+		}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	assert.Equal(t, "codex-orch", rt.sent[0].session)
+}
+
+func TestBoardNotifier_RejectsAbsentSessionDisplayNameFallback(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	n := NewBoardNotifier(bs, rt, time.Second)
+	n.SetIsPausedFn(func(string) bool { return false })
+	_, err := bs.Subscribe(ctx, "team-a", "Orchestrator", "Orchestrator", "codex-a", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "team-b", "QA Engineer", "QA Engineer", "codex-b", nil, nil, "mentions")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "team-a", "Poster", "Worker", "codex-poster", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "team-a", "Poster", "@Orchestrator team-a only", nil)
+	require.NoError(t, err)
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{
+			{AgentType: "codex", SessionID: "a", DisplayName: "QA Engineer"},
+			{AgentType: "codex", SessionID: "b", DisplayName: "Orchestrator"},
+			{AgentType: "codex", SessionID: "missing", DisplayName: "Orchestrator"},
+		}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	assert.Equal(t, "codex-a", rt.sent[0].session)
+}
+
+func TestBoardNotifier_RejectsUnboundLegacySubscription(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	n := NewBoardNotifier(bs, rt, time.Second)
+	n.SetIsPausedFn(func(string) bool { return false })
+	_, err := bs.Subscribe(ctx, "legacy-team", "Orchestrator", "Orchestrator", "", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "legacy-team", "Poster", "Worker", "codex-poster", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "legacy-team", "Poster", "@Orchestrator legacy binding", nil)
+	require.NoError(t, err)
+
+	// An empty session_name cannot establish which discovered session owns the
+	// subscription. Withhold delivery until the agent re-registers exactly.
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{
+			{AgentType: "codex", SessionID: "one", DisplayName: "Orchestrator"},
+			{AgentType: "codex", SessionID: "two", DisplayName: "Orchestrator"},
+		}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	assert.Empty(t, rt.sent)
+}
+
 // TestBoardNotifier_NoUnreadNoNudge verifies no nudge is sent when there are
 // no unread messages.
 func TestBoardNotifier_NoUnreadNoNudge(t *testing.T) {
