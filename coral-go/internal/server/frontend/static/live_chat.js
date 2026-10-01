@@ -569,8 +569,8 @@ function renderMessage(msg, container, agentType = "claude") {
     const adapter = chatAgentAdapter(agentType);
     if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) {
         appendContent(container, makeBubble("chat-note", "Interrupted"));
-    } else if (msg.type === "user" && isCoralNudge(msg.content)) {
-        appendCoralNotice(container, normalizeNudgeText(msg.content));
+	} else if (msg.type === "user" && isCoralNudge(msg.content)) {
+		appendCoralNotice(container, normalizeNudgeText(msg.content), isCoralHealthNudge(msg.content));
     } else if (msg.type === "user") {
         appendContent(container, makeBubble("chat-bubble human",
             `<div class="role-label">You</div><div class="message-text">${renderMarkdown(msg.content)}</div>`));
@@ -1113,14 +1113,17 @@ const CORAL_NUDGE_RES = [
     /^You have a new task in Coral \(#\d+:/i,
     /^\[Task #\d+[^\]]*\]/i,
     /^\[Wait resolved\]/i,
-    /^\[Coral\b[^\]]*\]/i,
+	/^\[Coral\b[^\]]*\]/i,
 ];
+
+const CORAL_HEALTH_NUDGE_RE = /^\[Coral health check\]/i;
 
 // Back-to-back notices (nudges that queued up while the agent was busy)
 // roll up into one showing the latest text and how many there were.
-function appendCoralNotice(container, text) {
-    const prev = lastContent(container);
-    if (prev && prev.classList.contains("chat-system")) {
+function appendCoralNotice(container, text, health = false) {
+	const prev = lastContent(container);
+	const noticeClass = health ? "chat-system-health" : "chat-system-general";
+	if (prev && prev.classList.contains("chat-system") && prev.classList.contains(noticeClass)) {
         const count = (Number(prev.dataset.count) || 1) + 1;
         prev.dataset.count = String(count);
         const textEl = prev.querySelector(".chat-system-text");
@@ -1136,22 +1139,30 @@ function appendCoralNotice(container, text) {
         badge.title = `${count} notices from Coral in a row`;
         return;
     }
-    appendContent(container, makeBubble("chat-system",
-        `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
+	appendContent(container, makeBubble(`chat-system ${noticeClass}`,
+		`<span class="material-icons" aria-hidden="true">${health ? "health_and_safety" : "notifications"}</span><span class="chat-system-label">${health ? "Coral · Health check" : "Coral"}</span><span class="chat-system-text" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`));
 }
 
 function normalizeNudgeText(content) {
     let text = String(content || "").trim();
     // In CLI agents (e.g. Antigravity CLI in plan/goal mode), the agent prefixes
     // terminal input with one or more slash commands (e.g. "/plan ").
-    text = text.replace(/^(?:\/[a-zA-Z0-9_-]+\s*)+/, "").trim();
+	text = text.replace(/^(?:\/[a-zA-Z0-9_-]+\s*)+/, "").trim();
+	text = text.replace(/^\[Coral health check\]\s*/i, "").trim();
     // If preceded by a notification tag like "@QA Engineer " or "@notify-all "
     return text.replace(/^@[^@\n\r]+?\s+(?=(?:You have|\[Task #|\[Wait resolved\]|\[Coral\b))/i, "").trim();
 }
 
+function isCoralHealthNudge(content) {
+	const text = String(content || "").trim().replace(/^(?:\/[a-zA-Z0-9_-]+\s*)+/, "").trim();
+	return CORAL_HEALTH_NUDGE_RE.test(text);
+}
+
 function isCoralNudge(content) {
-    const text = normalizeNudgeText(content);
-    return CORAL_NUDGE_RES.some(re => re.test(text));
+	const raw = String(content || "").trim().replace(/^(?:\/[a-zA-Z0-9_-]+\s*)+/, "").trim();
+	if (CORAL_HEALTH_NUDGE_RE.test(raw)) return true;
+	const text = normalizeNudgeText(content);
+	return CORAL_NUDGE_RES.some(re => re.test(text));
 }
 
 /** Record a message just sent to an agent so the chat can show it right away. */

@@ -16,11 +16,11 @@ import (
 type BoardHealthMonitor struct {
 	store         *board.Store
 	interval      time.Duration
-	runtime       AgentRuntime
 	idleAfter     time.Duration
 	escalateAfter time.Duration
 	mu            sync.Mutex
 	last          map[string]string
+	lastIssue     map[string]string
 	idleNotified  map[int64]time.Time
 	now           func() time.Time
 	postMessage   func(context.Context, string, string, string, *string) (*board.Message, error)
@@ -30,7 +30,7 @@ func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHea
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
-	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostMessage}
+	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), lastIssue: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostMessage}
 }
 
 // SetPostMessageFn provides an isolated delivery seam for retry tests.
@@ -40,9 +40,9 @@ func (m *BoardHealthMonitor) SetPostMessageFn(fn func(context.Context, string, s
 	}
 }
 
-// SetRuntime enables direct reminders to local assignees. The monitor still
-// records board messages when no runtime is available.
-func (m *BoardHealthMonitor) SetRuntime(runtime AgentRuntime) { m.runtime = runtime }
+// SetRuntime is retained for callers that share a monitor runtime. Health
+// monitoring never sends terminal input or captures terminal output.
+func (m *BoardHealthMonitor) SetRuntime(_ AgentRuntime) {}
 
 // SetIdleThresholds configures the first reminder and orchestrator escalation.
 func (m *BoardHealthMonitor) SetIdleThresholds(remindAfter, escalateAfter time.Duration) {
@@ -90,12 +90,16 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 	}
 	var issues []string
 	assigned := map[string]int{}
+	planned := 0
 	parallel := 0
 	for _, t := range tasks {
 		// Queued assignments are intentional landing slots; only active work
 		// contributes to execution-load imbalance.
 		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "in_progress" {
 			assigned[*t.AssignedTo]++
+		}
+		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "pending" {
+			planned++
 		}
 		// Assigned pending tasks already have an owner and may be deliberately
 		// serialized. Recommend parallelization only for unassigned candidates.
@@ -133,57 +137,82 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 	if parallel > 1 {
 		issues = append(issues, fmt.Sprintf("%d unblocked tasks can potentially run in parallel", parallel))
 	}
-	if len(issues) == 0 {
-		m.scanIdleTasks(ctx, project)
-		m.postActiveStatus(ctx, project, orchestratorRecipients(subs), assigned)
-		return
-	}
 	recipients := orchestratorRecipients(subs)
 	if len(recipients) == 0 {
-		m.scanIdleTasks(ctx, project)
+		if len(issues) == 0 {
+			m.mu.Lock()
+			m.lastIssue[project] = ""
+			m.mu.Unlock()
+		}
 		return
 	}
-	recipientTags := strings.Join(recipientMentions(recipients), " ")
-	report := "[Coral board health] " + recipientTags + "\n" + strings.Join(issues, "\n- ")
-	emitted := false
+	issueReport := ""
+	if len(issues) > 0 {
+		recipientTags := strings.Join(recipientMentions(recipients), " ")
+		issueReport = "[Coral board health] " + recipientTags + "\n- " + strings.Join(issues, "\n- ")
+	}
 	m.mu.Lock()
-	duplicate := m.last[project] == report
+	lastIssue := m.lastIssue[project]
 	m.mu.Unlock()
-	if !duplicate {
-		if _, err := m.postMessage(ctx, project, "Coral Health Monitor", report, nil); err == nil {
+	includeIssues := issueReport != "" && issueReport != lastIssue
+	idleFindings := m.collectIdleFindings(ctx, project, recipients)
+	report := composeHealthReport(issueReport, includeIssues, assigned, planned, recipients, idleFindings)
+	if report == "" {
+		if issueReport == "" {
 			m.mu.Lock()
-			m.last[project] = report
+			m.lastIssue[project] = ""
 			m.mu.Unlock()
-			emitted = true
+		}
+		return
+	}
+	if _, err := m.postMessage(ctx, project, "Coral Health Monitor", report, nil); err != nil {
+		return
+	}
+	m.mu.Lock()
+	if includeIssues {
+		m.lastIssue[project] = issueReport
+	} else if issueReport == "" {
+		m.lastIssue[project] = ""
+	}
+	for _, finding := range idleFindings {
+		if finding.mark != nil {
+			finding.mark()
 		}
 	}
-	m.scanIdleTasks(ctx, project)
-	if !emitted {
-		m.postActiveStatus(ctx, project, recipients, assigned)
-	}
+	m.mu.Unlock()
 }
 
-// postActiveStatus emits one team summary per monitor cadence when work is
-// active. Queued assignments are planned work; only in_progress tasks count.
-func (m *BoardHealthMonitor) postActiveStatus(ctx context.Context, project string, recipients []string, assigned map[string]int) {
-	if len(assigned) == 0 || len(recipients) == 0 {
-		return
+type idleFinding struct {
+	text string
+	mark func()
+}
+
+func composeHealthReport(issueReport string, includeIssues bool, assigned map[string]int, planned int, recipients []string, idleFindings []idleFinding) string {
+	sections := make([]string, 0, 3)
+	if includeIssues {
+		sections = append(sections, issueReport)
 	}
-	owners := make([]string, 0, len(assigned))
-	total := 0
-	for owner, count := range assigned {
-		owners = append(owners, owner)
-		total += count
+	if len(assigned) > 0 {
+		owners := make([]string, 0, len(assigned))
+		total := 0
+		for owner, count := range assigned {
+			owners = append(owners, owner)
+			total += count
+		}
+		sort.Strings(owners)
+		parts := make([]string, 0, len(owners))
+		for _, owner := range owners {
+			parts = append(parts, fmt.Sprintf("%s (%d)", owner, assigned[owner]))
+		}
+		sections = append(sections, fmt.Sprintf("[Coral team status] %s\nactive work: %d in_progress task(s) across %d agent(s)\nplanned work: %d queued assignment(s), excluded from active counts\n- %s", strings.Join(recipientMentions(recipients), " "), total, len(owners), planned, strings.Join(parts, ", ")))
 	}
-	sort.Strings(owners)
-	parts := make([]string, 0, len(owners))
-	for _, owner := range owners {
-		// Assignee counts are display data, not notification recipients. Do not
-		// prefix worker identities with @ or the board notifier will mention them.
-		parts = append(parts, fmt.Sprintf("%s (%d)", owner, assigned[owner]))
+	for _, finding := range idleFindings {
+		sections = append(sections, finding.text)
 	}
-	report := fmt.Sprintf("[Coral team status] %s\nactive work: %d in_progress task(s) across %d agent(s)\n- %s", strings.Join(recipientMentions(recipients), " "), total, len(owners), strings.Join(parts, ", "))
-	_, _ = m.postMessage(ctx, project, "Coral Health Monitor", report, nil)
+	if len(sections) == 0 {
+		return ""
+	}
+	return strings.Join(sections, "\n") + "\nReview current assignments, progress, and blockers, then take the next appropriate coordination action."
 }
 
 func orchestratorRecipients(subs []board.Subscriber) []string {
@@ -208,37 +237,33 @@ func recipientMentions(recipients []string) []string {
 	return mentions
 }
 
-func (m *BoardHealthMonitor) scanIdleTasks(ctx context.Context, project string) {
+func (m *BoardHealthMonitor) collectIdleFindings(ctx context.Context, project string, recipients []string) []idleFinding {
+	if len(recipients) == 0 {
+		return nil
+	}
 	now := m.now()
 	reminderBefore := now.Add(-m.idleAfter)
 	tasks, err := m.store.IdleTasks(ctx, project, reminderBefore)
 	if err != nil {
-		return
+		return nil
 	}
+	findings := make([]idleFinding, 0)
+	recipientTags := strings.Join(recipientMentions(recipients), " ")
 	for _, task := range tasks {
 		if task.AssignedTo == nil || *task.AssignedTo == "" {
 			continue
 		}
-		assignee := *task.AssignedTo
 		m.mu.Lock()
 		_, seen := m.idleNotified[task.ID]
 		m.mu.Unlock()
 		if !seen {
-			msg := fmt.Sprintf("[Task #%d idle] %s is still active but has had no recorded activity. Post a status, blocker, or completion update. Use the task reminder snooze if tests or long-running work are active.", task.ID, task.Title)
-			_, _ = m.store.PostMessage(ctx, project, "Coral Health Monitor", "@"+assignee+" "+msg, nil)
-			if sub, _ := m.store.GetProjectSubscription(ctx, project, assignee); sub != nil && m.runtime != nil && sub.SessionName != "" {
-				_ = m.runtime.SendInput(ctx, sub.SessionName, msg)
-			}
-			m.mu.Lock()
-			m.idleNotified[task.ID] = now
-			m.mu.Unlock()
-			continue
+			findings = append(findings, idleFinding{text: fmt.Sprintf("%s [Task #%d idle] %s is still active but has had no recorded activity. Review its status, blocker, or completion update; use the task reminder snooze if tests or long-running work are active.", recipientTags, task.ID, task.Title), mark: func() { m.idleNotified[task.ID] = now }})
 		}
 	}
 	escalationBefore := now.Add(-m.escalateAfter)
 	escalationTasks, err := m.store.IdleTasks(ctx, project, escalationBefore)
 	if err != nil {
-		return
+		return findings
 	}
 	for _, task := range escalationTasks {
 		if task.AssignedTo == nil || *task.AssignedTo == "" {
@@ -247,12 +272,12 @@ func (m *BoardHealthMonitor) scanIdleTasks(ctx context.Context, project string) 
 		assignee := *task.AssignedTo
 		key := fmt.Sprintf("escalated:%d", task.ID)
 		m.mu.Lock()
-		if m.last[key] != "" {
-			m.mu.Unlock()
+		seen := m.last[key] != ""
+		m.mu.Unlock()
+		if seen {
 			continue
 		}
-		m.last[key] = now.UTC().Format(time.RFC3339)
-		m.mu.Unlock()
-		_, _ = m.store.PostMessage(ctx, project, "Coral Health Monitor", fmt.Sprintf("@Orchestrator [Task #%d stale] %s remains in_progress after an inactivity reminder to %s. Review status, blocker, or reassignment; Coral did not change ownership or completion.", task.ID, task.Title, assignee), nil)
+		findings = append(findings, idleFinding{text: fmt.Sprintf("%s [Task #%d stale] %s remains in_progress after an inactivity reminder to %s. Review status, blocker, or reassignment; Coral did not change ownership or completion.", recipientTags, task.ID, task.Title, assignee), mark: func() { m.last[key] = now.UTC().Format(time.RFC3339) }})
 	}
+	return findings
 }

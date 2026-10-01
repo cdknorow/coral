@@ -12,16 +12,17 @@ import (
 
 func TestBoardStatusCurrentAndExplicitBoard(t *testing.T) {
 	isolateBoardEnv(t)
-	var path string
+	var path, query string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "GET", r.Method)
 		path = r.URL.Path
+		query = r.URL.RawQuery
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"board":"routing","agents":[{"subscriber_id":"QA","available":true}],"unassigned_tasks":[{"id":9007199254740993}]}`))
 	}))
 	defer server.Close()
 	serverURL = server.URL
-	saveState(&boardState{Project: "routing", ServerURL: server.URL})
+	saveState(&boardState{Project: "routing", JobTitle: "Orchestrator", ServerURL: server.URL})
 	var out bytes.Buffer
 	require.NoError(t, runBoardStatus(nil, &out))
 	require.Equal(t, "/api/board/routing/status", path)
@@ -30,6 +31,10 @@ func TestBoardStatusCurrentAndExplicitBoard(t *testing.T) {
 	out.Reset()
 	require.NoError(t, runBoardStatus([]string{"--board", "other board"}, &out))
 	require.Equal(t, "/api/board/other board/status", path)
+	out.Reset()
+	require.NoError(t, runBoardStatus([]string{"--activity"}, &out))
+	require.Equal(t, "/api/board/routing/status", path)
+	require.Equal(t, "activity=1&subscriber_id=Orchestrator", query)
 }
 
 func TestBoardStatusErrors(t *testing.T) {

@@ -1,9 +1,12 @@
 package routes
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
@@ -32,7 +35,10 @@ type availableAgent struct {
 	WaitingOn               *board.RegisteredWait `json:"waiting_on,omitempty"`
 	Reminder                bool                  `json:"reminder,omitempty"`
 	ReminderIntervalSeconds int                   `json:"reminder_interval_seconds,omitempty"`
+	Activity                string                `json:"activity,omitempty"`
 }
+
+var statusActivityANSI = regexp.MustCompile(`\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))`)
 
 // TeamAvailability reports observed runtime and queue state; it does not reserve work.
 func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +53,8 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, "board store unavailable")
 		return
 	}
+	includeActivity := r.URL.Query().Get("activity") == "1" || strings.EqualFold(r.URL.Query().Get("activity"), "true")
+	activityCaller := r.URL.Query().Get("subscriber_id")
 	trace.begin("db_sessions")
 	sessions, err := h.ss.GetAllLiveSessions(ctx)
 	if err != nil {
@@ -59,6 +67,19 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	if includeActivity {
+		var authorized bool
+		for _, sub := range subs {
+			if sub.IsActive != 0 && sub.SubscriberID == activityCaller && (sub.CanPeek != 0 || strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator") || strings.EqualFold(strings.TrimSpace(sub.SubscriberID), "Operator")) {
+				authorized = true
+				break
+			}
+		}
+		if !authorized {
+			errForbidden(w, "activity context requires an active Orchestrator or Operator subscription")
+			return
+		}
 	}
 	tasks, err := h.bs.ListTasks(ctx, name)
 	if err != nil {
@@ -131,6 +152,14 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		for _, t := range tasks {
 			if a.SubscriberID != "" && t.AssignedTo != nil && *t.AssignedTo == a.SubscriberID && openAvailabilityTask(t.Status) {
 				a.Tasks = append(a.Tasks, availabilityTask{t.ID, "board", t.Title, t.Status})
+			}
+		}
+		if includeActivity && len(a.Tasks) > 0 && subscribed && sub.SessionName != "" && h.terminal != nil {
+			captureCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+			output, captureErr := h.terminal.CaptureOutput(captureCtx, sub.SessionName, 40, "", "")
+			cancel()
+			if captureErr == nil {
+				a.Activity = latestStatusActivity(output)
 			}
 		}
 		input := SessionStateInput{Sleeping: s.IsSleeping != 0}
@@ -214,6 +243,24 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"board": name, "team": name, "working_mode": mode, "observed_at": time.Now().UTC().Format(time.RFC3339), "agents": agents, "summary": summary, "unassigned_tasks": unassigned, "health_report": availabilityHealthReport(tasks)})
+}
+
+func latestStatusActivity(raw string) string {
+	clean := statusActivityANSI.ReplaceAllString(raw, "")
+	clean = strings.ReplaceAll(clean, "\r", "\n")
+	lines := strings.Split(clean, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		line = strings.ReplaceAll(line, "@", "(at)")
+		if len(line) > 160 {
+			line = line[:159] + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 func availabilityHealthReport(tasks []board.Task) []string {

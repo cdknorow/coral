@@ -19,7 +19,8 @@ import (
 func TestAgentTasks_MirrorBoardTaskAPI(t *testing.T) {
 	server, _, _, ss := setupSessionsTestServer(t)
 	ctx := context.Background()
-	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "solo-agent", AgentType: "claude", WorkingDir: "/tmp/solo", SessionID: "solo-1"})
+	displayName := "Solo Display"
+	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "solo-agent", AgentType: "claude", WorkingDir: "/tmp/solo", SessionID: "solo-1", DisplayName: &displayName})
 	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "other-agent", AgentType: "claude", WorkingDir: "/tmp/other", SessionID: "other-1"})
 
 	post := func(path string, body any) (int, map[string]any) {
@@ -45,6 +46,13 @@ func TestAgentTasks_MirrorBoardTaskAPI(t *testing.T) {
 	// The operator gives the agent a task from the dashboard (with priority and details)
 	code, first := post("/api/sessions/live/solo-agent/tasks", map[string]any{"title": "Add a battle log", "body": "Log each round.", "priority": "high", "session_id": "solo-1"})
 	require.Equal(t, http.StatusOK, code)
+	operatorResp, err := http.Get(server.URL + "/api/sessions/live/solo-agent/tasks?session_id=solo-1")
+	require.NoError(t, err)
+	defer operatorResp.Body.Close()
+	var operatorTasks []map[string]any
+	require.NoError(t, json.NewDecoder(operatorResp.Body).Decode(&operatorTasks))
+	require.NotEmpty(t, operatorTasks)
+	assert.Equal(t, "Solo Display", operatorTasks[0]["display_name"], "personal task ownership must use the exact session display name")
 	// The agent adds one itself (task add), like on a board: 201 + board-shaped task
 	code, added := post("/api/agent/tasks", map[string]any{"session_id": "solo-1", "title": "Write engine tests", "body": "Cover ties.", "priority": "low"})
 	require.Equal(t, http.StatusCreated, code)

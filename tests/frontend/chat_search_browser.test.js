@@ -62,10 +62,12 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Refusing production port');
             const container = document.getElementById('chat-search-results');
             const hit = container.querySelector('.chat-search-hit');
             const mark = hit ? hit.querySelector('mark') : null;
+            const markStyle = mark ? getComputedStyle(mark) : null;
             return {
                 text: container.textContent,
                 hitCount: container.querySelectorAll('.chat-search-hit').length,
                 markText: mark ? mark.textContent : null,
+                markWeight: markStyle ? markStyle.fontWeight : null,
                 isError: container.textContent === 'Search is temporarily unavailable.'
             };
         })()`);
@@ -74,6 +76,7 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Refusing production port');
         assert.equal(searchCompleteResult.isError, false, 'status="complete" must NOT be treated as an error');
         assert.equal(searchCompleteResult.hitCount, 1, 'Rendered 1 hit card for status="complete"');
         assert.equal(searchCompleteResult.markText, 'search', 'Highlighted matched excerpt with <mark>');
+        assert.equal(searchCompleteResult.markWeight, '700', 'Matched excerpt is visibly bold');
 
         // 3. Exercise searchChats with status: "partial"
         const searchPartialResult = await ev(`(async () => {

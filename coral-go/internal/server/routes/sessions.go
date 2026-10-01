@@ -3555,7 +3555,30 @@ func (h *SessionsHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	if err != nil || tasks == nil {
 		tasks = []store.AgentTask{}
 	}
+	// A personal task belongs to its exact session, not the workspace/folder
+	// name. Resolve the current or persisted display name by session ID so a
+	// team task table cannot label every personal row with the workspace name.
+	if sidPtr != nil && *sidPtr != "" {
+		if display, ok := h.sessionDisplayName(r.Context(), *sidPtr); ok {
+			for i := range tasks {
+				tasks[i].DisplayName = &display
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, tasks)
+}
+
+func (h *SessionsHandler) sessionDisplayName(ctx context.Context, sessionID string) (string, bool) {
+	if sessionID == "" {
+		return "", false
+	}
+	if live, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && live != nil && live.DisplayName != nil && strings.TrimSpace(*live.DisplayName) != "" {
+		return strings.TrimSpace(*live.DisplayName), true
+	}
+	if saved, err := h.ss.GetDisplayName(ctx, sessionID); err == nil && saved != nil && strings.TrimSpace(*saved) != "" {
+		return strings.TrimSpace(*saved), true
+	}
+	return "", false
 }
 
 func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {

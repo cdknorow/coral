@@ -8,8 +8,19 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type healthRuntimeProbe struct {
+	mockRuntime
+	captureCalls int
+}
+
+func (p *healthRuntimeProbe) CaptureActivity(context.Context, string) (string, error) {
+	p.captureCalls++
+	return "SECRET_TERMINAL_OUTPUT", nil
+}
 
 func healthMonitorStore(t *testing.T) *board.Store {
 	t.Helper()
@@ -138,6 +149,35 @@ func TestBoardHealthMonitor_PersistentFindingDoesNotStarveStatus(t *testing.T) {
 	require.Contains(t, messages[1].Content, "[Coral team status]")
 }
 
+func TestBoardHealthMonitor_ConsolidatesFindingsAndStatusPerScan(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "combined")
+	ctx := context.Background()
+	active, err := s.CreateTask(ctx, "combined", "Idle active work", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "combined", "Worker", active.ID)
+	require.NoError(t, err)
+	healthMonitorIssue(t, s, "combined")
+
+	m := NewBoardHealthMonitor(s, time.Hour)
+	m.now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+	m.SetIdleThresholds(time.Hour, 3*time.Hour)
+	m.scan(ctx)
+	messages, err := s.ListMessages(ctx, "combined", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 1, "same-scan findings and status must be one report")
+	require.Contains(t, messages[0].Content, "unblocked tasks can potentially run in parallel")
+	require.Contains(t, messages[0].Content, "[Task #")
+	require.Contains(t, messages[0].Content, "active work: 1 in_progress task(s) across 1 agent(s)")
+	require.Contains(t, messages[0].Content, "planned work: 0 queued assignment(s)")
+
+	m.scan(ctx)
+	messages, err = s.ListMessages(ctx, "combined", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 2, "active summary recurs while deduped findings stay quiet")
+	require.NotContains(t, messages[1].Content, "[Task #")
+}
+
 func TestBoardHealthMonitor_UsesRegisteredOrchestratorAndSkipsAbsent(t *testing.T) {
 	ctx := context.Background()
 	custom := healthMonitorStore(t)
@@ -191,4 +231,81 @@ func TestBoardHealthMonitor_FailedFindingPostRetries(t *testing.T) {
 	count, err = s.CountMessages(ctx, "retry")
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+}
+
+func TestBoardHealthMonitor_FailedCombinedPostRetriesAllSections(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "combined-retry")
+	ctx := context.Background()
+	active, err := s.CreateTask(ctx, "combined-retry", "Idle active work", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "combined-retry", "Worker", active.ID)
+	require.NoError(t, err)
+	healthMonitorIssue(t, s, "combined-retry")
+	m := NewBoardHealthMonitor(s, time.Hour)
+	m.now = func() time.Time { return time.Now().Add(2 * time.Hour) }
+	m.SetIdleThresholds(time.Hour, 3*time.Hour)
+	failed := true
+	m.SetPostMessageFn(func(context.Context, string, string, string, *string) (*board.Message, error) {
+		if failed {
+			return nil, errors.New("forced combined post failure")
+		}
+		return nil, nil
+	})
+	m.scan(ctx)
+	count, err := s.CountMessages(ctx, "combined-retry")
+	require.NoError(t, err)
+	require.Zero(t, count)
+	failed = false
+	m.SetPostMessageFn(s.PostMessage)
+	m.scan(ctx)
+	messages, err := s.ListMessages(ctx, "combined-retry", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	require.Contains(t, messages[0].Content, "unblocked tasks can potentially run in parallel")
+	require.Contains(t, messages[0].Content, "[Task #")
+	require.Contains(t, messages[0].Content, "active work: 1 in_progress task(s)")
+}
+
+func TestBoardHealthMonitor_NeverCapturesTerminalOutput(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "no-capture")
+	ctx := context.Background()
+	task, err := s.CreateTask(ctx, "no-capture", "Active", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "no-capture", "Worker", task.ID)
+	require.NoError(t, err)
+	probe := &healthRuntimeProbe{}
+	m := NewBoardHealthMonitor(s, time.Hour)
+	m.SetRuntime(probe)
+	m.scan(ctx)
+	require.Zero(t, probe.captureCalls)
+	messages, err := s.ListMessages(ctx, "no-capture", 100, 0, 0)
+	require.NoError(t, err)
+	require.Len(t, messages, 1)
+	assert.NotContains(t, messages[0].Content, "SECRET_TERMINAL_OUTPUT")
+	assert.Contains(t, messages[0].Content, "Review current assignments, progress, and blockers")
+}
+
+func TestBoardHealthMonitor_IdleFindingsOnlyReachOrchestrator(t *testing.T) {
+	s := healthMonitorStore(t)
+	healthMonitorBoard(t, s, "idle-routing")
+	ctx := context.Background()
+	task, err := s.CreateTask(ctx, "idle-routing", "Idle work", "", "medium", "Orchestrator", "Worker")
+	require.NoError(t, err)
+	_, err = s.ClaimTask(ctx, "idle-routing", "Worker", task.ID)
+	require.NoError(t, err)
+	m := NewBoardHealthMonitor(s, time.Hour)
+	m.SetIdleThresholds(time.Nanosecond, time.Hour)
+	m.scan(ctx)
+	messages, err := s.ListMessages(ctx, "idle-routing", 100, 0, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, messages)
+	for _, msg := range messages {
+		assert.Contains(t, msg.Content, "@Orchestrator")
+		assert.NotContains(t, msg.Content, "@Worker")
+	}
+	workerMessages, err := s.ReadMessages(ctx, "idle-routing", "Worker", 50)
+	require.NoError(t, err)
+	assert.Empty(t, workerMessages)
 }

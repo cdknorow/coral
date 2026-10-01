@@ -73,6 +73,7 @@ type mockSessionTerminal struct {
 	sessions         map[string]*ptymanager.PaneInfo
 	outputs          map[string]string
 	sent             map[string][]string
+	captures         []string
 	raw              map[string][]string // keys sent with SendRawInput
 	killSessionCalls []string
 	sendErr          error
@@ -121,6 +122,7 @@ func (m *mockSessionTerminal) FindSession(_ context.Context, name, _, _ string) 
 func (m *mockSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, _ string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.captures = append(m.captures, name)
 	if out, ok := m.outputs[name]; ok {
 		return out, nil
 	}

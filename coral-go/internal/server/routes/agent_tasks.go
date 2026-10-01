@@ -136,7 +136,11 @@ func (h *SessionsHandler) ListAgentTasksForAgent(w http.ResponseWriter, r *http.
 		return
 	}
 	views := make([]agentTaskView, 0, len(tasks))
+	displayName, hasDisplayName := h.sessionDisplayName(r.Context(), sid)
 	for i := range tasks {
+		if hasDisplayName {
+			tasks[i].DisplayName = &displayName
+		}
 		views = append(views, viewAgentTask(&tasks[i]))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tasks": views})

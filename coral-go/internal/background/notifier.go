@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -207,7 +208,27 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		if unread == 1 {
 			plural = ""
 		}
+		health, healthErr := n.boardStore.HasUnreadHealthMessage(ctx, sub.Project, subscriberID)
+		if healthErr != nil {
+			n.logger.Info("health message classification failed", "subscriber_id", subscriberID, "error", healthErr)
+		}
+		isOrchestrator := sub.CanPeek != 0 || strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator")
+		if health {
+			nonHealth, nonHealthErr := n.boardStore.HasUnreadNonHealthMessage(ctx, sub.Project, subscriberID)
+			if nonHealthErr != nil {
+				n.logger.Info("non-health message classification failed", "subscriber_id", subscriberID, "error", nonHealthErr)
+			}
+			if nonHealth {
+				health = false
+			} else if !isOrchestrator {
+				n.logger.Info("suppressing health-only nudge for non-orchestrator", "subscriber_id", subscriberID, "session", sessName)
+				continue
+			}
+		}
 		nudge := fmt.Sprintf("You have %d unread message%s on the message board. Run 'coral-board read' to see them.", unread, plural)
+		if health {
+			nudge = fmt.Sprintf("[Coral health check] Team health check for %s: %d unread message%s include a health-monitor summary. Review team status, assignments, progress, and blockers, then run 'coral-board read' to see the authoritative full content.", sub.Project, unread, plural)
+		}
 		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread)
 		err = n.runtime.SendInput(ctx, sessName, nudge)
 		if err != nil {

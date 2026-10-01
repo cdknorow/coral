@@ -3,7 +3,9 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -93,6 +96,80 @@ func TestTeamAvailabilityQueuesAndRuntime(t *testing.T) {
 	require.Equal(t, legacy, canonical)
 	require.Equal(t, "routing", canonical["board"])
 
+}
+
+func TestTeamAvailabilityActivityIsPrivateOnDemandForOrchestrator(t *testing.T) {
+	_, h, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	team := "private-activity"
+	sid := uuid.NewString()
+	display := "Lead Coordinator"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentName: "lead", AgentType: "claude", DisplayName: &display, BoardName: &team, WorkingDir: "/tmp"}))
+	_, err := h.bs.Subscribe(ctx, team, "Lead Coordinator", "Orchestrator", "claude-"+sid, nil, nil, "all", true)
+	require.NoError(t, err)
+	task, err := h.bs.CreateTask(ctx, team, "Review queue", "", "medium", "Operator", "Lead Coordinator")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, team, "Lead Coordinator", task.ID)
+	require.NoError(t, err)
+	terminal.addSession("claude-"+sid, "/tmp")
+	terminal.setOutput("claude-"+sid, "old\n\x1b[32mworking @worker\x1b[0m")
+	r := chi.NewRouter()
+	r.Get("/api/board/{project}/status", h.TeamAvailability)
+
+	unauthorized := httptest.NewRecorder()
+	r.ServeHTTP(unauthorized, httptest.NewRequest("GET", "/api/board/"+team+"/status?activity=1&subscriber_id=Worker", nil))
+	require.Equal(t, 403, unauthorized.Code)
+
+	private := httptest.NewRecorder()
+	r.ServeHTTP(private, httptest.NewRequest("GET", "/api/board/"+team+"/status?activity=1&subscriber_id=Lead%20Coordinator", nil))
+	require.Equal(t, 200, private.Code, private.Body.String())
+	var result struct {
+		Agents []availableAgent `json:"agents"`
+	}
+	require.NoError(t, json.Unmarshal(private.Body.Bytes(), &result))
+	require.Len(t, result.Agents, 1)
+	assert.Equal(t, "working (at)worker", result.Agents[0].Activity)
+	terminal.mu.Lock()
+	assert.Equal(t, []string{"claude-" + sid}, terminal.captures)
+	terminal.mu.Unlock()
+
+	ordinary := httptest.NewRecorder()
+	r.ServeHTTP(ordinary, httptest.NewRequest("GET", "/api/board/"+team+"/status", nil))
+	require.Equal(t, 200, ordinary.Code)
+	var ordinaryResult struct {
+		Agents []availableAgent `json:"agents"`
+	}
+	require.NoError(t, json.Unmarshal(ordinary.Body.Bytes(), &ordinaryResult))
+	require.Len(t, ordinaryResult.Agents, 1)
+	assert.Empty(t, ordinaryResult.Agents[0].Activity)
+	terminal.mu.Lock()
+	assert.Equal(t, []string{"claude-" + sid}, terminal.captures, "regular status must never capture terminal output")
+	terminal.mu.Unlock()
+}
+
+func TestTeamAvailabilityActivityRejectsAnonymousWorkerAndCrossTeamCaller(t *testing.T) {
+	_, h, _, _ := setupSessionsTestServer(t)
+	ctx := context.Background()
+	team := "private-activity-boundary"
+	_, err := h.bs.Subscribe(ctx, team, "Lead Coordinator", "Orchestrator", "claude-lead", nil, nil, "all", true)
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, team, "Worker", "Worker", "claude-worker", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, "other-team", "Other Orchestrator", "Orchestrator", "claude-other", nil, nil, "all", true)
+	require.NoError(t, err)
+	r := chi.NewRouter()
+	r.Get("/api/board/{project}/status", h.TeamAvailability)
+	for name, caller := range map[string]string{"anonymous": "", "worker": "Worker", "cross-team": "Other Orchestrator"} {
+		t.Run(name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			path := "/api/board/" + team + "/status?activity=1"
+			if caller != "" {
+				path += "&subscriber_id=" + url.QueryEscape(caller)
+			}
+			r.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+			require.Equal(t, http.StatusForbidden, rec.Code)
+		})
+	}
 }
 
 func TestAvailabilityBlockedAndDraftDoNotReserveAgent(t *testing.T) {
@@ -259,4 +336,3 @@ func TestTeamAvailabilityWithActiveWait(t *testing.T) {
 	require.Equal(t, "Waiting for message from 'Orchestrator' (waiting for review)", result.Agents[0].Reason)
 	require.Equal(t, 1, result.Summary["waiting"])
 }
-

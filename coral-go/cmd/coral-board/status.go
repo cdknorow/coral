@@ -15,6 +15,7 @@ import (
 func runBoardStatus(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	project := fs.String("board", "", "Board name (defaults to current subscription)")
+	activity := fs.Bool("activity", false, "Include private bounded activity for open-task agents (Orchestrator/Operator only)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -28,7 +29,11 @@ func runBoardStatus(args []string, out io.Writer) error {
 		}
 		*project = st.Project
 	}
-	data, status, err := apiCallRaw(http.MethodGet, "/"+url.PathEscape(*project)+"/status", nil)
+	path := "/" + url.PathEscape(*project) + "/status"
+	if *activity {
+		path += "?activity=1&subscriber_id=" + url.QueryEscape(resolveSubscriberID())
+	}
+	data, status, err := apiCallRaw(http.MethodGet, path, nil)
 	if err != nil {
 		return err
 	}

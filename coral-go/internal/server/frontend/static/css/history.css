@@ -321,6 +321,6 @@
 .chat-search-hit:hover, .chat-search-hit:focus-visible { background:var(--bg-hover); outline:2px solid var(--accent-secondary); outline-offset:-2px; }
 .chat-search-hit-meta { display:block; color:var(--text-muted); font-size:10px; margin-bottom:3px; }
 .chat-search-hit-excerpt { display:block; font-size:12px; line-height:1.35; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
-.chat-search-hit mark { background:color-mix(in srgb, var(--accent-secondary) 35%, transparent); color:inherit; border-radius:2px; }
+.chat-search-hit mark { background:color-mix(in srgb, var(--accent-secondary) 45%, transparent); color:var(--text-primary); font-weight:700; border-radius:2px; padding:0 2px; }
 .chat-search-status { padding:10px; color:var(--text-muted); font-size:12px; }
 .chat-search-target { outline:2px solid var(--accent-secondary); outline-offset:3px; }

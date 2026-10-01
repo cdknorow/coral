@@ -1037,6 +1037,60 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 	return latest, err
 }
 
+// HasUnreadHealthMessage reports whether the subscriber has an unread message
+// emitted by the health monitor. Sender identity is authoritative so ordinary
+// worker text cannot be classified as health.
+func (s *Store) HasUnreadHealthMessage(ctx context.Context, project, subscriberID string) (bool, error) {
+	return s.hasUnreadSenderMessage(ctx, project, subscriberID, "Coral Health Monitor", false)
+}
+
+// HasUnreadNonHealthMessage reports whether an eligible unread message was
+// posted by anyone other than the health monitor. It lets worker sessions with
+// receive-all mode retain ordinary notifications without being nudged solely
+// for an Orchestrator health backlog.
+func (s *Store) HasUnreadNonHealthMessage(ctx context.Context, project, subscriberID string) (bool, error) {
+	return s.hasUnreadSenderMessage(ctx, project, subscriberID, "Coral Health Monitor", true)
+}
+
+func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberID, sender string, excludeSender bool) (bool, error) {
+	var sub struct {
+		LastReadID  int64  `db:"last_read_id"`
+		JobTitle    string `db:"job_title"`
+		ReceiveMode string `db:"receive_mode"`
+		CanPeek     int    `db:"can_peek"`
+	}
+	if err := s.db.GetContext(ctx, &sub, "SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
+		return false, nil
+	}
+	if sub.ReceiveMode == "none" {
+		return false, nil
+	}
+	args := []interface{}{project, sub.LastReadID, subscriberID, sender}
+	senderClause := "m.subscriber_id=?"
+	if excludeSender {
+		senderClause = "m.subscriber_id!=?"
+	}
+	where := "m.project=? AND m.id>? AND m.subscriber_id!=? AND m.subscriber_id!='Coral Task Queue' AND " + senderClause
+	if sub.ReceiveMode != "all" && !isOrchestrator(subscriberID, sub.JobTitle, sub.CanPeek) {
+		terms := mentionTerms(subscriberID, sub.JobTitle)
+		if len(terms) == 0 {
+			return false, nil
+		}
+		parts := make([]string, len(terms))
+		for i, term := range terms {
+			parts[i] = "m.content LIKE ? COLLATE NOCASE"
+			args = append(args, "%"+term+"%")
+		}
+		where += " AND (" + strings.Join(parts, " OR ") + ")"
+	}
+	var found int
+	err := s.db.GetContext(ctx, &found, "SELECT 1 FROM board_messages m WHERE "+where+" LIMIT 1", args...)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return found == 1, err
+}
+
 // GetAllUnreadCounts returns unread counts for all subscribers, respecting each subscriber's receive_mode.
 // Returns map keyed by session_name (tmux session identifier) for compatibility with live session lookups.
 func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) {

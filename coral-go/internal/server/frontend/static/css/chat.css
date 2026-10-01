@@ -1010,6 +1010,14 @@
     font-size: 12px;
     line-height: 1.4;
 }
+.chat-system-health {
+    border-left: 3px solid var(--accent-secondary);
+    padding-left: 8px;
+}
+.chat-system-health .chat-system-label,
+.chat-system-health .material-icons {
+    color: var(--accent-secondary);
+}
 .chat-system .material-icons {
     flex: none;
     font-size: 14px;

@@ -173,6 +173,140 @@ func TestBoardNotifier_RejectsUnboundLegacySubscription(t *testing.T) {
 	assert.Empty(t, rt.sent)
 }
 
+func TestBoardNotifier_HealthOnlyNudgeIsDistinct(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	n := NewBoardNotifier(bs, rt, time.Second)
+	_, err := bs.Subscribe(ctx, "health-team", "Orchestrator", "Orchestrator", "codex-health", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "health-team", "Poster", "Worker", "codex-poster", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "health-team", "Coral Health Monitor", "[Coral team status] @Orchestrator review blockers", nil)
+	require.NoError(t, err)
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentType: "codex", SessionID: "health", DisplayName: "Orchestrator"}}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	assert.Contains(t, rt.sent[0].text, "Team health check for health-team")
+	assert.Contains(t, rt.sent[0].text, "authoritative full content")
+	assert.Contains(t, rt.sent[0].text, "coral-board read")
+}
+
+func TestBoardNotifier_NormalAndMixedBatchesPreserveClassification(t *testing.T) {
+	ctx := context.Background()
+	newNotifier := func(t *testing.T, project string) (*BoardNotifier, *mockRuntime, *board.Store) {
+		t.Helper()
+		bs := testBoardStore(t)
+		rt := &mockRuntime{}
+		_, err := bs.Subscribe(ctx, project, "Orchestrator", "Orchestrator", "codex-"+project, nil, nil, "all")
+		require.NoError(t, err)
+		_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "poster-"+project, nil, nil, "all")
+		require.NoError(t, err)
+		n := NewBoardNotifier(bs, rt, time.Second)
+		n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+			return []AgentInfo{{AgentType: "codex", SessionID: project, DisplayName: "Orchestrator"}}, nil
+		})
+		return n, rt, bs
+	}
+
+	normal, normalRT, normalBS := newNotifier(t, "normal-team")
+	_, err := normalBS.PostMessage(ctx, "normal-team", "Poster", "[Coral team status] @Orchestrator worker text", nil)
+	require.NoError(t, err)
+	require.NoError(t, normal.RunOnce(ctx))
+	require.Len(t, normalRT.sent, 1)
+	assert.NotContains(t, normalRT.sent[0].text, "Team health check")
+	assert.Contains(t, normalRT.sent[0].text, "coral-board read")
+
+	mixed, mixedRT, mixedBS := newNotifier(t, "mixed-team")
+	_, err = mixedBS.PostMessage(ctx, "mixed-team", "Poster", "ordinary worker update", nil)
+	require.NoError(t, err)
+	_, err = mixedBS.PostMessage(ctx, "mixed-team", "Coral Health Monitor", "[Coral board health] @Orchestrator inspect blockers", nil)
+	require.NoError(t, err)
+	require.NoError(t, mixed.RunOnce(ctx))
+	require.Len(t, mixedRT.sent, 1)
+	assert.NotContains(t, mixedRT.sent[0].text, "Team health check")
+	assert.Contains(t, mixedRT.sent[0].text, "2 unread messages")
+}
+
+func TestBoardNotifier_HealthClassificationIsolatedByRegisteredTeam(t *testing.T) {
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	ctx := context.Background()
+	for _, project := range []string{"team-a", "team-b"} {
+		_, err := bs.Subscribe(ctx, project, "Lead Coordinator", "Orchestrator", "codex-"+project, nil, nil, "all")
+		require.NoError(t, err)
+		_, err = bs.Subscribe(ctx, project, "Poster", "Worker", "poster-"+project, nil, nil, "all")
+		require.NoError(t, err)
+	}
+	_, err := bs.PostMessage(ctx, "team-a", "Coral Health Monitor", "[Coral team status] @Lead Coordinator review blockers", nil)
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "team-b", "Poster", "team-b ordinary update", nil)
+	require.NoError(t, err)
+	n := NewBoardNotifier(bs, rt, time.Second)
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{
+			{AgentType: "codex", SessionID: "team-a", DisplayName: "Stale"},
+			{AgentType: "codex", SessionID: "team-b", DisplayName: "Stale"},
+		}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	require.Len(t, rt.sent, 2)
+	assert.Contains(t, rt.sent[0].text, "Team health check for team-a")
+	assert.NotContains(t, rt.sent[1].text, "Team health check")
+}
+
+func TestBoardNotifier_SuppressesHealthOnlyWorkerNudgeButPreservesMixedOrdinary(t *testing.T) {
+	ctx := context.Background()
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	_, err := bs.Subscribe(ctx, "private-health", "Orchestrator", "Orchestrator", "codex-orch", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "private-health", "Artist UI/UX", "Worker", "codex-worker", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "private-health", "Coral Health Monitor", "[Coral team status] @Orchestrator review blockers", nil)
+	require.NoError(t, err)
+	n := NewBoardNotifier(bs, rt, time.Second)
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentType: "codex", SessionID: "worker", DisplayName: "Artist UI/UX"}}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	assert.Empty(t, rt.sent, "health-only unread backlog must not nudge a worker")
+
+	_, err = bs.PostMessage(ctx, "private-health", "Poster", "@Artist UI/UX ordinary task update", nil)
+	require.NoError(t, err)
+	require.NoError(t, n.RunOnce(ctx))
+	require.Len(t, rt.sent, 1, "mixed health and ordinary unread batch still notifies worker")
+	assert.NotContains(t, rt.sent[0].text, "Team health check")
+	assert.Contains(t, rt.sent[0].text, "coral-board read")
+}
+
+func TestBoardNotifier_SuppressesHealthBacklogForMentionOnlyWorker(t *testing.T) {
+	ctx := context.Background()
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	_, err := bs.Subscribe(ctx, "mention-health", "Orchestrator", "Orchestrator", "codex-orch", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = bs.Subscribe(ctx, "mention-health", "Artist UI/UX", "Worker", "codex-worker", nil, nil, "mentions")
+	require.NoError(t, err)
+	_, err = bs.PostMessage(ctx, "mention-health", "Coral Health Monitor", "[Coral team status] @Orchestrator stale worker summary", nil)
+	require.NoError(t, err)
+	n := NewBoardNotifier(bs, rt, time.Second)
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentType: "codex", SessionID: "worker", DisplayName: "Artist UI/UX"}}, nil
+	})
+	require.NoError(t, n.RunOnce(ctx))
+	assert.Empty(t, rt.sent, "health backlog not mentioning a mentions-only worker must not notify it")
+
+	_, err = bs.PostMessage(ctx, "mention-health", "Poster", "@Artist UI/UX please review the new fixture", nil)
+	require.NoError(t, err)
+	require.NoError(t, n.RunOnce(ctx))
+	require.Len(t, rt.sent, 1)
+	assert.Contains(t, rt.sent[0].text, "1 unread message")
+	assert.NotContains(t, rt.sent[0].text, "Team health check")
+}
+
 // TestBoardNotifier_NoUnreadNoNudge verifies no nudge is sent when there are
 // no unread messages.
 func TestBoardNotifier_NoUnreadNoNudge(t *testing.T) {
