@@ -15,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
@@ -132,21 +131,7 @@ func (wr *WorkflowRunner) KillRun(ctx context.Context, runID int64) bool {
 		switch child.stepType {
 		case "shell":
 			if child.cmd != nil && child.cmd.Process != nil {
-				// Look up the actual process group ID
-				pgid, err := syscall.Getpgid(child.cmd.Process.Pid)
-				if err != nil {
-					pgid = child.cmd.Process.Pid
-				}
-				// Send SIGTERM to process group
-				syscall.Kill(-pgid, syscall.SIGTERM)
-				// Escalate to SIGKILL after grace period in background
-				// to avoid blocking the HTTP handler goroutine.
-				go func(pgid int) {
-					time.Sleep(5 * time.Second)
-					if err := syscall.Kill(-pgid, 0); err == nil {
-						syscall.Kill(-pgid, syscall.SIGKILL)
-					}
-				}(pgid)
+				killChildProcess(child.cmd)
 			}
 		case "agent":
 			if child.sessionName != "" && wr.runtime != nil {
@@ -354,7 +339,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	cmd.Dir = repoPath
 	cmd.Env = append(os.Environ(), env...)
 	// Set process group for clean kill
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureChildProcess(cmd)
 
 	// Capture stdout and stderr to files
 	stdoutFile, err := os.Create(filepath.Join(stepDir, "stdout.txt"))
@@ -528,7 +513,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Dir = repoPath
 	cmd.Env = append(os.Environ(), env...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureChildProcess(cmd)
 
 	// Capture stdout and stderr to files
 	stdoutFile, err := os.Create(filepath.Join(stepDir, "stdout.txt"))
