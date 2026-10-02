@@ -117,7 +117,7 @@ jobs:
           $opensslRoot = "C:\Program Files\OpenSSL"
           $opensslImport = Get-ChildItem "$opensslRoot\lib" -Filter libcrypto.lib -Recurse | Select-Object -First 1
           if ($null -eq $opensslImport) { throw "OpenSSL import library not found" }
-          $opensslLibDir = $opensslImport.DirectoryName.Replace('\', '/')
+          $opensslLibDir = $opensslImport.DirectoryName.Replace('\', '/').Replace('C:/Program Files', 'C:/PROGRA~1')
           $env:CGO_LDFLAGS = "-L$opensslLibDir -l:libcrypto.lib"
           foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
             if (Test-Path "./cmd/$cmd") {
