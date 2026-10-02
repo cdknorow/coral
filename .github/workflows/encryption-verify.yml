@@ -82,17 +82,23 @@ jobs:
           }
           go build -tags fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-tray.exe ./cmd/coral-tray/
           go build -tags webview,fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-app.exe ./cmd/coral-app/
-          Copy-Item "$opensslRoot\bin\libcrypto-3-x64.dll" ..\dist\encryption-windows\
+          $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
+          if ($version -match '^(\d+)\.') { $cryptoMajor = $Matches[1] } else { throw "unrecognized OpenSSL version: $version" }
+          $dllName = "libcrypto-${cryptoMajor}-x64.dll"
+          $sourceDll = Join-Path "$opensslRoot\bin" $dllName
+          if (!(Test-Path $sourceDll)) { throw "matching OpenSSL DLL not found: $sourceDll" }
+          $dllVersion = (Get-Item $sourceDll).VersionInfo.FileVersion
+          if ($dllVersion -ne $version) { throw "OpenSSL DLL version $dllVersion differs from CLI version $version" }
+          Copy-Item $sourceDll ..\dist\encryption-windows\
           Copy-Item ..\THIRD_PARTY_NOTICES_SQLCIPHER.md ..\dist\encryption-windows\
           Copy-Item ..\licenses ..\dist\encryption-windows\licenses -Recurse
           & "$opensslRoot\bin\openssl.exe" version -a
-          (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
+          (Get-FileHash (Join-Path ..\dist\encryption-windows $dllName) -Algorithm SHA256).Hash
           # Hash and verify the same MSYS path, avoiding different path
           # interpretations between the two Bash invocations.
-          $libraryPath = (Resolve-Path ..\dist\encryption-windows\libcrypto-3-x64.dll).Path
+          $libraryPath = (Resolve-Path (Join-Path ..\dist\encryption-windows $dllName)).Path
           $msysLibraryPath = (& cygpath -u $libraryPath).Trim()
           $hash = ((bash -c "sha256sum '$msysLibraryPath'") -split '\s+')[0].Trim().ToLower()
-          $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
           $attestation = "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$version`nlibrary_sha256=$hash"
           # Windows PowerShell's default Set-Content encoding is UTF-16LE;
           # write UTF-8 without a BOM so the shared POSIX verifier reads the

@@ -131,13 +131,19 @@ jobs:
           $webviewTags = if ($buildTags) { "-tags webview,$($buildTags -replace '-tags ','')" } else { "-tags webview" }
           go build $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
           go build $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
-          Copy-Item "$opensslRoot\bin\libcrypto-3-x64.dll" "..\dist\windows\bin\libcrypto-3-x64.dll"
+          $opensslVersion = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
+          if ($opensslVersion -match '^(\d+)\.') { $cryptoMajor = $Matches[1] } else { throw "unrecognized OpenSSL version: $opensslVersion" }
+          $dllName = "libcrypto-${cryptoMajor}-x64.dll"
+          $sourceDll = Join-Path "$opensslRoot\bin" $dllName
+          if (!(Test-Path $sourceDll)) { throw "matching OpenSSL DLL not found: $sourceDll" }
+          $dllVersion = (Get-Item $sourceDll).VersionInfo.FileVersion
+          if ($dllVersion -ne $opensslVersion) { throw "OpenSSL DLL version $dllVersion differs from CLI version $opensslVersion" }
+          Copy-Item $sourceDll (Join-Path ..\dist\windows\bin $dllName)
           Copy-Item "..\THIRD_PARTY_NOTICES_SQLCIPHER.md" "..\dist\windows\bin\THIRD_PARTY_NOTICES_SQLCIPHER.md"
           Copy-Item "..\licenses" "..\dist\windows\bin\licenses" -Recurse
-          $libraryPath = (Resolve-Path ..\dist\windows\bin\libcrypto-3-x64.dll).Path
+          $libraryPath = (Resolve-Path (Join-Path ..\dist\windows\bin $dllName)).Path
           $msysLibraryPath = (& cygpath -u $libraryPath).Trim()
           $hash = ((bash -c "sha256sum '$msysLibraryPath'") -split '\s+')[0].Trim().ToLower()
-          $opensslVersion = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
           $attestation = "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$opensslVersion`nlibrary_sha256=$hash"
           [System.IO.File]::WriteAllText((Join-Path (Resolve-Path ..\dist\windows\bin) "openssl-attestation.env"), $attestation, (New-Object System.Text.UTF8Encoding($false)))
           $attestationPath = (& cygpath -u (Join-Path (Resolve-Path ..\dist\windows\bin).Path "openssl-attestation.env")).Trim()
