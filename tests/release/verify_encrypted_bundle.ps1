@@ -34,8 +34,5 @@ if ($coralDeps -notmatch [regex]::Escape($dllName)) {
   Write-Output $coralDeps
   throw "coral.exe does not declare the encrypted crypto runtime"
 }
-$home = Join-Path $env:TEMP ("coral-encryption-self-test-" + [guid]::NewGuid())
-New-Item -ItemType Directory -Force -Path $home | Out-Null
-$env:HOME = $home
 & $exe --encryption-self-test
 if ($LASTEXITCODE -ne 0) { throw "packaged encrypted self-test failed: $LASTEXITCODE" }
