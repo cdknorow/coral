@@ -108,12 +108,25 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
-        run: brew install openssl@3
+        run: |
+          set -euo pipefail
+          OPENSSL_VERSION="3.6.5"
+          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
+          OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" -o "$OPENSSL_TARBALL"
+          echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
+          tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
+          ./Configure darwin64-arm64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          make -j"$(sysctl -n hw.ncpu)" build_sw
+          make install_sw
       - name: Build arm64 package slices
         working-directory: coral-go
         run: |
           set -euo pipefail
-          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
           mkdir -p ../dist/encryption-macos-arm64
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
@@ -139,12 +152,25 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
-        run: brew install openssl@3
+        run: |
+          set -euo pipefail
+          OPENSSL_VERSION="3.6.5"
+          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-amd64"
+          OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" -o "$OPENSSL_TARBALL"
+          echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
+          tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
+          ./Configure darwin64-x86_64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          make -j"$(sysctl -n hw.ncpu)" build_sw
+          make install_sw
       - name: Build amd64 package slices
         working-directory: coral-go
         run: |
           set -euo pipefail
-          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-amd64"
           mkdir -p ../dist/encryption-macos-amd64
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
@@ -171,7 +197,20 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
       - name: Install merge and verification dependencies
-        run: brew install openssl@3
+        run: |
+          set -euo pipefail
+          OPENSSL_VERSION="3.6.5"
+          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
+          OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" -o "$OPENSSL_TARBALL"
+          echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
+          tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
+          ./Configure darwin64-arm64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          make -j"$(sysctl -n hw.ncpu)" build_sw
+          make install_sw
       - uses: actions/download-artifact@v8
         with:
           name: encryption-macos-arm64
@@ -184,7 +223,7 @@ jobs:
         working-directory: coral-go
         run: |
           set -euo pipefail
-          ARM_OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          ARM_OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
           mkdir -p ../dist/encryption-macos
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
             lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos-arm64/$cmd" "../dist/encryption-macos-amd64/$cmd"
@@ -203,6 +242,6 @@ jobs:
           COMBINED_HASH="$(shasum -a 256 ../dist/encryption-macos/libcrypto.3.dylib | awk '{print $1}')"
           ARM_HASH="$(shasum -a 256 ../dist/encryption-macos-arm64/libcrypto.3.dylib | awk '{print $1}')"
           X86_HASH="$(shasum -a 256 ../dist/encryption-macos-amd64/libcrypto.3.dylib | awk '{print $1}')"
-          printf 'platform=macos\nvendor=homebrew\npackage=openssl@3\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$ARM_VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/encryption-macos/openssl-attestation.env
+          printf 'platform=macos\nvendor=openssl-project\npackage=openssl\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$ARM_VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/encryption-macos/openssl-attestation.env
           ../tests/release/verify_openssl_attestation.sh ../dist/encryption-macos/openssl-attestation.env ../dist/encryption-macos/libcrypto.3.dylib ../dist/encryption-macos-arm64/libcrypto.3.dylib ../dist/encryption-macos-amd64/libcrypto.3.dylib
           OPENSSL_PREFIX="$ARM_OPENSSL_PREFIX" ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-macos
