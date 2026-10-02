@@ -41,7 +41,7 @@ case "$(file -b "$package_dir/coral")" in
       binary="$package_dir/$cmd"
       test -x "$binary"
       for arch in arm64 x86_64; do
-        lipo -verify_arch "$arch" "$binary"
+        lipo "$binary" -verify_arch "$arch"
         deps="$(otool -L -arch "$arch" "$binary" | tail -n +2)"
         if grep -Eiq 'libcrypto|libssl|sqlcipher|/opt/homebrew|/usr/local/opt' <<<"$deps"; then
           echo "Standard macOS $cmd ($arch) has a bundled/developer library dependency" >&2
