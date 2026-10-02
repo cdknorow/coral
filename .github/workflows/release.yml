@@ -87,7 +87,7 @@ jobs:
           cache-dependency-path: coral-go/go.sum
 
       - name: Install SQLCipher build dependencies
-        run: choco install mingw openssl.light -y
+        run: choco install mingw openssl -y
 
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
@@ -130,7 +130,7 @@ jobs:
           Copy-Item "..\licenses" "..\dist\windows\bin\licenses" -Recurse
           $hash = (Get-FileHash ..\dist\windows\bin\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
           $opensslVersion = (& "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
-          @("platform=windows", "vendor=chocolatey", "package=openssl.light", "version=$opensslVersion", "library_sha256=$hash") | Set-Content ..\dist\windows\bin\openssl-attestation.env
+          @("platform=windows", "vendor=chocolatey", "package=openssl", "version=$opensslVersion", "library_sha256=$hash") | Set-Content ..\dist\windows\bin\openssl-attestation.env
           bash ..\tests\release\verify_openssl_attestation.sh ..\dist\windows\bin\openssl-attestation.env ..\dist\windows\bin\libcrypto-3-x64.dll
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\windows\bin
@@ -217,8 +217,10 @@ jobs:
         run: |
           brew install openssl@3
           if [ "$(uname -m)" = "arm64" ]; then
-            test -x "$(arch -x86_64 /usr/bin/which brew)"
-            arch -x86_64 brew install openssl@3
+            if [ ! -x /usr/local/bin/brew ]; then
+              NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            fi
+            arch -x86_64 /usr/local/bin/brew install openssl@3
           else
             test "$(uname -m)" = "x86_64"
             arch -arm64 brew install openssl@3

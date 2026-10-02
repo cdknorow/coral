@@ -1,5 +1,5 @@
 # platform|vendor|package|branch-or-exact-version|minimum-patch|mode|authoritative-reference
 macos|homebrew|openssl@3|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
-windows|chocolatey|openssl.light|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
+windows|chocolatey|openssl|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
 # Ubuntu Noble's vendor backport for CVE-2026-35189 (USN-8847-1).
-linux|ubuntu|libssl3|3.0.13-0ubuntu3.16|-|vendor-backport|https://ubuntu.com/security/CVE-2026-35189
+linux|ubuntu|libssl3t64|3.0.13-0ubuntu3.16|-|vendor-backport|https://ubuntu.com/security/CVE-2026-35189

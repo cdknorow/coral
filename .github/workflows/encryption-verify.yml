@@ -45,7 +45,8 @@ jobs:
           LIB="../dist/encryption-linux/libcrypto.so.3"
           HASH="$(sha256sum "$LIB" | awk '{print $1}')"
           PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 || true)"
-          VER="$(dpkg-query -W -f='${Version}' libssl3 2>/dev/null || true)"
+          VER=""
+          if [ -n "$PKG" ]; then VER="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"; fi
           printf 'platform=linux\nvendor=ubuntu\npackage=%s\nversion=%s\nlibrary_sha256=%s\n' "$PKG" "$VER" "$HASH" > ../dist/encryption-linux/openssl-attestation.env
           ../tests/release/verify_openssl_attestation.sh ../dist/encryption-linux/openssl-attestation.env "$LIB"
           ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-linux
@@ -60,7 +61,7 @@ jobs:
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         shell: powershell
-        run: choco install mingw openssl.light -y
+          run: choco install mingw openssl -y
       - name: Build and verify extracted Windows package
         working-directory: coral-go
         shell: powershell
@@ -80,7 +81,7 @@ jobs:
           (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
           $hash = (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
           $version = (& "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
-          "platform=windows`nvendor=chocolatey`npackage=openssl.light`nversion=$version`nlibrary_sha256=$hash" | Set-Content ..\dist\encryption-windows\openssl-attestation.env
+          "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$version`nlibrary_sha256=$hash" | Set-Content ..\dist\encryption-windows\openssl-attestation.env
           bash ..\tests\release\verify_openssl_attestation.sh ..\dist\encryption-windows\openssl-attestation.env ..\dist\encryption-windows\libcrypto-3-x64.dll
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\encryption-windows
@@ -96,13 +97,16 @@ jobs:
       - name: Install isolated native dependencies
         run: |
           brew install openssl@3
-          arch -x86_64 brew install openssl@3
+          if [ ! -x /usr/local/bin/brew ]; then
+            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          fi
+          arch -x86_64 /usr/local/bin/brew install openssl@3
       - name: Build and verify unsigned universal extracted package
         working-directory: coral-go
         run: |
           set -euo pipefail
           ARM_OPENSSL_PREFIX="$(brew --prefix openssl@3)"
-          X86_OPENSSL_PREFIX="$(arch -x86_64 brew --prefix openssl@3)"
+          X86_OPENSSL_PREFIX="$(arch -x86_64 /usr/local/bin/brew --prefix openssl@3)"
           mkdir -p ../dist/encryption-macos
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags fts5 -o "../dist/encryption-macos/${cmd}-arm64" "./cmd/$cmd/"
