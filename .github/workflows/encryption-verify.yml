@@ -85,8 +85,8 @@ jobs:
           Copy-Item ..\licenses ..\dist\encryption-windows\licenses -Recurse
           & "$opensslRoot\bin\openssl.exe" version -a
           (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
-          # Hash with the same MSYS utility used by the shared Bash verifier;
-          # PowerShell and MSYS can disagree on binary path handling.
+          # Hash and verify the same MSYS path, avoiding different path
+          # interpretations between the two Bash invocations.
           $libraryPath = (Resolve-Path ..\dist\encryption-windows\libcrypto-3-x64.dll).Path
           $msysLibraryPath = (& cygpath -u $libraryPath).Trim()
           $hash = ((bash -c "sha256sum '$msysLibraryPath'") -split '\s+')[0].Trim().ToLower()
@@ -96,7 +96,8 @@ jobs:
           # write UTF-8 without a BOM so the shared POSIX verifier reads the
           # exact fields and hash emitted above.
           [System.IO.File]::WriteAllText((Join-Path (Resolve-Path ..\dist\encryption-windows) "openssl-attestation.env"), $attestation, (New-Object System.Text.UTF8Encoding($false)))
-          bash ..\tests\release\verify_openssl_attestation.sh ..\dist\encryption-windows\openssl-attestation.env ..\dist\encryption-windows\libcrypto-3-x64.dll
+          $attestationPath = (& cygpath -u (Join-Path (Resolve-Path ..\dist\encryption-windows).Path "openssl-attestation.env")).Trim()
+          bash ..\tests\release\verify_openssl_attestation.sh $attestationPath $msysLibraryPath
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\encryption-windows
 
@@ -232,8 +233,8 @@ jobs:
           lipo -create -output ../dist/encryption-macos/libcrypto.3.dylib ../dist/encryption-macos-arm64/libcrypto.3.dylib ../dist/encryption-macos-amd64/libcrypto.3.dylib
           cp ../dist/encryption-macos-arm64/THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-macos/
           cp -R ../dist/encryption-macos-arm64/licenses ../dist/encryption-macos/
-          for binary in ../dist/encryption-macos/*; do
-            [ -f "$binary" ] || continue
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
+            binary="../dist/encryption-macos/$cmd"
             install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -change "$RUNNER_TEMP/openssl-3.6.5-amd64/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -change "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
@@ -246,4 +247,4 @@ jobs:
           X86_HASH="$(shasum -a 256 ../dist/encryption-macos-amd64/libcrypto.3.dylib | awk '{print $1}')"
           printf 'platform=macos\nvendor=openssl-project\npackage=openssl\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$ARM_VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/encryption-macos/openssl-attestation.env
           ../tests/release/verify_openssl_attestation.sh ../dist/encryption-macos/openssl-attestation.env ../dist/encryption-macos/libcrypto.3.dylib ../dist/encryption-macos-arm64/libcrypto.3.dylib ../dist/encryption-macos-amd64/libcrypto.3.dylib
-          OPENSSL_PREFIX="$ARM_OPENSSL_PREFIX" ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-macos
+          OPENSSL_PREFIX="$ARM_OPENSSL_PREFIX" bash -x ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-macos

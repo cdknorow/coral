@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "package verification failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 # Verify a packaged SQLCipher runtime with the bundled OpenSSL library. This
 # executes the shipped Coral self-test instead of recompiling source tests.
