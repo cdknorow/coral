@@ -1,6 +1,7 @@
 /* Modal management: launch and info dialogs */
 
 import { state } from './state.js';
+import { showMobileConnectModal, hideMobileConnectModal } from './mobile_connect.js';
 import { showToast, escapeHtml, escapeAttr } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { loadBoardProjects } from './message_board.js';
@@ -2863,8 +2864,8 @@ function renderRemoteAccessStatus(status, loadError = false) {
         el.dataset.state = 'error';
         return;
     }
-    const saved = status?.remote_access_enabled !== false;
-    const effective = status?.remote_access_effective !== false;
+    const saved = settingBool(status?.remote_access_enabled, false);
+    const effective = settingBool(status?.remote_access_effective, false);
     const restart = status?.remote_access_restart_required === true || saved !== effective;
     if (restart) {
         el.textContent = `Saved: ${saved ? 'enabled' : 'disabled'}. Running now: ${effective ? 'remote access enabled' : 'local-only'}; restart required to apply the saved value.`;
@@ -2976,12 +2977,12 @@ export async function loadSettings() {
             if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
             state.privacyStatus = await privacyResp.json();
             const remote = document.getElementById('settings-remote-access-enabled');
-            if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, true);
+            if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
             renderRemoteAccessStatus(state.privacyStatus);
         } catch (error) {
             state.privacyStatus = null;
             const remote = document.getElementById('settings-remote-access-enabled');
-            if (remote) remote.checked = settingBool(s.remote_access_enabled, true);
+            if (remote) remote.checked = settingBool(s.remote_access_enabled, false);
             renderRemoteAccessStatus(null, true);
         }
 
@@ -3142,13 +3143,13 @@ export async function showSettingsModal() {
     const telemetry = document.getElementById('settings-telemetry-enabled');
     if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
     const remote = document.getElementById('settings-remote-access-enabled');
-    if (remote) remote.checked = settingBool(s.remote_access_enabled, true);
+    if (remote) remote.checked = settingBool(s.remote_access_enabled, false);
     renderRemoteAccessStatus(state.privacyStatus);
     try {
         const privacyResp = await fetch('/api/system/privacy');
         if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
         state.privacyStatus = await privacyResp.json();
-        if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, true);
+        if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
         renderRemoteAccessStatus(state.privacyStatus);
     } catch (_) {
         renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
@@ -3440,7 +3441,7 @@ export async function applySettings() {
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
     const gitPollIntervalS = document.getElementById("settings-git-poll-interval")?.value ?? "120";
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
-    const remoteAccessEnabled = document.getElementById("settings-remote-access-enabled")?.checked ?? settingBool(state.settings?.remote_access_enabled, true);
+    const remoteAccessEnabled = document.getElementById("settings-remote-access-enabled")?.checked ?? settingBool(state.settings?.remote_access_enabled, false);
 
     // Parse theme selection — "custom:<name>" or built-in "dark"/"light"/"system"
     let theme, customTheme;
@@ -3704,7 +3705,7 @@ document.addEventListener("keydown", (e) => {
         // Find topmost visible modal and close only that one
         const modals = document.querySelectorAll('.modal');
         for (let i = modals.length - 1; i >= 0; i--) {
-            if (modals[i].style.display !== 'none' && modals[i].offsetParent !== null) {
+            if (modals[i].style.display !== 'none' && modals[i].getClientRects().length > 0) {
                 const id = modals[i].id;
                 if (id === 'launch-modal') hideLaunchModal();
                 else if (id === 'info-modal') hideInfoModal();
@@ -3724,7 +3725,7 @@ document.addEventListener("keydown", (e) => {
                 else if (id === 'quick-launch-modal') modals[i].style.display = 'none';
                 else if (id === 'add-agent-board-modal') window.hideAddAgentBoardModal?.();
                 else if (id === 'custom-view-modal') modals[i].style.display = 'none';
-                else if (id === 'mobile-connect-modal') modals[i].style.display = 'none';
+                else if (id === 'mobile-connect-modal') hideMobileConnectModal();
                 else if (id === 'theme-configurator-modal') modals[i].style.display = 'none';
                 else modals[i].style.display = 'none';
                 e.preventDefault();
@@ -3737,10 +3738,10 @@ document.addEventListener("keydown", (e) => {
     if (e.key === "Tab") {
         const modals = document.querySelectorAll('.modal');
         for (let i = modals.length - 1; i >= 0; i--) {
-            if (modals[i].style.display !== 'none' && modals[i].offsetParent !== null) {
-                const focusable = modals[i].querySelectorAll(
+            if (modals[i].style.display !== 'none' && modals[i].getClientRects().length > 0) {
+                const focusable = Array.from(modals[i].querySelectorAll(
                     'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
-                );
+                )).filter(el => el.getClientRects().length > 0);
                 if (focusable.length === 0) return;
                 const first = focusable[0];
                 const last = focusable[focusable.length - 1];
@@ -3759,52 +3760,5 @@ document.addEventListener("keydown", (e) => {
 
 // ── Mobile Connect Modal ─────────────────────────────────────────────────
 
-window._showMobileConnectModal = async function() {
-    const modal = document.getElementById('mobile-connect-modal');
-    if (!modal) return;
-
-    // Detect LAN IP — prefer server-reported IP over window.location
-    let baseUrl = window.location.origin;
-    try {
-        const netResp = await fetch('/api/system/network-info');
-        if (netResp.ok) {
-            const netData = await netResp.json();
-            const lanIp = netData.primary || (netData.ips && netData.ips[0]);
-            if (lanIp) {
-                const port = netData.port || window.location.port || '8420';
-                baseUrl = `http://${lanIp}:${port}`;
-            }
-        }
-    } catch { /* fall back to window.location.origin */ }
-
-    // QR code contains only the server URL (no API key)
-    document.getElementById('mobile-connect-url').textContent = baseUrl;
-
-    // Generate QR code via server endpoint
-    const qrContainer = document.getElementById('mobile-connect-qr');
-    if (qrContainer) {
-        qrContainer.innerHTML = `<img src="/api/system/qr?url=${encodeURIComponent(baseUrl)}" alt="QR Code" style="width:180px;height:180px;border-radius:8px;background:#fff;padding:8px" onerror="this.style.display='none'">`;
-    }
-
-    // Show API key separately below QR code
-    const apiKeyDisplay = document.getElementById('mobile-connect-api-key');
-    if (apiKeyDisplay) {
-        try {
-            const resp = await fetch('/api/system/api-key');
-            if (resp.ok) {
-                const data = await resp.json();
-                if (data.key) {
-                    apiKeyDisplay.innerHTML = `<strong>API Key:</strong> <code style="user-select:all">${escapeHtml(data.key)}</code>
-                        <button class="btn btn-small" style="margin-left:6px" onclick="navigator.clipboard.writeText('${escapeAttr(data.key)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
-                        <div style="color:var(--text-muted);font-size:11px;margin-top:4px">Send this to the mobile app via Slack or another secure channel.</div>`;
-                } else {
-                    apiKeyDisplay.style.display = 'none';
-                }
-            } else {
-                apiKeyDisplay.style.display = 'none';
-            }
-        } catch { apiKeyDisplay.style.display = 'none'; }
-    }
-
-    modal.style.display = 'flex';
-};
+window._showMobileConnectModal = showMobileConnectModal;
+window._hideMobileConnectModal = hideMobileConnectModal;

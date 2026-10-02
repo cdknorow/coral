@@ -321,20 +321,35 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 }
 
 // applyPrivacySettings loads persisted privacy controls before binding. Remote
-// access is enabled by default for backwards compatibility; disabling it is a
-// restart-applied local-only bind. Telemetry is independently applied to the
+// (mobile/LAN) access is OFF by default: the server binds a non-loopback
+// address only when the saved remote_access_enabled setting is explicitly
+// "true". A missing, unreadable or any other value binds local-only, and the
+// change is restart-applied. Telemetry is independently applied to the
 // tracking package and never affects essential server behavior.
 func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config) {
 	// Fail closed for telemetry if settings cannot be read during startup.
 	tracking.SetTelemetryEnabled(false)
 	settings, err := store.NewSessionStore(db).GetSettings(ctx)
 	if err != nil {
+		// Fail closed for the bind too: never widen exposure because the
+		// opt-in could not be read.
+		restrictToLoopback(cfg, "settings unreadable")
 		return
 	}
-	if strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "false") {
-		cfg.Host = "127.0.0.1"
+	if !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "true") {
+		restrictToLoopback(cfg, "remote access is not enabled")
 	}
 	tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false"))
+}
+
+// restrictToLoopback forces a local-only bind. When the requested host would
+// have been reachable from the network it logs how to opt in, so an operator
+// who passed --host or CORAL_HOST is told why the bind is local.
+func restrictToLoopback(cfg *config.Config, reason string) {
+	if !config.IsLoopbackHost(cfg.Host) {
+		log.Printf("[startup] remote access is off (%s): binding 127.0.0.1 instead of %q. Enable it in Settings > Privacy (remote_access_enabled=true) and restart Coral to accept network connections.", reason, cfg.Host)
+	}
+	cfg.Host = "127.0.0.1"
 }
 
 // reconcileOrphanedSessions checks all non-sleeping live sessions against

@@ -254,13 +254,26 @@ func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	telemetryEnabled := !strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false")
-	remoteEnabled := !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "false")
-	effectiveRemote := h.cfg.Host != "127.0.0.1" && h.cfg.Host != "::1" && h.cfg.Host != "localhost"
+	// Remote access is opt-in: only an explicit saved "true" enables it.
+	savedValue, configured := settings["remote_access_enabled"]
+	remoteEnabled := strings.EqualFold(strings.TrimSpace(savedValue), "true")
+	effectiveRemote := !config.IsLoopbackHost(h.cfg.Host)
+	status := "disabled"
+	switch {
+	case remoteEnabled && effectiveRemote:
+		status = "enabled"
+	case remoteEnabled:
+		status = "enable_pending_restart"
+	case effectiveRemote:
+		status = "disable_pending_restart"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"telemetry_enabled":              telemetryEnabled,
 		"remote_access_enabled":          remoteEnabled,
+		"remote_access_configured":       configured,
 		"remote_access_effective":        effectiveRemote,
 		"remote_access_restart_required": remoteEnabled != effectiveRemote,
+		"remote_access_status":           status,
 		"effective_host":                 h.cfg.Host,
 	})
 }
@@ -705,9 +718,10 @@ func (h *SystemHandler) NetworkInfo(w http.ResponseWriter, r *http.Request) {
 		primary = ips[0]
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ips":     ips,
-		"primary": primary,
-		"port":    h.cfg.Port,
+		"ips":                     ips,
+		"primary":                 primary,
+		"port":                    h.cfg.Port,
+		"remote_access_effective": !config.IsLoopbackHost(h.cfg.Host),
 	})
 }
 

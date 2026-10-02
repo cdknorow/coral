@@ -23,7 +23,8 @@ func TestVerification_PrivacyRoutes_StatusAndSettings(t *testing.T) {
 	server, handler := setupSystemTestServer(t)
 	handler.cfg.Host = "0.0.0.0"
 
-	// 1. Initial defaults (both enabled, running as remote-enabled, no restart required)
+	// 1. Initial defaults: telemetry on, remote access OFF (no saved opt-in).
+	// This simulated server is still bound to 0.0.0.0, so a restart is pending.
 	resp, err := http.Get(server.URL + "/api/system/privacy")
 	require.NoError(t, err)
 	var initial map[string]any
@@ -31,9 +32,11 @@ func TestVerification_PrivacyRoutes_StatusAndSettings(t *testing.T) {
 	resp.Body.Close()
 
 	assert.Equal(t, true, initial["telemetry_enabled"])
-	assert.Equal(t, true, initial["remote_access_enabled"])
+	assert.Equal(t, false, initial["remote_access_enabled"], "remote access must default to off")
+	assert.Equal(t, false, initial["remote_access_configured"])
 	assert.Equal(t, true, initial["remote_access_effective"])
-	assert.Equal(t, false, initial["remote_access_restart_required"])
+	assert.Equal(t, true, initial["remote_access_restart_required"])
+	assert.Equal(t, "disable_pending_restart", initial["remote_access_status"])
 	assert.Equal(t, "0.0.0.0", initial["effective_host"])
 
 	// 2. Disable remote access via PUT /api/settings
@@ -71,7 +74,9 @@ func TestVerification_PrivacyRoutes_StatusAndSettings(t *testing.T) {
 	resp.Body.Close()
 
 	assert.Equal(t, true, afterRemoteReenable["remote_access_enabled"])
+	assert.Equal(t, true, afterRemoteReenable["remote_access_configured"])
 	assert.Equal(t, false, afterRemoteReenable["remote_access_restart_required"], "restart requirement cleared once saved matches running")
+	assert.Equal(t, "enabled", afterRemoteReenable["remote_access_status"])
 
 	// 4. Disable telemetry independently
 	payload = bytes.NewBufferString(`{"telemetry_enabled":false}`)

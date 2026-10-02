@@ -57,6 +57,9 @@ jobs:
           docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/launch-coral -h
           docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral-board workflow --help
 
+      - name: Verify server and board commands without shared libraries
+        run: python3 tests/release/smoke_standard_linux.py dist/linux
+
       - name: Create tarball
         run: |
           VERSION="${GITHUB_REF_NAME#v}"

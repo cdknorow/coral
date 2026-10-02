@@ -3,9 +3,11 @@
 package config
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // PostHogKey is set at build time via ldflags for install tracking.
@@ -136,6 +138,17 @@ func DemoLimitsEnforced() bool {
 // Controlled by --home flag, CORAL_DATA_DIR env var, or defaults to ~/.coral.
 func (c *Config) CoralDir() string {
 	return c.coralDir
+}
+
+// IsLoopbackHost reports whether a bind host only accepts local connections.
+// Wildcard and empty hosts are not loopback: they listen on every interface.
+func IsLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.Trim(host, "[]"))
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func envOrDefault(key, fallback string) string {

@@ -190,7 +190,7 @@ func TestPrivacyStatusAndSettings(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&initial))
 	resp.Body.Close()
 	assert.Equal(t, true, initial["telemetry_enabled"])
-	assert.Equal(t, true, initial["remote_access_enabled"])
+	assert.Equal(t, false, initial["remote_access_enabled"], "remote access must default to off")
 	assert.Equal(t, true, initial["remote_access_effective"])
 
 	payload := bytes.NewBufferString(`{"telemetry_enabled":false,"remote_access_enabled":false}`)

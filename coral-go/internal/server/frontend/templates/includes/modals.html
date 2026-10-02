@@ -1101,22 +1101,26 @@
     </div>
 
     <!-- Mobile Connect Modal -->
-    <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+    <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="mobile-connect-title" style="display:none" onclick="if(event.target===this)window._hideMobileConnectModal()">
         <div class="modal-content modal-sm" style="text-align:center;position:relative">
-            <button class="modal-close-btn" onclick="document.getElementById('mobile-connect-modal').style.display='none'" aria-label="Close" style="position:absolute;top:12px;right:16px">&times;</button>
-            <h3>Coral Mobile</h3>
-            <p class="text-secondary-sm" style="margin:8px 0 16px">
-                Open this URL on your phone's browser, then tap <strong>Add to Home Screen</strong> for an app-like experience.
-            </p>
-            <div class="mobile-connect-url-box">
-                <code id="mobile-connect-url" class="mobile-connect-url-code"></code>
-                <button class="btn btn-small" onclick="navigator.clipboard.writeText(document.getElementById('mobile-connect-url').textContent); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
-            </div>
-            <div id="mobile-connect-qr" class="mobile-connect-qr"></div>
-            <div id="mobile-connect-api-key" class="mobile-connect-api-key"></div>
-            <p class="mobile-connect-hint">Your phone must be on the same network as this computer.</p>
-            <div class="modal-actions" style="margin-top:12px">
-                <button class="btn btn-primary" onclick="document.getElementById('mobile-connect-modal').style.display='none'">Done</button>
+            <button class="modal-close-btn" onclick="window._hideMobileConnectModal()" aria-label="Close" style="position:absolute;top:12px;right:16px">&times;</button>
+            <h3 id="mobile-connect-title">Coral Mobile</h3>
+            <p id="mobile-connect-status" role="status" aria-live="polite" style="margin:12px 0"></p>
+            <div id="mobile-connect-actions" class="modal-actions"></div>
+            <div id="mobile-connect-details" hidden>
+                <p class="text-secondary-sm" style="margin:8px 0 16px">
+                    Open this URL on your phone's browser, then tap <strong>Add to Home Screen</strong> for an app-like experience.
+                </p>
+                <div class="mobile-connect-url-box">
+                    <code id="mobile-connect-url" class="mobile-connect-url-code"></code>
+                    <button class="btn btn-small" onclick="navigator.clipboard.writeText(document.getElementById('mobile-connect-url').textContent); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                </div>
+                <div id="mobile-connect-qr" class="mobile-connect-qr"></div>
+                <div id="mobile-connect-api-key" class="mobile-connect-api-key"></div>
+                <p class="mobile-connect-hint">Your phone must be on the same network as this computer.</p>
+                <div class="modal-actions" style="margin-top:12px">
+                    <button class="btn btn-primary" onclick="window._hideMobileConnectModal()">Done</button>
+                </div>
             </div>
         </div>
     </div>

@@ -176,5 +176,6 @@ node transcript_tools.test.js
 node transcript_codex.test.js
 node chat_search_unit.test.js
 node privacy_settings.test.js
+node mobile_connect_browser.test.js
 node privacy_verification_e2e.test.js
 node retired_integrations.test.js
