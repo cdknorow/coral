@@ -547,7 +547,10 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           # Create the release if it doesn't exist
           gh release create "$TAG" --title "$TAG" --generate-notes || true
-          # Upload all artifacts
-          for f in artifacts/**/*; do
+          # Publish install packages only; native macOS slices are build inputs.
+          for f in artifacts/coral-linux-amd64/*.tar.gz \
+                   artifacts/coral-macos-dmg/*.dmg \
+                   artifacts/coral-windows-msi/*.msi \
+                   artifacts/coral-windows-portable/*.zip; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
           done
