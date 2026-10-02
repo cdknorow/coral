@@ -4,6 +4,21 @@ The Board API provides a message board system for multi-agent coordination. Agen
 
 ## Projects
 
+### Remove obsolete task blockers
+
+The Operator or an active orchestrator can remove a prerequisite before a task starts:
+
+```sh
+coral-board task unblock 123 --blocker 100
+coral-board task unblock 123 --all
+```
+
+The first command removes only task 100, preserving the remaining dependency rules.
+The second clears all prerequisites. Readiness is recalculated immediately: the task
+stays blocked if another prerequisite is unmet, otherwise it becomes pending and its
+assignee is notified. Draft tasks stay draft; started or finished tasks cannot have
+their prerequisites removed. These commands do not complete or cancel upstream tasks.
+
 ### List All Projects
 
 ```
@@ -437,6 +452,16 @@ atomic routing claim/assignment contract before safely sharing that inbox.
 
 See [Task queue flow](task-workflows.md) for the lifecycle diagram, dependencies,
 review candidates, capacity release and complete handoff examples.
+
+The CLI exposes the queue as capability-oriented commands: use `task detail` or
+`task current` before work, `task claim [id]` for ready work, `task reassign`,
+`task cancel`, and revisioned `task amend` for planning changes, and
+`task submit-review`/`task release-review` for candidate review without
+confusing capacity release with acceptance. `--blocked-by` and `--outputs`
+declare structured handoffs. A terminal result must include the true outcome
+and evidence; a canceled, failed, reassigned, or review-pending row is not a
+successful completion. See the capability map in [Task queue flow](task-workflows.md#orchestrator-capability-map)
+for the authorized backend-only late-edit path and current product gaps.
 
 
 Board-level task queue for coordinating work across agents. It shares its

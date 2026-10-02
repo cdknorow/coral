@@ -17,6 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // SessionReader incrementally reads JSONL session files for live chat display.
@@ -35,24 +36,29 @@ type sessionCache struct {
 	messages     []map[string]any
 	toolUseNames map[string]string // tool_use_id → tool_name
 	codexState   codexTurnCache
+	agyState     agyTurnCache
 }
 
 type codexTurnCache struct {
-	initialized bool
-	size        int64
-	modTime     time.Time
-	head        string
-	offset      int64
-	partial     []byte
-	event       string
-	at          time.Time
-	active      bool
+	transcriptReadState
+	event  string
+	at     time.Time
+	active bool
+}
+
+type agyTurnCache struct {
+	transcriptReadState
+	event   string
+	at      time.Time
+	summary string
 }
 
 // firstPromptCache is deliberately separate from sessionCache. The live
 // sessions list needs one small identity string, not a pinned copy of every
 // parsed transcript message.
 type firstPromptCache struct {
+	info         os.FileInfo
+	head         string
 	mu           sync.Mutex
 	path         string
 	lastResolved time.Time
@@ -111,6 +117,9 @@ func (r *SessionReader) readNewMessages(sessionID, workingDirectory, agentType s
 }
 
 func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workingDirectory, agentType string, strictLive bool) ([]map[string]any, int) {
+	if agentType == at.Codex {
+		refreshCodexLink(c, sessionID)
+	}
 	// Resolve path on first call
 	if c.path == "" {
 		c.path = resolveTranscriptPathMode(sessionID, workingDirectory, agentType, strictLive)
@@ -242,10 +251,13 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
-	if c.prompt != "" {
-		return c.prompt
+	if agentType == at.Codex {
+		if link := transcriptlink.Codex(sessionID); link.Path != "" && link.Path != c.path {
+			c.path, c.prompt, c.head = link.Path, "", ""
+			c.offset, c.info = 0, nil
+		}
 	}
+
 	if c.path == "" {
 		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
 			c.lastResolved = time.Now()
@@ -256,14 +268,31 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 		}
 	}
 
+	info, err := os.Stat(c.path)
+	if err != nil {
+		c.path, c.prompt, c.head = "", "", ""
+		c.offset, c.info = 0, nil
+		return ""
+	}
+	if sameTranscriptSnapshot(c.info, info) {
+		return c.prompt
+	}
 	f, err := os.Open(c.path)
 	if err != nil {
 		return ""
 	}
 	defer f.Close()
-
-	if info, err := f.Stat(); err == nil && info.Size() < c.offset {
-		c.offset = 0
+	info, err = f.Stat()
+	if err != nil {
+		return ""
+	}
+	head := transcriptHead(f)
+	if transcriptReplaced(c.info, info, c.head, head) {
+		c.offset, c.prompt = 0, ""
+	}
+	c.info, c.head = info, head
+	if c.prompt != "" {
+		return c.prompt
 	}
 	if _, err := f.Seek(c.offset, io.SeekStart); err != nil {
 		return ""
@@ -310,6 +339,19 @@ func (r *SessionReader) FirstUserPrompt(sessionID, workingDirectory, agentType s
 			return ""
 		}
 	}
+}
+
+// CachedFirstUserPrompt returns display data without opening a sleeping transcript.
+func (r *SessionReader) CachedFirstUserPrompt(sessionID string) string {
+	r.mu.Lock()
+	c := r.firstPrompts[sessionID]
+	r.mu.Unlock()
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.prompt
 }
 
 // ClearSession removes cached state for a session.
@@ -581,6 +623,9 @@ func resolveGeminiTranscript(sessionID string, workingDirectory ...string) strin
 }
 
 func resolveCodexTranscript(sessionID string) string {
+	if link := transcriptlink.Codex(sessionID); link.Path != "" {
+		return link.Path
+	}
 	home, _ := os.UserHomeDir()
 	codexHome := os.Getenv("CODEX_HOME")
 	if codexHome == "" {
@@ -610,6 +655,20 @@ func resolveCodexTranscript(sessionID string) string {
 		return matches[0]
 	}
 	return resolveCodexTranscriptByMarker(basePath, sessionID)
+}
+
+// A restart can keep Coral's identity while changing the native Codex thread.
+// Check the small explicit mapping even when a previous rollout is cached.
+func refreshCodexLink(c *sessionCache, sessionID string) {
+	link := transcriptlink.Codex(sessionID)
+	if link.Path == "" || link.Path == c.path {
+		return
+	}
+	c.path = link.Path
+	c.offset = 0
+	c.messages = nil
+	c.toolUseNames = make(map[string]string)
+	c.codexState = codexTurnCache{}
 }
 
 func resolveCodexTranscriptByMarker(basePath, sessionID string) string {

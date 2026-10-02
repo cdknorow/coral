@@ -66,7 +66,10 @@ stored workflow configuration or reopen a finished task. There is currently no
 `add --draft` CLI flag; create drafts through the API.
 
 `complete` supports `--message`, `--outcome success|failed`, and
-`--artifacts manifest.json`. The manifest is a JSON array, not a file to upload
+`--candidate-revision REVISION`, and `--artifacts manifest.json`. Tasks may
+declare the same optional completion gates as board tasks (experimental and
+disabled by default; see task-workflows.md); registered checks
+are server-owned and cannot be forged in the completion request. The manifest is a JSON array, not a file to upload
 as a binary. Each entry needs a unique `name` and either `uri` or `content`.
 `revision`, `digest`, and `media_type` are optional. Do not use a local checkout
 path, `/tmp` path, or `file://` link as `uri`; those files are not reachable by
@@ -83,6 +86,18 @@ coral-agent artifact upload report.md
 
 Use the returned `coral://artifacts/<digest>` URI in the manifest. The matching
 `/api/artifacts/<digest>` URL is available to the browser.
+
+To inspect a shared screenshot, download it first:
+
+```sh
+coral-agent artifact download coral://artifacts/<digest>
+# Prints a verified local path ending in .png, .jpg, or the artifact's media extension.
+```
+
+Open the returned path with your image-viewing tool. Artifact URIs are not local
+filenames. The download command verifies SHA-256 and adds a recognizable extension;
+you do not need to know Coral's internal storage layout. Use `--output FILE` for
+a chosen destination (existing files are not overwritten).
 
 An empty queue prints `No available tasks` and exits successfully. `current`
 with no active task prints `No active task`. Unknown sessions and rejected

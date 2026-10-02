@@ -99,6 +99,7 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	refreshCodexLink(c, sessionID)
 	if c.path == "" {
 		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
 			c.lastResolved = time.Now()
@@ -113,50 +114,9 @@ func (r *SessionReader) ReadCodexTurnEvent(sessionID, workingDir string) (string
 // UI tail); ordinary refreshes read only newly appended complete lines. Header
 // and size checks reset the tracker when a rollout is replaced or truncated.
 func readCodexTurnEventIncremental(path string, state *codexTurnCache) (string, time.Time) {
-	if path == "" {
-		return "", time.Time{}
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return "", time.Time{}
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return "", time.Time{}
-	}
-	headerBuf := make([]byte, 512)
-	n, _ := f.ReadAt(headerBuf, 0)
-	header := string(headerBuf[:n])
-	reset := !state.initialized || info.Size() < state.offset ||
-		(state.initialized && info.Size() == state.size && !info.ModTime().Equal(state.modTime)) ||
-		(state.initialized && header != state.head)
-	if reset {
-		*state = codexTurnCache{initialized: true, head: header}
-	}
-	if _, err := f.Seek(state.offset, io.SeekStart); err != nil {
-		return state.event, state.at
-	}
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return state.event, state.at
-	}
-	if len(data) == 0 {
-		state.size, state.modTime = info.Size(), info.ModTime()
-		return state.event, state.at
-	}
-	rawLen := len(data)
-	data = append(state.partial, data...)
-	lines := bytes.Split(data, []byte{'\n'})
-	state.partial = append(state.partial[:0], lines[len(lines)-1]...)
-	for _, line := range lines[:len(lines)-1] {
-		updateCodexTurnState(state, line)
-	}
-	// The file read began at offset, so advance by the raw bytes read. A
-	// trailing partial line is retained and will be re-read and completed on
-	// the next append.
-	state.offset += int64(rawLen)
-	state.size, state.modTime = info.Size(), info.ModTime()
+	scanTranscriptAppend(path, &state.transcriptReadState, func() {
+		state.event, state.at, state.active = "", time.Time{}, false
+	}, func(line []byte) { updateCodexTurnState(state, line) })
 	return state.event, state.at
 }
 
@@ -248,6 +208,10 @@ func AgyTurnEvent(path string) (event string, at time.Time, summary string) {
 		candidates = lines[:len(lines)-1]
 	}
 
+	return agyTurnLines(candidates)
+}
+
+func agyTurnLines(candidates [][]byte) (event string, at time.Time, summary string) {
 	for _, line := range candidates {
 		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
@@ -359,13 +323,72 @@ func geminiLegacyTurnEvent(data []byte) (event string, at time.Time, summary str
 func (r *SessionReader) ReadAgyTurnEvent(sessionID, workingDir string) (string, time.Time, string) {
 	c := r.getOrCreateSessionCache(sessionID)
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.path == "" {
 		if c.lastResolved.IsZero() || time.Since(c.lastResolved) >= 2*time.Second {
 			c.lastResolved = time.Now()
 			c.path = resolveTranscriptPath(sessionID, workingDir, at.Agy)
 		}
 	}
-	path := c.path
-	c.mu.Unlock()
-	return AgyTurnEvent(path)
+	return readAgyTurnEventIncremental(c.path, &c.agyState)
+}
+
+func readAgyTurnEventIncremental(path string, state *agyTurnCache) (string, time.Time, string) {
+	// Legacy JSON arrays cannot be tailed as JSONL. Decode changed files as
+	// a stream, retaining only the last message, and reuse unchanged results.
+	info, err := os.Stat(path)
+	if err != nil {
+		*state = agyTurnCache{}
+		return "", time.Time{}, ""
+	}
+	if sameTranscriptSnapshot(state.info, info) {
+		return state.event, state.at, state.summary
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return "", time.Time{}, ""
+	}
+	head := transcriptHead(f)
+	legacy := strings.HasSuffix(path, ".json") || strings.HasPrefix(strings.TrimSpace(head), "[")
+	if legacy {
+		defer f.Close()
+		decoder := json.NewDecoder(f)
+		token, err := decoder.Token()
+		if err != nil || token != json.Delim('[') {
+			return "", time.Time{}, ""
+		}
+		var last struct {
+			Role      string `json:"role"`
+			Timestamp string `json:"timestamp"`
+		}
+		for decoder.More() {
+			last.Role, last.Timestamp = "", ""
+			if decoder.Decode(&last) != nil {
+				return "", time.Time{}, ""
+			}
+		}
+		if _, err := decoder.Token(); err != nil {
+			return "", time.Time{}, ""
+		}
+		*state = agyTurnCache{}
+		switch last.Role {
+		case "user":
+			state.event = "prompt_submit"
+		case "model":
+			state.event = "stop"
+		}
+		state.at, _ = time.Parse(time.RFC3339Nano, last.Timestamp)
+		state.info = info
+		return state.event, state.at, state.summary
+	}
+	f.Close()
+	scanTranscriptAppend(path, &state.transcriptReadState, func() {
+		state.event, state.at, state.summary = "", time.Time{}, ""
+	}, func(line []byte) {
+		event, atTime, summary := agyTurnLines([][]byte{line})
+		if event != "" {
+			state.event, state.at, state.summary = event, atTime, summary
+		}
+	})
+	return state.event, state.at, state.summary
 }

@@ -1139,6 +1139,9 @@ function _taskDetailHtml(task, liveCost) {
         html += `<details class="task-detail-section"><summary>Workflow${workflow.name ? `: ${escapeHtml(workflow.name)}` : ''}${workflow.stage ? ` · ${escapeHtml(workflow.stage)}` : ''}</summary>
             <div class="task-detail-body">${escapeHtml(workflow.instructions || '')}</div>
             <div>Required outputs: ${escapeHtml((workflow.required_outputs || []).join(', ') || 'None')}</div>
+            <div>Completion gates: ${(workflow.completion_gates || []).length ? `<em>experimental, disabled by default (inactive unless the server enables them)</em> — ` : ''}${escapeHtml((workflow.completion_gates || []).map(g => `${g.name || g.type}${g.check_id ? ` [${g.check_id}]` : ''} (${g.artifact || 'server check'})`).join(', ') || 'None')}</div>
+            ${workflow.candidate_revision ? `<div>Candidate revision: <code>${escapeHtml(workflow.candidate_revision)}</code></div>` : ''}
+            ${(workflow.gate_results || []).length ? `<div>Gate results: ${(workflow.gate_results || []).map(g => `<span class="task-gate-result ${g.passed ? 'passed' : 'failed'}">${escapeHtml(g.name || g.type)}: ${escapeHtml(g.details || (g.passed ? 'passed' : 'failed'))}</span>`).join(' · ')}</div>` : ''}
             ${workflow.parent_task_id ? `<div>Parent task #${Number(workflow.parent_task_id)}</div>` : ''}
             ${workflow.retry_of ? `<div>Retry of task #${Number(workflow.retry_of)}</div>` : ''}</details>`;
         for (const input of workflow.inputs || []) html += `<details class="task-detail-section"><summary>Input from ${escapeHtml(input.board_id)} #${Number(input.task_id)} (${escapeHtml(input.outcome)})</summary>${(input.artifacts || []).map(artifactHtml).join('')}</details>`;

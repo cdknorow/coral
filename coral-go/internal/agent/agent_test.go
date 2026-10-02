@@ -355,6 +355,16 @@ func TestDefaultPromptGuidanceKeepsCorrectionsAndHandoffsActionable(t *testing.T
 		!strings.Contains(DefaultTaskWorkflowGuidance, "observation timeout does not prove") {
 		t.Error("task guidance missing outcome fidelity and evidence-based continuation rules")
 	}
+	for name, prompt := range map[string]string{
+		"orchestrator system": DefaultOrchestratorSystemPrompt,
+		"orchestrator action": DefaultOrchestratorActionPrompt,
+	} {
+		for _, capability := range []string{"task detail", "submit-review", "release-review", "--blocked-by", "sandbox approval"} {
+			if !strings.Contains(prompt, capability) {
+				t.Errorf("%s prompt missing task capability %q", name, capability)
+			}
+		}
+	}
 }
 
 func TestBuildBoardSystemPrompt_WithOverrides(t *testing.T) {

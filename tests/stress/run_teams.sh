@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # Integration test for team lifecycle with git worktrees.
-# Tests worktree creation, agent launch into worktree, and cleanup on kill.
+# Tests worktree lifecycle and board membership across agent restarts.
 #
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORAL_DIR="$REPO_ROOT/coral-go"
-PORT=8473
+PORT=${CORAL_TEST_PORT:-8473}
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
 PASS=0
@@ -18,11 +18,16 @@ SERVER_PID=""
 # ── Helpers ──────────────────────────────────────────────────────────
 
 cleanup() {
+    local exit_code=$?
     if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
         kill "$SERVER_PID" 2>/dev/null || true
         wait "$SERVER_PID" 2>/dev/null || true
     fi
-    rm -rf "$TMPDIR_TEAMS" 2>/dev/null || true
+    if [[ $exit_code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
+        log "Test data and server log: $TMPDIR_TEAMS"
+    else
+        rm -rf "$TMPDIR_TEAMS" 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
@@ -60,7 +65,12 @@ wait_for_server() {
 # ── Setup ────────────────────────────────────────────────────────────
 
 TMPDIR_TEAMS="$(mktemp -d)"
+if lsof -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    log "ERROR: Port $PORT is already in use; set CORAL_TEST_PORT to a free port."
+    exit 1
+fi
 export CORAL_DATA_DIR="$TMPDIR_TEAMS/coral-data"
+export CORAL_TMUX_NO_FALLBACK=1
 mkdir -p "$CORAL_DATA_DIR"
 
 log "Building coral (dev mode) and mock-agent..."
@@ -77,7 +87,7 @@ git -C "$REPO_DIR" add . >/dev/null 2>&1
 git -C "$REPO_DIR" -c user.name="Test" -c user.email="test@test.com" commit -m "initial" >/dev/null 2>&1
 
 log "Starting coral server on port $PORT..."
-"$TMPDIR_TEAMS/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_TEAMS/server.log" 2>&1 &
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID "$TMPDIR_TEAMS/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_TEAMS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 
@@ -214,6 +224,16 @@ if [[ "$wt_after" -eq 0 ]]; then
     pass "git worktree list no longer shows the team worktree"
 else
     fail "git worktree list still shows the worktree after cleanup"
+fi
+
+# ── Test 10: Board-only membership survives restart ───────────────────
+
+log "Test 10: Verify board membership survives agent restart..."
+if python3 "$SCRIPT_DIR/test_team_restart.py" \
+    --base-url "$BASE_URL" --workdir "$REPO_DIR" --data-dir "$CORAL_DATA_DIR"; then
+    pass "Board-only membership survives two restarts"
+else
+    fail "Restart lost board membership or related session state"
 fi
 
 # ── Summary ──────────────────────────────────────────────────────────

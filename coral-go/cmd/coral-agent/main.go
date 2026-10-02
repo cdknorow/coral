@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 var serverURL = hooks.CoralBase()
@@ -35,16 +36,20 @@ func printUsage() {
 	fmt.Println(`coral-agent - launch Coral agents and work with your own tasks
 
 Commands:
+  bind-codex <coral-id> <thread-id> Link a verified native Codex transcript
   ui <publish|list|events|remove>  Publish interactive sidebar panels
   artifact upload <file>           Store a durable Coral artifact
+  artifact download <uri> [--output FILE] Download and verify an artifact; prints local path
   launch [dir] [--type T] [--name N] [--model M] [--prompt P]
                                  Launch an agent in dir (default: current
                                  directory) with your default settings
   task add "title" [--body "details"] [--priority P]  Create a task
   task list                      List all tasks
-  task claim                     Claim next available task
+  task detail <id>               Read requirements, dependencies and results
+  task claim [id]                Claim a named ready task or next ready work
+  task edit <id>                 Edit unstarted task text/dependencies
   task current                   Show your current in-progress task
-  task complete <id> [--message "note"]  Complete a task
+  task complete <id> [--message "note"]  Complete with outcome/evidence
   task cancel <id> [--message "reason"]  Cancel a task
   history search <query> [flags] Search conversation history (post-compaction)
   history context [sess] <idx>   Retrieve surrounding conversation context
@@ -61,6 +66,16 @@ func main() {
 		os.Exit(1)
 	}
 	switch os.Args[1] {
+	case "bind-codex":
+		if len(os.Args) != 4 {
+			fmt.Fprintln(os.Stderr, "Usage: coral-agent bind-codex <coral-id> <thread-id>")
+			os.Exit(1)
+		}
+		if err := transcriptlink.BindCodex(os.Args[2], os.Args[3]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("Codex transcript linked")
 	case "ui":
 		cmdUI(os.Args[2:])
 	case "launch":
@@ -83,8 +98,20 @@ func main() {
 }
 
 func cmdArtifact(args []string) {
+	if len(args) >= 2 && args[0] == "download" {
+		fs := flag.NewFlagSet("artifact-download", flag.ExitOnError)
+		output := fs.String("output", "", "Local destination (must not exist; default: temporary file with media extension)")
+		fs.Parse(args[2:])
+		path, err := downloadArtifact(serverURL, args[1], *output)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(path)
+		return
+	}
 	if len(args) < 2 || args[0] != "upload" {
-		fmt.Fprintln(os.Stderr, "Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]")
+		fmt.Fprintln(os.Stderr, "Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]\n       coral-agent artifact download <coral://artifacts/digest> [--output FILE]")
 		os.Exit(1)
 	}
 	file := args[1]
@@ -121,15 +148,37 @@ func cmdArtifact(args []string) {
 	fmt.Println(string(body))
 }
 
-func cmdTask() {
-	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, `Usage: coral-agent task <subcommand> [args]
+func taskUsageText() string {
+	return `Usage: coral-agent task <subcommand> [args]
 
 Subcommands:
   add "title" [--body "details"] [--priority P]
   list
-  claim
-  complete <id> [--message "note"]`)
+  claim [id]                     Claim a specific ready task or next ready work
+  current                        Show your current in-progress task
+  detail <id>                    Read instructions, prerequisites and artifacts
+  edit <id> [options]             Edit unstarted task text/dependencies
+  publish <id>                   Publish a draft
+  complete <id> [options]         Complete with outcome/evidence
+  cancel <id> [--message "reason"]
+
+Add options:
+  --blocked-by '[{"task_id":1,"condition":"success","required_artifacts":["build"]}]'
+  --outputs "build,report" --workflow NAME --stage NAME
+  --workflow-instructions TEXT --parent ID --retry-of ID
+  --completion-gates '[{"type":"report","artifact":"report"}]'  (EXPERIMENTAL, disabled by default: the server rejects new gate declarations unless it enables the feature; existing gates are inactive)
+Completion options:
+  --outcome success|failed --artifacts manifest.json --candidate-revision REVISION
+Completed results are immutable. Dependencies must belong to this agent session.`
+}
+
+func printTaskUsage() {
+	fmt.Fprintln(os.Stderr, taskUsageText())
+}
+
+func cmdTask() {
+	if len(os.Args) < 3 {
+		printTaskUsage()
 		os.Exit(1)
 	}
 
@@ -156,29 +205,7 @@ Subcommands:
 	case "cancel":
 		cmdTaskFinish(taskArgs, "cancel")
 	case "--help", "-h", "help":
-		fmt.Fprintln(os.Stderr, `Usage: coral-agent task <subcommand> [args]
-
-Subcommands:
-  add "title" [--body "details"] [--priority P]
-  list
-  claim
-  current                          Show your current in-progress task
-  complete <id> [--message "note"]
-  cancel <id> [--message "reason"]`)
-		fmt.Println(`
-Workflow commands:
-  claim [id]                     Claim a specific ready task; one active task per session
-  detail <id>                    Read instructions, prerequisites and artifacts
-  edit <id> [--body TEXT] [--priority P] [--blocked-by JSON]
-  publish <id>                   Publish a draft
-
-Add options:
-  --blocked-by '[{"task_id":1,"condition":"success","required_artifacts":["build"]}]'
-  --outputs "build,report" --workflow NAME --stage NAME
-  --workflow-instructions TEXT --parent ID --retry-of ID
-Completion options:
-  --outcome success|failed --artifacts manifest.json
-Completed results are immutable. Dependencies must belong to this agent session.`)
+		printTaskUsage()
 		os.Exit(0)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
@@ -310,6 +337,7 @@ func cmdTaskAdd(args []string) {
 	instructions := fs.String("workflow-instructions", "", "Additional workflow instructions")
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retry := fs.Int64("retry-of", 0, "Finished task ID to retry")
+	completionGates := fs.String("completion-gates", "", "JSON completion gates (experimental and disabled by default)")
 	fs.Parse(reordered)
 
 	if title == "" {
@@ -339,7 +367,16 @@ func cmdTaskAdd(args []string) {
 			names = append(names, name)
 		}
 	}
-	reqBody["workflow"] = map[string]any{"name": *workflow, "stage": *stage, "instructions": *instructions, "required_outputs": names, "parent_task_id": *parent, "retry_of": *retry}
+	workflowBody := map[string]any{"name": *workflow, "stage": *stage, "instructions": *instructions, "required_outputs": names, "parent_task_id": *parent, "retry_of": *retry}
+	if *completionGates != "" {
+		var gates any
+		if err := json.Unmarshal([]byte(*completionGates), &gates); err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid --completion-gates JSON:", err)
+			os.Exit(1)
+		}
+		workflowBody["completion_gates"] = gates
+	}
+	reqBody["workflow"] = workflowBody
 
 	data, status, err := apiCallRaw("POST", "/tasks", reqBody)
 	if err != nil {
@@ -482,11 +519,15 @@ func cmdTaskFinish(args []string, verb string) {
 	message := fs.String(flagName, "", flagHelp)
 	outcome := fs.String("outcome", "success", "success or failed")
 	artifactsFile := fs.String("artifacts", "", "JSON artifact manifest")
+	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by completion evidence")
 	fs.Parse(args[1:])
 
 	body := map[string]any{"session_id": resolveSessionID()}
 	if verb == "complete" {
 		body["outcome"] = *outcome
+		if *candidateRevision != "" {
+			body["candidate_revision"] = *candidateRevision
+		}
 		if *artifactsFile != "" {
 			data, err := os.ReadFile(*artifactsFile)
 			if err != nil {

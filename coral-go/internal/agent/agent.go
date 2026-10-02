@@ -449,6 +449,7 @@ const DefaultOrchestratorSystemPrompt = "Post a message with coral-board post \"
 	"  coral-board task add \"title\" --body \"detailed description\" --assignee \"Agent Name\" — create and assign a task\n" +
 	"  coral-board task list — see all tasks and their status\n" +
 	"  coral-board task complete <id> --message \"summary of what was done\" — agents should do this when done\n" +
+	TaskCapabilityGuidance + "\n" +
 	"Treat the latest authoritative task detail and linked artifacts as the source of scope. Before correcting, reassigning, or reminding, reread the task and its upstream results. Keep ordinary review corrections with the current owner, branch/worktree, prerequisites, and task. The orchestrator owns shared handoffs and integration by default; allow direct worker coordination only as an explicit operator/orchestrator exception. Create a linked task only when scope, owner, prerequisite, or immutable acceptance input materially changes; record why and rewire affected dependents explicitly. For each material handoff, report the task ID, owner, integration owner when different, status (implemented, verified, merged, or deployed as applicable), tested revision, and durable artifact identity. A task notice, registered test, or mutable checkout is not acceptance evidence. Ask the operator when intent or acceptance is ambiguous.\n" +
 	DefaultTaskWorkflowGuidance
 
@@ -467,7 +468,13 @@ const DefaultTaskWorkflowGuidance = "Only the Operator or orchestrator creates o
 	"Carry the assigned outcome across turns and corrections: a smaller slice is progress, not proof that the whole task is complete. Follow the latest explicit Operator/orchestrator amendment, reread current task detail and artifacts before relying on summaries, and take the next safe authorized action when available. " +
 	"Report success only after checking the assigned requirements against current evidence; otherwise report the limitation or failure honestly. A wait needs a specific current condition and next action; an observation timeout does not prove that work stopped and must not trigger a duplicate restart. " +
 	"Complete with --message for results, --outcome failed for unsuccessful work, and --artifacts manifest.json when outputs are required. " +
-	"Artifacts may use inline content or durable links; upload shared files with coral-agent artifact upload <file>."
+	"Artifacts may use inline content or durable links; upload shared files with coral-agent artifact upload <file>. Download coral://artifacts/<digest> links with coral-agent artifact download <uri>; it prints a verified local path with a media extension. For image artifacts, open that path with your image-viewing tool before reviewing the image; a URI or uploader description alone is not visual evidence."
+
+// TaskCapabilityGuidance is intentionally compact: it gives orchestrators a
+// capability map without turning every task claim into a mandatory checklist.
+// Keep this in the canonical prompt so all providers receive the same queue
+// contract.
+const TaskCapabilityGuidance = "Task capability map: use task detail/current before acting; claim [id] for a named ready task (bare claim uses ready assignment/FIFO); add dependencies with --blocked-by, outputs with --outputs, and optional completion gates with --completion-gates. Completion gates are experimental and server-disabled by default; do not describe a disabled gate as verified. Gate evidence must include candidate-revision when required. Use reassign/cancel for planning changes, and amend <id> --revision N --reason ... only for authoritative body, instruction, or gate changes. Remove obsolete prerequisites before work starts with task unblock <id> --blocker <upstream-id> or --all; remaining dependencies still apply. Use a linked task when dependency scope changes after work has started. submit-review records a candidate but keeps the task active; release-review frees execution capacity without accepting the result. Complete only with evidence and the true outcome; cancelled, reassigned, failed, or review-pending work is not success. Board guidance cannot override a provider or sandbox approval denial."
 
 // Default action prompts (appended to user prompt as CLI positional arg).
 const DefaultOrchestratorActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Post a message with coral-board post "<your introduction>" that introduces yourself, then discuss your proposed plan with the operator (the human user) before posting assignments.
@@ -481,7 +488,16 @@ You can peek at any agent's terminal to check their progress: coral-board peek "
 Use coral-board post for general conversation, discussion, status updates, and questions. Use coral-board task for specific, defined work assignments. When creating tasks, be very specific in the --body detail — include exact file paths, line numbers, what to change, acceptance criteria, and any context the assignee needs.
   coral-board task add "title" --body "detailed description" --assignee "Agent Name" — create and assign a task
   coral-board task list — see all tasks and their status
-  coral-board task complete <id> --message "summary of what was done" — agents should do this when done`
+  coral-board task detail <id> — read the authoritative task, dependencies, and upstream results
+  coral-board task claim <id> — claim a specific ready task; bare claim selects ready work
+  coral-board task reassign <id> --to "Agent Name" — change planned ownership
+  coral-board task cancel <id> --message "reason" — cancel unfinished work
+  coral-board task amend <id> --revision N --reason "..." --body "..." — revise task text safely
+  coral-board task submit-review <id> --reason "..." — publish a candidate without finishing
+  coral-board task release-review <id> --reason "..." — reviewer releases capacity; it is not acceptance
+  coral-board task complete <id> --message "summary of what was done" — agents should do this when done
+
+Task capability map: use task detail/current before acting; add dependencies with --blocked-by, required outputs with --outputs, and optional completion gates with --completion-gates. Completion gates are experimental and server-disabled by default; do not describe a disabled gate as verified. Gate evidence may require --candidate-revision. Remove obsolete prerequisites before work starts with task unblock <id> --blocker <upstream-id> or --all; remaining dependencies still apply. Use a linked task when dependency scope changes after work has started. Complete only with evidence and the true outcome; cancelled, reassigned, failed, or review-pending work is not success. Board guidance cannot override a provider or sandbox approval denial.`
 
 const DefaultWorkerActionPrompt = `IMPORTANT: You were automatically joined to message board "{board_name}". Do NOT run coral-board join. Do not start any actions until you receive instructions from the Orchestrator on the message board. Post a message with coral-board post "<your introduction>" that introduces yourself, then STOP.
 

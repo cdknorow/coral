@@ -31,16 +31,26 @@ func taskClaimNudge(taskID int64) string {
 
 // BoardHandler handles message board HTTP endpoints.
 type BoardHandler struct {
-	bs                          *board.Store
-	terminal                    ptymanager.SessionTerminal
-	mu                          sync.RWMutex
-	paused                      map[string]bool // in-memory set of paused project names
-	notifyFn                    func()          // triggers immediate board notification pass
-	coralDir                    string
-	writeTaskArtifact           func(context.Context, *board.Task, string) error
-	reminderMu                  sync.Mutex
-	reminders                   map[string]context.CancelFunc
-	subscriberReminderIntervals map[string]int
+	bs                            *board.Store
+	terminal                      ptymanager.SessionTerminal
+	mu                            sync.RWMutex
+	paused                        map[string]bool // in-memory set of paused project names
+	notifyFn                      func()          // triggers immediate board notification pass
+	coralDir                      string
+	writeTaskArtifact             func(context.Context, *board.Task, string) error
+	reminderMu                    sync.Mutex
+	reminders                     map[string]context.CancelFunc
+	subscriberReminderIntervals   map[string]int
+	subscriberReminderGenerations map[string]uint64
+	// subscriberReminderFire holds one mutex per active subscriber reminder.
+	// The firing goroutine holds it across its cancellation check and the
+	// nudge, so stopping a reminder can wait for an in-flight nudge.
+	subscriberReminderFire map[string]*sync.Mutex
+	// subscriberReminderOps serializes durable-store plus timer changes for one
+	// team/subscriber so concurrent replace and remove cannot interleave.
+	subscriberReminderOps map[string]*sync.Mutex
+	// deleteSubscriberReminder is the durable delete; tests inject failures.
+	deleteSubscriberReminder func(ctx context.Context, project, subscriber string) error
 }
 
 // SetTaskArtifactWriter configures persistence of task patches under .coral.
@@ -64,10 +74,11 @@ func (h *BoardHandler) persistTaskArtifact(ctx context.Context, task *board.Task
 
 func NewBoardHandler(bs *board.Store) *BoardHandler {
 	return &BoardHandler{
-		bs:                          bs,
-		paused:                      make(map[string]bool),
-		reminders:                   make(map[string]context.CancelFunc),
-		subscriberReminderIntervals: make(map[string]int),
+		bs:                            bs,
+		paused:                        make(map[string]bool),
+		reminders:                     make(map[string]context.CancelFunc),
+		subscriberReminderIntervals:   make(map[string]int),
+		subscriberReminderGenerations: make(map[string]uint64),
 	}
 }
 
@@ -98,8 +109,25 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 			errBadRequest(w, "invalid JSON")
 			return
 		}
+		if strings.TrimSpace(body.SubscriberID) == "" {
+			errBadRequest(w, "subscriber_id is required")
+			return
+		}
+		unlock := h.lockSubscriberReminderOps(project, body.SubscriberID)
+		defer unlock()
+		// Delete the durable row first: if that fails, the active reminder
+		// and its persisted state must both remain untouched. Only after a
+		// successful delete is the timer stopped, and stop returns only once
+		// any in-flight nudge has finished and no later one can start.
+		deleteFn := h.deleteSubscriberReminder
+		if deleteFn == nil {
+			deleteFn = h.bs.DeleteSubscriberReminder
+		}
+		if err := deleteFn(r.Context(), project, body.SubscriberID); err != nil {
+			errInternalServer(w, "could not remove reminder")
+			return
+		}
 		h.stopSubscriberReminder(project, body.SubscriberID)
-		_ = h.bs.DeleteSubscriberReminder(r.Context(), project, body.SubscriberID)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "active": false})
 		return
 	}
@@ -119,6 +147,8 @@ func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "agent has no running session on this board")
 		return
 	}
+	unlock := h.lockSubscriberReminderOps(project, body.SubscriberID)
+	defer unlock()
 	if err := h.bs.UpsertSubscriberReminder(r.Context(), board.SubscriberReminder{Project: project, SubscriberID: body.SubscriberID, Message: body.Message, IntervalSeconds: body.IntervalSeconds}); err != nil {
 		errInternalServer(w, "could not persist reminder")
 		return
@@ -137,7 +167,9 @@ func (h *BoardHandler) RestoreSubscriberReminders(ctx context.Context) error {
 		if sub, _ := h.bs.GetProjectSubscription(ctx, r.Project, r.SubscriberID); sub == nil || sub.SessionName == "" {
 			continue
 		}
+		unlock := h.lockSubscriberReminderOps(r.Project, r.SubscriberID)
 		h.startSubscriberReminder(r.Project, r.SubscriberID, r.Message, time.Duration(r.IntervalSeconds)*time.Second)
+		unlock()
 	}
 	return nil
 }
@@ -157,14 +189,50 @@ func (h *BoardHandler) SubscriberReminderInterval(project, subscriber string) (i
 	seconds, ok := h.subscriberReminderIntervals[h.subscriberReminderKey(project, subscriber)]
 	return seconds, ok && h.reminders[h.subscriberReminderKey(project, subscriber)] != nil
 }
+
+// lockSubscriberReminderOps serializes reminder mutations (replace, remove,
+// restore) for one team/subscriber and returns the unlock function.
+func (h *BoardHandler) lockSubscriberReminderOps(project, subscriber string) func() {
+	key := h.subscriberReminderKey(project, subscriber)
+	h.reminderMu.Lock()
+	if h.subscriberReminderOps == nil {
+		h.subscriberReminderOps = make(map[string]*sync.Mutex)
+	}
+	m := h.subscriberReminderOps[key]
+	if m == nil {
+		m = &sync.Mutex{}
+		h.subscriberReminderOps[key] = m
+	}
+	h.reminderMu.Unlock()
+	m.Lock()
+	return m.Unlock
+}
+
+// stopSubscriberReminder cancels the reminder and then waits for any nudge the
+// timer goroutine is in the middle of sending. It is an ordering barrier: once
+// it returns, no nudge from the stopped reminder is in flight or can start,
+// even when the terminal ignores context cancellation. It must not be called
+// from the reminder goroutine itself or while holding reminderMu.
 func (h *BoardHandler) stopSubscriberReminder(project, subscriber string) {
 	h.reminderMu.Lock()
-	if c := h.reminders[h.subscriberReminderKey(project, subscriber)]; c != nil {
-		c()
-		delete(h.reminders, h.subscriberReminderKey(project, subscriber))
+	if h.subscriberReminderGenerations == nil {
+		h.subscriberReminderGenerations = make(map[string]uint64)
 	}
-	delete(h.subscriberReminderIntervals, h.subscriberReminderKey(project, subscriber))
+	key := h.subscriberReminderKey(project, subscriber)
+	h.subscriberReminderGenerations[key]++
+	var fire *sync.Mutex
+	if c := h.reminders[key]; c != nil {
+		c()
+		delete(h.reminders, key)
+		fire = h.subscriberReminderFire[key]
+		delete(h.subscriberReminderFire, key)
+	}
+	delete(h.subscriberReminderIntervals, key)
 	h.reminderMu.Unlock()
+	if fire != nil {
+		fire.Lock()
+		fire.Unlock() //nolint:staticcheck // empty critical section is the barrier
+	}
 }
 func (h *BoardHandler) startSubscriberReminder(project, subscriber, message string, interval time.Duration) {
 	h.stopSubscriberReminder(project, subscriber)
@@ -177,17 +245,37 @@ func (h *BoardHandler) startSubscriberReminder(project, subscriber, message stri
 	if h.subscriberReminderIntervals == nil {
 		h.subscriberReminderIntervals = make(map[string]int)
 	}
+	if h.subscriberReminderGenerations == nil {
+		h.subscriberReminderGenerations = make(map[string]uint64)
+	}
+	if h.subscriberReminderFire == nil {
+		h.subscriberReminderFire = make(map[string]*sync.Mutex)
+	}
+	generation := h.subscriberReminderGenerations[key]
+	fire := &sync.Mutex{}
+	h.subscriberReminderFire[key] = fire
 	h.reminders[key] = cancel
 	h.subscriberReminderIntervals[key] = int(interval / time.Second)
 	h.reminderMu.Unlock()
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		defer h.stopSubscriberReminder(project, subscriber)
+		defer h.finishSubscriberReminder(project, subscriber, generation)
 		for {
 			select {
 			case <-ticker.C:
-				if h.sendTaskNudge(ctx, project, subscriber, "[Coral reminder] "+message) != nil {
+				// Cancellation and a ready ticker can be selected in either
+				// order. Under the fire mutex, re-check cancellation and send:
+				// stop cancels first and then takes the same mutex, so a
+				// nudge either completes before stop returns or never starts.
+				fire.Lock()
+				if ctx.Err() != nil {
+					fire.Unlock()
+					return
+				}
+				err := h.sendTaskNudge(ctx, project, subscriber, "[Coral reminder] "+message)
+				fire.Unlock()
+				if err != nil {
 					return
 				}
 			case <-ctx.Done():
@@ -195,6 +283,21 @@ func (h *BoardHandler) startSubscriberReminder(project, subscriber, message stri
 			}
 		}
 	}()
+}
+
+// finishSubscriberReminder only clears the timer that owns generation. An
+// older goroutine must not erase a replacement reminder installed for the same
+// agent while its deferred cleanup runs.
+func (h *BoardHandler) finishSubscriberReminder(project, subscriber string, generation uint64) {
+	h.reminderMu.Lock()
+	defer h.reminderMu.Unlock()
+	key := h.subscriberReminderKey(project, subscriber)
+	if h.subscriberReminderGenerations[key] != generation {
+		return
+	}
+	delete(h.reminders, key)
+	delete(h.subscriberReminderIntervals, key)
+	delete(h.subscriberReminderFire, key)
 }
 
 // SetTerminal sets the terminal backend for peek functionality.
@@ -230,6 +333,13 @@ func (h *BoardHandler) SetNotifyFn(fn func()) {
 }
 
 func (h *BoardHandler) buildAssignmentNotification(ctx context.Context, project string, task *board.Task, assignee string, reassigned bool) string {
+	if task.Status == "blocked" {
+		owner := "unassigned"
+		if assignee != "" {
+			owner = "@" + assignee
+		}
+		return fmt.Sprintf("[Task #%d assigned to %s; still blocked] %s — waiting for prerequisites; cannot be claimed yet", task.ID, owner, task.Title)
+	}
 	if assignee == "" {
 		if reassigned {
 			return fmt.Sprintf("@notify-all [Task #%d reassigned — now unassigned] %s — run 'coral-board task claim' to pick it up", task.ID, task.Title)
@@ -1328,11 +1438,12 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var body struct {
-		SubscriberID     string               `json:"subscriber_id"`
-		Message          *string              `json:"message"`
-		Outcome          string               `json:"outcome,omitempty"`
-		Artifacts        []board.TaskArtifact `json:"artifacts,omitempty"`
-		ExpectedRevision *int                 `json:"expected_revision,omitempty"`
+		SubscriberID      string               `json:"subscriber_id"`
+		Message           *string              `json:"message"`
+		Outcome           string               `json:"outcome,omitempty"`
+		Artifacts         []board.TaskArtifact `json:"artifacts,omitempty"`
+		ExpectedRevision  *int                 `json:"expected_revision,omitempty"`
+		CandidateRevision string               `json:"candidate_revision,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -1342,7 +1453,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		errBadRequest(w, "subscriber_id required")
 		return
 	}
-	task, err := h.bs.CompleteTaskWithArtifactsAtRevision(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts, body.ExpectedRevision)
+	task, err := h.bs.CompleteTaskWithArtifactsAtRevisionAndCandidate(r.Context(), project, taskID, body.SubscriberID, body.Message, body.Outcome, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
 	if err != nil {
 		if strings.Contains(err.Error(), "revision") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
@@ -1503,12 +1614,14 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var raw struct {
-		SubscriberID string          `json:"subscriber_id"`
-		Title        *string         `json:"title,omitempty"`
-		Body         *string         `json:"body,omitempty"`
-		Priority     *string         `json:"priority,omitempty"`
-		AssignedTo   *string         `json:"assigned_to,omitempty"`
-		BlockedBy    json.RawMessage `json:"blocked_by,omitempty"`
+		SubscriberID  string          `json:"subscriber_id"`
+		Title         *string         `json:"title,omitempty"`
+		Body          *string         `json:"body,omitempty"`
+		Priority      *string         `json:"priority,omitempty"`
+		AssignedTo    *string         `json:"assigned_to,omitempty"`
+		BlockedBy     json.RawMessage `json:"blocked_by,omitempty"`
+		RemoveBlocker *int64          `json:"remove_blocker,omitempty"`
+		ClearBlockers bool            `json:"clear_blockers,omitempty"`
 	}
 	if err := decodeJSON(r, &raw); err != nil {
 		errBadRequest(w, "invalid JSON")
@@ -1519,7 +1632,12 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if raw.AssignedTo != nil && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
+	removingBlockers := raw.RemoveBlocker != nil || raw.ClearBlockers
+	if removingBlockers && (len(raw.BlockedBy) > 0 || raw.Title != nil || raw.Priority != nil || raw.AssignedTo != nil || (raw.RemoveBlocker != nil && (raw.ClearBlockers || *raw.RemoveBlocker <= 0))) {
+		errBadRequest(w, "use either remove_blocker (positive task ID) or clear_blockers, without other edits")
+		return
+	}
+	if (raw.AssignedTo != nil || removingBlockers) && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
 		return
 	}
 	update := board.TaskUpdate{
@@ -1539,7 +1657,17 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	before, _ := h.bs.GetTask(r.Context(), project, taskID)
-	task, prevStatus, err := h.bs.UpdateTask(r.Context(), project, taskID, update, 32)
+	var task *board.Task
+	var prevStatus string
+	if removingBlockers {
+		var blocker int64
+		if raw.RemoveBlocker != nil {
+			blocker = *raw.RemoveBlocker
+		}
+		task, prevStatus, err = h.bs.RemoveTaskBlockers(r.Context(), project, taskID, blocker)
+	} else {
+		task, prevStatus, err = h.bs.UpdateTask(r.Context(), project, taskID, update, 32)
+	}
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -1637,7 +1765,7 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, task)
 }
 
-// ReassignTask resets a task to pending with an optional new assignee.
+// ReassignTask changes ownership, preserving any prerequisite block.
 // POST /api/board/{project}/tasks/{taskID}/reassign
 func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 	project := chi.URLParam(r, "project")
@@ -1666,7 +1794,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		notification := h.buildAssignmentNotification(ctx, project, task, body.Assignee, true)
 		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
-		if body.Assignee != "" {
+		if body.Assignee != "" && task.Status == "pending" {
 			if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, body.Assignee, task.ID); !hasActive {
 				h.sendTaskNudge(ctx, project, body.Assignee, taskClaimNudge(task.ID))
 			}

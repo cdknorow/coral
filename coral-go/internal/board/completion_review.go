@@ -9,15 +9,17 @@ import (
 // CompletionReview preserves an unaccepted candidate independently of the final
 // workflow result. Recording or releasing it never resolves dependencies.
 type CompletionReview struct {
-	SubmittedBy     string         `json:"submitted_by"`
-	SubmittedAt     string         `json:"submitted_at"`
-	Message         string         `json:"message"`
-	ProposedOutcome string         `json:"proposed_outcome"`
-	Artifacts       []TaskArtifact `json:"artifacts,omitempty"`
-	Reason          string         `json:"reason"`
-	ReleasedBy      string         `json:"released_by,omitempty"`
-	ReleasedAt      string         `json:"released_at,omitempty"`
-	ReleaseReason   string         `json:"release_reason,omitempty"`
+	SubmittedBy       string                 `json:"submitted_by"`
+	SubmittedAt       string                 `json:"submitted_at"`
+	Message           string                 `json:"message"`
+	ProposedOutcome   string                 `json:"proposed_outcome"`
+	Artifacts         []TaskArtifact         `json:"artifacts,omitempty"`
+	Reason            string                 `json:"reason"`
+	CandidateRevision string                 `json:"candidate_revision,omitempty"`
+	GateResults       []CompletionGateResult `json:"gate_results,omitempty"`
+	ReleasedBy        string                 `json:"released_by,omitempty"`
+	ReleasedAt        string                 `json:"released_at,omitempty"`
+	ReleaseReason     string                 `json:"release_reason,omitempty"`
 }
 
 // RequireTaskReviewer uses the board's registered privilege, never an arbitrary
@@ -39,14 +41,22 @@ func (s *Store) RequireTaskReviewer(ctx context.Context, project, actor string) 
 // free the worker slot. The immutable candidate can be submitted before a
 // completion attempt, or separately after an externally rejected attempt.
 func (s *Store) SubmitCompletionReview(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact) (*Task, error) {
-	return s.submitCompletionReviewAtRevision(ctx, project, id, actor, message, outcome, reason, artifacts, nil)
+	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, nil, "")
 }
 
 func (s *Store) SubmitCompletionReviewAtRevision(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
-	return s.submitCompletionReviewAtRevision(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision)
+	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, "")
 }
 
 func (s *Store) submitCompletionReviewAtRevision(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
+	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, "")
+}
+
+func (s *Store) SubmitCompletionReviewAtRevisionAndCandidate(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
+	return s.submitCompletionReviewAtRevisionAndCandidate(ctx, project, id, actor, message, outcome, reason, artifacts, expectedRevision, candidateRevision)
+}
+
+func (s *Store) submitCompletionReviewAtRevisionAndCandidate(ctx context.Context, project string, id int64, actor, message, outcome, reason string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
 	if strings.TrimSpace(reason) == "" || len(reason) > 4096 || len(message) > 65536 {
 		return nil, fmt.Errorf("a review reason is required (maximum 4096 characters); message maximum is 65536")
 	}
@@ -89,7 +99,11 @@ func (s *Store) submitCompletionReviewAtRevision(ctx context.Context, project st
 	if w.CompletionReview != nil {
 		return nil, fmt.Errorf("completion review evidence is already recorded and immutable")
 	}
-	w.CompletionReview = &CompletionReview{SubmittedBy: actor, SubmittedAt: nowUTC(), Message: message, ProposedOutcome: outcome, Reason: reason, Artifacts: artifacts}
+	gateResults, gateErr := checkCompletionGatesWithPolicy(w.CompletionGates, artifacts, candidateRevision, s.completionCheckRunner, s.completionChecksEnabled)
+	if gateErr != nil && outcome == "success" {
+		return nil, gateErr
+	}
+	w.CompletionReview = &CompletionReview{SubmittedBy: actor, SubmittedAt: nowUTC(), Message: message, ProposedOutcome: outcome, Reason: reason, Artifacts: artifacts, CandidateRevision: candidateRevision, GateResults: gateResults}
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {
 		return nil, err
 	}

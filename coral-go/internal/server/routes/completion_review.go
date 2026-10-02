@@ -19,18 +19,19 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body struct {
-		SubscriberID     string               `json:"subscriber_id"`
-		Message          string               `json:"message"`
-		Outcome          string               `json:"outcome"`
-		Reason           string               `json:"reason"`
-		Artifacts        []board.TaskArtifact `json:"artifacts"`
-		ExpectedRevision *int                 `json:"expected_revision,omitempty"`
+		SubscriberID      string               `json:"subscriber_id"`
+		Message           string               `json:"message"`
+		Outcome           string               `json:"outcome"`
+		Reason            string               `json:"reason"`
+		Artifacts         []board.TaskArtifact `json:"artifacts"`
+		ExpectedRevision  *int                 `json:"expected_revision,omitempty"`
+		CandidateRevision string               `json:"candidate_revision,omitempty"`
 	}
 	if err := decodeJSON(r, &body); err != nil || body.SubscriberID == "" {
 		errBadRequest(w, "subscriber_id and valid JSON required")
 		return
 	}
-	task, err := h.bs.SubmitCompletionReviewAtRevision(r.Context(), project, id, body.SubscriberID, body.Message, body.Outcome, body.Reason, body.Artifacts, body.ExpectedRevision)
+	task, err := h.bs.SubmitCompletionReviewAtRevisionAndCandidate(r.Context(), project, id, body.SubscriberID, body.Message, body.Outcome, body.Reason, body.Artifacts, body.ExpectedRevision, body.CandidateRevision)
 	if err != nil {
 		if strings.Contains(err.Error(), "revision") {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})

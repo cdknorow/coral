@@ -341,8 +341,11 @@ Commands:
                                Export chat (auto-detects format from extension)
   task add "title" [--body "details"] [--priority P]  Create a task
   task list                      List all tasks
-  task claim                     Claim next available task
-  task complete <id> [--message "note"]  Complete a task
+  task detail <id>               Read requirements, dependencies and results
+  task claim [id]                Claim a named ready task or next ready work
+  task reassign/cancel/amend     Change ownership, stop work, or revise text
+  task submit-review/release-review  Record a candidate or release capacity
+  task complete <id> [--message "note"]  Complete with outcome/evidence
   workflow create --file <path>  Create a workflow from JSON file
   workflow list                  List all workflows
   workflow trigger <name> [--context '{"key":"val"}']  Trigger a workflow
@@ -1334,7 +1337,7 @@ Subcommands:
   add "title" [--body "details"] [--priority P]
   list
   claim
-  submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
+  submit-review <id> --reason "review pending" [--revision N] [--candidate-revision REVISION] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   release-review <id> --reason "slot released pending review" (orchestrator only)
   complete <id> [--message "note"]`)
 		os.Exit(1)
@@ -1388,6 +1391,8 @@ Subcommands:
 		cmdTaskCancel(st, taskArgs)
 	case "reassign":
 		cmdTaskReassign(st, taskArgs)
+	case "unblock":
+		cmdTaskUnblock(st, taskArgs)
 	case "amend":
 		cmdTaskAmend(st, taskArgs)
 	case "--help", "-h", "help":
@@ -1401,15 +1406,17 @@ Subcommands:
   detail <id>                      Read task instructions, inputs and results
   submit-review <id> --reason "review pending" [--revision N] [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
   release-review <id> --reason "slot released pending review" (orchestrator only)
-  complete <id> [--message "note"] [--outcome success|failed] [--artifacts manifest.json]
+  complete <id> [--revision N] [--message "note"] [--outcome success|failed] [--candidate-revision REVISION] [--artifacts manifest.json]
   cancel <id> [--message "reason"]
   reassign <id> [--to "Agent Name"]
-  amend <id> --revision N --reason "..." [--body "..." --workflow-instructions "..."]
+  unblock <id> (--blocker ID | --all) Remove one or all prerequisites (orchestrator only)
+  amend <id> --revision N --reason "..." [--body "..." --workflow-instructions "..." --completion-gates JSON (experimental, disabled by default; "[]" clears)]
 
 Workflow options for add:
   --workflow "name" --stage "Build" --outputs "build,test_report"
   --blocked-by '[{"task_id":1,"condition":"success","required_artifacts":["build"]}]'
   --workflow-instructions "project-specific guidance" --parent <id> --retry-of <id>
+  --completion-gates '[{"type":"report","artifact":"report"}]'  (EXPERIMENTAL, disabled by default: the server rejects new gate declarations unless it enables the feature; existing gates are inactive)
 Conditions: success (default), failure, termination. Completed results are immutable.`)
 		os.Exit(0)
 	default:
@@ -1444,6 +1451,7 @@ func cmdTaskAdd(st *boardState, args []string) {
 	workflow := fs.String("workflow", "", "Workflow name (e.g. Build -> Test -> Release)")
 	stage := fs.String("stage", "", "Stage name")
 	instructions := fs.String("workflow-instructions", "", "Additional instructions appended to Coral's default task workflow")
+	completionGates := fs.String("completion-gates", "", "JSON completion gates (experimental and disabled by default)")
 	parent := fs.Int64("parent", 0, "Parent task ID")
 	retryOf := fs.Int64("retry-of", 0, "Finished task ID this new task retries")
 	fs.Parse(reordered)
@@ -1479,7 +1487,16 @@ func cmdTaskAdd(st *boardState, args []string) {
 			required = append(required, name)
 		}
 	}
-	reqBody["workflow"] = map[string]any{"name": *workflow, "stage": *stage, "instructions": *instructions, "required_outputs": required, "parent_task_id": *parent, "retry_of": *retryOf}
+	workflowBody := map[string]any{"name": *workflow, "stage": *stage, "instructions": *instructions, "required_outputs": required, "parent_task_id": *parent, "retry_of": *retryOf}
+	if *completionGates != "" {
+		var gates any
+		if err := json.Unmarshal([]byte(*completionGates), &gates); err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid --completion-gates JSON:", err)
+			os.Exit(1)
+		}
+		workflowBody["completion_gates"] = gates
+	}
+	reqBody["workflow"] = workflowBody
 
 	data, status, err := apiCallRaw("POST", "/"+st.Project+"/tasks", reqBody)
 	if err != nil {
@@ -1614,7 +1631,7 @@ func cmdTaskCurrent(st *boardState) {
 
 func cmdTaskComplete(st *boardState, args []string) {
 	if len(args) < 1 {
-		fmt.Fprintln(os.Stderr, "Usage: coral-board task complete <id> [--message \"note\"]")
+		fmt.Fprintln(os.Stderr, "Usage: coral-board task complete <id> [--revision N] [--message \"note\"]")
 		os.Exit(1)
 	}
 
@@ -1629,6 +1646,7 @@ func cmdTaskComplete(st *boardState, args []string) {
 	outcome := fs.String("outcome", "success", "success or failed")
 	artifactsFile := fs.String("artifacts", "", "JSON file containing named artifacts (name, uri or content, revision, digest)")
 	expectedRevision := fs.Int("revision", 0, "Expected task revision after amendments")
+	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by completion evidence")
 	fs.Parse(args[1:])
 
 	subscriberID := resolveSubscriberID()
@@ -1638,6 +1656,9 @@ func cmdTaskComplete(st *boardState, args []string) {
 	}
 	if *expectedRevision > 0 {
 		body["expected_revision"] = *expectedRevision
+	}
+	if *candidateRevision != "" {
+		body["candidate_revision"] = *candidateRevision
 	}
 	if *artifactsFile != "" {
 		data, err := os.ReadFile(*artifactsFile)
@@ -1778,6 +1799,7 @@ func cmdTaskAmend(st *boardState, args []string) {
 	reason := fs.String("reason", "", "Why this amendment is authoritative")
 	bodyText := fs.String("body", "", "Replacement task body")
 	instructions := fs.String("workflow-instructions", "", "Replacement task-specific instructions")
+	completionGates := fs.String("completion-gates", "", "Replacement completion gates JSON (experimental and disabled by default)")
 	fs.Parse(args[1:])
 	if *revision <= 0 || strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--revision and --reason are required")
@@ -1789,6 +1811,14 @@ func cmdTaskAmend(st *boardState, args []string) {
 	}
 	if *instructions != "" {
 		changes["workflow_instructions"] = *instructions
+	}
+	if *completionGates != "" {
+		var gates any
+		if err := json.Unmarshal([]byte(*completionGates), &gates); err != nil {
+			fmt.Fprintln(os.Stderr, "Invalid --completion-gates JSON:", err)
+			os.Exit(1)
+		}
+		changes["completion_gates"] = gates
 	}
 	if len(changes) == 0 {
 		fmt.Fprintln(os.Stderr, "at least --body or --workflow-instructions is required")
@@ -2525,12 +2555,16 @@ func cmdTaskReview(st *boardState, args []string, action string) {
 	revision := fs.Int("revision", 0, "Expected task revision after amendments (submit-review)")
 	outcome := fs.String("outcome", "success", "Proposed outcome: success or failed")
 	manifest := fs.String("artifacts", "", "Candidate artifact manifest")
+	candidateRevision := fs.String("candidate-revision", "", "Exact source/build revision represented by candidate evidence")
 	fs.Parse(args[1:])
 	if strings.TrimSpace(*reason) == "" {
 		fmt.Fprintln(os.Stderr, "--reason is required")
 		os.Exit(1)
 	}
 	body := map[string]any{"subscriber_id": resolveSubscriberID(), "reason": *reason, "message": *message, "outcome": *outcome}
+	if *candidateRevision != "" {
+		body["candidate_revision"] = *candidateRevision
+	}
 	if *revision > 0 {
 		body["expected_revision"] = *revision
 	}

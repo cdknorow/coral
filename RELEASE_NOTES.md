@@ -1,6 +1,28 @@
 # Release Notes
 
-## Next release — security and encryption hardening
+## v1.3.16 — agent recovery, task controls, and live-refresh fixes
+
+### Fixed
+
+- Codex chat can explicitly bind a Coral session to its verified native thread, replace a cached old transcript, and retain the association across server restarts. Resume uses the mapped native identity.
+- Agent restart preserves board membership, subscriber identity, and notification preferences even when membership was established after launch.
+- Live refresh scopes database aggregation to active agents, skips sleeping-agent transcript discovery, and incrementally reads lifecycle records with replacement/truncation recovery.
+- Reminder deletion preserves the running reminder when persistence fails. Cancellation and replacement wait for in-flight delivery; old generations cannot remove replacements.
+- Blocked tasks can be reassigned without dropping their prerequisites or sending premature claim instructions.
+- Amended-task completion errors explain the required task revision separately from the source/build revision.
+
+### Added
+
+- `coral-agent artifact download <uri> [--output FILE]` retrieves and SHA-256-verifies shared artifacts, giving screenshots an image extension usable by local viewers.
+- `coral-board task unblock <id> --blocker <upstream-id>` removes one obsolete prerequisite; `--all` clears prerequisites. Readiness is recalculated atomically.
+- Isolated stress coverage for transcript pickup across real server restarts and board membership across agent restart.
+
+### Experimental behavior
+
+- Completion gates and registered checks remain disabled by default. Stored gates are explicitly inactive and do not execute runners; existing required artifact outputs remain enforced.
+- These optimizations reduce measured fixture work; they do not establish the cause of the earlier system-memory incident.
+
+## v1.3.15 — security and encryption hardening
 
 ### Removed
 

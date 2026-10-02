@@ -631,4 +631,5 @@ CREATE INDEX IF NOT EXISTS idx_session_index_first_ts ON session_index(first_tim
 CREATE INDEX IF NOT EXISTS idx_agent_events_session ON agent_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_agent_events_session_type ON agent_events(session_id, event_type);
 CREATE INDEX IF NOT EXISTS idx_git_snap_session_time ON git_snapshots(session_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_git_snap_agent_time ON git_snapshots(agent_name, recorded_at DESC);
 `

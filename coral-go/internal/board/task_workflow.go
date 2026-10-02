@@ -15,12 +15,22 @@ import (
 const DefaultTaskWorkflowInstructions = `Use your judgment to accomplish the task, considering its requirements and upstream results. Use task detail for context and dependency results. Complete with --message for results and --outcome failed for unsuccessful work. When outputs are required, use --artifacts manifest.json with inline content or durable links; upload shared files with coral-agent artifact upload <file>.`
 
 type TaskArtifact struct {
-	Name      string `json:"name"`
-	URI       string `json:"uri,omitempty"`
-	Content   string `json:"content,omitempty"`
-	MediaType string `json:"media_type,omitempty"`
-	Revision  string `json:"revision,omitempty"`
-	Digest    string `json:"digest,omitempty"`
+	Name         string `json:"name"`
+	URI          string `json:"uri,omitempty"`
+	Content      string `json:"content,omitempty"`
+	MediaType    string `json:"media_type,omitempty"`
+	Revision     string `json:"revision,omitempty"`
+	Digest       string `json:"digest,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Command      string `json:"command,omitempty"`
+	Runner       string `json:"runner,omitempty"`
+	OutputDigest string `json:"output_digest,omitempty"`
+	StartedAt    string `json:"started_at,omitempty"`
+	FinishedAt   string `json:"finished_at,omitempty"`
+	Branch       string `json:"branch,omitempty"`
+	Remote       string `json:"remote,omitempty"`
+	Landed       bool   `json:"landed,omitempty"`
+	ExitCode     *int   `json:"exit_code,omitempty"`
 }
 
 const maxTaskArtifacts = 32
@@ -33,20 +43,23 @@ type TaskInput struct {
 }
 
 type TaskWorkflow struct {
-	CompletionReview      *CompletionReview `json:"completion_review,omitempty"`
-	TeamMode              *WorkingMode      `json:"team_mode,omitempty"`
-	Instructions          string            `json:"instructions"`
-	Name                  string            `json:"name,omitempty"`
-	Stage                 string            `json:"stage,omitempty"`
-	ParentTaskID          int64             `json:"parent_task_id,omitempty"`
-	RetryOf               int64             `json:"retry_of,omitempty"`
-	RequiredOutputs       []string          `json:"required_outputs,omitempty"`
-	Inputs                []TaskInput       `json:"inputs,omitempty"`
-	Artifacts             []TaskArtifact    `json:"artifacts,omitempty"`
-	Outcome               string            `json:"outcome,omitempty"`
-	Amendments            []TaskAmendment   `json:"amendments,omitempty"`
-	EffectiveInstructions string            `json:"effective_instructions,omitempty"`
-	AcknowledgedRevision  int               `json:"acknowledged_revision,omitempty"`
+	CompletionReview      *CompletionReview      `json:"completion_review,omitempty"`
+	TeamMode              *WorkingMode           `json:"team_mode,omitempty"`
+	Instructions          string                 `json:"instructions"`
+	Name                  string                 `json:"name,omitempty"`
+	Stage                 string                 `json:"stage,omitempty"`
+	ParentTaskID          int64                  `json:"parent_task_id,omitempty"`
+	RetryOf               int64                  `json:"retry_of,omitempty"`
+	RequiredOutputs       []string               `json:"required_outputs,omitempty"`
+	Inputs                []TaskInput            `json:"inputs,omitempty"`
+	Artifacts             []TaskArtifact         `json:"artifacts,omitempty"`
+	Outcome               string                 `json:"outcome,omitempty"`
+	Amendments            []TaskAmendment        `json:"amendments,omitempty"`
+	EffectiveInstructions string                 `json:"effective_instructions,omitempty"`
+	AcknowledgedRevision  int                    `json:"acknowledged_revision,omitempty"`
+	CompletionGates       []CompletionGate       `json:"completion_gates,omitempty"`
+	GateResults           []CompletionGateResult `json:"gate_results,omitempty"`
+	CandidateRevision     string                 `json:"candidate_revision,omitempty"`
 }
 
 func (s *Store) initTaskWorkflows(ctx context.Context) error {
@@ -301,6 +314,9 @@ func (s *Store) prepareWorkflow(ctx context.Context, project string, w TaskWorkf
 	if err := validNames(w.RequiredOutputs); err != nil {
 		return w, err
 	}
+	if err := validateCompletionGateConfiguration(w.CompletionGates, s.completionChecksEnabled); err != nil {
+		return w, err
+	}
 	for _, id := range []int64{w.ParentTaskID, w.RetryOf} {
 		if id == 0 {
 			continue
@@ -388,15 +404,25 @@ func dependencyInputs(ctx context.Context, db sqlx.QueryerContext, taskID int64)
 // CompleteTaskWithArtifacts commits the outcome and evidence atomically. A
 // terminal task cannot be edited or reassigned, so downstream inputs stay pinned.
 func (s *Store) CompleteTaskWithArtifacts(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact) (*Task, error) {
-	return s.completeTaskWithArtifactsAtRevision(ctx, project, taskID, subscriberID, message, outcome, artifacts, nil)
+	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, nil, "")
 }
 
 // CompleteTaskWithArtifactsAtRevision rejects stale work after an amendment.
 func (s *Store) CompleteTaskWithArtifactsAtRevision(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
-	return s.completeTaskWithArtifactsAtRevision(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision)
+	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, "")
 }
 
 func (s *Store) completeTaskWithArtifactsAtRevision(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int) (*Task, error) {
+	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, "")
+}
+
+// CompleteTaskWithArtifactsAtRevisionAndCandidate records the exact submitted
+// candidate revision and enforces all orchestrator-declared completion gates.
+func (s *Store) CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
+	return s.completeTaskWithArtifactsAtRevisionAndCandidate(ctx, project, taskID, subscriberID, message, outcome, artifacts, expectedRevision, candidateRevision)
+}
+
+func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Context, project string, taskID int64, subscriberID string, message *string, outcome string, artifacts []TaskArtifact, expectedRevision *int, candidateRevision string) (*Task, error) {
 	if outcome == "" {
 		outcome = "success"
 	}
@@ -422,7 +448,7 @@ func (s *Store) completeTaskWithArtifactsAtRevision(ctx context.Context, project
 		return nil, err
 	}
 	if revision > 1 && (expectedRevision == nil || *expectedRevision != revision) {
-		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before completing", taskID, revision)
+		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before completing, then retry with --revision %d (API: expected_revision=%d). Reading task detail does not set this value automatically. --candidate-revision identifies the source/build revision and does not replace --revision", taskID, revision, revision, revision)
 	}
 	if w.CompletionReview != nil && reviewerErr != nil {
 		return nil, reviewerErr
@@ -439,6 +465,10 @@ func (s *Store) completeTaskWithArtifactsAtRevision(ctx context.Context, project
 				return nil, fmt.Errorf("required output %q is missing", required)
 			}
 		}
+	}
+	gateResults, gateErr := checkCompletionGatesWithPolicy(w.CompletionGates, artifacts, candidateRevision, s.completionCheckRunner, s.completionChecksEnabled)
+	if gateErr != nil && outcome == "success" {
+		return nil, gateErr
 	}
 	inputs, ready, err := dependencyInputs(ctx, tx, taskID)
 	if err != nil {
@@ -457,6 +487,7 @@ func (s *Store) completeTaskWithArtifactsAtRevision(ctx context.Context, project
 		return nil, fmt.Errorf("task #%d cannot be completed (already finished, blocked, or not found)", taskID)
 	}
 	w.Outcome, w.Artifacts, w.Inputs = outcome, artifacts, inputs
+	w.CandidateRevision, w.GateResults = candidateRevision, gateResults
 	if err := saveWorkflow(ctx, tx, taskID, w); err != nil {
 		return nil, err
 	}
@@ -492,6 +523,9 @@ func validateTaskArtifacts(artifacts []TaskArtifact) ([]string, error) {
 		}
 		if len(a.Content) > 65536 || len(a.URI) > 4096 {
 			return nil, fmt.Errorf("artifact %q exceeds size limit; use a durable URI for large files", a.Name)
+		}
+		if len(a.Kind) > 64 || len(a.Command) > 4096 || len(a.Runner) > 256 || len(a.OutputDigest) > 256 || len(a.StartedAt) > 64 || len(a.FinishedAt) > 64 || len(a.Branch) > 256 || len(a.Remote) > 256 {
+			return nil, fmt.Errorf("artifact %q evidence metadata exceeds size limits", a.Name)
 		}
 	}
 	if err := validNames(names); err != nil {

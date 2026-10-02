@@ -70,6 +70,8 @@ func TestConcurrentSessionReads(t *testing.T) {
 // TestNegativePathBackoff verifies that an unresolvable transcript path
 // does not trigger repeated directory scans on every consecutive tick.
 func TestNegativePathBackoff(t *testing.T) {
+	// Resolution must never traverse the developer's real session history.
+	t.Setenv("CODEX_HOME", t.TempDir())
 	reader := NewSessionReader()
 	c := reader.getOrCreateSessionCache("unresolvable-id")
 

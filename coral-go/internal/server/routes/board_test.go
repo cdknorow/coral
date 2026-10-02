@@ -1486,6 +1486,54 @@ func TestBoardRemindTask_StartsAndStopsPeriodicReminder(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
 
+func TestBoardRemindSubscriber_DeletePersistsAndRequiresIdentity(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	base := server.URL + "/api/board/myproject"
+	resp := postJSON(t, base+"/subscribe", map[string]string{
+		"subscriber_id": "Orchestrator", "job_title": "Orchestrator", "session_name": "claude-orchestrator",
+	})
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	resp = postJSON(t, base+"/reminder", map[string]any{
+		"subscriber_id": "Orchestrator", "message": "Check the board", "interval_seconds": 30,
+	})
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	rows, err := handler.bs.ListSubscriberReminders(context.Background())
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "Orchestrator", rows[0].SubscriberID)
+	// Replacing a reminder must leave the replacement active after the old
+	// goroutine observes cancellation and runs its deferred cleanup.
+	resp = postJSON(t, base+"/reminder", map[string]any{
+		"subscriber_id": "Orchestrator", "message": "Updated instruction", "interval_seconds": 30,
+	})
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Eventually(t, func() bool { return handler.HasSubscriberReminder("myproject", "Orchestrator") }, time.Second, 10*time.Millisecond)
+
+	badReq, err := http.NewRequest(http.MethodDelete, base+"/reminder", strings.NewReader(`{"subscriber_id":""}`))
+	require.NoError(t, err)
+	badReq.Header.Set("Content-Type", "application/json")
+	badResp, err := http.DefaultClient.Do(badReq)
+	require.NoError(t, err)
+	badResp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, badResp.StatusCode)
+
+	req, err := http.NewRequest(http.MethodDelete, base+"/reminder", strings.NewReader(`{"subscriber_id":"Orchestrator"}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	rows, err = handler.bs.ListSubscriberReminders(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, rows, "deleting the reminder must remove its durable row")
+	assert.False(t, handler.HasSubscriberReminder("myproject", "Orchestrator"))
+}
+
 func TestUnescapeLineBreaks(t *testing.T) {
 	for in, want := range map[string]string{
 		`FINDINGS.\n\nWHAT I MEASURED\n- one\n- two`: "FINDINGS.\n\nWHAT I MEASURED\n- one\n- two",

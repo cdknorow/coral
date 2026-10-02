@@ -125,8 +125,10 @@ type SubscriberReminder struct {
 
 // Store provides message board operations with its own SQLite database.
 type Store struct {
-	db         *sqlx.DB
-	sessionsDB *sqlx.DB // optional reference to the main sessions DB for cross-DB queries
+	db                      *sqlx.DB
+	sessionsDB              *sqlx.DB // optional reference to the main sessions DB for cross-DB queries
+	completionCheckRunner   CompletionCheckRunner
+	completionChecksEnabled bool
 }
 
 // UnreadState is the startup notification baseline for one active session.
@@ -142,6 +144,20 @@ type UnreadState struct {
 func (s *Store) SetSessionsDB(db *sqlx.DB) {
 	s.sessionsDB = db
 }
+
+// SetCompletionCheckRunner installs the trusted registered-check runner. A
+// nil runner makes registered checks fail explicitly as unavailable.
+func (s *Store) SetCompletionCheckRunner(runner CompletionCheckRunner) {
+	s.completionCheckRunner = runner
+}
+
+// SetCompletionChecksEnabled is trusted server configuration used by tests and
+// an explicit future rollout. Callers cannot enable checks through task input.
+func (s *Store) SetCompletionChecksEnabled(enabled bool) {
+	s.completionChecksEnabled = enabled
+}
+
+func (s *Store) CompletionChecksEnabled() bool { return s.completionChecksEnabled }
 
 // NewStore creates a new board Store with its own database.
 func NewStore(dbPath string) (*Store, error) {
@@ -174,7 +190,7 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 
-	s := &Store{db: db}
+	s := &Store{db: db, completionCheckRunner: NewLocalRegisteredCheckRunner(os.Getenv("CORAL_CHECK_WORKDIR")), completionChecksEnabled: completionChecksEnabledFromEnv()}
 	if err := s.ensureSchema(context.Background()); err != nil {
 		db.Close()
 		return nil, err
@@ -233,7 +249,7 @@ func (s *Store) ListSubscriberReminders(ctx context.Context) ([]SubscriberRemind
 // Personal tasks use this engine in their own database, separate from team boards.
 // The caller retains responsibility for closing db.
 func UseDatabase(ctx context.Context, db *sqlx.DB) (*Store, error) {
-	s := &Store{db: db}
+	s := &Store{db: db, completionCheckRunner: NewLocalRegisteredCheckRunner(os.Getenv("CORAL_CHECK_WORKDIR")), completionChecksEnabled: completionChecksEnabledFromEnv()}
 	if err := s.ensureSchema(ctx); err != nil {
 		return nil, err
 	}
@@ -1146,6 +1162,18 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 // GetAllUnreadCounts returns unread counts for all subscribers, respecting each subscriber's receive_mode.
 // Returns map keyed by session_name (tmux session identifier) for compatibility with live session lookups.
 func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) {
+	return s.getUnreadCounts(ctx, nil)
+}
+
+// GetUnreadCountsForSessions excludes subscriptions unrelated to live refresh.
+func (s *Store) GetUnreadCountsForSessions(ctx context.Context, sessionNames []string) (map[string]int, error) {
+	if len(sessionNames) == 0 {
+		return map[string]int{}, nil
+	}
+	return s.getUnreadCounts(ctx, sessionNames)
+}
+
+func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map[string]int, error) {
 	var subs []struct {
 		Project      string `db:"project"`
 		SubscriberID string `db:"subscriber_id"`
@@ -1154,19 +1182,41 @@ func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) 
 		LastReadID   int64  `db:"last_read_id"`
 		ReceiveMode  string `db:"receive_mode"`
 	}
-	err := s.db.SelectContext(ctx, &subs,
-		"SELECT project, subscriber_id, session_name, job_title, last_read_id, receive_mode FROM board_subscribers WHERE is_active = 1")
-	if err != nil || len(subs) == 0 {
+	query := "SELECT project, subscriber_id, session_name, job_title, last_read_id, receive_mode FROM board_subscribers WHERE is_active = 1"
+	var args []any
+	if sessionNames != nil {
+		var err error
+		query, args, err = sqlx.In(query+" AND session_name IN (?)", sessionNames)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := s.db.SelectContext(ctx, &subs, s.db.Rebind(query), args...); err != nil {
+		return nil, err
+	}
+	if len(subs) == 0 {
 		return map[string]int{}, nil
 	}
-
-	// Pre-load all group memberships
+	projects := make([]string, 0, len(subs))
+	seen := make(map[string]bool)
+	for _, sub := range subs {
+		if !seen[sub.Project] {
+			seen[sub.Project] = true
+			projects = append(projects, sub.Project)
+		}
+	}
 	var groupRows []struct {
 		Project      string `db:"project"`
 		GroupID      string `db:"group_id"`
 		SubscriberID string `db:"subscriber_id"`
 	}
-	s.db.SelectContext(ctx, &groupRows, "SELECT project, group_id, subscriber_id FROM board_groups")
+	query, args, err := sqlx.In("SELECT project, group_id, subscriber_id FROM board_groups WHERE project IN (?)", projects)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.db.SelectContext(ctx, &groupRows, s.db.Rebind(query), args...); err != nil {
+		return nil, err
+	}
 
 	type groupKey struct{ project, groupID string }
 	groupsByKey := make(map[groupKey]map[string]bool)
@@ -1186,9 +1236,14 @@ func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) 
 		LastReadID   int64
 		ReceiveMode  string
 	}
+	result := make(map[string]int)
 	byProject := make(map[string][]subInfo)
 	for _, sub := range subs {
+		result[sub.SessionName] = 0
 		rm := sub.ReceiveMode
+		if rm == "none" {
+			continue
+		}
 		if rm == "" {
 			rm = "mentions"
 		}
@@ -1196,8 +1251,6 @@ func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) 
 			sub.SubscriberID, sub.SessionName, sub.JobTitle, sub.LastReadID, rm,
 		})
 	}
-
-	result := make(map[string]int)
 
 	for project, projectSubs := range byProject {
 		minCursor := projectSubs[0].LastReadID
@@ -1207,62 +1260,47 @@ func (s *Store) GetAllUnreadCounts(ctx context.Context) (map[string]int, error) 
 			}
 		}
 
-		var msgs []struct {
-			ID           int64  `db:"id"`
-			SubscriberID string `db:"subscriber_id"`
-			Content      string `db:"content"`
-		}
-		s.db.SelectContext(ctx, &msgs,
-			"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? ORDER BY id",
+		// Stream messages instead of retaining every unread body in memory.
+		rows, err := s.db.QueryxContext(ctx,
+			"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
 			project, minCursor)
-
-		if len(msgs) == 0 {
-			for _, sub := range projectSubs {
-				result[sub.SessionName] = 0
-			}
-			continue
+		if err != nil {
+			return nil, err
 		}
-
-		for _, sub := range projectSubs {
-			if sub.ReceiveMode == "none" {
-				result[sub.SessionName] = 0
-				continue
+		for rows.Next() {
+			var id int64
+			var sender, content string
+			if err := rows.Scan(&id, &sender, &content); err != nil {
+				rows.Close()
+				return nil, err
 			}
-
-			count := 0
-			switch sub.ReceiveMode {
-			case "all":
-				for _, msg := range msgs {
-					if msg.ID <= sub.LastReadID || msg.SubscriberID == sub.SubscriberID || msg.SubscriberID == "Coral Task Queue" {
-						continue
-					}
-					count++
+			for _, sub := range projectSubs {
+				if id <= sub.LastReadID || sender == sub.SubscriberID {
+					continue
 				}
-			case "mentions":
-				for _, msg := range msgs {
-					if msg.ID <= sub.LastReadID || msg.SubscriberID == sub.SubscriberID || msg.SubscriberID == "Coral Task Queue" {
-						continue
-					}
-					if containsExplicitTag(msg.Content, sub.SubscriberID, sub.JobTitle) {
-						count++
-					}
+				eligible := false
+				switch sub.ReceiveMode {
+				case "all":
+					eligible = true
+				case "mentions":
+					eligible = containsExplicitTag(content, sub.SubscriberID, sub.JobTitle)
+				default:
+					eligible = groupsByKey[groupKey{project, sub.ReceiveMode}][sender]
 				}
-			default:
-				// Group-based mode
-				members := groupsByKey[groupKey{project, sub.ReceiveMode}]
-				for _, msg := range msgs {
-					if msg.ID <= sub.LastReadID || msg.SubscriberID == sub.SubscriberID || msg.SubscriberID == "Coral Task Queue" {
-						continue
-					}
-					if members[msg.SubscriberID] {
-						count++
-					}
+				if eligible {
+					result[sub.SessionName]++
 				}
 			}
-			result[sub.SessionName] = count
+		}
+		readErr := rows.Err()
+		closeErr := rows.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
 		}
 	}
-
 	return result, nil
 }
 
@@ -1925,7 +1963,8 @@ func (s *Store) CompleteTask(ctx context.Context, project string, taskID int64, 
 }
 
 // ReassignTask resets a task back to pending, optionally with a new assignee.
-// Works on pending or in_progress tasks. If assignee is empty, the task becomes unassigned.
+// Works on pending, in_progress, or blocked tasks, preserving blocked status.
+// If assignee is empty, the task becomes unassigned.
 func (s *Store) ReassignTask(ctx context.Context, project string, taskID int64, assignee string) (*Task, error) {
 	var assignPtr *string
 	if assignee != "" {
@@ -1933,15 +1972,15 @@ func (s *Store) ReassignTask(ctx context.Context, project string, taskID int64, 
 	}
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE board_tasks
-		 SET status = 'pending', assigned_to = ?, claimed_at = NULL, session_id = NULL
-		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress') AND NOT EXISTS (SELECT 1 FROM task_workflows w WHERE w.task_id=board_tasks.id AND json_extract(w.data,'$.completion_review') IS NOT NULL)`,
+		 SET status = CASE WHEN status = 'blocked' THEN 'blocked' ELSE 'pending' END, assigned_to = ?, claimed_at = NULL, session_id = NULL
+		 WHERE id = ? AND board_id = ? AND status IN ('pending', 'in_progress', 'blocked') AND NOT EXISTS (SELECT 1 FROM task_workflows w WHERE w.task_id=board_tasks.id AND json_extract(w.data,'$.completion_review') IS NOT NULL)`,
 		assignPtr, taskID, project)
 	if err != nil {
 		return nil, err
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
-		return nil, fmt.Errorf("task #%d cannot be reassigned (already completed or not found)", taskID)
+		return nil, fmt.Errorf("task #%d cannot be reassigned (finished, awaiting review, or not found)", taskID)
 	}
 
 	return s.getTaskByID(ctx, project, taskID)

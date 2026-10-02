@@ -100,17 +100,18 @@ func (h *SessionsHandler) agentFromRequest(w http.ResponseWriter, r *http.Reques
 }
 
 type agentTaskRequest struct {
-	SessionID string               `json:"session_id"`
-	Title     string               `json:"title"`
-	Body      string               `json:"body"`
-	Priority  string               `json:"priority"`
-	Message   string               `json:"message"`
-	TaskID    int64                `json:"task_id"`
-	BlockedBy json.RawMessage      `json:"blocked_by"`
-	Workflow  board.TaskWorkflow   `json:"workflow"`
-	Draft     bool                 `json:"draft"`
-	Outcome   string               `json:"outcome"`
-	Artifacts []board.TaskArtifact `json:"artifacts"`
+	SessionID         string               `json:"session_id"`
+	Title             string               `json:"title"`
+	Body              string               `json:"body"`
+	Priority          string               `json:"priority"`
+	Message           string               `json:"message"`
+	TaskID            int64                `json:"task_id"`
+	BlockedBy         json.RawMessage      `json:"blocked_by"`
+	Workflow          board.TaskWorkflow   `json:"workflow"`
+	Draft             bool                 `json:"draft"`
+	Outcome           string               `json:"outcome"`
+	Artifacts         []board.TaskArtifact `json:"artifacts"`
+	CandidateRevision string               `json:"candidate_revision,omitempty"`
 }
 
 func decodeAgentTaskRequest(w http.ResponseWriter, r *http.Request) (agentTaskRequest, bool) {
@@ -293,7 +294,7 @@ func (h *SessionsHandler) finishAgentTask(w http.ResponseWriter, r *http.Request
 		errNotFound(w, "No such task for this agent")
 		return
 	}
-	if err := h.ts.FinishAgentTaskWithArtifacts(r.Context(), taskID, state, body.Message, body.Outcome, body.Artifacts); err != nil {
+	if err := h.ts.FinishAgentTaskWithArtifactsAndCandidate(r.Context(), taskID, state, body.Message, body.Outcome, body.Artifacts, body.CandidateRevision); err != nil {
 		errBadRequest(w, err.Error())
 		return
 	}

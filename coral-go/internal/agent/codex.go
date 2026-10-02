@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 // CodexAgent implements the Agent interface for OpenAI Codex CLI.
@@ -222,7 +224,11 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Binary and resume
 	if params.ResumeSessionID != "" {
-		parts = append(parts, bin, "resume", params.ResumeSessionID)
+		resumeID := params.ResumeSessionID
+		if link := transcriptlink.Codex(resumeID); link.ThreadID != "" {
+			resumeID = link.ThreadID
+		}
+		parts = append(parts, bin, "resume", resumeID)
 	} else {
 		parts = append(parts, bin)
 	}

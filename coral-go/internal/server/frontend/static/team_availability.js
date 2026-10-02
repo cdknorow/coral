@@ -114,7 +114,7 @@ export function showTeamAvailability(team, options = {}) {
                 if (agent.reminder) {
                     const stop = document.createElement('button');
                     stop.type = 'button'; stop.className = 'btn availability-stop-reminder'; stop.textContent = 'Remove reminder';
-                    stop.onclick = () => window.stopAgentReminder(team, agent.subscriber_id || agent.name);
+                    stop.onclick = () => window.stopAgentReminder(team, agent.subscriber_id || agent.name, load);
                     card.append(stop);
                 }
             });
@@ -144,8 +144,22 @@ window.remindAgent = async (team, subscriber, existing = null) => {
     window.showToast?.(response.ok ? 'Agent reminder started' : (data.error || 'Could not start reminder'), !response.ok);
 };
 
-window.stopAgentReminder = async (team, subscriber) => {
-    const response = await fetch(`/api/board/${encodeURIComponent(team)}/reminder`, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber}) });
-    const data = await response.json().catch(() => ({}));
-    window.showToast?.(response.ok ? 'Agent reminder removed' : (data.error || 'Could not remove reminder'), !response.ok);
+window.stopAgentReminder = async (team, subscriber, onChanged = null) => {
+    try {
+        const response = await fetch(`/api/board/${encodeURIComponent(team)}/reminder`, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber}) });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            window.showToast?.(data.error || 'Could not remove reminder', true);
+            return false;
+        }
+        window.showToast?.('Agent reminder removed');
+        // The status endpoint is the source of truth for the icon and action
+        // buttons. Refresh the open view immediately so removal is visible
+        // without requiring the operator to close and reopen Team view.
+        if (typeof onChanged === 'function') await onChanged();
+        return true;
+    } catch (error) {
+        window.showToast?.(error?.message || 'Could not remove reminder', true);
+        return false;
+    }
 };

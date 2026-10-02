@@ -44,6 +44,55 @@ Teams can add [working-mode instructions](teams.md#team-working-modes) for share
 checkouts or worktrees, optional dependency guidance, and custom conventions.
 These are snapshotted on first claim and retained through reassignment.
 
+Tasks may also declare optional completion gates. **These are experimental and
+disabled by default.** Unless the server operator sets
+`CORAL_ENABLE_COMPLETION_CHECKS`, new gate declarations are rejected, no check
+runner or repository fetch ever runs, gates never block ordinary completion, and
+any gates already stored on a task are inactive (results are reported as
+inactive). Existing declarations can still be cleared by an authorized amend.
+`required_outputs` is a separate feature and is always enforced. When the
+feature is enabled, `report`, `test_evidence`, and
+`landed_revision` validate supplied artifacts; they are evidence contracts, not
+independent execution proof. For independent server-owned checks, use a
+registered `registered_check` with `check_id: go_test` or `git_ancestry` and a
+candidate revision. Coral executes only those reviewed IDs in the configured
+check workdir, stores the command/result/log digest, and rejects unavailable,
+failed, stale, or unmerged checks. A caller cannot submit a passing check
+result in the completion JSON. The local runner is bounded and secret-minimal;
+production deployments still need an OS sandbox for stronger network/process
+isolation. See [task completion gates](../../specs/task_completion_gates.md).
+
+### Orchestrator capability map
+
+The compact default orchestrator guidance points to the queue operations that
+are easy to miss:
+
+- `task detail <id>` and `task current` read the authoritative requirements,
+  dependency results, and inputs before acting; `task claim <id>` selects a
+  named ready task and bare `task claim` selects ready assigned/FIFO work.
+- `--blocked-by` declares structured prerequisites and `--outputs` declares
+  named handoff evidence. A prerequisite must be resolved before claim or
+  completion can satisfy the workflow.
+- `task reassign`, `task cancel`, and revisioned `task amend` cover planned
+  ownership, unfinished work, and authoritative body/instruction corrections.
+  The board CLI does not expose late dependency/owner/output PATCH fields;
+  the authorized backend PATCH remains available to the orchestrator. Once
+  execution has started, a linked task is usually safer than rewriting the
+  dependency graph.
+- `submit-review` records a candidate while retaining the task and its active
+  slot. `release-review` releases that slot for another task; it does not
+  accept the candidate. Only evidence-backed completion establishes success,
+  and cancellation, reassignment, failure, or review pending are not success.
+
+These are capabilities and judgment cues, not a mandatory process checklist.
+Board instructions also cannot override a provider or sandbox approval denial.
+
+Known product gaps remain separate from this guidance: there is no general
+in-progress waiting state, no CLI for late dependency edits, restart recovery
+for every external provider, and no universal integration gate. Script notices
+and read acknowledgements are best-effort signals; they do not establish task
+completion.
+
 ## From assignment to result
 
 1. The Operator or registered Orchestrator creates a board task with a concrete

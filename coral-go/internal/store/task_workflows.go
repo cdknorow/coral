@@ -115,6 +115,10 @@ func (s *TaskStore) CreateAgentTaskWithWorkflow(ctx context.Context, name, title
 }
 
 func (s *TaskStore) FinishAgentTaskWithArtifacts(ctx context.Context, id int64, state int, message, outcome string, artifacts []board.TaskArtifact) error {
+	return s.FinishAgentTaskWithArtifactsAndCandidate(ctx, id, state, message, outcome, artifacts, "")
+}
+
+func (s *TaskStore) FinishAgentTaskWithArtifactsAndCandidate(ctx context.Context, id int64, state int, message, outcome string, artifacts []board.TaskArtifact, candidateRevision string) error {
 	task, err := s.WorkflowTask(ctx, id)
 	if err != nil {
 		return err
@@ -122,7 +126,7 @@ func (s *TaskStore) FinishAgentTaskWithArtifacts(ctx context.Context, id int64, 
 	if state == AgentTaskCancelled {
 		_, err = s.db.TaskEngine.CancelTask(ctx, task.BoardID, id, task.CreatedBy, &message)
 	} else {
-		_, err = s.db.TaskEngine.CompleteTaskWithArtifacts(ctx, task.BoardID, id, task.CreatedBy, &message, outcome, artifacts)
+		_, err = s.db.TaskEngine.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, task.BoardID, id, task.CreatedBy, &message, outcome, artifacts, nil, candidateRevision)
 	}
 	if err == nil {
 		s.computeAgentTaskCost(ctx, id, nowUTC())

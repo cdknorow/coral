@@ -95,6 +95,7 @@ type SessionsHandler struct {
 }
 
 type cachedLogStatus struct {
+	info    os.FileInfo
 	size    int64
 	modTime time.Time
 	value   map[string]any
@@ -291,8 +292,9 @@ func (h *SessionsHandler) cachedLogStatus(path string) map[string]any {
 		return getLogStatus(path)
 	}
 	h.logStatusMu.Lock()
-	if cached, ok := h.logStatusCache[path]; ok && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
+	if cached, ok := h.logStatusCache[path]; ok && cached.info != nil && os.SameFile(cached.info, info) && cached.size == info.Size() && cached.modTime.Equal(info.ModTime()) {
 		value := cloneLogStatus(cached.value)
+		value["staleness_seconds"] = time.Since(info.ModTime()).Seconds()
 		h.logStatusMu.Unlock()
 		return value
 	}
@@ -305,7 +307,7 @@ func (h *SessionsHandler) cachedLogStatus(path string) map[string]any {
 			break
 		}
 	}
-	h.logStatusCache[path] = cachedLogStatus{size: info.Size(), modTime: info.ModTime(), value: cloneLogStatus(value)}
+	h.logStatusCache[path] = cachedLogStatus{info: info, size: info.Size(), modTime: info.ModTime(), value: cloneLogStatus(value)}
 	h.logStatusMu.Unlock()
 	return value
 }
@@ -321,10 +323,12 @@ func (h *SessionsHandler) readyLogStatus(path string) (map[string]any, bool) {
 	h.logStatusMu.Lock()
 	defer h.logStatusMu.Unlock()
 	cached, ok := h.logStatusCache[path]
-	if !ok || cached.size != info.Size() || !cached.modTime.Equal(info.ModTime()) {
+	if !ok || cached.info == nil || !os.SameFile(cached.info, info) || cached.size != info.Size() || !cached.modTime.Equal(info.ModTime()) {
 		return nil, false
 	}
-	return cloneLogStatus(cached.value), true
+	value := cloneLogStatus(cached.value)
+	value["staleness_seconds"] = time.Since(info.ModTime()).Seconds()
+	return value, true
 }
 
 func (h *SessionsHandler) warmLogStatus(path string) {
@@ -586,6 +590,14 @@ func (h *SessionsHandler) rememberResumeFromID(sessionID, value string) {
 
 // ── List / Detail ───────────────────────────────────────────────────────
 
+// Sleeping sessions use existing display metadata without transcript discovery.
+func (h *SessionsHandler) sleepingFirstPrompt(session store.LiveSession) string {
+	if prompt := h.jsonl.CachedFirstUserPrompt(session.SessionID); prompt != "" {
+		return prompt
+	}
+	return derefStrPtr(session.Prompt)
+}
+
 // List returns all live agent sessions with enriched metadata.
 // GET /api/sessions/live
 func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -600,12 +612,30 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	trace.end("terminal_discovery", "agents", len(agents))
 
 	ctx := r.Context()
+	allLive, _ := h.ss.GetAllLiveSessions(ctx)
+	liveSleeping := make(map[string]bool)
+	for _, session := range allLive {
+		liveSleeping[session.SessionID] = session.IsSleeping == 1
+	}
+	// A sleeping row can briefly outlive its terminal during shutdown. Use
+	// the stored placeholder below instead of scanning that terminal's files.
+	awakeAgents := agents[:0]
+	for _, agent := range agents {
+		if !liveSleeping[agent.SessionID] {
+			awakeAgents = append(awakeAgents, agent)
+		}
+	}
+	agents = awakeAgents
 
 	// Batch fetch enrichment data
 	sessionIDs := make([]string, 0, len(agents))
+	sessionNames := make([]string, 0, len(agents))
+	sessionAgents := make(map[string]string, len(agents))
 	for _, a := range agents {
-		if a.SessionID != "" {
+		if a.SessionID != "" && !liveSleeping[a.SessionID] {
 			sessionIDs = append(sessionIDs, a.SessionID)
+			sessionNames = append(sessionNames, a.TmuxSession)
+			sessionAgents[a.SessionID] = a.AgentName
 		}
 	}
 	trace.begin("db_identity")
@@ -619,8 +649,8 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	// Batch fetch git state, file counts, events, and goals
 	trace.begin("db_enrichment")
-	gitState, _ := h.gs.GetAllLatestGitState(ctx)
-	fileCounts, _ := h.ts.GetAllEditedFileCounts(ctx)
+	gitState, _ := h.gs.GetLiveGitState(ctx, sessionAgents)
+	fileCounts, _ := h.ts.GetEditedFileCounts(ctx, sessionIDs)
 	latestEvents, _ := h.ts.GetLatestEventTypes(ctx, sessionIDs)
 	stateEvents, _ := h.ts.GetSessionStateEvents(ctx, sessionIDs)
 	if gitState == nil {
@@ -639,10 +669,8 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Launch times, used to bound how long after launch a stalled start is
 	// reported. See agentNeverStarted.
 	createdAtMap := map[string]string{}
-	if live, err := h.ss.GetAllLiveSessions(ctx); err == nil {
-		for _, ls := range live {
-			createdAtMap[ls.SessionID] = ls.CreatedAt
-		}
+	for _, ls := range allLive {
+		createdAtMap[ls.SessionID] = ls.CreatedAt
 	}
 	var tokenUsageMap map[string]*store.TokenUsage
 	var latestTurnCtx map[string]int
@@ -681,7 +709,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Fetch board unread counts
 	var allUnread map[string]int
 	if h.bs != nil {
-		allUnread, err = h.bs.GetAllUnreadCounts(ctx)
+		allUnread, err = h.bs.GetUnreadCountsForSessions(ctx, sessionNames)
 		if err != nil {
 			slog.Warn("failed to get board unread counts", "error", err)
 		}
@@ -693,7 +721,6 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	// Fallback: board_name from live_sessions DB for agents not yet subscribed
 	liveBoardNames := make(map[string][2]string) // session_id -> [board_name, display_name]
-	liveSleeping := make(map[string]bool)        // session_id -> is_sleeping
 	type liveExtra struct {
 		Prompt        *string
 		Model         *string
@@ -743,8 +770,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	for _, agent := range agents {
 		agentStarted := time.Now()
 		var logInfo map[string]any
+		sleeping := liveSleeping[agent.SessionID]
 		logReady := true
-		if largeList {
+		if sleeping {
+			logInfo = getLogStatus("")
+		} else if largeList {
 			var ready bool
 			logInfo, ready = h.readyLogStatus(agent.LogPath)
 			if !ready {
@@ -756,10 +786,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			logInfo = h.cachedLogStatus(agent.LogPath)
 		}
 		trace.agentDetail("log_status", agent.SessionID, time.Since(agentStarted))
-		if largeList {
+		if largeList && !sleeping {
 			h.warmTranscript(agent)
 		}
-		skipExpensive := largeList && (!logReady || !h.transcriptReady(agent.SessionID))
+		skipExpensive := sleeping || largeList && (!logReady || !h.transcriptReady(agent.SessionID))
 
 		status, _ := logInfo["status"].(string)
 		summary, _ := logInfo["summary"].(string)
@@ -834,7 +864,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			iconVal = ic
 		}
 
-		firstPrompt := ""
+		firstPrompt := h.jsonl.CachedFirstUserPrompt(sid)
 		if !skipExpensive {
 			promptStarted := time.Now()
 			firstPrompt = h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType)
@@ -871,7 +901,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"log_path":              agent.LogPath,
 			"sleeping":              liveSleeping[sid],
 			"first_prompt":          firstPrompt,
-			"enrichment_pending":    skipExpensive,
+			"enrichment_pending":    skipExpensive && !sleeping,
 		}
 		// Include prompt, model, and capabilities from live_sessions DB
 		if extra, ok := liveExtras[sid]; ok {
@@ -914,7 +944,6 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	trace.end("state_transcript_enrichment", "rows", len(sessions), "large_list", largeList)
 
 	// Add placeholder entries for sleeping sessions without active tmux
-	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 	for _, ls := range allLive {
 		if ls.IsSleeping != 1 || liveSIDs[ls.SessionID] {
 			continue
@@ -955,7 +984,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_is_orchestrator": nil,
 			"log_path":              "",
 			"sleeping":              true,
-			"first_prompt":          h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
+			"first_prompt":          h.sleepingFirstPrompt(ls),
 		})
 		// Include prompt, model, and capabilities for sleeping sessions too
 		entry := sessions[len(sessions)-1]
@@ -1048,7 +1077,12 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 	if active && !sleeping {
 		tmuxSession = naming.SessionName(ls.AgentType, ls.SessionID)
 	}
-	logInfo := getLogStatus(naming.LogFile(h.cfg.LogDir, ls.AgentType, ls.SessionID))
+	logInfo := getLogStatus("")
+	firstPrompt := h.sleepingFirstPrompt(*ls)
+	if !sleeping {
+		logInfo = h.cachedLogStatus(naming.LogFile(h.cfg.LogDir, ls.AgentType, ls.SessionID))
+		firstPrompt = h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType)
+	}
 	initialStatus, _ := logInfo["status"].(string)
 	summary, _ := logInfo["summary"].(string)
 	// Same derivation as the list and WebSocket rows. The popout merges this
@@ -1075,7 +1109,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"name_color":        ls.NameColor,
 		"status":            nilIfEmpty(initialStatus),
 		"summary":           nilIfEmpty(summary),
-		"first_prompt":      h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
+		"first_prompt":      firstPrompt,
 		"waiting_for_input": liveState.NeedsInput,
 		"awaiting_user":     liveState.AwaitingUser,
 		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
@@ -2686,6 +2720,22 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		agentType = at.Claude
 	}
 
+	// Sessions joined through the board API may have no board_name in the
+	// session store. Resolve their subscription before renaming the terminal.
+	var restartSubscription *board.Subscriber
+	if h.bs != nil && body.SessionID != "" {
+		oldAgentType := agentType
+		if storedSession != nil {
+			oldAgentType = storedSession.AgentType
+		}
+		var err error
+		restartSubscription, err = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(oldAgentType, body.SessionID))
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+	}
+
 	// Validate the resolved model before touching the terminal or allocating a
 	// replacement session. Restart carries the persisted model when the caller
 	// omits one, so provider switches must reject stale cross-provider models
@@ -2806,6 +2856,13 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 				storedCaps = &agent.Capabilities{}
 				json.Unmarshal([]byte(*ls.Capabilities), storedCaps)
 			}
+		}
+	}
+
+	if restartSubscription != nil {
+		storedBoard = restartSubscription.Project
+		if storedDisplayName == "" {
+			storedDisplayName = restartSubscription.JobTitle
 		}
 	}
 
@@ -2954,7 +3011,15 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-subscribe to board if needed
-	if storedBoard != "" {
+	if restartSubscription != nil {
+		sub := restartSubscription
+		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
+			sub.WebhookURL, sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
+	} else if storedBoard != "" {
 		h.setupBoardAndPrompt(newSessionID, newSessionName, agentType, storedBoard, storedDisplayName)
 	}
 

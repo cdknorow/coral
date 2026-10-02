@@ -10,8 +10,10 @@ import (
 	"log"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
 func main() {
@@ -56,6 +58,17 @@ func main() {
 
 	base := hooks.CoralBase()
 	sessionID := hooks.ResolveSessionID(hooks.StrVal(d, "session_id"))
+	if strings.HasPrefix(os.Getenv("CORAL_SESSION_NAME"), "codex-") {
+		threadID := os.Getenv("CODEX_THREAD_ID")
+		if threadID == "" {
+			threadID = hooks.StrVal(d, "session_id")
+		}
+		if threadID != "" && threadID != sessionID {
+			if err := transcriptlink.BindCodex(sessionID, threadID); err != nil {
+				hooks.DebugLog(fmt.Sprintf("CODEX_LINK_FAILED: %v", err))
+			}
+		}
+	}
 	agentName := hooks.ResolveAgentName(d)
 	if agentName == "" {
 		hooks.DebugLog(fmt.Sprintf("DROPPED (no agent_name): hook_type=%s", hookType))

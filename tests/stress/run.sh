@@ -8,7 +8,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORAL_DIR="$REPO_ROOT/coral-go"
-PORT=8471
+PORT="${CORAL_STRESS_PORT:-8471}"
+RESTART_ONLY=false
+if [[ "${1:-}" == "--restart-only" ]]; then
+    RESTART_ONLY=true
+elif [[ $# -gt 0 ]]; then
+    echo "Usage: $0 [--restart-only]" >&2
+    exit 2
+fi
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
 export CORAL_PORT="$PORT"
@@ -51,7 +58,12 @@ api_status() {
 
 wait_for_server() {
     local retries=30
-    while ! curl -s -m 5 "${BASE_URL}/api/health" >/dev/null 2>&1; do
+    while ! curl -fsS -m 5 "${BASE_URL}/api/health" >/dev/null 2>&1; do
+        if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+            log "ERROR: stress server exited; see startup output below"
+            tail -n 30 "$TMPDIR_STRESS/server.log"
+            exit 1
+        fi
         retries=$((retries - 1))
         if [[ $retries -le 0 ]]; then
             log "ERROR: Server failed to start on port $PORT"
@@ -59,6 +71,7 @@ wait_for_server() {
         fi
         sleep 0.5
     done
+    kill -0 "$SERVER_PID" 2>/dev/null || { log "ERROR: stress server exited"; exit 1; }
     log "Server is ready on port $PORT"
 }
 
@@ -66,16 +79,51 @@ wait_for_server() {
 
 TMPDIR_STRESS="$(mktemp -d)"
 export CORAL_DATA_DIR="$TMPDIR_STRESS"
+# Synthetic provider histories only; never scan the operator Codex sessions.
+export CODEX_HOME="$TMPDIR_STRESS/codex"
+mkdir -p "$TMPDIR_STRESS/home"
+python3 - "$HOST" "$PORT" <<'PYPORT'
+import socket, sys
+with socket.socket() as sock:
+    sock.bind((sys.argv[1], int(sys.argv[2])))
+PYPORT
+export GOMAXPROCS="${GOMAXPROCS:-2}"
+export GOMEMLIMIT="${GOMEMLIMIT:-512MiB}"
 
 log "Building coral (dev mode) and coral-board..."
 cd "$CORAL_DIR"
-go build -tags "dev fts5" -o "$TMPDIR_STRESS/coral" ./cmd/coral/
-go build -o "$TMPDIR_STRESS/coral-board" ./cmd/coral-board/
+go build -p 1 -tags "dev fts5" -o "$TMPDIR_STRESS/coral" ./cmd/coral/
+go build -p 1 -o "$TMPDIR_STRESS/coral-board" ./cmd/coral-board/
 
+go build -p 1 -o "$TMPDIR_STRESS/coral-agent" ./cmd/coral-agent/
+
+start_server() {
 log "Starting coral server on port $PORT..."
-"$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_STRESS/server.log" 2>&1 &
+HOME="$TMPDIR_STRESS/home" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser >>"$TMPDIR_STRESS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
+}
+start_server
+
+# Exercise cached thread replacement and persisted pickup across real restarts.
+# This does not launch any agents or modify provider transcripts outside CODEX_HOME.
+restart_probe() {
+    python3 "$SCRIPT_DIR/test_codex_restart.py" "$1" "$BASE_URL" "$TMPDIR_STRESS" "$TMPDIR_STRESS/coral-agent"
+}
+restart_probe seed
+for restart_round in 1 2 3; do
+    restart_probe rotate
+    kill "$SERVER_PID"
+    wait "$SERVER_PID" || true
+    SERVER_PID=""
+    start_server
+    restart_probe verify
+    pass "Codex restart round $restart_round: cached replacement, durable link, isolated identity, incremental pickup"
+done
+if [[ "$RESTART_ONLY" == true ]]; then
+    log "Restart regression: $PASS passed, $FAIL failed"
+    exit "$FAIL"
+fi
 
 # ── Test 1: Create tasks ────────────────────────────────────────────
 
@@ -89,7 +137,7 @@ for i in $(seq 1 $NUM_TASKS); do
         2) prio="medium" ;;
         3) prio="low" ;;
     esac
-    result=$(api POST "/tasks" -d "{\"title\": \"Task $i\", \"body\": \"Stress test task number $i\", \"priority\": \"$prio\", \"subscriber_id\": \"orchestrator\"}")
+    result=$(api POST "/tasks" -d "{\"title\": \"Task $i\", \"body\": \"Stress test task number $i\", \"priority\": \"$prio\", \"subscriber_id\": \"Operator\"}")
     tid=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
     if [[ -n "$tid" ]]; then
         created=$((created + 1))
@@ -149,6 +197,7 @@ if [[ "$claim_success" -ge 1 ]]; then
     pass "$claim_success of $NUM_AGENTS agents claimed a task concurrently"
 else
     fail "No concurrent claims succeeded"
+    exit 1
 fi
 
 unique=$(printf '%s\n' "${claimed_ids[@]}" | sort -u | wc -l | tr -d ' ')
@@ -221,8 +270,8 @@ seq_api_status() {
 seq_api POST "/subscribe" -d '{"subscriber_id": "seq-agent", "job_title": "tester"}' >/dev/null
 
 # Create two tasks
-seq_api POST "/tasks" -d '{"title": "Seq Task 1", "priority": "high", "subscriber_id": "orchestrator"}' >/dev/null
-seq_api POST "/tasks" -d '{"title": "Seq Task 2", "priority": "medium", "subscriber_id": "orchestrator"}' >/dev/null
+seq_api POST "/tasks" -d '{"title": "Seq Task 1", "priority": "high", "subscriber_id": "Operator"}' >/dev/null
+seq_api POST "/tasks" -d '{"title": "Seq Task 2", "priority": "medium", "subscriber_id": "Operator"}' >/dev/null
 
 # Claim first task
 t1_result=$(seq_api POST "/tasks/claim" -d '{"subscriber_id": "seq-agent"}')
@@ -283,10 +332,10 @@ prio_api() {
 prio_api POST "/subscribe" -d '{"subscriber_id": "prio-agent", "job_title": "tester"}' >/dev/null
 
 # Create tasks in reverse priority order (low first, critical last)
-prio_api POST "/tasks" -d '{"title": "Low prio", "priority": "low", "subscriber_id": "orchestrator"}' >/dev/null
-prio_api POST "/tasks" -d '{"title": "Medium prio", "priority": "medium", "subscriber_id": "orchestrator"}' >/dev/null
-prio_api POST "/tasks" -d '{"title": "Critical prio", "priority": "critical", "subscriber_id": "orchestrator"}' >/dev/null
-prio_api POST "/tasks" -d '{"title": "High prio", "priority": "high", "subscriber_id": "orchestrator"}' >/dev/null
+prio_api POST "/tasks" -d '{"title": "Low prio", "priority": "low", "subscriber_id": "Operator"}' >/dev/null
+prio_api POST "/tasks" -d '{"title": "Medium prio", "priority": "medium", "subscriber_id": "Operator"}' >/dev/null
+prio_api POST "/tasks" -d '{"title": "Critical prio", "priority": "critical", "subscriber_id": "Operator"}' >/dev/null
+prio_api POST "/tasks" -d '{"title": "High prio", "priority": "high", "subscriber_id": "Operator"}' >/dev/null
 
 # Claim and complete in sequence, record the priority order
 claimed_prios=()
@@ -324,8 +373,8 @@ nudge_api POST "/subscribe" -d '{"subscriber_id": "nudge-agent", "job_title": "t
 nudge_api GET "/messages?subscriber_id=nudge-agent" >/dev/null
 
 # Create and claim a task — this generates 'Coral Task Queue' audit messages
-nudge_api POST "/tasks" -d '{"title": "Nudge Task 1", "priority": "high", "subscriber_id": "orchestrator"}' >/dev/null
-nudge_api POST "/tasks" -d '{"title": "Nudge Task 2", "priority": "medium", "subscriber_id": "orchestrator"}' >/dev/null
+nudge_api POST "/tasks" -d '{"title": "Nudge Task 1", "priority": "high", "subscriber_id": "Operator"}' >/dev/null
+nudge_api POST "/tasks" -d '{"title": "Nudge Task 2", "priority": "medium", "subscriber_id": "Operator"}' >/dev/null
 
 # Read messages again to clear cursor (task creation may post messages)
 nudge_api GET "/messages?subscriber_id=nudge-agent" >/dev/null
@@ -414,8 +463,8 @@ else
         -d "{\"subscriber_id\": \"$mock_session\", \"job_title\": \"tester\", \"session_name\": \"$mock_session\"}" >/dev/null
 
     # Create 2 tasks, claim first, complete it
-    term_api POST "/tasks" -d '{"title": "Terminal Task 1", "priority": "high", "subscriber_id": "orchestrator"}' >/dev/null
-    term_api POST "/tasks" -d '{"title": "Terminal Task 2", "priority": "medium", "subscriber_id": "orchestrator"}' >/dev/null
+    term_api POST "/tasks" -d '{"title": "Terminal Task 1", "priority": "high", "subscriber_id": "Operator"}' >/dev/null
+    term_api POST "/tasks" -d '{"title": "Terminal Task 2", "priority": "medium", "subscriber_id": "Operator"}' >/dev/null
 
     term_tid=$(term_api POST "/tasks/claim" -d "{\"subscriber_id\": \"$mock_session\"}" | \
         python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
@@ -523,7 +572,7 @@ dep_api_status() {
 dep_api POST "/subscribe" -d '{"subscriber_id": "dep-agent", "job_title": "tester"}' >/dev/null
 
 # Create Task A (no deps)
-dep_a=$(dep_api POST "/tasks" -d '{"title": "Dep Task A", "priority": "high", "subscriber_id": "orchestrator"}')
+dep_a=$(dep_api POST "/tasks" -d '{"title": "Dep Task A", "priority": "high", "subscriber_id": "Operator"}')
 dep_a_id=$(echo "$dep_a" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 dep_a_status=$(echo "$dep_a" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
@@ -534,7 +583,7 @@ else
 fi
 
 # Create Task B blocked by A
-dep_b=$(dep_api POST "/tasks" -d "{\"title\": \"Dep Task B\", \"priority\": \"medium\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [${dep_a_id}]}")
+dep_b=$(dep_api POST "/tasks" -d "{\"title\": \"Dep Task B\", \"priority\": \"medium\", \"subscriber_id\": \"Operator\", \"blocked_by\": [${dep_a_id}]}")
 dep_b_id=$(echo "$dep_b" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 dep_b_status=$(echo "$dep_b" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
@@ -601,13 +650,13 @@ dep2_api() {
 
 dep2_api POST "/subscribe" -d '{"subscriber_id": "dep2-agent", "job_title": "tester"}' >/dev/null
 
-dep_c=$(dep2_api POST "/tasks" -d '{"title": "Cancel Blocker", "subscriber_id": "orchestrator"}')
+dep_c=$(dep2_api POST "/tasks" -d '{"title": "Cancel Blocker", "subscriber_id": "Operator"}')
 dep_c_id=$(echo "$dep_c" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-dep_d=$(dep2_api POST "/tasks" -d "{\"title\": \"Blocked by cancel\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [{\"task_id\": ${dep_c_id}, \"condition\": \"termination\"}]}")
+dep_d=$(dep2_api POST "/tasks" -d "{\"title\": \"Blocked by cancel\", \"subscriber_id\": \"Operator\", \"blocked_by\": [{\"task_id\": ${dep_c_id}, \"condition\": \"termination\"}]}")
 dep_d_id=$(echo "$dep_d" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-dep2_api POST "/tasks/${dep_c_id}/cancel" -d '{"subscriber_id": "orchestrator"}' >/dev/null
+dep2_api POST "/tasks/${dep_c_id}/cancel" -d '{"subscriber_id": "Operator"}' >/dev/null
 sleep 0.5
 
 dep_d_status=$(dep2_api GET "/tasks" | python3 -c "
@@ -636,13 +685,13 @@ dep3_api() {
 
 dep3_api POST "/subscribe" -d '{"subscriber_id": "dep3-agent", "job_title": "tester"}' >/dev/null
 
-dep_e=$(dep3_api POST "/tasks" -d '{"title": "Multi Blocker E", "subscriber_id": "orchestrator"}')
+dep_e=$(dep3_api POST "/tasks" -d '{"title": "Multi Blocker E", "subscriber_id": "Operator"}')
 dep_e_id=$(echo "$dep_e" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-dep_f=$(dep3_api POST "/tasks" -d '{"title": "Multi Blocker F", "subscriber_id": "orchestrator"}')
+dep_f=$(dep3_api POST "/tasks" -d '{"title": "Multi Blocker F", "subscriber_id": "Operator"}')
 dep_f_id=$(echo "$dep_f" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-dep_g=$(dep3_api POST "/tasks" -d "{\"title\": \"Multi Blocked G\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [${dep_e_id}, ${dep_f_id}]}")
+dep_g=$(dep3_api POST "/tasks" -d "{\"title\": \"Multi Blocked G\", \"subscriber_id\": \"Operator\", \"blocked_by\": [${dep_e_id}, ${dep_f_id}]}")
 dep_g_id=$(echo "$dep_g" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 dep_g_status=$(echo "$dep_g" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
@@ -708,10 +757,10 @@ dep4_api_status() {
         -H "Content-Type: application/json" "$@"
 }
 
-dep_h=$(dep4_api POST "/tasks" -d '{"title": "Cycle H", "subscriber_id": "orchestrator"}')
+dep_h=$(dep4_api POST "/tasks" -d '{"title": "Cycle H", "subscriber_id": "Operator"}')
 dep_h_id=$(echo "$dep_h" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
-dep_i=$(dep4_api POST "/tasks" -d "{\"title\": \"Cycle I\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [${dep_h_id}]}")
+dep_i=$(dep4_api POST "/tasks" -d "{\"title\": \"Cycle I\", \"subscriber_id\": \"Operator\", \"blocked_by\": [${dep_h_id}]}")
 dep_i_id=$(echo "$dep_i" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
 # Try to make H blocked by I (circular: H→I→H)
@@ -767,11 +816,11 @@ cross1_api POST "/subscribe" -d '{"subscriber_id": "cross-agent-1", "job_title":
 cross2_api POST "/subscribe" -d '{"subscriber_id": "cross-agent-2", "job_title": "tester"}' >/dev/null
 
 # Create task X on board-1
-cross_x=$(cross1_api POST "/tasks" -d '{"title": "Cross Board X", "subscriber_id": "orchestrator"}')
+cross_x=$(cross1_api POST "/tasks" -d '{"title": "Cross Board X", "subscriber_id": "Operator"}')
 cross_x_id=$(echo "$cross_x" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
 # Create task Y on board-2, blocked by X on board-1
-cross_y=$(cross2_api POST "/tasks" -d "{\"title\": \"Cross Board Y\", \"subscriber_id\": \"orchestrator\", \"blocked_by\": [{\"task_id\": ${cross_x_id}, \"board_id\": \"${CROSS_BOARD1}\"}]}")
+cross_y=$(cross2_api POST "/tasks" -d "{\"title\": \"Cross Board Y\", \"subscriber_id\": \"Operator\", \"blocked_by\": [{\"task_id\": ${cross_x_id}, \"board_id\": \"${CROSS_BOARD1}\"}]}")
 cross_y_id=$(echo "$cross_y" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 cross_y_status=$(echo "$cross_y" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
@@ -814,7 +863,7 @@ draft_api() {
 draft_api POST "/subscribe" -d '{"subscriber_id": "draft-agent", "job_title": "tester"}' >/dev/null
 
 # Create draft task
-draft_result=$(draft_api POST "/tasks" -d '{"title": "Draft Task", "priority": "high", "created_by": "orchestrator", "draft": true}')
+draft_result=$(draft_api POST "/tasks" -d '{"title": "Draft Task", "priority": "high", "created_by": "Operator", "draft": true}')
 draft_id=$(echo "$draft_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 draft_status=$(echo "$draft_result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
@@ -827,7 +876,7 @@ fi
 # ── Test 22: Draft task cannot be claimed ────────────────────────────
 
 # Create a pending task too
-draft_api POST "/tasks" -d '{"title": "Pending Task", "priority": "low", "created_by": "orchestrator"}' >/dev/null
+draft_api POST "/tasks" -d '{"title": "Pending Task", "priority": "low", "created_by": "Operator"}' >/dev/null
 
 # Claim should skip draft, pick pending
 claim_draft=$(draft_api POST "/tasks/claim" -d '{"subscriber_id": "draft-agent"}')
@@ -880,11 +929,11 @@ draft2_api() {
 draft2_api POST "/subscribe" -d '{"subscriber_id": "draft2-agent", "job_title": "tester"}' >/dev/null
 
 # Create blocker
-blocker=$(draft2_api POST "/tasks" -d '{"title": "Blocker", "created_by": "orchestrator"}')
+blocker=$(draft2_api POST "/tasks" -d '{"title": "Blocker", "created_by": "Operator"}')
 blocker_id=$(echo "$blocker" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 
 # Create draft with dep on blocker — should stay draft
-draft_dep=$(draft2_api POST "/tasks" -d "{\"title\": \"Draft with dep\", \"created_by\": \"orchestrator\", \"draft\": true, \"blocked_by\": [${blocker_id}]}")
+draft_dep=$(draft2_api POST "/tasks" -d "{\"title\": \"Draft with dep\", \"created_by\": \"Operator\", \"draft\": true, \"blocked_by\": [${blocker_id}]}")
 draft_dep_id=$(echo "$draft_dep" | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null || echo "")
 draft_dep_status=$(echo "$draft_dep" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
@@ -940,7 +989,7 @@ draft3_api_status() {
         -H "Content-Type: application/json" "$@"
 }
 
-draft3_api POST "/tasks" -d '{"title": "Pending", "created_by": "orchestrator"}' >/dev/null
+draft3_api POST "/tasks" -d '{"title": "Pending", "created_by": "Operator"}' >/dev/null
 
 pub_status=$(draft3_api_status POST "/tasks/1/publish" -d '{}')
 
@@ -960,12 +1009,12 @@ read_api() {
         -H "Content-Type: application/json" "$@"
 }
 
-read_api POST "/subscribe" -d '{"subscriber_id": "orchestrator", "job_title": "Orchestrator"}' >/dev/null
+read_api POST "/subscribe" -d '{"subscriber_id": "Operator", "job_title": "Orchestrator"}' >/dev/null
 read_api POST "/subscribe" -d '{"subscriber_id": "frontend", "job_title": "Frontend Dev"}' >/dev/null
 read_api POST "/subscribe" -d '{"subscriber_id": "backend", "job_title": "Backend Dev"}' >/dev/null
 
 # Post untagged message from orchestrator
-read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "General announcement: Standup at 10am"}' >/dev/null
+read_api POST "/messages" -d '{"subscriber_id": "Operator", "content": "General announcement: Standup at 10am"}' >/dev/null
 
 # Worker (frontend) default read should filter untagged messages (returns 0)
 fe_msgs=$(read_api GET "/messages?subscriber_id=frontend")
@@ -994,7 +1043,7 @@ fi
 # Frontend posts untagged status update
 read_api POST "/messages" -d '{"subscriber_id": "frontend", "content": "Untagged status update from frontend"}' >/dev/null
 
-orch_msgs=$(read_api GET "/messages?subscriber_id=orchestrator")
+orch_msgs=$(read_api GET "/messages?subscriber_id=Operator")
 orch_has_update=$(echo "$orch_msgs" | python3 -c "
 import sys,json
 msgs = json.load(sys.stdin)
@@ -1013,9 +1062,9 @@ fi
 # 1. Tagged for Frontend Dev (@Frontend Dev)
 # 2. Tagged for backend (@backend)
 # 3. Broadcast for all (@all)
-read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "@Frontend Dev please fix button styling"}' >/dev/null
-read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "@backend please optimize database query"}' >/dev/null
-read_api POST "/messages" -d '{"subscriber_id": "orchestrator", "content": "@all team sync starting now"}' >/dev/null
+read_api POST "/messages" -d '{"subscriber_id": "Operator", "content": "@Frontend Dev please fix button styling"}' >/dev/null
+read_api POST "/messages" -d '{"subscriber_id": "Operator", "content": "@backend please optimize database query"}' >/dev/null
+read_api POST "/messages" -d '{"subscriber_id": "Operator", "content": "@all team sync starting now"}' >/dev/null
 
 fe_tagged=$(read_api GET "/messages?subscriber_id=frontend")
 fe_has_frontend=$(echo "$fe_tagged" | python3 -c "import sys,json; print('yes' if any('button styling' in m.get('content','') for m in json.load(sys.stdin)) else 'no')" 2>/dev/null || echo "no")

@@ -23,7 +23,7 @@ type TaskAmendment struct {
 	EffectiveJSON     string                 `db:"effective_snapshot_json" json:"-"`
 }
 
-// AmendTask applies the v1 body/instruction amendment contract atomically.
+// AmendTask applies the body/instruction/completion-gate amendment contract atomically.
 // Authorization is enforced by the HTTP layer using the registered planner
 // identity; the store enforces status, revision, and patch invariants.
 func (s *Store) AmendTask(ctx context.Context, project string, taskID int64, actor string, baseRevision int, reason string, changes map[string]interface{}) (*Task, error) {
@@ -37,7 +37,7 @@ func (s *Store) AmendTask(ctx context.Context, project string, taskID int64, act
 		return nil, fmt.Errorf("amendment changes are required")
 	}
 	for key := range changes {
-		if key != "body" && key != "workflow_instructions" {
+		if key != "body" && key != "workflow_instructions" && key != "completion_gates" {
 			return nil, fmt.Errorf("amendment field %q is unsupported in v1; dependencies, outputs, owner, and working mode use existing mechanisms", key)
 		}
 	}
@@ -49,6 +49,16 @@ func (s *Store) AmendTask(ctx context.Context, project string, taskID int64, act
 	if value, ok := changes["workflow_instructions"]; ok {
 		if instructions, ok := value.(string); !ok || len(instructions) > 4096 {
 			return nil, fmt.Errorf("workflow_instructions must be a string of at most 4096 bytes")
+		}
+	}
+	var amendedGates []CompletionGate
+	if value, ok := changes["completion_gates"]; ok {
+		data, err := json.Marshal(value)
+		if err != nil || json.Unmarshal(data, &amendedGates) != nil {
+			return nil, fmt.Errorf("completion_gates must be a JSON array")
+		}
+		if err := validateCompletionGateConfiguration(amendedGates, s.completionChecksEnabled); err != nil {
+			return nil, err
 		}
 	}
 	tx, err := s.db.BeginTxx(ctx, nil)
@@ -74,13 +84,28 @@ func (s *Store) AmendTask(ctx context.Context, project string, taskID int64, act
 	if row.Revision != baseRevision {
 		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before amending", taskID, row.Revision)
 	}
-	previous := map[string]interface{}{"title": row.Title, "body": "", "revision": row.Revision}
+	workflow, err := loadWorkflow(ctx, tx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	previousGates := workflow.CompletionGates
+	if previousGates == nil {
+		previousGates = []CompletionGate{}
+	}
+	previous := map[string]interface{}{"title": row.Title, "body": "", "revision": row.Revision, "completion_gates": previousGates}
 	if row.Body != nil {
 		previous["body"] = *row.Body
 	}
-	effective := map[string]interface{}{"title": row.Title, "body": previous["body"], "revision": row.Revision + 1}
+	effective := map[string]interface{}{"title": row.Title, "body": previous["body"], "revision": row.Revision + 1, "completion_gates": previousGates}
 	if value, ok := changes["body"]; ok {
 		effective["body"] = value
+	}
+	if _, ok := changes["completion_gates"]; ok {
+		effective["completion_gates"] = amendedGates
+		workflow.CompletionGates = amendedGates
+		// Any previous acceptance is tied to the old gate set.
+		workflow.GateResults = nil
+		workflow.CandidateRevision = ""
 	}
 	previousJSON, _ := json.Marshal(previous)
 	effectiveJSON, _ := json.Marshal(effective)
@@ -96,6 +121,9 @@ func (s *Store) AmendTask(ctx context.Context, project string, taskID int64, act
 		body = *row.Body
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE board_tasks SET body=?, revision=? WHERE id=? AND board_id=? AND revision=?", body, row.Revision+1, taskID, project, baseRevision); err != nil {
+		return nil, err
+	}
+	if err := saveWorkflow(ctx, tx, taskID, workflow); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

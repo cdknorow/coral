@@ -9,6 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type countingCompletionRunner struct{ calls int }
+
+func (r *countingCompletionRunner) Run(context.Context, string, string, map[string]string) RegisteredCheckEvidence {
+	r.calls++
+	return RegisteredCheckEvidence{Passed: true, Details: "unexpected runner call"}
+}
+
 func TestWorkflowReadinessSurvivesRestart(t *testing.T) {
 	for _, outcome := range []string{"success", "failed", "cancelled"} {
 		t.Run(outcome, func(t *testing.T) {
@@ -218,6 +225,131 @@ func TestTaskArtifactsRejectLocalPaths(t *testing.T) {
 	}
 	_, err = s.CompleteTaskWithArtifacts(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{{Name: "report", Content: "report contents"}})
 	require.NoError(t, err)
+}
+
+func TestCompletionGatesRequireEvidenceAndCandidateRevision(t *testing.T) {
+	s := testStore(t)
+	s.SetCompletionChecksEnabled(true)
+	ctx := context.Background()
+	task, err := s.CreateTaskWithOpts(ctx, "team", "Verify", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{{Type: "test_evidence", Name: "tests", Artifact: "tests"}}}})
+	require.NoError(t, err)
+	_, err = s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{{Name: "tests", Content: "exit 0"}}, nil, "rev-1")
+	require.ErrorContains(t, err, "completion gate")
+	unchanged, _ := s.GetTask(ctx, "team", task.ID)
+	require.Equal(t, "pending", unchanged.Status)
+	exitCode := 0
+	evidence := TaskArtifact{Name: "tests", Kind: "test", Revision: "rev-1", Command: "go test ./...", Runner: "ci", ExitCode: &exitCode, OutputDigest: "sha256:tests", StartedAt: "2026-10-02T18:00:00Z", FinishedAt: "2026-10-02T18:01:00Z", Content: "PASS"}
+	completed, err := s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{evidence}, nil, "rev-1")
+	require.NoError(t, err)
+	require.Equal(t, "completed", completed.Status)
+	require.Equal(t, "rev-1", completed.Workflow.CandidateRevision)
+	require.Len(t, completed.Workflow.GateResults, 1)
+	require.True(t, completed.Workflow.GateResults[0].Passed)
+}
+
+func TestCompletionGatesRejectUnsupportedChecksAndLandingMismatch(t *testing.T) {
+	s := testStore(t)
+	s.SetCompletionChecksEnabled(true)
+	ctx := context.Background()
+	_, err := s.CreateTaskWithOpts(ctx, "team", "Unsafe", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{{Type: "check", Artifact: "result"}}}})
+	require.ErrorContains(t, err, "registered check scripts are not configured")
+	task, err := s.CreateTaskWithOpts(ctx, "team", "Land", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{{Type: "landed_revision", Artifact: "landing", Remote: "origin", Branch: "release"}}}})
+	require.NoError(t, err)
+	_, err = s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{{Name: "landing", Revision: "rev-2", Remote: "origin", Branch: "main", Landed: true, Content: "attestation"}}, nil, "rev-2")
+	require.ErrorContains(t, err, "branch")
+	got, _ := s.GetTask(ctx, "team", task.ID)
+	require.Equal(t, "pending", got.Status)
+}
+
+func TestCompletionGateAmendmentClearsPriorResultsAndRequiresNewRevision(t *testing.T) {
+	s := testStore(t)
+	s.SetCompletionChecksEnabled(true)
+	ctx := context.Background()
+	task, err := s.CreateTaskWithOpts(ctx, "team", "Amend gates", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{{Type: "report", Artifact: "report"}}}})
+	require.NoError(t, err)
+	_, err = s.AmendTask(ctx, "team", task.ID, "Orchestrator", 1, "tighten evidence", map[string]interface{}{"completion_gates": []interface{}{map[string]interface{}{"type": "report", "artifact": "final"}}})
+	require.NoError(t, err)
+	got, _ := s.GetTask(ctx, "team", task.ID)
+	require.Equal(t, 2, got.Revision)
+	require.Len(t, got.Workflow.CompletionGates, 1)
+	require.Equal(t, "final", got.Workflow.CompletionGates[0].Artifact)
+	require.Empty(t, got.Workflow.GateResults)
+	_, err = s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "lead", nil, "success", []TaskArtifact{{Name: "report", Content: "old"}}, &got.Revision, "")
+	require.ErrorContains(t, err, "artifact")
+}
+
+func TestRegisteredCompletionCheckOwnsResultAndRejectsForgedCompletion(t *testing.T) {
+	s := testStore(t)
+	s.SetCompletionChecksEnabled(true)
+	ctx := context.Background()
+	workdir, revision := gitFixture(t)
+	s.SetCompletionCheckRunner(NewLocalRegisteredCheckRunner(workdir))
+	task, err := s.CreateTaskWithOpts(ctx, "team", "Run trusted tests", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{{Type: "registered_check", Name: "trusted tests", CheckID: "go_test", Parameters: map[string]string{"packages": "./..."}}}}})
+	require.NoError(t, err)
+	// Completion has no check-result input to forge; Coral executes the
+	// registered command and stores the server-owned result.
+	completed, err := s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "lead", nil, "success", nil, nil, revision)
+	require.NoError(t, err)
+	require.Equal(t, "completed", completed.Status)
+	require.Len(t, completed.Workflow.GateResults, 1)
+	require.True(t, completed.Workflow.GateResults[0].Passed)
+	require.Equal(t, "go test ./...", completed.Workflow.GateResults[0].Command)
+
+	missingRunner := testStore(t)
+	missingRunner.SetCompletionChecksEnabled(true)
+	deferred, err := missingRunner.CreateTaskWithOpts(ctx, "team", "Unavailable check", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{{Type: "registered_check", CheckID: "go_test"}}}})
+	require.NoError(t, err)
+	_, err = missingRunner.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", deferred.ID, "lead", nil, "success", nil, nil, revision)
+	require.ErrorContains(t, err, "runner unavailable")
+}
+
+func TestRegisteredCompletionChecksStayDormantWhenDisabled(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, gate := range []CompletionGate{
+		{Type: "report", Artifact: "report"},
+		{Type: "test_evidence", Artifact: "tests"},
+		{Type: "landed_revision", Artifact: "landing", Remote: "origin", Branch: "release"},
+		{Type: "registered_check", CheckID: "go_test"},
+	} {
+		_, err := s.CreateTaskWithOpts(ctx, "team", "Disabled check", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{gate}}})
+		require.ErrorContains(t, err, "completion_gates are an experimental feature disabled")
+	}
+
+	// A declaration created during an explicit rollout remains readable and is
+	// allowed to complete after the rollout is disabled, but it is recorded as
+	// unavailable and never invokes the runner.
+	s.SetCompletionChecksEnabled(true)
+	task, err := s.CreateTaskWithOpts(ctx, "team", "Persisted check", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{CompletionGates: []CompletionGate{
+		{Type: "report", Artifact: "report"},
+		{Type: "test_evidence", Artifact: "tests"},
+		{Type: "landed_revision", Artifact: "landing", Remote: "origin", Branch: "release"},
+		{Type: "registered_check", CheckID: "go_test"},
+	}}})
+	require.NoError(t, err)
+	s.SetCompletionChecksEnabled(false)
+	runner := &countingCompletionRunner{}
+	s.SetCompletionCheckRunner(runner)
+	completed, err := s.CompleteTaskWithArtifactsAtRevisionAndCandidate(ctx, "team", task.ID, "lead", nil, "success", nil, nil, "candidate")
+	require.NoError(t, err)
+	require.Equal(t, "completed", completed.Status)
+	require.Len(t, completed.Workflow.GateResults, 4)
+	require.Zero(t, runner.calls)
+	for _, result := range completed.Workflow.GateResults {
+		require.False(t, result.Passed)
+		require.Contains(t, result.Details, "disabled by server policy")
+	}
+	required, err := s.CreateTaskWithOpts(ctx, "team", "Required output remains enforced", "", "medium", "lead", &CreateTaskOpts{Workflow: TaskWorkflow{RequiredOutputs: []string{"build"}}})
+	require.NoError(t, err)
+	_, err = s.CompleteTaskWithArtifacts(ctx, "team", required.ID, "lead", nil, "success", nil)
+	require.ErrorContains(t, err, `required output "build" is missing`)
+
+	amendable, err := s.CreateTask(ctx, "team", "Amend gate", "", "medium", "lead")
+	require.NoError(t, err)
+	_, err = s.AmendTask(ctx, "team", amendable.ID, "Orchestrator", 1, "defer trusted check", map[string]interface{}{
+		"completion_gates": []interface{}{map[string]interface{}{"type": "registered_check", "check_id": "go_test"}},
+	})
+	require.ErrorContains(t, err, "completion_gates are an experimental feature disabled")
 }
 
 func TestWorkflowFailureCancellationAndRetry(t *testing.T) {
