@@ -5,7 +5,7 @@ trap 'echo "package verification failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 # Verify a packaged SQLCipher runtime with the bundled OpenSSL library. This
 # executes the shipped Coral self-test instead of recompiling source tests.
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-PACKAGE_DIR="${1:?usage: verify_encrypted_bundle.sh PACKAGE_DIR}"
+PACKAGE_DIR="$(cd "${1:?usage: verify_encrypted_bundle.sh PACKAGE_DIR}" && pwd -P)"
 cd "$ROOT/coral-go"
 
 NOTICE_DIR="$PACKAGE_DIR"
