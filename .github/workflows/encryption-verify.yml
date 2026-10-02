@@ -33,7 +33,7 @@ jobs:
           set -euo pipefail
           mkdir -p ../dist/encryption-linux
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
-            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-linux/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags sqlcipher,fts5 -o "../dist/encryption-linux/$cmd" "./cmd/$cmd/"
           done
           SOURCE_LIB="$(ldconfig -p | awk '/libcrypto\.so\.3/{print $NF; exit}')"
           cp "$SOURCE_LIB" ../dist/encryption-linux/libcrypto.so.3
@@ -78,10 +78,10 @@ jobs:
           $env:CGO_LDFLAGS = "-L$opensslLibDir -l:libcrypto.lib"
           New-Item -ItemType Directory -Force -Path ..\dist\encryption-windows | Out-Null
           foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
-            go build -tags fts5 -o "..\dist\encryption-windows\$cmd.exe" "./cmd/$cmd/"
+            go build -tags sqlcipher,fts5 -o "..\dist\encryption-windows\$cmd.exe" "./cmd/$cmd/"
           }
-          go build -tags fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-tray.exe ./cmd/coral-tray/
-          go build -tags webview,fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-app.exe ./cmd/coral-app/
+          go build -tags sqlcipher,fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-tray.exe ./cmd/coral-tray/
+          go build -tags webview,sqlcipher,fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-app.exe ./cmd/coral-app/
           $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
           if ($version -match '^(\d+)\.') { $cryptoMajor = $Matches[1] } else { throw "unrecognized OpenSSL version: $version" }
           $dllName = "libcrypto-${cryptoMajor}-x64.dll"
@@ -139,10 +139,10 @@ jobs:
           OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
           mkdir -p ../dist/encryption-macos-arm64
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
-            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags sqlcipher,fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
           done
           for cmd in coral-tray coral-app; do
-            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags webview,fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags webview,sqlcipher,fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
           done
           cp "${OPENSSL_PREFIX}/lib/libcrypto.3.dylib" ../dist/encryption-macos-arm64/
           "${OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}' > ../dist/encryption-macos-arm64/openssl-version
@@ -183,10 +183,10 @@ jobs:
           OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-amd64"
           mkdir -p ../dist/encryption-macos-amd64
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
-            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags sqlcipher,fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
           done
           for cmd in coral-tray coral-app; do
-            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags webview,fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags webview,sqlcipher,fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
           done
           cp "${OPENSSL_PREFIX}/lib/libcrypto.3.dylib" ../dist/encryption-macos-amd64/
           "${OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}' > ../dist/encryption-macos-amd64/openssl-version

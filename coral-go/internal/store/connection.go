@@ -7,12 +7,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
-	_ "github.com/0xCarbon/go-sqlite3"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
@@ -50,6 +50,18 @@ func OpenWithContext(ctx context.Context, dbPath string) (*DB, error) {
 }
 
 func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
+	if key == "" {
+		if err := dbcrypt.RejectEncryptedFile(dbPath); err != nil {
+			return nil, err
+		}
+	}
+	if key != "" {
+		// Fail before touching the filesystem: a standard build has no
+		// SQLCipher driver and must not create or open anything with a key.
+		if err := dbcrypt.RequireAvailable(); err != nil {
+			return nil, err
+		}
+	}
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)

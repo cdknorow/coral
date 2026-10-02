@@ -160,6 +160,10 @@ func (h *SystemHandler) DatabaseSecurityStatus(w http.ResponseWriter, r *http.Re
 		saved = "disabled"
 	}
 	effective := dbcrypt.EffectiveMode()
+	migrationCommand := ""
+	if dbcrypt.FeatureAvailable() {
+		migrationCommand = "CORAL_DB_ENCRYPTION_MIGRATE=1 coral"
+	}
 	available := dbcrypt.FeatureAvailable() && (saved != "password" || dbcrypt.UnlockSurface() != "headless")
 	migrationRequired := false
 	if saved != "disabled" {
@@ -174,10 +178,12 @@ func (h *SystemHandler) DatabaseSecurityStatus(w http.ResponseWriter, r *http.Re
 		"effective_mode":      effective,
 		"restart_required":    saved != effective,
 		"feature_available":   available,
+		"encryption_compiled": dbcrypt.FeatureAvailable(),
+		"build_variant":       dbcrypt.BuildVariant(),
 		"unlock_surface":      dbcrypt.UnlockSurface(),
 		"key_file_configured": b.KeyFile != "" || fileExists(filepath.Join(h.cfg.CoralDir(), dbcrypt.KeyName)),
 		"migration_required":  migrationRequired,
-		"migration_command":   "CORAL_DB_ENCRYPTION_MIGRATE=1 coral",
+		"migration_command":   migrationCommand,
 	})
 }
 
@@ -204,6 +210,13 @@ func (h *SystemHandler) SetDatabaseSecurity(w http.ResponseWriter, r *http.Reque
 		errBadRequest(w, "unsupported database encryption mode")
 		return
 	}
+	if mode != "disabled" && !dbcrypt.FeatureAvailable() {
+		writeJSON(w, http.StatusNotImplemented, map[string]any{
+			"error":      "experimental database encryption is not included in this standard build",
+			"error_code": "encryption_unavailable",
+		})
+		return
+	}
 	if effective := dbcrypt.EffectiveMode(); effective != "disabled" && mode != effective {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error":      "changing encryption mode requires the explicit offline migration command",
@@ -214,6 +227,13 @@ func (h *SystemHandler) SetDatabaseSecurity(w http.ResponseWriter, r *http.Reque
 	current, err := dbcrypt.Load(h.cfg.CoralDir())
 	if err != nil {
 		errInternalServer(w, err.Error())
+		return
+	}
+	if !dbcrypt.FeatureAvailable() && current.DatabaseEncryption != "" && current.DatabaseEncryption != "disabled" {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":      "saved encryption settings require an encryption-enabled build; refusing to replace them",
+			"error_code": "encryption_unavailable",
+		})
 		return
 	}
 	current.DatabaseEncryption = mode

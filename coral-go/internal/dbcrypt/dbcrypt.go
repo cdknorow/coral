@@ -18,8 +18,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
-
-	_ "github.com/0xCarbon/go-sqlite3"
 )
 
 func encryptedKeyHex(key string) string {
@@ -361,6 +359,9 @@ func MigratePlaintext(path, key string) error {
 // Callers must hold the Coral instance lock and ensure no other process has
 // the files open.
 func MigratePlaintexts(paths []string, key string) error {
+	if err := RequireAvailable(); err != nil {
+		return err
+	}
 	if err := CheckMigrationRecovery(paths); err != nil {
 		return err
 	}

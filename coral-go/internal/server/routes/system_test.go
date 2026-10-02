@@ -86,6 +86,12 @@ func TestDatabaseSecurityModeContract(t *testing.T) {
 	require.NoError(t, json.Unmarshal(get.Body.Bytes(), &status))
 	assert.Equal(t, "disabled", status["saved_mode"])
 	assert.Equal(t, false, status["restart_required"])
+	assert.Equal(t, dbcrypt.FeatureAvailable(), status["encryption_compiled"])
+	if !dbcrypt.FeatureAvailable() {
+		assert.Equal(t, "standard", status["build_variant"])
+		assert.Equal(t, false, status["feature_available"])
+		assert.Equal(t, "", status["migration_command"])
+	}
 
 	req := httptest.NewRequest(http.MethodPut, "/api/system/database-security", bytes.NewBufferString(`{"mode":"key_file","password":"leak"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -97,6 +103,23 @@ func TestDatabaseSecurityModeContract(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	set := httptest.NewRecorder()
 	r.ServeHTTP(set, req)
+	if !dbcrypt.FeatureAvailable() {
+		assert.Equal(t, http.StatusNotImplemented, set.Code)
+		assert.Contains(t, set.Body.String(), "encryption_unavailable")
+		_, err := os.Stat(filepath.Join(dir, dbcrypt.BootstrapName))
+		assert.True(t, os.IsNotExist(err), "rejected encryption request must not create bootstrap")
+
+		// A standard server must not clear saved encryption configuration.
+		original := []byte(`{"database_encryption":"key_file","key_file":"existing.key"}`)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, dbcrypt.BootstrapName), original, 0600))
+		clear := httptest.NewRecorder()
+		r.ServeHTTP(clear, httptest.NewRequest(http.MethodPut, "/api/system/database-security", bytes.NewBufferString(`{"mode":"disabled"}`)))
+		assert.Equal(t, http.StatusConflict, clear.Code)
+		after, err := os.ReadFile(filepath.Join(dir, dbcrypt.BootstrapName))
+		require.NoError(t, err)
+		assert.Equal(t, original, after)
+		return
+	}
 	assert.Equal(t, http.StatusOK, set.Code)
 	b, err := dbcrypt.Load(dir)
 	require.NoError(t, err)

@@ -18,15 +18,15 @@ BUILD_DIR="$DIST_DIR/coral-linux"
 echo "==> Building coral-go for Linux (amd64) v${VERSION}"
 
 # Build tags — select tier via CORAL_TIER env var
-BUILD_TAGS=""
+BUILD_TAGS="fts5"
 if [ "$CORAL_TIER" = "dev" ]; then
-    BUILD_TAGS="-tags dev"
+    BUILD_TAGS+=",dev"
     echo "==> Tier: dev (EULA skipped, license skipped)"
 elif [ "$CORAL_TIER" = "dropboxers" ]; then
-    BUILD_TAGS="-tags dropboxers"
+    BUILD_TAGS+=",dropboxers"
     echo "==> Tier: dropboxers (license skipped, 3 teams / 12 agents)"
 elif [ "$CORAL_TIER" = "beta" ]; then
-    BUILD_TAGS="-tags beta"
+    BUILD_TAGS+=",beta"
     echo "==> Tier: beta (license skipped, demo limits enforced)"
 else
     echo "==> Tier: prod (license required)"
@@ -37,17 +37,14 @@ mkdir -p "$BUILD_DIR"
 
 cd "$GO_DIR"
 
-echo "==> Compiling coral"
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral" ./cmd/coral/
+for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+    echo "==> Compiling $cmd"
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "$BUILD_TAGS" \
+        -ldflags="-s -w -X github.com/cdknorow/coral/internal/config.Version=$VERSION" \
+        -o "$BUILD_DIR/$cmd" "./cmd/$cmd/"
+done
 
-echo "==> Compiling launch-coral"
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/launch-coral" ./cmd/launch-coral/
-
-echo "==> Compiling coral-board"
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-board" ./cmd/coral-board/
-
-echo "==> Compiling coral-agent"
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build $BUILD_TAGS -ldflags="-s -w" -o "$BUILD_DIR/coral-agent" ./cmd/coral-agent/
+"$PROJECT_DIR/tests/release/verify_standard_bundle.sh" "$BUILD_DIR"
 
 echo "==> Creating tarball"
 cd "$DIST_DIR"

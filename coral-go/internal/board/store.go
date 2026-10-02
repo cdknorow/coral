@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/naming"
 	"time"
 
-	_ "github.com/0xCarbon/go-sqlite3"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
@@ -166,6 +166,16 @@ func NewStore(dbPath string) (*Store, error) {
 
 // NewStoreWithKey opens the board database with SQLCipher when key is set.
 func NewStoreWithKey(dbPath, key string) (*Store, error) {
+	if key == "" {
+		if err := dbcrypt.RejectEncryptedFile(dbPath); err != nil {
+			return nil, err
+		}
+	}
+	if key != "" {
+		if err := dbcrypt.RequireAvailable(); err != nil {
+			return nil, err
+		}
+	}
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create board db directory: %w", err)

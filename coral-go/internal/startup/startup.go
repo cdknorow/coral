@@ -114,6 +114,12 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 
 	// Ensure ~/.coral directory exists before any file operations
 	coralDir := cfg.CoralDir()
+	// A standard (non-sqlcipher) build cannot use database encryption. Refuse a
+	// requested or existing encrypted setup before anything is created, saved,
+	// locked or opened, so a rejected start leaves the Coral home untouched.
+	if err := dbcrypt.RejectUnsupportedEncryption(coralDir, cfg.DBPath, filepath.Join(coralDir, "messageboard.db")); err != nil {
+		return nil, err
+	}
 	if err := os.MkdirAll(coralDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory %s: %w", coralDir, err)
 	}

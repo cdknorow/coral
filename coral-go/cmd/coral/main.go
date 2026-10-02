@@ -173,6 +173,9 @@ func main() {
 }
 
 func runEncryptionSelfTest() error {
+	if !dbcrypt.FeatureAvailable() {
+		return fmt.Errorf("database encryption is not included in this standard build; experimental encryption requires a build with CGO_ENABLED=1 and -tags sqlcipher,fts5")
+	}
 	dir, err := os.MkdirTemp("", "coral-encryption-self-test-")
 	if err != nil {
 		return err

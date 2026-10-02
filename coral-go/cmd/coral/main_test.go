@@ -8,10 +8,20 @@ import (
 	"testing"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server"
 	"github.com/cdknorow/coral/internal/store"
 )
+
+func TestStandardBuildEncryptionSelfTestUnavailable(t *testing.T) {
+	if dbcrypt.FeatureAvailable() {
+		t.Skip("standard build contract")
+	}
+	if err := runEncryptionSelfTest(); err == nil {
+		t.Fatal("standard build must reject encrypted self-test")
+	}
+}
 
 // setupTestServer creates a test Coral server with an isolated DB.
 func setupTestServer(t *testing.T) *httptest.Server {

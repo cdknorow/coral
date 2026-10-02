@@ -2889,7 +2889,9 @@ function renderDatabaseEncryptionStatus(status, loadError = false) {
     const effective = status.effective_mode || 'disabled';
     const restart = status.restart_required === true;
     const surface = status.unlock_surface || 'unknown';
-    const capability = status.feature_available === false ? ' Encryption is unavailable in this build.' : '';
+    const capability = status.encryption_compiled === false
+        ? ' Experimental database encryption is not included in this standard build.'
+        : status.feature_available === false ? ' Encryption is unavailable in this build.' : ' Database encryption is experimental.';
     hint.textContent = `Saved: ${mode}; running: ${effective}${restart ? '; restart required' : ''}. Unlock: ${surface}.${capability}`;
 }
 
