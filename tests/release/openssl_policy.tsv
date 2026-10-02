@@ -1,5 +1,8 @@
 # platform|vendor|package|branch-or-exact-version|minimum-patch|mode|authoritative-reference
 macos|homebrew|openssl@3|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
 windows|chocolatey|openssl|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
+# OpenSSL 4.0.3 is the reviewed current major-line Chocolatey package; the
+# official vulnerability index is the authoritative reference for this line.
+windows|chocolatey|openssl|4.0|3|patched|https://openssl-library.org/news/vulnerabilities/
 # Ubuntu Noble's vendor backport for CVE-2026-35189 (USN-8847-1).
 linux|ubuntu|libssl3t64|3.0.13-0ubuntu3.16|-|vendor-backport|https://ubuntu.com/security/CVE-2026-35189

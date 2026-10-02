@@ -69,7 +69,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           $env:CGO_ENABLED = "1"
           $env:CGO_CFLAGS = "-IC:/PROGRA~1/OpenSSL/include"
-          $env:CGO_LDFLAGS = "-LC:/PROGRA~1/OpenSSL/lib"
+          $env:CGO_LDFLAGS = "-LC:/PROGRA~1/OpenSSL/lib -l:libcrypto.lib"
           $opensslRoot = "C:\Program Files\OpenSSL"
           New-Item -ItemType Directory -Force -Path ..\dist\encryption-windows | Out-Null
           foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
