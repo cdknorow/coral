@@ -87,8 +87,9 @@ jobs:
           (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
           # Hash with the same MSYS utility used by the shared Bash verifier;
           # PowerShell and MSYS can disagree on binary path handling.
-          $libraryPath = (Resolve-Path ..\dist\encryption-windows\libcrypto-3-x64.dll).Path.Replace('\', '/')
-          $hash = ((bash -c "sha256sum '$libraryPath'") -split '\s+')[0].Trim().ToLower()
+          $libraryPath = (Resolve-Path ..\dist\encryption-windows\libcrypto-3-x64.dll).Path
+          $msysLibraryPath = (& cygpath -u $libraryPath).Trim()
+          $hash = ((bash -c "sha256sum '$msysLibraryPath'") -split '\s+')[0].Trim().ToLower()
           $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
           $attestation = "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$version`nlibrary_sha256=$hash"
           # Windows PowerShell's default Set-Content encoding is UTF-16LE;
@@ -234,6 +235,7 @@ jobs:
           for binary in ../dist/encryption-macos/*; do
             [ -f "$binary" ] || continue
             install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -change "$RUNNER_TEMP/openssl-3.6.5-amd64/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -change "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -add_rpath '@loader_path' "$binary" || true
           done
