@@ -30,11 +30,15 @@ policy_accepts() {
   while IFS='|' read -r pplatform pvendor ppackage pversion pmin pmode pref; do
     [[ -z "$pplatform" || "$pplatform" == \#* ]] && continue
     [[ "$pplatform" == "$(field platform)" && "$pvendor" == "$(field vendor)" && "$ppackage" == "$(field package)" ]] || continue
-    if [[ "$pmode" == vendor-backport && "$requested" == "$pversion" ]] ||
-       [[ "$pmode" == patched ]] && version_ge_patch "$requested" "$pversion" "$pmin"; then
-      [[ "$pref" == https://* ]] || { echo "policy reference must be HTTPS" >&2; exit 1; }
-      return 0
+    if [[ "$pmode" == vendor-backport && "$requested" == "$pversion" ]]; then
+      :
+    elif [[ "$pmode" == patched ]] && version_ge_patch "$requested" "$pversion" "$pmin"; then
+      :
+    else
+      continue
     fi
+    [[ "$pref" == https://* ]] || { echo "policy reference must be HTTPS" >&2; exit 1; }
+    return 0
   done < "$POLICY_FILE"
   return 1
 }
