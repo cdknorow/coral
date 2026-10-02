@@ -11,7 +11,7 @@ SLICE_ARM64="${3:-}"
 SLICE_X86_64="${4:-}"
 POLICY_FILE="${CORAL_OPENSSL_POLICY:-$(cd "$(dirname "$0")" && pwd)/openssl_policy.tsv}"
 
-field() { sed -n "s/^$1=//p" "$ATTESTATION" | head -1; }
+field() { sed -n "s/^$1=//p" "$ATTESTATION" | head -1 | tr -d '\r'; }
 
 for key in platform vendor package version library_sha256; do
   [[ -n "$(field "$key")" ]] || { echo "missing attestation field: $key" >&2; exit 1; }
