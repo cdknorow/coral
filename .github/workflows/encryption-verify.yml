@@ -44,7 +44,7 @@ jobs:
           sha256sum ../dist/encryption-linux/libcrypto.so.3
           LIB="../dist/encryption-linux/libcrypto.so.3"
           HASH="$(sha256sum "$LIB" | awk '{print $1}')"
-          PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 || true)"
+          PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 | sed 's/:amd64$//' || true)"
           VER=""
           if [ -n "$PKG" ]; then VER="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"; fi
           printf 'platform=linux\nvendor=ubuntu\npackage=%s\nversion=%s\nlibrary_sha256=%s\n' "$PKG" "$VER" "$HASH" > ../dist/encryption-linux/openssl-attestation.env
@@ -68,19 +68,22 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $env:CGO_ENABLED = "1"
+          $env:CGO_CFLAGS = "-IC:/PROGRA~1/OpenSSL/include"
+          $env:CGO_LDFLAGS = "-LC:/PROGRA~1/OpenSSL/lib"
+          $opensslRoot = "C:\Program Files\OpenSSL"
           New-Item -ItemType Directory -Force -Path ..\dist\encryption-windows | Out-Null
           foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
             go build -tags fts5 -o "..\dist\encryption-windows\$cmd.exe" "./cmd/$cmd/"
           }
           go build -tags fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-tray.exe ./cmd/coral-tray/
           go build -tags webview,fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-app.exe ./cmd/coral-app/
-          Copy-Item "C:\Program Files\OpenSSL-Win64\bin\libcrypto-3-x64.dll" ..\dist\encryption-windows\
+          Copy-Item "$opensslRoot\bin\libcrypto-3-x64.dll" ..\dist\encryption-windows\
           Copy-Item ..\THIRD_PARTY_NOTICES_SQLCIPHER.md ..\dist\encryption-windows\
           Copy-Item ..\licenses ..\dist\encryption-windows\licenses -Recurse
-          & "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version -a
+          & "$opensslRoot\bin\openssl.exe" version -a
           (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
           $hash = (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
-          $version = (& "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
+          $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
           "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$version`nlibrary_sha256=$hash" | Set-Content ..\dist\encryption-windows\openssl-attestation.env
           bash ..\tests\release\verify_openssl_attestation.sh ..\dist\encryption-windows\openssl-attestation.env ..\dist\encryption-windows\libcrypto-3-x64.dll
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
