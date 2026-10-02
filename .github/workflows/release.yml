@@ -114,7 +114,11 @@ jobs:
           # Pure Go binaries (no CGO)
           $env:CGO_ENABLED = "1"
           $env:CGO_CFLAGS = "-IC:/PROGRA~1/OpenSSL/include"
-          $env:CGO_LDFLAGS = "-LC:/PROGRA~1/OpenSSL/lib -l:libcrypto.lib"
+          $opensslRoot = "C:\Program Files\OpenSSL"
+          $opensslImport = Get-ChildItem "$opensslRoot\lib" -Filter libcrypto.lib -Recurse | Select-Object -First 1
+          if ($null -eq $opensslImport) { throw "OpenSSL import library not found" }
+          $opensslLibDir = $opensslImport.DirectoryName.Replace('\', '/')
+          $env:CGO_LDFLAGS = "-L$opensslLibDir -l:libcrypto.lib"
           foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
             if (Test-Path "./cmd/$cmd") {
               go build $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
@@ -127,7 +131,6 @@ jobs:
           $webviewTags = if ($buildTags) { "-tags webview,$($buildTags -replace '-tags ','')" } else { "-tags webview" }
           go build $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
           go build $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
-          $opensslRoot = "C:\Program Files\OpenSSL"
           Copy-Item "$opensslRoot\bin\libcrypto-3-x64.dll" "..\dist\windows\bin\libcrypto-3-x64.dll"
           Copy-Item "..\THIRD_PARTY_NOTICES_SQLCIPHER.md" "..\dist\windows\bin\THIRD_PARTY_NOTICES_SQLCIPHER.md"
           Copy-Item "..\licenses" "..\dist\windows\bin\licenses" -Recurse
