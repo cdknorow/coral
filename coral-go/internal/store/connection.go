@@ -481,6 +481,20 @@ CREATE TABLE IF NOT EXISTS connected_apps (
 	UNIQUE(provider_id, name)
 );
 
+-- Retained remote-board subscriptions used by the background poller and
+-- remote-board API. This table is intentionally separate from retired
+-- provider credentials and proxy state.
+CREATE TABLE IF NOT EXISTS remote_board_subscriptions (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id           TEXT NOT NULL,
+    remote_server        TEXT NOT NULL,
+    project              TEXT NOT NULL,
+    job_title            TEXT NOT NULL,
+    last_notified_unread INTEGER NOT NULL DEFAULT 0,
+    created_at           TEXT NOT NULL,
+    UNIQUE(session_id, remote_server, project)
+);
+
 CREATE TABLE IF NOT EXISTS custom_views (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	name       TEXT NOT NULL,
