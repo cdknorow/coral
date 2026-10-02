@@ -306,6 +306,30 @@ func TestCachedLogStatusConcurrentAndInvalidatesOnAppend(t *testing.T) {
 	assert.Contains(t, fmt.Sprint(status["recent_lines"]), "second")
 }
 
+func TestCachedResumeFromIDUsesAuthoritativeValueOnce(t *testing.T) {
+	server, handler, _, ss := setupSessionsTestServer(t)
+	defer server.Close()
+
+	resume := "ancestor-session"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{
+		SessionID:    "current-session",
+		AgentType:    "codex",
+		AgentName:    "agent",
+		WorkingDir:   t.TempDir(),
+		ResumeFromID: &resume,
+		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+	}))
+
+	got := handler.cachedResumeFromID(context.Background(), "current-session")
+	require.Equal(t, resume, got)
+
+	// A later poll must use the cached value. The database mutation is only in
+	// this isolated test database and proves no second lookup is performed.
+	_, err := handler.db.Exec(`UPDATE live_sessions SET resume_from_id = ? WHERE session_id = ?`, "different-ancestor", "current-session")
+	require.NoError(t, err)
+	assert.Equal(t, resume, handler.cachedResumeFromID(context.Background(), "current-session"))
+}
+
 func TestSessionsList_WithSessions(t *testing.T) {
 	server, _, terminal, _ := setupSessionsTestServer(t)
 

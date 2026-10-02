@@ -86,6 +86,12 @@ type SessionsHandler struct {
 	transcriptWarm    map[string]bool
 	transcriptPending map[string]bool
 	transcriptWarmSem chan struct{}
+	// resumeCache avoids repeating the authoritative live-session lookup on
+	// every one-second chat poll. Session IDs are immutable; the cached value
+	// is still loaded from the database and is never taken from the client.
+	resumeMu    sync.Mutex
+	resumeCache map[string]string
+	resumeKnown map[string]bool
 }
 
 type cachedLogStatus struct {
@@ -259,6 +265,8 @@ func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.Ter
 		transcriptWarm:    make(map[string]bool),
 		transcriptPending: make(map[string]bool),
 		transcriptWarmSem: make(chan struct{}, 4),
+		resumeCache:       make(map[string]string),
+		resumeKnown:       make(map[string]bool),
 	}
 }
 
@@ -520,7 +528,10 @@ func getLogStatus(logPath string) map[string]any {
 }
 
 func usageLimitNotice(logPath string) string {
-	info := getLogStatus(logPath)
+	return usageLimitNoticeFromStatus(getLogStatus(logPath))
+}
+
+func usageLimitNoticeFromStatus(info map[string]any) string {
 	lines, _ := info["recent_lines"].([]string)
 	for _, line := range lines {
 		lower := strings.ToLower(line)
@@ -529,6 +540,48 @@ func usageLimitNotice(logPath string) string {
 		}
 	}
 	return ""
+}
+
+// cachedResumeFromID performs the authoritative lookup once per live session
+// ID. The client never supplies or overrides this value; it only supplies the
+// session ID used to select the cache entry. Session IDs are unique and a
+// replacement session receives a new ID, so retaining an empty value is safe.
+func (h *SessionsHandler) cachedResumeFromID(ctx context.Context, sessionID string) string {
+	if sessionID == "" || h.ss == nil {
+		return ""
+	}
+	h.resumeMu.Lock()
+	if h.resumeKnown[sessionID] {
+		value := h.resumeCache[sessionID]
+		h.resumeMu.Unlock()
+		return value
+	}
+	h.resumeMu.Unlock()
+
+	ls, err := h.ss.GetLiveSession(ctx, sessionID)
+	if err != nil || ls == nil {
+		return ""
+	}
+	value := derefStrPtr(ls.ResumeFromID)
+	h.rememberResumeFromID(sessionID, value)
+	return value
+}
+
+func (h *SessionsHandler) rememberResumeFromID(sessionID, value string) {
+	if sessionID == "" {
+		return
+	}
+	h.resumeMu.Lock()
+	defer h.resumeMu.Unlock()
+	if len(h.resumeKnown) >= 1024 && !h.resumeKnown[sessionID] {
+		for key := range h.resumeKnown {
+			delete(h.resumeKnown, key)
+			delete(h.resumeCache, key)
+			break
+		}
+	}
+	h.resumeKnown[sessionID] = true
+	h.resumeCache[sessionID] = value
 }
 
 // ── List / Detail ───────────────────────────────────────────────────────
@@ -1233,11 +1286,15 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 // Chat returns the JSONL conversation transcript.
 // GET /api/sessions/live/{name}/chat
 func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
+	trace := newPhaseTrace("live-chat")
+	defer trace.finish()
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
 	workingDir := r.URL.Query().Get("working_directory")
 	var resumeFromID string
+	var resumeLookupDone bool
+	trace.begin("metadata_lookup")
 
 	// If missing metadata, attempt lookup by session_id or name
 	if (agentType == "" || workingDir == "" || sessionID == "") && h.ss != nil {
@@ -1246,7 +1303,9 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 			targetID = name
 		}
 		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
+			resumeLookupDone = true
 			resumeFromID = derefStrPtr(ls.ResumeFromID)
+			h.rememberResumeFromID(ls.SessionID, resumeFromID)
 			if agentType == "" && ls.AgentType != "" {
 				agentType = ls.AgentType
 			}
@@ -1259,7 +1318,9 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 		} else if all, err := h.ss.GetAllLiveSessions(r.Context()); err == nil {
 			for _, s := range all {
 				if s.AgentName == name || s.SessionID == name {
+					resumeLookupDone = true
 					resumeFromID = derefStrPtr(s.ResumeFromID)
+					h.rememberResumeFromID(s.SessionID, resumeFromID)
 					if agentType == "" && s.AgentType != "" {
 						agentType = s.AgentType
 					}
@@ -1277,11 +1338,10 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// Live chat clients normally provide all session metadata explicitly. Even
 	// in that case, load the persisted resume lineage so a replacement session
 	// can read its trusted ancestor rollout until the new marker is emitted.
-	if resumeFromID == "" && h.ss != nil && sessionID != "" {
-		if ls, err := h.ss.GetLiveSession(r.Context(), sessionID); err == nil && ls != nil {
-			resumeFromID = derefStrPtr(ls.ResumeFromID)
-		}
+	if !resumeLookupDone && sessionID != "" {
+		resumeFromID = h.cachedResumeFromID(r.Context(), sessionID)
 	}
+	trace.end("metadata_lookup", dbPoolAttrs(h.db)...)
 
 	if agentType == "" {
 		agentType = at.Claude
@@ -1305,6 +1365,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// only on this explicit live-session path, not generic history browsing.
 	var messages []map[string]any
 	var total int
+	trace.begin("transcript_read")
 	if sessionID != "" {
 		if resumeFromID != "" {
 			messages, total = h.jsonl.ReadAllMessagesForLiveWithLineage(id, workingDir, agentType, resumeFromID)
@@ -1314,7 +1375,13 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	} else {
 		messages, total = h.jsonl.ReadAllMessages(id, workingDir, agentType)
 	}
-	limitNotice := usageLimitNotice(h.findLogPath(agentType, sessionID))
+	trace.end("transcript_read", "messages", total)
+	trace.begin("log_status")
+	// Reuse the bounded log-status cache used by the live-session list. Chat
+	// polls run every second; reparsing the same 256KB log tail on each poll
+	// adds avoidable filesystem and parsing work when the log is unchanged.
+	limitNotice := usageLimitNoticeFromStatus(h.cachedLogStatus(h.findLogPath(agentType, sessionID)))
+	trace.end("log_status")
 	if after > 0 {
 		messages = messages[min(after, len(messages)):]
 	}
