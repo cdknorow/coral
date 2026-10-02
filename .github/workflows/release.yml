@@ -358,6 +358,7 @@ jobs:
           mkdir -p ../dist/macos
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
             lipo -create -output "../dist/macos/$cmd" "../dist/macos-arm64/$cmd" "../dist/macos-amd64/$cmd"
+            chmod +x "../dist/macos/$cmd"
           done
           lipo -create -output ../dist/macos/libcrypto.3.dylib ../dist/macos-arm64/libcrypto.3.dylib ../dist/macos-amd64/libcrypto.3.dylib
           cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/macos/

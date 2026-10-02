@@ -21,7 +21,11 @@ foreach ($name in $expected) {
   }
 }
 $coralDeps = if ($dumpbin) { (& $dumpbin.Source /DEPENDENTS $exe 2>&1 | Out-String) } else { (& $objdump.Source -p $exe 2>&1 | Out-String) }
-if ($coralDeps -notmatch '(?i)libcrypto[-.]3.*\.dll') { throw "coral.exe does not declare the encrypted crypto runtime" }
+if ($coralDeps -notmatch '(?i)libcrypto[-.]3.*\.dll') {
+  Write-Output "coral.exe dependency inspection output:"
+  Write-Output $coralDeps
+  throw "coral.exe does not declare the encrypted crypto runtime"
+}
 $home = Join-Path $env:TEMP ("coral-encryption-self-test-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $home | Out-Null
 $env:HOME = $home
