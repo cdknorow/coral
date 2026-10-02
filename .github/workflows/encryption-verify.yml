@@ -92,7 +92,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\encryption-windows
 
-  macos:
+  macos-arm64:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v6
@@ -101,46 +101,101 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
+        run: brew install openssl@3
+      - name: Build arm64 package slices
+        working-directory: coral-go
         run: |
-          brew install openssl@3
-          if [ ! -x /usr/local/bin/brew ]; then
-            NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          fi
-          arch -x86_64 /usr/local/bin/brew install openssl@3
-      - name: Build and verify unsigned universal extracted package
+          set -euo pipefail
+          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          mkdir -p ../dist/encryption-macos-arm64
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
+          done
+          for cmd in coral-tray coral-app; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags webview,fts5 -o "../dist/encryption-macos-arm64/$cmd" "./cmd/$cmd/"
+          done
+          cp "${OPENSSL_PREFIX}/lib/libcrypto.3.dylib" ../dist/encryption-macos-arm64/
+          "${OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}' > ../dist/encryption-macos-arm64/openssl-version
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-macos-arm64/
+          cp -R ../licenses ../dist/encryption-macos-arm64/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: encryption-macos-arm64
+          path: dist/encryption-macos-arm64
+
+  macos-amd64:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache-dependency-path: coral-go/go.sum
+      - name: Install isolated native dependencies
+        run: brew install openssl@3
+      - name: Build amd64 package slices
+        working-directory: coral-go
+        run: |
+          set -euo pipefail
+          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          mkdir -p ../dist/encryption-macos-amd64
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
+          done
+          for cmd in coral-tray coral-app; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags webview,fts5 -o "../dist/encryption-macos-amd64/$cmd" "./cmd/$cmd/"
+          done
+          cp "${OPENSSL_PREFIX}/lib/libcrypto.3.dylib" ../dist/encryption-macos-amd64/
+          "${OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}' > ../dist/encryption-macos-amd64/openssl-version
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-macos-amd64/
+          cp -R ../licenses ../dist/encryption-macos-amd64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: encryption-macos-amd64
+          path: dist/encryption-macos-amd64
+
+  macos:
+    needs: [macos-arm64, macos-amd64]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache-dependency-path: coral-go/go.sum
+      - name: Install merge and verification dependencies
+        run: brew install openssl@3
+      - uses: actions/download-artifact@v8
+        with:
+          name: encryption-macos-arm64
+          path: dist/encryption-macos-arm64
+      - uses: actions/download-artifact@v8
+        with:
+          name: encryption-macos-amd64
+          path: dist/encryption-macos-amd64
+      - name: Merge and verify universal package
         working-directory: coral-go
         run: |
           set -euo pipefail
           ARM_OPENSSL_PREFIX="$(brew --prefix openssl@3)"
-          X86_OPENSSL_PREFIX="$(arch -x86_64 /usr/local/bin/brew --prefix openssl@3)"
           mkdir -p ../dist/encryption-macos
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
-            CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags fts5 -o "../dist/encryption-macos/${cmd}-arm64" "./cmd/$cmd/"
-            CGO_ENABLED=1 CGO_CFLAGS="-I${X86_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${X86_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-macos/${cmd}-amd64" "./cmd/$cmd/"
-            lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos/${cmd}-arm64" "../dist/encryption-macos/${cmd}-amd64"
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
+            lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos-arm64/$cmd" "../dist/encryption-macos-amd64/$cmd"
           done
-          for cmd in coral-tray coral-app; do
-            CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags webview,fts5 -o "../dist/encryption-macos/${cmd}-arm64" "./cmd/$cmd/"
-            CGO_ENABLED=1 CGO_CFLAGS="-I${X86_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${X86_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags webview,fts5 -o "../dist/encryption-macos/${cmd}-amd64" "./cmd/$cmd/"
-            lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos/${cmd}-arm64" "../dist/encryption-macos/${cmd}-amd64"
-          done
-          lipo -create -output ../dist/encryption-macos/libcrypto.3.dylib "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
-          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-macos/
-          cp -R ../licenses ../dist/encryption-macos/
+          lipo -create -output ../dist/encryption-macos/libcrypto.3.dylib ../dist/encryption-macos-arm64/libcrypto.3.dylib ../dist/encryption-macos-amd64/libcrypto.3.dylib
+          cp ../dist/encryption-macos-arm64/THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-macos/
+          cp -R ../dist/encryption-macos-arm64/licenses ../dist/encryption-macos/
           for binary in ../dist/encryption-macos/*; do
             [ -f "$binary" ] || continue
             install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
-            install_name_tool -change "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -change "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -add_rpath '@loader_path' "$binary" || true
           done
-          "${ARM_OPENSSL_PREFIX}/bin/openssl" version -a
-          shasum -a 256 ../dist/encryption-macos/libcrypto.3.dylib
-          VERSION="$("${ARM_OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}')"
-          ARM_VERSION="$VERSION"
-          X86_VERSION="$(arch -x86_64 "${X86_OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}')"
+          ARM_VERSION="$(cat ../dist/encryption-macos-arm64/openssl-version)"
+          X86_VERSION="$(cat ../dist/encryption-macos-amd64/openssl-version)"
           COMBINED_HASH="$(shasum -a 256 ../dist/encryption-macos/libcrypto.3.dylib | awk '{print $1}')"
-          ARM_HASH="$(shasum -a 256 "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" | awk '{print $1}')"
-          X86_HASH="$(arch -x86_64 shasum -a 256 "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" | awk '{print $1}')"
-          printf 'platform=macos\nvendor=homebrew\npackage=openssl@3\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/encryption-macos/openssl-attestation.env
-          ../tests/release/verify_openssl_attestation.sh ../dist/encryption-macos/openssl-attestation.env ../dist/encryption-macos/libcrypto.3.dylib "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
+          ARM_HASH="$(shasum -a 256 ../dist/encryption-macos-arm64/libcrypto.3.dylib | awk '{print $1}')"
+          X86_HASH="$(shasum -a 256 ../dist/encryption-macos-amd64/libcrypto.3.dylib | awk '{print $1}')"
+          printf 'platform=macos\nvendor=homebrew\npackage=openssl@3\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$ARM_VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/encryption-macos/openssl-attestation.env
+          ../tests/release/verify_openssl_attestation.sh ../dist/encryption-macos/openssl-attestation.env ../dist/encryption-macos/libcrypto.3.dylib ../dist/encryption-macos-arm64/libcrypto.3.dylib ../dist/encryption-macos-amd64/libcrypto.3.dylib
           OPENSSL_PREFIX="$ARM_OPENSSL_PREFIX" ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-macos
