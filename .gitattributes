@@ -1,0 +1,2 @@
+# Preserve the upstream OpenSSL license bytes on Windows checkouts.
+licenses/OPENSSL-LICENSE.txt -text
