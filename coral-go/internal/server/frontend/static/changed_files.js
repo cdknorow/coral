@@ -5,6 +5,7 @@ import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImag
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
+import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -226,6 +227,7 @@ function _hideSearchDropdown() {
 }
 
 export function initFileSearch() {
+    initFilesSourcePicker(openTeamArtifactPreview);
     const input = document.getElementById('files-search-input');
     if (!input || input.dataset.searchBound) return;
     input.dataset.searchBound = '1';
@@ -778,10 +780,27 @@ export function openFilePreview(filepath, line) {
     _openInlinePane(filepath, 'preview', line);
 }
 
+function openTeamArtifactPreview(item) {
+    return _openArtifactPreview(item.uri || '', {
+        contentURL: item.inline ? item.content_url : null,
+        filename: item.name,
+    });
+}
+
+// Called immediately after a session switch, before transcript/file requests.
+export function syncFilesViewerSession() {
+    syncFilesSourceTeam();
+    if (_previewState) window._closeInlinePreview();
+    initFilesSourcePicker(openTeamArtifactPreview);
+}
+
 /** Preview a Coral-managed artifact in the same Files panel as repository files. */
 async function _openArtifactPreview(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
-    if (!match) return;
+    const teamPrefix = `/api/board/${encodeURIComponent(state.currentSession?.board_project || '')}/tasks/`;
+    const inlineURL = options.contentURL?.startsWith(teamPrefix) && /\/artifact-content\?/.test(options.contentURL) ? options.contentURL : null;
+    if (!match && !inlineURL) return;
+    const url = inlineURL || `/api/artifacts/${match[1]}`;
     const isMobile = window.innerWidth <= 767;
     let panel = isMobile ? document.createElement('div') : document.getElementById('agentic-panel-files');
     if (isMobile) { panel.className = 'mobile-file-preview-overlay'; document.body.appendChild(panel); }
@@ -799,16 +818,17 @@ async function _openArtifactPreview(uri, options = {}) {
     _previewState = { artifact: true, filepath: uri, mode: 'preview', gen: ++_previewGen };
     const gen = _previewState.gen;
     panel.innerHTML = `<div class="inline-preview-header">
-        <button class="inline-preview-back" onclick="window._artifactBack()" title="Back"><span class="material-icons">arrow_back</span></button>
-        <span class="inline-preview-filepath" title="${escapeHtml(uri)}">Artifact preview</span>
+        <button class="inline-preview-back" onclick="window._artifactBack()" title="Back" aria-label="Back to files"><span class="material-icons">arrow_back</span></button>
+        <span class="inline-preview-filepath" title="${escapeHtml(options.filename || uri)}">${escapeHtml(options.filename || 'Artifact preview')}</span>
+        <a class="team-artifacts-action" href="${escapeAttr(url)}" download="${escapeAttr(options.filename || '')}">Download</a>
     </div><div class="inline-preview-body" id="inline-preview-body"><div class="inline-preview-loading">Loading...</div></div>`;
     const body = panel.querySelector('#inline-preview-body');
     try {
-        const resp = await fetch(`/api/artifacts/${match[1]}`, { signal });
+        const resp = await fetch(url, { signal });
         if (!resp.ok) throw new Error(`Artifact unavailable (${resp.status})`);
         const type = (resp.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].toLowerCase();
         const disposition = resp.headers.get('Content-Disposition') || '';
-        const filename = (disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i) || [])[1] || '';
+        const filename = options.filename || (disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i) || [])[1] || '';
         const artifactPath = filename || uri;
         const sizeHeader = Number(resp.headers.get('Content-Length'));
         const size = Number.isFinite(sizeHeader) && sizeHeader >= 0 ? sizeHeader : -1;
@@ -841,7 +861,7 @@ async function _openArtifactPreview(uri, options = {}) {
             }
         }
     } catch (error) {
-        if (error?.name === 'AbortError' || _isStale(_previewState?.gen)) return;
+        if (error?.name === 'AbortError' || _isStale(gen)) return;
         body.innerHTML = `<div class="inline-preview-error">${escapeHtml(error.message)}</div>`;
     } finally {
         if (_artifactAbortController?.signal === signal) _artifactAbortController = null;
