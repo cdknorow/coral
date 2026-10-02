@@ -1,0 +1,45 @@
+name: Published Standard Linux runtime verification
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published regular release tag to verify
+        required: true
+        default: v1.3.19
+permissions:
+  contents: read
+jobs:
+  native-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache: false
+      - name: Download and verify published package digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          mkdir -p verify/package
+          gh release download "$RELEASE_TAG" --pattern "coral-linux-amd64-${RELEASE_TAG#v}.tar.gz" --dir verify
+          gh release view "$RELEASE_TAG" --json assets > verify/assets.json
+          python3 - <<'PYCODE'
+          import hashlib, json, os, pathlib
+          name = 'coral-linux-amd64-' + os.environ['RELEASE_TAG'][1:] + '.tar.gz'
+          package = pathlib.Path('verify') / name
+          assets = json.loads(pathlib.Path('verify/assets.json').read_text())['assets']
+          asset, = [item for item in assets if item['name'] == name]
+          actual = 'sha256:' + hashlib.sha256(package.read_bytes()).hexdigest()
+          assert actual == asset['digest'], (actual, asset['digest'])
+          print(name, actual)
+          PYCODE
+          tar -xzf "verify/coral-linux-amd64-${RELEASE_TAG#v}.tar.gz" -C verify/package
+      - name: Verify static package structure
+        run: bash tests/release/verify_standard_bundle.sh verify/package
+      - name: Run server and board commands without shared libraries
+        run: python3 tests/release/smoke_standard_linux.py verify/package
