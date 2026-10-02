@@ -56,11 +56,12 @@ jobs:
           cp -R ../licenses ../dist/linux/
           for binary in ../dist/linux/*; do [ -x "$binary" ] && patchelf --set-rpath '$ORIGIN' "$binary" || true; done
           HASH="$(sha256sum ../dist/linux/libcrypto.so.3 | awk '{print $1}')"
-          PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 || true)"
-          VER="$(dpkg-query -W -f='\${Version}' libssl3 2>/dev/null || true)"
+          PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 | sed 's/:amd64$//' || true)"
+          VER=""
+          if [ -n "$PKG" ]; then VER="$(dpkg-query -W -f='${Version}' "$PKG" 2>/dev/null || true)"; fi
           printf 'platform=linux\nvendor=ubuntu\npackage=%s\nversion=%s\nlibrary_sha256=%s\n' "$PKG" "$VER" "$HASH" > ../dist/linux/openssl-attestation.env
-          tests/release/verify_openssl_attestation.sh ../dist/linux/openssl-attestation.env ../dist/linux/libcrypto.so.3
-          OPENSSL_PREFIX=/usr tests/release/verify_encrypted_bundle.sh ../dist/linux
+          ../tests/release/verify_openssl_attestation.sh ../dist/linux/openssl-attestation.env ../dist/linux/libcrypto.so.3
+          OPENSSL_PREFIX=/usr ../tests/release/verify_encrypted_bundle.sh ../dist/linux
 
       - name: Create tarball
         run: |
@@ -111,7 +112,6 @@ jobs:
           }
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
 
-          # Pure Go binaries (no CGO)
           $env:CGO_ENABLED = "1"
           $env:CGO_CFLAGS = "-IC:/PROGRA~1/OpenSSL/include"
           $opensslRoot = "C:\Program Files\OpenSSL"
@@ -134,10 +134,14 @@ jobs:
           Copy-Item "$opensslRoot\bin\libcrypto-3-x64.dll" "..\dist\windows\bin\libcrypto-3-x64.dll"
           Copy-Item "..\THIRD_PARTY_NOTICES_SQLCIPHER.md" "..\dist\windows\bin\THIRD_PARTY_NOTICES_SQLCIPHER.md"
           Copy-Item "..\licenses" "..\dist\windows\bin\licenses" -Recurse
-          $hash = (Get-FileHash ..\dist\windows\bin\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
+          $libraryPath = (Resolve-Path ..\dist\windows\bin\libcrypto-3-x64.dll).Path
+          $msysLibraryPath = (& cygpath -u $libraryPath).Trim()
+          $hash = ((bash -c "sha256sum '$msysLibraryPath'") -split '\s+')[0].Trim().ToLower()
           $opensslVersion = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
-          @("platform=windows", "vendor=chocolatey", "package=openssl", "version=$opensslVersion", "library_sha256=$hash") | Set-Content ..\dist\windows\bin\openssl-attestation.env
-          bash ..\tests\release\verify_openssl_attestation.sh ..\dist\windows\bin\openssl-attestation.env ..\dist\windows\bin\libcrypto-3-x64.dll
+          $attestation = "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$opensslVersion`nlibrary_sha256=$hash"
+          [System.IO.File]::WriteAllText((Join-Path (Resolve-Path ..\dist\windows\bin) "openssl-attestation.env"), $attestation, (New-Object System.Text.UTF8Encoding($false)))
+          $attestationPath = (& cygpath -u (Join-Path (Resolve-Path ..\dist\windows\bin).Path "openssl-attestation.env")).Trim()
+          bash ..\tests\release\verify_openssl_attestation.sh $attestationPath $msysLibraryPath
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\windows\bin
 
@@ -210,8 +214,8 @@ jobs:
 
   # ── macOS ──────────────────────────────────────────────────────
   # Build each architecture on its native hosted runner. macos-14 is
-  # arm64 and macos-15-intel is Intel; cross-compiling CGO against Homebrew's
-  # OpenSSL slice is unsupported and caused the recurring runner failure.
+  # arm64 and macos-15-intel is Intel. Each runner builds the reviewed OpenSSL
+  # source into an isolated native prefix before linking its CGO binaries.
   build-macos-arm64:
     runs-on: macos-14
     steps:
@@ -220,8 +224,21 @@ jobs:
         with:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
-      - name: Install SQLCipher build dependencies
-        run: brew install openssl@3
+      - name: Build pinned native OpenSSL
+        run: |
+          set -euo pipefail
+          OPENSSL_VERSION="3.6.5"
+          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
+          OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" -o "$OPENSSL_TARBALL"
+          echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
+          tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
+          ./Configure darwin64-arm64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          make -j"$(sysctl -n hw.ncpu)" build_sw
+          make install_sw
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build arm64 binaries
@@ -230,7 +247,7 @@ jobs:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
           set -euo pipefail
-          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
           BUILD_TAGS="-tags fts5"
@@ -239,7 +256,7 @@ jobs:
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
-          WEBVIEW_TAGS="-tags webview"; [[ "$BUILD_TAGS" == *","* ]] && WEBVIEW_TAGS="-tags webview,${BUILD_TAGS#-tags }"
+          WEBVIEW_TAGS="-tags webview,${BUILD_TAGS#-tags }"
           for cmd in coral-tray coral-app; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
@@ -258,8 +275,21 @@ jobs:
         with:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
-      - name: Install SQLCipher build dependencies
-        run: brew install openssl@3
+      - name: Build pinned native OpenSSL
+        run: |
+          set -euo pipefail
+          OPENSSL_VERSION="3.6.5"
+          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-amd64"
+          OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" -o "$OPENSSL_TARBALL"
+          echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
+          tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
+          ./Configure darwin64-x86_64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          make -j"$(sysctl -n hw.ncpu)" build_sw
+          make install_sw
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
       - name: Build amd64 binaries
@@ -268,7 +298,7 @@ jobs:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
           set -euo pipefail
-          OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-amd64"
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
           BUILD_TAGS="-tags fts5"
@@ -277,7 +307,7 @@ jobs:
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
-          WEBVIEW_TAGS="-tags webview"; [[ "$BUILD_TAGS" == *","* ]] && WEBVIEW_TAGS="-tags webview,${BUILD_TAGS#-tags }"
+          WEBVIEW_TAGS="-tags webview,${BUILD_TAGS#-tags }"
           for cmd in coral-tray coral-app; do
             CGO_ENABLED=1 CGO_CFLAGS="-I${OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
@@ -297,8 +327,21 @@ jobs:
         with:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
-      - name: Install merge and verification dependencies
-        run: brew install openssl@3
+      - name: Build pinned verification OpenSSL
+        run: |
+          set -euo pipefail
+          OPENSSL_VERSION="3.6.5"
+          OPENSSL_SHA256="a2157c2830efdec3788939b00c9b0638306d3f0bbb76dc4832ee503bb397df98"
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-$OPENSSL_VERSION-arm64"
+          OPENSSL_TARBALL="$RUNNER_TEMP/openssl-$OPENSSL_VERSION.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz" -o "$OPENSSL_TARBALL"
+          echo "$OPENSSL_SHA256  $OPENSSL_TARBALL" | shasum -a 256 -c -
+          tar -xzf "$OPENSSL_TARBALL" -C "$RUNNER_TEMP"
+          cd "$RUNNER_TEMP/openssl-$OPENSSL_VERSION"
+          ./Configure darwin64-arm64-cc shared no-tests --prefix="$OPENSSL_PREFIX" --openssldir="$OPENSSL_PREFIX/ssl"
+          make -j"$(sysctl -n hw.ncpu)" build_sw
+          make install_sw
       - uses: actions/download-artifact@v8
         with:
           name: coral-macos-arm64-slices
@@ -311,24 +354,27 @@ jobs:
         working-directory: coral-go
         run: |
           set -euo pipefail
-          ARM_OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          ARM_OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64"
           mkdir -p ../dist/macos
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
             lipo -create -output "../dist/macos/$cmd" "../dist/macos-arm64/$cmd" "../dist/macos-amd64/$cmd"
           done
           lipo -create -output ../dist/macos/libcrypto.3.dylib ../dist/macos-arm64/libcrypto.3.dylib ../dist/macos-amd64/libcrypto.3.dylib
-          for binary in ../dist/macos/*; do
-            [ -f "$binary" ] || continue
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/macos/
+          cp -R ../licenses ../dist/macos/
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
+            binary="../dist/macos/$cmd"
             install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -change "$RUNNER_TEMP/openssl-3.6.5-amd64/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
             install_name_tool -change "/usr/local/opt/openssl@3/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
-            install_name_tool -add_rpath '@loader_path' "$binary"
+            install_name_tool -add_rpath '@loader_path' "$binary" || true
           done
           ARM_VERSION="$(cat ../dist/macos-arm64/openssl-version)"
           X86_VERSION="$(cat ../dist/macos-amd64/openssl-version)"
           COMBINED_HASH="$(shasum -a 256 ../dist/macos/libcrypto.3.dylib | awk '{print $1}')"
           ARM_HASH="$(shasum -a 256 ../dist/macos-arm64/libcrypto.3.dylib | awk '{print $1}')"
           X86_HASH="$(shasum -a 256 ../dist/macos-amd64/libcrypto.3.dylib | awk '{print $1}')"
-          printf 'platform=macos\nvendor=homebrew\npackage=openssl@3\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$ARM_VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/macos/openssl-attestation.env
+          printf 'platform=macos\nvendor=openssl-project\npackage=openssl\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$ARM_VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/macos/openssl-attestation.env
           ../tests/release/verify_openssl_attestation.sh ../dist/macos/openssl-attestation.env ../dist/macos/libcrypto.3.dylib ../dist/macos-arm64/libcrypto.3.dylib ../dist/macos-amd64/libcrypto.3.dylib
           OPENSSL_PREFIX="$ARM_OPENSSL_PREFIX" ../tests/release/verify_encrypted_bundle.sh ../dist/macos
 
@@ -353,12 +399,13 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           APP="dist/Coral.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          for cmd in dist/macos/*; do
-            [ -f "$cmd" ] || continue
-            bin=$(basename "$cmd")
-            cp "$cmd" "$APP/Contents/MacOS/$bin"
+          for bin in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
+            cp "dist/macos/$bin" "$APP/Contents/MacOS/$bin"
             chmod +x "$APP/Contents/MacOS/$bin"
           done
+          cp dist/macos/libcrypto.3.dylib "$APP/Contents/MacOS/"
+          cp dist/macos/openssl-attestation.env "$APP/Contents/Resources/"
+          cp dist/macos/THIRD_PARTY_NOTICES_SQLCIPHER.md "$APP/Contents/Resources/"
           sed "s/VERSION_PLACEHOLDER/${VERSION}/g" tools/Info.plist > "$APP/Contents/Info.plist"
           [ -f Coral.icns ] && cp Coral.icns "$APP/Contents/Resources/AppIcon.icns"
           cp -R licenses "$APP/Contents/Resources/licenses"
@@ -419,7 +466,7 @@ jobs:
 
       - name: Verify signed encrypted app payload
         run: |
-          OPENSSL_PREFIX="$(brew --prefix openssl@3)" tests/release/verify_encrypted_bundle.sh dist/Coral.app/Contents/MacOS
+          OPENSSL_PREFIX="$RUNNER_TEMP/openssl-3.6.5-arm64" tests/release/verify_encrypted_bundle.sh dist/Coral.app/Contents/MacOS
           if [ -n "${MACOS_CERTIFICATE:-}" ]; then codesign --verify --deep --strict --verbose=2 dist/Coral.app; fi
 
       - name: Create DMG
