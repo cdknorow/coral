@@ -1,5 +1,7 @@
 # platform|vendor|package|branch-or-exact-version|minimum-patch|mode|authoritative-reference
 macos|homebrew|openssl@3|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
+# Homebrew's openssl@3 formula currently carries the reviewed 4.0.3 line.
+macos|homebrew|openssl@3|4.0|3|patched|https://openssl-library.org/news/vulnerabilities/
 windows|chocolatey|openssl|3.6|5|patched|https://www.openssl.org/news/vulnerabilities-3.6/
 # OpenSSL 4.0.3 is the reviewed current major-line Chocolatey package; the
 # official vulnerability index is the authoritative reference for this line.

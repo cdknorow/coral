@@ -87,7 +87,11 @@ jobs:
           (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
           $hash = (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
           $version = (& "$opensslRoot\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
-          "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$version`nlibrary_sha256=$hash" | Set-Content ..\dist\encryption-windows\openssl-attestation.env
+          $attestation = "platform=windows`nvendor=chocolatey`npackage=openssl`nversion=$version`nlibrary_sha256=$hash"
+          # Windows PowerShell's default Set-Content encoding is UTF-16LE;
+          # write UTF-8 without a BOM so the shared POSIX verifier reads the
+          # exact fields and hash emitted above.
+          [System.IO.File]::WriteAllText((Join-Path (Resolve-Path ..\dist\encryption-windows) "openssl-attestation.env"), $attestation, (New-Object System.Text.UTF8Encoding($false)))
           bash ..\tests\release\verify_openssl_attestation.sh ..\dist\encryption-windows\openssl-attestation.env ..\dist\encryption-windows\libcrypto-3-x64.dll
           if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\encryption-windows
