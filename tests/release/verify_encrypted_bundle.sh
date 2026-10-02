@@ -8,6 +8,20 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PACKAGE_DIR="${1:?usage: verify_encrypted_bundle.sh PACKAGE_DIR}"
 cd "$ROOT/coral-go"
 
+NOTICE_DIR="$PACKAGE_DIR"
+if [[ ! -f "$NOTICE_DIR/THIRD_PARTY_NOTICES_SQLCIPHER.md" ]]; then
+  NOTICE_DIR="$PACKAGE_DIR/../Resources"
+fi
+test -f "$NOTICE_DIR/THIRD_PARTY_NOTICES_SQLCIPHER.md"
+OPENSSL_LICENSE="$NOTICE_DIR/licenses/OPENSSL-LICENSE.txt"
+test -f "$OPENSSL_LICENSE"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  LICENSE_HASH="$(shasum -a 256 "$OPENSSL_LICENSE" | awk '{print $1}')"
+else
+  LICENSE_HASH="$(sha256sum "$OPENSSL_LICENSE" | awk '{print $1}')"
+fi
+test "$LICENSE_HASH" = "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+
 require_macos_slices() {
   local artifact="$1"
   # Release packages must be true universal binaries. A local arm64-only

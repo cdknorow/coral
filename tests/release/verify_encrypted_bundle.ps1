@@ -1,6 +1,11 @@
 param([Parameter(Mandatory=$true)][string]$PackageDir)
 $ErrorActionPreference = "Stop"
 $exe = Join-Path $PackageDir "coral.exe"
+$notice = Join-Path $PackageDir "THIRD_PARTY_NOTICES_SQLCIPHER.md"
+$license = Join-Path $PackageDir "licenses/OPENSSL-LICENSE.txt"
+if (!(Test-Path $notice) -or !(Test-Path $license)) { throw "missing packaged third-party notice or OpenSSL license" }
+$licenseHash = (Get-FileHash $license -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($licenseHash -ne "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a") { throw "packaged OpenSSL license differs from upstream LICENSE.txt" }
 $attestationPath = Join-Path $PackageDir "openssl-attestation.env"
 if (!(Test-Path $attestationPath)) { throw "missing packaged OpenSSL attestation" }
 $versionLine = Get-Content $attestationPath | Where-Object { $_ -match '^version=' } | Select-Object -First 1
