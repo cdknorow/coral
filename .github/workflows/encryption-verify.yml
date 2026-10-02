@@ -61,7 +61,7 @@ jobs:
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         shell: powershell
-          run: choco install mingw openssl -y
+        run: choco install mingw openssl -y
       - name: Build and verify extracted Windows package
         working-directory: coral-go
         shell: powershell
