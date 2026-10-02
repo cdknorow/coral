@@ -2,6 +2,8 @@ name: Encryption package verification
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [encryption-verify]
   pull_request:
     paths:
       - "coral-go/**"
