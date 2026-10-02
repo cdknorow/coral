@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"golang.org/x/term"
 	"io"
 	"log"
 	"os"
@@ -15,11 +16,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/startup"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tracking"
 )
 
@@ -62,7 +66,16 @@ func main() {
 		defaultBackend = "pty"
 	}
 	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
+	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
+	if *selfTest {
+		if err := runEncryptionSelfTest(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println("encrypted database self-test passed")
+		return
+	}
 
 	cfg := config.Load(*homeDir)
 	setupCrashLogging(cfg.CoralDir())
@@ -117,7 +130,9 @@ func main() {
 	defer stop()
 
 	rs, err := startup.Start(ctx, cfg, startup.Options{
-		BackendType: *backendFlag,
+		BackendType:    *backendFlag,
+		PasswordPrompt: promptDatabasePassword,
+		UnlockSurface:  "tty",
 	})
 	if err != nil {
 		log.Fatalf("Failed to start: %v", err)
@@ -155,6 +170,79 @@ func main() {
 	log.Println("[SHUTDOWN] shutting down...")
 	rs.Shutdown(10 * time.Second)
 	log.Println("[SHUTDOWN] done")
+}
+
+func runEncryptionSelfTest() error {
+	dir, err := os.MkdirTemp("", "coral-encryption-self-test-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	key := "self-test-key-material-2026"
+	path := filepath.Join(dir, "sessions.db")
+	db, err := store.OpenWithKey(context.Background(), path, key)
+	if err != nil {
+		return fmt.Errorf("open encrypted test database: %w", err)
+	}
+	if _, err := db.Exec("INSERT INTO user_settings(key,value) VALUES('self_test','ok')"); err != nil {
+		db.Close()
+		return err
+	}
+	if err := db.Close(); err != nil {
+		return err
+	}
+	if encrypted, err := dbcrypt.EncryptedFile(path); err != nil || !encrypted {
+		return fmt.Errorf("encrypted test database check failed: %v", err)
+	}
+	reopened, err := store.OpenWithKey(context.Background(), path, key)
+	if err != nil {
+		return fmt.Errorf("reopen encrypted test database: %w", err)
+	}
+	var value string
+	if err := reopened.Get(&value, "SELECT value FROM user_settings WHERE key='self_test'"); err != nil {
+		reopened.Close()
+		return err
+	}
+	reopened.Close()
+	if value != "ok" {
+		return fmt.Errorf("encrypted test sentinel = %q", value)
+	}
+	if wrong, err := store.OpenWithKey(context.Background(), path, "wrong-self-test-key"); err == nil {
+		wrong.Close()
+		return fmt.Errorf("wrong key unexpectedly opened encrypted database")
+	}
+	boardPath := filepath.Join(dir, "messageboard.db")
+	boardStore, err := board.NewStoreWithKey(boardPath, key)
+	if err != nil {
+		return fmt.Errorf("open encrypted board test database: %w", err)
+	}
+	if err := boardStore.EncryptionSelfTest(context.Background()); err != nil {
+		boardStore.Close()
+		return err
+	}
+	if err := boardStore.Close(); err != nil {
+		return err
+	}
+	if reopenedBoard, err := board.NewStoreWithKey(boardPath, key); err != nil {
+		return fmt.Errorf("reopen encrypted board test database: %w", err)
+	} else if err := reopenedBoard.Close(); err != nil {
+		return err
+	}
+	if wrongBoard, err := board.NewStoreWithKey(boardPath, "wrong-self-test-key"); err == nil {
+		wrongBoard.Close()
+		return fmt.Errorf("wrong key unexpectedly opened encrypted board database")
+	}
+	if encrypted, err := dbcrypt.EncryptedFile(boardPath); err != nil || !encrypted {
+		return fmt.Errorf("encrypted board test check failed: %v", err)
+	}
+	return nil
+}
+
+func promptDatabasePassword() (string, error) {
+	fmt.Fprint(os.Stderr, "Coral database password: ")
+	password, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Fprintln(os.Stderr)
+	return string(password), err
 }
 
 func mustExecutable() string {

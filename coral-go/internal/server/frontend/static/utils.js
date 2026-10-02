@@ -122,7 +122,6 @@ const VIEW_IDS = [
     "scheduler-view",
     "messageboard-view",
     "workflows-view",
-    "connected-apps-view",
     "cost-dashboard-view",
     "timeline-view",
     "kanban-view",
@@ -137,7 +136,6 @@ const VIEW_DISPLAY = {
     "scheduler-view": "block",
     "messageboard-view": "flex",
     "workflows-view": "block",
-    "connected-apps-view": "block",
     "cost-dashboard-view": "flex",
     "timeline-view": "flex",
     "kanban-view": "flex",
@@ -149,7 +147,6 @@ const FULL_WIDTH_VIEWS = new Set([
     "timeline-view",
     "kanban-view",
     "workflows-view",
-    "connected-apps-view",
 ]);
 
 export function showView(activeId) {

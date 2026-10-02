@@ -2788,12 +2788,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	userSettings, _ := h.ss.GetSettings(ctx)
 
-	// Resolve proxy URL if proxy is enabled for this agent type
-	var restartProxyURL string
-	if isProxyEnabledForAgent(userSettings, agentType) {
-		restartProxyURL = fmt.Sprintf("http://127.0.0.1:%d/proxy/%s", h.cfg.Port, newSessionID)
-	}
-
 	cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(agent.LaunchParams{
 		SessionID:       newSessionID,
 		SessionName:     newSessionName,
@@ -2808,7 +2802,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		Capabilities:    storedCaps,
 		Tools:           storedTools,
 		MCPServers:      storedMCPServers,
-		ProxyBaseURL:    restartProxyURL,
 		PermissionMode:  userSettings["default_permission_mode"],
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.Host,
@@ -4032,12 +4025,6 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 
 	role := naming.SubscriberID(displayName, agentType)
 
-	// Resolve proxy URL if proxy is enabled for this agent type
-	var proxyBaseURL string
-	if isProxyEnabledForAgent(userSettings, agentType) {
-		proxyBaseURL = fmt.Sprintf("http://127.0.0.1:%d/proxy/%s", h.cfg.Port, sessionID)
-	}
-
 	launchParams := agent.LaunchParams{
 		SessionID:       sessionID,
 		SessionName:     sessionName,
@@ -4056,7 +4043,6 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 		Hooks:           hooks,
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
-		ProxyBaseURL:    proxyBaseURL,
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.Host,
 		CoralPort:       h.cfg.Port,
@@ -5325,12 +5311,6 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		role = ls.AgentType
 	}
 
-	// Resolve proxy URL if proxy is enabled for this agent type
-	var proxyBaseURL string
-	if isProxyEnabledForAgent(userSettings, ls.AgentType) {
-		proxyBaseURL = fmt.Sprintf("http://127.0.0.1:%d/proxy/%s", h.cfg.Port, ls.SessionID)
-	}
-
 	launchParams := agent.LaunchParams{
 		SessionID:       ls.SessionID,
 		SessionName:     sessionName,
@@ -5348,7 +5328,6 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 		MCPServers:      store.UnmarshalMCPServers(ls.MCPServers),
 		CLIPath:         cliPath,
 		PermissionMode:  userSettings["default_permission_mode"],
-		ProxyBaseURL:    proxyBaseURL,
 		CoralDir:        h.cfg.CoralDir(),
 		CoralHost:       h.cfg.Host,
 		CoralPort:       h.cfg.Port,

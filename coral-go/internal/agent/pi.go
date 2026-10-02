@@ -154,10 +154,6 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	for _, kv := range CoralEnv(params) {
 		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
 	}
-	if params.ProxyBaseURL != "" {
-		parts = append(parts, fmt.Sprintf(`export HTTPS_PROXY='%s' &&`, sanitizeURL(params.ProxyBaseURL)))
-	}
-
 	parts = append(parts, bin)
 
 	// Use a per-session directory so Pi's internal sessions map to Coral sessions.

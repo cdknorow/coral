@@ -31,29 +31,26 @@ func GetCLIName(boardType string) string {
 
 // LaunchParams holds all parameters for building a launch command.
 type LaunchParams struct {
-	SessionID        string
-	SessionName      string // tmux session name (e.g. "claude-<uuid>"), used for CORAL_SESSION_NAME
-	ProtocolPath     string
-	ResumeSessionID  string
-	Flags            []string
-	WorkingDir       string
-	BoardName        string
-	Role             string
-	Prompt           string
-	PromptOverrides  map[string]string // user overrides for orchestrator/worker prompts
-	BoardType        string
-	Capabilities     *Capabilities
-	Tools            []string               // allowed tools (e.g. ["TodoWrite", "Bash(npm *)"])
-	MCPServers       map[string]any         // MCP server configs keyed by name
-	Hooks            map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Antigravity/Codex)
-	CLIPath          string                 // custom path to agent binary (empty = default from PATH)
-	PermissionMode   string                 // --permission-mode value (empty or "default" means omit the flag)
-	ProxyBaseURL     string                 // proxy base URL (e.g. "http://127.0.0.1:8420/proxy/{session_id}")
-	UpstreamBaseURL  string                 // detected upstream URL before proxy override (e.g. "https://api.anthropic.com")
-	UpstreamProvider string                 // detected upstream provider (e.g. "anthropic", "bedrock", "vertex", "openai")
-	CoralDir         string                 // path to coral data directory (~/.coral) for CA cert location
-	CoralHost        string                 // host this Coral server is bound to
-	CoralPort        int                    // port this Coral server is listening on
+	SessionID       string
+	SessionName     string // tmux session name (e.g. "claude-<uuid>"), used for CORAL_SESSION_NAME
+	ProtocolPath    string
+	ResumeSessionID string
+	Flags           []string
+	WorkingDir      string
+	BoardName       string
+	Role            string
+	Prompt          string
+	PromptOverrides map[string]string // user overrides for orchestrator/worker prompts
+	BoardType       string
+	Capabilities    *Capabilities
+	Tools           []string               // allowed tools (e.g. ["TodoWrite", "Bash(npm *)"])
+	MCPServers      map[string]any         // MCP server configs keyed by name
+	Hooks           map[string]interface{} // per-agent hooks to merge into settings (Claude-native) or fire via runner (Antigravity/Codex)
+	CLIPath         string                 // custom path to agent binary (empty = default from PATH)
+	PermissionMode  string                 // --permission-mode value (empty or "default" means omit the flag)
+	CoralDir        string                 // path to coral data directory (~/.coral) for CA cert location
+	CoralHost       string                 // host this Coral server is bound to
+	CoralPort       int                    // port this Coral server is listening on
 }
 
 // CoralEnv returns the Coral environment every launched agent needs, as

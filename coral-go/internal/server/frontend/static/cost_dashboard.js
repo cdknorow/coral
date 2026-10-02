@@ -1,4 +1,4 @@
-/* Token Usage Dashboard — proxy token tracking and cost UI */
+/* Token Usage Dashboard — token usage and cost UI */
 
 import { showView, escapeHtml, escapeAttr } from './utils.js';
 import { state } from './state.js';
@@ -356,9 +356,8 @@ export async function _refreshCostDashboard() {
     _flashLiveIndicator();
 
     try {
-        const [summaryResp, reqResp, taskResp, tsResp, teamResp, branchResp] = await Promise.all([
+        const [summaryResp, taskResp, tsResp, teamResp, branchResp] = await Promise.all([
             fetch(`/api/token-usage/summary${sinceParam}`).catch(() => null),
-            fetch('/api/proxy/requests?limit=100').catch(() => null),
             fetch('/api/board/tasks').catch(() => null),
             fetch(`/api/token-usage/timeseries${tsParams}`).catch(() => null),
             fetch(`/api/token-usage/by-team${sinceParam}`).catch(() => null),
@@ -426,11 +425,6 @@ export async function _refreshCostDashboard() {
         if (branchResp && branchResp.ok) {
             const data = await branchResp.json();
             _renderBranchTable(data.branches || []);
-        }
-
-        if (reqResp && reqResp.ok) {
-            const data = await reqResp.json();
-            _renderRequestLog(data.requests || []);
         }
 
         if (taskResp && taskResp.ok) {

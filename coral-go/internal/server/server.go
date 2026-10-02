@@ -62,7 +62,6 @@ type Server struct {
 	goalMetrics     *routes.GoalMetricsHandler
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
-	proxy           *proxy.Proxy
 
 	// reminderShown is claimed by the first page load that serves the
 	// supporter reminder, so a reload cannot bring it back. It is per
@@ -80,11 +79,17 @@ type templateData struct {
 // New creates a Server with all routes registered.
 // If backend is nil, the server will use tmux-based terminal management.
 func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal) *Server {
+	return NewWithKey(cfg, db, backend, terminal, "")
+}
+
+// NewWithKey constructs the server and opens its separate board database with
+// the same optional SQLCipher key used by the primary store.
+func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, dbKey string) *Server {
 	// Initialize upload directory from config
 	routes.InitUploadDir(cfg.CoralDir())
 
 	// Open the board store (separate SQLite DB)
-	boardStore, err := board.NewStore(filepath.Join(cfg.CoralDir(), "messageboard.db"))
+	boardStore, err := board.NewStoreWithKey(filepath.Join(cfg.CoralDir(), "messageboard.db"), dbKey)
 	if err != nil {
 		log.Printf("Warning: failed to open board store: %v", err)
 	}
@@ -139,7 +144,6 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 		"frontend/templates/includes/views/history_session.html",
 		"frontend/templates/includes/views/message_board.html",
 		"frontend/templates/includes/views/workflows.html",
-		"frontend/templates/includes/views/connected_apps.html",
 		"frontend/templates/includes/views/docs.html",
 		"frontend/templates/includes/views/cost_dashboard.html",
 	)
@@ -208,10 +212,6 @@ func (s *Server) BoardStore() *board.Store {
 }
 
 // Proxy returns the LLM proxy instance, or nil if not yet initialized.
-func (s *Server) Proxy() *proxy.Proxy {
-	return s.proxy
-}
-
 // RestoreSleepingBoards restores board pause state for sleeping teams on startup.
 func (s *Server) RestoreSleepingBoards() {
 	ss := store.NewSessionStore(s.db)
@@ -438,6 +438,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/settings", sysHandler.GetSettings)
 	r.Put("/api/settings", sysHandler.PutSettings)
 	r.Get("/api/system/privacy", sysHandler.GetPrivacyStatus)
+	r.Get("/api/system/database-security", sysHandler.DatabaseSecurityStatus)
+	r.Put("/api/system/database-security", sysHandler.SetDatabaseSecurity)
 	r.Get("/api/settings/default-prompts", sysHandler.GetDefaultPrompts)
 	r.Get("/api/settings/prompt-inspection", sysHandler.GetPromptInspection)
 	r.Get("/api/agent-models", sysHandler.GetAgentModels)
@@ -528,16 +530,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/workflows/runs/{runID}/kill", workflowHandler.KillWorkflowRun)
 	r.Get("/api/workflows/runs/{runID}/steps/{stepIndex}/files/*", workflowHandler.GetStepFile)
 
-	// Connected Apps
-	connAppsHandler := routes.NewConnectedAppsHandler(s.db, s.cfg)
-	r.Get("/api/connected-apps", connAppsHandler.ListConnections)
-	r.Get("/api/connected-apps/providers", connAppsHandler.ListProviders)
-	r.Post("/api/connected-apps/auth/start", connAppsHandler.StartAuth)
-	r.Get("/api/connected-apps/callback", connAppsHandler.Callback)
-	r.Get("/api/connected-apps/{id}", connAppsHandler.GetConnection)
-	r.Get("/api/connected-apps/{id}/token", connAppsHandler.GetToken)
-	r.Delete("/api/connected-apps/{id}", connAppsHandler.DeleteConnection)
-	r.Post("/api/connected-apps/{id}/test", connAppsHandler.TestConnection)
+	// Connected Apps/OAuth endpoints are retired. Existing rows remain in the
+	// database for operator-managed cleanup and are never loaded by startup.
 
 	// Webhooks
 	r.Get("/api/webhooks", whHandler.ListWebhooks)
@@ -674,41 +668,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/tasks/runs/{runID}", tasksHandler.GetTaskStatus)
 	r.Post("/api/tasks/runs/{runID}/kill", tasksHandler.KillTask)
 
-	// ── LLM Proxy ──────────────────────────────────────────────
-	llmProxy := proxy.New(s.db.DB, proxy.DefaultProviderConfigs())
-	s.proxy = llmProxy
-	tasksHandler.SetProxyStore(llmProxy.Store())
-
-	// Proxy passthrough routes (outside /api to avoid auth collision with agent requests)
-	r.Route("/proxy", func(sub chi.Router) {
-		sub.Get("/health", llmProxy.Health)
-		sub.Post("/{sessionID}/v1/messages", llmProxy.HandleAnthropicMessages)
-		sub.Post("/{sessionID}/v1/chat/completions", llmProxy.HandleOpenAIChatCompletions)
-		sub.Post("/{sessionID}/v1/responses", llmProxy.HandleOpenAIResponses)
-		sub.Post("/{sessionID}/responses", llmProxy.HandleOpenAIResponses)
-	})
-
-	// MITM HTTPS proxy for transparent cost tracking (Codex agents set HTTPS_PROXY to this server)
-	if ca, err := proxy.EnsureCA(s.cfg.CoralDir()); err != nil {
-		log.Printf("[server] MITM proxy CA setup failed (CONNECT proxying disabled): %v", err)
-	} else {
-		mitmProxy := proxy.NewMITMProxy(ca, llmProxy.Store(), llmProxy.Events())
-		r.Connect("/*", mitmProxy.HandleConnect)
-		// Create combined cert bundle (system CAs + Coral CA) for agent SSL_CERT_FILE
-		if err := proxy.EnsureCABundle(s.cfg.CoralDir()); err != nil {
-			log.Printf("[server] CA bundle creation failed: %v", err)
-		}
-	}
-
-	// Proxy dashboard API
-	proxyDash := routes.NewProxyDashboardHandler(llmProxy.Store(), llmProxy.Events())
-	r.Get("/api/proxy/pricing", proxyDash.Pricing)
-	r.Get("/api/proxy/stats", proxyDash.Stats)
-	r.Get("/api/proxy/requests", proxyDash.ListRequests)
-	r.Get("/api/proxy/requests/{requestID}", proxyDash.GetRequest)
-	r.Get("/api/proxy/session/{sessionID}/cost", proxyDash.SessionCost)
-	r.Get("/api/proxy/tasks/runs/{runID}/cost", proxyDash.TaskRunCost)
-	r.Get("/ws/proxy", proxyDash.WSProxy)
+	// Proxy interception, CONNECT, proxy dashboards, and provider-key loading
+	// are retired. Keep the historical proxy store read-only for cost reports.
+	historicalProxyStore := proxy.NewStore(s.db.DB)
+	tasksHandler.SetProxyStore(historicalProxyStore)
 
 	// ── Static Files ────────────────────────────────────────────
 	staticSub, err := fs.Sub(staticFS, "frontend/static")

@@ -33,7 +33,6 @@ Design specifications for Coral features. Each subdirectory contains a `README.m
 |------|--------|---------|
 | [Workflows](WORKFLOWS/) | In Progress | Multi-step automations chaining shell commands and AI agent prompts |
 | [Board Tasks](BOARD_TASKS/) | Shipped | Atomic task management system for multi-agent coordination with server-side locking |
-| [Connected Apps](CONNECTED_APPS/) | In Progress | Generic OAuth2 credential store for external services (Google, GitHub, Slack) |
 
 ### UI & Frontend
 

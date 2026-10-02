@@ -36,7 +36,6 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Teams](teams.md) — Team lifecycle management, members, and resurrection
 - [Team Configuration](team-config.md) — Agent team configuration (agent.json schema)
 - [Hooks](hooks.md) — Per-agent and per-step hook configuration (lifecycle events, cross-agent support)
-- [Connected Apps](connected-apps.md) — OAuth connections to external services
 
 ### Customization
 - [Themes](themes.md) — Theme CRUD, import/export, LLM-powered generation
@@ -47,7 +46,6 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Telemetry](telemetry.md) — Every event Coral sends, what it never collects, and why there is no opt-out
 
 ### Observability
-- [LLM Proxy](proxy.md) — Proxy passthrough, cost tracking, dashboard API, WebSocket events
 - [Token Usage](token-usage.md) — Recorded usage, summaries, turns, time series, teams, and branches
 
 ### Auth
@@ -94,20 +92,6 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 | `GET` | `/api/views/{id}` | Get a view |
 | `PUT` | `/api/views/{id}` | Update a view |
 | `DELETE` | `/api/views/{id}` | Delete a view |
-
-### LLM Proxy (10 endpoints)
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/proxy/{sessionID}/v1/messages` | Forward Anthropic request |
-| `POST` | `/proxy/{sessionID}/v1/chat/completions` | Forward OpenAI request |
-| `GET` | `/proxy/health` | Proxy health check |
-| `GET` | `/api/proxy/stats` | Aggregated cost stats |
-| `GET` | `/api/proxy/requests` | List proxy requests |
-| `GET` | `/api/proxy/requests/{requestID}` | Get single request |
-| `GET` | `/api/proxy/session/{sessionID}/cost` | Session cost summary |
-| `GET` | `/api/proxy/tasks/runs/{runID}/cost` | Task run cost summary |
-| `GET` | `/api/proxy/pricing` | Model pricing table |
-| `GET` | `/ws/proxy` | Real-time proxy event stream (WebSocket) |
 
 ### Authentication (5 endpoints)
 | Method | Path | Description |

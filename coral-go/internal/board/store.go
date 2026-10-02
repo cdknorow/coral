@@ -4,9 +4,12 @@ package board
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,9 +17,18 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"time"
 
+	_ "github.com/0xCarbon/go-sqlite3"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
+
+func encryptedKeyHex(key string) string {
+	if strings.HasPrefix(key, "rawhex:") {
+		return strings.TrimPrefix(key, "rawhex:")
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
 
 // Subscriber represents a board subscriber.
 // SubscriberID is the stable identity (role/display name, e.g. "Orchestrator").
@@ -133,12 +145,30 @@ func (s *Store) SetSessionsDB(db *sqlx.DB) {
 
 // NewStore creates a new board Store with its own database.
 func NewStore(dbPath string) (*Store, error) {
+	return NewStoreWithKey(dbPath, "")
+}
+
+// NewStoreWithKey opens the board database with SQLCipher when key is set.
+func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create board db directory: %w", err)
 	}
 
-	db, err := sqlx.Open("sqlite", dbPath+"?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)")
+	driver := "sqlite"
+	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)"
+	if key != "" {
+		driver = "sqlite3"
+		q := url.Values{}
+		q.Set("_key", encryptedKeyHex(key))
+		q.Set("_pragma_busy_timeout", "30000")
+		q.Set("_pragma_journal_mode", "WAL")
+		q.Set("_pragma_synchronous", "NORMAL")
+		q.Set("_pragma_temp_store", "MEMORY")
+		q.Set("_pragma_cache_size", "-8000")
+		dsn = dbPath + "?" + q.Encode()
+	}
+	db, err := sqlx.Open(driver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open board database: %w", err)
 	}
@@ -159,6 +189,28 @@ func NewStore(dbPath string) (*Store, error) {
 // Close closes the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
+}
+
+// EncryptionSelfTest exercises the board database through the real store path
+// for packaged-binary verification without touching an operator home.
+func (s *Store) EncryptionSelfTest(ctx context.Context) error {
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS coral_encryption_self_test(value TEXT)`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM coral_encryption_self_test`); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO coral_encryption_self_test(value) VALUES('board-ok')`); err != nil {
+		return err
+	}
+	var value string
+	if err := s.db.GetContext(ctx, &value, `SELECT value FROM coral_encryption_self_test`); err != nil {
+		return err
+	}
+	if value != "board-ok" {
+		return fmt.Errorf("board encryption self-test sentinel = %q", value)
+	}
+	return nil
 }
 
 func (s *Store) UpsertSubscriberReminder(ctx context.Context, r SubscriberReminder) error {

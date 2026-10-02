@@ -647,9 +647,9 @@ Returns `404` if the task does not exist or no artifact was captured. A task tha
 GET /api/board/{project}/tasks/{taskID}/cost
 ```
 
-Returns proxy-derived token and cost totals from the task's claim time through
-now. When no session or proxy data is available, the response contains a
-descriptive `message` instead of totals.
+Returns token and cost totals from the task's claim time through now. When no
+session or usage data is available, the response contains a descriptive
+`message` instead of totals.
 
 ### Reassign Task
 

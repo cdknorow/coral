@@ -81,7 +81,7 @@ Anything else is dropped or rejected with `400`. Free-form text cannot be smuggl
 
 Separately from telemetry, and a question people usually ask in the same breath:
 
-Coral has no API keys of its own and never calls a model on your behalf. It runs the CLI agents you have already installed, using your credentials. To count tokens and costs, Coral can proxy those agents' API traffic locally — the traffic goes to the same provider it always did, and nothing is sent to us.
+Coral has no API keys of its own and never calls a model on your behalf. It runs the CLI agents you have already installed, using your credentials. Token and cost totals come from supported agent usage records and remain local to your Coral instance.
 
 ---
 

@@ -32,10 +32,15 @@ func TestTaskStatusIncludesProxyCosts(t *testing.T) {
 	err = h.sched.UpdateScheduledRun(ctx, runID, map[string]interface{}{"session_id": sessionID})
 	require.NoError(t, err)
 
-	err = ps.CreateRequest(ctx, "req-1", sessionID, proxy.ProviderAnthropic, "claude-sonnet-4-20250514", false)
-	require.NoError(t, err)
 	usage := proxy.TokenUsage{InputTokens: 1000, OutputTokens: 250}
-	err = ps.CompleteRequest(ctx, "req-1", usage, proxy.CalculateCostBreakdown("claude-sonnet-4-20250514", usage), 200, "success", "")
+	breakdown := proxy.CalculateCostBreakdown("claude-sonnet-4-20250514", usage)
+	_, err = db.DB.ExecContext(ctx, `INSERT INTO proxy_requests
+		(request_id, session_id, provider, model_requested, model_used, started_at, completed_at,
+		 input_tokens, output_tokens, total_tokens, input_cost_usd, output_cost_usd, cost_usd, status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"req-1", sessionID, "anthropic", "claude-sonnet-4-20250514", "claude-sonnet-4-20250514",
+		"2025-03-11T10:00:00Z", "2025-03-11T10:00:01Z", usage.InputTokens, usage.OutputTokens,
+		usage.InputTokens+usage.OutputTokens, breakdown.InputCostUSD, breakdown.OutputCostUSD, breakdown.TotalCostUSD, "success")
 	require.NoError(t, err)
 
 	r := chi.NewRouter()

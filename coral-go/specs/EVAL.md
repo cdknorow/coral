@@ -123,7 +123,7 @@ curl -fsS -X POST "$CORAL_URL/api/sessions/live/team/$EVAL_NAME/kill" | jq
 
 ## Collect evaluation metrics
 
-Enable token accounting before the run. Set `proxy_enabled` in Coral settings so launched agents use Coral's proxy; Coral may also ingest supported CLI JSONL usage. Verify it with `GET /api/settings` before starting.
+Enable token accounting before the run. Coral records supported CLI usage data locally; verify that usage records are available with the token-usage API before starting.
 
 For one session, retrieve aggregate tokens, total cost, and `num_turns`:
 

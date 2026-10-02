@@ -69,7 +69,7 @@ export CORAL_DATA_DIR="$TMPDIR_JOBS"
 
 log "Building coral (dev mode)..."
 cd "$CORAL_DIR"
-go build -tags dev -o "$TMPDIR_JOBS/coral" ./cmd/coral/
+go build -tags "dev fts5" -o "$TMPDIR_JOBS/coral" ./cmd/coral/
 
 log "Starting coral server on port $PORT..."
 "$TMPDIR_JOBS/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_JOBS/server.log" 2>&1 &

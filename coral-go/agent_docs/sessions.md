@@ -733,7 +733,7 @@ Clear all events for a session.
 ### POST `/api/sessions/live/{name}/token-usage`
 
 Records a cumulative usage snapshot for integrations that report usage outside
-the local proxy. The JSON body accepts `session_id`, `input_tokens`,
+the local agent hooks. The JSON body accepts `session_id`, `input_tokens`,
 `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost_usd`, and
 `num_turns`.
 

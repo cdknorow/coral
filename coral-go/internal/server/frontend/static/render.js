@@ -2586,26 +2586,19 @@ export async function showTeamTokenUsage(boardName) {
     modal.style.display = '';
     modal.onclick = (e) => { if (e.target === modal) { modal.style.display = 'none'; } };
 
-    // Collect session IDs for this board
-    const teamSessions = (state.liveSessions || []).filter(s => s.board_project === boardName);
-    if (teamSessions.length === 0) {
-        content.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">No agents in this team</div>';
-        return;
-    }
-
-    // Fetch proxy cost per session and message-based execution timing in parallel.
-    const [results, usageData] = await Promise.all([Promise.all(teamSessions.map(async (s) => {
-        try {
-            const resp = await fetch(`/api/proxy/session/${encodeURIComponent(s.session_id)}/cost`);
-            if (!resp.ok) return null;
-            const data = await resp.json();
-            return { name: s.display_name || s.name, ...data };
-        } catch { return null; }
-    })), fetch(`/api/token-usage?board_name=${encodeURIComponent(boardName)}`)
+    // Token usage is read from Coral's unified usage API.
+    const usageData = await fetch(`/api/token-usage?board_name=${encodeURIComponent(boardName)}`)
         .then(resp => resp.ok ? resp.json() : null)
-        .catch(() => null)]);
-
-    const agents = results.filter(r => r && r.total_requests > 0);
+        .catch(() => null);
+    const agents = (usageData?.by_agent || []).map(a => ({
+        name: a.agent_name || a.session_id || 'Unknown agent',
+        total_input_tokens: a.input_tokens || 0,
+        total_output_tokens: a.output_tokens || 0,
+        total_cache_read_tokens: a.cache_read_tokens || 0,
+        total_cache_write_tokens: a.cache_write_tokens || 0,
+        total_cost_usd: a.cost_usd || 0,
+        total_requests: a.num_sessions || a.requests || 0,
+    })).filter(a => a.total_requests > 0 || a.total_cost_usd > 0);
 
     // Compute totals
     let totalIn = 0, totalOut = 0, totalCacheR = 0, totalCacheW = 0, totalCost = 0, totalReqs = 0;
@@ -2619,7 +2612,7 @@ export async function showTeamTokenUsage(boardName) {
     }
 
     if (agents.length === 0) {
-        content.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">No proxy usage recorded for this team</div>';
+        content.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">No token usage recorded for this team</div>';
         return;
     }
 

@@ -1,0 +1,136 @@
+name: Encryption package verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "coral-go/**"
+      - "tests/release/**"
+      - "licenses/**"
+      - "THIRD_PARTY_NOTICES_SQLCIPHER.md"
+      - ".github/workflows/encryption-verify.yml"
+
+permissions:
+  contents: read
+
+# This workflow is deliberately unsigned and never uploads or publishes an
+# artifact. It records the exact native library selected by each ephemeral
+# runner before running the extracted-package verifier.
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache-dependency-path: coral-go/go.sum
+      - name: Install isolated native dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev patchelf
+      - name: Build and verify extracted Linux package
+        working-directory: coral-go
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist/encryption-linux
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-linux/$cmd" "./cmd/$cmd/"
+          done
+          SOURCE_LIB="$(ldconfig -p | awk '/libcrypto\.so\.3/{print $NF; exit}')"
+          cp "$SOURCE_LIB" ../dist/encryption-linux/libcrypto.so.3
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-linux/
+          cp -R ../licenses ../dist/encryption-linux/
+          for binary in ../dist/encryption-linux/coral* ../dist/encryption-linux/launch-coral; do patchelf --set-rpath '$ORIGIN' "$binary"; done
+          openssl version -a
+          sha256sum ../dist/encryption-linux/libcrypto.so.3
+          LIB="../dist/encryption-linux/libcrypto.so.3"
+          HASH="$(sha256sum "$LIB" | awk '{print $1}')"
+          PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 || true)"
+          VER="$(dpkg-query -W -f='${Version}' libssl3 2>/dev/null || true)"
+          printf 'platform=linux\nvendor=ubuntu\npackage=%s\nversion=%s\nlibrary_sha256=%s\n' "$PKG" "$VER" "$HASH" > ../dist/encryption-linux/openssl-attestation.env
+          ../tests/release/verify_openssl_attestation.sh ../dist/encryption-linux/openssl-attestation.env "$LIB"
+          ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-linux
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache-dependency-path: coral-go/go.sum
+      - name: Install isolated native dependencies
+        shell: powershell
+        run: choco install mingw openssl.light -y
+      - name: Build and verify extracted Windows package
+        working-directory: coral-go
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $env:CGO_ENABLED = "1"
+          New-Item -ItemType Directory -Force -Path ..\dist\encryption-windows | Out-Null
+          foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
+            go build -tags fts5 -o "..\dist\encryption-windows\$cmd.exe" "./cmd/$cmd/"
+          }
+          go build -tags fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-tray.exe ./cmd/coral-tray/
+          go build -tags webview,fts5 -ldflags "-H windowsgui" -o ..\dist\encryption-windows\coral-app.exe ./cmd/coral-app/
+          Copy-Item "C:\Program Files\OpenSSL-Win64\bin\libcrypto-3-x64.dll" ..\dist\encryption-windows\
+          Copy-Item ..\THIRD_PARTY_NOTICES_SQLCIPHER.md ..\dist\encryption-windows\
+          Copy-Item ..\licenses ..\dist\encryption-windows\licenses -Recurse
+          & "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version -a
+          (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash
+          $hash = (Get-FileHash ..\dist\encryption-windows\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
+          $version = (& "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
+          "platform=windows`nvendor=chocolatey`npackage=openssl.light`nversion=$version`nlibrary_sha256=$hash" | Set-Content ..\dist\encryption-windows\openssl-attestation.env
+          bash ..\tests\release\verify_openssl_attestation.sh ..\dist\encryption-windows\openssl-attestation.env ..\dist\encryption-windows\libcrypto-3-x64.dll
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
+          powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\encryption-windows
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24"
+          cache-dependency-path: coral-go/go.sum
+      - name: Install isolated native dependencies
+        run: |
+          brew install openssl@3
+          arch -x86_64 brew install openssl@3
+      - name: Build and verify unsigned universal extracted package
+        working-directory: coral-go
+        run: |
+          set -euo pipefail
+          ARM_OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          X86_OPENSSL_PREFIX="$(arch -x86_64 brew --prefix openssl@3)"
+          mkdir -p ../dist/encryption-macos
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags fts5 -o "../dist/encryption-macos/${cmd}-arm64" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${X86_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${X86_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags fts5 -o "../dist/encryption-macos/${cmd}-amd64" "./cmd/$cmd/"
+            lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos/${cmd}-arm64" "../dist/encryption-macos/${cmd}-amd64"
+          done
+          for cmd in coral-tray coral-app; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build -tags webview,fts5 -o "../dist/encryption-macos/${cmd}-arm64" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${X86_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${X86_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build -tags webview,fts5 -o "../dist/encryption-macos/${cmd}-amd64" "./cmd/$cmd/"
+            lipo -create -output "../dist/encryption-macos/$cmd" "../dist/encryption-macos/${cmd}-arm64" "../dist/encryption-macos/${cmd}-amd64"
+          done
+          lipo -create -output ../dist/encryption-macos/libcrypto.3.dylib "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/encryption-macos/
+          cp -R ../licenses ../dist/encryption-macos/
+          for binary in ../dist/encryption-macos/*; do
+            [ -f "$binary" ] || continue
+            install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -change "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -add_rpath '@loader_path' "$binary" || true
+          done
+          "${ARM_OPENSSL_PREFIX}/bin/openssl" version -a
+          shasum -a 256 ../dist/encryption-macos/libcrypto.3.dylib
+          VERSION="$("${ARM_OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}')"
+          ARM_VERSION="$VERSION"
+          X86_VERSION="$(arch -x86_64 "${X86_OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}')"
+          COMBINED_HASH="$(shasum -a 256 ../dist/encryption-macos/libcrypto.3.dylib | awk '{print $1}')"
+          ARM_HASH="$(shasum -a 256 "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" | awk '{print $1}')"
+          X86_HASH="$(arch -x86_64 shasum -a 256 "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" | awk '{print $1}')"
+          printf 'platform=macos\nvendor=homebrew\npackage=openssl@3\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/encryption-macos/openssl-attestation.env
+          ../tests/release/verify_openssl_attestation.sh ../dist/encryption-macos/openssl-attestation.env ../dist/encryption-macos/libcrypto.3.dylib "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
+          OPENSSL_PREFIX="$ARM_OPENSSL_PREFIX" ../tests/release/verify_encrypted_bundle.sh ../dist/encryption-macos

@@ -46,7 +46,6 @@ import { showThemeConfigurator, hideThemeConfigurator } from './theme_config.js'
 import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, toggleBoardSleep, deleteBoardMessage, showExportBoardModal, doExportBoard, toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages, cancelSelectMode, exportSelectedAsMarkdown } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
 import { initWorkflows, showWorkflowsTab, selectWorkflow, selectWorkflowRun, triggerWorkflow, killWorkflowRun, deleteWorkflow, showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflow, editWorkflowWithAgent, workflowAddStep, workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent } from './workflows.js';
-import { showConnectedApps, showConnectAppModal, hideConnectAppModal, startOAuthFlow, testConnectedApp, disconnectApp } from './connected_apps.js';
 import { showCostDashboard, stopCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } from './cost_dashboard.js';
 import { showDocsTab, selectDoc } from './docs.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
@@ -151,9 +150,6 @@ Object.assign(window, {
     selectWorkflow, selectWorkflowRun, triggerWorkflow, killWorkflowRun, deleteWorkflow,
     showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflow,
     workflowAddStep, workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent, editWorkflowWithAgent,
-    // connected_apps
-    showConnectedApps, showConnectAppModal, hideConnectAppModal, startOAuthFlow,
-    testConnectedApp, disconnectApp,
     // cost_dashboard
     showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged,
     // docs
@@ -193,7 +189,7 @@ function switchNavTab(tab) {
     stopCostDashboard();
 
     // Toggle sidebar visibility — full-width views hide the sidebar
-    const fullWidthTabs = new Set(['tokens', 'workflows', 'connected-apps']);
+    const fullWidthTabs = new Set(['tokens', 'workflows']);
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', fullWidthTabs.has(tab));
 
@@ -710,14 +706,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     initMobile();
 
-    // Hide connected apps in prod builds (feature is dev/beta only),
-    // and surface a banner if tmux is missing so the user knows agents
-    // can't be launched yet.
+    // Surface a banner if tmux is missing so the user knows agents can't be
+    // launched yet.
     fetch('/api/system/status').then(r => r.json()).then(data => {
-        if (data.tier_name === 'prod' || data.tier_name === 'staging') {
-            const btn = document.getElementById('connected-apps-menu-btn');
-            if (btn) btn.style.display = 'none';
-        }
         if (data.tmux_available === false) {
             const banner = document.getElementById('tmux-missing-banner');
             const cmd = document.getElementById('tmux-missing-banner-cmd-text');

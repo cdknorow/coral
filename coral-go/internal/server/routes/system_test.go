@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -64,6 +65,42 @@ func TestSystemStatus(t *testing.T) {
 	var body map[string]any
 	json.NewDecoder(resp.Body).Decode(&body)
 	assert.Equal(t, true, body["startup_complete"])
+}
+
+func TestDatabaseSecurityModeContract(t *testing.T) {
+	dbcrypt.SetEffectiveMode("disabled")
+	dir := t.TempDir()
+	cfg := config.Load(dir)
+	db, err := store.Open(filepath.Join(dir, "sessions.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	h := NewSystemHandler(db, cfg)
+	r := chi.NewRouter()
+	r.Get("/api/system/database-security", h.DatabaseSecurityStatus)
+	r.Put("/api/system/database-security", h.SetDatabaseSecurity)
+
+	get := httptest.NewRecorder()
+	r.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/api/system/database-security", nil))
+	assert.Equal(t, http.StatusOK, get.Code)
+	var status map[string]any
+	require.NoError(t, json.Unmarshal(get.Body.Bytes(), &status))
+	assert.Equal(t, "disabled", status["saved_mode"])
+	assert.Equal(t, false, status["restart_required"])
+
+	req := httptest.NewRequest(http.MethodPut, "/api/system/database-security", bytes.NewBufferString(`{"mode":"key_file","password":"leak"}`))
+	req.Header.Set("Content-Type", "application/json")
+	bad := httptest.NewRecorder()
+	r.ServeHTTP(bad, req)
+	assert.Equal(t, http.StatusBadRequest, bad.Code)
+
+	req = httptest.NewRequest(http.MethodPut, "/api/system/database-security", bytes.NewBufferString(`{"mode":"key_file"}`))
+	req.Header.Set("Content-Type", "application/json")
+	set := httptest.NewRecorder()
+	r.ServeHTTP(set, req)
+	assert.Equal(t, http.StatusOK, set.Code)
+	b, err := dbcrypt.Load(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "key_file", b.DatabaseEncryption)
 }
 
 func TestUpdateCheck(t *testing.T) {

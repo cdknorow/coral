@@ -114,22 +114,6 @@ func CoralToolsDir() string {
 	return ""
 }
 
-// sanitizeURL strips characters that could enable shell injection from URLs.
-// Allows the same characters as SanitizeShellValue plus colons, slashes, and
-// question marks which are needed for valid URLs. Used for proxy base URLs
-// interpolated into shell export commands within single quotes.
-func sanitizeURL(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	for _, r := range s {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
-			r == '-' || r == '_' || r == '.' || r == ':' || r == '/' || r == '?' || r == '=' || r == '&' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
 // singleQuote wraps s in single quotes unconditionally, escaping any embedded
 // single quote with the POSIX apostrophe-backslash-apostrophe-apostrophe sequence.
 // Inside single quotes, POSIX shells perform no expansion at all, so this is

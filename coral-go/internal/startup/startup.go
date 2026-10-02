@@ -6,6 +6,9 @@ package startup
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -21,8 +24,9 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/oauth"
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server"
@@ -41,6 +45,14 @@ type Options struct {
 	// OnServerError is called when ListenAndServe fails (non-ErrServerClosed).
 	// If nil, log.Printf is used.
 	OnServerError func(err error)
+
+	// PasswordPrompt is called only when bootstrap selects password mode. The
+	// callback must read securely and must not return or log the password.
+	PasswordPrompt func() (string, error)
+
+	// UnlockSurface describes the entry point's available secure prompt.
+	// Empty means headless/no prompt.
+	UnlockSurface string
 }
 
 // RunningServer holds all resources created during startup.
@@ -82,6 +94,7 @@ func (rs *RunningServer) Close() {
 // server runs in a background goroutine; callers should wait on ctx.Done()
 // then call RunningServer.Shutdown().
 func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServer, error) {
+	dbcrypt.SetUnlockSurface(opts.UnlockSurface)
 	if opts.BackendType == "" {
 		opts.BackendType = "tmux"
 	}
@@ -130,11 +143,109 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		}
 	}
 
+	// Resolve encryption before opening either database. The board database is
+	// separate and must use the same mode/key. No listener or service has been
+	// started at this point, so an unlock failure cannot expose partial state.
+	security, err := dbcrypt.Load(coralDir)
+	if err != nil {
+		return nil, err
+	}
+	// Missing security.json is the backwards-compatible plaintext setup.
+	// Normalize the empty bootstrap value before validating explicit modes.
+	if security.DatabaseEncryption == "" {
+		security.DatabaseEncryption = "disabled"
+	}
+	if envMode := strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION")); envMode != "" {
+		if _, statErr := os.Stat(filepath.Join(coralDir, dbcrypt.BootstrapName)); os.IsNotExist(statErr) {
+			security.DatabaseEncryption = envMode
+			if err := dbcrypt.Save(coralDir, security); err != nil {
+				return nil, fmt.Errorf("save database encryption setting: %w", err)
+			}
+		}
+	}
+	if security.DatabaseEncryption != "disabled" && security.DatabaseEncryption != "key_file" && security.DatabaseEncryption != "password" {
+		return nil, fmt.Errorf("unsupported database encryption mode %q", security.DatabaseEncryption)
+	}
+	boardPath := filepath.Join(coralDir, "messageboard.db")
+	if err := dbcrypt.CheckMigrationRecovery([]string{cfg.DBPath, boardPath}); err != nil {
+		return nil, err
+	}
+	migrateRequested := strings.EqualFold(strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION_MIGRATE")), "1") || strings.EqualFold(strings.TrimSpace(os.Getenv("CORAL_DB_ENCRYPTION_MIGRATE")), "true")
+	var dbKey string
+	if migrateRequested && security.DatabaseEncryption == "key_file" {
+		keyPath := security.KeyFile
+		if keyPath == "" {
+			keyPath = dbcrypt.KeyName
+		}
+		if !filepath.IsAbs(keyPath) {
+			keyPath = filepath.Join(coralDir, keyPath)
+		}
+		if _, keyErr := os.Stat(keyPath); os.IsNotExist(keyErr) {
+			for _, path := range []string{cfg.DBPath, boardPath} {
+				encrypted, probeErr := dbcrypt.EncryptedFile(path)
+				if probeErr != nil {
+					return nil, probeErr
+				}
+				if encrypted {
+					return nil, fmt.Errorf("database key file is missing for encrypted database %s; refusing replacement", filepath.Base(path))
+				}
+			}
+		}
+		dbKey, err = dbcrypt.GenerateKeyFile(coralDir, security)
+	} else {
+		dbKey, err = dbcrypt.ResolveKey(coralDir, security, cfg.DBPath, boardPath)
+	}
+	if err != nil && !errors.Is(err, dbcrypt.ErrUnlockRequired) {
+		return nil, err
+	}
+	if errors.Is(err, dbcrypt.ErrUnlockRequired) {
+		if opts.PasswordPrompt == nil {
+			return nil, fmt.Errorf("database encryption requires an interactive password prompt")
+		}
+		dbKey, err = opts.PasswordPrompt()
+		if err != nil {
+			return nil, fmt.Errorf("database unlock cancelled: %w", err)
+		}
+		if strings.TrimSpace(dbKey) == "" {
+			return nil, fmt.Errorf("database unlock password is empty")
+		}
+	}
+	if dbKey != "" && security.DatabaseEncryption != "disabled" {
+		if security.DatabaseEncryption == "password" && security.KeySalt == "" {
+			salt := make([]byte, 16)
+			if _, saltErr := rand.Read(salt); saltErr != nil {
+				return nil, fmt.Errorf("generate password salt: %w", saltErr)
+			}
+			security.KeySalt = hex.EncodeToString(salt)
+			if saveErr := dbcrypt.Save(coralDir, security); saveErr != nil {
+				return nil, fmt.Errorf("save password salt: %w", saveErr)
+			}
+		}
+		dbKey, err = dbcrypt.PrepareStorageKey(dbKey, security.DatabaseEncryption, security.KeySalt)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if migrateRequested && dbKey != "" {
+		if err := dbcrypt.MigratePlaintexts([]string{cfg.DBPath, boardPath}, dbKey); err != nil {
+			return nil, fmt.Errorf("database migration failed: %w", err)
+		}
+	}
+
 	// Open database
-	db, err := store.Open(cfg.DBPath)
+	db, err := store.OpenWithKey(ctx, cfg.DBPath, dbKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+	dbcrypt.SetEffectiveMode(security.DatabaseEncryption)
+	// Probe the separate board database before constructing the server. A
+	// wrong key must fail closed rather than starting with only one DB open.
+	boardProbe, err := board.NewStoreWithKey(boardPath, dbKey)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to open board database: %w", err)
+	}
+	boardProbe.Close()
 	applyPrivacySettings(ctx, db, cfg)
 
 	// Bind the port now and keep the listener open to avoid a TOCTOU race
@@ -154,7 +265,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	backend, agentRT, terminal := selectBackend(opts.BackendType, cfg.LogDir, cfg.CoralDir())
 
 	// Build the HTTP server
-	srv := server.New(cfg, db, backend, terminal)
+	srv := server.NewWithKey(cfg, db, backend, terminal, dbKey)
 
 	// Reconcile orphaned live sessions: if the app was killed without
 	// cleanly sleeping sessions, they remain in live_sessions with
@@ -519,10 +630,6 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// Job scheduler
 	scheduler := background.NewJobScheduler(schedStore, 30*time.Second)
 	launcher := background.NewAgentLauncher(agentRT, sessStore, cfg.Port)
-	// Wire proxy session upstream callback for universal reroute
-	if p := srv.Proxy(); p != nil {
-		launcher.SetSessionUpstreamFn(p.SetSessionUpstream)
-	}
 	scheduler.SetLaunchFn(launcher.BuildSchedulerLaunchFn(schedStore))
 	scheduler.SetSessionStore(sessStore)
 	scheduler.SetRuntime(agentRT)
@@ -590,32 +697,9 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	thinkingTracker := background.NewThinkingTracker(sessStore, taskStore, 2*time.Second)
 	safeGo(ctx, "thinking_tracker", func() { thinkingTracker.Run(ctx) })
 
-	// Wire proxy → token_usage table so proxy-captured tokens appear in the unified API
-	if p := srv.Proxy(); p != nil {
-		p.SetTokenUsageRecorder(func(ctx context.Context, rec *proxy.TokenUsageRecord) error {
-			return tokenUsageStore.RecordUsage(ctx, &store.TokenUsage{
-				SessionID:        rec.SessionID,
-				AgentName:        rec.AgentName,
-				AgentType:        rec.AgentType,
-				InputTokens:      rec.InputTokens,
-				OutputTokens:     rec.OutputTokens,
-				CacheReadTokens:  rec.CacheReadTokens,
-				CacheWriteTokens: rec.CacheWriteTokens,
-				TotalTokens:      rec.InputTokens + rec.OutputTokens + rec.CacheReadTokens + rec.CacheWriteTokens,
-				CostUSD:          rec.CostUSD,
-				RecordedAt:       rec.RecordedAt,
-				Source:           rec.Source,
-				Model:            rec.Model,
-			})
-		})
-	}
-
 	// Workflow runner — executes multi-step workflows (shell + agent)
 	wfStore := store.NewWorkflowStore(db)
-	connAppStore := store.NewConnectedAppStore(db)
-	oauthRegistry := oauth.NewRegistry()
-	flowManager := oauth.NewFlowManager(oauthRegistry)
-	wfRunner := background.NewWorkflowRunner(wfStore, launcher, agentRT, connAppStore, flowManager, cfg.CoralDir(), cfg.Host, cfg.Port)
+	wfRunner := background.NewWorkflowRunner(wfStore, launcher, agentRT, nil, nil, cfg.CoralDir(), cfg.Host, cfg.Port)
 	srv.SetWorkflowRunner(wfRunner)
 	scheduler.SetWorkflowRunner(wfRunner, wfStore)
 

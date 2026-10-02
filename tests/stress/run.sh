@@ -69,7 +69,7 @@ export CORAL_DATA_DIR="$TMPDIR_STRESS"
 
 log "Building coral (dev mode) and coral-board..."
 cd "$CORAL_DIR"
-go build -tags dev -o "$TMPDIR_STRESS/coral" ./cmd/coral/
+go build -tags "dev fts5" -o "$TMPDIR_STRESS/coral" ./cmd/coral/
 go build -o "$TMPDIR_STRESS/coral-board" ./cmd/coral-board/
 
 log "Starting coral server on port $PORT..."

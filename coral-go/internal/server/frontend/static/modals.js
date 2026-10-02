@@ -2706,37 +2706,6 @@ export async function showInfoModal() {
             boardVal.style.display = "none";
         }
 
-        // Token usage from proxy
-        const tokensLabel = document.getElementById("info-tokens-label");
-        const tokensVal = document.getElementById("info-tokens");
-        if (tokensLabel && tokensVal && sid) {
-            tokensLabel.style.display = "none";
-            tokensVal.style.display = "none";
-            // Fetch async — don't block modal open
-            fetch(`/api/proxy/session/${encodeURIComponent(sid)}/cost`).then(r => r.ok ? r.json() : null).then(data => {
-                if (!data || !data.total_requests) return;
-                const fmt = (n) => n >= 1000000 ? (n/1000000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'K' : String(n);
-                const fmtCost = (c) => c < 0.01 ? '$'+c.toFixed(4) : '$'+c.toFixed(2);
-                const metrics = [
-                    ["Input", fmt(data.total_input_tokens || 0)],
-                    ["Output", fmt(data.total_output_tokens || 0)],
-                    ["Cache Read", fmt(data.total_cache_read_tokens || 0)],
-                    ["Cache Write", fmt(data.total_cache_write_tokens || 0)],
-                    ["Requests", String(data.total_requests || 0)],
-                    ["Cost", fmtCost(data.total_cost_usd || 0)],
-                ];
-                const html = `<div class="info-token-grid">${metrics.map(([label, value]) => `
-                    <div class="info-token-card">
-                        <span class="info-token-label">${label}</span>
-                        <span class="info-token-value">${value}</span>
-                    </div>
-                `).join("")}</div>`;
-                tokensVal.innerHTML = html;
-                tokensLabel.style.display = "";
-                tokensVal.style.display = "";
-            }).catch(() => {});
-        }
-
         document.getElementById("info-modal").style.display = "flex";
     } catch (e) {
         showToast("Failed to load session info", true);
@@ -2905,6 +2874,56 @@ function renderRemoteAccessStatus(status, loadError = false) {
     el.dataset.state = restart ? 'restart-required' : 'current';
 }
 
+function renderDatabaseEncryptionStatus(status, loadError = false) {
+    const select = document.getElementById('settings-database-encryption');
+    const hint = document.getElementById('settings-database-encryption-status');
+    if (!select || !hint) return;
+    if (loadError || !status) {
+        select.disabled = true;
+        hint.textContent = 'Database encryption settings are unavailable in this server build.';
+        return;
+    }
+    const mode = status.saved_mode || status.effective_mode || 'disabled';
+    select.value = mode;
+    select.disabled = status.feature_available === false;
+    const effective = status.effective_mode || 'disabled';
+    const restart = status.restart_required === true;
+    const surface = status.unlock_surface || 'unknown';
+    const capability = status.feature_available === false ? ' Encryption is unavailable in this build.' : '';
+    hint.textContent = `Saved: ${mode}; running: ${effective}${restart ? '; restart required' : ''}. Unlock: ${surface}.${capability}`;
+}
+
+async function loadDatabaseEncryptionStatus() {
+    try {
+        const resp = await fetch('/api/system/database-security');
+        if (!resp.ok) throw new Error(`database security ${resp.status}`);
+        const status = await resp.json();
+        window._databaseEncryptionStatus = status;
+        renderDatabaseEncryptionStatus(status);
+        return status;
+    } catch (_) {
+        window._databaseEncryptionStatus = null;
+        renderDatabaseEncryptionStatus(null, true);
+        return null;
+    }
+}
+
+async function saveDatabaseEncryptionSettings() {
+    const select = document.getElementById('settings-database-encryption');
+    if (!select || select.disabled) return true;
+    const mode = select.value;
+    const resp = await fetch('/api/system/database-security', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+    });
+    if (!resp.ok) throw new Error(`database security save failed (${resp.status})`);
+    const status = await resp.json();
+    window._databaseEncryptionStatus = status;
+    renderDatabaseEncryptionStatus(status);
+    return true;
+}
+
 export async function loadSettings() {
     try {
         const resp = await fetch("/api/settings");
@@ -2937,20 +2956,6 @@ export async function loadSettings() {
         }
         if (s.refresh_files_on_switch === undefined) {
             s.refresh_files_on_switch = false;
-        }
-        // Coerce proxy_enabled / proxy_enabled_claude (default: disabled)
-        if (typeof s.proxy_enabled === "string") {
-            s.proxy_enabled = s.proxy_enabled === "True" || s.proxy_enabled === "true";
-        }
-        if (s.proxy_enabled === undefined) {
-            s.proxy_enabled = false;
-        }
-        // Coerce proxy_enabled_codex (default: disabled)
-        if (typeof s.proxy_enabled_codex === "string") {
-            s.proxy_enabled_codex = s.proxy_enabled_codex === "True" || s.proxy_enabled_codex === "true";
-        }
-        if (s.proxy_enabled_codex === undefined) {
-            s.proxy_enabled_codex = false;
         }
         // Default file_search_mode to 'directory'
         if (!s.file_search_mode) {
@@ -3146,6 +3151,9 @@ export async function showSettingsModal() {
     } catch (_) {
         renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
     }
+    // Bootstrap database-encryption metadata lives outside the locked DB. The
+    // endpoint returns status only; passwords/keys are never sent to the UI.
+    loadDatabaseEncryptionStatus();
 
     // Theme — populate with built-in options + saved custom themes
     const themeSelect = document.getElementById("settings-theme");
@@ -3253,12 +3261,6 @@ export async function showSettingsModal() {
     if (groupByTeamCheck) {
         groupByTeamCheck.checked = localStorage.getItem('coral-group-by-team') !== 'false';
     }
-
-    // Proxy Enabled
-    const proxyCheck = document.getElementById("settings-proxy-enabled");
-    if (proxyCheck) proxyCheck.checked = !!s.proxy_enabled;
-    const proxyCodexCheck = document.getElementById("settings-proxy-enabled-codex");
-    if (proxyCodexCheck) proxyCodexCheck.checked = !!s.proxy_enabled_codex;
 
     // Terminal Font Size
     const fontSizeSelect = document.getElementById("settings-terminal-font-size");
@@ -3431,8 +3433,6 @@ export async function applySettings() {
     const checkUpdates = document.getElementById("settings-check-updates")?.checked ?? true;
     localStorage.setItem("coral-update-check-enabled", checkUpdates ? "true" : "false");
     const showScrollbars = document.getElementById("settings-show-scrollbars")?.checked ?? true;
-    const proxyEnabled = document.getElementById("settings-proxy-enabled")?.checked || false;
-    const proxyEnabledCodex = document.getElementById("settings-proxy-enabled-codex")?.checked || false;
     const fileSearchMode = document.getElementById("settings-file-search-mode")?.value || "directory";
     const fileSearchLimit = document.getElementById("settings-file-search-limit")?.value || "500";
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
@@ -3472,9 +3472,6 @@ export async function applySettings() {
         default_model_agy: defaultModelAgy,
         default_model_gemini: defaultModelAgy,
         default_model_pi: defaultModelPi,
-        proxy_enabled: proxyEnabled,
-        proxy_enabled_claude: proxyEnabled,
-        proxy_enabled_codex: proxyEnabledCodex,
         file_search_mode: fileSearchMode,
         file_search_limit: fileSearchLimit,
         git_diff_mode: gitDiffMode,
@@ -3486,6 +3483,7 @@ export async function applySettings() {
     const oldGitDiffMode = state.settings?.git_diff_mode || 'previous_commit';
 
     try {
+        await saveDatabaseEncryptionSettings();
         const response = await fetch("/api/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },

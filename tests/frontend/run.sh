@@ -55,7 +55,7 @@ CORAL_BIN="${CORAL_BIN:-}"
 if [ -z "$CORAL_BIN" ]; then
     CORAL_BIN="$(mktemp -u /tmp/coral-frontend-test-bin.XXXXXX)"
     echo "Building dev coral binary at $CORAL_BIN..."
-    (cd "$ROOT/coral-go" && go build -tags dev -o "$CORAL_BIN" ./cmd/coral/)
+    (cd "$ROOT/coral-go" && go build -tags "dev fts5" -o "$CORAL_BIN" ./cmd/coral/)
 fi
 
 # Pick a Chrome binary (macOS path, then PATH fallback).
@@ -176,3 +176,4 @@ node transcript_codex.test.js
 node chat_search_unit.test.js
 node privacy_settings.test.js
 node privacy_verification_e2e.test.js
+node retired_integrations.test.js

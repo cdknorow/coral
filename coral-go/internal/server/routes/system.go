@@ -24,6 +24,7 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
@@ -144,6 +145,83 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// DatabaseSecurityStatus is intentionally metadata-only. Passwords and key
+// material never cross this API boundary.
+func (h *SystemHandler) DatabaseSecurityStatus(w http.ResponseWriter, r *http.Request) {
+	b, err := dbcrypt.Load(h.cfg.CoralDir())
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	saved := b.DatabaseEncryption
+	if saved == "" {
+		saved = "disabled"
+	}
+	effective := dbcrypt.EffectiveMode()
+	available := dbcrypt.FeatureAvailable() && (saved != "password" || dbcrypt.UnlockSurface() != "headless")
+	migrationRequired := false
+	if saved != "disabled" {
+		for _, path := range []string{h.cfg.DBPath, filepath.Join(h.cfg.CoralDir(), "messageboard.db")} {
+			if plain, probeErr := dbcrypt.EncryptedFile(path); probeErr == nil && !plain && fileExists(path) {
+				migrationRequired = true
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"saved_mode":          saved,
+		"effective_mode":      effective,
+		"restart_required":    saved != effective,
+		"feature_available":   available,
+		"unlock_surface":      dbcrypt.UnlockSurface(),
+		"key_file_configured": b.KeyFile != "" || fileExists(filepath.Join(h.cfg.CoralDir(), dbcrypt.KeyName)),
+		"migration_required":  migrationRequired,
+		"migration_command":   "CORAL_DB_ENCRYPTION_MIGRATE=1 coral",
+	})
+}
+
+// SetDatabaseSecurity changes only the saved mode. It never accepts a
+// password/key and takes effect after a successful restart/unlock.
+func (h *SystemHandler) SetDatabaseSecurity(w http.ResponseWriter, r *http.Request) {
+	var raw map[string]json.RawMessage
+	if err := decodeJSON(r, &raw); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	for key := range raw {
+		if key != "mode" {
+			errBadRequest(w, "only mode may be configured; credentials are never accepted")
+			return
+		}
+	}
+	var mode string
+	if value, ok := raw["mode"]; !ok || json.Unmarshal(value, &mode) != nil {
+		errBadRequest(w, "mode is required")
+		return
+	}
+	if mode != "disabled" && mode != "key_file" && mode != "password" {
+		errBadRequest(w, "unsupported database encryption mode")
+		return
+	}
+	if effective := dbcrypt.EffectiveMode(); effective != "disabled" && mode != effective {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":      "changing encryption mode requires the explicit offline migration command",
+			"error_code": "migration_required",
+		})
+		return
+	}
+	current, err := dbcrypt.Load(h.cfg.CoralDir())
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	current.DatabaseEncryption = mode
+	if err := dbcrypt.Save(h.cfg.CoralDir(), current); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	h.DatabaseSecurityStatus(w, r)
 }
 
 // GetPrivacyStatus reports persisted privacy settings and the effective

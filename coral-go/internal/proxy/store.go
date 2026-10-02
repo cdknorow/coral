@@ -3,7 +3,6 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -41,15 +40,6 @@ func (s *Store) migrate() {
 		display_name TEXT,
 		created_at   TEXT NOT NULL DEFAULT '',
 		updated_at   TEXT NOT NULL DEFAULT ''
-	)`)
-
-	// Per-session proxy upstream config for universal reroute.
-	s.db.MustExec(`CREATE TABLE IF NOT EXISTS proxy_sessions (
-		session_id   TEXT PRIMARY KEY,
-		provider     TEXT NOT NULL DEFAULT 'anthropic',
-		upstream_url TEXT NOT NULL DEFAULT '',
-		aws_region   TEXT NOT NULL DEFAULT '',
-		created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
 
 	schema := `
@@ -151,61 +141,6 @@ type ProxyRequest struct {
 	UpstreamURL              *string `db:"upstream_url" json:"upstream_url,omitempty"`
 }
 
-// CreateRequest inserts a new pending proxy request.
-func (s *Store) CreateRequest(ctx context.Context, reqID, sessionID string, provider Provider, model string, streaming bool) error {
-	isStream := 0
-	if streaming {
-		isStream = 1
-	}
-
-	var agentName, agentType, boardName, displayName *string
-	var meta struct {
-		AgentName   *string `db:"agent_name"`
-		AgentType   *string `db:"agent_type"`
-		BoardName   *string `db:"board_name"`
-		DisplayName *string `db:"display_name"`
-	}
-	if err := s.db.GetContext(ctx, &meta,
-		`SELECT agent_name, agent_type, board_name, display_name FROM live_sessions WHERE session_id = ?`,
-		sessionID); err == nil {
-		agentName = meta.AgentName
-		agentType = meta.AgentType
-		boardName = meta.BoardName
-		displayName = meta.DisplayName
-	}
-
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO proxy_requests
-		 (request_id, session_id, agent_name, agent_type, board_name, display_name, provider, model_requested, model_used, is_streaming, started_at, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-		reqID, sessionID, agentName, agentType, boardName, displayName, string(provider), model, model, isStream, time.Now().UTC().Format(time.RFC3339))
-	return err
-}
-
-// CompleteRequest updates a request with final usage and status.
-func (s *Store) CompleteRequest(ctx context.Context, reqID string, usage TokenUsage, breakdown CostBreakdown, httpStatus int, status string, errMsg string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	var errPtr *string
-	if errMsg != "" {
-		errPtr = &errMsg
-	}
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE proxy_requests SET
-			input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_write_tokens = ?,
-			total_tokens = ?, input_cost_usd = ?, output_cost_usd = ?, cache_read_cost_usd = ?, cache_write_cost_usd = ?,
-			pricing_input_per_mtok = ?, pricing_output_per_mtok = ?, pricing_cache_read_per_mtok = ?, pricing_cache_write_per_mtok = ?,
-			cost_usd = ?, completed_at = ?,
-			latency_ms = (strftime('%s', ?) - strftime('%s', started_at)) * 1000,
-			status = ?, error_message = ?, http_status = ?
-		 WHERE request_id = ?`,
-		usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheWriteTokens,
-		usage.InputTokens+usage.OutputTokens+usage.CacheReadTokens+usage.CacheWriteTokens,
-		breakdown.InputCostUSD, breakdown.OutputCostUSD, breakdown.CacheReadCostUSD, breakdown.CacheWriteCostUSD,
-		breakdown.Pricing.InputPerMTok, breakdown.Pricing.OutputPerMTok, breakdown.Pricing.CacheReadPerMTok, breakdown.Pricing.CacheWritePerMTok,
-		breakdown.TotalCostUSD, now, now, status, errPtr, httpStatus, reqID)
-	return err
-}
-
 // ListRequests returns recent proxy requests with optional filtering.
 func (s *Store) ListRequests(ctx context.Context, sessionID string, limit, offset int) ([]ProxyRequest, int, error) {
 	where := "1=1"
@@ -236,12 +171,12 @@ func (s *Store) ListRequests(ctx context.Context, sessionID string, limit, offse
 
 // Stats returns aggregated cost stats for a time period.
 type StatsResult struct {
-	TotalRequests          int     `db:"total_requests" json:"total_requests"`
-	TotalCostUSD           float64 `db:"total_cost_usd" json:"total_cost_usd"`
-	TotalInputTokens       int     `db:"total_input_tokens" json:"total_input_tokens"`
-	TotalOutputTokens      int     `db:"total_output_tokens" json:"total_output_tokens"`
-	TotalCacheReadTokens   int     `db:"total_cache_read_tokens" json:"total_cache_read_tokens"`
-	TotalCacheWriteTokens  int     `db:"total_cache_write_tokens" json:"total_cache_write_tokens"`
+	TotalRequests         int     `db:"total_requests" json:"total_requests"`
+	TotalCostUSD          float64 `db:"total_cost_usd" json:"total_cost_usd"`
+	TotalInputTokens      int     `db:"total_input_tokens" json:"total_input_tokens"`
+	TotalOutputTokens     int     `db:"total_output_tokens" json:"total_output_tokens"`
+	TotalCacheReadTokens  int     `db:"total_cache_read_tokens" json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int     `db:"total_cache_write_tokens" json:"total_cache_write_tokens"`
 }
 
 // ModelStats holds per-model aggregates.
@@ -298,33 +233,6 @@ func (s *Store) GetRequestByID(ctx context.Context, requestID string) (*ProxyReq
 		return nil, err
 	}
 	return &req, nil
-}
-
-// SessionUpstream holds the per-session upstream proxy config.
-type SessionUpstream struct {
-	SessionID   string `db:"session_id" json:"session_id"`
-	Provider    string `db:"provider" json:"provider"`
-	UpstreamURL string `db:"upstream_url" json:"upstream_url"`
-	AWSRegion   string `db:"aws_region" json:"aws_region"`
-}
-
-// SetSessionUpstream stores the upstream config for a proxy session.
-func (s *Store) SetSessionUpstream(ctx context.Context, sessionID, provider, upstreamURL string) error {
-	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO proxy_sessions (session_id, provider, upstream_url)
-		 VALUES (?, ?, ?)`,
-		sessionID, provider, upstreamURL)
-	return err
-}
-
-// GetSessionUpstream retrieves the upstream config for a proxy session.
-func (s *Store) GetSessionUpstream(ctx context.Context, sessionID string) (*SessionUpstream, error) {
-	var u SessionUpstream
-	err := s.db.GetContext(ctx, &u, "SELECT session_id, provider, upstream_url, aws_region FROM proxy_sessions WHERE session_id = ?", sessionID)
-	if err != nil {
-		return nil, err
-	}
-	return &u, nil
 }
 
 // AgentStats holds per-agent (session) aggregates.

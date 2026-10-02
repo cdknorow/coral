@@ -3,7 +3,6 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -219,23 +218,8 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		for _, kv := range CoralEnv(params) {
 			envMap[kv[0]] = kv[1]
 		}
-		if params.ProxyBaseURL != "" {
-			// Override the appropriate base URL env var based on detected provider.
-			// This reroutes the Claude agent through our proxy regardless of provider.
-			// Note: Claude CLI only uses Anthropic providers (direct, Bedrock, Vertex).
-			// OpenAI/Codex agents handle their own proxy URL override separately.
-			switch params.UpstreamProvider {
-			case "bedrock":
-				envMap["ANTHROPIC_BEDROCK_BASE_URL"] = params.ProxyBaseURL
-			case "vertex":
-				envMap["ANTHROPIC_VERTEX_BASE_URL"] = params.ProxyBaseURL
-			default:
-				envMap["ANTHROPIC_BASE_URL"] = params.ProxyBaseURL
-			}
-		}
 		merged["env"] = envMap
 	}
-
 	// Add Coral tools dir to PATH in env settings so that coral-board,
 	// coral hooks, etc. can be found by Claude CLI and its subprocesses.
 	if macosDir := CoralToolsDir(); macosDir != "" {
@@ -488,93 +472,6 @@ func hookEntryExists(groups []interface{}, command string) bool {
 		}
 	}
 	return false
-}
-
-// BuildMergedSettingsForDetection returns the deep-merged env map from user settings files.
-// This is used by the launcher to detect the upstream provider before building the full
-// launch command.
-func BuildMergedSettingsForDetection(workingDir string) map[string]interface{} {
-	home, _ := os.UserHomeDir()
-	homeClaude := filepath.Join(home, ".claude")
-
-	global := readSettingsFile(filepath.Join(homeClaude, "settings.json"))
-	var project, local map[string]interface{}
-	if workingDir != "" {
-		project = readSettingsFile(filepath.Join(workingDir, ".claude", "settings.json"))
-		local = readSettingsFile(filepath.Join(workingDir, ".claude", "settings.local.json"))
-	}
-
-	// Deep-merge env maps
-	mergedEnv := make(map[string]interface{})
-	for _, source := range []map[string]interface{}{global, project, local} {
-		if env, ok := source["env"].(map[string]interface{}); ok {
-			for k, v := range env {
-				mergedEnv[k] = v
-			}
-		}
-	}
-	return mergedEnv
-}
-
-// UpstreamInfo holds the detected upstream provider and URL for proxy rerouting.
-type UpstreamInfo struct {
-	Provider    string // "anthropic", "bedrock", "vertex", "openai"
-	UpstreamURL string // real endpoint before proxy override
-}
-
-// DetectUpstreamURL inspects the merged env block and OS env vars to determine
-// which upstream LLM provider the agent is configured to use. Returns the
-// provider type and the real upstream URL.
-//
-// Detection priority: merged settings env > OS env > defaults.
-// Check order: Bedrock (most specific) > Vertex > Direct Anthropic > OpenAI > default.
-func DetectUpstreamURL(mergedEnv map[string]interface{}) UpstreamInfo {
-	// Check for Bedrock first (more specific)
-	if url := envOrOS(mergedEnv, "ANTHROPIC_BEDROCK_BASE_URL"); url != "" {
-		return UpstreamInfo{Provider: "bedrock", UpstreamURL: url}
-	}
-	if envOrOS(mergedEnv, "CLAUDE_CODE_USE_BEDROCK") == "1" {
-		region := envOrOS(mergedEnv, "AWS_REGION")
-		if region == "" {
-			region = "us-east-1"
-		}
-		return UpstreamInfo{
-			Provider:    "bedrock",
-			UpstreamURL: fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com", region),
-		}
-	}
-
-	// Check for Vertex AI
-	if url := envOrOS(mergedEnv, "ANTHROPIC_VERTEX_BASE_URL"); url != "" {
-		return UpstreamInfo{Provider: "vertex", UpstreamURL: url}
-	}
-	if envOrOS(mergedEnv, "CLAUDE_CODE_USE_VERTEX") == "1" {
-		// Vertex default URL requires project/location, use placeholder
-		return UpstreamInfo{Provider: "vertex", UpstreamURL: ""}
-	}
-
-	// Direct Anthropic (custom base URL)
-	if url := envOrOS(mergedEnv, "ANTHROPIC_BASE_URL"); url != "" {
-		return UpstreamInfo{Provider: "anthropic", UpstreamURL: url}
-	}
-
-	// OpenAI
-	if url := envOrOS(mergedEnv, "OPENAI_BASE_URL"); url != "" {
-		return UpstreamInfo{Provider: "openai", UpstreamURL: url}
-	}
-
-	// Default: direct Anthropic API
-	return UpstreamInfo{Provider: "anthropic", UpstreamURL: "https://api.anthropic.com"}
-}
-
-// envOrOS checks the merged env map first, then falls back to os.Getenv().
-func envOrOS(mergedEnv map[string]interface{}, key string) string {
-	if v, ok := mergedEnv[key]; ok {
-		if s, ok := v.(string); ok && s != "" {
-			return s
-		}
-	}
-	return os.Getenv(key)
 }
 
 func copyDir(src, dst string) {

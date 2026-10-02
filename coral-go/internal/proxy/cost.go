@@ -6,6 +6,18 @@ import (
 	"strings"
 )
 
+// Provider identifies the historical provider label stored in proxy_requests.
+// The interception implementation is retired; this type remains solely for
+// decoding and aggregating legacy accounting rows.
+type Provider string
+
+const (
+	ProviderAnthropic Provider = "anthropic"
+	ProviderOpenAI    Provider = "openai"
+	ProviderGoogle    Provider = "google"
+	ProviderBedrock   Provider = "bedrock"
+)
+
 // ModelPricing holds per-million-token pricing and context window for a model.
 type ModelPricing struct {
 	InputPerMTok      float64 // $ per 1M input tokens

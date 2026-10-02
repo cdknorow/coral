@@ -2,6 +2,11 @@
 BINDIR ?= bin
 CMD_PACKAGES := ./cmd/...
 
+# SQLCipher's bundled codec uses OpenSSL. Override these for a non-Homebrew
+# toolchain (Linux CI supplies system libssl-dev).
+OPENSSL_PREFIX ?= $(shell brew --prefix openssl@3 2>/dev/null)
+CGO_OPENSSL_FLAGS := $(if $(OPENSSL_PREFIX),CGO_CFLAGS="-I$(OPENSSL_PREFIX)/include" CGO_LDFLAGS="-L$(OPENSSL_PREFIX)/lib")
+
 # Sync agent_docs to the static embed dir before any build
 .PHONY: sync-docs
 sync-docs:
@@ -11,13 +16,13 @@ sync-docs:
 .PHONY: dev
 dev: sync-docs
 	@mkdir -p $(BINDIR)
-	go build -tags dev -o $(BINDIR)/ $(CMD_PACKAGES)
+	$(CGO_OPENSSL_FLAGS) go build -tags "dev fts5" -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Production build
 .PHONY: build
 build: sync-docs
 	@mkdir -p $(BINDIR)
-	go build -o $(BINDIR)/ $(CMD_PACKAGES)
+	$(CGO_OPENSSL_FLAGS) go build -tags fts5 -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Dev build + run
 .PHONY: run
@@ -33,6 +38,7 @@ test-server: dev
 .PHONY: test
 test: sync-docs
 	go test ./...
+	$(CGO_OPENSSL_FLAGS) go test -tags fts5 ./...
 
 # End-to-end frontend tests (headless Chrome + CDP). Requires node + Chrome.
 .PHONY: test-frontend

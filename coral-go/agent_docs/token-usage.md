@@ -1,6 +1,6 @@
 # Token Usage API
 
-Read token and cost records captured by Coral's hooks and local LLM proxy.
+Read token and cost records captured by Coral's agent usage hooks.
 
 ## Endpoints
 

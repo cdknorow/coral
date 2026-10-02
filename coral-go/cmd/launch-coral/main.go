@@ -16,6 +16,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"golang.org/x/term"
 	"log"
 	"os"
 	"os/exec"
@@ -219,6 +220,13 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 func startWebServer(ctx context.Context, cfg *config.Config) {
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType: "tmux",
+		PasswordPrompt: func() (string, error) {
+			fmt.Fprint(os.Stderr, "Coral database password: ")
+			value, promptErr := term.ReadPassword(int(syscall.Stdin))
+			fmt.Fprintln(os.Stderr)
+			return string(value), promptErr
+		},
+		UnlockSurface: "tty",
 	})
 	if err != nil {
 		log.Fatalf("Failed to start: %v", err)
@@ -300,4 +308,3 @@ end tell`, attachCmd, title)
 		fmt.Printf("  [~] No supported terminal emulator found (use: %s)\n", attachCmd)
 	}
 }
-

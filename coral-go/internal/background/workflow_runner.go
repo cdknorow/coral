@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
-	"github.com/cdknorow/coral/internal/oauth"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -40,27 +39,27 @@ type StepDef struct {
 
 // AgentStepConfig holds the agent configuration for an agent step.
 type AgentStepConfig struct {
-	AgentType    string            `json:"agent_type,omitempty"`
-	Model        string            `json:"model,omitempty"`
-	Capabilities json.RawMessage   `json:"capabilities,omitempty"`
-	Tools        []string          `json:"tools,omitempty"`
-	MCPServers   json.RawMessage   `json:"mcpServers,omitempty"`
-	Flags        []string          `json:"flags,omitempty"`
+	AgentType    string          `json:"agent_type,omitempty"`
+	Model        string          `json:"model,omitempty"`
+	Capabilities json.RawMessage `json:"capabilities,omitempty"`
+	Tools        []string        `json:"tools,omitempty"`
+	MCPServers   json.RawMessage `json:"mcpServers,omitempty"`
+	Flags        []string        `json:"flags,omitempty"`
 }
 
 // StepResult tracks the outcome of a single step execution.
 type StepResult struct {
-	Index       int     `json:"index"`
-	Name        string  `json:"name"`
-	Type        string  `json:"type"`
-	Status      string  `json:"status"` // pending, running, completed, failed, skipped
-	ExitCode    *int    `json:"exit_code,omitempty"`
-	OutputTail  string  `json:"output_tail,omitempty"`
-	SessionID   string  `json:"session_id,omitempty"`
-	SessionName string  `json:"session_name,omitempty"`
+	Index       int      `json:"index"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Status      string   `json:"status"` // pending, running, completed, failed, skipped
+	ExitCode    *int     `json:"exit_code,omitempty"`
+	OutputTail  string   `json:"output_tail,omitempty"`
+	SessionID   string   `json:"session_id,omitempty"`
+	SessionName string   `json:"session_name,omitempty"`
 	Files       []string `json:"files"`
-	StartedAt   *string `json:"started_at,omitempty"`
-	FinishedAt  *string `json:"finished_at,omitempty"`
+	StartedAt   *string  `json:"started_at,omitempty"`
+	FinishedAt  *string  `json:"finished_at,omitempty"`
 }
 
 // activeChild tracks the currently executing process or session for kill dispatch.
@@ -80,24 +79,18 @@ type WorkflowRunner struct {
 	host     string // Server host for CORAL_HOST env var
 	port     int    // Server port for CORAL_PORT env var
 
-	// Connected Apps token injection
-	connApps *store.ConnectedAppStore
-	flow     *oauth.FlowManager
-
 	// mu protects activeChildren and runCancels
 	mu             sync.Mutex
-	activeChildren map[int64]*activeChild    // runID -> active child
+	activeChildren map[int64]*activeChild       // runID -> active child
 	runCancels     map[int64]context.CancelFunc // runID -> cancel func
 }
 
 // NewWorkflowRunner creates a new WorkflowRunner.
-func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, runtime AgentRuntime, connApps *store.ConnectedAppStore, flow *oauth.FlowManager, dataDir, host string, port int) *WorkflowRunner {
+func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, runtime AgentRuntime, _ any, _ any, dataDir, host string, port int) *WorkflowRunner {
 	return &WorkflowRunner{
 		store:          wfStore,
 		launcher:       launcher,
 		runtime:        runtime,
-		connApps:       connApps,
-		flow:           flow,
 		dataDir:        dataDir,
 		host:           host,
 		port:           port,
@@ -267,13 +260,17 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		// Build environment variables
 		env := wr.buildStepEnv(workflow, runID, runDir, i, stepDir, len(steps), steps)
 
-		// Inject Connected Apps tokens for steps with connections
+		// Connected Apps and workflow token injection are retired. Preserve the
+		// workflow JSON, but fail this legacy step before execution so it cannot
+		// silently run without the credentials it declared.
 		if len(step.Connections) > 0 {
-			tokenEnv, err := wr.resolveConnectionTokens(ctx, step.Connections)
-			if err != nil {
-				wr.logger.Warn("failed to resolve connection tokens", "step", step.Name, "error", err)
-			}
-			env = append(env, tokenEnv...)
+			err := fmt.Errorf("workflow step %q requires retired Connected Apps credentials; remove its connections before running", step.Name)
+			errMsg := err.Error()
+			wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
+			results[i].Status = "failed"
+			results[i].OutputTail = err.Error()
+			wr.persistResults(ctx, runID, i, results)
+			return
 		}
 
 		// Mark step as running
@@ -760,10 +757,10 @@ var templatePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 // envKeyForTemplate maps template variable names to their environment variable equivalents.
 var envKeyForTemplate = map[string]string{
-	"run_dir":     "CORAL_WORKFLOW_RUN_DIR",
-	"run_id":      "CORAL_WORKFLOW_RUN_ID",
-	"step_dir":    "CORAL_WORKFLOW_STEP_DIR",
-	"prev_dir":    "CORAL_PREV_DIR",
+	"run_dir":               "CORAL_WORKFLOW_RUN_DIR",
+	"run_id":                "CORAL_WORKFLOW_RUN_ID",
+	"step_dir":              "CORAL_WORKFLOW_STEP_DIR",
+	"prev_dir":              "CORAL_PREV_DIR",
 	"prev_stdout":           "CORAL_PREV_STDOUT",
 	"prev_stderr":           "CORAL_PREV_STDERR",
 	"prev_artifact":         "CORAL_PREV_ARTIFACT",
@@ -943,45 +940,6 @@ func (wr *WorkflowRunner) IsRunActive(runID int64) bool {
 	return ok
 }
 
-// resolveConnectionTokens looks up connected apps by name, auto-refreshes tokens,
-// and returns CORAL_TOKEN_<NAME> environment variables for injection into steps.
-func (wr *WorkflowRunner) resolveConnectionTokens(ctx context.Context, connections []string) ([]string, error) {
-	if wr.connApps == nil || wr.flow == nil {
-		return nil, fmt.Errorf("connected apps not configured")
-	}
-
-	var env []string
-	var firstErr error
-	for _, connName := range connections {
-		app, err := wr.connApps.GetByName(ctx, connName)
-		if err != nil || app == nil {
-			wr.logger.Warn("connection not found", "name", connName)
-			if firstErr == nil {
-				firstErr = fmt.Errorf("connection %q not found", connName)
-			}
-			continue
-		}
-
-		refreshFn := wr.flow.BuildRefreshFn(app.ProviderID)
-		token, err := wr.connApps.GetFreshToken(ctx, app.ID, refreshFn)
-		if err != nil {
-			wr.logger.Warn("failed to get token for connection", "name", connName, "error", err)
-			if firstErr == nil {
-				firstErr = fmt.Errorf("failed to get token for %q: %w", connName, err)
-			}
-			continue
-		}
-
-		// Convert to env var: CORAL_TOKEN_{PROVIDER}_{NAME} — uppercase, spaces → underscores
-		providerPart := strings.ToUpper(strings.ReplaceAll(app.ProviderID, "-", "_"))
-		namePart := strings.ToUpper(strings.ReplaceAll(connName, " ", "_"))
-		envName := "CORAL_TOKEN_" + providerPart + "_" + namePart
-		env = append(env, envName+"="+token)
-	}
-
-	return env, firstErr
-}
-
 // parseStepHooks unmarshals the hooks JSON from a step definition.
 func parseStepHooks(raw json.RawMessage) map[string]interface{} {
 	if raw == nil {
@@ -996,11 +954,11 @@ func parseStepHooks(raw json.RawMessage) map[string]interface{} {
 
 // claudeNativeEvents are hook events that Claude Code handles natively via settings.json.
 var claudeNativeEvents = map[string]bool{
-	"PreToolUse":    true,
-	"PostToolUse":   true,
-	"Stop":          true,
-	"Notification":  true,
-	"SubagentStop":  true,
+	"PreToolUse":   true,
+	"PostToolUse":  true,
+	"Stop":         true,
+	"Notification": true,
+	"SubagentStop": true,
 }
 
 // filterHooksForClaude returns only Claude-native events from the hooks map.
@@ -1061,4 +1019,3 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 		}
 	}
 }
-

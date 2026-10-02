@@ -3,14 +3,27 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
+	_ "github.com/0xCarbon/go-sqlite3"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
+
+func encryptedKeyHex(key string) string {
+	if strings.HasPrefix(key, "rawhex:") {
+		return strings.TrimPrefix(key, "rawhex:")
+	}
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
 
 // DB wraps an sqlx.DB with schema management and migration support.
 type DB struct {
@@ -21,17 +34,42 @@ type DB struct {
 // Open creates a new DB connection to the given SQLite path.
 // It ensures the parent directory exists, sets WAL mode, and runs migrations.
 func Open(dbPath string) (*DB, error) {
-	return OpenWithContext(context.Background(), dbPath)
+	return OpenWithKey(context.Background(), dbPath, "")
+}
+
+// OpenWithKey opens a plaintext database when key is empty, or a SQLCipher
+// database when key is present. The caller must resolve the key before this
+// function is called so no startup path can silently fall back to plaintext.
+func OpenWithKey(ctx context.Context, dbPath, key string) (*DB, error) {
+	return openWithDriver(ctx, dbPath, key)
 }
 
 // OpenWithContext creates a new DB connection with context support.
 func OpenWithContext(ctx context.Context, dbPath string) (*DB, error) {
+	return OpenWithKey(ctx, dbPath, "")
+}
+
+func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 	dir := filepath.Dir(dbPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	db, err := sqlx.Open("sqlite", dbPath+"?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)")
+	driver := "sqlite"
+	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)"
+	if key != "" {
+		driver = "sqlite3"
+		q := url.Values{}
+		q.Set("_key", encryptedKeyHex(key))
+		q.Set("_pragma_busy_timeout", "30000")
+		q.Set("_pragma_journal_mode", "WAL")
+		q.Set("_pragma_foreign_keys", "1")
+		q.Set("_pragma_synchronous", "NORMAL")
+		q.Set("_pragma_temp_store", "MEMORY")
+		q.Set("_pragma_cache_size", "-8000")
+		dsn = dbPath + "?" + q.Encode()
+	}
+	db, err := sqlx.Open(driver, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}

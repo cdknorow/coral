@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -219,27 +218,6 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	for _, kv := range CoralEnv(params) {
 		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
 	}
-	// Route LLM traffic through the Coral MITM proxy for transparent cost tracking.
-	// HTTPS_PROXY must be exported BEFORE the binary (it's an env var, not a flag).
-	if params.ProxyBaseURL != "" {
-		proxyHost := extractProxyHost(params.ProxyBaseURL)
-		if proxyHost != "" {
-			parts = append(parts, fmt.Sprintf(`export HTTPS_PROXY='%s' &&`, proxyHost))
-		}
-		// Point SSL_CERT_FILE to a combined bundle (system CAs + Coral MITM CA)
-		// so the Rust HTTP client trusts our dynamically generated certs.
-		coralDir := params.CoralDir
-		if coralDir == "" {
-			if home, err := os.UserHomeDir(); err == nil {
-				coralDir = filepath.Join(home, ".coral")
-			}
-		}
-		if coralDir != "" {
-			bundlePath := filepath.Join(coralDir, "proxy-ca-bundle.pem")
-			parts = append(parts, fmt.Sprintf(`export SSL_CERT_FILE='%s' &&`, bundlePath))
-		}
-	}
-
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
 	// Binary and resume
@@ -247,16 +225,6 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, bin, "resume", params.ResumeSessionID)
 	} else {
 		parts = append(parts, bin)
-	}
-
-	// Codex -c flags for MITM proxy (must come AFTER the binary)
-	if params.ProxyBaseURL != "" {
-		// Also set base URL for non-CONNECT fallback (direct HTTP proxy mode)
-		if isCodexOAuthMode() {
-			parts = append(parts, fmt.Sprintf(`-c chatgpt_base_url="%s"`, sanitizeURL(params.ProxyBaseURL)))
-		} else {
-			parts = append(parts, fmt.Sprintf(`-c openai_base_url="%s"`, sanitizeURL(params.ProxyBaseURL)))
-		}
 	}
 
 	// System prompt injection via -c developer_instructions
@@ -447,34 +415,4 @@ func appendCodexPermissionMode(parts []string, bypassSandbox bool, mode string) 
 		slog.Warn("dropping unsupported permission mode for Codex agent", "mode", mode)
 		return parts, bypassSandbox, false
 	}
-}
-
-// isCodexOAuthMode checks if the Codex CLI is configured to use ChatGPT OAuth
-// auth (as opposed to an API key). Reads ~/.codex/auth.json and checks auth_mode.
-func isCodexOAuthMode() bool {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return false
-	}
-	data, err := os.ReadFile(filepath.Join(home, ".codex", "auth.json"))
-	if err != nil {
-		return false
-	}
-	var auth struct {
-		AuthMode string `json:"auth_mode"`
-	}
-	if err := json.Unmarshal(data, &auth); err != nil {
-		return false
-	}
-	return auth.AuthMode == "chatgpt"
-}
-
-// extractProxyHost extracts the scheme://host:port from a proxy URL.
-// e.g. "http://127.0.0.1:8420/proxy/abc" → "http://127.0.0.1:8420"
-func extractProxyHost(proxyURL string) string {
-	u, err := url.Parse(proxyURL)
-	if err != nil {
-		return ""
-	}
-	return fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 }

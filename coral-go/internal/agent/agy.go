@@ -275,11 +275,6 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 	for _, kv := range CoralEnv(params) {
 		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
 	}
-	if params.ProxyBaseURL != "" {
-		parts = append(parts, fmt.Sprintf(`export GOOGLE_GEMINI_BASE_URL='%s' &&`, sanitizeURL(params.ProxyBaseURL)))
-		parts = append(parts, fmt.Sprintf(`export GEMINI_API_BASE='%s' &&`, sanitizeURL(params.ProxyBaseURL)))
-	}
-
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
 	parts = append(parts, bin)

@@ -115,7 +115,7 @@ mkdir -p "$REPO_PATH"
 
 log "Building coral (dev mode)..."
 cd "$CORAL_DIR"
-go build -tags dev -o "$TMPDIR_WF/coral" ./cmd/coral/
+go build -tags "dev fts5" -o "$TMPDIR_WF/coral" ./cmd/coral/
 
 log "Starting coral server on port $PORT..."
 "$TMPDIR_WF/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_WF/server.log" 2>&1 &

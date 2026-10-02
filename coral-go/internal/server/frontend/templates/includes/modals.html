@@ -460,8 +460,6 @@
                     <dd id="info-git-branch"></dd>
                     <dt>Latest Commit</dt>
                     <dd id="info-git-commit"></dd>
-                    <dt id="info-tokens-label" style="display:none">Token Usage</dt>
-                    <dd id="info-tokens" class="info-token-panel" style="display:none"></dd>
                     <dt id="info-prompt-label" style="display:none">Prompt</dt>
                     <dd id="info-prompt" class="info-text-block" style="display:none"></dd>
                     <dt id="info-board-label" style="display:none">Message Board</dt>
@@ -588,6 +586,16 @@
                     <input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status">
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
+                <dt>Database encryption</dt>
+                <dd>
+                    <select id="settings-database-encryption" class="settings-select" aria-describedby="settings-database-encryption-status">
+                        <option value="disabled">Disabled (existing plaintext database)</option>
+                        <option value="key_file">Local key file (~/.coral/.db_key)</option>
+                        <option value="password">Password at startup</option>
+                    </select>
+                    <div id="settings-database-encryption-status" class="settings-hint" role="status">Loading encryption status…</div>
+                    <div class="settings-hint settings-database-encryption-warning">Applies after restart. Coral never stores a database password in browser storage, URLs, logs, or ordinary settings.</div>
+                </dd>
                 <dt>CLI Paths</dt>
                 <dd class="settings-cli-paths">
                     <label class="settings-cli-row">
@@ -648,18 +656,6 @@
                             <span class="toggle-desc">Keeps related agents grouped together in the sidebar</span>
                         </span>
                     </label>
-                </dd>
-                <dt>API Proxy</dt>
-                <dd>
-                    <label class="settings-toggle">
-                        <input type="checkbox" id="settings-proxy-enabled">
-                        <span>
-                            <strong>LLM Proxy (Claude)</strong>
-                            <span class="toggle-desc">Route Claude API calls through Coral for token cost tracking and usage monitoring</span>
-                        </span>
-                    </label>
-                    <!-- Hidden: Codex MITM proxy not yet working reliably (see specs/CODEX_PROXY_COST_TRACKING) -->
-                    <input type="hidden" id="settings-proxy-enabled-codex">
                 </dd>
                 <dt>Terminal Font Size</dt>
                 <dd>

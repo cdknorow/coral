@@ -65,7 +65,7 @@ mkdir -p "$CORAL_DATA_DIR"
 
 log "Building coral (dev mode) and mock-agent..."
 cd "$CORAL_DIR"
-go build -tags dev -o "$TMPDIR_TEAMS/coral" ./cmd/coral/
+go build -tags "dev fts5" -o "$TMPDIR_TEAMS/coral" ./cmd/coral/
 go build -o "$TMPDIR_TEAMS/mock-agent" ./cmd/mock-agent/
 
 # Create a temp git repo with an initial commit

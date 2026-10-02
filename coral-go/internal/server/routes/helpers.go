@@ -100,19 +100,6 @@ func promptOverrides(settings map[string]string) map[string]string {
 	}
 }
 
-// isProxyEnabledForAgent checks per-agent-type proxy settings.
-// Codex uses "proxy_enabled_codex" (default: false).
-// Claude and others use "proxy_enabled_claude", falling back to "proxy_enabled".
-func isProxyEnabledForAgent(settings map[string]string, agentType string) bool {
-	if agentType == "codex" {
-		return strings.EqualFold(settings["proxy_enabled_codex"], "true")
-	}
-	if v, ok := settings["proxy_enabled_claude"]; ok {
-		return strings.EqualFold(v, "true")
-	}
-	return strings.EqualFold(settings["proxy_enabled"], "true")
-}
-
 // emptyIfNil returns s unchanged when non-nil, or an empty slice of the same
 // type when nil. This ensures JSON encodes as [] instead of null.
 func emptyIfNil[T any](s []T) []T {

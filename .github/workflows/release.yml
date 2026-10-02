@@ -20,6 +20,9 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
 
+      - name: Install SQLCipher build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev patchelf
+
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
 
@@ -30,23 +33,34 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
-          BUILD_TAGS=""
+          BUILD_TAGS="-tags fts5"
           if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then
-            BUILD_TAGS="-tags dropboxers"
+            BUILD_TAGS="-tags fts5,dropboxers"
           elif [[ "$GITHUB_REF_NAME" == *"-beta"* ]]; then
-            BUILD_TAGS="-tags beta"
+            BUILD_TAGS="-tags fts5,beta"
           elif [[ "$GITHUB_REF_NAME" == *"-dev"* ]]; then
-            BUILD_TAGS="-tags dev"
+            BUILD_TAGS="-tags fts5,dev"
           fi
           mkdir -p ../dist/linux
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             [ -d "./cmd/$cmd" ] || continue
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
               $BUILD_TAGS \
               -ldflags "$LDFLAGS" \
               -o "../dist/linux/$cmd" \
               "./cmd/$cmd/"
           done
+          SOURCE_LIB="$(ldconfig -p | awk '/libcrypto\.so\.3/{print $NF; exit}')"
+          cp "$SOURCE_LIB" ../dist/linux/libcrypto.so.3
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/linux/
+          cp -R ../licenses ../dist/linux/
+          for binary in ../dist/linux/*; do [ -x "$binary" ] && patchelf --set-rpath '$ORIGIN' "$binary" || true; done
+          HASH="$(sha256sum ../dist/linux/libcrypto.so.3 | awk '{print $1}')"
+          PKG="$(dpkg-query -S "$(readlink -f "$SOURCE_LIB")" 2>/dev/null | cut -d: -f1 || true)"
+          VER="$(dpkg-query -W -f='\${Version}' libssl3 2>/dev/null || true)"
+          printf 'platform=linux\nvendor=ubuntu\npackage=%s\nversion=%s\nlibrary_sha256=%s\n' "$PKG" "$VER" "$HASH" > ../dist/linux/openssl-attestation.env
+          tests/release/verify_openssl_attestation.sh ../dist/linux/openssl-attestation.env ../dist/linux/libcrypto.so.3
+          OPENSSL_PREFIX=/usr tests/release/verify_encrypted_bundle.sh ../dist/linux
 
       - name: Create tarball
         run: |
@@ -72,8 +86,8 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
 
-      - name: Install MinGW (for CGO builds)
-        run: choco install mingw -y
+      - name: Install SQLCipher build dependencies
+        run: choco install mingw openssl.light -y
 
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
@@ -87,19 +101,19 @@ jobs:
           $env:GOARCH = "amd64"
           $version = "${{ github.ref_name }}" -replace "^v", ""
           $ldflags = "-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=$env:POSTHOG_PROJECT_KEY -X github.com/cdknorow/coral/internal/config.Version=$version"
-          $buildTags = ""
+          $buildTags = "-tags fts5"
           if ("${{ github.ref_name }}" -match "-forDropbox") {
-            $buildTags = "-tags dropboxers"
+            $buildTags = "-tags fts5,dropboxers"
           } elseif ("${{ github.ref_name }}" -match "-beta") {
-            $buildTags = "-tags beta"
+            $buildTags = "-tags fts5,beta"
           } elseif ("${{ github.ref_name }}" -match "-dev") {
-            $buildTags = "-tags dev"
+            $buildTags = "-tags fts5,dev"
           }
           New-Item -ItemType Directory -Force -Path ..\dist\windows\bin | Out-Null
 
           # Pure Go binaries (no CGO)
-          $env:CGO_ENABLED = "0"
-          foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-task-sync")) {
+          $env:CGO_ENABLED = "1"
+          foreach ($cmd in @("coral", "launch-coral", "coral-board", "coral-agent", "coral-hook-agentic-state", "coral-hook-message-check", "coral-hook-session-start", "coral-hook-task-sync")) {
             if (Test-Path "./cmd/$cmd") {
               go build $buildTags -ldflags "$ldflags" -o "..\dist\windows\bin\$cmd.exe" "./cmd/$cmd/"
             }
@@ -111,6 +125,15 @@ jobs:
           $webviewTags = if ($buildTags) { "-tags webview,$($buildTags -replace '-tags ','')" } else { "-tags webview" }
           go build $buildTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-tray.exe" "./cmd/coral-tray/"
           go build $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
+          Copy-Item "C:\Program Files\OpenSSL-Win64\bin\libcrypto-3-x64.dll" "..\dist\windows\bin\libcrypto-3-x64.dll"
+          Copy-Item "..\THIRD_PARTY_NOTICES_SQLCIPHER.md" "..\dist\windows\bin\THIRD_PARTY_NOTICES_SQLCIPHER.md"
+          Copy-Item "..\licenses" "..\dist\windows\bin\licenses" -Recurse
+          $hash = (Get-FileHash ..\dist\windows\bin\libcrypto-3-x64.dll -Algorithm SHA256).Hash.ToLower()
+          $opensslVersion = (& "C:\Program Files\OpenSSL-Win64\bin\openssl.exe" version | Select-Object -First 1) -replace '^OpenSSL\s+', '' -replace '\s.*$', ''
+          @("platform=windows", "vendor=chocolatey", "package=openssl.light", "version=$opensslVersion", "library_sha256=$hash") | Set-Content ..\dist\windows\bin\openssl-attestation.env
+          bash ..\tests\release\verify_openssl_attestation.sh ..\dist\windows\bin\openssl-attestation.env ..\dist\windows\bin\libcrypto-3-x64.dll
+          if ($LASTEXITCODE -ne 0) { throw "OpenSSL policy rejected the copied library" }
+          powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_encrypted_bundle.ps1 -PackageDir ..\dist\windows\bin
 
       - name: Import signing certificate
         if: env.WINDOWS_CERTIFICATE != ''
@@ -190,6 +213,17 @@ jobs:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
 
+      - name: Install SQLCipher build dependencies
+        run: |
+          brew install openssl@3
+          if [ "$(uname -m)" = "arm64" ]; then
+            test -x "$(arch -x86_64 /usr/bin/which brew)"
+            arch -x86_64 brew install openssl@3
+          else
+            test "$(uname -m)" = "x86_64"
+            arch -arm64 brew install openssl@3
+          fi
+
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
 
@@ -198,21 +232,25 @@ jobs:
         env:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
         run: |
+          ARM_OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+          X86_OPENSSL_PREFIX="$(arch -x86_64 brew --prefix openssl@3)"
+          test -f "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
+          test -f "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
-          BUILD_TAGS=""
+          BUILD_TAGS="-tags fts5"
           if [[ "$GITHUB_REF_NAME" == *"-forDropbox"* ]]; then
-            BUILD_TAGS="-tags dropboxers"
+            BUILD_TAGS="-tags fts5,dropboxers"
           elif [[ "$GITHUB_REF_NAME" == *"-beta"* ]]; then
-            BUILD_TAGS="-tags beta"
+            BUILD_TAGS="-tags fts5,beta"
           elif [[ "$GITHUB_REF_NAME" == *"-dev"* ]]; then
-            BUILD_TAGS="-tags dev"
+            BUILD_TAGS="-tags fts5,dev"
           fi
           mkdir -p ../dist/macos
           # Pure Go binaries (no CGO needed)
-          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-task-sync; do
-            CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-arm64" "./cmd/$cmd/"
-            CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-amd64" "./cmd/$cmd/"
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+            CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-arm64" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${X86_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${X86_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build $BUILD_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-amd64" "./cmd/$cmd/"
             lipo -create -output "../dist/macos/$cmd" "../dist/macos/${cmd}-arm64" "../dist/macos/${cmd}-amd64"
             rm "../dist/macos/${cmd}-arm64" "../dist/macos/${cmd}-amd64"
           done
@@ -224,11 +262,29 @@ jobs:
             WEBVIEW_TAGS="-tags webview,${TIER_TAG}"
           fi
           for cmd in coral-tray coral-app; do
-            CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-arm64" "./cmd/$cmd/"
-            CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-amd64" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${ARM_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${ARM_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=arm64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-arm64" "./cmd/$cmd/"
+            CGO_ENABLED=1 CGO_CFLAGS="-I${X86_OPENSSL_PREFIX}/include" CGO_LDFLAGS="-L${X86_OPENSSL_PREFIX}/lib" GOOS=darwin GOARCH=amd64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos/${cmd}-amd64" "./cmd/$cmd/"
             lipo -create -output "../dist/macos/$cmd" "../dist/macos/${cmd}-arm64" "../dist/macos/${cmd}-amd64"
             rm "../dist/macos/${cmd}-arm64" "../dist/macos/${cmd}-amd64"
           done
+          lipo -create -output ../dist/macos/libcrypto.3.dylib "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
+          cp ../THIRD_PARTY_NOTICES_SQLCIPHER.md ../dist/macos/
+          cp -R ../licenses ../dist/macos/
+          for binary in ../dist/macos/*; do
+            [ -f "$binary" ] || continue
+            install_name_tool -change "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -change "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" '@rpath/libcrypto.3.dylib' "$binary" || true
+            install_name_tool -add_rpath '@loader_path' "$binary"
+          done
+          VERSION="$("${ARM_OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}')"
+          ARM_VERSION="$VERSION"
+          X86_VERSION="$(arch -x86_64 "${X86_OPENSSL_PREFIX}/bin/openssl" version | awk '{print $2}')"
+          COMBINED_HASH="$(shasum -a 256 ../dist/macos/libcrypto.3.dylib | awk '{print $1}')"
+          ARM_HASH="$(shasum -a 256 "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" | awk '{print $1}')"
+          X86_HASH="$(arch -x86_64 shasum -a 256 "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" | awk '{print $1}')"
+          printf 'platform=macos\nvendor=homebrew\npackage=openssl@3\nversion=%s\nslice_arm64_version=%s\nslice_x86_64_version=%s\nlibrary_sha256=%s\nslice_arm64_sha256=%s\nslice_x86_64_sha256=%s\ncombined_sha256=%s\n' "$VERSION" "$ARM_VERSION" "$X86_VERSION" "$COMBINED_HASH" "$ARM_HASH" "$X86_HASH" "$COMBINED_HASH" > ../dist/macos/openssl-attestation.env
+          tests/release/verify_openssl_attestation.sh ../dist/macos/openssl-attestation.env ../dist/macos/libcrypto.3.dylib "${ARM_OPENSSL_PREFIX}/lib/libcrypto.3.dylib" "${X86_OPENSSL_PREFIX}/lib/libcrypto.3.dylib"
+          OPENSSL_PREFIX="${ARM_OPENSSL_PREFIX}" tests/release/verify_encrypted_bundle.sh ../dist/macos
 
       - name: Copy .icns icon
         run: |
@@ -252,12 +308,14 @@ jobs:
           APP="dist/Coral.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
           for cmd in dist/macos/*; do
+            [ -f "$cmd" ] || continue
             bin=$(basename "$cmd")
             cp "$cmd" "$APP/Contents/MacOS/$bin"
             chmod +x "$APP/Contents/MacOS/$bin"
           done
           sed "s/VERSION_PLACEHOLDER/${VERSION}/g" tools/Info.plist > "$APP/Contents/Info.plist"
           [ -f Coral.icns ] && cp Coral.icns "$APP/Contents/Resources/AppIcon.icns"
+          cp -R licenses "$APP/Contents/Resources/licenses"
           cp installers/install-cli.sh "$APP/Contents/MacOS/install-cli.sh"
           chmod +x "$APP/Contents/MacOS/install-cli.sh"
 
@@ -312,6 +370,11 @@ jobs:
 
       - name: Smoke test Coral.app
         run: tools/test-macos-app.sh dist/Coral.app
+
+      - name: Verify signed encrypted app payload
+        run: |
+          OPENSSL_PREFIX="$(brew --prefix openssl@3)" tests/release/verify_encrypted_bundle.sh dist/Coral.app/Contents/MacOS
+          if [ -n "${MACOS_CERTIFICATE:-}" ]; then codesign --verify --deep --strict --verbose=2 dist/Coral.app; fi
 
       - name: Create DMG
         run: |

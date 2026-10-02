@@ -26,7 +26,6 @@ func newPopoutRouteTestServer(t *testing.T) *Server {
 		"frontend/templates/includes/views/history_session.html",
 		"frontend/templates/includes/views/message_board.html",
 		"frontend/templates/includes/views/workflows.html",
-		"frontend/templates/includes/views/connected_apps.html",
 		"frontend/templates/includes/views/docs.html",
 		"frontend/templates/includes/views/cost_dashboard.html",
 	)

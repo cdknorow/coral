@@ -30,11 +30,11 @@ import (
 	"time"
 
 	"fyne.io/systray"
-	"github.com/gen2brain/beeep"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/gen2brain/beeep"
 )
 
 //go:embed icon.png
@@ -210,6 +210,15 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 	cfg.Port = port
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType: backendType,
+		PasswordPrompt: func() (string, error) {
+			return nativeDatabasePassword()
+		},
+		UnlockSurface: func() string {
+			if runtime.GOOS == "darwin" {
+				return "native"
+			}
+			return "headless"
+		}(),
 		OnServerError: func(err error) {
 			log.Printf("Server error: %v", err)
 			beeep.Notify("Coral", "Server failed to start: "+err.Error(), "")
@@ -607,8 +616,6 @@ func raiseCoralApp() {
 		exec.Command("osascript", "-e", script).Run()
 	}
 }
-
-
 
 // isInsideAppBundle detects if the binary is running inside a macOS .app bundle
 // by checking if the executable path contains ".app/Contents/MacOS/".

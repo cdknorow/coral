@@ -195,12 +195,6 @@ curl -X POST ${CORAL_URL}/api/notifications -H 'Content-Type: application/json' 
 | `{{run_dir}}` | `$CORAL_WORKFLOW_RUN_DIR` |
 | `{{run_id}}` | `$CORAL_WORKFLOW_RUN_ID` |
 
-**Connected Apps tokens** — injected when workflows have connected OAuth apps:
-
-| Variable | Description |
-|----------|-------------|
-| `CORAL_TOKEN_{PROVIDER}_{NAME}` | OAuth access token (e.g. `CORAL_TOKEN_GMAIL_MYACCOUNT`) |
-
 **PATH** — the Coral tools directory (containing `coral-board`, hooks, and agent CLIs) is prepended to `PATH` automatically.
 
 ### Step rules

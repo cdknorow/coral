@@ -1750,6 +1750,11 @@
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning, #d99a2b); }
 .settings-hint[data-state="error"] { color: var(--danger, #d9534f); }
+.settings-database-encryption-warning {
+    display: block;
+    margin-top: 6px;
+    max-width: 560px;
+}
 
 .cli-verify-result {
     font-size: 11px;

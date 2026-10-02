@@ -119,7 +119,7 @@ mkdir -p "$CORAL_DATA_DIR"
 
 log "Building coral (dev mode), mock-agent and coral-agent..."
 cd "$CORAL_DIR"
-go build -tags dev -o "$TMPDIR_AT/coral" ./cmd/coral/
+go build -tags "dev fts5" -o "$TMPDIR_AT/coral" ./cmd/coral/
 go build -o "$TMPDIR_AT/mock-agent" ./cmd/mock-agent/
 go build -o "$TMPDIR_AT/coral-agent" ./cmd/coral-agent/
 go build -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
