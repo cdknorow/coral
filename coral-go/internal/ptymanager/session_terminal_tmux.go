@@ -62,6 +62,11 @@ func (t *TmuxSessionTerminal) SendInput(ctx context.Context, name, command, agen
 	return t.client.SendKeys(ctx, name, command, agentType, sessionID)
 }
 
+// SendPrompt delivers text as one bracketed paste followed by Enter.
+func (t *TmuxSessionTerminal) SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error {
+	return t.client.SendPrompt(ctx, name, text, agentType, sessionID)
+}
+
 func (t *TmuxSessionTerminal) SendRawInput(ctx context.Context, name string, keys []string, agentType, sessionID string) error {
 	return t.client.SendRawKeys(ctx, name, keys, agentType, sessionID)
 }

@@ -27,6 +27,7 @@ func (h *SessionsHandler) RegisterAgentUI(r chi.Router) {
 	r.Get("/api/agent/ui/{id}/content", h.agentUI)
 	r.Get("/api/agent/ui/{id}/events", h.agentUI)
 	r.Post("/api/agent/ui/{id}/events", h.agentUI)
+	r.Post("/api/agent/ui-request", h.agentUIRequest)
 }
 func (h *SessionsHandler) agentUI(w http.ResponseWriter, r *http.Request) {
 	sid := r.URL.Query().Get("session_id")

@@ -1787,3 +1787,55 @@ func TestLaunchCommands_EscapeSingleQuotesInEnvValues(t *testing.T) {
 		t.Errorf("single quote not escaped in: %s", cmd)
 	}
 }
+
+// "Publish"/"share" an artifact must default to Coral-visible content: an
+// uploaded file attached to a task result (or a Coral UI panel), with external
+// cloud publishing only on explicit request, and no claim that an external
+// link alone is Coral-managed.
+func TestPublishArtifactGuidanceDefaultsToCoralVisible(t *testing.T) {
+	for name, prompt := range map[string]string{
+		"orchestrator system prompt": DefaultOrchestratorSystemPrompt,
+		"worker system prompt":       DefaultWorkerSystemPrompt,
+		"task workflow guidance":     DefaultTaskWorkflowGuidance,
+	} {
+		for _, want := range []string{
+			"coral-agent artifact upload <file>",
+			"coral://artifacts/<digest>",
+			"coral-agent ui publish",
+			"unless the user explicitly asks for an external service",
+			"an external URL alone is not a Coral-managed artifact",
+			"Coral does not host or manage its content",
+			"Artifacts and Team Artifacts views",
+			"If there is no task, upload the file",
+		} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s missing %q", name, want)
+			}
+		}
+	}
+}
+
+func TestPublishArtifactGuidanceSentenceSpacingAndNoStaleClaims(t *testing.T) {
+	// The new paragraph must be separated from the preceding sentence.
+	if !strings.Contains(DefaultTaskWorkflowGuidance, "is not visual evidence. \"Publish\"") {
+		t.Error("missing space between the artifact-download sentence and the Publish paragraph")
+	}
+	for _, stale := range []string{"does not host or fetch", "Files and Artifacts views"} {
+		if strings.Contains(DefaultTaskWorkflowGuidance, stale) {
+			t.Errorf("guidance still contains stale wording %q", stale)
+		}
+	}
+}
+
+func TestPublishArtifactDocsStateTheDefault(t *testing.T) {
+	for _, doc := range []string{"task-workflows.md", "agent-tasks.md", "agent-ui.md"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "agent_docs", doc))
+		if err != nil {
+			t.Fatalf("read %s: %v", doc, err)
+		}
+		text := string(data)
+		if !strings.Contains(text, "explicitly asks") || !strings.Contains(text, "coral-agent") {
+			t.Errorf("%s does not state that external publishing needs an explicit request", doc)
+		}
+	}
+}

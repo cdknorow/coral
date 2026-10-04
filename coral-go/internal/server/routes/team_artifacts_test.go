@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cdknorow/coral/internal/board"
@@ -215,4 +216,162 @@ func TestTeamArtifactsReadableNameWhenStoredNameIsDigest(t *testing.T) {
 	}
 	require.True(t, names["design.md"], "sidecar upload name replaces a digest-only name")
 	require.True(t, names[fmt.Sprintf("Task #%d artifact", taskID)], "digest names with no better source get a task label")
+}
+
+const (
+	sessAlice = "11111111-aaaa-0000-0000-000000000001"
+	sessBob   = "22222222-bbbb-0000-0000-000000000002"
+)
+
+func subscribeSession(t *testing.T, h *BoardHandler, project, subscriber, sessionUUID string) {
+	t.Helper()
+	_, err := h.bs.Subscribe(context.Background(), project, subscriber, subscriber, "claude-"+sessionUUID, nil, nil, "all")
+	require.NoError(t, err)
+}
+
+type sessionArtifactsResponse struct {
+	teamArtifactsResponse
+	SessionID string `json:"session_id"`
+}
+
+func getSessionArtifacts(t *testing.T, srv *httptest.Server, query string, wantStatus int) sessionArtifactsResponse {
+	t.Helper()
+	resp, err := http.Get(srv.URL + query)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, wantStatus, resp.StatusCode)
+	var out sessionArtifactsResponse
+	if wantStatus == http.StatusOK {
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	}
+	return out
+}
+
+func artifactNames(items []teamArtifact) []string {
+	names := make([]string, 0, len(items))
+	for _, a := range items {
+		names = append(names, a.Name)
+	}
+	return names
+}
+
+func TestTeamArtifactsSessionFilterTwoAgentsAndCrossTeam(t *testing.T) {
+	srv, h, _ := teamArtifactServer(t)
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
+	subscribeSession(t, h, "alpha", "Bob", sessBob)
+	// Same subscriber/session on another team must not leak into alpha.
+	subscribeSession(t, h, "beta", "Alice", sessAlice)
+	completeWithArtifactsAs(t, h, "alpha", "Alice", "A work", []board.TaskArtifact{{Name: "alice-report", Content: "a"}})
+	completeWithArtifactsAs(t, h, "alpha", "Bob", "B work", []board.TaskArtifact{{Name: "bob-report", Content: "b"}})
+	completeWithArtifactsAs(t, h, "beta", "Alice", "Other team", []board.TaskArtifact{{Name: "beta-report", Content: "c"}})
+
+	alice := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessAlice, http.StatusOK)
+	require.Equal(t, sessAlice, alice.SessionID, "response echoes the filter for stale guards")
+	require.Equal(t, []string{"alice-report"}, artifactNames(alice.Artifacts))
+	require.NotNil(t, alice.Artifacts[0].SessionID)
+	require.Equal(t, sessAlice, *alice.Artifacts[0].SessionID)
+	require.Equal(t, "Alice", *alice.Artifacts[0].ProducedBy)
+
+	bob := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessBob, http.StatusOK)
+	require.Equal(t, []string{"bob-report"}, artifactNames(bob.Artifacts))
+
+	// Unfiltered listing is unchanged: both agents, attribution present, no echo.
+	all := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK)
+	require.ElementsMatch(t, []string{"alice-report", "bob-report"}, artifactNames(all.Artifacts))
+	require.Empty(t, all.SessionID)
+	for _, a := range all.Artifacts {
+		require.NotNil(t, a.SessionID)
+	}
+
+	// Cross-team: beta's own filter sees only beta's artifact; alpha never sees it.
+	beta := getSessionArtifacts(t, srv, "/api/board/beta/artifacts?session_id="+sessAlice, http.StatusOK)
+	require.Equal(t, []string{"beta-report"}, artifactNames(beta.Artifacts))
+}
+
+func TestTeamArtifactsSessionFilterRepeatedObjectAcrossAgents(t *testing.T) {
+	srv, h, _ := teamArtifactServer(t)
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
+	subscribeSession(t, h, "alpha", "Bob", sessBob)
+	shared := "https://example.com/shared-design"
+	completeWithArtifactsAs(t, h, "alpha", "Alice", "first", []board.TaskArtifact{{Name: "design-by-alice", URI: shared}})
+	completeWithArtifactsAs(t, h, "alpha", "Bob", "second", []board.TaskArtifact{{Name: "design-by-bob", URI: shared}})
+
+	all := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK)
+	require.Len(t, all.Artifacts, 1, "unfiltered view collapses the repeated object")
+	require.Equal(t, "design-by-bob", all.Artifacts[0].Name, "to the newest reference")
+	require.Equal(t, 2, all.Artifacts[0].ReferenceCount)
+
+	// Filtering happens before dedupe, so each agent sees their own reference.
+	alice := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessAlice, http.StatusOK)
+	require.Equal(t, []string{"design-by-alice"}, artifactNames(alice.Artifacts))
+	require.Equal(t, 1, alice.Artifacts[0].ReferenceCount, "reference_count counts only this agent's references")
+	bob := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessBob, http.StatusOK)
+	require.Equal(t, []string{"design-by-bob"}, artifactNames(bob.Artifacts))
+}
+
+func TestTeamArtifactsSessionFilterPagination(t *testing.T) {
+	srv, h, _ := teamArtifactServer(t)
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
+	subscribeSession(t, h, "alpha", "Bob", sessBob)
+	for i := 0; i < 5; i++ {
+		completeWithArtifactsAs(t, h, "alpha", "Alice", fmt.Sprintf("a%d", i), []board.TaskArtifact{{Name: fmt.Sprintf("alice-%d", i), Content: "x"}})
+		completeWithArtifactsAs(t, h, "alpha", "Bob", fmt.Sprintf("b%d", i), []board.TaskArtifact{{Name: fmt.Sprintf("bob-%d", i), Content: "x"}})
+	}
+	q := "/api/board/alpha/artifacts?session_id=" + sessAlice
+	p1 := getSessionArtifacts(t, srv, q+"&limit=2", http.StatusOK)
+	require.Equal(t, []string{"alice-4", "alice-3"}, artifactNames(p1.Artifacts))
+	require.True(t, p1.HasMore)
+	p3 := getSessionArtifacts(t, srv, q+"&limit=2&offset=4", http.StatusOK)
+	require.Equal(t, []string{"alice-0"}, artifactNames(p3.Artifacts))
+	require.False(t, p3.HasMore, "has_more reflects only this agent's items")
+}
+
+func TestTeamArtifactsSessionFilterAbsentIdentityAndReviews(t *testing.T) {
+	srv, h, _ := teamArtifactServer(t)
+	ctx := context.Background()
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
+	// Completed by an actor with no subscriber mapping (e.g. the operator).
+	completeWithArtifactsAs(t, h, "alpha", "Operator", "operator done", []board.TaskArtifact{{Name: "operator-note", Content: "o"}})
+	// A review artifact submitted by Alice.
+	task, err := h.bs.CreateTask(ctx, "alpha", "reviewed", "", "medium", "lead", "Alice")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, "alpha", "Alice", task.ID)
+	require.NoError(t, err)
+	_, err = h.bs.SubmitCompletionReview(ctx, "alpha", task.ID, "Alice", "msg", "success", "needs review", []board.TaskArtifact{{Name: "review-candidate", Content: "r"}})
+	require.NoError(t, err)
+
+	all := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK)
+	byName := map[string]teamArtifact{}
+	for _, a := range all.Artifacts {
+		byName[a.Name] = a
+	}
+	require.Nil(t, byName["operator-note"].SessionID, "unresolved producer has null session_id")
+	require.NotNil(t, byName["operator-note"].ProducedBy)
+	require.Equal(t, "Operator", *byName["operator-note"].ProducedBy)
+	require.Equal(t, "review", byName["review-candidate"].Source)
+	require.Equal(t, sessAlice, *byName["review-candidate"].SessionID, "review artifacts attribute via submitted_by")
+
+	mine := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessAlice, http.StatusOK)
+	require.Equal(t, []string{"review-candidate"}, artifactNames(mine.Artifacts), "unresolved artifacts never match a filter")
+
+	unknown := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=33333333-unknown", http.StatusOK)
+	require.Empty(t, unknown.Artifacts)
+	require.Equal(t, "33333333-unknown", unknown.SessionID)
+
+	empty := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=", http.StatusOK)
+	require.Len(t, empty.Artifacts, 2, "empty session_id is the unfiltered listing")
+	require.Empty(t, empty.SessionID)
+
+	getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+strings.Repeat("x", 129), http.StatusBadRequest)
+	getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=bad%0Aid", http.StatusBadRequest)
+}
+
+func completeWithArtifactsAs(t *testing.T, h *BoardHandler, project, actor, title string, arts []board.TaskArtifact) int64 {
+	t.Helper()
+	ctx := context.Background()
+	task, err := h.bs.CreateTask(ctx, project, title, "", "medium", actor)
+	require.NoError(t, err)
+	_, err = h.bs.CompleteTaskWithArtifacts(ctx, project, task.ID, actor, nil, "success", arts)
+	require.NoError(t, err)
+	return task.ID
 }

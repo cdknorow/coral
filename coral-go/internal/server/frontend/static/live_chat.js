@@ -1120,7 +1120,11 @@ const CORAL_HEALTH_NUDGE_RE = /^\[Coral health check\]/i;
 
 // Back-to-back notices (nudges that queued up while the agent was busy)
 // roll up into one showing the latest text and how many there were.
+function coralNoticeSummary(text) {
+    return /^\[Coral UI panel request\b/i.test(text) ? text.split(/\r?\n/, 1)[0] : text;
+}
 function appendCoralNotice(container, text, health = false) {
+    text = coralNoticeSummary(text);
 	const prev = lastContent(container);
 	const noticeClass = health ? "chat-system-health" : "chat-system-general";
 	if (prev && prev.classList.contains("chat-system") && prev.classList.contains(noticeClass)) {
@@ -1168,6 +1172,11 @@ function isCoralNudge(content) {
 /** Record a message just sent to an agent so the chat can show it right away. */
 export function addPendingMessage(sessionId, text, sentAt = Date.now()) {
     if (!sessionId || !normalizeMsg(text)) return;
+    // Panel retries carry one stable identity even when the first delivery's
+    // transcript arrived before the retry began. Never add a second notice.
+    const panelMarker = /^\[Coral UI panel request [^\]]+\]/.exec(text)?.[0];
+    if (panelMarker && ((pendingBySession.get(sessionId) || []).some(p => p.text.includes(panelMarker))
+        || (recentUserEntriesBySession.get(sessionId) || []).some(entry => String(entry.content || '').includes(panelMarker)))) return;
     const session = (state.liveSessions || []).find(s => s.session_id === sessionId)
         || (state.currentSession && state.currentSession.session_id === sessionId ? state.currentSession : { session_id: sessionId });
     const queued = agentIsBusy(session);
@@ -1269,8 +1278,11 @@ function syncPendingGroup(container, cls, items, label) {
     const have = new Set(Array.from(wrap.children).map(el => Number(el.dataset.pendingId)));
     for (const p of items) {
         if (have.has(p.id)) continue;
-        const el = makeBubble("chat-bubble human pending",
-            `<div class="message-text">${renderMarkdown(p.text)}</div><div class="pending-label" role="status">${label}</div>`);
+        const coral = /^\[Coral UI panel request\b/i.test(normalizeNudgeText(p.text));
+        const summary = coralNoticeSummary(normalizeNudgeText(p.text));
+        const el = coral
+            ? makeBubble("chat-system chat-system-general pending", `<span class="material-icons" aria-hidden="true">notifications</span><span class="chat-system-label">Coral</span><span class="chat-system-text" title="${escapeHtml(summary)}">${escapeHtml(summary)}</span><span class="pending-label" role="status">${label}</span>`)
+            : makeBubble("chat-bubble human pending", `<div class="message-text">${renderMarkdown(p.text)}</div><div class="pending-label" role="status">${label}</div>`);
         el.dataset.pendingId = String(p.id);
         // Keep send order even when a message moves between groups
         const next = Array.from(wrap.children).find(c => Number(c.dataset.pendingId) > p.id);

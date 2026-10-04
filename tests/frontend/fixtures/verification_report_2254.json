@@ -1,0 +1,24 @@
+{
+  "task": 2254,
+  "outcome": "success",
+  "summary": "Added explicit Preview beside Download/Open link for every available managed, inline and HTTP(S) artifact; readable titles also preview. External links render in an in-Coral sandboxed iframe with persistent blocked-embedding explanation and Open link fallback. Declared text/html or application/xhtml+xml (including extensionless inline artifacts served text/plain) renders through sandboxed srcdoc, preserving Download. Existing Markdown/text/image/media rendering, Back, mobile and session-change mechanisms retained.",
+  "files": [
+    "coral-go/internal/server/frontend/static/team_artifacts.js",
+    "coral-go/internal/server/frontend/static/changed_files.js",
+    "coral-go/internal/server/frontend/static/css/agentic.css",
+    "tests/frontend/team_artifacts_browser.test.js"
+  ],
+  "isolation": "All HTML frames have explicit sandbox=\"\" (no allow-scripts, allow-same-origin, forms, popups, top navigation or download grants) and no-referrer. srcdoc adds default-src none, inline styles only, data images/fonts only, base-uri none and form-action none. Linked requests are browser frame navigation after Preview, with no server proxy. No eager blob fetches or thumbnails were added.",
+  "verification": [
+    "PASS updated team_artifacts_browser.test.js on isolated :8468 / Chrome CDP :9236: explicit managed/inline/linked buttons; retained title, Download and Open link; no external request before Preview; sandbox attribute and opaque-origin contentDocument; injected linked and srcdoc scripts cannot postMessage; HTML external image blocked by CSP; extensionless inline and managed HTML rendering; Back removes frame; team switch clears linked preview; mobile overlay and Back; existing lazy/error/pagination/stale-response checks.",
+    "PASS existing artifact_preview_safety.test.js: binary fallback, safe Markdown, browsable manifests.",
+    "PASS dev build, JS syntax checks and git diff --check. Tests run sequentially, bounded, on isolated server and Chrome."
+  ],
+  "limits": [
+    "Browser tests and screenshots use deterministic metadata/content fixtures and CDP interception of example.com; no production artifact data or public-site availability claim.",
+    "Sites can block embedding via framing policy, and HTTP pages may be blocked as mixed content on HTTPS Coral. Persistent explanation and Open link remain; browsers do not reliably report framing-policy failure, so no false loaded/success assertion is shown.",
+    "Sandboxed pages intentionally lose script-dependent functionality; HTML artifact remote assets are intentionally blocked. Original files remain downloadable.",
+    "Optional thumbnails omitted because no lightweight thumbnail endpoint exists; no full-image eager list loading introduced.",
+    "Frontend and focused test changes only; no commit, release, backend change or development/live server restart."
+  ]
+}

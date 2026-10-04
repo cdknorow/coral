@@ -14,6 +14,12 @@ panel gets its own tab, so panels do not stack into one long sidebar. Select a
 panel tab to view it, or select a Home entry to open it. The workspace resets to
 Home when switching agents.
 
+When a user asks to "publish" or "share" interactive content as an artifact, the
+Coral-visible way is an Agent UI panel (`coral-agent ui publish`). Static files
+are uploaded with `coral-agent artifact upload` and attached to a task result
+(see [Task Workflows](task-workflows.md)). Use an external hosting service only
+when the user explicitly asks for it.
+
 ## Agent handoff rule
 
 For Agent UI requests, delegate directly to an **internal subagent** using the

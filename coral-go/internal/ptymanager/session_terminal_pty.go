@@ -62,6 +62,12 @@ func (p *PTYSessionTerminal) SendInput(_ context.Context, name, command, _, _ st
 	return p.backend.SendInput(name, []byte(command+"\n"))
 }
 
+// SendPrompt delivers text as one bracketed paste followed by Enter, only while
+// the session's application has bracketed paste mode enabled.
+func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, name, text, _, _ string) error {
+	return p.backend.SendPrompt(ctx, name, text)
+}
+
 func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, _ string) error {
 	for _, key := range keys {
 		if err := p.backend.SendInput(name, []byte(key)); err != nil {

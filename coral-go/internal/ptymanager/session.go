@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cdknorow/coral/internal/naming"
@@ -32,6 +34,16 @@ type session struct {
 	ringMu  sync.Mutex
 	ring    []byte
 	ringMax int
+
+	// bracketedPaste is the application's last DECSET/DECRST 2004 state seen in
+	// its output; bpCarry holds a possible sequence split across reads (only
+	// readLoop touches it).
+	bracketedPaste atomic.Bool
+	bpCarry        []byte
+
+	// promptSem serializes whole prompts (paste, delay, Enter) to this session.
+	promptSemOnce sync.Once
+	promptSem     chan struct{}
 }
 
 // newSession creates and starts a new PTY session.
@@ -101,6 +113,8 @@ func (s *session) readLoop() {
 				s.logFile.Write(data)
 			}
 
+			s.trackBracketedPaste(data)
+
 			// Store in ring buffer for snapshot
 			s.ringMu.Lock()
 			s.ring = append(s.ring, data...)
@@ -131,8 +145,19 @@ func (s *session) readLoop() {
 
 // sendInput writes raw bytes to the PTY (terminal input).
 func (s *session) sendInput(data []byte) error {
-	_, err := s.proc.Write(data)
+	_, err := s.writeFull(data)
 	return err
+}
+
+// writeFull writes data once and reports a short write (fewer bytes than
+// requested with a nil error) as io.ErrShortWrite instead of ignoring it. It
+// returns how many bytes reached the PTY.
+func (s *session) writeFull(data []byte) (int, error) {
+	n, err := s.proc.Write(data)
+	if err == nil && n < len(data) {
+		err = io.ErrShortWrite
+	}
+	return n, err
 }
 
 // resize changes the PTY window size.
@@ -253,4 +278,27 @@ func defaultShell() []string {
 		return []string{sh}
 	}
 	return []string{"/bin/sh"}
+}
+
+var (
+	bracketedPasteOn  = []byte("\x1b[?2004h")
+	bracketedPasteOff = []byte("\x1b[?2004l")
+)
+
+// trackBracketedPaste records whether the application enabled bracketed paste,
+// using the last enable/disable sequence in the output stream.
+func (s *session) trackBracketedPaste(data []byte) {
+	buf := append(s.bpCarry, data...)
+	on, off := bytes.LastIndex(buf, bracketedPasteOn), bytes.LastIndex(buf, bracketedPasteOff)
+	switch {
+	case on > off:
+		s.bracketedPaste.Store(true)
+	case off > on:
+		s.bracketedPaste.Store(false)
+	}
+	keep := len(bracketedPasteOn) - 1
+	if len(buf) < keep {
+		keep = len(buf)
+	}
+	s.bpCarry = append([]byte(nil), buf[len(buf)-keep:]...)
 }

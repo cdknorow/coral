@@ -342,6 +342,20 @@ bytes as the body and `X-Artifact-Name` plus optional `X-Artifact-Media-Type`
 headers. Coral returns a digest, a `coral://` URI, and a browser URL. Retrieve
 the artifact with `GET /api/artifacts/<digest>`. Uploads are limited to 64 MiB;
 the content is immutable and addressed by its SHA-256 digest.
+**Publish or share means Coral-visible by default.** When a user asks an agent to
+"publish", "share", or "put it up as an artifact", the default is the local path
+above: write the file in the repository, upload it with
+`coral-agent artifact upload <file>`, and attach the returned
+`coral://artifacts/<digest>` URI to the task result. It then appears in Coral's
+Artifacts and Team Artifacts views. Interactive content is published as a Coral UI panel
+(see [Agent UI](agent-ui.md)). External cloud publishing (for example a hosted
+claude.ai artifact) happens only when the user explicitly asks for it. An
+external URL can still be cited as a reference, but it is not Coral-managed:
+Coral does not host or manage its content (a task result that references one is still listed and can be previewed or opened). With no task, upload the file and give the
+user the `coral://artifacts/<digest>` URI (browser URL `/api/artifacts/<digest>`);
+it is reachable by that link, but it appears in the Artifacts and Team Artifacts views only
+once it is attached to a task result.
+
 In Coral chat and task details, the returned `coral://` URI opens in the Files
 preview panel; users do not need filesystem access to the agent's checkout.
 Small reports can use `content`; large logs/builds should use durable external

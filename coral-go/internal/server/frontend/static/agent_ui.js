@@ -1,5 +1,6 @@
 /* Session-scoped generated panels. Frames never receive ambient Coral privileges. */
 import { state } from './state.js';
+import { addPendingMessage } from './live_chat.js';
 
 let session = null;
 let generation = 0;
@@ -10,6 +11,82 @@ const seen = new Map();
 
 const currentID = () => state.currentSession?.type === 'live' ? state.currentSession.session_id : null;
 const endpoint = (sid, id = '') => '/api/agent/ui' + (id ? '/' + encodeURIComponent(id) : '') + '?session_id=' + encodeURIComponent(sid);
+
+// Keep draft/attempt identity through polling, agent switches, and page reloads.
+const requests = new Map();
+function newRequestID() {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2,'0')).join('');
+}
+function requestState(sid) {
+    if (!requests.has(sid)) {
+        let saved = {};
+        try { saved = JSON.parse(sessionStorage.getItem('coral-panel-request:' + sid) || '{}'); } catch {}
+        requests.set(sid, {draft:typeof saved.draft === 'string' ? saved.draft : '', attempt:saved.attempt || null, blockedRequest:saved.blockedRequest || null, pending:false, message:saved.blockedRequest ? 'Delivery could not be confirmed. Check with your agent before sending this request again.' : '', error:!!saved.blockedRequest});
+    }
+    return requests.get(sid);
+}
+function saveRequest(sid, value) {
+    try { sessionStorage.setItem('coral-panel-request:' + sid, JSON.stringify({draft:value.draft, attempt:value.attempt, blockedRequest:value.blockedRequest})); } catch {}
+}
+function updateRequestForm(form, value) {
+    const input = form.querySelector('textarea');
+    const button = form.querySelector('button');
+    input.disabled = value.pending;
+    const blocked = value.blockedRequest === value.draft.trim();
+    button.disabled = blocked || value.pending || !value.draft.trim() || new TextEncoder().encode(value.draft.trim()).length > 8000;
+    button.textContent = blocked ? 'Delivery uncertain' : value.pending ? 'Sending…' : value.error ? 'Retry request' : 'Send request';
+    form.setAttribute('aria-busy', String(value.pending));
+    const status = form.querySelector('.agent-ui-request-status');
+    status.setAttribute('role', value.error ? 'alert' : 'status');
+    status.textContent = blocked ? 'Delivery could not be confirmed. Check with your agent before sending this request again.' : new TextEncoder().encode(value.draft.trim()).length > 8000 ? 'Please shorten your request (maximum 8,000 bytes).' : value.message;
+}
+function createRequestForm(sid) {
+    const value = requestState(sid);
+    const form = document.createElement('form'); form.className = 'agent-ui-guide agent-ui-request';
+    const title = document.createElement('label'); title.htmlFor = 'agent-ui-request-text'; title.textContent = 'What would you like your agent to build?';
+    const hint = document.createElement('p'); hint.id = 'agent-ui-request-hint'; hint.className = 'agent-ui-help';
+    hint.textContent = 'Describe a diagram, dashboard, or interactive panel. Your agent will receive your request with instructions to publish it here.';
+    const input = document.createElement('textarea'); input.id = 'agent-ui-request-text'; input.className = 'agent-ui-prompt'; input.value = value.draft;
+    input.placeholder = 'For example, build an interactive diagram of this project’s architecture.';
+    input.setAttribute('aria-describedby', hint.id); input.rows = 4;
+    const button = document.createElement('button'); button.type = 'submit'; button.className = 'agent-ui-send';
+    const status = document.createElement('p'); status.className = 'agent-ui-request-status'; status.setAttribute('aria-live','polite');
+    input.addEventListener('input', () => { value.draft=input.value; value.error=false; value.message=''; saveRequest(sid,value); updateRequestForm(form,value); });
+    input.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); form.requestSubmit(); } });
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        const request = value.draft.trim();
+        if (currentID() !== sid || value.pending || value.blockedRequest === request || !request || new TextEncoder().encode(request).length > 8000) return;
+        if (!value.attempt || value.attempt.request !== request) value.attempt = {request, id:newRequestID()};
+        const attempt = value.attempt;
+        const sentAt = Date.now();
+        value.pending=true; value.error=false; value.message='Sending request…'; saveRequest(sid,value); updateRequestForm(form,value);
+        try {
+            const response = await fetch('/api/agent/ui-request?session_id=' + encodeURIComponent(sid), {
+                method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({request,request_id:attempt.id}),
+            });
+            const result = await response.json();
+            if ((!response.ok || !result.delivered) && result.retryable === false) value.blockedRequest = request;
+            if (!response.ok || !result.delivered) throw new Error(result.error || `Request was not delivered (${response.status}).`);
+            if (result.session_id !== sid || result.request_id !== attempt.id || typeof result.notification !== 'string' || !result.notification.startsWith('[Coral UI panel request ')) throw new Error('Could not confirm delivery. Retry to check this request.');
+            addPendingMessage(sid, result.notification, sentAt);
+            value.draft=''; value.attempt=null; value.message='Request sent. Your agent will publish the panel here when it is ready.';
+            if (result.recorded === false || result.warning) value.message += ' ' + (typeof result.warning === 'string' && result.warning ? result.warning : 'Delivery could not be recorded.');
+            input.value='';
+        } catch (error) {
+            value.error=true; value.message=error.message || 'Could not confirm delivery. Retry this request.';
+        } finally {
+            value.pending=false; saveRequest(sid,value);
+            // A switched-away form can be detached while this request settles.
+            if (currentID() === sid) {
+                const current=document.querySelector('.agent-ui-request');
+                if(current) {current.querySelector('textarea').value=value.draft;updateRequestForm(current,value);}
+            }
+        }
+    });
+    form.append(title,hint,input,button,status); updateRequestForm(form,value); return form;
+}
 
 export async function refreshAgentUI() {
     const container = document.getElementById('agentic-panel-agent-ui');
@@ -36,28 +113,19 @@ export async function refreshAgentUI() {
         container.querySelector('.agent-ui-notice')?.remove();
         let home = container.querySelector('.agent-ui-home');
         if (!home) { home = document.createElement('section'); home.className = 'agent-ui-home'; container.append(home); }
-        home.hidden = activePanel !== 'home'; home.replaceChildren();
+        home.hidden = activePanel !== 'home';
+        if (!home.querySelector('.agent-ui-request')) home.append(createRequestForm(sid));
+        let listing = home.querySelector('.agent-ui-listing');
+        if (!listing) { listing=document.createElement('div'); listing.className='agent-ui-listing';home.append(listing); }
+        listing.replaceChildren();
         if (allPanels.length) {
-            const homeHeading = document.createElement('h3'); homeHeading.textContent = 'Published panels'; home.append(homeHeading);
-        }
-        if (!allPanels.length) {
-            const intro = document.createElement('p'); intro.className = 'agent-ui-help';
-            intro.textContent = 'Agents can publish diagrams, images, and interactive HTML panels directly into this sidebar.'; home.append(intro);
-            const guide = document.createElement('section'); guide.className = 'agent-ui-guide';
-            const guideTitle = document.createElement('h4'); guideTitle.textContent = 'Ask an agent to build a panel'; guide.append(guideTitle);
-            const prompt = document.createElement('textarea'); prompt.className = 'agent-ui-prompt'; prompt.readOnly = true;
-            prompt.value = 'Use an INTERNAL subagent (for example, spawn_agent) to build a self-contained panel for [describe what you need]. Never run coral-agent launch or start another Coral session. Give the subagent the requirements, stable panel ID, and originating session/server. It validates and publishes directly with:\n\ncoral-agent ui publish --id [stable-id] --title "[Panel title]" --file panel.html\n\nUse inline, responsive, accessible HTML/CSS/JS. Use coralUI.emit(action, payload) only for a decision or interaction that needs agent feedback; keep navigation, display toggles, playback, and other passive UI local. Group related answers into one event. Read responses with `coral-agent ui events --id=[stable-id] --after=<last-event-id>`. Do not review, retest, republish, or summarize after handoff; the published panel is the response. Report only publication blockers.';
-            const copy = document.createElement('button'); copy.className = 'agent-ui-copy'; copy.textContent = 'Copy instructions';
-            copy.onclick = async () => { try { await navigator.clipboard.writeText(prompt.value); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy instructions'; }, 1500); } catch { prompt.select(); document.execCommand('copy'); copy.textContent = 'Copied'; } };
-            guide.append(prompt, copy); home.append(guide);
-            const docs = document.createElement('a'); docs.className = 'agent-ui-docs-link'; docs.href = '#docs'; docs.textContent = 'Read the Agent UI documentation';
-            docs.onclick = (event) => { event.preventDefault(); window.showDocsTab?.().then(() => window.selectDoc?.('agent-ui')); }; home.append(docs);
+            const heading=document.createElement('h3');heading.textContent='Published panels';listing.append(heading);
         }
         for (const p of allPanels) {
             const row = document.createElement('button'); row.className = 'agent-ui-home-row';
             const label = document.createElement('strong'); label.textContent = p.title;
             const meta = document.createElement('span'); meta.textContent = `Revision ${p.revision} · ${Number(p.event_count || 0)} event${Number(p.event_count || 0) === 1 ? '' : 's'}`;
-            row.append(label, meta); row.onclick = () => { activePanel = p.id; refreshAgentUI(); }; home.append(row);
+            row.append(label, meta); row.onclick = () => { activePanel = p.id; refreshAgentUI(); }; listing.append(row);
         }
         for (const [id, item] of mounted) {
             if (!panels.some(p => p.id === id)) { item.close?.(); item.card.remove(); mounted.delete(id); }

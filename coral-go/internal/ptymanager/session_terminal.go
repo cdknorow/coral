@@ -5,7 +5,11 @@
 // tmux.Client) and PTYSessionTerminal (wrapping PTYBackend).
 package ptymanager
 
-import "context"
+import (
+	"context"
+
+	"github.com/cdknorow/coral/internal/tmux"
+)
 
 // PaneInfo describes a running agent session (backend-agnostic).
 type PaneInfo struct {
@@ -17,6 +21,34 @@ type PaneInfo struct {
 
 // SessionTerminal abstracts all terminal operations for the sessions handler.
 // This allows the HTTP layer to work identically with tmux or PTY backends.
+// PromptSender is implemented by terminal backends that can deliver a
+// multi-line prompt to an agent as ONE logical input (a single bracketed paste
+// followed by Enter). It returns ErrBracketedPasteUnavailable instead of
+// risking early submission when the agent is not accepting bracketed paste.
+type PromptSender interface {
+	SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error
+}
+
+// ErrBracketedPasteUnavailable is returned by PromptSender when the target is
+// not accepting bracketed paste.
+var ErrBracketedPasteUnavailable = tmux.ErrBracketedPasteUnavailable
+
+// ErrDeliveryUnknown is returned (wrapped) by PromptSender when input may have
+// reached the agent before a failure. It must not be retried.
+var ErrDeliveryUnknown = tmux.ErrDeliveryUnknown
+
+// WithBracketedPasteHint passes what the caller knows about the target's
+// bracketed paste mode to SendPrompt (used by the tmux backend, whose panes
+// expose no way to query it). The PTY backend tracks the mode itself.
+func WithBracketedPasteHint(ctx context.Context, enabled bool) context.Context {
+	return tmux.WithBracketedPasteHint(ctx, enabled)
+}
+
+// BracketedPasteHint reads a hint set with WithBracketedPasteHint.
+func BracketedPasteHint(ctx context.Context) (enabled, known bool) {
+	return tmux.BracketedPasteHint(ctx)
+}
+
 type SessionTerminal interface {
 	// Discovery
 	ListSessions(ctx context.Context) ([]PaneInfo, error)

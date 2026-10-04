@@ -1,9 +1,13 @@
 package ptymanager
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/tmux"
 )
 
 // PTYBackend implements TerminalBackend using native PTY sessions.
@@ -80,6 +84,63 @@ func (m *PTYBackend) SendInput(name string, data []byte) error {
 		return fmt.Errorf("session %q not found", name)
 	}
 	return s.sendInput(data)
+}
+
+// promptSubmitDelay separates a bracketed paste from the submitting Enter.
+var promptSubmitDelay = 150 * time.Millisecond
+
+// SendPrompt writes text to a session as ONE logical input: a single bracketed
+// paste (ESC[200~ ... ESC[201~) followed by Enter. It only does so while the
+// application has enabled bracketed paste; otherwise the raw newlines would be
+// read as separate submissions, so it returns ErrBracketedPasteUnavailable
+// without writing anything. ESC and other control characters are removed from
+// the text so it cannot end the paste early or inject input.
+//
+// Retry safety: whole prompts are serialized per session, and ctx is honoured
+// only BEFORE the first byte is written (nothing sent, safe to retry). After
+// the paste starts, the delay and Enter always complete, and any short write or
+// error from then on is returned as ErrDeliveryUnknown, which must not be
+// retried because the text may already sit in the agent's input line.
+func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("session %q not found", name)
+	}
+	s.promptSemOnce.Do(func() { s.promptSem = make(chan struct{}, 1) })
+	select {
+	case s.promptSem <- struct{}{}:
+		defer func() { <-s.promptSem }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !s.bracketedPaste.Load() {
+		return ErrBracketedPasteUnavailable
+	}
+	payload := []byte("\x1b[200~" + tmux.SanitizePaste(text) + "\x1b[201~")
+	n, err := s.writeFull(payload)
+	if err != nil {
+		if n > 0 {
+			return tmux.MarkDeliveryUnknown(fmt.Errorf("paste write failed after %d of %d bytes: %w", n, len(payload), err))
+		}
+		return fmt.Errorf("write prompt: %w", err) // nothing reached the PTY
+	}
+	// Input has started: finish regardless of ctx, bounded by the fixed delay.
+	time.Sleep(promptSubmitDelay)
+	if n, err := s.writeFull([]byte("\r")); err != nil || n != 1 {
+		if err == nil {
+			err = io.ErrShortWrite
+		}
+		return tmux.MarkDeliveryUnknown(fmt.Errorf("pasted the prompt but sending Enter failed: %w", err))
+	}
+	return nil
 }
 
 // WaitReady blocks until the session's shell has produced output (prompt ready)

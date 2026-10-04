@@ -2171,6 +2171,10 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("q")))
 	dir := r.URL.Query().Get("dir")
 	sessionID := r.URL.Query().Get("session_id")
+	if r.URL.Query().Get("view") == "explorer" {
+		serveExplorerDirectory(w, r, h.resolveGitRoot(r.Context(), name, "", sessionID), dir)
+		return
+	}
 
 	// Read file search limit from user settings (default 500)
 	fileSearchLimit := 500

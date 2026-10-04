@@ -171,7 +171,10 @@ node agent_popout.test.js
 node subagent_tasks.test.js
 node agent_task_cli.test.js
 node agent_ui.test.js
+node agent_ui_request_browser.test.js
+node viewer_sources_browser.test.js
 node team_artifacts_browser.test.js
+node artifact_report_browser.test.js
 node transcript_tools.test.js
 node transcript_codex.test.js
 node chat_search_unit.test.js

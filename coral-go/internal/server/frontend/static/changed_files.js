@@ -6,6 +6,7 @@ import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
+import { renderJSONReport } from './artifact_report.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -227,7 +228,7 @@ function _hideSearchDropdown() {
 }
 
 export function initFileSearch() {
-    initFilesSourcePicker(openTeamArtifactPreview);
+    initFilesSourcePicker(openTeamArtifactPreview, openFilePreview);
     const input = document.getElementById('files-search-input');
     if (!input || input.dataset.searchBound) return;
     input.dataset.searchBound = '1';
@@ -783,6 +784,8 @@ export function openFilePreview(filepath, line) {
 function openTeamArtifactPreview(item) {
     return _openArtifactPreview(item.uri || '', {
         contentURL: item.inline ? item.content_url : null,
+        externalURL: item.external_url,
+        mediaType: item.media_type,
         filename: item.name,
     });
 }
@@ -791,7 +794,42 @@ function openTeamArtifactPreview(item) {
 export function syncFilesViewerSession() {
     syncFilesSourceTeam();
     if (_previewState) window._closeInlinePreview();
-    initFilesSourcePicker(openTeamArtifactPreview);
+    initFilesSourcePicker(openTeamArtifactPreview, openFilePreview);
+}
+
+function _renderSandboxedArtifact(body, { url, content, name, gen }) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'artifact-linked-preview';
+    const note = document.createElement('p');
+    note.className = 'artifact-linked-notice';
+    note.textContent = url
+        ? 'Linked preview: scripts and interactive features are disabled. Some sites block embedding; if the preview stays blank, use Open link.'
+        : 'HTML preview: scripts and external resources are disabled. Download the file for the original.';
+    const frame = document.createElement('iframe');
+    frame.title = `Preview of ${name || 'artifact'}`;
+    // Empty sandbox grants no scripts, same-origin privilege, forms, popups,
+    // downloads or top-level navigation. External fetching is browser-only.
+    frame.setAttribute('sandbox', '');
+    frame.referrerPolicy = 'no-referrer';
+    wrapper.append(note);
+    if (url) {
+        const status = document.createElement('div');
+        status.className = 'artifact-linked-status';
+        status.setAttribute('role', 'status');
+        status.textContent = 'Loading linked preview…';
+        frame.addEventListener('load', () => { if (!_isStale(gen)) status.remove(); });
+        frame.addEventListener('error', () => {
+            if (!_isStale(gen)) status.textContent = 'The linked preview could not load. Use Open link to view it.';
+        });
+        wrapper.append(status);
+        frame.src = url;
+    } else {
+        // Keep authored layout/CSS and embedded images, but do not let HTML
+        // artifacts load resources using Coral's origin or credentials.
+        frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">${content}`;
+    }
+    wrapper.append(frame);
+    body.replaceChildren(wrapper);
 }
 
 /** Preview a Coral-managed artifact in the same Files panel as repository files. */
@@ -799,8 +837,13 @@ async function _openArtifactPreview(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
     const teamPrefix = `/api/board/${encodeURIComponent(state.currentSession?.board_project || '')}/tasks/`;
     const inlineURL = options.contentURL?.startsWith(teamPrefix) && /\/artifact-content\?/.test(options.contentURL) ? options.contentURL : null;
-    if (!match && !inlineURL) return;
-    const url = inlineURL || `/api/artifacts/${match[1]}`;
+    let externalURL = null;
+    try {
+        const parsed = new URL(options.externalURL);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') externalURL = parsed.href;
+    } catch { /* Only explicit HTTP(S) links can be embedded. */ }
+    if (!match && !inlineURL && !externalURL) return;
+    const url = externalURL || inlineURL || `/api/artifacts/${match[1]}`;
     const isMobile = window.innerWidth <= 767;
     let panel = isMobile ? document.createElement('div') : document.getElementById('agentic-panel-files');
     if (isMobile) { panel.className = 'mobile-file-preview-overlay'; document.body.appendChild(panel); }
@@ -820,15 +863,26 @@ async function _openArtifactPreview(uri, options = {}) {
     panel.innerHTML = `<div class="inline-preview-header">
         <button class="inline-preview-back" onclick="window._artifactBack()" title="Back" aria-label="Back to files"><span class="material-icons">arrow_back</span></button>
         <span class="inline-preview-filepath" title="${escapeHtml(options.filename || uri)}">${escapeHtml(options.filename || 'Artifact preview')}</span>
-        <a class="team-artifacts-action" href="${escapeAttr(url)}" download="${escapeAttr(options.filename || '')}">Download</a>
+        <a class="team-artifacts-action" href="${escapeAttr(url)}" ${externalURL ? 'target="_blank" rel="noopener noreferrer"' : `download="${escapeAttr(options.filename || '')}"`}>${externalURL ? 'Open link' : 'Download'}</a>
     </div><div class="inline-preview-body" id="inline-preview-body"><div class="inline-preview-loading">Loading...</div></div>`;
     const body = panel.querySelector('#inline-preview-body');
+    if (externalURL) {
+        _renderSandboxedArtifact(body, { url: externalURL, name: options.filename, gen });
+        _artifactAbortController = null;
+        return;
+    }
     try {
         const resp = await fetch(url, { signal });
         if (!resp.ok) throw new Error(`Artifact unavailable (${resp.status})`);
         const type = (resp.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].toLowerCase();
+        // Scoped inline content is deliberately served as text/plain. Its
+        // declared artifact media type still selects HTML or Markdown rendering.
+        const declaredType = (options.mediaType || '').split(';')[0].trim().toLowerCase();
+        const isHTML = type === 'text/html' || type === 'application/xhtml+xml' || declaredType === 'text/html' || declaredType === 'application/xhtml+xml';
         const disposition = resp.headers.get('Content-Disposition') || '';
         const filename = options.filename || (disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i) || [])[1] || '';
+        const isMarkdown = [type, declaredType].some(value => value === 'text/markdown' || value === 'text/x-markdown') || /\.(?:md|markdown|mdown)$/i.test(filename);
+        const isJSON = [type, declaredType].some(value => value === 'application/json' || value.endsWith('+json')) || /\.json$/i.test(filename);
         const artifactPath = filename || uri;
         const sizeHeader = Number(resp.headers.get('Content-Length'));
         const size = Number.isFinite(sizeHeader) && sizeHeader >= 0 ? sizeHeader : -1;
@@ -840,7 +894,7 @@ async function _openArtifactPreview(uri, options = {}) {
             body.replaceChildren(media);
         } else if (type.startsWith('image/')) {
             renderImagePanes(body, [{ url: resp.url, missing: 'Artifact unavailable' }]);
-        } else if (!type.startsWith('text/') && !type.includes('json') && !type.includes('xml') && !/\.(?:md|markdown|txt|log|json|xml|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/i.test(filename)) {
+        } else if (!isHTML && !isMarkdown && !isJSON && !type.startsWith('text/') && !type.includes('json') && !type.includes('xml') && !/\.(?:md|markdown|txt|log|json|xml|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/i.test(filename)) {
             _renderArtifactFallback(body, { filename, type, size, url: resp.url, reason: 'This binary artifact is not rendered inline.' });
         } else if (size > MAX_ARTIFACT_PREVIEW_BYTES) {
             _renderArtifactFallback(body, { filename, type, size, url: resp.url, reason: `Preview is limited to ${_artifactSizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
@@ -849,15 +903,23 @@ async function _openArtifactPreview(uri, options = {}) {
             // repository .md files.
             const content = await _readArtifactText(resp, MAX_ARTIFACT_PREVIEW_BYTES, signal);
             if (_isStale(gen)) return;
-            const manifest = type.includes('json') ? _parseArtifactManifest(content) : null;
+            if (isHTML) {
+                _renderSandboxedArtifact(body, { content, name: filename, gen });
+                return;
+            }
+            const manifest = isJSON ? _parseArtifactManifest(content) : null;
             if (manifest) {
                 _previewState.manifest = manifest;
                 _previewState.filename = filename || 'manifest.json';
                 const title = panel.querySelector('.inline-preview-filepath');
                 if (title) { title.textContent = 'Artifact manifest'; title.title = _previewState.filename; }
                 _renderArtifactManifest(body, manifest);
+            } else if (!isMarkdown && isJSON && renderJSONReport(body, content, filename)) {
+                // Recognized reports keep their original bytes in the raw view.
             } else {
-                _renderContentView(body, content, type === 'text/markdown' || /\.md(?:own)?$/i.test(filename) ? (filename || 'artifact.md') : artifactPath);
+                // The shared renderer chooses a language from the extension;
+                // artifact display names such as acceptance_report have none.
+                _renderContentView(body, content, isMarkdown ? 'artifact.md' : artifactPath);
             }
         }
     } catch (error) {

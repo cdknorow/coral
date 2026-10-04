@@ -45,6 +45,10 @@ type teamArtifact struct {
 	PreviewURL     string `json:"preview_url,omitempty"`
 	DownloadURL    string `json:"download_url,omitempty"`
 	ContentURL     string `json:"content_url,omitempty"`
+	// SessionID/ProducedBy are the stored-ownership attribution (null when it
+	// cannot be established); see board.ArtifactProducer.
+	SessionID  *string `json:"session_id"`
+	ProducedBy *string `json:"produced_by"`
 
 	index   int
 	managed string // 64-hex Coral object id for coral-managed artifacts
@@ -85,12 +89,24 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 		errBadRequest(w, fmt.Sprintf("offset must be an integer between 0 and %d", maxTeamArtifactOffset))
 		return
 	}
-	tasks, scanTruncated, err := h.bs.ListTeamArtifactTasks(r.Context(), project, board.MaxTeamArtifactTaskScan)
+	sessionFilter := strings.TrimSpace(r.URL.Query().Get("session_id"))
+	if len(sessionFilter) > 128 || strings.ContainsAny(sessionFilter, "\x00\r\n\t") {
+		errBadRequest(w, "session_id must be at most 128 characters without control characters")
+		return
+	}
+	subscribers, err := h.bs.TeamSubscriberSessions(r.Context(), project)
 	if err != nil {
 		errInternalServer(w, "could not list artifacts")
 		return
 	}
-	items := collectTeamArtifacts(project, tasks)
+	tasks, scanTruncated, err := h.bs.ListTeamArtifactTasksQuery(r.Context(), board.TeamArtifactQuery{
+		Project: project, Limit: board.MaxTeamArtifactTaskScan, SessionID: sessionFilter, Subscribers: subscribers,
+	})
+	if err != nil {
+		errInternalServer(w, "could not list artifacts")
+		return
+	}
+	items := collectTeamArtifacts(project, tasks, subscribers, sessionFilter)
 	end := offset + limit
 	hasMore := end < len(items)
 	if offset > len(items) {
@@ -110,20 +126,39 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 	if page == nil {
 		page = []teamArtifact{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"project": project, "artifacts": page, "limit": limit, "offset": offset,
 		"has_more": hasMore, "truncated": scanTruncated,
-	})
+	}
+	if sessionFilter != "" {
+		resp["session_id"] = sessionFilter
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
-func collectTeamArtifacts(project string, tasks []board.TeamArtifactTask) []teamArtifact {
+// collectTeamArtifacts flattens task references into deduplicated items. When
+// sessionFilter is set, artifacts not attributed to that session are dropped
+// before ordering and dedupe, so repeated objects collapse per agent.
+func collectTeamArtifacts(project string, tasks []board.TeamArtifactTask, subscribers map[string]string, sessionFilter string) []teamArtifact {
 	var all []teamArtifact
 	add := func(t board.TeamArtifactTask, source, created string, refs []board.TaskArtifact) {
 		if created == "" {
 			created = t.CreatedAt
 		}
+		producer, session := board.ArtifactProducer(t, source, subscribers)
+		if sessionFilter != "" && session != sessionFilter {
+			return
+		}
 		for i, a := range refs {
 			item := teamArtifact{Name: a.Name, MediaType: a.MediaType, CreatedAt: created, TaskID: t.TaskID, TaskTitle: t.Title, Source: source, URI: a.URI, Digest: a.Digest, index: i, ReferenceCount: 1}
+			if producer != "" {
+				p := producer
+				item.ProducedBy = &p
+			}
+			if session != "" {
+				sid := session
+				item.SessionID = &sid
+			}
 			switch {
 			case a.URI != "":
 				if m := coralArtifactURI.FindStringSubmatch(a.URI); m != nil {
