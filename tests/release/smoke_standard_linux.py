@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory(prefix='coral-standard-smoke-') as directory:
     (context / 'Dockerfile').write_text(
         'FROM scratch\nCOPY bin/ /usr/local/bin/\nCOPY home/ /data/\n'
         'ENV HOME=/data CORAL_DATA_DIR=/data CORAL_DIR=/data CORAL_SESSION_NAME=standard-smoke\n'
+        'ENV CORAL_TELEMETRY_DISABLED=1\n'
         'ENTRYPOINT ["/usr/local/bin/coral"]\n')
     try:
         run('docker', 'build', '--platform', 'linux/amd64', '-t', name, directory)

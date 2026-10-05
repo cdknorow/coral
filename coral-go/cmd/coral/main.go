@@ -94,6 +94,7 @@ func main() {
 	// Point tracking at this instance's data directory before anything can read
 	// it. The package default is ~/.coral, so a late call here would let the
 	// production install's state be read by an instance run with --home.
+	tracking.SetEntrypoint("coral")
 	tracking.SetCoralDir(cfg.CoralDir())
 
 	// Resolve license variant name for logging (no feature gating).

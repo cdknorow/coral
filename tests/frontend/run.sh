@@ -49,6 +49,7 @@ CHROME_PROFILE="$(mktemp -d /tmp/coral-frontend-chrome.XXXXXX)"
 # Isolated Codex home: suites write rollout fixtures here and the test server
 # reads Codex transcripts from it, never from the real ~/.codex.
 export CODEX_HOME="$CORAL_HOME/codex"
+export CORAL_TELEMETRY_DISABLED=1
 mkdir -p "$CODEX_HOME/sessions"
 
 CORAL_BIN="${CORAL_BIN:-}"
@@ -172,6 +173,7 @@ node subagent_tasks.test.js
 node agent_task_cli.test.js
 node agent_ui.test.js
 node agent_ui_request_browser.test.js
+node dashboard_analytics_browser.test.js
 node viewer_sources_browser.test.js
 node team_artifacts_browser.test.js
 node artifact_report_browser.test.js

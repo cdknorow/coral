@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Release binaries contain the production analytics key. CI execution of those
+# binaries is verification traffic, not product usage.
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
 jobs:
   # ── Linux ──────────────────────────────────────────────────────
   build-linux:

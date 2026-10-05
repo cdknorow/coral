@@ -248,8 +248,11 @@ func TestEveryEventCarriesTheStandardProperties(t *testing.T) {
 			t.Errorf("event is missing standard property %q; got %v", key, props)
 		}
 	}
-	if props["agent_count"] != "3" {
-		t.Errorf("expected agent_count=3, got %v", props["agent_count"])
+	if props["agent_count"] != float64(3) { // typed number, decoded from JSON
+		t.Errorf("expected agent_count=3, got %v (%T)", props["agent_count"], props["agent_count"])
+	}
+	if props["schema_version"] != float64(SchemaVersion) || props["run_id"] != RunID() {
+		t.Errorf("event is missing schema_version/run_id: %v", props)
 	}
 	if events[0].DistinctID != "install-under-test" {
 		t.Errorf("expected the install ID as distinct_id, got %q", events[0].DistinctID)
@@ -260,7 +263,7 @@ func TestReturnVisitFiresOnceAfterTwentyFourHours(t *testing.T) {
 	rec, dir := newTestTracking(t)
 
 	// First open: records the timestamp, fires nothing.
-	trackReturnVisitSync()
+	trackReturnVisitSync(telemetryGen.Load())
 	if got := rec.count(EventReturned24h); got != 0 {
 		t.Fatalf("expected no %s on the first open, got %d", EventReturned24h, got)
 	}
@@ -270,7 +273,7 @@ func TestReturnVisitFiresOnceAfterTwentyFourHours(t *testing.T) {
 	}
 
 	// An open the same day still does not count as a return.
-	trackReturnVisitSync()
+	trackReturnVisitSync(telemetryGen.Load())
 	if got := rec.count(EventReturned24h); got != 0 {
 		t.Fatalf("expected no %s within the 24h window, got %d", EventReturned24h, got)
 	}
@@ -281,9 +284,9 @@ func TestReturnVisitFiresOnceAfterTwentyFourHours(t *testing.T) {
 		t.Fatalf("saveMilestones: %v", err)
 	}
 
-	trackReturnVisitSync()
-	trackReturnVisitSync()
-	trackReturnVisitSync()
+	trackReturnVisitSync(telemetryGen.Load())
+	trackReturnVisitSync(telemetryGen.Load())
+	trackReturnVisitSync(telemetryGen.Load())
 
 	if got := rec.count(EventReturned24h); got != 1 {
 		t.Fatalf("expected exactly 1 %s event, got %d", EventReturned24h, got)
@@ -379,8 +382,8 @@ func TestTrackingWritesNothingWhenNoDataDirectoryIsConfigured(t *testing.T) {
 	TrackOnce(EventFirstAgentLaunched, nil)
 	TrackOnce(EventFirstTaskCompleted, nil)
 	TrackEvent(EventSessionLaunched, nil)
-	trackReturnVisitSync()
-	trackInstall()
+	trackReturnVisitSync(telemetryGen.Load())
+	trackInstall(telemetryGen.Load())
 	if err := AcknowledgeDisclosure(); err == nil {
 		t.Error("AcknowledgeDisclosure should refuse when no data directory is configured")
 	}

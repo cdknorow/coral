@@ -17,7 +17,7 @@ func TestVerification_TelemetryOptOut_InterceptAllEntryPoints(t *testing.T) {
 	SetTelemetryEnabled(true)
 	defer SetTelemetryEnabled(true)
 
-	TrackEvent("baseline_event", map[string]string{"foo": "bar"})
+	TrackEvent(EventSessionLaunched, nil)
 	TrackOnce(EventFirstAgentLaunched, nil)
 	TrackInstallAsync()
 	waitForAsync()
@@ -53,12 +53,12 @@ func TestVerification_TelemetryOptOut_InterceptAllEntryPoints(t *testing.T) {
 
 	// Phase 3: Dynamic re-enablement verification
 	SetTelemetryEnabled(true)
-	TrackEvent("re_enabled_event", nil)
+	TrackEvent(EventSessionLaunched, nil)
 	waitForAsync()
 
 	eventsAfterReenable := rec.all()
-	require.Len(t, eventsAfterReenable, 1, "expected 1 event after re-enabling telemetry")
-	assert.Equal(t, "re_enabled_event", eventsAfterReenable[0].Event)
+	require.Len(t, eventsAfterReenable, 1, "expected 1 event after re-enabling telemetry (nothing queued while opted out is replayed)")
+	assert.Equal(t, EventSessionLaunched, eventsAfterReenable[0].Event)
 }
 
 // TestVerification_TelemetryFailClosed confirms that when telemetry is disabled,
@@ -72,7 +72,7 @@ func TestVerification_TelemetryFailClosed(t *testing.T) {
 	assert.False(t, telemetryEnabled(), "telemetryEnabled should return false when disabled")
 
 	// Try firing return visit sync
-	trackReturnVisitSync()
+	trackReturnVisitSync(telemetryGen.Load())
 	waitForAsync()
 
 	assert.Empty(t, rec.all(), "return visit sync should not send network requests when disabled")

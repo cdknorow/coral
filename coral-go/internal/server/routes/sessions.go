@@ -2490,6 +2490,9 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	// The terminal accepted the input over HTTP: the narrowly labelled
+	// first_prompt_submitted milestone. It says nothing about what the agent did.
+	tracking.TrackOnce(tracking.EventFirstPromptSubmitted, map[string]string{"source": "http_send"})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "command": body.Command})
 }
 
@@ -3241,10 +3244,6 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
-	if body.WorkingDir == "" {
-		errBadRequest(w, "working_dir is required")
-		return
-	}
 	// No agent_type (e.g. `coral-agent launch`) means the operator's default,
 	// as the + New Agent modal pre-selects it.
 	if body.AgentType == "" {
@@ -3252,9 +3251,18 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 			body.AgentType = settings["default_agent_type"]
 		}
 	}
+	// Analytics: one requested/result pair per attempt, with controlled
+	// categories only (never error text, paths, names or prompts).
+	attempt := tracking.StartLaunch(tracking.KindAgent, tracking.ProviderFor(body.AgentType), h.launchBackendLabel(body.Backend), 1, body.ResumeSessionID != "")
+	if body.WorkingDir == "" {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		errBadRequest(w, "working_dir is required")
+		return
+	}
 	// An unknown agent_type used to fall through to Claude and return 200
 	// ok:true, silently starting an agent the caller never asked for.
 	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
 		errBadRequest(w, err.Error())
 		return
 	}
@@ -3274,6 +3282,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	if body.ResumeSessionID != "" {
 		agentImpl := agent.GetAgent(body.AgentType)
 		if agentImpl != nil && !agentImpl.SupportsResume() {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailUnsupportedOption, 0, 1)
 			errBadRequest(w, fmt.Sprintf("Resume not supported for %s", body.AgentType))
 			return
 		}
@@ -3283,6 +3292,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 	if h.effectiveMaxAgents() > 0 {
 		count, err := h.ss.CountActiveLiveSessions(r.Context())
 		if err == nil && count >= h.effectiveMaxAgents() {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailLimitReached, 0, 1)
 			writeJSON(w, http.StatusForbidden, map[string]string{
 				"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
 			})
@@ -3302,9 +3312,11 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		body.ResumeSessionID, launchFlags, body.Prompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, body.Capabilities,
 		body.Tools, body.MCPServers, body.Hooks)
 	if err != nil {
+		attempt.Finish(tracking.OutcomeFailure, classifyLaunchError(err), 0, 1)
 		errInternalServer(w, err.Error())
 		return
 	}
+	attempt.Finish(tracking.OutcomeSuccess, "", 1, 0)
 
 	// Setup board subscription in background (prompt is passed as CLI arg, not via tmux send-keys)
 	if body.BoardName != "" {
@@ -3345,18 +3357,39 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// Label the team by the effective provider of the members that will
+	// actually launch (their own type, else the team's, else the Claude
+	// fallback launchSession applies): "mixed" only when those truly differ.
+	var memberTypes []string
+	skippedMembers := 0
+	for _, a := range body.Agents {
+		if a.Name == "" {
+			skippedMembers++ // the launch loop skips unnamed members
+			continue
+		}
+		t := body.AgentType
+		if a.AgentType != "" {
+			t = a.AgentType
+		}
+		memberTypes = append(memberTypes, t)
+	}
+	teamProvider := tracking.TeamProvider(memberTypes)
+	attempt := tracking.StartLaunch(tracking.KindTeam, teamProvider, h.launchBackendLabel(body.Backend), len(body.Agents), false)
 	if body.BoardName == "" || body.WorkingDir == "" || len(body.Agents) == 0 {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
 		errBadRequest(w, "board_name, working_dir, and agents required")
 		return
 	}
 	// Validate the team-level type and every per-agent override before
 	// launching anything: a team that fails halfway leaves live agents behind.
 	if err := agent.ValidateAgentType(body.AgentType); err != nil {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
 		errBadRequest(w, err.Error())
 		return
 	}
 	for _, a := range body.Agents {
 		if err := agent.ValidateAgentType(a.AgentType); err != nil {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, len(body.Agents))
 			errBadRequest(w, fmt.Sprintf("agent %q: %s", a.Name, err))
 			return
 		}
@@ -3368,6 +3401,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if h.effectiveMaxTeams() > 0 {
 		teamCount, err := h.ss.CountLiveTeams(ctx)
 		if err == nil && teamCount >= h.effectiveMaxTeams() {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailLimitReached, 0, len(body.Agents))
 			writeJSON(w, http.StatusForbidden, map[string]string{
 				"error": fmt.Sprintf("Demo limit reached: maximum %d team allowed", h.effectiveMaxTeams()),
 			})
@@ -3379,6 +3413,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if h.effectiveMaxAgents() > 0 {
 		agentCount, err := h.ss.CountActiveLiveSessions(ctx)
 		if err == nil && agentCount+len(body.Agents) > h.effectiveMaxAgents() {
+			attempt.Finish(tracking.OutcomeFailure, tracking.FailLimitReached, 0, len(body.Agents))
 			writeJSON(w, http.StatusForbidden, map[string]string{
 				"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
 			})
@@ -3403,6 +3438,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			// Branch may already exist from a previous run — try without -b
 			cmd2 := exec.CommandContext(ctx, "git", "-C", body.WorkingDir, "worktree", "add", worktreePath, worktreeBranch)
 			if out2, err2 := cmd2.CombinedOutput(); err2 != nil {
+				attempt.Finish(tracking.OutcomeFailure, tracking.FailWorktreeFailed, 0, len(body.Agents))
 				errBadRequest(w, fmt.Sprintf("git worktree add failed: %s / %s", string(out), string(out2)))
 				return
 			}
@@ -3434,6 +3470,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var launched []map[string]any
+	firstFailure := ""
 
 	// Load settings once so we can fall back to per-type default_model_<type>.
 	userSettings, _ := h.ss.GetSettings(ctx)
@@ -3467,6 +3504,9 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			agentDef.Tools, agentDef.MCPServers, agentDef.Hooks)
 		if err != nil {
 			log.Printf("[launch-team] failed to launch agent %s: %v", agentDef.Name, err)
+			if firstFailure == "" {
+				firstFailure = classifyLaunchError(err)
+			}
 			launched = append(launched, map[string]any{"name": agentDef.Name, "error": err.Error()})
 			continue
 		}
@@ -3510,8 +3550,38 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	if teamID > 0 {
 		resp["team_id"] = teamID
 	}
-	tracking.TrackEvent(tracking.EventTeamLaunched, map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
-	tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": fmt.Sprintf("%d", len(launched))})
+	// launched holds both started members and {name, error} failures, so count
+	// each kind separately: only started members are real launches.
+	started, failed := 0, 0
+	for _, m := range launched {
+		if _, bad := m["error"]; bad {
+			failed++
+		} else {
+			started++
+		}
+	}
+	// Unnamed members were never launched: count them as failed (not started)
+	// with a fixed category so requested == started + failed.
+	failed += skippedMembers
+	if skippedMembers > 0 && firstFailure == "" {
+		firstFailure = tracking.FailInvalidRequest
+	}
+	switch {
+	case failed == 0 && started > 0:
+		attempt.Finish(tracking.OutcomeSuccess, "", started, 0)
+	case started == 0:
+		attempt.Finish(tracking.OutcomeFailure, firstFailure, 0, failed)
+	default:
+		attempt.Finish(tracking.OutcomePartial, firstFailure, started, failed)
+	}
+	if started > 0 {
+		counts := map[string]string{
+			"agent_count": strconv.Itoa(started), "requested_agents": strconv.Itoa(len(body.Agents)),
+			"started_agents": strconv.Itoa(started), "failed_agents": strconv.Itoa(failed),
+		}
+		tracking.TrackEvent(tracking.EventTeamLaunched, counts)
+		tracking.TrackOnce(tracking.EventFirstTeamLaunched, map[string]string{"agent_count": strconv.Itoa(started)})
+	}
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -5799,4 +5869,40 @@ func stripAgentPermissionFlags(flags []string) []string {
 		cleanFlags = append(cleanFlags, f)
 	}
 	return cleanFlags
+}
+
+// launchBackendLabel reports the terminal backend for analytics as a closed
+// enum: the requested one when valid, otherwise the one this server runs.
+func (h *SessionsHandler) launchBackendLabel(requested string) string {
+	switch requested {
+	case "tmux", "pty":
+		return requested
+	}
+	switch h.terminal.(type) {
+	case *ptymanager.TmuxSessionTerminal:
+		return "tmux"
+	case *ptymanager.PTYSessionTerminal:
+		return "pty"
+	}
+	return "unknown"
+}
+
+// classifyLaunchError maps a launch error to a controlled analytics category.
+// It inspects the message only to choose a category; the text is never sent.
+func classifyLaunchError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "cli not found"):
+		return tracking.FailProviderUnavailable
+	case strings.Contains(msg, "tmux is required") || strings.Contains(msg, "terminal backend"):
+		return tracking.FailBackendUnavailable
+	case strings.Contains(msg, "directory not found") || strings.Contains(msg, "no such file") || strings.Contains(msg, "not a directory") || strings.Contains(msg, "working directory"):
+		return tracking.FailWorkdirUnavailable
+	case strings.Contains(msg, "spawn failed") || strings.Contains(msg, "launch command failed") || strings.Contains(msg, "launch command delivery") || strings.Contains(msg, "new-session failed"):
+		return tracking.FailSpawnFailed
+	}
+	return tracking.FailInternal
 }

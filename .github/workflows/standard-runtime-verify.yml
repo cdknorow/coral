@@ -8,6 +8,8 @@ on:
         default: v1.3.19
 permissions:
   contents: read
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
 jobs:
   native-linux:
     runs-on: ubuntu-22.04

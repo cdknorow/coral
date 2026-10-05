@@ -3,10 +3,14 @@ package tracking
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Funnel milestone event names. Each fires at most once per install.
@@ -42,6 +46,20 @@ type milestoneState struct {
 	// configured. It is what gates the supporter reminder, which must not
 	// depend on an analytics key being present.
 	Reached map[string]string `json:"reached,omitempty"`
+	// Pending holds the frozen snapshot of a one-time event whose delivery has
+	// been attempted but not accepted: the time of the original occurrence and
+	// its allowlisted properties. Retries (in this process or a later one) send
+	// exactly this snapshot, so a later trigger with different properties (for
+	// example a successful task after a failed first one) can never rewrite the
+	// original event. Removed once the service accepts the event, and cleared
+	// when telemetry is switched off so an old event is never replayed.
+	Pending map[string]pendingMilestone `json:"pending_events,omitempty"`
+}
+
+// pendingMilestone is one frozen one-time event.
+type pendingMilestone struct {
+	Timestamp string            `json:"timestamp"`
+	Props     map[string]string `json:"props,omitempty"`
 }
 
 // milestoneMu serialises read-modify-write of the milestones file so two
@@ -109,69 +127,158 @@ func saveMilestones(s milestoneState) error {
 	return nil
 }
 
-// markMilestone records that a milestone has been reached and reports whether
-// its analytics event should be sent now.
+// milestoneInflight guards against two concurrent triggers both delivering the
+// same one-time event. It is in-memory and only spans one delivery attempt.
+var milestoneInflight = map[string]bool{}
+
+// reserveMilestone records that a milestone has been reached (product state,
+// always written) and reports whether its analytics event should be delivered
+// now. It does NOT mark the event as sent: that happens only after the service
+// accepts it (confirmMilestoneSent), so a failed delivery, an opt-out or a
+// keyless build never consumes the install's one-time event.
 //
-// Two records are kept, deliberately independent:
-//   - Reached is product state, always written. It says the user did the thing.
-//   - Fired is analytics state, written only when canSend is true. It says the
-//     event was sent, so a build with no analytics key never consumes an
-//     install's one-time events.
-//
-// The send result is true only the first time for a given name on an install.
-// If the state cannot be persisted it returns false, so a broken disk produces
-// no events rather than one per launch.
-func markMilestone(name string, canSend bool) bool {
+// canSend must already include "telemetry enabled". If the state cannot be
+// persisted it returns false, so a broken disk yields no events rather than
+// one per launch.
+func reserveMilestone(name string, canSend bool, props map[string]string) (send bool, snap pendingMilestone) {
 	if !stateDirReady() {
-		return false
+		return false, snap
 	}
 	milestoneMu.Lock()
 	defer milestoneMu.Unlock()
 
 	s := loadMilestones()
+	changed := false
 	if s.Reached == nil {
 		s.Reached = map[string]string{}
 	}
-	if s.Fired == nil {
-		s.Fired = map[string]string{}
-	}
-
-	changed := false
 	if _, ok := s.Reached[name]; !ok {
 		s.Reached[name] = nowUTC()
 		changed = true
 	}
-
-	send := false
-	if _, ok := s.Fired[name]; !ok && canSend {
-		s.Fired[name] = nowUTC()
+	// With telemetry off (by any means) nothing pending may survive: an old
+	// event must not be replayed after a later opt-in.
+	if !telemetryEnabled() && len(s.Pending) > 0 {
+		s.Pending = nil
 		changed = true
-		send = true
 	}
-
-	if !changed {
-		return false
+	send = canSend && !milestoneInflight[name]
+	if _, fired := s.Fired[name]; fired {
+		send = false
 	}
-	if err := saveMilestones(s); err != nil {
-		logDeliveryFailure(name, 0, "milestone state not persisted: "+err.Error())
-		return false
+	if send {
+		if s.Pending == nil {
+			s.Pending = map[string]pendingMilestone{}
+		}
+		if _, ok := s.Pending[name]; !ok {
+			s.Pending[name] = pendingMilestone{Timestamp: nowUTC(), Props: freezeProps(name, props)}
+			changed = true
+		}
+		snap = s.Pending[name]
 	}
-	return send
+	if changed {
+		if err := saveMilestones(s); err != nil {
+			logDeliveryFailure(name, 0, "milestone state not persisted: "+err.Error())
+			return false, pendingMilestone{}
+		}
+	}
+	if send {
+		milestoneInflight[name] = true
+	}
+	return send, snap
 }
 
-// TrackOnce sends a funnel milestone event the first time it happens on this
-// install and never again. Non-blocking and fire-and-forget: it never blocks
-// or fails the caller, matching the rest of this package.
+// freezeProps validates props against the event's allowlist and keeps only
+// what would actually be sent, as strings, so the stored snapshot is safe to
+// persist and replay. The active-day key carries a date suffix after "|".
+func freezeProps(name string, props map[string]string) map[string]string {
+	event := name
+	if i := strings.Index(name, "|"); i >= 0 {
+		event = name[:i]
+	}
+	typed, ok := sanitizeProps(event, props)
+	if !ok || len(typed) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(typed))
+	for k, v := range typed {
+		out[k] = fmt.Sprint(v)
+	}
+	return out
+}
+
+// clearPendingMilestones drops every frozen, unsent one-time event. Called when
+// telemetry is switched off; Reached (product state) is untouched.
+func clearPendingMilestones() {
+	if !stateDirReady() {
+		return
+	}
+	milestoneMu.Lock()
+	defer milestoneMu.Unlock()
+	s := loadMilestones()
+	if len(s.Pending) == 0 {
+		return
+	}
+	s.Pending = nil
+	if err := saveMilestones(s); err != nil {
+		logDeliveryFailure("pending_milestones", 0, "pending state not cleared: "+err.Error())
+	}
+}
+
+// releaseMilestone ends a reservation without marking the event sent (the
+// delivery failed or was cancelled), leaving it eligible for the next trigger.
+func releaseMilestone(name string) {
+	milestoneMu.Lock()
+	delete(milestoneInflight, name)
+	milestoneMu.Unlock()
+}
+
+// confirmMilestoneSent persists that the service accepted the one-time event.
+func confirmMilestoneSent(name string) {
+	milestoneMu.Lock()
+	defer milestoneMu.Unlock()
+	delete(milestoneInflight, name)
+	s := loadMilestones()
+	if s.Fired == nil {
+		s.Fired = map[string]string{}
+	}
+	if _, ok := s.Fired[name]; ok {
+		return
+	}
+	s.Fired[name] = nowUTC()
+	delete(s.Pending, name)
+	if err := saveMilestones(s); err != nil {
+		logDeliveryFailure(name, 0, "milestone sent-state not persisted: "+err.Error())
+	}
+}
+
+// milestoneEventUUID is stable for an install, milestone and frozen snapshot
+// time, so a retry in this process or a later one reuses the same PostHog event
+// uuid and the service can drop a duplicate if an earlier attempt was in fact
+// accepted. A fresh snapshot (after an opt-out cleared the old one) gets a new
+// uuid and timestamp.
+func milestoneEventUUID(name, snapshotTime string) string {
+	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("coral-milestone|"+getInstallID()+"|"+name+"|"+snapshotTime)).String()
+}
+
+// TrackOnce sends a funnel milestone event the first time it is delivered on
+// this install and never again. Non-blocking and fire-and-forget: it never
+// blocks or fails the caller. The milestone is always recorded as reached
+// (product state); the one-time analytics event is marked sent only after the
+// service accepts it, and never while telemetry is off or the build is keyless.
 func TrackOnce(eventName string, extraProps map[string]string) {
+	gen := telemetryGen.Load()
 	asyncGo(func() {
-		// The milestone is recorded either way — it is product state that gates
-		// the supporter reminder. The event is only sent, and only marked as
-		// sent, on a build that has an analytics key, so a source build cannot
-		// permanently consume an install's one-time events.
-		if !markMilestone(eventName, posthogKeyPresent()) {
+		send, snap := reserveMilestone(eventName, posthogKeyPresent() && telemetryValid(gen), extraProps)
+		if !send {
 			return
 		}
-		trackEventSync(eventName, extraProps)
+		// Send the frozen snapshot, not the current call's properties.
+		if emitEvent(eventName, snap.Props, milestoneEventUUID(eventName, snap.Timestamp), snap.Timestamp, gen) {
+			confirmMilestoneSent(eventName)
+			return
+		}
+		releaseMilestone(eventName)
 	})
 }
 
@@ -203,7 +310,7 @@ func recordFirstOpen() time.Time {
 
 // trackReturnVisitSync records the first open and, when the current open is
 // more than returnWindow after it, emits returned_24h at most once.
-func trackReturnVisitSync() {
+func trackReturnVisitSync(gen uint64) {
 	firstOpen := recordFirstOpen()
 	if firstOpen.IsZero() {
 		return
@@ -211,14 +318,19 @@ func trackReturnVisitSync() {
 	if time.Since(firstOpen) <= returnWindow {
 		return
 	}
-	if !markMilestone(EventReturned24h, posthogKeyPresent()) {
+	send, snap := reserveMilestone(EventReturned24h, posthogKeyPresent() && telemetryValid(gen), nil)
+	if !send {
 		return
 	}
-	trackEventSync(EventReturned24h, nil)
+	if emitEvent(EventReturned24h, snap.Props, milestoneEventUUID(EventReturned24h, snap.Timestamp), snap.Timestamp, gen) {
+		confirmMilestoneSent(EventReturned24h)
+		return
+	}
+	releaseMilestone(EventReturned24h)
 }
 
 func nowUTC() string {
-	return time.Now().UTC().Format(time.RFC3339)
+	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
 // ── Telemetry disclosure ─────────────────────────────────────────────────

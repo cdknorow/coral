@@ -13,17 +13,26 @@ export async function apiFetch(url, options) {
     const resp = await fetch(url, options);
     if (!resp.ok) {
         const text = await resp.text().catch(() => '');
-        throw new Error(`${resp.status}: ${text || resp.statusText}`);
+        const error = new Error(`${resp.status}: ${text || resp.statusText}`);
+        error.status = resp.status;
+        throw error;
     }
     return resp.json();
 }
 
-export async function loadLiveSessions() {
+export async function loadLiveSessions(onFailure) {
+    let rendering = false;
     try {
-        state.liveSessions = await apiFetch("/api/sessions/live");
+        const sessions = await apiFetch("/api/sessions/live");
+        if (!Array.isArray(sessions)) throw new SyntaxError('Invalid live session list');
+        state.liveSessions = sessions;
+        rendering = true;
         renderLiveSessions(state.liveSessions);
+        return true;
     } catch (e) {
         console.error("Failed to load live sessions:", e);
+        if (typeof onFailure === 'function') onFailure(rendering ? 'init_failed' : e.status ? 'sessions_fetch_http' : e instanceof SyntaxError ? 'sessions_fetch_invalid' : 'sessions_fetch_network');
+        return false;
     }
 }
 

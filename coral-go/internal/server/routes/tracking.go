@@ -25,12 +25,11 @@ func NewTrackingHandler(coralDir string) *TrackingHandler {
 	return &TrackingHandler{coralDir: coralDir}
 }
 
-// allowedTrackingEvents is a strict allowlist. The endpoint is reachable by
-// anything running in the page, so it must never become a general-purpose
-// event pipe.
-var allowedTrackingEvents = map[string]bool{
-	tracking.EventSupporterCheckoutClicked: true,
-}
+// allowedTrackingEvents is a strict allowlist: the dashboard-observed events
+// only. The endpoint is reachable by anything running in the page, so it must
+// never become a general-purpose event pipe, and server lifecycle events
+// (launches, tasks, first_* milestones) are rejected here.
+var allowedTrackingEvents = tracking.BrowserEvents
 
 // allowedTrackingProps is the allowlist of property keys the browser may set.
 // These carry placement and campaign attribution only — never prompts, code,
@@ -62,8 +61,17 @@ func (h *TrackingHandler) TrackEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	props := sanitizeTrackingProps(body.Props)
-	tracking.TrackEvent(body.Event, props)
+	if len(body.Props) > 8 {
+		errBadRequest(w, "too many properties")
+		return
+	}
+	props := body.Props
+	if body.Event == tracking.EventSupporterCheckoutClicked {
+		props = sanitizeTrackingProps(body.Props)
+	}
+	// Typed validation, per-event server-side dedupe and caps live in the
+	// tracking package; unknown properties and invalid values are dropped there.
+	tracking.TrackBrowserEvent(body.Event, props)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

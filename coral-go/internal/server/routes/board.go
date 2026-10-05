@@ -1463,8 +1463,8 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	h.persistTaskArtifact(r.Context(), task)
-	// Funnel milestone: the first board task ever completed on this install.
-	tracking.TrackOnce(tracking.EventFirstTaskCompleted, nil)
+	// Task outcome and funnel milestones (first completion, first success).
+	tracking.TrackTaskCompleted(taskOutcomeForTracking(task, body.Outcome))
 	// Copy values for goroutine closure safety
 	completedTask := task
 	subscriberID := body.SubscriberID
@@ -2112,4 +2112,17 @@ func (h *BoardHandler) ResolveCommitWaits(ctx context.Context, project, commitHa
 			}
 		}
 	}
+}
+
+// taskOutcomeForTracking reduces a completion to the closed success/failed set
+// used by analytics, preferring the stored workflow outcome.
+func taskOutcomeForTracking(task *board.Task, requested string) string {
+	outcome := requested
+	if task != nil && task.Workflow.Outcome != "" {
+		outcome = task.Workflow.Outcome
+	}
+	if outcome == "failed" {
+		return tracking.OutcomeFailed
+	}
+	return tracking.OutcomeSuccess
 }

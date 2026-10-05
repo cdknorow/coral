@@ -1,3 +1,4 @@
+import { dashboardPromptRequested } from './dashboard_analytics.js';
 /* Quick actions, command sending, mode toggling, and session controls */
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
@@ -91,6 +92,7 @@ export async function sendCommand() {
 
         const command = parts.join(" ");
         if (!command) return;
+        if (targetAgentType !== 'terminal') dashboardPromptRequested();
         const sentSessionId = targetSessionId;
         const sentAt = Date.now();
         const hasAttachments = sessionAttachments.length > 0;

@@ -32,6 +32,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tmux"
+	"github.com/cdknorow/coral/internal/tracking"
 
 	"github.com/google/uuid"
 )
@@ -218,6 +219,8 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 }
 
 func startWebServer(ctx context.Context, cfg *config.Config) {
+	tracking.SetEntrypoint("launch-coral")
+	tracking.SetCoralDir(cfg.CoralDir())
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType: "tmux",
 		PasswordPrompt: func() (string, error) {
@@ -231,6 +234,8 @@ func startWebServer(ctx context.Context, cfg *config.Config) {
 	if err != nil {
 		log.Fatalf("Failed to start: %v", err)
 	}
+	// Startup has applied the saved privacy setting before analytics can run.
+	tracking.TrackInstallAsync()
 
 	go func() {
 		<-ctx.Done()

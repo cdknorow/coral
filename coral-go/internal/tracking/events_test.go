@@ -21,6 +21,33 @@ var allEventConstants = []string{
 	EventReturned24h,
 	EventSupporterCheckoutClicked,
 	EventLicenseActivated,
+	EventFirstTaskSucceeded,
+	EventTaskCompleted,
+	EventLaunchRequested,
+	EventLaunchResult,
+	EventDashboardReady,
+	EventDashboardActiveDay,
+	EventDashboardFailed,
+	EventPromptSubmitRequested,
+	EventFirstPromptSubmitted,
+}
+
+// The typed allowlist, the disclosure and the constants must name exactly the
+// same events: an event that can be sent but is not disclosed is a bug, and so
+// is a disclosed event that the allowlist would drop.
+func TestEventAllowlistMatchesTheDisclosure(t *testing.T) {
+	documented := map[string]bool{}
+	for _, e := range AllEvents {
+		documented[e.Name] = true
+		if !KnownEvent(e.Name) {
+			t.Errorf("event %q is disclosed but not on the typed allowlist", e.Name)
+		}
+	}
+	for name := range eventSpecs {
+		if !documented[name] {
+			t.Errorf("event %q can be sent but is not disclosed", name)
+		}
+	}
 }
 
 func TestAllEventsCoversEveryEventConstant(t *testing.T) {

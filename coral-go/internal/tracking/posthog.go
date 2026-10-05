@@ -49,9 +49,43 @@ func SetCoralDir(dir string) {
 // SetTelemetryEnabled controls all PostHog work for this process. It is
 // deliberately independent of the build-time key so an operator can opt out
 // without changing unrelated application behavior.
-func SetTelemetryEnabled(enabled bool) { telemetryDisabled.Store(!enabled) }
+func SetTelemetryEnabled(enabled bool) {
+	if telemetryDisabled.Swap(!enabled) != !enabled {
+		// Any transition invalidates work created under the old setting, so an
+		// opt-out followed by an opt-in while a retry sleeps cannot revive it.
+		telemetryGen.Add(1)
+		if !enabled {
+			clearPendingMilestones()
+		}
+	}
+}
 
-func telemetryEnabled() bool { return !telemetryDisabled.Load() }
+// telemetryGen is bumped whenever the telemetry setting changes. Each queued
+// event remembers the generation it was created in and is dropped, not sent,
+// if the generation has moved on.
+var telemetryGen atomic.Uint64
+
+// telemetryValid reports whether work created in generation gen may still be sent.
+func telemetryValid(gen uint64) bool { return telemetryEnabled() && telemetryGen.Load() == gen }
+
+// envTelemetryDisabled names the environment override. When set to a true
+// value it disables all telemetry for the process, overriding a saved opt-in.
+// Automated tests, CI and release verification set it so executing a keyed
+// binary can never reach the analytics service.
+const envTelemetryDisabled = "CORAL_TELEMETRY_DISABLED"
+
+// TelemetryEnvDisabled reports whether CORAL_TELEMETRY_DISABLED is set to a true value.
+func TelemetryEnvDisabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(envTelemetryDisabled))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// telemetryEnabled is checked before every send and before every retry, so an
+// opt-out takes effect immediately and queued work is dropped, never replayed.
+func telemetryEnabled() bool { return !telemetryDisabled.Load() && !TelemetryEnvDisabled() }
 
 // CoralDir returns the data directory tracking state is written to, or "" if
 // it has not been configured. Exposed so the telemetry disclosure can show the
@@ -80,12 +114,13 @@ func TrackInstallAsync() {
 	if config.PostHogKey == "" || !telemetryEnabled() {
 		return
 	}
+	gen := telemetryGen.Load()
 	asyncGo(func() {
-		trackInstall()
+		trackInstall(gen)
 		// Always send app_opened for DAU tracking
-		trackEventSync(EventAppOpened, nil)
+		emitEvent(EventAppOpened, nil, uuid.NewString(), nowUTC(), gen)
 		// Retention: fire returned_24h once, on the first open >24h after the first.
-		trackReturnVisitSync()
+		trackReturnVisitSync(gen)
 	})
 }
 
@@ -95,29 +130,54 @@ func TrackEvent(eventName string, extraProps map[string]string) {
 	if !telemetryEnabled() {
 		return
 	}
-	asyncGo(func() { trackEventSync(eventName, extraProps) })
+	gen, ts, id := telemetryGen.Load(), nowUTC(), uuid.NewString()
+	asyncGo(func() { emitEvent(eventName, extraProps, id, ts, gen) })
+}
+
+// standardProps are attached to every event. run_id groups one process's
+// events; it is random, unpersisted and unrelated to the install ID.
+func standardProps() map[string]any {
+	return map[string]any{
+		"version":        config.Version,
+		"edition":        config.TierName,
+		"os":             runtime.GOOS,
+		"arch":           runtime.GOARCH,
+		"schema_version": SchemaVersion,
+		"run_id":         runID,
+		"entrypoint":     entrypointName(),
+	}
 }
 
 // trackEventSync is the synchronous body of TrackEvent. It is the single place
-// every event acquires its standard properties.
-func trackEventSync(eventName string, extraProps map[string]string) {
-	if config.PostHogKey == "" || !telemetryEnabled() {
-		return
+// every event acquires its standard properties and is validated against the
+// typed allowlist. An unknown event is not sent.
+func trackEventSync(eventName string, extraProps map[string]string) bool {
+	return emitEvent(eventName, extraProps, uuid.NewString(), nowUTC(), telemetryGen.Load())
+}
+
+// emitEvent validates and delivers one event. PostHog deduplicates on the same
+// uuid, event, timestamp and distinct_id, so a retry reuses all four (the
+// timestamp is fixed when the event is created, not when it is sent). That is
+// best-effort deduplication, not an exactly-once guarantee. gen is the
+// telemetry generation the event was created in. It reports whether the
+// service accepted the event.
+func emitEvent(eventName string, extraProps map[string]string, eventUUID, timestamp string, gen uint64) bool {
+	if config.PostHogKey == "" || !telemetryValid(gen) {
+		return false
+	}
+	typed, known := sanitizeProps(eventName, extraProps)
+	if !known {
+		return false
 	}
 	id := getInstallID()
 	if id == "" {
-		return
+		return false
 	}
-	props := map[string]any{
-		"version": config.Version,
-		"edition": config.TierName,
-		"os":      runtime.GOOS,
-		"arch":    runtime.GOARCH,
-	}
-	for k, v := range extraProps {
+	props := standardProps()
+	for k, v := range typed {
 		props[k] = v
 	}
-	postEvent(eventName, id, props)
+	return postEvent(eventName, id, eventUUID, timestamp, gen, props)
 }
 
 // asyncGo runs fn in a goroutine that can never panic into the caller. All
@@ -140,7 +200,7 @@ func asyncGo(fn func()) {
 // Test-only helper; production code never waits on tracking.
 func waitForAsync() { asyncWG.Wait() }
 
-func trackInstall() {
+func trackInstall(gen uint64) {
 	dir := resolveCoralDir()
 	if dir == "" {
 		return
@@ -163,12 +223,7 @@ func trackInstall() {
 		installIDMu.Lock()
 		cachedInstallID = installID
 		installIDMu.Unlock()
-		postEvent(EventInstall, installID, map[string]any{
-			"version": currentVersion,
-			"edition": config.TierName,
-			"os":      runtime.GOOS,
-			"arch":    runtime.GOARCH,
-		})
+		postEvent(EventInstall, installID, uuid.NewString(), nowUTC(), gen, standardProps())
 		return
 	}
 
@@ -180,39 +235,64 @@ func trackInstall() {
 	if currentVersion != "" && storedVersion != currentVersion {
 		// Version upgrade
 		os.WriteFile(versionFile, []byte(currentVersion), 0600)
-		postEvent(EventUpgrade, installID, map[string]any{
-			"version": currentVersion,
-			"edition": config.TierName,
-			"os":      runtime.GOOS,
-			"arch":    runtime.GOARCH,
-		})
+		postEvent(EventUpgrade, installID, uuid.NewString(), nowUTC(), gen, standardProps())
 	}
 }
 
-func postEvent(event, distinctID string, properties map[string]any) {
+// retryDelays are the waits before each retry: a bounded three attempts in
+// total. It is a var so tests can shorten it.
+var retryDelays = []time.Duration{500 * time.Millisecond, 2 * time.Second}
+
+// postEvent delivers one event, retrying transient failures (network errors,
+// 5xx, 408, 429) a bounded number of times with an identical payload (same
+// uuid, event, timestamp, distinct_id). Telemetry being switched off, or
+// switched off and on again, drops the event and stops the retries; a
+// non-retryable 4xx is logged and dropped. It reports whether the service
+// accepted the event.
+func postEvent(event, distinctID, eventUUID, timestamp string, gen uint64, properties map[string]any) bool {
 	payload := map[string]any{
 		"api_key":     config.PostHogKey,
 		"event":       event,
 		"distinct_id": distinctID,
+		"uuid":        eventUUID,
+		"timestamp":   timestamp,
 		"properties":  properties,
 	}
-
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return
+		return false
 	}
-
 	client := &http.Client{Timeout: 5 * time.Second}
+	for attempt := 0; ; attempt++ {
+		if !telemetryValid(gen) {
+			return false
+		}
+		status, detail, retryable := postOnce(client, data)
+		if status >= 200 && status < 300 {
+			return true
+		}
+		logDeliveryFailure(event, status, detail)
+		if !retryable || attempt >= len(retryDelays) {
+			return false
+		}
+		time.Sleep(retryDelays[attempt])
+	}
+}
+
+// postOnce makes one attempt and reports its status (0 on a network error),
+// failure detail, and whether trying again could help.
+func postOnce(client *http.Client, data []byte) (status int, detail string, retryable bool) {
 	resp, err := client.Post(posthogURL, "application/json", bytes.NewReader(data))
 	if err != nil {
-		logDeliveryFailure(event, 0, err.Error())
-		return
+		return 0, err.Error(), true
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		logDeliveryFailure(event, resp.StatusCode, strings.TrimSpace(string(body)))
+	if resp.StatusCode < 300 {
+		return resp.StatusCode, "", false
 	}
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+	retry := resp.StatusCode >= 500 || resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests
+	return resp.StatusCode, strings.TrimSpace(string(body)), retry
 }
 
 // deliveryLogMaxBytes caps the local failure log so it can never grow without

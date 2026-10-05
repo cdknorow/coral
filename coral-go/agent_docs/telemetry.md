@@ -1,146 +1,96 @@
 # Telemetry
 
-Coral sends a small, fixed set of anonymous usage events. This page lists all of them. It is the canonical description of what Coral collects — the first-run disclosure in the dashboard is generated from the same source.
+Coral sends a fixed set of product usage events to help identify startup and agent-launch problems. **Settings → Usage analytics** disables outgoing analytics immediately. Release builds enable analytics by default; builds without an injected analytics key send nothing. Remote access is a separate setting.
 
-**There is no opt-out toggle.** What is true instead is stated under [No opt-out](#no-opt-out), and every claim there is checkable.
-
----
+Set `CORAL_TELEMETRY_DISABLED=1` before starting Coral to suppress analytics regardless of the saved setting. Release verification and frontend test runners use this override. No PostHog browser SDK, session replay, or automatic page-content capture is installed.
 
 ## Events
 
-Every event Coral can send. There are no others.
+The runtime disclosure is generated from `internal/tracking/events.go`. New funnel events use schema version 2.
 
-| Event | When it fires | Additional properties |
-|-------|---------------|-----------------------|
-| `install` | The first time Coral runs on this machine | — |
-| `upgrade` | The first run after Coral's version changes | — |
-| `app_opened` | Every time the Coral server starts | — |
-| `session_launched` | Every time you launch a single agent | — |
-| `team_launched` | Every time you launch a team | `agent_count` |
-| `first_agent_launched` | Once ever: the first agent you launch | — |
-| `first_team_launched` | Once ever: the first team you launch | `agent_count` |
-| `first_task_completed` | Once ever: the first message-board task marked complete | — |
-| `returned_24h` | Once ever: the first time you open Coral more than 24 hours after your first open | — |
-| `supporter_checkout_clicked` | Every time you click a link to the supporter store | `surface`, `campaign`, `source`, `medium` |
-| `license_activated` | Every time a license key is activated successfully | `product_name`, `variant_name` |
+| Event | Meaning | Additional properties |
+|---|---|---|
+| `install` | First tracked startup for this data directory | — |
+| `upgrade` | First tracked startup after the version changes | — |
+| `app_opened` | Coral process startup; not proof that a dashboard loaded | — |
+| `session_launched` | Individual launch handler created/submitted the agent process | — |
+| `team_launched` | Team launch with at least one member started | `agent_count`, `requested_agents`, `started_agents`, `failed_agents` |
+| `launch_requested` | Server received an individual or team launch attempt | `kind`, `attempt_id`, `provider`, `backend`, `requested_agents`, `resume` |
+| `launch_result` | Result of that attempt; success, failure, or partial team success | Request properties plus `outcome`, `failure_category`, `duration_ms`, `started_agents`, `failed_agents` |
+| `dashboard_ready` | A dashboard page completed initialization, loaded/rendered sessions, and observed server startup completion | `page_id` |
+| `dashboard_failed` | An observed dashboard initialization or initial-fetch failure | `code` |
+| `dashboard_active_day` | An initialized dashboard was visible during a UTC date | — |
+| `prompt_submit_requested` | First composer submission intent, covering both HTTP and WebSocket paths | `source` |
+| `first_prompt_submitted` | First successful HTTP send accepted by the terminal transport | `source` |
+| `task_completed` | A board task completion accepted by the completion route | `outcome` |
+| `first_agent_launched` | First individual launch | — |
+| `first_team_launched` | First team launch with a successful member | `agent_count` |
+| `first_task_completed` | First task marked complete, including a failed outcome | `outcome` |
+| `first_task_succeeded` | First task completed with a successful outcome | — |
+| `returned_24h` | First tracked process startup more than 24 hours after the first tracked open | — |
+| `supporter_checkout_clicked` | A supporter-store link was clicked | `surface`, `campaign`, `source`, `medium` |
+| `license_activated` | Successful license activation | `product_name`, `variant_name` |
 
-The `first_*` events and `returned_24h` fire at most once per install. Their state lives in `<coralDir>/.milestones.json`, which holds event names and timestamps only.
+Launch completion does not prove provider authentication, model readiness, or a response. The WebSocket composer currently lacks a transport acknowledgment suitable for the confirmed-send milestone, so `first_prompt_submitted` covers HTTP sends only. `prompt_submit_requested` measures intent, not delivery. No first-response or generic agent-ready event is emitted: existing transcript updates cannot reliably attribute new assistant output to a particular submitted prompt.
 
-## Properties
+`dashboard_ready` counts page loads, not users. Active-day records are deduplicated for the installation and UTC date, including multiple tabs. The legacy `returned_24h` event measures restarts; use dashboard activity for engagement and retention. An observed failure may precede recovery and a ready event. Missing events alone do not prove abandonment or a crash.
 
-Every event carries exactly four properties:
+## Properties and identifiers
 
-| Property | Value |
-|----------|-------|
-| `version` | The Coral version you are running |
-| `edition` | The build tier (`prod`, `beta`, `dev`) |
-| `os` | Your operating system (`darwin`, `linux`, `windows`) |
-| `arch` | Your CPU architecture (`amd64`, `arm64`) |
+Every event carries `version`, `edition`, `os`, `arch`, `schema_version`, `run_id`, and `entrypoint`. The process run ID is random and changes on restart. Entrypoint is a controlled value distinguishing the server, tray, launcher, or unknown entrypoint. Launch attempt IDs correlate requests and outcomes; dashboard page IDs distinguish page loads. These are analytics IDs, not agent session IDs, task IDs, or board identifiers.
 
-Three events carry a little more, listed in the table above. `license_activated` carries the product and variant name only — **never** the license key, your name, or your email.
+Events use a random installation UUID stored in `<coralDir>/.install_id`. This identifies a data directory, not necessarily a person. It is not derived from hardware, hostname, username, or email. Deleting it changes the analytics identity.
 
-## Identifier
-
-Events are attached to a random UUID stored at `<coralDir>/.install_id`, generated on first run. It is not derived from your hardware, hostname, username, or email address. Delete the file and you become a new, unlinked install.
+Event properties are validated against per-event schemas. Provider, backend, outcome, and failure codes use controlled values; counts and durations are bounded and typed. Unknown properties and invalid values are dropped. Unknown event names are not emitted. Existing supporter attribution uses bounded slugs, and existing license product/variant metadata uses bounded labels; neither includes the license key or purchaser details.
 
 ## Never collected
 
-There is no code path that sends any of the following:
+Event payloads do not include:
 
-- Your prompts
-- Your source code
-- Repository, branch, and file names
-- Agent output
-- Your name, email address, or IP-derived location
-- Your license key
+- Your prompts or source code.
+- Repository, branch, and file names or paths.
+- Agent output or transcripts.
+- Raw error messages or executed commands.
+- Your name, email address, or IP-derived location.
+- Your license key, passwords, or API keys.
 
-On that last one, precisely: Coral never puts your location in a payload. PostHog does geo-resolve source IPs server-side by default, so this is a statement about what we send, not a claim about what our analytics provider can infer from the connection itself.
+These statements describe Coral's payloads. The analytics service receives the network connection; this does not claim it cannot observe a source IP.
 
-## No opt-out
+## Controls and delivery
 
-There is no runtime toggle that disables telemetry. Rather than soften that, here is what is true instead:
+The runtime opt-out, missing build key, and environment override suppress outgoing events. Startup suppresses telemetry when privacy settings cannot be read. Disabling telemetry does not disable local product milestone state used by the UI.
 
-- **Coral is Apache 2.0.** The entire implementation is `internal/tracking/`. You can read every event before trusting the list above.
-- **Builds compiled from source send nothing.** The analytics key is injected at build time via ldflags (`internal/config/config.go`). A build from source has no key, so `TrackEvent` and `TrackInstallAsync` return immediately and send nothing. Such a build also does not consume its one-time `first_*` events, so installing a release later still produces a correct funnel.
-- **Downloaded release builds do send these events by default.** Both halves are stated deliberately.
-- **Failed deliveries are recorded locally** at `<coralDir>/tracking-failures.log`, so you can see what Coral tried to send and could not. The log holds a timestamp, event name, HTTP status, and error detail — never event properties or your install ID. It is capped at 64 KB.
+Tracking is asynchronous and must not block a launch or turn a product operation into a failure. Delivery retries are bounded. Retries of the same delivery retain event identity and timestamp; a remote timeout can still make receipt uncertain. Do not assume exactly-once ingestion. See [PostHog event deduplication](https://github.com/PostHog/posthog.com/blob/master/contents/docs/data/events.mdx) for the service's eventual deduplication contract.
 
-## The browser endpoint
+One-time product milestones and confirmed analytics delivery are separate. Reaching a milestone while opted out or without a key must not mark it sent. Events suppressed by opt-out are not saved as an outbound replay queue. A later occurrence while enabled can qualify again if analytics delivery has not been confirmed. State is kept in `<coralDir>/.milestones.json`. Pending enabled milestones retain their original timestamp and allowlisted properties for a later trigger to retry; opting out clears these pending snapshots. This is not a background outbox.
 
-One event originates in the dashboard UI rather than the server: `supporter_checkout_clicked`, because a link click can only be observed in the browser. Coral therefore exposes `POST /api/tracking/event`.
+Delivery failures are recorded locally in `<coralDir>/tracking-failures.log`, capped at 64 KB. This diagnostic file is not uploaded as analytics.
 
-It is a strict allowlist, not a general event pipe:
+## Browser endpoint
 
-- One permitted event name (`supporter_checkout_clicked`)
-- Four permitted property keys (`surface`, `campaign`, `source`, `medium`)
-- Values must match `^[A-Za-z0-9_.-]{1,64}$`
+`POST /api/tracking/event` accepts only browser-observed events: supporter clicks, dashboard readiness/activity/failure, and composer submission intent. Server launch/task events and confirmed-send milestones cannot be submitted through this endpoint.
 
-Anything else is dropped or rejected with `400`. Free-form text cannot be smuggled through it.
+For example:
 
-## Your AI agents
-
-Separately from telemetry, and a question people usually ask in the same breath:
-
-Coral has no API keys of its own and never calls a model on your behalf. It runs the CLI agents you have already installed, using your credentials. Token and cost totals come from supported agent usage records and remain local to your Coral instance.
-
----
-
-## API
-
-### Get the disclosure
-
-```
-GET /api/system/telemetry
-```
-
-Returns everything the first-run disclosure renders. The event list is generated from the tracking package's own definitions, so the UI cannot describe a different set of events than the one Coral sends.
-
-**Response:**
 ```json
 {
-  "enabled": true,
-  "acknowledged": false,
-  "events": [
-    { "name": "install", "when": "The first time Coral runs on this machine." },
-    { "name": "team_launched", "when": "Every time you launch a team.", "extra": "agent_count — how many agents were in the team" }
-  ],
-  "properties": ["version — the Coral version you are running", "..."],
-  "never_collected": ["Your prompts", "..."],
-  "install_id_path": "/Users/you/.coral/.install_id",
-  "failure_log": "/Users/you/.coral/tracking-failures.log"
+  "event": "dashboard_failed",
+  "props": { "code": "sessions_fetch_http" }
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `enabled` | `false` for builds compiled from source, which have no analytics key. The disclosure is not shown when this is `false`. |
-| `acknowledged` | Whether the user has dismissed the disclosure on this install |
+Allowed dashboard failure codes identify sessions/status HTTP, network, or invalid-response failures and initialization failure. They do not contain response bodies, URLs, or exception messages. The endpoint validates properties and applies bounded deduplication/rate limits for dashboard reports. `{ "ok": true }` acknowledges processing, not PostHog receipt.
 
-### Acknowledge the disclosure
+## Disclosure API
 
-```
-POST /api/system/telemetry/acknowledge
-```
+`GET /api/system/telemetry` returns the event descriptions, standard properties, never-collected list, disclosure acknowledgment, and display paths for local telemetry state. Its `enabled` field describes whether the build has a project key; it is not confirmation of network delivery. Read privacy settings and the environment override when determining effective collection.
 
-Records the acknowledgement at `<coralDir>/.telemetry_disclosed` so the disclosure does not appear again. Idempotent.
+`POST /api/system/telemetry/acknowledge` records that the disclosure was seen. Acknowledging the disclosure is separate from the usage analytics setting.
 
-**Response:**
-```json
-{ "ok": true, "acknowledged": true }
-```
+## Measurement limits
 
-### Report a browser-observed event
+A failure before the executable starts, such as a missing host loader library, cannot self-report through this instrumentation. A JavaScript bundle that never loads cannot run the dashboard helper. Readiness and response observations should be added only after reliable provider/session correlation exists.
 
-```
-POST /api/tracking/event
-```
+Use schema/version cohorts when comparing historical events. In particular, earlier team counts included attempted members that failed, and historical first task completion events had no outcome. Keep test traffic separate and retain incomplete observation windows when interpreting funnels.
 
-**Request:**
-```json
-{
-  "event": "supporter_checkout_clicked",
-  "props": { "surface": "settings_tier_badge" }
-}
-```
-
-**Response:** `{ "ok": true }`, or `400` for an event name outside the allowlist. Property keys outside the allowlist, and values that do not match `^[A-Za-z0-9_.-]{1,64}$`, are silently dropped.
+See `specs/TELEMETRY_FUNNEL.md` for the baseline analysis, dashboard definitions, and remaining blind spots.

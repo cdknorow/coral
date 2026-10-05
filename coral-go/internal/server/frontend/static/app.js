@@ -1,3 +1,4 @@
+import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
 import { showTeamWorkingMode, showTeamWorkingModeWorkspace } from './team_working_mode.js';
 import { showTeamAvailability, showTeamAvailabilityWorkspace } from './team_availability.js';
@@ -630,13 +631,16 @@ function pollStartupStatus() {
     const check = async () => {
         try {
             const resp = await fetch('/api/system/status');
+            if (!resp.ok) { dashboardFailed('status_fetch_http'); setTimeout(check, 2000); return; }
             const data = await resp.json();
+            if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
             if (data.startup_complete) {
                 el.classList.add('hidden');
-                loadLiveSessions();
+                dashboardStartupComplete();
+                loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded);
                 return;
             }
-        } catch {}
+        } catch (error) { dashboardFailed(error instanceof SyntaxError ? 'status_fetch_invalid' : 'status_fetch_network'); }
         setTimeout(check, 2000);
     };
     check();
@@ -654,6 +658,8 @@ window._goHome = function() {
 
 // ── Initialization ────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
+    beginDashboardAnalytics();
+    try {
     // Initialize platform detection and platform-specific behavior
     platform.init();
     if (platform.isNative) {
@@ -684,7 +690,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const restored = deserializeFromUrl();
     historyPage = restored.page;
 
-    loadLiveSessions().then(() => {
+    loadLiveSessions(dashboardFailed).then(ok => {
+        dashboardSessionsLoaded(ok);
         // Dashboard deep link: #chat/<sessionId> restores the live session once the list is loaded.
         if (!popout) restoreChatFromHash();
     });
@@ -1021,5 +1028,10 @@ document.addEventListener("DOMContentLoaded", () => {
             };
             setTimeout(restoreWorkspace, 250);
         }
+    }
+    dashboardInitialized();
+    } catch (error) {
+        dashboardFailed('init_failed');
+        throw error;
     }
 });
