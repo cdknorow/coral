@@ -20,6 +20,8 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  const shot=async name=>{if(!process.env.CORAL_SCREENSHOT_DIR)return;fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR,{recursive:true});const {data}=await c.Page.captureScreenshot({format:'png'});fs.writeFileSync(process.env.CORAL_SCREENSHOT_DIR+'/'+name+'.png',Buffer.from(data,'base64'));};
  try{
  await c.Page.enable();await c.Fetch.enable({patterns:[{urlPattern:'*/file-content?*',resourceType:'Image',requestStage:'Request'}]});await c.Emulation.setDeviceMetricsOverride({width:1100,height:850,deviceScaleFactor:1,mobile:false});
+ await c.Network.enable();await c.Network.setCacheDisabled({cacheDisabled:true});
+ await c.Page.navigate({url:'about:blank'});await c.Page.loadEventFired();
  await c.Page.navigate({url:base});await c.Page.loadEventFired();
  await ev(`(async()=>{
  const {state}=await import('/static/state.js');const f=await import('/static/changed_files.js');window.s=state;window.f=f;
@@ -93,6 +95,51 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  await ev(`window.defer=false;s.currentSession={...s.currentSession,session_id:'c',working_directory:'/repo-c'};f.syncFilesViewerSession();pending.splice(0).forEach(r=>r())`);await settle();await tab('browse');assert.match(await tree(),/repo-c/);assert.doesNotMatch(await tree(),/repo-b/);
  await click('[data-path=src]');await click('[data-path="src/main.go"]');await ev(`s.currentSession={...s.currentSession,session_id:'d',working_directory:'/repo-d'};f.syncFilesViewerSession()`);await settle();assert.equal(await ev(`!!document.querySelector('.inline-preview-header')`),false);assert.match(await tree(),/repo-d/);
  await ev(`window.defer=true;document.querySelector('#file-explorer-view .explorer-heading button').click()`);await settle();await tab('files');await ev(`window.defer=false;pending.splice(0).forEach(r=>r())`);await settle();assert.equal(await ev(`document.querySelector('#file-explorer-view').hidden`),true);await tab('browse');assert.match(await tree(),/repo-d/);
+ // Realistic API-sized pages accumulated into a large visible tree. Timing is
+ // diagnostic; stable node identity and bounded focus writes are regressions.
+ await c.Page.bringToFront();
+ const profile=await ev(`(async()=>{
+ const originalFetch=window.fetch;
+ window.fetch=async url=>{
+  const u=new URL(url,location.origin);
+  if(!u.pathname.endsWith('/search-files'))return originalFetch(url);
+  const dir=u.searchParams.get('dir'),offset=Number(u.searchParams.get('offset'));
+  const entries=dir==='.'?Array.from({length:500},(_,i)=>{const n=offset+i;return {name:n===0?'folder':'file-'+String(n).padStart(5,'0')+'.txt',path:n===0?'folder':'file-'+String(n).padStart(5,'0')+'.txt',type:n===0?'dir':'file'};}):[{name:'child.txt',path:'folder/child.txt',type:'file'}];
+  return new Response(JSON.stringify({root:'/large',entries,has_more:dir==='.'&&offset<4500}));
+ };
+ const flush=async()=>{const deadline=performance.now()+5000;do{await new Promise(r=>setTimeout(r,5));if(![...document.querySelectorAll('.explorer-status')].some(x=>x.textContent==='Loading…'))return;}while(performance.now()<deadline);throw Error('Explorer load timeout');};
+ const start=performance.now();
+ document.querySelector('#file-explorer-view .explorer-heading button').click();await flush();
+ for(let i=0;i<9;i++){document.querySelector('[aria-label="Load more root directory"]').click();await flush();}
+ const loadMs=performance.now()-start;
+ const kept=document.querySelector('[data-path="file-00001.txt"]');
+ const oldCreate=document.createElement;let created=0;
+ document.createElement=function(...args){created++;return oldCreate.apply(this,args);};
+ const toggleStart=performance.now();
+ document.querySelector('[data-path="folder"]').click();await flush();
+ for(let i=0;i<10;i++)document.querySelector('[data-path="folder"]').click();
+ const toggleMs=performance.now()-toggleStart;
+ document.createElement=oldCreate;
+ const stable=kept===document.querySelector('[data-path="file-00001.txt"]');
+ const observer=new MutationObserver(()=>{});
+ observer.observe(document.querySelector('.explorer-tree'),{subtree:true,attributes:true,attributeFilter:['tabindex']});
+ const focusStart=performance.now();
+ for(let i=1;i<=30;i++)document.querySelector('[data-path="file-'+String(i).padStart(5,'0')+'.txt"]').focus();
+ const focusMs=performance.now()-focusStart,focusWrites=observer.takeRecords().length;observer.disconnect();
+ const key=k=>document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true}));
+ key('End');const end=document.activeElement.dataset.path;
+ key('Home');key('ArrowRight');const child=document.activeElement.dataset.path;
+ key('ArrowLeft');const parent=document.activeElement.dataset.path;
+ key('ArrowLeft');const collapsed=!document.querySelector('[data-path="folder/child.txt"]');
+ return {loadMs,toggleMs,focusMs,created,stable,focusWrites,end,child,parent,collapsed,rows:document.querySelectorAll('.explorer-item').length,tabStops:document.querySelectorAll('.explorer-item[tabindex="0"]').length};
+ })()`);
+ console.log('Large tree profile:',JSON.stringify(profile));
+ if(process.env.CORAL_EXPLORER_PROFILE_OUTPUT)fs.writeFileSync(process.env.CORAL_EXPLORER_PROFILE_OUTPUT,JSON.stringify(profile,null,2));
+ assert.equal(profile.rows,5000);assert.equal(profile.tabStops,1);
+ assert.equal(profile.end,'file-04999.txt');assert.equal(profile.child,'folder/child.txt');assert.equal(profile.parent,'folder');assert.equal(profile.collapsed,true);
+ assert.equal(profile.stable,true,'toggling must retain unrelated file rows');
+ assert.ok(profile.created<100,'toggling a small folder must not recreate the large root listing');
+ assert.equal(profile.focusWrites,60,'focus updates only the previous and next tab stop');
  await c.Emulation.setDeviceMetricsOverride({width:390,height:844,deviceScaleFactor:1,mobile:true});
  await ev(`document.getElementById('agentic-panel-files').style.width='350px'`);
  assert.ok(await ev(`[...document.querySelectorAll('[data-files-source]')].every(x=>{const r=x.getBoundingClientRect();return r.left>=0&&r.right<=390})`));await shot('browse-mobile');

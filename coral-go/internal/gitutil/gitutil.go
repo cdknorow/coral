@@ -56,10 +56,18 @@ func ResolveGitRoot(ctx context.Context, workdir string) string {
 	// workdir isn't a repo — check one level of subdirectories
 	entries, _ := os.ReadDir(workdir)
 	for _, e := range entries {
+		if ctx.Err() != nil {
+			return workdir
+		}
 		if !e.IsDir() {
 			continue
 		}
 		sub := filepath.Join(workdir, e.Name())
+		// A child repository must have a .git directory or worktree gitfile.
+		// Avoid spawning Git for every ordinary directory in large workspaces.
+		if _, err := os.Stat(filepath.Join(sub, ".git")); err != nil {
+			continue
+		}
 		if root, err := git(ctx, sub, "rev-parse", "--show-toplevel"); err == nil {
 			return root
 		}

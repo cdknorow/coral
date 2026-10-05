@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -41,7 +41,15 @@ func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir st
 		errBadRequest(w, "directory must be inside the workspace")
 		return
 	}
-	listing, err := os.ReadDir(target)
+	// File.ReadDir returns directory order, so unlike os.ReadDir it does not
+	// sort the whole listing a second time before ours.
+	dirFile, err := os.Open(target)
+	if err != nil {
+		errNotFound(w, "Directory unavailable")
+		return
+	}
+	listing, err := dirFile.ReadDir(-1)
+	dirFile.Close()
 	if err != nil {
 		errNotFound(w, "Directory unavailable")
 		return
@@ -51,28 +59,41 @@ func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir st
 		Path string `json:"path"`
 		Type string `json:"type"`
 	}
-	entries := make([]entry, 0, len(listing))
-	for _, item := range listing {
+	// Sort compact keys, lowercasing each name once, and build response paths
+	// only for the page that is returned.
+	type sortKey struct {
+		name, folded string
+		dir          bool
+	}
+	keys := make([]sortKey, len(listing))
+	for i, item := range listing {
+		name := item.Name()
+		keys[i] = sortKey{name: name, folded: strings.ToLower(name), dir: item.IsDir()}
+	}
+	slices.SortFunc(keys, func(a, b sortKey) int {
+		if a.dir != b.dir {
+			if a.dir {
+				return -1
+			}
+			return 1
+		}
+		if c := strings.Compare(a.folded, b.folded); c != 0 {
+			return c
+		}
+		return strings.Compare(a.name, b.name)
+	})
+	start := min(offset, len(keys))
+	end := min(start+limit, len(keys))
+	entries := make([]entry, 0, end-start)
+	for _, k := range keys[start:end] {
 		kind := "file"
-		if item.IsDir() {
+		if k.dir {
 			kind = "dir"
 		}
-		entries = append(entries, entry{item.Name(), filepath.ToSlash(filepath.Join(clean, item.Name())), kind})
+		entries = append(entries, entry{k.name, filepath.ToSlash(filepath.Join(clean, k.name)), kind})
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Type != entries[j].Type {
-			return entries[i].Type == "dir"
-		}
-		a, b := strings.ToLower(entries[i].Name), strings.ToLower(entries[j].Name)
-		if a == b {
-			return entries[i].Name < entries[j].Name
-		}
-		return a < b
-	})
-	start := min(offset, len(entries))
-	end := min(start+limit, len(entries))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"entries": entries[start:end], "dir": filepath.ToSlash(clean), "root": root,
-		"offset": offset, "limit": limit, "has_more": end < len(entries),
+		"entries": entries, "dir": filepath.ToSlash(clean), "root": root,
+		"offset": offset, "limit": limit, "has_more": end < len(keys),
 	})
 }
