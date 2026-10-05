@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"net/http"
 	"os"
@@ -39,7 +40,7 @@ func CoralBase() string {
 // events posted under it would never show up in the dashboard.
 func ResolveSessionID(payloadSessionID string) string {
 	if os.Getenv("TMUX") != "" {
-		out, err := exec.Command("tmux", "display-message", "-p", "#{session_name}").Output()
+		out, err := exec.Command(tmux.BinaryFromEnv(), "display-message", "-p", "#{session_name}").Output()
 		if err == nil {
 			if id := sessionIDFromName(strings.TrimSpace(string(out))); id != "" {
 				return id

@@ -15,7 +15,7 @@ it says so.
 
 | Requirement | Notes |
 |---|---|
-| **tmux** | Required on macOS and Linux. Coral starts without it, but agent launch fails. Not needed on Windows, which defaults to a native PTY backend — though that backend is unexercised and Windows is unsupported; see [Platform support](#platform-support). |
+| **tmux** | The macOS app packaging includes tmux; older downloads and standalone/source builds may still need it installed separately. Linux requires a separate tmux installation for the default backend. The PTY backend does not require tmux. See [Platform support](#platform-support). |
 | **git** | Worktree and branch features need a real repository. |
 | **An agent CLI** | At least one of `claude`, `codex`, `agy` (Antigravity), or `pi` — **installed and authenticated**. Coral drives these tools; it does not install, configure, or authenticate them. |
 

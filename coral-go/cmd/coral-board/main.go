@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cdknorow/coral/internal/taskcli"
+	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"net"
 	"net/http"
@@ -115,7 +116,7 @@ func resolveSessionName() string {
 	}
 	// Fallback: try tmux session name
 	if os.Getenv("TMUX") != "" {
-		out, err := exec.Command("tmux", "display-message", "-p", "#S").Output()
+		out, err := exec.Command(tmux.BinaryFromEnv(), "display-message", "-p", "#S").Output()
 		if err == nil {
 			name := strings.TrimSpace(string(out))
 			if name != "" {

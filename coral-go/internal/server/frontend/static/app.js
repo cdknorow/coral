@@ -1,3 +1,4 @@
+import { initPrerequisiteChecks } from './prerequisites.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
 import { showTeamWorkingMode, showTeamWorkingModeWorkspace } from './team_working_mode.js';
@@ -713,16 +714,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     initMobile();
 
-    // Surface a banner if tmux is missing so the user knows agents can't be
-    // launched yet.
-    fetch('/api/system/status').then(r => r.json()).then(data => {
-        if (data.tmux_available === false) {
-            const banner = document.getElementById('tmux-missing-banner');
-            const cmd = document.getElementById('tmux-missing-banner-cmd-text');
-            if (cmd && data.tmux_install_command) cmd.textContent = data.tmux_install_command;
-            if (banner) banner.style.display = '';
-        }
-    }).catch(() => {});
+    initPrerequisiteChecks();
 
     // ── Filter event wiring ─────────────────────────────────────────────
 

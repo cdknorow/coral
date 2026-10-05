@@ -7,6 +7,9 @@ package tracking
 func ConfigureForTest(captureURL, dir, installID string) (restore func()) {
 	prevURL, prevDir, prevID := posthogURL, coralDir, cachedInstallID
 	prevDelays := retryDelays
+	prereqMu.Lock()
+	prereqSeen = map[string]bool{} // each test observes prerequisites afresh
+	prereqMu.Unlock()
 	posthogURL, coralDir, cachedInstallID = captureURL, dir, installID
 	retryDelays = nil // no retries/sleeps in other packages' tests
 	installIDOnce.Do(func() {})

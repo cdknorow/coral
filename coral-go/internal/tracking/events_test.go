@@ -30,6 +30,7 @@ var allEventConstants = []string{
 	EventDashboardFailed,
 	EventPromptSubmitRequested,
 	EventFirstPromptSubmitted,
+	EventPrerequisiteCheck,
 }
 
 // The typed allowlist, the disclosure and the constants must name exactly the

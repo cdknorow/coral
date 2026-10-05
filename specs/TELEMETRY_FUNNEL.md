@@ -53,6 +53,12 @@ Only count a newly observed assistant message after a confirmed user send in the
 
 Use an active dashboard observation on a UTC day, not a server restart. Define next-day retention as activity on the next UTC date among installs with sufficient follow-up; this is different from the legacy elapsed-24-hours startup milestone. Keep background service uptime out of engagement counts.
 
+### Prerequisite setup
+
+Use `prerequisite_check` to split tmux, Claude, and Codex availability by version, OS, and process run. Show installations with missing tools, version-probe failures/timeouts, and later availability. Ordinary CLI checks and explicit rechecks have separate source values; tmux observations come from system status. The same tool/status/source tuple is emitted at most once per run, so this measures observed states, not a count of every check or every transition.
+
+A binary found after a missing observation is evidence of recovery from Coral's discovery perspective. It is not an observed installer success or provider login. Coral does not run these installers and cannot capture the exit status of Homebrew/npm commands run elsewhere. A failure installing Coral itself may produce no Coral events at all. Diagnose the distribution channel separately, including cask URL and checksum validation.
+
 ### Data quality
 
 Monitor schema-version coverage, request/result matching, missing classifications, duplicates, and suspected automated traffic. Test runners must disable analytics before startup, even when exercising release binaries with a production project key. Source builds without a key remain silent. Opted-out activity is not queued for later replay.

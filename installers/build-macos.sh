@@ -15,6 +15,21 @@ GO_DIR="$PROJECT_DIR/coral-go"
 DIST_DIR="$SCRIPT_DIR/dist"
 APP_DIR="$DIST_DIR/Coral.app"
 
+# This local universal build cannot compile the non-native tmux C slice. Feed
+# it the verified output directories from native arm64 and Intel build jobs.
+: "${CORAL_TMUX_ARM64_PAYLOAD:?Set CORAL_TMUX_ARM64_PAYLOAD to a native arm64 tmux payload directory (from tools/build-bundled-tmux.sh or the release CI artifact)}"
+: "${CORAL_TMUX_X86_64_PAYLOAD:?Set CORAL_TMUX_X86_64_PAYLOAD to a native x86_64 tmux payload directory (from tools/build-bundled-tmux.sh or the release CI artifact)}"
+CORAL_TMUX_ARM64_PAYLOAD="$(cd "$CORAL_TMUX_ARM64_PAYLOAD" && pwd -P)"
+CORAL_TMUX_X86_64_PAYLOAD="$(cd "$CORAL_TMUX_X86_64_PAYLOAD" && pwd -P)"
+for spec in "arm64:$CORAL_TMUX_ARM64_PAYLOAD" "x86_64:$CORAL_TMUX_X86_64_PAYLOAD"; do
+    arch="${spec%%:*}"
+    payload="${spec#*:}"
+    test -x "$payload/bin/tmux" || { echo "Missing $arch tmux at $payload/bin/tmux" >&2; exit 1; }
+    "$PROJECT_DIR/tests/release/verify_bundled_tmux_slice.sh" "$payload" "$arch"
+done
+diff -qr "$CORAL_TMUX_ARM64_PAYLOAD/terminfo" "$CORAL_TMUX_X86_64_PAYLOAD/terminfo"
+diff -qr "$CORAL_TMUX_ARM64_PAYLOAD/licenses" "$CORAL_TMUX_X86_64_PAYLOAD/licenses"
+
 echo "==> Building coral-go for macOS (universal) v${VERSION}"
 
 # Build ldflags — always strip symbols; inject PostHog key and version for all builds
@@ -59,6 +74,11 @@ else
     cp "$DIST_DIR/coral-arm64" "$APP_DIR/Contents/MacOS/coral"
 fi
 chmod +x "$APP_DIR/Contents/MacOS/coral"
+
+lipo -create -output "$APP_DIR/Contents/MacOS/tmux" "$CORAL_TMUX_ARM64_PAYLOAD/bin/tmux" "$CORAL_TMUX_X86_64_PAYLOAD/bin/tmux"
+chmod +x "$APP_DIR/Contents/MacOS/tmux"
+cp -R "$CORAL_TMUX_ARM64_PAYLOAD/terminfo" "$APP_DIR/Contents/Resources/terminfo"
+cp -R "$CORAL_TMUX_ARM64_PAYLOAD/licenses" "$APP_DIR/Contents/Resources/tmux-licenses"
 
 # Build all pure-Go companion binaries as universal
 echo "==> Compiling companion CLI binaries (universal)"

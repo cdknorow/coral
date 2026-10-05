@@ -1,0 +1,9 @@
+# component	version	url	sha256
+# Pins reviewed 2026-10-04: tmux 3.7c is upstream's latest stable (3.8 is RC);
+# libevent 2.1.13 is upstream's current stable; ncurses is the publisher's
+# full 6.6 snapshot through 2026-09-26, including maintenance since 6.6 base.
+# The published tmux CVE-2026-11623 advisory names <=3.6a as affected and
+# 3.7-rc as containing its fix: https://github.com/advisories/GHSA-4cw9-jpqf-99x8
+tmux	3.7c	https://github.com/tmux/tmux/releases/download/3.7c/tmux-3.7c.tar.gz	7c60cae9a0e25288e2e24750aafc9e8800fc7fd4555e447e1b29ee4201cfb3bf
+libevent	2.1.13-stable	https://github.com/libevent/libevent/releases/download/release-2.1.13-stable/libevent-2.1.13-stable.tar.gz	f7e9383b8c0baa81b687e5b5eecc01beefaf1b19b64151d95ed61647fe7a315c
+ncurses	6.6-20260926	https://invisible-island.net/archives/ncurses/current/ncurses-6.6-20260926.tgz	bc3ed46986165c0f69ab4b2b2c04907d4b042be35e18e35aeea9c80e0e292ac6

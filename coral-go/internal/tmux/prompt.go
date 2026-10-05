@@ -180,7 +180,9 @@ func (c *Client) loadPromptBuffer(ctx context.Context, text string) (string, err
 	if c.SocketPath != "" {
 		args = append([]string{"-S", c.SocketPath}, args...)
 	}
-	cmd := exec.CommandContext(ctx, c.resolveTmuxBin(), args...)
+	bin := c.resolveTmuxBin()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = tmuxEnv(bin)
 	cmd.Stdin = strings.NewReader(text)
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("load-buffer failed: %w", err)

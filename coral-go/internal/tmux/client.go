@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -93,13 +94,21 @@ var commonTmuxPaths = []string{
 // IsAvailable reports whether tmux can be found on PATH or in a common
 // install location. The returned path is the resolved binary (or "tmux"
 // if it was found on PATH).
+//
+// Order: an explicit CORAL_TMUX_BIN override, then the tmux bundled with the
+// macOS app (next to the running executable), then PATH, common install
+// locations and a login shell lookup.
 func IsAvailable() (string, bool) {
-	if p, err := exec.LookPath("tmux"); err == nil {
-		log.Printf("[tmux] discovery found tmux on PATH: %s", p)
-		return p, true
-	}
 	if p := tmuxFromEnv(); p != "" {
 		log.Printf("[tmux] discovery found tmux via CORAL_TMUX_BIN: %s", p)
+		return p, true
+	}
+	if p, _ := bundledTmux(); p != "" {
+		log.Printf("[tmux] discovery found bundled tmux: %s", p)
+		return p, true
+	}
+	if p, err := exec.LookPath("tmux"); err == nil {
+		log.Printf("[tmux] discovery found tmux on PATH: %s", p)
 		return p, true
 	}
 	for _, p := range commonTmuxPaths {
@@ -312,8 +321,11 @@ func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pan
 	if socketPath != "" {
 		args = append([]string{"-S", socketPath}, args...)
 	}
-	cmd := exec.CommandContext(ctx, c.resolveTmuxBin(), args...)
+	bin := c.resolveTmuxBin()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = tmuxEnv(bin)
 	out, err := cmd.Output()
+	noteTmuxResult(err, bin, socketPath)
 	if err != nil {
 		return nil
 	}
@@ -474,7 +486,9 @@ func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
 	if socketPath != "" {
 		args = append([]string{"-S", socketPath}, args...)
 	}
-	cmd := exec.CommandContext(ctx, c.resolveTmuxBin(), args...)
+	bin := c.resolveTmuxBin()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = tmuxEnv(bin)
 	cmd.Stdin = strings.NewReader(text)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("load-buffer failed: %w", err)
@@ -712,11 +726,55 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 
 // AttachCommand returns the full tmux attach command string including -S flag
 // if a custom socket path is configured. Used for display and osascript.
+//
+// It names the binary this client actually uses: plain "tmux" for a tmux on
+// PATH (unchanged output), otherwise its quoted absolute path, with the
+// bundled terminfo directory prefixed when the bundled tmux is selected, so a
+// pasted command attaches with the same tmux that created the session.
 func (c *Client) AttachCommand(sessionName string) string {
-	if c.SocketPath != "" {
-		return fmt.Sprintf("tmux -S %s attach -t %s", c.SocketPath, sessionName)
+	bin := c.attachBinary()
+	prefix := ""
+	if terminfoDir, bundled := isBundledBinary(c.resolveTmuxBin()); bundled && terminfoDir != "" {
+		// Keep the user's whole list; add the bundle only if it is not there.
+		dirs := terminfoDir
+		if existing := os.Getenv("TERMINFO_DIRS"); existing != "" {
+			dirs = existing
+			if !containsPathEntry(existing, terminfoDir) {
+				dirs = existing + ":" + terminfoDir
+			}
+		}
+		prefix = "TERMINFO_DIRS=" + quoteIfNeeded(dirs) + " "
 	}
-	return fmt.Sprintf("tmux attach -t %s", sessionName)
+	if c.SocketPath != "" {
+		return fmt.Sprintf("%s%s -S %s attach -t %s", prefix, bin, quoteIfNeeded(c.SocketPath), quoteIfNeeded(sessionName))
+	}
+	return fmt.Sprintf("%s%s attach -t %s", prefix, bin, quoteIfNeeded(sessionName))
+}
+
+// attachBinary is how the attach command names tmux: bare "tmux" when the
+// selected tmux is just "tmux" (or found as "tmux" on PATH), else its quoted path.
+func (c *Client) attachBinary() string {
+	bin := c.resolveTmuxBin()
+	if bin == "" || bin == "tmux" {
+		return "tmux"
+	}
+	if p, err := exec.LookPath("tmux"); err == nil && sameFile(p, bin) {
+		return "tmux"
+	}
+	return quoteIfNeeded(bin)
+}
+
+// safeShellWord is the set of values that need no quoting in a shell command.
+var safeShellWord = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
+// quoteIfNeeded leaves plain words as they are (so existing attach commands
+// read the same) and passes everything else, including spaces, quotes, newlines
+// and any other shell metacharacter, through the always-quoting shellQuote.
+func quoteIfNeeded(v string) string {
+	if safeShellWord.MatchString(v) {
+		return v
+	}
+	return shellQuote(v)
 }
 
 // SetPaneTitle sets a tmux pane's title using select-pane -T.
@@ -786,7 +844,9 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 	}
 	bin := c.resolveTmuxBin()
 	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Env = tmuxEnv(bin)
 	out, err := cmd.Output()
+	noteTmuxResult(err, bin, socketPath)
 	if err != nil {
 		log.Printf("[tmux] exec failed: bin=%q socket=%q args=%q err=%v", bin, socketPath, args, err)
 		return "", err

@@ -36,7 +36,25 @@ case "$(file -b "$package_dir/coral")" in
     done
     ;;
   *Mach-O*)
-    commands+=(coral-tray coral-app)
+    commands+=(coral-tray coral-app tmux)
+    if [ -f "$package_dir/../Info.plist" ]; then
+      tmux_resources="$resources_dir"
+    else
+      tmux_resources="$package_dir"
+    fi
+    for entry in 'x xterm-256color 78' 's screen-256color 73' 't tmux-256color 74'; do
+      read -r letter name hex <<<"$entry"
+      test -s "$tmux_resources/terminfo/$letter/$name" || test -s "$tmux_resources/terminfo/$hex/$name" || {
+        echo "missing bundled terminfo $name" >&2; exit 1;
+      }
+    done
+    for notice in tmux-COPYING libevent-LICENSE ncurses-COPYING SOURCES.tsv; do
+      test -s "$tmux_resources/tmux-licenses/$notice" || { echo "missing tmux notice $notice" >&2; exit 1; }
+    done
+    if [ -n "$(find "$package_dir" "$tmux_resources" -name '*.dylib' -print -quit)" ]; then
+      echo 'Standard macOS tmux payload contains a dylib; static dependency closure required' >&2
+      exit 1
+    fi
     for cmd in "${commands[@]}"; do
       binary="$package_dir/$cmd"
       test -x "$binary"
@@ -45,6 +63,10 @@ case "$(file -b "$package_dir/coral")" in
         deps="$(otool -L -arch "$arch" "$binary" | tail -n +2)"
         if grep -Eiq 'libcrypto|libssl|sqlcipher|/opt/homebrew|/usr/local/opt' <<<"$deps"; then
           echo "Standard macOS $cmd ($arch) has a bundled/developer library dependency" >&2
+          exit 1
+        fi
+        if [ "$cmd" = tmux ] && grep -Eiq 'libncurses|libevent' <<<"$deps"; then
+          echo "Bundled tmux ($arch) dynamically loads a build dependency" >&2
           exit 1
         fi
         while read -r dependency _; do

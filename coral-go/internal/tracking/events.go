@@ -70,6 +70,7 @@ var AllEvents = []EventDoc{
 	{Name: EventDashboardReady, When: "Each time the dashboard page finishes loading and shows your agents.", Extra: "page_id — a random ID for that page load"},
 	{Name: EventDashboardActiveDay, When: "At most once per UTC day that you have the dashboard open."},
 	{Name: EventDashboardFailed, When: "When the dashboard cannot load its agent list or status at startup.", Extra: "code — a fixed code such as sessions_fetch_http or init_failed"},
+	{Name: EventPrerequisiteCheck, When: "When Coral checks whether tmux, the Claude CLI or the Codex CLI is available: at most once per run for each result and each place that checked. Coral does not install anything, so a missing tool is not an installation failure.", Extra: "tool (tmux, claude, codex), status (available, missing, probe_failed, timeout), source (system_status, cli_check, cli_recheck) — never a path or a version"},
 	{Name: EventPromptSubmitRequested, When: "Once ever: the first time you send a prompt from the dashboard composer.", Extra: "source — dashboard_composer; never the prompt"},
 	{Name: EventFirstPromptSubmitted, When: "Once ever: the first time a prompt is accepted by an agent terminal over the dashboard's HTTP send.", Extra: "source — http_send; never the prompt"},
 	{Name: EventReturned24h, When: "Once ever: the first time you open Coral more than 24 hours after your first open."},

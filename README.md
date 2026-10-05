@@ -29,13 +29,12 @@
 
 ---
 
-<!-- TODO: Replace with hosted mp4 once uploaded to GitHub -->
 <p align="center">
-  <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">
-    <img alt="Coral dashboard: a nine-agent team in the sidebar, each with its current goal; the Orchestrator's chat in the middle; the team's task queue on the right at 335 of 357 done" src="assets/icons/dashboard.webp" width="100%" />
+  <a href="https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8">
+    <img alt="Watch: Using Coral's Agent Teams to Parallelize Development" src="assets/icons/dashboard.webp" width="100%" />
   </a>
   <br>
-  <sub>A nine-agent team mid-project. Every agent shows what it's working on, the Orchestrator's chat is open in the middle, and the board's task queue sits on the right — 335 of 357 tasks done. <a href="https://www.loom.com/share/7dce83519c8d4882af5a15bb9d727c21">Watch the demo →</a></sub>
+  <sub><a href="https://www.loom.com/share/f2c52e824b1f41a8a18000a2df67adf8">▶ Watch: Using Coral's Agent Teams to Parallelize Development</a></sub>
 </p>
 
 ## What is Coral?
@@ -120,7 +119,7 @@ make build
 
 Open **http://localhost:8420** in your browser. Click **+New** to launch your first agent or create a team.
 
-> **Requirements:** [tmux](https://github.com/tmux/tmux). Coral works with Claude Code, Codex, Gemini CLI (Antigravity), and Pi.dev out of the box; each can be pointed at a custom binary with a `cli_path_<type>` setting.
+> **Requirements:** The macOS app build includes [tmux](https://github.com/tmux/tmux); older downloads, Linux, and standalone/source builds may need it installed separately. Agent CLIs must still be installed and authenticated. Coral works with Claude Code, Codex, Gemini CLI (Antigravity), and Pi.dev; each can be pointed at a custom binary with a `cli_path_<type>` setting.
 
 ### Run it on a remote machine
 

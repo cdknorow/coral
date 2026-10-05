@@ -3190,11 +3190,18 @@ func (h *SessionsHandler) Attach(w http.ResponseWriter, r *http.Request) {
 	// Open Terminal.app attached to the tmux session (macOS)
 	attachCmd := h.terminal.AttachCommand(pane.SessionName)
 	go func() {
-		cmd := fmt.Sprintf(`tell application "Terminal" to do script "%s"`, attachCmd)
-		exec.Command("osascript", "-e", cmd).Run()
+		exec.Command("osascript", terminalAttachArgs(attachCmd)...).Run()
 	}()
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// Pass the shell command as data, so quotes and backslashes in app paths never
+// become AppleScript source.
+func terminalAttachArgs(command string) []string {
+	return []string{"-e", `on run argv
+    tell application "Terminal" to do script (item 1 of argv)
+end run`, "--", command}
 }
 
 // SetDisplayName sets the display name for a live session.

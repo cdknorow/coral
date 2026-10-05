@@ -316,6 +316,7 @@ func (s *Server) buildRouter() chi.Router {
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)
 	s.sessHandler = sessHandler
 	sysHandler := routes.NewSystemHandler(s.db, s.cfg)
+	sysHandler.SetTerminal(s.terminal)
 	s.systemHandler = sysHandler
 	histHandler := routes.NewHistoryHandler(s.db, s.cfg, s.boardStore)
 	s.historyHandler = histHandler

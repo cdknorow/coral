@@ -1,3 +1,4 @@
+import { checkAgentCLI } from './prerequisites.js';
 /* Modal management: launch and info dialogs */
 
 import { state } from './state.js';
@@ -615,29 +616,8 @@ const CLI_INSTALL_INSTRUCTIONS = {
     pi: { name: 'pi', cmd: 'npm install -g @mariozechner/pi-coding-agent' },
 };
 
-let _cliCheckCache = {}; // { type: {available, checkedAt} }
-
-async function _checkAgentCLI(agentType) {
-    const warning = document.getElementById('cli-check-warning');
-    if (!warning) return;
-
-    // Check cache (valid for 30s)
-    const cached = _cliCheckCache[agentType];
-    if (cached && (Date.now() - cached.checkedAt) < 30000) {
-        _showCLIWarning(warning, agentType, cached.available);
-        return;
-    }
-
-    try {
-        const resp = await fetch(`/api/system/cli-check?type=${encodeURIComponent(agentType)}`);
-        const data = await resp.json();
-        const available = data.available !== false;
-        _cliCheckCache[agentType] = { available, checkedAt: Date.now() };
-        _showCLIWarning(warning, agentType, available);
-    } catch {
-        // Network error — don't show warning
-        warning.style.display = 'none';
-    }
+function _checkAgentCLI(agentType, warning = document.getElementById('cli-check-warning'), force = false) {
+    return checkAgentCLI(agentType, warning, {force,command:CLI_INSTALL_INSTRUCTIONS[agentType]?.cmd || ''});
 }
 window._checkAgentCLI = _checkAgentCLI;
 
@@ -841,16 +821,6 @@ window._verifyAllCLIs = async function() {
     ]);
     if (btn) { btn.disabled = false; btn.textContent = 'Verify All'; }
 };
-
-function _showCLIWarning(el, agentType, available) {
-    if (available) {
-        el.style.display = 'none';
-        return;
-    }
-    const info = CLI_INSTALL_INSTRUCTIONS[agentType] || { name: agentType, cmd: '' };
-    el.innerHTML = `<span class="cli-warning-icon" title="${info.name} CLI not found">&#x26A0;</span> <code>${info.name}</code> not found`;
-    el.style.display = '';
-}
 
 function _showCLINotFoundModal(agentType) {
     const info = CLI_INSTALL_INSTRUCTIONS[agentType] || { name: agentType, cmd: `Install ${agentType} CLI` };
@@ -1774,7 +1744,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
         ${nameHTML}
         <div class="acf-top-row">
             <label>Agent Type:
-                <select class="acf-agent-type" onchange="window._checkAgentCLI && window._checkAgentCLI(this.value)">
+                <select class="acf-agent-type">
                     <option value="claude"${agentTypeVal === 'claude' || !agentTypeVal ? ' selected' : ''}>Claude</option>
                     <option value="agy"${agentTypeVal === 'agy' || agentTypeVal === 'antigravity' || agentTypeVal === 'gemini' ? ' selected' : ''}>Antigravity</option>
                     <option value="codex"${agentTypeVal === 'codex' ? ' selected' : ''}>Codex</option>
@@ -1787,6 +1757,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
                 <datalist id="acf-models-${uid}"></datalist>
             </label>
         </div>
+        <div class="acf-cli-warning" style="display:none;margin:8px 0" role="status"></div>
         <label>Behavior Prompt:
             <textarea class="acf-prompt" rows="4" placeholder="Describe the agent's role and behavior...">${escapeHtml(promptVal)}</textarea>
         </label>
@@ -1851,8 +1822,10 @@ function renderAgentConfigForm(containerId, opts = {}) {
 
     // Populate datalist + apply visibility + pre-fill for the initial agent type.
     _syncACFModelField(container);
+    _checkAgentCLI(container.querySelector('.acf-agent-type')?.value || 'claude', container.querySelector('.acf-cli-warning'));
     container.querySelector('.acf-agent-type')?.addEventListener('change', () => {
         const agentType = container.querySelector('.acf-agent-type')?.value || 'claude';
+        _checkAgentCLI(agentType, container.querySelector('.acf-cli-warning'));
         const permMode = container.querySelector('.acf-permission-mode')?.value || 'default';
         const flagsEl = container.querySelector('.acf-flags');
         if (flagsEl) flagsEl.value = _stripPermFlags(_normalizePermFlagsForAgent(flagsEl.value, agentType, permMode));
@@ -1976,8 +1949,9 @@ function setAgentConfig(containerId, values) {
 
     if (uid) _setPermissions(`${uid}-perms`, v.capabilities || null);
 
-    // Re-sync Model combo after programmatic agent-type change.
+    // Re-sync Model combo and prerequisite warning after a preset/type change.
     _syncACFModelField(container);
+    _checkAgentCLI(typeEl?.value || 'claude', container.querySelector('.acf-cli-warning'));
 }
 window.setAgentConfig = setAgentConfig;
 

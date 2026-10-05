@@ -160,9 +160,20 @@ loads normally, and only agent launch fails:
 [startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)
 ```
 
-Install tmux, or start with `--backend pty`. Coral looks for tmux on `PATH`, in
-`CORAL_TMUX_BIN`, in `/opt/homebrew/bin`, `/usr/local/bin`, `/usr/bin`, `/opt/local/bin`,
-`/nix/var/nix/profiles/default/bin`, and via your login shell.
+The macOS app packaging includes tmux and its terminal definitions. Older downloads
+and standalone/source builds may still need tmux installed separately. Keep the app
+bundle intact when moving it. Agent CLIs still need to be installed and authenticated
+separately.
+
+Coral checks an executable `CORAL_TMUX_BIN` override first, then the bundled tmux
+on macOS, then `PATH`, common install locations, and your login shell. For a build
+without bundled tmux, install it or start with `--backend pty`.
+
+A running tmux server can outlive Coral. If an app upgrade reports a tmux client/server
+version mismatch, preserve your running sessions and use `CORAL_TMUX_BIN` to select
+the compatible tmux executable used before the upgrade. Restart the tmux server only
+after finishing those sessions; killing it also terminates the processes inside it.
+Coral does not automatically kill an older tmux server during discovery.
 
 ## Session history and cost
 

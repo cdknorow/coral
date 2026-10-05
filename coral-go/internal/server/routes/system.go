@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -46,6 +47,63 @@ type SystemHandler struct {
 
 	generateJobs   map[string]*generateJob
 	generateJobsMu sync.Mutex
+
+	// terminal identifies the terminal backend this server actually runs, so
+	// status can report the effective backend (set by the server wiring).
+	terminal ptymanager.SessionTerminal
+
+	// tmux discovery can start a login shell when tmux is not on PATH, so
+	// routine status polls reuse a recent result; an explicit re-check bypasses
+	// the cache. tmuxCacheTTL 0 means the default.
+	tmuxMu       sync.Mutex
+	tmuxAt       time.Time
+	tmuxPath     string
+	tmuxFound    bool
+	tmuxCacheTTL time.Duration
+}
+
+const defaultTmuxCacheTTL = 30 * time.Second
+
+// wantsFreshStatus reports an explicit re-check: ?recheck=1, or a request that
+// asks to bypass caches (fetch cache:"no-store" sends Cache-Control: no-cache).
+func wantsFreshStatus(r *http.Request) bool {
+	if v := r.URL.Query().Get("recheck"); v == "1" || v == "true" {
+		return true
+	}
+	cc := strings.ToLower(r.Header.Get("Cache-Control"))
+	return strings.Contains(cc, "no-cache") || strings.Contains(cc, "no-store")
+}
+
+// discoverTmux finds tmux for the status endpoint. This is discovery only (the
+// file exists and is executable); it does not run tmux, so it says nothing
+// about whether the executable works.
+func (h *SystemHandler) discoverTmux(fresh bool) (string, bool) {
+	ttl := h.tmuxCacheTTL
+	if ttl == 0 {
+		ttl = defaultTmuxCacheTTL
+	}
+	h.tmuxMu.Lock()
+	defer h.tmuxMu.Unlock()
+	if !fresh && !h.tmuxAt.IsZero() && time.Since(h.tmuxAt) < ttl {
+		return h.tmuxPath, h.tmuxFound
+	}
+	h.tmuxPath, h.tmuxFound = tmuxProbe()
+	h.tmuxAt = time.Now()
+	return h.tmuxPath, h.tmuxFound
+}
+
+// SetTerminal tells the handler which terminal backend the server is running.
+func (h *SystemHandler) SetTerminal(t ptymanager.SessionTerminal) { h.terminal = t }
+
+// effectiveBackend reports the backend in use: "tmux", "pty", or "unknown".
+func (h *SystemHandler) effectiveBackend() string {
+	switch h.terminal.(type) {
+	case *ptymanager.TmuxSessionTerminal:
+		return "tmux"
+	case *ptymanager.PTYSessionTerminal:
+		return "pty"
+	}
+	return "unknown"
 }
 
 // NewSystemHandler creates a SystemHandler.
@@ -314,15 +372,28 @@ func (h *SystemHandler) GetAgentModels(w http.ResponseWriter, r *http.Request) {
 // Status returns server status.
 // GET /api/system/status
 func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
-	tmuxPath, tmuxAvailable := tmux.IsAvailable()
+	tmuxPath, tmuxAvailable := h.discoverTmux(wantsFreshStatus(r))
+	// Analytics: observe tmux availability (deduplicated per run, so frequent
+	// status polling sends at most one event per result).
+	tmuxStatus := tracking.PrereqMissing
+	if tmuxAvailable {
+		tmuxStatus = tracking.PrereqAvailable
+	}
+	tracking.TrackPrerequisite(tracking.ToolTmux, tmuxStatus, tracking.SourceSystemStatus)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"startup_complete":     true,
-		"version":              config.Version,
-		"store_url":            config.StoreURL,
-		"supporter_urls":       SupporterCheckoutURLs(config.StoreURL),
-		"skip_license":         config.TierSkipLicense,
-		"tier_name":            config.TierName,
-		"tmux_available":       tmuxAvailable,
+		"startup_complete":  true,
+		"version":           config.Version,
+		"store_url":         config.StoreURL,
+		"supporter_urls":    SupporterCheckoutURLs(config.StoreURL),
+		"skip_license":      config.TierSkipLicense,
+		"tier_name":         config.TierName,
+		"tmux_available":    tmuxAvailable,
+		"tmux_status":       tmuxStatus,
+		"tmux_server_issue": tmuxServerIssue(),
+		"effective_backend": h.effectiveBackend(),
+		// tmux_required: agents cannot be launched without tmux on this server
+		// (it runs the tmux backend). false on the PTY backend.
+		"tmux_required":        h.effectiveBackend() == "tmux",
 		"tmux_path":            tmuxPath,
 		"tmux_install_command": tmuxInstallCommand(),
 	})
@@ -412,43 +483,134 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		installCmd = info.InstallCommand
 	}
 
+	// Analytics tracks only the known tools checked by agent type; a caller-
+	// supplied binary path is not a prerequisite observation.
+	tool := prerequisiteTool(agentType)
+	trackable := tool != "" && r.URL.Query().Get("binary") == ""
+	source := tracking.SourceCLICheck
+	if r.URL.Query().Get("source") == tracking.SourceCLIRecheck {
+		source = tracking.SourceCLIRecheck
+	}
+
 	// Try LookPath first, then common install locations
-	resolvedPath, err := exec.LookPath(binaryPath)
+	resolvedPath, err := cliLookPath(binaryPath)
 	if err != nil {
-		if found := agent.FindCLIInCommonPaths(binaryPath); found != "" {
+		if found := cliCommonPath(binaryPath); found != "" {
 			resolvedPath = found
 		} else {
 			result := map[string]any{
 				"found":      false,
+				"status":     tracking.PrereqMissing,
 				"binary":     binaryPath,
 				"agent_type": agentType,
 			}
 			if installCmd != "" {
 				result["install_command"] = installCmd
 			}
+			if trackable {
+				tracking.TrackPrerequisite(tool, tracking.PrereqMissing, source)
+			}
 			writeJSON(w, http.StatusOK, result)
 			return
 		}
 	}
 
-	// Try to get version
-	version := ""
-	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
-	defer cancel()
-	if out, err := exec.CommandContext(ctx, resolvedPath, "--version").Output(); err == nil {
-		version = strings.TrimSpace(string(out))
-		// Take first line only
-		if idx := strings.IndexByte(version, '\n'); idx > 0 {
-			version = version[:idx]
-		}
+	// Try to get version. A failed or timed-out probe is reported separately
+	// from "found": the binary exists, but running it did not work.
+	version, probe := probeCLIVersion(r.Context(), resolvedPath)
+	status := tracking.PrereqAvailable
+	switch probe {
+	case probeFailed:
+		status = tracking.PrereqProbeFailed
+	case probeTimeout:
+		status = tracking.PrereqTimeout
+	}
+	if trackable && probe != probeCanceled {
+		tracking.TrackPrerequisite(tool, status, source)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"found":      true,
+		"status":     status,
+		"probe":      probe,
 		"path":       resolvedPath,
 		"version":    version,
 		"agent_type": agentType,
 	})
+}
+
+// Seams for the CLI and tmux prerequisite checks; tests replace them so no real
+// executable or user directory is consulted.
+var (
+	cliLookPath     = exec.LookPath
+	cliCommonPath   = agent.FindCLIInCommonPaths
+	cliProbeTimeout = 3 * time.Second
+	tmuxProbe       = tmux.IsAvailable
+)
+
+// Version probe results.
+const (
+	probeOK       = "ok"
+	probeFailed   = "failed"
+	probeTimeout  = "timeout"
+	probeCanceled = "canceled" // the caller went away; not an observation
+)
+
+// prerequisiteTool maps an agent type to the tool name analytics may report.
+func prerequisiteTool(agentType string) string {
+	switch agentType {
+	case "claude":
+		return tracking.ToolClaude
+	case "codex":
+		return tracking.ToolCodex
+	}
+	return ""
+}
+
+// probeCLIVersion runs "<binary> --version" under a bounded timeout. It returns
+// the first line of output and a classification; raw errors are never returned.
+const maxCLIVersionBytes = 8 * 1024
+
+type cliVersionOutput struct{ strings.Builder }
+
+func (b *cliVersionOutput) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := maxCLIVersionBytes - b.Len()
+	if remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+		}
+		_, _ = b.Builder.Write(p)
+	}
+	// Drain excess output without allocating or breaking the child's pipe.
+	return n, nil
+}
+
+func probeCLIVersion(parent context.Context, path string) (version, probe string) {
+	ctx, cancel := context.WithTimeout(parent, cliProbeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "--version")
+	// A wrapper script can leave a child holding the output pipe after it is
+	// killed; do not wait on it past this.
+	cmd.WaitDelay = 200 * time.Millisecond
+	var out cliVersionOutput
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err == nil {
+		version = strings.TrimSpace(out.String())
+		// Take first line only
+		if idx := strings.IndexByte(version, '\n'); idx > 0 {
+			version = version[:idx]
+		}
+		return version, probeOK
+	}
+	switch {
+	case parent.Err() != nil:
+		return "", probeCanceled
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return "", probeTimeout
+	}
+	return "", probeFailed
 }
 
 // RefreshIndexer triggers a manual re-index.
@@ -1201,4 +1363,12 @@ func parseFrontmatterMD(content string) (agentFrontmatter, string) {
 	}
 
 	return meta, body
+}
+
+// tmuxServerIssue is non-empty when the running tmux server cannot be talked
+// to by this Coral's tmux (a client/server version mismatch). Coral never
+// stops the old server; the message says how to recover.
+func tmuxServerIssue() string {
+	msg, _ := tmux.IncompatibleServer()
+	return msg
 }

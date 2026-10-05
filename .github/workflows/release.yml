@@ -227,6 +227,16 @@ jobs:
           for cmd in coral-tray coral-app; do
             MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=arm64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-arm64/$cmd" "./cmd/$cmd/"
           done
+      - name: Build bundled tmux (arm64)
+        run: |
+          tools/build-bundled-tmux.sh arm64 dist/macos-arm64/tmux-payload
+          tests/release/verify_bundled_tmux_slice.sh dist/macos-arm64/tmux-payload arm64
+      - name: Smoke test bundled tmux (arm64)
+        working-directory: coral-go
+        env:
+          CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/macos-arm64/tmux-payload/bin/tmux
+          CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-arm64/tmux-payload/terminfo
+        run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
       - uses: actions/upload-artifact@v7
         with:
           name: coral-macos-arm64-slices
@@ -260,6 +270,16 @@ jobs:
           for cmd in coral-tray coral-app; do
             MACOSX_DEPLOYMENT_TARGET=13.0 CGO_ENABLED=1 CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0" GOOS=darwin GOARCH=amd64 go build $WEBVIEW_TAGS -ldflags "$LDFLAGS" -o "../dist/macos-amd64/$cmd" "./cmd/$cmd/"
           done
+      - name: Build bundled tmux (x86_64)
+        run: |
+          tools/build-bundled-tmux.sh x86_64 dist/macos-amd64/tmux-payload
+          tests/release/verify_bundled_tmux_slice.sh dist/macos-amd64/tmux-payload x86_64
+      - name: Smoke test bundled tmux (x86_64)
+        working-directory: coral-go
+        env:
+          CORAL_BUNDLED_TMUX_BIN: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/bin/tmux
+          CORAL_BUNDLED_TMUX_TERMINFO: ${{ github.workspace }}/dist/macos-amd64/tmux-payload/terminfo
+        run: go test ./internal/tmux -run '^TestBundledPayloadSmoke$' -count=1
       - uses: actions/upload-artifact@v7
         with:
           name: coral-macos-amd64-slices
@@ -274,6 +294,21 @@ jobs:
         with:
           go-version: "1.24"
           cache-dependency-path: coral-go/go.sum
+      - name: Require macOS release signing credentials
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          for name in MACOS_CERTIFICATE MACOS_CERTIFICATE_PWD MACOS_SIGNING_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is required for a signed, notarized macOS release"
+              exit 1
+            fi
+          done
       - uses: actions/download-artifact@v8
         with:
           name: coral-macos-arm64-slices
@@ -291,6 +326,12 @@ jobs:
             lipo -create -output "../dist/macos/$cmd" "../dist/macos-arm64/$cmd" "../dist/macos-amd64/$cmd"
             chmod +x "../dist/macos/$cmd"
           done
+          lipo -create -output ../dist/macos/tmux ../dist/macos-arm64/tmux-payload/bin/tmux ../dist/macos-amd64/tmux-payload/bin/tmux
+          chmod +x ../dist/macos/tmux
+          diff -qr ../dist/macos-arm64/tmux-payload/terminfo ../dist/macos-amd64/tmux-payload/terminfo
+          diff -qr ../dist/macos-arm64/tmux-payload/licenses ../dist/macos-amd64/tmux-payload/licenses
+          cp -R ../dist/macos-arm64/tmux-payload/terminfo ../dist/macos/terminfo
+          cp -R ../dist/macos-arm64/tmux-payload/licenses ../dist/macos/tmux-licenses
           ../tests/release/verify_standard_bundle.sh ../dist/macos
 
       - name: Copy .icns icon
@@ -314,10 +355,12 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           APP="dist/Coral.app"
           mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-          for bin in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app; do
+          for bin in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync coral-tray coral-app tmux; do
             cp "dist/macos/$bin" "$APP/Contents/MacOS/$bin"
             chmod +x "$APP/Contents/MacOS/$bin"
           done
+          cp -R dist/macos/terminfo "$APP/Contents/Resources/terminfo"
+          cp -R dist/macos/tmux-licenses "$APP/Contents/Resources/tmux-licenses"
           sed "s/VERSION_PLACEHOLDER/${VERSION}/g" tools/Info.plist > "$APP/Contents/Info.plist"
           [ -f Coral.icns ] && cp Coral.icns "$APP/Contents/Resources/AppIcon.icns"
           cp installers/install-cli.sh "$APP/Contents/MacOS/install-cli.sh"
@@ -330,7 +373,6 @@ jobs:
           CI=true tools/test-macos-app.sh dist/Coral.app
 
       - name: Import signing certificate
-        if: env.MACOS_CERTIFICATE != ''
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -349,25 +391,26 @@ jobs:
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
       - name: Sign Coral.app
-        if: env.MACOS_CERTIFICATE != ''
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           APP="dist/Coral.app"
-          # Sign entire bundle with full entitlements (PTY/JIT needed for coral-tray)
-          echo "Signing Coral.app bundle (deep)..."
-          codesign --force --deep --options runtime --sign "$SIGNING_IDENTITY" \
-            --entitlements entitlements.plist "$APP"
-          # Re-sign coral-app with minimal entitlements (webview only — no JIT/PTY).
-          # This prevents WKWebView from triggering iCloud/Apple Music TCC dialogs
-          # that occur when the binary has elevated JIT/memory entitlements.
-          if [ -f "$APP/Contents/MacOS/coral-app" ]; then
-            echo "Re-signing coral-app with minimal entitlements..."
+          # Sign executable code explicitly before signing the wrapper. The
+          # tmux data files and notices are sealed by the outer app signature.
+          for bin in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             codesign --force --options runtime --sign "$SIGNING_IDENTITY" \
-              --entitlements entitlements-app.plist "$APP/Contents/MacOS/coral-app"
-          fi
-          # Re-sign the bundle wrapper to pick up the nested signature change
+              --entitlements entitlements.plist "$APP/Contents/MacOS/$bin"
+          done
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" "$APP/Contents/MacOS/tmux"
+          # WKWebView's app process uses only the minimal entitlement set.
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" \
+            --entitlements entitlements-app.plist "$APP/Contents/MacOS/coral-app"
+          # Signing the main executable also validates the surrounding app.
+          # Sign its nested installer script first so that validation succeeds.
+          codesign --force --sign "$SIGNING_IDENTITY" "$APP/Contents/MacOS/install-cli.sh"
+          codesign --force --options runtime --sign "$SIGNING_IDENTITY" \
+            --entitlements entitlements.plist "$APP/Contents/MacOS/coral-tray"
           codesign --force --options runtime --sign "$SIGNING_IDENTITY" \
             --entitlements entitlements.plist "$APP"
           echo "Verifying..."
@@ -379,7 +422,7 @@ jobs:
       - name: Verify signed Standard app payload
         run: |
           tests/release/verify_standard_bundle.sh dist/Coral.app/Contents/MacOS
-          if [ -n "${MACOS_CERTIFICATE:-}" ]; then codesign --verify --deep --strict --verbose=2 dist/Coral.app; fi
+          codesign --verify --deep --strict --verbose=2 dist/Coral.app
 
       - name: Create DMG
         run: |
@@ -398,7 +441,6 @@ jobs:
           echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
 
       - name: Sign DMG
-        if: env.MACOS_CERTIFICATE != ''
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -406,7 +448,6 @@ jobs:
           codesign --force --sign "$SIGNING_IDENTITY" "dist/$DMG_NAME"
 
       - name: Notarize DMG
-        if: env.MACOS_CERTIFICATE != ''
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -421,6 +462,7 @@ jobs:
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" --timeout 30m
           xcrun stapler staple "dist/$DMG_NAME"
+          xcrun stapler validate "dist/$DMG_NAME"
 
       - name: Cleanup keychain
         if: always() && env.KEYCHAIN_PATH != ''

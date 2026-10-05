@@ -15,6 +15,7 @@ The runtime disclosure is generated from `internal/tracking/events.go`. New funn
 | `app_opened` | Coral process startup; not proof that a dashboard loaded | — |
 | `session_launched` | Individual launch handler created/submitted the agent process | — |
 | `team_launched` | Team launch with at least one member started | `agent_count`, `requested_agents`, `started_agents`, `failed_agents` |
+| `prerequisite_check` | Coral checked tmux or a supported agent CLI prerequisite | `tool`, `status`, `source` |
 | `launch_requested` | Server received an individual or team launch attempt | `kind`, `attempt_id`, `provider`, `backend`, `requested_agents`, `resume` |
 | `launch_result` | Result of that attempt; success, failure, or partial team success | Request properties plus `outcome`, `failure_category`, `duration_ms`, `started_agents`, `failed_agents` |
 | `dashboard_ready` | A dashboard page completed initialization, loaded/rendered sessions, and observed server startup completion | `page_id` |
@@ -34,6 +35,14 @@ The runtime disclosure is generated from `internal/tracking/events.go`. New funn
 Launch completion does not prove provider authentication, model readiness, or a response. The WebSocket composer currently lacks a transport acknowledgment suitable for the confirmed-send milestone, so `first_prompt_submitted` covers HTTP sends only. `prompt_submit_requested` measures intent, not delivery. No first-response or generic agent-ready event is emitted: existing transcript updates cannot reliably attribute new assistant output to a particular submitted prompt.
 
 `dashboard_ready` counts page loads, not users. Active-day records are deduplicated for the installation and UTC date, including multiple tabs. The legacy `returned_24h` event measures restarts; use dashboard activity for engagement and retention. An observed failure may precede recovery and a ready event. Missing events alone do not prove abandonment or a crash.
+
+## Prerequisite setup observations
+
+`prerequisite_check` reports `tmux`, `claude`, or `codex` with a controlled availability status and check source. Repeated identical observations are deduplicated within a server run. Explicit CLI rechecks use `cli_recheck`; ordinary checks use `cli_check`, and tmux discovery in server status uses `system_status`. Custom binary paths are not recorded in this event.
+
+For tmux, `available` means discovery found an executable; `missing` means discovery did not find one. Routine discovery is cached for 30 seconds; an explicit recheck bypasses the cache. Claude/Codex checks also report `probe_failed` or `timeout` if the discovered executable's version check fails. Version checks have a three-second deadline and retain at most 8 KiB of stdout. The existing API `found` field stays true when discovery succeeds, even if the probe fails. No executable path, version output, command, or raw error is sent as analytics.
+
+These observations identify missing prerequisites and later availability. Coral currently provides installation instructions and does not execute these installers. A missing executable is not proof that an installation command failed, and an available executable does not prove provider authentication. Installer exit codes and failures before Coral starts remain unobserved.
 
 ## Properties and identifiers
 

@@ -149,9 +149,10 @@
         <span class="material-icons tmux-missing-banner-icon">warning</span>
         <div class="tmux-missing-banner-body">
             <strong>tmux is not installed.</strong>
-            <span>Agents cannot be launched until you install tmux.</span>
-            <span class="tmux-missing-banner-cmd">Install with: <code id="tmux-missing-banner-cmd-text">brew install tmux</code></span>
+            <span id="tmux-check-message"></span>
+            <span class="tmux-missing-banner-cmd">Install with: <code id="tmux-missing-banner-cmd-text"></code></span>
         </div>
+        <button id="tmux-check-again" class="btn btn-small" type="button">Check again</button>
         <button class="tmux-missing-banner-close" onclick="document.getElementById('tmux-missing-banner').style.display='none'" aria-label="Dismiss">&times;</button>
     </div>
 

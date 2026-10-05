@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"log"
 	"os"
@@ -83,7 +84,7 @@ func main() {
 func loadBoardState() map[string]any {
 	sessionName := os.Getenv("CORAL_SESSION_NAME")
 	if sessionName == "" && os.Getenv("TMUX") != "" {
-		out, err := exec("tmux", "display-message", "-p", "#S")
+		out, err := exec(tmux.BinaryFromEnv(), "display-message", "-p", "#S")
 		if err == nil {
 			sessionName = strings.TrimSpace(out)
 		}
