@@ -23,7 +23,7 @@ Arrow keys navigate the tree; right and left expand or collapse directories. Hom
 
 Open **Artifacts** or **Team Artifacts**, then select the artifact name or **Preview**. The lists load on demand and have refresh and pagination controls. An empty personal list can mean that no task-result artifacts are attributed to that agent; check **Team Artifacts** for the broader team collection.
 
-Coral can preview supported images, audio/video, text, Markdown, HTML, and JSON. Recognized JSON reports offer a readable view and the original raw JSON. Declare `text/markdown` when publishing a Markdown artifact to select its formatted preview. In v1.3.23, an older upload with a generic binary media type and an extensionless display label may appear only as a download, even if the original file was Markdown. Use **Download** to read that file.
+Coral can preview supported images, audio/video, text, Markdown, HTML, and JSON. Recognized JSON reports offer a readable view and the original raw JSON. Declare `text/markdown` when publishing a Markdown artifact to select its formatted preview. From v1.3.24, uploads infer Markdown from the filename, and previews also inspect the stored filename when the display label has no extension. On older versions, generic binary metadata may make Markdown appear only as a download; use **Download** or update Coral.
 
 Use **Download** to save a managed or inline artifact. Unsupported binary files use a download fallback. Text previews are limited to 2 MiB; larger files remain available to download. HTML previews run in a restricted frame. External references offer **Open link**; an embedded preview may be blocked by the destination website.
 

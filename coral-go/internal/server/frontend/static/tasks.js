@@ -980,6 +980,8 @@ function _getBoardProject() {
 /* ── Task Detail Modal ─────────────────────────────────── */
 
 export function showTaskDetailModal(taskId) {
+    ++_editGeneration;
+    _editOriginalTask = null;
     _openSubagentId = null; // the modal is shared; it now shows a board task
     const sharedContent = document.getElementById('task-detail-content');
     if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
@@ -1299,34 +1301,49 @@ function _taskDetailHtml(task, liveCost) {
 }
 
 let _editOriginalTask = null;
+let _editBoardProject = null;
+let _editGeneration = 0;
 
 export async function enableTaskEditMode(taskId) {
     const tasks = state.currentBoardTasks || [];
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
     _editOriginalTask = task;
+    const editGeneration = ++_editGeneration;
+    _editBoardProject = _getBoardProject();
 
     const content = document.getElementById('task-detail-content');
     if (!content) return;
 
-    // Build assignee options
+    const originalContent = content.firstChild;
+
+    // Subscriber presence is not assignment authority. Keep an inactive or
+    // temporarily unavailable assignee selected even if discovery fails.
     let assigneeOptions = '<option value="">Unassigned</option>';
-    const boardProject = _getBoardProject();
+    const boardProject = _editBoardProject;
+    const names = new Set();
+    if (task.assigned_to) {
+        names.add(task.assigned_to);
+        assigneeOptions += `<option value="${escapeAttr(task.assigned_to)}" selected>${escapeHtml(task.assigned_to)}</option>`;
+    }
     if (boardProject) {
         try {
             const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/subscribers`);
             if (resp.ok) {
                 const subs = await resp.json();
-                (subs || []).forEach(s => {
-                    const name = s.subscriber_id || s.name;
-                    if (name) {
-                        const selected = name === task.assigned_to ? ' selected' : '';
-                        assigneeOptions += `<option value="${escapeAttr(name)}"${selected}>${escapeHtml(name)}</option>`;
+                (Array.isArray(subs) ? subs : []).forEach(s => {
+                    const name = s?.subscriber_id || s?.name;
+                    if (typeof name === 'string' && name && !names.has(name)) {
+                        names.add(name);
+                        assigneeOptions += `<option value="${escapeAttr(name)}">${escapeHtml(name)}</option>`;
                     }
                 });
             }
         } catch { /* ignore */ }
     }
+
+    if (editGeneration !== _editGeneration || _editOriginalTask !== task ||
+        _getBoardProject() !== boardProject || !content.isConnected || content.firstChild !== originalContent) return;
 
     const priorityOptions = ['critical', 'high', 'medium', 'low'].map(p =>
         `<option value="${p}"${p === task.priority ? ' selected' : ''}>${p}</option>`
@@ -1373,7 +1390,7 @@ export async function enableTaskEditMode(taskId) {
 
 export async function saveTaskEdit(taskId) {
     const task = _editOriginalTask;
-    if (!task) return;
+    if (!task || task.id !== taskId || _editBoardProject !== _getBoardProject()) return;
 
     const title = document.getElementById('task-edit-title').value.trim();
     const errEl = document.getElementById('task-edit-error');
@@ -1668,6 +1685,8 @@ export function _restoreTaskFooter(taskId) {
 }
 
 export function hideTaskDetailModal() {
+    ++_editGeneration;
+    _editOriginalTask = null;
     _openSubagentId = null;
     const modal = document.getElementById('task-detail-modal');
     if (!modal) return;

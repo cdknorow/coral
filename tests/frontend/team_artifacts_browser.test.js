@@ -69,7 +69,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
                 }
                 if(u.startsWith('/api/artifacts/') || u.includes('/artifact-content?')) {
                     window.__calls.push(u);
-                    if(window.__previewFixture) return new Response(window.__previewFixture.content,{headers:{'Content-Type':window.__previewFixture.type,'Content-Disposition':'inline; filename="acceptance_report"'}});
+                    if(window.__previewFixture) return new Response(window.__previewFixture.content,{headers:{'Content-Type':window.__previewFixture.type,'Content-Disposition':window.__previewFixture.disposition || 'inline; filename="acceptance_report"',...(window.__previewFixture.size?{'Content-Length':String(window.__previewFixture.size)}:{})}});
                     if(window.__htmlContent) return new Response(window.__htmlContent,{headers:{'Content-Type':'text/plain'}});
                     if(u.includes('b'.repeat(64))) { const r = new Response('',{headers:{'Content-Type':'image/png'}}); Object.defineProperty(r,'url',{value:'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22100%22%3E%3Crect width=%22200%22 height=%22100%22 fill=%22teal%22/%3E%3C/svg%3E'}); return r; }
                     return new Response('# Design review\\n\\nThe team artifact browser preserves Files as the default view.',{headers:{'Content-Type':u.includes('artifact-content')?'text/plain':'text/markdown','Content-Disposition':'inline; filename="review.md"'}});
@@ -173,6 +173,33 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
             assert.equal(await ev(`document.querySelector('.inline-preview-header a').textContent`),'Download');
             await shot('extensionless-'+kind+'-preview');
             await ev('window._artifactBack()'); await settle();
+        }
+        // A display label is not the original response filename. Keep both
+        // hints: old uploads can be octet-stream despite an original .md name.
+        for (const [kind, disposition, size, expected] of [
+            ['quoted-markdown', 'inline; filename="media-latency-2026-10-05.md"', 6572, 'markdown'],
+            ['unquoted-markdown', 'inline; filename=audit.MDOWN', 0, 'markdown'],
+            ['encoded-markdown', "inline; filename=fallback.bin; filename*=UTF-8''audit%20notes.markdown", 0, 'markdown'],
+            ['unknown-binary', 'inline; filename="audit.bin"', 0, 'binary'],
+            ['no-filename', 'inline', 0, 'binary'],
+            ['oversize-markdown', 'inline; filename="audit.md"', 3 * 1024 * 1024, 'limited'],
+        ]) {
+            const label='media-latency-audit-2026-10-05';
+            await ev(`window.__previewFixture=${JSON.stringify({content:'# Image delivery latency, 2026-10-05\n\n- Preview rendered\n- Download retained\n',type:'application/octet-stream',disposition,size})};window.__items=[{name:${JSON.stringify(label)},media_type:'application/octet-stream',available:true,uri:'coral://artifacts/f8740cb4db8190d1ea14f5a7c9442d61c6ec92452dde8fb5ad825054ebce8474'}]`);
+            await click('.team-artifacts-heading button'); await settle();
+            await click('.team-artifact-preview'); await settle();
+            const view=await ev(`(()=>{const b=document.getElementById('inline-preview-body');return {text:b.textContent,heading:b.querySelector('h1')?.textContent,items:[...b.querySelectorAll('li')].map(x=>x.textContent)}})()`);
+            if(expected==='markdown') {
+                assert.equal(view.heading,'Image delivery latency, 2026-10-05',kind+' must use response filename independently of extensionless label');
+                assert.deepEqual(view.items,['Preview rendered','Download retained']);
+            } else {
+                assert.equal(view.heading,undefined);
+                assert.match(view.text,expected==='binary'?/binary artifact is not rendered inline/:/Preview is limited/);
+            }
+            assert.equal(await ev(`document.querySelector('.inline-preview-filepath').textContent`),label,'display label is preserved');
+            assert.equal(await ev(`document.querySelector('.inline-preview-header a').getAttribute('download')`),label);
+            if(kind==='quoted-markdown')await shot('octet-stream-markdown-filename');
+            await ev('window._artifactBack()');await settle();
         }
         await ev(`window.__previewFixture=null;window.__items=window.__originalItems`);
         // Empty, error and retry states.

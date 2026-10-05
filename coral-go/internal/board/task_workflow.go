@@ -453,6 +453,17 @@ func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Cont
 	if w.CompletionReview != nil && reviewerErr != nil {
 		return nil, reviewerErr
 	}
+	// An explicit assignment is exclusive for completion too: another worker
+	// must not be able to finish a task that is assigned to someone else, for
+	// instance a pending task they were never allowed to claim. The assignee,
+	// the Operator identity and an active registered orchestrator may complete.
+	var assignee sql.NullString
+	if err := tx.GetContext(ctx, &assignee, "SELECT assigned_to FROM board_tasks WHERE id=? AND board_id=?", taskID, project); err != nil {
+		return nil, err
+	}
+	if assignee.Valid && assignee.String != "" && assignee.String != subscriberID && subscriberID != "Operator" && reviewerErr != nil {
+		return nil, fmt.Errorf("task #%d is assigned to %s; only the assignee, Operator or an active registered orchestrator may complete it", taskID, assignee.String)
+	}
 	if outcome == "success" {
 		for _, required := range w.RequiredOutputs {
 			found := false

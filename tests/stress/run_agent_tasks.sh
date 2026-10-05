@@ -7,6 +7,9 @@
 # reading its terminal, then drives the agent side with the real coral-agent
 # CLI: claim, current, list, complete, plus concurrent claims and isolation
 # between agents.
+# Assignment isolation uses real CLI/API requests and a headless browser edit
+# regression. Requires tmux, Python 3, Node, Chrome/Chromium (or CORAL_CHROME_BIN),
+# and tests/frontend dependencies installed beforehand (npm ci there).
 # Also runs real HTTP API regressions for atomic readiness, abrupt restart
 # recovery, and the 32-artifact configuration boundary using the same build.
 #
@@ -21,6 +24,11 @@ BASE_URL="http://${HOST}:${PORT}"
 PASS=0
 FAIL=0
 SERVER_PID=""
+
+# Keep this integration suite bounded on developer machines and never emit telemetry.
+export GOMAXPROCS="${GOMAXPROCS:-2}"
+export GOMEMLIMIT="${GOMEMLIMIT:-512MiB}"
+export CORAL_TELEMETRY_DISABLED=1
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
@@ -119,10 +127,10 @@ mkdir -p "$CORAL_DATA_DIR"
 
 log "Building coral (dev mode), mock-agent and coral-agent..."
 cd "$CORAL_DIR"
-go build -tags "dev fts5" -o "$TMPDIR_AT/coral" ./cmd/coral/
-go build -o "$TMPDIR_AT/mock-agent" ./cmd/mock-agent/
-go build -o "$TMPDIR_AT/coral-agent" ./cmd/coral-agent/
-go build -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
+go build -p 1 -tags "dev fts5" -o "$TMPDIR_AT/coral" ./cmd/coral/
+go build -p 1 -o "$TMPDIR_AT/mock-agent" ./cmd/mock-agent/
+go build -p 1 -o "$TMPDIR_AT/coral-agent" ./cmd/coral-agent/
+go build -p 1 -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
 
 log "Starting coral server on port $PORT..."
 env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
@@ -353,6 +361,18 @@ if python3 "$SCRIPT_DIR/test_completion_review.py" "$BASE_URL" >"$TMPDIR_AT/comp
 else
     cat "$TMPDIR_AT/completion-review.log"
     fail "concurrent completion-review recovery"
+fi
+
+# Assignment ownership regressions use their own board and mock identities.
+source "$SCRIPT_DIR/agent_task_assignment.sh"
+
+log "Assignment editor browser regressions..."
+if CORAL_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
+    cat "$TMPDIR_AT/assignment-browser.log"
+    pass "assignment editor preserves ownership and rejects stale forms"
+else
+    cat "$TMPDIR_AT/assignment-browser.log"
+    fail "assignment editor browser regressions; see $TMPDIR_AT/assignment-browser.log"
 fi
 
 # ── Test 15: readiness recovery and artifact configuration limits ──────

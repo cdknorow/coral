@@ -832,6 +832,17 @@ function _renderSandboxedArtifact(body, { url, content, name, gen }) {
     body.replaceChildren(wrapper);
 }
 
+// Content-Disposition describes the stored file; the artifact label may be
+// extensionless or entirely different. Keep it independent of the UI title.
+function _artifactResponseFilename(disposition) {
+    const encoded = /(?:^|;)\s*filename\*\s*=\s*UTF-8'[^']*'([^;\s]+)/i.exec(disposition);
+    if (encoded) {
+        try { return decodeURIComponent(encoded[1]); } catch { /* Use ordinary filename below. */ }
+    }
+    const match = /(?:^|;)\s*filename\s*=\s*(?:"((?:\\.|[^"])*)"|([^;]+))/i.exec(disposition);
+    return match ? (match[1] !== undefined ? match[1].replace(/\\(.)/g, '$1') : match[2].trim()) : '';
+}
+
 /** Preview a Coral-managed artifact in the same Files panel as repository files. */
 async function _openArtifactPreview(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
@@ -880,10 +891,12 @@ async function _openArtifactPreview(uri, options = {}) {
         const declaredType = (options.mediaType || '').split(';')[0].trim().toLowerCase();
         const isHTML = type === 'text/html' || type === 'application/xhtml+xml' || declaredType === 'text/html' || declaredType === 'application/xhtml+xml';
         const disposition = resp.headers.get('Content-Disposition') || '';
-        const filename = options.filename || (disposition.match(/filename="([^"]+)"/i) || disposition.match(/filename=([^;]+)/i) || [])[1] || '';
-        const isMarkdown = [type, declaredType].some(value => value === 'text/markdown' || value === 'text/x-markdown') || /\.(?:md|markdown|mdown)$/i.test(filename);
-        const isJSON = [type, declaredType].some(value => value === 'application/json' || value.endsWith('+json')) || /\.json$/i.test(filename);
-        const artifactPath = filename || uri;
+        const responseFilename = _artifactResponseFilename(disposition);
+        const filename = options.filename || responseFilename;
+        const filenameHints = [options.filename || '', responseFilename];
+        const isMarkdown = [type, declaredType].some(value => value === 'text/markdown' || value === 'text/x-markdown') || filenameHints.some(name => /\.(?:md|markdown|mdown)$/i.test(name));
+        const isJSON = [type, declaredType].some(value => value === 'application/json' || value.endsWith('+json')) || filenameHints.some(name => /\.json$/i.test(name));
+        const artifactPath = responseFilename || filename || uri;
         const sizeHeader = Number(resp.headers.get('Content-Length'));
         const size = Number.isFinite(sizeHeader) && sizeHeader >= 0 ? sizeHeader : -1;
         if (_isStale(gen)) return;
@@ -894,7 +907,7 @@ async function _openArtifactPreview(uri, options = {}) {
             body.replaceChildren(media);
         } else if (type.startsWith('image/')) {
             renderImagePanes(body, [{ url: resp.url, missing: 'Artifact unavailable' }]);
-        } else if (!isHTML && !isMarkdown && !isJSON && !type.startsWith('text/') && !type.includes('json') && !type.includes('xml') && !/\.(?:md|markdown|txt|log|json|xml|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/i.test(filename)) {
+        } else if (!isHTML && !isMarkdown && !isJSON && !type.startsWith('text/') && !type.includes('json') && !type.includes('xml') && !filenameHints.some(name => /\.(?:md|markdown|txt|log|json|xml|csv|ya?ml|toml|ini|conf|sh|js|ts|go|py|rs|css|html?)$/i.test(name))) {
             _renderArtifactFallback(body, { filename, type, size, url: resp.url, reason: 'This binary artifact is not rendered inline.' });
         } else if (size > MAX_ARTIFACT_PREVIEW_BYTES) {
             _renderArtifactFallback(body, { filename, type, size, url: resp.url, reason: `Preview is limited to ${_artifactSizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });

@@ -805,3 +805,22 @@ func TestApiCallRaw_InjectedTransport_PermissionDeniedNeverRetried(t *testing.T)
 		})
 	}
 }
+
+func TestParseReassignAssigneeRejectsBareName(t *testing.T) {
+	got, err := parseReassignAssignee([]string{"--to", "Orchestrator"})
+	if err != nil || got != "Orchestrator" {
+		t.Fatalf("--to form: %q, %v", got, err)
+	}
+	got, err = parseReassignAssignee([]string{"--to=Backend Dev"})
+	if err != nil || got != "Backend Dev" {
+		t.Fatalf("--to= form: %q, %v", got, err)
+	}
+	if got, err = parseReassignAssignee(nil); err != nil || got != "" {
+		t.Fatalf("explicit unassign: %q, %v", got, err)
+	}
+	for _, args := range [][]string{{"Orchestrator"}, {"--to", "A", "B"}, {"--assignee", "Orchestrator"}} {
+		if got, err := parseReassignAssignee(args); err == nil {
+			t.Fatalf("%v must be rejected, got assignee %q", args, got)
+		}
+	}
+}

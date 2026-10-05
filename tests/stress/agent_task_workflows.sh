@@ -44,9 +44,9 @@ planner join workflow-integration --as Orchestrator >/dev/null
 check "workers cannot create shared tasks" 'reject_board builder task add "Unauthorized worker task"'
 
 log "Test 10: Reassigning a task nudges the new owner..."
-ASSIGN_TASK=$(planner task add "Assignment nudge" --body "The new owner should be notified." | task_id)
+ASSIGN_TASK=$(planner task add "Assignment nudge" --assignee Orchestrator --body "The new owner should be notified." | task_id)
 api PATCH "/api/board/workflow-integration/tasks/$ASSIGN_TASK" -d '{"subscriber_id":"Orchestrator","assigned_to":"Tester"}' >/dev/null
-check "assignment change reaches the new owner's terminal" 'wait_for_input "$NAME_B" "$SID_B" "[mock-agent] input: You have tasks available."'
+check "assignment change reaches the new owner's terminal" 'wait_for_input "$NAME_B" "$SID_B" "[mock-agent] input: [Task #$ASSIGN_TASK available]"'
 tester task claim "$ASSIGN_TASK" >/dev/null
 tester task complete "$ASSIGN_TASK" >/dev/null
 
@@ -66,7 +66,7 @@ cat >"$TMPDIR_AT/build.json" <<'JSON'
 JSON
 builder task complete "$BUILD" --artifacts "$TMPDIR_AT/build.json" --message "Candidate ready" >/dev/null
 check "build completion unlocks test but not release" 'wait_task_status "$TEST" pending && [[ $(workflow_status "$RELEASE") == blocked ]]'
-check "dependency hand-off reaches tester terminal" 'wait_for_input "$NAME_B" "$SID_B" "[mock-agent] input: You have tasks available."'
+check "dependency hand-off reaches tester terminal" 'wait_for_input "$NAME_B" "$SID_B" "[mock-agent] input: [Task #$TEST available]"'
 OUT=$(tester task claim "$TEST")
 check "tester claims exact build revision and artifact URI" 'echo "$OUT" | grep -q "candidate-abc123" && echo "$OUT" | grep -q "artifact://candidate/app.tar.gz"'
 OUT=$(tester task current)

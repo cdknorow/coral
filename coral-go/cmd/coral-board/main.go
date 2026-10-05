@@ -1743,6 +1743,23 @@ func cmdTaskCancel(st *boardState, args []string) {
 	fmt.Printf("Cancelled Task #%d: %s\n", taskID, title)
 }
 
+// parseReassignAssignee reads the --to flag. A bare name is rejected rather
+// than ignored: Go's flag package stops at the first positional argument, so
+// "reassign 5 Orchestrator" used to leave --to empty and silently unassign the
+// task, returning it to the pool every worker can claim from.
+func parseReassignAssignee(args []string) (string, error) {
+	fs := flag.NewFlagSet("task-reassign", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	assignee := fs.String("to", "", "New assignee (empty = unassigned)")
+	if err := fs.Parse(args); err != nil {
+		return "", fmt.Errorf("invalid reassign options: %v (usage: task reassign <id> [--to \"Agent Name\"])", err)
+	}
+	if fs.NArg() > 0 {
+		return "", fmt.Errorf("unexpected argument %q: use --to %q to assign; omit --to only to unassign", fs.Arg(0), fs.Arg(0))
+	}
+	return *assignee, nil
+}
+
 func cmdTaskReassign(st *boardState, args []string) {
 	if len(args) < 1 {
 		fmt.Fprintln(os.Stderr, `Usage: coral-board task reassign <id> [--to "Agent Name"]`)
@@ -1755,9 +1772,12 @@ func cmdTaskReassign(st *boardState, args []string) {
 		os.Exit(1)
 	}
 
-	fs := flag.NewFlagSet("task-reassign", flag.ExitOnError)
-	assignee := fs.String("to", "", "New assignee (empty = unassigned)")
-	fs.Parse(args[1:])
+	newAssignee, err := parseReassignAssignee(args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	assignee := &newAssignee
 
 	subscriberID := resolveSubscriberID()
 	body := map[string]any{

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -45,9 +46,9 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 		errBadRequest(w, "X-Artifact-Name must be 1–160 characters")
 		return
 	}
-	mediaType := strings.TrimSpace(r.Header.Get("X-Artifact-Media-Type"))
+	mediaType := mediatype.Resolve(r.Header.Get("X-Artifact-Media-Type"), name)
 	if mediaType == "" {
-		mediaType = "application/octet-stream"
+		mediaType = mediatype.Generic
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxAgentArtifactSize+1)
 	data, err := io.ReadAll(r.Body)

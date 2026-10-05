@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
-	"mime"
 	"net/http"
 	"net/url"
 	"os"
@@ -27,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/hooks"
+	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
@@ -117,8 +117,10 @@ func cmdArtifact(args []string) {
 	file := args[1]
 	fs := flag.NewFlagSet("artifact-upload", flag.ExitOnError)
 	name := fs.String("name", filepath.Base(file), "Artifact filename")
-	mediaType := fs.String("media-type", mime.TypeByExtension(filepath.Ext(file)), "Artifact media type")
+	mediaType := fs.String("media-type", "", "Artifact media type (default: inferred from the file extension)")
 	fs.Parse(args[2:])
+	*name = mediatype.EnsureExtension(*name, file)
+	*mediaType = mediatype.Resolve(*mediaType, file, *name)
 	data, err := os.ReadFile(file)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
