@@ -1,0 +1,51 @@
+site_name: Coral
+site_description: Documentation for Coral agent teams and workflows
+site_url: https://cdknorow.github.io/coral/
+repo_url: https://github.com/cdknorow/coral
+repo_name: cdknorow/coral
+edit_uri: edit/main/coral-go/site_docs/
+docs_dir: coral-go/site_docs
+use_directory_urls: true
+
+theme:
+  name: material
+  logo: assets/coral.png
+  favicon: assets/coral.png
+  font: false
+  palette:
+    primary: teal
+    accent: cyan
+  features:
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+
+plugins:
+  - search
+  - redirects:
+      redirect_maps:
+        multi-agent-orchestration.md: teams-and-tasks.md
+        agent-teams-message-board.md: teams-and-tasks.md
+        live-sessions.md: getting-started.md
+        git-integration.md: teams-and-tasks.md
+        button-macros.md: reference.md
+        protocol.md: reference.md
+        session-history-search.md: reference.md
+        metrics-observability.md: privacy.md
+        scheduled-jobs.md: teams-and-tasks.md
+        one-time-jobs.md: teams-and-tasks.md
+        webhooks.md: reference.md
+        themes-customization.md: reference.md
+        api/jobs.md: reference.md
+        api/webhooks.md: reference.md
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Teams and tasks: teams-and-tasks.md
+  - Files and artifacts: files-and-artifacts.md
+  - Agent UI: agent-ui.md
+  - Remote access: remote-access.md
+  - Privacy: privacy.md
+  - Troubleshooting: troubleshooting.md
+  - Reference: reference.md

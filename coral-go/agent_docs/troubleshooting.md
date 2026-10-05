@@ -1,13 +1,15 @@
 # Troubleshooting
 
-Symptoms observed while running the shipped v1.0.8 build, with the cause for each.
-Every entry here is something that actually happened, not a hypothetical.
+Symptoms with the cause for each. Statements about behavior were checked against the
+v1.3.23 source. Some entries were first observed on older builds; where the current source
+no longer shows the problem, the entry says so. Items marked *unverified* were not
+re-tested on the current build.
 
 ## First run
 
 ### The agent launched but produces no output and looks hung
 
-The most common first-run problem. On its first run in a directory, the agent CLI asks its
+A common first-run situation. On its first run in a directory, the agent CLI asks its
 own trust question and blocks:
 
 ```
@@ -16,8 +18,8 @@ Quick safety check: Is this a project you created or one you trust?
   Yes, I trust this folder
 ```
 
-Codex asks an equivalent question. **Coral does not surface this as "waiting for input"** —
-the agent appears alive and idle.
+Codex asks an equivalent question. Coral may not show this as "waiting for input" (not verified
+for every provider), so the agent can appear alive and idle.
 
 Open the agent's terminal in the dashboard and answer it, or over the API:
 
@@ -31,14 +33,17 @@ curl -s -X POST "http://localhost:8420/api/sessions/live/$SESSION/keys" \
 Trust is remembered per repository. Launching a team of four agents into a fresh repo
 blocks all four at once.
 
-### I got a pricing page instead of the dashboard
+### I got a supporter page instead of the dashboard
 
-Expected. Coral is free and fully unlocked; this is an activation reminder shown on the
-1st, 4th, 7th … launch (`IsNagLaunch()` is `count % 3 == 1`, starting at 1). Click
+Coral is free and fully unlocked; this is a periodic supporter reminder. It is scheduled
+every 25 launches, counted from the launch at which Coral first did something useful, and
+never on that first launch (`nagInterval` in `internal/license/launch_counter.go`). Click
 **Continue Free**.
 
-The skip is a URL parameter (`/?skip_activation=1`) and sets no cookie, so it can reappear
-on reload.
+It is shown to the first qualifying page load of a server start only
+(`claimSupporterReminder` in `internal/server/server.go`), so reloading does not bring it
+back until the next launch on the cadence. **Continue Free** links to `/?skip_activation=1`.
+Dev and beta builds and activated licenses never show it.
 
 ### `coral: command not found` after installing the DMG
 
@@ -48,14 +53,10 @@ The DMG does not add anything to your `PATH`. Run:
 /Applications/Coral.app/Contents/MacOS/install-cli.sh
 ```
 
-If it fails or does nothing, that is a known bug: it symlinks into `/usr/local/bin`, which
-does not exist on a clean Apple Silicon Mac, and `mkdir -p /usr/local/bin` under `set -e`
-aborts for a non-root user. Use `sudo`, or symlink the binaries yourself:
-
-```bash
-ln -s /Applications/Coral.app/Contents/MacOS/coral       /opt/homebrew/bin/coral
-ln -s /Applications/Coral.app/Contents/MacOS/coral-board /opt/homebrew/bin/coral-board
-```
+It links the tools into `~/.local/bin` by default; pass `--dir <path>` (or set
+`CORAL_LINK_DIR`) to choose another directory, and `--force` to replace files that are not
+Coral symlinks. Make sure that directory is on your `PATH`. Older versions linked into
+`/usr/local/bin`, which does not exist on a clean Apple Silicon Mac, and aborted.
 
 ### `coral` starts something that doesn't look like Coral
 
@@ -78,22 +79,17 @@ $ coral --version
 flag provided but not defined: -version
 ```
 
-The version is in the startup log (`version="1.0.8"`), or via `/api/system/status`.
+The version is in the startup log, or in the `version` field of `/api/system/status`.
 
 ## Agents
 
 ### Agents launch but never post to the message board
 
-Two separate bugs, both invisible on a default install:
-
-1. **Wrong port.** Agents do not receive `CORAL_PORT` or `CORAL_URL`. The generated
-   settings file contains only `CORAL_SESSION_NAME`, `CORAL_SUBSCRIBER_ID`, and `PATH`, so
-   `coral-board` defaults to `http://localhost:8420` no matter what port your server uses.
-2. **Wrong directory.** `coral-board` decides whether it is subscribed by reading
-   `$HOME/.coral/board_state_<session>.json` (`cmd/coral-board/main.go:41-44`). It never
-   asks the server. With `--home` set elsewhere, the server writes that file to its own
-   data directory and the CLI cannot find it — reporting `Not subscribed to any board`
-   while the server shows the agent correctly subscribed.
+Agents are launched with `CORAL_SESSION_NAME`, `CORAL_SUBSCRIBER_ID`, `CORAL_URL`,
+`CORAL_PORT`, `CORAL_HOST`, `CORAL_DIR` and `CORAL_DATA_DIR` (`internal/agent/agent.go`), and
+`coral-board` reads its subscription state from `CORAL_DATA_DIR`, so a server on another
+port or `--home` normally works. Earlier builds did not pass the port or data directory;
+if you see `Not subscribed to any board` on an old build, upgrade.
 
 Confirm the server's view first:
 
@@ -101,7 +97,8 @@ Confirm the server's view first:
 curl -s http://localhost:<port>/api/board/<project>/subscribers
 ```
 
-If the subscription exists server-side, the CLI is the problem. Use the REST API instead:
+If the subscription exists server-side but the CLI disagrees, check that the agent's
+environment was not cleared by a wrapper, then use the REST API as a fallback:
 
 ```bash
 curl -s -X POST http://localhost:<port>/api/board/<project>/messages \
@@ -110,8 +107,6 @@ curl -s -X POST http://localhost:<port>/api/board/<project>/messages \
 ```
 
 The field is `content`, not `message` — empty content is rejected.
-
-**Both bugs disappear on a default install** (`~/.coral`, port 8420).
 
 ### A whole team stalled and produced nothing
 
@@ -146,10 +141,12 @@ two agents asked for the same function produced:
 Give agents non-overlapping files, split them across separate teams, or sequence their
 edits over the board.
 
-### `agent_type` was ignored and I got Claude
+### An unknown `agent_type` is rejected
 
-`GetAgent` (`internal/agent/agent.go`) is a switch over `agy`, `antigravity`, `codex`, and
-`pi`, with `default:` returning Claude. Only `claude`, `agy`, `codex`, and `pi` are valid (`gemini` is deprecated and maps to `agy`).
+The launch API validates `agent_type` (`ValidateAgentType` in `internal/agent/agent.go`) and
+returns an error listing the supported types instead of silently starting Claude. Valid
+launch types are `claude`, `codex`, `agy` and `pi`; `gemini` is a deprecated alias for `agy`.
+An empty `agent_type` uses the default (Claude).
 
 ### Agent launch fails with a tmux error
 
@@ -179,17 +176,11 @@ Coral does not automatically kill an older tmux server during discovery.
 
 ### Searching session history returns nothing
 
-Full-text search across sessions does not work. The FTS index is never populated:
-`FTSBody` (`internal/agent/agent.go:66`) is declared and read at
-`internal/background/indexer.go:114-115` but never assigned, so `UpsertFTS` is never
-called and `session_fts` stays empty.
-
-Verified on two databases — a fresh test instance (0 FTS rows, 42 indexed sessions) and a
-long-running production one (0 FTS rows, 56 indexed sessions). A term visible in a session
-summary on screen returns zero hits.
-
-Session history, auto-summaries, tags, and notes themselves work — only the search does
-not. Browse and filter the history list instead.
+Earlier builds never populated the full-text index. The indexer now writes it whenever an
+agent parser supplies searchable text (`UpsertFTS` in `internal/background/indexer.go`),
+so search should return results for indexed sessions. *Unverified on a live database in
+this review.* If a term you can see in a session returns nothing, the session may not
+be indexed yet; browse and filter the history list meanwhile.
 
 ### Cost shows for some agents but not others
 
@@ -207,30 +198,15 @@ with its *own* UUID, which defeats the filename-matching strategy at
 Do not read a team total as complete spend across vendors. A missing agent shows as
 nothing rather than as an error.
 
-### Every scheduled job run fails
+### Scheduled job runs and `git worktree add`
 
-Symptom: the job fires on schedule, but every run is recorded `failed` with
-
-```
-git worktree add failed: exit status 128: Preparing worktree (checking out 'main')
-fatal: 'main' is already used by worktree at '/path/to/your/repo'
-```
-
-Cause: `internal/background/scheduler.go:551` runs `git worktree add <dir> <base_branch>`.
-Git refuses to check out a branch that is already checked out in another worktree — and your
-main checkout has `main` checked out. Since `base_branch` **defaults to `main`**
-(`jobs.md`), the documented default configuration fails on every run, forever. Scheduling
-itself is fine, so the job looks active in the UI and only the run records show the failure.
-
-Workaround — point `base_branch` at a branch that is not checked out anywhere:
-
-```bash
-git branch scheduler-base          # create it once; do not check it out
-```
-
-then set `"base_branch": "scheduler-base"` on the job. Verified working: the per-run worktree
-is created (`<repo>_task_run_<runID>`), the agent launches, and `cleanup_worktree` removes it
-afterwards.
+Earlier builds ran `git worktree add <dir> <base_branch>`, which Git refuses when that
+branch is already checked out in your main checkout, so a default `main` base failed every
+run. The current scheduler creates a per-run branch off the base
+(`git worktree add -b coral/job-run-<runID> <repo>_task_run_<runID> <base_branch>`), so a
+checked-out base branch is fine. If a run still records `git worktree add failed`, the
+message from Git is shown with the run; check that `base_branch` exists. *Not re-run
+end-to-end in this review.*
 
 ### A scheduled job ends in `killed` / `timeout` instead of `completed`
 
@@ -260,10 +236,12 @@ cannot be tested against a local listener.
 
 ### My second instance lists agents I did not start
 
-Session discovery merges the default tmux socket unconditionally —
-`internal/tmux/client.go:212`, *"Always merge sessions from the default socket for
-backward compatibility"* — with no flag to disable it. A second instance will **list, and
-can kill,** the first instance's agents even with a separate `--home`, port, and database.
+Session discovery merges tmux's default socket only for an install rooted at the default
+`~/.coral` (so an upgrade does not lose old agents). For any other `--home`,
+`defaultSocketFallback` (`internal/tmux/client.go`) turns the merge off. If you set
+`CORAL_TMUX_FALLBACK=1` (or run a second instance on the default directory) the merge is on
+and a second instance can list and kill the first instance's agents. `CORAL_TMUX_NO_FALLBACK=1`
+forces it off.
 
 Check what a new instance can see before trusting it:
 
@@ -285,8 +263,9 @@ error connecting to ... (File name too long)
 
 The server still logs `Using tmux terminal backend` and starts cleanly. Keep the data
 directory short (`/tmp/coral-t1`). Confirm which backend an agent really used by checking
-`tmux_session` in `/api/sessions/live` — the `backend` field in the launch response reports
-`pty` even for tmux-backed sessions and cannot be trusted.
+`tmux_session` in `/api/sessions/live`, or the `terminal` field in the launch response. The
+launch response's `backend` field names the launch path and reads `pty` even for
+tmux-backed sessions.
 
 ### Port already in use
 
@@ -301,20 +280,16 @@ so the two instances do not share state.
 
 ### Windows
 
-Not supported. No Windows artifact has ever been published, and the server does not
-currently compile for Windows — `internal/background/workflow_runner.go` uses Unix-only
-process-group syscalls (`syscall.Getpgid`, `syscall.Kill`, `SysProcAttr.Setpgid`).
-
-The architecture is otherwise Windows-ready: `cmd/coral/main.go:60-63` defaults Windows to
-a native PTY backend, so tmux is not required there — but that backend is **unexercised**;
-nobody has observed it running an agent. On this test host it fails at spawn with
-`operation not permitted`, which may be a sandbox restriction rather than a defect.
+No official Windows asset is published for the regular release. Windows-specific source
+exists (for example `internal/background/process_windows.go`, and `cmd/coral/main.go` defaults
+Windows to the native PTY backend), but the regular release process does not build or test it
+and it is *unverified* here.
 
 ### Linux
 
-The tarball is **x86-64 only** — there is no arm64 build. It contains six bare binaries
-with no installer, service unit, or desktop entry, and no tray or desktop app; Linux is
-CLI/server only.
+The tarball is **x86-64 only** — there is no arm64 build. It contains bare binaries with no
+installer, service unit, or desktop entry, and no tray or desktop app; Linux is CLI/server
+only. tmux is not bundled; install it or start with `--backend pty`.
 
 ### macOS Gatekeeper
 

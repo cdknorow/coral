@@ -1,0 +1,49 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/docs.yml
+      - mkdocs.yml
+      - requirements-docs.txt
+      - coral-go/site_docs/**
+      - tools/check-site-links.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: documentation-pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Install pinned documentation tools
+        run: python -m pip install -r requirements-docs.txt
+      - name: Build and validate site
+        run: |
+          python -m mkdocs build --strict --site-dir "$RUNNER_TEMP/coral-docs-site"
+          python tools/check-site-links.py "$RUNNER_TEMP/coral-docs-site"
+      - name: Upload verified site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/coral-docs-site
+      - name: Deploy verified site
+        id: deployment
+        uses: actions/deploy-pages@v4
