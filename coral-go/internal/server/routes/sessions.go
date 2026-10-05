@@ -612,7 +612,12 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	trace.end("terminal_discovery", "agents", len(agents))
 
 	ctx := r.Context()
-	allLive, _ := h.ss.GetAllLiveSessions(ctx)
+	allLive, err := h.ss.GetAllLiveSessions(ctx)
+	if err != nil {
+		slog.Warn("failed to list live session metadata", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
+		return
+	}
 	liveSleeping := make(map[string]bool)
 	for _, session := range allLive {
 		liveSleeping[session.SessionID] = session.IsSleeping == 1
@@ -639,7 +644,12 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	trace.begin("db_identity")
-	displayNames, _ := h.ss.GetDisplayNames(ctx, sessionIDs)
+	displayNames, err := h.ss.GetDisplayNames(ctx, sessionIDs)
+	if err != nil {
+		slog.Warn("failed to read live session identities", "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
+		return
+	}
 	icons, _ := h.ss.GetIcons(ctx, sessionIDs)
 	nameColors, _ := h.ss.GetNameColors(ctx, sessionIDs)
 	trace.end("db_identity", dbPoolAttrs(h.db)...)
@@ -701,6 +711,8 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		boardSubs, err = h.bs.GetAllSubscriptions(ctx)
 		if err != nil {
 			slog.Warn("failed to get board subscriptions", "error", err)
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent subscriptions are temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
+			return
 		}
 	}
 	if boardSubs == nil {
@@ -729,34 +741,14 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	liveExtras := make(map[string]liveExtra) // session_id -> extra fields
 	trace.begin("db_live_session_extras")
-	{
-		var rows []struct {
-			SessionID     string  `db:"session_id"`
-			BoardName     *string `db:"board_name"`
-			DisplayName   *string `db:"display_name"`
-			IsSleeping    int     `db:"is_sleeping"`
-			Prompt        *string `db:"prompt"`
-			Model         *string `db:"model"`
-			Capabilities  *string `db:"capabilities"`
-			ContextWindow int     `db:"context_window"`
+	// Use the authoritative snapshot already read above. A second, ignored
+	// query failure used to erase team names and other identity metadata.
+	for _, session := range allLive {
+		if session.BoardName != nil {
+			liveBoardNames[session.SessionID] = [2]string{*session.BoardName, derefStrPtr(session.DisplayName)}
 		}
-		if err := h.db.SelectContext(ctx, &rows, "SELECT session_id, board_name, display_name, is_sleeping, prompt, model, capabilities, context_window FROM live_sessions WHERE status = 'active'"); err == nil {
-			for _, r := range rows {
-				if r.BoardName != nil {
-					bn := *r.BoardName
-					dn := ""
-					if r.DisplayName != nil {
-						dn = *r.DisplayName
-					}
-					liveBoardNames[r.SessionID] = [2]string{bn, dn}
-				}
-				if r.IsSleeping == 1 {
-					liveSleeping[r.SessionID] = true
-				}
-				liveExtras[r.SessionID] = liveExtra{
-					Prompt: r.Prompt, Model: r.Model, Capabilities: r.Capabilities, ContextWindow: r.ContextWindow,
-				}
-			}
+		liveExtras[session.SessionID] = liveExtra{
+			Prompt: session.Prompt, Model: session.Model, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
 		}
 	}
 	trace.end("db_live_session_extras", dbPoolAttrs(h.db)...)
@@ -1134,7 +1126,8 @@ func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, age
 	}
 	ls, err := h.ss.GetLiveSession(ctx, sessionID)
 	if err != nil {
-		return nil, http.StatusInternalServerError, err.Error()
+		slog.Warn("failed to validate live session metadata", "session_id", sessionID, "error", err)
+		return nil, http.StatusServiceUnavailable, "Agent metadata is temporarily unavailable; try again."
 	}
 	if ls == nil {
 		return nil, http.StatusNotFound, "live session not found"
@@ -1142,7 +1135,8 @@ func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, age
 	var status string
 	if err := h.db.GetContext(ctx, &status,
 		"SELECT status FROM live_sessions WHERE session_id = ?", sessionID); err != nil {
-		return nil, http.StatusInternalServerError, err.Error()
+		slog.Warn("failed to validate live session metadata", "session_id", sessionID, "error", err)
+		return nil, http.StatusServiceUnavailable, "Agent metadata is temporarily unavailable; try again."
 	}
 	if status != "active" {
 		return nil, http.StatusNotFound, "live session not found"
@@ -2481,7 +2475,11 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
-			writeExactTargetError(w, status, message)
+			if status == http.StatusServiceUnavailable {
+				writeJSON(w, status, map[string]any{"error": message + " No input was sent.", "code": "agent_metadata_unavailable", "not_sent": true})
+			} else {
+				writeExactTargetError(w, status, message)
+			}
 			return
 		}
 	}

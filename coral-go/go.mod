@@ -1,6 +1,6 @@
 module github.com/cdknorow/coral
 
-go 1.24
+go 1.24.0
 
 require (
 	fyne.io/systray v1.12.0
@@ -19,7 +19,7 @@ require (
 	github.com/webview/webview_go v0.0.0-20240831120633-6173450d4dd6
 	golang.org/x/term v0.32.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.33.1
+	modernc.org/sqlite v1.43.0
 	nhooyr.io/websocket v1.8.17
 )
 
@@ -40,10 +40,10 @@ require (
 	github.com/sergeymakinen/go-bmp v1.0.0 // indirect
 	github.com/sergeymakinen/go-ico v1.0.0-beta.0 // indirect
 	github.com/tadvi/systray v0.0.0-20190226123456-11a2b8fa57af // indirect
-	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
-	golang.org/x/sys v0.33.0 // indirect
+	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
+	golang.org/x/sys v0.36.0 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
-	modernc.org/libc v1.65.7 // indirect
+	modernc.org/libc v1.66.10 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/strutil v1.2.1 // indirect
