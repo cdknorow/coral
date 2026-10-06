@@ -297,4 +297,197 @@ assert_no_flag "team acceptEdits: agy no raw --permission-mode" \
 kill_team
 rm -rf "$WORK_DIR"
 
+# ── Test 5: mixed permissions — each agent gets a different mode ─────
+echo ""
+echo "Test 5: mixed permissions — orchestrator bypass, worker plan, worker acceptEdits"
+
+WORK_DIR="$(mktemp -d)"
+
+payload=$(python3 -c "
+import json
+print(json.dumps({
+    'board_name': 'perm-test-mixed-modes',
+    'working_dir': '$WORK_DIR',
+    'agents': [
+        {
+            'name': 'Orchestrator',
+            'agent_type': 'claude',
+            'prompt': 'Say hello and stop.',
+            'flags': ['--permission-mode', 'bypassPermissions'],
+        },
+        {
+            'name': 'Read-Only Worker',
+            'agent_type': 'codex',
+            'prompt': 'Say hello and stop.',
+            'flags': ['--permission-mode', 'plan'],
+        },
+        {
+            'name': 'Edit Worker',
+            'agent_type': 'agy',
+            'prompt': 'Say hello and stop.',
+            'flags': ['--permission-mode', 'acceptEdits'],
+        },
+    ],
+}))
+")
+
+result=$(curl -sf -X POST \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    "http://127.0.0.1:$TEST_PORT/api/sessions/launch-team" 2>&1) || {
+    echo "  FAIL: launch-team request failed: $result"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILURES+=("launch-team (mixed modes): request failed")
+}
+
+TEAM_CLAUDE_SESSION=$(echo "$result" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('agents', []):
+    sn = a.get('session_name', '')
+    if sn.startswith('claude-'):
+        print(sn); break
+" 2>/dev/null)
+TEAM_CODEX_SESSION=$(echo "$result" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('agents', []):
+    sn = a.get('session_name', '')
+    if sn.startswith('codex-'):
+        print(sn); break
+" 2>/dev/null)
+TEAM_AGY_SESSION=$(echo "$result" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('agents', []):
+    sn = a.get('session_name', '')
+    if sn.startswith('agy-'):
+        print(sn); break
+" 2>/dev/null)
+
+echo "  Launched mixed-permission team:"
+echo "    claude (bypass):      $TEAM_CLAUDE_SESSION"
+echo "    codex  (plan):        $TEAM_CODEX_SESSION"
+echo "    agy    (acceptEdits): $TEAM_AGY_SESSION"
+sleep 2
+
+# Claude: bypassPermissions → --permission-mode bypassPermissions
+cmd=$(get_launch_log_command_by_session "$TEAM_CLAUDE_SESSION")
+assert_flag "mixed perms: claude gets bypassPermissions" \
+    "$cmd" "--permission-mode bypassPermissions"
+assert_no_flag "mixed perms: claude no plan" \
+    "$cmd" "--permission-mode plan"
+
+# Codex: plan → --sandbox read-only -a on-request (NOT bypass)
+cmd=$(get_launch_log_command_by_session "$TEAM_CODEX_SESSION")
+assert_flag "mixed perms: codex gets sandbox read-only" \
+    "$cmd" "--sandbox read-only"
+assert_flag "mixed perms: codex gets approval on-request" \
+    "$cmd" "-a on-request"
+assert_no_flag "mixed perms: codex no bypass" \
+    "$cmd" "--dangerously-bypass-approvals-and-sandbox"
+assert_no_flag "mixed perms: codex no raw --permission-mode" \
+    "$cmd" "--permission-mode"
+
+# Agy: acceptEdits → --mode accept-edits (NOT bypass)
+cmd=$(get_launch_log_command_by_session "$TEAM_AGY_SESSION")
+assert_flag "mixed perms: agy gets --mode accept-edits" \
+    "$cmd" "--mode accept-edits"
+assert_no_flag "mixed perms: agy no bypass" \
+    "$cmd" "--dangerously-skip-permissions"
+assert_no_flag "mixed perms: agy no raw --permission-mode" \
+    "$cmd" "--permission-mode"
+
+kill_team
+rm -rf "$WORK_DIR"
+
+# ── Test 6: team-level fallback — per-agent flags override team flags ─
+echo ""
+echo "Test 6: team-level fallback — agent with flags ignores team flags"
+
+WORK_DIR="$(mktemp -d)"
+
+# Team-level flags say plan, but the claude agent overrides to bypassPermissions
+payload=$(python3 -c "
+import json
+print(json.dumps({
+    'board_name': 'perm-test-override',
+    'working_dir': '$WORK_DIR',
+    'flags': ['--permission-mode', 'plan'],
+    'agents': [
+        {
+            'name': 'Override Agent',
+            'agent_type': 'claude',
+            'prompt': 'Say hello and stop.',
+            'flags': ['--permission-mode', 'bypassPermissions'],
+        },
+        {
+            'name': 'Fallback Agent',
+            'agent_type': 'codex',
+            'prompt': 'Say hello and stop.',
+        },
+    ],
+}))
+")
+
+result=$(curl -sf -X POST \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    "http://127.0.0.1:$TEST_PORT/api/sessions/launch-team" 2>&1) || {
+    echo "  FAIL: launch-team request failed: $result"
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILURES+=("launch-team (override): request failed")
+}
+
+TEAM_CLAUDE_SESSION=$(echo "$result" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('agents', []):
+    sn = a.get('session_name', '')
+    if sn.startswith('claude-'):
+        print(sn); break
+" 2>/dev/null)
+TEAM_CODEX_SESSION=$(echo "$result" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for a in data.get('agents', []):
+    sn = a.get('session_name', '')
+    if sn.startswith('codex-'):
+        print(sn); break
+" 2>/dev/null)
+
+echo "  Launched override team:"
+echo "    claude (per-agent bypass): $TEAM_CLAUDE_SESSION"
+echo "    codex  (team-level plan):  $TEAM_CODEX_SESSION"
+sleep 2
+
+# Claude: per-agent flags win → bypassPermissions (not team-level plan)
+cmd=$(get_launch_log_command_by_session "$TEAM_CLAUDE_SESSION")
+assert_flag "override: claude gets bypassPermissions from per-agent flags" \
+    "$cmd" "--permission-mode bypassPermissions"
+assert_no_flag "override: claude no plan" \
+    "$cmd" "--permission-mode plan"
+
+# Codex: no per-agent flags → falls back to team-level plan
+# Team-level --permission-mode is stripped by stripAgentPermissionFlags,
+# so codex falls through to the global default_permission_mode (empty for test server)
+cmd=$(get_launch_log_command_by_session "$TEAM_CODEX_SESSION")
+assert_no_flag "override: codex no bypass" \
+    "$cmd" "--dangerously-bypass-approvals-and-sandbox"
+assert_no_flag "override: codex no raw --permission-mode" \
+    "$cmd" "--permission-mode"
+
+for session in "$TEAM_CLAUDE_SESSION" "$TEAM_CODEX_SESSION"; do
+    if [ -n "$session" ]; then
+        curl -sf -X DELETE "http://127.0.0.1:$TEST_PORT/api/sessions/live/${session}" >/dev/null 2>&1 || true
+    fi
+done
+sleep 1
+for session in "$TEAM_CLAUDE_SESSION" "$TEAM_CODEX_SESSION"; do
+    if [ -n "$session" ]; then
+        tmux kill-session -t "$session" 2>/dev/null || true
+    fi
+done
+rm -rf "$WORK_DIR"
+
 finish "Mixed Team"
