@@ -814,6 +814,84 @@ func TestAgy_ResumeWithPermissions(t *testing.T) {
 	}
 }
 
+// ── Agy Permission Mode Translation Tests ──────────────────
+
+func TestAgy_PermissionModeTranslation(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  LaunchParams
+		want    []string
+		notWant []string
+	}{
+		{
+			name:    "setting bypass",
+			params:  LaunchParams{PermissionMode: "bypassPermissions"},
+			want:    []string{"--dangerously-skip-permissions"},
+			notWant: []string{"--permission-mode"},
+		},
+		{
+			name:    "flag bypass",
+			params:  LaunchParams{Flags: []string{"--permission-mode", "bypassPermissions"}},
+			want:    []string{"--dangerously-skip-permissions"},
+			notWant: []string{"--permission-mode"},
+		},
+		{
+			name:    "flag equals auto",
+			params:  LaunchParams{Flags: []string{"--permission-mode=auto"}},
+			want:    []string{"--dangerously-skip-permissions"},
+			notWant: []string{"--permission-mode"},
+		},
+		{
+			name:    "plan",
+			params:  LaunchParams{PermissionMode: "plan"},
+			want:    []string{"--mode plan"},
+			notWant: []string{"--permission-mode", "--dangerously-skip-permissions"},
+		},
+		{
+			name:    "acceptEdits",
+			params:  LaunchParams{PermissionMode: "acceptEdits"},
+			want:    []string{"--mode accept-edits"},
+			notWant: []string{"--permission-mode", "--dangerously-skip-permissions"},
+		},
+		{
+			name: "capabilities win over permission mode",
+			params: LaunchParams{
+				PermissionMode: "bypassPermissions",
+				Flags:          []string{"--permission-mode", "auto"},
+				Capabilities:   &Capabilities{Allow: []string{CapFileRead}},
+			},
+			want:    []string{"--mode plan"},
+			notWant: []string{"--dangerously-skip-permissions", "--permission-mode"},
+		},
+		{
+			name: "flag overrides setting",
+			params: LaunchParams{
+				PermissionMode: "plan",
+				Flags:          []string{"--permission-mode", "bypassPermissions"},
+			},
+			want:    []string{"--dangerously-skip-permissions"},
+			notWant: []string{"--mode plan", "--permission-mode"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &AgyAgent{}
+			cmd := a.BuildLaunchCommand(tt.params)
+			for _, want := range tt.want {
+				if !strings.Contains(cmd, want) {
+					t.Errorf("expected %q in %q", want, cmd)
+				}
+			}
+			for _, notWant := range tt.notWant {
+				if strings.Contains(cmd, notWant) {
+					t.Errorf("did not expect %q in %q", notWant, cmd)
+				}
+			}
+		})
+	}
+}
+
 // ── Permission Translation Tests ────────────────────────────
 
 func TestTranslateToClaudePermissions_Nil(t *testing.T) {

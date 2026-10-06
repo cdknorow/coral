@@ -297,11 +297,13 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 		}
 	}
 
-	// User-provided flags — drop Claude-specific flags that agy doesn't understand
+	// User-provided flags — translate or drop flags that agy doesn't understand
 	claudeOnlyFlags := map[string]bool{
 		"--settings": true, "--session-id": true, "--approval-mode": true,
 	}
-	for _, flag := range params.Flags {
+	permissionApplied := params.Capabilities != nil && !params.Capabilities.IsEmpty()
+	for i := 0; i < len(params.Flags); i++ {
+		flag := params.Flags[i]
 		if claudeOnlyFlags[flag] {
 			slog.Warn("dropping unsupported flag for agy agent", "flag", flag)
 			continue
@@ -310,7 +312,28 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 			parts = append(parts, "--dangerously-skip-permissions")
 			continue
 		}
+		if flag == "--permission-mode" {
+			if i+1 < len(params.Flags) {
+				i++
+				if !permissionApplied {
+					parts = appendAgyPermissionMode(parts, params.Flags[i])
+					permissionApplied = true
+				}
+			}
+			continue
+		}
+		if mode, ok := strings.CutPrefix(flag, "--permission-mode="); ok {
+			if !permissionApplied {
+				parts = appendAgyPermissionMode(parts, mode)
+				permissionApplied = true
+			}
+			continue
+		}
 		parts = append(parts, flag)
+	}
+
+	if !permissionApplied && params.PermissionMode != "" && params.PermissionMode != "default" {
+		parts = appendAgyPermissionMode(parts, params.PermissionMode)
 	}
 
 	// Action prompt via temp file for robustness
@@ -334,4 +357,24 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	return strings.Join(ShellQuoteParts(parts), " ")
+}
+
+func appendAgyPermissionMode(parts []string, mode string) []string {
+	switch mode {
+	case "", "default":
+		return parts
+	case "bypassPermissions":
+		return append(parts, "--dangerously-skip-permissions")
+	case "auto":
+		return append(parts, "--dangerously-skip-permissions")
+	case "acceptEdits":
+		return append(parts, "--mode", "accept-edits")
+	case "plan":
+		return append(parts, "--mode", "plan")
+	case "dontAsk":
+		return append(parts, "--mode", "plan")
+	default:
+		slog.Warn("dropping unsupported permission mode for agy agent", "mode", mode)
+		return parts
+	}
 }

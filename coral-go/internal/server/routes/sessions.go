@@ -3353,6 +3353,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			Capabilities *agent.Capabilities    `json:"capabilities"`
 			AgentType    string                 `json:"agent_type"`
 			Model        string                 `json:"model"`
+			Flags        []string               `json:"flags"`
 			Tools        []string               `json:"tools"`
 			MCPServers   map[string]any         `json:"mcpServers"`
 			Hooks        map[string]interface{} `json:"hooks"`
@@ -3494,12 +3495,17 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 		// Resolve model: per-agent request wins, else user's default_model_<type>.
 		effectiveModel := defaultModelFromSettings(userSettings, agentType, agentDef.Model)
 
-		// Team-level flags are shared by every member, which may use different
-		// agent types. Drop engine-specific permission flags here and let
-		// launchSession translate the configured permission mode for each agent.
-		// Otherwise a mixed team can pass (for example) a Codex bypass flag to
-		// Claude alongside Claude's own --permission-mode flag.
-		agentFlags := stripAgentPermissionFlags(body.Flags)
+		// Per-agent flags carry the member's own permission mode from the UI.
+		// When present, use them (after stripping engine-specific permission
+		// flags that might not match this agent's type — launchSession will
+		// re-derive the correct flags from the cleaned set). Otherwise fall
+		// back to team-level flags (also cleaned).
+		var agentFlags []string
+		if len(agentDef.Flags) > 0 {
+			agentFlags = agentDef.Flags
+		} else {
+			agentFlags = stripAgentPermissionFlags(body.Flags)
+		}
 		if effectiveModel != "" {
 			agentFlags = append(agentFlags, "--model", effectiveModel)
 		}

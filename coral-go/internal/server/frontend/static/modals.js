@@ -598,7 +598,7 @@ function saveTeamAgentFromModal() {
         setAgentConfig(_teamAgentModalRow.dataset.acfId, config);
         _updateTeamAgentSummary(_teamAgentModalRow);
     } else {
-        _addTeamAgent(config.name, config.prompt, config.capabilities, config.agentType, config.model);
+        _addTeamAgent(config.name, config.prompt, config.capabilities, config.agentType, config.model, config.flags);
     }
 
     hideTeamAgentModal();
@@ -1723,7 +1723,9 @@ function renderAgentConfigForm(containerId, opts = {}) {
     let autoPermissionsHTML = '';
     if (showAutoPermissions) {
         const defaultMode = (state.settings && state.settings.default_permission_mode) || 'bypassPermissions';
-        const permModeVal = autoPermsVal ? (typeof autoPermsVal === 'string' ? autoPermsVal : defaultMode) : 'default';
+        const permModeVal = autoPermsVal
+            ? (typeof autoPermsVal === 'string' ? autoPermsVal : (_permissionModeFromFlags(flagsVal) || defaultMode))
+            : 'default';
         const permModeDesc = PERMISSION_MODE_DESCRIPTIONS[permModeVal] || '';
         autoPermissionsHTML = `
             <label>Permission Mode:
@@ -2153,8 +2155,9 @@ window._quickLaunchTeam = async function() {
     const launchBtn = document.querySelector('#quick-launch-modal .btn-primary');
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
-    const agentType = 'claude';
-    const permFlag = _getPermissionFlagsForAgentMode(agentType, state.settings?.default_permission_mode || 'bypassPermissions');
+    const agentType = tmpl.agents?.[0]?.agent_type || state.settings?.default_agent_type || 'claude';
+    const defaultPermMode = state.settings?.default_permission_mode || 'bypassPermissions';
+    const permFlag = _getPermissionFlagsForAgentMode(agentType, defaultPermMode);
     const flags = permFlag ? permFlag.split(/\s+/) : [];
 
     try {
@@ -2170,6 +2173,9 @@ window._quickLaunchTeam = async function() {
                     const entry = { name: a.name, prompt: a.prompt, capabilities: a.capabilities };
                     if (a.agent_type) entry.agent_type = a.agent_type;
                     if (a.model) entry.model = a.model;
+                    if (a.flags) {
+                        entry.flags = typeof a.flags === 'string' ? a.flags.split(/\s+/).filter(Boolean) : a.flags;
+                    }
                     return entry;
                 }),
             }),
@@ -2209,7 +2215,7 @@ function _loadTeamTemplate(name) {
     for (const agent of tmpl.agents) {
         const agentName = agent.name || agent.role || '';
         const agentPrompt = agent.prompt || agent.description || '';
-        _addTeamAgent(agentName, agentPrompt, agent.capabilities, agent.agent_type, agent.model);
+        _addTeamAgent(agentName, agentPrompt, agent.capabilities, agent.agent_type, agent.model, agent.flags);
     }
     if (tmpl.flags) {
         const tfEl = document.getElementById("team-flags");
@@ -2236,6 +2242,7 @@ async function _saveTeamTemplate() {
             if (config.capabilities) entry.capabilities = config.capabilities;
             if (config.agentType) entry.agent_type = config.agentType;
             if (config.model) entry.model = config.model;
+            if (config.flags) entry.flags = config.flags;
             agents.push(entry);
         }
     }
@@ -2297,7 +2304,7 @@ function _truncatePrompt(text, maxLen) {
     return text.substring(0, maxLen) + "\u2026";
 }
 
-function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultAgentType, defaultModel) {
+function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultAgentType, defaultModel, defaultFlags) {
     _teamAgentCounter++;
     const idx = _teamAgentCounter;
     const acfId = `team-agent-acf-${idx}`;
@@ -2337,17 +2344,19 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
 
     // Render ACF inside the card
     const caps = defaultCapabilities || _findPersona(defaultName)?.capabilities || null;
+    const acfValue = {
+        name: defaultName || '',
+        prompt: defaultPrompt || '',
+        agentType: defaultAgentType || '',
+        model: defaultModel || '',
+        capabilities: caps,
+    };
+    if (defaultFlags) acfValue.flags = defaultFlags;
     renderAgentConfigForm(acfId, {
         showPreset: false,
         showName: true,
         showAutoPermissions: true,
-        value: {
-            name: defaultName || '',
-            prompt: defaultPrompt || '',
-            agentType: defaultAgentType || '',
-            model: defaultModel || '',
-            capabilities: caps,
-        },
+        value: acfValue,
     });
 
     _updateTeamAgentSummary(row);
@@ -2529,6 +2538,7 @@ async function launchTeam() {
         if (config.capabilities) agent.capabilities = config.capabilities;
         if (config.agentType) agent.agent_type = config.agentType;
         if (config.model) agent.model = config.model;
+        if (config.flags) agent.flags = config.flags.split(/\s+/).filter(Boolean);
         agents.push(agent);
     }
 
