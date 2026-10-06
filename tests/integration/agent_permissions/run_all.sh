@@ -23,7 +23,7 @@
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-SUITES=("claude" "codex" "antigravity")
+SUITES=("claude" "codex" "antigravity" "mixed_team")
 if [ $# -gt 0 ]; then
     SUITES=("$@")
 fi

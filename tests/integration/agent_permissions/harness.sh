@@ -311,6 +311,13 @@ get_launch_log_command() {
     grep "\[launch\].*agent=$agent_type.*cmd=" "$CORAL_LOG" 2>/dev/null | tail -1 || echo ""
 }
 
+# Get the launch log command for a specific session (by session name).
+# Useful in team launches where multiple agents of the same type exist.
+get_launch_log_command_by_session() {
+    local session_name="$1"
+    grep "\[launch\] .* session=${session_name} .*cmd=" "$CORAL_LOG" 2>/dev/null | tail -1 || echo ""
+}
+
 assert_flag() {
     local test_name="$1"
     local haystack="$2"
