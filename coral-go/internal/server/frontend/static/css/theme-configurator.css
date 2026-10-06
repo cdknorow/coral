@@ -48,9 +48,9 @@
 }
 
 .theme-group-title {
-    font-size: 11px;
+    font-size: var(--fs-base);
     font-weight: 600;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     padding: 8px 0 4px;
@@ -69,7 +69,7 @@
 
 .theme-label {
     flex: 1;
-    font-size: 12px;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -106,7 +106,7 @@
 .theme-color-text {
     width: 100px;
     padding: 4px 6px;
-    font-size: 11px;
+    font-size: var(--fs-base);
     font-family: var(--font-mono);
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
@@ -133,7 +133,8 @@
 
 .btn-sm {
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: var(--fs-md);
+    min-height: var(--control-compact-height);
 }
 
 .btn-danger {

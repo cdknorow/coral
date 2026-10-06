@@ -1480,3 +1480,17 @@
         min-height: 32px;
     }
 }
+
+/* Shared controls keep readable labels and touch targets. Composer and
+   terminal geometry retain their existing mobile rules above. */
+@media (max-width: 767px), (pointer: coarse) {
+    .btn, .btn-small, .btn-sm, .sidebar-subtab, .modal-close-btn, .mb-action-btn, .cost-time-select,
+    .agent-ui-workspace-tabs button, .agent-ui-card button, .agent-ui-send,
+    .team-settings-workspace-actions button, .sched-preset,
+    .team-settings-tabs [role="tab"], .team-availability-dialog button,
+    .working-mode-form select, .working-mode-form input[name="preset_name"],
+    .modal-content select,
+    .modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]) {
+        min-height: var(--control-touch-height);
+    }
+}

@@ -28,26 +28,26 @@
 /* ── Markdown rendering ───────────────────────────────────── */
 
 .docs-content h1 {
-    font-size: 22px;
+    font-size: var(--type-page-size);
     margin: 0 0 12px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
 }
 
 .docs-content h2 {
-    font-size: 17px;
+    font-size: var(--fs-xl);
     margin: 24px 0 8px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
 }
 
 .docs-content h3 {
-    font-size: 15px;
+    font-size: var(--fs-lg);
     margin: 20px 0 6px;
 }
 
 .docs-content h4 {
-    font-size: 13px;
+    font-size: var(--fs-lg);
     margin: 16px 0 4px;
 }
 

@@ -6,16 +6,19 @@
 /* ── Buttons ───────────────────────────────────────────────── */
 
 .btn {
-    padding: var(--space-sm) var(--space-xl);
+    padding: var(--space-md) var(--space-lg);
     border-radius: var(--radius-md);
     border: 1px solid var(--border);
     background: var(--bg-tertiary);
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: var(--fs-md);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
+    min-height: var(--control-height);
+    font-family: var(--font-sans);
+    line-height: 1.4;
 }
 
 .btn:hover {
@@ -85,10 +88,18 @@
 }
 
 .btn-small {
-    padding: 4px 10px;
-    font-size: 12px;
+    padding: var(--space-xs) var(--space-md);
+    font-size: var(--fs-md);
     margin: 8px 20px;
+    min-height: var(--control-compact-height);
 }
+
+.mb-project-count, .mb-project-meta, .mb-message-count {
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
+}
+.mb-project-count { margin-left: auto; }
+.mb-message-count { text-align: center; padding: var(--space-xs) 0 var(--space-md); }
 
 /* Message board — sleep banner */
 .mb-sleep-banner {
@@ -217,12 +228,12 @@
 }
 
 .mb-message-time {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
 }
 
 .mb-message-body {
-    font-size: 13px;
+    font-size: var(--fs-lg);
     color: var(--mb-text);
     line-height: 1.6;
 }
@@ -364,17 +375,18 @@
     background: var(--bg-tertiary);
     color: var(--text-secondary);
     min-width: 34px;
-    height: 30px;
+    height: var(--control-compact-height);
     text-align: center;
     font-weight: 600;
-    font-size: 12px;
-    border-radius: 5px;
+    font-size: var(--fs-md);
+    border-radius: var(--radius-md);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0 8px;
     margin: 0;
     white-space: nowrap;
+    font-family: var(--font-sans);
 }
 
 .btn-nav:hover {
@@ -492,7 +504,31 @@
     border-bottom: 1px solid var(--border);
 }
 
-.modal-content:has(.modal-body) .modal-body {
+.modal-content:has(.modal-body) .modal-header:has(> .modal-close-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-lg);
+}
+.modal-header:has(> .modal-close-btn) h3 { min-width: 0; overflow-wrap: anywhere; }
+.modal-close-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--control-compact-height);
+    height: var(--control-compact-height);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.modal-close-btn .material-icons { font-size: var(--icon-size); }
+.modal-close-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.modal-body {
     padding: 12px 24px;
 }
 
@@ -517,7 +553,7 @@
 
 .modal-content h3 {
     margin: 0;
-    font-size: 16px;
+    font-size: var(--fs-xl);
 }
 
 .modal-header,
@@ -558,9 +594,10 @@
 
 .modal-content label {
     display: block;
-    font-size: 13px;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
     margin-bottom: 12px;
+    font-weight: 500;
 }
 
 .modal-content input,
@@ -572,18 +609,26 @@
     padding: 8px 12px;
     background: var(--bg-primary);
     border: 1px solid var(--border);
-    border-radius: 8px;
+    border-radius: var(--radius-md);
     color: var(--text-primary);
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-family: var(--font-sans);
     outline: none;
 }
+
+/* Size text fields without changing native checkbox/radio/color controls. */
+.modal-content input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+.modal-content select {
+    min-height: var(--control-height);
+}
+
+.btn .material-icons { font-size: var(--icon-size); vertical-align: middle; }
 
 .modal-content input:focus,
 .modal-content select:focus,
 .modal-content textarea:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(var(--accent), 0.15);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 .settings-toggle {
@@ -615,7 +660,7 @@
 .settings-toggle .toggle-desc {
     display: block;
     margin-top: 2px;
-    font-size: 11px;
+    font-size: var(--fs-base);
     line-height: 1.35;
     color: var(--text-secondary);
 }
@@ -702,7 +747,7 @@
 }
 
 .info-grid dt.toggle-dt .toggle-desc {
-    font-size: 10px;
+    font-size: var(--fs-base);
     color: var(--text-secondary);
     font-weight: 400;
     line-height: 1.3;
@@ -803,8 +848,8 @@
 }
 
 .info-token-label {
-    color: var(--text-muted);
-    font-size: 10px;
+    color: var(--text-secondary);
+    font-size: var(--fs-base);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -900,7 +945,7 @@
     color: var(--text-secondary);
     padding: 2px 8px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: var(--fs-md);
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.15s;
@@ -1476,8 +1521,8 @@
 }
 
 .pagination-info {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
 }
 
 /* ── Directory Browser ─────────────────────────────────────── */
@@ -1496,7 +1541,7 @@
 .dir-input-row .btn {
     flex-shrink: 0;
     padding: 8px 12px;
-    font-size: 12px;
+    font-size: var(--fs-md);
 }
 
 .flag-shortcuts {
@@ -1744,8 +1789,8 @@
 }
 
 .settings-hint {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     margin-top: 2px;
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning, #d99a2b); }
@@ -1757,7 +1802,7 @@
 }
 
 .cli-verify-result {
-    font-size: 11px;
+    font-size: var(--fs-base);
     flex-shrink: 0;
     min-width: 48px;
     text-align: right;
@@ -2579,8 +2624,8 @@
 }
 
 .team-agent-prompt-preview {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     margin-top: 2px;
@@ -2706,7 +2751,7 @@
     border: 1px solid var(--border);
     color: var(--text-secondary);
     padding: 5px 12px;
-    font-size: 12px;
+    font-size: var(--fs-md);
     cursor: pointer;
     border-radius: 14px;
     transition: all 0.15s;
@@ -2749,7 +2794,7 @@
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light, var(--border));
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--fs-md);
     font-weight: 500;
     padding: 5px 12px;
 }
@@ -2877,7 +2922,7 @@
     border: none;
     border-radius: 4px;
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--fs-md);
     cursor: pointer;
     text-transform: capitalize;
 }
@@ -2915,8 +2960,8 @@
 }
 
 .template-preview-meta {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     margin-bottom: 12px;
 }
 
@@ -2945,6 +2990,8 @@
 
 /* Message board — header actions */
 
+.mb-view-header h2 { font-size: var(--type-page-size); }
+
 .mb-header-actions {
     display: flex;
     gap: 4px;
@@ -2955,14 +3002,15 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 10px;
-    font-size: 11px;
-    font-family: inherit;
+    padding: var(--space-xs) var(--space-md);
+    min-height: var(--control-compact-height);
+    font-size: var(--fs-md);
+    font-family: var(--font-sans);
     font-weight: 500;
     color: var(--text-secondary);
     background: var(--bg-tertiary);
-    border: 1px solid var(--border-default);
-    border-radius: 4px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
     cursor: pointer;
     transition: all 0.15s;
     white-space: nowrap;
@@ -3181,7 +3229,7 @@
 
 .color-picker-apply,
 .color-picker-reset {
-    font-size: 10px;
+    font-size: var(--fs-md);
     padding: 4px 8px;
 }
 
@@ -3306,7 +3354,7 @@
 }
 
 .prompt-field-reset {
-    font-size: 11px;
+    font-size: var(--fs-md);
     padding: 2px 8px;
 }
 
@@ -3343,8 +3391,8 @@
 }
 
 .settings-version-label {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     margin-top: 8px;
 }
 
@@ -3407,8 +3455,8 @@
 }
 
 .mobile-connect-hint {
-    color: var(--text-muted);
-    font-size: 11px;
+    color: var(--text-secondary);
+    font-size: var(--fs-base);
 }
 
 .text-muted-sm {

@@ -5,7 +5,7 @@ import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImag
 import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
 import { toggleFileDiff, toggleAllFileDiffs, restoreExpandedDiffs, invalidateDiffs, destroyInlineDiffs, diffExpandIcons } from './diff_view.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
-import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
+import { initFilesSourcePicker, syncFilesSourceTeam, mountPreviewSourcePicker } from './team_artifacts.js';
 import { renderJSONReport } from './artifact_report.js';
 
 let _currentFiles = [];
@@ -797,14 +797,14 @@ export function syncFilesViewerSession() {
     initFilesSourcePicker(openTeamArtifactPreview, openFilePreview);
 }
 
-function _renderSandboxedArtifact(body, { url, content, name, gen }) {
+function _renderSandboxedPreview(body, { url, content, name, gen, sourceHint }) {
     const wrapper = document.createElement('div');
     wrapper.className = 'artifact-linked-preview';
     const note = document.createElement('p');
     note.className = 'artifact-linked-notice';
     note.textContent = url
         ? 'Linked preview: scripts and interactive features are disabled. Some sites block embedding; if the preview stays blank, use Open link.'
-        : 'HTML preview: scripts and external resources are disabled. Download the file for the original.';
+        : `HTML preview: scripts and external resources are disabled. ${sourceHint || 'Download the file for the original.'}`;
     const frame = document.createElement('iframe');
     frame.title = `Preview of ${name || 'artifact'}`;
     // Empty sandbox grants no scripts, same-origin privilege, forms, popups,
@@ -825,7 +825,7 @@ function _renderSandboxedArtifact(body, { url, content, name, gen }) {
         frame.src = url;
     } else {
         // Keep authored layout/CSS and embedded images, but do not let HTML
-        // artifacts load resources using Coral's origin or credentials.
+        // previews load resources using Coral's origin or credentials.
         frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">${content}`;
     }
     wrapper.append(frame);
@@ -876,9 +876,10 @@ async function _openArtifactPreview(uri, options = {}) {
         <span class="inline-preview-filepath" title="${escapeHtml(options.filename || uri)}">${escapeHtml(options.filename || 'Artifact preview')}</span>
         <a class="team-artifacts-action" href="${escapeAttr(url)}" ${externalURL ? 'target="_blank" rel="noopener noreferrer"' : `download="${escapeAttr(options.filename || '')}"`}>${externalURL ? 'Open link' : 'Download'}</a>
     </div><div class="inline-preview-body" id="inline-preview-body"><div class="inline-preview-loading">Loading...</div></div>`;
+    mountPreviewSourcePicker(panel, window._closeInlinePreview);
     const body = panel.querySelector('#inline-preview-body');
     if (externalURL) {
-        _renderSandboxedArtifact(body, { url: externalURL, name: options.filename, gen });
+        _renderSandboxedPreview(body, { url: externalURL, name: options.filename, gen });
         _artifactAbortController = null;
         return;
     }
@@ -917,7 +918,7 @@ async function _openArtifactPreview(uri, options = {}) {
             const content = await _readArtifactText(resp, MAX_ARTIFACT_PREVIEW_BYTES, signal);
             if (_isStale(gen)) return;
             if (isHTML) {
-                _renderSandboxedArtifact(body, { content, name: filename, gen });
+                _renderSandboxedPreview(body, { content, name: filename, gen });
                 return;
             }
             const manifest = isJSON ? _parseArtifactManifest(content) : null;
@@ -1030,6 +1031,8 @@ async function _openInlinePane(filepath, initialView, line) {
         </div>
         <div class="inline-preview-cm" id="inline-preview-cm" style="display:none"></div>
     `;
+
+    mountPreviewSourcePicker(panel, window._closeInlinePreview);
 
     // Images are shown as pictures (preview, or before/after in diff mode)
     // and cannot be edited.
@@ -1178,8 +1181,17 @@ async function _loadDiffView(filepath, gen) {
     }
 }
 
-/** Render file content with syntax highlighting into the given container. */
+/** Render an explicit HTML preview, formatted Markdown, or highlighted source. */
 function _renderContentView(container, content, filepath, line) {
+    // This renderer is also used by diff fallbacks. Only the explicit Preview
+    // mode should interpret repository HTML; Edit and Diff keep source visible.
+    if (_previewState?.mode === 'preview' && /\.html?$/i.test(filepath)) {
+        _renderSandboxedPreview(container, {
+            content, name: splitPath(filepath).name, gen: _previewState.gen,
+            sourceHint: 'Use Edit to view or change the source.',
+        });
+        return;
+    }
     const lang = getLangFromPath(filepath);
     // Render markdown files as formatted HTML
     if (lang === 'markdown' && typeof marked !== 'undefined') {
@@ -1347,7 +1359,7 @@ window._switchMode = async function(targetMode) {
             _renderContentView(body, _previewState.content, _previewState.filepath, _previewState.line);
         }
     } else {
-        // preview — show syntax-highlighted content
+        // preview — render HTML/Markdown or syntax-highlighted source
         cmContainer.style.display = 'none';
         body.style.display = '';
         _renderContentView(body, _previewState.content, _previewState.filepath, _previewState.line);

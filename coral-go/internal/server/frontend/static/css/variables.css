@@ -104,6 +104,16 @@
     --fs-lg:   14px;
     --fs-xl:   16px;
 
+    /* Shared UI roles. User themes may override the prose family and size. */
+    --type-page-size: 20px;
+    --control-height: 36px;
+    --control-compact-height: 32px;
+    --control-touch-height: 44px;
+    --icon-size: 18px;
+    --icon-inline-size: 16px;
+    --chat-prose-font: var(--font-sans);
+    --chat-prose-size: var(--fs-lg);
+
     /* Accent variants */
     --accent-light: #79c0ff;
     /* Secondary accent: a lighter tint of the theme accent unless a theme sets it.

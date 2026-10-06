@@ -18,6 +18,8 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Refusing production port');
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
+        // Also run in the static-template fixture, where app.js is intentionally absent.
+        await ev(`(async()=>{window.selectHistorySession=(await import('/static/sessions.js')).selectHistorySession;window.selectBoardProject=(await import('/static/message_board.js')).selectBoardProject;})()`);
 
         console.log('Testing repaired chat search UI in real browser session via CDP...');
 

@@ -295,32 +295,32 @@
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
-    font-size: 12px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
 }
 
 .commit-branch {
     color: var(--accent);
-    font-size: 11px;
+    font-size: var(--fs-base);
 }
 
 .commit-agent {
     color: var(--text-secondary);
-    font-size: 11px;
+    font-size: var(--fs-base);
 }
 
 .commit-time {
     white-space: nowrap;
-    font-size: 11px;
+    font-size: var(--fs-base);
 }
 .chat-search-results { padding: 6px 8px; }
 .chat-search-result { margin: 0 0 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
-.chat-search-result-header { display:flex; justify-content:space-between; gap:8px; color:var(--text-muted); font-size:11px; padding:4px 2px; }
+.chat-search-result-header { display:flex; justify-content:space-between; gap:8px; color:var(--text-secondary); font-size: var(--fs-base); padding:4px 2px; }
 .chat-search-result-header strong { color:var(--text-primary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chat-search-hit { display:block; width:100%; text-align:left; border:0; border-radius:5px; padding:7px 8px; color:var(--text-primary); background:transparent; cursor:pointer; }
 .chat-search-hit:hover, .chat-search-hit:focus-visible { background:var(--bg-hover); outline:2px solid var(--accent-secondary); outline-offset:-2px; }
-.chat-search-hit-meta { display:block; color:var(--text-muted); font-size:10px; margin-bottom:3px; }
+.chat-search-hit-meta { display:block; color:var(--text-secondary); font-size: var(--fs-base); margin-bottom:3px; }
 .chat-search-hit-excerpt { display:block; font-size:12px; line-height:1.35; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; }
 .chat-search-hit mark { background:color-mix(in srgb, var(--accent-secondary) 45%, transparent); color:var(--text-primary); font-weight:700; border-radius:2px; padding:0 2px; }
-.chat-search-status { padding:10px; color:var(--text-muted); font-size:12px; }
+.chat-search-status { padding:10px; color:var(--text-secondary); font-size: var(--fs-base); }
 .chat-search-target { outline:2px solid var(--accent-secondary); outline-offset:3px; }

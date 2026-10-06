@@ -92,8 +92,8 @@ export async function showTeamWorkingMode(team, options = {}) {
     } else dialog.className = 'team-availability-dialog';
     dialog.setAttribute('aria-labelledby', 'working-mode-title');
     const workspaceActions = workspaceMode
-        ? `<div class="team-settings-workspace-actions"><button type="button" class="team-settings-back" aria-label="Back to board">Back to board</button><button type="button" class="team-settings-close" aria-label="Close team settings">×</button></div>`
-        : `<button type="button" aria-label="Close">×</button>`;
+        ? `<div class="team-settings-workspace-actions"><button type="button" class="team-settings-back" aria-label="Back to board">Back to board</button><button type="button" class="team-settings-close modal-close-btn" aria-label="Close team settings"><span class="material-icons" aria-hidden="true">close</span></button></div>`
+        : `<button type="button" class="modal-close-btn" aria-label="Close"><span class="material-icons" aria-hidden="true">close</span></button>`;
     dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p></div>${workspaceActions}</header>
       <div class="working-mode-status" role="status" aria-live="polite"></div>
       <nav class="team-settings-tabs" aria-label="Team settings sections" role="tablist">

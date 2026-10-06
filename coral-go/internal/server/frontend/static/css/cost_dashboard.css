@@ -53,7 +53,7 @@
 
 .cost-filter-search {
     padding: 8px 10px;
-    font-size: 12px;
+    font-size: var(--fs-md);
     color: var(--text-primary);
     background: var(--bg-secondary);
     border: none;
@@ -74,7 +74,7 @@
 }
 
 .cost-filter-action-btn {
-    font-size: 10px;
+    font-size: var(--fs-md);
     color: var(--accent);
     background: none;
     border: none;
@@ -98,7 +98,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
-    font-size: 12px;
+    font-size: var(--fs-base);
     color: var(--text-primary);
     cursor: pointer;
     white-space: nowrap;
@@ -133,7 +133,7 @@
 }
 
 .cost-header h2 {
-    font-size: 18px;
+    font-size: var(--type-page-size);
     font-weight: 600;
     margin: 0;
 }
@@ -145,12 +145,14 @@
 }
 
 .cost-time-select {
+    min-height: var(--control-compact-height);
+    font-family: var(--font-sans);
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 6px;
     color: var(--text-primary);
     padding: 4px 8px;
-    font-size: 12px;
+    font-size: var(--fs-md);
     cursor: pointer;
 }
 
@@ -176,11 +178,11 @@
 }
 
 .cost-card-label {
-    font-size: 10px;
+    font-size: var(--fs-base);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 
 .cost-card-value {
@@ -201,7 +203,7 @@
 }
 
 .cost-section-title {
-    font-size: 13px;
+    font-size: var(--fs-xl);
     font-weight: 600;
     color: var(--text-secondary);
     margin-bottom: 8px;
@@ -232,10 +234,10 @@
     padding: 8px 12px;
     text-align: left;
     font-weight: 600;
-    font-size: 10px;
+    font-size: var(--fs-base);
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
 }
@@ -287,7 +289,7 @@
 }
 
 .cost-agent-ended {
-    font-size: 10px;
+    font-size: var(--fs-sm);
     color: var(--text-muted);
     font-weight: 400;
 }
@@ -300,14 +302,14 @@
 }
 
 .cost-date {
-    color: var(--text-muted);
-    font-size: 11px;
+    color: var(--text-secondary);
+    font-size: var(--fs-base);
 }
 
 /* Agent type badges */
 .cost-agent-badge {
     display: inline-block;
-    font-size: 10px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     padding: 1px 6px;
     border-radius: 3px;
@@ -348,7 +350,7 @@
 
 /* Status badges */
 .cost-status {
-    font-size: 10px;
+    font-size: var(--fs-base);
     font-weight: 600;
     padding: 1px 6px;
     border-radius: 3px;
@@ -382,7 +384,7 @@
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-size: 10px;
+    font-size: var(--fs-base);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -499,8 +501,8 @@
 }
 
 .cost-share-label {
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }

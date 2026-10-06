@@ -1103,7 +1103,7 @@
     <!-- Mobile Connect Modal -->
     <div id="mobile-connect-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="mobile-connect-title" style="display:none" onclick="if(event.target===this)window._hideMobileConnectModal()">
         <div class="modal-content modal-sm" style="text-align:center;position:relative">
-            <button class="modal-close-btn" onclick="window._hideMobileConnectModal()" aria-label="Close" style="position:absolute;top:12px;right:16px">&times;</button>
+            <button class="modal-close-btn" onclick="window._hideMobileConnectModal()" aria-label="Close" style="position:absolute;top:12px;right:16px"><span class="material-icons" aria-hidden="true">close</span></button>
             <h3 id="mobile-connect-title">Coral Mobile</h3>
             <p id="mobile-connect-status" role="status" aria-live="polite" style="margin:12px 0"></p>
             <div id="mobile-connect-actions" class="modal-actions"></div>
@@ -1130,7 +1130,7 @@
         <div class="modal-content modal-content-wide">
             <div class="modal-header">
                 <h3 id="create-task-heading">Create Task</h3>
-                <button class="modal-close-btn" onclick="window.hideCreateTaskModal()">&times;</button>
+                <button class="modal-close-btn" onclick="window.hideCreateTaskModal()" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
             </div>
             <div class="modal-body">
                 <div id="create-task-error" class="modal-error" style="display:none"></div>
@@ -1198,7 +1198,7 @@
         <div class="modal-content modal-content-extra-wide">
             <div class="modal-header">
                 <h3 id="task-detail-modal-title">Task Details</h3>
-                <button class="modal-close-btn" onclick="window.hideTaskDetailModal()">&times;</button>
+                <button class="modal-close-btn" onclick="window.hideTaskDetailModal()" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
             </div>
             <div class="modal-body">
                 <div id="task-detail-content"></div>

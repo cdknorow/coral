@@ -14,7 +14,7 @@
     margin-bottom: 16px;
     padding: 12px 16px;
     border-radius: 12px;
-    font-size: 13px;
+    font-size: var(--fs-lg);
     line-height: 1.5;
     max-width: 85%;
     position: relative;
@@ -43,7 +43,7 @@
 }
 
 .chat-bubble .role-label {
-    font-size: 11px;
+    font-size: var(--fs-base);
     font-weight: 600;
     text-transform: uppercase;
     color: var(--text-secondary);
@@ -259,7 +259,7 @@
 }
 
 .live-history-panel .chat-bubble {
-    font-size: 13px;
+    font-size: var(--fs-lg);
     padding: 8px 12px;
     margin-bottom: 10px;
 }
@@ -274,11 +274,11 @@
 }
 
 .live-history-panel .chat-bubble .role-label {
-    font-size: 10px;
+    font-size: var(--fs-base);
 }
 
 .live-history-panel .chat-bubble .message-text {
-    font-size: 13px;
+    font-size: var(--fs-lg);
     line-height: 1.6;
 }
 
@@ -298,9 +298,10 @@
     cursor: pointer;
     list-style: none;
     user-select: none;
-    font-size: 12px;
+    font-size: var(--fs-base);
     color: var(--text-muted);
     min-width: 0;
+    min-height: var(--control-compact-height);
 }
 
 .work-group-summary::-webkit-details-marker { display: none; }
@@ -362,13 +363,14 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 3px 8px;
+    padding: var(--space-sm) var(--space-md);
     border-radius: 6px;
     cursor: pointer;
     list-style: none;
     user-select: none;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     min-width: 0;
+    min-height: var(--control-compact-height);
 }
 
 .tool-call-summary::-webkit-details-marker { display: none; }
@@ -389,7 +391,7 @@
     color: var(--text-secondary);
 }
 
-.tool-call-icon { flex-shrink: 0; font-size: 11px; }
+.tool-call-icon { flex-shrink: 0; font-size: var(--icon-inline-size); }
 
 .tool-call-name {
     flex-shrink: 0;
@@ -487,7 +489,7 @@
 }
 
 .tool-question-option-desc {
-    font-size: 11px;
+    font-size: var(--fs-base);
     color: var(--text-muted);
     margin-top: 2px;
 }
@@ -675,12 +677,10 @@
 }
 
 /* ── Chat prose: reading typography (live Chat view + history Chat tab) ── */
-/* Replies read as prose, not bubbles: serif body, generous leading, carded
-   code blocks with a language label. System serifs only, so the native app
-   renders the same offline. */
+/* Prose uses the shared body role, with user-overridable family/size.
+   Code blocks retain their independent mono styling and language labels. */
 
 .chat-prose {
-    --chat-prose-font: ui-serif, "Iowan Old Style", Charter, "Charter BT", Georgia, serif;
     --chat-code-bg: color-mix(in srgb, var(--bg-tertiary) 70%, var(--bg-primary));
     /* Chat colors come from the theme (theme editor > Chat):
        --chat-prose-inline-code (base theme: #e5931f, variables.css) and
@@ -715,8 +715,8 @@
 
 .chat-prose.chat-messages .chat-bubble.assistant .message-text {
     font-family: var(--chat-prose-font);
-    font-size: 17px;
-    line-height: 1.65;
+    font-size: var(--chat-prose-size);
+    line-height: 1.5;
     color: var(--text-primary);
 }
 
@@ -840,7 +840,7 @@
     display: none;
 }
 .chat-prose.chat-messages .chat-bubble.human .message-text {
-    font-size: 15px;
+    font-size: var(--fs-lg);
     line-height: 1.55;
 }
 
@@ -912,7 +912,7 @@
     cursor: pointer;
 }
 .chat-file-menu button .material-icons {
-    font-size: 15px;
+    font-size: var(--icon-inline-size);
     color: var(--text-muted);
 }
 .chat-file-menu button:hover,
@@ -927,7 +927,7 @@
     border: 1px dashed var(--border-light);
 }
 .chat-bubble.human.pending .pending-label {
-    font-size: 11px;
+    font-size: var(--fs-base);
     color: var(--text-secondary);
     text-align: right;
     margin-top: 4px;
@@ -1020,7 +1020,7 @@
 }
 .chat-system .material-icons {
     flex: none;
-    font-size: 14px;
+    font-size: var(--icon-inline-size);
     color: var(--accent);
 }
 .chat-system-label {
@@ -1103,7 +1103,7 @@
     padding: 8px 10px;
     margin: 0 0 12px;
     overflow-x: auto;
-    font-size: 12.5px;
+    font-size: var(--fs-base);
 }
 .cni-plan {
     max-height: 300px;
@@ -1214,7 +1214,7 @@
     font-weight: 600;
 }
 .cni-answer-desc {
-    font-size: 12.5px;
+    font-size: var(--fs-base);
     color: var(--text-secondary);
     line-height: 1.4;
 }
@@ -1263,7 +1263,7 @@
 }
 .cni-review dt {
     color: var(--text-secondary);
-    font-size: 12.5px;
+    font-size: var(--fs-base);
     line-height: 1.4;
     margin: 0 0 3px;
     overflow-wrap: anywhere;
@@ -1283,7 +1283,7 @@
     gap: 12px;
     padding-top: 10px;
     border-top: 1px solid var(--border);
-    font-size: 12.5px;
+    font-size: var(--fs-base);
 }
 .cni-foot-spacer {
     flex: 1;
@@ -1365,7 +1365,7 @@
     transition: opacity 0.12s;
 }
 .chat-bubble.assistant .chat-copy-btn .material-icons {
-    font-size: 14px;
+    font-size: var(--icon-inline-size);
 }
 .chat-bubble.assistant:hover .chat-copy-btn,
 .chat-bubble.assistant .chat-copy-btn:focus-visible,
@@ -1423,7 +1423,7 @@
     transition: opacity 0.12s;
 }
 .code-block .code-copy-btn .material-icons {
-    font-size: 14px;
+    font-size: var(--icon-inline-size);
 }
 .code-block:hover .code-copy-btn,
 .code-block .code-copy-btn:focus-visible,

@@ -96,3 +96,12 @@ button,
 .sidebar-subtab {
     transition: all 0.15s ease;
 }
+
+/* Motion is optional for workspace controls and status indicators. */
+@media (prefers-reduced-motion: reduce) {
+    button, .btn, .btn-nav, .agentic-tab, .sidebar-subtab,
+    .wf-status-dot.running, .loading-indicator::before {
+        animation: none !important;
+        transition: none !important;
+    }
+}

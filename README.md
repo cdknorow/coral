@@ -237,6 +237,8 @@ Full documentation at **[cdknorow.github.io/coral](https://cdknorow.github.io/co
 
 We welcome contributions! Whether it's adding support for new AI agents, improving the dashboard, or fixing bugs — please open an issue or submit a pull request.
 
+Dashboard changes should follow the [Coral UI style guide](coral-go/docs/ui-style-guide.md).
+
 ## License
 
 Apache 2.0 License. See [LICENSE](LICENSE) for details.

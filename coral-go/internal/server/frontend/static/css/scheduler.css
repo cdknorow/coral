@@ -19,7 +19,7 @@
 
 .sched-view-header h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: var(--type-page-size);
 }
 
 /* ── Schedule picker ───────────────────────────────────────── */
@@ -41,7 +41,7 @@
     border-radius: 6px;
     background: var(--bg-tertiary);
     color: var(--text-secondary);
-    font-size: 12px;
+    font-size: var(--fs-md);
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
@@ -63,7 +63,7 @@
 
 .sched-cron-input {
     width: 100%;
-    font-family: monospace;
+    font-family: var(--font-mono);
 }
 
 .sched-picker-meta {
@@ -74,8 +74,8 @@
 }
 
 .sched-preview {
-    font-size: 12px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     min-height: 18px;
 }
 
@@ -90,7 +90,7 @@
 
 .sched-tz-input {
     width: 80px;
-    font-size: 12px;
+    font-size: var(--fs-md);
 }
 
 /* ── Job type toggle ───────────────────────────────────────── */
@@ -140,7 +140,7 @@
 
 .sched-header h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: var(--type-page-size);
 }
 
 .sched-actions {
@@ -181,17 +181,17 @@
 }
 
 .sched-runs-table th {
-    font-size: 11px;
+    font-size: var(--fs-base);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-muted);
+    color: var(--text-secondary);
 }
 
 .sched-status {
     display: inline-block;
     padding: 1px 6px;
     border-radius: 4px;
-    font-size: 11px;
+    font-size: var(--fs-base);
     font-weight: 600;
 }
 
@@ -201,7 +201,7 @@
 
 .run-session-link {
     color: var(--accent);
-    font-size: 11px;
+    font-size: var(--fs-md);
     margin-left: 6px;
 }
 
@@ -212,7 +212,7 @@
 
 .sched-runs-section h3,
 .sched-prompt-section h3 {
-    font-size: 14px;
+    font-size: var(--fs-xl);
     margin-bottom: 8px;
 }
 
@@ -261,12 +261,12 @@
 }
 
 .webhook-meta {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
 }
 
 .webhook-auto-disabled {
-    font-size: 11px;
+    font-size: var(--fs-base);
     color: var(--error);
     font-style: italic;
 }
@@ -325,7 +325,7 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    font-size: 12px;
+    font-size: var(--fs-md);
     color: var(--text-secondary);
 }
 
@@ -396,8 +396,8 @@
 }
 
 .delivery-ts {
-    color: var(--text-muted);
-    font-size: 11px;
+    color: var(--text-secondary);
+    font-size: var(--fs-base);
     text-align: right;
 }
 
@@ -421,7 +421,7 @@
     font-size: 10px;
     font-weight: 600;
     white-space: nowrap;
-    color: var(--error, #f85149);
+    color: var(--error, var(--error));
     background: rgba(248, 81, 73, 0.14);
     border: 1px solid rgba(248, 81, 73, 0.3);
 }
@@ -432,7 +432,7 @@
     border-radius: 6px;
     font-size: 13px;
     line-height: 1.5;
-    color: var(--error, #f85149);
+    color: var(--error, var(--error));
     background: rgba(248, 81, 73, 0.12);
     border: 1px solid rgba(248, 81, 73, 0.3);
 }

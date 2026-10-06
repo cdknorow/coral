@@ -63,7 +63,7 @@ function renderBoardSidebar(projects) {
         const active = currentProject === p.project ? 'active' : '';
         return `<li class="session-list-item ${active}" onclick="selectBoardProject('${escapeAttr(p.project)}')">
             <span class="session-name">${escapeHtml(p.project)}</span>
-            <span style="font-size:10px;color:var(--text-muted);margin-left:auto">${p.message_count} msgs</span>
+            <span class="mb-project-count">${p.message_count} msgs</span>
         </li>`;
     }).join('');
 }
@@ -155,9 +155,9 @@ async function loadBoardProjectList() {
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
                     <strong>${escapeHtml(p.project)}</strong>
-                    <div style="font-size:11px;color:var(--text-muted)">${p.subscriber_count} subscriber${p.subscriber_count !== 1 ? 's' : ''}</div>
+                    <div class="mb-project-meta">${p.subscriber_count} subscriber${p.subscriber_count !== 1 ? 's' : ''}</div>
                 </div>
-                <span style="font-size:12px;color:var(--text-muted)">${p.message_count} messages</span>
+                <span class="mb-project-meta">${p.message_count} messages</span>
             </li>
         `).join('');
     } catch (e) {
@@ -223,14 +223,14 @@ function renderMessages(messages) {
     if (_loadedOffset > 0) {
         const remaining = _loadedOffset;
         loadEarlierHtml = `<div style="text-align:center;padding:8px 0 12px">
-            <button class="btn btn-small" onclick="loadEarlierMessages()" style="font-size:12px;color:var(--text-muted)">
+            <button class="btn btn-small" onclick="loadEarlierMessages()" class="mb-project-meta">
                 Load ${Math.min(remaining, PAGE_SIZE)} earlier messages (${remaining} remaining)
             </button>
         </div>`;
     }
 
     // Message count indicator
-    const countHtml = `<div style="text-align:center;font-size:10px;color:var(--text-muted);padding:4px 0 8px">
+    const countHtml = `<div class="mb-message-count">
         Showing ${messages.length} of ${_totalMessages} messages
     </div>`;
 
@@ -321,7 +321,7 @@ async function loadBoardSubscribers(project) {
         const subs = await fetchSubscribers(project);
         const list = document.getElementById('mb-subscribers-list');
         if (!subs.length) {
-            list.innerHTML = '<li style="font-size:12px;color:var(--text-muted)">No subscribers</li>';
+            list.innerHTML = '<li class="mb-project-meta">No subscribers</li>';
             return;
         }
         list.innerHTML = subs.map(s => {

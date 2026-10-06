@@ -12,7 +12,7 @@
 .session-list li {
     padding: 8px 16px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: var(--fs-md);
     color: var(--text-primary);
     display: flex;
     align-items: flex-start;
@@ -30,7 +30,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: var(--fs-base);
 }
 
 .session-row-mid {
@@ -74,8 +74,8 @@
 
 /* Duration badge in sidebar items */
 .session-dur {
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     margin-left: 4px;
 }
 
@@ -290,8 +290,8 @@
 .tt-unread                   { color: var(--warning); font-weight: 600; }
 
 .session-time {
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     white-space: nowrap;
 }
 
@@ -299,13 +299,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 500;
 }
 
 .session-token-line {
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     opacity: 0.7;
     margin-top: 1px;
     white-space: nowrap;
@@ -339,9 +339,9 @@
 }
 
 .context-bar-label {
-    font-size: 11px;
+    font-size: var(--fs-base);
     line-height: 14px;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     opacity: 0.8;
     white-space: nowrap;
 }
@@ -395,7 +395,7 @@
     display: block;
     /* Line 2 starts exactly under the agent name (not under the dot) */
     margin-left: var(--row-dot-block, 16px);
-    font-size: 12px;
+    font-size: var(--fs-base);
     line-height: 14px;
     height: 14px;
     /* Quiet italic, dimmer than secondary so the goal recedes behind the name,
@@ -532,7 +532,7 @@
     padding: 5px 10px !important;
     margin: 0;
     border-radius: 3px 3px 0 0;
-    font-size: 11px;
+    font-size: var(--fs-md);
     min-height: 0;
     box-sizing: border-box;
     /* header/agents boundary lives here (the agents list no longer draws its own) */
@@ -563,9 +563,9 @@
 }
 
 .board-card-subline {
-    font-size: 9px;
+    font-size: var(--fs-base);
     font-weight: 400;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: none;
     letter-spacing: 0;
     display: flex;
@@ -576,9 +576,9 @@
 }
 
 .board-card-dir {
-    font-size: 10px;
+    font-size: var(--fs-base);
     font-weight: 400;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     gap: 4px;
@@ -608,7 +608,7 @@
     align-items: center;
     gap: 3px;
     margin-top: 2px;
-    font-size: 11px;
+    font-size: var(--fs-base);
     color: var(--accent-primary, #58a6ff);
     opacity: 0.85;
 }
@@ -647,10 +647,10 @@
 }
 
 .agent-dir-chip {
-    font-size: 10px;
+    font-size: var(--fs-base);
     background: var(--bg-tertiary);
     border: 1px solid var(--border-light);
-    color: var(--text-muted);
+    color: var(--text-secondary);
     padding: 0 4px;
     border-radius: 4px;
     margin-left: 4px;
@@ -659,9 +659,9 @@
 }
 
 .agent-subgroup-header {
-    font-size: 10px;
+    font-size: var(--fs-base);
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     padding: 6px 8px 4px 18px;
     display: flex;
     align-items: center;
@@ -700,6 +700,7 @@
 /* Team card header: name + count only (metadata moved to Team details) */
 .board-card-header {
     min-height: 28px;
+    font-size: var(--fs-md);
 }
 .group-name-line .session-group-count {
     margin-left: 4px;
@@ -732,9 +733,9 @@
 /* ── Grouped Sessions ──────────────────────────────────────── */
 
 .session-group-header {
-    font-size: 9px;
+    font-size: var(--fs-base);
     font-weight: 500;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     padding: 4px 12px !important;
     text-transform: none;
     letter-spacing: 0.02em;
@@ -764,9 +765,9 @@
 }
 
 .group-branch-line {
-    font-size: 8px;
+    font-size: var(--fs-base);
     font-weight: 400;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     text-transform: none;
     letter-spacing: 0;
     display: flex;
@@ -821,7 +822,7 @@
 }
 
 .session-group-count {
-    font-size: 10px;
+    font-size: var(--fs-sm);
     font-weight: 500;
     color: var(--text-muted);
     background: var(--bg-tertiary);
@@ -837,9 +838,9 @@
 }
 
 .folder-tag-full {
-    font-size: 9px;
+    font-size: var(--fs-base);
     font-weight: 500;
-    color: #fff;
+    color: var(--text-secondary);
     padding: 1px 6px;
     border-radius: 8px;
     line-height: 14px;
@@ -939,7 +940,7 @@
 }
 .session-unread-chip {
     flex: 0 0 auto;
-    font-size: 10px;
+    font-size: var(--fs-sm);
     line-height: 14px;
     padding: 0 5px;
     border-radius: 7px;
@@ -992,7 +993,7 @@
 .session-group-item .session-label {
     /* Agents are children: medium weight, slightly muted. Group headers stay
        the strongest text (600, --text-primary). */
-    font-size: 13px;
+    font-size: var(--fs-md);
     font-weight: 500;
     color: #c9d1d9; /* fallback for engines without color-mix */
     color: var(--agent-name-color, color-mix(in srgb, var(--text-primary) 80%, transparent));
@@ -1004,7 +1005,7 @@
 
 .session-state-pill,
 .session-ctx-pill {
-    font-size: 10px;
+    font-size: var(--fs-sm);
     line-height: 14px;
     padding: 0 6px;
     flex-shrink: 0;
@@ -1044,7 +1045,9 @@
 
 @media (max-width: 1023px) {
     /* Tablet overlay is 280px: identity keeps at least ~12 characters */
-    .session-group-item .session-label { min-width: 12ch; }
+    .session-group-item .session-label { min-width: 12ch;
+    font-size: var(--fs-md);
+}
 }
 
 .session-group-header + .session-group-item {
@@ -1236,7 +1239,7 @@
 }
 
 .summary-inline .summary-text {
-    font-size: 15px;
+    font-size: var(--fs-lg);
     font-weight: 500;
     color: var(--text-primary);
     overflow: hidden;
@@ -1315,15 +1318,15 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     font-family: var(--font-mono);
     margin-top: 1px;
 }
 
 .sidebar-agent-name {
     display: block;
-    font-size: 11px;
+    font-size: var(--fs-base);
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
@@ -1332,8 +1335,8 @@
 
 .sidebar-source-type {
     display: block;
-    font-size: 11px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     text-transform: lowercase;
 }
 
@@ -1435,7 +1438,7 @@
     align-items: center;
     gap: 6px;
     padding: 4px 0;
-    font-size: 12px;
+    font-size: var(--fs-md);
 }
 
 .live-job-name {
@@ -1447,7 +1450,7 @@
 }
 
 .live-job-badge {
-    font-size: 9px;
+    font-size: var(--fs-sm);
     font-weight: 600;
     padding: 1px 4px;
     border-radius: 3px;
@@ -1466,7 +1469,7 @@
 }
 
 .live-job-elapsed {
-    font-size: 10px;
+    font-size: var(--fs-base);
     color: var(--fg-muted);
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
@@ -1487,8 +1490,8 @@
 }
 
 .agent-folder-path {
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     opacity: 0.7;
     display: block;
     overflow: hidden;
@@ -1504,8 +1507,8 @@
 }
 
 .session-inline-status {
-    font-size: 10px;
-    color: var(--text-muted);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1538,7 +1541,7 @@
 }
 
 .board-paused-banner {
-    font-size: 11px;
+    font-size: var(--fs-base);
     font-weight: 600;
     color: var(--error, #f85149);
     background: rgba(248, 81, 73, 0.1);
@@ -1817,8 +1820,10 @@
 .team-availability-dialog::backdrop { background: rgba(0,0,0,.55); }
 .team-availability-dialog header, .availability-toolbar, .availability-agent-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 #team-working-mode-dialog > header, #team-working-mode-dialog .team-settings-tabs, #team-working-mode-dialog .working-mode-status { flex-shrink: 0; }
-.team-availability-dialog h2, .team-availability-dialog header p { margin: 0 0 6px; }
-.team-availability-dialog button { cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; }
+.team-availability-dialog h2, .team-availability-dialog header p { margin: 0 0 var(--space-sm); }
+.team-availability-dialog h2 { font-size: var(--fs-xl); }
+.team-availability-dialog header p { font-size: var(--fs-base); color: var(--text-secondary); }
+.team-availability-dialog button { min-height: var(--control-compact-height); font: 500 var(--fs-md)/1.4 var(--font-sans); cursor: pointer; color: var(--text-primary); background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; }
 .team-availability-dialog button:disabled { opacity: .5; }
 .availability-toolbar { margin: 18px 0; font-size: 13px; }
 .availability-summary { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -1828,7 +1833,7 @@
 .team-view-details { display:grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap:8px; margin:14px 0; }
 .team-view-details div { min-width:0; padding:10px 12px; border-radius:8px; background:var(--bg-tertiary); }
 .team-view-details span, .team-view-details strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.team-view-details span { color:var(--text-secondary); font-size:11px; }
+.team-view-details span { color:var(--text-secondary); font-size: var(--fs-base); }
 .team-view-details strong { margin-top:4px; font-size:13px; font-weight:500; }
 .availability-agents { display:flex; flex-direction:column; gap:6px; }
 .availability-agent { display:grid; grid-template-columns:minmax(150px,1fr) minmax(180px,2fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--border); border-radius:8px; overflow-wrap:anywhere; }
@@ -1844,11 +1849,11 @@
 @media(max-width: 600px) { .team-availability-dialog { padding: 16px; } .team-view-details { grid-template-columns:1fr 1fr; } .availability-agent { grid-template-columns:1fr auto; } .availability-agent > p, .availability-agent > ul { grid-column:1 / -1; } }
 
 .working-mode-form { display: grid; gap: 16px; overflow: auto; min-height: 0; padding: 2px 4px 2px 0; }
-.working-mode-form label { display: block; }
+.working-mode-form label { display: block; font: 500 var(--fs-md)/1.4 var(--font-sans); }
 .working-mode-form select, .working-mode-form textarea { display: block; box-sizing: border-box; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); font: inherit; }
 .working-mode-form p { font-size: 13px; color: var(--text-secondary); margin: 0; }
 .team-settings-section { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 0; display: grid; gap: 12px; }
-.team-settings-section legend { font-size: 12px; font-weight: 600; color: var(--text-primary); padding: 0 4px; }
+.team-settings-section legend { font-size: var(--fs-md); font-weight: 600; color: var(--text-primary); padding: 0 4px; }
 .team-settings-section.global-settings-section { background: var(--bg-tertiary); }
 .working-mode-hint { font-size: 12px !important; color: var(--text-secondary); margin: 0; line-height: 1.4; }
 .working-mode-status { min-height: 18px; color: var(--text-secondary); font-size: 13px; }
@@ -1875,3 +1880,7 @@
 .team-settings-actions button { flex: 0 0 auto; }
 .team-settings-actions span { color: var(--text-secondary); font-size: 12px; line-height: 1.35; }
 @media(max-width: 600px) { .team-settings-actions { align-items: stretch; flex-direction: column; } }
+
+.team-availability-dialog .modal-close-btn { padding: 0; background: transparent; border-color: transparent; }
+.working-mode-form select, .working-mode-form input[name="preset_name"] { min-height: var(--control-height); }
+.team-settings-tabs [role="tab"] { min-height: var(--control-height); }

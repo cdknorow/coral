@@ -54,6 +54,15 @@ function sizeLabel(size) {
     return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function artifactType(item) {
+    const mime = String(item.media_type || '').split(';')[0].trim().toLowerCase();
+    const named = {'text/markdown':'Markdown', 'text/x-markdown':'Markdown', 'text/html':'HTML', 'application/xhtml+xml':'HTML', 'application/json':'JSON', 'application/pdf':'PDF', 'text/plain':'Text', 'text/csv':'CSV'};
+    if (named[mime]) return named[mime];
+    for (const [prefix, label] of [['image/', 'Image'], ['audio/', 'Audio'], ['video/', 'Video']]) if (mime.startsWith(prefix)) return label;
+    if (/\.(md|markdown|mdown)$/i.test(item.name || '')) return 'Markdown';
+    return mime.startsWith('text/') ? 'Text' : 'File';
+}
+
 function render() {
     const root = document.getElementById('team-artifacts-view');
     if (!root || !isArtifactSource()) return;
@@ -79,10 +88,26 @@ function render() {
         retry.type = 'button'; retry.addEventListener('click', () => load(items.length > 0));
         root.append(retry);
     }
-    const list = el('ul', 'team-artifacts-list');
+    const scroll = el('div', 'team-artifacts-scroll');
+    scroll.tabIndex = 0;
+    scroll.setAttribute('role', 'region');
+    scroll.setAttribute('aria-label', 'Artifact table, scroll horizontally for all columns');
+    const hint = el('p', 'team-artifacts-scroll-hint', 'Scroll to view all columns.');
+    root.append(hint);
+    const list = el('table', 'team-artifacts-list');
+    const caption = el('caption', 'team-artifacts-caption', personal ? 'Agent artifacts' : 'Team artifacts');
+    list.append(caption);
+    const head = el('thead');
+    const headers = el('tr');
+    for (const label of ['Name', 'Type', 'Size', 'Task', 'Created', 'Actions']) {
+        const cell = el('th', `team-artifact-col-${label.toLowerCase()}`, label);
+        cell.scope = 'col';headers.append(cell);
+    }
+    head.append(headers);list.append(head);
+    const rows = el('tbody');list.append(rows);
     for (const item of items) {
-        const row = el('li', 'team-artifact-row');
-        const info = el('div', 'team-artifact-info');
+        const row = el('tr', 'team-artifact-row');
+        const info = el('td', 'team-artifact-info team-artifact-col-name');
         const name = readableName(item);
         const link = artifactLink(item);
         const openPreview = () => previewArtifact?.({
@@ -96,17 +121,34 @@ function render() {
             title.type = 'button';
             title.addEventListener('click', openPreview);
         }
+        title.title = name;
         info.append(title);
-        const context = [item.media_type || 'File', sizeLabel(item.size)];
-        if (item.task_id) context.push(`Task #${item.task_id}${item.task_title ? ` · ${item.task_title}` : ''}`);
-        if (item.source === 'review') context.push('Review');
-        if (item.created_at) {
-            const date = new Date(item.created_at);
-            if (!Number.isNaN(date.getTime())) context.push(date.toLocaleString());
+        const date = item.created_at ? new Date(item.created_at) : null;
+        const created = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : '—';
+        const task = item.task_id ? `#${item.task_id}` : '—';
+        const type = artifactType(item);
+        const size = sizeLabel(item.size) || '—';
+        const details = el('details', 'team-artifact-details');
+        const summary = el('summary', '', 'Details');
+        summary.setAttribute('aria-label', `Details for ${name}`);
+        const fields = el('dl');
+        for (const [label, value] of [
+            ['Name', name], ['Type', type], ['MIME', item.media_type || 'Unknown'],
+            ['Size', size], ['Task', task], ['Task title', item.task_title],
+            ['Created', created], ['Producer', item.subscriber_id],
+            ['Source', item.source], ['References', item.reference_count],
+        ]) {
+            if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
         }
-        if (item.reference_count > 1) context.push(`${item.reference_count} references`);
-        info.append(el('div', 'team-artifact-meta', context.filter(Boolean).join(' · ')));
-        row.append(info);
+        details.append(summary, fields);info.append(details);row.append(info);
+        row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-size', size));
+        const taskCell = el('td', 'team-artifact-col-task', task);
+        if (item.task_title) {
+            const taskTitle = el('div', 'team-artifact-task-title', item.task_title);
+            taskTitle.title = item.task_title;taskCell.append(taskTitle);
+        }
+        row.append(taskCell, el('td', 'team-artifact-col-created', created));
+        const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
         if (link) {
             const actions = el('div', 'team-artifact-actions');
             const preview = el('button', 'team-artifacts-action team-artifact-preview', 'Preview');
@@ -120,11 +162,11 @@ function render() {
             else { download.target = '_blank'; download.rel = 'noopener noreferrer'; }
             download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
             actions.append(download);
-            row.append(actions);
-        } else row.append(el('span', 'team-artifact-missing', item.available === false ? 'Missing' : 'Unavailable'));
-        list.append(row);
+            actionCell.append(actions);
+        } else actionCell.append(el('span', 'team-artifact-missing', item.available === false ? 'Missing' : 'Unavailable'));
+        rows.append(row);
     }
-    root.append(list);
+    scroll.append(list);root.append(scroll);
     if (hasMore) {
         const more = el('button', 'team-artifacts-action team-artifacts-more', busy ? 'Loading…' : 'Load more');
         more.type = 'button'; more.disabled = busy;
@@ -169,7 +211,6 @@ function updateSource() {
     document.querySelectorAll('[data-files-source]').forEach(button=>{
         const selected=button.dataset.filesSource===source;
         button.setAttribute('aria-selected',String(selected));
-        button.setAttribute('aria-pressed',String(selected));
         button.tabIndex=selected?0:-1;
     });
     const panel=document.getElementById(panels[source]);
@@ -187,6 +228,52 @@ function selectSource(next) {
     source=next; updateSource(); activate();
 }
 
+// Both list and preview use the same source navigation and keyboard behavior.
+function createSourcePicker(onSelect, preview = false) {
+    const picker=el('div','files-source-picker');
+    picker.id=preview?'preview-files-source-picker':'files-source-picker';
+    picker.setAttribute('role','tablist');picker.setAttribute('aria-label','Viewer source');
+    const tabs=[['files','Files'],['browse','Browse'],['artifacts','Artifacts'],['team-artifacts','Team Artifacts']];
+    for(const [value,label] of tabs) {
+        const button=el('button','files-source-button',label);
+        const selected=value===source;
+        button.type='button';button.dataset.filesSource=value;
+        button.id=`${preview?'preview-':''}files-source-${value}`;
+        button.setAttribute('role','tab');
+        button.setAttribute('aria-controls',preview?'inline-preview-body':panels[value]);
+        button.setAttribute('aria-selected',String(selected));
+        button.tabIndex=selected?0:-1;
+        button.addEventListener('click',()=>onSelect(value));picker.append(button);
+    }
+    picker.addEventListener('keydown',event=>{
+        const buttons=[...picker.querySelectorAll('button')];const i=buttons.indexOf(event.target);if(i<0)return;
+        let target;
+        if(event.key==='ArrowRight')target=buttons[(i+1)%buttons.length];
+        else if(event.key==='ArrowLeft')target=buttons[(i+buttons.length-1)%buttons.length];
+        else if(event.key==='Home')target=buttons[0];else if(event.key==='End')target=buttons.at(-1);else return;
+        event.preventDefault();target.click();
+        // Leaving preview rebuilds the list; focus the replacement tab.
+        (target.isConnected?target:document.getElementById(`files-source-${target.dataset.filesSource}`))?.focus();
+    });
+    return picker;
+}
+
+export function mountPreviewSourcePicker(panel, closePreview) {
+    const picker=createSourcePicker(value=>{
+        closePreview();
+        if (window.innerWidth <= 767) {
+            window.switchAgenticTab?.('files', 'top');
+            window.toggleAgenticPanel?.(true);
+        }
+        selectSource(value);
+        document.getElementById(`files-source-${value}`)?.focus();
+    },true);
+    panel.prepend(picker);
+    const body=panel.querySelector('#inline-preview-body');
+    body?.setAttribute('role','tabpanel');
+    body?.setAttribute('aria-labelledby',`preview-files-source-${source}`);
+}
+
 // Re-mount after closing a preview: keep source, scoped list and expanded tree.
 export function initFilesSourcePicker(onPreview, onFilePreview) {
     previewArtifact=onPreview; previewFile=onFilePreview;
@@ -195,23 +282,7 @@ export function initFilesSourcePicker(onPreview, onFilePreview) {
     if(!document.getElementById('files-source-picker')) {
         const files=el('div','repository-files-view');files.id=panels.files;
         while(panel.firstChild)files.append(panel.firstChild);
-        const picker=el('div','files-source-picker');picker.id='files-source-picker';
-        picker.setAttribute('role','tablist');picker.setAttribute('aria-label','Viewer source');
-        const tabs=[['files','Files'],['browse','Browse'],['artifacts','Artifacts'],['team-artifacts','Team Artifacts']];
-        for(const [value,label] of tabs) {
-            const button=el('button','files-source-button',label);
-            button.type='button';button.dataset.filesSource=value;button.id=`files-source-${value}`;
-            button.setAttribute('role','tab');button.setAttribute('aria-controls',panels[value]);
-            button.addEventListener('click',()=>selectSource(value));picker.append(button);
-        }
-        picker.addEventListener('keydown',event=>{
-            const buttons=[...picker.querySelectorAll('button')];const i=buttons.indexOf(event.target);if(i<0)return;
-            let target;
-            if(event.key==='ArrowRight')target=buttons[(i+1)%buttons.length];
-            else if(event.key==='ArrowLeft')target=buttons[(i+buttons.length-1)%buttons.length];
-            else if(event.key==='Home')target=buttons[0];else if(event.key==='End')target=buttons.at(-1);else return;
-            event.preventDefault();target.click();target.focus();
-        });
+        const picker=createSourcePicker(selectSource);
         const artifacts=el('div','team-artifacts-view');artifacts.id=panels.artifacts;
         const browse=el('div','file-explorer-view');browse.id=panels.browse;
         for(const view of [files,artifacts,browse])view.setAttribute('role','tabpanel');
