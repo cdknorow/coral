@@ -3594,7 +3594,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 // original prompts and configuration. Each agent gets a fresh context.
 // POST /api/sessions/live/team/{boardName}/reset
 func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
-	boardName := chi.URLParam(r, "boardName")
+	boardName := urlParam(r, "boardName")
 	if boardName == "" {
 		errBadRequest(w, "boardName is required")
 		return
@@ -5163,7 +5163,7 @@ func (h *SessionsHandler) UpdateContextWindow(w http.ResponseWriter, r *http.Req
 // SleepStatus returns whether a team board is sleeping.
 // GET /api/sessions/live/team/{boardName}/sleep-status
 func (h *SessionsHandler) SleepStatus(w http.ResponseWriter, r *http.Request) {
-	boardName := chi.URLParam(r, "boardName")
+	boardName := urlParam(r, "boardName")
 	boards, err := h.ss.GetSleepingBoardNames(r.Context())
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"sleeping": false})
@@ -5182,7 +5182,7 @@ func (h *SessionsHandler) SleepStatus(w http.ResponseWriter, r *http.Request) {
 // KillTeam kills all agents in a team, atomically marking active members as stopped.
 // POST /api/sessions/live/team/{boardName}/kill
 func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
-	boardName := chi.URLParam(r, "boardName")
+	boardName := urlParam(r, "boardName")
 	ctx := r.Context()
 	bgCtx := context.Background()
 
@@ -5371,7 +5371,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 // Sleep puts a team to sleep: sets is_sleeping, kills tmux sessions, pauses board.
 // POST /api/sessions/live/team/{boardName}/sleep
 func (h *SessionsHandler) Sleep(w http.ResponseWriter, r *http.Request) {
-	boardName := chi.URLParam(r, "boardName")
+	boardName := urlParam(r, "boardName")
 	ctx := r.Context()
 
 	// Check if any sessions exist on this board
@@ -5430,7 +5430,7 @@ func (h *SessionsHandler) Sleep(w http.ResponseWriter, r *http.Request) {
 // Wake wakes a sleeping team: relaunches sessions, clears sleeping, unpauses board.
 // POST /api/sessions/live/team/{boardName}/wake
 func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
-	boardName := chi.URLParam(r, "boardName")
+	boardName := urlParam(r, "boardName")
 	ctx := r.Context()
 
 	// Find sleeping sessions on this board and relaunch

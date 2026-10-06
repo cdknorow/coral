@@ -88,7 +88,7 @@
 
 .top-bar-search-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
 }
 
 .topbar-search-dropdown {
@@ -777,12 +777,12 @@
 }
 
 .welcome-action-card--create {
-    background: linear-gradient(180deg, rgba(88, 166, 255, 0.14), rgba(88, 166, 255, 0.06));
-    border-color: rgba(88, 166, 255, 0.26);
+    background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.14), rgba(var(--accent-rgb), 0.06));
+    border-color: rgba(var(--accent-rgb), 0.26);
 }
 
 .welcome-action-card--create .material-icons {
-    color: #7cc6ff;
+    color: var(--accent);
 }
 
     font-size: 11px;

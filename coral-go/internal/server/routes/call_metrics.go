@@ -88,7 +88,7 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			metric := &store.CallMetric{
 				CallType: callType, Operation: pattern,
 				AgentName: identity.agentName, SessionID: identity.sessionID,
-				BoardName: chi.URLParam(r, "project"), Method: r.Method,
+				BoardName: urlParam(r, "project"), Method: r.Method,
 				StatusCode: rw.statusCode(), DurationMs: time.Since(started).Milliseconds(),
 				IsError: rw.statusCode() >= http.StatusInternalServerError,
 			}

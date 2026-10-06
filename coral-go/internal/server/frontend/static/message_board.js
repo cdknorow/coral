@@ -829,7 +829,7 @@ function renderExportHTML(d) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Board Chat Export: ${escapeHtml(d.project)}</title>
 <style>
-  :root { --bg: #0d1117; --surface: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --side-chat: #1a1a2e; }
+  :root { --bg: #1a1a1e; --surface: #212126; --border: #3a3a40; --text: #e0e0e4; --muted: #8c8c94; --accent: #58a6ff; --side-chat: #22222a; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
   .container { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }

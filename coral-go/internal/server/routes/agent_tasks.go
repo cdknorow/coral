@@ -291,7 +291,7 @@ func (h *SessionsHandler) finishAgentTask(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if !taskBelongsTo(task, name, body.SessionID) {
-		errNotFound(w, "No such task for this agent")
+		errNotFound(w, "No such task for this agent. If this is a board task, use 'coral-board task complete' instead.")
 		return
 	}
 	if err := h.ts.FinishAgentTaskWithArtifactsAndCandidate(r.Context(), taskID, state, body.Message, body.Outcome, body.Artifacts, body.CandidateRevision); err != nil {

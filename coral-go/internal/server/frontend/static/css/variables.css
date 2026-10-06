@@ -10,30 +10,36 @@
 
 :root,
 [data-theme="dark"] {
-    /* Surface / Background */
-    --bg-primary:   #0a0e14;
-    --bg-secondary: #12171e;
-    --bg-tertiary:  #1c2128;
-    --bg-hover:     #2a313a;
-    --bg-elevated:  #252b33;
+    /* Surface / Background — deep warm black */
+    --bg-primary:   #111114;
+    --bg-secondary: #18181c;
+    --bg-tertiary:  #212126;
+    --bg-hover:     #2a2a30;
+    --bg-elevated:  #1e1e24;
 
     /* Borders */
-    --border:       #30363d;
-    --border-light: #484f58;
+    --border:       #2e2e36;
+    --border-light: #3a3a42;
 
     /* Text */
-    --text-primary:   #e6edf3;
-    --text-secondary: #8b949e;
-    --text-muted:     #484f58;
+    --text-primary:   #f0f0f2;
+    --text-secondary: #a0a0a8;
+    --text-muted:     #626268;
 
     /* Accent / Brand */
     --accent:     #58a6ff;
     --accent-dim: #1f6feb;
+    --accent-rgb: 88, 166, 255;
 
     /* Semantic Status */
-    --success: #3fb950;
-    --warning: #d29922;
-    --error:   #f85149;
+    --success:     #4aba60;
+    --success-rgb: 74, 186, 96;
+    --warning:     #d4a030;
+    --warning-rgb: 212, 160, 48;
+    --error:       #e05545;
+    --error-rgb:   224, 85, 69;
+    --working:     #61afef;
+    --working-rgb: 97, 175, 239;
 
     /* Agent Badges */
     --badge-claude: #7c3aed;
@@ -42,42 +48,42 @@
     --badge-codex: #10a37f;
 
     /* Shadows */
-    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
-    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
 
     /* Typography */
     --font-sans:  'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono:  'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
 
-    /* Syntax Highlighting */
-    --sh-keyword:   #ff7b72;
-    --sh-string:    #a5d6ff;
-    --sh-comment:   #8b949e;
-    --sh-number:    #79c0ff;
-    --sh-builtin:   #ffa657;
-    --sh-decorator: #d2a8ff;
+    /* Syntax Highlighting — warm palette */
+    --sh-keyword:   #e06c75;
+    --sh-string:    #98c379;
+    --sh-comment:   #7f848e;
+    --sh-number:    #d19a66;
+    --sh-builtin:   #e5c07b;
+    --sh-decorator: #c678dd;
 
     /* Diff */
-    --diff-add-bg:    rgba(63, 185, 80, 0.15);
-    --diff-add-color: #3fb950;
-    --diff-del-bg:    rgba(248, 81, 73, 0.15);
-    --diff-del-color: #f85149;
+    --diff-add-bg:    rgba(74, 186, 96, 0.15);
+    --diff-add-color: #4aba60;
+    --diff-del-bg:    rgba(224, 85, 69, 0.15);
+    --diff-del-color: #e05545;
 
     /* Tool / Event Colors */
     --color-tool-read:       var(--accent);
     --color-tool-write:      var(--success);
     --color-tool-edit:       var(--warning);
-    --color-tool-bash:       #d2a8ff;
-    --color-tool-grep:       #79c0ff;
-    --color-tool-web:        #ffa657;
+    --color-tool-bash:       #c678dd;
+    --color-tool-grep:       #61afef;
+    --color-tool-web:        #e5c07b;
     --color-tool-task:       var(--accent);
-    --color-tool-agent:      #d2a8ff;
+    --color-tool-agent:      #c678dd;
     --color-tool-status:     var(--accent);
     --color-tool-goal:       var(--success);
-    --color-tool-confidence: #e3b341;
+    --color-tool-confidence: #e5c07b;
     --color-tool-stop:       var(--error);
-    --color-tool-pulse:      #bc8cff;
-    --color-tool-thinking:   #39c5cf;
+    --color-tool-pulse:      #c678dd;
+    --color-tool-thinking:   #56b6c2;
     --color-tool-default:    var(--text-muted);
 
     /* Design Tokens — Spacing Scale */
@@ -116,67 +122,65 @@
 
     /* Accent variants */
     --accent-light: #79c0ff;
-    /* Secondary accent: a lighter tint of the theme accent unless a theme sets it.
-       Used for agent names in the sidebar. */
     --accent-secondary: color-mix(in srgb, var(--accent) 55%, white);
-    --terminal-name-color: #c0c7cf;
+    --terminal-name-color: #b8b8be;
     --text-on-accent: #fff;
 
     /* Modal backdrop */
     --modal-backdrop: rgba(0, 0, 0, 0.6);
 
     /* Chat */
-    --chat-human-bg:      color-mix(in srgb, var(--accent) 15%, var(--bg-tertiary));
-    --chat-prose-inline-code: #e5931f; /* chat view inline code; themes may override */
+    --chat-human-bg:      color-mix(in srgb, var(--accent) 12%, var(--bg-tertiary));
+    --chat-prose-inline-code: #e5931f;
     --chat-human-color:   var(--text-primary);
     --chat-assistant-bg:  var(--bg-tertiary);
     --board-msg-bg:       transparent;
 
     /* Chat / markdown specifics */
     --code-inline-bg:  rgba(255, 255, 255, 0.07);
-    --code-block-bg:   rgba(0, 0, 0, 0.35);
+    --code-block-bg:   rgba(0, 0, 0, 0.3);
     --table-header-bg: rgba(0, 0, 0, 0.2);
 
     /* Capture blocks */
-    --capture-text-bg:   rgba(110, 118, 129, 0.06);
+    --capture-text-bg:   rgba(140, 140, 148, 0.06);
     --capture-tool-bg:   rgba(88, 166, 255, 0.05);
-    --capture-user-bg:   rgba(201, 160, 255, 0.08);
-    --capture-pulse-bg:  rgba(63, 185, 80, 0.08);
-    --capture-code-bg:   rgba(110, 118, 129, 0.1);
-    --capture-user-color: #c9a0ff;
+    --capture-user-bg:   rgba(198, 120, 221, 0.08);
+    --capture-pulse-bg:  rgba(74, 186, 96, 0.08);
+    --capture-code-bg:   rgba(140, 140, 148, 0.1);
+    --capture-user-color: #c678dd;
 
     /* Top bar */
-    --topbar-bg: rgba(18, 23, 30, 0.85);
-    --topbar-border: rgba(48, 54, 61, 0.6);
+    --topbar-bg: rgba(17, 17, 20, 0.92);
+    --topbar-border: rgba(46, 46, 54, 0.6);
 
     /* Terminal (xterm) */
-    --xterm-background:          #0d1117;
-    --xterm-foreground:          #e6edf3;
-    --xterm-cursor:              #e6edf3;
-    --xterm-selection-background:#264f78;
-    --xterm-black:               #484f58;
-    --xterm-red:                 #f85149;
-    --xterm-green:               #3fb950;
-    --xterm-yellow:              #d29922;
-    --xterm-blue:                #58a6ff;
-    --xterm-magenta:             #bc8cff;
-    --xterm-cyan:                #39d2c0;
-    --xterm-white:               #e6edf3;
-    --xterm-bright-black:        #6e7681;
-    --xterm-bright-red:          #ffa198;
-    --xterm-bright-green:        #56d364;
-    --xterm-bright-yellow:       #e3b341;
-    --xterm-bright-blue:         #79c0ff;
-    --xterm-bright-magenta:      #d2a8ff;
-    --xterm-bright-cyan:         #56d4dd;
-    --xterm-bright-white:        #f0f6fc;
+    --xterm-background:          #111114;
+    --xterm-foreground:          #f0f0f2;
+    --xterm-cursor:              #f0f0f2;
+    --xterm-selection-background:#4a4a56;
+    --xterm-black:               #5a5a62;
+    --xterm-red:                 #e05545;
+    --xterm-green:               #4aba60;
+    --xterm-yellow:              #d4a030;
+    --xterm-blue:                #61afef;
+    --xterm-magenta:             #c678dd;
+    --xterm-cyan:                #56b6c2;
+    --xterm-white:               #f0f0f2;
+    --xterm-bright-black:        #7f848e;
+    --xterm-bright-red:          #e88070;
+    --xterm-bright-green:        #6ccc7c;
+    --xterm-bright-yellow:       #e5c07b;
+    --xterm-bright-blue:         #7ec0f0;
+    --xterm-bright-magenta:      #d2a0ee;
+    --xterm-bright-cyan:         #73ccd4;
+    --xterm-bright-white:        #f0f0f2;
 
     /* Message Board */
-    --mb-bg:          #1a1f3a;
+    --mb-bg:          #18181c;
     --mb-text:        #e0e0e0;
     --mb-text-bright: #f0f0f0;
-    --mb-heading:     #88c0d0;
-    --mb-code-bg:     #0a0e27;
+    --mb-heading:     #79c0ff;
+    --mb-code-bg:     #111114;
     --board-msg-bg:   transparent;
 }
 
@@ -202,11 +206,17 @@
     /* Accent / Brand */
     --accent:     #0969da;
     --accent-dim: #0550ae;
+    --accent-rgb: 9, 105, 218;
 
     /* Semantic Status */
-    --success: #1a7f37;
-    --warning: #9a6700;
-    --error:   #cf222e;
+    --success:     #1a7f37;
+    --success-rgb: 26, 127, 55;
+    --warning:     #9a6700;
+    --warning-rgb: 154, 103, 0;
+    --error:       #cf222e;
+    --error-rgb:   207, 34, 46;
+    --working:     #0969da;
+    --working-rgb: 9, 105, 218;
 
     /* Agent Badges */
     --badge-claude: #7c3aed;

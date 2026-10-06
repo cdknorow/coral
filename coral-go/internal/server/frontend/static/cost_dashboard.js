@@ -915,15 +915,19 @@ function _renderMiniSparkline(containerId, values, color) {
     </svg>`;
 }
 
+function _cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 function _renderSparklines(buckets) {
     if (buckets.length < 2) return;
 
-    _renderMiniSparkline('cost-spark-input', buckets.map(b => b.input_tokens), '#58a6ff');
-    _renderMiniSparkline('cost-spark-output', buckets.map(b => b.output_tokens), '#3fb950');
-    _renderMiniSparkline('cost-spark-cache-read', buckets.map(b => b.cache_read_tokens), '#d29922');
-    _renderMiniSparkline('cost-spark-cache-write', buckets.map(b => b.cache_write_tokens), '#bc8cff');
-    _renderMiniSparkline('cost-spark-requests', buckets.map(b => b.num_requests), '#8b949e');
-    _renderMiniSparkline('cost-spark-cost', buckets.map(b => b.cumulative_cost), '#58a6ff');
+    _renderMiniSparkline('cost-spark-input', buckets.map(b => b.input_tokens), _cssVar('--accent'));
+    _renderMiniSparkline('cost-spark-output', buckets.map(b => b.output_tokens), _cssVar('--success'));
+    _renderMiniSparkline('cost-spark-cache-read', buckets.map(b => b.cache_read_tokens), _cssVar('--sh-builtin'));
+    _renderMiniSparkline('cost-spark-cache-write', buckets.map(b => b.cache_write_tokens), _cssVar('--color-tool-bash'));
+    _renderMiniSparkline('cost-spark-requests', buckets.map(b => b.num_requests), _cssVar('--text-secondary'));
+    _renderMiniSparkline('cost-spark-cost', buckets.map(b => b.cumulative_cost), _cssVar('--accent'));
 }
 
 // ── Burn Rate ────────────────────────────────────────────────

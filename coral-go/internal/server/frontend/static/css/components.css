@@ -67,8 +67,8 @@
 }
 
 .btn-success {
-    border-color: var(--success, #3fb950);
-    color: var(--success, #3fb950);
+    border-color: var(--success);
+    color: var(--success);
     background: transparent;
 }
 
@@ -108,7 +108,7 @@
     background: rgba(210, 153, 34, 0.1);
     border: 1px solid rgba(210, 153, 34, 0.25);
     border-radius: 8px;
-    color: var(--warning, #d29922);
+    color: var(--warning);
     font-size: 13px;
     margin: 8px 16px 12px;
 }
@@ -257,19 +257,19 @@
 }
 
 .mb-delete-msg-btn:hover {
-    color: var(--error, #f85149);
+    color: var(--error);
 }
 
 /* Message board multi-select */
 .mb-select-checkbox {
     margin-right: 8px;
     cursor: pointer;
-    accent-color: var(--accent, #58a6ff);
+    accent-color: var(--accent);
     flex-shrink: 0;
 }
 
 .mb-message-selected {
-    background: rgba(88, 166, 255, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .mb-select-bar {
@@ -279,7 +279,7 @@
     align-items: center;
     gap: 10px;
     padding: 12px 16px;
-    background: var(--bg-secondary, #161b22);
+    background: var(--bg-secondary);
     backdrop-filter: blur(8px);
     border-top: 1px solid var(--border);
     border-radius: 0 0 8px 8px;
@@ -302,7 +302,7 @@
 
 #mb-select-btn.active,
 .board-select-btn.active {
-    background: var(--accent, #58a6ff);
+    background: var(--accent);
     color: #fff;
 }
 
@@ -428,7 +428,7 @@
     font-weight: 700;
     padding: 6px 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(88, 166, 255, 0.25);
+    box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
     transition: all 0.15s;
     border: none !important;
     border-bottom: none !important;
@@ -437,8 +437,8 @@
 }
 
 .btn-send:hover {
-    background: #70b8ff !important;
-    box-shadow: 0 4px 12px rgba(88, 166, 255, 0.35);
+    background: var(--accent-light) !important;
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.35);
     transform: translateY(-1px);
     color: #fff !important;
 }
@@ -457,7 +457,7 @@
 .badge.agy, .badge.antigravity { background: var(--badge-agy); color: var(--text-on-accent); }
 .badge.gemini { background: var(--badge-gemini); color: var(--text-on-accent); }
 .badge.codex { background: var(--badge-codex); color: var(--text-on-accent); }
-.badge.board-badge { background: #2ea043; color: var(--text-on-accent); }
+.badge.board-badge { background: var(--success); color: var(--text-on-accent); }
 
 .badge.waiting-badge {
     background: var(--warning);
@@ -985,8 +985,8 @@
     top: 20px;
     right: 20px;
     background: var(--bg-secondary);
-    border: 1px solid var(--warning, #f0ad4e);
-    border-left: 4px solid var(--warning, #f0ad4e);
+    border: 1px solid var(--warning);
+    border-left: 4px solid var(--warning);
     border-radius: 10px;
     padding: 0;
     font-size: 14px;
@@ -1068,8 +1068,8 @@
 }
 
 .alert-notification {
-    background: var(--bg-secondary, #1e1e2e);
-    border: 1px solid var(--border, #444);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 32px 40px;
     max-width: 440px;
@@ -1100,7 +1100,7 @@
 
 .alert-notification-link {
     display: inline-block;
-    color: var(--accent, #7aa2f7);
+    color: var(--accent);
     font-size: 13px;
     margin-bottom: 20px;
     text-decoration: none;
@@ -1569,9 +1569,9 @@
 }
 
 .flag-shortcut-btn.active {
-    background: var(--accent, #4a9eff);
+    background: var(--accent);
     color: #fff;
-    border-color: var(--accent, #4a9eff);
+    border-color: var(--accent);
 }
 
 .dir-browser {
@@ -1793,8 +1793,8 @@
     color: var(--text-secondary);
     margin-top: 2px;
 }
-.settings-hint[data-state="restart-required"] { color: var(--warning, #d99a2b); }
-.settings-hint[data-state="error"] { color: var(--danger, #d9534f); }
+.settings-hint[data-state="restart-required"] { color: var(--warning); }
+.settings-hint[data-state="error"] { color: var(--danger); }
 .settings-database-encryption-warning {
     display: block;
     margin-top: 6px;
@@ -1902,13 +1902,13 @@
 }
 
 .overflow-menu-tier .tier-pro {
-    background: rgba(88, 166, 255, 0.15);
-    color: #58a6ff;
+    background: rgba(var(--accent-rgb), 0.15);
+    color: var(--accent);
 }
 
 .overflow-menu-tier .tier-trial {
     background: rgba(63, 185, 80, 0.15);
-    color: #3fb950;
+    color: var(--success);
 }
 
 /* ── Resume Modal Items ────────────────────────────────────── */
@@ -1970,7 +1970,7 @@
     border-color: var(--accent);
     background: var(--bg-hover);
     color: var(--text-primary);
-    box-shadow: 0 2px 12px rgba(88, 166, 255, 0.15);
+    box-shadow: 0 2px 12px rgba(var(--accent-rgb), 0.15);
 }
 
 .launch-type-icon {
@@ -2111,7 +2111,7 @@
 }
 
 .agent-persona-actions .btn:first-child:hover {
-    background: rgba(88, 166, 255, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
 
 .acf-name,
@@ -2191,9 +2191,9 @@
     display: inline-block;
     padding: 3px 8px;
     border-radius: 999px;
-    background: rgba(88, 166, 255, 0.12);
+    background: rgba(var(--accent-rgb), 0.12);
     color: var(--accent);
-    border: 1px solid rgba(88, 166, 255, 0.2);
+    border: 1px solid rgba(var(--accent-rgb), 0.2);
 }
 
 .acf-flags-details {
@@ -2489,8 +2489,8 @@
     gap: 14px;
     padding: 14px 16px;
     border-radius: 14px;
-    border: 1px solid rgba(88, 166, 255, 0.14);
-    background: linear-gradient(180deg, rgba(88, 166, 255, 0.08), rgba(88, 166, 255, 0.02));
+    border: 1px solid rgba(var(--accent-rgb), 0.14);
+    background: linear-gradient(180deg, rgba(var(--accent-rgb), 0.08), rgba(var(--accent-rgb), 0.02));
 }
 
 .team-wizard-intro-icon {
@@ -2500,7 +2500,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(88, 166, 255, 0.12);
+    background: rgba(var(--accent-rgb), 0.12);
     color: var(--accent);
     flex-shrink: 0;
 }
@@ -2530,7 +2530,7 @@
     border-radius: 10px;
     border: 1px solid rgba(255, 107, 107, 0.3);
     background: rgba(255, 107, 107, 0.08);
-    color: #ffb3b3;
+    color: var(--error);
     font-size: 12px;
     line-height: 1.5;
 }
@@ -2546,7 +2546,7 @@
 
 .team-wizard-success-icon {
     font-size: 48px;
-    color: var(--success, #4caf50);
+    color: var(--success);
 }
 
 .team-wizard-success strong {
@@ -2654,7 +2654,7 @@
 }
 
 .team-agent-edit-btn:hover {
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
 }
 
 .team-agent-remove {
@@ -2688,7 +2688,7 @@
 }
 
 .team-agent-card.editing {
-    border-color: var(--accent-primary, #58a6ff);
+    border-color: var(--accent-primary);
 }
 
 .team-agent-row label {
@@ -2727,7 +2727,7 @@
 }
 
 .agent-picker-custom {
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
     font-weight: 500;
 }
 
@@ -3103,9 +3103,9 @@
 }
 
 .perm-chip.active {
-    background: var(--accent, #4a9eff);
+    background: var(--accent);
     color: #fff;
-    border-color: var(--accent, #4a9eff);
+    border-color: var(--accent);
 }
 
 .perms-shell-patterns {
@@ -3132,7 +3132,7 @@
 }
 
 .team-agent-row.drag-over {
-    border-top: 2px solid var(--accent, #4a9eff);
+    border-top: 2px solid var(--accent);
 }
 
 .team-agent-reorder-btn {
@@ -3158,7 +3158,7 @@
 
 .cli-check-warning {
     font-size: 11px;
-    color: var(--warning, #d29922);
+    color: var(--warning);
     margin-top: 2px;
 }
 
@@ -3366,7 +3366,7 @@
 
 .prompts-divider {
     border: none;
-    border-top: 1px solid var(--border-color, #333);
+    border-top: 1px solid var(--border-color);
     margin: 16px 0;
 }
 

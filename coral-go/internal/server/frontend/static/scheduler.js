@@ -51,7 +51,7 @@ function renderJobsSidebar() {
             : '⚪';
         const isWorkflow = !!job.workflow_id;
         const typeIcon = isWorkflow
-            ? '<span class="material-icons sched-type-icon" style="font-size:13px;color:#d2a8ff" title="Workflow">account_tree</span>'
+            ? '<span class="material-icons sched-type-icon" style="font-size:13px;color:var(--color-tool-agent)" title="Workflow">account_tree</span>'
             : '';
         // A job whose scheduling works but whose every run fails otherwise looks
         // identical to a healthy one here — enabled, with a next fire time.
@@ -105,7 +105,7 @@ function renderJobDetail(job, runs) {
     if (isWorkflow) {
         const wfName = job.workflow_name || `Workflow #${job.workflow_id}`;
         jobTypeHtml = `
-            <dt>Type</dt><dd><span class="material-icons" style="font-size:14px;vertical-align:-2px;color:#d2a8ff">account_tree</span> Workflow</dd>
+            <dt>Type</dt><dd><span class="material-icons" style="font-size:14px;vertical-align:-2px;color:var(--color-tool-agent)">account_tree</span> Workflow</dd>
             <dt>Workflow</dt><dd><a href="javascript:void(0)" onclick="selectWorkflow(${job.workflow_id})" style="color:var(--accent)">${escapeHtml(wfName)}</a></dd>`;
     } else {
         jobTypeHtml = `

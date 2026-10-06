@@ -286,10 +286,10 @@ function _setBoardColor(boardName, color) {
 }
 
 const _colorSwatches = [
-    '#81a1c1', '#a3be8c', '#b48ead', '#d08770', '#bf616a',
-    '#88c0d0', '#ebcb8b', '#8fbcbb', '#58a6ff', '#f778ba',
-    '#7ee787', '#ffa657', '#ff7b72', '#d2a8ff', '#79c0ff',
-    '#e6edf3', '#8b949e', '#484f58',
+    '#81a1c1', '#98c379', '#c678dd', '#d08770', '#e06c75',
+    '#56b6c2', '#e5c07b', '#8fbcbb', '#58a6ff', '#f778ba',
+    '#4aba60', '#d19a66', '#e05545', '#d2a0ee', '#61afef',
+    '#e0e0e4', '#8c8c94', '#5a5a62',
 ];
 
 export function setBoardAccentColor(boardName) {
@@ -1859,9 +1859,9 @@ export function renderLiveSessions(sessions) {
             </div>
         </div>`;
 
-        html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: #d2a8ff">
+        html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
             <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" onclick="toggleGroupCollapse('wf:${escapeAttr(wfName)}')">
-                <span class="group-chevron">${wfChevron}</span><div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:14px;vertical-align:-2px;margin-right:3px;color:#d2a8ff">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
+                <span class="group-chevron">${wfChevron}</span><div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:14px;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
             </div>
             <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -2493,7 +2493,7 @@ function _renderTokenLine(s) {
     const pct = s.context_pct || 0;
     if (pct === 0) return '';
     const ctxWindow = s.context_window || 0;
-    const barColor = pct >= 80 ? 'var(--status-error, #f85149)' : pct >= 50 ? 'var(--status-warning, #d29922)' : 'var(--text-muted, #8b949e)';
+    const barColor = pct >= 80 ? 'var(--error)' : pct >= 50 ? 'var(--warning)' : 'var(--text-muted)';
     const titleText = ctxWindow > 0 ? `${_formatTokens(Math.round(ctxWindow * pct / 100))} / ${_formatTokens(ctxWindow)} tokens (${pct}%)` : `Context: ${pct}%`;
     const label = pct >= 100 ? 'ctx full' : `ctx ${pct}%`;
     const levelClass = pct >= 80 ? ' ctx-error' : pct >= 50 ? ' ctx-warning' : '';
@@ -2647,7 +2647,7 @@ export async function showTeamTokenUsage(boardName) {
             <td style="text-align:right">${_formatTokens(a.total_output_tokens || 0)}</td>
             <td style="text-align:right">${_formatTokens(a.total_cache_read_tokens || 0)}</td>
             <td style="text-align:right">${_formatTokens(a.total_cache_write_tokens || 0)}</td>
-            <td style="text-align:right;font-weight:600;color:var(--accent,#58a6ff)">${_formatCost(a.total_cost_usd || 0)}</td>
+            <td style="text-align:right;font-weight:600;color:var(--accent)">${_formatCost(a.total_cost_usd || 0)}</td>
         </tr>`;
     }
     html += '</tbody></table>';

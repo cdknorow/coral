@@ -98,7 +98,7 @@ func (h *BoardHandler) stopReminder(project string, taskID int64) {
 // RemindSubscriber schedules a custom periodic instruction for a board agent.
 // POST /api/board/{project}/reminder with subscriber_id, message and interval_seconds.
 func (h *BoardHandler) RemindSubscriber(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID    string `json:"subscriber_id"`
 		Message         string `json:"message"`
@@ -480,7 +480,7 @@ func (h *BoardHandler) sendTaskNudge(ctx context.Context, project, subscriberID,
 // input (e.g. while compacting) is lost; this lets the operator resend.
 // POST /api/board/{project}/tasks/{taskID}/nudge
 func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -529,7 +529,7 @@ func (h *BoardHandler) NudgeTask(w http.ResponseWriter, r *http.Request) {
 // SnoozeTaskReminder suppresses inactivity reminders for an active task.
 // POST body: {"seconds": 1800}
 func (h *BoardHandler) SnoozeTaskReminder(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -560,7 +560,7 @@ func (h *BoardHandler) SnoozeTaskReminder(w http.ResponseWriter, r *http.Request
 // RemindTask starts or stops a server-side periodic reminder for a task.
 // POST body: {"interval_seconds": 300}; DELETE stops the reminder.
 func (h *BoardHandler) RemindTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -640,7 +640,7 @@ func unescapeLineBreaks(content string) string {
 // were skipped.
 // POST /api/board/{project}/messages/mark-read {subscriber_id, through_id, from_id}
 func (h *BoardHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 		ThroughID    int64  `json:"through_id"`
@@ -677,7 +677,7 @@ func (h *BoardHandler) ListProjects(w http.ResponseWriter, r *http.Request) {
 // Accepts subscriber_id (stable identity) with optional session_name.
 // Falls back to session_id for backwards compatibility.
 func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string  `json:"subscriber_id"`
 		SessionID    string  `json:"session_id"` // legacy compat
@@ -712,7 +712,7 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 // Unsubscribe removes a subscriber from a board.
 // DELETE /api/board/{project}/subscribe
 func (h *BoardHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 		SessionID    string `json:"session_id"` // legacy compat
@@ -744,7 +744,7 @@ func (h *BoardHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 // PostMessage posts a message to a board.
 // POST /api/board/{project}/messages
 func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID  string  `json:"subscriber_id"`
 		SessionID     string  `json:"session_id"` // legacy compat
@@ -854,7 +854,7 @@ func (h *BoardHandler) dispatchWebhooks(project, senderSubscriberID string, msg 
 // ReadMessages reads new messages (cursor-based).
 // GET /api/board/{project}/messages
 func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	if h.isPaused(project) {
 		writeJSON(w, http.StatusOK, []board.Message{})
 		return
@@ -894,7 +894,7 @@ func (h *BoardHandler) ListAllMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	limit := queryInt(r, "limit", 200)
 	if limit > 500 {
 		limit = 500
@@ -924,7 +924,7 @@ func (h *BoardHandler) ListAllMessages(w http.ResponseWriter, r *http.Request) {
 // CheckUnread returns the unread message count.
 // GET /api/board/{project}/messages/check
 func (h *BoardHandler) CheckUnread(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	if h.isPaused(project) {
 		writeJSON(w, http.StatusOK, map[string]any{"unread": 0})
 		return
@@ -960,7 +960,7 @@ func (h *BoardHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 // ListSubscribers returns subscribers for a board.
 // GET /api/board/{project}/subscribers
 func (h *BoardHandler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	subs, err := h.bs.ListSubscribers(r.Context(), project)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -972,7 +972,7 @@ func (h *BoardHandler) ListSubscribers(w http.ResponseWriter, r *http.Request) {
 // PeekAgent captures terminal output of another agent on the same board.
 // GET /api/board/{project}/peek?target=<name>&subscriber_id=<caller>&lines=30
 func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	callerID := r.URL.Query().Get("subscriber_id")
 	target := r.URL.Query().Get("target")
 	lines := queryInt(r, "lines", 30)
@@ -1049,7 +1049,7 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 // PauseBoard pauses reads for a board.
 // POST /api/board/{project}/pause
 func (h *BoardHandler) PauseBoard(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	h.mu.Lock()
 	h.paused[project] = true
 	h.mu.Unlock()
@@ -1059,7 +1059,7 @@ func (h *BoardHandler) PauseBoard(w http.ResponseWriter, r *http.Request) {
 // ResumeBoard resumes reads for a board.
 // POST /api/board/{project}/resume
 func (h *BoardHandler) ResumeBoard(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	h.mu.Lock()
 	delete(h.paused, project)
 	h.mu.Unlock()
@@ -1069,14 +1069,14 @@ func (h *BoardHandler) ResumeBoard(w http.ResponseWriter, r *http.Request) {
 // GetPaused returns whether a board is paused.
 // GET /api/board/{project}/paused
 func (h *BoardHandler) GetPaused(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	writeJSON(w, http.StatusOK, map[string]any{"paused": h.isPaused(project)})
 }
 
 // DeleteBoard deletes a board and all its messages.
 // DELETE /api/board/{project}
 func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	h.mu.Lock()
 	delete(h.paused, project)
 	h.mu.Unlock()
@@ -1089,7 +1089,7 @@ func (h *BoardHandler) DeleteBoard(w http.ResponseWriter, r *http.Request) {
 // ListGroups returns all groups for a project with member counts.
 // GET /api/board/{project}/groups
 func (h *BoardHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	groups, err := h.bs.ListGroups(r.Context(), project)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -1101,7 +1101,7 @@ func (h *BoardHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 // ListGroupMembers returns subscriber IDs in a group.
 // GET /api/board/{project}/groups/{groupID}/members
 func (h *BoardHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	groupID := chi.URLParam(r, "groupID")
 	members, err := h.bs.ListGroupMembers(r.Context(), project, groupID)
 	if err != nil {
@@ -1114,7 +1114,7 @@ func (h *BoardHandler) ListGroupMembers(w http.ResponseWriter, r *http.Request) 
 // AddGroupMember adds a subscriber to a group.
 // POST /api/board/{project}/groups/{groupID}/members
 func (h *BoardHandler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	groupID := chi.URLParam(r, "groupID")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
@@ -1142,7 +1142,7 @@ func (h *BoardHandler) AddGroupMember(w http.ResponseWriter, r *http.Request) {
 // RemoveGroupMember removes a subscriber from a group.
 // DELETE /api/board/{project}/groups/{groupID}/members/{subscriberID}
 func (h *BoardHandler) RemoveGroupMember(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	groupID := chi.URLParam(r, "groupID")
 	subscriberID := chi.URLParam(r, "sessionID") // URL param name kept for route compat
 	removed, err := h.bs.RemoveFromGroup(r.Context(), project, groupID, subscriberID)
@@ -1179,7 +1179,7 @@ func (h *BoardHandler) requireTaskPlanner(w http.ResponseWriter, r *http.Request
 // CreateTask creates a new task on a board.
 // POST /api/board/{project}/tasks
 func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		Title        string             `json:"title"`
 		Body         string             `json:"body"`
@@ -1320,7 +1320,7 @@ func formatBlockerList(deps []board.TaskDep) string {
 // ListTasks returns all tasks for a board.
 // GET /api/board/{project}/tasks
 func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	tasks, err := h.bs.ListTasks(r.Context(), project)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -1351,7 +1351,7 @@ func (h *BoardHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid task ID")
 		return
 	}
-	task, err := h.bs.GetTask(r.Context(), chi.URLParam(r, "project"), id)
+	task, err := h.bs.GetTask(r.Context(), urlParam(r, "project"), id)
 	if err != nil {
 		errNotFound(w, "task not found")
 		return
@@ -1361,7 +1361,7 @@ func (h *BoardHandler) GetTask(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/board/{project}/tasks/current
 func (h *BoardHandler) ActiveTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 	}
@@ -1384,7 +1384,7 @@ func (h *BoardHandler) ActiveTask(w http.ResponseWriter, r *http.Request) {
 // ClaimTask claims the next available task by priority.
 // POST /api/board/{project}/tasks/claim
 func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 		TaskID       int64  `json:"task_id,omitempty"`
@@ -1431,7 +1431,7 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 // CompleteTaskByID marks a task as completed.
 // POST /api/board/{project}/tasks/{taskID}/complete
 func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1510,7 +1510,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 // CancelTaskByID marks a task as skipped/cancelled.
 // POST /api/board/{project}/tasks/{taskID}/cancel
 func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1563,7 +1563,7 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 // TaskChangesDiff serves the patch captured when a task completed or was skipped.
 // GET /api/board/{project}/tasks/{taskID}/changes.diff
 func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1607,7 +1607,7 @@ func (h *BoardHandler) TaskChangesDiff(w http.ResponseWriter, r *http.Request) {
 // UpdateTask applies partial edits to a pending, in_progress, or blocked task.
 // PATCH /api/board/{project}/tasks/{taskID}
 func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1727,7 +1727,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 // AmendTask applies a planner-authorized, revision-checked body/instruction amendment.
 // PATCH /api/board/{project}/tasks/{taskID}/amend
 func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1768,7 +1768,7 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 // ReassignTask changes ownership, preserving any prerequisite block.
 // POST /api/board/{project}/tasks/{taskID}/reassign
 func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1820,7 +1820,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 // PublishTask transitions a draft task to pending or blocked.
 // POST /api/board/{project}/tasks/{taskID}/publish
 func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1902,7 +1902,7 @@ func (h *BoardHandler) notifyUnblockedTasks(ctx context.Context, project string,
 // from claimed_at to now. Works for both in-progress and completed tasks.
 // GET /api/board/{project}/tasks/{taskID}/cost
 func (h *BoardHandler) TaskLiveCost(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -1926,7 +1926,7 @@ func (h *BoardHandler) TaskLiveCost(w http.ResponseWriter, r *http.Request) {
 // RegisterWait parks an agent by registering an active wait condition.
 // POST /api/board/{project}/waits
 func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	var body struct {
 		SubscriberID string `json:"subscriber_id"`
 		SessionName  string `json:"session_name,omitempty"`
@@ -1965,7 +1965,7 @@ func (h *BoardHandler) RegisterWait(w http.ResponseWriter, r *http.Request) {
 // GetActiveWait returns active registered wait(s) for a subscriber or board.
 // GET /api/board/{project}/waits
 func (h *BoardHandler) GetActiveWait(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	subscriberID := r.URL.Query().Get("subscriber_id")
 	if subscriberID != "" {
 		wait, err := h.bs.GetActiveWait(r.Context(), project, subscriberID)
@@ -1987,7 +1987,7 @@ func (h *BoardHandler) GetActiveWait(w http.ResponseWriter, r *http.Request) {
 // CancelWait cancels an active wait for a subscriber.
 // DELETE /api/board/{project}/waits
 func (h *BoardHandler) CancelWait(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	subscriberID := r.URL.Query().Get("subscriber_id")
 	if subscriberID == "" {
 		var body struct {
@@ -2010,7 +2010,7 @@ func (h *BoardHandler) CancelWait(w http.ResponseWriter, r *http.Request) {
 // PollWait long-polls until an active wait is resolved, expired, or cancelled.
 // GET /api/board/{project}/waits/poll
 func (h *BoardHandler) PollWait(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	subscriberID := r.URL.Query().Get("subscriber_id")
 	if subscriberID == "" {
 		errBadRequest(w, "subscriber_id required")

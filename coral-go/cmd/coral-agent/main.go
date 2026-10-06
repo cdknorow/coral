@@ -506,14 +506,14 @@ func cmdTaskFinish(args []string, verb string) {
 	if verb == "cancel" {
 		flagHelp, done, errWord, usageArg = "Cancellation reason", "Cancelled", "cancelling", `"reason"`
 	}
-	if len(args) < 1 {
+	if len(args) < 1 || args[0] == "--help" || args[0] == "-h" || args[0] == "-help" {
 		fmt.Fprintf(os.Stderr, "Usage: coral-agent task %s <id> [--message %s]\n", verb, usageArg)
 		os.Exit(1)
 	}
 
 	taskID, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\n", args[0])
+		fmt.Fprintf(os.Stderr, "Invalid task ID: %s\nUsage: coral-agent task %s <id> [--message %s]\n", args[0], verb, usageArg)
 		os.Exit(1)
 	}
 

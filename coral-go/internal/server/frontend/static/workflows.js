@@ -298,14 +298,14 @@ function renderWorkflowDetail(wf, runs) {
                 <button class="btn btn-sm" onclick="editWorkflowWithAgent(${wf.id})">
                     <span class="material-icons" style="font-size:14px">smart_toy</span> Edit with Agent
                 </button>
-                <button class="btn btn-sm" style="color:#f85149" onclick="deleteWorkflow(${wf.id}, '${esc(wf.name)}')">Delete</button>
+                <button class="btn btn-sm" style="color:var(--error)" onclick="deleteWorkflow(${wf.id}, '${esc(wf.name)}')">Delete</button>
             </div>
         </div>
         <div class="wf-detail-meta">
             <span><span class="material-icons">folder</span> ${esc(wf.repo_path || 'Not set')}</span>
             <span><span class="material-icons">timer</span> Max ${wf.max_duration_s || 3600}s</span>
             <span><span class="material-icons">schedule</span> Created ${formatTime(wf.created_at)}</span>
-            ${wf.enabled ? '' : '<span style="color:#d29922"><span class="material-icons">pause_circle</span> Disabled</span>'}
+            ${wf.enabled ? '' : '<span style="color:var(--warning)"><span class="material-icons">pause_circle</span> Disabled</span>'}
         </div>
         <div class="wf-steps-section">
             <h3>Steps (${steps.length})</h3>
@@ -458,7 +458,7 @@ function renderRunDetail(run) {
     }).join('');
 
     const killBtn = isActive
-        ? `<button class="btn btn-sm" style="color:#f85149" onclick="killWorkflowRun(${run.id})">
+        ? `<button class="btn btn-sm" style="color:var(--error)" onclick="killWorkflowRun(${run.id})">
             <span class="material-icons" style="font-size:14px">stop</span> Kill
           </button>`
         : '';
@@ -480,7 +480,7 @@ function renderRunDetail(run) {
             ${run.started_at ? `<span><span class="material-icons">schedule</span> ${formatTime(run.started_at)}</span>` : ''}
             ${durationHtml}
             ${run.finished_at ? `<span><span class="material-icons">check_circle</span> ${formatTime(run.finished_at)}</span>` : ''}
-            ${run.error_msg ? `<span style="color:#f85149"><span class="material-icons">error</span> ${esc(run.error_msg)}</span>` : ''}
+            ${run.error_msg ? `<span style="color:var(--error)"><span class="material-icons">error</span> ${esc(run.error_msg)}</span>` : ''}
         </div>
         ${progressBarHtml}
         <div class="wf-run-steps wf-timeline">${stepsHtml}</div>

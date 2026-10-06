@@ -12,7 +12,7 @@ import (
 
 // SubmitCompletionReview preserves a candidate; it does not complete the task.
 func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")
@@ -45,7 +45,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 }
 
 func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	id, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")

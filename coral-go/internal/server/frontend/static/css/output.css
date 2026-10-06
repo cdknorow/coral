@@ -196,7 +196,7 @@
 }
 
 .xterm-container.xterm-focused {
-    outline: 1px solid var(--accent-primary, #58a6ff);
+    outline: 1px solid var(--accent-primary);
     outline-offset: -1px;
     border-radius: 4px;
 }
@@ -236,7 +236,7 @@
     position: absolute;
     top: 8px;
     left: 12px;
-    background: var(--danger, #f85149);
+    background: var(--danger);
     color: #fff;
     font-size: 11px;
     font-weight: 600;
@@ -307,7 +307,7 @@
 
 .capture-block-user {
     background: var(--capture-user-bg);
-    border-left-color: #7c3aed;
+    border-left-color: var(--badge-claude);
 }
 
 .capture-block-pulse {

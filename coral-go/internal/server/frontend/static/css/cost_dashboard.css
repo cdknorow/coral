@@ -264,7 +264,7 @@
 
 .cost-cost-cell {
     font-weight: 600;
-    color: var(--accent, #58a6ff);
+    color: var(--accent);
 }
 
 .cost-agent-name {
@@ -275,7 +275,7 @@
 }
 
 .cost-agent-link {
-    color: var(--accent, #58a6ff);
+    color: var(--accent);
     text-decoration: none;
     cursor: pointer;
 }
@@ -359,12 +359,12 @@
 
 .cost-status-ok {
     background: rgba(63, 185, 80, 0.15);
-    color: var(--success, #3fb950);
+    color: var(--success);
 }
 
 .cost-status-error {
     background: rgba(248, 81, 73, 0.15);
-    color: #f85149;
+    color: var(--error);
 }
 
 .cost-status-pending {
@@ -388,7 +388,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--success, #3fb950);
+    color: var(--success);
     opacity: 0.7;
     transition: opacity 0.3s;
 }
@@ -401,7 +401,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--success, #3fb950);
+    background: var(--success);
     animation: cost-pulse 2s ease-in-out infinite;
 }
 
@@ -423,18 +423,18 @@
 }
 
 .cost-card-highlight {
-    border-color: var(--accent-dim, #1f6feb);
+    border-color: var(--accent-dim);
     background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary));
 }
 
 .cost-card-highlight .cost-card-value {
-    color: var(--accent, #58a6ff);
+    color: var(--accent);
     font-size: 22px;
 }
 
 .cost-card-burn .cost-card-value {
     font-size: 16px;
-    color: var(--warning, #d29922);
+    color: var(--warning);
 }
 
 /* ── Cumulative Spend Chart ─────────────────────────────── */
@@ -458,23 +458,23 @@
 }
 
 .spend-area {
-    fill: rgba(88, 166, 255, 0.08);
+    fill: rgba(var(--accent-rgb), 0.08);
 }
 
 .spend-line {
     fill: none;
-    stroke: var(--accent, #58a6ff);
+    stroke: var(--accent);
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
 }
 
 .spend-dot {
-    fill: var(--accent, #58a6ff);
+    fill: var(--accent);
 }
 
 .spend-bar {
-    fill: rgba(88, 166, 255, 0.15);
+    fill: rgba(var(--accent-rgb), 0.15);
 }
 
 .spend-label {
@@ -495,7 +495,7 @@
 .cost-share-bar {
     height: 6px;
     border-radius: 3px;
-    background: var(--accent, #58a6ff);
+    background: var(--accent);
     transition: width 0.3s ease;
     min-width: 2px;
 }
@@ -539,11 +539,11 @@
 }
 .agent-cost-chart-tooltip .chart-line {
     fill: none;
-    stroke: #58a6ff;
+    stroke: var(--accent);
     stroke-width: 1.5;
 }
 .agent-cost-chart-tooltip .chart-area {
-    fill: rgba(88, 166, 255, 0.1);
+    fill: rgba(var(--accent-rgb), 0.1);
 }
 .agent-cost-chart-tooltip .chart-grid {
     stroke: var(--border-light);

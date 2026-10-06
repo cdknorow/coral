@@ -52,7 +52,7 @@
 }
 
 .session-list li:hover:not(.empty-state):not(.session-group-header) {
-    box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.06);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.06);
 }
 
 .session-list li.active {
@@ -90,12 +90,12 @@
 }
 
 .session-dot.stale    { background: var(--text-muted); }
-.session-dot.task-idle { background: #d29922; }
+.session-dot.task-idle { background: var(--warning); }
 .session-dot.sleeping { background: var(--warning); opacity: 0.5; }
 .session-dot.working {
     /* Working is GREEN. Green no longer means "done": a finished turn is
        "Ready for input" (no dot) and only killed rows are "Ended". */
-    background: var(--success, #3fb950);
+    background: var(--success);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
 .session-dot.waiting {
@@ -133,7 +133,7 @@
 .session-dot.sleeping::before { content: "\263E"; }
 .session-dot.ended::before    { content: "\2713"; }
 .session-dot.stuck {
-    background: var(--danger, #ef4444);
+    background: var(--danger);
     animation: pulse-stuck 3s ease-in-out infinite;
 }
 
@@ -170,13 +170,13 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    border: 1.5px solid var(--bg-primary, #0a0e14);
+    border: 1.5px solid var(--bg-primary);
 }
 
 .avatar-status-dot.stale    { background: var(--text-muted); }
 .avatar-status-dot.sleeping { background: var(--warning); opacity: 0.6; }
 .avatar-status-dot.working {
-    background: #3b82f6;
+    background: var(--working);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
 .avatar-status-dot.waiting {
@@ -184,10 +184,10 @@
     animation: pulse-waiting 1.5s ease-in-out infinite;
 }
 .avatar-status-dot.done {
-    background: var(--success, #4caf50);
+    background: var(--success);
 }
 .avatar-status-dot.stuck {
-    background: var(--danger, #ef4444);
+    background: var(--danger);
     animation: pulse-stuck 3s ease-in-out infinite;
 }
 
@@ -282,10 +282,10 @@
     word-break: break-word;
 }
 
-.tt-state-working           { color: #3b82f6; font-weight: 600; }
+.tt-state-working           { color: var(--working); font-weight: 600; }
 .tt-state-needs-input       { color: var(--warning); font-weight: 600; }
 .tt-state-done              { color: var(--success); font-weight: 600; }
-.tt-state-stuck             { color: var(--danger, #ef4444); font-weight: 600; }
+.tt-state-stuck             { color: var(--danger); font-weight: 600; }
 .tt-state-idle              { color: var(--text-muted); }
 .tt-unread                   { color: var(--warning); font-weight: 600; }
 
@@ -347,12 +347,12 @@
 }
 
 .session-context-bar.ctx-warning .context-bar-label {
-    color: var(--status-warning, #d29922);
+    color: var(--status-warning);
     opacity: 1;
 }
 
 .session-context-bar.ctx-error .context-bar-label {
-    color: var(--status-error, #f85149);
+    color: var(--status-error);
     opacity: 1;
 }
 
@@ -593,7 +593,7 @@
 
 .board-card-branch {
     margin-left: 6px;
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
     display: inline-flex;
     align-items: center;
     gap: 3px;
@@ -609,7 +609,7 @@
     gap: 3px;
     margin-top: 2px;
     font-size: var(--fs-base);
-    color: var(--accent-primary, #58a6ff);
+    color: var(--accent-primary);
     opacity: 0.85;
 }
 
@@ -904,7 +904,7 @@
 .session-group-item:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px; /* drawn inside the row, never clipped by neighbours */
-    background: rgba(88, 166, 255, 0.06);
+    background: rgba(var(--accent-rgb), 0.06);
 }
 
 .session-group-item.needs-attention {
@@ -995,7 +995,7 @@
        the strongest text (600, --text-primary). */
     font-size: var(--fs-md);
     font-weight: 500;
-    color: #c9d1d9; /* fallback for engines without color-mix */
+    color: var(--text-primary); /* fallback for engines without color-mix */
     color: var(--agent-name-color, color-mix(in srgb, var(--text-primary) 80%, transparent));
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1019,28 +1019,28 @@
     text-transform: none;
     letter-spacing: 0;
     font-weight: 600;
-    background: rgba(210, 153, 34, 0.16);
-    color: #e3b341;
-    box-shadow: inset 0 0 0 1px rgba(210, 153, 34, 0.35);
+    background: rgba(var(--warning-rgb), 0.16);
+    color: var(--warning);
+    box-shadow: inset 0 0 0 1px rgba(var(--warning-rgb), 0.35);
 }
 
 .session-group-item .badge.session-state-pill.stuck {
-    background: rgba(248, 81, 73, 0.16);
-    color: #ff7b72;
-    box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.4);
+    background: rgba(var(--error-rgb), 0.16);
+    color: var(--error);
+    box-shadow: inset 0 0 0 1px rgba(var(--error-rgb), 0.4);
 }
 
 [data-theme="light"] .session-group-item .badge.session-state-pill {
-    color: #7d4e00;
+    color: var(--warning);
 }
 [data-theme="light"] .session-group-item .badge.session-state-pill.stuck {
-    color: #a40e26;
+    color: var(--error);
 }
 
 .session-ctx-pill {
     text-transform: none;
-    background: rgba(248, 81, 73, 0.15);
-    color: var(--error, #f85149);
+    background: rgba(var(--error-rgb), 0.15);
+    color: var(--error);
 }
 
 @media (max-width: 1023px) {
@@ -1069,12 +1069,12 @@
        hover so the two never read alike. The compound selector outranks the
        legacy `.session-list li.active`. */
     border-left: 0;
-    background: rgba(88, 166, 255, 0.14);
+    background: rgba(var(--accent-rgb), 0.14);
 }
 
 .session-group-item.active:hover,
 .session-list li.session-group-item.active:hover {
-    background: rgba(88, 166, 255, 0.17);
+    background: rgba(var(--accent-rgb), 0.17);
 }
 
 /* The selected tile is darker than a plain row: lift its goal line back to
@@ -1108,11 +1108,11 @@
 
 .session-dot.waiting ~ .session-info .session-activity-text,
 .session-dot.stuck ~ .session-info .session-activity-text {
-    color: var(--warning, #d29922);
+    color: var(--warning);
 }
 
 .session-dot.done ~ .session-info .session-activity-text {
-    color: var(--success, #3fb950);
+    color: var(--success);
 }
 
 .session-group-item.dragging {
@@ -1121,7 +1121,7 @@
 }
 
 .session-group-item.drag-over {
-    border-top: 2px solid var(--accent-primary, #58a6ff);
+    border-top: 2px solid var(--accent-primary);
     margin-top: -2px;
 }
 
@@ -1234,7 +1234,7 @@
 .goal-label {
     font-size: 15px;
     font-weight: 600;
-    color: #bc8cff;
+    color: var(--color-tool-agent);
     flex-shrink: 0;
 }
 
@@ -1284,8 +1284,8 @@
     align-items: center;
     gap: 4px;
     padding: 2px 10px;
-    background: rgba(88, 166, 255, 0.1);
-    border: 1px solid rgba(88, 166, 255, 0.2);
+    background: rgba(var(--accent-rgb), 0.1);
+    border: 1px solid rgba(var(--accent-rgb), 0.2);
     border-radius: 12px;
     font-size: 12px;
     color: var(--accent);
@@ -1357,7 +1357,7 @@
 }
 
 .status-dot.working {
-    background: #3b82f6;
+    background: var(--working);
     animation: pulse-working 1.5s ease-in-out infinite;
 }
 
@@ -1367,11 +1367,11 @@
 }
 
 .status-dot.done {
-    background: var(--success, #4caf50);
+    background: var(--success);
 }
 
 .status-dot.stuck {
-    background: var(--danger, #ef4444);
+    background: var(--danger);
     animation: pulse-stuck 3s ease-in-out infinite;
 }
 
@@ -1420,7 +1420,7 @@
 .waiting-banner.done-banner {
     background: rgba(76, 175, 80, 0.15);
     border-color: rgba(76, 175, 80, 0.3);
-    color: var(--success, #4caf50);
+    color: var(--success);
 }
 
 /* ── Session ID Label ──────────────────────────────────────── */
@@ -1459,13 +1459,13 @@
 }
 
 .live-job-badge-api {
-    background: rgba(136, 87, 229, 0.2);
-    color: #b392f0;
+    background: rgba(124, 58, 237, 0.2);
+    color: var(--badge-claude);
 }
 
 .live-job-badge-cron {
-    background: rgba(88, 166, 255, 0.2);
-    color: #58a6ff;
+    background: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent);
 }
 
 .live-job-elapsed {
@@ -1543,7 +1543,7 @@
 .board-paused-banner {
     font-size: var(--fs-base);
     font-weight: 600;
-    color: var(--error, #f85149);
+    color: var(--error);
     background: rgba(248, 81, 73, 0.1);
     border-bottom: 1px solid rgba(248, 81, 73, 0.3);
     padding: 6px 10px;
@@ -1841,9 +1841,9 @@
 .availability-agent > .btn { margin-top:0; }
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
 .availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; color: var(--text-secondary); }
-.availability-badge.is-free { color: var(--success, #62c98a); }
-.availability-task_idle .availability-badge, .availability-summary-task_idle { color: #d29922; }
-.availability-waiting .availability-badge, .availability-summary-waiting { color: #58a6ff; }
+.availability-badge.is-free { color: var(--success); }
+.availability-task_idle .availability-badge, .availability-summary-task_idle { color: var(--warning); }
+.availability-waiting .availability-badge, .availability-summary-waiting { color: var(--accent); }
 .team-availability-dialog ul { padding-left: 18px; font-size: 13px; }
 .team-availability-dialog li { margin: 8px 0; }
 @media(max-width: 600px) { .team-availability-dialog { padding: 16px; } .team-view-details { grid-template-columns:1fr 1fr; } .availability-agent { grid-template-columns:1fr auto; } .availability-agent > p, .availability-agent > ul { grid-column:1 / -1; } }
@@ -1857,7 +1857,7 @@
 .team-settings-section.global-settings-section { background: var(--bg-tertiary); }
 .working-mode-hint { font-size: 12px !important; color: var(--text-secondary); margin: 0; line-height: 1.4; }
 .working-mode-status { min-height: 18px; color: var(--text-secondary); font-size: 13px; }
-.working-mode-status.is-error { color: var(--error, #f85149); }
+.working-mode-status.is-error { color: var(--error); }
 .team-settings-tabs { display: flex; gap: 4px; margin: 8px 0 16px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-tertiary); }
 .team-settings-tabs [role="tab"] { flex: 1; border: 0; background: transparent; color: var(--text-secondary); font-size: 13px; padding: 8px 10px; }
 .team-settings-tabs [role="tab"][aria-selected="true"] { background: var(--bg-primary); color: var(--text-primary); box-shadow: 0 1px 3px rgba(0,0,0,.2); }

@@ -117,7 +117,7 @@ func (h *BoardRemotesHandler) ProxyProjects(w http.ResponseWriter, r *http.Reque
 // ProxyMessages handles GET /api/board/remotes/proxy/{remote_server}/{project}/messages/all
 func (h *BoardRemotesHandler) ProxyMessages(w http.ResponseWriter, r *http.Request) {
 	remoteServer := chi.URLParam(r, "remoteServer")
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	limit := r.URL.Query().Get("limit")
 	if limit == "" {
 		limit = "200"
@@ -136,7 +136,7 @@ func (h *BoardRemotesHandler) ProxyMessages(w http.ResponseWriter, r *http.Reque
 // ProxySubscribers handles GET /api/board/remotes/proxy/{remote_server}/{project}/subscribers
 func (h *BoardRemotesHandler) ProxySubscribers(w http.ResponseWriter, r *http.Request) {
 	remoteServer := chi.URLParam(r, "remoteServer")
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	path := fmt.Sprintf("/%s/subscribers", project)
 	result, code, err := h.proxyGet(r.Context(), remoteServer, path)
 	if err != nil {
@@ -151,7 +151,7 @@ func (h *BoardRemotesHandler) ProxySubscribers(w http.ResponseWriter, r *http.Re
 // ProxyCheckUnread handles GET /api/board/remotes/proxy/{remote_server}/{project}/messages/check
 func (h *BoardRemotesHandler) ProxyCheckUnread(w http.ResponseWriter, r *http.Request) {
 	remoteServer := chi.URLParam(r, "remoteServer")
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	sessionID := r.URL.Query().Get("session_id")
 	path := fmt.Sprintf("/%s/messages/check?session_id=%s", project, sessionID)
 	result, code, err := h.proxyGet(r.Context(), remoteServer, path)

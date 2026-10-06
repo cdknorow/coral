@@ -78,7 +78,7 @@ func parseBoundedInt(raw string, def, min, max int) (int, bool) {
 // directory or loads artifact bytes.
 // GET /api/board/{project}/artifacts?limit=&offset=
 func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	limit, ok := parseBoundedInt(r.URL.Query().Get("limit"), defaultTeamArtifactLimit, 1, maxTeamArtifactLimit)
 	if !ok {
 		errBadRequest(w, fmt.Sprintf("limit must be an integer between 1 and %d", maxTeamArtifactLimit))
@@ -268,7 +268,7 @@ func enrichTeamArtifact(it *teamArtifact, objectDir string) {
 // TeamArtifactContent serves an inline task artifact as plain text.
 // GET /api/board/{project}/tasks/{taskID}/artifact-content?source=completion|review&index=N
 func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	taskID, err := strconv.ParseInt(chi.URLParam(r, "taskID"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid task ID")

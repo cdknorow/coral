@@ -457,7 +457,7 @@
 }
 
 .wf-run-step-status.completed { background: rgba(46, 160, 67, 0.15); color: var(--success); }
-.wf-run-step-status.running { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+.wf-run-step-status.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .wf-run-step-status.failed { background: rgba(248, 81, 73, 0.15); color: var(--error); }
 .wf-run-step-status.killed { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
 .wf-run-step-status.skipped { background: rgba(139, 148, 158, 0.15); color: var(--text-secondary); }
@@ -585,7 +585,7 @@
 /* ── Sidebar workflow group ────────────────────────────────── */
 
 .session-wf-card {
-    border-left-color: #d2a8ff !important;
+    border-left-color: var(--color-tool-agent) !important;
 }
 
 /* ── Create modal ─────────────────────────────────────────── */
@@ -718,7 +718,7 @@
 }
 
 .wf-status-badge.completed { background: rgba(46, 160, 67, 0.15); color: var(--success); }
-.wf-status-badge.running { background: rgba(88, 166, 255, 0.15); color: var(--accent); }
+.wf-status-badge.running { background: rgba(var(--accent-rgb), 0.15); color: var(--accent); }
 .wf-status-badge.failed { background: rgba(248, 81, 73, 0.15); color: var(--error); }
 .wf-status-badge.killed { background: rgba(210, 153, 34, 0.15); color: var(--warning); }
 .wf-status-badge.pending { background: rgba(139, 148, 158, 0.15); color: var(--text-secondary); }

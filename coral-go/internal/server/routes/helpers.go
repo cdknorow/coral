@@ -4,13 +4,28 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
+
+// urlParam extracts a chi URL parameter and percent-decodes it.
+// chi uses RawPath when set, so characters like ' and ! that
+// encodeURIComponent leaves alone arrive still-escaped; this
+// ensures the handler always sees the decoded value.
+func urlParam(r *http.Request, key string) string {
+	v := chi.URLParam(r, key)
+	if decoded, err := url.PathUnescape(v); err == nil {
+		return decoded
+	}
+	return v
+}
 
 // decodeJSON decodes JSON from the request body into v.
 func decodeJSON(r *http.Request, v any) error {

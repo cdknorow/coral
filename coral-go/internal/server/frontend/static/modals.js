@@ -3042,7 +3042,7 @@ async function _loadLicenseTierBadge() {
                 storeProURL = supporterURL(sData, 'settings_tier_badge', storeProURL);
             } catch (_) {}
             badge.innerHTML = '<span class="tier-label tier-trial">Free</span>' +
-                `<a href="${storeProURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:#58a6ff;margin-left:8px;text-decoration:none">Support the developer</a>`;
+                `<a href="${storeProURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:var(--accent);margin-left:8px;text-decoration:none">Support the developer</a>`;
         }
         badge.style.display = '';
     } catch { /* silent — non-critical */ }

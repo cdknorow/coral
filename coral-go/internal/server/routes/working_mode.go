@@ -8,7 +8,7 @@ import (
 )
 
 func (h *BoardHandler) GetWorkingMode(w http.ResponseWriter, r *http.Request) {
-	mode, err := h.bs.GetWorkingMode(r.Context(), chi.URLParam(r, "project"))
+	mode, err := h.bs.GetWorkingMode(r.Context(), urlParam(r, "project"))
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -21,7 +21,7 @@ func (h *BoardHandler) SetWorkingMode(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid working mode JSON")
 		return
 	}
-	result, err := h.bs.SetWorkingMode(r.Context(), chi.URLParam(r, "project"), mode)
+	result, err := h.bs.SetWorkingMode(r.Context(), urlParam(r, "project"), mode)
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return
@@ -31,7 +31,7 @@ func (h *BoardHandler) SetWorkingMode(w http.ResponseWriter, r *http.Request) {
 
 // Presets are team guidance editable by users and agents, not task assignments.
 func (h *BoardHandler) ListWorkflowPresets(w http.ResponseWriter, r *http.Request) {
-	project := chi.URLParam(r, "project")
+	project := urlParam(r, "project")
 	presets, err := h.bs.ListWorkflowPresets(r.Context(), project)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -59,7 +59,7 @@ func (h *BoardHandler) SaveWorkflowPreset(w http.ResponseWriter, r *http.Request
 	if create {
 		id = body.ID
 	}
-	p, err := h.bs.SaveWorkflowPreset(r.Context(), chi.URLParam(r, "project"), id, body.Name, body.Instructions, create)
+	p, err := h.bs.SaveWorkflowPreset(r.Context(), urlParam(r, "project"), id, body.Name, body.Instructions, create)
 	if err != nil {
 		if errors.Is(err, board.ErrPresetExists) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
@@ -75,7 +75,7 @@ func (h *BoardHandler) SaveWorkflowPreset(w http.ResponseWriter, r *http.Request
 	writeJSON(w, status, p)
 }
 func (h *BoardHandler) ResetWorkflowPreset(w http.ResponseWriter, r *http.Request) {
-	p, err := h.bs.ResetWorkflowPreset(r.Context(), chi.URLParam(r, "project"), chi.URLParam(r, "presetID"))
+	p, err := h.bs.ResetWorkflowPreset(r.Context(), urlParam(r, "project"), chi.URLParam(r, "presetID"))
 	if err != nil {
 		errBadRequest(w, err.Error())
 		return

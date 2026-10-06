@@ -11,7 +11,6 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
-	"github.com/go-chi/chi/v5"
 )
 
 type availabilityTask struct {
@@ -45,9 +44,9 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 	trace := newPhaseTrace("board-status")
 	defer trace.finish()
 	ctx := r.Context()
-	name := chi.URLParam(r, "name")
+	name := urlParam(r, "name")
 	if name == "" {
-		name = chi.URLParam(r, "project")
+		name = urlParam(r, "project")
 	}
 	if h.bs == nil {
 		errInternalServer(w, "board store unavailable")
