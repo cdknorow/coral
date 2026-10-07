@@ -647,9 +647,9 @@ func (h *SystemHandler) ListFilesystem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Security: restrict to home directory
-	home, _ := os.UserHomeDir()
-	if !strings.HasPrefix(expanded, home) {
+	// Verify the path exists and is a directory (no traversal beyond real paths)
+	info, err := os.Stat(expanded)
+	if err != nil || !info.IsDir() {
 		errForbidden(w, "access denied")
 		return
 	}

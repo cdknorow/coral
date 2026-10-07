@@ -222,7 +222,12 @@ func startWebServer(ctx context.Context, cfg *config.Config) {
 	tracking.SetEntrypoint("launch-coral")
 	tracking.SetCoralDir(cfg.CoralDir())
 	rs, err := startup.Start(ctx, cfg, startup.Options{
-		BackendType: "tmux",
+		BackendType: func() string {
+			if runtime.GOOS == "windows" {
+				return "pty"
+			}
+			return "tmux"
+		}(),
 		PasswordPrompt: func() (string, error) {
 			fmt.Fprint(os.Stderr, "Coral database password: ")
 			value, promptErr := term.ReadPassword(int(syscall.Stdin))

@@ -10,7 +10,6 @@ package main
 
 import (
 	"context"
-	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -37,8 +36,7 @@ import (
 	"github.com/gen2brain/beeep"
 )
 
-//go:embed icon.png
-var iconData []byte
+// iconData is embedded per-platform in icon_unix.go (.png) and icon_windows.go (.ico).
 
 const (
 	githubReleasesAPI = "https://api.github.com/repos/cdknorow/coral/releases/latest"
@@ -52,14 +50,18 @@ func main() {
 	runtime.LockOSThread()
 
 	host := flag.String("host", "0.0.0.0", "Host to bind to")
-	port := flag.Int("port", 8420, "Port to bind to")
+	port := flag.Int("port", config.DefaultPort, "Port to bind to")
 	homeDir := flag.String("home", "", "Home directory for Coral")
 	foreground := flag.Bool("foreground", false, "Run in foreground (used internally)")
 	stop := flag.Bool("stop", false, "Stop a running tray instance")
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
 	devMode := flag.Bool("dev", false, "Development mode: skip license check")
 	debugMode := flag.Bool("debug", false, "Enable debug logging to ~/.coral/tray.log")
-	backendFlag := flag.String("backend", "tmux", "Terminal backend: pty or tmux")
+	defaultBackend := "tmux"
+	if runtime.GOOS == "windows" {
+		defaultBackend = "pty"
+	}
+	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
 	flag.Parse()
 
 	// When launched from a .app bundle on macOS, run in foreground automatically
@@ -315,8 +317,16 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 		mOpenBrowser := systray.AddMenuItem("Open in Browser", "Open Coral in web browser")
 		mUpdate := systray.AddMenuItem("Check for Updates", "Check for new versions")
 		systray.AddSeparator()
-		mShutdown := systray.AddMenuItem("Shutdown — Kill Agents & Stop Server", "Kill all agents and stop the server")
-		mQuit := systray.AddMenuItem("Quit — Exit Coral", "Exit the tray app")
+		var mShutdown, mQuit *systray.MenuItem
+		if runtime.GOOS == "windows" {
+			// On Windows (PTY backend), agents cannot survive without the server,
+			// so there is only one exit action.
+			mShutdown = systray.AddMenuItem("Quit — Stop Agents & Exit", "Stop all agents and exit Coral")
+			mQuit = mShutdown // both point to the same item
+		} else {
+			mShutdown = systray.AddMenuItem("Shutdown — Kill Agents & Stop Server", "Kill all agents and stop the server")
+			mQuit = systray.AddMenuItem("Quit — Exit Coral", "Exit the tray app (agents keep running)")
+		}
 
 		go func() {
 			defer func() {

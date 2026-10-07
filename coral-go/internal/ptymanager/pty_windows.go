@@ -80,7 +80,9 @@ func (p *windowsPTY) Close() error {
 	return err
 }
 
-// shellWrap wraps a command string for execution via the Windows shell.
+// shellWrap wraps a command string for execution via PowerShell on Windows.
+// PowerShell is used because agent launch commands use PowerShell syntax
+// (e.g. $(Get-Content -Raw ...)) which cmd.exe cannot interpret.
 func shellWrap(cmd string) []string {
-	return []string{"cmd.exe", "/c", cmd}
+	return []string{"powershell.exe", "-NoProfile", "-Command", cmd}
 }

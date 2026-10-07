@@ -365,33 +365,18 @@ func readProtocolFile(path string) string {
 	return string(content)
 }
 
-// shellQuote wraps a string in single quotes if it contains shell metacharacters
-// (e.g. [, ], *, ?, spaces) that zsh/bash would interpret. Single quotes inside
-// the string are escaped as '\”.
-func shellQuote(s string) string {
-	if s == "" {
-		return s
-	}
-	if !strings.ContainsAny(s, " \t[]*?{}$`\"\\!#&|;()<>~") {
-		return s
-	}
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
+// shellQuote wraps a string in shell-appropriate quotes if it contains
+// metacharacters. Platform-specific implementations are in
+// shell_quote_unix.go and shell_quote_windows.go.
+//
+//	func shellQuote(s string) string
 
 // ShellQuoteParts applies shellQuote to each part in a command parts slice,
-// skipping parts that are already compound shell expressions (e.g. "$(cat ...)",
-// "export VAR=... &&") which are already properly formatted.
-func ShellQuoteParts(parts []string) []string {
-	quoted := make([]string, len(parts))
-	for i, p := range parts {
-		if strings.Contains(p, "$(") || strings.HasPrefix(p, "export ") {
-			quoted[i] = p
-		} else {
-			quoted[i] = shellQuote(p)
-		}
-	}
-	return quoted
-}
+// skipping parts that are already compound shell expressions.
+// Platform-specific implementations are in shell_quote_unix.go and
+// shell_quote_windows.go.
+//
+//	func ShellQuoteParts(parts []string) []string
 
 // writeTempFile creates a temp file with an unpredictable name using os.CreateTemp
 // (O_CREATE|O_EXCL) to prevent symlink attacks. The file name includes the session

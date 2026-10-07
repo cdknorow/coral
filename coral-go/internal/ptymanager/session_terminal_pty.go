@@ -50,8 +50,27 @@ func (p *PTYSessionTerminal) FindSession(_ context.Context, name, agentType, ses
 	return nil, nil
 }
 
+// resolveSessionKey maps a display name, folder name, session ID, or session
+// name to the internal key used by PTYBackend. The backend keys sessions by
+// the naming.SessionName (e.g. "claude-{uuid}"), but callers (HTTP routes)
+// often pass the folder name or agent display name.
+func (p *PTYSessionTerminal) resolveSessionKey(name string) string {
+	// Fast path: direct match
+	if p.backend.IsRunning(name) {
+		return name
+	}
+	// Search through sessions for a match by display name, folder, or ID
+	for _, s := range p.backend.ListSessions() {
+		sessName := naming.SessionName(s.AgentType, s.SessionID)
+		if s.AgentName == name || s.SessionID == name || filepath.Base(s.WorkingDir) == name {
+			return sessName
+		}
+	}
+	return name
+}
+
 func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, _ string) (string, error) {
-	data, err := p.backend.Replay(name)
+	data, err := p.backend.Replay(p.resolveSessionKey(name))
 	if err != nil {
 		return "", err
 	}
@@ -59,18 +78,19 @@ func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int
 }
 
 func (p *PTYSessionTerminal) SendInput(_ context.Context, name, command, _, _ string) error {
-	return p.backend.SendInput(name, []byte(command+"\n"))
+	return p.backend.SendInput(p.resolveSessionKey(name), []byte(command+enterKey))
 }
 
 // SendPrompt delivers text as one bracketed paste followed by Enter, only while
 // the session's application has bracketed paste mode enabled.
 func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, name, text, _, _ string) error {
-	return p.backend.SendPrompt(ctx, name, text)
+	return p.backend.SendPrompt(ctx, p.resolveSessionKey(name), text)
 }
 
 func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, _ string) error {
+	resolved := p.resolveSessionKey(name)
 	for _, key := range keys {
-		if err := p.backend.SendInput(name, []byte(key)); err != nil {
+		if err := p.backend.SendInput(resolved, []byte(key)); err != nil {
 			return err
 		}
 	}
@@ -78,23 +98,23 @@ func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys [
 }
 
 func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
-	// Target is session name in PTY mode
+	resolved := p.resolveSessionKey(target)
 	if len(command) > inlineCommandLimit {
 		invocation, cleanup, err := commandInvocation(command)
 		if err != nil {
 			return err
 		}
-		if err := p.backend.SendInput(target, []byte(invocation+"\n")); err != nil {
+		if err := p.backend.SendInput(resolved, []byte(invocation+enterKey)); err != nil {
 			cleanup()
 			return err
 		}
 		return nil
 	}
-	return p.backend.SendInput(target, []byte(command+"\n"))
+	return p.backend.SendInput(resolved, []byte(command+enterKey))
 }
 
 func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, target, data string) error {
-	return p.backend.SendInput(target, []byte(data))
+	return p.backend.SendInput(p.resolveSessionKey(target), []byte(data))
 }
 
 func (p *PTYSessionTerminal) CreateSession(_ context.Context, name, workDir string) error {

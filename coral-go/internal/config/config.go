@@ -87,7 +87,7 @@ func Load(dataDir ...string) *Config {
 		DBBusyTimeoutMS: 5000,
 
 		Host: envOrDefault("CORAL_HOST", "0.0.0.0"),
-		Port: envIntOrDefault("CORAL_PORT", 8420),
+		Port: envIntOrDefault("CORAL_PORT", DefaultPort),
 
 		CoralRoot: envOrDefault("CORAL_ROOT", homeDir),
 		LogDir:    logDir,

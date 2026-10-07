@@ -4284,7 +4284,11 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	// how tmux-backed sessions are launched too — h.backend is a TmuxBackend in
 	// that case. It is persisted and drives the same branch on wake, so it must
 	// keep meaning exactly this. Use terminalKind below for what actually runs.
-	if backend == "" {
+	// When the server is using a PTY backend, always use PTY regardless of
+	// what the frontend requests — tmux is not available on this platform.
+	if _, isPTY := h.backend.(*ptymanager.PTYBackend); isPTY {
+		backend = "pty"
+	} else if backend == "" {
 		if h.backend != nil {
 			backend = "pty"
 		} else {

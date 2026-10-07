@@ -17,6 +17,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -77,11 +78,34 @@ type RunningServer struct {
 }
 
 // Shutdown gracefully shuts down the HTTP server and cleans up resources.
+// For PTY backends, all live sessions are marked as sleeping before the
+// backend is closed, since PTY child processes cannot survive the server
+// exiting. On restart, reconcileOrphanedSessions detects these and the
+// user can wake them from the UI.
 func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	if err := rs.HTTPServer.Shutdown(ctx); err != nil {
 		log.Printf("Shutdown error: %v", err)
+	}
+	// Mark all PTY sessions as sleeping before killing them so they can
+	// be re-launched on next startup.
+	if _, isPTY := rs.Backend.(*ptymanager.PTYBackend); isPTY && rs.DB != nil {
+		ss := store.NewSessionStore(rs.DB)
+		liveSessions, err := ss.GetAllLiveSessions(ctx)
+		if err == nil {
+			sleeping := 0
+			for _, ls := range liveSessions {
+				if ls.IsSleeping == 0 {
+					if err := ss.SetSessionSleeping(ctx, ls.SessionID, true); err == nil {
+						sleeping++
+					}
+				}
+			}
+			if sleeping > 0 {
+				log.Printf("[shutdown] marked %d PTY session(s) as sleeping", sleeping)
+			}
+		}
 	}
 	if rs.Backend != nil {
 		rs.Backend.Close()
@@ -106,7 +130,11 @@ func (rs *RunningServer) Close() {
 func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServer, error) {
 	dbcrypt.SetUnlockSurface(opts.UnlockSurface)
 	if opts.BackendType == "" {
-		opts.BackendType = "tmux"
+		if runtime.GOOS == "windows" {
+			opts.BackendType = "pty"
+		} else {
+			opts.BackendType = "tmux"
+		}
 	}
 	exe, exeErr := os.Executable()
 	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
