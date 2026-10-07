@@ -1,4 +1,4 @@
-//go:build webview && !darwin
+//go:build webview && !darwin && !windows
 
 package main
 

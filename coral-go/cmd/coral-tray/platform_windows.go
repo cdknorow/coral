@@ -16,7 +16,7 @@ func redirectStderr(f *os.File) {}
 // CREATE_NEW_PROCESS_GROUP detaches the child from the parent's console.
 func detachProcessAttrs() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP,
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | 0x08000000, // CREATE_NO_WINDOW
 	}
 }
 

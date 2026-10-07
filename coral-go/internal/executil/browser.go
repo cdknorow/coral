@@ -5,8 +5,6 @@ import (
 	"runtime"
 )
 
-// OpenBrowser opens the given URL in the user's default browser.
-// It is best-effort; errors are silently ignored.
 func OpenBrowser(url string) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
@@ -14,6 +12,7 @@ func OpenBrowser(url string) {
 		cmd = exec.Command("open", url)
 	case "windows":
 		cmd = exec.Command("cmd", "/c", "start", "", url)
+		HideWindow(cmd)
 	default:
 		cmd = exec.Command("xdg-open", url)
 	}

@@ -77,9 +77,8 @@ jobs:
           name: coral-linux-amd64
           path: dist/coral-linux-amd64-*.tar.gz
 
-  # ── Windows (only for tags containing "-windows" or "-all") ───
+  # ── Windows ──────────────────────────────────────────────────
   build-windows:
-    if: contains(github.ref_name, '-windows') || contains(github.ref_name, '-all')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -159,12 +158,14 @@ jobs:
         run: |
           $env:WIX_OSMF_ACCEPT = "1"
           dotnet tool install --global wix
+          wix extension add WixToolset.UI.wixext
           $version = "${{ github.ref_name }}" -replace "^v", ""
           if (-not ($version -match "^\d+\.\d+\.\d+")) { $version = "0.0.0" }
           $binDir = (Resolve-Path "dist\windows\bin").Path
           $buildDir = (Resolve-Path "dist\windows").Path
+          Copy-Item "tools\license.rtf" $buildDir
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build -acceptEula wix7 tools\coral.wxs -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
+          wix build -acceptEula wix7 tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
@@ -503,18 +504,12 @@ jobs:
           # for them): an absent glob is skipped explicitly, while a failed
           # upload still fails the step.
           for f in artifacts/coral-linux-amd64/*.tar.gz \
-                   artifacts/coral-macos-dmg/*.dmg; do
+                   artifacts/coral-macos-dmg/*.dmg \
+                   artifacts/coral-windows-msi/*.msi \
+                   artifacts/coral-windows-portable/*.zip; do
             if [ ! -f "$f" ]; then
               echo "::error::required release package missing: $f"
               exit 1
-            fi
-            gh release upload "$TAG" "$f" --clobber
-          done
-          for f in artifacts/coral-windows-msi/*.msi \
-                   artifacts/coral-windows-portable/*.zip; do
-            if [ ! -f "$f" ]; then
-              echo "Skipping optional package (not built for this tag): $f"
-              continue
             fi
             gh release upload "$TAG" "$f" --clobber
           done

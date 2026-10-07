@@ -9,7 +9,8 @@
     - Registers for clean uninstall
 -->
 
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package
     Name="Coral"
@@ -66,6 +67,14 @@
         <Component Id="HookMessageCheck" Guid="C9D0E1F2-A3B4-5678-CDEF-890123456789">
           <File Id="coral_hook_message_check.exe" Source="$(var.BinDir)\coral-hook-message-check.exe" KeyPath="yes" />
         </Component>
+
+        <Component Id="HookSessionStart" Guid="D0E1F2A3-B4C5-6789-DEFA-901234567890">
+          <File Id="coral_hook_session_start.exe" Source="$(var.BinDir)\coral-hook-session-start.exe" KeyPath="yes" />
+        </Component>
+
+        <Component Id="CoralAgentExe" Guid="E1F2A3B4-C5D6-7890-EFAB-012345678901">
+          <File Id="coral_agent.exe" Source="$(var.BinDir)\coral-agent.exe" KeyPath="yes" />
+        </Component>
       </Directory>
     </StandardDirectory>
 
@@ -93,6 +102,21 @@
       </Directory>
     </StandardDirectory>
 
+    <!-- License agreement dialog -->
+    <ui:WixUI Id="WixUI_Minimal" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.BuildDir)\license.rtf" />
+
+    <!-- Write EULA acceptance marker after install so coral-app skips its own prompt -->
+    <StandardDirectory Id="SystemFolder" />
+    <CustomAction Id="WriteEULAMarker"
+      Directory="SystemFolder"
+      ExeCommand="cmd.exe /c &quot;if not exist &quot;%USERPROFILE%\.coral&quot; mkdir &quot;%USERPROFILE%\.coral&quot; &amp; echo accepted>&quot;%USERPROFILE%\.coral\.eula-accepted&quot;&quot;"
+      Impersonate="yes"
+      Return="ignore" />
+    <InstallExecuteSequence>
+      <Custom Action="WriteEULAMarker" After="InstallFiles" Condition="NOT Installed" />
+    </InstallExecuteSequence>
+
     <Feature Id="MainFeature" Title="Coral" Level="1">
       <ComponentRef Id="CoralExe" />
       <ComponentRef Id="LaunchCoralExe" />
@@ -102,6 +126,8 @@
       <ComponentRef Id="HookAgenticState" />
       <ComponentRef Id="HookTaskSync" />
       <ComponentRef Id="HookMessageCheck" />
+      <ComponentRef Id="HookSessionStart" />
+      <ComponentRef Id="CoralAgentExe" />
       <ComponentRef Id="CoralShortcut" />
     </Feature>
 
