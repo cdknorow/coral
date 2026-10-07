@@ -154,6 +154,8 @@ jobs:
           }
 
       - name: Install WiX and build MSI
+        env:
+          WIX_OSMF_ACCEPT: "1"
         run: |
           dotnet tool install --global wix
           $version = "${{ github.ref_name }}" -replace "^v", ""
