@@ -3781,6 +3781,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 		}
 		tools := store.UnmarshalFlags(cfg.Tools)
 		mcpServers := store.UnmarshalMCPServers(cfg.MCPServers)
+		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, displayName, prompt)
 		result, err := h.launchSession(bgCtx, cfg.WorkingDir, cfg.AgentType, displayName,
 			"", flags, prompt, boardName, boardServer, "", boardType, modelStr, caps,
 			tools, mcpServers, nil)
