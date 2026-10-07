@@ -1,6 +1,6 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
-
+import { escapeHtml, escapeAttr } from './utils.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 
 let source = 'files';
@@ -11,7 +11,7 @@ let previewFile = null;
 const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, controller:null, generation:0});
 const caches = {artifacts:fresh(), 'team-artifacts':fresh()};
 const isArtifactSource = () => source === 'artifacts' || source === 'team-artifacts';
-const panels = {files:'repository-files-view', browse:'file-explorer-view', artifacts:'team-artifacts-view', 'team-artifacts':'team-artifacts-view'};
+const panels = {files:'repository-files-view', browse:'file-explorer-view', artifacts:'team-artifacts-view', 'team-artifacts':'team-artifacts-view', knowledge:'team-knowledge-view'};
 function cancel(cache) { cache.controller?.abort(); ++cache.generation; cache.busy=false; }
 function clear(scope) { cancel(caches[scope]); caches[scope]=fresh(); }
 
@@ -151,15 +151,24 @@ function render() {
         const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
         if (link) {
             const actions = el('div', 'team-artifact-actions');
-            const preview = el('button', 'team-artifacts-action team-artifact-preview', 'Preview');
+            const preview = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-preview');
             preview.type = 'button';
+            preview.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>';
+            preview.title = 'Preview';
             preview.setAttribute('aria-label', `Preview ${name}`);
             preview.addEventListener('click', openPreview);
             actions.append(preview);
-            const download = el('a', 'team-artifacts-action', link.preview ? 'Download' : 'Open link');
+            const download = el('a', 'team-artifacts-action team-artifact-icon-btn');
             download.href = link.url;
-            if (link.preview) download.download = name;
-            else { download.target = '_blank'; download.rel = 'noopener noreferrer'; }
+            if (link.preview) {
+                download.download = name;
+                download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3h12v-3"/><path d="M8 2v8m-3-3 3 3 3-3"/></svg>';
+                download.title = 'Download';
+            } else {
+                download.target = '_blank'; download.rel = 'noopener noreferrer';
+                download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4"/><path d="M14 2 7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>';
+                download.title = 'Open link';
+            }
             download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
             actions.append(download);
             actionCell.append(actions);
@@ -204,7 +213,18 @@ async function load(append = false) {
     }
 }
 
+function updateTeamTabVisibility() {
+    const hasTeam = !!currentTeam();
+    document.querySelectorAll('[data-files-source="team-artifacts"], [data-files-source="knowledge"]').forEach(btn => {
+        btn.style.display = hasTeam ? '' : 'none';
+    });
+    if (!hasTeam && (source === 'team-artifacts' || source === 'knowledge')) {
+        source = 'files';
+    }
+}
+
 function updateSource() {
+    updateTeamTabVisibility();
     for (const id of new Set(Object.values(panels))) {
         const panel=document.getElementById(id); if(panel) panel.hidden=id!==panels[source];
     }
@@ -219,6 +239,7 @@ function updateSource() {
 
 function activate() {
     if(source==='browse') showExplorer();
+    else if(source==='knowledge') loadKnowledgeTab();
     else if(isArtifactSource()) {render(); if(!caches[source].loaded && !caches[source].busy)load();}
 }
 
@@ -233,7 +254,7 @@ function createSourcePicker(onSelect, preview = false) {
     const picker=el('div','files-source-picker');
     picker.id=preview?'preview-files-source-picker':'files-source-picker';
     picker.setAttribute('role','tablist');picker.setAttribute('aria-label','Viewer source');
-    const tabs=[['files','Files'],['browse','Browse'],['artifacts','Artifacts'],['team-artifacts','Team Artifacts']];
+    const tabs=[['files','Files'],['browse','Browse'],['artifacts','Artifacts'],['team-artifacts','Team Artifacts'],['knowledge','Team Knowledge']];
     for(const [value,label] of tabs) {
         const button=el('button','files-source-button',label);
         const selected=value===source;
@@ -285,8 +306,9 @@ export function initFilesSourcePicker(onPreview, onFilePreview) {
         const picker=createSourcePicker(selectSource);
         const artifacts=el('div','team-artifacts-view');artifacts.id=panels.artifacts;
         const browse=el('div','file-explorer-view');browse.id=panels.browse;
-        for(const view of [files,artifacts,browse])view.setAttribute('role','tabpanel');
-        panel.append(picker,files,browse,artifacts);
+        const knowledge=el('div','team-knowledge-view');knowledge.id=panels.knowledge;
+        for(const view of [files,artifacts,browse,knowledge])view.setAttribute('role','tabpanel');
+        panel.append(picker,files,browse,artifacts,knowledge);
     }
     mountExplorer(previewFile);
     syncFilesSourceTeam();updateSource();render();activate();
@@ -299,8 +321,263 @@ export function syncFilesSourceTeam() {
     const agentChanged=nextSession!==sessionID;
     syncExplorerSession();
     if(!teamChanged&&!agentChanged)return;
-    if(teamChanged)clear('team-artifacts');
+    if(teamChanged) { clear('team-artifacts'); knowledgeLoaded=false; }
     if(teamChanged||agentChanged)clear('artifacts');
     team=next;sessionID=nextSession;
     render();activate();
+}
+
+export function selectKnowledgeSource() { selectSource('knowledge'); }
+
+// ── Knowledge tab ───────────────────────────────────────────────────────
+
+let knowledgeLoaded = false;
+let knowledgeData = null;
+let knowledgeMode = 'preview'; // 'preview' or 'edit'
+let knowledgeActiveTab = 'index';
+let knowledgeDirty = {};
+
+async function loadKnowledgeTab() {
+    const panel = document.getElementById(panels.knowledge);
+    if (!panel) return;
+    const boardName = currentTeam();
+    if (!boardName) {
+        panel.innerHTML = '<div class="knowledge-empty">Select a team to view knowledge.</div>';
+        return;
+    }
+    if (knowledgeLoaded) return;
+    knowledgeLoaded = true;
+    knowledgeMode = 'preview';
+    knowledgeActiveTab = 'index';
+    knowledgeDirty = {};
+
+    panel.innerHTML = '<div class="knowledge-empty">Loading...</div>';
+
+    const data = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge`)
+        .then(r => r.ok ? r.json() : null).catch(() => null);
+
+    if (!data || !data.exists) {
+        panel.innerHTML = `<div class="knowledge-empty">
+            <div style="margin-bottom:12px">No distilled knowledge yet for this team.</div>
+            <button class="btn btn-primary" onclick="distillTeamKnowledge('${escapeAttr(boardName)}')">Distill Knowledge</button>
+        </div>`;
+        return;
+    }
+
+    knowledgeData = data;
+    renderKnowledgePanel(panel, boardName);
+}
+
+function navigateKnowledge(panel, tabName) {
+    knowledgeActiveTab = tabName;
+    panel.querySelectorAll('.knowledge-pane').forEach(p => p.classList.toggle('active', p.dataset.kpanel === tabName));
+    const title = panel.querySelector('.knowledge-nav-title');
+    const homeBtn = panel.querySelector('.knowledge-home-btn');
+    if (tabName === 'index') {
+        if (title) title.textContent = 'Overview';
+        if (homeBtn) homeBtn.style.display = 'none';
+    } else {
+        if (title) title.textContent = tabName;
+        if (homeBtn) homeBtn.style.display = '';
+    }
+}
+
+function renderKnowledgePanel(panel, boardName) {
+    const data = knowledgeData;
+    const agents = data.agents || [];
+    const agentNames = agents.map(a => a.name);
+
+    let html = '<div class="knowledge-viewer">';
+
+    // Single toolbar: Home + title on left, actions on right
+    html += `<div class="knowledge-toolbar">
+        <div class="knowledge-toolbar-left">
+            <button class="inline-preview-mode-btn knowledge-home-btn" title="Back to overview" style="display:${knowledgeActiveTab === 'index' ? 'none' : ''}"><span class="material-icons">home</span></button>
+            <span class="knowledge-nav-title">${knowledgeActiveTab === 'index' ? 'Overview' : escapeHtml(knowledgeActiveTab)}</span>
+        </div>
+        <div class="knowledge-toolbar-actions">
+            <button class="inline-preview-mode-btn knowledge-redistill-btn" onclick="distillTeamKnowledge('${escapeAttr(boardName)}')" title="Re-distill"><span class="material-icons">refresh</span></button>
+            <button class="inline-preview-mode-btn${knowledgeMode === 'preview' ? ' active' : ''}" data-kmode="preview" title="Preview"><span class="material-icons">visibility</span></button>
+            <button class="inline-preview-mode-btn${knowledgeMode === 'edit' ? ' active' : ''}" data-kmode="edit" title="Edit"><span class="material-icons">edit</span></button>
+            <button class="inline-preview-save knowledge-save-btn" style="display:${knowledgeMode === 'edit' ? '' : 'none'}">Save</button>
+        </div>
+    </div>`;
+
+    // Content area
+    html += '<div class="knowledge-content-area">';
+
+    // Index/overview panel
+    const indexContent = data.index || '*No index available*';
+    html += `<div class="knowledge-pane${knowledgeActiveTab === 'index' ? ' active' : ''}" data-kpanel="index">`;
+    html += `<div class="knowledge-preview">${renderKnowledgeMD(indexContent, agentNames)}</div>`;
+    html += `<textarea class="knowledge-editor" style="display:none">${escapeHtml(indexContent)}</textarea>`;
+    html += '</div>';
+
+    // Agent panels
+    for (const a of agents) {
+        const content = a.content || '*No knowledge available*';
+        html += `<div class="knowledge-pane${knowledgeActiveTab === a.name ? ' active' : ''}" data-kpanel="${escapeAttr(a.name)}">`;
+        html += `<div class="knowledge-preview">${renderKnowledgeMD(content, agentNames)}</div>`;
+        html += `<textarea class="knowledge-editor" style="display:none">${escapeHtml(content)}</textarea>`;
+        html += '</div>';
+    }
+
+    html += '</div></div>';
+    panel.innerHTML = html;
+
+    applyKnowledgeMode(panel);
+
+    // Home button
+    panel.querySelector('.knowledge-home-btn').onclick = () => navigateKnowledge(panel, 'index');
+
+    // Mode switching
+    panel.querySelectorAll('[data-kmode]').forEach(btn => {
+        btn.onclick = () => {
+            knowledgeMode = btn.dataset.kmode;
+            panel.querySelectorAll('[data-kmode]').forEach(b => b.classList.toggle('active', b.dataset.kmode === knowledgeMode));
+            panel.querySelector('.knowledge-save-btn').style.display = knowledgeMode === 'edit' ? '' : 'none';
+            applyKnowledgeMode(panel);
+        };
+    });
+
+    // Save
+    panel.querySelector('.knowledge-save-btn').onclick = async () => {
+        const activePane = panel.querySelector(`.knowledge-pane[data-kpanel="${knowledgeActiveTab}"]`);
+        const editor = activePane?.querySelector('.knowledge-editor');
+        if (!editor || knowledgeActiveTab === 'index') return;
+        const saveBtn = panel.querySelector('.knowledge-save-btn');
+        saveBtn.textContent = 'Saving...'; saveBtn.disabled = true;
+        try {
+            const resp = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge/${encodeURIComponent(knowledgeActiveTab)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: editor.value }),
+            });
+            const result = await resp.json();
+            if (result.ok) {
+                const agentEntry = data.agents.find(a => a.name === knowledgeActiveTab);
+                if (agentEntry) agentEntry.content = editor.value;
+                const preview = activePane.querySelector('.knowledge-preview');
+                if (preview) preview.innerHTML = renderKnowledgeMD(editor.value, agentNames);
+                saveBtn.textContent = 'Saved!';
+                setTimeout(() => { saveBtn.textContent = 'Save'; }, 1500);
+            } else {
+                saveBtn.textContent = 'Error';
+                setTimeout(() => { saveBtn.textContent = 'Save'; }, 2000);
+            }
+        } catch {
+            saveBtn.textContent = 'Error';
+            setTimeout(() => { saveBtn.textContent = 'Save'; }, 2000);
+        } finally { saveBtn.disabled = false; }
+    };
+
+    // Inter-agent link navigation
+    panel.addEventListener('click', (e) => {
+        const link = e.target.closest('a[data-knowledge-link]');
+        if (!link) return;
+        e.preventDefault();
+        const target = link.dataset.knowledgeLink;
+        if (agentNames.includes(target)) navigateKnowledge(panel, target);
+    });
+}
+
+function applyKnowledgeMode(panel) {
+    panel.querySelectorAll('.knowledge-pane').forEach(pane => {
+        const preview = pane.querySelector('.knowledge-preview');
+        const editor = pane.querySelector('.knowledge-editor');
+        if (preview) preview.style.display = knowledgeMode === 'preview' ? '' : 'none';
+        if (editor) editor.style.display = knowledgeMode === 'edit' ? '' : 'none';
+    });
+}
+
+function renderKnowledgeMD(md, agentNames = []) {
+    const slugToName = {};
+    for (const name of agentNames) {
+        slugToName[name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '')] = name;
+    }
+
+    // Use marked.js if available for better rendering
+    let text = md.replace(/^---[\s\S]*?^---\n*/m, '');
+
+    // Rewrite internal links before marked processes them
+    text = text.replace(/\[([^\]]+)\]\(\.\/([^)]+)\.md\)/g, (_, label, slug) => {
+        const target = slugToName[slug];
+        if (target) return `<a href="#" class="knowledge-link" data-knowledge-link="${escapeAttr(target)}">${escapeHtml(label)}</a>`;
+        return `<span class="knowledge-link-dead">${escapeHtml(label)}</span>`;
+    });
+
+    if (typeof marked !== 'undefined') {
+        const html = marked.parse(text);
+        const sanitized = typeof DOMPurify !== 'undefined'
+            ? DOMPurify.sanitize(html, { ADD_ATTR: ['data-knowledge-link'] })
+            : html;
+        return `<div class="knowledge-md notes-rendered">${sanitized}</div>`;
+    }
+
+    let html = text
+        .replace(/^### (.+)$/gm, '<h4 class="knowledge-h4">$1</h4>')
+        .replace(/^## (.+)$/gm, '<h3 class="knowledge-h3">$1</h3>')
+        .replace(/^# (.+)$/gm, '<h2 class="knowledge-h2">$1</h2>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/`([^`]+)`/g, '<code class="knowledge-code">$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="knowledge-link-ext" target="_blank" rel="noopener">$1</a>')
+        .replace(/^- (.+)$/gm, '<div class="knowledge-li">&#8226; $1</div>')
+        .replace(/\n\n/g, '<div class="knowledge-spacer"></div>')
+        .replace(/\n/g, '<br>');
+    return `<div class="knowledge-md">${html}</div>`;
+}
+
+export function reloadKnowledgeTab() { knowledgeLoaded = false; if (source === 'knowledge') loadKnowledgeTab(); }
+
+export async function distillKnowledgeInTab(boardName) {
+    selectSource('knowledge');
+    const panel = document.getElementById(panels.knowledge);
+    if (!panel) return;
+    knowledgeLoaded = true;
+
+    panel.innerHTML = `<div class="knowledge-empty">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spin" style="margin-bottom:8px"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        <div>Starting knowledge distillation...</div>
+        <div style="font-size:12px;margin-top:4px">This reads all agent transcripts and runs 3 passes through Claude</div>
+    </div>`;
+
+    try {
+        const resp = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/distill-knowledge`, { method: 'POST' });
+        if (!resp.ok) throw new Error('Failed to start distillation');
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const status = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/distill-knowledge`).then(r => r.json());
+                if (status.status === 'complete') {
+                    clearInterval(pollInterval);
+                    knowledgeLoaded = false;
+                    loadKnowledgeTab();
+                } else if (status.status === 'failed') {
+                    clearInterval(pollInterval);
+                    panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">
+                        Distillation failed: ${escapeHtml(status.error || 'Unknown error')}
+                        <button class="btn btn-sm" style="margin-top:12px" onclick="distillTeamKnowledge('${escapeAttr(boardName)}')">Retry</button>
+                    </div>`;
+                } else if (status.progress) {
+                    const p = status.progress;
+                    const pct = p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0;
+                    let phaseLabel = p.phase;
+                    if (p.phase === 'extracting') phaseLabel = 'Pass 1: Extracting knowledge';
+                    else if (p.phase === 'cross-referencing') phaseLabel = 'Pass 2: Cross-referencing collaboration';
+                    else if (p.phase === 'formatting') phaseLabel = 'Pass 3: Building OKF documents';
+                    const agentLabel = p.agent ? ` — ${escapeHtml(p.agent)}` : '';
+                    panel.innerHTML = `<div class="knowledge-empty">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spin" style="margin-bottom:8px"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                        <div>${phaseLabel}${agentLabel}</div>
+                        <div style="margin-top:8px;width:200px;height:4px;background:var(--bg-tertiary);border-radius:2px;display:inline-block;overflow:hidden">
+                            <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s"></div>
+                        </div>
+                        <div style="font-size:12px;margin-top:4px">${p.completed}/${p.total} agents</div>
+                    </div>`;
+                }
+            } catch { /* ignore poll errors */ }
+        }, 2000);
+    } catch (err) {
+        panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">${escapeHtml(err.message)}</div>`;
+    }
 }

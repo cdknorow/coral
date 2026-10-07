@@ -3357,12 +3357,71 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			Tools        []string               `json:"tools"`
 			MCPServers   map[string]any         `json:"mcpServers"`
 			Hooks        map[string]interface{} `json:"hooks"`
+			Knowledge    string                 `json:"knowledge"`
 		} `json:"agents"`
+		TeamKnowledgeIndex string `json:"team_knowledge_index"`
+		WorkingMode        *struct {
+			Mode               string `json:"mode"`
+			DependencyGuidance bool   `json:"dependency_guidance"`
+			CustomInstructions string `json:"custom_instructions"`
+		} `json:"working_mode"`
+		WorkflowPresets []struct {
+			ID           string `json:"id"`
+			Name         string `json:"name"`
+			Instructions string `json:"instructions"`
+			Builtin      bool   `json:"builtin"`
+		} `json:"workflow_presets"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+
+	// Write any bundled knowledge files from the template
+	if body.BoardName != "" {
+		coralDir := h.cfg.CoralDir()
+		hasKnowledge := false
+		for _, a := range body.Agents {
+			if a.Knowledge != "" {
+				background.WriteKnowledgeFile(coralDir, body.BoardName, a.Name, a.Knowledge)
+				hasKnowledge = true
+			}
+		}
+		if body.TeamKnowledgeIndex != "" {
+			background.WriteKnowledgeIndex(coralDir, body.BoardName, body.TeamKnowledgeIndex)
+			hasKnowledge = true
+		}
+		if hasKnowledge {
+			log.Printf("[launch-team] restored %d agent knowledge files for team %s", len(body.Agents), body.BoardName)
+		}
+	}
+
+	// Restore working mode settings from template
+	if body.WorkingMode != nil && h.bs != nil {
+		wm := board.WorkingMode{
+			Mode:               body.WorkingMode.Mode,
+			DependencyGuidance: body.WorkingMode.DependencyGuidance,
+			CustomInstructions: body.WorkingMode.CustomInstructions,
+		}
+		if _, err := h.bs.SetWorkingMode(r.Context(), body.BoardName, wm); err != nil {
+			log.Printf("[launch-team] failed to restore working mode for team %s: %v", body.BoardName, err)
+		} else {
+			log.Printf("[launch-team] restored working mode %q for team %s", wm.Mode, body.BoardName)
+		}
+	}
+
+	// Restore workflow presets from template
+	if len(body.WorkflowPresets) > 0 && h.bs != nil {
+		for _, p := range body.WorkflowPresets {
+			if p.Builtin {
+				h.bs.SaveWorkflowPreset(r.Context(), body.BoardName, p.ID, p.Name, p.Instructions, false)
+			} else {
+				h.bs.SaveWorkflowPreset(r.Context(), body.BoardName, p.ID, p.Name, p.Instructions, true)
+			}
+		}
+		log.Printf("[launch-team] restored %d workflow presets for team %s", len(body.WorkflowPresets), body.BoardName)
+	}
+
 	// Label the team by the effective provider of the members that will
 	// actually launch (their own type, else the team's, else the Claude
 	// fallback launchSession applies): "mixed" only when those truly differ.
@@ -3510,8 +3569,11 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 			agentFlags = append(agentFlags, "--model", effectiveModel)
 		}
 
+		// Inject distilled knowledge if available
+		agentPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), body.BoardName, agentDef.Name, agentDef.Prompt)
+
 		result, err := h.launchSession(ctx, workingDir, agentType, agentDef.Name,
-			"", agentFlags, agentDef.Prompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
+			"", agentFlags, agentPrompt, body.BoardName, body.BoardServer, body.Backend, body.BoardType, effectiveModel, agentDef.Capabilities,
 			agentDef.Tools, agentDef.MCPServers, agentDef.Hooks)
 		if err != nil {
 			log.Printf("[launch-team] failed to launch agent %s: %v", agentDef.Name, err)
@@ -5339,8 +5401,11 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 			agentType = "claude"
 		}
 
+		// Inject distilled knowledge if available
+		resurrectPrompt := InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), team.Name, m.AgentName, agentCfg.Prompt)
+
 		result, err := h.launchSession(ctx, workingDir, agentType, m.AgentName,
-			"", nil, agentCfg.Prompt, team.Name, "", "", "", agentCfg.Model, agentCfg.Capabilities,
+			"", nil, resurrectPrompt, team.Name, "", "", "", agentCfg.Model, agentCfg.Capabilities,
 			agentCfg.Tools, agentCfg.MCPServers, agentCfg.Hooks)
 		if err != nil {
 			log.Printf("[resurrect] failed to launch %s: %v", m.AgentName, err)
@@ -5505,6 +5570,11 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	flags := store.UnmarshalFlags(ls.Flags)
 	prompt := derefStrPtr(ls.Prompt)
 	boardName := derefStrPtr(ls.BoardName)
+
+	// Inject distilled knowledge on wake
+	if boardName != "" {
+		prompt = InjectKnowledgeIntoPrompt(h.cfg.CoralDir(), boardName, derefStrPtr(ls.DisplayName), prompt)
+	}
 	boardServer := derefStrPtr(ls.BoardServer)
 	backend := "tmux"
 	if ls.Backend != nil {

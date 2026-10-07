@@ -118,7 +118,7 @@ export async function showTeamWorkingMode(team, options = {}) {
         <label>Working mode<select name="mode"><option value="none">None</option><option value="shared_checkout">Shared checkout</option><option value="worktrees">Worktrees</option></select></label>
         <label><input type="checkbox" name="dependency_guidance"> Include dependent-queue guidance</label>
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
-        <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically.</p>
+        <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>
       </section>
       <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" data-settings-panel="prompts" tabindex="0" hidden>
@@ -151,6 +151,16 @@ export async function showTeamWorkingMode(team, options = {}) {
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
         dialog.showModal();
     }
+
+    dialog.addEventListener('click', event => {
+        const docLink = event.target.closest('.working-mode-docs-link');
+        if (docLink) {
+            event.preventDefault();
+            const docName = docLink.dataset.doc;
+            if (window.switchNavTab) window.switchNavTab('docs');
+            import('./docs.js').then(m => m.selectDoc(docName));
+        }
+    });
 
     const form = dialog.querySelector('form');
     const status = dialog.querySelector('[role=status]');
@@ -289,7 +299,7 @@ export async function showTeamWorkingMode(team, options = {}) {
             form.elements.custom_instructions.value = workingMode.custom_instructions || '';
             if (settingsResponse.ok) {
                 const settings = await settingsResponse.json();
-                form.elements.board_health_monitor.checked = settings.settings?.board_health_monitor === 'true';
+                form.elements.board_health_monitor.checked = settings.settings?.board_health_monitor !== 'false';
                 settingsLoaded = true;
             } else {
                 form.elements.board_health_monitor.disabled = true;

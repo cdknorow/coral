@@ -468,6 +468,13 @@ func (s *Server) buildRouter() chi.Router {
 	r.Delete("/api/teams/detail/{name}", teamsHandler.DeleteTeam)
 	r.Post("/api/teams/detail/{name}/resurrect", sessHandler.ResurrectTeam)
 
+	// Team knowledge distillation
+	r.Post("/api/teams/detail/{name}/distill-knowledge", sessHandler.DistillKnowledge)
+	r.Get("/api/teams/detail/{name}/distill-knowledge", sessHandler.GetKnowledgeStatus)
+	r.Get("/api/teams/detail/{name}/knowledge", sessHandler.GetTeamKnowledge)
+	r.Get("/api/teams/detail/{name}/knowledge/{agentName}", sessHandler.GetAgentKnowledge)
+	r.Put("/api/teams/detail/{name}/knowledge/{agentName}", sessHandler.SaveAgentKnowledge)
+
 	// Token usage
 	tokenHandler := routes.NewTokenUsageHandler(s.db)
 	r.Get("/api/token-usage", tokenHandler.ListUsage)

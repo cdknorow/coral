@@ -2176,8 +2176,12 @@ window._quickLaunchTeam = async function() {
                     if (a.flags) {
                         entry.flags = typeof a.flags === 'string' ? a.flags.split(/\s+/).filter(Boolean) : a.flags;
                     }
+                    if (a.knowledge) entry.knowledge = a.knowledge;
                     return entry;
                 }),
+                team_knowledge_index: tmpl.team_knowledge_index || '',
+                working_mode: tmpl.working_mode || null,
+                workflow_presets: tmpl.workflow_presets || null,
             }),
         });
         if (resp.status === 403) {

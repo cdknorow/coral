@@ -2647,12 +2647,12 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 .team-artifacts-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .team-artifacts-list :is(th, td) { padding: var(--space-lg); vertical-align: top; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .team-artifacts-list th { color: var(--text-secondary); font-weight: 500; }
-.team-artifact-col-name { width: 26%; }
+.team-artifact-col-name { width: 36%; }
 .team-artifact-col-type { width: 9%; }
 .team-artifact-col-size { width: 9%; }
 .team-artifact-col-task { width: 20%; }
 .team-artifact-col-created { width: 16%; }
-.team-artifact-col-actions { width: 20%; position: sticky; right: 0; background: var(--bg-secondary); box-shadow: -1px 0 var(--border); }
+.team-artifact-col-actions { width: 10%; position: sticky; right: 0; background: var(--bg-secondary); box-shadow: -1px 0 var(--border); }
 .team-artifact-name { display: block; padding: 0; background: none; border: 0; color: var(--text-primary); font: 600 var(--fs-lg)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
 button.team-artifact-name { cursor: pointer; }
 .team-artifact-task-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--text-secondary); margin-top: var(--space-xs); }
@@ -2665,13 +2665,14 @@ button.team-artifact-name { cursor: pointer; }
 /* All six columns remain reachable in the existing narrow Files pane. */
 @container (max-width: 800px) {
     .team-artifacts-scroll-hint { display: block; }
-    .team-artifacts-list .team-artifact-col-actions { width: 112px; }
+    .team-artifacts-list .team-artifact-col-actions { width: 80px; }
     .team-artifact-actions { flex-direction: column; align-items: stretch; }
 }
 .team-artifacts-more { align-self: center; margin: 12px; }
 .team-artifacts-action:disabled { opacity: 0.6; cursor: default; }
 
 .team-artifact-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
+.team-artifact-icon-btn { padding: var(--space-xs); min-width: 32px; min-height: 32px; border-radius: var(--radius-md); }
 .artifact-linked-preview { display: flex; flex-direction: column; height: 100%; min-height: 320px; }
 .artifact-linked-notice, .artifact-linked-status { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--text-secondary); }
 .artifact-linked-notice { border-bottom: 1px solid var(--border); }
@@ -2712,7 +2713,12 @@ button.team-artifact-name { cursor: pointer; }
 .explorer-item:hover, .explorer-item:focus { background: var(--bg-tertiary); }
 .explorer-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .explorer-chevron { flex: 0 0 12px; color: var(--text-secondary); }
+.explorer-file-icon { flex: 0 0 16px; }
 .explorer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.explorer-actions { display: flex; gap: 2px; margin-left: auto; flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+.explorer-item:hover .explorer-actions, .explorer-item:focus .explorer-actions { opacity: 1; }
+.explorer-action-btn { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 2px; line-height: 1; border-radius: var(--radius-sm); }
+.explorer-action-btn:hover { color: var(--accent); }
 .explorer-status { padding: 6px 12px; color: var(--text-secondary); font-size: 12px; }
 .explorer-more { margin: 6px 12px; }
 @media(max-width: 767px) {

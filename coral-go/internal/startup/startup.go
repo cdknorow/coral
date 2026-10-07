@@ -667,10 +667,10 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	}
 	boardNotifier.SeedFromDB(ctx)
 	safeGo(ctx, "board_notifier", func() { boardNotifier.Run(ctx) })
-	// Board health scanning is opt-in for now; enable it with the
-	// `board_health_monitor` user setting set to `true`.
+	// Board health scanning — enabled by default; disable with
+	// `board_health_monitor` user setting set to `false`.
 	boardSettings, _ := sessStore.GetSettings(ctx)
-	if boardSettings["board_health_monitor"] == "true" {
+	if boardSettings["board_health_monitor"] != "false" {
 		healthMonitor := background.NewBoardHealthMonitor(srv.BoardStore(), 10*time.Minute)
 		healthMonitor.SetRuntime(agentRT)
 		healthMonitor.SetIdleThresholds(time.Duration(cfg.TaskIdleReminderS)*time.Second, time.Duration(cfg.TaskIdleEscalationS)*time.Second)

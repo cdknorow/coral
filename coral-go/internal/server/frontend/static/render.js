@@ -1191,12 +1191,68 @@ function _buildTeamTemplateFromBoard(boardName) {
     return { name: boardName, agents, flags: '' };
 }
 
+async function _attachKnowledgeToTemplate(boardName, tmpl) {
+    try {
+        const resp = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge`);
+        if (!resp.ok) return tmpl;
+        const data = await resp.json();
+        if (!data.exists || !data.agents) return tmpl;
+        const knowledgeMap = {};
+        for (const a of data.agents) {
+            knowledgeMap[a.name.toLowerCase()] = a.content;
+        }
+        for (const agent of tmpl.agents) {
+            const slug = agent.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
+            if (knowledgeMap[slug]) {
+                agent.knowledge = knowledgeMap[slug];
+            }
+        }
+        if (data.index) tmpl.team_knowledge_index = data.index;
+    } catch { /* knowledge is optional */ }
+    return tmpl;
+}
+
+async function _attachWorkingModeToTemplate(boardName, tmpl) {
+    try {
+        const [modeResp, presetsResp] = await Promise.all([
+            fetch(`/api/board/${encodeURIComponent(boardName)}/working-mode`),
+            fetch(`/api/board/${encodeURIComponent(boardName)}/working-mode/presets`),
+        ]);
+        if (modeResp.ok) {
+            const mode = await modeResp.json();
+            if (mode.mode && mode.mode !== 'none') {
+                tmpl.working_mode = {
+                    mode: mode.mode,
+                    dependency_guidance: mode.dependency_guidance || false,
+                    custom_instructions: mode.custom_instructions || '',
+                };
+            }
+        }
+        if (presetsResp.ok) {
+            const data = await presetsResp.json();
+            const customPresets = (data.presets || []).filter(p => !p.builtin || p.overridden);
+            if (customPresets.length > 0) {
+                tmpl.workflow_presets = customPresets.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    instructions: p.instructions || '',
+                    builtin: p.builtin || false,
+                }));
+            }
+        }
+    } catch { /* working mode is optional */ }
+    return tmpl;
+}
+
 export async function shareAgentTeam(boardName) {
-    const tmpl = _buildTeamTemplateFromBoard(boardName);
+    let tmpl = _buildTeamTemplateFromBoard(boardName);
     if (!tmpl) {
         showToast("No agents found on this board", "error");
         return;
     }
+
+    tmpl = await _attachKnowledgeToTemplate(boardName, tmpl);
+    tmpl = await _attachWorkingModeToTemplate(boardName, tmpl);
 
     const template = {
         version: 1,
@@ -1248,11 +1304,13 @@ export async function shareAgentTeam(boardName) {
 
 export function saveTeamFromSidebar(boardName) {
     showPromptModal('Save Team Template', 'Template name', boardName, async (templateName) => {
-        const tmpl = _buildTeamTemplateFromBoard(boardName);
+        let tmpl = _buildTeamTemplateFromBoard(boardName);
         if (!tmpl) {
             showToast("No agents found on this board", "error");
             return;
         }
+        tmpl = await _attachKnowledgeToTemplate(boardName, tmpl);
+        tmpl = await _attachWorkingModeToTemplate(boardName, tmpl);
         tmpl.name = templateName;
 
         // Save to user_settings via the settings API
@@ -1812,6 +1870,10 @@ export function renderLiveSessions(sessions) {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8l2 2v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M6 3v3h4V3"/><rect x="5" y="9" width="6" height="3"/></svg>
                     Save as Template
                 </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${escapeAttr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L3 7v7h10V7L8 2z"/><path d="M6 14v-4h4v4"/><line x1="8" y1="7" x2="8" y2="10"/><line x1="6.5" y1="8.5" x2="9.5" y2="8.5"/></svg>
+                    Distill Knowledge
+                </button>
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${escapeAttr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1"/><polyline points="8 3 8 10"/><polyline points="5 6 8 3 11 6"/></svg>
                     Share Team
@@ -2075,6 +2137,10 @@ export function renderLiveSessions(sessions) {
                         <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${escapeAttr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8l2 2v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M6 3v3h4V3"/><rect x="5" y="9" width="6" height="3"/></svg>
                             Save as Template
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${escapeAttr(boardName)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L3 7v7h10V7L8 2z"/><path d="M6 14v-4h4v4"/><line x1="8" y1="7" x2="8" y2="10"/><line x1="6.5" y1="8.5" x2="9.5" y2="8.5"/></svg>
+                            Distill Knowledge
                         </button>
                         <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${escapeAttr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1"/><polyline points="8 3 8 10"/><polyline points="5 6 8 3 11 6"/></svg>
@@ -2688,6 +2754,19 @@ export async function showTeamTokenUsage(boardName) {
     }
     html += '</tbody></table>';
     content.innerHTML = html;
+}
+
+export async function distillTeamKnowledge(boardName) {
+    if (window.switchAgenticTab) window.switchAgenticTab('files', 'top');
+    const { distillKnowledgeInTab } = await import('./team_artifacts.js');
+    distillKnowledgeInTab(boardName);
+}
+
+export async function showTeamKnowledge(boardName) {
+    const { selectKnowledgeSource, reloadKnowledgeTab } = await import('./team_artifacts.js');
+    reloadKnowledgeTab();
+    selectKnowledgeSource();
+    if (window.switchAgenticTab) window.switchAgenticTab('files', 'top');
 }
 
 export function updateSessionBranch(branch, repoName) {
