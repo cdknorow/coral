@@ -321,7 +321,7 @@ export function syncFilesSourceTeam() {
     const agentChanged=nextSession!==sessionID;
     syncExplorerSession();
     if(!teamChanged&&!agentChanged)return;
-    if(teamChanged) { clear('team-artifacts'); knowledgeLoaded=false; }
+    if(teamChanged) { clear('team-artifacts'); knowledgeLoaded=false; knowledgeLoading=false; }
     if(teamChanged||agentChanged)clear('artifacts');
     team=next;sessionID=nextSession;
     render();activate();
@@ -332,6 +332,7 @@ export function selectKnowledgeSource() { selectSource('knowledge'); }
 // ── Knowledge tab ───────────────────────────────────────────────────────
 
 let knowledgeLoaded = false;
+let knowledgeLoading = false;
 let knowledgeData = null;
 let knowledgeMode = 'preview'; // 'preview' or 'edit'
 let knowledgeActiveTab = 'index';
@@ -346,7 +347,8 @@ async function loadKnowledgeTab() {
         return;
     }
     if (knowledgeLoaded) return;
-    knowledgeLoaded = true;
+    if (knowledgeLoading) return;
+    knowledgeLoading = true;
     knowledgeMode = 'preview';
     knowledgeActiveTab = 'index';
     knowledgeDirty = {};
@@ -355,6 +357,12 @@ async function loadKnowledgeTab() {
 
     const data = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge`)
         .then(r => r.ok ? r.json() : null).catch(() => null);
+
+    // If team changed while we were fetching, discard the result
+    if (boardName !== currentTeam()) { knowledgeLoading = false; return; }
+
+    knowledgeLoading = false;
+    knowledgeLoaded = true;
 
     if (!data || !data.exists) {
         panel.innerHTML = `<div class="knowledge-empty">
@@ -527,7 +535,7 @@ function renderKnowledgeMD(md, agentNames = []) {
     return `<div class="knowledge-md">${html}</div>`;
 }
 
-export function reloadKnowledgeTab() { knowledgeLoaded = false; if (source === 'knowledge') loadKnowledgeTab(); }
+export function reloadKnowledgeTab() { knowledgeLoaded = false; knowledgeLoading = false; if (source === 'knowledge') loadKnowledgeTab(); }
 
 export async function distillKnowledgeInTab(boardName) {
     selectSource('knowledge');
