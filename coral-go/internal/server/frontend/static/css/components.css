@@ -579,8 +579,6 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding-right: 4px;
-    margin-right: -8px;
 }
 
 .modal-footer {
@@ -681,8 +679,6 @@
     flex-direction: column;
     min-height: 0;
     overflow-y: auto;
-    padding-right: 4px;
-    margin-right: -8px;
 }
 
 #launch-step-chooser {

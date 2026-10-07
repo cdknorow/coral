@@ -682,6 +682,33 @@
     opacity: 0.6;
 }
 
+.sleeping-summary-row {
+    font-size: var(--fs-base);
+    color: var(--text-muted);
+    padding: 6px 8px 6px 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    border-radius: var(--radius-md);
+    margin: 2px 6px;
+}
+
+.sleeping-summary-row:hover {
+    background: var(--bg-hover);
+    color: var(--text-secondary);
+}
+
+.sleeping-summary-row svg {
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+.sleeping-summary-label {
+    font-style: italic;
+}
+
 .board-card-agents {
     list-style: none;
     padding: 0 0 4px 4px;
@@ -690,10 +717,7 @@
 }
 
 .board-card-agents .session-group-item {
-    /* Same visual offset from the card header label as folder rows have from
-       theirs; one value for top-level and nested cards (no cumulative indent
-       beyond the card's own margin). */
-    padding: 5px 10px 5px 24px !important;
+    padding: 5px 10px 5px 14px !important;
     min-height: 36px;
 }
 
@@ -775,13 +799,6 @@
     gap: 2px;
     margin-top: 1px;
     font-family: var(--font-mono);
-}
-
-.group-chevron {
-    font-size: 10px;
-    color: var(--text-muted);
-    flex-shrink: 0;
-    width: 10px;
 }
 
 .group-kebab .sidebar-kebab-btn {
@@ -886,7 +903,7 @@
     --row-dot-block: 16px;
     /* Rows are inset rounded tiles: 6px side margins, so the padding shrinks
        by the same amount to keep the name at the task #155 indent. */
-    padding: 5px 4px 5px 26px !important;
+    padding: 5px 4px 5px 14px !important;
     margin-left: 6px;
     margin-right: 6px;
     border-radius: 6px;
@@ -1483,7 +1500,6 @@
 }
 
 .session-board-card.team-sleeping .group-header-text,
-.session-board-card.team-sleeping .group-chevron,
 .session-board-card.team-sleeping .group-board-link,
 .session-board-card.team-sleeping .board-card-agents {
     color: var(--text-muted);
