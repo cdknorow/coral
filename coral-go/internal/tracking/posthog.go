@@ -142,6 +142,7 @@ func standardProps() map[string]any {
 		"edition":        config.TierName,
 		"os":             runtime.GOOS,
 		"arch":           runtime.GOARCH,
+		"platform":       clientPlatform(),
 		"schema_version": SchemaVersion,
 		"run_id":         runID,
 		"entrypoint":     entrypointName(),

@@ -36,6 +36,7 @@ var StandardProperties = []string{
 	"edition — the build tier (prod, beta, dev)",
 	"os — your operating system (darwin, linux, windows)",
 	"arch — your CPU architecture (amd64, arm64)",
+	"platform — your client platform (darwin, linux, windows, wsl2)",
 	"schema_version — the version of this event format",
 	"run_id — a random ID for this run of Coral, new every time it starts (not your install ID)",
 	"entrypoint — which Coral program is running (coral, coral-tray, launch-coral)",

@@ -12,7 +12,7 @@ import (
 
 // SchemaVersion identifies the event/property contract. Bump it when an event
 // or property changes meaning so downstream analysis can tell the versions apart.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // runID is generated once per server process. It is random, never persisted
 // and unrelated to the install ID, so it can group one run's events without
