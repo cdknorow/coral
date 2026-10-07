@@ -153,19 +153,16 @@ jobs:
           }
 
       - name: Install WiX and build MSI
-        env:
-          WIX_OSMF_ACCEPT: "1"
         run: |
-          $env:WIX_OSMF_ACCEPT = "1"
-          dotnet tool install --global wix
-          wix extension add WixToolset.UI.wixext
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add WixToolset.UI.wixext/5.0.2
           $version = "${{ github.ref_name }}" -replace "^v", ""
           if (-not ($version -match "^\d+\.\d+\.\d+")) { $version = "0.0.0" }
           $binDir = (Resolve-Path "dist\windows\bin").Path
           $buildDir = (Resolve-Path "dist\windows").Path
           Copy-Item "tools\license.rtf" $buildDir
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build -acceptEula wix7 tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
+          wix build tools\coral.wxs -ext WixToolset.UI.wixext -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
