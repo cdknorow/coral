@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -141,6 +142,14 @@ func inferRole(prompt string) string {
 
 // DistillTeamKnowledge runs the three-pass knowledge distillation pipeline for a team.
 func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store.TeamStore, teamName, coralDir string, progressFn func(DistillProgress)) (*KnowledgeBundle, error) {
+	claudePath, err := checkClaudeCLI(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	settings, _ := ss.GetSettings(ctx)
+	callTimeout := knowledgeCallTimeoutFromSettings(settings)
+
 	bundle := &KnowledgeBundle{
 		TeamName:  teamName,
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
@@ -219,7 +228,7 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 			concept.Pass1Raw = "No session transcript available for this agent."
 		} else {
 			prompt := fmt.Sprintf(pass1Prompt, a.name, a.role)
-			result, err := callClaudeForKnowledge(ctx, prompt, a.transcript)
+			result, err := callClaudeForKnowledge(ctx, claudePath, callTimeout, prompt, a.transcript)
 			if err != nil {
 				concept.Pass1Raw = fmt.Sprintf("*Knowledge extraction failed: %v*", err)
 			} else {
@@ -242,7 +251,7 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 	}
 
 	collabPrompt := fmt.Sprintf(pass2Prompt, teamName, agentSummaries.String())
-	collabResult, err := callClaudeForKnowledge(ctx, collabPrompt, "")
+	collabResult, err := callClaudeForKnowledge(ctx, claudePath, callTimeout, collabPrompt, "")
 	if err != nil {
 		collabResult = fmt.Sprintf("*Collaboration analysis failed: %v*", err)
 	}
@@ -272,7 +281,7 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 			tags, now,
 			concept.Pass1Raw, collabResult)
 
-		result, err := callClaudeForKnowledge(ctx, prompt, "")
+		result, err := callClaudeForKnowledge(ctx, claudePath, callTimeout, prompt, "")
 		if err != nil {
 			// Fallback: assemble OKF manually from pass1+pass2
 			concept.FinalMD = assembleOKFFallback(a.name, a.role, teamName, now, concept.Pass1Raw, collabResult)
@@ -368,16 +377,52 @@ func WriteKnowledgeIndex(coralDir, teamName, content string) error {
 	return os.WriteFile(filepath.Join(dir, "index.md"), []byte(content), 0644)
 }
 
-// callClaudeForKnowledge calls Claude with a system prompt and optional content.
-func callClaudeForKnowledge(ctx context.Context, systemPrompt, content string) (string, error) {
+const (
+	// defaultKnowledgeCallTimeout is the maximum time a single Claude CLI
+	// call may run during knowledge distillation.
+	defaultKnowledgeCallTimeout = 2 * time.Minute
+
+	// KnowledgeTimeoutSettingKey is the user setting for the per-call
+	// timeout in seconds. Minimum 30s.
+	KnowledgeTimeoutSettingKey = "knowledge_timeout_s"
+)
+
+// knowledgeCallTimeoutFromSettings resolves the per-call timeout from user
+// settings. Falls back to the default when unset or invalid.
+func knowledgeCallTimeoutFromSettings(settings map[string]string) time.Duration {
+	raw := strings.TrimSpace(settings[KnowledgeTimeoutSettingKey])
+	if raw == "" {
+		return defaultKnowledgeCallTimeout
+	}
+	secs, err := strconv.Atoi(raw)
+	if err != nil || secs < 30 {
+		return defaultKnowledgeCallTimeout
+	}
+	return time.Duration(secs) * time.Second
+}
+
+// checkClaudeCLI verifies the Claude CLI is installed and can run
+// non-interactively. Returns the path or an error.
+func checkClaudeCLI(ctx context.Context) (string, error) {
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
-		return "", fmt.Errorf("claude CLI not found")
+		return "", fmt.Errorf("claude CLI not found in PATH")
 	}
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := executil.Command(checkCtx, claudePath, "--version")
+	setSysProcAttr(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("claude CLI not ready (may need authentication): %s", strings.TrimSpace(string(out)))
+	}
+	return claudePath, nil
+}
 
+// callClaudeForKnowledge calls Claude with a system prompt and optional content.
+func callClaudeForKnowledge(ctx context.Context, claudePath string, timeout time.Duration, systemPrompt, content string) (string, error) {
 	input := systemPrompt
 	if content != "" {
-		// Truncate content if needed
 		if len(content) > maxKnowledgeTranscriptChars {
 			half := maxKnowledgeTranscriptChars / 2
 			content = content[:half] + "\n\n[... middle of transcript truncated ...]\n\n" + content[len(content)-half:]
@@ -385,14 +430,25 @@ func callClaudeForKnowledge(ctx context.Context, systemPrompt, content string) (
 		input = systemPrompt + "\n\n---\n\nSession transcript:\n\n" + content
 	}
 
-	cmd := executil.Command(ctx, claudePath,
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := executil.Command(callCtx, claudePath,
 		"--print",
 		"--model", "sonnet",
 		"--no-session-persistence",
 		input,
 	)
-	out, err := cmd.Output()
+	setSysProcAttr(cmd)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		detail := strings.TrimSpace(string(out))
+		if callCtx.Err() == context.DeadlineExceeded {
+			return "", fmt.Errorf("claude CLI timed out after %v (may need authentication)", timeout)
+		}
+		if detail != "" {
+			return "", fmt.Errorf("claude CLI failed: %w: %s", err, detail)
+		}
 		return "", fmt.Errorf("claude CLI failed: %w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
