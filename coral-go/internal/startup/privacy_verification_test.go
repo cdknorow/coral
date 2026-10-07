@@ -27,7 +27,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_Disabled(t *testing.T) {
 		Port: 8420,
 	}
 
-	applyPrivacySettings(ctx, db, cfg)
+	applyPrivacySettings(ctx, db, cfg, false, nil)
 	assert.Equal(t, "127.0.0.1", cfg.Host, "disabling remote access must force host to 127.0.0.1")
 }
 
@@ -43,7 +43,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_OptIn(t *testing.T) {
 	hostFor := func(t *testing.T, db *store.DB, host string) string {
 		t.Helper()
 		cfg := &config.Config{Host: host, Port: 8420}
-		applyPrivacySettings(ctx, db, cfg)
+		applyPrivacySettings(ctx, db, cfg, false, nil)
 		return cfg.Host
 	}
 
@@ -75,7 +75,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_UnreadableSettingsFailCl
 	require.NoError(t, db.Close())
 
 	cfg := &config.Config{Host: "0.0.0.0", Port: 8420}
-	applyPrivacySettings(context.Background(), db, cfg)
+	applyPrivacySettings(context.Background(), db, cfg, false, nil)
 	assert.Equal(t, "127.0.0.1", cfg.Host)
 }
 
@@ -92,6 +92,6 @@ func TestVerification_ApplyPrivacySettings_Telemetry_FailsClosed(t *testing.T) {
 	cfg := &config.Config{Host: "0.0.0.0"}
 
 	// Must not panic, must fail-closed on DB error
-	applyPrivacySettings(ctx, db, cfg)
+	applyPrivacySettings(ctx, db, cfg, false, nil)
 	assert.Equal(t, "127.0.0.1", cfg.Host, "an unreadable opt-in must fail closed to a local-only bind")
 }

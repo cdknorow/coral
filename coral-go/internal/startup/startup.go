@@ -53,6 +53,16 @@ type Options struct {
 	// UnlockSurface describes the entry point's available secure prompt.
 	// Empty means headless/no prompt.
 	UnlockSurface string
+
+	// RemoteAccess, when true, skips the loopback restriction so the server
+	// binds the configured host even without a persisted remote_access_enabled
+	// setting. Equivalent to passing --remote on the command line.
+	RemoteAccess bool
+
+	// RemoteAccessPrompt, when set, is called on first launch (before the
+	// remote_access_enabled setting exists) to ask the user whether to allow
+	// remote connections. It returns true to enable remote access.
+	RemoteAccessPrompt func() bool
 }
 
 // RunningServer holds all resources created during startup.
@@ -252,7 +262,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return nil, fmt.Errorf("failed to open board database: %w", err)
 	}
 	boardProbe.Close()
-	applyPrivacySettings(ctx, db, cfg)
+	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
 
 	// Bind the port now and keep the listener open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve).
@@ -326,17 +336,32 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 // "true". A missing, unreadable or any other value binds local-only, and the
 // change is restart-applied. Telemetry is independently applied to the
 // tracking package and never affects essential server behavior.
-func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config) {
+func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config, forceRemote bool, remotePrompt func() bool) {
 	// Fail closed for telemetry if settings cannot be read during startup.
 	tracking.SetTelemetryEnabled(false)
-	settings, err := store.NewSessionStore(db).GetSettings(ctx)
+	ss := store.NewSessionStore(db)
+	settings, err := ss.GetSettings(ctx)
 	if err != nil {
-		// Fail closed for the bind too: never widen exposure because the
-		// opt-in could not be read.
-		restrictToLoopback(cfg, "settings unreadable")
+		if !forceRemote {
+			// Fail closed for the bind too: never widen exposure because the
+			// opt-in could not be read.
+			restrictToLoopback(cfg, "settings unreadable")
+		}
 		return
 	}
-	if !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "true") {
+	// On first launch the setting doesn't exist yet — prompt the user.
+	if _, configured := settings["remote_access_enabled"]; !configured && remotePrompt != nil {
+		enabled := remotePrompt()
+		value := "false"
+		if enabled {
+			value = "true"
+		}
+		if err := ss.SetSetting(ctx, "remote_access_enabled", value); err != nil {
+			log.Printf("[startup] failed to save remote_access_enabled: %v", err)
+		}
+		settings["remote_access_enabled"] = value
+	}
+	if !forceRemote && !strings.EqualFold(strings.TrimSpace(settings["remote_access_enabled"]), "true") {
 		restrictToLoopback(cfg, "remote access is not enabled")
 	}
 	tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false"))

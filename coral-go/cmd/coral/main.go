@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
 
@@ -66,6 +68,7 @@ func main() {
 		defaultBackend = "pty"
 	}
 	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
+	remoteAccess := flag.Bool("remote", false, "Allow remote (non-loopback) connections without requiring the saved setting")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {
@@ -131,9 +134,11 @@ func main() {
 	defer stop()
 
 	rs, err := startup.Start(ctx, cfg, startup.Options{
-		BackendType:    *backendFlag,
-		PasswordPrompt: promptDatabasePassword,
-		UnlockSurface:  "tty",
+		BackendType:        *backendFlag,
+		PasswordPrompt:     promptDatabasePassword,
+		UnlockSurface:      "tty",
+		RemoteAccess:       *remoteAccess,
+		RemoteAccessPrompt: promptRemoteAccess,
 	})
 	if err != nil {
 		log.Fatalf("Failed to start: %v", err)
@@ -240,6 +245,30 @@ func runEncryptionSelfTest() error {
 		return fmt.Errorf("encrypted board test check failed: %v", err)
 	}
 	return nil
+}
+
+func promptRemoteAccess() bool {
+	fmt.Println()
+	fmt.Println("  Remote Access")
+	fmt.Println("  ─────────────")
+	fmt.Println("  Allow connections from other devices on your network (phones, tablets, etc.)?")
+	fmt.Println()
+	fmt.Println("  Note: If you're running inside WSL2, you'll need to either enable remote")
+	fmt.Println("  access here or set up port forwarding from Windows to reach the dashboard.")
+	fmt.Println()
+	fmt.Print("  Enable remote access? [y/N]: ")
+	scanner := bufio.NewScanner(os.Stdin)
+	if scanner.Scan() {
+		answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
+		if answer == "y" || answer == "yes" {
+			fmt.Println("  Remote access enabled. You can change this later in Settings > Privacy.")
+			fmt.Println()
+			return true
+		}
+	}
+	fmt.Println("  Remote access disabled. You can change this later in Settings > Privacy.")
+	fmt.Println()
+	return false
 }
 
 func promptDatabasePassword() (string, error) {
