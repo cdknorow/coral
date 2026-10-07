@@ -157,13 +157,14 @@ jobs:
         env:
           WIX_OSMF_ACCEPT: "1"
         run: |
+          $env:WIX_OSMF_ACCEPT = "1"
           dotnet tool install --global wix
           $version = "${{ github.ref_name }}" -replace "^v", ""
           if (-not ($version -match "^\d+\.\d+\.\d+")) { $version = "0.0.0" }
           $binDir = (Resolve-Path "dist\windows\bin").Path
           $buildDir = (Resolve-Path "dist\windows").Path
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build tools\coral.wxs -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
+          wix build tools\coral.wxs -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath --accept-osmf
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
