@@ -6,7 +6,7 @@
 /* ── Titlebar ─────────────────────────────────────────────── */
 
 .native-windows .top-bar {
-    padding-right: 140px;               /* Space for min/max/close buttons */
+    padding-right: 12px;
 }
 
 /* ── Font Rendering ───────────────────────────────────────── */
