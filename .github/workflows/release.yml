@@ -164,7 +164,7 @@ jobs:
           $binDir = (Resolve-Path "dist\windows\bin").Path
           $buildDir = (Resolve-Path "dist\windows").Path
           $msiPath = Join-Path $buildDir "Coral-$version-x64.msi"
-          wix build tools\coral.wxs -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath --accept-osmf
+          wix build -acceptEula wix7 tools\coral.wxs -d "Version=$version" -d "BinDir=$binDir" -d "BuildDir=$buildDir" -o $msiPath
           echo "MSI_PATH=$msiPath" >> $env:GITHUB_ENV
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
