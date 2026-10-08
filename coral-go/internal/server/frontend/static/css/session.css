@@ -682,13 +682,14 @@
     opacity: 0.6;
 }
 
-.sleeping-summary-row {
+.session-list .sleeping-summary-row {
     font-size: var(--fs-base);
     color: var(--text-muted);
-    padding: 6px 8px 6px 10px;
+    /* The moon sits where an agent's status dot does and the label where its name does. */
+    padding: 6px 8px 6px 3px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     cursor: pointer;
     user-select: none;
     border-radius: var(--radius-md);
