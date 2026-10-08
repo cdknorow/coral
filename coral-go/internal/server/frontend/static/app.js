@@ -3,6 +3,7 @@ import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded,
 import { initAgentUI } from './agent_ui.js';
 import { showTeamWorkingMode, showTeamWorkingModeWorkspace } from './team_working_mode.js';
 import { showTeamAvailability, showTeamAvailabilityWorkspace } from './team_availability.js';
+import { enterTeamContext, exitTeamContext, renderTeamSettingsTab } from './team_context.js';
 /* Coral Dashboard — Entry Point */
 
 import { state, sessionKey, saveSessionDraft } from './state.js';
@@ -480,6 +481,7 @@ Object.assign(window, {
     copyFolderPath, killBoard, dismissBoardKilled, setBoardAccentColor, resetTeam,
     moveSessionUp, moveSessionDown,
     toggleTeamSleep, toggleAgentSleep, sleepAllAgents, wakeAllAgents,
+    enterTeamContext, exitTeamContext, renderTeamSettingsTab,
     showTeamDetails, hideTeamDetails, buildSessionTooltip, showTeamAvailability, showTeamAvailabilityWorkspace, showTeamWorkingMode, showTeamWorkingModeWorkspace,
     shareAgentTeam, saveTeamFromSidebar, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge,
     showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal,
@@ -1020,8 +1022,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const workspaceTeam = decodeURIComponent(workspaceMatch[2]);
             const restoreWorkspace = () => {
                 if (!document.getElementById('agentic-state')) return setTimeout(restoreWorkspace, 250);
-                if (workspaceMatch[1] === 'settings') showTeamWorkingModeWorkspace(workspaceTeam, { restore: true });
-                else showTeamAvailabilityWorkspace(workspaceTeam, { restore: true });
+                enterTeamContext(workspaceTeam, { tab: workspaceMatch[1] === 'settings' ? 'team-settings' : undefined, restore: true });
             };
             setTimeout(restoreWorkspace, 250);
         }

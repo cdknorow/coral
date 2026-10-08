@@ -16,6 +16,8 @@ function cancel(cache) { cache.controller?.abort(); ++cache.generation; cache.bu
 function clear(scope) { cancel(caches[scope]); caches[scope]=fresh(); }
 
 function currentTeam() {
+    // A selected team (team context) wins over the selected agent's team.
+    if (state.selectedTeam) return state.selectedTeam;
     return state.currentSession?.type === 'live' ? state.currentSession.board_project || null : null;
 }
 
@@ -216,32 +218,6 @@ async function load(append = false) {
     }
 }
 
-export function isOrchestratorSession(session) {
-    if (!session) return false;
-    const name = (session.display_name || '').toLowerCase();
-    const title = (session.board_job_title || '').toLowerCase();
-    return name.includes('orchestrator') || title.includes('orchestrator');
-}
-
-// The orchestrator gets the team-wide views; every other agent keeps its own
-// artifacts. Keeps the tab strip short.
-function hiddenSources() {
-    const orchestrator = !!currentTeam() && isOrchestratorSession(state.currentSession);
-    return orchestrator ? ['artifacts'] : ['team-artifacts', 'knowledge'];
-}
-
-function updateTeamTabVisibility() {
-    const hidden = hiddenSources();
-    for (const name of ['artifacts', 'team-artifacts', 'knowledge']) {
-        const btn = document.getElementById(`agentic-tab-${name}`);
-        if (btn) btn.style.display = hidden.includes(name) ? 'none' : '';
-    }
-    if (hidden.includes(source)) {
-        source = 'files';
-        window.switchAgenticTab?.('files', 'top');
-    }
-}
-
 function activate() {
     if(source==='browse') showExplorer();
     else if(source==='knowledge') loadKnowledgeTab();
@@ -258,7 +234,7 @@ export function selectFilesSource(next) {
 export function initFilesSourcePicker(onPreview, onFilePreview) {
     previewArtifact=onPreview; previewFile=onFilePreview;
     mountExplorer(previewFile);
-    syncFilesSourceTeam();updateTeamTabVisibility();render();activate();
+    syncFilesSourceTeam();render();activate();
 }
 
 export function syncFilesSourceTeam() {
@@ -267,7 +243,6 @@ export function syncFilesSourceTeam() {
     const teamChanged=next!==team;
     const agentChanged=nextSession!==sessionID;
     syncExplorerSession();
-    updateTeamTabVisibility();
     if(!teamChanged&&!agentChanged)return;
     if(teamChanged) { clear('team-artifacts'); knowledgeLoaded=false; knowledgeLoading=false; }
     if(teamChanged||agentChanged)clear('artifacts');

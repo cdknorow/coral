@@ -12,7 +12,7 @@ let _liveCosts = {};
 export function startBoardTaskPoll() {
     stopBoardTaskPoll();
     // Load agent tasks + board tasks immediately, then poll board tasks every 10s
-    if (state.currentSession && state.currentSession.type === 'live') {
+    if (!state.selectedTeam && state.currentSession && state.currentSession.type === 'live') {
         loadAgentTasks(state.currentSession.name, state.currentSession.session_id);
     }
     // Subagents are loaded by the poll below, every tick: their status and
@@ -29,6 +29,12 @@ export function stopBoardTaskPoll() {
 }
 
 async function _pollBoardTasksOnce() {
+    // A selected team shows that team's board tasks, even with no agent selected.
+    if (state.selectedTeam) {
+        await loadBoardTasks(state.selectedTeam);
+        _fetchLiveCosts(state.selectedTeam);
+        return;
+    }
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     loadSubagents(state.currentSession.name, state.currentSession.session_id);
     const boardProject = state.currentSession.board_project || state.currentSession.name;
@@ -599,7 +605,7 @@ export function renderBoardTaskList() {
         // Drop the previous agent's rows too; hiding alone leaves them in the DOM.
         const countEl = document.getElementById('task-bar-count');
         if (countEl) countEl.textContent = '';
-        const live = state.currentSession && state.currentSession.type === 'live';
+        const live = state.selectedTeam || (state.currentSession && state.currentSession.type === 'live');
         if (!live) {
             if (section) section.style.display = 'none';
             container.innerHTML = '';
@@ -611,7 +617,9 @@ export function renderBoardTaskList() {
         if (headerLabel) headerLabel.textContent = 'Tasks';
         const toggle = document.getElementById('board-task-hide-toggle-container');
         if (toggle) toggle.innerHTML = '';
-        container.innerHTML = '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>';
+        container.innerHTML = state.selectedTeam
+            ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
+            : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>';
         return;
     }
     if (section) section.style.display = '';
@@ -666,7 +674,7 @@ export function renderBoardTaskList() {
             : t.status === 'completed'
             ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
             : t.status === 'review_pending'
-            ? statusWrap('blocked', 'Open · Review pending', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review pending</b>')
+            ? statusWrap('blocked', 'Open · Review pending', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', '<b>Review</b>')
             : t.workflow?.completion_review && t.status === 'in_progress'
             ? statusWrap('blocked', 'Open · Review requested', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review requested</b>')
             : t.status === 'in_progress'
@@ -969,10 +977,12 @@ async function _createSoloAgentTask(title, body, errEl) {
 // An agent that is not on a team board: tasks created for it are agent
 // tasks (its own list in Coral), not board tasks.
 function _isSoloAgent() {
+    if (state.selectedTeam) return false;
     return !!state.currentSession && state.currentSession.type === 'live' && !state.currentSession.board_project;
 }
 
 function _getBoardProject() {
+    if (state.selectedTeam) return state.selectedTeam;
     if (!state.currentSession) return null;
     return state.currentSession.board_project || state.currentSession.name;
 }

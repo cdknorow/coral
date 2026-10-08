@@ -371,10 +371,12 @@ export function switchAgenticTab(tabName, blockId) {
     const activePanel = document.getElementById(`agentic-panel-${tabName}`);
     if (activePanel) activePanel.classList.add('active');
 
-    // Persist tab choice per block
-    if (blockId) {
+    // Persist tab choice per block (team-only tabs only exist while a team is selected)
+    if (blockId && activeBtn?.dataset.scope !== 'team') {
         localStorage.setItem(`coral-agentic-tab-${blockId}`, tabName);
     }
+
+    if (tabName === 'team-settings') window.renderTeamSettingsTab?.();
 
     if (tabName === 'agent-ui') refreshAgentUI();
 

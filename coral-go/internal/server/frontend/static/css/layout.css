@@ -1122,3 +1122,6 @@ body.panel-dragging .sidebar {
     padding-bottom: 6px !important;
 }
 .sidebar-collapse-btn.active { color: var(--accent); }
+
+/* Agent counts on team, folder and sub-group headers are hidden. */
+.sidebar .session-group-count { display: none; }

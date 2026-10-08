@@ -1,10 +1,8 @@
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
-import { closeTeamWorkspace } from './team_working_mode.js';
 
 const availabilityCache = new Map();
 const availabilityFetchedAt = new Map();
-let _teamViewHistoryListener = false;
 
 export function getCachedAgentAvailability(session) {
     if (!session) return null;
@@ -43,40 +41,23 @@ export function showTeamAvailability(team, options = {}) {
     document.getElementById('team-availability-dialog')?.close();
     document.getElementById('team-availability-dialog')?.remove();
     document.getElementById('team-availability-workspace')?.remove();
-    if (workspaceMode) {
-        // Team actions may be launched while another right-hand pane is active
-        // or no agent is selected; activate the shared board pane first.
-        window.switchAgenticTab?.('board', 'top');
-        closeTeamWorkspace({ restoreBoard: false, goBack: false });
-        document.getElementById('agentic-state')?.classList.add('team-settings-workspace-active');
-        const route = `#team-view=${encodeURIComponent(team)}`;
-        if (options.restore) history.replaceState({ coralTeamSettings: true, workspace: 'view', team }, '', route);
-        else history.pushState({ coralTeamSettings: true, workspace: 'view', team }, '', route);
-    } else closeTeamWorkspace({ restoreBoard: false, goBack: false });
     const dialog = document.createElement(workspaceMode ? 'section' : 'dialog');
     dialog.id = workspaceMode ? 'team-availability-workspace' : 'team-availability-dialog';
     dialog.className = workspaceMode ? 'team-settings-workspace team-view-workspace' : 'team-availability-dialog';
     dialog.setAttribute('aria-labelledby', 'availability-title');
     const actions = workspaceMode
-        ? `<div class="team-settings-workspace-actions"><button type="button" class="team-settings-back" aria-label="Back to board">Back to board</button><button type="button" class="team-settings-close" aria-label="Close team view">×</button></div>`
+        ? ''  // sidebar panel: the team context owns navigation
         : '<button type="button" aria-label="Close team view">×</button>';
     dialog.innerHTML = `<header><div><h2 id="availability-title">Team view</h2><p>${escapeHtml(team)}</p></div>${actions}</header>
         <div class="availability-toolbar"><span>Team details, observed activity, and assigned work</span><button type="button">Refresh</button></div>
         <div class="availability-content" aria-live="polite"></div>`;
     if (workspaceMode) {
-        document.getElementById('agentic-state')?.append(dialog);
-        if (!_teamViewHistoryListener) {
-            window.addEventListener('popstate', () => {
-                if (history.state?.coralTeamSettings && history.state.workspace === 'view' && !document.getElementById('team-availability-workspace')) {
-                    showTeamAvailabilityWorkspace(history.state.team, { restore: true });
-                } else if (!history.state?.coralTeamSettings) closeTeamWorkspace({ restoreBoard: false, goBack: false });
-            });
-            _teamViewHistoryListener = true;
-        }
-        dialog.querySelector('.team-settings-back').onclick = () => closeTeamWorkspace({ restoreBoard: true });
-        dialog.querySelector('.team-settings-close').onclick = () => closeTeamWorkspace();
+        // Rendered into the sidebar's Team View tab (see team_context.js).
+        const host = document.getElementById('agentic-panel-team-view');
+        if (!host) return;
+        host.replaceChildren(dialog);
     } else document.body.append(dialog);
-    const close = dialog.querySelector('header button');
+    const close = dialog.querySelector('header button'); // modal mode only
     const refresh = dialog.querySelector('.availability-toolbar button');
     const content = dialog.querySelector('.availability-content');
     if (!workspaceMode) {
@@ -129,8 +110,9 @@ export function showTeamAvailability(team, options = {}) {
     load();
 }
 
+/** Open the team: Team view in the center and the team tabs in the sidebar. */
 export function showTeamAvailabilityWorkspace(team, options = {}) {
-    return showTeamAvailability(team, { workspace: true, restore: options.restore });
+    return import('./team_context.js').then(m => m.enterTeamContext(team, { restore: options.restore }));
 }
 
 window.remindAgent = async (team, subscriber, existing = null) => {

@@ -123,6 +123,8 @@
                                 </button>
                             </div>
                         </div>
+                        <!-- Team group chat: covers the chat/terminal while a team is selected -->
+                        <section id="team-center-view" class="team-center-view" hidden></section>
                     </div>
                     <!-- Preview pane docked as a full-height column (toggle in the tab bar) -->
                     <div class="task-bar-resize-handle preview-column-resize-handle" id="preview-column-resize-handle" style="display:none"></div>
@@ -138,20 +140,26 @@
                                 <button class="agentic-tab" onclick="switchAgenticTab('board', 'top')" id="agentic-tab-board" title="Board Chat — team message board" aria-label="Board Chat" style="display:none">
                                     <span class="material-icons">forum</span>
                                 </button>
-                                <button class="agentic-tab active" onclick="switchAgenticTab('files', 'top')" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
+                                <button class="agentic-tab active" onclick="switchAgenticTab('files', 'top')" data-scope="agent" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
                                     <span class="material-icons">description</span>
                                     <span class="agentic-tab-count" id="files-bar-count"></span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('browse', 'top')" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
+                                <button class="agentic-tab" onclick="switchAgenticTab('browse', 'top')" data-scope="agent" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
                                     <span class="material-icons">folder_open</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('artifacts', 'top')" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
+                                <button class="agentic-tab" onclick="switchAgenticTab('artifacts', 'top')" data-scope="agent" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
                                     <span class="material-icons">inventory_2</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('team-artifacts', 'top')" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts" style="display:none">
+                                <button class="agentic-tab" data-scope="team" onclick="switchAgenticTab('team-view', 'top')" id="agentic-tab-team-view" title="Team View — agent availability and assigned work" aria-label="Team View">
+                                    <span class="material-icons">dashboard</span>
+                                </button>
+                                <button class="agentic-tab" data-scope="team" onclick="switchAgenticTab('team-settings', 'top')" id="agentic-tab-team-settings" title="Team Settings — workflow, working mode and prompts" aria-label="Team Settings">
+                                    <span class="material-icons">tune</span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('team-artifacts', 'top')" data-scope="team" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts">
                                     <span class="material-icons">groups</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('knowledge', 'top')" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge" style="display:none">
+                                <button class="agentic-tab" onclick="switchAgenticTab('knowledge', 'top')" data-scope="team" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge">
                                     <span class="material-icons">psychology</span>
                                 </button>
                                 <button class="agentic-tab" onclick="switchAgenticTab('tasks', 'top')" id="agentic-tab-tasks" title="Tasks — agent task list and progress" aria-label="Tasks">
@@ -162,10 +170,10 @@
                                     <span class="material-icons">edit_note</span>
                                     <span class="agentic-tab-count" id="note-bar-count"></span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('activity', 'top')" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
+                                <button class="agentic-tab" onclick="switchAgenticTab('activity', 'top')" data-scope="agent" id="agentic-tab-activity" title="Activity — tool use and event timeline" aria-label="Activity">
                                     <span class="material-icons">timeline</span>
                                 </button>
-                                <button class="agentic-tab" onclick="switchAgenticTab('agent-ui', 'top')" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
+                                <button class="agentic-tab" onclick="switchAgenticTab('agent-ui', 'top')" data-scope="agent" id="agentic-tab-agent-ui" title="Agent UI" aria-label="Agent UI">
                                     <span class="material-icons">widgets</span><span class="agentic-tab-count" id="agent-ui-count"></span>
                                 </button>
                                 <!-- Custom view tabs (disabled for now) -->
@@ -195,6 +203,8 @@
                                 </div>
                                 <div id="file-explorer-view" class="file-explorer-view"></div>
                             </div>
+                            <div id="agentic-panel-team-view" class="agentic-panel"></div>
+                            <div id="agentic-panel-team-settings" class="agentic-panel"></div>
                             <div id="agentic-panel-artifacts" class="agentic-panel"><div id="agentic-panel-artifacts-view" class="team-artifacts-view"></div></div>
                             <div id="agentic-panel-team-artifacts" class="agentic-panel"><div id="agentic-panel-team-artifacts-view" class="team-artifacts-view"></div></div>
                             <div id="agentic-panel-knowledge" class="agentic-panel"><div id="team-knowledge-view" class="team-knowledge-view"></div></div>

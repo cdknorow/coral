@@ -1425,9 +1425,21 @@ function _shortPath(fullPath, segments = 2) {
     return '…/' + parts.slice(-segments).join('/');
 }
 
+/** First row of a team group: opens the team (group chat in the center, team tabs in the sidebar). */
+function _teamRow(boardName) {
+    const selected = state.selectedTeam === boardName;
+    return `<li class="session-group-item team-row${selected ? ' active' : ''}" tabindex="0" data-team-row="${escapeAttr(boardName)}"
+        aria-label="Team ${escapeAttr(boardName)}"${selected ? ' aria-current="true"' : ''} onclick="enterTeamContext('${escapeAttr(boardName)}')">
+        <div class="session-info"><div class="session-name-row">
+            <span class="material-icons team-row-icon" aria-hidden="true">dashboard</span>
+            <span class="session-label"><span class="session-label-name">Team</span></span>
+        </div></div>
+    </li>`;
+}
+
 function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
     const dotClass = getDotClass(s);
-    const isActive = state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
+    const isActive = !state.selectedTeam && state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
 
     // Spec: remove agent type from the default row layout
     const typeTag = "";
@@ -2115,7 +2127,7 @@ export function renderLiveSessions(sessions) {
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
                 <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
             </div>
-            <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
+            <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">${_teamRow(boardName)}`;
 
         // Apply saved order, then always pin orchestrator to top
         const orderedBoard = _sortByOrder(boardSessions);
@@ -2370,7 +2382,7 @@ export function renderLiveSessions(sessions) {
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
                         <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}${bKebab}
                     </div>
-                    <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
+                    <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">${_teamRow(boardName)}`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
                 orderedBoardNested.sort((a, b) => {
                     const aOrch = (a.display_name || a.board_job_title || '').toLowerCase().includes('orchestrator');
@@ -2950,15 +2962,15 @@ export async function showTeamTokenUsage(boardName) {
 }
 
 export async function distillTeamKnowledge(boardName) {
-    if (window.switchAgenticTab) window.switchAgenticTab('knowledge', 'top');
+    if (window.enterTeamContext) await window.enterTeamContext(boardName, { tab: 'knowledge' });
     const { distillKnowledgeInTab } = await import('./team_artifacts.js');
     distillKnowledgeInTab(boardName);
 }
 
 export async function showTeamKnowledge(boardName) {
-    const { selectKnowledgeSource, reloadKnowledgeTab } = await import('./team_artifacts.js');
+    const { reloadKnowledgeTab } = await import('./team_artifacts.js');
+    if (window.enterTeamContext) await window.enterTeamContext(boardName, { tab: 'knowledge' });
     reloadKnowledgeTab();
-    selectKnowledgeSource();
 }
 
 export function updateSessionBranch(branch, repoName) {

@@ -30,6 +30,8 @@ let switchGeneration = 0;
 
 export async function selectLiveSession(name, agentType, sessionId) {
     dbg('selectLiveSession', { name, agentType, sessionId });
+    // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
+    if (window.exitTeamContext && window.exitTeamContext({ goBack: false }) === false) return;
     const generation = ++switchGeneration;
     stopCaptureRefresh();
     stopLiveHistoryPoll();

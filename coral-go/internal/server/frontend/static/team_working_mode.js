@@ -1,7 +1,6 @@
 import { escapeHtml } from './utils.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
-let _teamSettingsHistoryListener = false;
 
 function settingsFormSnapshot(form) {
     if (!form) return '';
@@ -15,47 +14,15 @@ export function hasUnsavedTeamSettings() {
     return Boolean(form?.dataset.initialState && settingsFormSnapshot(form) !== form.dataset.initialState);
 }
 
-function confirmTeamWorkspaceChange() {
+/** True when leaving the team settings panel should be confirmed first. */
+export function confirmTeamWorkspaceChange() {
     if (!hasUnsavedTeamSettings()) return true;
     return window.confirm('Team settings have unsaved changes. Leave without saving?');
 }
 
-function activateTeamWorkspacePane() {
-    // Workspace actions can originate from the sidebar while another pane is active
-    // (or with no selected agent). Always make the shared right-hand pane visible.
-    window.switchAgenticTab?.('board', 'top');
-}
-
-export function closeTeamWorkspace({ restoreBoard = true, goBack = true } = {}) {
-    const workspace = document.querySelector('#team-settings-workspace, #team-availability-workspace');
-    const state = document.getElementById('agentic-state');
-    if (!workspace && !state?.classList.contains('team-settings-workspace-active')) return;
-    workspace?.remove();
-    state?.classList.remove('team-settings-workspace-active');
-    if (restoreBoard && window.switchAgenticTab) window.switchAgenticTab('board', 'top');
-    if (goBack && history.state?.coralTeamSettings) history.back();
-}
-
+/** Open the team: team view in the center, team tabs (settings first) in the sidebar. */
 export function showTeamWorkingModeWorkspace(team, options = {}) {
-    const agenticState = document.getElementById('agentic-state');
-    if (!agenticState) return showTeamWorkingMode(team);
-    const currentTeam = document.querySelector('#team-settings-workspace .working-mode-team')?.textContent?.trim();
-    if (currentTeam && currentTeam !== team && !confirmTeamWorkspaceChange()) return false;
-    activateTeamWorkspacePane();
-    closeTeamWorkspace({ restoreBoard: false, goBack: false });
-    agenticState.classList.add('team-settings-workspace-active');
-    const route = `#team-settings=${encodeURIComponent(team)}`;
-    if (options.restore) history.replaceState({ coralTeamSettings: true, workspace: 'settings', team }, '', route);
-    else history.pushState({ coralTeamSettings: true, workspace: 'settings', team }, '', route);
-    if (!_teamSettingsHistoryListener) {
-        window.addEventListener('popstate', () => {
-            if (history.state?.coralTeamSettings && history.state.workspace === 'settings' && !document.getElementById('team-settings-workspace')) {
-                showTeamWorkingModeWorkspace(history.state.team, { restore: true });
-            } else if (!history.state?.coralTeamSettings) closeTeamWorkspace({ restoreBoard: false, goBack: false });
-        });
-        _teamSettingsHistoryListener = true;
-    }
-    showTeamWorkingMode(team, { workspace: true });
+    return import('./team_context.js').then(m => m.enterTeamContext(team, { tab: 'team-settings', restore: options.restore }));
 }
 
 function jsonError(response, fallback) {
@@ -92,7 +59,7 @@ export async function showTeamWorkingMode(team, options = {}) {
     } else dialog.className = 'team-availability-dialog';
     dialog.setAttribute('aria-labelledby', 'working-mode-title');
     const workspaceActions = workspaceMode
-        ? `<div class="team-settings-workspace-actions"><button type="button" class="team-settings-back" aria-label="Back to board">Back to board</button><button type="button" class="team-settings-close modal-close-btn" aria-label="Close team settings"><span class="material-icons" aria-hidden="true">close</span></button></div>`
+        ? ''  // sidebar panel: no close/back, the team context owns navigation
         : `<button type="button" class="modal-close-btn" aria-label="Close"><span class="material-icons" aria-hidden="true">close</span></button>`;
     dialog.innerHTML = `<header><div><h2 id="working-mode-title">Team settings</h2><p class="working-mode-team"></p></div>${workspaceActions}</header>
       <div class="working-mode-status" role="status" aria-live="polite"></div>
@@ -139,11 +106,8 @@ export async function showTeamWorkingMode(team, options = {}) {
       </form>`;
     dialog.querySelector('.working-mode-team').textContent = team;
     if (workspaceMode) {
-        activateTeamWorkspacePane();
-        document.getElementById('agentic-state')?.append(dialog);
-        const close = () => closeTeamWorkspace();
-        dialog.querySelector('.team-settings-back').onclick = () => closeTeamWorkspace({ restoreBoard: true });
-        dialog.querySelector('.team-settings-close').onclick = close;
+        // Rendered into the sidebar's Team Settings tab (see team_context.js).
+        document.getElementById('agentic-panel-team-settings')?.replaceChildren(dialog);
     } else {
         document.body.append(dialog);
         dialog.querySelector('header button').onclick = () => dialog.close();

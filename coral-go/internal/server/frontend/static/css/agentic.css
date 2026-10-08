@@ -1132,6 +1132,10 @@ body.panel-dragging .agentic-state {
     font-size: var(--fs-base);
     color: var(--text-secondary);
     white-space: nowrap;
+    /* The column is fixed width; never spill into the task id beside it. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .board-task-status-label b {
@@ -2724,3 +2728,60 @@ button.team-artifact-name { cursor: pointer; }
     align-items: center;
     justify-content: space-between;
 }
+
+/* ── Team context ──────────────────────────────────────────── */
+
+/* Sidebar tabs are scoped: agent tabs belong to a selected agent, team tabs to a selected team. */
+.agentic-tab[data-scope="team"] { display: none; }
+.agentic-state.team-context .agentic-tab[data-scope="team"] { display: flex; }
+.agentic-state.team-context .agentic-tab[data-scope="agent"] { display: none !important; }
+.agentic-state.team-context #agentic-tab-board { display: none !important; }
+
+/* The team's group chat covers the center column; the agent's chat stays mounted underneath. */
+.team-center-view {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-primary);
+}
+.team-center-view[hidden] { display: none; }
+/* The board chat panel is moved in here while a team is selected. */
+.team-center-view > #agentic-panel-board { display: flex; flex: 1; min-height: 0; height: auto; }
+.team-center-close {
+    position: absolute;
+    top: 5px;
+    right: 8px;
+    z-index: 2;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 7px;
+}
+.team-center-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+.team-center-view .board-chat-header { padding-right: 40px; }
+
+#agentic-panel-team-view > .team-settings-workspace { overflow: hidden; padding: 14px; }
+
+/* Team settings as a sidebar panel rather than a full-pane workspace */
+#agentic-panel-team-settings > .team-settings-workspace { overflow: auto; padding: 14px; }
+
+
+
+/* "Team" row at the top of a team group */
+.team-row { cursor: pointer; }
+.team-row .team-row-icon {
+    font-size: 12px;
+    width: 12px;
+    margin: 0 1px 0 -11px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.team-row.active .team-row-icon { color: var(--accent); }
+.team-row .session-label-name { font-weight: 600; }
