@@ -38,6 +38,7 @@
     --warning-rgb: 212, 160, 48;
     --error:       #e05545;
     --error-rgb:   224, 85, 69;
+    --danger:      var(--error); /* alias: several rules (stuck dot, tooltips) use this name */
     --working:     #61afef;
     --working-rgb: 97, 175, 239;
 
@@ -90,6 +91,7 @@
     --color-tool-web:        #e5c07b;
     --color-tool-task:       var(--accent);
     --color-tool-agent:      #c678dd;
+    --subagent-accent:       #a371f7;
     --color-tool-status:     var(--accent);
     --color-tool-goal:       var(--success);
     --color-tool-confidence: #e5c07b;
@@ -227,6 +229,7 @@
     --warning-rgb: 154, 103, 0;
     --error:       #cf222e;
     --error-rgb:   207, 34, 46;
+    --danger:      var(--error);
     --working:     #0969da;
     --working-rgb: 9, 105, 218;
 
@@ -275,6 +278,7 @@
     --color-tool-web:        #953800;
     --color-tool-task:       #0969da;
     --color-tool-agent:      #8250df;
+    --subagent-accent:       #8250df;
     --color-tool-status:     #0969da;
     --color-tool-goal:       #1a7f37;
     --color-tool-confidence: #9a6700;

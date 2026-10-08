@@ -44,6 +44,9 @@ const SESSIONS = [
     base({ session_id: ID.turnOrch, name: 'team-dir', working_directory: '/repo/team', display_name: 'Orch Turn', awaiting_user: true, done: true, board_project: 'qa-team', board_is_orchestrator: true }),
 ];
 const ORDER = SESSIONS.map(s => s.session_id).join(',');
+// Payload order, except that a group lists its sleeping agents after the awake ones (the killed row,
+// which is not sleeping, stays with the awake rows).
+const EXPECTED_ORDER = ORDER.split(',').filter(id => id !== ID.sleeping).flatMap(id => id === ID.kill ? [id, ID.sleeping] : [id]).join(',');
 
 const STUB = `
   window.__fixture = ${JSON.stringify(SESSIONS)}; window.__posts = [];
@@ -87,6 +90,10 @@ async function run() {
         await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         for (let i = 0; i < 60; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function'`)) break; await sleep(100); }
+        // Sleeping agents sit behind an "N sleeping" row; this suite inspects their rows, so expand every group.
+        // Agent summaries are off by default (a server-side setting); the 40px/36px row checks need the goal line.
+        await ev(`(async () => { await window.__origFetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show_session_summary: true }) }); await (await import('/static/modals.js')).loadSettings(); return true; })()`);
+        await ev(`['coral-go','other-proj','ui-team','team-a','team-b'].forEach(g => localStorage.setItem('coral-sleeping-expanded:' + g, 'true')); true`);
         await ev(`localStorage.setItem('coral-group-by-team','${grouped ? 'true' : 'false'}'); window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`);
         await sleep(300);
     };
@@ -123,8 +130,8 @@ async function run() {
             const ratio = el => { const bg = bgOf(el); const fg = over(parse(getComputedStyle(el).color), bg); const a = lum(fg), b = lum(bg); return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100; };
             const out = {}; document.querySelectorAll('#live-sessions-list .session-state-pill, #live-sessions-list .session-unread-chip').forEach(el => { out[el.className.replace(/badge |waiting-badge |session-state-pill /g, '') + ':' + el.textContent.trim()] = ratio(el); }); return out; })()`;
         const contrast = await ev(CONTRAST);
-        check('J state pills and unread chip text contrast >= 4.5:1', Object.keys(contrast).length >= 4 && !Object.keys(contrast).some(k => /turn/i.test(k)) && Object.values(contrast).every(v => v >= 4.5), JSON.stringify(contrast));
-        check('no-sort: row order equals payload order', Object.keys(rows).join(',') === ORDER);
+        check('J state pills text contrast >= 4.5:1', Object.keys(contrast).length >= 3 && !Object.keys(contrast).some(k => /turn/i.test(k)) && Object.values(contrast).every(v => v >= 4.5), JSON.stringify(contrast));
+        check('no-sort: row order equals payload order (sleeping agents last in their group)', Object.keys(rows).join(',') === EXPECTED_ORDER);
 
         // ── G: context collisions ──
         check('G high context + Needs input: attention pill only, ring kept, aria carries the context suffix', rows[ID.needs].ctxPill === null && /ctx-high/.test(rows[ID.needs].dotCls) && /, context 87%/.test(rows[ID.needs].aria), JSON.stringify({ ctx: rows[ID.needs].ctxPill, dot: rows[ID.needs].dotCls, aria: rows[ID.needs].aria }));
@@ -136,11 +143,12 @@ async function run() {
         check('G explicit null context clears ring, pill and aria suffix', rows[ID.idle].ctxPill === null && !/ctx-high/.test(rows[ID.idle].dotCls) && !/context/.test(rows[ID.idle].aria), JSON.stringify({ dot: rows[ID.idle].dotCls, aria: rows[ID.idle].aria }));
 
         // ── H: unread chip + aggregation ──
-        check('H unread chip on line 2: count, title, aria suffix; absent at 0', rows[ID.turnMember].unread && rows[ID.turnMember].unread.text === '3' && /3 unread board messages/.test(rows[ID.turnMember].unread.title || '') && /, 3 unread$/.test(rows[ID.turnMember].aria) && (!rows[ID.working].unread || !rows[ID.working].unread.shown), JSON.stringify({ chip: rows[ID.turnMember].unread, aria: rows[ID.turnMember].aria }));
+        // Agent rows no longer draw an unread-count chip; the count stays in the aria-label.
+        check('H unread count is in the aria-label, no chip on the row', !rows[ID.turnMember].unread && /, 3 unread$/.test(rows[ID.turnMember].aria) && !rows[ID.working].unread, JSON.stringify({ chip: rows[ID.turnMember].unread, aria: rows[ID.turnMember].aria }));
         // No attention counts anywhere: the Agents nav badge and the team/folder header chips were removed.
         check('H no Agents nav badge', (await ev(`document.getElementById('nav-tab-agents-badge')`)) == null);
         await diff({ name: 'team-dir', agent_type: 'claude', session_id: ID.turnMember, board_unread: 9 }); await sleep(150);
-        check('H more unread on an ordinary member updates the row chip', (await ev(ROWS('live-sessions-list')))[ID.turnMember].unread.text === '9');
+        check('H more unread on an ordinary member updates the aria-label', /, 9 unread$/.test((await ev(ROWS('live-sessions-list')))[ID.turnMember].aria));
         await ev(`localStorage.setItem('coral-group-by-team','true'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(250);
         check('H no attention count on team/folder headers', (await ev(`document.querySelectorAll('#live-sessions-list .group-attention-count').length`)) === 0);
         await ev(`localStorage.setItem('coral-group-by-team','false'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(200);
@@ -163,7 +171,7 @@ async function run() {
         const x0 = (await stateOf()).nameX; const seq = [];
         for (const [patch, want] of [[{ working: true }, 'working'], [{ working: false, awaiting_user: true, done: true }, 'your_turn'], [{ waiting_for_input: true }, 'needs_input'], [{ waiting_for_input: false, awaiting_user: false, done: false, working: true }, 'working']]) {
             await diff(Object.assign({}, P, patch)); await sleep(150); const r = await stateOf();
-            seq.push({ want, got: r.state, dx: Math.abs(r.nameX - x0), h: r.h, focus: await ev(`(document.activeElement.dataset || {}).sessionId === '${ID.idle}'`), order: (await ev(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(l => l.dataset.sessionId).join(',')`)) === ORDER });
+            seq.push({ want, got: r.state, dx: Math.abs(r.nameX - x0), h: r.h, focus: await ev(`(document.activeElement.dataset || {}).sessionId === '${ID.idle}'`), order: (await ev(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(l => l.dataset.sessionId).join(',')`)) === EXPECTED_ORDER });
         }
         check('F Idle -> Working -> Ready for input -> Needs input -> Working: state, name x ±0.5px, 40px, focus kept, order kept', seq.every(s => s.want === s.got && s.dx <= 0.5 && Math.abs(s.h - 40) <= 1 && s.focus && s.order), JSON.stringify(seq));
 

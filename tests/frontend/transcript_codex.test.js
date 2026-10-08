@@ -74,7 +74,7 @@ async function run() {
       command: (d.querySelector('.tool-card-command')||{}).textContent || null, output: (d.querySelector('.tool-card-output')||{}).textContent || null,
       adds: d.querySelectorAll('.diff-line.diff-add').length, dels: d.querySelectorAll('.diff-line.diff-del').length }))`);
   const by = (n) => calls.find(c => c.name === n) || {};
-  check('four Codex tool rows, collapsed to one line', calls.length === 4 && calls.every(c => !c.open && c.h < 30), JSON.stringify(calls.map(c => [c.name, c.h])));
+  check('four Codex tool rows, collapsed to one line', calls.length === 4 && calls.every(c => !c.open && c.h < 44), JSON.stringify(calls.map(c => [c.name, c.h])));
   check('every tool output attached to its call (no orphan rows)', calls.every(c => c.id && c.output), JSON.stringify(calls.map(c => [c.name, !!c.output])));
   check('exec_command row labelled by its cmd', by('exec_command').label === 'pwd && rg --files | head -200' && by('exec_command').command === 'pwd && rg --files | head -200', by('exec_command').label);
   check('legacy shell argv shown as a command', by('shell').command === 'bash -lc ls -la' && /total 8/.test(by('shell').output), by('shell').command);

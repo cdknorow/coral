@@ -1047,7 +1047,8 @@
 
 .session-group-item .badge.session-state-pill.stuck {
     background: rgba(var(--error-rgb), 0.16);
-    color: var(--error);
+    /* Lifted toward the primary text colour: plain --error is only ~3.6:1 on the dark tint. */
+    color: color-mix(in srgb, var(--error) 62%, var(--text-primary));
     box-shadow: inset 0 0 0 1px rgba(var(--error-rgb), 0.4);
 }
 

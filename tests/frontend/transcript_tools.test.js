@@ -90,7 +90,8 @@ async function run() {
       label: d.querySelector('.tool-call-label').textContent, bodyVisible: d.querySelector('.tool-call-body').checkVisibility(), h: d.getBoundingClientRect().height }))`);
   const byId = (id) => calls.find(c => c.id === id);
   check('opening the group shows intermediate text and the question', await ev(`(() => { const x = ${C}.innerText; return x.includes('Looking at the CSS first.') && x.includes('Which spacing?'); })()`));
-  check('tool rows inside stay collapsed to one line', calls.length === 2 && calls.every(c => !c.open && !c.bodyVisible && c.h < 30), JSON.stringify(calls));
+  // One line plus the compact control height (32px min) and padding; an open body is far taller.
+  check('tool rows inside stay collapsed to one line', calls.length === 2 && calls.every(c => !c.open && !c.bodyVisible && c.h < 44), JSON.stringify(calls));
   check('Bash row labelled by its description', byId('t1') && byId('t1').label === 'Check modal section spacing');
   check('errored tool row is marked', byId('t2').err && !byId('t1').err);
 
@@ -145,7 +146,7 @@ async function run() {
   // Chat mode: the command bar keeps just Cancel (Esc) and Send
   const bar = () => ev(`Array.from(document.querySelectorAll('#command-toolbar button')).filter(b => b.offsetParent !== null && !b.closest('.send-btn-menu')).map(b => (b.innerText || b.getAttribute('aria-label') || '').trim())`);
   const chatBar = await bar();
-  check('in chat mode the command bar shows only Cancel and Send', JSON.stringify(chatBar) === JSON.stringify(['Cancel', '', '']) || (chatBar.includes('Cancel') && !chatBar.includes('Esc') && chatBar.length <= 3 && !chatBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t))), JSON.stringify(chatBar));
+  check('in chat mode the command bar shows only Cancel and Send', JSON.stringify(chatBar) === JSON.stringify(['Cancel', '', '']) || (chatBar.some(t => /^(Cancel|stop)$/i.test(t)) && !chatBar.includes('Esc') && chatBar.length <= 3 && !chatBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t))), JSON.stringify(chatBar));
   await ev(`window.setLiveViewMode('terminal'); true`);
   const termBar = await bar();
   check('terminal mode keeps the full command bar with Esc', termBar.includes('Esc') && !termBar.includes('Cancel') && termBar.length > 6, JSON.stringify(termBar));

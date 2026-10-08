@@ -382,6 +382,7 @@ export function closeTab(tabId) {
         _activeId = null;
         _renderTabs();
         _renderToolbar(null);
+        _body()?.replaceChildren(); // drop frames/media so nothing keeps running in the hidden pane
         _hidePane();
         return;
     }
@@ -403,6 +404,7 @@ export function closeAllTabs() {
     _activeId = null;
     _renderTabs();
     _renderToolbar(null);
+    _body()?.replaceChildren();
     _hidePane();
 }
 

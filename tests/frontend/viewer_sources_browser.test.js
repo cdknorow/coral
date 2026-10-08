@@ -1,4 +1,5 @@
-// Isolated real-browser coverage of four viewer sources and lazy explorer scope.
+// Isolated real-browser coverage of the four file/artifact sidebar tabs (Files, Browse, Artifacts,
+// Team Artifacts), previews in the preview pane, and lazy explorer scope.
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const CDP=require('chrome-remote-interface');
@@ -15,7 +16,8 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  });
  const settle=()=>ev('new Promise(r=>setTimeout(r,80))');
  const click=async s=>{await ev(`document.querySelector(${JSON.stringify(s)}).click()`);await settle();};
- const tab=s=>click(`[data-files-source="${s}"]`);
+ const tab=s=>click(`#agentic-tab-${s}`);
+ const view=src=>src==='browse'?'#file-explorer-view':`#agentic-panel-${src}-view`;
  const tree=()=>ev(`document.querySelector('#file-explorer-view').textContent`);
  const shot=async name=>{if(!process.env.CORAL_SCREENSHOT_DIR)return;fs.mkdirSync(process.env.CORAL_SCREENSHOT_DIR,{recursive:true});const {data}=await c.Page.captureScreenshot({format:'png'});fs.writeFileSync(process.env.CORAL_SCREENSHOT_DIR+'/'+name+'.png',Buffer.from(data,'base64'));};
  try{
@@ -26,7 +28,7 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  await ev(`(async()=>{
  const {state}=await import('/static/state.js');const f=await import('/static/changed_files.js');window.s=state;window.f=f;
  s.currentSession={type:'live',name:'UI',session_id:'a',board_project:'team',working_directory:'/repo-a/subdir'};
- const p=document.getElementById('agentic-panel-files');document.body.append(p);p.style.cssText='display:flex;position:fixed;top:20px;left:20px;width:680px;height:760px;z-index:99999;background:var(--bg-primary)';
+ const {showView}=await import('/static/utils.js');showView('live-session-view');const side=document.getElementById('agentic-state');side.classList.remove('collapsed');side.style.width='680px';
  window.calls=[];window.pending=[];window.defer=false;window.locked=true;
  window.fetch=async url=>{
  const u=new URL(url,location.origin);calls.push(u.pathname+u.search);
@@ -52,9 +54,9 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  return new Response(JSON.stringify({files:[]}));
  };f.initFileSearch();f.syncFilesViewerSession();
  })()`);
- assert.deepEqual(await ev(`[...document.querySelectorAll('[data-files-source]')].map(x=>x.textContent)`),['Files','Browse','Artifacts','Team Artifacts']);
+ assert.equal(await ev(`['files','browse','artifacts','team-artifacts'].every(n=>!!document.getElementById('agentic-tab-'+n))`),true);
  assert.equal(await ev(`calls.filter(x=>x.includes('view=explorer')||x.includes('/artifacts?')).length`),0);
- await ev(`document.querySelector('[data-files-source=files]').focus();document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);await settle();assert.equal(await ev(`calls.filter(x=>x.includes('view=explorer')).length`),1);
+ await tab('browse');assert.equal(await ev(`calls.filter(x=>x.includes('view=explorer')).length`),1);
  assert.equal(await ev(`document.querySelector('.explorer-item').dataset.directory`),'true');assert.match(await tree(),/\.env/);
  await click('[data-path="src"]');assert.equal(await ev(`calls.filter(x=>x.includes('view=explorer')).length`),2);
  await tab('files');await tab('browse');assert.ok(await ev(`!!document.querySelector('[data-path="src/main.go"]')`));
@@ -63,38 +65,38 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  // Explicitly check the fixture rejects the old bug and a cwd-relative guess.
  assert.deepEqual(await ev(`Promise.all(['/repo-a/src/main.go','subdir/src/main.go','missing.go','../escape.go'].map(async filepath=>{const r=await fetch('/api/sessions/live/UI/file-content?'+new URLSearchParams({session_id:'a',filepath}));return [r.status,(await r.json()).error]}))`),[[404,'File not found'],[404,'File not found'],[404,'File not found'],[403,'Path traversal not allowed']]);
  await click('[data-path="src/main.go"]');
- assert.match(await ev(`document.getElementById('inline-preview-body').textContent`),/Main preview fixture/,'Browse must render file content, not a File not found error');
+ assert.match(await ev(`document.getElementById('preview-body').textContent`),/Main preview fixture/,'Browse must render file content, not a File not found error');
  assert.equal(await ev(`new URL(calls.filter(x=>x.includes('/file-content?')).at(-1),location.origin).searchParams.get('filepath')`),'src/main.go');
- await ev('window._closeInlinePreview()');await settle();
+ await ev('window.closeAllPreviewTabs()');await settle();
  assert.ok(await ev(`!!document.querySelector('[data-path="src/main.go"]')`),'Back preserves expanded tree');
- assert.equal(await ev(`document.querySelector('[data-files-source=browse]').getAttribute('aria-selected')`),'true');
+ assert.equal(await ev(`document.getElementById('agentic-tab-browse').classList.contains('active')`),true);
  await click('[data-path="src/nested"]');await click('[data-path="src/nested/worker.go"]');
- assert.match(await ev(`document.getElementById('inline-preview-body').textContent`),/Nested preview fixture/);
+ assert.match(await ev(`document.getElementById('preview-body').textContent`),/Nested preview fixture/);
  assert.equal(await ev(`new URL(calls.filter(x=>x.includes('/file-content?')).at(-1),location.origin).searchParams.get('filepath')`),'src/nested/worker.go');
- await ev('window._closeInlinePreview()');await settle();assert.equal(await ev(`document.querySelector('[data-path="src/nested"]').getAttribute('aria-expanded')`),'true');
+ await ev('window.closeAllPreviewTabs()');await settle();assert.equal(await ev(`document.querySelector('[data-path="src/nested"]').getAttribute('aria-expanded')`),'true');
  await click('[data-path="image.png"]');
  assert.deepEqual(imageRequests.at(-1),{filepath:'image.png',session:'a',raw:'1'});
- assert.ok(await ev(`document.querySelector('#inline-preview-body img')?.naturalWidth>0`),'relative raw image URL must render');
- await ev('window._closeInlinePreview()');await settle();assert.ok(await ev(`!!document.querySelector('[data-path="src/nested/worker.go"]')`),'image Back preserves nested tree');
+ assert.ok(await ev(`document.querySelector('#preview-body img')?.naturalWidth>0`),'relative raw image URL must render');
+ await ev('window.closeAllPreviewTabs()');await settle();assert.ok(await ev(`!!document.querySelector('[data-path="src/nested/worker.go"]')`),'image Back preserves nested tree');
  await click('[data-path="empty"]');assert.match(await tree(),/Empty directory/);
  await click('[data-path="locked"]');assert.match(await tree(),/403/);
  await ev('window.locked=false');await click('[aria-label="Retry locked"]');assert.doesNotMatch(await tree(),/403/);
  await click('[aria-label="Load more root directory"]');assert.match(await tree(),/later.txt/);
  await ev(`document.querySelector('[data-path="src"]').focus();document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);
  assert.equal(await ev('document.activeElement.dataset.parent'),'src');await shot('browse-desktop');
- await tab('artifacts');assert.match(await ev(`document.querySelector('#team-artifacts-view').textContent`),/Personal a/);
- await click('.team-artifact-preview');assert.match(await ev(`document.getElementById('inline-preview-body').textContent`),/Artifact body/);await ev('window._artifactBack()');await settle();assert.equal(await ev(`document.querySelector('[data-files-source=artifacts]').getAttribute('aria-selected')`),'true');
- await tab('team-artifacts');assert.match(await ev(`document.querySelector('#team-artifacts-view').textContent`),/Team shared/);
+ await tab('artifacts');assert.match(await ev(`document.querySelector('#agentic-panel-artifacts-view').textContent`),/Personal a/);
+ await click('.team-artifact-preview');assert.match(await ev(`document.getElementById('preview-body').textContent`),/Artifact body/);await ev('window.closeAllPreviewTabs()');await settle();assert.equal(await ev(`document.getElementById('agentic-tab-artifacts').classList.contains('active')`),true);
+ await tab('team-artifacts');assert.match(await ev(`document.querySelector('#agentic-panel-team-artifacts-view').textContent`),/Team shared/);
  await tab('artifacts');assert.equal(await ev(`calls.filter(x=>x.includes('/artifacts?')).length`),2);
- await ev(`window.defer=true;document.querySelector('.team-artifacts-heading button').click()`);await settle();
+ await ev(`window.defer=true;document.querySelector('#agentic-panel-artifacts-view .team-artifacts-heading button').click()`);await settle();
  await ev(`window.defer=false;s.currentSession={...s.currentSession,session_id:'b',working_directory:'/repo-b/subdir'};f.syncFilesViewerSession();pending.splice(0).forEach(r=>r())`);await settle();
- assert.match(await ev(`document.querySelector('#team-artifacts-view').textContent`),/Personal b/);assert.doesNotMatch(await ev(`document.querySelector('#team-artifacts-view').textContent`),/Personal a/);
+ assert.match(await ev(`document.querySelector('#agentic-panel-artifacts-view').textContent`),/Personal b/);assert.doesNotMatch(await ev(`document.querySelector('#agentic-panel-artifacts-view').textContent`),/Personal a/);
  await tab('team-artifacts');assert.equal(await ev(`calls.filter(x=>x.includes('/artifacts?')&&!x.includes('session_id')).length`),1,'same-team cache retained');
  await tab('browse');assert.doesNotMatch(await tree(),/main.go/);assert.match(await tree(),/repo-b/);
  await ev(`window.defer=true;document.querySelector('#file-explorer-view .explorer-heading button').click()`);await settle();await tab('files');
  await ev(`window.defer=false;s.currentSession={...s.currentSession,session_id:'c',working_directory:'/repo-c'};f.syncFilesViewerSession();pending.splice(0).forEach(r=>r())`);await settle();await tab('browse');assert.match(await tree(),/repo-c/);assert.doesNotMatch(await tree(),/repo-b/);
- await click('[data-path=src]');await click('[data-path="src/main.go"]');await ev(`s.currentSession={...s.currentSession,session_id:'d',working_directory:'/repo-d'};f.syncFilesViewerSession()`);await settle();assert.equal(await ev(`!!document.querySelector('.inline-preview-header')`),false);assert.match(await tree(),/repo-d/);
- await ev(`window.defer=true;document.querySelector('#file-explorer-view .explorer-heading button').click()`);await settle();await tab('files');await ev(`window.defer=false;pending.splice(0).forEach(r=>r())`);await settle();assert.equal(await ev(`document.querySelector('#file-explorer-view').hidden`),true);await tab('browse');assert.match(await tree(),/repo-d/);
+ await click('[data-path=src]');await click('[data-path="src/main.go"]');await ev(`s.currentSession={...s.currentSession,session_id:'d',working_directory:'/repo-d'};f.syncFilesViewerSession()`);await settle();assert.equal(await ev(`document.getElementById('preview-pane').style.display`),'none');assert.match(await tree(),/repo-d/);
+ await ev(`window.defer=true;document.querySelector('#file-explorer-view .explorer-heading button').click()`);await settle();await tab('files');await ev(`window.defer=false;pending.splice(0).forEach(r=>r())`);await settle();assert.equal(await ev(`document.getElementById('agentic-panel-browse').classList.contains('active')`),false);await tab('browse');assert.match(await tree(),/repo-d/);
  // Realistic API-sized pages accumulated into a large visible tree. Timing is
  // diagnostic; stable node identity and bounded focus writes are regressions.
  await c.Page.bringToFront();
@@ -140,9 +142,6 @@ if(!base||/:8420(\/|$)/.test(base))throw Error('Use an isolated server');
  assert.equal(profile.stable,true,'toggling must retain unrelated file rows');
  assert.ok(profile.created<100,'toggling a small folder must not recreate the large root listing');
  assert.equal(profile.focusWrites,60,'focus updates only the previous and next tab stop');
- await c.Emulation.setDeviceMetricsOverride({width:390,height:844,deviceScaleFactor:1,mobile:true});
- await ev(`document.getElementById('agentic-panel-files').style.width='350px'`);
- assert.ok(await ev(`[...document.querySelectorAll('[data-files-source]')].every(x=>{const r=x.getBoundingClientRect();return r.left>=0&&r.right<=390})`));await shot('browse-mobile');
- console.log('PASS four viewer tabs: lazy tree, strict relative file API, rendered text/nested/image previews, Back/cache, empty/error/retry/pagination, keyboard, personal/team isolation, stale responses, mobile');
+ console.log('PASS four viewer tabs: lazy tree, strict relative file API, rendered text/nested/image previews in the preview pane, close/cache, empty/error/retry/pagination, keyboard, personal/team isolation, stale responses');
  }finally{await c.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

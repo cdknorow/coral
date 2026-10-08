@@ -63,9 +63,9 @@ if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('isolated server required
     })()`);
 
     assert.equal(initialModalState.telemetryChecked, true, 'telemetry defaults to checked');
-    assert.equal(initialModalState.remoteChecked, true, 'remote access defaults to checked');
-    // In test runner, server runs with --host 127.0.0.1, so running is local-only while saved is enabled -> restart required!
-    assert.match(initialModalState.statusText, /restart required/i, 'notice explains running vs saved state');
+    // Remote access is opt-in: it defaults to off, so a loopback server is already running as saved.
+    assert.equal(initialModalState.remoteChecked, false, 'remote access defaults to unchecked (explicit opt-in)');
+    assert.doesNotMatch(initialModalState.statusText, /restart required/i, 'nothing to restart when saved and running are both local-only');
 
     // 3. Save telemetry disabled and remote access disabled
     await ev(`(async () => {
