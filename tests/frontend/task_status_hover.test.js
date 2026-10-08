@@ -92,7 +92,8 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
         assert.equal(assignedOpen.title, 'Open');
 
         const review = status.find(row => row.id === '#1502');
-        assert.equal(review.text, 'Open · Review pending');
+        // The visible label is short so it fits the fixed status column; the full status stays in the tooltip.
+        assert.equal(review.text, 'Review');
         assert.equal(review.title, 'Open · Review pending');
 
         const focus = await ev(`(() => { const el = document.querySelector('#board-task-list .board-task-item:not(.board-task-header) .board-task-status-wrap'); el.focus(); return {label: el.getAttribute('aria-label'), tabIndex: el.tabIndex}; })()`);

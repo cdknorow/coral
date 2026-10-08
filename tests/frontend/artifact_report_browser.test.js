@@ -30,8 +30,9 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
             const {state}=await import('/static/state.js');const files=await import('/static/changed_files.js');
             window.__files=files;window.__state=state;
             state.currentSession={type:'live',name:'UI',session_id:'report-test',board_project:'report-team'};
-            const panel=document.getElementById('agentic-panel-files');document.body.append(panel);
-            panel.style.cssText='display:flex;position:fixed;top:20px;left:20px;width:720px;height:820px;z-index:99999;background:var(--bg-primary);border:1px solid var(--border)';
+            // Show the real live view: team artifacts list in the sidebar, previews in the bottom preview pane.
+            const {showView}=await import('/static/utils.js');showView('live-session-view');
+            const side=document.getElementById('agentic-state');side.classList.remove('collapsed');side.style.width='720px';
             window.__content=${JSON.stringify(sample)};window.__inline=true;window.__reads=0;
             window.fetch=async(url)=>{
                 const u=String(url);
@@ -39,7 +40,7 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
                 if(u.includes('/artifact-content?')||u.startsWith('/api/artifacts/')){window.__reads++;return new Response(window.__content,{headers:{'Content-Type':window.__inline?'text/plain':'application/json','Content-Disposition':'inline; filename="verification_report"'}});}
                 return new Response(JSON.stringify({files:[]}));
             };
-            files.initFileSearch();files.syncFilesViewerSession();document.querySelector('[data-files-source="team-artifacts"]').click();
+            files.initFileSearch();files.syncFilesViewerSession();document.getElementById('agentic-tab-team-artifacts').click();
         })()`);await settle();
         await ev(`document.querySelector('.team-artifact-preview').click()`);await settle();
         assert.equal(await ev(`document.querySelector('.artifact-report-title').textContent`),'Task #2254');
@@ -49,7 +50,7 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
         for(const value of [report.summary,report.isolation,...report.files,...report.verification,...report.limits]){
             assert.ok(await ev(`document.querySelector('.artifact-report-readable').textContent.includes(${JSON.stringify(value)})`),'all original values represented');
         }
-        assert.equal(await ev(`document.querySelector('.inline-preview-header a').textContent`),'Download');
+        assert.equal(await ev(`document.querySelector('#preview-toolbar a').textContent`),'Download');
         await shot('verification-report-2254');
         await ev(`document.querySelectorAll('.artifact-report-controls button')[1].focus()`);
         await Input.dispatchKeyEvent({type:'keyDown',key:'Enter',code:'Enter',text:'\r',windowsVirtualKeyCode:13});
@@ -59,7 +60,7 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
         await ev(`document.querySelector('.artifact-report-controls button').click()`);
         assert.equal(await ev('window.__reads'),1,'toggle never refetches');
         // Managed application/json uses the same report renderer.
-        await ev(`window._artifactBack();window.__inline=false;document.querySelector('.team-artifacts-heading button').click()`);await settle();
+        await ev(`window.closeAllPreviewTabs();window.__inline=false;document.querySelector('#agentic-panel-team-artifacts .team-artifacts-heading button').click()`);await settle();
         await ev(`document.querySelector('.team-artifact-preview').click()`);await settle();
         assert.equal(await ev(`document.querySelector('.artifact-report-title').textContent`),'Task #2254');
         // Module-level adversarial and fallback checks run in the real browser.
@@ -81,15 +82,13 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
         assert.ok(probe.safe.raw.endsWith('\n'));assert.equal(probe.config,false);assert.equal(probe.schema,true);assert.equal(probe.malformed,false);
         assert.deepEqual(probe.outcomes,['Reported outcome: failure','Reported outcome: unknown']);
         for(const result of [probe.depth,probe.wide]){assert.equal(result.notice,true);assert.equal(result.raw,true);assert.ok(result.nodes<10);}
-        // Mobile uses the existing overlay and wraps long report paths/prose.
-        await ev('window._artifactBack()');
-        await client.Emulation.setDeviceMetricsOverride({width:390,height:844,deviceScaleFactor:1,mobile:true});
-        await ev(`document.getElementById('agentic-panel-files').style.width='350px';document.getElementById('agentic-panel-files').style.zIndex='1';document.querySelector('.team-artifact-preview').click()`);await settle();
-        assert.ok(await ev(`!!document.querySelector('.mobile-file-preview-overlay .artifact-report')`));
-        assert.ok(await ev(`(()=>{const r=document.querySelector('.artifact-report');return r.scrollWidth<=r.clientWidth+1})()`),'mobile report must not overflow horizontally');
-        await shot('verification-report-2254-mobile',true);
-        await ev('window._artifactBack()');
-        assert.equal(await ev(`!!document.querySelector('.mobile-file-preview-overlay')`),false);
-        console.log('PASS JSON reports: actual #2254 inline/managed, all fields, exact raw toggle, safe nested extras, conservative recognition, depth/node bounds, mobile wrapping/back');
+        // A narrow pane wraps long report paths/prose instead of overflowing horizontally.
+        await ev(`window.closeAllPreviewTabs();const side=document.getElementById('agentic-state');side.style.width='350px';side.style.minWidth='0';document.querySelector('.team-artifact-preview').click()`);await settle();
+        assert.ok(await ev(`!!document.querySelector('#preview-body .artifact-report')`));
+        assert.ok(await ev(`(()=>{const r=document.querySelector('.artifact-report');return r.scrollWidth<=r.clientWidth+1})()`),'narrow report must not overflow horizontally');
+        await shot('verification-report-2254-narrow',true);
+        await ev('window.closeAllPreviewTabs()');
+        assert.equal(await ev(`document.getElementById('preview-pane').style.display`),'none');
+        console.log('PASS JSON reports: actual #2254 inline/managed, all fields, exact raw toggle, safe nested extras, conservative recognition, depth/node bounds, narrow-pane wrapping/close');
     }finally{await client.close();}
 })().catch(error=>{console.error(error);process.exitCode=1});

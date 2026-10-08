@@ -1,6 +1,7 @@
 package ptymanager
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -393,6 +394,42 @@ func TestTmuxBackendFanOut(t *testing.T) {
 	}
 }
 
+// waitForPaneQuiet blocks until the spawned shell has finished its start-up output and the
+// pane's pipe-pane log has stopped growing. The pane's own output must not race tests that
+// append bytes to the log and compare what the subscriber receives exactly: zsh can pause for
+// hundreds of milliseconds while it reads its rc files, after the pty has echoed the command
+// and before the prompt appears, so "the log was quiet for a moment" is not enough. The
+// shell is done once it has started running the command (bracketed paste switched off, which
+// zsh and bash emit just before exec); shells that never emit that are given a fixed budget.
+func waitForPaneQuiet(t *testing.T, logPath string) {
+	t.Helper()
+	const (
+		quiet      = 300 * time.Millisecond
+		noMarkerBy = 3 * time.Second
+	)
+	start := time.Now()
+	deadline := start.Add(15 * time.Second)
+	last := int64(-1)
+	stableSince := time.Now()
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(logPath)
+		size := int64(len(data))
+		if err != nil {
+			size = 0
+		}
+		if size != last {
+			last, stableSince = size, time.Now()
+		} else if size > 0 && time.Since(stableSince) >= quiet {
+			started := bytes.Contains(data, []byte("\x1b[?2004l"))
+			if started || time.Since(start) >= noMarkerBy {
+				return
+			}
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("pane output never settled (log %s, %d bytes)", logPath, last)
+}
+
 // TestTmuxBackendAttachBytePreservation verifies TEST_PLAN §5.1 — all 256 byte
 // values written to the pipe-pane log reach the Attach subscriber channel
 // byte-identical. This catches any accidental `string(data)` coercion on the
@@ -407,7 +444,7 @@ func TestTmuxBackendAttachBytePreservation(t *testing.T) {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 	defer b.Kill("bytes")
-	time.Sleep(300 * time.Millisecond)
+	waitForPaneQuiet(t, b.LogPath("bytes"))
 
 	ch, err := b.Attach("bytes", "sub-bytes")
 	if err != nil {
@@ -478,7 +515,7 @@ func TestTmuxBackendAttachPartialUTF8Boundary(t *testing.T) {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 	defer b.Kill("utf8")
-	time.Sleep(300 * time.Millisecond)
+	waitForPaneQuiet(t, b.LogPath("utf8"))
 
 	ch, err := b.Attach("utf8", "sub-utf8")
 	if err != nil {

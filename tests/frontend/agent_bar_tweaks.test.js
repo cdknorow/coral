@@ -380,7 +380,10 @@ async function run() {
         check('diff without first_prompt keeps header identity', afterDiff.header === 'Agent', afterDiff.header);
         check('diff without first_prompt keeps terminal label identity', afterDiff.term === 'Agent', afterDiff.term);
         check('diff without first_prompt keeps Sending-to placeholder', /^Sending to: Agent/.test(afterDiff.placeholder), afterDiff.placeholder);
-        check('diff does not reorder sessions', afterDiff.order === ORDER, afterDiff.order);
+        // sid-c went to sleep above, and sleeping agents collapse behind the "N sleeping"
+        // summary row, so its row is not in the list; every other row keeps its place.
+        const ORDER_AWAKE = ORDER.split(',').filter(id => id !== 'sid-c').join(',');
+        check('diff does not reorder sessions', afterDiff.order === ORDER_AWAKE, afterDiff.order);
 
         // display_name / summary updates in a diff must still win.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [

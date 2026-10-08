@@ -15,13 +15,15 @@ if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('isolated server required
   try {
     await Page.enable();
     await Page.navigate({ url: BASE });
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait for the document itself (a fixed sleep raced page load on a busy machine).
+    await ev(`new Promise(resolve => { const done = () => document.body ? resolve(true) : setTimeout(done, 50); if (document.readyState === 'complete') done(); else window.addEventListener('load', done); })`);
+    await new Promise(resolve => setTimeout(resolve, 300));
     await ev(`import('/static/agentic_state.js').then(m => window.switchAgenticTab = m.switchAgenticTab)`);
     await ev(`import('/static/team_availability.js').then(m => window.showTeamAvailabilityWorkspace = m.showTeamAvailabilityWorkspace)`);
     await ev(`import('/static/team_working_mode.js').then(m => window.showTeamWorkingModeWorkspace = m.showTeamWorkingModeWorkspace)`);
     await ev(`import('/static/render.js').then(m => window.renderLiveSessions = m.renderLiveSessions)`);
     await ev(`(() => {
-      document.body.innerHTML = '<main id="agentic-state" class="agentic-state"><div id="agentic-block-top" class="agentic-block" style="display:flex"><div class="agentic-tab active" id="agentic-tab-board">Board</div><div class="agentic-tab" id="agentic-tab-files">Files</div><div id="agentic-panel-board" class="agentic-panel active">board</div><div id="agentic-panel-files" class="agentic-panel">files</div></div><ul id="live-sessions-list"></ul></main>';
+      document.body.innerHTML = '<section id="team-center-view" hidden></section><main id="agentic-state" class="agentic-state"><div id="agentic-block-top" class="agentic-block" style="display:flex"><div class="agentic-tab" id="agentic-tab-board">Board</div><div class="agentic-tab active" id="agentic-tab-files" data-scope="agent">Files</div><div class="agentic-tab" id="agentic-tab-team-view" data-scope="team">Team view</div><div class="agentic-tab" id="agentic-tab-team-settings" data-scope="team">Team settings</div><div id="agentic-panel-board" class="agentic-panel">board</div><div id="agentic-panel-files" class="agentic-panel active">files</div><div id="agentic-panel-team-view" class="agentic-panel"></div><div id="agentic-panel-team-settings" class="agentic-panel"></div></div><ul id="live-sessions-list"></ul></main>';
       document.getElementById('agentic-state').style.cssText = 'display:flex !important;position:fixed;inset:0;z-index:100;width:100vw;height:90vh;background:#222';
       window.__calls = []; window.__delayedAlpha = false;
       window.fetch = async url => {
@@ -38,16 +40,19 @@ if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('isolated server required
       window.confirm = () => false;
     })()`);
 
-    // No agent is selected, and another pane starts active. Opening Team view must activate Board/workspace.
+    // No agent is selected, and another pane starts active. Opening Team view selects the team: Team View tab active, group chat in the center.
     await ev(`window.switchAgenticTab('files','top'); window.renderLiveSessions([{session_id:'alpha-1',name:'Alpha agent',agent_type:'codex',board_project:'alpha',working_directory:'/tmp/alpha'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); new Promise(r => setTimeout(r, 120))`);
     await new Promise(resolve => setTimeout(resolve, 300));
     fs.writeFileSync('/tmp/coral-1314-team-alpha.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
-    const alpha = await ev(`(() => ({route:location.hash,title:document.querySelector('#team-availability-workspace h2')?.textContent,team:document.querySelector('#team-availability-workspace header p')?.textContent,active:document.querySelector('#agentic-tab-board')?.classList.contains('active'),boardVisible:document.querySelector('#agentic-panel-board')?.classList.contains('active'),agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent)}))()`);
+    const alpha = await ev(`(() => ({route:location.hash,title:document.querySelector('#team-availability-workspace h2')?.textContent,team:document.querySelector('#team-availability-workspace header p')?.textContent,active:document.querySelector('#agentic-tab-team-view')?.classList.contains('active'),boardVisible:document.querySelector('#agentic-panel-team-view')?.classList.contains('active'),teamContext:document.getElementById('agentic-state').classList.contains('team-context'),chatInCenter:document.getElementById('agentic-panel-board')?.parentElement?.id,agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent)}))()`);
     assert.equal(alpha.route, '#team-view=alpha');
     assert.equal(alpha.title, 'Team view');
     assert.equal(alpha.team, 'alpha');
     assert.equal(alpha.active, true);
     assert.equal(alpha.boardVisible, true);
+    // The team's group chat moved into the center; the sidebar switched to team tabs.
+    assert.equal(alpha.teamContext, true);
+    assert.equal(alpha.chatInCenter, 'team-center-view');
     assert.deepEqual(alpha.agents, ['Alpha agent']);
 
     // Selecting another team replaces both route and rendered content.
