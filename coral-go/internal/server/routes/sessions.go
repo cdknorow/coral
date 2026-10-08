@@ -37,10 +37,10 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/license"
+	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/pulse"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -69,10 +69,6 @@ type SessionsHandler struct {
 	goals GoalRequester // nil until the goal generator starts
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
-
-	// Deduplication state for status/summary events (mirrors Python _last_known)
-	lastKnownMu sync.RWMutex
-	lastKnown   map[string]lastKnownState
 
 	// logStatusCache avoids rereading each agent's bounded log tail on every
 	// sidebar poll. Entries are invalidated by size/mtime and capped so a
@@ -186,11 +182,6 @@ func (h *SessionsHandler) effectiveMaxTeams() int {
 	return h.cfg.MaxLiveTeams
 }
 
-type lastKnownState struct {
-	Status  string
-	Summary string
-}
-
 // getDiffMode reads the git_diff_mode from global user settings.
 // Returns "" (default branch_point), "previous_commit", or "main_head".
 func (h *SessionsHandler) getDiffMode(ctx context.Context) string {
@@ -259,7 +250,6 @@ func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.Ter
 		terminal:          terminal,
 		jsonl:             jsonl.NewSessionReader(),
 		backend:           backend,
-		lastKnown:         make(map[string]lastKnownState),
 		logStatusCache:    make(map[string]cachedLogStatus),
 		logWarm:           make(map[string]bool),
 		logWarmSem:        make(chan struct{}, 4),
@@ -412,7 +402,7 @@ func (h *SessionsHandler) discoverAgents(ctx *http.Request) ([]AgentInfo, error)
 	var agents []AgentInfo
 
 	for _, pane := range panes {
-		agentType, sessionID := pulse.ParseSessionName(pane.SessionName)
+		agentType, sessionID := logparse.ParseSessionName(pane.SessionName)
 		if agentType == "" || sessionID == "" {
 			continue
 		}
@@ -469,7 +459,10 @@ func (h *SessionsHandler) dropStoppedAgents(ctx context.Context, agents []AgentI
 	return kept
 }
 
-// getLogStatus reads a log file and extracts PULSE status/summary.
+// getLogStatus reads a log file tail and reports its staleness and recent
+// lines. "status" and "summary" stay in the result, always nil, so clients that
+// read them keep working; live state comes from provider session events and
+// goals from goal events.
 func getLogStatus(logPath string) map[string]any {
 	result := map[string]any{
 		"status":            nil,
@@ -516,17 +509,10 @@ func getLogStatus(logPath string) map[string]any {
 
 	cleanLines := make([]string, 0, len(rawLines))
 	for _, line := range rawLines {
-		cleanLines = append(cleanLines, pulse.StripANSI(line))
+		cleanLines = append(cleanLines, logparse.StripANSI(line))
 	}
 
-	parsed := pulse.ParseLogLines(cleanLines)
-	if parsed.Status != "" {
-		result["status"] = parsed.Status
-	}
-	if parsed.Summary != "" {
-		result["summary"] = parsed.Summary
-	}
-	result["recent_lines"] = parsed.RecentLines
+	result["recent_lines"] = logparse.RecentLines(cleanLines)
 
 	return result
 }
@@ -784,7 +770,6 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		skipExpensive := sleeping || largeList && (!logReady || !h.transcriptReady(agent.SessionID))
 
 		status, _ := logInfo["status"].(string)
-		summary, _ := logInfo["summary"].(string)
 		staleness := logInfo["staleness_seconds"]
 
 		sid := agent.SessionID
@@ -826,11 +811,9 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		trace.agentDetail("transcript_state", sid, time.Since(transcriptStarted))
 		state := DeriveSessionState(stateInput)
 
-		// The goal line is the newest goal event (the agent's PULSE line, the
-		// goal generator or an operator edit); the raw PULSE line is kept for
-		// event tracking below.
-		pulseSummary := summary
-		summary = resolveGoal(pulseSummary, latestGoals[sid])
+		// The goal line is the newest goal event (the goal generator or an
+		// operator edit).
+		summary := latestGoals[sid]
 
 		// Board unread
 		tmuxName := agent.TmuxSession
@@ -924,9 +907,6 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			contextModel = extra.Model
 		}
 		addContextUsage(entry, contextModel, latestTurnCtx[sid])
-
-		// Track status/summary for event deduplication
-		h.trackStatusSummary(ctx, agent.AgentName, status, pulseSummary, sid)
 
 		if sid != "" {
 			liveSIDs[sid] = true
@@ -1076,7 +1056,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		firstPrompt = h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType)
 	}
 	initialStatus, _ := logInfo["status"].(string)
-	summary, _ := logInfo["summary"].(string)
+	summary := ""
 	// Same derivation as the list and WebSocket rows. The popout merges this
 	// record over the live row, so the state fields must agree with it.
 	var liveState SessionState
@@ -1167,50 +1147,6 @@ func writeExactTargetError(w http.ResponseWriter, status int, message string) {
 
 func shouldValidateExactTarget(agentType, sessionID string) bool {
 	return agentType != "" || sessionID != ""
-}
-
-func (h *SessionsHandler) trackStatusSummary(ctx interface{}, agentName, status, summary, sessionID string) {
-	h.lastKnownMu.Lock()
-	defer h.lastKnownMu.Unlock()
-
-	key := sessionID
-	if key == "" {
-		key = agentName
-	}
-
-	prev, seen := h.lastKnown[key]
-	if status != "" && status != prev.Status {
-		h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{
-			AgentName: agentName, SessionID: &sessionID, EventType: "status", Summary: status,
-		})
-	}
-	// After a restart the log still holds the last PULSE line; re-inserting
-	// it would bury a newer goal, so a line already recorded is only seeded.
-	if summary != "" && summary != prev.Summary && !(!seen && h.goalRecorded(sessionID, summary)) {
-		h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{
-			AgentName: agentName, SessionID: &sessionID, EventType: "goal", Summary: summary,
-		})
-	}
-	h.lastKnown[key] = lastKnownState{Status: status, Summary: summary}
-}
-
-// goalRecorded reports whether the session already has a goal event with
-// this text.
-func (h *SessionsHandler) goalRecorded(sessionID, goal string) bool {
-	if sessionID == "" {
-		return false
-	}
-	ok, err := h.ts.HasGoalEvent(context.Background(), sessionID, goal)
-	return err == nil && ok
-}
-
-// resolveGoal picks a session's goal line: the newest goal event, else the
-// agent's PULSE summary from its log.
-func resolveGoal(pulseSummary, latestGoal string) string {
-	if latestGoal != "" {
-		return latestGoal
-	}
-	return pulseSummary
 }
 
 // Detail returns detailed info for a specific live session.

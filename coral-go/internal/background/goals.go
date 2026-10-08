@@ -559,7 +559,7 @@ func (g *GoalGenerator) pruneMetrics(ctx context.Context) {
 }
 
 // latestGoal returns the session's newest goal and its source ("" for goals
-// that predate sources or came from the agent's own PULSE line).
+// that predate sources).
 func (g *GoalGenerator) latestGoal(ctx context.Context, sessionID string) (goal, source string) {
 	ev, err := g.taskStore.GetLatestGoalEvent(ctx, sessionID)
 	if err != nil || ev == nil {

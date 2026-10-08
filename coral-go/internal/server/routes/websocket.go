@@ -320,13 +320,8 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			waitingSummary = state.WaitingSummary
 		}
 
-		// Goal line: newest goal event, else the PULSE line (see resolveGoal).
-		// PULSE changes are recorded here too, so an agent's new PULSE line
-		// becomes the newest goal without waiting for an HTTP list call.
-		pulseSummary, _ := logInfo["summary"].(string)
-		pulseStatus, _ := logInfo["status"].(string)
-		h.trackStatusSummary(ctx, agent.AgentName, pulseStatus, pulseSummary, sid)
-		summary := resolveGoal(pulseSummary, latestGoals[sid])
+		// Goal line: the newest goal event.
+		summary := latestGoals[sid]
 
 		// Board unread
 		tmuxName := agent.TmuxSession

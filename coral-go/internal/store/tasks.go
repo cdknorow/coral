@@ -601,15 +601,6 @@ func (s *TaskStore) GetLatestGoalEvent(ctx context.Context, sessionID string) (*
 	return &ev, nil
 }
 
-// HasGoalEvent reports whether a session has ever had a goal with this text.
-func (s *TaskStore) HasGoalEvent(ctx context.Context, sessionID, goal string) (bool, error) {
-	var n int
-	err := s.db.GetContext(ctx, &n,
-		`SELECT COUNT(*) FROM agent_events WHERE session_id = ? AND event_type = 'goal' AND summary = ?`,
-		sessionID, goal)
-	return n > 0, err
-}
-
 // GetLatestGoals returns the latest goal summary per session.
 func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (map[string]string, error) {
 	if len(sessionIDs) == 0 {

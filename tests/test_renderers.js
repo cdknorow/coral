@@ -33,7 +33,6 @@ const TOOL_RESULT_RE = /^\s*⎿\s*/;
 const TOOL_CALL_RE = /^[\s●]*⏺\s+[A-Z]/;
 const PROGRESS_RE = /^\s*.+…\s*(\(.*\))?\s*$/;
 const STATUS_BAR_RE = /^\s*(worktree:|⏵)/;
-const PULSE_RE = /\|\|PULSE:(STATUS|SUMMARY|CONFIDENCE)\s/;
 
 const SPINNER_CHARS_RE = /^[\s✶✷✸✹✺✻✼✽✾✿⏺⏵⏴⏹⏏⚡●○◉◎◌◐◑◒◓▪▫▸▹►▻\u2800-\u28FF·•]*/;
 const HAS_SPINNER_RE = /^[\s]*[✶✷✸✹✺✻✼✽✾✿⏺⏵⏴⏹⏏⚡●○◉◎◌◐◑◒◓▪▫▸▹►▻\u2800-\u28FF·•]/;
@@ -55,7 +54,6 @@ function classifyLine(line, i, lines) {
     }
     if (isUserPromptLine(line)) return "user";
     if (STATUS_BAR_RE.test(line)) return "statusbar";
-    if (PULSE_RE.test(line)) return "pulse";
     if (PROGRESS_RE.test(line)) return "status";
     if (TOOL_CALL_RE.test(line)) return "tool-header";
     if (TOOL_RESULT_RE.test(line)) return "tool-body";
@@ -138,9 +136,6 @@ function groupIntoBlocks(lines) {
                 finishBlock();
                 current = { type: "status", lines: [i] };
             }
-        } else if (cls === "pulse") {
-            finishBlock();
-            blocks.push({ type: "pulse", lines: [i] });
         } else if (cls === "statusbar") {
             if (current && current.type === "statusbar") {
                 current.lines.push(i);
@@ -268,15 +263,10 @@ assertEqual(classifyLine("✶ Thinking…", 0, ["✶ Thinking…"]), "status",
 assertEqual(classifyLine("  Searching for 1 pattern, reading 1 file…", 0, ["  Searching for 1 pattern, reading 1 file…"]), "status",
     "indented line with … is status (no spinner)");
 
-// PULSE lines
-assertEqual(classifyLine("||PULSE:STATUS Reading codebase||", 0, ["||PULSE:STATUS Reading codebase||"]), "pulse",
-    "PULSE:STATUS is pulse");
-
-assertEqual(classifyLine("⏺ ||PULSE:STATUS Reading codebase||", 0, ["⏺ ||PULSE:STATUS Reading codebase||"]), "pulse",
-    "⏺ PULSE:STATUS is still pulse (PULSE checked before TOOL_CALL)");
-
-assertEqual(classifyLine("||PULSE:SUMMARY Implementing feature||", 0, ["||PULSE:SUMMARY Implementing feature||"]), "pulse",
-    "PULSE:SUMMARY is pulse");
+// PULSE-like text is no longer a protocol line: it is ordinary text
+for (const l of ["||PULSE:STATUS Reading codebase||", "⏺ ||PULSE:STATUS Reading codebase||", "||PULSE:SUMMARY Implementing feature||"]) {
+    assert(classifyLine(l, 0, [l]) !== "pulse", "PULSE-like text is not classified as pulse: " + l);
+}
 
 // Status bar
 assertEqual(classifyLine("  worktree:main | session:abc123", 0, ["  worktree:main | session:abc123"]), "statusbar",
@@ -475,17 +465,7 @@ console.log("\n=== Stateful spinner tracking tests ===");
         "no prior frame: consecutive text lines stay in one block");
 }
 
-// Test: PULSE lines with ⏺ prefix still classified as pulse
-{
-    resetState();
-
-    const line = "⏺ ||PULSE:STATUS Reading code||";
-    const lines = [line];
-    assertEqual(classifyLine(line, 0, lines), "pulse",
-        "PULSE line with ⏺ prefix is still pulse");
-}
-
-// Test: indented PULSE:STATUS not absorbed into tool block above
+// Test: PULSE-like text never becomes its own block type
 {
     resetState();
 
@@ -496,11 +476,9 @@ console.log("\n=== Stateful spinner tracking tests ===");
         "  ||PULSE:STATUS Waiting for instructions||",
     ];
     const blocks = groupIntoBlocks(lines);
-    // The PULSE lines must NOT be merged into the tool block above.
-    assertEqual(blocks.length, 3, "tool block + 2 separate pulse blocks");
-    assertEqual(blocks[0].type, "tool", "first block is tool");
-    assertEqual(blocks[1].type, "pulse", "second block is pulse (SUMMARY)");
-    assertEqual(blocks[2].type, "pulse", "third block is pulse (STATUS)");
+    assert(blocks.every(b => b.type !== "pulse"), "no pulse block type exists");
+    const covered = blocks.flatMap(b => b.lines).sort();
+    assertEqual(covered.join(","), "0,1,2,3", "every line, including PULSE-like text, is rendered");
 }
 
 // Test: block structure stability across 3 frames with alternating spinner

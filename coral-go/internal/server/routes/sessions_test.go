@@ -287,7 +287,7 @@ func TestCachedLogStatusConcurrentAndInvalidatesOnAppend(t *testing.T) {
 	server, handler, _, _ := setupSessionsTestServer(t)
 	defer server.Close()
 	path := filepath.Join(t.TempDir(), "agent.log")
-	require.NoError(t, os.WriteFile(path, []byte("PULSE status=working summary=first\n"), 0644))
+	require.NoError(t, os.WriteFile(path, []byte("log line first\n"), 0644))
 
 	const readers = 24
 	var wg sync.WaitGroup
@@ -301,7 +301,7 @@ func TestCachedLogStatusConcurrentAndInvalidatesOnAppend(t *testing.T) {
 	}
 	wg.Wait()
 
-	require.NoError(t, os.WriteFile(path, []byte("PULSE status=working summary=second\n"), 0644))
+	require.NoError(t, os.WriteFile(path, []byte("log line second\n"), 0644))
 	status := handler.cachedLogStatus(path)
 	assert.Contains(t, fmt.Sprint(status["recent_lines"]), "second")
 }
@@ -2738,34 +2738,20 @@ func TestCreateEvent_TypedGoalIsMarkedAsTheOperators(t *testing.T) {
 	assert.JSONEq(t, `{"source":"user"}`, *ev.DetailJSON)
 }
 
-func TestResolveGoal_NewestGoalEventWinsOverThePulseLine(t *testing.T) {
-	assert.Equal(t, "Short auto goal", resolveGoal("Long PULSE sentence from the start", "Short auto goal"))
-	assert.Equal(t, "PULSE only", resolveGoal("PULSE only", ""))
-	assert.Equal(t, "", resolveGoal("", ""))
-}
+func TestGetLogStatus_PulseLikeTextIsOrdinaryLogOutput(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.log")
+	body := "||PULSE:STATUS Working||\n||PULSE:SUMMARY Some goal||\nplain output\n"
+	require.NoError(t, os.WriteFile(path, []byte(body), 0644))
 
-func TestTrackStatusSummary_DoesNotReplayAKnownPulseLineAfterRestart(t *testing.T) {
-	_, handler, _, _ := setupSessionsTestServer(t)
-	ctx := context.Background()
-	sid := "33333333-3333-4333-8444-555555555553"
-	s := sid
-	_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "coral-go", SessionID: &s, EventType: "goal", Summary: "Old PULSE line"})
-	require.NoError(t, err)
-	auto := `{"source":"auto"}`
-	_, err = handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "coral-go", SessionID: &s, EventType: "goal", Summary: "Newer auto goal", DetailJSON: &auto})
-	require.NoError(t, err)
+	status := getLogStatus(path)
 
-	// A fresh process sees the old PULSE line in the log for the first time.
-	handler.trackStatusSummary(ctx, "coral-go", "", "Old PULSE line", sid)
-	ev, err := handler.ts.GetLatestGoalEvent(ctx, sid)
-	require.NoError(t, err)
-	assert.Equal(t, "Newer auto goal", ev.Summary)
-
-	// A genuinely new PULSE line is recorded and becomes the goal.
-	handler.trackStatusSummary(ctx, "coral-go", "", "New PULSE line", sid)
-	ev, err = handler.ts.GetLatestGoalEvent(ctx, sid)
-	require.NoError(t, err)
-	assert.Equal(t, "New PULSE line", ev.Summary)
+	// Nothing is parsed out of the log any more: the tags are plain output.
+	assert.Nil(t, status["status"])
+	assert.Nil(t, status["summary"])
+	lines, _ := status["recent_lines"].([]string)
+	assert.Contains(t, lines, "||PULSE:STATUS Working||")
+	assert.Contains(t, lines, "||PULSE:SUMMARY Some goal||")
+	assert.Contains(t, lines, "plain output")
 }
 
 // ── Changed files cache ─────────────────────────────────────────────────

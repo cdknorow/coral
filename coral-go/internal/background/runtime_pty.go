@@ -32,8 +32,8 @@ func (r *PTYRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, com
 }
 
 func (r *PTYRuntime) SendInput(ctx context.Context, name, text string) error {
-	// Append newline to simulate Enter key (matching tmux SendKeys behavior)
-	return r.backend.SendInput(name, []byte(text+"\n"))
+	// Type the text, then submit with the platform's Enter key.
+	return r.backend.SendLine(name, text)
 }
 
 func (r *PTYRuntime) KillAgent(ctx context.Context, name string) error {

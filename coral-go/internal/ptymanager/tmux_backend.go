@@ -14,7 +14,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/cdknorow/coral/internal/naming"
-	"github.com/cdknorow/coral/internal/pulse"
+	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -232,7 +232,7 @@ func (b *TmuxBackend) recoverSession(name string) *tmuxSession {
 	}
 
 	for _, pane := range panes {
-		agentType, sessionID := pulse.ParseSessionName(pane.SessionName)
+		agentType, sessionID := logparse.ParseSessionName(pane.SessionName)
 		if agentType == "" || sessionID == "" {
 			continue
 		}
@@ -384,7 +384,7 @@ func (b *TmuxBackend) ListSessions() []SessionInfo {
 	var sessions []SessionInfo
 
 	for _, pane := range panes {
-		agentType, sessionID := pulse.ParseSessionName(pane.SessionName)
+		agentType, sessionID := logparse.ParseSessionName(pane.SessionName)
 		if agentType == "" || sessionID == "" {
 			continue
 		}

@@ -44,7 +44,7 @@ func BenchmarkLiveRefreshList(b *testing.B) {
 			b.Fatal(err)
 		}
 		logPath := naming.LogFile(root, "claude", id)
-		if err := os.WriteFile(logPath, []byte("PULSE status=working summary=fixture\n"), 0600); err != nil {
+		if err := os.WriteFile(logPath, []byte("log line fixture\n"), 0600); err != nil {
 			b.Fatal(err)
 		}
 		if err := os.WriteFile(filepath.Join(project, id+".jsonl"), []byte(`{"type":"user","message":{"content":"fixture"}}`+"\n"), 0600); err != nil {

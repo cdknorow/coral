@@ -25,7 +25,6 @@ const TOOL_CALL_RE = /^[\s●]*⏺\s+[A-Z]/;
 // Matches lines containing … that aren't tool results (⎿) or user prompts.
 const PROGRESS_RE = /^\s*.+…\s*(\(.*\))?\s*$/;
 const STATUS_BAR_RE = /^\s*(worktree:|⏵)/;
-const PULSE_RE = /^[\s●⏺]*\|\|PULSE:(STATUS|SUMMARY|CONFIDENCE)\s/;
 
 // All spinner characters Claude Code cycles through (from log_streamer.py).
 // Used to strip spinner prefixes for stateful progress line tracking.
@@ -143,7 +142,6 @@ function classifyLine(line, i, lines) {
     }
     if (isUserPromptLine(line)) return "user";
     if (STATUS_BAR_RE.test(line)) return "statusbar";
-    if (PULSE_RE.test(line)) return "pulse";
     // Progress/thinking lines must be checked before tool headers because
     // the spinner cycles through characters including ⏺, which would
     // otherwise match TOOL_CALL_RE and cause blocks to jump on each frame.
@@ -234,9 +232,6 @@ function groupIntoBlocks(lines) {
                 finishBlock();
                 current = { type: "status", lines: [i] };
             }
-        } else if (cls === "pulse") {
-            finishBlock();
-            blocks.push({ type: "pulse", lines: [i] });
         } else if (cls === "statusbar") {
             if (current && current.type === "statusbar") {
                 current.lines.push(i);

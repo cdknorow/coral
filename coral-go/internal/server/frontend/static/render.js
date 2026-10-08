@@ -2632,10 +2632,6 @@ export function renderPaginationControls(total, page, pageSize) {
     `;
 }
 
-function stripPulseLines(text) {
-    return text.replace(/^\|\|PULSE:(STATUS|SUMMARY|CONFIDENCE)\s[^\|]*\|\|$/gm, '').replace(/\n{3,}/g, '\n\n');
-}
-
 export function renderHistoryChat(messages, agentType = "claude", baseIndex = 0, focusIndex = null) {
     const container = document.getElementById("history-messages");
     container.innerHTML = "";
@@ -2691,7 +2687,7 @@ function normalizeHistoryEntry(entry) {
     if (entry.type === "human") return { ...entry, type: "user" };
     if (entry.type === "assistant") {
         const text = typeof entry.text === "string" ? entry.text : (typeof entry.content === "string" ? entry.content : "");
-        return { ...entry, text: stripPulseLines(text) };
+        return { ...entry, text };
     }
     return entry;
 }
@@ -3033,6 +3029,5 @@ export function updateSessionSummary(summary) {
         el.style.display = "";
     }
     // Don't hide — a null summary from a WebSocket tick shouldn't
-    // clear a previously-known goal. The log parser may simply not
-    // have found the PULSE:SUMMARY line in the current chunk.
+    // clear a previously-known goal.
 }

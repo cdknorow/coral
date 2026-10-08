@@ -89,6 +89,25 @@ func (m *PTYBackend) SendInput(name string, data []byte) error {
 // promptSubmitDelay separates a bracketed paste from the submitting Enter.
 var promptSubmitDelay = 150 * time.Millisecond
 
+// SendLine types text and then submits it with Enter. The Enter is written
+// separately after a short delay: agent TUIs treat text that arrives in the same
+// read as a trailing newline as a paste, leaving it in the input box unsent.
+func (m *PTYBackend) SendLine(name, text string) error {
+	if text != "" {
+		if err := m.SendInput(name, []byte(text)); err != nil {
+			return err
+		}
+		time.Sleep(lineSubmitDelay)
+	}
+	return m.SendInput(name, []byte(EnterKey))
+}
+
+// lineSubmitDelay separates typed text from the submitting Enter in SendLine.
+// Codex on Windows reads an Enter that follows typed text too closely as a
+// newline in the input box (paste-burst handling) instead of a submit: with
+// 100-150ms the text was left unsent, while 200ms+ submitted every time.
+var lineSubmitDelay = 400 * time.Millisecond
+
 // SendPrompt writes text to a session as ONE logical input: a single bracketed
 // paste (ESC[200~ ... ESC[201~) followed by Enter. It only does so while the
 // application has enabled bracketed paste; otherwise the raw newlines would be

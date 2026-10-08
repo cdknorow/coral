@@ -108,7 +108,7 @@ func (s *session) readLoop() {
 			data := make([]byte, n)
 			copy(data, buf[:n])
 
-			// Write to log file (for PULSE parsing, FTS indexing)
+			// Write to log file (for status display, FTS indexing)
 			if s.logFile != nil {
 				s.logFile.Write(data)
 			}

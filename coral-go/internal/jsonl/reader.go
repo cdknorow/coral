@@ -159,6 +159,17 @@ func (r *SessionReader) readNewMessagesLocked(c *sessionCache, sessionID, workin
 	if err != nil {
 		return nil, len(c.messages)
 	}
+
+	// Only consume complete lines. A line caught mid-write stays unread until
+	// its newline arrives; consuming it would drop the message for good. A last
+	// line with no newline is taken only when it is already valid JSON.
+	if end := bytes.LastIndexByte(newData, '\n'); end < 0 {
+		if !json.Valid(bytes.TrimSpace(newData)) {
+			newData = nil
+		}
+	} else if tail := newData[end+1:]; len(bytes.TrimSpace(tail)) > 0 && !json.Valid(bytes.TrimSpace(tail)) {
+		newData = newData[:end+1]
+	}
 	c.offset += int64(len(newData))
 
 	if len(newData) == 0 {
@@ -773,8 +784,6 @@ func parseTranscriptEntry(entry map[string]any, toolUseNames map[string]string, 
 	}
 }
 
-var pulseRE = regexp.MustCompile(`\|\|PULSE:\w+[^|]*\|\|`)
-
 func parseClaudeEntry(entry map[string]any, toolUseNames map[string]string) []map[string]any {
 	etype, _ := entry["type"].(string)
 	timestamp, _ := entry["timestamp"].(string)
@@ -1007,8 +1016,6 @@ func parseClaudeAssistantEntry(entry map[string]any, timestamp string, toolUseNa
 		return nil
 	}
 
-	// Strip PULSE markers
-	text = pulseRE.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
 
 	if text == "" && len(toolUses) == 0 {
@@ -1790,8 +1797,6 @@ func parseCodexAssistantEntry(content any, timestamp string, toolUseNames map[st
 		return nil
 	}
 
-	// Strip PULSE markers
-	text = pulseRE.ReplaceAllString(text, "")
 	text = strings.TrimSpace(text)
 
 	if text == "" && len(toolUses) == 0 {

@@ -173,6 +173,98 @@ func TestReadNewMessages_ToolResult(t *testing.T) {
 	}
 }
 
+// Messages appended to the transcript after the first read keep their
+// PULSE-like text.
+func TestReadNewMessages_StreamedPulseLikeTextIsPreserved(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "019e90eb-a08a-7511-a410-23e7ae3e62a9"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "06", "03")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(sessionDir, "rollout-2026-06-03T21-37-01-"+sessionID+".jsonl")
+
+	first := `{"timestamp":"2026-06-04T04:37:22.296Z","type":"event_msg","payload":{"type":"user_message","message":"it could be the ||PULSE:STATUS parsing||","images":[]}}` + "\n"
+	if err := os.WriteFile(path, []byte(first), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reader := NewSessionReader()
+	msgs, _ := reader.ReadNewMessages(sessionID, "", "codex")
+	if len(msgs) != 1 || msgs[0]["content"] != "it could be the ||PULSE:STATUS parsing||" {
+		t.Fatalf("first read altered the operator message: %#v", msgs)
+	}
+
+	second := `{"timestamp":"2026-06-04T04:37:28.017Z","type":"event_msg","payload":{"type":"agent_message","message":"||PULSE:SUMMARY goal||\nreply","phase":"final_answer"}}` + "\n"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(second); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ = reader.ReadNewMessages(sessionID, "", "codex")
+	if len(msgs) != 1 || msgs[0]["text"] != "||PULSE:SUMMARY goal||\nreply" {
+		t.Fatalf("streamed assistant message altered: %#v", msgs)
+	}
+}
+
+// A line caught mid-write must be read once it is complete, not dropped.
+func TestReadNewMessages_HalfWrittenLineIsReadWhenComplete(t *testing.T) {
+	dir := t.TempDir()
+	sessionID := "019e90eb-a08a-7511-a410-23e7ae3e62b1"
+	codexHome := filepath.Join(dir, ".codex")
+	sessionDir := filepath.Join(codexHome, "sessions", "2026", "06", "03")
+	if err := os.MkdirAll(sessionDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", codexHome)
+	path := filepath.Join(sessionDir, "rollout-2026-06-03T21-37-01-"+sessionID+".jsonl")
+
+	line := func(text string) string {
+		return `{"timestamp":"2026-06-04T04:37:22.296Z","type":"event_msg","payload":{"type":"user_message","message":"` + text + `","images":[]}}`
+	}
+	if err := os.WriteFile(path, []byte(line("one")+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	reader := NewSessionReader()
+	if msgs, _ := reader.ReadNewMessages(sessionID, "", "codex"); len(msgs) != 1 {
+		t.Fatalf("first read: %#v", msgs)
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	second := line("two")
+	half := len(second) / 2
+	if _, err := f.WriteString(second[:half]); err != nil {
+		t.Fatal(err)
+	}
+	if msgs, total := reader.ReadNewMessages(sessionID, "", "codex"); len(msgs) != 0 || total != 1 {
+		t.Fatalf("half-written line was consumed: msgs=%#v total=%d", msgs, total)
+	}
+	if _, err := f.WriteString(second[half:] + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	msgs, total := reader.ReadNewMessages(sessionID, "", "codex")
+	if len(msgs) != 1 || msgs[0]["content"] != "two" || total != 2 {
+		t.Fatalf("completed line was lost: msgs=%#v total=%d", msgs, total)
+	}
+
+	// A complete last line without a trailing newline is still read.
+	if _, err := f.WriteString(line("three")); err != nil {
+		t.Fatal(err)
+	}
+	msgs, total = reader.ReadNewMessages(sessionID, "", "codex")
+	if len(msgs) != 1 || msgs[0]["content"] != "three" || total != 3 {
+		t.Fatalf("unterminated complete line was not read: msgs=%#v total=%d", msgs, total)
+	}
+}
+
 func TestReadNewMessages_CodexEventMessages(t *testing.T) {
 	dir := t.TempDir()
 	sessionID := "019e90eb-a08a-7511-a410-23e7ae3e62a8"
@@ -204,7 +296,8 @@ func TestReadNewMessages_CodexEventMessages(t *testing.T) {
 	if msgs[0]["type"] != "user" || msgs[0]["content"] != "fix codex chat history" {
 		t.Fatalf("unexpected user message: %#v", msgs[0])
 	}
-	if msgs[1]["type"] != "assistant" || msgs[1]["text"] != "I found the issue." {
+	// PULSE-like text is ordinary message text and must not be altered.
+	if msgs[1]["type"] != "assistant" || msgs[1]["text"] != "||PULSE:STATUS Working||\nI found the issue." {
 		t.Fatalf("unexpected assistant message: %#v", msgs[1])
 	}
 	if msgs[1]["phase"] != "commentary" {
@@ -638,23 +731,34 @@ func TestSummarizeToolInput(t *testing.T) {
 	}
 }
 
-func TestPulseStripping(t *testing.T) {
-	entry := map[string]any{
-		"type":      "assistant",
-		"timestamp": "T1",
-		"message": map[string]any{
-			"content": []any{
-				map[string]any{"type": "text", "text": "Working on it ||PULSE:STATUS doing stuff|| now"},
-			},
-		},
-	}
+func TestPulseLikeTextIsPreserved(t *testing.T) {
+	const literal = "Working on it ||PULSE:STATUS doing stuff|| now\n||PULSE:SUMMARY multi\nline goal||\nafter"
 	toolNames := make(map[string]string)
-	msgs := parseClaudeEntry(entry, toolNames)
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
+
+	claudeAssistant := parseClaudeEntry(map[string]any{
+		"type": "assistant", "timestamp": "T1",
+		"message": map[string]any{"content": []any{map[string]any{"type": "text", "text": literal}}},
+	}, toolNames)
+	if len(claudeAssistant) != 1 || claudeAssistant[0]["text"] != literal {
+		t.Errorf("Claude assistant text altered: %#v", claudeAssistant)
 	}
-	if msgs[0]["text"] != "Working on it  now" {
-		t.Errorf("expected PULSE stripped, got %q", msgs[0]["text"])
+
+	claudeUser := parseClaudeEntry(map[string]any{
+		"type": "user", "timestamp": "T2",
+		"message": map[string]any{"content": literal},
+	}, toolNames)
+	if len(claudeUser) != 1 || claudeUser[0]["type"] != "user" || claudeUser[0]["content"] != literal {
+		t.Errorf("Claude user text altered: %#v", claudeUser)
+	}
+
+	codexUser := parseCodexUserEntry(literal, "T3", toolNames)
+	if len(codexUser) != 1 || codexUser[0]["content"] != literal {
+		t.Errorf("Codex user text altered: %#v", codexUser)
+	}
+
+	codexAssistant := parseCodexAssistantEntry([]any{map[string]any{"type": "output_text", "text": literal}}, "T4", toolNames)
+	if len(codexAssistant) != 1 || codexAssistant[0]["text"] != literal {
+		t.Errorf("Codex assistant text altered: %#v", codexAssistant)
 	}
 }
 

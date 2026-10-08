@@ -78,7 +78,7 @@ func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int
 }
 
 func (p *PTYSessionTerminal) SendInput(_ context.Context, name, command, _, _ string) error {
-	return p.backend.SendInput(p.resolveSessionKey(name), []byte(command+enterKey))
+	return p.backend.SendLine(p.resolveSessionKey(name), command)
 }
 
 // SendPrompt delivers text as one bracketed paste followed by Enter, only while
@@ -104,13 +104,13 @@ func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command str
 		if err != nil {
 			return err
 		}
-		if err := p.backend.SendInput(resolved, []byte(invocation+enterKey)); err != nil {
+		if err := p.backend.SendLine(resolved, invocation); err != nil {
 			cleanup()
 			return err
 		}
 		return nil
 	}
-	return p.backend.SendInput(resolved, []byte(command+enterKey))
+	return p.backend.SendLine(resolved, command)
 }
 
 func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, target, data string) error {

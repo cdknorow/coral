@@ -52,8 +52,8 @@ function getHiddenFilters() {
     return state.eventFiltersHidden;
 }
 
-// Known pulse event types — add new PULSE:<TYPE> entries here
-const PULSE_ICONS = {
+// Icons for agent event types
+const EVENT_ICONS = {
     thinking:     { char: '&#xea4a;', cls: 'tool-thinking',   title: 'Thinking' },
     status:       { char: '&#xe8b8;', cls: 'tool-status',     title: 'Status' },
     goal:         { char: '&#xe153;', cls: 'tool-goal',       title: 'Goal' },
@@ -63,13 +63,13 @@ const PULSE_ICONS = {
 };
 
 function getToolIcon(toolName, eventType) {
-    // Check pulse event types first
-    const pulse = PULSE_ICONS[eventType];
-    if (pulse) return { ...pulse };
+    // Check agent event types first
+    const eventIcon = EVENT_ICONS[eventType];
+    if (eventIcon) return { ...eventIcon };
     // Tool-based events
     const icon = TOOL_ICONS[toolName];
     if (icon) return { ...icon, title: toolName };
-    // Generic fallback for unknown pulse event types
+    // Generic fallback for unknown event types
     if (eventType && !toolName) {
         const label = eventType.charAt(0).toUpperCase();
         const title = eventType.charAt(0).toUpperCase() + eventType.slice(1);
