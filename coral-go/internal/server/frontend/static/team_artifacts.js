@@ -11,7 +11,7 @@ let previewFile = null;
 const fresh = () => ({items:[], loaded:false, busy:false, error:'', hasMore:false, truncated:false, controller:null, generation:0});
 const caches = {artifacts:fresh(), 'team-artifacts':fresh()};
 const isArtifactSource = () => source === 'artifacts' || source === 'team-artifacts';
-const panels = {files:'repository-files-view', browse:'file-explorer-view', artifacts:'team-artifacts-view', 'team-artifacts':'team-artifacts-view', knowledge:'team-knowledge-view'};
+const panels = {files:'agentic-panel-files', browse:'agentic-panel-browse', artifacts:'agentic-panel-artifacts', 'team-artifacts':'agentic-panel-team-artifacts', knowledge:'agentic-panel-knowledge'};
 function cancel(cache) { cache.controller?.abort(); ++cache.generation; cache.busy=false; }
 function clear(scope) { cancel(caches[scope]); caches[scope]=fresh(); }
 
@@ -64,7 +64,7 @@ function artifactType(item) {
 }
 
 function render() {
-    const root = document.getElementById('team-artifacts-view');
+    const root = document.getElementById(`${panels[source]}-view`);
     if (!root || !isArtifactSource()) return;
     const {items, busy, error, hasMore, truncated} = caches[source];
     const personal = source === 'artifacts';
@@ -110,16 +110,19 @@ function render() {
         const info = el('td', 'team-artifact-info team-artifact-col-name');
         const name = readableName(item);
         const link = artifactLink(item);
-        const openPreview = () => previewArtifact?.({
-            ...item, name,
-            uri: link.url.startsWith('/api/artifacts/') ? `coral://artifacts/${link.url.split('/').pop()}` : item.uri,
-            content_url: item.inline ? link.url : null,
-            external_url: link.preview ? null : link.url,
-        });
+        const doPreview = () => {
+            if (!link || !previewArtifact) return;
+            const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})$/i.exec(item.uri || '');
+            previewArtifact({
+                ...item, name,
+                uri: managed ? `coral://artifacts/${managed[1].toLowerCase()}` : (item.uri || ''),
+                external_url: link.preview ? null : link.url,
+            });
+        };
         const title = el(link ? 'button' : 'span', 'team-artifact-name', name);
         if (link) {
             title.type = 'button';
-            title.addEventListener('click', openPreview);
+            title.addEventListener('click', doPreview);
         }
         title.title = name;
         info.append(title);
@@ -156,7 +159,7 @@ function render() {
             preview.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2.5"/></svg>';
             preview.title = 'Preview';
             preview.setAttribute('aria-label', `Preview ${name}`);
-            preview.addEventListener('click', openPreview);
+            preview.addEventListener('click', doPreview);
             actions.append(preview);
             const download = el('a', 'team-artifacts-action team-artifact-icon-btn');
             download.href = link.url;
@@ -213,28 +216,30 @@ async function load(append = false) {
     }
 }
 
-function updateTeamTabVisibility() {
-    const hasTeam = !!currentTeam();
-    document.querySelectorAll('[data-files-source="team-artifacts"], [data-files-source="knowledge"]').forEach(btn => {
-        btn.style.display = hasTeam ? '' : 'none';
-    });
-    if (!hasTeam && (source === 'team-artifacts' || source === 'knowledge')) {
-        source = 'files';
-    }
+export function isOrchestratorSession(session) {
+    if (!session) return false;
+    const name = (session.display_name || '').toLowerCase();
+    const title = (session.board_job_title || '').toLowerCase();
+    return name.includes('orchestrator') || title.includes('orchestrator');
 }
 
-function updateSource() {
-    updateTeamTabVisibility();
-    for (const id of new Set(Object.values(panels))) {
-        const panel=document.getElementById(id); if(panel) panel.hidden=id!==panels[source];
+// The orchestrator gets the team-wide views; every other agent keeps its own
+// artifacts. Keeps the tab strip short.
+function hiddenSources() {
+    const orchestrator = !!currentTeam() && isOrchestratorSession(state.currentSession);
+    return orchestrator ? ['artifacts'] : ['team-artifacts', 'knowledge'];
+}
+
+function updateTeamTabVisibility() {
+    const hidden = hiddenSources();
+    for (const name of ['artifacts', 'team-artifacts', 'knowledge']) {
+        const btn = document.getElementById(`agentic-tab-${name}`);
+        if (btn) btn.style.display = hidden.includes(name) ? 'none' : '';
     }
-    document.querySelectorAll('[data-files-source]').forEach(button=>{
-        const selected=button.dataset.filesSource===source;
-        button.setAttribute('aria-selected',String(selected));
-        button.tabIndex=selected?0:-1;
-    });
-    const panel=document.getElementById(panels[source]);
-    if(panel)panel.setAttribute('aria-labelledby',`files-source-${source}`);
+    if (hidden.includes(source)) {
+        source = 'files';
+        window.switchAgenticTab?.('files', 'top');
+    }
 }
 
 function activate() {
@@ -243,75 +248,17 @@ function activate() {
     else if(isArtifactSource()) {render(); if(!caches[source].loaded && !caches[source].busy)load();}
 }
 
-function selectSource(next) {
-    if(source===next)return;
+/** Called by switchAgenticTab: each source is a top-level sidebar tab. */
+export function selectFilesSource(next) {
+    if(!(next in panels) || source===next) return;
     if(isArtifactSource())cancel(caches[source]);
-    source=next; updateSource(); activate();
+    source=next; activate();
 }
 
-// Both list and preview use the same source navigation and keyboard behavior.
-function createSourcePicker(onSelect, preview = false) {
-    const picker=el('div','files-source-picker');
-    picker.id=preview?'preview-files-source-picker':'files-source-picker';
-    picker.setAttribute('role','tablist');picker.setAttribute('aria-label','Viewer source');
-    const tabs=[['files','Files'],['browse','Browse'],['artifacts','Artifacts'],['team-artifacts','Team Artifacts'],['knowledge','Team Knowledge']];
-    for(const [value,label] of tabs) {
-        const button=el('button','files-source-button',label);
-        const selected=value===source;
-        button.type='button';button.dataset.filesSource=value;
-        button.id=`${preview?'preview-':''}files-source-${value}`;
-        button.setAttribute('role','tab');
-        button.setAttribute('aria-controls',preview?'inline-preview-body':panels[value]);
-        button.setAttribute('aria-selected',String(selected));
-        button.tabIndex=selected?0:-1;
-        button.addEventListener('click',()=>onSelect(value));picker.append(button);
-    }
-    picker.addEventListener('keydown',event=>{
-        const buttons=[...picker.querySelectorAll('button')];const i=buttons.indexOf(event.target);if(i<0)return;
-        let target;
-        if(event.key==='ArrowRight')target=buttons[(i+1)%buttons.length];
-        else if(event.key==='ArrowLeft')target=buttons[(i+buttons.length-1)%buttons.length];
-        else if(event.key==='Home')target=buttons[0];else if(event.key==='End')target=buttons.at(-1);else return;
-        event.preventDefault();target.click();
-        // Leaving preview rebuilds the list; focus the replacement tab.
-        (target.isConnected?target:document.getElementById(`files-source-${target.dataset.filesSource}`))?.focus();
-    });
-    return picker;
-}
-
-export function mountPreviewSourcePicker(panel, closePreview) {
-    const picker=createSourcePicker(value=>{
-        closePreview();
-        if (window.innerWidth <= 767) {
-            window.switchAgenticTab?.('files', 'top');
-            window.toggleAgenticPanel?.(true);
-        }
-        selectSource(value);
-        document.getElementById(`files-source-${value}`)?.focus();
-    },true);
-    panel.prepend(picker);
-    const body=panel.querySelector('#inline-preview-body');
-    body?.setAttribute('role','tabpanel');
-    body?.setAttribute('aria-labelledby',`preview-files-source-${source}`);
-}
-
-// Re-mount after closing a preview: keep source, scoped list and expanded tree.
 export function initFilesSourcePicker(onPreview, onFilePreview) {
     previewArtifact=onPreview; previewFile=onFilePreview;
-    const panel=document.getElementById('agentic-panel-files');
-    if(!panel || panel.querySelector('.inline-preview-header'))return;
-    if(!document.getElementById('files-source-picker')) {
-        const files=el('div','repository-files-view');files.id=panels.files;
-        while(panel.firstChild)files.append(panel.firstChild);
-        const picker=createSourcePicker(selectSource);
-        const artifacts=el('div','team-artifacts-view');artifacts.id=panels.artifacts;
-        const browse=el('div','file-explorer-view');browse.id=panels.browse;
-        const knowledge=el('div','team-knowledge-view');knowledge.id=panels.knowledge;
-        for(const view of [files,artifacts,browse,knowledge])view.setAttribute('role','tabpanel');
-        panel.append(picker,files,browse,artifacts,knowledge);
-    }
     mountExplorer(previewFile);
-    syncFilesSourceTeam();updateSource();render();activate();
+    syncFilesSourceTeam();updateTeamTabVisibility();render();activate();
 }
 
 export function syncFilesSourceTeam() {
@@ -320,6 +267,7 @@ export function syncFilesSourceTeam() {
     const teamChanged=next!==team;
     const agentChanged=nextSession!==sessionID;
     syncExplorerSession();
+    updateTeamTabVisibility();
     if(!teamChanged&&!agentChanged)return;
     if(teamChanged) { clear('team-artifacts'); knowledgeLoaded=false; knowledgeLoading=false; }
     if(teamChanged||agentChanged)clear('artifacts');
@@ -327,7 +275,7 @@ export function syncFilesSourceTeam() {
     render();activate();
 }
 
-export function selectKnowledgeSource() { selectSource('knowledge'); }
+export function selectKnowledgeSource() { window.switchAgenticTab?.('knowledge', 'top'); }
 
 // ── Knowledge tab ───────────────────────────────────────────────────────
 
@@ -339,7 +287,7 @@ let knowledgeActiveTab = 'index';
 let knowledgeDirty = {};
 
 async function loadKnowledgeTab() {
-    const panel = document.getElementById(panels.knowledge);
+    const panel = document.getElementById('team-knowledge-view');
     if (!panel) return;
     const boardName = currentTeam();
     if (!boardName) {
@@ -539,7 +487,7 @@ export function reloadKnowledgeTab() { knowledgeLoaded = false; knowledgeLoading
 
 export async function distillKnowledgeInTab(boardName) {
     selectSource('knowledge');
-    const panel = document.getElementById(panels.knowledge);
+    const panel = document.getElementById('team-knowledge-view');
     if (!panel) return;
     knowledgeLoaded = true;
 

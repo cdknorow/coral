@@ -12,7 +12,6 @@ import { loadSessionTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
 import { loadAgentTasks, loadBoardTasks, loadSubagents, renderTaskList } from './tasks.js';
 import { loadChangedFiles, refreshChangedFiles, syncFilesViewerSession } from './changed_files.js';
-import { resetDiffCache } from './diff_view.js';
 import { loadAgentNotes } from './agent_notes.js';
 import { loadAgentEvents, switchAgenticTab } from './agentic_state.js';
 import { loadHistoryEvents, loadHistoryTasks, loadHistoryAgentNotes } from './history_tabs.js';
@@ -55,6 +54,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
         prompt: agentData?.prompt || "", model: agentData?.model || "",
         capabilities: agentData?.capabilities || null,
         board_project: agentData?.board_project || null,
+        board_job_title: agentData?.board_job_title || null,
     };
 
     syncFilesViewerSession();
@@ -232,8 +232,6 @@ export async function selectLiveSession(name, agentType, sessionId) {
     loadBoardTasks(boardProject || null);
     loadAgentNotes(name, sessionId);
     loadAgentEvents(name, sessionId);
-    // Cached patches belong to the agent we just left
-    resetDiffCache();
     // The git queries wait for the transcript: on a large repo they take
     // seconds, and the browser's per-origin connection budget is small enough
     // that they would hold up the chat request behind them (task: chat stuck

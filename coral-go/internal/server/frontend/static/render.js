@@ -120,9 +120,13 @@ function _renderAvatar(s, dotClass) {
     // the agent works, the other yields initials from a path or sentence.
     // Colour stays folder-based (see `color` above) so agents in one folder
     // share a hue.
-    const initialsSource = sessionIdentitySource(s) || name;
+    // With no stable identity the row label is "Agent"/"Terminal", so the
+    // initials are AG/TE rather than letters of the folder name (every agent
+    // in coral-go would read CO).
+    const initialsSource = resolveSessionIdentity(s);
     const initials = _getInitials(initialsSource);
-    return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.2)};color:${color}">
+    const style = `background:${hexToRgba(color, 0.2)};color:${color}`;
+    return `<div class="agent-avatar" style="${style}">
         <span class="agent-avatar-initials">${escapeHtml(initials)}</span>${statusDot}
     </div>`;
 }
@@ -168,7 +172,7 @@ export const SESSION_STATES = {
     check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
     your_turn:      { label: 'Ready for input', dot: 'your-turn', pill: null,            pillClass: '',          chip: '',            attention: false },
     working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
-    task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: 'Task assigned · idle', pillClass: 'task-idle', chip: 'idle', attention: true },
+    task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: null, pillClass: '', chip: 'idle', attention: true },
     idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
 };
 
@@ -914,6 +918,8 @@ function _getCollapsedGroups() {
 }
 
 function _isGroupCollapsed(groupName) {
+    // While searching, matches inside a collapsed group must stay visible.
+    if (_agentFilter) return false;
     return _getCollapsedGroups().includes(groupName);
 }
 
@@ -1718,6 +1724,40 @@ function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact, groupN
     return html;
 }
 
+// ── Agent summary line (the goal text under each agent name) ──────────
+
+/** Stored server-side in user settings (`show_session_summary`); off unless turned on. */
+export function isSessionSummaryShown() {
+    return String(state.settings?.show_session_summary).toLowerCase() === 'true';
+}
+
+export function applySessionSummaryPref() {
+    const shown = isSessionSummaryShown();
+    document.querySelector('.sidebar')?.classList.toggle('summary-hidden', !shown);
+    document.getElementById('sidebar-summary-btn')?.classList.toggle('active', shown);
+    const check = document.getElementById('settings-show-summary');
+    if (check) check.checked = shown;
+}
+
+export async function toggleSessionSummary() {
+    const previous = state.settings?.show_session_summary;
+    const next = !isSessionSummaryShown();
+    state.settings = { ...state.settings, show_session_summary: next ? 'True' : 'False' };
+    applySessionSummaryPref();
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ show_session_summary: next }),
+        });
+        if (!resp.ok) throw new Error(`settings ${resp.status}`);
+    } catch (e) {
+        console.error('Failed to save summary setting:', e);
+        state.settings = { ...state.settings, show_session_summary: previous };
+        applySessionSummaryPref();
+    }
+}
+
 export function toggleGroupByTeam() {
     const current = localStorage.getItem('coral-group-by-team') !== 'false';
     localStorage.setItem('coral-group-by-team', !current ? 'true' : 'false');
@@ -1751,6 +1791,152 @@ export function sessionUnreadCount(s) {
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
+const _RAIL_ICONS = {
+    team: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>',
+    folder: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg>',
+    workflow: '<span class="material-icons" style="font-size:13px" aria-hidden="true">account_tree</span>',
+};
+
+// Role keyword -> Material icon for the rail tiles (first match wins).
+const _RAIL_ROLE_ICONS = [
+    ['orchestrator', 'hub'], ['architect', 'architecture'], ['design', 'palette'], ['artist', 'palette'],
+    ['devops', 'settings'], ['backend', 'dns'], ['frontend', 'code'], ['qa', 'bug_report'], ['test', 'bug_report'],
+    ['review', 'rate_review'], ['lead', 'construction'], ['dev', 'code'], ['research', 'travel_explore'],
+];
+
+function _railRoleIcon(s) {
+    if (s.agent_type === 'terminal') return 'terminal';
+    const text = `${s.display_name || ''} ${s.board_job_title || ''}`.toLowerCase();
+    const hit = _RAIL_ROLE_ICONS.find(([k]) => text.includes(k));
+    return hit ? hit[1] : '';
+}
+
+function _railTile(s, active) {
+    const label = resolveSessionIdentity(s) + (s.board_project ? ` · ${s.board_project}` : '');
+    const dot = getDotClass(s);
+    const unread = sessionUnreadCount(s);
+    const icon = s.icon && !s.sleeping
+        ? `<span class="rail-tile-emoji">${escapeHtml(s.icon)}</span>`
+        : (_railRoleIcon(s) ? `<span class="material-icons rail-tile-icon" aria-hidden="true">${_railRoleIcon(s)}</span>` : '');
+    let badge = '';
+    if (unread > 0) badge = `<span class="rail-tile-badge rail-tile-unread">${unread > 9 ? '9+' : unread}</span>`;
+    else if (dot === 'done') badge = '<span class="rail-tile-badge rail-tile-done material-icons" aria-hidden="true">check</span>';
+    else badge = `<span class="rail-tile-dot avatar-status-dot ${dot}"></span>`;
+    return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"
+        onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${escapeAttr(s.session_id || '')}')"><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
+}
+
+function _railTeamColor(name) {
+    const custom = _getBoardColor(name);
+    if (custom) return custom;
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+    return `hsl(${((hash % 360) + 360) % 360}, 60%, 55%)`;
+}
+
+/** Icon rail shown when the sidebar is collapsed: a team/folder header per
+ *  group (click to expand or collapse, same state as the full list) with the
+ *  awake agents beneath it. Sleeping agents are left out. */
+function _renderSidebarRail(sessions) {
+    const rail = document.getElementById('sidebar-rail-list');
+    if (!rail) return;
+    const groupByTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+
+    // Same group and agent order as the full list, so both views line up.
+    const isOrchSession = s => (s.display_name || s.board_job_title || '').toLowerCase().includes('orchestrator');
+    const groups = []; // { kind, label, key, agents } in rendered order
+    const bucket = (pick) => {
+        const map = {};
+        for (const s of sessions) {
+            const k = pick(s);
+            if (k !== null) (map[k] = map[k] || []).push(s);
+        }
+        return Object.entries(map);
+    };
+    // Awake agents in the order their rows render (directory clusters when the list sub-groups them).
+    const awakeInRowOrder = (agents, defaultDir) => {
+        const awake = agents.filter(a => !a.sleeping);
+        const clusters = {};
+        for (const a of awake) (clusters[a.working_directory || defaultDir || ''] ||= []).push(a);
+        const keys = Object.keys(clusters);
+        const differ = awake.filter(a => { const d = a.working_directory || defaultDir; return d && d !== defaultDir; }).length;
+        if (!(keys.length >= 3 || (keys.length >= 2 && differ >= 3))) return awake;
+        keys.sort((x, y) => (x === defaultDir ? -1 : y === defaultDir ? 1 : x.localeCompare(y)));
+        return keys.flatMap(k => clusters[k]);
+    };
+
+    if (groupByTeam) {
+        const teams = _sortGroups(bucket(s => s.board_project || null));
+        if (!_getGroupOrder().length) {
+            teams.sort((a, b) => (a[1].every(x => x.sleeping) ? 1 : 0) - (b[1].every(x => x.sleeping) ? 1 : 0));
+        }
+        for (const [name, list] of teams) {
+            const ordered = _sortByOrder(list).sort((a, b) => isOrchSession(b) - isOrchSession(a));
+            groups.push({ kind: 'team', key: name, label: name, agents: awakeInRowOrder(ordered, list[0]?.working_directory || '') });
+        }
+        for (const [name, list] of bucket(s => (!s.board_project && s.workflow_name) ? s.workflow_name : null)) {
+            groups.push({ kind: 'workflow', key: 'wf:' + name, label: name, agents: list.filter(a => !a.sleeping) });
+        }
+    }
+    const folders = _sortGroups(bucket(s => (groupByTeam && (s.board_project || s.workflow_name)) ? null : (s.name || 'unknown')));
+    for (const [name, list] of folders) {
+        const ordered = _sortByOrder(list);
+        groups.push({ kind: 'folder', key: name, label: name, agents: awakeInRowOrder(ordered, ordered[0]?.working_directory || '') });
+    }
+
+    let html = '';
+    for (const g of groups) {
+        if (!g.agents.length) continue;
+        const collapsed = _isGroupCollapsed(g.key);
+        const letter = (g.label.trim()[0] || '?').toUpperCase();
+        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(g.key);
+        const style = ` style="--rail-accent:${escapeAttr(accent)}"`;
+        const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
+        html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
+            onclick="toggleGroupCollapse('${escapeAttr(g.key)}')">${_RAIL_ICONS[g.kind]}<span class="sidebar-rail-letter">${escapeHtml(letter)}</span></button>`;
+        if (collapsed) continue;
+        for (const s of g.agents) {
+            const active = state.currentSession?.type === 'live' && state.currentSession.session_id === s.session_id;
+            html += _railTile(s, active);
+        }
+    }
+    rail.innerHTML = html;
+}
+
+// ── Agent search (sidebar) ────────────────────────────────────────────
+
+let _agentFilter = '';
+let _filteredMatches = [];
+
+// Matches the agent's name only (what the row label shows), not its team, folder or goal.
+function _agentMatches(s, q) {
+    const names = [resolveSessionIdentity(s), s.display_name, s.auto_name, s.board_job_title]
+        .filter(Boolean).join(' ').toLowerCase();
+    return q.split(/\s+/).every(term => names.includes(term));
+}
+
+export function filterLiveAgents(value) {
+    _agentFilter = (value || '').trim().toLowerCase();
+    renderLiveSessions(state.liveSessions || []);
+}
+
+export function focusAgentSearch() {
+    if (document.querySelector('.layout')?.classList.contains('sidebar-collapsed')) window.toggleSidebarRail?.();
+    const input = document.getElementById('agent-search-input');
+    if (input) { input.focus(); input.select(); }
+}
+
+/** Enter opens the first match; Escape clears the search. */
+export function agentSearchKey(e) {
+    if (e.key === 'Escape') {
+        e.target.value = '';
+        filterLiveAgents('');
+    } else if (e.key === 'Enter') {
+        const first = _filteredMatches.find(s => !s.sleeping) || _filteredMatches[0];
+        if (first) window.selectLiveSession?.(first.name, first.agent_type, first.session_id || '');
+    }
+}
+
 export function renderLiveSessions(sessions) {
     // Single-agent popout: the sidebar is chrome. Never render rows there —
     // they would carry session ids and destructive kebab actions into the DOM.
@@ -1770,6 +1956,13 @@ export function renderLiveSessions(sessions) {
         }
     }
 
+    applySessionSummaryPref();
+    const unfilteredCount = sessions.length;
+    if (_agentFilter) sessions = sessions.filter(s => _agentMatches(s, _agentFilter));
+    _filteredMatches = sessions;
+
+    _renderSidebarRail(sessions);
+
     const list = document.getElementById("live-sessions-list");
     // Re-render replaces every row: remember which row had keyboard focus.
     const focusedRow = document.activeElement && document.activeElement.closest
@@ -1778,10 +1971,10 @@ export function renderLiveSessions(sessions) {
     _wireListKeyboard(list);
     _wireListKeyboard(document.getElementById('mobile-agent-list'));
 
-    updateSectionVisibility('live-sessions', sessions.length);
+    updateSectionVisibility('live-sessions', unfilteredCount);
 
     if (!sessions.length) {
-        list.innerHTML = '<li class="empty-state">No live sessions</li>';
+        list.innerHTML = `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
     }
 
@@ -2757,7 +2950,7 @@ export async function showTeamTokenUsage(boardName) {
 }
 
 export async function distillTeamKnowledge(boardName) {
-    if (window.switchAgenticTab) window.switchAgenticTab('files', 'top');
+    if (window.switchAgenticTab) window.switchAgenticTab('knowledge', 'top');
     const { distillKnowledgeInTab } = await import('./team_artifacts.js');
     distillKnowledgeInTab(boardName);
 }
@@ -2766,7 +2959,6 @@ export async function showTeamKnowledge(boardName) {
     const { selectKnowledgeSource, reloadKnowledgeTab } = await import('./team_artifacts.js');
     reloadKnowledgeTab();
     selectKnowledgeSource();
-    if (window.switchAgenticTab) window.switchAgenticTab('files', 'top');
 }
 
 export function updateSessionBranch(branch, repoName) {

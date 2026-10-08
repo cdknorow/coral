@@ -213,17 +213,190 @@
     flex-shrink: 0;
 }
 
+body.panel-dragging .sidebar {
+    contain: layout style;
+}
+
 /* ── Sidebar Footer (+ New button) ────────────────────────── */
+
+.sidebar-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
 
 .sidebar-footer {
     padding: 12px 12px 20px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     margin-top: auto;
+    display: flex;
+}
+
+.sidebar-search {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.sidebar-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.sidebar-search-input {
+    width: 100%;
+    height: 36px;
+    box-sizing: border-box;
+    padding: 0 10px 0 30px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+}
+
+.sidebar-search-input:focus { outline: none; border-color: var(--accent); }
+
+.sidebar-header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.sidebar-collapse-btn,
+.sidebar-rail-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.sidebar-collapse-btn { width: 36px; height: 36px; }
+.sidebar-rail-btn { width: 40px; height: 40px; }
+.sidebar-collapse-btn:hover,
+.sidebar-rail-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+/* Collapsed icon rail (desktop only) */
+.sidebar-rail { display: none; }
+
+@media (min-width: 768px) {
+    .layout.sidebar-collapsed > .sidebar {
+        width: 56px !important;
+        min-width: 56px;
+        overflow: hidden;
+        align-items: center;
+    }
+    .layout.sidebar-collapsed > .sidebar > :not(.sidebar-rail) { display: none; }
+    .layout.sidebar-collapsed > .sidebar-resize-handle { pointer-events: none; }
+    .layout.sidebar-collapsed .sidebar-rail {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        height: 100%;
+        padding: 8px 0;
+        box-sizing: border-box;
+    }
+    .sidebar-rail-list {
+        flex: 1;
+        min-height: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 7px;
+        overflow-y: auto;
+        scrollbar-width: none;
+    }
+    .sidebar-rail-list::-webkit-scrollbar { display: none; }
+    .sidebar-rail-item {
+        position: relative;
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .rail-tile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        width: 44px;
+        height: 28px;
+        box-sizing: border-box;
+        border-radius: 8px;
+        border: 1px solid var(--rail-tile-border);
+        background: var(--rail-tile-bg);
+        color: var(--rail-tile-text);
+        font: 700 11px/1 var(--font-mono);
+        transition: background 0.12s, border-color 0.12s, color 0.12s;
+    }
+    .sidebar-rail-item:hover .rail-tile { background: var(--rail-tile-bg-hover); }
+    .sidebar-rail-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+    /* Selected: brighter tile */
+    .sidebar-rail-item.active .rail-tile {
+        background: var(--rail-tile-active-bg);
+        border-color: var(--rail-tile-active-border);
+    }
+    .rail-tile .rail-tile-icon { font-size: 10px !important; width: 10px; height: 10px; line-height: 10px; }
+    .rail-tile-emoji { font-size: 9px; line-height: 1; }
+    .rail-tile-badge {
+        position: absolute;
+        top: -5px;
+        right: -4px;
+        min-width: 14px;
+        height: 14px;
+        padding: 0 3px;
+        box-sizing: border-box;
+        border-radius: 7px;
+        font: 700 9px/14px var(--font-sans);
+        text-align: center;
+        color: var(--rail-badge-text);
+        border: 1.5px solid var(--bg-secondary);
+    }
+    .rail-tile-unread { background: var(--rail-badge-unread); }
+    .rail-tile-done { background: var(--rail-badge-done); font-size: 10px; line-height: 11px; }
+    .rail-tile-dot { bottom: -3px; right: -3px; width: 9px; height: 9px; }
+    .sidebar-rail-btn:last-child { border: 1px dashed var(--border); border-radius: 8px; width: 40px; height: 32px; }
+    .sidebar-rail-group {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        width: 44px;
+        height: 24px;
+        margin-top: 8px;
+        padding: 0;
+        flex-shrink: 0;
+        background: var(--rail-accent, var(--text-secondary));
+        border: none;
+        border-radius: 6px;
+        color: var(--rail-chip-text);
+        cursor: pointer;
+    }
+    .sidebar-rail-group:first-child { margin-top: 0; }
+    .sidebar-rail-group:hover { filter: brightness(1.12); }
+    .sidebar-rail-group.collapsed { opacity: 0.55; }
+    .sidebar-rail-letter { font: 700 11px/1 var(--font-sans); }
 }
 
 .sidebar-footer .sidebar-new-btn-full {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
+    width: auto;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -936,3 +1109,16 @@
 }
 
 /* Native app rules moved to css/native.css and css/native-macos.css */
+
+/* Agent summaries are opt-in: hide the goal line unless the toggle is on. */
+.sidebar.summary-hidden .session-goal { display: none; }
+/* With no second line the rows shrink to a single compact line; an unread
+   chip still keeps its line. */
+.sidebar.summary-hidden .session-line2:not(:has(.session-unread-chip)) { display: none; }
+.sidebar.summary-hidden .session-group-item:not(:has(.session-unread-chip)),
+.sidebar.summary-hidden .board-card-agents .session-group-item:not(:has(.session-unread-chip)) {
+    min-height: 0;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+}
+.sidebar-collapse-btn.active { color: var(--accent); }

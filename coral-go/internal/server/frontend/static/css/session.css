@@ -900,7 +900,7 @@
        right of the group header label. --row-dot-block is the width of the
        status dot + its margin + the flex gap, so line 2 can start exactly
        under the agent name. */
-    --row-dot-block: 16px;
+    --row-dot-block: 5px;
     /* Rows are inset rounded tiles: 6px side margins, so the padding shrinks
        by the same amount to keep the name at the task #155 indent. */
     padding: 5px 4px 5px 14px !important;
@@ -988,7 +988,9 @@
 }
 
 .session-group-item .session-dot {
-    margin: 0 4px 0 0;
+    /* Hang the dot at the row's left edge; the right margin keeps the name
+       just beside it. */
+    margin: 0 3px 0 -9px;
     width: 8px;
     height: 8px;
 }

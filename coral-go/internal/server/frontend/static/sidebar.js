@@ -1,46 +1,7 @@
 /* Sidebar drag-to-resize functionality */
 
 import { fitTerminal } from './xterm_renderer.js';
-
-export function initSidebarResize() {
-    const handle = document.getElementById("sidebar-resize-handle");
-    const sidebar = document.querySelector(".sidebar");
-
-    // Restore saved width from localStorage
-    const saved = localStorage.getItem('coral-sidebar-width');
-    if (saved) {
-        const w = parseInt(saved, 10);
-        if (w >= 200 && w <= window.innerWidth * 0.5) sidebar.style.width = w + "px";
-    }
-
-    let dragging = false;
-
-    handle.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        dragging = true;
-        handle.classList.add("dragging");
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-    });
-
-    document.addEventListener("mousemove", (e) => {
-        if (!dragging) return;
-        const newWidth = Math.min(Math.max(e.clientX, 200), window.innerWidth * 0.5);
-        sidebar.style.width = newWidth + "px";
-        fitTerminal();
-    });
-
-    document.addEventListener("mouseup", () => {
-        if (!dragging) return;
-        dragging = false;
-        handle.classList.remove("dragging");
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        // Persist width
-        localStorage.setItem('coral-sidebar-width', sidebar.offsetWidth);
-        fitTerminal();
-    });
-}
+import { makeDraggable, makeDelegatedDraggable } from './draggable.js';
 
 /* Layout persistence is scoped per entry mode: a narrow popout window must
    never overwrite the dashboard's saved panel sizes. */
@@ -48,17 +9,30 @@ function layoutKey(base) {
     return document.body.classList.contains('popout-mode') ? `${base}:popout` : base;
 }
 
+export function initSidebarResize() {
+    const handle = document.getElementById("sidebar-resize-handle");
+    const sidebar = document.querySelector(".sidebar");
+
+    const saved = localStorage.getItem('coral-sidebar-width');
+    if (saved) {
+        const w = parseInt(saved, 10);
+        if (w >= 200 && w <= window.innerWidth * 0.5) sidebar.style.width = w + "px";
+    }
+
+    makeDraggable(handle, {
+        cursor: 'col-resize',
+        onMove: (e) => Math.min(Math.max(e.clientX, 200), window.innerWidth * 0.5),
+        onFlush: (v) => { sidebar.style.width = v + "px"; },
+        onEnd: () => { localStorage.setItem('coral-sidebar-width', sidebar.offsetWidth); },
+    });
+}
+
 /* Task bar drag-to-resize functionality */
 
-// The panel may take everything except a usable sliver of terminal, rather
-// than a fixed fraction of the window — a wide diff needs the room, and the
-// handle drags back. Collapsing the agent sidebar frees up more still.
 const AGENTIC_MIN_WIDTH = 280;
 const LEFT_COLUMN_MIN_WIDTH = 240;
 
 function maxAgenticWidth(liveBody) {
-    // On load the live view is still hidden, so it measures 0 — fall back to
-    // the window, or a restored width would be clamped down to the minimum.
     const measured = liveBody ? liveBody.getBoundingClientRect().width : 0;
     const available = measured > 0 ? measured : window.innerWidth;
     return Math.max(AGENTIC_MIN_WIDTH, available - LEFT_COLUMN_MIN_WIDTH);
@@ -71,7 +45,6 @@ export function initTaskBarResize() {
 
     if (!handle || !taskBar || !liveBody) return;
 
-    // Restore saved width from localStorage
     const saved = localStorage.getItem(layoutKey('coral-taskbar-width'));
     if (saved) {
         const w = parseInt(saved, 10);
@@ -80,73 +53,84 @@ export function initTaskBarResize() {
         }
     }
 
-    let dragging = false;
-    let draggedWidth = null;
-
-    handle.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        dragging = true;
-        handle.classList.add("dragging");
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-    });
-
-    document.addEventListener("mousemove", (e) => {
-        if (!dragging) return;
-        const rect = liveBody.getBoundingClientRect();
-        const newWidth = rect.right - e.clientX;
-        const clamped = Math.min(Math.max(newWidth, AGENTIC_MIN_WIDTH), maxAgenticWidth(liveBody));
-        draggedWidth = clamped;
-        taskBar.style.width = clamped + "px";
-        fitTerminal();
-    });
-
-    document.addEventListener("mouseup", () => {
-        if (!dragging) return;
-        dragging = false;
-        handle.classList.remove("dragging");
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        // Persist the width we set, not offsetWidth — the panel animates, so
-        // measuring here can catch it mid-transition and save the old value.
-        if (draggedWidth != null) {
-            localStorage.setItem(layoutKey('coral-taskbar-width'), Math.round(draggedWidth));
-            draggedWidth = null;
-        }
-        fitTerminal();
+    makeDraggable(handle, {
+        cursor: 'col-resize',
+        onMove: (e) => {
+            const rect = liveBody.getBoundingClientRect();
+            const newWidth = rect.right - e.clientX;
+            return Math.min(Math.max(newWidth, AGENTIC_MIN_WIDTH), maxAgenticWidth(liveBody));
+        },
+        onFlush: (v) => { taskBar.style.width = v + "px"; },
+        onEnd: (v) => {
+            if (v != null) localStorage.setItem(layoutKey('coral-taskbar-width'), Math.round(v));
+        },
     });
 }
 
 /* Board chat input pane resize */
 
 export function initBoardChatResize() {
-    // Use event delegation since the board chat is dynamically created
-    document.addEventListener("mousedown", (e) => {
-        if (!e.target.classList.contains("board-chat-resize-handle")) return;
-        e.preventDefault();
-        const pane = e.target.closest(".board-chat-input-pane");
-        if (!pane) return;
-        const handle = e.target;
-        handle.style.background = "var(--accent)";
-        document.body.style.cursor = "row-resize";
-        document.body.style.userSelect = "none";
-
-        const onMove = (ev) => {
+    makeDelegatedDraggable(document, '.board-chat-resize-handle', {
+        cursor: 'row-resize',
+        resolve: (handle) => {
+            const pane = handle.closest('.board-chat-input-pane');
+            return pane ? { pane } : null;
+        },
+        onStart: (handle) => { handle.style.background = 'var(--accent)'; },
+        onMove: (e, { pane }) => {
             const rect = pane.parentElement.getBoundingClientRect();
-            const newHeight = rect.bottom - ev.clientY;
-            const clamped = Math.min(Math.max(newHeight, 80), rect.height * 0.6);
-            pane.style.height = clamped + "px";
-        };
-        const onUp = () => {
-            handle.style.background = "";
-            document.body.style.cursor = "";
-            document.body.style.userSelect = "";
+            const newHeight = rect.bottom - e.clientY;
+            return Math.min(Math.max(newHeight, 80), rect.height * 0.6);
+        },
+        onFlush: (v, { pane }) => { pane.style.height = v + "px"; },
+        onEnd: (handle, _v, { pane }) => {
+            handle.style.background = '';
             localStorage.setItem(layoutKey('coral-boardchat-height'), pane.offsetHeight);
-            document.removeEventListener("mousemove", onMove);
-            document.removeEventListener("mouseup", onUp);
-        };
-        document.addEventListener("mousemove", onMove);
-        document.addEventListener("mouseup", onUp);
+        },
+    });
+}
+
+/* Agentic block resize (top/bottom split) */
+
+export function initAgenticBlockResize() {
+    const handle = document.getElementById('agentic-block-resize-handle');
+    const topBlock = document.getElementById('agentic-block-top');
+    const bottomBlock = document.getElementById('agentic-block-bottom');
+    const container = document.getElementById('agentic-state');
+
+    if (!handle || !topBlock || !bottomBlock || !container) return;
+
+    // Restore saved ratio
+    const saved = localStorage.getItem('coral-block-ratio');
+    if (saved) {
+        const ratio = parseFloat(saved);
+        if (ratio > 0 && ratio < 1) {
+            topBlock.style.flex = ratio.toString();
+            bottomBlock.style.flex = (1 - ratio).toString();
+        }
+    }
+
+    makeDraggable(handle, {
+        cursor: 'row-resize',
+        canDrag: () => !topBlock.classList.contains('collapsed') && !bottomBlock.classList.contains('collapsed'),
+        onMove: (e) => {
+            const rect = container.getBoundingClientRect();
+            const topTabs = topBlock.querySelector('.agentic-state-tabs');
+            const bottomTabs = bottomBlock.querySelector('.agentic-state-tabs');
+            const tabsHeight = (topTabs ? topTabs.offsetHeight : 0) + (bottomTabs ? bottomTabs.offsetHeight : 0) + handle.offsetHeight;
+            const available = rect.height - tabsHeight;
+            const topTabsH = topTabs ? topTabs.offsetHeight : 0;
+            const topPanelHeight = e.clientY - rect.top - topTabsH;
+            const minPanel = 40;
+            return Math.max(minPanel, Math.min(topPanelHeight, available - minPanel)) / available;
+        },
+        onFlush: (ratio) => {
+            topBlock.style.flex = ratio.toString();
+            bottomBlock.style.flex = (1 - ratio).toString();
+        },
+        onEnd: (ratio) => {
+            if (ratio != null) localStorage.setItem('coral-block-ratio', ratio.toFixed(3));
+        },
     });
 }
 
@@ -244,69 +228,6 @@ export function switchJobsSubtab(tab) {
     if (scheduledContent) scheduledContent.style.display = tab === 'scheduled' ? '' : 'none';
 }
 
-/* Agentic block resize (top/bottom split) */
-
-export function initAgenticBlockResize() {
-    const handle = document.getElementById('agentic-block-resize-handle');
-    const topBlock = document.getElementById('agentic-block-top');
-    const bottomBlock = document.getElementById('agentic-block-bottom');
-    const container = document.getElementById('agentic-state');
-
-    if (!handle || !topBlock || !bottomBlock || !container) return;
-
-    let dragging = false;
-
-    handle.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        // Don't allow resize if either block is collapsed
-        if (topBlock.classList.contains('collapsed') || bottomBlock.classList.contains('collapsed')) return;
-        dragging = true;
-        handle.classList.add('dragging');
-        document.body.style.cursor = 'row-resize';
-        document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        const rect = container.getBoundingClientRect();
-        // Account for header/tabs heights
-        const topTabs = topBlock.querySelector('.agentic-state-tabs');
-        const bottomTabs = bottomBlock.querySelector('.agentic-state-tabs');
-        const tabsHeight = (topTabs ? topTabs.offsetHeight : 0) + (bottomTabs ? bottomTabs.offsetHeight : 0) + handle.offsetHeight;
-        const collapseBtn = container.querySelector('.agentic-collapse-btn');
-        const available = rect.height - tabsHeight - (collapseBtn ? 0 : 0);
-        const mouseY = e.clientY - rect.top;
-        const topTabsH = topTabs ? topTabs.offsetHeight : 0;
-        const topPanelHeight = mouseY - topTabsH;
-        const minPanel = 40;
-        const clampedTop = Math.max(minPanel, Math.min(topPanelHeight, available - minPanel));
-        const ratio = clampedTop / available;
-        // Store ratio as flex-grow values
-        topBlock.style.flex = ratio.toString();
-        bottomBlock.style.flex = (1 - ratio).toString();
-        localStorage.setItem('coral-block-ratio', ratio.toFixed(3));
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (!dragging) return;
-        dragging = false;
-        handle.classList.remove('dragging');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        fitTerminal();
-    });
-
-    // Restore saved ratio
-    const saved = localStorage.getItem('coral-block-ratio');
-    if (saved) {
-        const ratio = parseFloat(saved);
-        if (ratio > 0 && ratio < 1) {
-            topBlock.style.flex = ratio.toString();
-            bottomBlock.style.flex = (1 - ratio).toString();
-        }
-    }
-}
-
 /* Agentic block collapse (double-click tab bar) */
 
 export function initAgenticBlockCollapse() {
@@ -401,4 +322,26 @@ export function _syncPanelToggleBtn(isOpen) {
         popoutBtn.setAttribute('aria-label', isOpen ? 'Hide side panel' : 'Show side panel');
         popoutBtn.title = popoutBtn.getAttribute('aria-label');
     }
+}
+
+
+/* Collapse the agent sidebar to an icon rail (avatars rendered by render.js). */
+const RAIL_KEY = 'coral-sidebar-collapsed-rail';
+
+function applyRail(collapsed) {
+    document.querySelector('.layout')?.classList.toggle('sidebar-collapsed', collapsed);
+    // The terminal column changes width with the sidebar.
+    requestAnimationFrame(() => fitTerminal?.());
+}
+
+export function toggleSidebarRail() {
+    const collapsed = !document.querySelector('.layout')?.classList.contains('sidebar-collapsed');
+    try { localStorage.setItem(RAIL_KEY, collapsed ? '1' : '0'); } catch { /* storage unavailable */ }
+    applyRail(collapsed);
+}
+
+export function initSidebarRail() {
+    let collapsed = false;
+    try { collapsed = localStorage.getItem(RAIL_KEY) === '1'; } catch { /* storage unavailable */ }
+    if (collapsed) applyRail(true);
 }

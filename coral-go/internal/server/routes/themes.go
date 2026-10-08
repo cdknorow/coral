@@ -598,6 +598,13 @@ var themeVariableGroups = map[string]map[string]string{
 	"Text":            {"--text-primary": "Primary text", "--text-secondary": "Secondary text", "--text-muted": "Muted text"},
 	"Accent / Brand":  {"--accent": "Accent", "--accent-dim": "Accent dim"},
 	"Semantic Status": {"--success": "Success", "--warning": "Warning", "--error": "Error"},
+	"Agent Rail": {
+		"--rail-tile-bg": "Rail tile background", "--rail-tile-bg-hover": "Rail tile hover background",
+		"--rail-tile-border": "Rail tile border", "--rail-tile-text": "Rail tile text",
+		"--rail-tile-active-bg": "Selected rail tile background", "--rail-tile-active-border": "Selected rail tile border",
+		"--rail-chip-text": "Rail team/folder chip text",
+		"--rail-badge-unread": "Rail unread badge", "--rail-badge-done": "Rail done badge", "--rail-badge-text": "Rail badge text",
+	},
 	"Agent Badges":    {"--badge-claude": "Claude badge", "--badge-agy": "Antigravity badge", "--badge-gemini": "Gemini badge"},
 	"Syntax Highlighting": {
 		"--sh-keyword": "Keyword", "--sh-string": "String", "--sh-comment": "Comment",

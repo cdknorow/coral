@@ -12,6 +12,7 @@ let _onDataDisposable = null;
 let _onResizeDisposable = null;
 let _resizeObserver = null;
 let _terminalFocused = false;
+let _panelDragging = false;
 
 // Input queue: buffers keystrokes while WebSocket is disconnected
 let _inputQueue = [];
@@ -146,6 +147,7 @@ export function createTerminal(containerEl) {
         fontSize: fontSize,
         fontFamily: "'SF Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
         minimumContrastRatio: 4.5,
+        allowProposedApi: true,
         theme: _getXtermTheme(),
     });
 
@@ -155,6 +157,11 @@ export function createTerminal(containerEl) {
     if (typeof WebLinksAddon !== 'undefined') {
         const webLinksAddon = new WebLinksAddon.WebLinksAddon();
         terminal.loadAddon(webLinksAddon);
+    }
+
+    if (typeof UnicodeGraphemesAddon !== 'undefined') {
+        terminal.loadAddon(new UnicodeGraphemesAddon.UnicodeGraphemesAddon());
+        terminal.unicode.activeVersion = '15-graphemes';
     }
 
     _selectionDisposable = terminal.onSelectionChange(() => {
@@ -247,7 +254,7 @@ export function createTerminal(containerEl) {
     if (typeof ResizeObserver !== 'undefined') {
         if (_resizeObserver) _resizeObserver.disconnect();
         _resizeObserver = new ResizeObserver(() => {
-            if (fitAddon && containerEl.offsetWidth > 0 && containerEl.offsetHeight > 0) {
+            if (fitAddon && !_panelDragging && containerEl.offsetWidth > 0 && containerEl.offsetHeight > 0) {
                 fitAddon.fit();
             }
         });
@@ -457,6 +464,11 @@ export function fitTerminal() {
     if (fitAddon) {
         fitAddon.fit();
     }
+}
+
+export function setPanelDragging(dragging) {
+    _panelDragging = dragging;
+    document.body.classList.toggle('panel-dragging', dragging);
 }
 
 export function getTerminalCols() {

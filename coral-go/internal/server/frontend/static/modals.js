@@ -2957,6 +2957,7 @@ export async function loadSettings() {
             s.git_diff_mode = 'previous_commit';
         }
         state.settings = s;
+        window.applySessionSummaryPref?.();
 
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);

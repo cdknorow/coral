@@ -107,6 +107,7 @@
                             <div id="selection-pause-badge" class="selection-pause-badge" role="status" aria-live="polite" style="display:none">Updates paused — text selected</div>
                             <div id="xterm-disconnected-badge" class="xterm-disconnected-badge" role="status" aria-live="assertive">Disconnected — reconnecting...</div>
                         </div>
+
                         <div class="command-pane" id="command-pane">
                             <div class="command-pane-toolbar" id="command-toolbar">
                                 <!-- All buttons populated dynamically -->
@@ -123,6 +124,9 @@
                             </div>
                         </div>
                     </div>
+                    <!-- Preview pane docked as a full-height column (toggle in the tab bar) -->
+                    <div class="task-bar-resize-handle preview-column-resize-handle" id="preview-column-resize-handle" style="display:none"></div>
+                    <div class="preview-column" id="preview-column" style="display:none"></div>
                     <div class="task-bar-resize-handle" id="task-bar-resize-handle"></div>
                     <div class="agentic-state" id="agentic-state">
                         <button class="agentic-collapse-btn" id="agentic-collapse-btn" title="Toggle panel" aria-label="Toggle agentic state panel">
@@ -137,6 +141,18 @@
                                 <button class="agentic-tab active" onclick="switchAgenticTab('files', 'top')" id="agentic-tab-files" title="Files — changed files in this session" aria-label="Files">
                                     <span class="material-icons">description</span>
                                     <span class="agentic-tab-count" id="files-bar-count"></span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('browse', 'top')" id="agentic-tab-browse" title="Browse — repository file tree" aria-label="Browse">
+                                    <span class="material-icons">folder_open</span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('artifacts', 'top')" id="agentic-tab-artifacts" title="Artifacts — this agent's artifacts" aria-label="Artifacts">
+                                    <span class="material-icons">inventory_2</span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('team-artifacts', 'top')" id="agentic-tab-team-artifacts" title="Team Artifacts — artifacts from the whole team" aria-label="Team Artifacts" style="display:none">
+                                    <span class="material-icons">groups</span>
+                                </button>
+                                <button class="agentic-tab" onclick="switchAgenticTab('knowledge', 'top')" id="agentic-tab-knowledge" title="Team Knowledge — distilled team knowledge" aria-label="Team Knowledge" style="display:none">
+                                    <span class="material-icons">psychology</span>
                                 </button>
                                 <button class="agentic-tab" onclick="switchAgenticTab('tasks', 'top')" id="agentic-tab-tasks" title="Tasks — agent task list and progress" aria-label="Tasks">
                                     <span class="material-icons">checklist</span>
@@ -164,7 +180,6 @@
                                     <div class="files-search-row files-search-row-wrapper">
                                         <input type="search" id="files-search-input" class="files-search-input" placeholder="Search files..." autocomplete="off" aria-label="Search changed files">
                                         <button class="refresh-files-btn" id="file-search-mode-btn" onclick="toggleFileSearchMode()" title="Toggle browse/search mode" aria-label="Toggle file search mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9.5v-3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/></svg></button>
-                                        <button class="refresh-files-btn" id="diff-expand-all-btn" onclick="toggleAllFileDiffs()" title="Expand all diffs" aria-label="Expand all diffs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9l4-4 4 4"/><path d="M8 15l4 4 4-4"/></svg></button>
                                         <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
                                         <div id="files-search-dropdown" class="file-mention-dropdown" style="display:none;bottom:auto;top:100%;margin-top:4px;margin-bottom:0;max-height:400px"></div>
                                     </div>
@@ -176,6 +191,10 @@
                                     <div class="file-empty">No changed files</div>
                                 </div>
                             </div>
+                            <div id="agentic-panel-browse" class="agentic-panel"><div id="file-explorer-view" class="file-explorer-view"></div></div>
+                            <div id="agentic-panel-artifacts" class="agentic-panel"><div id="agentic-panel-artifacts-view" class="team-artifacts-view"></div></div>
+                            <div id="agentic-panel-team-artifacts" class="agentic-panel"><div id="agentic-panel-team-artifacts-view" class="team-artifacts-view"></div></div>
+                            <div id="agentic-panel-knowledge" class="agentic-panel"><div id="team-knowledge-view" class="team-knowledge-view"></div></div>
                             <!-- Tasks tab -->
                             <div id="agentic-panel-tasks" class="agentic-panel">
                                 <div id="board-tasks-section" class="board-tasks-section" style="display:none">
@@ -211,6 +230,16 @@
                             <!-- Custom view panels inserted here dynamically -->
                             <div id="agentic-panel-agent-ui" class="agentic-panel"></div>
                             <div id="custom-view-panels"></div>
+                        </div>
+                        <!-- Preview pane (file viewer with tabs) — bottom of right sidebar -->
+                        <div id="preview-pane-resize-handle" class="preview-pane-resize-handle" style="display:none"></div>
+                        <div id="preview-pane" class="preview-pane" style="display:none">
+                            <div class="preview-tabbar">
+                                <div class="preview-tabs" id="preview-tabs"></div>
+                                <button class="preview-dock-btn" id="preview-dock-btn" type="button"></button>
+                            </div>
+                            <div class="preview-toolbar" id="preview-toolbar"></div>
+                            <div class="preview-body" id="preview-body"></div>
                         </div>
                     </div>
                 </div>

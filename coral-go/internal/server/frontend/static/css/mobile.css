@@ -1214,31 +1214,6 @@
         display: none !important;
     }
 
-    /* Mobile file preview: full-screen overlay */
-    .mobile-file-preview-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 200;
-        background: var(--bg-primary);
-        display: flex;
-        flex-direction: column;
-    }
-
-    .mobile-file-preview-overlay .inline-preview-header {
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--border);
-        background: var(--bg-secondary);
-    }
-
-    .mobile-file-preview-overlay .inline-preview-body,
-    .mobile-file-preview-overlay .inline-preview-cm {
-        flex: 1;
-        min-height: 0;
-        overflow: auto;
-    }
 }
 
 @media (max-width: 767px) {

@@ -41,6 +41,18 @@
     --working:     #61afef;
     --working-rgb: 97, 175, 239;
 
+    /* Agent rail (collapsed sidebar) */
+    --rail-tile-bg:            #0b0b0e;
+    --rail-tile-bg-hover:      #1a1a20;
+    --rail-tile-border:        #2e2e36;
+    --rail-tile-text:          #ffffff;
+    --rail-tile-active-bg:     #1a1a20;
+    --rail-tile-active-border: #ffffff;
+    --rail-chip-text:          #14141a;
+    --rail-badge-unread:       #e5484d;
+    --rail-badge-done:         #30a46c;
+    --rail-badge-text:         #ffffff;
+
     /* Agent Badges */
     --badge-claude: #7c3aed;
     --badge-agy: #2563eb;
@@ -217,6 +229,18 @@
     --error-rgb:   207, 34, 46;
     --working:     #0969da;
     --working-rgb: 9, 105, 218;
+
+    /* Agent rail (collapsed sidebar) */
+    --rail-tile-bg:            #ffffff;
+    --rail-tile-bg-hover:      #eceef1;
+    --rail-tile-border:        #c9cdd3;
+    --rail-tile-text:          #1f2328;
+    --rail-tile-active-bg:     #e2e4e8;
+    --rail-tile-active-border: #1f2328;
+    --rail-chip-text:          #14141a;
+    --rail-badge-unread:       #cf222e;
+    --rail-badge-done:         #1a7f37;
+    --rail-badge-text:         #ffffff;
 
     /* Agent Badges */
     --badge-claude: #7c3aed;

@@ -1,6 +1,31 @@
 {{ define "includes/sidebar.html" }}
         <!-- Left Sidebar -->
         <aside class="sidebar">
+            <!-- Collapsed icon rail: expand button, one avatar per agent, new agent -->
+            <div class="sidebar-rail" id="sidebar-rail">
+                <button class="sidebar-rail-btn" type="button" onclick="toggleSidebarRail()" title="Expand sidebar" aria-label="Expand sidebar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M13 9l3 3-3 3"/></svg>
+                </button>
+                <button class="sidebar-rail-btn" type="button" onclick="focusAgentSearch()" title="Search agents" aria-label="Search agents">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                </button>
+                <div class="sidebar-rail-list" id="sidebar-rail-list"></div>
+                <button class="sidebar-rail-btn" type="button" onclick="showLaunchModal()" title="New agent" aria-label="New agent">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+                </button>
+            </div>
+            <div class="sidebar-header">
+                <button class="sidebar-collapse-btn" type="button" onclick="toggleSidebarRail()" title="Collapse sidebar" aria-label="Collapse sidebar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M16 9l-3 3 3 3"/></svg>
+                </button>
+                <div class="sidebar-search">
+                    <svg class="sidebar-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+                    <input type="search" id="agent-search-input" class="sidebar-search-input" placeholder="Search agents..." autocomplete="off" aria-label="Search agents" oninput="filterLiveAgents(this.value)" onkeydown="agentSearchKey(event)">
+                </div>
+                <button class="sidebar-collapse-btn" id="sidebar-summary-btn" type="button" onclick="toggleSessionSummary()" title="Show or hide agent summaries" aria-label="Toggle agent summaries">
+                    <span class="material-icons" style="font-size:18px">notes</span>
+                </button>
+            </div>
             <section class="sidebar-section" data-section="live-sessions">
                 <div class="sidebar-section-body">
                     <ul id="live-sessions-list" class="session-list">

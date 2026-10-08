@@ -3,6 +3,7 @@ import { refreshAgentUI } from './agent_ui.js';
 
 import { state } from './state.js';
 import { loadChangedFiles } from './changed_files.js';
+import { selectFilesSource } from './team_artifacts.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
@@ -384,16 +385,14 @@ export function switchAgenticTab(tabName, blockId) {
         stopBoardTaskPoll();
     }
 
-    // Close inline preview when switching away from files tab
-    if (tabName !== 'files') {
-        if (window._closeInlinePreview) window._closeInlinePreview();
-    }
-
     // Activate custom view iframe when switching to a custom view tab
     if (tabName.startsWith('custom-view-') && window._activateCustomView) {
         const viewId = parseInt(tabName.replace('custom-view-', ''), 10);
         window._activateCustomView(viewId);
     }
+
+    // Files-viewer sources (browse, artifacts, ...) are top-level tabs
+    if (['files', 'browse', 'artifacts', 'team-artifacts', 'knowledge'].includes(tabName)) selectFilesSource(tabName);
 
     // Refresh changed files when switching to the files tab
     if (tabName === 'files' && state.currentSession && state.currentSession.type === 'live') {

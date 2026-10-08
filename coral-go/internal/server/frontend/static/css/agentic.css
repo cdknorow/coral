@@ -68,6 +68,11 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
     transition: width 0.2s ease, min-width 0.2s ease;
 }
 
+body.panel-dragging .agentic-state {
+    transition: none;
+    contain: strict;
+}
+
 .agentic-block {
     flex: 1;
     display: flex;
@@ -192,7 +197,9 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 
 .agentic-state.collapsed .agentic-block,
 .agentic-state.collapsed .agentic-panel,
-.agentic-state.collapsed .agentic-state-tabs {
+.agentic-state.collapsed .agentic-state-tabs,
+.agentic-state.collapsed .preview-pane,
+.agentic-state.collapsed .preview-pane-resize-handle {
     display: none;
 }
 
@@ -2081,6 +2088,45 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
     max-height: 40vh;
 }
 
+/* Pan/zoom: the frame clips, the image is transformed about its centre. */
+.image-panes { position: relative; }
+.image-pane-zoomable { overflow: hidden; cursor: grab; touch-action: none; user-select: none; }
+.image-pane-zoomable.panning { cursor: grabbing; }
+.image-pane-zoomable img { transform-origin: center; will-change: transform; }
+.image-zoom-controls {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    opacity: 0.85;
+}
+.image-zoom-controls button {
+    min-width: 24px;
+    padding: 2px 6px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+}
+.image-zoom-controls button:hover { color: var(--text-primary); background: var(--bg-hover); }
+.image-zoom-level { min-width: 40px; text-align: center; font: 11px var(--font-mono); color: var(--text-muted); }
+
+/* In the preview pane the image fills the available space; comparisons sit side by side. */
+.preview-body .image-panes { height: 100%; box-sizing: border-box; }
+.preview-body .image-panes-compare { flex-direction: row; }
+.preview-body .image-pane { flex: 1; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.preview-body .image-pane-frame { flex: 1; min-height: 0; }
+.preview-body .image-pane-frame img { max-height: 100%; }
+
 /* Native audio/video controls for playable file previews. */
 .media-panes {
     display: flex;
@@ -2152,24 +2198,18 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 }
 
 /* Make merge changes readable without CodeMirror's default underline effect.
-   Applies to both merge views: the preview pane's Diff mode and the diffs the
-   Files tab expands inline, so the two look identical. */
+   Used by the preview pane's Diff mode. */
 .inline-preview-cm .cm-merge-b .cm-changedLine,
-.inline-preview-cm .cm-inlineChangedLine,
-.file-diff-body .cm-merge-b .cm-changedLine,
-.file-diff-body .cm-inlineChangedLine {
+.inline-preview-cm .cm-inlineChangedLine {
     background-color: rgba(63, 185, 80, 0.24) !important;
 }
 
-.inline-preview-cm .cm-deletedChunk,
-.file-diff-body .cm-deletedChunk {
+.inline-preview-cm .cm-deletedChunk {
     background-color: rgba(248, 81, 73, 0.24) !important;
 }
 
 .inline-preview-cm .cm-changedText,
-.inline-preview-cm .cm-insertedLine,
-.file-diff-body .cm-changedText,
-.file-diff-body .cm-insertedLine {
+.inline-preview-cm .cm-insertedLine {
     background-color: transparent !important;
     background-image: none !important;
     border: none !important;
@@ -2179,11 +2219,7 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 .inline-preview-cm .cm-deletedChunk .cm-deletedText,
 .inline-preview-cm .cm-merge-b .cm-deletedText,
 .inline-preview-cm .cm-deletedLine,
-.inline-preview-cm .cm-deletedLine del,
-.file-diff-body .cm-deletedChunk .cm-deletedText,
-.file-diff-body .cm-merge-b .cm-deletedText,
-.file-diff-body .cm-deletedLine,
-.file-diff-body .cm-deletedLine del {
+.inline-preview-cm .cm-deletedLine del{
     background-color: transparent !important;
     background-image: none !important;
     border: none !important;
@@ -2466,63 +2502,6 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
    any diff is open. */
 .refresh-files-btn.active { color: var(--accent); }
 
-/* ── Expandable file row ── */
-
-.file-diff-caret {
-    font-size: 15px !important;
-    color: var(--text-muted);
-    transition: transform 0.15s;
-    flex-shrink: 0;
-    margin-left: -4px;
-}
-
-.file-item.expanded .file-diff-caret {
-    transform: rotate(90deg);
-    color: var(--text-secondary);
-}
-
-.file-item.expanded {
-    background: var(--bg-tertiary);
-    position: sticky;
-    top: 0;
-    z-index: 2;
-}
-
-.file-diff-body {
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-primary);
-}
-
-.diff-file-note {
-    padding: 8px 12px;
-    font-size: var(--fs-base);
-    color: var(--text-secondary);
-    font-style: italic;
-}
-
-/* ── Inline CodeMirror diff ── */
-
-.file-diff-body .cm-editor {
-    font-size: 11.5px;
-}
-
-/* The file list is the scroll container; each editor sizes to its content. */
-.file-diff-body .cm-scroller {
-    overflow: hidden !important;
-    font-family: var(--font-mono);
-    line-height: 1.5;
-}
-
-.file-diff-body .cm-editor.cm-focused {
-    outline: none;
-}
-
-/* Read-only: no caret, and no active-line band. Changed lines are excluded so
-   this never paints over a diff color. */
-.file-diff-body .cm-cursor,
-.file-diff-body .cm-dropCursor { display: none !important; }
-.file-diff-body .cm-activeLine:not(.cm-changedLine) { background: transparent !important; }
-.file-diff-body .cm-activeLineGutter:not(.cm-changedLineGutter) { background: transparent !important; }
 
 
 /* Tasks panel: empty state for a live agent (the + Task button stays reachable) */
@@ -2627,16 +2606,10 @@ body:not(.popout-mode) #popout-panel-toggle-btn {
 
 /* Optional team artifact source within the Files viewer. */
 /* Text tabs share the workspace's theme, type and spacing tokens. */
-.files-source-picker { display: flex; flex-shrink: 0; gap: var(--space-xs); padding: 0 var(--space-md); border-bottom: 1px solid var(--border); overflow-x: auto; }
-.files-source-button { flex-shrink: 0; min-height: 36px; padding: var(--space-md); font: 500 var(--fs-md)/1.4 var(--font-sans); white-space: nowrap; color: var(--text-secondary); background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; cursor: pointer; }
-.files-source-button[aria-selected="true"] { font-weight: 600; color: var(--text-primary); border-bottom-color: var(--accent); }
-.files-source-button:hover { color: var(--text-primary); background: var(--bg-hover); }
-.files-source-button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 .team-artifacts-action { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; box-sizing: border-box; padding: var(--space-xs) var(--space-md); font: 500 var(--fs-md)/1.4 var(--font-sans); color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: var(--radius-md); cursor: pointer; text-decoration: none; white-space: nowrap; }
 .team-artifacts-action:hover { background: var(--bg-hover); }
 .team-artifacts-action:focus-visible, .team-artifact-name:focus-visible, .team-artifact-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.repository-files-view, .team-artifacts-view { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.repository-files-view[hidden], .team-artifacts-view[hidden] { display: none; }
+.team-artifacts-view { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .team-artifacts-view { overflow-y: auto; container-type: inline-size; }
 .team-artifacts-heading, .explorer-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .team-artifacts-status { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); }
@@ -2673,14 +2646,21 @@ button.team-artifact-name { cursor: pointer; }
 
 .team-artifact-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
 .team-artifact-icon-btn { padding: var(--space-xs); min-width: 32px; min-height: 32px; border-radius: var(--radius-md); }
+.team-artifact-row-expanded { background: var(--bg-tertiary); }
+.team-artifact-preview-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+.team-artifact-preview-cell { background: var(--bg-primary); }
+.team-artifact-preview-container { padding: var(--space-lg); max-height: 400px; overflow: auto; font-size: var(--fs-md); color: var(--text-secondary); }
+.team-artifact-preview-iframe { width: 100%; height: 360px; border: 0; background: #fff; border-radius: var(--radius-md); }
+.team-artifact-preview-image { max-width: 100%; max-height: 360px; border-radius: var(--radius-md); object-fit: contain; }
+.team-artifact-preview-text { margin: 0; padding: var(--space-md); background: var(--bg-tertiary); border-radius: var(--radius-md); font-size: var(--fs-base); line-height: 1.5; overflow-x: auto; white-space: pre-wrap; word-break: break-word; color: var(--text-primary); max-height: 360px; overflow-y: auto; }
+.team-artifact-preview-md { padding: var(--space-md); max-height: 360px; overflow-y: auto; }
 .artifact-linked-preview { display: flex; flex-direction: column; height: 100%; min-height: 320px; }
 .artifact-linked-notice, .artifact-linked-status { margin: 0; padding: 10px 12px; font-size: 12px; color: var(--text-secondary); }
 .artifact-linked-notice { border-bottom: 1px solid var(--border); }
 .artifact-linked-preview iframe { flex: 1; min-height: 240px; width: 100%; border: 0; background: #fff; }
 @media (max-width: 767px) {
     .team-artifact-actions { flex-direction: column; align-items: stretch; }
-    .team-artifacts-action, .files-source-button, .team-artifact-details summary { min-height: 44px; }
-    .team-artifact-details summary { box-sizing: border-box; padding-top: var(--space-lg); }
+    .team-artifacts-action,     .team-artifact-details summary { box-sizing: border-box; padding-top: var(--space-lg); }
 }
 
 /* Human-readable JSON artifacts, without changing their source/download. */
@@ -2721,11 +2701,6 @@ button.team-artifact-name { cursor: pointer; }
 .explorer-action-btn:hover { color: var(--accent); }
 .explorer-status { padding: 6px 12px; color: var(--text-secondary); font-size: 12px; }
 .explorer-more { margin: 6px 12px; }
-@media(max-width: 767px) {
-    .files-source-picker { gap: 0; padding: 0 var(--space-xs); }
-    .files-source-button { flex: 1 0 auto; }
-}
-
 .agent-ui-request label { display:block; font-size: var(--fs-xl); font-weight:600; margin-bottom:8px; }
 .agent-ui-request .agent-ui-prompt { font:inherit; font-size:14px; line-height:1.5; min-height:110px; }
 .agent-ui-request-status { font-size:13px; line-height:1.5; overflow-wrap:anywhere; margin:10px 0 0; }
