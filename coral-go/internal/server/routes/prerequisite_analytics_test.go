@@ -48,7 +48,10 @@ func useFakeCLIs(t *testing.T) *fakeCLIs {
 		return "", errors.New("not found")
 	}
 	cliCommonPath = func(string) string { return "" }
-	cliProbeTimeout = 300 * time.Millisecond
+	// Generous: a healthy fake CLI is a shell script, and on a loaded machine one that takes
+	// over a few hundred milliseconds must not be reported as a timeout. The test that wants a
+	// timeout shortens this itself.
+	cliProbeTimeout = 5 * time.Second
 	tmuxProbe = func() (string, bool) { return "", false }
 	t.Cleanup(func() {
 		cliLookPath, cliCommonPath, cliProbeTimeout, tmuxProbe = prevLook, prevCommon, prevTimeout, prevTmux
@@ -111,6 +114,7 @@ func TestCLICheckReportsAvailableMissingProbeFailedAndTimeoutSeparately(t *testi
 
 	// Found but the version probe hangs: a bounded timeout, reported as such.
 	cli.install(t, "codex", `sleep 5`)
+	cliProbeTimeout = 300 * time.Millisecond
 	start := time.Now()
 	r = cliCheck(t, h, "type=codex&source=cli_recheck")
 	assert.Less(t, time.Since(start), 3*time.Second, "the probe is bounded")

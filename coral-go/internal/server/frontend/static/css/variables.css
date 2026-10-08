@@ -39,6 +39,17 @@
     --error:       #e05545;
     --error-rgb:   224, 85, 69;
     --danger:      var(--error); /* alias: several rules (stuck dot, tooltips) use this name */
+
+    /* Aliases for names older rules use. Declared once here: they follow whichever theme sets
+       the underlying token, because the substitution happens on the same root element. */
+    --accent-primary: var(--accent);
+    --accent-color:   var(--accent);
+    --border-color:   var(--border);
+    --error-color:    var(--error);
+    --status-error:   var(--error);
+    --status-warning: var(--warning);
+    --fg:             var(--text-primary);
+    --fg-muted:       var(--text-muted);
     --working:     #61afef;
     --working-rgb: 97, 175, 239;
 
