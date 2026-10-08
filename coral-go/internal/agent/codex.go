@@ -212,13 +212,10 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	var parts []string
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
-	// singleQuote single-quotes each value (escaping embedded quotes) so the
-	// shell never expands it. Values must NOT be run through SanitizeShellValue:
-	// CORAL_URL and CORAL_DIR contain ':' and '/', and stripping those broke the
-	// URL every hook posted to and pointed CORAL_DATA_DIR at a relative path.
-	// Coral environment, built by CoralEnv so every launch path agrees.
+	// formatEnvExport generates platform-appropriate syntax (export on Unix,
+	// $env: on PowerShell) and quotes values so the shell never expands them.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
+		parts = append(parts, formatEnvExport(kv[0], kv[1]))
 	}
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
@@ -235,7 +232,6 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// System prompt injection via -c developer_instructions
 	// Combines protocol file + board system prompt (CLI usage, role instructions)
-	// Note: The $(cat '...') pattern shell-expands the file path but not its content.
 	// The temp file path is from os.TempDir() (safe). Content sources (protocol files,
 	// board prompts) are trusted internal strings.
 	var sysParts []string
@@ -250,7 +246,7 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	if len(sysParts) > 0 {
 		sysFile := writeTempFile("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		parts = append(parts, fmt.Sprintf(`-c developer_instructions="$(cat '%s')"`, sysFile))
+		parts = append(parts, "-c", fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile)))
 	}
 
 	// Codex does not read Claude's settings.json, so install Coral's activity

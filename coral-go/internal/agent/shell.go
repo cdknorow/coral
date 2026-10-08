@@ -124,6 +124,47 @@ func singleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// shellQuoteLiteral wraps s in the platform shell's literal quoting style.
+// On POSIX shells this is single-quoting with escaped apostrophes; on
+// PowerShell it is single-quoting with doubled apostrophes.
+func shellQuoteLiteral(s string) string {
+	switch detectShell() {
+	case ShellPowerShell:
+		return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+	default:
+		return singleQuote(s)
+	}
+}
+
+// formatEnvExport returns a shell fragment that sets the given environment
+// variable for subsequent commands on the same line.
+// On bash/zsh: export K='V' &&
+// On PowerShell: $env:K='V';
+// On cmd.exe: set "K=V" &&
+func formatEnvExport(key, value string) string {
+	switch detectShell() {
+	case ShellPowerShell:
+		return fmt.Sprintf("$env:%s=%s;", key, shellQuoteLiteral(value))
+	case ShellCmd:
+		return fmt.Sprintf(`set "%s=%s" &&`, key, value)
+	default:
+		return fmt.Sprintf(`export %s=%s &&`, key, singleQuote(value))
+	}
+}
+
+// formatCatSubstitution returns a command substitution that reads a file's
+// contents inline. On bash/zsh: $(cat 'path'). On PowerShell, embedded
+// double-quotes are escaped so the C runtime parses them correctly (see
+// FormatPromptFileArg for the full explanation).
+func formatCatSubstitution(path string) string {
+	switch detectShell() {
+	case ShellPowerShell:
+		return fmt.Sprintf("$((Get-Content -Raw '%s') -replace '\"', '\\\"')", path)
+	default:
+		return fmt.Sprintf("$(cat '%s')", path)
+	}
+}
+
 // SanitizeShellValue strips characters that could enable shell injection.
 // Only allows alphanumeric characters, hyphens, underscores, dots, and spaces.
 // This is used for values interpolated into shell command strings.
@@ -229,17 +270,18 @@ func FindCLIInCommonPaths(binary string) string {
 }
 
 // FormatPromptFileArg returns shell-appropriate syntax for reading a prompt
-// file and passing its content as a CLI argument.
+// file and passing its content as a single CLI argument.
+//
+// On PowerShell 5.1, passing strings with embedded double-quotes to native
+// executables is broken: PS constructs the process command line without
+// escaping internal `"`, so the C runtime's argv parser splits at them.
+// The workaround is to `-replace '"', '\"'` so the command line contains
+// `\"` which the C runtime interprets as a literal `"`.
 func FormatPromptFileArg(promptFile string) string {
 	shell := detectShell()
 	switch shell {
-	case ShellPowerShell:
-		return fmt.Sprintf("$(Get-Content -Raw '%s')", promptFile)
-	case ShellCmd:
-		// cmd.exe doesn't support inline file content substitution.
-		// Use a workaround: pipe file content. But since this is a positional
-		// arg, we use PowerShell-style (cmd users should use PowerShell for agents).
-		return fmt.Sprintf("$(Get-Content -Raw '%s')", promptFile)
+	case ShellPowerShell, ShellCmd:
+		return fmt.Sprintf(`"$((Get-Content -Raw '%s') -replace '"', '\"')"`, promptFile)
 	default:
 		// bash, zsh, sh
 		return fmt.Sprintf("\"$(cat '%s')\"", promptFile)

@@ -1297,11 +1297,13 @@ func TestSanitizeShellValue_StripsDangerousChars(t *testing.T) {
 func TestCodex_EnvVarsExported(t *testing.T) {
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: "codex-abc123", Role: "developer"})
-	if !strings.Contains(cmd, "export CORAL_SESSION_NAME='codex-abc123' &&") {
-		t.Errorf("expected exported single-quoted session name, got %q", cmd)
+	wantName := formatEnvExport("CORAL_SESSION_NAME", "codex-abc123")
+	wantRole := formatEnvExport("CORAL_SUBSCRIBER_ID", "developer")
+	if !strings.Contains(cmd, wantName) {
+		t.Errorf("expected env export %q in command, got %q", wantName, cmd)
 	}
-	if !strings.Contains(cmd, "export CORAL_SUBSCRIBER_ID='developer' &&") {
-		t.Errorf("expected exported single-quoted role, got %q", cmd)
+	if !strings.Contains(cmd, wantRole) {
+		t.Errorf("expected env export %q in command, got %q", wantRole, cmd)
 	}
 }
 
@@ -1321,24 +1323,28 @@ func TestCodex_InjectsCoralAgenticHooks(t *testing.T) {
 func TestAgy_EnvVarsExported(t *testing.T) {
 	a := &AgyAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: "agy-xyz789", Role: "qa"})
-	if !strings.Contains(cmd, "export CORAL_SESSION_NAME='agy-xyz789' &&") {
-		t.Errorf("expected exported single-quoted session name, got %q", cmd)
+	wantName := formatEnvExport("CORAL_SESSION_NAME", "agy-xyz789")
+	wantRole := formatEnvExport("CORAL_SUBSCRIBER_ID", "qa")
+	if !strings.Contains(cmd, wantName) {
+		t.Errorf("expected env export %q in command, got %q", wantName, cmd)
 	}
-	if !strings.Contains(cmd, "export CORAL_SUBSCRIBER_ID='qa' &&") {
-		t.Errorf("expected exported single-quoted role, got %q", cmd)
+	if !strings.Contains(cmd, wantRole) {
+		t.Errorf("expected env export %q in command, got %q", wantRole, cmd)
 	}
 }
 
 func TestCodex_EnvVarsQuotedNotExpanded(t *testing.T) {
-	// Metacharacters are neutralised by single-quoting, not by stripping —
+	// Metacharacters are neutralised by quoting, not by stripping —
 	// stripping destroyed legitimate values like URLs and paths.
 	a := &CodexAgent{}
 	cmd := a.BuildLaunchCommand(LaunchParams{SessionName: `$(evil)`, Role: "`whoami`"})
-	if !strings.Contains(cmd, "export CORAL_SESSION_NAME='$(evil)' &&") {
-		t.Errorf("expected single-quoted session name, got %q", cmd)
+	wantName := formatEnvExport("CORAL_SESSION_NAME", "$(evil)")
+	wantRole := formatEnvExport("CORAL_SUBSCRIBER_ID", "`whoami`")
+	if !strings.Contains(cmd, wantName) {
+		t.Errorf("expected quoted session name %q in command, got %q", wantName, cmd)
 	}
-	if !strings.Contains(cmd, "export CORAL_SUBSCRIBER_ID='`whoami`' &&") {
-		t.Errorf("expected single-quoted role, got %q", cmd)
+	if !strings.Contains(cmd, wantRole) {
+		t.Errorf("expected quoted role %q in command, got %q", wantRole, cmd)
 	}
 }
 
@@ -1844,10 +1850,10 @@ func TestLaunchCommands_PreserveURLAndPathEnvValues(t *testing.T) {
 	} {
 		cmd := a.BuildLaunchCommand(params)
 		for _, want := range []string{
-			"export CORAL_URL='http://127.0.0.1:8455' &&",
-			"export CORAL_DIR='/Users/someone/.coral' &&",
-			"export CORAL_DATA_DIR='/Users/someone/.coral' &&",
-			"export CORAL_SUBSCRIBER_ID='QA Engineer' &&",
+			formatEnvExport("CORAL_URL", "http://127.0.0.1:8455"),
+			formatEnvExport("CORAL_DIR", "/Users/someone/.coral"),
+			formatEnvExport("CORAL_DATA_DIR", "/Users/someone/.coral"),
+			formatEnvExport("CORAL_SUBSCRIBER_ID", "QA Engineer"),
 		} {
 			if !strings.Contains(cmd, want) {
 				t.Errorf("%s: launch command missing %q\n%s", name, want, cmd)
@@ -1861,8 +1867,9 @@ func TestLaunchCommands_EscapeSingleQuotesInEnvValues(t *testing.T) {
 		SessionName: "codex-x",
 		Role:        "Bob's QA",
 	})
-	if !strings.Contains(cmd, `export CORAL_SUBSCRIBER_ID='Bob'\''s QA' &&`) {
-		t.Errorf("single quote not escaped in: %s", cmd)
+	want := formatEnvExport("CORAL_SUBSCRIBER_ID", "Bob's QA")
+	if !strings.Contains(cmd, want) {
+		t.Errorf("single quote not escaped in: %s\nwanted: %s", cmd, want)
 	}
 }
 

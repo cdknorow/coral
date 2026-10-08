@@ -3,7 +3,6 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -152,7 +151,7 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	// Export env vars
 	// Coral environment, built by CoralEnv so every launch path agrees.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
+		parts = append(parts, formatEnvExport(kv[0], kv[1]))
 	}
 	parts = append(parts, bin)
 

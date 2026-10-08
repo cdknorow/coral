@@ -3,7 +3,6 @@ package agent
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -273,7 +272,7 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, fmt.Sprintf(`export %s=%s &&`, kv[0], singleQuote(kv[1])))
+		parts = append(parts, formatEnvExport(kv[0], kv[1]))
 	}
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
