@@ -365,6 +365,10 @@ export function setBoardAccentColor(boardName) {
 let _boardChatTimer = null;
 let _boardChatLastId = {};
 let _activeBoardChat = null;
+let _boardChatGen = 0;   // bumped whenever the board chat panel is rebuilt, to drop stale loads
+
+/** The board whose chat the panel currently shows (or null). */
+export function getActiveBoardChat() { return _activeBoardChat; }
 let _boardChatMessages = [];
 let _boardChatTotal = 0;
 let _boardChatOffset = 0;
@@ -374,6 +378,7 @@ let _boardChatSelectedIds = new Set();
 
 export function showBoardChatTab(boardName) {
     _activeBoardChat = boardName;
+    ++_boardChatGen;
     const panel = document.getElementById('agentic-panel-board');
     if (!panel) return;
 
@@ -432,6 +437,7 @@ export function showBoardChatTab(boardName) {
 
 export function hideBoardChatTab() {
     _activeBoardChat = null;
+    ++_boardChatGen;
     _boardChatSelectMode = false;
     _boardChatSelectedIds.clear();
     if (_boardChatTimer) { clearInterval(_boardChatTimer); _boardChatTimer = null; }
@@ -446,35 +452,46 @@ function _formatTime(iso) {
 }
 
 async function _loadBoardPanelChat(boardName) {
-    const msgsEl = document.getElementById('board-panel-msgs');
-    if (!msgsEl) return;
+    if (!document.getElementById('board-panel-msgs')) return;
+    // Rapid agent/team switching rebuilds the panel while requests are in flight;
+    // a response for an older panel must never touch the shared message state.
+    const gen = _boardChatGen;
+    const stale = () => gen !== _boardChatGen || _activeBoardChat !== boardName;
     try {
         // First call: get total count and load latest page
         const countResp = await fetch(`/api/board/${encodeURIComponent(boardName)}/messages/all?limit=1&offset=0&format=dashboard`);
         const countData = await countResp.json();
+        if (stale()) return;
+        const msgsEl = document.getElementById('board-panel-msgs');
+        if (!msgsEl) return;
         const total = countData.total || (Array.isArray(countData) ? countData.length : 0);
 
         if (total === 0) {
             msgsEl.innerHTML = '<div class="board-chat-empty">No messages yet</div>';
+            msgsEl.dataset.rendered = '1';
             _boardChatMessages = [];
             _boardChatTotal = 0;
             return;
         }
 
-        // Check if new messages arrived
-        if (_boardChatTotal === total && _boardChatMessages.length > 0) return;
+        // Nothing new since this panel last rendered
+        if (_boardChatTotal === total && _boardChatMessages.length > 0 && msgsEl.dataset.rendered === '1') return;
 
         // Load the latest page
         const startOffset = Math.max(0, total - _BOARD_CHAT_PAGE);
         const resp = await fetch(`/api/board/${encodeURIComponent(boardName)}/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=${startOffset}&format=dashboard`);
         const data = await resp.json();
+        if (stale()) return;
         const messages = Array.isArray(data) ? data : (data.messages || []);
 
         _boardChatMessages = messages;
         _boardChatTotal = total;
         _boardChatOffset = startOffset;
 
-        _renderBoardPanelMessages(msgsEl, true);
+        const el = document.getElementById('board-panel-msgs');
+        if (!el) return;
+        _renderBoardPanelMessages(el, true);
+        el.dataset.rendered = '1';
     } catch { /* ignore */ }
 }
 
@@ -1429,10 +1446,10 @@ function _shortPath(fullPath, segments = 2) {
 function _teamRow(boardName) {
     const selected = state.selectedTeam === boardName;
     return `<li class="session-group-item team-row${selected ? ' active' : ''}" tabindex="0" data-team-row="${escapeAttr(boardName)}"
-        aria-label="Team ${escapeAttr(boardName)}"${selected ? ' aria-current="true"' : ''} onclick="enterTeamContext('${escapeAttr(boardName)}')">
+        aria-label="Team view for ${escapeAttr(boardName)}"${selected ? ' aria-current="true"' : ''} onclick="enterTeamContext('${escapeAttr(boardName)}')">
         <div class="session-info"><div class="session-name-row">
             <span class="material-icons team-row-icon" aria-hidden="true">dashboard</span>
-            <span class="session-label"><span class="session-label-name">Team</span></span>
+            <span class="session-label"><span class="session-label-name">Team View</span></span>
         </div></div>
     </li>`;
 }
@@ -1512,9 +1529,9 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     // Unread board messages: a neutral count on line 2 (never an attention colour),
     // shown on selected rows too.
     const unreadCount = stateInfo.key === 'ended' ? 0 : sessionUnreadCount(s);
-    const unreadChip = unreadCount > 0
-        ? `<span class="session-unread-chip" title="${unreadCount} unread board message${unreadCount === 1 ? '' : 's'}" aria-hidden="true">${unreadCount}</span>`
-        : '';
+    // The unread count on agent rows was not useful to users, so no chip is rendered.
+    void unreadCount;
+    const unreadChip = '';
     void _renderAvatar; // avatars left the list (AGENT_LIST_COMPACT D-A); kept for other callers
     const _sleepingMenu = `
             <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${sid}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">

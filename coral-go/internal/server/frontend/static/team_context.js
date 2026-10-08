@@ -12,7 +12,7 @@ import { showView } from './utils.js';
 import { showTeamAvailability } from './team_availability.js';
 import { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange } from './team_working_mode.js';
 import { syncFilesSourceTeam } from './team_artifacts.js';
-import { renderLiveSessions, showBoardChatTab, hideBoardChatTab } from './render.js';
+import { renderLiveSessions, showBoardChatTab, hideBoardChatTab, getActiveBoardChat } from './render.js';
 
 let _historyBound = false;
 let _boardTeam = null;   // team whose group chat is mounted in the center
@@ -39,10 +39,9 @@ function mountGroupChat(team) {
     const host = document.getElementById('team-center-view');
     const panel = document.getElementById('agentic-panel-board');
     if (!host || !panel) return;
-    if (_boardTeam !== team || panel.parentElement !== host) {
-        showBoardChatTab(team);
-        _boardTeam = team;
-    }
+    // The panel keeps its content when moved, so only rebuild it for a different board.
+    if (getActiveBoardChat() !== team) showBoardChatTab(team);
+    _boardTeam = team;
     if (panel.parentElement !== host) host.appendChild(panel);
     if (!host.querySelector('.team-center-close')) {
         const close = document.createElement('button');
@@ -64,6 +63,7 @@ function unmountGroupChat() {
     if (panel && host && panel.parentElement === host) document.getElementById('agentic-block-top')?.appendChild(panel);
     _boardTeam = null;
     const board = state.currentSession?.type === 'live' ? state.currentSession.board_project : null;
+    if (board && getActiveBoardChat() === board) return; // same board: keep what is already loaded
     if (board) showBoardChatTab(board);
     else hideBoardChatTab();
 }
