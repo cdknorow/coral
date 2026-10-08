@@ -156,6 +156,9 @@ async function run() {
         // Switch to Agents tab / desktop layout and render our fixture.
         check('fetch stub is installed before app start', await evalInPage(`typeof window.__origFetch === 'function' && Array.isArray(window.__fixture)`));
         await evalInPage(`localStorage.setItem('coral-group-by-team', 'false'); window.switchNavTab('agents'); true`);
+        // Agent summaries are off by default (server-side setting); these checks are about the goal line.
+        await evalInPage(`window.toggleSessionSummary(); true`);
+        await sleep(300);
         await setFixture(SESSIONS);
         // A startup-style reload through the real API path must keep the fixture.
         await evalInPage(`window._coralLoadLiveSessions()`);
