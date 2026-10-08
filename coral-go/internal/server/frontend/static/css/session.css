@@ -717,7 +717,8 @@
 }
 
 .board-card-agents .session-group-item {
-    padding: 5px 10px 5px 14px !important;
+    /* Right padding matches the folder rows so the kebab lines up with the group header's. */
+    padding: 5px 4px 5px 14px !important;
     min-height: 36px;
 }
 

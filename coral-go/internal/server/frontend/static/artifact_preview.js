@@ -163,7 +163,8 @@ function _responseFilename(disposition) {
 /** Resolve where an artifact's bytes come from; null when the source is unusable. */
 export function resolveArtifactSource(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
-    const teamPrefix = `/api/board/${encodeURIComponent(state.currentSession?.board_project || '')}/tasks/`;
+    const board = state.selectedTeam || state.currentSession?.board_project || '';
+    const teamPrefix = `/api/board/${encodeURIComponent(board)}/tasks/`;
     const inlineURL = options.contentURL?.startsWith(teamPrefix) && /\/artifact-content\?/.test(options.contentURL) ? options.contentURL : null;
     let externalURL = null;
     try {

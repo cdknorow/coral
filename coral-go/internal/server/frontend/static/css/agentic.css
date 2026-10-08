@@ -2774,14 +2774,6 @@ button.team-artifact-name { cursor: pointer; }
 
 
 
-/* "Team" row at the top of a team group */
-.team-row { cursor: pointer; }
-.team-row .team-row-icon {
-    font-size: 12px;
-    width: 12px;
-    margin: 0 1px 0 -11px;
-    color: var(--text-muted);
-    flex-shrink: 0;
-}
-.team-row.active .team-row-icon { color: var(--accent); }
-.team-row .session-label-name { font-weight: 600; }
+/* The open-team button sits beside the group kebab (same look as the folder copy button).
+   It appears on hover, and stays visible while that team is selected. */
+.team-open-btn.is-selected { display: inline-flex; align-items: center; color: var(--accent); }

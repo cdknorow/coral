@@ -12,6 +12,7 @@ import { showView } from './utils.js';
 import { showTeamAvailability } from './team_availability.js';
 import { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange } from './team_working_mode.js';
 import { syncFilesSourceTeam } from './team_artifacts.js';
+import { setPreviewSession } from './preview_pane.js';
 import { renderLiveSessions, showBoardChatTab, hideBoardChatTab, getActiveBoardChat } from './render.js';
 
 let _historyBound = false;
@@ -90,6 +91,8 @@ export async function enterTeamContext(team, opts = {}) {
     bindHistory();
 
     state.selectedTeam = team;
+    // Previews opened from the team keep their own tabs, separate from any agent's.
+    setPreviewSession('team:' + team);
     // The pane needs the live view mounted even when no agent is selected yet.
     const view = document.getElementById('live-session-view');
     if (view && view.style.display === 'none') showView('live-session-view');
@@ -121,6 +124,7 @@ export function exitTeamContext({ goBack = true, force = false } = {}) {
     if (!force && hasUnsavedTeamSettings() && !confirmTeamWorkspaceChange()) return false;
 
     state.selectedTeam = null;
+    setPreviewSession(state.currentSession?.type === 'live' ? state.currentSession.session_id : null);
     document.getElementById('team-center-view')?.setAttribute('hidden', '');
     unmountGroupChat();
     document.getElementById('agentic-panel-team-view')?.replaceChildren();

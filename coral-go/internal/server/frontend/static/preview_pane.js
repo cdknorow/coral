@@ -343,7 +343,8 @@ export function openPreviewTab(filepath, line, opts = {}) {
 
 /** Open a Coral artifact (coral:// URI, team artifact or linked URL) in a tab. */
 export function openArtifactTab(uri, options = {}) {
-    if (!state.currentSession || state.currentSession.type !== 'live') return;
+    // Artifacts open from a selected team too, with no agent selected.
+    if (!state.selectedTeam && (!state.currentSession || state.currentSession.type !== 'live')) return;
     if (!resolveArtifactSource(uri, options)) return;
     const key = options.contentURL || options.externalURL || uri;
     let tab = _tabs.find(t => t.kind === 'artifact' && t.artifactKey === key);
