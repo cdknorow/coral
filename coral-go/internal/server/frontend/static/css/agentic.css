@@ -2299,6 +2299,13 @@ body.panel-dragging .agentic-state {
 .file-deleted .file-status-icon  { color: var(--error); background: rgba(248, 81, 73, 0.12); }
 .file-renamed .file-status-icon  { color: var(--accent); background: rgba(var(--accent-rgb), 0.12); }
 
+.file-type-icon { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; flex-shrink: 0; }
+
+/* Git status now shows on the name (the type icon replaced the status badge) */
+.file-added .file-name { color: var(--success); }
+.file-deleted .file-name { color: var(--error); text-decoration: line-through; }
+.file-renamed .file-name { color: var(--accent); }
+
 .file-agents { display: block; font-size: var(--fs-base); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-item.file-agent-only { opacity: 0.7; }
 .file-agent-only .file-status-icon { background: var(--bg-tertiary); color: var(--text-secondary); }
@@ -2710,3 +2717,10 @@ button.team-artifact-name { cursor: pointer; }
 
 /* Task actions stay in their footer and remain reachable on narrow dialogs. */
 #task-detail-modal .modal-actions { flex-wrap: wrap; }
+
+/* Files tab header: title line with the refresh button at the right */
+#agentic-panel-files .changed-files-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}

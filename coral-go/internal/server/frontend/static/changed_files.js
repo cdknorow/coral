@@ -2,8 +2,9 @@
 
 import { state } from './state.js';
 import { escapeHtml, showToast } from './utils.js';
-import { fetchFileList, fuzzyFilter, fetchDirEntries, getDirBrowseResults } from './file_mention.js';
+import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.js';
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
+import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
 
 let _currentFiles = [];
@@ -90,86 +91,33 @@ export function renderStarredFiles() {
 let _searchResults = [];      // current dropdown results
 let _searchSelectedIdx = 0;   // selected index in dropdown
 
-const fileSearchModeIcons = {
-    directory: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9.5v-3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/></svg>',
-    fuzzy: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>',
-};
-
-function setFileSearchModeIcon(btn, mode) {
-    if (!btn) return;
-    btn.innerHTML = fileSearchModeIcons[mode === 'directory' ? 'directory' : 'fuzzy'];
-}
-
-// Toggle between directory browse and fuzzy search modes
-export function toggleFileSearchMode() {
-    if (!state.settings) state.settings = {};
-    const current = state.settings.file_search_mode || 'directory';
-    const next = current === 'directory' ? 'fuzzy' : 'directory';
-    state.settings.file_search_mode = next;
-    localStorage.setItem('coral-file-search-mode', next);
-
-    // Update toggle button icon
-    const btn = document.getElementById('file-search-mode-btn');
-    setFileSearchModeIcon(btn, next);
-
-    // Update placeholder
-    const input = document.getElementById('files-search-input');
-    if (input) input.placeholder = next === 'directory' ? 'Browse files...' : 'Search files...';
-}
-
 export async function searchRepoFiles(query) {
     if (!query || !state.currentSession || state.currentSession.type !== 'live') {
         _hideSearchDropdown();
         return;
     }
 
-    const mode = (state.settings || {}).file_search_mode || 'directory';
-
-    if (mode === 'directory') {
-        const browse = await getDirBrowseResults(query);
-        const matches = browse ? browse.results : [];
-        clearTimeout(_renderTimer);
-        _renderTimer = setTimeout(() => _renderSearchDropdown(matches, query), 30);
-    } else {
-        const files = await fetchFileList();
-        const matches = fuzzyFilter(files, query);
-        clearTimeout(_renderTimer);
-        _renderTimer = setTimeout(() => _renderSearchDropdown(matches, query), 30);
-    }
+    const files = await fetchFileList();
+    const matches = fuzzyFilter(files, query);
+    clearTimeout(_renderTimer);
+    _renderTimer = setTimeout(() => _renderSearchDropdown(matches, query), 30);
 }
 
 function _renderSearchDropdown(files, query) {
     const dropdown = document.getElementById('files-search-dropdown');
     if (!dropdown) return;
 
-    const mode = (state.settings || {}).file_search_mode || 'directory';
     const hasExactMatch = files.some(f => f === query);
     const looksLikePath = query.includes('/') || query.includes('.');
 
     let html = '';
 
-    // Breadcrumb in directory mode
-    if (mode === 'directory' && query.includes('/')) {
-        const dirPath = query.slice(0, query.lastIndexOf('/'));
-        if (dirPath) {
-            html += `<div class="file-mention-breadcrumb">${escapeHtml(dirPath)}/</div>`;
-        }
-    }
-
     // Build results list
     _searchResults = [];
     files.slice(0, 50).forEach((filepath, i) => {
-        const isDir = filepath.endsWith('/');
         const cls = i === _searchSelectedIdx ? 'file-mention-item selected' : 'file-mention-item';
-
-        if (mode === 'directory' && isDir) {
-            const dirName = filepath.replace(/\/$/, '').split('/').pop();
-            _searchResults.push({ path: filepath, type: 'dir' });
-            html += `<div class="${cls}" data-index="${i}"><span class="file-mention-dir-icon">&#128193;</span>${escapeHtml(dirName)}/</div>`;
-        } else {
-            _searchResults.push({ path: filepath, type: 'file' });
-            html += `<div class="${cls}" data-index="${i}">${escapeHtml(filepath)}</div>`;
-        }
+        _searchResults.push({ path: filepath, type: 'file' });
+        html += `<div class="${cls}" data-index="${i}">${escapeHtml(filepath)}</div>`;
     });
 
     // +create option at the end
@@ -202,15 +150,7 @@ function _selectSearchItem(index) {
     if (index < 0 || index >= _searchResults.length) return;
     const item = _searchResults[index];
 
-    if (item.type === 'dir') {
-        // Navigate into directory
-        const input = document.getElementById('files-search-input');
-        if (input) {
-            input.value = item.path;
-            input.focus();
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-    } else if (item.type === 'create') {
+    if (item.type === 'create') {
         _hideSearchDropdown();
         window._createFile(item.path);
     } else {
@@ -235,12 +175,7 @@ export function initFileSearch() {
     if (!input || input.dataset.searchBound) return;
     input.dataset.searchBound = '1';
 
-    // Restore persisted search mode
-    const savedMode = localStorage.getItem('coral-file-search-mode');
-    const mode = savedMode || (state.settings || {}).file_search_mode || 'directory';
-    if (state.settings) state.settings.file_search_mode = mode;
-    setFileSearchModeIcon(document.getElementById('file-search-mode-btn'), mode);
-    input.placeholder = mode === 'directory' ? 'Browse files...' : 'Search files...';
+    input.placeholder = 'Search files...';
 
     function onSearchInput() {
         clearTimeout(_searchTimeout);
@@ -286,19 +221,11 @@ export function initFileSearch() {
 
     input.addEventListener('focus', async () => {
         if (!input.value.trim()) {
-            // Show file listing on focus — respects user's search mode preference
+            // Show the file listing on focus
             if (!state.currentSession || state.currentSession.type !== 'live') return;
-            const mode = (state.settings || {}).file_search_mode || 'directory';
-            if (mode === 'directory') {
-                const browse = await getDirBrowseResults('');
-                if (browse && browse.results.length > 0) {
-                    _renderSearchDropdown(browse.results.slice(0, 50), '');
-                }
-            } else {
-                const files = await fetchFileList();
-                if (files && files.length > 0) {
-                    _renderSearchDropdown(files.slice(0, 50), '');
-                }
+            const files = await fetchFileList();
+            if (files && files.length > 0) {
+                _renderSearchDropdown(files.slice(0, 50), '');
             }
         }
     });
@@ -698,7 +625,6 @@ export function renderChangedFiles() {
         const adds = f.additions > 0 ? `<span class="file-adds">+${f.additions}</span>` : '';
         const dels = f.deletions > 0 ? `<span class="file-dels">-${f.deletions}</span>` : '';
         const stats = (adds || dels) ? `<span class="file-stats">${adds}${dels}</span>` : '';
-        const statusIcon = f.status === 'agent_only' ? '\u270E' : f.status === '??' ? '?' : f.status === 'A' || f.status === 'AM' ? '+' : f.status === 'D' ? '-' : '~';
         const escapedPath = escapeHtml(f.filepath).replace(/'/g, "\\'");
         const isStarred = starred.has(f.filepath);
         const isAgentOnly = f.status === 'agent_only';
@@ -717,7 +643,7 @@ export function renderChangedFiles() {
                      data-filepath="${escapeHtml(f.filepath)}"
                      onclick="openFilePreview('${escapedPath}', 0, {diff: true})">
             ${starBtn}
-            <span class="file-status-icon">${statusIcon}</span>
+            <span class="file-type-icon">${fileIconHtml(name)}</span>
             <div class="file-path-wrap">
                 <span class="file-name">${escapeHtml(name)}</span>
                 ${dir ? `<span class="file-dir">${escapeHtml(dir)}</span>` : ''}

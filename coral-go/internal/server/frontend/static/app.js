@@ -24,7 +24,7 @@ import { loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown
 import { loadSessionCommits } from './commits.js';
 import { showTemplateBrowser } from './template_browser.js';
 import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
-import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles, initFileSearch, initTopBarSearch, showTopBarSearch, hideTopBarSearch, toggleFileSearchMode } from './changed_files.js';
+import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles, initFileSearch, initTopBarSearch, showTopBarSearch, hideTopBarSearch } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
 import { loadAgentNotes, initNotesMd } from './agent_notes.js';
@@ -106,7 +106,7 @@ Object.assign(window, {
     loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag,
     // changed_files
     loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles,
-    toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles, toggleFileSearchMode,
+    toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles,
     // tasks
     loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, renderBoardTaskList,
     showTaskDetailModal, hideTaskDetailModal,

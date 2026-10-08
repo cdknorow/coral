@@ -177,13 +177,8 @@
                             <!-- Files tab -->
                             <div id="agentic-panel-files" class="agentic-panel active">
                                 <div class="changed-files-header" id="changed-files-header">
-                                    <div class="files-search-row files-search-row-wrapper">
-                                        <input type="search" id="files-search-input" class="files-search-input" placeholder="Search files..." autocomplete="off" aria-label="Search changed files">
-                                        <button class="refresh-files-btn" id="file-search-mode-btn" onclick="toggleFileSearchMode()" title="Toggle browse/search mode" aria-label="Toggle file search mode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 9.5v-3a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1"/></svg></button>
-                                        <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
-                                        <div id="files-search-dropdown" class="file-mention-dropdown" style="display:none;bottom:auto;top:100%;margin-top:4px;margin-bottom:0;max-height:400px"></div>
-                                    </div>
                                     <span class="changed-files-title" id="changed-files-title">0 files changed</span>
+                                    <button class="refresh-files-btn" onclick="refreshChangedFiles()" title="Refresh git diff" aria-label="Refresh file changes">&#x21bb;</button>
                                 </div>
                                 <div id="files-search-results" class="changed-files-list" style="display:none"></div>
                                 <div id="starred-files-list" class="changed-files-list" style="display:none"></div>
@@ -191,7 +186,15 @@
                                     <div class="file-empty">No changed files</div>
                                 </div>
                             </div>
-                            <div id="agentic-panel-browse" class="agentic-panel"><div id="file-explorer-view" class="file-explorer-view"></div></div>
+                            <div id="agentic-panel-browse" class="agentic-panel">
+                                <div class="changed-files-header">
+                                    <div class="files-search-row files-search-row-wrapper">
+                                        <input type="search" id="files-search-input" class="files-search-input" placeholder="Search files..." autocomplete="off" aria-label="Search files">
+                                        <div id="files-search-dropdown" class="file-mention-dropdown" style="display:none;bottom:auto;top:100%;margin-top:4px;margin-bottom:0;max-height:400px"></div>
+                                    </div>
+                                </div>
+                                <div id="file-explorer-view" class="file-explorer-view"></div>
+                            </div>
                             <div id="agentic-panel-artifacts" class="agentic-panel"><div id="agentic-panel-artifacts-view" class="team-artifacts-view"></div></div>
                             <div id="agentic-panel-team-artifacts" class="agentic-panel"><div id="agentic-panel-team-artifacts-view" class="team-artifacts-view"></div></div>
                             <div id="agentic-panel-knowledge" class="agentic-panel"><div id="team-knowledge-view" class="team-knowledge-view"></div></div>

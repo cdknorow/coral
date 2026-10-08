@@ -133,6 +133,11 @@ function createFileIcon(name, isDir, isExpanded) {
     return svg;
 }
 
+/** Markup for a file's type icon, shared with the changed-files list. */
+export function fileIconHtml(name) {
+    return createFileIcon(name, false, false).outerHTML;
+}
+
 function reset() {
     ++generation;
     for (const dir of directories.values()) dir.controller?.abort();
