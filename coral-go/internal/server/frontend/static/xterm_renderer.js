@@ -409,7 +409,7 @@ export function connectTerminalWs(name, agentType, sessionId) {
                     && state.currentSession
                     && state.currentSession.session_id === sessionId) {
                     connectTerminalWs(
-                        state.currentSession.name,
+                        state.currentSession.tmux_session || state.currentSession.name,
                         state.currentSession.agent_type,
                         state.currentSession.session_id,
                     );

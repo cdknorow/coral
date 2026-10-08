@@ -595,7 +595,7 @@ export async function confirmRestart() {
                     const liveResp = await fetch(`/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}`);
                     if (liveResp.ok) {
                         clearInterval(pollInterval);
-                        xtermMod.connectTerminalWs(newName, newAgentType, newSessionId);
+                        xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId);
                     }
                 } catch (_) { /* ignore fetch errors during poll */ }
                 if (pollCount >= 15) {

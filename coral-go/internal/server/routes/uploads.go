@@ -122,7 +122,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":       true,
-		"path":     dest,
+		"path":     filepath.ToSlash(dest),
 		"filename": orDefault(filename, safeName),
 		"size":     len(content),
 	})
