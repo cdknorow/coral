@@ -668,6 +668,9 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		return agents, nil
 	}
 
+	// Multi-server hub: remote agent poller and feed relay.
+	safeGo(ctx, "remote_agents", func() { srv.RunRemoteAgents(ctx) })
+
 	// Git poller. Its cadence is a user setting, re-read before every wait, so
 	// someone on a repository where scanning is slow can stretch it out or
 	// turn it off without restarting.

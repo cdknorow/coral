@@ -48,6 +48,7 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	remoteAgents background.RemoteAgentSource
 	db        *store.DB
 	ss        *store.SessionStore
 	ts        *store.TaskStore
@@ -983,6 +984,13 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if snap := h.remoteSnapshot(); snap.Configured() {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"sessions": mergeRemote(sessions, snap),
+			"servers":  snap.Servers,
+		})
+		return
+	}
 	writeJSON(w, http.StatusOK, emptyIfNil(sessions))
 }
 

@@ -60,6 +60,7 @@ type Server struct {
 	boardHandler    *routes.BoardHandler
 	historyHandler  *routes.HistoryHandler
 	sessHandler     *routes.SessionsHandler
+	remoteAgents    *background.RemoteAgentHub
 	goalMetrics     *routes.GoalMetricsHandler
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
@@ -75,6 +76,9 @@ type templateData struct {
 	CoralRoot       string
 	EntryMode       string
 	TargetSessionID string
+	// TargetServer is the registered remote the popout agent lives on; empty
+	// means the hub itself (legacy /agent/{id}).
+	TargetServer string
 }
 
 // New creates a Server with all routes registered.
@@ -161,6 +165,14 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 // Router returns the configured chi.Router for use with http.Server.
 func (s *Server) Router() chi.Router {
 	return s.router
+}
+
+// RunRemoteAgents polls registered remote servers and feeds the merged agent
+// list until ctx ends. It blocks.
+func (s *Server) RunRemoteAgents(ctx context.Context) {
+	if s.remoteAgents != nil {
+		s.remoteAgents.Run(ctx)
+	}
 }
 
 // SetScheduler injects the job scheduler into the tasks handler for launching/killing.
@@ -589,7 +601,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Patch("/api/servers/{id}", rsHandler.Update)
 	r.Delete("/api/servers/{id}", rsHandler.Delete)
 	r.Post("/api/servers/{id}/test", rsHandler.Test)
-	routes.MountRemoteProxy(r, routes.NewRemoteResolver(rsHandler.Store()))
+	remoteResolver := routes.NewRemoteResolver(rsHandler.Store())
+	routes.MountRemoteProxy(r, remoteResolver)
+	s.remoteAgents = background.NewRemoteAgentHub(rsHandler.Store(), remoteResolver, background.RemoteAgentHubConfig{})
+	sessHandler.SetRemoteAgents(s.remoteAgents)
 
 	// Board remotes
 	brHandler := routes.NewBoardRemotesHandler(s.db, s.cfg)
@@ -732,6 +747,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// ── Dashboard SPA ───────────────────────────────────────────
 	r.Get("/agent/{sessionID}", s.serveAgentPopout)
+	r.Get("/agent/{server}/{sessionID}", s.serveAgentPopout)
 	r.Get("/", s.serveIndex)
 	return r
 }
@@ -778,6 +794,15 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// /agent/{server}/{id} addresses an agent on a registered remote. The
+	// server segment is only ever echoed to the page, never dialed here, but
+	// it must still be a valid slug.
+	server := chi.URLParam(r, "server")
+	if server != "" && store.ValidateRemoteID(server) != nil {
+		http.Error(w, "invalid server ID", http.StatusBadRequest)
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if s.indexTmpl == nil {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
@@ -787,6 +812,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 		CoralRoot:       s.cfg.CoralRoot,
 		EntryMode:       "agent",
 		TargetSessionID: sessionID,
+		TargetServer:    server,
 	}
 	if err := s.indexTmpl.Execute(w, data); err != nil {
 		log.Printf("Error rendering agent popout template: %v", err)

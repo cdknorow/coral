@@ -13,6 +13,7 @@ import (
 	"nhooyr.io/websocket/wsjson"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -82,18 +83,56 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	// Remote feed changes trigger an early rebuild, at most once a second.
+	var remoteChanged <-chan struct{}
+	if h.remoteAgents != nil {
+		ch, cancel := h.remoteAgents.Subscribe()
+		defer cancel()
+		remoteChanged = ch
+	}
+	var debounce <-chan time.Time
+	lastBuild := time.Time{}
+	prevServersJSON := ""
+
 	for {
 		select {
 		case <-ctx.Done():
 			conn.Close(websocket.StatusNormalClosure, "")
 			return
 		case <-ticker.C:
+		case <-remoteChanged:
+			if firstMessage {
+				continue
+			}
+			if wait := time.Second - time.Since(lastBuild); wait > 0 {
+				if debounce == nil {
+					debounce = time.After(wait)
+				}
+				continue
+			}
+		case <-debounce:
+			debounce = nil
 		}
+		lastBuild = time.Now()
 
 		sessions, err := h.buildSessionListForWS(r)
 		if err != nil {
 			slog.Warn("ws/coral build session list failed", "error", err)
 			continue
+		}
+
+		// Merge remote agents (multi-server hub). With no remotes registered
+		// the session list and messages are exactly as before.
+		var remoteServers []background.RemoteServerStatus
+		var remoteSessions []map[string]any
+		snap := h.remoteSnapshot()
+		hasRemotes := snap.Configured()
+		if hasRemotes {
+			remoteServers = snap.Servers
+			remoteSessions = snap.Sessions
+			for _, s := range sessions {
+				s["server"] = "local"
+			}
 		}
 
 		// Fetch active job runs
@@ -116,6 +155,23 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			currSessions[key] = string(serialized)
 			sessionByKey[key] = s
 		}
+		for _, s := range remoteSessions {
+			srv, _ := s["server"].(string)
+			k := feedKey(s)
+			if k == "" {
+				continue
+			}
+			key := remoteKey(srv, k)
+			serialized, _ := json.Marshal(s)
+			currSessions[key] = string(serialized)
+			sessionByKey[key] = s
+			sessions = append(sessions, s)
+		}
+		serversJSON := ""
+		if hasRemotes {
+			b, _ := json.Marshal(remoteServers)
+			serversJSON = string(b)
+		}
 
 		currRunsJSON, _ := json.Marshal(activeRuns)
 		currRunsStr := string(currRunsJSON)
@@ -135,9 +191,13 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if len(notifications) > 0 {
 				msg["notifications"] = notifications
 			}
+			if hasRemotes {
+				msg["servers"] = remoteServers
+			}
 			if err := wsjson.Write(ctx, conn, msg); err != nil {
 				return
 			}
+			prevServersJSON = serversJSON
 			prevSessions = currSessions
 			prevRunsJSON = currRunsStr
 			firstMessage = false
@@ -153,22 +213,34 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var removed []string
+		var removedRemote []map[string]string
 		for key := range prevSessions {
 			if _, exists := currSessions[key]; !exists {
-				removed = append(removed, key)
+				if srv, k, ok := splitRemoteKey(key); ok {
+					removedRemote = append(removedRemote, map[string]string{"server": srv, "key": k})
+				} else {
+					removed = append(removed, key)
+				}
 			}
 		}
+		serversChanged := serversJSON != prevServersJSON
 
 		runsChanged := currRunsStr != prevRunsJSON
 
 		hasNotifications := len(notifications) > 0
-		if len(changed) > 0 || len(removed) > 0 || runsChanged || hasNotifications {
+		if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications {
 			payload := map[string]any{"type": "coral_diff"}
 			if len(changed) > 0 {
 				payload["changed"] = changed
 			}
 			if len(removed) > 0 {
 				payload["removed"] = removed
+			}
+			if len(removedRemote) > 0 {
+				payload["removed_remote"] = removedRemote
+			}
+			if hasRemotes && serversChanged {
+				payload["servers"] = remoteServers
 			}
 			if runsChanged {
 				payload["active_runs"] = activeRuns
@@ -179,6 +251,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if err := wsjson.Write(ctx, conn, payload); err != nil {
 				return
 			}
+			prevServersJSON = serversJSON
 			prevSessions = currSessions
 			prevRunsJSON = currRunsStr
 		}
