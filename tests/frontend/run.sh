@@ -171,6 +171,7 @@ node team_view_consolidation.test.js
 node agent_state.test.js
 node agent_popout.test.js
 node subagent_tasks.test.js
+node launch_server.test.js
 node agent_task_cli.test.js
 node agent_ui.test.js
 node agent_ui_request_browser.test.js

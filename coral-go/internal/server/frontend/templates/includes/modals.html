@@ -2,6 +2,12 @@
     <!-- Launch Modal -->
     <div id="launch-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
         <div class="modal-content modal-content-wide">
+            <!-- Hub only: launch target server (hidden unless hub mode has a usable remote) -->
+            <div id="launch-server-row" class="launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
+                <label for="launch-server" style="margin:0;white-space:nowrap">Server:</label>
+                <select id="launch-server" aria-label="Launch on server" style="flex:1;min-width:0" onchange="window._onLaunchServerChange(this.value)"></select>
+                <span id="launch-server-note" class="text-muted-sm"></span>
+            </div>
             <!-- Step 1: Session type chooser -->
             <div id="launch-step-chooser" class="launch-modal-step">
                 <h3>Launch New Session</h3>
@@ -1031,6 +1037,10 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="quick-launch-template">
+                <div id="quick-launch-server-row" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px">
+                    <label for="quick-launch-server" style="margin:0;white-space:nowrap">Server:</label>
+                    <select id="quick-launch-server" aria-label="Launch on server" style="flex:1;min-width:0" onchange="window._onQuickLaunchServerChange(this.value)"></select>
+                </div>
                 <label>Team Name:
                     <input type="text" id="quick-launch-board-name" placeholder="e.g. my-project-team">
                 </label>

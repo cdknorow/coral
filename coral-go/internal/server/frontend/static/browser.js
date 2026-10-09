@@ -1,6 +1,21 @@
 /* Directory browser for session launch modal */
 
 import { escapeHtml, escapeAttr } from './utils.js';
+import { serverFetch, LOCAL_SERVER, normServer } from './server_base.js';
+import { recentDirsKey } from './launch_server.js';
+
+/* Multi-server hub: a directory input may belong to a remote server. The
+ * launch modals register a resolver (input id -> server id) so listing,
+ * git checks and the "recent" list all go to / come from that server. With no
+ * resolver (hub off) everything is local, exactly as before. */
+let _dirServerResolver = null;
+export function setDirServerResolver(fn) { _dirServerResolver = typeof fn === 'function' ? fn : null; }
+function activeServer() {
+    return normServer(_dirServerResolver ? _dirServerResolver(_activeDirInputId) : LOCAL_SERVER);
+}
+export function dirServerFor(inputId) {
+    return normServer(_dirServerResolver ? _dirServerResolver(inputId) : LOCAL_SERVER);
+}
 
 let browserCurrentPath = "~";
 // Track which dir-input + browser pair is active
@@ -9,12 +24,11 @@ let _activeBrowserId = "dir-browser";
 let _activeListId = "browser-list";
 let _activePathId = "browser-current-path";
 
-const RECENT_DIRS_KEY = "coral-recent-dirs";
 const MAX_RECENT_DIRS = 6;
 
-function getRecentDirs() {
+function getRecentDirs(server = LOCAL_SERVER) {
     try {
-        const dirs = JSON.parse(localStorage.getItem(RECENT_DIRS_KEY) || "[]");
+        const dirs = JSON.parse(localStorage.getItem(recentDirsKey(server)) || "[]");
         return Array.isArray(dirs) ? dirs.filter(d => typeof d === "string") : [];
     } catch (_) {
         return [];
@@ -22,13 +36,13 @@ function getRecentDirs() {
 }
 
 /* Remember a working directory an agent was launched into (most recent first) */
-export function recordRecentDir(path) {
+export function recordRecentDir(path, server = LOCAL_SERVER) {
     path = (path || "").trim();
     if (path.length > 1) path = path.replace(/\/+$/, "");
     if (!path) return;
-    const dirs = [path, ...getRecentDirs().filter(d => d !== path)].slice(0, MAX_RECENT_DIRS);
+    const dirs = [path, ...getRecentDirs(server).filter(d => d !== path)].slice(0, MAX_RECENT_DIRS);
     try {
-        localStorage.setItem(RECENT_DIRS_KEY, JSON.stringify(dirs));
+        localStorage.setItem(recentDirsKey(server), JSON.stringify(dirs));
     } catch (_) {}
 }
 
@@ -36,7 +50,7 @@ function renderRecentDirs() {
     const browser = document.getElementById(_activeBrowserId);
     if (!browser) return;
     let section = browser.querySelector(".dir-browser-recents");
-    const dirs = getRecentDirs();
+    const dirs = getRecentDirs(activeServer());
     if (!dirs.length) {
         if (section) section.remove();
         return;
@@ -58,6 +72,8 @@ function renderRecentDirs() {
 }
 
 function getCoralRoot() {
+    // The hub's coral root is a hub-local path; a remote starts at its own home.
+    if (activeServer() !== LOCAL_SERVER) return "~";
     const input = document.getElementById(_activeDirInputId);
     return (input && input.dataset.coralRoot) || "~";
 }
@@ -92,9 +108,13 @@ async function loadBrowserEntries(path) {
     const pathDisplay = document.getElementById(_activePathId);
     list.innerHTML = '<li class="empty-state">Loading...</li>';
 
+    const server = activeServer();
     try {
-        const resp = await fetch(`/api/filesystem/list?path=${encodeURIComponent(path)}`);
+        const resp = await serverFetch(server, `/api/filesystem/list?path=${encodeURIComponent(path)}`);
         const data = await resp.json();
+        // The input may have been re-pointed at another server while we waited;
+        // never write a path from one server into a field now owned by another.
+        if (server !== activeServer()) return;
 
         if (data.error) {
             list.innerHTML = `<li class="empty-state">${escapeHtml(data.error)}</li>`;

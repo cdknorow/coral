@@ -1,4 +1,5 @@
 /* Read-only setup checks. Installation commands are displayed, never executed. */
+import { serverFetch, normServer } from './server_base.js';
 const cache = new Map();
 const requests = new WeakMap();
 
@@ -22,11 +23,14 @@ function renderCLI(element, text, recheck, {pending = false, command = ''} = {})
     button.addEventListener('click', recheck); element.append(button);
 }
 
-export async function checkAgentCLI(type, element, {force = false, command = ''} = {}) {
+export async function checkAgentCLI(type, element, {force = false, command = '', server = 'local'} = {}) {
     if (!element) return;
+    // Multi-server hub: the CLI must exist on the server the agent will run on.
+    server = normServer(server);
+    const cacheKey = server === 'local' ? type : `${server}|${type}`;
     const controller = start(element);
     if (type === 'terminal') { element.style.display = 'none'; return; }
-    const recheck = () => checkAgentCLI(type, element, {force:true,command});
+    const recheck = () => checkAgentCLI(type, element, {force:true,command,server});
     const show = data => {
         if (data.found && (data.status === 'probe_failed' || data.status === 'timeout')) {
             renderCLI(element, `${type} CLI found, but version check ${data.status === 'timeout' ? 'timed out' : 'failed'}.`, recheck); return;
@@ -34,18 +38,18 @@ export async function checkAgentCLI(type, element, {force = false, command = ''}
         if (data.found) { element.style.display = 'none'; return; }
         renderCLI(element, `${type} CLI was not found.`, recheck, {command:data.install_command || command});
     };
-    if (force) cache.delete(type);
-    const cached = cache.get(type);
+    if (force) cache.delete(cacheKey);
+    const cached = cache.get(cacheKey);
     if (!force && cached && Date.now() - cached.at < 30000) { show(cached.data); return; }
     renderCLI(element, `Checking ${type} CLI…`, recheck, {pending:true});
     try {
-        const response = await fetch(`/api/system/cli-check?type=${encodeURIComponent(type)}${force ? '&source=cli_recheck' : ''}`, {signal:controller.signal,cache:force?'no-store':'default'});
+        const response = await serverFetch(server, `/api/system/cli-check?type=${encodeURIComponent(type)}${force ? '&source=cli_recheck' : ''}`, {signal:controller.signal,cache:force?'no-store':'default'});
         if (!response.ok) throw new Error(`Could not check ${type} CLI (HTTP ${response.status}).`);
         const data = await response.json();
         if (!data || typeof data.found !== 'boolean' || (data.agent_type && data.agent_type !== type)) throw new Error(`Could not check ${type} CLI: unexpected response.`);
         if (data.status !== undefined && (!['available','missing','probe_failed','timeout'].includes(data.status) || (data.status === 'missing') === data.found)) throw new Error(`Could not check ${type} CLI: inconsistent response.`);
         if (!current(element,controller)) return;
-        cache.set(type,{at:Date.now(),data}); show(data);
+        cache.set(cacheKey,{at:Date.now(),data}); show(data);
     } catch (error) {
         if (!current(element,controller) || error.name === 'AbortError') return;
         renderCLI(element, error instanceof SyntaxError ? `Could not check ${type} CLI: invalid response.` : error.message || `Could not check ${type} CLI.`, recheck);

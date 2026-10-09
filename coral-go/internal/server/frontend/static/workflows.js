@@ -62,6 +62,10 @@ export function showWorkflowsTab() {
 
 // ── Build with Agent ──────────────────────────────────────────────────
 
+// Workflows are hub-local (definitions, runs and the builder prompt all live on
+// the hub), so these agents always launch on the hub itself, in the hub's coral
+// root. They intentionally do not use the multi-server launch picker.
+
 export async function launchWorkflowAgent() {
     const btn = document.getElementById('wf-build-agent-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-icons" style="font-size:16px">hourglass_top</span> Launching\u2026'; }
