@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"html"
 	"html/template"
 	"io/fs"
@@ -290,7 +291,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		// "version" is additive; older hubs ignore unknown fields.
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": config.Version})
 	})
 
 	// License endpoints (ungated — must be accessible to activate)
@@ -579,6 +581,14 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/views/{id}", viewsHandler.GetView)
 	r.Put("/api/views/{id}", viewsHandler.UpdateView)
 	r.Delete("/api/views/{id}", viewsHandler.DeleteView)
+
+	// Remote server registry (multi-server hub). Hub-local, never proxied.
+	rsHandler := routes.NewRemoteServersHandler(s.db, s.cfg)
+	r.Get("/api/servers", rsHandler.List)
+	r.Post("/api/servers", rsHandler.Add)
+	r.Patch("/api/servers/{id}", rsHandler.Update)
+	r.Delete("/api/servers/{id}", rsHandler.Delete)
+	r.Post("/api/servers/{id}/test", rsHandler.Test)
 
 	// Board remotes
 	brHandler := routes.NewBoardRemotesHandler(s.db, s.cfg)

@@ -66,6 +66,7 @@ func TestSchema_AllTablesExist(t *testing.T) {
 		"workflow_runs",
 		"connected_apps",
 		"remote_board_subscriptions",
+		"remote_servers",
 		"custom_views",
 	}
 

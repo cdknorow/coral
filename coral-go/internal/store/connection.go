@@ -512,6 +512,20 @@ CREATE TABLE IF NOT EXISTS remote_board_subscriptions (
     UNIQUE(session_id, remote_server, project)
 );
 
+-- Registered remote Coral servers for the multi-server hub. api_key holds a
+-- "v1:" AES-256-GCM envelope (see internal/secretbox), never plaintext.
+CREATE TABLE IF NOT EXISTS remote_servers (
+    id            TEXT PRIMARY KEY,
+    label         TEXT NOT NULL,
+    url           TEXT NOT NULL,
+    api_key       TEXT NOT NULL,
+    allow_private INTEGER NOT NULL DEFAULT 0,
+    status        TEXT NOT NULL DEFAULT 'unknown',
+    created_at    TEXT NOT NULL,
+    last_seen     TEXT,
+    last_error    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS custom_views (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	name       TEXT NOT NULL,

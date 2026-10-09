@@ -147,12 +147,38 @@ var debugEnabled = sync.OnceValue(func() bool {
 // being a symptom worth a log line. A variable so tests need not be slow.
 var slowRequestThreshold = time.Second
 
+// RedactQuery masks credential-bearing query parameters (api_key and friends)
+// so a raw query string can be logged safely.
+func RedactQuery(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	vals, err := url.ParseQuery(raw)
+	if err != nil {
+		return "[unparseable query redacted]"
+	}
+	changed := false
+	for k := range vals {
+		switch strings.ToLower(k) {
+		case "api_key", "apikey", "key", "token", "access_token", "authorization", "secret", "password":
+			for i := range vals[k] {
+				vals[k][i] = "REDACTED"
+			}
+			changed = true
+		}
+	}
+	if !changed {
+		return raw
+	}
+	return vals.Encode()
+}
+
 func DebugRequestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		if debugEnabled() {
 			if strings.HasPrefix(path, "/api/sessions/") || strings.HasPrefix(path, "/ws/") {
-				slog.Info("[debug] request", "method", r.Method, "path", path, "query", r.URL.RawQuery, "remote", r.RemoteAddr)
+				slog.Info("[debug] request", "method", r.Method, "path", path, "query", RedactQuery(r.URL.RawQuery), "remote", r.RemoteAddr)
 			}
 		}
 		// A slow API call is what makes the UI seem stuck, and it is invisible
@@ -160,7 +186,7 @@ func DebugRequestLogger(next http.Handler) http.Handler {
 		start := time.Now()
 		next.ServeHTTP(w, r)
 		if d := time.Since(start); d >= slowRequestThreshold && strings.HasPrefix(path, "/api/") {
-			slog.Warn("slow request", "method", r.Method, "path", path, "query", r.URL.RawQuery, "duration_ms", d.Milliseconds())
+			slog.Warn("slow request", "method", r.Method, "path", path, "query", RedactQuery(r.URL.RawQuery), "duration_ms", d.Milliseconds())
 		}
 	})
 }
