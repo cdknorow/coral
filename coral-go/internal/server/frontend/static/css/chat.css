@@ -1460,3 +1460,55 @@
 .chat-load-error .chat-error-message {
     color: var(--danger);
 }
+
+/* ── Find in conversation ───────────────────────────────────── */
+::highlight(chat-find) { background-color: rgba(var(--warning-rgb, 210, 153, 34), 0.35); color: inherit; }
+::highlight(chat-find-current) { background-color: rgba(var(--accent-rgb), 0.6); color: inherit; }
+
+.chat-find-bar {
+    position: fixed;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.chat-find-bar[hidden] { display: none; }
+.chat-find-input {
+    width: 200px;
+    padding: 3px 6px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+}
+.chat-find-input:focus { outline: none; border-color: var(--accent); }
+.chat-find-bar.no-results .chat-find-input { border-color: var(--error); }
+.chat-find-count { min-width: 56px; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+.chat-find-bar button {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 12px;
+}
+.chat-find-bar button:hover:not(:disabled) { background: var(--bg-hover, rgba(255, 255, 255, 0.08)); color: var(--text-primary); }
+.chat-find-older { color: var(--accent) !important; }
+
+/* Terminal view: the xterm accepts input directly, so the bottom command bar
+   is redundant on desktop. Mobile keeps it (no hardware keyboard to type into
+   the terminal). */
+@media (min-width: 768px) {
+    #command-pane:not(.chat-mode) {
+        display: none;
+    }
+}

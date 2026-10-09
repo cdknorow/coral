@@ -58,6 +58,7 @@ import { initMacOS } from './platform/macos.js';
 import { initWindows } from './platform/windows.js';
 import { initBrowser } from './platform/browser.js';
 import { searchChats } from './chat_search.js';
+import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 
@@ -898,6 +899,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Chat mode: the command box grows with its text
     initCommandInputAutosize();
+    initChatFind();
 
     // Enter sends command, Shift+Enter inserts newline
     const cmdInput = document.getElementById("command-input");

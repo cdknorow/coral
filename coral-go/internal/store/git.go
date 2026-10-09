@@ -10,7 +10,9 @@ import (
 // gitSnapshotCols is the column list for git_snapshots queries.
 const gitSnapshotCols = `id, agent_name, agent_type, working_directory, branch,
 		        commit_hash, commit_subject, commit_timestamp,
-		        session_id, remote_url, recorded_at, COALESCE(pr_number, 0) as pr_number`
+		        session_id, remote_url, recorded_at, COALESCE(pr_number, 0) as pr_number,
+		        COALESCE(is_worktree, 0) as is_worktree, COALESCE(base_branch, '') as base_branch,
+		        COALESCE(ahead, 0) as ahead, COALESCE(behind, 0) as behind, COALESCE(dirty_count, 0) as dirty_count`
 
 // GitSnapshot represents a git state snapshot for an agent.
 type GitSnapshot struct {
@@ -26,6 +28,15 @@ type GitSnapshot struct {
 	RemoteURL        *string `db:"remote_url" json:"remote_url"`
 	RecordedAt       string  `db:"recorded_at" json:"recorded_at"`
 	PRNumber         int     `db:"pr_number" json:"pr_number,omitempty"`
+	// Worktree is true when the working directory is a linked git worktree
+	// rather than the repository's main checkout. BaseBranch is the default
+	// branch (main/master) that Ahead/Behind are measured against; DirtyCount
+	// is the number of uncommitted paths.
+	Worktree   bool   `db:"is_worktree" json:"is_worktree,omitempty"`
+	BaseBranch string `db:"base_branch" json:"base_branch,omitempty"`
+	Ahead      int    `db:"ahead" json:"ahead,omitempty"`
+	Behind     int    `db:"behind" json:"behind,omitempty"`
+	DirtyCount int    `db:"dirty_count" json:"dirty_count,omitempty"`
 }
 
 // FileAgent records which agent last edited a file and when.
@@ -68,18 +79,20 @@ func (s *GitStore) UpsertGitSnapshot(ctx context.Context, snap *GitSnapshot) err
 	_, err := s.db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO git_snapshots
 		 (agent_name, agent_type, working_directory, branch, commit_hash,
-		  commit_subject, commit_timestamp, session_id, remote_url, recorded_at, pr_number)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		  commit_subject, commit_timestamp, session_id, remote_url, recorded_at, pr_number,
+		  is_worktree, base_branch, ahead, behind, dirty_count)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		snap.AgentName, snap.AgentType, snap.WorkingDirectory, snap.Branch,
 		snap.CommitHash, snap.CommitSubject, snap.CommitTimestamp,
-		snap.SessionID, snap.RemoteURL, now, snap.PRNumber)
+		snap.SessionID, snap.RemoteURL, now, snap.PRNumber,
+		snap.Worktree, snap.BaseBranch, snap.Ahead, snap.Behind, snap.DirtyCount)
 	if err != nil {
 		return err
 	}
 
 	// Always update branch/working_directory on the latest row for this session
-	updateSQL := "UPDATE git_snapshots SET branch = ?, working_directory = ?, recorded_at = ?"
-	args := []interface{}{snap.Branch, snap.WorkingDirectory, now}
+	updateSQL := "UPDATE git_snapshots SET branch = ?, working_directory = ?, recorded_at = ?, is_worktree = ?, base_branch = ?, ahead = ?, behind = ?, dirty_count = ?"
+	args := []interface{}{snap.Branch, snap.WorkingDirectory, now, snap.Worktree, snap.BaseBranch, snap.Ahead, snap.Behind, snap.DirtyCount}
 	if snap.RemoteURL != nil {
 		updateSQL += ", remote_url = ?"
 		args = append(args, *snap.RemoteURL)
@@ -159,7 +172,9 @@ func (s *GitStore) GetAllLatestGitState(ctx context.Context) (map[string]*GitSna
 	err := s.db.SelectContext(ctx, &snaps,
 		`SELECT g.id, g.agent_name, g.agent_type, g.working_directory, g.branch,
 		        g.commit_hash, g.commit_subject, g.commit_timestamp,
-		        g.session_id, g.remote_url, g.recorded_at, COALESCE(g.pr_number, 0) as pr_number
+		        g.session_id, g.remote_url, g.recorded_at, COALESCE(g.pr_number, 0) as pr_number,
+		        COALESCE(g.is_worktree, 0) as is_worktree, COALESCE(g.base_branch, '') as base_branch,
+		        COALESCE(g.ahead, 0) as ahead, COALESCE(g.behind, 0) as behind, COALESCE(g.dirty_count, 0) as dirty_count
 		 FROM git_snapshots g
 		 INNER JOIN (
 		     SELECT COALESCE(session_id, agent_name) AS grp_key,

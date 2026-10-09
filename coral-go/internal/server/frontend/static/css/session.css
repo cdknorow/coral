@@ -1319,6 +1319,40 @@
     color: var(--accent);
 }
 
+.branch-git-state {
+    display: inline-flex;
+    gap: 6px;
+    font-size: 11px;
+}
+.branch-git-state:empty { display: none; }
+.gs-worktree {
+    padding: 0 6px;
+    border-radius: 8px;
+    background: rgba(var(--accent-rgb), 0.18);
+}
+.gs-ahead { color: var(--success); }
+.gs-behind { color: var(--warning); }
+.gs-dirty { color: var(--text-muted); }
+
+/* Per-agent branch line, shown only for agents on their own worktree */
+.session-worktree-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    margin-top: 1px;
+    min-width: 0;
+}
+.session-worktree-line svg { flex-shrink: 0; opacity: 0.7; }
+.session-worktree-line .wt-branch {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
 .copy-branch-btn {
     background: none;
     border: none;
@@ -1937,3 +1971,22 @@
 .knowledge-link-ext:hover { text-decoration: underline; }
 .knowledge-empty { text-align: center; padding: 24px; color: var(--text-muted); }
 .knowledge-save-btn { margin-left: 4px; }
+
+/* Repo/branch beside the agent name in the terminal header */
+.terminal-branch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 0 1 auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.terminal-branch[hidden] { display: none; }
+.terminal-branch svg { flex-shrink: 0; color: var(--accent); }
+.terminal-branch-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

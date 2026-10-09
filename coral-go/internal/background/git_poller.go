@@ -209,6 +209,11 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 				SessionID:        sidPtr,
 				RemoteURL:        gitInfo.RemoteURL,
 				PRNumber:         prNumber,
+				Worktree:         gitInfo.Worktree,
+				BaseBranch:       gitInfo.BaseBranch,
+				Ahead:            gitInfo.Ahead,
+				Behind:           gitInfo.Behind,
+				DirtyCount:       gitInfo.DirtyCount,
 			}
 			if err := p.store.UpsertGitSnapshot(ctx, snap); err != nil {
 				p.logger.Warn("upsert snapshot failed", "agent", agent.AgentName, "error", err)
@@ -257,6 +262,11 @@ type gitInfo struct {
 	CommitSubject   string
 	CommitTimestamp  string
 	RemoteURL       *string
+	Worktree        bool
+	BaseBranch      string
+	Ahead           int
+	Behind          int
+	DirtyCount      int
 }
 
 func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
@@ -297,13 +307,15 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 		}
 	}
 
-	return &gitInfo{
+	info := &gitInfo{
 		Branch:         branch,
 		CommitHash:     parts[0],
 		CommitSubject:  parts[1],
 		CommitTimestamp: parts[2],
 		RemoteURL:      remoteURL,
-	}, nil
+	}
+	queryWorktreeState(ctx, workdir, info)
+	return info, nil
 }
 
 func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile, error) {
@@ -323,29 +335,40 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 
 	// git diff base --numstat
 	t2 := time.Now()
-	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "diff", base, "--numstat").Output()
+	// -z: NUL-terminated records with raw paths. Without it git quotes names
+	// containing non-ASCII bytes (e.g. macOS screenshots' U+202F) with octal
+	// escapes, which then never match a file on disk.
+	out, err := executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "diff", base, "--numstat", "-z").Output()
 	if err != nil {
 		// A timeout or git failure: the list would be incomplete.
 		return nil, fmt.Errorf("git diff %s --numstat: %w", base, err)
 	}
-	if len(out) > 0 {
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-			line = strings.TrimSpace(line)
-			if line == "" {
-				continue
+	records := strings.Split(string(out), "\x00")
+	for i := 0; i < len(records); i++ {
+		rec := records[i]
+		if rec == "" {
+			continue
+		}
+		parts := strings.SplitN(rec, "\t", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		path := parts[2]
+		if path == "" {
+			// Rename: "adds\tdels\t\0old\0new\0"; the new path is what exists.
+			if i+2 >= len(records) {
+				break
 			}
-			parts := strings.SplitN(line, "\t", 3)
-			if len(parts) < 3 {
-				continue
-			}
-			a, _ := strconv.Atoi(parts[0])
-			d, _ := strconv.Atoi(parts[1])
-			fileMap[parts[2]] = store.ChangedFile{
-				Filepath:  parts[2],
-				Additions: a,
-				Deletions: d,
-				Status:    "M",
-			}
+			path = records[i+2]
+			i += 2
+		}
+		a, _ := strconv.Atoi(parts[0])
+		d, _ := strconv.Atoi(parts[1])
+		fileMap[path] = store.ChangedFile{
+			Filepath:  path,
+			Additions: a,
+			Deletions: d,
+			Status:    "M",
 		}
 	}
 
@@ -354,19 +377,22 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	// git status --porcelain for untracked files
 	lineCounts := 0
 	t3 := time.Now()
-	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "status", "--porcelain", "--untracked-files=normal").Output()
+	out, err = executil.Command(ctx, "git", "--no-optional-locks", "-C", workdir, "status", "--porcelain", "-z", "--untracked-files=normal").Output()
 	if err != nil {
 		return nil, fmt.Errorf("git status --porcelain: %w", err)
 	}
 	if len(out) > 0 {
-		for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		records := strings.Split(string(out), "\x00")
+		for i := 0; i < len(records); i++ {
+			line := records[i]
 			if len(line) < 4 {
 				continue
 			}
 			statusCode := strings.TrimSpace(line[:2])
 			fp := line[3:]
-			if idx := strings.Index(fp, " -> "); idx >= 0 {
-				fp = fp[idx+4:]
+			// Renames/copies carry the original path as the next record.
+			if line[0] == 'R' || line[0] == 'C' || line[1] == 'R' || line[1] == 'C' {
+				i++
 			}
 			if statusCode == "??" {
 				if _, exists := fileMap[fp]; !exists {
@@ -503,4 +529,48 @@ func getRepoFromWorkdir(ctx context.Context, workdir string) string {
 		return remote[idx+len("github.com/"):]
 	}
 	return remote
+}
+
+// queryWorktreeState fills in whether workdir is a linked worktree, how far
+// its branch has diverged from the default branch, and how many paths are
+// uncommitted. Every probe is best-effort: a failure leaves the zero value.
+func queryWorktreeState(ctx context.Context, workdir string, info *gitInfo) {
+	run := func(args ...string) (string, bool) {
+		out, err := executil.Command(ctx, "git", append([]string{"--no-optional-locks", "-C", workdir}, args...)...).Output()
+		if err != nil {
+			return "", false
+		}
+		return strings.TrimSpace(string(out)), true
+	}
+
+	// In a linked worktree the per-worktree git dir differs from the common one.
+	if out, ok := run("rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir"); ok {
+		if lines := strings.Split(out, "\n"); len(lines) == 2 {
+			info.Worktree = filepath.Clean(lines[0]) != filepath.Clean(lines[1])
+		}
+	}
+
+	if out, ok := run("status", "--porcelain"); ok && out != "" {
+		info.DirtyCount = len(strings.Split(out, "\n"))
+	}
+
+	if info.Branch == "" || info.Branch == "HEAD" {
+		return
+	}
+	for _, base := range []string{"main", "master"} {
+		if _, ok := run("rev-parse", "--verify", "--quiet", base); !ok {
+			continue
+		}
+		info.BaseBranch = base
+		if info.Branch == base {
+			return
+		}
+		if out, ok := run("rev-list", "--left-right", "--count", base+"...HEAD"); ok {
+			var behind, ahead int
+			if _, err := fmt.Sscanf(out, "%d\t%d", &behind, &ahead); err == nil {
+				info.Behind, info.Ahead = behind, ahead
+			}
+		}
+		return
+	}
 }
