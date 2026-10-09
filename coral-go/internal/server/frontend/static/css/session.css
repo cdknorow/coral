@@ -1990,3 +1990,81 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ── Multi-server hub: server badges, strip, stale agents ──────────────
+   Only rendered when hub mode is on and remotes are registered. */
+
+.server-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-muted);
+}
+.server-online .server-dot       { background: var(--success); }
+.server-unreachable .server-dot  { background: var(--warning); }
+.server-unauthorized .server-dot { background: var(--error); }
+.server-unknown .server-dot      { background: var(--text-muted); }
+
+.server-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    max-width: 9em;
+    margin-left: var(--space-sm);
+    padding: 1px var(--space-sm);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    line-height: 1.3;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.server-badge .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+.server-badge.server-unreachable,
+.server-badge.server-unauthorized { color: var(--text-primary); }
+
+.server-strip-row { list-style: none; padding: 0; }
+.server-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin: 0;
+    padding: var(--space-sm) var(--space-lg);
+    list-style: none;
+}
+.server-strip-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 2px var(--space-md);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-base);
+    color: var(--text-secondary);
+}
+.server-strip-item.server-unreachable,
+.server-strip-item.server-unauthorized { color: var(--text-primary); border-color: var(--warning); }
+.server-strip-item.server-unauthorized { border-color: var(--error); }
+.server-strip-state { font-weight: 600; }
+
+/* Agents on an unreachable server: last-known data, not actionable. */
+.session-group-item.session-stale {
+    opacity: 0.55;
+    cursor: not-allowed;
+    filter: grayscale(0.6);
+}
+.session-group-item.session-stale .session-dot { background: var(--text-muted); animation: none; }
+.sidebar-rail-item.session-stale { opacity: 0.55; cursor: not-allowed; }

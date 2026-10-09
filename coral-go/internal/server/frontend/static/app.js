@@ -62,6 +62,7 @@ import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 import { teamFetch } from './server_base.js';
+import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -141,6 +142,8 @@ Object.assign(window, {
     toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent,
     // theme
     showThemeConfigurator, hideThemeConfigurator,
+    // servers (hub mode)
+    showServersModal, hideServersModal,
     // update_check
     checkForUpdates, dismissUpdateToast,
     // message_board
@@ -689,6 +692,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     loadSettings();
+    initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
 
     // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.
     // Marked before any renderer runs so CSS and storage scoping apply.

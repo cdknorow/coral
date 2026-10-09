@@ -3538,3 +3538,50 @@
     flex-shrink: 0;
 }
 .tmux-missing-banner-close:hover { opacity: 1; }
+
+/* ── Servers settings dialog (multi-server hub) ───────────────────── */
+
+.servers-intro, .servers-empty { color: var(--text-secondary); font-size: var(--fs-base); margin: 0 0 var(--space-lg); }
+.servers-list { list-style: none; margin: 0 0 var(--space-xl); padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.servers-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-md) var(--space-lg);
+    padding: var(--space-lg);
+}
+.servers-row + .servers-row { border-top: 1px solid var(--border); }
+.servers-row-main { flex: 1 1 14em; min-width: 0; }
+.servers-row-title { font-size: var(--fs-md); font-weight: 600; color: var(--text-primary); overflow-wrap: anywhere; }
+.servers-id, .servers-tag {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+.servers-tag { padding: 0 var(--space-sm); border: 1px solid var(--warning); border-radius: var(--radius-md); font-family: var(--font-sans); }
+.servers-row-meta { font-size: var(--fs-base); color: var(--text-secondary); overflow-wrap: anywhere; }
+.servers-row-error { margin-top: var(--space-xs); font-size: var(--fs-base); color: var(--error); overflow-wrap: anywhere; }
+.servers-row-status { flex: 0 0 auto; }
+.servers-row-actions { display: flex; flex-wrap: wrap; gap: var(--space-md); }
+.server-status { display: inline-flex; align-items: center; gap: var(--space-sm); font-size: var(--fs-base); font-weight: 500; }
+.servers-form {
+    border-top: 1px solid var(--border);
+    padding-top: var(--space-lg);
+}
+.servers-form h4 { margin: 0 0 var(--space-lg); font-size: var(--fs-lg); }
+.servers-help { display: block; margin-top: var(--space-xs); font-size: var(--fs-base); font-weight: 400; color: var(--text-secondary); }
+.servers-warning { color: var(--warning); }
+.servers-form-error {
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    border: 1px solid var(--error);
+    border-radius: var(--radius-md);
+    font-size: var(--fs-base);
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+.modal-content label.servers-check { display: flex; align-items: flex-start; gap: var(--space-md); }
+.modal-content label.servers-check input { width: auto; margin-top: 3px; flex-shrink: 0; }
+.servers-form-actions { display: flex; justify-content: flex-end; gap: var(--space-md); }
+@media (pointer: coarse) { .servers-row-actions .btn { min-height: 44px; } }

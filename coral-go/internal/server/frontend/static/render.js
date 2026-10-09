@@ -7,6 +7,7 @@ import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
+import { serverBadgeHtml, serverStripHtml, localFirst, isStaleSession, staleReason, showServerLabels, serverLabel } from './server_status.js';
 import { syncMobileAgentList } from './mobile.js';
 import { getCachedAgentAvailability, refreshTeamAvailability } from './team_availability.js';
 
@@ -1646,7 +1647,10 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const sleepingClass = s.sleeping ? ' sleeping' : '';
     const attentionClass = needsAttention ? ' needs-attention' : '';
     const doneClass = isDone ? ' session-done' : '';
-    const clickHandler = isDone
+    // Hub: an agent on an unreachable server is last-known data only.
+    const stale = isStaleSession(s);
+    const staleClass = stale ? ' session-stale' : '';
+    const clickHandler = stale ? '' : isDone
         ? `selectHistorySession('${sid}')`
         : `selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}', '${escapeAttr(sessionServer(s))}')`;
     // Focusable list item (not a button: it contains the kebab, the open-tab
@@ -1656,24 +1660,24 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
         + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
     void lastActivity; void activityLabel;
     const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
-    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}"
-        draggable="true"
+    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}${staleClass}"
+        draggable="${stale ? 'false' : 'true'}"${stale ? ` aria-disabled="true" title="${escapeAttr(staleReason(s))}"` : ''}
         data-state="${stateInfo.key}"
         tabindex="0"
         aria-label="${escapeAttr(ariaLabel)}"${isActive ? ' aria-current="true"' : ''}
         data-session-id="${sid}"
         data-server="${escapeAttr(sessionServer(s))}"
         data-group="${escapeAttr(groupName)}"
-        onclick="${clickHandler}">
+        ${clickHandler ? `onclick="${clickHandler}"` : ''}>
         <span class="drag-grip" title="Drag to reorder">&#x2630;</span>
         <div class="session-info">
             <div class="session-name-row">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
                 <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>
                 <span class="session-name-spacer"></span>
-                ${waitingBadge}${ctxPill}
+                ${stale ? serverBadgeHtml(s.server, 'server-badge-inline') : waitingBadge + ctxPill}
                 ${goalBtn}
-                ${kebabMenu}
+                ${stale ? '' : kebabMenu}
             </div>
             <div class="session-mobile-banner-row">
                 ${mobileAttentionBanner}
@@ -1861,8 +1865,10 @@ function _railTile(s, active) {
     if (unread > 0) badge = `<span class="rail-tile-badge rail-tile-unread">${unread > 9 ? '9+' : unread}</span>`;
     else if (dot === 'done') badge = '<span class="rail-tile-badge rail-tile-done material-icons" aria-hidden="true">check</span>';
     else badge = `<span class="rail-tile-dot avatar-status-dot ${dot}"></span>`;
-    return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"
-        onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${escapeAttr(s.session_id || '')}', '${escapeAttr(sessionServer(s))}')"><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
+    const railStale = isStaleSession(s);
+    const railLabel = railStale ? `${label}: ${staleReason(s)}` : (showServerLabels() ? `${label} · ${serverLabel(sessionServer(s))}` : label);
+    return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}${railStale ? ' session-stale' : ''}" title="${escapeAttr(railLabel)}" aria-label="${escapeAttr(railLabel)}"${railStale ? ' disabled' : ''}
+        ${railStale ? '' : `onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${escapeAttr(s.session_id || '')}', '${escapeAttr(sessionServer(s))}')"`}><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
 }
 
 function _railTeamColor(name) {
@@ -1971,7 +1977,8 @@ export function agentSearchKey(e) {
         e.target.value = '';
         filterLiveAgents('');
     } else if (e.key === 'Enter') {
-        const first = _filteredMatches.find(s => !s.sleeping) || _filteredMatches[0];
+        const usable = _filteredMatches.filter(s => !isStaleSession(s));
+        const first = usable.find(s => !s.sleeping) || usable[0];
         if (first) window.selectLiveSession?.(first.name, first.agent_type, first.session_id || '', sessionServer(first));
     }
 }
@@ -2013,7 +2020,7 @@ export function renderLiveSessions(sessions) {
     updateSectionVisibility('live-sessions', unfilteredCount);
 
     if (!sessions.length) {
-        list.innerHTML = `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        list.innerHTML = serverStripHtml() + `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
     }
 
@@ -2034,7 +2041,7 @@ export function renderLiveSessions(sessions) {
         return `hsl(${hue}, 60%, 55%)`;
     }
 
-    let html = "";
+    let html = serverStripHtml();   // hub only; '' unless remotes are registered
 
     if (groupByTeam) {
     // ── Team-first mode: teams at top level, standalone by folder below ──
@@ -2061,7 +2068,7 @@ export function renderLiveSessions(sessions) {
 
     // Step 2: Render team groups at top level
     // Apply saved group order first, then sort active before sleeping
-    const teamEntries = _sortGroups(Object.entries(teamGroups));
+    const teamEntries = localFirst(_sortGroups(Object.entries(teamGroups)));
     // Secondary sort: if no saved order, put sleeping teams after active
     const hasOrder = _getGroupOrder().length > 0;
     if (!hasOrder) {
@@ -2153,7 +2160,7 @@ export function renderLiveSessions(sessions) {
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}" style="--team-accent: ${accentColor}">
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -2203,7 +2210,7 @@ export function renderLiveSessions(sessions) {
     }
 
     // Step 3: Render standalone agents grouped by folder
-    const sortedFolders = _sortGroups(Object.entries(standaloneByFolder));
+    const sortedFolders = localFirst(_sortGroups(Object.entries(standaloneByFolder)));
     for (const [groupName, groupSessions] of sortedFolders) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
@@ -2254,7 +2261,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
@@ -2272,7 +2279,7 @@ export function renderLiveSessions(sessions) {
         groups[key].push(s);
     }
 
-    const sortedGroups = _sortGroups(Object.entries(groups));
+    const sortedGroups = localFirst(_sortGroups(Object.entries(groups)));
     for (const [groupName, groupSessions] of sortedGroups) {
         const sorted = _sortByOrder(groupSessions);
         const isMulti = sorted.length > 1;
@@ -2323,7 +2330,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
             // Skip rendering items when collapsed
@@ -2409,7 +2416,7 @@ export function renderLiveSessions(sessions) {
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card session-team-group" style="--team-accent: ${accentColor}">
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
