@@ -6,6 +6,7 @@ import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
+import { serverFetch, sessionServer, serverUrl, currentServer } from './server_base.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -318,7 +319,7 @@ async function resolveFileRef(ref) {
     if (!s || s.type !== "live") return null;
     try {
         const qs = new URLSearchParams({ filepath: ref, session_id: s.session_id || "" });
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/resolve-path?${qs}`);
+        const resp = await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/resolve-path?${qs}`);
         if (!resp.ok) {
             const localArtifact = /^(?:file:\/\/)?(?:\/private\/tmp\/|\/tmp\/|~\/)/i.test(ref);
             showToast(localArtifact
@@ -339,7 +340,7 @@ async function resolveFileRef(ref) {
 let editorsPromise = null;
 function installedEditors() {
     if (!editorsPromise) {
-        editorsPromise = fetch("/api/system/editors")
+        editorsPromise = fetch(serverUrl("/api/system/editors", currentServer()))
             .then(r => (r.ok ? r.json() : { editors: [] }))
             .then(d => d.editors || [])
             .catch(() => { editorsPromise = null; return []; });
@@ -351,7 +352,7 @@ async function openRefInEditor(ref, editor) {
     const s = state.currentSession;
     if (!s || s.type !== "live") return;
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/open-in-editor`, {
+        const resp = await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/open-in-editor`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ filepath: ref, session_id: s.session_id || "", editor: editor.id }),
@@ -692,7 +693,7 @@ export async function refreshLiveHistory() {
     activeChatAbortController = abortCtrl;
 
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
+        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
             signal: abortCtrl.signal,
         });
         if (generation !== historyGeneration) return;
@@ -819,7 +820,7 @@ async function _loadMoreHistory(generation) {
     activeLoadMoreAbortController = abortCtrl;
 
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
+        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
             signal: abortCtrl.signal,
         });
         if (generation !== historyGeneration) return; // switched agents meanwhile
@@ -1391,7 +1392,7 @@ async function refreshPendingTool(session) {
     pendingToolInFlight = true;
     try {
         const qs = new URLSearchParams({ session_id: session.session_id });
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/pending-tool?${qs}`);
+        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/pending-tool?${qs}`);
         if (resp.ok) {
             const data = await resp.json();
             pendingToolBySession.set(session.session_id, data.pending || null);
@@ -1411,7 +1412,7 @@ async function refreshPromptOptions(session) {
     promptOptionsInFlight = true;
     try {
         const qs = new URLSearchParams({ session_id: session.session_id, agent_type: session.agent_type || "" });
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/prompt-options?${qs}`);
+        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/prompt-options?${qs}`);
         if (resp.ok) {
             const data = await resp.json();
             promptOptionsBySession.set(session.session_id, { question: data.question || "", options: data.options || [], review: data.review || [] });
@@ -1653,7 +1654,7 @@ async function sendPromptAnswer(card, n, label, action, text) {
     const controls = card ? Array.from(card.querySelectorAll(".cni-answer, .cni-text-form button, .cni-text-form input")) : [];
     controls.forEach(c => { c.disabled = true; });
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
+        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/answer-prompt`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),

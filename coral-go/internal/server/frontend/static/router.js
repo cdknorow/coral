@@ -2,6 +2,7 @@
    Pushes state on view transitions, restores on popstate. */
 
 import { state } from './state.js';
+import { normServer, sessionServer, isLocalServer } from './server_base.js';
 
 /** Push a view state to history. */
 export function pushView(view, params = {}) {
@@ -17,7 +18,13 @@ export function replaceView(view, params = {}) {
 }
 
 function _buildHash(view, params) {
-    if (view === 'chat' && params.sessionId) return `#chat/${params.sessionId}`;
+    // Remote agents carry their server: #chat/{server}/{sessionId}. Legacy
+    // #chat/{sessionId} stays local.
+    if (view === 'chat' && params.sessionId) {
+        return isLocalServer(params.server)
+            ? `#chat/${params.sessionId}`
+            : `#chat/${encodeURIComponent(normServer(params.server))}/${params.sessionId}`;
+    }
     if (view === 'board' && params.boardName) return `#board/${encodeURIComponent(params.boardName)}`;
     if (view === 'history' && params.sessionId) return `#history/${params.sessionId}`;
     return `#${view}`;
@@ -28,6 +35,9 @@ function _parseHash(hash) {
     if (!hash || hash === '#') return { view: 'agents', params: {} };
     const parts = hash.replace('#', '').split('/');
     const view = parts[0] || 'agents';
+    if (view === 'chat' && parts.length >= 3) {
+        return { view, params: { server: decodeURIComponent(parts[1]), sessionId: decodeURIComponent(parts.slice(2).join('/')) } };
+    }
     const id = parts.slice(1).join('/');
     return {
         view,
@@ -37,10 +47,11 @@ function _parseHash(hash) {
 
 /** Select the live session named by a #chat/<sessionId> hash, if it is in the
  *  loaded live list. Exact session_id match only. Returns true when selected. */
-function _restoreChat(sessionId) {
-    const s = (state.liveSessions || []).find(x => x.session_id === sessionId);
+function _restoreChat(sessionId, server) {
+    const srv = server ? normServer(server) : null;
+    const s = (state.liveSessions || []).find(x => x.session_id === sessionId && (!srv || sessionServer(x) === srv));
     if (s && window.selectLiveSession) {
-        window.selectLiveSession(s.name, s.agent_type, s.session_id);
+        window.selectLiveSession(s.name, s.agent_type, s.session_id, sessionServer(s));
         return true;
     }
     return false;
@@ -49,7 +60,7 @@ function _restoreChat(sessionId) {
 /** Load-time deep-link restore for #chat/<sessionId> (call after the live list has loaded). */
 export function restoreChatFromHash() {
     const { view, params } = _parseHash(window.location.hash);
-    if (view === 'chat' && params.sessionId) return _restoreChat(params.sessionId);
+    if (view === 'chat' && params.sessionId) return _restoreChat(params.sessionId, params.server);
     return false;
 }
 
@@ -77,7 +88,7 @@ function _restoreView(view, params) {
             break;
         case 'chat':
             if (params.sessionId && window.selectLiveSession) {
-                _restoreChat(params.sessionId);
+                _restoreChat(params.sessionId, params.server);
             } else if (isMobile && window.mobileBack) {
                 window.mobileBack();
             }

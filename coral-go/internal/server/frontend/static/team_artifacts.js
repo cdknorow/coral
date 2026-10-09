@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
+import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey } from './server_base.js';
 
 let source = 'files';
 let team = null;
@@ -18,7 +19,7 @@ function clear(scope) { cancel(caches[scope]); caches[scope]=fresh(); }
 function currentTeam() {
     // A selected team (team context) wins over the selected agent's team.
     if (state.selectedTeam) return state.selectedTeam;
-    return state.currentSession?.type === 'live' ? state.currentSession.board_project || null : null;
+    return state.currentSession?.type === 'live' ? sessionTeamKey(state.currentSession) || null : null;
 }
 
 function el(tag, className, text) {
@@ -37,10 +38,10 @@ function readableName(item) {
 function artifactLink(item) {
     if (item.available === false) return null;
     const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})$/i.exec(item.uri || '');
-    if (managed) return { url: `/api/artifacts/${managed[1]}`, preview: true };
-    const contentPath = `/api/board/${encodeURIComponent(team)}/tasks/${item.task_id}/artifact-content`;
+    if (managed) return { url: serverUrl(`/api/artifacts/${managed[1]}`, splitKey(team).server), preview: true };
+    const contentPath = `/api/board/${encodeURIComponent(splitKey(team).name)}/tasks/${item.task_id}/artifact-content`;
     if (item.inline && item.content_url?.startsWith(contentPath + '?')) {
-        return { url: item.content_url, preview: true };
+        return { url: serverUrl(item.content_url, splitKey(team).server), preview: true };
     }
     try {
         const url = new URL(item.uri);
@@ -203,7 +204,7 @@ async function load(append = false) {
     try {
         const params = new URLSearchParams({limit:'100',offset:String(cache.items.length)});
         if (scope === 'artifacts') params.set('session_id',requestedSession);
-        const response = await fetch(`/api/board/${encodeURIComponent(team)}/artifacts?${params}`, {signal:cache.controller.signal});
+        const response = await boardFetch(team, `/artifacts?${params}`, {signal:cache.controller.signal});
         if (!response.ok) throw new Error(`Unable to load ${scope === 'artifacts' ? 'agent' : 'team'} artifacts (${response.status}).`);
         const data = await response.json();
         if (gen !== cache.generation || caches[scope] !== cache || requestedTeam !== currentTeam() || source !== scope || (scope === 'artifacts' && requestedSession !== state.currentSession?.session_id)) return;
@@ -278,7 +279,7 @@ async function loadKnowledgeTab() {
 
     panel.innerHTML = '<div class="knowledge-empty">Loading...</div>';
 
-    const data = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge`)
+    const data = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`)
         .then(r => r.ok ? r.json() : null).catch(() => null);
 
     // If team changed while we were fetching, discard the result
@@ -379,7 +380,7 @@ function renderKnowledgePanel(panel, boardName) {
         const saveBtn = panel.querySelector('.knowledge-save-btn');
         saveBtn.textContent = 'Saving...'; saveBtn.disabled = true;
         try {
-            const resp = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge/${encodeURIComponent(knowledgeActiveTab)}`, {
+            const resp = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge/${encodeURIComponent(knowledgeActiveTab)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: editor.value }),
@@ -473,12 +474,12 @@ export async function distillKnowledgeInTab(boardName) {
     </div>`;
 
     try {
-        const resp = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/distill-knowledge`, { method: 'POST' });
+        const resp = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/distill-knowledge`, { method: 'POST' });
         if (!resp.ok) throw new Error('Failed to start distillation');
 
         const pollInterval = setInterval(async () => {
             try {
-                const status = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/distill-knowledge`).then(r => r.json());
+                const status = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/distill-knowledge`).then(r => r.json());
                 if (status.status === 'complete') {
                     clearInterval(pollInterval);
                     knowledgeLoaded = false;

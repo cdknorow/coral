@@ -1,6 +1,7 @@
 /* Session-scoped generated panels. Frames never receive ambient Coral privileges. */
 import { state } from './state.js';
 import { addPendingMessage } from './live_chat.js';
+import { serverFetch, serverForSession } from './server_base.js';
 
 let session = null;
 let generation = 0;
@@ -63,7 +64,7 @@ function createRequestForm(sid) {
         const sentAt = Date.now();
         value.pending=true; value.error=false; value.message='Sending request…'; saveRequest(sid,value); updateRequestForm(form,value);
         try {
-            const response = await fetch('/api/agent/ui-request?session_id=' + encodeURIComponent(sid), {
+            const response = await serverFetch(serverForSession(null, sid), '/api/agent/ui-request?session_id=' + encodeURIComponent(sid), {
                 method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({request,request_id:attempt.id}),
             });
             const result = await response.json();
@@ -104,7 +105,7 @@ export async function refreshAgentUI() {
     busy = true;
     const token = generation;
     try {
-        const response = await fetch(endpoint(sid));
+        const response = await serverFetch(serverForSession(null, sid), endpoint(sid));
         if (!response.ok) throw new Error(`Unable to load agent UI (${response.status})`);
         const allPanels = await response.json();
         if (token !== generation || sid !== currentID()) return;
@@ -167,7 +168,7 @@ export async function refreshAgentUI() {
                 if (!window.confirm(`Delete “${panel.title}”? This removes the panel and its saved responses.`)) return;
                 remove.disabled = true;
                 try {
-                    const response = await fetch(endpoint(sid, panel.id), { method: 'DELETE' });
+                    const response = await serverFetch(serverForSession(null, sid), endpoint(sid, panel.id), { method: 'DELETE' });
                     if (!response.ok) {
                         const result = await response.json().catch(() => ({}));
                         throw new Error(result.error || `Delete failed (${response.status})`);
@@ -225,7 +226,7 @@ export function initAgentUI() {
             if (typeof action !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(action)) throw new Error('Invalid action');
             const body = JSON.stringify({ revision: item.revision, action, payload });
             if (new TextEncoder().encode(body).length > 16384) throw new Error('Interaction exceeds 16 KiB');
-            const response = await fetch(endpoint(item.sid, item.id).replace('?','/events?'), {
+            const response = await serverFetch(serverForSession(null, item.sid), endpoint(item.sid, item.id).replace('?','/events?'), {
                 method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
             });
             result = await response.json();

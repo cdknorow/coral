@@ -11,6 +11,7 @@ import { renderCaptureText, syncPaneWidth } from './capture.js';
 import { hideRestartModal } from './controls.js';
 import { recordRecentDir } from './browser.js';
 import { updateTerminalTheme, getTerminal } from './xterm_renderer.js';
+import { serverFetch, currentServer, splitKey, identityKey } from './server_base.js';
 
 export function toggleFlag(inputId, flag) {
     const input = document.getElementById(inputId);
@@ -1289,9 +1290,19 @@ function _selectAgentPreset(name) {
 }
 window._selectAgentPreset = _selectAgentPreset;
 
+// Launch entry points are not yet server-aware (the Server picker lands with
+// the launch-modal work). Until then a launch aimed at a remote group is
+// refused: it must never fall back to launching locally with a remote path.
+function _blockRemoteLaunch(server) {
+    if (!server || server === 'local') return false;
+    showToast('Launching on a remote server is not available yet. Launch from that server directly.', true);
+    return true;
+}
+
 // ── Add Agent to Board ───────────────────────────────────────────────────
 
 export function showAddAgentToBoard(boardName, workDir) {
+    if (_blockRemoteLaunch(splitKey(boardName).server)) return;
     const modal = document.getElementById("add-agent-board-modal");
     document.getElementById("add-agent-board-name").value = boardName;
     document.getElementById("add-agent-board-workdir").value = workDir;
@@ -1378,6 +1389,7 @@ export async function launchAgentToBoard() {
 // ── Launch Terminal to Board ─────────────────────────────────────────────
 
 export async function launchTerminalToBoard(boardName, workDir) {
+    if (_blockRemoteLaunch(splitKey(boardName).server)) return;
     try {
         const resp = await fetch("/api/sessions/launch", {
             method: "POST",
@@ -1407,7 +1419,8 @@ export async function launchTerminalToBoard(boardName, workDir) {
 
 // ── Standalone Agent Launch (no board) ────────────────────────────────────
 
-export async function launchDefaultAgent(workDir) {
+export async function launchDefaultAgent(workDir, server) {
+    if (_blockRemoteLaunch(server)) return;
     const s = state.settings || {};
     const agentType = s.default_agent_type || 'claude';
     const permFlag = _getPermissionFlagsForAgentMode(agentType, s.default_permission_mode || 'bypassPermissions');
@@ -1445,7 +1458,8 @@ export async function launchDefaultAgent(workDir) {
     }
 }
 
-export function showAddStandaloneAgent(workDir) {
+export function showAddStandaloneAgent(workDir, server) {
+    if (_blockRemoteLaunch(server)) return;
     const modal = document.getElementById('add-agent-board-modal');
     document.getElementById('add-agent-board-name').value = '';
     document.getElementById('add-agent-board-workdir').value = workDir;
@@ -2640,7 +2654,7 @@ export async function showInfoModal() {
         const sid = state.currentSession.session_id;
         if (sid) params.set("session_id", sid);
         const qs = params.toString() ? `?${params}` : "";
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/info${qs}`);
+        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(name)}/info${qs}`);
         const info = await resp.json();
 
         if (info.error) {
@@ -2686,7 +2700,7 @@ export async function showInfoModal() {
             boardLink.onclick = (e) => {
                 e.preventDefault();
                 hideInfoModal();
-                if (window.selectBoardProject) window.selectBoardProject(info.board_name);
+                if (window.selectBoardProject) window.selectBoardProject(identityKey(currentServer(), info.board_name));
             };
             boardVal.innerHTML = "";
             boardVal.appendChild(boardLink);

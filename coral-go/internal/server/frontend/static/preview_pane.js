@@ -6,6 +6,7 @@ import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util
 import { makeDraggable } from './draggable.js';
 import { toggleStarFile, isFileStarred } from './changed_files.js';
 import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
+import { serverUrl, currentServer } from './server_base.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -44,7 +45,7 @@ function _apiQs(filepath) {
 function _fileUrl(endpoint, filepath, extra) {
     const qs = _apiQs(filepath);
     if (extra) for (const [k, v] of Object.entries(extra)) qs.set(k, v);
-    return `/api/sessions/live/${encodeURIComponent(_agentName())}/${endpoint}?${qs}`;
+    return serverUrl(`/api/sessions/live/${encodeURIComponent(_agentName())}/${endpoint}?${qs}`, currentServer());
 }
 
 // Tab: { id, kind: 'file'|'artifact', filepath, line, mode: 'preview'|'edit'|'diff',

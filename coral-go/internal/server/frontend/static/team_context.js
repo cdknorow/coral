@@ -8,6 +8,7 @@
  * underneath, so closing the team view returns to it unchanged.
  */
 import { state } from './state.js';
+import { sessionTeamKey, splitKey, identityKey } from './server_base.js';
 import { showView } from './utils.js';
 import { showTeamAvailability } from './team_availability.js';
 import { showTeamWorkingMode, hasUnsavedTeamSettings, confirmTeamWorkspaceChange } from './team_working_mode.js';
@@ -63,7 +64,7 @@ function unmountGroupChat() {
     host?.querySelector('.team-center-close')?.remove();
     if (panel && host && panel.parentElement === host) document.getElementById('agentic-block-top')?.appendChild(panel);
     _boardTeam = null;
-    const board = state.currentSession?.type === 'live' ? state.currentSession.board_project : null;
+    const board = state.currentSession?.type === 'live' ? sessionTeamKey(state.currentSession) : null;
     if (board && getActiveBoardChat() === board) return; // same board: keep what is already loaded
     if (board) showBoardChatTab(board);
     else hideBoardChatTab();
@@ -91,6 +92,7 @@ export async function enterTeamContext(team, opts = {}) {
     bindHistory();
 
     state.selectedTeam = team;
+    state.currentBoardServer = splitKey(team).server;
     // Previews opened from the team keep their own tabs, separate from any agent's.
     setPreviewSession('team:' + team);
     // The pane needs the live view mounted even when no agent is selected yet.
@@ -134,7 +136,7 @@ export function exitTeamContext({ goBack = true, force = false } = {}) {
     // A team-only tab cannot stay active without a team.
     const active = activeTabName();
     if (active && document.querySelector(`#agentic-tab-${active}[data-scope="team"]`)) {
-        const hasBoard = !!state.currentSession?.board_project;
+        const hasBoard = !!sessionTeamKey(state.currentSession);
         window.switchAgenticTab?.(hasBoard ? 'board' : 'files', 'top');
     }
     syncFilesSourceTeam();
@@ -155,6 +157,6 @@ export function renderTeamSettingsTab() {
     const team = getSelectedTeam();
     const panel = document.getElementById('agentic-panel-team-settings');
     if (!team || !panel) return;
-    if (panel.querySelector('#team-settings-workspace .working-mode-team')?.textContent?.trim() === team) return;
+    if (panel.querySelector('#team-settings-workspace .working-mode-team')?.textContent?.trim() === splitKey(team).name) return;
     showTeamWorkingMode(team, { workspace: true });
 }

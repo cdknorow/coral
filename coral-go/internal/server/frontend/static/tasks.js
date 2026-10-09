@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
+import { serverUrl, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -37,7 +38,7 @@ async function _pollBoardTasksOnce() {
     }
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     loadSubagents(state.currentSession.name, state.currentSession.session_id);
-    const boardProject = state.currentSession.board_project || state.currentSession.name;
+    const boardProject = _currentBoardKey();
     if (boardProject) {
         await loadBoardTasks(boardProject);
         _fetchLiveCosts(boardProject);
@@ -54,7 +55,7 @@ async function _fetchLiveCosts(boardProject) {
     const newCosts = {};
     await Promise.all(inProgress.map(async (t) => {
         try {
-            const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${t.id}/cost`);
+            const resp = await boardFetch(boardProject, `/tasks/${t.id}/cost`);
             if (resp.ok) {
                 const data = await resp.json();
                 if (data) newCosts[t.id] = data;
@@ -72,7 +73,7 @@ export async function loadAgentTasks(agentName, sessionId, options) {
         const params = new URLSearchParams();
         if (sid) params.set("session_id", sid);
         const qs = params.toString() ? `?${params}` : "";
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/tasks${qs}`, options);
+        const resp = await serverFetch(serverForSession(agentName, sid), `/api/sessions/live/${encodeURIComponent(agentName)}/tasks${qs}`, options);
         if (!resp.ok) throw new Error(`tasks fetch failed: ${resp.status}`);
         const tasks = await resp.json();
         if (sid && state.currentSession?.session_id !== sid) return;
@@ -105,7 +106,7 @@ export async function loadSubagents(agentName, sessionId, options) {
     }
     let subagents = [];
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/subagents?session_id=${encodeURIComponent(sid)}`, options);
+        const resp = await serverFetch(serverForSession(agentName, sid), `/api/sessions/live/${encodeURIComponent(agentName)}/subagents?session_id=${encodeURIComponent(sid)}`, options);
         if (!resp.ok) throw new Error(`subagents fetch failed: ${resp.status}`);
         subagents = await resp.json();
     } catch (e) {
@@ -297,7 +298,7 @@ async function _loadSubagentConversation(sa) {
     let data = null;
     try {
         const name = state.currentSession ? state.currentSession.name : '_';
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/subagents/${encodeURIComponent(sa.subagent_id)}?session_id=${encodeURIComponent(sa.session_id)}`);
+        const resp = await serverFetch(serverForSession(name, sa.session_id), `/api/sessions/live/${encodeURIComponent(name)}/subagents/${encodeURIComponent(sa.subagent_id)}?session_id=${encodeURIComponent(sa.session_id)}`);
         if (resp.ok) data = await resp.json();
     } catch (e) { /* rendered as unavailable */ }
     if (_openSubagentId !== sa.subagent_id) return; // closed or switched while loading
@@ -348,7 +349,7 @@ export async function addAgentTask() {
 
     try {
         const sid = state.currentSession.session_id;
-        await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks`, {
+        await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title, session_id: sid }),
@@ -363,7 +364,7 @@ export async function addAgentTask() {
 export async function toggleAgentTask(taskId, completed) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     try {
-        const response = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+        const response = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: completed ? 1 : 0 }),
@@ -378,7 +379,7 @@ export async function toggleAgentTask(taskId, completed) {
 export async function deleteAgentTask(taskId) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     try {
-        const response = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+        const response = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
             method: 'DELETE',
         });
         if (!response.ok) {const data = await response.json(); throw new Error(data.error || 'Failed to delete task');}
@@ -409,7 +410,7 @@ export function editAgentTaskTitle(taskId, spanEl) {
             return;
         }
         try {
-            await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
+            await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/${taskId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title: newTitle }),
@@ -484,7 +485,7 @@ export async function loadBoardTasks(boardName) {
         return;
     }
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardName)}/tasks`);
+        const resp = await boardFetch(boardName, `/tasks`);
         if (!resp.ok) throw new Error(`board tasks fetch failed: ${resp.status}`);
         const data = await resp.json();
         state.currentBoardTasks = data.tasks || [];
@@ -836,7 +837,7 @@ export async function showCreateTaskModal() {
     const boardProject = solo ? null : _getBoardProject();
     if (boardProject) {
         try {
-            const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/subscribers`);
+            const resp = await boardFetch(boardProject, `/subscribers`);
             if (resp.ok) {
                 const subs = await resp.json();
                 (subs || []).forEach(s => {
@@ -924,7 +925,7 @@ export async function submitCreateTask() {
             instructions: document.getElementById('create-task-instructions')?.value.trim() || '',
         };
         if (isDraft) payload.draft = true;
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks`, {
+        const resp = await boardFetch(boardProject, `/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -954,7 +955,7 @@ async function _createSoloAgentTask(title, body, errEl) {
     try {
         // With notify, the server types the claim prompt into the agent's
         // terminal and returns it (see claimPrompt in routes/agent_tasks.go).
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/tasks`, {
+        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title, body, priority: document.getElementById('create-task-priority')?.value || 'medium', session_id: session.session_id, notify }),
@@ -981,10 +982,18 @@ function _isSoloAgent() {
     return !!state.currentSession && state.currentSession.type === 'live' && !state.currentSession.board_project;
 }
 
+// Team key (server + board) of the selected agent; a solo agent uses its own name as the board.
+function _currentBoardKey() {
+    const cs = state.currentSession;
+    if (!cs) return null;
+    const board = cs.board_project || cs.name;
+    return board ? identityKey(sessionServer(cs), board) : null;
+}
+
 function _getBoardProject() {
     if (state.selectedTeam) return state.selectedTeam;
     if (!state.currentSession) return null;
-    return state.currentSession.board_project || state.currentSession.name;
+    return _currentBoardKey();
 }
 
 /* ── Task Detail Modal ─────────────────────────────────── */
@@ -1142,7 +1151,7 @@ function _taskDetailHtml(task, liveCost) {
         const artifactHtml = a => {
             const uri = String(a.uri || '');
             const coralMatch = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
-            const href = coralMatch ? `/api/artifacts/${coralMatch[1]}` : uri;
+            const href = coralMatch ? serverUrl(`/api/artifacts/${coralMatch[1]}`, contextServer()) : uri;
             const uriDisplay = (/^https?:\/\//i.test(uri) || coralMatch)
                 ? `<a href="${coralMatch ? '#' : escapeAttr(href)}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ` onclick="event.preventDefault(); window.hideTaskDetailModal?.(); window.openFilePreview?.('${escapeAttr(uri)}')"` : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
                 : escapeHtml(uri);
@@ -1234,7 +1243,7 @@ function _taskDetailHtml(task, liveCost) {
                 : dep.status === 'blocked' ? 'blocked'
                 : dep.status === 'draft' ? 'draft'
                 : 'pending';
-            const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== boardProject;
+            const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== keyLabel(boardProject);
             const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_id)} ` : '';
             const depTitle = dep.title ? ` — ${escapeHtml(dep.title)}` : '';
             const clickable = !isCrossBoard ? ` onclick="${task._source === 'agent' ? 'showAgentTaskDetailModal' : 'showTaskDetailModal'}(${dep.task_id})" style="cursor:pointer"` : '';
@@ -1338,7 +1347,7 @@ export async function enableTaskEditMode(taskId) {
     }
     if (boardProject) {
         try {
-            const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/subscribers`);
+            const resp = await boardFetch(boardProject, `/subscribers`);
             if (resp.ok) {
                 const subs = await resp.json();
                 (Array.isArray(subs) ? subs : []).forEach(s => {
@@ -1448,7 +1457,7 @@ export async function saveTaskEdit(taskId) {
         if (Object.keys(amendmentChanges).length) {
             const reason = document.getElementById('task-edit-reason')?.value.trim() || '';
             if (!reason) throw new Error('An amendment reason is required for description or instruction changes');
-            const amendmentResp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/amend`, {
+            const amendmentResp = await boardFetch(boardProject, `/tasks/${taskId}/amend`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ subscriber_id: 'Operator', base_revision: Number(task.revision || 1), reason, changes: amendmentChanges }),
@@ -1459,7 +1468,7 @@ export async function saveTaskEdit(taskId) {
             }
         }
         if (Object.keys(updates).length) {
-            const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}`, {
+            const resp = await boardFetch(boardProject, `/tasks/${taskId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates),
@@ -1555,10 +1564,12 @@ export async function _doCompleteTask(taskId, personal = false) {
         const missingOutputs = requiredOutputs.filter(output => !suppliedNames.has(output));
         if (missingOutputs.length) throw new Error(`Required outputs missing: ${missingOutputs.join(', ')}`);
         const outcome = document.getElementById('task-complete-outcome')?.value || 'success';
-        const endpoint = personal ? `/api/agent/tasks/${taskId}/complete` : `/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/complete`;
+        const send = init => personal
+            ? serverFetch(currentServer(), `/api/agent/tasks/${taskId}/complete`, init)
+            : boardFetch(boardProject, `/tasks/${taskId}/complete`, init);
         const identity = personal ? { session_id: state.currentSession.session_id } : { subscriber_id: 'Operator' };
         const expectedRevision = !personal && task ? Number(task.revision || 1) : undefined;
-        const resp = await fetch(endpoint, {
+        const resp = await send({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...identity, message: message || undefined, outcome, artifacts, ...(expectedRevision ? { expected_revision: expectedRevision } : {}) }),
@@ -1599,7 +1610,7 @@ export async function nudgeBoardTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/nudge`, { method: 'POST' });
+        const resp = await boardFetch(boardProject, `/tasks/${taskId}/nudge`, { method: 'POST' });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
         showToast(`Nudged ${data.assignee || 'the assignee'}`);
@@ -1619,7 +1630,7 @@ export async function remindBoardTask(taskId) {
         return;
     }
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/reminder`, {
+        const resp = await boardFetch(boardProject, `/tasks/${taskId}/reminder`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ interval_seconds: intervalSeconds }),
         });
@@ -1632,7 +1643,7 @@ export async function remindBoardTask(taskId) {
 export async function stopBoardTaskReminder(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
-    await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/reminder`, { method: 'DELETE' });
+    await boardFetch(boardProject, `/tasks/${taskId}/reminder`, { method: 'DELETE' });
     showToast('Periodic reminders stopped');
 }
 
@@ -1653,7 +1664,7 @@ export async function _doCancelTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/cancel`, {
+        const resp = await boardFetch(boardProject, `/tasks/${taskId}/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subscriber_id: 'Operator' }),
@@ -1674,7 +1685,7 @@ export async function publishBoardTask(taskId) {
     const boardProject = _getBoardProject();
     if (!boardProject) return;
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardProject)}/tasks/${taskId}/publish`, {
+        const resp = await boardFetch(boardProject, `/tasks/${taskId}/publish`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
         });
@@ -1729,7 +1740,7 @@ async function saveTaskOrder() {
         .filter(id => !isNaN(id));
 
     try {
-        await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/reorder`, {
+        await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/tasks/reorder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ task_ids: taskIds }),

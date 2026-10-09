@@ -6,6 +6,7 @@ import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
+import { serverFetch, serverForSession, sessionServer, currentServer } from './server_base.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -382,7 +383,7 @@ export async function loadChangedFiles(agentName, sessionId) {
         const sid = sessionId || (state.currentSession && state.currentSession.session_id);
         if (sid) params.set("session_id", sid);
         const qs = params.toString() ? `?${params}` : "";
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/files${qs}`);
+        const resp = await serverFetch(serverForSession(agentName), `/api/sessions/live/${encodeURIComponent(agentName)}/files${qs}`);
         if (!resp.ok) throw new Error(`files fetch failed: ${resp.status}`);
         const data = await resp.json();
         _currentFiles = data.files || [];
@@ -490,7 +491,7 @@ window._createFile = async function(filePath) {
 
     try {
         const qs = new URLSearchParams({ filepath: filePath, session_id: s.session_id || '' });
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/file-content?${qs}`, {
+        const resp = await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/file-content?${qs}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: '' }),
@@ -557,8 +558,8 @@ export async function refreshChangedFiles() {
     try {
         const body = {};
         if (sessionId) body.session_id = sessionId;
-        const resp = await fetch(
-            `/api/sessions/live/${encodeURIComponent(agentName)}/files/refresh`,
+        const resp = await serverFetch(
+            currentServer(), `/api/sessions/live/${encodeURIComponent(agentName)}/files/refresh`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

@@ -7,6 +7,7 @@ import { selectFilesSource } from './team_artifacts.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
+import { serverFetch, serverForSession } from './server_base.js';
 
 const TOOL_ICONS = {
     Read:       { char: '&#xe8f4;', cls: 'tool-read' },
@@ -103,7 +104,7 @@ export async function loadAgentEvents(agentName, sessionId, options) {
     try {
         const params = new URLSearchParams({ limit: 50 });
         if (sid) params.set("session_id", sid);
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/events?${params}`, options);
+        const resp = await serverFetch(serverForSession(agentName, sid), `/api/sessions/live/${encodeURIComponent(agentName)}/events?${params}`, options);
         if (!resp.ok) throw new Error(`events fetch failed: ${resp.status}`);
         const events = await resp.json();
         if (sid && state.currentSession?.session_id !== sid) return;

@@ -4,6 +4,7 @@ import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, get
 import { state } from './state.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
+import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch } from './server_base.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -19,13 +20,26 @@ let pendingMessageId = null;
 
 // ── API helpers ──────────────────────────────────────────────────────────
 
+// Boards live on the server that hosts the team, so the project list is the
+// hub's own boards plus those of every online remote. Each entry's `project`
+// is a team key (server + name); local keys are the bare name.
 async function fetchProjects() {
     const resp = await fetch('/api/board/projects');
-    return await resp.json();
+    const local = await resp.json();
+    const remotes = !state.hub ? [] : (state.servers || []).filter(s => s.id !== 'local' && s.status === 'online');
+    const lists = await Promise.all(remotes.map(async srv => {
+        try {
+            const r = await serverFetch(srv.id, '/api/board/projects');
+            if (!r.ok) return [];
+            const rows = await r.json();
+            return (Array.isArray(rows) ? rows : []).map(p => ({ ...p, project: identityKey(srv.id, p.project), server: srv.id }));
+        } catch { return []; }
+    }));
+    return [...local, ...lists.flat()];
 }
 
 async function fetchMessages(project, limit = PAGE_SIZE, offset = 0) {
-    const resp = await fetch(`/api/board/${encodeURIComponent(project)}/messages/all?limit=${limit}&offset=${offset}&format=dashboard`);
+    const resp = await boardFetch(project, `/messages/all?limit=${limit}&offset=${offset}&format=dashboard`);
     const data = await resp.json();
     // Support both old format (array) and new format ({messages, total})
     if (Array.isArray(data)) {
@@ -35,7 +49,7 @@ async function fetchMessages(project, limit = PAGE_SIZE, offset = 0) {
 }
 
 async function fetchSubscribers(project) {
-    const resp = await fetch(`/api/board/${encodeURIComponent(project)}/subscribers`);
+    const resp = await boardFetch(project, `/subscribers`);
     return await resp.json();
 }
 
@@ -62,7 +76,7 @@ function renderBoardSidebar(projects) {
     list.innerHTML = projects.map(p => {
         const active = currentProject === p.project ? 'active' : '';
         return `<li class="session-list-item ${active}" onclick="selectBoardProject('${escapeAttr(p.project)}')">
-            <span class="session-name">${escapeHtml(p.project)}</span>
+            <span class="session-name">${escapeHtml(keyLabel(p.project))}</span>
             <span class="mb-project-count">${p.message_count} msgs</span>
         </li>`;
     }).join('');
@@ -72,6 +86,7 @@ function renderBoardSidebar(projects) {
 
 export function selectBoardProject(project, messageId = null) {
     currentProject = project;
+    state.currentBoardServer = splitKey(project).server;
     pendingMessageId = messageId != null ? String(messageId) : null;
 
     // Hide other views, show messageboard
@@ -92,7 +107,7 @@ export function selectBoardProject(project, messageId = null) {
     document.getElementById('mb-delete-btn').style.display = '';
 
     const badge = document.getElementById('messageboard-project-badge');
-    badge.textContent = project;
+    badge.textContent = keyLabel(project);
     badge.style.display = '';
     document.getElementById('messageboard-title').textContent = 'Message Board';
 
@@ -154,7 +169,7 @@ async function loadBoardProjectList() {
             <li class="session-list-item" onclick="selectBoardProject('${escapeAttr(p.project)}')"
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
-                    <strong>${escapeHtml(p.project)}</strong>
+                    <strong>${escapeHtml(keyLabel(p.project))}</strong>
                     <div class="mb-project-meta">${p.subscriber_count} subscriber${p.subscriber_count !== 1 ? 's' : ''}</div>
                 </div>
                 <span class="mb-project-meta">${p.message_count} messages</span>
@@ -293,7 +308,7 @@ function navigateToAgentSession(sessionName, displayName) {
         // Try live session first, fall back to history
         const live = (state.liveSessions || []).find(s => s.session_id === sessionId);
         if (live) {
-            window.selectLiveSession(live.name, live.agent_type, live.session_id);
+            window.selectLiveSession(live.name, live.agent_type, live.session_id, sessionServer(live));
         } else {
             window.selectHistorySession(sessionId);
         }
@@ -342,7 +357,7 @@ async function loadBoardSubscribers(project) {
 
 async function subscribeDashboard(project) {
     try {
-        await fetch(`/api/board/${encodeURIComponent(project)}/subscribe`, {
+        await boardFetch(project, `/subscribe`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subscriber_id: 'dashboard', job_title: 'Operator' }),
@@ -361,7 +376,7 @@ export async function postBoardMessage() {
     if (!content) return;
 
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/messages`, {
+        const resp = await boardFetch(currentProject, `/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ subscriber_id: 'dashboard', content }),
@@ -382,7 +397,7 @@ export async function postBoardMessage() {
 
 async function loadPausedState(project) {
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(project)}/paused`);
+        const resp = await boardFetch(project, `/paused`);
         const data = await resp.json();
         isPaused = !!data.paused;
         updatePauseButton();
@@ -413,7 +428,7 @@ export async function toggleBoardPause() {
     if (!currentProject) return;
     const action = isPaused ? 'resume' : 'pause';
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/${action}`, {
+        const resp = await boardFetch(currentProject, `/${action}`, {
             method: 'POST',
         });
         const data = await resp.json();
@@ -429,7 +444,7 @@ export async function toggleBoardPause() {
 export async function deleteBoardMessage(messageId) {
     if (!currentProject) return;
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/messages/${messageId}`, {
+        const resp = await boardFetch(currentProject, `/messages/${messageId}`, {
             method: 'DELETE',
         });
         if (!resp.ok) {
@@ -450,9 +465,9 @@ export async function deleteBoardMessage(messageId) {
 export function deleteMessageBoardProject() {
     if (!currentProject) return;
     const project = currentProject;
-    window.showConfirmModal('Delete Board', `Delete project "${project}" and all its messages?`, async () => {
+    window.showConfirmModal('Delete Board', `Delete project "${keyLabel(project)}" and all its messages?`, async () => {
         try {
-            await fetch(`/api/board/${encodeURIComponent(project)}`, { method: 'DELETE' });
+            await boardFetch(project, ``, { method: 'DELETE' });
             showMessageBoardProjects();
         } catch (e) {
             console.error('Failed to delete project:', e);
@@ -509,7 +524,7 @@ function stopBoardPoll() {
 
 async function loadSleepState(project) {
     try {
-        const resp = await fetch(`/api/sessions/live/team/${encodeURIComponent(project)}/sleep-status`);
+        const resp = await teamFetch(project, n => `/api/sessions/live/team/${encodeURIComponent(n)}/sleep-status`);
         const data = await resp.json();
         isSleeping = !!data.sleeping;
         updateSleepUI();
@@ -546,7 +561,7 @@ export function toggleBoardSleep() {
     const action = isSleeping ? 'wake' : 'sleep';
     const doIt = async () => {
         try {
-            const resp = await fetch(`/api/sessions/live/team/${encodeURIComponent(currentProject)}/${action}`, { method: 'POST' });
+            const resp = await teamFetch(currentProject, n => `/api/sessions/live/team/${encodeURIComponent(n)}/${action}`, { method: 'POST' });
             const data = await resp.json();
             isSleeping = !!data.sleeping;
             updateSleepUI();
@@ -556,7 +571,7 @@ export function toggleBoardSleep() {
         }
     };
     if (!isSleeping) {
-        window.showConfirmModal('Sleep Team', `Put all agents on "${currentProject}" to sleep?`, doIt);
+        window.showConfirmModal('Sleep Team', `Put all agents on "${keyLabel(currentProject)}" to sleep?`, doIt);
     } else {
         doIt();
     }
@@ -590,7 +605,7 @@ export async function showExportBoardModal() {
     title.textContent = 'Export Board Chat';
     body.innerHTML = `
         <div style="margin-bottom:16px">
-            <p style="margin:0 0 8px;font-size:14px">Export <strong>${escapeHtml(currentProject)}</strong> board messages.</p>
+            <p style="margin:0 0 8px;font-size:14px">Export <strong>${escapeHtml(keyLabel(currentProject))}</strong> board messages.</p>
             <p style="margin:0 0 12px;font-size:13px;color:var(--text-muted)">Optionally include individual agent chat histories, interleaved by timestamp.</p>
         </div>
         <div style="margin-bottom:16px">
@@ -633,11 +648,11 @@ export async function doExportBoard() {
 
     try {
         // 1. Fetch all board messages
-        const boardResp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/messages/all?limit=10000`);
+        const boardResp = await boardFetch(currentProject, `/messages/all?limit=10000`);
         const boardMessages = await boardResp.json();
 
         // 2. Fetch subscribers
-        const subsResp = await fetch(`/api/board/${encodeURIComponent(currentProject)}/subscribers`);
+        const subsResp = await boardFetch(currentProject, `/subscribers`);
         const subscribers = await subsResp.json();
 
         // 3. Build entries from board messages
@@ -650,7 +665,10 @@ export async function doExportBoard() {
 
         // 4. Fetch live sessions to get working directories and names
         const liveResp = await fetch('/api/sessions/live');
-        const liveSessions = await liveResp.json();
+        const liveRaw = await liveResp.json();
+        // The list is {sessions, servers} when remotes exist; only this board's server counts.
+        const boardSrv = splitKey(currentProject).server;
+        const liveSessions = (Array.isArray(liveRaw) ? liveRaw : (liveRaw.sessions || [])).filter(s => sessionServer(s) === boardSrv);
 
         // 5. Fetch selected agent chat histories and merge
         for (const agent of selectedAgents) {
@@ -667,7 +685,7 @@ export async function doExportBoard() {
                         after: '0',
                         limit: '10000',
                     });
-                    const chatResp = await fetch(`/api/sessions/live/${encodeURIComponent(live.name)}/chat?${params}`);
+                    const chatResp = await serverFetch(sessionServer(live), `/api/sessions/live/${encodeURIComponent(live.name)}/chat?${params}`);
                     histData = await chatResp.json();
                 } else {
                     // Fallback to history endpoint for completed sessions
@@ -688,7 +706,7 @@ export async function doExportBoard() {
 
         // 6. Build export data
         const exportData = {
-            project: currentProject,
+            project: keyLabel(currentProject),
             exported_at: new Date().toISOString(),
             subscribers: subscribers.map(s => ({
                 session_id: s.subscriber_id,
@@ -706,15 +724,15 @@ export async function doExportBoard() {
         let output, filename, mime;
         if (format === 'json') {
             output = JSON.stringify(exportData, null, 2);
-            filename = `${currentProject}-export.json`;
+            filename = `${keyLabel(currentProject)}-export.json`;
             mime = 'application/json';
         } else if (format === 'markdown') {
             output = renderExportMarkdown(exportData);
-            filename = `${currentProject}-export.md`;
+            filename = `${keyLabel(currentProject)}-export.md`;
             mime = 'text/markdown';
         } else {
             output = renderExportHTML(exportData);
-            filename = `${currentProject}-export.html`;
+            filename = `${keyLabel(currentProject)}-export.html`;
             mime = 'text/html';
         }
 
@@ -959,7 +977,7 @@ export async function exportSelectedAsMarkdown() {
     if (!selected.length) return;
 
     const now = new Date().toLocaleString();
-    let md = `# ${currentProject} — Exported Chat\n\n`;
+    let md = `# ${keyLabel(currentProject)} — Exported Chat\n\n`;
     md += `**Exported**: ${now} · **Messages**: ${selected.length}\n\n---\n\n`;
 
     for (const m of selected) {
@@ -982,7 +1000,7 @@ export async function exportSelectedAsMarkdown() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${currentProject}-selected-export.md`;
+    a.download = `${keyLabel(currentProject)}-selected-export.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

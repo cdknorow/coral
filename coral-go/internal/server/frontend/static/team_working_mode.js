@@ -1,4 +1,5 @@
 import { escapeHtml } from './utils.js';
+import { splitKey, keyLabel, serverUrl } from './server_base.js';
 
 const PRESET_NAMES = { none: 'None', shared_checkout: 'Shared checkout', worktrees: 'Worktrees' };
 
@@ -104,7 +105,7 @@ export async function showTeamWorkingMode(team, options = {}) {
       </section>
       <div class="team-settings-actions"><button type="submit" class="btn" disabled>Save settings</button><span>Saves selected working mode, additional guidance, and global health. Save preset instructions separately.</span></div>
       </form>`;
-    dialog.querySelector('.working-mode-team').textContent = team;
+    dialog.querySelector('.working-mode-team').textContent = keyLabel(team);
     if (workspaceMode) {
         // Rendered into the sidebar's Team Settings tab (see team_context.js).
         document.getElementById('agentic-panel-team-settings')?.replaceChildren(dialog);
@@ -138,9 +139,10 @@ export async function showTeamWorkingMode(team, options = {}) {
     const inspection = dialog.querySelector('.prompt-inspection-content');
     const tabs = [...dialog.querySelectorAll('[data-settings-tab]')];
     const panels = [...dialog.querySelectorAll('[data-settings-panel]')];
-    const workingModeURL = `/api/board/${encodeURIComponent(team)}/working-mode`;
-    const presetsURL = `/api/board/${encodeURIComponent(team)}/working-mode/presets`;
-    const inspectionURL = `/api/settings/prompt-inspection?board=${encodeURIComponent(team)}`;
+    const { server: teamServer, name: teamName } = splitKey(team);
+    const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
+    const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
+    const inspectionURL = serverUrl(`/api/settings/prompt-inspection?board=${encodeURIComponent(teamName)}`, teamServer);
     let presets = [];
     let workingMode = null;
     let settingsLoaded = false;

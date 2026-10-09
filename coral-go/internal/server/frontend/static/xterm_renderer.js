@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { dbg } from './utils.js';
+import { normServer, serverWsBase, sessionServer } from './server_base.js';
 
 let terminal = null;
 let fitAddon = null;
@@ -56,6 +57,7 @@ export function updateTerminalTheme() {
 // Track which session_id the terminal WS is currently connected to,
 // and a generation counter to suppress stale onclose reconnects.
 let _connectedSessionId = null;
+let _connectedServer = 'local';
 let _wsGeneration = 0;
 let _paneClosed = false;  // true when server reports pane is gone
 let _restarting = false;  // true when a restart is in progress
@@ -289,11 +291,14 @@ export function createTerminal(containerEl) {
     return terminal;
 }
 
-export function connectTerminalWs(name, agentType, sessionId) {
-    dbg('connectTerminalWs', { name, agentType, sessionId, currentConnected: _connectedSessionId });
+export function connectTerminalWs(name, agentType, sessionId, server) {
+    // `server` routes the socket through the hub proxy for agents on a remote
+    // (/api/remote/{server}/ws/terminal/...). Default: the hub itself.
+    const srv = normServer(server !== undefined ? server : (state.currentSession && state.currentSession.server));
+    dbg('connectTerminalWs', { name, agentType, sessionId, server: srv, currentConnected: _connectedSessionId });
 
     // Skip if already connected to this exact session
-    if (_connectedSessionId === sessionId && terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+    if (_connectedSessionId === sessionId && _connectedServer === srv && terminalWs && terminalWs.readyState === WebSocket.OPEN) {
         dbg('connectTerminalWs: already connected, skipping');
         return;
     }
@@ -303,18 +308,18 @@ export function connectTerminalWs(name, agentType, sessionId) {
     // Bump generation so any pending onclose from the old WS is suppressed
     const myGeneration = ++_wsGeneration;
     _connectedSessionId = sessionId;
+    _connectedServer = srv;
     _paneClosed = false;
     _needsScrollToBottom = true;
     _setSessionEndedOverlay(false);
 
-    const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const params = new URLSearchParams();
     if (agentType) params.set("agent_type", agentType);
     if (sessionId) params.set("session_id", sessionId);
     const qs = params.toString() ? `?${params}` : "";
 
     terminalWs = new WebSocket(
-        `${proto}//${location.host}/ws/terminal/${encodeURIComponent(name)}${qs}`
+        `${serverWsBase(srv)}/ws/terminal/${encodeURIComponent(name)}${qs}`
     );
     terminalWs.binaryType = 'arraybuffer';
 
@@ -412,6 +417,7 @@ export function connectTerminalWs(name, agentType, sessionId) {
                         state.currentSession.tmux_session || state.currentSession.name,
                         state.currentSession.agent_type,
                         state.currentSession.session_id,
+                        sessionServer(state.currentSession),
                     );
                 }
             }, 3000);
@@ -424,6 +430,7 @@ export function disconnectTerminalWs() {
     // Bump generation BEFORE closing so the old onclose handler is suppressed
     _wsGeneration++;
     _connectedSessionId = null;
+    _connectedServer = 'local';
     _inputQueue = [];
     _setDisconnectedBadge(false);
     if (terminalWs) {

@@ -2,6 +2,8 @@
 
 import { state } from './state.js';
 import { showToast } from './utils.js';
+import { serverFetch, serverForSession } from './server_base.js';
+import { currentServer } from './server_base.js';
 
 // ID of the persisted note row (null until first save)
 let _noteId = null;
@@ -15,7 +17,7 @@ export async function loadAgentNotes(agentName, sessionId, options) {
         const params = new URLSearchParams();
         if (sid) params.set("session_id", sid);
         const qs = params.toString() ? `?${params}` : "";
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(agentName)}/notes${qs}`, options);
+        const resp = await serverFetch(serverForSession(agentName, sid), `/api/sessions/live/${encodeURIComponent(agentName)}/notes${qs}`, options);
         if (!resp.ok) throw new Error(`notes fetch failed: ${resp.status}`);
         const notes = await resp.json();
         if (sid && state.currentSession?.session_id !== sid) return;
@@ -88,17 +90,18 @@ async function exitEditMode() {
 async function saveContent(content) {
     if (!state.currentSession || state.currentSession.type !== 'live') return;
     const agentName = encodeURIComponent(state.currentSession.name);
+    const server = currentServer();
 
     try {
         if (_noteId != null) {
-            await fetch(`/api/sessions/live/${agentName}/notes/${_noteId}`, {
+            await serverFetch(server, `/api/sessions/live/${agentName}/notes/${_noteId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content }),
             });
         } else {
             const sid = state.currentSession.session_id;
-            const resp = await fetch(`/api/sessions/live/${agentName}/notes`, {
+            const resp = await serverFetch(server, `/api/sessions/live/${agentName}/notes`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content, session_id: sid }),

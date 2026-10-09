@@ -1,5 +1,6 @@
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
+import { boardFetch, inTeam, keyLabel, sessionTeamKey } from './server_base.js';
 
 const availabilityCache = new Map();
 const availabilityFetchedAt = new Map();
@@ -7,7 +8,7 @@ const availabilityFetchedAt = new Map();
 export function getCachedAgentAvailability(session) {
     if (!session) return null;
     const matches = agents => agents?.find(a => a.session_id === session.session_id || a.name === session.name || a.subscriber_id === session.name);
-    const snapshot = availabilityCache.get(session.board_project);
+    const snapshot = availabilityCache.get(sessionTeamKey(session));
     const direct = matches(snapshot?.agents);
     if (direct) return direct;
     // Live-session refreshes can briefly omit board_project. Preserve status
@@ -25,7 +26,7 @@ export async function refreshTeamAvailability(team, force = false) {
     if (!force && now - (availabilityFetchedAt.get(team) || 0) < 5000) return null;
     availabilityFetchedAt.set(team, now);
     try {
-        const response = await fetch(`/api/board/${encodeURIComponent(team)}/status`, { cache: 'no-store' });
+        const response = await boardFetch(team, `/status`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`Availability could not be loaded (${response.status}).`);
         const data = await response.json();
         availabilityCache.set(team, data);
@@ -48,7 +49,7 @@ export function showTeamAvailability(team, options = {}) {
     const actions = workspaceMode
         ? ''  // sidebar panel: the team context owns navigation
         : '<button type="button" aria-label="Close team view">×</button>';
-    dialog.innerHTML = `<header><div><h2 id="availability-title">Team view</h2><p>${escapeHtml(team)}</p></div>${actions}</header>
+    dialog.innerHTML = `<header><div><h2 id="availability-title">Team view</h2><p>${escapeHtml(keyLabel(team))}</p></div>${actions}</header>
         <div class="availability-toolbar"><span>Team details, observed activity, and assigned work</span><button type="button">Refresh</button></div>
         <div class="availability-content" aria-live="polite"></div>`;
     if (workspaceMode) {
@@ -74,7 +75,7 @@ export function showTeamAvailability(team, options = {}) {
             if (!dialog.isConnected) return;
             const labels = {available:'Free',busy:'Busy',task_idle:'Task assigned · idle',queued:'Queued',waiting:'Waiting',needs_input:'Needs input',sleeping:'Sleeping',offline:'Offline',unknown:'Unknown',unavailable:'Unavailable'};
             const tasks = items => items.map(t => `<li><span>${escapeHtml(t.scope)} #${Number(t.id)} · ${escapeHtml(t.status.replaceAll('_',' '))}</span>${escapeHtml(t.title)}</li>`).join('');
-            const teamAgents = (state.liveSessions || []).filter(s => s.board_project === team);
+            const teamAgents = (state.liveSessions || []).filter(s => inTeam(s, team));
             const directory = teamAgents.find(s => s.working_directory)?.working_directory || '';
             const branchSession = teamAgents.find(s => s.branch);
             const branch = branchSession?.branch || '';
@@ -121,14 +122,14 @@ window.remindAgent = async (team, subscriber, existing = null) => {
     const defaultMinutes = existing?.reminder_interval_seconds ? Math.round(existing.reminder_interval_seconds / 60) : 5;
     const minutes = Number(window.prompt('Send it every how many minutes?', String(defaultMinutes)));
     if (!Number.isFinite(minutes) || minutes * 60 < 30 || minutes * 60 > 86400) return;
-    const response = await fetch(`/api/board/${encodeURIComponent(team)}/reminder`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber,message:message.trim(),interval_seconds:Math.round(minutes*60)}) });
+    const response = await boardFetch(team, `/reminder`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber,message:message.trim(),interval_seconds:Math.round(minutes*60)}) });
     const data = await response.json().catch(() => ({}));
     window.showToast?.(response.ok ? 'Agent reminder started' : (data.error || 'Could not start reminder'), !response.ok);
 };
 
 window.stopAgentReminder = async (team, subscriber, onChanged = null) => {
     try {
-        const response = await fetch(`/api/board/${encodeURIComponent(team)}/reminder`, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber}) });
+        const response = await boardFetch(team, `/reminder`, { method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({subscriber_id:subscriber}) });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) {
             window.showToast?.(data.error || 'Could not remove reminder', true);

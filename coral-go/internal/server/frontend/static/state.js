@@ -39,12 +39,19 @@ export const state = {
     settings: {},               // cached global user settings from /api/settings
     prevWaitingState: {},       // tracks previous waiting_for_input per session_id for toast notifications
     killedSessions: {},         // sessionId -> session data for killed agents (preserved for history links)
+    hub: false,                 // server runs in hub mode (from /api/health, read once at startup)
+    currentBoardServer: 'local', // server id of the open team/board context ("local" = the hub)
+    servers: [],                // [{id,label,status}] from the live list when remotes are registered
 };
 
 export function sessionKey(session) {
     if (!session) return null;
     // Use session_id as the key when available (unique per session)
     if (session.session_id) return `${session.type}:${session.session_id}`;
+    // Name-only sessions: key on (server, name). Local keys stay `type:name` so
+    // drafts saved before the hub existed still load.
+    const server = session.server;
+    if (server && server !== 'local') return `${session.type}:@${server}/${session.name}`;
     return `${session.type}:${session.name}`;
 }
 

@@ -1,6 +1,7 @@
 /* Single-agent popout mode.
  *
- * GET /agent/{uuid} renders the same index template with
+ * GET /agent/{uuid} (hub agent) or /agent/{server}/{uuid} (agent on a registered
+ * remote, resolved and attached through the hub proxy) renders the same index template with
  * <body data-entry-mode="agent" data-target-session-id="<uuid>">. In this mode
  * the page shows ONLY the selected-agent workspace (terminal/transcript pane,
  * right tools pane, quick actions, command input): no top nav, no sidebar.
@@ -15,6 +16,7 @@ import { resolveSessionIdentity, deriveSessionState } from './render.js';
 import { toggleAgenticPanel } from './sidebar.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
+import { normServer, serverFetch, sessionServer, agentPath, parseAgentPath, isLocalServer } from './server_base.js';
 import { isInteractiveOwner, claimOwnership, releaseOwnership, onOwnershipChange } from './ownership.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,6 +28,7 @@ let _resolverRetryTimer = null;
 
 let _mode = null;               // 'dashboard' | 'agent' | 'invalid'
 let _targetId = '';
+let _targetServer = 'local';   // registered remote id, or 'local' for the hub
 let _state = 'loading';         // loading|working|waiting|idle|sleeping|ended|reconnecting|not-found
 let _resolved = null;           // authoritative record from the resolver
 let _lastSession = null;        // last merged live record for the target
@@ -64,13 +67,15 @@ function _detect() {
     const body = document.body;
     let mode = (body && body.dataset.entryMode) || '';
     let id = (body && body.dataset.targetSessionId) || '';
+    let server = (body && body.dataset.targetServer) || '';
     // QA injection fallback only; production canonical source is the body attributes.
     const boot = window.__CORAL_BOOT;
     if (!mode && boot && boot.entryMode) { mode = String(boot.entryMode); id = String(boot.sessionId || ''); }
     if (!mode) {
-        const m = location.pathname.match(/^\/agent\/([0-9a-f-]{36})\/?$/i);
-        if (m) { mode = 'agent'; id = m[1]; }
+        const m = parseAgentPath(location.pathname);
+        if (m && /^[0-9a-f-]{36}$/i.test(m.id)) { mode = 'agent'; id = m.id; server = m.server; }
     }
+    _targetServer = normServer(server);
     if (mode !== 'agent') { _mode = 'dashboard'; return; }
     _targetId = UUID_RE.test(id) ? id.toLowerCase() : '';
     _mode = _targetId ? 'agent' : 'invalid';
@@ -78,6 +83,7 @@ function _detect() {
 
 export function isPopout() { _detect(); return _mode === 'agent' || _mode === 'invalid'; }
 export function popoutTargetId() { _detect(); return _targetId; }
+export function popoutTargetServer() { _detect(); return _targetServer; }
 export function popoutGetState() { return _state; }
 
 /** True while terminal input/keys/commands must not be sent: no authoritative
@@ -108,6 +114,7 @@ export function applyPopoutBodyClass() {
     document.body.classList.add('popout-mode');
     document.body.dataset.entryMode = 'agent';
     if (_targetId) document.body.dataset.targetSessionId = _targetId;
+    if (!isLocalServer(_targetServer)) document.body.dataset.targetServer = _targetServer;
     return true;
 }
 
@@ -141,7 +148,7 @@ function _isTerminal(s) { return s === 'ended' || s === 'not-found'; }
  *  it never derives a record from the live list or history. */
 async function _fetchResolver(id) {
     try {
-        const resp = await fetch(`/api/sessions/${encodeURIComponent(id)}/resolve`);
+        const resp = await serverFetch(_targetServer, `/api/sessions/${encodeURIComponent(id)}/resolve`);
         if (resp.status !== 200) return null;
         const j = await resp.json();
         return (j && typeof j === 'object' && j.state) ? j : null;
@@ -179,19 +186,19 @@ export async function resolveAndSelect(attempt = 0, downAttempt = 0) {
         return;
     }
     // active | sleeping: make sure the live list holds the record, then select by exact id.
-    if (!(state.liveSessions || []).some(s => s.session_id === _targetId) && window._coralLoadLiveSessions) {
+    if (!(state.liveSessions || []).some(s => s.session_id === _targetId && sessionServer(s) === _targetServer) && window._coralLoadLiveSessions) {
         await window._coralLoadLiveSessions();
     }
     if (window.selectLiveSession) {
         try {
-            await window.selectLiveSession(r.name, r.agent_type, r.session_id);
+            await window.selectLiveSession(r.name, r.agent_type, r.session_id, _targetServer);
         } catch (e) {
             console.error('popout: selectLiveSession failed', e);
         }
     }
     _attached = !!(r.tmux_session && r.state === 'active');
     // Resolver fields win over the list at selection time; ticks enrich later.
-    const live = (state.liveSessions || []).find(s => s.session_id === _targetId);
+    const live = (state.liveSessions || []).find(s => s.session_id === _targetId && sessionServer(s) === _targetServer);
     _applyLiveState(Object.assign({}, live || {}, r));
 }
 
@@ -320,13 +327,14 @@ function _renderCards(next) {
     }
     const link = document.getElementById('popout-restarted-link');
     if (link) {
-        if (_restartedId && next === 'ended') { link.href = `/agent/${_restartedId}`; link.hidden = false; }
+        if (_restartedId && next === 'ended') { link.href = agentPath(_targetServer, _restartedId); link.hidden = false; }
         else { link.hidden = true; link.removeAttribute('href'); }
     }
     // History transcript link: only in the ended state, never for unknown ids.
     const hist = document.getElementById('popout-open-history');
     if (hist) {
-        if (next === 'ended' && _targetId) { hist.href = `/#session/${_targetId}`; hist.hidden = false; }
+        // History lives in each server's own database; the hub has no copy of a remote's.
+        if (next === 'ended' && _targetId && isLocalServer(_targetServer)) { hist.href = `/#session/${_targetId}`; hist.hidden = false; }
         else { hist.hidden = true; hist.removeAttribute('href'); }
     }
 }
@@ -385,19 +393,19 @@ export function popoutHandleSessionsTick(sessions) {
     if (!isPopout() || !_targetId) return;
     const list = Array.isArray(sessions) ? sessions : [];
     const ids = new Set(list.map(s => s.session_id));
-    const target = list.find(s => s.session_id === _targetId);
+    const target = list.find(s => s.session_id === _targetId && sessionServer(s) === _targetServer);
     if (target) {
         _applyLiveState(target);
     } else if (_resolved && !_isTerminal(_state) && _state !== 'loading') {
         // Target vanished from the live list: ended. Never adopt a same-name
         // session; only offer it as an explicit link when it is new.
-        const candidate = list.find(s => s.session_id !== _targetId
+        const candidate = list.find(s => s.session_id !== _targetId && sessionServer(s) === _targetServer
             && s.name === _resolved.name && s.agent_type === _resolved.agent_type
             && (!_prevIds || !_prevIds.has(s.session_id)));
         if (candidate) _restartedId = candidate.session_id;
         _setState('ended');
     } else if (_state === 'ended' && !_restartedId && _resolved) {
-        const candidate = list.find(s => s.session_id !== _targetId
+        const candidate = list.find(s => s.session_id !== _targetId && sessionServer(s) === _targetServer
             && s.name === _resolved.name && s.agent_type === _resolved.agent_type
             && (!_prevIds || !_prevIds.has(s.session_id)));
         if (candidate) { _restartedId = candidate.session_id; _renderCards('ended'); }

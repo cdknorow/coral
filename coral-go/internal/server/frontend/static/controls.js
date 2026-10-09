@@ -9,6 +9,7 @@ import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, resetLiveHistory } from './live_chat.js';
+import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -115,7 +116,7 @@ export async function sendCommand() {
 
         // Fall back to POST endpoint
         try {
-            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(targetSessionName)}/send`, {
+            const resp = await serverFetch(sessionServer(targetSession), `/api/sessions/live/${encodeURIComponent(targetSessionName)}/send`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ command, agent_type: targetAgentType, session_id: sentSessionId }),
@@ -407,7 +408,7 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
 
     // Fall back to POST endpoint for unmapped keys or when WebSocket is unavailable
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/keys`, {
+        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/keys`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ keys, agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
@@ -431,7 +432,7 @@ export async function attachTerminal() {
     }
 
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/attach`, {
+        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/attach`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
@@ -456,7 +457,7 @@ export async function killSession() {
 
     window.showConfirmModal('Kill Session', `Kill session "${state.currentSession.name}"? This will terminate the agent.`, async () => {
         try {
-            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/kill`, {
+            const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/kill`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
@@ -545,7 +546,7 @@ export async function confirmRestart() {
         if (config.prompt) payload.prompt = config.prompt;
         if (config.model !== undefined) payload.model = config.model;
         if (config.capabilities) payload.capabilities = config.capabilities;
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/restart`, {
+        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/restart`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -592,10 +593,10 @@ export async function confirmRestart() {
             const pollInterval = setInterval(async () => {
                 pollCount++;
                 try {
-                    const liveResp = await fetch(`/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}`);
+                    const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}`);
                     if (liveResp.ok) {
                         clearInterval(pollInterval);
-                        xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId);
+                        xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId, currentServer());
                     }
                 } catch (_) { /* ignore fetch errors during poll */ }
                 if (pollCount >= 15) {
@@ -646,7 +647,7 @@ export function editGoal() {
         // Post a goal event to persist the change
         if (state.currentSession && state.currentSession.type === "live") {
             try {
-                await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/events`, {
+                await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/events`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -678,7 +679,7 @@ export function refreshGoal() {
 // agent's transcript in the background; nothing is typed into the agent's
 // terminal. The new goal arrives on the normal session updates.
 export function requestGoal(name, agentType, sessionId) {
-    fetch(`/api/sessions/live/${encodeURIComponent(name)}/goal`, {
+    serverFetch(serverForSession(name, sessionId), `/api/sessions/live/${encodeURIComponent(name)}/goal`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
@@ -895,7 +896,8 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
 
         try {
             showToast(`Uploading ${file.name}...`);
-            const resp = await fetch("/api/upload", {
+            // The path is typed into the agent, so the file must land on the agent's own server.
+            const resp = await serverFetch(sessionServer(targetSession), "/api/upload", {
                 method: "POST",
                 body: formData,
             });

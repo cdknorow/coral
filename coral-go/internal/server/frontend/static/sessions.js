@@ -4,6 +4,7 @@ import { refreshAgentUI } from './agent_ui.js';
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
+import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey } from './server_base.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
 import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
@@ -28,8 +29,11 @@ import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
 // is no longer the selected one.
 let switchGeneration = 0;
 
-export async function selectLiveSession(name, agentType, sessionId) {
-    dbg('selectLiveSession', { name, agentType, sessionId });
+export async function selectLiveSession(name, agentType, sessionId, server) {
+    // Identity is (server, name). Callers that only know the session id (hash
+    // restore, toasts) omit `server` and it is resolved from the live list.
+    const srv = normServer(server || serverForSession(name, sessionId));
+    dbg('selectLiveSession', { name, agentType, sessionId, server: srv });
     // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
     if (window.exitTeamContext && window.exitTeamContext({ goBack: false }) === false) return;
     const generation = ++switchGeneration;
@@ -46,12 +50,12 @@ export async function selectLiveSession(name, agentType, sessionId) {
     }
 
     // Look up display_name and working_directory from live sessions data
-    const agentData = state.liveSessions.find(s => s.session_id === sessionId);
+    const agentData = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === srv);
     const displayName = agentData ? agentData.display_name : null;
     const workingDirectory = agentData ? agentData.working_directory : "";
 
     state.currentSession = {
-        type: "live", name, agent_type: agentType || null, session_id: sessionId || null,
+        type: "live", name, server: srv, agent_type: agentType || null, session_id: sessionId || null,
         display_name: displayName || null, working_directory: workingDirectory || "",
         prompt: agentData?.prompt || "", model: agentData?.model || "",
         capabilities: agentData?.capabilities || null,
@@ -73,7 +77,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
 
     // Push view to history for back navigation
     // Popout mode never mutates the hash: the URL is the identity.
-    if (window._pushView && !isPopout()) window._pushView('chat', { sessionId });
+    if (window._pushView && !isPopout()) window._pushView('chat', { sessionId, server: srv });
 
     // Show loading skeleton
     const captureWrapper = document.getElementById("capture-wrapper");
@@ -103,7 +107,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     // hides this control and never carries the id in it.
     const openWin = document.getElementById("terminal-open-window-link");
     if (openWin && !isPopout()) {
-        if (sessionId) { openWin.href = `/agent/${encodeURIComponent(sessionId)}`; openWin.hidden = false; }
+        if (sessionId) { openWin.href = agentPath(srv, sessionId); openWin.hidden = false; }
         else { openWin.removeAttribute("href"); openWin.hidden = true; }
     }
     // Multi-window ownership group for this session (dashboard and popout alike)
@@ -125,7 +129,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     if (summaryEl) summaryEl.style.display = "none";
 
     // Use cached data from WS for immediate display (no blocking fetch)
-    const agent = state.liveSessions.find(s => s.session_id === sessionId);
+    const agent = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === srv);
     if (agent) {
         updateSessionStatus(agent.status);
         updateSessionSummary(agent.summary);
@@ -136,7 +140,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     updateTokenUsage(sessionId);
 
     // Fetch full detail in background (non-blocking) for pane capture
-    loadLiveSessionDetail(name, agentType, sessionId).then(detail => {
+    loadLiveSessionDetail(name, agentType, sessionId, { server: srv }).then(detail => {
         if (generation !== switchGeneration) return;
         if (detail && detail.pane_capture) {
             const paneEl = document.getElementById("pane-capture");
@@ -166,7 +170,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     const boardTab = document.getElementById('agentic-tab-board');
     if (agentData && agentData.board_project) {
         if (boardTab) boardTab.style.display = '';
-        showBoardChatTab(agentData.board_project);
+        showBoardChatTab(identityKey(srv, agentData.board_project));
         // Auto-switch to Board tab if no persisted preference
         const savedTab = localStorage.getItem('coral-agentic-tab-top');
         if (!savedTab || savedTab === 'board') {
@@ -206,7 +210,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
         createTerminal(container);
         const tmuxName = popoutTarget ? popoutTarget.tmux_session : (agentData ? (agentData.tmux_session || name) : name);
         dbg('terminal WS using tmux_session:', tmuxName, '(agent name:', name, ')');
-        connectTerminalWs(tmuxName, agentType, sessionId);
+        connectTerminalWs(tmuxName, agentType, sessionId, srv);
         // Fit terminal after session switch — the container may already be
         // visible at the right size so ResizeObserver won't fire.
         // Double-fit: first at 50ms for quick response, second at 250ms
@@ -231,7 +235,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     loadAgentTasks(name, sessionId);
     loadSubagents(name, sessionId);
     const boardProject = agentData && agentData.board_project;
-    loadBoardTasks(boardProject || null);
+    loadBoardTasks(boardProject ? identityKey(srv, boardProject) : null);
     loadAgentNotes(name, sessionId);
     loadAgentEvents(name, sessionId);
     // The git queries wait for the transcript: on a large repo they take
@@ -345,7 +349,8 @@ export async function selectHistorySession(sessionId, locator = null) {
 }
 
 export function renameAgent(name, agentType, sessionId) {
-    const current = state.liveSessions.find(s => s.session_id === sessionId);
+    const server = serverForSession(name, sessionId);
+    const current = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
     const currentName = (current && current.display_name) || name;
     const currentColor = (current && current.name_color) || "";
     // "Auto" previews the default colour for this type (theme tokens).
@@ -355,7 +360,7 @@ export function renameAgent(name, agentType, sessionId) {
         const colorChanged = newColor !== currentColor;
         if (!nameChanged && !colorChanged) return;
         const put = async (path, body) => {
-            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/${path}`, {
+            const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(name)}/${path}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ...body, session_id: sessionId }),
@@ -387,9 +392,10 @@ export function renameAgent(name, agentType, sessionId) {
 }
 
 export async function setAgentIcon(name, agentType, sessionId) {
+    const server = serverForSession(name, sessionId);
     showEmojiPicker(async (emoji) => {
         try {
-            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/icon`, {
+            const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(name)}/icon`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ icon: emoji, session_id: sessionId }),
@@ -399,7 +405,7 @@ export async function setAgentIcon(name, agentType, sessionId) {
                 showToast(result.error, true);
                 return;
             }
-            const current = state.liveSessions.find(s => s.session_id === sessionId);
+            const current = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
             if (current) current.icon = emoji;
             const { renderLiveSessions } = await import('./render.js');
             renderLiveSessions(state.liveSessions);
@@ -512,7 +518,7 @@ export function editAndResubmit(btn) {
     // Switch to a live session if one exists
     if (state.liveSessions.length > 0 && (!state.currentSession || state.currentSession.type !== "live")) {
         const s = state.liveSessions[0];
-        selectLiveSession(s.name, s.agent_type, s.session_id);
+        selectLiveSession(s.name, s.agent_type, s.session_id, sessionServer(s));
     }
 
     // If we're viewing a live session, just populate the input

@@ -1,6 +1,7 @@
 /* Rendering functions for session lists, chat history, and status updates */
 
 import { state } from './state.js';
+import { serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
@@ -399,7 +400,7 @@ export function showBoardChatTab(boardName) {
     // Populate the board tab content (visibility managed by switchAgenticTab)
     panel.innerHTML = `
         <div class="board-chat-header">
-            <a class="board-chat-title" href="#" onclick="event.preventDefault(); selectBoardProject('${escapeAttr(boardName)}')" title="Open full board view">${escapeHtml(boardName)}</a>
+            <a class="board-chat-title" href="#" onclick="event.preventDefault(); selectBoardProject('${escapeAttr(boardName)}')" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
             <button class="btn-nav" id="board-chat-pause-btn" onclick="window._toggleBoardChatPause('${escapeAttr(boardName)}')" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
             <button class="btn-nav board-select-btn" onclick="window._toggleBoardChatSelect()" title="Export — select messages to export as Markdown">Export</button>
         </div>
@@ -473,7 +474,7 @@ async function _loadBoardPanelChat(boardName) {
     const stale = () => gen !== _boardChatGen || _activeBoardChat !== boardName;
     try {
         // First call: get total count and load latest page
-        const countResp = await fetch(`/api/board/${encodeURIComponent(boardName)}/messages/all?limit=1&offset=0&format=dashboard`);
+        const countResp = await boardFetch(boardName, `/messages/all?limit=1&offset=0&format=dashboard`);
         const countData = await countResp.json();
         if (stale()) return;
         const msgsEl = document.getElementById('board-panel-msgs');
@@ -493,7 +494,7 @@ async function _loadBoardPanelChat(boardName) {
 
         // Load the latest page
         const startOffset = Math.max(0, total - _BOARD_CHAT_PAGE);
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardName)}/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=${startOffset}&format=dashboard`);
+        const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=${startOffset}&format=dashboard`);
         const data = await resp.json();
         if (stale()) return;
         const messages = Array.isArray(data) ? data : (data.messages || []);
@@ -516,7 +517,7 @@ async function _loadEarlierBoardChat() {
     try {
         const newOffset = Math.max(0, _boardChatOffset - _BOARD_CHAT_PAGE);
         const fetchCount = _boardChatOffset - newOffset;
-        const resp = await fetch(`/api/board/${encodeURIComponent(_activeBoardChat)}/messages/all?limit=${fetchCount}&offset=${newOffset}&format=dashboard`);
+        const resp = await boardFetch(_activeBoardChat, `/messages/all?limit=${fetchCount}&offset=${newOffset}&format=dashboard`);
         const data = await resp.json();
         const messages = Array.isArray(data) ? data : (data.messages || []);
 
@@ -697,7 +698,7 @@ async function _sendBoardChat(boardName) {
     if (!content) return;
     inputEl.value = '';
     try {
-        await fetch(`/api/board/${encodeURIComponent(boardName)}/messages`, {
+        await boardFetch(boardName, `/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: 'dashboard', content }),
@@ -713,7 +714,7 @@ async function _toggleBoardChatPause(boardName) {
     const wasPaused = btn?.classList.contains('mb-action-danger');
     const endpoint = wasPaused ? 'resume' : 'pause';
     try {
-        await fetch(`/api/board/${encodeURIComponent(boardName)}/${endpoint}`, { method: 'POST' });
+        await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
         if (btn) {
             if (wasPaused) {
                 btn.textContent = 'Pause Board';
@@ -735,7 +736,7 @@ async function _toggleBoardPause(boardName) {
     const isPaused = btn?.classList.contains('paused');
     const endpoint = isPaused ? 'resume' : 'pause';
     try {
-        await fetch(`/api/board/${encodeURIComponent(boardName)}/${endpoint}`, { method: 'POST' });
+        await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
         if (btn) btn.classList.toggle('paused');
         showToast(isPaused ? `Board "${boardName}" resumed` : `Board "${boardName}" paused`);
     } catch { /* ignore */ }
@@ -744,7 +745,7 @@ window._toggleBoardPause = _toggleBoardPause;
 
 async function _checkBoardPauseState(boardName) {
     try {
-        const resp = await fetch(`/api/board/${encodeURIComponent(boardName)}/paused`);
+        const resp = await boardFetch(boardName, `/paused`);
         const data = await resp.json();
         const btn = document.getElementById('board-chat-pause-btn');
         const banner = document.getElementById('board-chat-paused-banner');
@@ -766,7 +767,7 @@ async function _checkBoardPauseState(boardName) {
 async function _clearBoardMessages(boardName) {
     showConfirmModal('Clear Messages', `Clear all messages from "${boardName}"? This cannot be undone.`, async () => {
         try {
-            await fetch(`/api/board/${encodeURIComponent(boardName)}`, { method: 'DELETE' });
+            await boardFetch(boardName, ``, { method: 'DELETE' });
             _boardChatLastId[boardName] = null;
             _loadBoardPanelChat(boardName);
             showToast(`Cleared messages from "${boardName}"`);
@@ -793,7 +794,7 @@ async function _boardMentionInput(event, boardName) {
     // Fetch subscribers if not cached
     if (!_boardSubscribers[boardName]) {
         try {
-            const resp = await fetch(`/api/board/${encodeURIComponent(boardName)}/subscribers`);
+            const resp = await boardFetch(boardName, `/subscribers`);
             _boardSubscribers[boardName] = await resp.json();
         } catch { _boardSubscribers[boardName] = []; }
     }
@@ -964,8 +965,9 @@ export function toggleGroupCollapse(groupName) {
 }
 
 export function killSessionDirect(name, agentType, sessionId) {
+    const server = serverForSession(name, sessionId);
     showConfirmModal('Kill Session', `Kill session "${name}"? This will terminate the agent.`, async () => { try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/kill`, {
+        const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(name)}/kill`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
@@ -978,7 +980,7 @@ export function killSessionDirect(name, agentType, sessionId) {
             showToast(`Killed and saved changes.diff: ${name}`);
         }
         // Mark as done and preserve for history link instead of removing
-        const killed = state.liveSessions.find(s => s.session_id === sessionId);
+        const killed = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
         if (killed) {
             killed.done = true;
             killed.working = false;
@@ -1000,14 +1002,14 @@ export function killSessionDirect(name, agentType, sessionId) {
 
 export async function showInfoDirect(name, agentType, sessionId) {
     const { selectLiveSession } = await import('./sessions.js');
-    await selectLiveSession(name, agentType, sessionId);
+    await selectLiveSession(name, agentType, sessionId, serverForSession(name, sessionId));
     const { showInfoModal } = await import('./modals.js');
     showInfoModal();
 }
 
 export async function attachDirect(name, agentType, sessionId) {
     try {
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(name)}/attach`, {
+        const resp = await serverFetch(serverForSession(name, sessionId), `/api/sessions/live/${encodeURIComponent(name)}/attach`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
@@ -1022,7 +1024,7 @@ export async function attachDirect(name, agentType, sessionId) {
 
 export async function restartDirect(name, agentType, sessionId) {
     const { selectLiveSession } = await import('./sessions.js');
-    await selectLiveSession(name, agentType, sessionId);
+    await selectLiveSession(name, agentType, sessionId, serverForSession(name, sessionId));
     const { restartSession } = await import('./controls.js');
     restartSession();
 }
@@ -1129,7 +1131,7 @@ export function dismissKilledSession(sessionId) {
 export function dismissBoardKilled(boardName) {
     const killedIds = Object.keys(state.killedSessions).filter(sid => {
         const s = state.killedSessions[sid];
-        return s && s.board_project === boardName;
+        return s && inTeam(s, boardName);
     });
     for (const sid of killedIds) {
         delete state.killedSessions[sid];
@@ -1146,16 +1148,16 @@ export function copyFolderPath(path) {
 }
 
 export async function killGroup(groupName) {
-    const groupSessions = state.liveSessions.filter(s => (s.name || 'unknown') === groupName);
+    const groupSessions = state.liveSessions.filter(s => sessionFolderKey(s) === groupName);
     if (!groupSessions.length) return;
 
     showConfirmModal(
         "Kill All Agents",
-        `Kill all ${groupSessions.length} agent(s) in "${groupName}"? This will terminate them.`,
+        `Kill all ${groupSessions.length} agent(s) in "${keyLabel(groupName)}"? This will terminate them.`,
         async () => {
             for (const s of groupSessions) {
                 try {
-                    await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
+                    await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
@@ -1179,16 +1181,16 @@ export async function killGroup(groupName) {
 }
 
 export async function killBoard(boardName) {
-    const boardSessions = state.liveSessions.filter(s => s.board_project === boardName);
+    const boardSessions = state.liveSessions.filter(s => inTeam(s, boardName));
     if (!boardSessions.length) return;
 
     showConfirmModal(
         "Kill Team",
-        `Kill all ${boardSessions.length} agent(s) on board "${boardName}"? This will terminate them.`,
+        `Kill all ${boardSessions.length} agent(s) on board "${keyLabel(boardName)}"? This will terminate them.`,
         async () => {
             for (const s of boardSessions) {
                 try {
-                    await fetch(`/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
+                    await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
@@ -1211,7 +1213,7 @@ export async function killBoard(boardName) {
 }
 
 function _buildTeamTemplateFromBoard(boardName) {
-    const boardSessions = (state.liveSessions || []).filter(s => s.board_project === boardName);
+    const boardSessions = (state.liveSessions || []).filter(s => inTeam(s, boardName));
     if (!boardSessions.length) return null;
 
     const agents = [];
@@ -1225,12 +1227,12 @@ function _buildTeamTemplateFromBoard(boardName) {
         if (s.capabilities) agent.capabilities = s.capabilities;
         agents.push(agent);
     }
-    return { name: boardName, agents, flags: '' };
+    return { name: keyLabel(boardName), agents, flags: '' };
 }
 
 async function _attachKnowledgeToTemplate(boardName, tmpl) {
     try {
-        const resp = await fetch(`/api/teams/detail/${encodeURIComponent(boardName)}/knowledge`);
+        const resp = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`);
         if (!resp.ok) return tmpl;
         const data = await resp.json();
         if (!data.exists || !data.agents) return tmpl;
@@ -1252,8 +1254,8 @@ async function _attachKnowledgeToTemplate(boardName, tmpl) {
 async function _attachWorkingModeToTemplate(boardName, tmpl) {
     try {
         const [modeResp, presetsResp] = await Promise.all([
-            fetch(`/api/board/${encodeURIComponent(boardName)}/working-mode`),
-            fetch(`/api/board/${encodeURIComponent(boardName)}/working-mode/presets`),
+            boardFetch(boardName, `/working-mode`),
+            boardFetch(boardName, `/working-mode/presets`),
         ]);
         if (modeResp.ok) {
             const mode = await modeResp.json();
@@ -1298,7 +1300,7 @@ export async function shareAgentTeam(boardName) {
     };
 
     const jsonStr = JSON.stringify(template, null, 2);
-    const filename = `coral-team-${boardName.replace(/[^a-zA-Z0-9-_]/g, "_")}.json`;
+    const filename = `coral-team-${keyLabel(boardName).replace(/[^a-zA-Z0-9-_]/g, "_")}.json`;
 
     // Show export modal with JSON content
     const modal = document.createElement('div');
@@ -1307,7 +1309,7 @@ export async function shareAgentTeam(boardName) {
     modal.innerHTML = `
         <div class="modal-content" style="width:600px">
             <div class="modal-header">
-                <h3>Export Team: ${escapeHtml(boardName)}</h3>
+                <h3>Export Team: ${escapeHtml(keyLabel(boardName))}</h3>
                 <p style="color:var(--text-secondary);font-size:13px;margin:6px 0 0">${tmpl.agents.length} agents</p>
             </div>
             <div class="modal-body">
@@ -1340,7 +1342,7 @@ export async function shareAgentTeam(boardName) {
 }
 
 export function saveTeamFromSidebar(boardName) {
-    showPromptModal('Save Team Template', 'Template name', boardName, async (templateName) => {
+    showPromptModal('Save Team Template', 'Template name', keyLabel(boardName), async (templateName) => {
         let tmpl = _buildTeamTemplateFromBoard(boardName);
         if (!tmpl) {
             showToast("No agents found on this board", "error");
@@ -1370,20 +1372,20 @@ export function saveTeamFromSidebar(boardName) {
 export function toggleTeamSleep(boardName, action) {
     const doIt = async () => {
         try {
-            const resp = await fetch(`/api/sessions/live/team/${encodeURIComponent(boardName)}/${action}`, { method: 'POST' });
+            const resp = await teamFetch(boardName, n => `/api/sessions/live/team/${encodeURIComponent(n)}/${action}`, { method: 'POST' });
             const data = await resp.json();
             const sleeping = !!data.sleeping;
             for (const s of state.liveSessions) {
-                if (s.board_project === boardName) s.sleeping = sleeping;
+                if (inTeam(s, boardName)) s.sleeping = sleeping;
             }
             renderLiveSessions(state.liveSessions);
-            showToast(sleeping ? `Team "${boardName}" is now sleeping` : `Team "${boardName}" is awake`);
+            showToast(sleeping ? `Team "${keyLabel(boardName)}" is now sleeping` : `Team "${keyLabel(boardName)}" is awake`);
         } catch (e) {
             showToast('Failed to toggle team sleep', true);
         }
     };
     if (action === 'sleep') {
-        showConfirmModal('Sleep Team', `Put all agents on "${boardName}" to sleep?`, doIt);
+        showConfirmModal('Sleep Team', `Put all agents on "${keyLabel(boardName)}" to sleep?`, doIt);
     } else {
         doIt();
     }
@@ -1422,13 +1424,14 @@ export function wakeAllAgents() {
 }
 
 export function toggleAgentSleep(name, agentType, sessionId, action) {
+    const server = serverForSession(name, sessionId);
     const doIt = async () => {
         try {
-            const resp = await fetch(`/api/sessions/live/${encodeURIComponent(sessionId)}/${action}`, { method: 'POST' });
+            const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(sessionId)}/${action}`, { method: 'POST' });
             const data = await resp.json();
             if (!data.ok) { showToast(data.error || 'Failed to toggle sleep', true); return; }
             const sleeping = !!data.sleeping;
-            const s = state.liveSessions.find(s => s.session_id === sessionId);
+            const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
             if (s) s.sleeping = sleeping;
             renderLiveSessions(state.liveSessions);
             showToast(sleeping ? `"${name}" is now sleeping` : `"${name}" is awake`);
@@ -1645,7 +1648,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const doneClass = isDone ? ' session-done' : '';
     const clickHandler = isDone
         ? `selectHistorySession('${sid}')`
-        : `selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')`;
+        : `selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}', '${escapeAttr(sessionServer(s))}')`;
     // Focusable list item (not a button: it contains the kebab, the open-tab
     // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
     const ariaLabel = `${identity}, ${stateInfo.label}`
@@ -1659,6 +1662,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
         tabindex="0"
         aria-label="${escapeAttr(ariaLabel)}"${isActive ? ' aria-current="true"' : ''}
         data-session-id="${sid}"
+        data-server="${escapeAttr(sessionServer(s))}"
         data-group="${escapeAttr(groupName)}"
         onclick="${clickHandler}">
         <span class="drag-grip" title="Drag to reorder">&#x2630;</span>
@@ -1858,7 +1862,7 @@ function _railTile(s, active) {
     else if (dot === 'done') badge = '<span class="rail-tile-badge rail-tile-done material-icons" aria-hidden="true">check</span>';
     else badge = `<span class="rail-tile-dot avatar-status-dot ${dot}"></span>`;
     return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}"
-        onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${escapeAttr(s.session_id || '')}')"><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
+        onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${escapeAttr(s.session_id || '')}', '${escapeAttr(sessionServer(s))}')"><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
 }
 
 function _railTeamColor(name) {
@@ -1901,22 +1905,22 @@ function _renderSidebarRail(sessions) {
     };
 
     if (groupByTeam) {
-        const teams = _sortGroups(bucket(s => s.board_project || null));
+        const teams = _sortGroups(bucket(s => sessionTeamKey(s) || null));
         if (!_getGroupOrder().length) {
             teams.sort((a, b) => (a[1].every(x => x.sleeping) ? 1 : 0) - (b[1].every(x => x.sleeping) ? 1 : 0));
         }
         for (const [name, list] of teams) {
             const ordered = _sortByOrder(list).sort((a, b) => isOrchSession(b) - isOrchSession(a));
-            groups.push({ kind: 'team', key: name, label: name, agents: awakeInRowOrder(ordered, list[0]?.working_directory || '') });
+            groups.push({ kind: 'team', key: name, label: keyLabel(name), agents: awakeInRowOrder(ordered, list[0]?.working_directory || '') });
         }
         for (const [name, list] of bucket(s => (!s.board_project && s.workflow_name) ? s.workflow_name : null)) {
             groups.push({ kind: 'workflow', key: 'wf:' + name, label: name, agents: list.filter(a => !a.sleeping) });
         }
     }
-    const folders = _sortGroups(bucket(s => (groupByTeam && (s.board_project || s.workflow_name)) ? null : (s.name || 'unknown')));
+    const folders = _sortGroups(bucket(s => (groupByTeam && (s.board_project || s.workflow_name)) ? null : sessionFolderKey(s)));
     for (const [name, list] of folders) {
         const ordered = _sortByOrder(list);
-        groups.push({ kind: 'folder', key: name, label: name, agents: awakeInRowOrder(ordered, ordered[0]?.working_directory || '') });
+        groups.push({ kind: 'folder', key: name, label: keyLabel(name), agents: awakeInRowOrder(ordered, ordered[0]?.working_directory || '') });
     }
 
     let html = '';
@@ -1924,7 +1928,7 @@ function _renderSidebarRail(sessions) {
         if (!g.agents.length) continue;
         const collapsed = _isGroupCollapsed(g.key);
         const letter = (g.label.trim()[0] || '?').toUpperCase();
-        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(g.key);
+        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(keyLabel(g.key));
         const style = ` style="--rail-accent:${escapeAttr(accent)}"`;
         const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
         html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
@@ -1968,7 +1972,7 @@ export function agentSearchKey(e) {
         filterLiveAgents('');
     } else if (e.key === 'Enter') {
         const first = _filteredMatches.find(s => !s.sleeping) || _filteredMatches[0];
-        if (first) window.selectLiveSession?.(first.name, first.agent_type, first.session_id || '');
+        if (first) window.selectLiveSession?.(first.name, first.agent_type, first.session_id || '', sessionServer(first));
     }
 }
 
@@ -2041,14 +2045,15 @@ export function renderLiveSessions(sessions) {
     const standaloneByFolder = {};
     for (const s of sessions) {
         if (s.board_project) {
-            if (!teamGroups[s.board_project]) teamGroups[s.board_project] = [];
-            teamGroups[s.board_project].push(s);
+            const tk = sessionTeamKey(s);
+            if (!teamGroups[tk]) teamGroups[tk] = [];
+            teamGroups[tk].push(s);
         } else if (s.workflow_name) {
             const wfKey = s.workflow_name;
             if (!workflowGroups[wfKey]) workflowGroups[wfKey] = [];
             workflowGroups[wfKey].push(s);
         } else {
-            const key = s.name || "unknown";
+            const key = sessionFolderKey(s);
             if (!standaloneByFolder[key]) standaloneByFolder[key] = [];
             standaloneByFolder[key].push(s);
         }
@@ -2148,7 +2153,7 @@ export function renderLiveSessions(sessions) {
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}" style="--team-accent: ${accentColor}">
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -2209,11 +2214,11 @@ export function renderLiveSessions(sessions) {
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${groupWorkDirEsc}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${groupWorkDirEsc}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="10" y1="5" x2="14" y2="5"/></svg>
                     Add Custom Agent
                 </button>
@@ -2249,7 +2254,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
@@ -2262,7 +2267,7 @@ export function renderLiveSessions(sessions) {
     // Group sessions by folder name (primary grouping)
     const groups = {};
     for (const s of sessions) {
-        const key = s.name || "unknown";
+        const key = sessionFolderKey(s);
         if (!groups[key]) groups[key] = [];
         groups[key].push(s);
     }
@@ -2278,11 +2283,11 @@ export function renderLiveSessions(sessions) {
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${groupWorkDirEsc}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${groupWorkDirEsc}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="10" y1="5" x2="14" y2="5"/></svg>
                     Add Custom Agent
                 </button>
@@ -2318,7 +2323,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${escapeHtml(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
             // Skip rendering items when collapsed
@@ -2328,8 +2333,9 @@ export function renderLiveSessions(sessions) {
             const unboardedItems = [];
             for (const s of sorted) {
                 if (s.board_project) {
-                    if (!boardSubs[s.board_project]) boardSubs[s.board_project] = [];
-                    boardSubs[s.board_project].push(s);
+                    const tk = sessionTeamKey(s);
+                    if (!boardSubs[tk]) boardSubs[tk] = [];
+                    boardSubs[tk].push(s);
                 } else {
                     unboardedItems.push(s);
                 }
@@ -2403,7 +2409,7 @@ export function renderLiveSessions(sessions) {
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card session-team-group" style="--team-accent: ${accentColor}">
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
@@ -2464,7 +2470,7 @@ export function renderLiveSessions(sessions) {
     // Keep sidebar status aligned with the team availability API. The first
     // render uses the transcript state; the cached API snapshot replaces it
     // asynchronously when an assigned task is idle.
-    const teams = [...new Set(sessions.map(s => s.board_project).filter(Boolean))];
+    const teams = [...new Set(sessions.map(s => sessionTeamKey(s)).filter(Boolean))];
     for (const team of teams) {
         refreshTeamAvailability(team).then(snapshot => {
             if (snapshot) renderLiveSessions(sessions);
@@ -2755,7 +2761,7 @@ function _wireListKeyboard(container) {
 let _teamDetailsReturnFocus = null;
 export function showTeamDetails(boardName) {
     hideTeamDetails();
-    const sessions = (state.liveSessions || []).filter(s => s.board_project === boardName);
+    const sessions = (state.liveSessions || []).filter(s => inTeam(s, boardName));
     const header = document.querySelector(`.session-group-header[data-group-name="${CSS.escape(boardName)}"]`);
     _teamDetailsReturnFocus = (document.activeElement && document.activeElement !== document.body)
         ? document.activeElement
@@ -2777,7 +2783,7 @@ export function showTeamDetails(boardName) {
     pop.setAttribute('tabindex', '-1');
     pop.innerHTML = `
         <div class="team-details-head">
-            <span id="${titleId}" class="team-details-title">${escapeHtml(boardName)}</span>
+            <span id="${titleId}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
             <button type="button" class="team-details-close" aria-label="Close team details" onclick="hideTeamDetails()">&times;</button>
         </div>
         <dl class="team-details-list">
@@ -2848,7 +2854,7 @@ export async function updateTokenUsage(sessionId) {
     if (!sessionId) { el.style.display = 'none'; return; }
 
     try {
-        const resp = await fetch(`/api/token-usage?session_id=${encodeURIComponent(sessionId)}`);
+        const resp = await serverFetch(serverForSession(null, sessionId), `/api/token-usage?session_id=${encodeURIComponent(sessionId)}`);
         if (!resp.ok) { el.style.display = 'none'; return; }
         const data = await resp.json();
         if (!data.totals.total_tokens || data.totals.total_tokens === 0) { el.style.display = 'none'; return; }
@@ -2888,7 +2894,7 @@ export async function updateHistoryTokenUsage(sessionId) {
 
 export async function getTeamTokenUsage(boardName) {
     try {
-        const resp = await fetch(`/api/token-usage?board_name=${encodeURIComponent(boardName)}`);
+        const resp = await teamFetch(boardName, n => `/api/token-usage?board_name=${encodeURIComponent(n)}`);
         if (!resp.ok) return null;
         const data = await resp.json();
         if (!data.totals.total_tokens || data.totals.total_tokens === 0) return null;
@@ -2907,13 +2913,13 @@ export async function showTeamTokenUsage(boardName) {
     const content = document.getElementById('task-detail-content');
     if (!modal || !content) return;
 
-    titleEl.textContent = `Token Usage — ${boardName}`;
+    titleEl.textContent = `Token Usage — ${keyLabel(boardName)}`;
     content.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">Loading...</div>';
     modal.style.display = '';
     modal.onclick = (e) => { if (e.target === modal) { modal.style.display = 'none'; } };
 
     // Token usage is read from Coral's unified usage API.
-    const usageData = await fetch(`/api/token-usage?board_name=${encodeURIComponent(boardName)}`)
+    const usageData = await teamFetch(boardName, n => `/api/token-usage?board_name=${encodeURIComponent(n)}`)
         .then(resp => resp.ok ? resp.json() : null)
         .catch(() => null);
     const agents = (usageData?.by_agent || []).map(a => ({

@@ -2,6 +2,7 @@
 
 import { state, sessionKey } from './state.js';
 import { escapeHtml } from './utils.js';
+import { serverFetch, currentServer } from './server_base.js';
 
 let dropdown = null;
 let selectedIndex = 0;
@@ -63,7 +64,7 @@ export async function fetchFileList() {
             if (state.currentSession.session_id) {
                 params.set("session_id", state.currentSession.session_id);
             }
-            const resp = await fetch(`/api/sessions/live/${name}/search-files?${params}`);
+            const resp = await serverFetch(currentServer(), `/api/sessions/live/${name}/search-files?${params}`);
             if (!resp.ok) return cachedFiles;
             const data = await resp.json();
             cachedFiles = data.files || [];
@@ -99,7 +100,7 @@ export async function fetchDirEntries(dir) {
             params.set("session_id", state.currentSession.session_id);
         }
         params.set("dir", dir || ".");
-        const resp = await fetch(`/api/sessions/live/${name}/search-files?${params}`);
+        const resp = await serverFetch(currentServer(), `/api/sessions/live/${name}/search-files?${params}`);
         if (!resp.ok) return cached?.entries || [];
         const data = await resp.json();
         const entries = data.entries || [];

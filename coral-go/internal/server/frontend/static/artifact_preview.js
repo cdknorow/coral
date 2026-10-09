@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, renderImagePanes } from './utils.js';
 import { renderJSONReport } from './artifact_report.js';
+import { splitKey, serverUrl, contextServer } from './server_base.js';
 
 const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
 const MAX_ARTIFACT_MANIFEST_ENTRIES = 200;
@@ -88,7 +89,7 @@ function _renderManifest(body, manifest, filename, ctx) {
         <div class="artifact-manifest-main"><button type="button" class="artifact-manifest-open" data-manifest-index="${index}">
             <span class="artifact-manifest-name">${escapeHtml(entry.name)}</span>
             <span class="artifact-manifest-type">${escapeHtml(_entryType(entry))}</span>
-        </button><a class="artifact-manifest-download" href="/api/artifacts/${digest}" download="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
+        </button><a class="artifact-manifest-download" href="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" download="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
         <span class="artifact-manifest-uri">${escapeHtml(entry.uri)}</span>
     </li>`;
     }).join('');
@@ -163,7 +164,7 @@ function _responseFilename(disposition) {
 /** Resolve where an artifact's bytes come from; null when the source is unusable. */
 export function resolveArtifactSource(uri, options = {}) {
     const match = CORAL_ARTIFACT_URI_RE.exec(uri);
-    const board = state.selectedTeam || state.currentSession?.board_project || '';
+    const board = state.selectedTeam ? splitKey(state.selectedTeam).name : (state.currentSession?.board_project || '');
     const teamPrefix = `/api/board/${encodeURIComponent(board)}/tasks/`;
     const inlineURL = options.contentURL?.startsWith(teamPrefix) && /\/artifact-content\?/.test(options.contentURL) ? options.contentURL : null;
     let externalURL = null;
@@ -172,7 +173,7 @@ export function resolveArtifactSource(uri, options = {}) {
         if (parsed.protocol === 'https:' || parsed.protocol === 'http:') externalURL = parsed.href;
     } catch { /* Only explicit HTTP(S) links can be embedded. */ }
     if (!match && !inlineURL && !externalURL) return null;
-    return { url: externalURL || inlineURL || `/api/artifacts/${match[1]}`, externalURL };
+    return { url: externalURL || inlineURL || `/api/artifacts/${match[1]}`, externalURL, server: contextServer() };
 }
 
 /**
@@ -190,7 +191,8 @@ export async function renderArtifact(body, uri, options, ctx) {
         return;
     }
     try {
-        const resp = await fetch(url, { signal: ctx.signal });
+        // Managed/inline artifact paths live on the viewed server; external URLs are absolute.
+        const resp = await fetch(externalURL ? url : serverUrl(url, source.server), { signal: ctx.signal });
         if (!resp.ok) throw new Error(`Artifact unavailable (${resp.status})`);
         const type = (resp.headers.get('Content-Type') || 'application/octet-stream').split(';')[0].toLowerCase();
         // Scoped inline content is deliberately served as text/plain. Its

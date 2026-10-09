@@ -61,6 +61,7 @@ import { searchChats } from './chat_search.js';
 import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
+import { teamFetch } from './server_base.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -174,7 +175,7 @@ Object.assign(window, {
 function resetTeam(boardName) {
     showConfirmModal('Reset Team', `Reset all agents in "${boardName}"? Their context will be cleared and they'll restart with their original prompts.`, async () => {
         try {
-            const resp = await fetch(`/api/sessions/live/team/${encodeURIComponent(boardName)}/reset`, { method: 'POST' });
+            const resp = await teamFetch(boardName, n => `/api/sessions/live/team/${encodeURIComponent(n)}/reset`, { method: 'POST' });
             if (resp.ok) {
                 showToast(`Team "${boardName}" is resetting...`);
             } else {

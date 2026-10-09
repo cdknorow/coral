@@ -7,6 +7,7 @@ import { renderTaskList } from './tasks.js';
 import { renderEventTimeline } from './agentic_state.js';
 import { getTerminalCols } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
+import { serverFetch, currentServer } from './server_base.js';
 
 let _refreshCaptureHasRun = false;
 
@@ -48,7 +49,7 @@ export async function syncPaneWidth() {
     _lastSyncedCols = cols;
 
     try {
-        await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/resize`, {
+        await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/resize`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -90,7 +91,7 @@ export async function refreshCapture() {
         const qs = params.toString() ? `?${params}` : "";
 
         // Single batch endpoint replaces separate capture + tasks + events calls
-        const resp = await fetch(`/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/poll${qs}`);
+        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/poll${qs}`);
         if (!resp.ok) throw new Error(`poll failed: ${resp.status}`);
         const data = await resp.json();
 

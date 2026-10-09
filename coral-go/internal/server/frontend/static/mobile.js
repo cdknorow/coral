@@ -184,9 +184,9 @@ export function wrapSelectLiveSession() {
     const orig = window.selectLiveSession;
     if (!orig) return;
 
-    window.selectLiveSession = function(name, agentType, sessionId) {
+    window.selectLiveSession = function(name, agentType, sessionId, server) {
         // Call original
-        orig(name, agentType, sessionId);
+        orig(name, agentType, sessionId, server);
 
         // On mobile, hide agent list to show full session view and reset panel overlay
         if (isMobile()) {
@@ -316,7 +316,7 @@ function _initSwipeNavigation() {
 
         const next = sessions[nextIdx];
         if (next && window.selectLiveSession) {
-            window.selectLiveSession(next.name, next.agent_type, next.session_id);
+            window.selectLiveSession(next.name, next.agent_type, next.session_id, next.server);
         }
     }, { passive: true });
 }

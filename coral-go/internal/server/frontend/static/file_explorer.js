@@ -1,6 +1,7 @@
 /* Lazy directory tree for the selected agent, rooted at the API-resolved repository or working directory. */
 import { state } from './state.js';
 import { copyFilePath, openFilePreview, openFileEdit } from './changed_files.js';
+import { serverFetch, sessionServer } from './server_base.js';
 
 let sessionKey = '';
 let session = null;
@@ -170,7 +171,7 @@ async function load(path, append = false) {
     dir.controller = new AbortController(); dir.loading = true; dir.error = ''; render();
     try {
         const params = new URLSearchParams({session_id:session.session_id, dir:path, view:'explorer', offset:String(append ? dir.entries.length : 0)});
-        const response = await fetch(`/api/sessions/live/${encodeURIComponent(session.name)}/search-files?${params}`, {signal:dir.controller.signal});
+        const response = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/search-files?${params}`, {signal:dir.controller.signal});
         if (!response.ok) throw new Error(`Could not read directory (${response.status}).`);
         const data = await response.json();
         if (gen !== generation) return;
