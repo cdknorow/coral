@@ -2777,3 +2777,4 @@ button.team-artifact-name { cursor: pointer; }
 /* The open-team button sits beside the group kebab (same look as the folder copy button).
    It appears on hover, and stays visible while that team is selected. */
 .team-open-btn.is-selected { display: inline-flex; align-items: center; color: var(--accent); }
+.team-artifacts-help .material-icons { font-size: 18px; }

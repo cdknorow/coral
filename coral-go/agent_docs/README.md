@@ -26,6 +26,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 ### Collaboration
 - [Agent UI](agent-ui.md) — publish interactive sidebar panels and read user responses
 - [Personal Tasks](agent-tasks.md) — `coral-agent task` commands, HTTP API, and migration
+- [Artifacts](artifacts.md) — Publish files and reports to the Artifacts tabs
 - [Task Workflows](task-workflows.md) — Dependencies, Build → Test → Release, artifacts, retries, and default instructions
 - [Message Board](board.md) — Multi-agent message board, subscriptions, groups, board status/routing, board tasks
 - [Notifications](notifications.md) — Push toast and alert notifications to the Coral UI

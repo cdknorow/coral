@@ -65,6 +65,14 @@ function artifactType(item) {
     return mime.startsWith('text/') ? 'Text' : 'File';
 }
 
+// Paste into an agent's chat when it does not know how to publish an artifact.
+const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in the Artifacts tab):
+1. Upload the file: coral-agent artifact upload <file>   (prints a coral://artifacts/<digest> URI)
+2. Write a manifest, e.g. artifacts.json: [{"name": "<file name>", "uri": "coral://artifacts/<digest>"}]
+3. Attach it to a task result: coral-agent task complete <task-id> --artifacts artifacts.json --message "<summary>"
+   (no task yet? create and claim one first: coral-agent task add "<title>")
+Local paths like /tmp/<file> are not reachable by the user, so always upload first. Small text reports can go inline as "content" in the manifest. Full docs: artifacts.md in the Coral agent docs.`;
+
 function render() {
     const root = document.getElementById(`${panels[source]}-view`);
     if (!root || !isArtifactSource()) return;
@@ -78,7 +86,21 @@ function render() {
     const refresh = el('button', 'team-artifacts-action', 'Refresh');
     refresh.type = 'button'; refresh.disabled = busy || !team || (personal && !sessionID);
     refresh.addEventListener('click', () => load(false));
-    heading.append(refresh); root.append(heading);
+    const help = el('button', 'team-artifacts-action team-artifacts-help');
+    help.type = 'button';
+    help.title = 'Copy instructions for agents on how to publish an artifact';
+    help.setAttribute('aria-label', help.title);
+    const helpIcon = el('span', 'material-icons', 'content_copy');
+    helpIcon.setAttribute('aria-hidden', 'true');
+    help.append(helpIcon);
+    help.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(AGENT_ARTIFACT_PROMPT);
+            helpIcon.textContent = 'check';
+        } catch { helpIcon.textContent = 'error_outline'; }
+        setTimeout(() => { helpIcon.textContent = 'content_copy'; }, 1500);
+    });
+    heading.append(refresh, help); root.append(heading);
     const status = el('div', 'team-artifacts-status');
     status.setAttribute('role', error ? 'alert' : 'status');
     status.textContent = !team ? 'Select an agent on a team to browse its artifacts.'
