@@ -652,6 +652,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/board/{project}/tasks/{taskID}", boardHandler.GetTask)
 	r.Get("/api/board/{project}/tasks/{taskID}/artifact-content", boardHandler.TeamArtifactContent)
 	r.Get("/api/board/{project}/artifacts", boardHandler.ListTeamArtifacts)
+	r.Get("/api/session-artifacts", boardHandler.ListSessionArtifacts)
 	r.Post("/api/board/{project}/tasks/{taskID}/complete", boardHandler.CompleteTaskByID)
 	r.Post("/api/board/{project}/tasks/{taskID}/submit-review", boardHandler.SubmitCompletionReview)
 	r.Post("/api/board/{project}/tasks/{taskID}/release-review", boardHandler.ReleaseCompletionReview)

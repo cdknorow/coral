@@ -25,6 +25,7 @@ func teamArtifactServer(t *testing.T) (*httptest.Server, *BoardHandler, string) 
 	h.SetTaskArtifactWriter(coralDir, nil)
 	r := chi.NewRouter()
 	r.Get("/api/board/{project}/artifacts", h.ListTeamArtifacts)
+	r.Get("/api/session-artifacts", h.ListSessionArtifacts)
 	r.Get("/api/board/{project}/tasks/{taskID}/artifact-content", h.TeamArtifactContent)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
@@ -374,4 +375,41 @@ func completeWithArtifactsAs(t *testing.T, h *BoardHandler, project, actor, titl
 	_, err = h.bs.CompleteTaskWithArtifacts(ctx, project, task.ID, actor, nil, "success", arts)
 	require.NoError(t, err)
 	return task.ID
+}
+
+// An upload that no task references yet still shows in that agent's tab, and
+// only in that agent's tab.
+func TestTeamArtifactsListsSessionUploads(t *testing.T) {
+	srv, _, coralDir := teamArtifactServer(t)
+	id := storeManagedArtifact(t, coralDir, "# draft\n", true, true)
+	dir := uploadsDir(coralDir, "sess-1")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, "2026-10-09T10:00:00Z"})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
+
+	mine := getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=sess-1", http.StatusOK)
+	require.Len(t, mine.Artifacts, 1)
+	require.Equal(t, "draft.md", mine.Artifacts[0].Name)
+	require.True(t, mine.Artifacts[0].Available)
+	require.Equal(t, "/api/artifacts/"+id, mine.Artifacts[0].PreviewURL)
+
+	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=sess-2", http.StatusOK).Artifacts)
+	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK).Artifacts, "team view lists task results only")
+	require.Empty(t, uploadsDir(coralDir, "../x"))
+}
+
+func TestSessionArtifactsForStandaloneAgent(t *testing.T) {
+	srv, _, coralDir := teamArtifactServer(t)
+	id := storeManagedArtifact(t, coralDir, "# draft\n", true, true)
+	dir := uploadsDir(coralDir, "solo-1")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "draft.md", MediaType: "text/markdown", Size: 8, Digest: "sha256:" + id}, "2026-10-09T10:00:00Z"})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
+
+	resp := getTeamArtifacts(t, srv, "/api/session-artifacts?session_id=solo-1", http.StatusOK)
+	require.Len(t, resp.Artifacts, 1)
+	require.Equal(t, "draft.md", resp.Artifacts[0].Name)
+	require.True(t, resp.Artifacts[0].Available)
+	require.Empty(t, getTeamArtifacts(t, srv, "/api/session-artifacts?session_id=solo-2", http.StatusOK).Artifacts)
+	getTeamArtifacts(t, srv, "/api/session-artifacts", http.StatusBadRequest)
 }

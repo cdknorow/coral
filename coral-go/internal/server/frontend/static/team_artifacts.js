@@ -82,9 +82,9 @@ function render() {
     root.replaceChildren();
     root.setAttribute('aria-busy', String(busy));
     const heading = el('div', 'team-artifacts-heading');
-    heading.append(el('span', '', team ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
+    heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
     const refresh = el('button', 'team-artifacts-action', 'Refresh');
-    refresh.type = 'button'; refresh.disabled = busy || !team || (personal && !sessionID);
+    refresh.type = 'button'; refresh.disabled = busy || (personal ? !sessionID : !team);
     refresh.addEventListener('click', () => load(false));
     const help = el('button', 'team-artifacts-action team-artifacts-help');
     help.type = 'button';
@@ -103,7 +103,7 @@ function render() {
     heading.append(refresh, help); root.append(heading);
     const status = el('div', 'team-artifacts-status');
     status.setAttribute('role', error ? 'alert' : 'status');
-    status.textContent = !team ? 'Select an agent on a team to browse its artifacts.'
+    status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
         : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : `${items.length} artifacts`;
     root.append(status);
@@ -212,24 +212,26 @@ function render() {
 }
 
 async function load(append = false) {
-    if (!team || !isArtifactSource() || (source === 'artifacts' && !sessionID)) return;
+    if (!isArtifactSource() || (source === 'artifacts' ? !sessionID : !team)) return;
     const scope = source;
     const cache = caches[scope];
     cancel(cache);
     const gen = cache.generation;
     cache.controller = new AbortController();
     const requestedTeam = team;
+    // A standalone agent has no team board: its artifacts are the files it uploaded.
+    const standalone = scope === 'artifacts' && !team;
     const requestedSession = sessionID;
     if (!append) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; }
     cache.busy=true; cache.error=''; render();
     try {
         const params = new URLSearchParams({limit:'100',offset:String(cache.items.length)});
         if (scope === 'artifacts') params.set('session_id',requestedSession);
-        const response = await fetch(`/api/board/${encodeURIComponent(team)}/artifacts?${params}`, {signal:cache.controller.signal});
+        const response = await fetch(standalone ? `/api/session-artifacts?${params}` : `/api/board/${encodeURIComponent(team)}/artifacts?${params}`, {signal:cache.controller.signal});
         if (!response.ok) throw new Error(`Unable to load ${scope === 'artifacts' ? 'agent' : 'team'} artifacts (${response.status}).`);
         const data = await response.json();
         if (gen !== cache.generation || caches[scope] !== cache || requestedTeam !== currentTeam() || source !== scope || (scope === 'artifacts' && requestedSession !== state.currentSession?.session_id)) return;
-        if (data.project !== requestedTeam || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');
+        if ((!standalone && data.project !== requestedTeam) || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');
         cache.items = append ? [...cache.items,...data.artifacts] : data.artifacts;
         cache.hasMore=!!data.has_more; cache.truncated=!!data.truncated; cache.loaded=true;
     } catch (error) {

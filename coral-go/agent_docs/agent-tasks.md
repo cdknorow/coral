@@ -92,7 +92,7 @@ file and attach it to the task result so Coral's Artifacts and Team Artifacts vi
 it. Use external cloud publishing only when the user explicitly asks for it, and
 do not treat an external link alone as a Coral-managed artifact. Without a task,
 upload the file and give the user the `coral://` URI or `/api/artifacts/<digest>`
-URL; it is not listed in the Artifacts or Team Artifacts views until attached to a task result.
+URL; it is listed in your own Artifacts view, and in Team Artifacts once attached to a task result.
 
 To inspect a shared screenshot, download it first:
 

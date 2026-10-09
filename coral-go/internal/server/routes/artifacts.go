@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/go-chi/chi/v5"
@@ -22,6 +23,23 @@ type agentArtifactMeta struct {
 	MediaType string `json:"media_type"`
 	Size      int64  `json:"size"`
 	Digest    string `json:"digest"`
+}
+
+// agentUploadRecord is a per-session record of an upload, so an agent's
+// Artifacts tab lists what it uploaded before (or without) attaching it to a
+// task result.
+type agentUploadRecord struct {
+	agentArtifactMeta
+	CreatedAt string `json:"created_at"`
+}
+
+// uploadsDir is where per-session upload records live. The session id is
+// rejected unless it is a plain name, so it cannot escape the directory.
+func uploadsDir(coralDir, sessionID string) string {
+	if coralDir == "" || sessionID == "" || len(sessionID) > 128 || strings.ContainsAny(sessionID, "/\\\x00") || strings.Contains(sessionID, "..") {
+		return ""
+	}
+	return filepath.Join(coralDir, "artifacts", "uploads", sessionID)
 }
 
 // RegisterAgentArtifacts adds Coral-managed, durable artifact storage. Uploads
@@ -78,6 +96,12 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 	if err := os.WriteFile(objectPath+".json", metaData, 0o644); err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	if dir := uploadsDir(h.cfg.CoralDir(), sid); dir != "" {
+		if os.MkdirAll(dir, 0o755) == nil {
+			rec, _ := json.Marshal(agentUploadRecord{meta, time.Now().UTC().Format(time.RFC3339)})
+			_ = os.WriteFile(filepath.Join(dir, hex.EncodeToString(digestBytes[:])+".json"), rec, 0o644)
+		}
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"uri":        "coral://artifacts/" + hex.EncodeToString(digestBytes[:]),

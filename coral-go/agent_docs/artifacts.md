@@ -2,7 +2,7 @@
 
 An artifact is a file or report an agent shares through Coral so the user and other agents can open it. Coral's **Artifacts** tab (this agent) and **Team Artifacts** tab (whole team) list them.
 
-An artifact only shows up in those tabs when it is **attached to a task result**. Uploading a file alone makes it reachable but does not list it.
+Uploading a file lists it in your own **Artifacts** tab right away. Attach it to a task result to also share it in **Team Artifacts** and with downstream tasks.
 
 ## Publish an artifact
 
@@ -13,7 +13,7 @@ An artifact only shows up in those tabs when it is **attached to a task result**
    # coral://artifacts/<digest>
    ```
 
-2. Attach it to a task result. Write a manifest and complete the task with it:
+2. Attach it to a task result (so the whole team sees it). Write a manifest and complete the task with it:
 
    ```sh
    cat > artifacts.json <<'JSON'
