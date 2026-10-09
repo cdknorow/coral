@@ -589,6 +589,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Patch("/api/servers/{id}", rsHandler.Update)
 	r.Delete("/api/servers/{id}", rsHandler.Delete)
 	r.Post("/api/servers/{id}/test", rsHandler.Test)
+	routes.MountRemoteProxy(r, routes.NewRemoteResolver(rsHandler.Store()))
 
 	// Board remotes
 	brHandler := routes.NewBoardRemotesHandler(s.db, s.cfg)
