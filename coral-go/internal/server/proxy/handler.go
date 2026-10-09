@@ -137,7 +137,11 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			if timer != nil {
 				timer.Stop()
 			}
-			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			// Only 401 means the key was rejected. A remote 403 is an ordinary
+			// application answer (demo limit reached, forbidden path, ...) and
+			// is passed through; treating it as a key failure would mark a
+			// healthy server "unauthorized" and hide the real error.
+			if resp.StatusCode == http.StatusUnauthorized {
 				return ErrRemoteRejected
 			}
 			resp.Header.Del("Set-Cookie")

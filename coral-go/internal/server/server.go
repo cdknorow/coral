@@ -71,6 +71,10 @@ type Server struct {
 	reminderShown atomic.Bool
 }
 
+// remoteAgentHubConfig tunes the hub's remote poller. Zero values mean the
+// production defaults; only in-package tests set it (to poll quickly).
+var remoteAgentHubConfig background.RemoteAgentHubConfig
+
 // templateData is passed to Go templates during rendering.
 type templateData struct {
 	CoralRoot       string
@@ -607,7 +611,7 @@ func (s *Server) buildRouter() chi.Router {
 		r.Post("/api/servers/{id}/test", rsHandler.Test)
 		remoteResolver := routes.NewRemoteResolver(rsHandler.Store())
 		routes.MountRemoteProxy(r, remoteResolver)
-		s.remoteAgents = background.NewRemoteAgentHub(rsHandler.Store(), remoteResolver, background.RemoteAgentHubConfig{})
+		s.remoteAgents = background.NewRemoteAgentHub(rsHandler.Store(), remoteResolver, remoteAgentHubConfig)
 		sessHandler.SetRemoteAgents(s.remoteAgents)
 	}
 

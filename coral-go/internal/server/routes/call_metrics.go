@@ -1,10 +1,13 @@
 package routes
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -156,6 +159,30 @@ func (w *metricResponseWriter) Write(body []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 	return w.ResponseWriter.Write(body)
+}
+
+// Unwrap lets http.ResponseController reach the real writer.
+func (w *metricResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Flush keeps streaming (SSE) responses streaming through the metrics wrapper.
+func (w *metricResponseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Hijack keeps WebSocket upgrades working on /api/ routes (for example the
+// hub's /api/remote/{server}/ws/... bridge); without it websocket.Accept fails
+// with 501 because the wrapper hid the underlying http.Hijacker.
+func (w *metricResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("response writer does not support hijacking")
+	}
+	if w.status == 0 {
+		w.status = http.StatusSwitchingProtocols
+	}
+	return h.Hijack()
 }
 
 func (w *metricResponseWriter) statusCode() int {

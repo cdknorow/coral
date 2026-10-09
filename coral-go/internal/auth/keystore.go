@@ -187,6 +187,21 @@ func (ks *KeyStore) CheckRateLimit(ip string) bool {
 	return entry.count <= rateLimitMax
 }
 
+// RateLimited reports whether ip has already used up its failed-attempt budget
+// in the current window. It does not count anything itself.
+func (ks *KeyStore) RateLimited(ip string) bool {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+	e, ok := ks.rateMap[ip]
+	if !ok || time.Since(e.windowAt) > rateLimitWindow {
+		return false
+	}
+	return e.count >= rateLimitMax
+}
+
+// RecordFailure counts one failed authentication attempt from ip.
+func (ks *KeyStore) RecordFailure(ip string) { ks.CheckRateLimit(ip) }
+
 // IsLocalhost checks if the request originates from localhost.
 // Uses the raw RemoteAddr (not X-Forwarded-For) to prevent spoofing.
 func isLocalhost(r *http.Request) bool {
