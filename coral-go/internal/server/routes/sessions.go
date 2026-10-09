@@ -4701,6 +4701,10 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 			return resolvedFileRef{}, false
 		}
 		if !strings.HasPrefix(real, realRoot+string(os.PathSeparator)) {
+			// Absolute paths open read-only wherever they are.
+			if filepath.IsAbs(fp) {
+				return resolvedFileRef{rel: real, abs: real, line: line}, true
+			}
 			return resolvedFileRef{}, false
 		}
 		rel, err := filepath.Rel(realRoot, real)
@@ -4826,11 +4830,18 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 	}
 
 	fullPath, err := filepath.Abs(filepath.Join(workdir, fp))
+	tempFile := false
+	if filepath.IsAbs(fp) {
+		// Absolute paths are read-only, wherever they are.
+		if real, rerr := filepath.EvalSymlinks(fp); rerr == nil {
+			fullPath, err, tempFile = real, nil, true
+		}
+	}
 	if err != nil {
 		errBadRequest(w, "invalid path")
 		return
 	}
-	if !isPathWithinDir(workdir, fullPath) {
+	if !tempFile && !isPathWithinDir(workdir, fullPath) {
 		errForbidden(w, "Path traversal not allowed")
 		return
 	}
