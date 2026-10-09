@@ -304,7 +304,8 @@ func (s *Server) buildRouter() chi.Router {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		// "version" is additive; older hubs ignore unknown fields.
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": config.Version})
+		// "hub" tells the frontend whether to show the multi-server UI.
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "version": config.Version, "hub": s.cfg.HubMode})
 	})
 
 	// License endpoints (ungated — must be accessible to activate)
@@ -595,16 +596,20 @@ func (s *Server) buildRouter() chi.Router {
 	r.Delete("/api/views/{id}", viewsHandler.DeleteView)
 
 	// Remote server registry (multi-server hub). Hub-local, never proxied.
-	rsHandler := routes.NewRemoteServersHandler(s.db, s.cfg)
-	r.Get("/api/servers", rsHandler.List)
-	r.Post("/api/servers", rsHandler.Add)
-	r.Patch("/api/servers/{id}", rsHandler.Update)
-	r.Delete("/api/servers/{id}", rsHandler.Delete)
-	r.Post("/api/servers/{id}/test", rsHandler.Test)
-	remoteResolver := routes.NewRemoteResolver(rsHandler.Store())
-	routes.MountRemoteProxy(r, remoteResolver)
-	s.remoteAgents = background.NewRemoteAgentHub(rsHandler.Store(), remoteResolver, background.RemoteAgentHubConfig{})
-	sessHandler.SetRemoteAgents(s.remoteAgents)
+	// Only registered in hub mode (--hub or CORAL_HUB=1); otherwise these
+	// paths do not exist and the server behaves as a standalone Coral.
+	if s.cfg.HubMode {
+		rsHandler := routes.NewRemoteServersHandler(s.db, s.cfg)
+		r.Get("/api/servers", rsHandler.List)
+		r.Post("/api/servers", rsHandler.Add)
+		r.Patch("/api/servers/{id}", rsHandler.Update)
+		r.Delete("/api/servers/{id}", rsHandler.Delete)
+		r.Post("/api/servers/{id}/test", rsHandler.Test)
+		remoteResolver := routes.NewRemoteResolver(rsHandler.Store())
+		routes.MountRemoteProxy(r, remoteResolver)
+		s.remoteAgents = background.NewRemoteAgentHub(rsHandler.Store(), remoteResolver, background.RemoteAgentHubConfig{})
+		sessHandler.SetRemoteAgents(s.remoteAgents)
+	}
 
 	// Board remotes
 	brHandler := routes.NewBoardRemotesHandler(s.db, s.cfg)

@@ -25,6 +25,15 @@ Any Coral server can act as a **hub**: it shows the agents and teams from every 
 
 ## Design
 
+### 0. Hub mode switch
+
+Hub features are off unless the server is started in hub mode: `coral --hub` or `CORAL_HUB=1` (`1`, `true`, `yes`, `on`). Remotes never need it.
+
+- **Off (default):** `/api/servers*` and `/api/remote/*` are not registered (404), the remote poller and feed relay never start, `/api/sessions/live` and `/ws/coral` behave exactly as a standalone Coral, and `GET /api/health` reports `"hub": false`. The frontend shows none of the hub UI.
+- **On:** the registry routes, proxy, poller and merged list are active, and `/api/health` reports `"hub": true`. The frontend reads that flag at startup to decide whether to show the Servers settings page, server badges and the launch-modal server picker.
+- Existing rows in `remote_servers` are ignored while hub mode is off and are used again when it is turned back on.
+- The mode is a startup setting, not a UI toggle or a database setting, so a standalone server cannot be flipped into a proxy by anyone who can reach its web UI.
+
 ### 1. Server registry
 
 New table in the hub's `sessions.db`:
@@ -109,7 +118,7 @@ Remote API keys grant full control of a remote, so they are never stored in plai
 
 - Remotes need no changes. Hub-to-remote calls use the same API the browser uses today.
 - The remote's `/api/health` response does not carry a version. Add a `version` field to it (additive and backward compatible). The hub treats a remote with no version as supported and surfaces a `version_mismatch` warning only when a remote reports a version older than the hub's declared minimum.
-- Hubs with no registered remotes behave exactly as today.
+- A server not started with `--hub`, and a hub with no registered remotes, behave exactly as today.
 
 ## Security
 
@@ -135,7 +144,7 @@ Dependencies: WP1 and WP2 first. WP3 needs WP1 and WP2. WP4 and WP5 need WP2. WP
 
 ## Acceptance criteria
 
-1. With no remotes registered, the UI and APIs behave exactly as before.
+1. Without `--hub`/`CORAL_HUB=1`, no hub route or UI exists and the server behaves exactly as before. With hub mode on but no remotes registered, the UI and APIs also behave as before apart from the Servers page.
 2. A remote can be added with a valid key; a wrong key shows `unauthorized`; an unreachable URL shows `unreachable`; the key is never visible in any API response or log.
 3. The stored `api_key` column contains only `v1:` ciphertext. A raw dump of `sessions.db` contains no plaintext key. Swapping ciphertexts between rows, a wrong master key, and a missing key file each produce `key_unreadable` for the affected server without crashing the hub.
 4. A remote's agents appear in the hub sidebar with a server badge and update live (state changes within 5s).

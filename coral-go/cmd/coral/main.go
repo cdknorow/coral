@@ -69,6 +69,7 @@ func main() {
 	}
 	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
 	remoteAccess := flag.Bool("remote", false, "Allow remote (non-loopback) connections without requiring the saved setting")
+	hubMode := flag.Bool("hub", false, "Run as a multi-server hub: manage and view remote Coral servers (also CORAL_HUB=1)")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {
@@ -81,6 +82,7 @@ func main() {
 	}
 
 	cfg := config.Load(*homeDir)
+	cfg.HubMode = *hubMode || envTruthy(os.Getenv("CORAL_HUB"))
 	setupCrashLogging(cfg.CoralDir())
 
 	// Warn if typing "coral" would run a different program. An abandoned PyPI
@@ -284,4 +286,13 @@ func mustExecutable() string {
 		return "unknown: " + err.Error()
 	}
 	return exe
+}
+
+// envTruthy reports whether an environment value turns a switch on.
+func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }

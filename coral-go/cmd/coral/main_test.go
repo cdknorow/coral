@@ -26,6 +26,11 @@ func TestStandardBuildEncryptionSelfTestUnavailable(t *testing.T) {
 // setupTestServer creates a test Coral server with an isolated DB.
 func setupTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	return setupTestServerWithHub(t, false)
+}
+
+func setupTestServerWithHub(t *testing.T, hub bool) *httptest.Server {
+	t.Helper()
 
 	tmpDir := t.TempDir()
 	cfg := &config.Config{
@@ -35,6 +40,7 @@ func setupTestServer(t *testing.T) *httptest.Server {
 		LogDir:          tmpDir,
 		WSPollIntervalS: 1,
 		CoralRoot:       tmpDir,
+		HubMode:         hub,
 	}
 
 	db, err := store.Open(cfg.DBPath)
@@ -244,5 +250,67 @@ func TestServer_WSCoralEndpointExists(t *testing.T) {
 	// Should get 400 (bad request - not a WS upgrade) not 404
 	if resp.StatusCode == 404 {
 		t.Error("/ws/coral returned 404 — route not registered")
+	}
+}
+
+func TestEnvTruthy(t *testing.T) {
+	for _, v := range []string{"1", "true", "TRUE", " yes ", "on"} {
+		if !envTruthy(v) {
+			t.Errorf("envTruthy(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"", "0", "false", "no", "off", "maybe"} {
+		if envTruthy(v) {
+			t.Errorf("envTruthy(%q) = true, want false", v)
+		}
+	}
+}
+
+// Hub features exist only when the server runs with --hub (or CORAL_HUB=1).
+func TestServer_HubModeGatesRemoteRoutes(t *testing.T) {
+	get := func(ts *httptest.Server, path string) int {
+		t.Helper()
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	health := func(ts *httptest.Server) bool {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/api/health")
+		if err != nil {
+			t.Fatalf("GET /api/health: %v", err)
+		}
+		defer resp.Body.Close()
+		var body struct {
+			Hub bool `json:"hub"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode health: %v", err)
+		}
+		return body.Hub
+	}
+
+	off := setupTestServerWithHub(t, false)
+	if health(off) {
+		t.Error("health reports hub=true without --hub")
+	}
+	for _, p := range []string{"/api/servers", "/api/remote/x/api/health"} {
+		if code := get(off, p); code != http.StatusNotFound && code != http.StatusMethodNotAllowed {
+			t.Errorf("hub off: GET %s = %d, want 404/405", p, code)
+		}
+	}
+
+	on := setupTestServerWithHub(t, true)
+	if !health(on) {
+		t.Error("health does not report hub=true with --hub")
+	}
+	if code := get(on, "/api/servers"); code != http.StatusOK {
+		t.Errorf("hub on: GET /api/servers = %d, want 200", code)
+	}
+	if code := get(on, "/api/remote/missing/api/health"); code != http.StatusNotFound {
+		t.Errorf("hub on: unknown server = %d, want 404", code)
 	}
 }

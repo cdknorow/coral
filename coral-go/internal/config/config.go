@@ -49,6 +49,11 @@ type Config struct {
 	TaskIdleEscalationS        int
 	RemotePollerIntervalS      int
 
+	// HubMode turns this server into a multi-server hub: the remote server
+	// registry, the /api/remote proxy and merged remote agents. Off by default;
+	// set by the --hub flag or CORAL_HUB=1.
+	HubMode bool
+
 	// WebSocket
 	WSPollIntervalS int
 
