@@ -199,6 +199,11 @@ var columnMigrations = []struct {
 	{"subagents", "finished", "INTEGER NOT NULL DEFAULT 0"},
 	{"subagents", "transcript_path", "TEXT"},
 	{"git_snapshots", "pr_number", "INTEGER"},
+	{"git_snapshots", "is_worktree", "INTEGER DEFAULT 0"},
+	{"git_snapshots", "base_branch", "TEXT DEFAULT ''"},
+	{"git_snapshots", "ahead", "INTEGER DEFAULT 0"},
+	{"git_snapshots", "behind", "INTEGER DEFAULT 0"},
+	{"git_snapshots", "dirty_count", "INTEGER DEFAULT 0"},
 	{"git_changed_files", "diff_mode", "TEXT DEFAULT ''"},
 	// How long the activity took, and the id it is known by at its source
 	// (tool_use_id for tool calls, API request id for thinking turns).

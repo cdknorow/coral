@@ -202,7 +202,7 @@ export function handleCoralMessage(data) {
                     }
                     updateSessionStatus(s.status);
                     updateSessionSummary(s.summary);
-                    updateSessionBranch(s.branch);
+                    updateSessionBranch(s.branch, s.repo_name, s.git_state);
                     updateWaitingIndicator(s);
                     updateChangedFileCount(s.changed_file_count || 0);
                     // Update terminal header status dot

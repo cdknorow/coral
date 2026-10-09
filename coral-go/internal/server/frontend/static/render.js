@@ -11,6 +11,20 @@ import { getCachedAgentAvailability, refreshTeamAvailability } from './team_avai
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
+const _WORKTREE_ICON = '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg>';
+
+/** Compact "↑2 ↓1 ●3" divergence summary for a session's git_state, or ''.
+ *  Ahead/behind are measured against the repo's default branch. */
+function _gitStateSummary(gs) {
+    if (!gs) return '';
+    const base = gs.base_branch || 'main';
+    const parts = [];
+    if (gs.ahead) parts.push(`<span class="gs-ahead" title="${gs.ahead} commit${gs.ahead !== 1 ? 's' : ''} ahead of ${escapeAttr(base)}">↑${gs.ahead}</span>`);
+    if (gs.behind) parts.push(`<span class="gs-behind" title="${gs.behind} commit${gs.behind !== 1 ? 's' : ''} behind ${escapeAttr(base)}">↓${gs.behind}</span>`);
+    if (gs.dirty) parts.push(`<span class="gs-dirty" title="${gs.dirty} uncommitted file${gs.dirty !== 1 ? 's' : ''}">●${gs.dirty}</span>`);
+    return parts.join(' ');
+}
+
 function _repoBranch(repoName, branch) {
     if (repoName && branch) return `${repoName} : ${branch}`;
     return branch || repoName || '';
@@ -223,7 +237,7 @@ export function buildSessionTooltip(s) {
     const lastAction = formatStaleness(s.staleness_seconds);
     const goal = s.summary || "No goal set";
     const status = s.status || "No status";
-    const branch = _repoBranch(s.repo_name, s.branch) || "—";
+    const branch = (_repoBranch(s.repo_name, s.branch) || "—") + (s.git_state?.is_worktree ? " (worktree)" : "");
     const agent = s.agent_type || "claude";
 
     let rows = [
@@ -1455,8 +1469,12 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const dirChip = "";
     void hasDirOverride;
 
-    // Branch is shown at folder level, not per agent
-    const branchTag = "";
+    // Branch is shown at folder level, except for agents on their own worktree:
+    // those are on a different branch than the folder, so each row says which.
+    const gsWt = s.git_state?.is_worktree ? s.git_state : null;
+    const branchTag = (gsWt && s.branch)
+        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : ''}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
+        : "";
     // One pill at most, from the shared state table. Only the attention states
     // carry a pill. "Ready for input" has none: the tooltip and the aria-label carry
     // that state (no dot) (operator request, task #175).
@@ -2974,15 +2992,34 @@ export async function showTeamKnowledge(boardName) {
     reloadKnowledgeTab();
 }
 
-export function updateSessionBranch(branch, repoName) {
+export function updateSessionBranch(branch, repoName, gitState) {
     const display = _repoBranch(repoName, branch);
     const el = document.getElementById("session-branch");
     if (el) {
         if (display) {
             el.querySelector(".branch-text").textContent = display;
+            const gsEl = el.querySelector(".branch-git-state");
+            if (gsEl) {
+                const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';
+                gsEl.innerHTML = wt + _gitStateSummary(gitState);
+            }
             el.style.display = "";
         } else {
             el.style.display = "none";
+        }
+    }
+    // Same info in the terminal header, which has room beside the agent name.
+    const th = document.getElementById("terminal-header-branch");
+    if (th) {
+        th.hidden = !display;
+        if (display) {
+            th.querySelector(".terminal-branch-text").textContent = display;
+            th.title = display;
+            const gs = th.querySelector(".branch-git-state");
+            if (gs) {
+                const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';
+                gs.innerHTML = wt + _gitStateSummary(gitState);
+            }
         }
     }
 }

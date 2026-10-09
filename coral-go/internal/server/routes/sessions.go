@@ -825,8 +825,18 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 		var branchVal any
 		var repoNameVal any
+		var worktreeVal any
 		if git != nil {
 			branchVal = git.Branch
+			if git.Worktree || git.BaseBranch != "" {
+				worktreeVal = map[string]any{
+					"is_worktree": git.Worktree,
+					"base_branch": git.BaseBranch,
+					"ahead":       git.Ahead,
+					"behind":      git.Behind,
+					"dirty":       git.DirtyCount,
+				}
+			}
 			if git.RemoteURL != nil {
 				if rn := gitutil.ParseRepoName(*git.RemoteURL); rn != "" {
 					repoNameVal = rn
@@ -859,6 +869,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"name_color":            nilIfEmpty(nameColors[sid]),
 			"branch":                branchVal,
 			"repo_name":             repoNameVal,
+			"git_state":             worktreeVal,
 			"waiting_for_input":     state.NeedsInput,
 			"awaiting_user":         state.AwaitingUser,
 			"not_started":           state.NotStarted,

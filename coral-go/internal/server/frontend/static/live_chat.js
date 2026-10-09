@@ -779,6 +779,9 @@ export async function refreshLiveHistory() {
 }
 
 /** Load older messages (prepend above current messages). */
+/** True while older transcript pages remain unloaded (used by find-in-chat). */
+export function chatHasOlder() { return historyHasMore; }
+
 export async function loadMoreHistory() {
     if (!state.currentSession || !historyHasMore || loadingMore) return;
     loadingMore = true;
@@ -949,6 +952,9 @@ export function applyLiveViewMode(override) {
     const mode = canChat ? (override || getLiveViewMode()) : "terminal";
     const toggle = document.querySelector(".live-view-toggle");
     if (toggle) toggle.hidden = !canChat;
+    const findBtn = document.getElementById("chat-find-btn");
+    if (findBtn) findBtn.hidden = mode !== "chat";
+    if (mode !== "chat") window.closeChatFind?.();
     const wrapper = document.getElementById("capture-wrapper");
     if (wrapper) wrapper.classList.toggle("chat-mode", mode === "chat");
     // The command pane drops terminal-only controls in chat mode
