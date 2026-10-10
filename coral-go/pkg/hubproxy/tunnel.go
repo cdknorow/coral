@@ -14,8 +14,11 @@ import (
 // loopback only), so there is nothing to validate here.
 type TunnelTarget struct {
 	Session *tunnel.Session
-	// Meter, if set, throttles the bytes this target moves (per-tenant bandwidth).
+	// Meter, if set, throttles the bytes HTTP requests and responses move (per-tenant bandwidth).
 	Meter Meter
+	// WSMeter throttles WebSocket frames. Nil uses Meter. Giving WebSockets their own meter
+	// keeps a bulk download from starving an interactive terminal.
+	WSMeter Meter
 }
 
 // RoundTrip implements Target.
@@ -38,8 +41,12 @@ func (t TunnelTarget) DialWS(ctx context.Context, path, rawQuery string, protoco
 		}
 		return nil, err
 	}
-	if t.Meter != nil {
-		return meteredWS{WSConn: c, m: t.Meter}, nil
+	m := t.WSMeter
+	if m == nil {
+		m = t.Meter
+	}
+	if m != nil {
+		return meteredWS{WSConn: c, m: m}, nil
 	}
 	return c, nil
 }
