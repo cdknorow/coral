@@ -1,7 +1,7 @@
 package server
 
 import (
-	"html/template"
+	"github.com/cdknorow/coral/pkg/frontend"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,17 +18,7 @@ const popoutTestSessionID = "abcdef11-2222-4333-8444-555555555555"
 
 func newPopoutRouteTestServer(t *testing.T) *Server {
 	t.Helper()
-	tmpl, err := template.ParseFS(templateFS,
-		"templates/index.html",
-		"templates/includes/sidebar.html",
-		"templates/includes/modals.html",
-		"templates/includes/views/live_session.html",
-		"templates/includes/views/history_session.html",
-		"templates/includes/views/message_board.html",
-		"templates/includes/views/workflows.html",
-		"templates/includes/views/docs.html",
-		"templates/includes/views/cost_dashboard.html",
-	)
+	tmpl, err := frontend.ParseIndex()
 	require.NoError(t, err)
 	return &Server{cfg: &config.Config{CoralRoot: "/tmp/coral"}, indexTmpl: tmpl}
 }

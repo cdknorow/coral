@@ -2,7 +2,7 @@
 
 This is the reference for new frontend work and visual consistency changes. Apply it to the existing Coral workspace. Keep the current navigation, sidebar and resize behavior, panel layout, composer footprint and controls, and inline Files preview. A former stronger structural redesign was rejected; it is not a source of layout requirements.
 
-**Status:** the colors, font families, spacing, radii and basic font sizes below already exist in [`variables.css`](../internal/server/frontend/static/css/variables.css). Role names, component contracts and any new tokens marked **target** are conventions to implement incrementally; they do not mean every current surface complies. For source-level discrepancies and the user screenshots, see [the consistency audit](../../tests/design/coral-workspace-refresh/CONSISTENCY-AUDIT.md). The CSS entry point imports `variables.css`, then base/components, then surface CSS and mobile overrides in [`style.css`](../internal/server/frontend/static/style.css).
+**Status:** the colors, font families, spacing, radii and basic font sizes below already exist in [`variables.css`](../pkg/frontend/static/css/variables.css). Role names, component contracts and any new tokens marked **target** are conventions to implement incrementally; they do not mean every current surface complies. For source-level discrepancies and the user screenshots, see [the consistency audit](../../tests/design/coral-workspace-refresh/CONSISTENCY-AUDIT.md). The CSS entry point imports `variables.css`, then base/components, then surface CSS and mobile overrides in [`style.css`](../pkg/frontend/static/style.css).
 
 ## Identity and theme
 

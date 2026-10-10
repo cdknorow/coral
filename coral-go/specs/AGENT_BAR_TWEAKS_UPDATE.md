@@ -115,7 +115,7 @@ Replaces the "if `first_prompt` is not in the payload" bullet:
 - `internal/server/routes/sessions.go` (`List`) **and**
   `internal/server/routes/websocket.go` — `first_prompt` in both builders
 - `internal/jsonl/reader.go` — cache the first prompt per session (Finding 3)
-- `internal/server/frontend/static/websocket.js` — spread-merge
+- `pkg/frontend/static/websocket.js` — spread-merge
 
 ### Open Questions
 

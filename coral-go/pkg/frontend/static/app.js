@@ -63,6 +63,9 @@ import { initChatFind } from './chat_find.js';
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 import { teamFetch } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
+import './csp_compat.js';   // runs inline handlers without eval on the Cloud Hub (inert elsewhere)
+import { initCloud } from './cloud.js';
+import { isCloud } from './server_base.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -668,7 +671,7 @@ window._goHome = function() {
 };
 
 // ── Initialization ────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     beginDashboardAnalytics();
     try {
     // Initialize platform detection and platform-specific behavior
@@ -685,12 +688,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const _origFetch = window.fetch;
     window.fetch = async function(...args) {
         const resp = await _origFetch.apply(this, args);
-        if (resp.status === 401 && !window.location.pathname.startsWith('/auth')) {
-            window.location.href = '/auth';
+        if (resp.status === 401 && !window.location.pathname.startsWith('/auth') && !isCloud()) {
+            window.location.href = '/auth';   // the Cloud Hub has its own redirect (cloud.js)
         }
         return resp;
     };
 
+    await initCloud();   // no-op unless the page's boot data says mode "cloud"
     loadSettings();
     initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
 

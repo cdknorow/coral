@@ -4,7 +4,7 @@ const fs = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
-const staticRoot = path.resolve(__dirname, '../../coral-go/internal/server/frontend/static');
+const staticRoot = path.resolve(__dirname, '../../coral-go/pkg/frontend/static');
 const html = '<!doctype html><html><body><section data-section="live-sessions"><span class="section-count-badge"></span><ul id="live-sessions-list"></ul></section></body></html>';
 (async () => {
     const server = http.createServer(async (req, res) => {

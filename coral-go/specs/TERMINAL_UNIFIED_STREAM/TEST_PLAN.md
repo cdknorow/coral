@@ -443,7 +443,7 @@ This section verifies Phase 3/4 deletions actually landed (per spec §Files Invo
 ### 10.1 Server-side deletions (unit — go vet / build)
 **Check:** `grep -rn "wsTerminalPolling\|doCapture\|CaptureRawOutput\|_pendingContent\|terminal_update" coral-go/` returns:
 - Zero hits in `internal/server/routes/websocket.go`.
-- Zero hits in `internal/server/frontend/static/xterm_renderer.js`.
+- Zero hits in `pkg/frontend/static/xterm_renderer.js`.
 - `specs/TMUX_POLLING_SPEC/` and superseded `specs/XTERM_FLICKER/` sections marked retired (spec §Phase 5).
 
 **Pass:** as above.

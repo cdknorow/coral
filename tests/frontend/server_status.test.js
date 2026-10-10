@@ -5,7 +5,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 
 (async () => {
-    const dir = path.resolve(__dirname, '../../coral-go/internal/server/frontend/static');
+    const dir = path.resolve(__dirname, '../../coral-go/pkg/frontend/static');
     globalThis.location = { protocol: 'http:', host: 'hub.example' };
     const m = await import(pathToFileURL(path.join(dir, 'server_status.js')).href);
     const { state } = await import(pathToFileURL(path.join(dir, 'state.js')).href);

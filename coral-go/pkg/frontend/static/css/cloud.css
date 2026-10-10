@@ -1,0 +1,47 @@
+/* Cloud Hub additions. Loaded on every page; inert unless body.cloud-mode. */
+body.cloud-mode [data-local-only] { display: none !important; }
+.cloud-account-wrapper { position: relative; display: inline-block; }
+.cloud-account-menu { position: absolute; right: 0; top: 100%; z-index: 1000; min-width: 220px; padding: 6px;
+    background: var(--bg-secondary, #151a22); border: 1px solid var(--border, #2a3140); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
+.cloud-account-menu[hidden] { display: none; }
+.cloud-account-email { padding: 6px 10px 8px; font-size: 12px; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    border-bottom: 1px solid var(--border, #2a3140); margin-bottom: 4px; }
+
+/* Standalone pages (sign-in, enroll) */
+.cloud-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: var(--bg-primary, #0a0e14); color: var(--text-primary, #e6edf3); font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+.cloud-card { width: 100%; max-width: 440px; padding: 28px; border-radius: 12px; background: var(--bg-secondary, #151a22); border: 1px solid var(--border, #2a3140); }
+.cloud-card h1 { font-size: 20px; margin: 0 0 6px; }
+.cloud-card p { margin: 0 0 14px; line-height: 1.5; opacity: .85; }
+.cloud-card label { display: block; font-size: 13px; margin: 12px 0 4px; }
+.cloud-card input[type=email], .cloud-card input[type=text] { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px;
+    border: 1px solid var(--border, #2a3140); background: var(--bg-primary, #0a0e14); color: inherit; font-size: 15px; }
+.cloud-card input.cloud-code { font-family: ui-monospace, monospace; letter-spacing: .15em; text-transform: uppercase; font-size: 18px; text-align: center; }
+.cloud-btn { display: inline-block; width: 100%; box-sizing: border-box; margin-top: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border, #2a3140);
+    background: var(--bg-tertiary, #1c2330); color: inherit; font-size: 14px; cursor: pointer; text-align: center; text-decoration: none; }
+.cloud-btn.primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+.cloud-btn.danger { background: #b62324; border-color: #b62324; color: #fff; }
+.cloud-btn[disabled] { opacity: .55; cursor: default; }
+.cloud-divider { text-align: center; margin: 16px 0 0; font-size: 12px; opacity: .6; }
+.cloud-status { margin-top: 12px; min-height: 1.4em; font-size: 13px; }
+.cloud-status.error { color: #ff7b72; }
+.cloud-status.ok { color: #3fb950; }
+.cloud-warn { margin: 12px 0; padding: 10px 12px; border-radius: 8px; background: rgba(210,153,34,.12); border: 1px solid rgba(210,153,34,.5); font-size: 13px; line-height: 1.5; }
+.cloud-facts { margin: 12px 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: 14px; }
+.cloud-facts dt { opacity: .65; } .cloud-facts dd { margin: 0; word-break: break-all; }
+
+/* Servers dialog */
+.cs-list { list-style: none; margin: 0; padding: 0; }
+.cs-row { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border, #2a3140); }
+.cs-title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cs-meta { font-size: 12px; opacity: .7; margin-top: 2px; }
+.cs-note { grid-column: 1 / -1; font-size: 12px; padding: 6px 10px; border-radius: 6px; background: rgba(210,153,34,.12); border: 1px solid rgba(210,153,34,.45); }
+.cs-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.cs-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #6e7681; }
+.cs-dot.online { background: #3fb950; } .cs-dot.offline { background: #d29922; }
+.cs-enroll { margin-top: 18px; padding: 14px; border-radius: 8px; border: 1px dashed var(--border, #2a3140); }
+.cs-enroll ol { margin: 8px 0 12px 18px; padding: 0; line-height: 1.6; }
+.cs-enroll code { font-family: ui-monospace, monospace; }
+.cs-enroll-form { display: flex; gap: 8px; }
+.cs-enroll-form input { flex: 1; }
+[hidden] { display: none !important; }

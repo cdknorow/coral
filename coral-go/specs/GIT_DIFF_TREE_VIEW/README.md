@@ -199,10 +199,10 @@ Indexed on `session_id` and `agent_name`. `ReplaceChangedFiles` does a DELETE + 
 |------|------|
 | `internal/server/routes/sessions.go` | All backend endpoints (Files, RefreshFiles, Diff, FileContent, FileOriginal) |
 | `internal/store/git.go` | SQLite storage for changed files (`ChangedFile`, `GetChangedFiles`, `ReplaceChangedFiles`) |
-| `internal/server/frontend/static/changed_files.js` | Frontend: file list rendering, inline preview pane, CodeMirror integration |
-| `internal/server/frontend/static/css/agentic.css` | Styles for file list and preview pane |
-| `internal/server/frontend/static/vendor/codemirror/codemirror-bundle.js` | Self-contained CodeMirror 6 bundle |
-| `internal/server/frontend/templates/includes/views/live_session.html` | HTML structure for the agentic sidebar (files tab) |
+| `pkg/frontend/static/changed_files.js` | Frontend: file list rendering, inline preview pane, CodeMirror integration |
+| `pkg/frontend/static/css/agentic.css` | Styles for file list and preview pane |
+| `pkg/frontend/static/vendor/codemirror/codemirror-bundle.js` | Self-contained CodeMirror 6 bundle |
+| `pkg/frontend/templates/includes/views/live_session.html` | HTML structure for the agentic sidebar (files tab) |
 
 ## Known Issues
 

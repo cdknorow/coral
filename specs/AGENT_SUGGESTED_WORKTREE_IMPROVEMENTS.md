@@ -35,7 +35,7 @@ Evidence currently available:
   dependency guidance disabled, with only a queued-assignment custom rule. Do not
   infer one board's workflow contract from the other.
 - `internal/server/routes/system.go:145-157` serves the Go prompt constants.
-  `internal/server/frontend/static/modals.js:3490-3503` contains a shorter
+  `pkg/frontend/static/modals.js:3490-3503` contains a shorter
   fallback path used if the defaults endpoint fails; it now reports unavailable
   defaults instead of displaying or persisting stale guidance.
 
@@ -279,6 +279,6 @@ spec does not duplicate a URI that was not returned in the task result.
 - `coral-go/internal/board/completion_review.go:41-120`
 - `coral-go/internal/board/working_mode.go:12-77`
 - `coral-go/internal/server/routes/system.go:145-157`
-- `coral-go/internal/server/frontend/static/modals.js:3486-3514`
-- `coral-go/internal/server/frontend/static/team_working_mode.js:42-60,120-130`
+- `coral-go/pkg/frontend/static/modals.js:3486-3514`
+- `coral-go/pkg/frontend/static/team_working_mode.js:42-60,120-130`
 - `coral-go/agent_docs/task-workflows.md:1-18,80-100,143-173,203-224,315-365`

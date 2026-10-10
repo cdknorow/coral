@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Connect a server to Coral Hub</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/variables.css">
+    <link rel="stylesheet" href="/static/css/cloud.css">
+    <script src="/static/theme_init.js"></script>
+</head>
+<body class="cloud-page">
+    <main class="cloud-card">
+        <h1>Connect a server</h1>
+        <section id="entry">
+            <p>On the machine you want to connect, open Coral → Settings → <strong>Connect to Coral Hub</strong>. It shows a code like <code>ABCD-2345</code>. Enter it here.</p>
+            <form id="entry-form" autocomplete="off">
+                <label for="code">Code</label>
+                <input id="code" class="cloud-code" type="text" inputmode="text" autocomplete="off" maxlength="9" spellcheck="false" placeholder="XXXX-XXXX" required>
+                <button class="cloud-btn primary" type="submit">Continue</button>
+            </form>
+        </section>
+        <section id="review" hidden>
+            <p>A machine is asking to connect to your account. Check that this is you:</p>
+            <dl id="facts" class="cloud-facts"></dl>
+            <div class="cloud-warn"><strong>Only approve a machine you control.</strong> Approving lets that machine appear in your account, and lets you (and anyone signed in as you) open its terminals and files from the web.</div>
+            <label for="label">Name for this server</label>
+            <input id="label" type="text" maxlength="100" autocomplete="off">
+            <button id="approve" class="cloud-btn primary" type="button">Approve this machine</button>
+            <button id="cancel" class="cloud-btn" type="button">Cancel</button>
+        </section>
+        <section id="done" hidden>
+            <p><strong>Connected.</strong> Your server will show up in the dashboard within a few seconds.</p>
+            <a class="cloud-btn primary" href="/">Open the dashboard</a>
+        </section>
+        <div id="status" class="cloud-status" role="status" aria-live="polite"></div>
+    </main>
+    <script type="module" src="/static/cloud/enroll.js"></script>
+</body>
+</html>

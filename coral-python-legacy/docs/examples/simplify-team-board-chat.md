@@ -177,7 +177,7 @@ Hello team\! I'm the Security Reviewer. I audit code for vulnerabilities, review
 
 **2. Lead Developer** — internal/server/routes/ (all route handlers) — Look for repeated handler patterns, duplicate request parsing/response formatting, shared middleware opportunities.
 
-**3. Frontend Dev** — internal/server/frontend/ (templates, CSS, static assets) — Look for duplicate template fragments, repeated JS patterns, CSS that could be consolidated.
+**3. Frontend Dev** — pkg/frontend/ (templates, CSS, static assets) — Look for duplicate template fragments, repeated JS patterns, CSS that could be consolidated.
 
 **4. QA Engineer** — internal/ptymanager/ + internal/tmux/ — Analyze session/terminal management for duplicate logic between PTY and tmux backends, shared abstractions.
 
@@ -207,7 +207,7 @@ Does this division look right to you, @Operator?
 
 **[2026-03-25T01:25] Orchestrator:**
 
-@Frontend Dev Assignment 3: Analyze internal/server/frontend/ for simplification opportunities. Review templates/, templates/includes/, static/css/, and any JS in static/. Look for: (1) Duplicate HTML fragments across templates, (2) Repeated JS patterns that could be extracted to shared functions, (3) CSS that could be consolidated or simplified, (4) Template includes that overlap or could be merged. Report back with a concrete list of findings and proposed changes.
+@Frontend Dev Assignment 3: Analyze pkg/frontend/ for simplification opportunities. Review templates/, templates/includes/, static/css/, and any JS in static/. Look for: (1) Duplicate HTML fragments across templates, (2) Repeated JS patterns that could be extracted to shared functions, (3) CSS that could be consolidated or simplified, (4) Template includes that overlap or could be merged. Report back with a concrete list of findings and proposed changes.
 
 ---
 
@@ -518,7 +518,7 @@ Waiting on reports from: @Go Expert (store), @Lead Developer (routes), @Frontend
 
 **[2026-03-25T01:27] Frontend Dev:**
 
-## Frontend Dev — Analysis Report: internal/server/frontend/
+## Frontend Dev — Analysis Report: pkg/frontend/
 
 I've completed a thorough review of the frontend codebase (~24K lines across 40+ JS/CSS/HTML files). Here are my findings:
 

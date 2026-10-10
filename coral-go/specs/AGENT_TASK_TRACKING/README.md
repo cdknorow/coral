@@ -245,7 +245,7 @@ Frontend Dev:    5 tasks completed, $0.12 total
 | `internal/store/sessions.go` | New agent_tasks table, migrations, CRUD methods |
 | `internal/server/routes/sessions.go` | POST endpoint for task events, GET for queries |
 | `internal/server/server.go` | Register new routes |
-| `internal/server/frontend/static/sessions.js` | Task list UI in session detail view |
+| `pkg/frontend/static/sessions.js` | Task list UI in session detail view |
 
 ## Edge Cases
 

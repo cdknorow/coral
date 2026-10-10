@@ -172,9 +172,9 @@ Verify with deterministic fixtures and isolated local apps, one browser at a tim
 
 ## Existing integration points
 
-- `coral-go/internal/server/frontend/static/team_availability.js`: popup shell and Team view navigation.
-- `coral-go/internal/server/frontend/static/agent_ui.js`: panel UI and interaction patterns.
-- `coral-go/internal/server/frontend/static/live_chat.js`: Coral notification presentation.
+- `coral-go/pkg/frontend/static/team_availability.js`: popup shell and Team view navigation.
+- `coral-go/pkg/frontend/static/agent_ui.js`: panel UI and interaction patterns.
+- `coral-go/pkg/frontend/static/live_chat.js`: Coral notification presentation.
 - `coral-go/internal/server/routes/agent_ui_request.go`: durable request/delivery semantics to reuse where applicable.
 - `coral-go/internal/ptymanager/` and `coral-go/internal/tmux/prompt.go`: guarded agent notification transport.
 - `specs/AGENT_GENERATED_UI.md`: existing panel specification; browser review extends its presentation options.

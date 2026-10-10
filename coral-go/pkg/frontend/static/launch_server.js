@@ -19,6 +19,8 @@ import { LOCAL_SERVER, normServer, isLocalServer, serverFetch, splitKey } from '
  *  the reason shown next to it in the dropdown. */
 export const UNUSABLE_STATUS_REASON = {
     unreachable: 'offline',
+    offline: 'offline',
+    stale: 'offline',
     unauthorized: 'API key rejected',
     key_unreadable: 'API key unreadable',
 };
@@ -35,7 +37,8 @@ export function pickerVisible(hub, servers) {
 
 /** Dropdown entries: Local first, then each remote, unusable ones disabled with a reason. */
 export function pickerOptions(servers) {
-    const opts = [{ id: LOCAL_SERVER, label: 'Local (this machine)', disabled: false, reason: '' }];
+    // The Cloud Hub runs no agents of its own: only the user's servers are targets.
+    const opts = state.cloud === true ? [] : [{ id: LOCAL_SERVER, label: 'Local (this machine)', disabled: false, reason: '' }];
     for (const s of remoteServers(servers)) {
         const reason = UNUSABLE_STATUS_REASON[s.status] || '';
         const name = s.label || s.id;
@@ -55,7 +58,7 @@ export function serverLabel(server, servers) {
 /** Why `server` cannot be launched on right now, or "" when it can. */
 export function launchBlockReason(server, hub, servers) {
     const id = normServer(server);
-    if (id === LOCAL_SERVER) return '';
+    if (id === LOCAL_SERVER) return state.cloud === true ? 'The Cloud Hub has no local agents. Choose one of your servers.' : '';
     if (hub !== true) return 'Hub mode is off; remote servers are unavailable.';
     const hit = remoteServers(servers).find(s => s.id === id);
     if (!hit) return `Server "${id}" is not registered.`;
@@ -66,7 +69,12 @@ export function launchBlockReason(server, hub, servers) {
 /** Keep a stored selection only while it is still a usable choice. */
 export function coerceSelection(server, hub, servers) {
     const id = normServer(server);
-    return launchBlockReason(id, hub, servers) ? LOCAL_SERVER : id;
+    if (!launchBlockReason(id, hub, servers)) return id;
+    if (state.cloud === true) { // no Local to fall back to: first usable server
+        const ok = remoteServers(servers).find(s => !launchBlockReason(s.id, hub, servers));
+        if (ok) return ok.id;
+    }
+    return LOCAL_SERVER;
 }
 
 /** localStorage key of the recent-directories list of `server`. Local keeps the

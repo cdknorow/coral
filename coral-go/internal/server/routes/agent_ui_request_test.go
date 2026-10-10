@@ -157,7 +157,7 @@ func TestUIRequestDeliversVerbatimRequestAsCoralNotification(t *testing.T) {
 }
 
 // The notification must really be classified as a Coral notice by the chat
-// code (internal/server/frontend/static/live_chat.js), not just look right.
+// code (pkg/frontend/static/live_chat.js), not just look right.
 func TestUIRequestNotificationIsClassifiedAsCoralNoticeByRealChatCode(t *testing.T) {
 	node, err := exec.LookPath("node")
 	if err != nil {

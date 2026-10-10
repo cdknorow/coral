@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const source = fs.readFileSync(path.join(__dirname, '../../coral-go/internal/server/frontend/static/tasks.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../../coral-go/pkg/frontend/static/tasks.js'), 'utf8');
 const start = source.indexOf('function _taskDetailHtml(');
 const end = source.indexOf('\nlet _editOriginalTask', start);
 const escape = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');

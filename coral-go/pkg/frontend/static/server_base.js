@@ -172,8 +172,35 @@ export function contextServer() {
 
 let _hubPromise = null;
 
-/** Read /api/health once and cache the flag in state.hub. Safe to call often. */
+/* ── Boot data ─────────────────────────────────────────────────────────
+ * The server renders <script type="application/json" id="coral-boot">{"mode":...}</script>.
+ * It is data, not code, so it works under a CSP without 'unsafe-inline'.
+ * mode "cloud" = the Cloud Hub (account-owned servers, no local agents);
+ * anything else = a standalone Coral or a self-hosted hub. */
+
+let _boot = null;
+
+/** Parsed boot data ({} when absent or malformed). */
+export function bootConfig() {
+    if (_boot) return _boot;
+    _boot = {};
+    try {
+        const el = typeof document !== 'undefined' ? document.getElementById('coral-boot') : null;
+        const v = el ? JSON.parse(el.textContent) : null;
+        if (v && typeof v === 'object') _boot = v;
+    } catch { /* keep {} */ }
+    return _boot;
+}
+
+/** True on the Cloud Hub. */
+export function isCloud() {
+    return bootConfig().mode === 'cloud';
+}
+
+/** Read /api/health once and cache the flag in state.hub. Safe to call often.
+ *  The Cloud Hub is always a hub; it does not need /api/health to say so. */
 export function initHub() {
+    if (isCloud()) { state.hub = true; state.cloud = true; return Promise.resolve(true); }
     if (!_hubPromise) {
         _hubPromise = fetch('/api/health')
             .then(r => (r.ok ? r.json() : {}))

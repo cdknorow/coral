@@ -77,14 +77,7 @@ type Server struct {
 var remoteAgentHubConfig background.RemoteAgentHubConfig
 
 // templateData is passed to Go templates during rendering.
-type templateData struct {
-	CoralRoot       string
-	EntryMode       string
-	TargetSessionID string
-	// TargetServer is the registered remote the popout agent lives on; empty
-	// means the hub itself (legacy /agent/{id}).
-	TargetServer string
-}
+type templateData = frontend.PageData
 
 // New creates a Server with all routes registered.
 // If backend is nil, the server will use tmux-based terminal management.
@@ -146,17 +139,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	}
 
 	// Parse Go templates from embedded FS
-	indexTmpl, err := template.ParseFS(templateFS,
-		"templates/index.html",
-		"templates/includes/sidebar.html",
-		"templates/includes/modals.html",
-		"templates/includes/views/live_session.html",
-		"templates/includes/views/history_session.html",
-		"templates/includes/views/message_board.html",
-		"templates/includes/views/workflows.html",
-		"templates/includes/views/docs.html",
-		"templates/includes/views/cost_dashboard.html",
-	)
+	indexTmpl, err := frontend.ParseIndex()
 	if err != nil {
 		log.Printf("Warning: failed to parse index template: %v (serving placeholder)", err)
 	}

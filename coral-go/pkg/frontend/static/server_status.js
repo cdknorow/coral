@@ -14,6 +14,8 @@ export const STATUS_META = {
     unauthorized:     { label: 'Key rejected',     cls: 'unauthorized', hint: 'The server rejected the stored API key. Edit the server and enter a new key.' },
     key_unreadable:   { label: 'Key unreadable',   cls: 'unauthorized', hint: 'The stored API key cannot be decrypted on this hub. Edit the server and re-enter the key.' },
     version_mismatch: { label: 'Version mismatch', cls: 'unreachable',  hint: 'This server runs a version older than the hub supports.' },
+    offline:          { label: 'Offline',          cls: 'unreachable',  hint: 'This server is not connected to the hub. Agents shown are the last known state; it reconnects by itself when its network is back.' },
+    stale:            { label: 'Offline',          cls: 'unreachable',  hint: 'This server is not connected to the hub. Agents shown are the last known state; it reconnects by itself when its network is back.' },
     unknown:          { label: 'Unknown',          cls: 'unknown',      hint: 'Not checked yet' },
 };
 
@@ -95,7 +97,7 @@ export function serverBadgeHtml(id, extraClass) {
 /** Strip listing every server (local first) with its status. '' without remotes. */
 export function serverStripHtml() {
     if (!showServerLabels()) return '';
-    const rows = [serverEntry(LOCAL_SERVER), ...remoteServers()].map(e => {
+    const rows = [...(state.cloud === true ? [] : [serverEntry(LOCAL_SERVER)]), ...remoteServers()].map(e => {
         const m = statusMeta(e.status);
         const down = e.status !== 'online' && e.id !== LOCAL_SERVER;
         return `<li class="server-strip-item server-${m.cls}" data-server="${escHtml(e.id)}" title="${escHtml(serverHoverText(e.id))}">`

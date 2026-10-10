@@ -16,7 +16,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-STATIC_DIR="$SCRIPT_DIR/../coral-go/internal/server/frontend/static"
+STATIC_DIR="$SCRIPT_DIR/../coral-go/pkg/frontend/static"
 SRC_DIR="$STATIC_DIR/_src"
 
 # ── Restore mode ─────────────────────────────────────────────

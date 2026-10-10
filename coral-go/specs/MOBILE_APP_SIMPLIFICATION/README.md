@@ -18,11 +18,11 @@ The current mobile implementation is not a distinct product surface. It hides or
 
 Observed in:
 
-- `internal/server/frontend/static/mobile.js`
-- `internal/server/frontend/templates/index.html`
-- `internal/server/frontend/templates/includes/views/live_session.html`
-- `internal/server/frontend/templates/includes/views/message_board.html`
-- `internal/server/frontend/templates/includes/views/history_session.html`
+- `pkg/frontend/static/mobile.js`
+- `pkg/frontend/templates/index.html`
+- `pkg/frontend/templates/includes/views/live_session.html`
+- `pkg/frontend/templates/includes/views/message_board.html`
+- `pkg/frontend/templates/includes/views/history_session.html`
 
 Evidence:
 

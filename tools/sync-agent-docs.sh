@@ -7,7 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SRC="$SCRIPT_DIR/../coral-go/agent_docs"
-DST="$SCRIPT_DIR/../coral-go/internal/server/frontend/static/agent_docs"
+DST="$SCRIPT_DIR/../coral-go/pkg/frontend/static/agent_docs"
 
 if [ ! -d "$SRC" ]; then
     echo "Error: agent_docs not found at $SRC"

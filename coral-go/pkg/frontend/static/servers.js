@@ -7,7 +7,7 @@
  * logged or kept after the request completes. */
 
 import { state } from './state.js';
-import { isHub, initHub } from './server_base.js';
+import { isHub, initHub, isCloud } from './server_base.js';
 import { showToast } from './utils.js';
 import {
     statusMeta, escHtml, describeServerError, formatLastSeen, isValidServerId,
@@ -51,6 +51,7 @@ function modalEl() {
 }
 
 export async function showServersModal() {
+    if (isCloud()) { const m = await import('./cloud_servers.js'); return m.showCloudServers(); }
     if (!isHub()) return;   // hub features are off: no UI, no /api/servers calls
     const m = modalEl();
     _editing = null; _draft = null; _confirmDelete = null; _formError = ''; _loadError = '';

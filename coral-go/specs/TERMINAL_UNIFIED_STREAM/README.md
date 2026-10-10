@@ -206,7 +206,7 @@ Phases 3-5 are "when it feels solid" — no forced timeline.
 
 **Delete:**
 - `internal/server/routes/websocket.go:wsTerminalPolling` and its helpers (~300 lines)
-- `internal/server/frontend/static/xterm_renderer.js`: `terminal_update` branch, `_pendingContent`, wheel-scroll pause, dual-cursor toggle (~150 lines)
+- `pkg/frontend/static/xterm_renderer.js`: `terminal_update` branch, `_pendingContent`, wheel-scroll pause, dual-cursor toggle (~150 lines)
 - `specs/TMUX_POLLING_SPEC/` — superseded
 - `specs/XTERM_FLICKER/` cursor-positioning section — obsolete
 
@@ -215,8 +215,8 @@ Phases 3-5 are "when it feels solid" — no forced timeline.
 - `internal/ptymanager/tmux_backend.go` — replace `CaptureContent` + nil-`Subscribe` with real `Attach`/`Replay` via pipe-pane tail
 - `internal/ptymanager/manager.go` — align `PTYBackend.Attach` signature with new interface (mostly renames)
 - `internal/server/routes/websocket.go:wsTerminalStreaming` — becomes the only handler; prefix `Replay` output with `\x1b[2J\x1b[3J\x1b[H` for tmux backend too
-- `internal/server/frontend/static/xterm_renderer.js` — collapse handlers
-- `internal/server/frontend/static/agent_docs/websockets.md` — document single `stream` message
+- `pkg/frontend/static/xterm_renderer.js` — collapse handlers
+- `pkg/frontend/static/agent_docs/websockets.md` — document single `stream` message
 
 **Add:**
 - Pipe-pane log tail goroutine per tmux session (one producer, N subscribers fan-out)

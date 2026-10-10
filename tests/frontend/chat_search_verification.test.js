@@ -76,7 +76,7 @@ globalThis.document = {
     }
 };
 
-const { highlightExcerpt, searchChats } = await import('../../coral-go/internal/server/frontend/static/chat_search.js');
+const { highlightExcerpt, searchChats } = await import('../../coral-go/pkg/frontend/static/chat_search.js');
 
 console.log('--- Beginning Chat Search Frontend Independent Verification ---');
 

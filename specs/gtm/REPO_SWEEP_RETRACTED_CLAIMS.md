@@ -1,7 +1,7 @@
 # Repo-wide sweep: retracted claims surviving outside the README
 
 **Task:** #37 · **Owner:** Content & Launch Producer · 2026-08-28
-**Scope:** `coral-go/agent_docs/`, `coral-go/docs/`, `coral-go/internal/server/frontend/`,
+**Scope:** `coral-go/agent_docs/`, `coral-go/docs/`, `coral-go/pkg/frontend/`,
 the Go-served activation page, `CLAUDE.md`, `Casks/`, `installers/`, `tools/`.
 **Excluded:** `coral-python-legacy/` (retired), `specs/gtm/` (my own never-say lists, which
 quote the banned phrasings deliberately).
@@ -84,7 +84,7 @@ user-facing extensibility · `pip install` / `agent-coral` / PyPI / FastAPI · `
 `Coral.dmg` or any wrong asset filename · `cdknorow.github.io/coral` · "doesn't call any AI
 APIs" · "free tier" / paid-gate language · "survives reboots" or persistence-across-restart.
 
-**`coral-go/internal/server/frontend/`** — no retracted claims found. The team-creation modal
+**`coral-go/pkg/frontend/`** — no retracted claims found. The team-creation modal
 copy (`modals.html:243`) is already **correct**: *"Create an isolated git worktree so the team
 works on a separate branch."*
 
