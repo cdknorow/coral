@@ -71,7 +71,8 @@ func (c SessionConfig) yamux() *yamux.Config {
 func (c SessionConfig) wsReadLimit() int64 { return int64(c.WindowSize) + 4096 }
 
 // AuthFunc maps a server token to the identity it belongs to. Returning an
-// error rejects the connection; the client only ever sees "unauthorized".
+// error rejects the connection; the client only ever sees "unauthorized", except
+// for ErrRetryLater which it sees as a temporary refusal.
 type AuthFunc func(ctx context.Context, token string) (identity any, err error)
 
 // Session is the hub's end of a tunnel.
@@ -113,6 +114,9 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	// Auth comes before anything else, including version negotiation, so an
 	// unauthenticated peer learns nothing about the hub.
 	identity, err := auth(hctx, hello.ServerToken)
+	if errors.Is(err, ErrRetryLater) {
+		return reject(CodeRetryLater, ErrRetryLater)
+	}
 	if err != nil {
 		return reject(CodeUnauthorized, ErrUnauthorized)
 	}

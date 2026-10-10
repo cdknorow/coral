@@ -711,3 +711,40 @@ func TestNoGoroutineLeakAfterManyStreams(t *testing.T) {
 		"goroutines before=%d after=%d", before, goroutines())
 	assert.Equal(t, 0, sess.NumStreams())
 }
+
+func TestRetryLaterIsNotPermanent(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		AcceptHTTP(w, r, func(context.Context, string) (any, error) {
+			if calls.Add(1) < 3 {
+				return nil, ErrRetryLater
+			}
+			return "id", nil
+		}, fastCfg())
+	}))
+	defer srv.Close()
+	url := "ws" + strings.TrimPrefix(srv.URL, "http")
+	_, err := Dial(context.Background(), url, "t", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true})
+	assert.ErrorIs(t, err, ErrRetryLater)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	connected := make(chan struct{}, 1)
+	go Run(ctx, url, "t", ClientOptions{
+		Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true, SessionConfig: fastCfg(),
+		Backoff: Backoff{Min: 10 * time.Millisecond, Max: 50 * time.Millisecond},
+		OnState: func(c bool, _ error) {
+			if c {
+				select {
+				case connected <- struct{}{}:
+				default:
+				}
+			}
+		},
+	})
+	select {
+	case <-connected:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run gave up on a retry_later refusal")
+	}
+}

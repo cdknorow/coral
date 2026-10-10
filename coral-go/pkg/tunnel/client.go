@@ -136,6 +136,8 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 		return nil, ErrUnauthorized
 	case w.Error == CodeUnsupportedVersion:
 		return nil, ErrUnsupportedVersion
+	case w.Error == CodeRetryLater:
+		return nil, ErrRetryLater
 	case w.Error != "":
 		return nil, fmt.Errorf("%w: %s", ErrBadHandshake, w.Error)
 	case w.AcceptedVersion < MinProtocolVersion || w.AcceptedVersion > ProtocolVersion:

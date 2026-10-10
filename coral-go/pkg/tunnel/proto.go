@@ -41,6 +41,10 @@ const (
 	CodeUnauthorized       = "unauthorized"
 	CodeUnsupportedVersion = "unsupported_version"
 	CodeBadHandshake       = "bad_handshake"
+	// CodeRetryLater tells the connector the hub cannot take it right now (rate
+	// limit, per-account tunnel cap, database trouble). Unlike unauthorized, it
+	// is not permanent: the connector keeps retrying with backoff.
+	CodeRetryLater = "retry_later"
 )
 
 // Stream rejection codes carried in ResponseHeader.ErrorCode.
@@ -69,6 +73,7 @@ var (
 	ErrUnauthorized       = errors.New("tunnel: unauthorized")
 	ErrUnsupportedVersion = errors.New("tunnel: unsupported protocol version")
 	ErrBadHandshake       = errors.New("tunnel: bad handshake")
+	ErrRetryLater         = errors.New("tunnel: hub busy, retry later")
 	ErrSessionClosed      = errors.New("tunnel: session closed")
 	ErrTooManyStreams     = errors.New("tunnel: too many concurrent streams")
 	ErrHeaderTooLarge     = errors.New("tunnel: header too large")
