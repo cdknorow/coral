@@ -3,6 +3,7 @@ package tunnel
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -176,14 +177,34 @@ type PathRules struct {
 	Gate  func(method, decodedPath string) bool
 }
 
-// Allow reports whether the request may reach the local API.
+// NewPathRules builds PathRules and validates them: a prefix rule must end in "/" so
+// that "/api/session/" can never match "/api/sessions-admin", and every rule must
+// start with "/". Exact rules are not constrained.
+func NewPathRules(rules []PathRule, gate func(method, decodedPath string) bool) (PathRules, error) {
+	for _, r := range rules {
+		if !strings.HasPrefix(r.Prefix, "/") {
+			return PathRules{}, fmt.Errorf("tunnel: path rule %q must start with /", r.Prefix)
+		}
+		if !r.Exact && !strings.HasSuffix(r.Prefix, "/") {
+			return PathRules{}, fmt.Errorf("tunnel: prefix rule %q must end in / (use Exact for a single route)", r.Prefix)
+		}
+	}
+	return PathRules{Rules: rules, Gate: gate}, nil
+}
+
+// Allow reports whether the request may reach the local API. A prefix rule that does
+// not end in "/" matches nothing (fail closed), even if it was not built with NewPathRules.
 func (p PathRules) Allow(method, decodedPath string) bool {
 	if !allowedMethods[method] {
 		return false
 	}
 	ok := false
 	for _, r := range p.Rules {
-		if r.Exact && decodedPath != r.Prefix || !r.Exact && !strings.HasPrefix(decodedPath, r.Prefix) {
+		if r.Exact {
+			if decodedPath != r.Prefix {
+				continue
+			}
+		} else if !strings.HasSuffix(r.Prefix, "/") || !strings.HasPrefix(decodedPath, r.Prefix) {
 			continue
 		}
 		methods := r.Methods
@@ -220,6 +241,15 @@ type LocalHandler struct {
 	// connector that forgets to configure it exposes nothing. Authorize is only
 	// applied to requests AllowPath accepted. See PathRules.
 	AllowPath func(method, decodedPath string) bool
+	// AllowRequest is the query-aware form of AllowPath (the query string matters:
+	// file routes must carry project-relative paths). When set it is used instead of
+	// AllowPath. See AllowRequest in routes.go for the shared classified table.
+	AllowRequest func(method, decodedPath, rawQuery string) bool
+	// MaxMode, when set, gates client-to-server WebSocket frames by the mode in force
+	// at the moment each frame arrives: viewing a terminal needs view, typing or
+	// resizing needs interact. A frame above the mode closes the stream (policy
+	// violation), so lowering the mode stops input on streams that are already open.
+	MaxMode func() Mode
 	// MaxRequestBody caps uploads, default 256 MiB.
 	MaxRequestBody int64
 	// WSReadLimit caps one WebSocket message, default DefaultWSReadLimit.
@@ -279,7 +309,16 @@ func (l *LocalHandler) checkRequest(h Header) (decoded string, ok bool) {
 	if h.Kind == KindWS {
 		method = http.MethodGet
 	}
-	if l.AllowPath == nil || !l.AllowPath(method, decoded) {
+	switch {
+	case l.AllowRequest != nil:
+		if !l.AllowRequest(method, decoded, h.Query) {
+			return "", false
+		}
+	case l.AllowPath != nil:
+		if !l.AllowPath(method, decoded) {
+			return "", false
+		}
+	default:
 		return "", false // default deny
 	}
 	return decoded, true
@@ -434,7 +473,11 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		return
 	}
 	down.SetReadLimit(lim)
-	pumpWS(ctx, up, down)
+	var gate func([]byte) bool
+	if l.MaxMode != nil {
+		gate = func(data []byte) bool { return FrameTier(dec, data) <= currentMode(l.MaxMode) }
+	}
+	pumpWS(ctx, up, down, gate)
 }
 
 type wsEnd interface {
@@ -443,17 +486,19 @@ type wsEnd interface {
 	Close(websocket.StatusCode, string) error
 }
 
-func pumpWS(ctx context.Context, a, b wsEnd) {
+// pumpWS copies frames both ways. gate, when non-nil, vets frames travelling from b
+// (the hub side) to a (the local server); a refused frame closes both ends.
+func pumpWS(ctx context.Context, a, b wsEnd, gate func([]byte) bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pump(ctx, cancel, a, b) }()
-	go func() { defer wg.Done(); pump(ctx, cancel, b, a) }()
+	go func() { defer wg.Done(); pump(ctx, cancel, a, b, nil) }()
+	go func() { defer wg.Done(); pump(ctx, cancel, b, a, gate) }()
 	wg.Wait()
 }
 
-func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd) {
+func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd, gate func([]byte) bool) {
 	defer cancel()
 	for {
 		typ, data, err := src.Read(ctx)
@@ -470,6 +515,11 @@ func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd) {
 				}
 				dst.Close(code, reason)
 			}
+			return
+		}
+		if gate != nil && !gate(data) {
+			src.Close(websocket.StatusPolicyViolation, "not allowed in this access mode")
+			dst.Close(websocket.StatusPolicyViolation, "not allowed in this access mode")
 			return
 		}
 		if err := dst.Write(ctx, typ, data); err != nil {

@@ -40,11 +40,11 @@ func TestPathRulesAllowlistAndGate(t *testing.T) {
 	launchOn := false
 	rules := PathRules{
 		Rules: []PathRule{
-			{Prefix: "/api/agents"}, // GET/HEAD only
-			{Prefix: "/api/sessions/", Methods: []string{"GET", "POST"}}, // explicit methods
-			{Prefix: "/api/health", Exact: true},                         // exact
-			{Prefix: "/api/launch", Methods: []string{"POST"}},           // gated below
-			{Prefix: "/ws/terminal/"},                                    // WS counts as GET
+			{Prefix: "/api/agents", Exact: true}, {Prefix: "/api/agents/"}, // GET/HEAD only
+			{Prefix: "/api/sessions/", Methods: []string{"GET", "POST"}},    // explicit methods
+			{Prefix: "/api/health", Exact: true},                            // exact
+			{Prefix: "/api/launch", Exact: true, Methods: []string{"POST"}}, // gated below
+			{Prefix: "/ws/terminal/"},                                       // WS counts as GET
 		},
 		Gate: func(method, p string) bool { return !strings.HasPrefix(p, "/api/launch") || launchOn },
 	}
@@ -72,7 +72,7 @@ func TestPathRulesAllowlistAndGate(t *testing.T) {
 func TestPathRulesEndToEndDeniedPathsNeverAuthorize(t *testing.T) {
 	hub := newHub(t, fastCfg())
 	var hits, authorized atomic.Int32
-	rules := PathRules{Rules: []PathRule{{Prefix: "/api/agents"}}}
+	rules := PathRules{Rules: []PathRule{{Prefix: "/api/agents/"}}}
 	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		w.Write([]byte(r.Header.Get("Authorization")))
@@ -80,7 +80,7 @@ func TestPathRulesEndToEndDeniedPathsNeverAuthorize(t *testing.T) {
 		l.AllowPath = rules.Allow
 		l.Authorize = func(h http.Header) { authorized.Add(1); h.Set("Authorization", "Bearer local-key") }
 	})
-	resp := do(t, sess, "GET", "/api/agents", "", nil, nil)
+	resp := do(t, sess, "GET", "/api/agents/list", "", nil, nil)
 	resp.Body.Close()
 	assert.Equal(t, int32(1), hits.Load())
 	assert.Equal(t, int32(1), authorized.Load())

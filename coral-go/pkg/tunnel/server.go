@@ -83,6 +83,7 @@ type Session struct {
 	identity  any
 	version   int
 	coralVer  string
+	localMode Mode
 	active    atomic.Int32
 	closeOnce sync.Once
 }
@@ -142,7 +143,7 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		_ = nc.Close()
 		return nil, err
 	}
-	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion}
+	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode)}
 	go s.rejectInbound()
 	go func() { <-ys.CloseChan(); s.Close() }()
 	return s, nil
@@ -180,6 +181,18 @@ func (s *Session) Identity() any { return s.identity }
 
 // Version is the negotiated protocol version.
 func (s *Session) Version() int { return s.version }
+
+// LocalMode is the maximum access mode the connector reported. It is only a display
+// hint: an unknown or missing value is view, and the hub must never treat it as
+// permission (the connector enforces its own limit).
+func (s *Session) LocalMode() Mode { return s.localMode }
+
+func parseLocalMode(v string) Mode {
+	if m, ok := ParseMode(v); ok {
+		return m
+	}
+	return TierView
+}
 
 // CoralVersion is what the connector reported in its Hello.
 func (s *Session) CoralVersion() string { return s.coralVer }

@@ -81,6 +81,9 @@ var legacyOrigins = []string{"localhost", "localhost:*", "127.0.0.1", "127.0.0.1
 // whether an Origin header is required. ok is false when the upgrade must be
 // refused outright (a tunnel target with no configured origin).
 func (h *Handler) originPatterns(r *http.Request, t Target) (patterns []string, required, ok bool) {
+	if h.optErr != nil {
+		return nil, true, false
+	}
 	if len(h.opts.AllowedOrigins) > 0 {
 		return h.opts.AllowedOrigins, true, true
 	}

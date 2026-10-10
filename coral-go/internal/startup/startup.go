@@ -26,11 +26,13 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server"
+	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -668,6 +670,10 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		return agents, nil
 	}
 
+	// Cloud Hub connector. Off unless --cloud-url / CORAL_CLOUD_URL is set; when off
+	// it opens no outbound connection and starts no goroutine.
+	startCloudConnector(ctx, db, cfg, srv, sessStore)
+
 	// Multi-server hub: remote agent poller and feed relay.
 	safeGo(ctx, "remote_agents", func() { srv.RunRemoteAgents(ctx) })
 
@@ -781,4 +787,35 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	scheduler.SetWorkflowRunner(wfRunner, wfStore)
 
 	log.Printf("Started 10 background services + workflow runner (git poller, indexer, idle detector, webhook dispatcher, scheduler, board notifier, remote board poller, batch summarizer, session reconciler, token poller)")
+}
+
+// startCloudConnector wires the optional Cloud Hub connector. A bad --cloud-url is
+// logged and ignored: the connector stays off and the server starts normally.
+// cloudAttacher is the part of *server.Server the connector needs.
+type cloudAttacher interface{ SetCloud(*cloud.Manager) }
+
+func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, srv cloudAttacher, ss *store.SessionStore) {
+	hubURL := ""
+	if strings.TrimSpace(cfg.CloudURL) != "" {
+		u, err := cloud.NormalizeHubURL(cfg.CloudURL)
+		if err != nil {
+			log.Printf("[CLOUD] ignoring --cloud-url: %v", err)
+		} else {
+			hubURL = u
+		}
+	}
+	mgr := cloud.New(cloud.Options{
+		HubURL:       hubURL,
+		Store:        store.NewCloudStore(db, store.NewRemoteServerStore(db, cfg.CoralDir())),
+		LocalBaseURL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)),
+		MaxMode:      routes.MaxModeFromSettings(ss),
+		CoralVersion: config.Version,
+		Logger:       slog.Default(),
+	})
+	srv.SetCloud(mgr)
+	if hubURL == "" {
+		return
+	}
+	log.Printf("[CLOUD] connector enabled for %s (open Settings > Connect to Coral Hub to enroll)", hubURL)
+	safeGo(ctx, "cloud_connector", func() { mgr.Run(ctx) })
 }

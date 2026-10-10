@@ -18,6 +18,7 @@ import (
 type Handler struct {
 	resolver Resolver
 	opts     Options
+	optErr   error // invalid Options: every WebSocket upgrade is refused
 }
 
 // New returns a proxy Handler. Mount it with chi on a pattern containing a

@@ -592,6 +592,28 @@
                     <input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status">
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
+                <dt>Coral Hub</dt>
+                <dd id="settings-cloud">
+                    <div id="settings-cloud-status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
+                    <div id="settings-cloud-code" class="settings-cloud-code" hidden>
+                        <div>Open <a id="settings-cloud-link" target="_blank" rel="noopener noreferrer"></a> while signed in and enter this code:</div>
+                        <div id="settings-cloud-usercode" class="settings-mono-input settings-cloud-usercode"></div>
+                    </div>
+                    <div class="settings-cloud-actions">
+                        <button type="button" id="settings-cloud-connect" class="btn btn-small" hidden>Connect to Coral Hub</button>
+                        <button type="button" id="settings-cloud-disconnect" class="btn btn-small" hidden>Disconnect</button>
+                    </div>
+                    <div class="settings-cloud-mode" id="settings-cloud-mode-row" hidden>
+                        <label for="settings-cloud-max-mode">Most the hub may do on this computer</label>
+                        <select id="settings-cloud-max-mode" class="settings-select" aria-describedby="settings-cloud-mode-desc">
+                            <option value="view">View (default)</option>
+                            <option value="interact">Interact</option>
+                            <option value="launch">Launch</option>
+                        </select>
+                        <div id="settings-cloud-mode-desc" class="settings-hint"></div>
+                    </div>
+                    <div class="settings-hint">The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch lets them start new agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
+                </dd>
                 <dt>Database encryption</dt>
                 <dd>
                     <select id="settings-database-encryption" class="settings-select" aria-describedby="settings-database-encryption-status">

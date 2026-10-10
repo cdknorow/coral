@@ -54,6 +54,11 @@ type Config struct {
 	// set by the --hub flag or CORAL_HUB=1.
 	HubMode bool
 
+	// CloudURL is the Cloud Hub origin this server may connect to as a connector
+	// (--cloud-url or CORAL_CLOUD_URL). Empty (the default) means the connector is
+	// off and this server never opens an outbound connection to the cloud.
+	CloudURL string
+
 	// WebSocket
 	WSPollIntervalS int
 
@@ -87,6 +92,7 @@ func Load(dataDir ...string) *Config {
 	os.MkdirAll(coralDir, 0755)
 
 	cfg := &Config{
+		CloudURL:        strings.TrimSpace(os.Getenv("CORAL_CLOUD_URL")),
 		coralDir:        coralDir,
 		DBPath:          filepath.Join(coralDir, "sessions.db"),
 		DBBusyTimeoutMS: 5000,
