@@ -39,6 +39,8 @@ function fmtTime(ts) {
     let csrf = s.csrf;
     let code = '';
 
+    let nonce = '';
+
     async function preview(raw) {
         code = normalizeCode(raw);
         if (!CODE_RE.test(code)) { setStatus(status, 'Enter the code shown on your Coral server (XXXX-XXXX).', 'error'); return; }
@@ -46,15 +48,18 @@ function fmtTime(ts) {
         const r = await postJSON('/api/enroll/preview', { user_code: code }, csrf);
         if (r.status === 404) { setStatus(status, 'That code is not valid, has expired, or was already used. Start again on the Coral server.', 'error'); return; }
         if (r.status === 429) { setStatus(status, 'Too many attempts. Wait a few minutes and try again.', 'error'); return; }
-        if (!r.ok) { setStatus(status, 'Could not check the code. Try again.', 'error'); return; }
-        const d = r.data || {};
-        const dl = $('facts'); dl.replaceChildren();
-        fact(dl, 'Code', code);
-        fact(dl, 'Requested from IP', d.ip);
-        fact(dl, 'Machine name', d.hostname);
-        fact(dl, 'Coral version', d.coral_version);
-        fact(dl, 'Requested', fmtTime(d.requested_at));
-        $('label').value = (d.hostname || '').slice(0, 100);
+        if (!r.ok || !r.data || !r.data.nonce) { setStatus(status, 'Could not check the code. Try again.', 'error'); return; }
+        const q = r.data.requester || {};
+        nonce = r.data.nonce;
+        // What the hub itself observed goes first: it cannot be faked by the machine.
+        const seen = $('seen'); seen.replaceChildren();
+        fact(seen, 'Code', code);
+        fact(seen, 'From IP address', q.ip);
+        fact(seen, 'Requested', fmtTime(q.requested_at));
+        const rep = $('reported'); rep.replaceChildren();
+        fact(rep, 'Machine name', q.hostname);
+        fact(rep, 'Coral version', q.coral_version);
+        $('label').value = (q.hostname || '').slice(0, 100);
         entry.hidden = true; review.hidden = false;
         setStatus(status, '');
         $('label').focus();
@@ -62,16 +67,18 @@ function fmtTime(ts) {
 
     $('entry-form').addEventListener('submit', e => { e.preventDefault(); preview(codeInput.value); });
 
-    $('cancel').addEventListener('click', () => { review.hidden = true; entry.hidden = false; codeInput.value = ''; code = ''; setStatus(status, ''); });
+    $('cancel').addEventListener('click', () => { review.hidden = true; entry.hidden = false; codeInput.value = ''; code = ''; nonce = ''; setStatus(status, ''); });
 
     $('approve').addEventListener('click', async () => {
         const label = $('label').value.trim();
         if (!label) { setStatus(status, 'Give this server a name.', 'error'); return; }
         $('approve').disabled = true;
         setStatus(status, 'Approving…');
-        const r = await postJSON('/api/enroll/confirm', { user_code: code, label }, csrf);
+        const r = await postJSON('/api/enroll/confirm', { user_code: code, label, nonce }, csrf);
         if (r.ok) {
             review.hidden = true; done.hidden = false; setStatus(status, '');
+        } else if (r.status === 409) {
+            setStatus(status, 'You have reached the limit of connected servers. Revoke one first.', 'error'); $('approve').disabled = false;
         } else if (r.status === 404) {
             setStatus(status, 'That code is no longer valid. Start again on the Coral server.', 'error'); $('approve').disabled = false;
         } else if (r.status === 429) {

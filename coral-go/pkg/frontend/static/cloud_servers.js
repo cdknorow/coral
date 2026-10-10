@@ -7,9 +7,12 @@
  *   GET    /api/servers                -> {servers: [{id, label, created_at, last_seen, allow_launch, online}]}
  *   PATCH  /api/servers/{id} {label?, allow_launch?}
  *   DELETE /api/servers/{id}           (revoke; closes the live tunnel)
- * A server may also report `local_launch: false` when the connector's own
- * "Allow launching from the web" switch is off; launching then stays blocked
- * until it is turned on on that machine. */
+ *
+ * Access modes (see docs/access-modes): each server has a hub-side `access_mode`
+ * ("view" | "interact" | "launch", default view) and the connector reports the most
+ * it will allow locally as `local_mode`. The effective mode is the LOWER of the two,
+ * so raising the hub setting alone never grants more than the machine permits.
+ * Servers without `access_mode` (older hub) fall back to the `allow_launch` switch. */
 
 import { state } from './state.js';
 import { h } from './cloud.js';
@@ -77,12 +80,38 @@ async function call(id, method, body) {
     await load();
 }
 
-/** Note shown under a row when launching from the web cannot work yet. */
+export const MODES = ['view', 'interact', 'launch'];
+
+export const MODE_INFO = {
+    view: { label: 'View', text: 'Read terminals, chats, files, tasks and boards. Nothing you do here changes anything on the machine.' },
+    interact: { label: 'Interact', text: 'Also type into agents and change tasks and boards. Agents can run commands, so this can make the machine run code.' },
+    launch: { label: 'Launch', text: 'Also start new agents and teams and browse the machine\'s folders.' },
+};
+
+const rank = m => MODES.indexOf(m);
+
+/** The lower of two modes; an unknown or missing local mode does not limit. */
+export function lowerMode(a, b) {
+    if (rank(b) < 0) return rank(a) < 0 ? 'view' : a;
+    if (rank(a) < 0) return b;
+    return rank(a) <= rank(b) ? a : b;
+}
+
+/** The mode a server row currently has, from access_mode or the legacy allow_launch. */
+export function hubMode(s) {
+    if (rank(s.access_mode) >= 0) return s.access_mode;
+    return s.allow_launch ? 'launch' : 'view';
+}
+
+/** What actually applies: the lower of the hub setting and the machine's own limit. */
+export function effectiveMode(s) { return lowerMode(hubMode(s), s.local_mode); }
+
+/** Note shown under a row when the machine's own setting limits what the hub setting allows. */
 export function launchNote(s) {
-    if (s.allow_launch && s.local_launch === false) {
-        return 'Launch blocked: enable "Allow launching from the web" in Coral on this server. The hub cannot turn it on for you.';
+    const want = hubMode(s), eff = effectiveMode(s);
+    if (eff !== want) {
+        return `Limited by this machine's local setting: it allows ${MODE_INFO[eff].label} only (you chose ${MODE_INFO[want].label}). To allow more, change "Cloud access" in Coral on that machine.`;
     }
-    if (!s.allow_launch) return 'Launching agents from the web is off for this server.';
     return '';
 }
 
@@ -99,9 +128,15 @@ function row(s) {
             h('span', { text: s.label || 'Unnamed server' }),
             h('span', { className: 'sr-only', text: online ? ' (online)' : ' (offline)' }));
     const meta = h('div', { className: 'cs-meta', text: `${online ? 'Online' : 'Offline'} · last seen ${formatLastSeen(s.last_seen)}` });
-    const launch = h('label', { className: 'cs-meta cs-launch' },
-        h('input', { type: 'checkbox', checked: !!s.allow_launch, disabled: isBusy, onchange: e => call(s.id, 'PATCH', { allow_launch: e.target.checked }) }),
-        ' Allow launching agents from the web');
+    const mode = hubMode(s);
+    const legacy = rank(s.access_mode) < 0;
+    const picker = h('label', { className: 'cs-meta cs-launch' }, 'Access ',
+        h('select', {
+            disabled: isBusy, 'aria-label': 'Access mode', value: mode,
+            onchange: e => call(s.id, 'PATCH', legacy ? { allow_launch: e.target.value === 'launch' } : { access_mode: e.target.value }),
+        }, MODES.map(m => h('option', { value: m, selected: m === mode, text: MODE_INFO[m].label }))));
+    const modeText = h('div', { className: 'cs-meta', text: MODE_INFO[mode].text });
+    const launch = h('div', {}, picker, modeText);
     const actions = confirming === s.id
         ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
            h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
@@ -112,7 +147,7 @@ function row(s) {
         h('div', {}, title, meta, launch),
         h('div', { className: 'cs-actions' }, actions),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
-        note && s.allow_launch !== undefined ? h('div', { className: 'cs-note', text: note }) : null);
+        note ? h('div', { className: 'cs-note', text: note }) : null);
 }
 
 function enrollBlock() {

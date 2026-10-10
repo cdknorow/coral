@@ -48,3 +48,6 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cs-launch { display: flex; align-items: center; gap: 6px; margin-top: 4px; cursor: pointer; }
 .cs-launch input { width: auto; margin: 0; }
 .cs-actions .btn { min-width: 64px; }
+.cloud-sub { font-size: 13px; margin: 14px 0 4px; opacity: .8; font-weight: 600; }
+.cloud-note { font-weight: 400; opacity: .7; }
+.cs-launch select { margin-left: 4px; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border, #2a3140); background: var(--bg-primary, #0a0e14); color: inherit; }

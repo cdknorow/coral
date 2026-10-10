@@ -22,11 +22,14 @@
             </form>
         </section>
         <section id="review" hidden>
-            <p>A machine is asking to connect to your account. Check that this is you:</p>
-            <dl id="facts" class="cloud-facts"></dl>
-            <div class="cloud-warn"><strong>Only approve a machine you control.</strong> Approving lets that machine appear in your account, and lets you (and anyone signed in as you) open its terminals and files from the web.</div>
+            <p>A machine is asking to connect to your account.</p>
+            <h2 class="cloud-sub">Seen by this hub</h2>
+            <dl id="seen" class="cloud-facts"></dl>
+            <h2 class="cloud-sub">Reported by the machine <span class="cloud-note">(not verified)</span></h2>
+            <dl id="reported" class="cloud-facts"></dl>
             <label for="label">Name for this server</label>
             <input id="label" type="text" maxlength="100" autocomplete="off">
+            <div class="cloud-warn"><strong>Only approve a machine you control.</strong> Approving gives that machine access to your account on this hub, and lets you (and anyone signed in as you) open its terminals and files from the web.</div>
             <button id="approve" class="cloud-btn primary" type="button">Approve this machine</button>
             <button id="cancel" class="cloud-btn" type="button">Cancel</button>
         </section>
