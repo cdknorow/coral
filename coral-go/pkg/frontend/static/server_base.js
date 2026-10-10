@@ -121,12 +121,16 @@ export function serverForSession(name, sessionId) {
  * so everything stored before the hub existed (collapse state, group order,
  * accent colours, folder tags) keeps matching. */
 
+// A legacy server slug (<= 32 chars) or a hub server id (a UUID). Without the UUID form a hub server's
+// folder showed up as its raw key, "@<uuid>/folder", instead of the folder name.
+const SERVER_ID_RE = /^(?:[a-z0-9-]{1,32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+
 /** Unpack a key made by identityKey(): {server, name}. */
 export function splitKey(key) {
     const k = String(key ?? '');
     if (k.startsWith('@')) {
         const i = k.indexOf('/');
-        if (i > 1 && /^[a-z0-9-]{1,32}$/.test(k.slice(1, i))) return { server: k.slice(1, i), name: k.slice(i + 1) };
+        if (i > 1 && SERVER_ID_RE.test(k.slice(1, i))) return { server: k.slice(1, i), name: k.slice(i + 1) };
     }
     return { server: LOCAL_SERVER, name: k };
 }

@@ -643,6 +643,14 @@ function pollStartupStatus() {
     const el = document.getElementById('startup-loading');
     if (!el) return;
     const check = async () => {
+        // The hub has no local startup phase: each machine is its own server, and the merged list
+        // fills in as the feed reports them, so there is nothing to wait for here.
+        if (isCloud()) {
+            el.classList.add('hidden');
+            dashboardStartupComplete();
+            loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded);
+            return;
+        }
         try {
             const resp = await fetch('/api/system/status');
             if (!resp.ok) { dashboardFailed('status_fetch_http'); setTimeout(check, 2000); return; }
