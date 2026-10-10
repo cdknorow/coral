@@ -26,10 +26,14 @@ func New(resolver Resolver) *Handler { return &Handler{resolver: resolver} }
 
 const mountPrefix = "/api/remote/"
 
-func writeErr(w http.ResponseWriter, code int, msg, server string) {
+func (h *Handler) writeErr(w http.ResponseWriter, code int, msg, server string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg, "server": server})
+	body := map[string]string{"error": msg}
+	if !h.opts.HideServerID {
+		body["server"] = server
+	}
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 func isUpgrade(r *http.Request) bool {
@@ -62,42 +66,45 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "server")
 	rawPath, ok := upstreamPath(r)
 	if id == "" || !ok {
-		writeErr(w, http.StatusNotFound, "unknown server", id)
+		h.writeErr(w, http.StatusNotFound, "unknown server", id)
 		return
 	}
 	upgrade := isUpgrade(r)
 
 	_, rawPath, err := SanitizePath(rawPath)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid path", id)
+		h.writeErr(w, http.StatusBadRequest, "invalid path", id)
 		return
 	}
 	dec, _ := url.PathUnescape(rawPath)
 	if (upgrade && !wsPathAllowed(dec)) || (!upgrade && !httpPathAllowed(dec)) {
-		writeErr(w, http.StatusForbidden, "path not allowed", id)
+		h.writeErr(w, http.StatusForbidden, "path not allowed", id)
 		return
 	}
 
 	t, err := h.resolver.Resolve(r.Context(), id)
 	switch {
 	case errors.Is(err, ErrUnknownServer):
-		writeErr(w, http.StatusNotFound, "unknown server", id)
+		h.writeErr(w, http.StatusNotFound, "unknown server", id)
+		return
+	case errors.Is(err, ErrOffline):
+		h.writeErr(w, http.StatusBadGateway, "remote unreachable", id)
 		return
 	case errors.Is(err, ErrKeyUnreadable):
 		h.mark(r.Context(), id, StatusKeyUnreadable, "stored key cannot be decrypted")
-		writeErr(w, http.StatusBadGateway, "remote key unreadable", id)
+		h.writeErr(w, http.StatusBadGateway, "remote key unreadable", id)
 		return
 	case err != nil:
 		slog.Warn("remote proxy: resolve failed", "server", id, "error", err)
-		writeErr(w, http.StatusBadGateway, "remote unavailable", id)
+		h.writeErr(w, http.StatusBadGateway, "remote unavailable", id)
 		return
 	}
 	if v, ok := t.(Validator); ok {
 		if err := v.Validate(); err != nil {
 			if errors.Is(err, ErrBlocked) {
-				writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
+				h.writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
 			} else {
-				writeErr(w, http.StatusBadGateway, "remote unreachable", id)
+				h.writeErr(w, http.StatusBadGateway, "remote unreachable", id)
 			}
 			return
 		}
@@ -168,12 +175,12 @@ func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, i
 	switch {
 	case errors.Is(err, ErrRemoteRejected):
 		h.mark(ctx, id, StatusUnauthorized, "remote rejected API key")
-		writeErr(w, http.StatusBadGateway, "remote rejected API key", id)
+		h.writeErr(w, http.StatusBadGateway, "remote rejected API key", id)
 	case errors.Is(err, ErrBlocked):
-		writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
+		h.writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
 	default:
 		h.mark(ctx, id, StatusUnreachable, "connect failed")
-		writeErr(w, http.StatusBadGateway, "remote unreachable", id)
+		h.writeErr(w, http.StatusBadGateway, "remote unreachable", id)
 	}
 }
 

@@ -121,6 +121,9 @@ var (
 	ErrKeyUnreadable  = errors.New("remote key unreadable")
 	ErrRemoteRejected = errors.New("remote rejected API key")
 	ErrBlocked        = errors.New("remote address not allowed")
+	// ErrOffline is returned by a Resolver for a server the caller owns that has
+	// no live connection (a tunnel that is down). It answers 502 "remote unreachable".
+	ErrOffline        = errors.New("remote offline")
 	ErrInvalidPath    = errors.New("invalid path")
 	ErrPathNotAllowed = errors.New("path not allowed")
 )
