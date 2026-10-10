@@ -17,19 +17,35 @@ permissions:
 
 jobs:
   go:
+    # Both builds are tested on purpose. The dev build (-tags dev) allows a cleartext loopback hub and
+    # runs the behavioural suites; the release build (plain -tags fts5) is what ships: it refuses a
+    # cleartext hub, compiles the url_release tests and the real route/file-bound rules. A suite that
+    # only passes in dev would hide a defect in the shipped configuration.
+    name: go (${{ matrix.build }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - build: dev
+            tags: "dev fts5"
+          - build: release
+            tags: "fts5"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: coral-go/go.mod
           cache-dependency-path: coral-go/go.sum
-      - name: pkg and connector tests (dev build)
+      - name: pkg and connector tests
         working-directory: coral-go
-        run: go test -race -count=1 -tags 'dev fts5' ./pkg/... ./internal/cloud/... ./internal/startup/...
+        run: go test -race -count=1 -tags '${{ matrix.tags }}' ./pkg/... ./internal/cloud/... ./internal/startup/...
       - name: route census (every registered route has a reviewed tier)
         working-directory: coral-go
-        run: go test -count=1 -tags 'dev fts5' ./internal/server -run 'TestCloud|TestGuard'
+        run: go test -count=1 -tags '${{ matrix.tags }}' ./internal/server -run 'TestCloud|TestGuard'
+      - name: file bounds (strict by default; only the local dashboard relaxes them)
+        working-directory: coral-go
+        run: go test -count=1 -tags '${{ matrix.tags }}' ./internal/server/routes -run 'TunnelBounds|StrictIs|LocalDashboard|GitDirectory|HomeRooted|Listings|Sensitive|SearchFilesDir|SaveFileContentTunnel|ResolvePath'
 
   frontend:
     runs-on: ubuntu-latest

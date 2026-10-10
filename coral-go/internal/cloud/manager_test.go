@@ -66,7 +66,8 @@ func newFakeHub(t *testing.T) *fakeHub {
 			h.sessions <- s
 		}
 	})
-	h.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// TLS, like a real hub: release builds refuse a cleartext hub, so these tests run in both build modes.
+	h.srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.hits.Add(1)
 		mux.ServeHTTP(w, r)
 	}))
@@ -133,7 +134,7 @@ func newEnv(t *testing.T) *env {
 
 func (e *env) manager(hubURL string) *Manager {
 	return New(Options{
-		HubURL: hubURL, Store: e.cs, LocalBaseURL: e.local.srv.URL, MaxMode: func() tunnel.Mode { return tunnel.Mode(e.mode.Load()) },
+		HubURL: hubURL, HTTPClient: e.hub.srv.Client(), Store: e.cs, LocalBaseURL: e.local.srv.URL, MaxMode: func() tunnel.Mode { return tunnel.Mode(e.mode.Load()) },
 		CoralVersion: "test", PollInterval: 20 * time.Millisecond,
 		Backoff: tunnel.Backoff{Min: 20 * time.Millisecond, Max: 100 * time.Millisecond},
 		Logger:  slog.New(slog.NewTextHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelInfo})),
@@ -324,7 +325,7 @@ func TestAlreadyEnrolledConnectsOnStartup(t *testing.T) {
 
 func TestUnreachableHubNeverBreaksLocalUseAndStaysQuiet(t *testing.T) {
 	e := newEnv(t)
-	dead := httptest.NewServer(http.NotFoundHandler())
+	dead := httptest.NewTLSServer(http.NotFoundHandler())
 	deadURL := dead.URL
 	dead.Close() // nothing listens there
 	require.NoError(t, e.cs.Save(context.Background(), deadURL, "srv_1", "x", fakeToken))

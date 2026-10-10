@@ -25,7 +25,7 @@ func cloudEnv(t *testing.T, cloudURL string) (*cloud.Manager, *atomic.Int64) {
 	t.Helper()
 	t.Setenv(secretbox.EnvKey, "")
 	hits := &atomic.Int64{}
-	hub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); http.NotFound(w, r) }))
+	hub := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits.Add(1); http.NotFound(w, r) })) // TLS: release builds refuse a cleartext hub
 	t.Cleanup(hub.Close)
 	if cloudURL == "HUB" {
 		cloudURL = hub.URL
