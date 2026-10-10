@@ -392,7 +392,9 @@ func TestStreamPolicyGatesFramesAndClosesTheBridge(t *testing.T) {
 	}))
 	defer ths.Close()
 	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
-		Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true }}, AllowInsecure: true,
+		Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true },
+			MaxMode: func() tunnel.Mode { return tunnel.TierInteract }}, // this test is about the hub-side policy; the connector allows input
+		AllowInsecure: true,
 	})
 	require.NoError(t, err)
 	defer cs.Close()
