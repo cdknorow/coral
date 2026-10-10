@@ -1,6 +1,6 @@
 module github.com/cdknorow/coral
 
-go 1.24.0
+go 1.26.9
 
 require (
 	fyne.io/systray v1.12.0

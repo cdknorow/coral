@@ -1,0 +1,5 @@
+# gitleaks configuration for Coral: the default ruleset, plus .gitleaksignore (fingerprints of
+# known fixtures; see that file). Run from the repository root:
+#   gitleaks detect --source . --config .gitleaks.toml
+[extend]
+useDefault = true

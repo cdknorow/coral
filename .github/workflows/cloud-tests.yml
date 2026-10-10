@@ -44,3 +44,19 @@ jobs:
       - name: cloud-mode frontend tests
         working-directory: tests/frontend
         run: npm run test:cloud
+
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # secrets scan covers the whole history
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache-dependency-path: coral-go/go.sum
+      - name: secrets (gitleaks, fingerprints in .gitleaksignore)
+        run: go run github.com/zricethezav/gitleaks/v8@v8.21.2 detect --source . --config .gitleaks.toml --no-banner --redact
+      - name: reachable vulnerabilities (govulncheck)
+        working-directory: coral-go
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 -tags 'fts5' ./pkg/... ./internal/cloud/... ./internal/startup/...

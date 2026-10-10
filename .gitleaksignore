@@ -1,0 +1,29 @@
+# Known gitleaks findings, by fingerprint (commit:file:rule:line, or file:rule:line for a tree scan).
+# Each is a test fixture, a documentation placeholder or the public PostHog ingestion key.
+# Never add a whole file or directory here; review every addition.
+# documentation example response (coral_sk_abc123... is a placeholder)
+04f1752edf810a0dfa947f147309f8429b35f84b:coral-go/agent_docs/settings-system.md:generic-api-key:416
+# documentation example response (coral_sk_abc123... is a placeholder)
+04f1752edf810a0dfa947f147309f8429b35f84b:coral-go/internal/server/frontend/static/agent_docs/settings-system.md:generic-api-key:416
+# PostHog project ingestion key (phc_): a public, write-only key designed to be embedded in client binaries
+05bddb453e06f80f2a505c7444665845a44d7460:.github/workflows/release.yml:generic-api-key:179
+# PostHog project ingestion key (phc_): a public, write-only key designed to be embedded in client binaries
+05bddb453e06f80f2a505c7444665845a44d7460:.github/workflows/release.yml:generic-api-key:27
+# PostHog project ingestion key (phc_): a public, write-only key designed to be embedded in client binaries
+05bddb453e06f80f2a505c7444665845a44d7460:.github/workflows/release.yml:generic-api-key:75
+# fixed test salt for the standard-build encryption guard test
+7750bee3451654fb88903606e2ffad3f2e67978a:coral-go/internal/dbcrypt/standard_guard_test.go:generic-api-key:91
+# self-test key material used only by --encryption-self-test (isolated temp database)
+8997a45ffaace271c521bfa4eb57580f3f1568e8:coral-go/cmd/coral/main.go:generic-api-key:181
+# PostHog project ingestion key (phc_): a public, write-only key designed to be embedded in client binaries
+b6baae833e5c6bdabe24a510b193cc8f356382c3:.github/workflows/release.yml:generic-api-key:183
+# PostHog project ingestion key (phc_): a public, write-only key designed to be embedded in client binaries
+b6baae833e5c6bdabe24a510b193cc8f356382c3:.github/workflows/release.yml:generic-api-key:27
+# PostHog project ingestion key (phc_): a public, write-only key designed to be embedded in client binaries
+b6baae833e5c6bdabe24a510b193cc8f356382c3:.github/workflows/release.yml:generic-api-key:77
+# documentation example response (coral_sk_abc123... is a placeholder)
+coral-go/agent_docs/settings-system.md:generic-api-key:453
+# self-test key material used only by --encryption-self-test (isolated temp database)
+coral-go/cmd/coral/main.go:generic-api-key:196
+# fixed test salt for the standard-build encryption guard test
+coral-go/internal/dbcrypt/standard_guard_test.go:generic-api-key:91

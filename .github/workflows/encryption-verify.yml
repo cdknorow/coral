@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         run: sudo apt-get update && sudo apt-get install -y libssl-dev patchelf
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         shell: powershell
@@ -115,7 +115,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         run: |
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
       - name: Install isolated native dependencies
         run: |
@@ -204,7 +204,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: "1.26.9"
           cache-dependency-path: coral-go/go.sum
       - name: Install merge and verification dependencies
         run: |
