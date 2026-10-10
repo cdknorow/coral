@@ -120,7 +120,7 @@ func originAllowed(r *http.Request, patterns []string, required bool) bool {
 func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t Target, raw string) {
 	patterns, required, ok := h.originPatterns(r, t)
 	if !ok || !originAllowed(r, patterns, required) {
-		writeErr(w, http.StatusForbidden, "origin not allowed", id)
+		h.writeErr(w, http.StatusForbidden, "origin not allowed", id)
 		return
 	}
 	// Dial the remote first so failures can still be reported as HTTP errors.

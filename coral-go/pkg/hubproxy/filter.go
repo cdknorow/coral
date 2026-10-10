@@ -21,6 +21,10 @@ type Options struct {
 	// TunnelTarget with no AllowedOrigins is refused: the cloud hub must say which
 	// origin it serves.
 	AllowedOrigins []string
+	// HideServerID leaves the server id out of JSON errors. The cloud hub sets it so
+	// an error body is identical for a server that does not exist and one the caller
+	// does not own.
+	HideServerID bool
 }
 
 // NewWithOptions is New with explicit options.
