@@ -21,6 +21,12 @@ import (
 // ErrPath is returned by ValidatePath.
 var ErrPath = errors.New("tunnel: path not allowed")
 
+// compatDotSlash are the compatibility characters that Unicode NFKC folds to
+// "." "/" or "\" (one/two-dot leaders, fullwidth and small forms, fraction and
+// division slashes). Go routers do not normalise, but a future one might, so
+// they are refused outright.
+const compatDotSlash = "\u2024\u2025\u2026\ufe52\uff0e\uff0f\u2215\u2044\uff3c\ufe68\u29f8\u2216"
+
 // ValidatePath is the connector's allowlist for hub-supplied paths. It takes
 // the escaped path as it will be sent to the local API and accepts it only if:
 //
@@ -64,7 +70,7 @@ func ValidatePath(p string) error {
 		if err != nil || !utf8.ValidString(d) {
 			return ErrPath
 		}
-		if d == "." || d == ".." || strings.ContainsAny(d, "/\\;%") {
+		if d == "." || d == ".." || strings.ContainsAny(d, "/\\;%") || strings.ContainsAny(d, compatDotSlash) {
 			return ErrPath
 		}
 		for j := 0; j < len(d); j++ {
@@ -81,7 +87,7 @@ func validQuery(q string) bool {
 		return false
 	}
 	for i := 0; i < len(q); i++ {
-		if q[i] < 0x20 || q[i] == 0x7f || q[i] == '#' {
+		if q[i] <= 0x20 || q[i] >= 0x7f || q[i] == '#' {
 			return false
 		}
 	}
@@ -151,6 +157,48 @@ func NewLoopbackClient(base string) (*http.Client, *url.URL, error) {
 	return cl, u, nil
 }
 
+// ── Route rules ─────────────────────────────────────────────────────
+
+// PathRule allows requests whose decoded path starts with Prefix (or equals it,
+// when Exact is set) for the listed methods; no Methods means GET and HEAD only.
+type PathRule struct {
+	Prefix  string
+	Exact   bool
+	Methods []string
+}
+
+// PathRules is an allowlist of routes. Rules only ever add permissions; a
+// request matching none is denied. Use rules.Allow as LocalHandler.AllowPath.
+// An optional Gate can veto a request that a rule accepted (for example the
+// per-server "allow launching from the web" switch).
+type PathRules struct {
+	Rules []PathRule
+	Gate  func(method, decodedPath string) bool
+}
+
+// Allow reports whether the request may reach the local API.
+func (p PathRules) Allow(method, decodedPath string) bool {
+	if !allowedMethods[method] {
+		return false
+	}
+	ok := false
+	for _, r := range p.Rules {
+		if r.Exact && decodedPath != r.Prefix || !r.Exact && !strings.HasPrefix(decodedPath, r.Prefix) {
+			continue
+		}
+		methods := r.Methods
+		if len(methods) == 0 {
+			methods = []string{http.MethodGet, http.MethodHead}
+		}
+		for _, m := range methods {
+			if m == method {
+				ok = true
+			}
+		}
+	}
+	return ok && (p.Gate == nil || p.Gate(method, decodedPath))
+}
+
 // ── LocalHandler ────────────────────────────────────────────────────
 
 // LocalHandler executes tunnel streams against the local Coral API on
@@ -161,9 +209,11 @@ type LocalHandler struct {
 	// Authorize adds the connector's own local credentials to the outgoing
 	// header set (the hub's Authorization and Cookie are always dropped).
 	Authorize func(h http.Header)
-	// AllowPath is an extra allowlist on top of ValidatePath, e.g. to refuse
-	// launch endpoints when launching from the web is off. It receives the
-	// decoded path and the method. Nil allows everything ValidatePath does.
+	// AllowPath decides which routes the hub may reach, on top of ValidatePath.
+	// It receives the method and the decoded path (WebSocket streams count as
+	// GET). The default is DENY: a nil AllowPath rejects every stream, so a
+	// connector that forgets to configure it exposes nothing. Authorize is only
+	// applied to requests AllowPath accepted. See PathRules.
 	AllowPath func(method, decodedPath string) bool
 	// MaxRequestBody caps uploads, default 256 MiB.
 	MaxRequestBody int64
@@ -186,23 +236,22 @@ var allowedMethods = map[string]bool{
 	http.MethodPut: true, http.MethodPatch: true, http.MethodDelete: true,
 }
 
-// dropRequestHeaders are never forwarded to the local API (P-6) plus
-// hop-by-hop headers.
-var dropRequestHeaders = []string{
-	"Host", "Origin", "Referer", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host",
-	"X-Forwarded-Proto", "X-Forwarded-Port", "X-Real-Ip", "Cookie", "Authorization",
-	"Connection", "Keep-Alive", "Proxy-Authorization", "Proxy-Connection", "Te",
-	"Trailer", "Transfer-Encoding", "Upgrade", "Content-Length",
-	"Sec-Websocket-Key", "Sec-Websocket-Version", "Sec-Websocket-Extensions", "Sec-Websocket-Protocol", "Sec-Websocket-Accept",
+// forwardRequestHeaders is the allowlist of hub-supplied request headers that
+// reach the local API. Everything else (cookies, authorization, forwarding and
+// fetch-metadata headers, CSRF tokens, anything a compromised hub might invent
+// for the local server to trust) is dropped. Keys are in canonical form.
+var forwardRequestHeaders = map[string]bool{
+	"Accept": true, "Accept-Language": true, "Content-Type": true, "Range": true, "If-Range": true,
+	"If-Match": true, "If-None-Match": true, "If-Modified-Since": true, "If-Unmodified-Since": true,
+	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
 }
 
 func scrub(h http.Header) http.Header {
-	out := h.Clone()
-	if out == nil {
-		out = http.Header{}
-	}
-	for _, k := range dropRequestHeaders {
-		out.Del(k)
+	out := http.Header{}
+	for k, vs := range h {
+		if forwardRequestHeaders[http.CanonicalHeaderKey(k)] {
+			out[http.CanonicalHeaderKey(k)] = append([]string(nil), vs...)
+		}
 	}
 	return out
 }
@@ -218,8 +267,12 @@ func (l *LocalHandler) checkRequest(h Header) (decoded string, ok bool) {
 	if err != nil {
 		return "", false
 	}
-	if l.AllowPath != nil && !l.AllowPath(h.Method, decoded) {
-		return "", false
+	method := h.Method
+	if h.Kind == KindWS {
+		method = http.MethodGet
+	}
+	if l.AllowPath == nil || !l.AllowPath(method, decoded) {
+		return "", false // default deny
 	}
 	return decoded, true
 }

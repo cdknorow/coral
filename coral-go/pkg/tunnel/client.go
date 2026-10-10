@@ -8,8 +8,10 @@ import (
 	"io"
 	"log/slog"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,10 +58,13 @@ type ClientOptions struct {
 	SessionConfig
 	Handler      Handler
 	CoralVersion string
-	// AllowInsecure permits ws:// URLs. Only for tests and local development;
-	// production connectors must use wss://.
+	// AllowInsecure permits ws:// URLs to loopback hosts (127.0.0.0/8, ::1,
+	// localhost) only. For tests and local development; production connectors
+	// must use wss:// and must never expose this as a flag or environment
+	// setting. A cleartext URL to any other host is refused even when set.
 	AllowInsecure bool
 	// HTTPClient is used for the WebSocket handshake (custom TLS roots, tests).
+	// Redirects are never followed whatever its CheckRedirect says.
 	HTTPClient *http.Client
 	Backoff    Backoff
 	// OnState is called from Run when the tunnel connects (nil error) or a
@@ -82,6 +87,26 @@ type ClientSession struct {
 	started    time.Time
 }
 
+func isLoopbackHost(h string) bool {
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(h)
+	return ip != nil && ip.IsLoopback()
+}
+
+// noRedirectClient returns a copy of c (or a fresh client) that refuses to
+// follow redirects: the token travels in the first frame to wherever the
+// handshake lands, so a redirecting hub must not be able to move it.
+func noRedirectClient(c *http.Client) *http.Client {
+	var out http.Client
+	if c != nil {
+		out = *c
+	}
+	out.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &out
+}
+
 func checkURL(raw string, insecure bool) error {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {
@@ -92,6 +117,9 @@ func checkURL(raw string, insecure bool) error {
 	case "ws", "http":
 		if !insecure {
 			return fmt.Errorf("tunnel: hub url must be wss://")
+		}
+		if !isLoopbackHost(u.Hostname()) {
+			return fmt.Errorf("tunnel: cleartext hub url is only allowed for loopback hosts")
 		}
 	default:
 		return fmt.Errorf("tunnel: unsupported hub url scheme %q", u.Scheme)
@@ -111,7 +139,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	cfg := o.SessionConfig.withDefaults()
 	hctx, hcancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer hcancel()
-	c, _, err := websocket.Dial(hctx, rawURL, &websocket.DialOptions{HTTPClient: o.HTTPClient})
+	c, _, err := websocket.Dial(hctx, rawURL, &websocket.DialOptions{HTTPClient: noRedirectClient(o.HTTPClient)})
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +158,11 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	if json.Unmarshal(msg, &w) != nil {
 		_ = c.Close(websocket.StatusProtocolError, "")
 		return nil, ErrBadHandshake
+	}
+	if w.Error != "" {
+		// Answer the server's close frame so it does not hold the socket open
+		// waiting for us.
+		_ = c.Close(websocket.StatusNormalClosure, "")
 	}
 	switch {
 	case w.Error == CodeUnauthorized:

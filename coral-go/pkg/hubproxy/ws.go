@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 
@@ -73,7 +74,55 @@ func requestedProtocols(r *http.Request) []string {
 	return out
 }
 
+// legacyOrigins are the self-hosted hub's default WebSocket origins.
+var legacyOrigins = []string{"localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "[::1]", "[::1]:*"}
+
+// originPatterns returns the host patterns a WebSocket Origin may match and
+// whether an Origin header is required. ok is false when the upgrade must be
+// refused outright (a tunnel target with no configured origin).
+func (h *Handler) originPatterns(r *http.Request, t Target) (patterns []string, required, ok bool) {
+	if len(h.opts.AllowedOrigins) > 0 {
+		return h.opts.AllowedOrigins, true, true
+	}
+	if isTunnel(t) {
+		return nil, true, false
+	}
+	patterns = append([]string(nil), legacyOrigins...)
+	if r.Host != "" {
+		patterns = append(patterns, r.Host)
+	}
+	return patterns, false, true
+}
+
+// originAllowed checks the browser's Origin against patterns. It runs before
+// anything is dialled, so a hostile page cannot make the hub open a stream to
+// the user's machine even if the browser then refuses the handshake.
+func originAllowed(r *http.Request, patterns []string, required bool) bool {
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return !required
+	}
+	if o == "null" {
+		return false
+	}
+	u, err := url.Parse(o)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	for _, p := range patterns {
+		if m, err := path.Match(strings.ToLower(p), strings.ToLower(u.Host)); err == nil && m {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t Target, raw string) {
+	patterns, required, ok := h.originPatterns(r, t)
+	if !ok || !originAllowed(r, patterns, required) {
+		writeErr(w, http.StatusForbidden, "origin not allowed", id)
+		return
+	}
 	// Dial the remote first so failures can still be reported as HTTP errors.
 	up, err := t.DialWS(r.Context(), raw, r.URL.RawQuery, requestedProtocols(r))
 	if err != nil {
@@ -81,10 +130,6 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 		return
 	}
 
-	patterns := []string{"localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "[::1]", "[::1]:*"}
-	if r.Host != "" {
-		patterns = append(patterns, r.Host)
-	}
 	opts := &websocket.AcceptOptions{OriginPatterns: patterns}
 	if sp := up.Subprotocol(); sp != "" {
 		opts.Subprotocols = []string{sp}

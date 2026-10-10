@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,10 +39,11 @@ func do(t *testing.T, s *Session, method, path, query string, body io.Reader, hd
 
 func TestHTTPRoundTrip(t *testing.T) {
 	hub := newHub(t, fastCfg())
-	var gotAuth, gotCookie, gotOrigin, gotCustom, gotHost string
+	var gotAuth, gotCookie, gotOrigin, gotCustom, gotHost, gotAccept string
 	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth, gotCookie, gotOrigin = r.Header.Get("Authorization"), r.Header.Get("Cookie"), r.Header.Get("Origin")
-		gotCustom, gotHost = r.Header.Get("X-Custom"), r.Host
+		gotCustom, gotHost = r.Header.Get("X-Custom")+r.Header.Get("X-Csrf-Token")+r.Header.Get("Sec-Fetch-Site"), r.Host
+		gotAccept = r.Header.Get("Accept")
 		b, _ := io.ReadAll(r.Body)
 		w.Header().Set("X-Reply", "yes")
 		w.WriteHeader(http.StatusCreated)
@@ -54,7 +56,7 @@ func TestHTTPRoundTrip(t *testing.T) {
 	assert.Equal(t, "test", sess.CoralVersion())
 
 	resp := do(t, sess, "POST", "/api/things/a%20b", "x=1&y=2", strings.NewReader("hello"), http.Header{
-		"Authorization": {"Bearer hub-attacker"}, "Cookie": {"s=1"}, "Origin": {"http://evil"}, "X-Custom": {"v"},
+		"Authorization": {"Bearer hub-attacker"}, "Cookie": {"s=1"}, "Origin": {"http://evil"}, "X-Custom": {"v"}, "X-Csrf-Token": {"t"}, "Sec-Fetch-Site": {"cross-site"}, "Accept": {"application/json"},
 	})
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
@@ -65,8 +67,9 @@ func TestHTTPRoundTrip(t *testing.T) {
 	assert.Equal(t, "Bearer local-key", gotAuth, "hub credentials replaced by the connector's own")
 	assert.Empty(t, gotCookie)
 	assert.Empty(t, gotOrigin)
-	assert.Equal(t, "v", gotCustom)
+	assert.Empty(t, gotCustom, "header allowlist: unknown headers are not forwarded")
 	assert.True(t, strings.HasPrefix(gotHost, "127.0.0.1:"), gotHost)
+	assert.Equal(t, "application/json", gotAccept, "allowlisted headers still pass")
 }
 
 func TestLargeBodyBothWays(t *testing.T) {
@@ -257,7 +260,7 @@ func TestConnectorStreamCap(t *testing.T) {
 	defer close(block) // runs before ls.Close
 	cs, err := Dial(context.Background(), hub.URL(), testToken, ClientOptions{
 		SessionConfig: SessionConfig{KeepAlive: 100 * time.Millisecond, DeadAfter: 400 * time.Millisecond, MaxStreams: 1},
-		Handler:       &LocalHandler{BaseURL: ls.URL}, AllowInsecure: true,
+		Handler:       &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll}, AllowInsecure: true,
 	})
 	require.NoError(t, err)
 	defer cs.Close()
@@ -304,7 +307,7 @@ func TestDropMidStreamAndReconnect(t *testing.T) {
 	runDone := make(chan error, 1)
 	go func() {
 		runDone <- Run(ctx, "ws://"+proxy.Addr(), testToken, ClientOptions{
-			SessionConfig: fastCfg(), Handler: &LocalHandler{BaseURL: ls.URL}, AllowInsecure: true,
+			SessionConfig: fastCfg(), Handler: &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll}, AllowInsecure: true,
 			Backoff: Backoff{Min: 20 * time.Millisecond, Max: 200 * time.Millisecond},
 			OnState: func(c bool, err error) {
 				mu.Lock()
@@ -355,7 +358,7 @@ func TestKeepaliveTimeout(t *testing.T) {
 	hub := newHub(t, fastCfg())
 	proxy := newFlakyProxy(t, strings.TrimPrefix(hub.Server.URL, "http://"))
 	cs, err := Dial(context.Background(), "ws://"+proxy.Addr(), testToken, ClientOptions{
-		SessionConfig: fastCfg(), Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true,
+		SessionConfig: fastCfg(), Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}, AllowInsecure: true,
 	})
 	require.NoError(t, err)
 	defer cs.Close()
@@ -423,11 +426,11 @@ func TestAuthBeforeAnythingElse(t *testing.T) {
 	assert.Equal(t, CodeUnauthorized, w.Error)
 	c.CloseNow()
 
-	_, err := Dial(context.Background(), hub.URL(), "wrong", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true})
+	_, err := Dial(context.Background(), hub.URL(), "wrong", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}, AllowInsecure: true})
 	assert.ErrorIs(t, err, ErrUnauthorized)
 
 	// Run stops instead of hammering the hub with a revoked token.
-	err = Run(context.Background(), hub.URL(), "wrong", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true})
+	err = Run(context.Background(), hub.URL(), "wrong", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}, AllowInsecure: true})
 	assert.ErrorIs(t, err, ErrUnauthorized)
 
 	select {
@@ -471,7 +474,7 @@ func TestHandshakeAbuse(t *testing.T) {
 }
 
 func TestDialRejectsInsecureAndOddSchemes(t *testing.T) {
-	h := &LocalHandler{BaseURL: "http://127.0.0.1:1"}
+	h := &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}
 	for _, u := range []string{"ws://hub.example/tunnel", "http://hub.example/tunnel", "file:///etc/passwd", "ftp://x", "://bad", "wss:///nohost"} {
 		_, err := Dial(context.Background(), u, "t", ClientOptions{Handler: h})
 		assert.Error(t, err, u)
@@ -675,6 +678,9 @@ func FuzzValidatePath(f *testing.F) {
 	for _, s := range []string{"/api/x", "/api/%2e%2e/x", "/ws/a", "//x", "/api/\x00"} {
 		f.Add(s)
 	}
+	for _, s := range []string{"/api/%ef%bc%8e%ef%bc%8e/x", "/api/%e2%80%a5/x", "/api/\uff0e\uff0e/x", "/api/%ef%bc%8f"} {
+		f.Add(s)
+	}
 	f.Fuzz(func(t *testing.T, p string) {
 		if ValidatePath(p) != nil {
 			return
@@ -689,6 +695,11 @@ func FuzzValidatePath(f *testing.F) {
 		assert.NotContains(t, strings.ToLower(p), "%2e")
 		assert.NotContains(t, strings.ToLower(p), "%2f")
 		assert.NotContains(t, strings.ToLower(p), "%5c")
+		// A router that normalises Unicode (NFKC) must not be able to turn an accepted
+		// path into a traversal: characters that fold to "." "/" or "\\" are refused.
+		if dec, err := url.PathUnescape(p); err == nil {
+			assert.False(t, strings.ContainsAny(dec, compatDotSlash), p)
+		}
 	})
 }
 
@@ -724,14 +735,14 @@ func TestRetryLaterIsNotPermanent(t *testing.T) {
 	}))
 	defer srv.Close()
 	url := "ws" + strings.TrimPrefix(srv.URL, "http")
-	_, err := Dial(context.Background(), url, "t", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true})
+	_, err := Dial(context.Background(), url, "t", ClientOptions{Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}, AllowInsecure: true})
 	assert.ErrorIs(t, err, ErrRetryLater)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	connected := make(chan struct{}, 1)
 	go Run(ctx, url, "t", ClientOptions{
-		Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1"}, AllowInsecure: true, SessionConfig: fastCfg(),
+		Handler: &LocalHandler{BaseURL: "http://127.0.0.1:1", AllowPath: allowAll}, AllowInsecure: true, SessionConfig: fastCfg(),
 		Backoff: Backoff{Min: 10 * time.Millisecond, Max: 50 * time.Millisecond},
 		OnState: func(c bool, _ error) {
 			if c {

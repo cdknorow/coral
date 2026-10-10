@@ -15,6 +15,10 @@
 //
 // Half-closing a stream from the hub side after the request has been sent
 // means "cancel".
+//
+// Follow-up: nhooyr.io/websocket is deprecated upstream in favour of
+// github.com/coder/websocket (same API); migrate pkg/tunnel and pkg/hubproxy together.
+
 package tunnel
 
 import (
@@ -74,10 +78,14 @@ var (
 	ErrUnsupportedVersion = errors.New("tunnel: unsupported protocol version")
 	ErrBadHandshake       = errors.New("tunnel: bad handshake")
 	ErrRetryLater         = errors.New("tunnel: hub busy, retry later")
-	ErrSessionClosed      = errors.New("tunnel: session closed")
-	ErrTooManyStreams     = errors.New("tunnel: too many concurrent streams")
-	ErrHeaderTooLarge     = errors.New("tunnel: header too large")
-	ErrBadHeader          = errors.New("tunnel: malformed stream header")
+	// ErrAuthUnavailable is what an AuthFunc returns when it cannot decide (database
+	// outage, overload) as opposed to rejecting the token. The connector sees a
+	// temporary refusal and retries with backoff; only ErrUnauthorized is permanent.
+	ErrAuthUnavailable = ErrRetryLater
+	ErrSessionClosed   = errors.New("tunnel: session closed")
+	ErrTooManyStreams  = errors.New("tunnel: too many concurrent streams")
+	ErrHeaderTooLarge  = errors.New("tunnel: header too large")
+	ErrBadHeader       = errors.New("tunnel: malformed stream header")
 )
 
 // StreamError is returned when the connector rejected or failed a stream.

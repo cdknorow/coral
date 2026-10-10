@@ -17,6 +17,7 @@ import (
 // Handler is the /api/remote/{server}/* reverse proxy.
 type Handler struct {
 	resolver Resolver
+	opts     Options
 }
 
 // New returns a proxy Handler. Mount it with chi on a pattern containing a
@@ -126,6 +127,9 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			out := pr.Out
 			out.URL.Path, out.URL.RawPath = dec, raw
 			out.URL.RawQuery = stripAPIKey(pr.In.URL.RawQuery)
+			if isTunnel(t) {
+				allowlistHeaders(out.Header) // untrusted far side: allowlist, not denylist
+			}
 			for _, hd := range []string{"Authorization", "Cookie", "Origin", "Referer", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
 				out.Header.Del(hd)
 			}
@@ -140,6 +144,12 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			// healthy server "unauthorized" and hide the real error.
 			if resp.StatusCode == http.StatusUnauthorized {
 				return ErrRemoteRejected
+			}
+			switch {
+			case h.opts.ResponseFilter != nil:
+				return h.opts.ResponseFilter(resp)
+			case isTunnel(t):
+				return StrictResponseFilter(resp)
 			}
 			resp.Header.Del("Set-Cookie")
 			return nil

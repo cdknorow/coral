@@ -63,7 +63,7 @@ func connect(t *testing.T, h *hubHarness, local http.Handler, mod func(*LocalHan
 	t.Helper()
 	ls := httptest.NewServer(local)
 	t.Cleanup(ls.Close)
-	lh := &LocalHandler{BaseURL: ls.URL}
+	lh := &LocalHandler{BaseURL: ls.URL, AllowPath: allowAll}
 	if mod != nil {
 		mod(lh)
 	}
@@ -148,3 +148,7 @@ func (p *flakyProxy) Drop() {
 func (p *flakyProxy) Blackhole(on bool) { p.mu.Lock(); p.black = on; p.mu.Unlock() }
 
 func goroutines() int { return runtime.NumGoroutine() }
+
+// allowAll is the permissive AllowPath used by tests that are not about routing;
+// LocalHandler itself denies everything when AllowPath is nil.
+func allowAll(_, _ string) bool { return true }
