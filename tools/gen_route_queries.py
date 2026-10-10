@@ -17,6 +17,14 @@ OUT = 'coral-go/pkg/tunnel/routes_query.go'
 # Parameter names that carry a file or directory reference.
 FILE_PARAMS = {'filepath', 'dir', 'path', 'working_directory', 'file', 'ref', 'cwd', 'folder', 'directory', 'root'}
 
+# Parameters the shipped UI sends that a handler does not (yet) read, found by comparing the real UI's requests
+# against this table (coral-hub internal/e2e TestChromeUIPass records them). Add here, with the reason, never
+# loosen the table any other way.
+EXTRA = {
+    # file_explorer.js pages a directory listing with offset; the handler returns the first page regardless.
+    'GET /api/sessions/live/{}/search-files': {'offset'},
+}
+
 src = {f: open(f).read() for f in glob.glob(ROOT + '/routes/*.go') if not f.endswith('_test.go')}
 B = {}
 for f, s in src.items():
@@ -26,6 +34,10 @@ for f, s in src.items():
             B[(m.group(2) or '', m.group(3))] = p
 
 qre = re.compile(r'(?:Query\(\)\.Get|Query\(\)\.Has|\bq\.Get|\bq\.Has|\bquery\.Get|FormValue|PostFormValue)\("([A-Za-z0-9_\-]+)"\)')
+# Helper calls that take the request and a literal parameter name, e.g. queryInt(r, "limit", 50).
+qre3 = re.compile(r'\b(\w+)\(\s*r\s*,\s*"([A-Za-z0-9_\-]+)"')
+# chi.URLParam(r, "name") reads a PATH parameter, not a query parameter.
+NOT_QUERY = {'URLParam'}
 qre2 = re.compile(r'Query\(\)\["([A-Za-z0-9_\-]+)"\]|\bq\["([A-Za-z0-9_\-]+)"\]')
 
 
@@ -33,6 +45,7 @@ def params(body, seen, depth=0):
     ps = set(qre.findall(body))
     for a, b in qre2.findall(body):
         ps.add(a or b)
+    ps |= {lit for fn, lit in qre3.findall(body) if fn not in NOT_QUERY}
     if depth < 3:
         for m in re.finditer(r'(?:\bh\.)?(\w+)\([^()]*\br\b[^()]*\)', body):
             for (rt, fn), b2 in B.items():
@@ -52,8 +65,14 @@ for m in reg.finditer(sv):
     for (rt, fn), b in B.items():
         if fn == name and rt:
             ps |= params(b, set())
+    # Names that are PATH parameters of this very route are not query parameters (handlers read them through
+    # helpers such as chi.URLParam or local wrappers that also take (r, "name")).
+    ps -= set(re.findall(r'\{([^}]+)\}', route))
     shape = meth.upper() + ' ' + re.sub(r'\{[^}]*\}', '{}', route)
     rows.setdefault(shape, set()).update(ps)
+
+for shape, extra in EXTRA.items():
+    rows.setdefault(shape, set()).update(extra)
 
 lines = []
 for shape in sorted(rows):

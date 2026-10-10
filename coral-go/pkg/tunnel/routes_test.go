@@ -410,3 +410,31 @@ func TestLocalModeRefusalIsDistinctAndNarrow(t *testing.T) {
 	require.ErrorAs(t, err, &se)
 	assert.Equal(t, "interact", se.Message)
 }
+
+// Requests the shipped UI really sends (recorded from a real-Chrome pass through the hub, plus the handlers'
+// own helpers such as queryInt(r, "limit", 50)). The per-route query table must never refuse them: a refusal is
+// a dead panel for the user. If a UI change adds a parameter, tools/gen_route_queries.py needs it (EXTRA).
+func TestRealUIQueriesAreNotRefused(t *testing.T) {
+	for _, c := range []struct{ method, path, query string }{
+		{"GET", "/api/sessions/live/001/events", "limit=50&session_id=abc"},
+		{"GET", "/api/sessions/live/001/search-files", "session_id=abc&dir=.&view=explorer&offset=0"},
+		{"GET", "/api/sessions/live/001/search-files", "session_id=abc&dir=src&view=explorer&offset=100"},
+		{"GET", "/api/sessions/live/001/search-files", "session_id=abc&q=main"},
+		{"GET", "/api/sessions/live/001/chat", "session_id=abc&agent_type=claude&after=0&limit=100&offset=0"},
+		{"GET", "/api/sessions/live/001/poll", "session_id=abc&agent_type=claude&events_limit=50"},
+		{"GET", "/api/sessions/live/001/tasks", "session_id=abc&limit=50"},
+		{"GET", "/api/sessions/live/001/git", "session_id=abc&limit=10"},
+		{"GET", "/api/sessions/live/001/history/search", "q=x&limit=10&offset=0&session_id=abc"},
+		{"GET", "/api/board/proj/messages", "session_id=abc&limit=50&subscriber_id=ops"},
+		{"GET", "/api/board/proj/messages/all", "limit=100&offset=0&before_id=5"},
+		{"GET", "/api/board/proj/tasks", "limit=50&status=open&session_id=abc"},
+		{"GET", "/api/sessions/history/search", "q=x&page=1&page_size=50"},
+		{"GET", "/api/scheduled/runs/recent", "limit=20"},
+		{"GET", "/api/workflows/runs/recent", "limit=20&offset=0&status=failed"},
+	} {
+		assert.NotEqual(t, TierNever, Classify(c.method, c.path, c.query), "%s %s?%s is refused but the UI sends it", c.method, c.path, c.query)
+	}
+	// Path parameters are not query parameters: they must not be accepted as such.
+	assert.Equal(t, TierNever, Classify("GET", "/api/board/proj/messages", "project=other"))
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/001/events", "name=other"))
+}

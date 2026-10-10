@@ -15,7 +15,7 @@ export default [
         // Libraries loaded by <script> tags before the modules run (see templates/): they are
         // globals by design. Anything else undefined is a bug.
         marked: "readonly", DOMPurify: "readonly", hljs: "readonly",
-        Terminal: "readonly", FitAddon: "readonly", WebLinksAddon: "readonly", UnicodeGraphemesAddon: "readonly",
+        Terminal: "readonly", FitAddon: "readonly", WebLinksAddon: "readonly", UnicodeGraphemesAddon: "readonly", CanvasAddon: "readonly",
       },
     },
     linterOptions: { reportUnusedDisableDirectives: "off" },

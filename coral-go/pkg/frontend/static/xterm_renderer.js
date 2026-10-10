@@ -233,6 +233,12 @@ export function createTerminal(containerEl) {
     });
 
     terminal.open(containerEl);
+    // xterm's default DOM renderer builds its font and size rules in <style> elements at runtime, which the Cloud
+    // Hub's `style-src 'self'` policy blocks (the terminal then renders in a fallback font with wrong cell sizes).
+    // The canvas renderer paints into a canvas and needs no injected style. It must load after open().
+    if (typeof CanvasAddon !== 'undefined') {
+        try { terminal.loadAddon(new CanvasAddon.CanvasAddon()); } catch (e) { console.warn('xterm canvas renderer unavailable, using the DOM renderer:', e.message); }
+    }
     // Clicking into a viewer window's terminal takes interactive control.
     containerEl.addEventListener('mousedown', () => claimOwnership());
     dbg('terminal.open() done, container:', containerEl.offsetWidth, 'x', containerEl.offsetHeight,
