@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/server/proxy"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cdknorow/coral/internal/secretbox"
+	"github.com/cdknorow/coral/pkg/secretbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

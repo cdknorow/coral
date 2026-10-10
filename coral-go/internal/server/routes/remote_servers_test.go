@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/secretbox"
+	"github.com/cdknorow/coral/pkg/secretbox"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"

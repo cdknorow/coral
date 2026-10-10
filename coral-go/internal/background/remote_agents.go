@@ -37,7 +37,7 @@ import (
 
 	"nhooyr.io/websocket"
 
-	"github.com/cdknorow/coral/internal/server/proxy"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/cdknorow/coral/internal/store"
 )
 

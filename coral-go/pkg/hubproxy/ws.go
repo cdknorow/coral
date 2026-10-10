@@ -1,4 +1,4 @@
-package proxy
+package hubproxy
 
 import (
 	"context"
@@ -37,14 +37,15 @@ func DialWebSocket(ctx context.Context, t Target, path, rawQuery string, protoco
 	if !wsPathAllowed(dec) {
 		return nil, ErrPathNotAllowed
 	}
-	base, err := ValidateTarget(t)
-	if err != nil {
-		return nil, err
+	if v, ok := t.(Validator); ok {
+		if err := v.Validate(); err != nil {
+			return nil, err
+		}
 	}
-	return dialWS(ctx, t, base, raw, rawQuery, protocols)
+	return t.DialWS(ctx, raw, rawQuery, protocols)
 }
 
-func dialWS(ctx context.Context, t Target, base *url.URL, raw, rawQuery string, protocols []string) (*websocket.Conn, error) {
+func dialWS(ctx context.Context, t HTTPTarget, base *url.URL, raw, rawQuery string, protocols []string) (*websocket.Conn, error) {
 	conn, resp, err := websocket.Dial(ctx, wsURL(base, raw, rawQuery), &websocket.DialOptions{
 		HTTPClient:   &http.Client{Transport: transport(t.AllowPrivate)},
 		HTTPHeader:   http.Header{"Authorization": []string{"Bearer " + t.APIKey}},
@@ -72,9 +73,9 @@ func requestedProtocols(r *http.Request) []string {
 	return out
 }
 
-func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t Target, base *url.URL, dec, raw string) {
+func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t Target, raw string) {
 	// Dial the remote first so failures can still be reported as HTTP errors.
-	up, err := dialWS(r.Context(), t, base, raw, r.URL.RawQuery, requestedProtocols(r))
+	up, err := t.DialWS(r.Context(), raw, r.URL.RawQuery, requestedProtocols(r))
 	if err != nil {
 		h.writeUpstreamErr(w, r.Context(), id, err)
 		return

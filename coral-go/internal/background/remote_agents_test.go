@@ -16,7 +16,7 @@ import (
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 
-	"github.com/cdknorow/coral/internal/server/proxy"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -72,9 +72,9 @@ func (r regResolver) Resolve(_ context.Context, id string) (proxy.Target, error)
 	defer r.reg.mu.Unlock()
 	s, ok := r.reg.servers[id]
 	if !ok {
-		return proxy.Target{}, proxy.ErrUnknownServer
+		return proxy.HTTPTarget{}, proxy.ErrUnknownServer
 	}
-	return proxy.Target{URL: s.URL, APIKey: testKey, AllowPrivate: true}, nil
+	return proxy.HTTPTarget{URL: s.URL, APIKey: testKey, AllowPrivate: true}, nil
 }
 
 const testKey = "k-test"

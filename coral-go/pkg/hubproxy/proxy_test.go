@@ -1,4 +1,4 @@
-package proxy
+package hubproxy
 
 import (
 	"bufio"
@@ -24,18 +24,18 @@ const remoteKey = "remote-secret-key"
 
 type fakeResolver struct {
 	mu      sync.Mutex
-	targets map[string]Target
+	targets map[string]HTTPTarget
 	errs    map[string]error
 	marks   []string // "id:status"
 }
 
 func (f *fakeResolver) Resolve(_ context.Context, id string) (Target, error) {
 	if err, ok := f.errs[id]; ok {
-		return Target{}, err
+		return nil, err
 	}
 	t, ok := f.targets[id]
 	if !ok {
-		return Target{}, ErrUnknownServer
+		return nil, ErrUnknownServer
 	}
 	return t, nil
 }
@@ -76,15 +76,15 @@ func keyed(next http.Handler) http.Handler {
 }
 
 // setup starts a key-requiring remote and a hub with server "a" pointing at it.
-func setup(t *testing.T, remote http.Handler, mod func(*Target)) (*fakeResolver, *httptest.Server, *httptest.Server) {
+func setup(t *testing.T, remote http.Handler, mod func(*HTTPTarget)) (*fakeResolver, *httptest.Server, *httptest.Server) {
 	t.Helper()
 	rem := httptest.NewServer(keyed(remote))
 	t.Cleanup(rem.Close)
-	tg := Target{URL: rem.URL, APIKey: remoteKey, AllowPrivate: true}
+	tg := HTTPTarget{URL: rem.URL, APIKey: remoteKey, AllowPrivate: true}
 	if mod != nil {
 		mod(&tg)
 	}
-	res := &fakeResolver{targets: map[string]Target{"a": tg}, errs: map[string]error{}}
+	res := &fakeResolver{targets: map[string]HTTPTarget{"a": tg}, errs: map[string]error{}}
 	hub := httptest.NewServer(newHub(res))
 	t.Cleanup(hub.Close)
 	return res, hub, rem
@@ -237,7 +237,7 @@ func TestUnreachable(t *testing.T) {
 	ln, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr := ln.Addr().String()
 	ln.Close() // nothing listening
-	res := &fakeResolver{targets: map[string]Target{"dead": {URL: "http://" + addr, APIKey: "k", AllowPrivate: true}}}
+	res := &fakeResolver{targets: map[string]HTTPTarget{"dead": {URL: "http://" + addr, APIKey: "k", AllowPrivate: true}}}
 	hub := httptest.NewServer(newHub(res))
 	defer hub.Close()
 
@@ -252,7 +252,7 @@ func TestUnreachable(t *testing.T) {
 }
 
 func TestUpstream401MapsTo502(t *testing.T) {
-	res, hub, _ := setup(t, http.NotFoundHandler(), func(tg *Target) { tg.APIKey = "wrong" })
+	res, hub, _ := setup(t, http.NotFoundHandler(), func(tg *HTTPTarget) { tg.APIKey = "wrong" })
 	resp, err := http.Get(hub.URL + "/api/remote/a/api/health")
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -285,7 +285,7 @@ func TestSSRFBlocksPrivateUnlessAllowed(t *testing.T) {
 		hit = true
 		mu.Unlock()
 		io.WriteString(w, "ok")
-	}), func(tg *Target) { tg.AllowPrivate = false })
+	}), func(tg *HTTPTarget) { tg.AllowPrivate = false })
 	resp, err := http.Get(hub.URL + "/api/remote/a/api/health")
 	require.NoError(t, err)
 	defer resp.Body.Close()
@@ -323,7 +323,7 @@ func TestGetHelper(t *testing.T) {
 	rem := httptest.NewServer(keyed(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "live") })))
 	defer rem.Close()
 	ctx := context.Background()
-	ok := Target{URL: rem.URL, APIKey: remoteKey, AllowPrivate: true}
+	ok := HTTPTarget{URL: rem.URL, APIKey: remoteKey, AllowPrivate: true}
 
 	resp, err := Get(ctx, ok, "/api/sessions/live", "api_key=zzz")
 	require.NoError(t, err)
@@ -331,9 +331,9 @@ func TestGetHelper(t *testing.T) {
 	resp.Body.Close()
 	assert.Equal(t, "live", string(b))
 
-	_, err = Get(ctx, Target{URL: rem.URL, APIKey: "bad", AllowPrivate: true}, "/api/x", "")
+	_, err = Get(ctx, HTTPTarget{URL: rem.URL, APIKey: "bad", AllowPrivate: true}, "/api/x", "")
 	assert.ErrorIs(t, err, ErrRemoteRejected)
-	_, err = Get(ctx, Target{URL: rem.URL, APIKey: remoteKey}, "/api/x", "")
+	_, err = Get(ctx, HTTPTarget{URL: rem.URL, APIKey: remoteKey}, "/api/x", "")
 	assert.ErrorIs(t, err, ErrBlocked)
 	_, err = Get(ctx, ok, "/static/x", "")
 	assert.ErrorIs(t, err, ErrPathNotAllowed)
@@ -361,7 +361,7 @@ func wsHub(t *testing.T, handler func(c *websocket.Conn, r *http.Request), key s
 		handler(c, r)
 	})))
 	t.Cleanup(rem.Close)
-	res := &fakeResolver{targets: map[string]Target{"a": {URL: rem.URL, APIKey: key, AllowPrivate: true}}}
+	res := &fakeResolver{targets: map[string]HTTPTarget{"a": {URL: rem.URL, APIKey: key, AllowPrivate: true}}}
 	hub := httptest.NewServer(newHub(res))
 	t.Cleanup(hub.Close)
 	return hub, res
@@ -493,14 +493,14 @@ func TestWebSocketSSRFBlocked(t *testing.T) {
 		t.Error("remote must not be reached")
 	})))
 	defer rem.Close()
-	res := &fakeResolver{targets: map[string]Target{"a": {URL: rem.URL, APIKey: remoteKey}}}
+	res := &fakeResolver{targets: map[string]HTTPTarget{"a": {URL: rem.URL, APIKey: remoteKey}}}
 	hub := httptest.NewServer(newHub(res))
 	defer hub.Close()
 	_, resp, err := wsDial(t, hub, "/api/remote/a/ws/x")
 	require.Error(t, err)
 	assert.Equal(t, 502, resp.StatusCode)
 
-	_, err = DialWebSocket(context.Background(), Target{URL: rem.URL, APIKey: remoteKey}, "/ws/x", "", nil)
+	_, err = DialWebSocket(context.Background(), HTTPTarget{URL: rem.URL, APIKey: remoteKey}, "/ws/x", "", nil)
 	assert.ErrorIs(t, err, ErrBlocked)
 }
 
@@ -514,11 +514,11 @@ func TestDialWebSocketHelper(t *testing.T) {
 		c.Close(websocket.StatusNormalClosure, "")
 	})))
 	defer rem.Close()
-	c, err := DialWebSocket(context.Background(), Target{URL: rem.URL, APIKey: remoteKey, AllowPrivate: true}, "/ws/coral", "", nil)
+	c, err := DialWebSocket(context.Background(), HTTPTarget{URL: rem.URL, APIKey: remoteKey, AllowPrivate: true}, "/ws/coral", "", nil)
 	require.NoError(t, err)
 	_, data, err := c.Read(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, "feed", string(data))
-	_, err = DialWebSocket(context.Background(), Target{URL: rem.URL, APIKey: "bad", AllowPrivate: true}, "/ws/coral", "", nil)
+	_, err = DialWebSocket(context.Background(), HTTPTarget{URL: rem.URL, APIKey: "bad", AllowPrivate: true}, "/ws/coral", "", nil)
 	assert.ErrorIs(t, err, ErrRemoteRejected)
 }

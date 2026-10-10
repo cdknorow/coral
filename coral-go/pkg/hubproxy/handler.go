@@ -1,4 +1,4 @@
-package proxy
+package hubproxy
 
 import (
 	"context"
@@ -91,24 +91,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadGateway, "remote unavailable", id)
 		return
 	}
-	base, err := ValidateTarget(t)
-	if err != nil {
-		if errors.Is(err, ErrBlocked) {
-			writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
-		} else {
-			writeErr(w, http.StatusBadGateway, "remote unreachable", id)
+	if v, ok := t.(Validator); ok {
+		if err := v.Validate(); err != nil {
+			if errors.Is(err, ErrBlocked) {
+				writeErr(w, http.StatusBadGateway, ErrBlocked.Error(), id)
+			} else {
+				writeErr(w, http.StatusBadGateway, "remote unreachable", id)
+			}
+			return
 		}
-		return
 	}
 
 	if upgrade {
-		h.bridgeWS(w, r, id, t, base, dec, rawPath)
+		h.bridgeWS(w, r, id, t, rawPath)
 		return
 	}
-	h.proxyHTTP(w, r, id, t, base, dec, rawPath)
+	h.proxyHTTP(w, r, id, t, dec, rawPath)
 }
 
-func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t Target, base *url.URL, dec, raw string) {
+func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t Target, dec, raw string) {
 	stream := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
@@ -119,19 +120,15 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 	}
 
 	rp := &nethttputil.ReverseProxy{
-		Transport:     transport(t.AllowPrivate),
+		Transport:     targetTransport{t},
 		FlushInterval: -1,
 		Rewrite: func(pr *nethttputil.ProxyRequest) {
 			out := pr.Out
-			out.URL.Scheme = base.Scheme
-			out.URL.Host = base.Host
 			out.URL.Path, out.URL.RawPath = dec, raw
 			out.URL.RawQuery = stripAPIKey(pr.In.URL.RawQuery)
-			out.Host = base.Host
 			for _, hd := range []string{"Authorization", "Cookie", "Origin", "Referer", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
 				out.Header.Del(hd)
 			}
-			out.Header.Set("Authorization", "Bearer "+t.APIKey)
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			if timer != nil {
@@ -168,4 +165,11 @@ func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, i
 		h.mark(ctx, id, StatusUnreachable, "connect failed")
 		writeErr(w, http.StatusBadGateway, "remote unreachable", id)
 	}
+}
+
+// targetTransport adapts a Target to http.RoundTripper for ReverseProxy.
+type targetTransport struct{ t Target }
+
+func (tt targetTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return tt.t.RoundTrip(req)
 }

@@ -1,7 +1,11 @@
-// Package proxy implements the hub's streaming HTTP and WebSocket proxy to
+// Package hubproxy implements the hub's streaming HTTP and WebSocket proxy to
 // registered remote Coral servers, plus helpers (authenticated GET, websocket
 // dial) that background services can reuse with the same SSRF safeguards.
-package proxy
+//
+// The handler is independent of how a request reaches the remote: it talks to
+// a Target. HTTPTarget (self-hosted --hub) dials the remote's URL directly
+// with SSRF protection; the Cloud Hub supplies a tunnel-backed Target.
+package hubproxy
 
 import (
 	"context"
@@ -17,14 +21,64 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/httputil"
+	"nhooyr.io/websocket"
 )
 
-// Target is a resolved remote server. APIKey is plaintext and must only live
-// in a local variable for the duration of a request.
-type Target struct {
+// Target is a resolved remote server the proxy can send requests to.
+type Target interface {
+	// RoundTrip sends req to the remote. req.URL carries only the upstream
+	// path (Path/RawPath) and RawQuery; the Target supplies scheme, host and
+	// credentials. The response body streams (SSE must not be buffered) and
+	// the caller closes it.
+	RoundTrip(req *http.Request) (*http.Response, error)
+	// DialWS opens a websocket to the upstream path. path is an escaped path
+	// under /ws/ or /api/. A rejected credential yields ErrRemoteRejected.
+	DialWS(ctx context.Context, path, rawQuery string, protocols []string) (*websocket.Conn, error)
+}
+
+// Validator is optionally implemented by a Target to reject it before any
+// request is made (for HTTPTarget: URL syntax and SSRF checks). It should
+// return ErrBlocked for disallowed addresses.
+type Validator interface {
+	Validate() error
+}
+
+// HTTPTarget is a remote Coral server reached directly over HTTP(S), as used
+// by the self-hosted --hub. APIKey is plaintext and must only live in a local
+// variable for the duration of a request. SSRF checks live here.
+type HTTPTarget struct {
 	URL          string
 	APIKey       string
 	AllowPrivate bool
+}
+
+// Validate implements Validator.
+func (t HTTPTarget) Validate() error {
+	_, err := ValidateTarget(t)
+	return err
+}
+
+// RoundTrip implements Target.
+func (t HTTPTarget) RoundTrip(req *http.Request) (*http.Response, error) {
+	base, err := ValidateTarget(t)
+	if err != nil {
+		return nil, err
+	}
+	out := req.Clone(req.Context())
+	out.URL.Scheme = base.Scheme
+	out.URL.Host = base.Host
+	out.Host = base.Host
+	out.Header.Set("Authorization", "Bearer "+t.APIKey)
+	return transport(t.AllowPrivate).RoundTrip(out)
+}
+
+// DialWS implements Target.
+func (t HTTPTarget) DialWS(ctx context.Context, path, rawQuery string, protocols []string) (*websocket.Conn, error) {
+	base, err := ValidateTarget(t)
+	if err != nil {
+		return nil, err
+	}
+	return dialWS(ctx, t, base, path, rawQuery, protocols)
 }
 
 // Resolver looks up a registered remote by id. It must return ErrUnknownServer
@@ -101,7 +155,7 @@ func wsPathAllowed(p string) bool   { return hasPrefixDir(p, "/ws/") || hasPrefi
 // ValidateTarget parses the base URL and, unless AllowPrivate, resolves it and
 // rejects private/reserved addresses. The dial-time guard re-checks the IP that
 // is actually connected to.
-func ValidateTarget(t Target) (*url.URL, error) {
+func ValidateTarget(t HTTPTarget) (*url.URL, error) {
 	u, err := url.Parse(t.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return nil, fmt.Errorf("invalid remote url")
@@ -156,13 +210,6 @@ func transport(allowPrivate bool) *http.Transport {
 
 // ── Helpers reusable by background services ─────────────────────────
 
-func endpoint(t Target, u *url.URL, rawPath, rawQuery string) string {
-	out := url.URL{Scheme: u.Scheme, Host: u.Host, RawQuery: stripAPIKey(rawQuery)}
-	dec, _ := url.PathUnescape(rawPath)
-	out.Path, out.RawPath = dec, rawPath
-	return out.String()
-}
-
 func stripAPIKey(rawQuery string) string {
 	if rawQuery == "" {
 		return ""
@@ -178,10 +225,11 @@ func stripAPIKey(rawQuery string) string {
 	return vals.Encode()
 }
 
-// Get performs an authenticated GET against {t.URL}{path} with the same SSRF
-// safeguards and path rules as the proxy. path is an escaped path under /api/.
-// A 401/403 from the remote yields ErrRemoteRejected. The 30s header timeout
-// applies; callers control the body lifetime via ctx.
+// Get performs an authenticated GET against the remote through t with the
+// same path rules as the proxy (SSRF safeguards come from the Target). path is
+// an escaped path under /api/. A 401/403 from the remote yields
+// ErrRemoteRejected. The 30s header timeout applies; callers control the body
+// lifetime via ctx.
 func Get(ctx context.Context, t Target, path, rawQuery string) (*http.Response, error) {
 	if _, raw, err := SanitizePath(path); err != nil {
 		return nil, err
@@ -192,17 +240,18 @@ func Get(ctx context.Context, t Target, path, rawQuery string) (*http.Response, 
 	if !httpPathAllowed(dec) {
 		return nil, ErrPathNotAllowed
 	}
-	u, err := ValidateTarget(t)
+	if v, ok := t.(Validator); ok {
+		if err := v.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://remote.invalid/", nil)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint(t, u, path, rawQuery), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+t.APIKey)
+	req.URL.Path, req.URL.RawPath, req.URL.RawQuery = dec, path, stripAPIKey(rawQuery)
 	cl := &http.Client{
-		Transport:     &headerTimeoutTransport{rt: transport(t.AllowPrivate), d: headerTimeout},
+		Transport:     &headerTimeoutTransport{rt: targetTransport{t}, d: headerTimeout},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	resp, err := cl.Do(req)

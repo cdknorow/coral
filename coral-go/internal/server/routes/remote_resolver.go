@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cdknorow/coral/internal/server/proxy"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -23,18 +23,18 @@ func (r *RemoteResolver) Resolve(ctx context.Context, id string) (proxy.Target, 
 	rs, err := r.store.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, store.ErrRemoteNotFound) {
-			return proxy.Target{}, proxy.ErrUnknownServer
+			return proxy.HTTPTarget{}, proxy.ErrUnknownServer
 		}
-		return proxy.Target{}, err
+		return proxy.HTTPTarget{}, err
 	}
 	key, err := r.store.DecryptedKey(ctx, id)
 	if err != nil {
 		if errors.Is(err, store.ErrKeyUnreadable) {
-			return proxy.Target{}, proxy.ErrKeyUnreadable
+			return proxy.HTTPTarget{}, proxy.ErrKeyUnreadable
 		}
-		return proxy.Target{}, err
+		return proxy.HTTPTarget{}, err
 	}
-	return proxy.Target{URL: rs.URL, APIKey: key, AllowPrivate: rs.AllowPrivate}, nil
+	return proxy.HTTPTarget{URL: rs.URL, APIKey: key, AllowPrivate: rs.AllowPrivate}, nil
 }
 
 func (r *RemoteResolver) MarkStatus(ctx context.Context, id, status, errMsg string) {
