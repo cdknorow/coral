@@ -13,6 +13,7 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
+	"nhooyr.io/websocket"
 )
 
 func TestRequestMetricsRecordsAPIIdentityAndExcludesMetricsRoutes(t *testing.T) {
@@ -97,4 +98,52 @@ func TestCallMetricSummaryResolvesHistoricalSessionTeam(t *testing.T) {
 	require.Len(t, rows, 1)
 	require.Equal(t, "Frontend Dev", rows[0].AgentName)
 	require.Equal(t, "death-or-trade-ai-auto", rows[0].BoardName)
+}
+
+// The metrics wrapper must not hide http.Hijacker/Flusher: WebSockets and SSE
+// on /api/ routes (the hub's /api/remote/{server}/ws/... bridge) depend on it.
+func TestRequestMetricsKeepsWebSocketAndStreamingWorking(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	require.NoError(t, err)
+	defer db.Close()
+
+	r := chi.NewRouter()
+	r.Use(RequestMetrics(db))
+	r.Get("/api/ws-echo", func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.CloseNow()
+		typ, data, err := c.Read(r.Context())
+		if err == nil {
+			_ = c.Write(r.Context(), typ, data)
+		}
+		c.Close(websocket.StatusNormalClosure, "")
+	})
+	flushed := make(chan struct{})
+	r.Get("/api/stream", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("first\n"))
+		require.NoError(t, http.NewResponseController(w).Flush(), "Flush must reach the real writer")
+		close(flushed)
+		<-r.Context().Done()
+	})
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+ts.URL[4:]+"/api/ws-echo", nil)
+	require.NoError(t, err, "websocket upgrade through RequestMetrics")
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte("hi")))
+	_, got, err := c.Read(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "hi", string(got))
+	c.CloseNow()
+
+	req, _ := http.NewRequestWithContext(ctx, "GET", ts.URL+"/api/stream", nil)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err) // headers only arrive once the handler flushed
+	<-flushed
+	resp.Body.Close()
 }

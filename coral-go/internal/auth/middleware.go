@@ -39,8 +39,11 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			}
 
 			// Check API key (header or query param)
+			// Only FAILED attempts count against the rate limit. Counting valid
+			// keys too would throttle any legitimate programmatic client (such
+			// as a Coral hub polling this server every few seconds) into 429s.
 			if key := extractAPIKey(r); key != "" {
-				if !ks.CheckRateLimit(clientIP(r)) {
+				if ks.RateLimited(clientIP(r)) {
 					http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
 					return
 				}
@@ -57,6 +60,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 					next.ServeHTTP(w, r)
 					return
 				}
+				ks.RecordFailure(clientIP(r))
 				log.Printf("[auth] invalid API key from %s", clientIP(r))
 			}
 

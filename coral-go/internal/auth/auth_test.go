@@ -407,3 +407,43 @@ func TestSetSessionCookie_NotSecureOnPlainHTTP(t *testing.T) {
 	require.Len(t, cookies, 1)
 	assert.False(t, cookies[0].Secure, "plain HTTP requests should not set Secure")
 }
+
+// A valid key must never be rate limited by its own successful use: a Coral
+// hub polls a remote with its key every few seconds from one IP.
+func TestMiddleware_ValidKeyNotRateLimited(t *testing.T) {
+	ks, handler := newMiddlewareTest(t)
+	for i := 0; i < rateLimitMax*5; i++ {
+		r := httptest.NewRequest("GET", "/api/sessions", nil)
+		r.RemoteAddr = "192.168.1.5:54321"
+		r.Header.Set("Authorization", "Bearer "+ks.Key())
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		require.Equal(t, http.StatusOK, w.Code, "request %d", i+1)
+	}
+}
+
+// Failed guesses are still limited, and once limited even the right key waits.
+func TestMiddleware_FailedKeysAreRateLimited(t *testing.T) {
+	ks, handler := newMiddlewareTest(t)
+	do := func(key string) int {
+		r := httptest.NewRequest("GET", "/api/sessions", nil)
+		r.RemoteAddr = "192.168.1.9:54321"
+		r.Header.Set("Authorization", "Bearer "+key)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < rateLimitMax; i++ {
+		require.Equal(t, http.StatusUnauthorized, do("wrong"), "guess %d", i+1)
+	}
+	assert.Equal(t, http.StatusTooManyRequests, do("wrong"))
+	assert.Equal(t, http.StatusTooManyRequests, do(ks.Key()), "brute-force cap must hold for the right key too")
+	assert.Equal(t, http.StatusOK, func() int { // another IP is unaffected
+		r := httptest.NewRequest("GET", "/api/sessions", nil)
+		r.RemoteAddr = "192.168.1.10:1"
+		r.Header.Set("Authorization", "Bearer "+ks.Key())
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code
+	}())
+}
