@@ -60,6 +60,21 @@ function sameOrigin(input) {
     } catch { return false; }
 }
 
+let _lastExplained = 0;
+/** Tell the user why the hub or their machine refused a request (JSON 403 bodies only), once per few seconds. */
+function explainRefusal(resp) {
+    if (Date.now() - _lastExplained < 3000) return;
+    if (!/json/i.test(resp.headers.get('Content-Type') || '')) return;
+    resp.clone().json().then(async body => {
+        const { refusalMessage } = await import('./cloud_servers.js');
+        const msg = refusalMessage(resp.status, body);
+        if (!msg) return;
+        _lastExplained = Date.now();
+        const { showToast } = await import('./utils.js');
+        showToast(msg, true, 8000);
+    }).catch(() => {});
+}
+
 /** Wrap window.fetch: add X-CSRF-Token on same-origin state-changing calls and
  *  send the user to sign-in when the session has ended. */
 export function installCloudFetch() {
@@ -76,6 +91,7 @@ export function installCloudFetch() {
         }
         const resp = await orig(input, init);
         if (resp.status === 403 && !SAFE.has(method)) _session = null; // token may have rotated; refetch next time
+        if (resp.status === 403 && sameOrigin(input)) explainRefusal(resp);
         if (resp.status === 401 && sameOrigin(input) && !/^\/(signin|auth|enroll)/.test(location.pathname)) {
             location.replace(signInUrl());
         }
