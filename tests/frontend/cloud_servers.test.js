@@ -30,5 +30,6 @@ const { pathToFileURL } = require('url');
 
     for (const k of ['view', 'interact', 'launch']) assert.ok(m.MODE_INFO[k].text.length > 20);
     assert.match(m.MODE_INFO.interact.text, /run commands/);
+    assert.match(m.MODE_INFO.interact.text, /delete boards/);
     console.log('cloud_servers.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });
