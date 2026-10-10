@@ -485,3 +485,42 @@ func TestTunnelTargetMetersBothDirections(t *testing.T) {
 	assert.Equal(t, int64(1000), m.in.Load())
 	assert.Equal(t, int64(1004), m.out.Load())
 }
+
+// When only the machine's local mode blocks a request, the owner sees why.
+func TestLocalModeRefusalBecomes403WithTheMode(t *testing.T) {
+	ls := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
+	defer ls.Close()
+	sessions := make(chan *tunnel.Session, 1)
+	ths := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, err := tunnel.AcceptHTTP(w, r, func(context.Context, string) (any, error) { return "x", nil }, tunnel.SessionConfig{})
+		if err == nil {
+			sessions <- s
+		}
+	}))
+	defer ths.Close()
+	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
+		Handler:       &tunnel.LocalHandler{BaseURL: ls.URL, AllowRequest: tunnel.AllowRequest(func() tunnel.Mode { return tunnel.TierView })},
+		AllowInsecure: true,
+	})
+	require.NoError(t, err)
+	defer cs.Close()
+	sess := <-sessions
+	defer sess.Close()
+	r := chi.NewRouter()
+	r.Handle("/api/remote/{server}/*", New(tunnelResolver{sess}))
+	hub := httptest.NewServer(r)
+	defer hub.Close()
+
+	resp, err := http.Post(hub.URL+"/api/remote/srv/api/sessions/live/a/send", "application/json", strings.NewReader("{}"))
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.JSONEq(t, `{"error":"local_mode","mode":"view"}`, string(body))
+
+	// An unlisted route stays the opaque refusal.
+	resp, err = http.Get(hub.URL + "/api/remote/srv/api/system/api-key")
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+}

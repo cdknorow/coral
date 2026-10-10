@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // Handler is the /api/remote/{server}/* reverse proxy.
@@ -173,7 +175,18 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 }
 
 func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, id string, err error) {
+	var se *tunnel.StreamError
 	switch {
+	case errors.As(err, &se) && se.Code == tunnel.CodeLocalMode:
+		// The machine's own setting is below what the hub allows. Say so; this is not an outage,
+		// so the server is not marked unreachable.
+		mode := se.Message
+		if mode != "view" && mode != "interact" {
+			mode = "view"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "local_mode", "mode": mode})
 	case errors.Is(err, ErrRemoteRejected):
 		h.mark(ctx, id, StatusUnauthorized, "remote rejected API key")
 		h.writeErr(w, http.StatusBadGateway, "remote rejected API key", id)

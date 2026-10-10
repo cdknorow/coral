@@ -363,3 +363,50 @@ func TestHelloCarriesLocalModeAsAHintOnly(t *testing.T) {
 	assert.Equal(t, TierView, parseLocalMode("garbage"))
 	assert.Equal(t, TierView, parseLocalMode(""))
 }
+
+// A request that fails only because this machine's own maximum mode is too low gets a distinct
+// refusal carrying that mode; unknown, never-routes and bad paths stay opaque.
+func TestLocalModeRefusalIsDistinctAndNarrow(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	mode := TierView
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("ok"))
+	}), func(l *LocalHandler) {
+		l.AllowRequest = AllowRequest(func() Mode { return mode })
+		l.MaxMode = func() Mode { return mode }
+	})
+	do := func(method, path string) error {
+		req, _ := http.NewRequest(method, "http://x"+path, nil)
+		resp, err := sess.RoundTrip(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+		return err
+	}
+	var se *StreamError
+	require.NoError(t, do("GET", "/api/sessions/live"))
+
+	err := do("POST", "/api/sessions/live/a/send") // interact route, machine allows view
+	require.ErrorAs(t, err, &se)
+	assert.Equal(t, CodeLocalMode, se.Code)
+	assert.Equal(t, "view", se.Message)
+
+	err = do("POST", "/api/sessions/launch") // launch route
+	require.ErrorAs(t, err, &se)
+	assert.Equal(t, CodeLocalMode, se.Code)
+
+	for _, p := range []struct{ m, p string }{{"GET", "/api/system/api-key"}, {"POST", "/api/webhooks"}, {"GET", "/api/nope/nothing"}} {
+		err = do(p.m, p.p) // never or unlisted: opaque, whatever the mode
+		require.ErrorAs(t, err, &se, p.p)
+		assert.Equal(t, CodePathNotAllowed, se.Code, p.p)
+	}
+	err = do("GET", "/api/sessions/live/a/file-content?filepath=/etc/passwd") // unsafe query: never
+	require.ErrorAs(t, err, &se)
+	assert.Equal(t, CodePathNotAllowed, se.Code)
+
+	mode = TierInteract
+	require.NoError(t, do("POST", "/api/sessions/live/a/send"))
+	err = do("POST", "/api/sessions/launch")
+	require.ErrorAs(t, err, &se)
+	assert.Equal(t, "interact", se.Message)
+}

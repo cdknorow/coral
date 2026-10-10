@@ -325,6 +325,44 @@ func (l *LocalHandler) checkRequest(h Header) (decoded string, ok bool) {
 	return decoded, true
 }
 
+// localModeDenial reports whether a request was refused only because this machine's local
+// maximum mode is below the route's tier (the route itself is known and valid). The hub shows
+// the owner a clear message for it; everything else stays an opaque refusal. The answer
+// reveals only the owner's own local setting, and only to a request the hub already
+// authenticated as theirs.
+func (l *LocalHandler) localModeDenial(h Header) (mode string, ok bool) {
+	if l.AllowRequest == nil || ValidatePath(h.Path) != nil || !validQuery(h.Query) {
+		return "", false
+	}
+	if h.Kind == KindHTTP && !strings.HasPrefix(h.Path, "/api/") {
+		return "", false
+	}
+	decoded, err := url.PathUnescape(h.Path)
+	if err != nil {
+		return "", false
+	}
+	method := h.Method
+	if h.Kind == KindWS {
+		method = http.MethodGet
+	}
+	tier := Classify(method, decoded, h.Query)
+	cur := currentMode(l.MaxMode)
+	if tier == TierNever || tier <= cur {
+		return "", false
+	}
+	return cur.String(), true
+}
+
+// reject answers a refused request: a distinct, non-leaky code when only the local mode stands
+// in the way, the generic path refusal otherwise.
+func (l *LocalHandler) reject(s *Stream) {
+	if mode, ok := l.localModeDenial(s.Header); ok {
+		s.Reject(CodeLocalMode, mode, 0)
+		return
+	}
+	s.Reject(CodePathNotAllowed, "path not allowed", 0)
+}
+
 // ServeStream implements Handler.
 func (l *LocalHandler) ServeStream(ctx context.Context, s *Stream) {
 	if err := l.init(); err != nil {
@@ -351,7 +389,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	h := s.Header
 	dec, ok := l.checkRequest(h)
 	if !ok {
-		s.Reject(CodePathNotAllowed, "path not allowed", 0)
+		l.reject(s)
 		return
 	}
 	if !allowedMethods[h.Method] {
@@ -440,7 +478,7 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 	h := s.Header
 	dec, ok := l.checkRequest(h)
 	if !ok {
-		s.Reject(CodePathNotAllowed, "path not allowed", 0)
+		l.reject(s)
 		return
 	}
 	hdr := scrub(h.Headers)
