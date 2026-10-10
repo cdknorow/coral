@@ -442,3 +442,44 @@ func TestStreamPolicyGatesFramesAndClosesTheBridge(t *testing.T) {
 	_, _, err = c.Read(ctx)
 	assert.Equal(t, StatusAccessChanged, websocket.CloseStatus(err))
 }
+
+type countMeter struct{ in, out atomic.Int64 }
+
+func (c *countMeter) WaitIn(_ context.Context, n int) error  { c.in.Add(int64(n)); return nil }
+func (c *countMeter) WaitOut(_ context.Context, n int) error { c.out.Add(int64(n)); return nil }
+
+func TestTunnelTargetMetersBothDirections(t *testing.T) {
+	local := http.NewServeMux()
+	local.HandleFunc("/api/echo", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		w.Write(append([]byte("got:"), b...))
+	})
+	ls := httptest.NewServer(local)
+	defer ls.Close()
+	sessions := make(chan *tunnel.Session, 1)
+	ths := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, err := tunnel.AcceptHTTP(w, r, func(context.Context, string) (any, error) { return "x", nil }, tunnel.SessionConfig{})
+		if err == nil {
+			sessions <- s
+		}
+	}))
+	defer ths.Close()
+	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
+		Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true }}, AllowInsecure: true,
+	})
+	require.NoError(t, err)
+	defer cs.Close()
+	sess := <-sessions
+	defer sess.Close()
+
+	m := &countMeter{}
+	tt := TunnelTarget{Session: sess, Meter: m}
+	req, _ := http.NewRequest("POST", "http://x/api/echo", strings.NewReader(strings.Repeat("a", 1000)))
+	resp, err := tt.RoundTrip(req)
+	require.NoError(t, err)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, 1004, len(b))
+	assert.Equal(t, int64(1000), m.in.Load())
+	assert.Equal(t, int64(1004), m.out.Load())
+}

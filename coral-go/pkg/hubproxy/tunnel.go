@@ -12,11 +12,19 @@ import (
 // the connector, which executes them against the Coral server's local API.
 // The connector owns credentials and SSRF protection (the local API is
 // loopback only), so there is nothing to validate here.
-type TunnelTarget struct{ Session *tunnel.Session }
+type TunnelTarget struct {
+	Session *tunnel.Session
+	// Meter, if set, throttles the bytes this target moves (per-tenant bandwidth).
+	Meter Meter
+}
 
 // RoundTrip implements Target.
 func (t TunnelTarget) RoundTrip(req *http.Request) (*http.Response, error) {
-	return t.Session.RoundTrip(req)
+	resp, err := t.Session.RoundTrip(meterRequest(req, t.Meter))
+	if err == nil {
+		meterResponse(resp, t.Meter, req.Context())
+	}
+	return resp, err
 }
 
 // DialWS implements Target. A local 401/403 on the websocket handshake maps to
@@ -29,6 +37,9 @@ func (t TunnelTarget) DialWS(ctx context.Context, path, rawQuery string, protoco
 			return nil, ErrRemoteRejected
 		}
 		return nil, err
+	}
+	if t.Meter != nil {
+		return meteredWS{WSConn: c, m: t.Meter}, nil
 	}
 	return c, nil
 }
