@@ -62,7 +62,7 @@ func TestStartEnrollmentValidatesHubAnswers(t *testing.T) {
 			w.WriteHeader(status)
 			json.NewEncoder(w).Encode(body)
 		})
-		return StartEnrollment(context.Background(), hc, url, time.Unix(0, 0))
+		return StartEnrollment(context.Background(), hc, url, time.Unix(0, 0), EnrollInfo{})
 	}
 	dc, err := run(good, 200)
 	require.NoError(t, err)
@@ -130,13 +130,13 @@ func TestEnrollmentDoesNotFollowRedirectsOrLeakErrors(t *testing.T) {
 	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { t.Error("redirect followed") }))
 	defer evil.Close()
 	url, hc := hubWith(t, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, evil.URL, 307) })
-	_, err := StartEnrollment(context.Background(), hc, url, time.Now())
+	_, err := StartEnrollment(context.Background(), hc, url, time.Now(), EnrollInfo{})
 	require.ErrorIs(t, err, ErrHubResponse)
 
 	dead := httptest.NewServer(http.NotFoundHandler())
 	deadURL := dead.URL
 	dead.Close()
-	_, err = StartEnrollment(context.Background(), NewHubHTTPClient(), deadURL, time.Now())
+	_, err = StartEnrollment(context.Background(), NewHubHTTPClient(), deadURL, time.Now(), EnrollInfo{})
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), deadURL, "errors must not echo the hub address or transport details")
 }
@@ -145,6 +145,21 @@ func TestHubResponsesAreSizeLimited(t *testing.T) {
 	url, hc := hubWith(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"device_code":"` + strings.Repeat("a", 1<<20) + `"}`))
 	})
-	_, err := StartEnrollment(context.Background(), hc, url, time.Now())
+	_, err := StartEnrollment(context.Background(), hc, url, time.Now(), EnrollInfo{})
 	require.ErrorIs(t, err, ErrHubResponse)
+}
+
+func TestStartEnrollmentReportsACleanedHostnameAndVersion(t *testing.T) {
+	var got EnrollInfo
+	url, hc := hubWith(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&got)
+		json.NewEncoder(w).Encode(map[string]any{"device_code": strings.Repeat("d", 43), "user_code": "ABCD-EFGH", "interval": 5, "expires_in": 600})
+	})
+	_, err := StartEnrollment(context.Background(), hc, url, time.Now(),
+		EnrollInfo{Hostname: "Dev\u202eBox\n\x00" + strings.Repeat("x", 200), CoralVersion: "1.2.3\u200b\r"})
+	require.NoError(t, err)
+	require.NotContains(t, got.Hostname, "\u202e", "bidi override stripped")
+	require.NotContains(t, got.Hostname, "\n")
+	require.LessOrEqual(t, len([]rune(got.Hostname)), 64)
+	require.Equal(t, "1.2.3", got.CoralVersion)
 }

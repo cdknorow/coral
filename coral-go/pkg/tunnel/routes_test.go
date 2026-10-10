@@ -41,6 +41,10 @@ func TestClassifyTiers(t *testing.T) {
 		{"POST", "/api/board/p/resume", "", TierLaunch},
 		{"POST", "/api/sessions/live/team/t/reset", "", TierLaunch},
 		{"GET", "/api/filesystem/list", "path=/Users/x", TierLaunch},
+		{"GET", "/api/board/remotes", "", TierNever},
+		{"DELETE", "/api/board/remotes", "", TierNever},
+		{"POST", "/api/board/remotes", "", TierNever},
+		{"GET", "/api/board/remotes/proxy/s/p/messages/all", "", TierNever},
 		// Never: settings, secrets, host access, outbound requests, connector, agent API.
 		{"GET", "/api/settings", "", TierNever},
 		{"PUT", "/api/settings", "", TierNever},
@@ -76,32 +80,89 @@ func TestClassifyTiers(t *testing.T) {
 	}
 }
 
-// P-8: file routes carry project-relative paths only; the connector is the barrier
-// until the local API itself is fixed.
-func TestFileParamsMustBeRelative(t *testing.T) {
-	routes := []string{
-		"/api/sessions/live/a/file-content", "/api/sessions/live/a/file-original", "/api/sessions/live/a/resolve-path",
-		"/api/sessions/live/a/search-files", "/api/sessions/live/a/diff",
+// P-8 and #2788: file routes accept only the query parameters their handler reads, file
+// references are decoded to a fixed point before they are judged, and unknown parameters
+// are refused. The strings below are the reviewer's probes plus encoding variants.
+func TestFileRefsAreNormalisedAndPerRoute(t *testing.T) {
+	type routeParam struct{ path, param string }
+	fileRoutes := []routeParam{
+		{"/api/sessions/live/a/file-content", "filepath"}, {"/api/sessions/live/a/file-original", "filepath"},
+		{"/api/sessions/live/a/resolve-path", "filepath"}, {"/api/sessions/live/a/diff", "filepath"},
+		{"/api/sessions/live/a/search-files", "dir"}, {"/api/sessions/live/a/chat", "working_directory"},
 	}
-	bad := []string{"/etc/passwd", "~/.ssh/id_rsa", "~", "../../etc/passwd", "a/../../b", "..", "-rf", "C:\\Windows", "c:/x",
-		"a\\b", "a\x00b", "/Users/x/.coral/api_key"}
-	for _, r := range routes {
-		for _, param := range []string{"filepath", "dir", "path", "ref", "file"} {
-			for _, v := range bad {
-				q := url.Values{param: {v}}.Encode()
-				assert.Equal(t, TierNever, Classify("GET", r, q), "%s ?%s", r, q)
-			}
+	bad := []string{
+		"/etc/passwd", "~/.ssh/id_rsa", "~", "../../etc/passwd", "a/../../b", "..", "-rf", "C:\\Windows", "c:/x", "a\\b",
+		"a\x00b", "/Users/x/.coral/api_key",
+		// Reviewer's probes: Coral decodes again and strips file://, so these must die here.
+		"%2Fetc%2Fpasswd", "%2fetc%2fpasswd", "%252Fetc%252Fpasswd", "%252fetc%252fpasswd",
+		"file:///etc/passwd", "file%3A%2F%2F%2Fetc%2Fpasswd", "file://localhost/etc/passwd", "file%3A%2F%2Flocalhost%2Fetc%2Fpasswd",
+		"%257E%252F.ssh%252Fid_rsa", "%7E%2F.ssh%2Fid_rsa", "%2e%2e%2fsecret", "%252e%252e%252fsecret", "%252E%252E/secret",
+		"%25252e%25252e%25252fsecret", "%2525252e%2525252e%2525252fsecret", "a%2F..%2F..%2Fb", "http://evil.example/x",
+		"data:text/plain,x", "a#b", "a?b=c", "100%", "%zz", "..\u2025/x", "\u2025\u2025/x", "a\uff0f..\uff0fb", "\uff0e\uff0e/x",
+		"\ufe52\ufe52/x", "x\u2215y", "a\nb", "a\x7fb",
+	}
+	for _, rp := range fileRoutes {
+		for _, v := range bad {
+			q := url.Values{rp.param: {v}}.Encode()
+			assert.Equal(t, TierNever, Classify("GET", rp.path, q), "%s ?%s", rp.path, q)
+			// Pre-encoded once more, as a client could send it raw.
+			assert.Equal(t, TierNever, Classify("GET", rp.path, rp.param+"="+url.QueryEscape(url.QueryEscape(v))), "%s double-encoded %q", rp.path, v)
 		}
 		// A second, harmless value cannot hide a bad one.
-		assert.Equal(t, TierNever, Classify("GET", r, "filepath=ok.go&filepath=/etc/passwd"))
-		for _, ok := range []string{"main.go", "src/app/main.go", "a b.txt", "src/", "dir.with.dots/x", "..hidden", "a..b"} {
-			assert.Equal(t, TierView, Classify("GET", r, url.Values{"filepath": {ok}, "dir": {ok}}.Encode()), "%s %q", r, ok)
+		assert.Equal(t, TierNever, Classify("GET", rp.path, rp.param+"=ok.go&"+rp.param+"=/etc/passwd"))
+		for _, ok := range []string{"main.go", "src/app/main.go", "a b.txt", "src/", "dir.with.dots/x", "..hidden", "a..b", ""} {
+			assert.Equal(t, TierView, Classify("GET", rp.path, url.Values{rp.param: {ok}}.Encode()), "%s %q", rp.path, ok)
 		}
 	}
-	// Launch-tier folder browsing legitimately takes absolute paths.
+	// Unknown parameters are never allowed, and a parameter belongs to the routes that read it.
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/a/file-content", "filepath=a.go&extra=1"))
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/a/file-content", "dir=src"), "dir is a search-files parameter")
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/a/file-content", "path=a.go"))
+	assert.Equal(t, TierNever, Classify("GET", "/api/health", "x=1"), "a route that reads no parameters accepts none")
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/a/chat", "FilePath=x"), "parameter names are case sensitive")
+	// working_directory on chat is a file ref (reviewer: chat?working_directory=/Users/x/other was VIEW).
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/a/chat", "working_directory=/Users/x/other"))
+	assert.Equal(t, TierView, Classify("GET", "/api/sessions/live/a/chat", "limit=50&session_id=abc"))
+	// Launch-tier folder browsing takes absolute paths, but still not traversal, URLs or nested encodings.
 	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path=/Users/me/code"))
+	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/is-git", url.Values{"path": {"/Users/me/my code"}}.Encode()))
+	assert.Equal(t, TierLaunch, Classify("GET", "/api/filesystem/list", "path=%2FUsers%2Fme"), "an encoded absolute path decodes to the same safe path")
+	for _, v := range []string{"/Users/me/../../etc", "file:///etc", "~/code", "/a%252F..%252Fb", "/a\\b"} {
+		assert.Equal(t, TierNever, Classify("GET", "/api/filesystem/list", url.Values{"path": {v}}.Encode()), v)
+	}
 	// Raw control characters in a query are refused outright.
-	assert.Equal(t, TierNever, Classify("GET", "/api/health", "a=b\r\nX: y"))
+	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live", "a=b\r\nX: y"))
+}
+
+func FuzzClassifyNeverExposesAbsoluteReads(f *testing.F) {
+	for _, s := range []string{"/etc/passwd", "%2Fetc", "%252F", "file:///x", "~/x", "..%2f", "a.go", "src/b.go"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, v string) {
+		q := url.Values{"filepath": {v}}.Encode()
+		for _, form := range []string{q, "filepath=" + v} {
+			if Classify("GET", "/api/sessions/live/a/file-content", form) == TierNever {
+				continue
+			}
+			// Allowed: then the fixed point of its decoding must be a plain relative path.
+			qq, err := url.ParseQuery(form)
+			if err != nil {
+				t.Fatalf("allowed an unparsable query %q", form)
+			}
+			for _, got := range qq["filepath"] {
+				n, ok := normalizeRef(got)
+				bad := !ok || strings.HasPrefix(n, "/") || strings.HasPrefix(n, "~") || strings.ContainsAny(n, ":\\")
+				for _, seg := range strings.Split(n, "/") {
+					if seg == ".." {
+						bad = true
+					}
+				}
+				if bad {
+					t.Fatalf("allowed %q (decodes to %q)", form, n)
+				}
+			}
+		}
+	})
 }
 
 func TestModeGate(t *testing.T) {

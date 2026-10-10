@@ -11,6 +11,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -168,7 +169,8 @@ func (m *Manager) Connect(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, m.o.Now())
+	host, _ := os.Hostname()
+	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, m.o.Now(), EnrollInfo{Hostname: host, CoralVersion: m.o.CoralVersion})
 	if err != nil {
 		m.setError(StateIdle, "could not reach the hub to start enrollment")
 		return err

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cdknorow/coral/internal/config"
 )
@@ -129,8 +130,30 @@ func hubPost(ctx context.Context, hc *http.Client, hubURL, path string, in, out 
 	return resp.StatusCode, nil
 }
 
+// EnrollInfo is what this machine tells the hub about itself, so the person approving the
+// code sees who asked. The hub labels it "reported by the machine (not verified)".
+type EnrollInfo struct {
+	Hostname     string `json:"hostname,omitempty"`
+	CoralVersion string `json:"coral_version,omitempty"`
+}
+
+// cleanInfo keeps printable text only: no control, format (bidi, zero-width) or line
+// characters, at most max runes.
+func cleanInfo(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) || unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+			return -1
+		}
+		return r
+	}, s)
+	if r := []rune(strings.TrimSpace(s)); len(r) > max {
+		return string(r[:max])
+	}
+	return strings.TrimSpace(s)
+}
+
 // StartEnrollment asks the hub for a device code (POST /api/enroll/start).
-func StartEnrollment(ctx context.Context, hc *http.Client, hubURL string, now time.Time) (*DeviceCode, error) {
+func StartEnrollment(ctx context.Context, hc *http.Client, hubURL string, now time.Time, info EnrollInfo) (*DeviceCode, error) {
 	var r struct {
 		DeviceCode      string `json:"device_code"`
 		UserCode        string `json:"user_code"`
@@ -138,7 +161,13 @@ func StartEnrollment(ctx context.Context, hc *http.Client, hubURL string, now ti
 		Interval        int    `json:"interval"`
 		ExpiresIn       int    `json:"expires_in"`
 	}
-	status, err := hubPost(ctx, hc, hubURL, "/api/enroll/start", struct{}{}, &r)
+	info = EnrollInfo{Hostname: cleanInfo(info.Hostname, 64), CoralVersion: cleanInfo(info.CoralVersion, 40)}
+	status, err := hubPost(ctx, hc, hubURL, "/api/enroll/start", info, &r)
+	if err != nil && ctx.Err() == nil {
+		// One quick retry for a transient connection error (a fresh code is harmless).
+		time.Sleep(200 * time.Millisecond)
+		status, err = hubPost(ctx, hc, hubURL, "/api/enroll/start", info, &r)
+	}
 	if err != nil {
 		return nil, err
 	}
