@@ -56,7 +56,10 @@ const (
 	CodeTooManyStreams = "too_many_streams"
 	CodeBadRequest     = "bad_request"
 	CodePathNotAllowed = "path_not_allowed"
-	CodeUpstream       = "upstream_error"
+	// CodeLocalMode: the route is valid but the connector machine's own maximum access mode is
+	// below it. The message is the local mode ("view" or "interact").
+	CodeLocalMode = "local_mode"
+	CodeUpstream  = "upstream_error"
 )
 
 // Hello is the first message, client to server.
