@@ -48,7 +48,7 @@ const port = await freePort(), cdp = await freePort();
 const data = path.join(tmp, 'data'); fs.mkdirSync(data);
 const codexHome = path.join(tmp, 'codex'); fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
-const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_DATA_DIR', 'CORAL_DIR'].includes(k)));
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_DATA_DIR', 'CORAL_DIR', 'TMUX', 'TMUX_PANE'].includes(k)));
 const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1' };
 const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
   { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(path.join(tmp, 'coral.log'), 'w'), fs.openSync(path.join(tmp, 'coral.log'), 'a')] });
