@@ -115,7 +115,7 @@ type env struct {
 	hub   *fakeHub
 	local *localAPI
 	logs  *bytes.Buffer
-	allow atomic.Bool
+	mode  atomic.Int32 // the local maximum access mode
 }
 
 func newEnv(t *testing.T) *env {
@@ -126,12 +126,14 @@ func newEnv(t *testing.T) *env {
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	rs := store.NewRemoteServerStore(db, dir)
-	return &env{db: db, cs: store.NewCloudStore(db, rs), hub: newFakeHub(t), local: newLocalAPI(t), logs: &bytes.Buffer{}}
+	e := &env{db: db, cs: store.NewCloudStore(db, rs), hub: newFakeHub(t), local: newLocalAPI(t), logs: &bytes.Buffer{}}
+	e.mode.Store(int32(tunnel.TierView))
+	return e
 }
 
 func (e *env) manager(hubURL string) *Manager {
 	return New(Options{
-		HubURL: hubURL, Store: e.cs, LocalBaseURL: e.local.srv.URL, AllowLaunch: e.allow.Load,
+		HubURL: hubURL, Store: e.cs, LocalBaseURL: e.local.srv.URL, MaxMode: func() tunnel.Mode { return tunnel.Mode(e.mode.Load()) },
 		CoralVersion: "test", PollInterval: 20 * time.Millisecond,
 		Backoff: tunnel.Backoff{Min: 20 * time.Millisecond, Max: 100 * time.Millisecond},
 		Logger:  slog.New(slog.NewTextHandler(e.logs, &slog.HandlerOptions{Level: slog.LevelInfo})),
@@ -198,6 +200,7 @@ func TestEnrollConnectAndServeAllowedRoutes(t *testing.T) {
 	waitState(t, m, StateConnected)
 	st = m.Status()
 	require.Equal(t, "My Laptop", st.Label)
+	require.Equal(t, "view", st.MaxMode)
 
 	// The token is stored sealed, never as plaintext.
 	var raw string
@@ -216,20 +219,28 @@ func TestEnrollConnectAndServeAllowedRoutes(t *testing.T) {
 	require.Equal(t, "1", h.Get(TunnelHeader), "forwarded requests carry the tunnel marker")
 	require.Empty(t, h.Get("Authorization"))
 
-	// Denied routes never reach the local API, and neither does a launch while the switch is off.
+	// Never-routes and routes above the mode never reach the local API (default mode: view).
 	for _, p := range [][2]string{{"GET", "/api/settings"}, {"PUT", "/api/settings"}, {"GET", "/api/system/api-key"},
-		{"POST", "/api/sessions/launch"}, {"GET", "/api/filesystem/list"}, {"GET", "/api/cloud/status"}} {
+		{"POST", "/api/sessions/live/a/send"}, {"POST", "/api/sessions/launch"}, {"GET", "/api/filesystem/list"},
+		{"GET", "/api/cloud/status"}, {"GET", "/api/sessions/live/a/file-content?filepath=/etc/passwd"}} {
 		code, _ := viaTunnel(t, s, p[0], p[1])
 		require.NotEqual(t, 200, code, "%s %s", p[0], p[1])
 	}
 	require.Equal(t, 1, e.local.count(), "denied requests must not reach the local server")
 
-	// Flipping the local switch takes effect on the next request.
-	e.allow.Store(true)
+	// Raising the local mode takes effect on the next request; lowering it takes effect just as fast.
+	e.mode.Store(int32(tunnel.TierInteract))
+	code, _ = viaTunnel(t, s, "POST", "/api/sessions/live/a/send")
+	require.Equal(t, 200, code)
+	code, _ = viaTunnel(t, s, "POST", "/api/sessions/launch")
+	require.NotEqual(t, 200, code, "interact does not include launch")
+	e.mode.Store(int32(tunnel.TierLaunch))
 	code, _ = viaTunnel(t, s, "GET", "/api/filesystem/list")
 	require.Equal(t, 200, code)
-	e.allow.Store(false)
+	e.mode.Store(int32(tunnel.TierView))
 	code, _ = viaTunnel(t, s, "GET", "/api/filesystem/list")
+	require.NotEqual(t, 200, code)
+	code, _ = viaTunnel(t, s, "POST", "/api/sessions/live/a/send")
 	require.NotEqual(t, 200, code)
 
 	// The hub being reachable and quiet produces no log noise at info level.
@@ -342,3 +353,19 @@ func TestEnrollmentMismatchedHubIsNotDialed(t *testing.T) {
 }
 
 func mustJSON(v any) string { b, _ := json.Marshal(v); return string(b) }
+
+func TestHubLearnsTheLocalModeAndSeesItChange(t *testing.T) {
+	e := newEnv(t)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateConnected)
+	first := e.hub.session(t)
+	require.Equal(t, tunnel.TierView, first.LocalMode())
+
+	e.mode.Store(int32(tunnel.TierInteract))
+	m.ModeChanged(context.Background()) // the settings route calls this
+	second := e.hub.session(t)          // the connector reconnected to report it
+	require.Equal(t, tunnel.TierInteract, second.LocalMode())
+	waitState(t, m, StateConnected)
+}

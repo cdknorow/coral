@@ -808,7 +808,7 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		HubURL:       hubURL,
 		Store:        store.NewCloudStore(db, store.NewRemoteServerStore(db, cfg.CoralDir())),
 		LocalBaseURL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)),
-		AllowLaunch:  routes.AllowLaunchFromSettings(ss),
+		MaxMode:      routes.MaxModeFromSettings(ss),
 		CoralVersion: config.Version,
 		Logger:       slog.Default(),
 	})

@@ -270,7 +270,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
 	// re-checked against the connector's route policy before anything else sees them.
-	r.Use(cloud.Guard(routes.AllowLaunchFromSettings(store.NewSessionStore(s.db))))
+	r.Use(cloud.Guard(routes.MaxModeFromSettings(store.NewSessionStore(s.db))))
 	// NOTE: middleware.RealIP was intentionally removed. It rewrites r.RemoteAddr
 	// from X-Forwarded-For headers, which would allow an attacker to spoof
 	// 127.0.0.1 and bypass auth.IsLocalhost(). Coral is a desktop app with no
@@ -472,7 +472,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/cloud/status", s.cloudHandler.GetStatus)
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
-	r.Put("/api/cloud/allow-launch", s.cloudHandler.SetAllowLaunch)
+	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 
 	// System / settings
 	r.Get("/api/settings", sysHandler.GetSettings)

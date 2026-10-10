@@ -39,8 +39,8 @@ var ErrNotConfigured = errors.New("cloud hub is not configured: start Coral with
 type Options struct {
 	HubURL       string // validated origin from NormalizeHubURL; "" disables everything
 	Store        *store.CloudStore
-	LocalBaseURL string // loopback URL of this server, e.g. http://127.0.0.1:8420
-	AllowLaunch  func() bool
+	LocalBaseURL string             // loopback URL of this server, e.g. http://127.0.0.1:8420
+	MaxMode      func() tunnel.Mode // this server's own maximum access mode; default view
 	CoralVersion string
 	HTTPClient   *http.Client // enrollment and tunnel handshake; nil uses NewHubHTTPClient()
 	Backoff      tunnel.Backoff
@@ -61,7 +61,7 @@ type Status struct {
 	Label           string    `json:"label,omitempty"`
 	ServerID        string    `json:"server_id,omitempty"`
 	LastError       string    `json:"last_error,omitempty"`
-	AllowLaunch     bool      `json:"allow_launch"`
+	MaxMode         string    `json:"max_mode"` // view | interact | launch: set locally, never by the hub
 }
 
 // Manager owns the enrollment and the tunnel.
@@ -132,9 +132,7 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.st
-	if m.o.AllowLaunch != nil {
-		s.AllowLaunch = m.o.AllowLaunch()
-	}
+	s.MaxMode = m.currentMode().String()
 	return s
 }
 
@@ -277,13 +275,15 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		return
 	}
 	local := &tunnel.LocalHandler{
-		BaseURL:   m.o.LocalBaseURL,
-		AllowPath: Rules(m.o.AllowLaunch),
-		Authorize: func(h http.Header) { h.Set(TunnelHeader, "1") },
+		BaseURL:      m.o.LocalBaseURL,
+		AllowRequest: tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
+		MaxMode:      m.currentMode,                    // gates WebSocket input frame by frame
+		Authorize:    func(h http.Header) { h.Set(TunnelHeader, "1") },
 	}
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
 		Handler:       local,
 		CoralVersion:  m.o.CoralVersion,
+		LocalMode:     m.currentMode,
 		AllowInsecure: config.AllowInsecureCloud,
 		HTTPClient:    m.hc,
 		Backoff:       m.o.Backoff,
@@ -325,4 +325,33 @@ func (m *Manager) Disconnect(ctx context.Context) error {
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle}
 	m.mu.Unlock()
 	return m.o.Store.Delete(ctx)
+}
+
+func (m *Manager) currentMode() tunnel.Mode {
+	if m.o.MaxMode == nil {
+		return tunnel.TierView
+	}
+	if md := m.o.MaxMode(); md >= tunnel.TierView && md <= tunnel.TierLaunch {
+		return md
+	}
+	return tunnel.TierView
+}
+
+// ModeChanged reconnects an established tunnel so the hub learns the new local maximum
+// (shown to the user as "limited by this machine"). Enforcement does not wait for it:
+// the connector reads the mode on every request and every WebSocket frame.
+func (m *Manager) ModeChanged(ctx context.Context) {
+	if m.o.HubURL == "" {
+		return
+	}
+	conn, err := m.o.Store.Get(ctx)
+	if err != nil || conn.State != store.CloudStateActive || conn.HubURL != m.o.HubURL {
+		return
+	}
+	m.mu.Lock()
+	st := m.st.State
+	m.mu.Unlock()
+	if st == StateConnected || st == StateConnecting || st == StateRetrying {
+		m.startTunnel(conn)
+	}
 }

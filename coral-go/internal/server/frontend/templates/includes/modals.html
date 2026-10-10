@@ -603,11 +603,16 @@
                         <button type="button" id="settings-cloud-connect" class="btn btn-small" hidden>Connect to Coral Hub</button>
                         <button type="button" id="settings-cloud-disconnect" class="btn btn-small" hidden>Disconnect</button>
                     </div>
-                    <label class="settings-cloud-launch" id="settings-cloud-launch-row" hidden>
-                        <input type="checkbox" id="settings-cloud-allow-launch">
-                        Allow launching agents from the web
-                    </label>
-                    <div class="settings-hint">The hub can read everything you view through it. Typing in terminals and chat works once connected; launching new agents is off unless you allow it here. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
+                    <div class="settings-cloud-mode" id="settings-cloud-mode-row" hidden>
+                        <label for="settings-cloud-max-mode">Most the hub may do on this computer</label>
+                        <select id="settings-cloud-max-mode" class="settings-select" aria-describedby="settings-cloud-mode-desc">
+                            <option value="view">View (default)</option>
+                            <option value="interact">Interact</option>
+                            <option value="launch">Launch</option>
+                        </select>
+                        <div id="settings-cloud-mode-desc" class="settings-hint"></div>
+                    </div>
+                    <div class="settings-hint">The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch lets them start new agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
                 </dd>
                 <dt>Database encryption</dt>
                 <dd>

@@ -5,6 +5,11 @@
  * is only used if it is an http(s) URL. The server token is never sent to the page. */
 
 const STATUS_URL = '/api/cloud/status';
+const MODE_HELP = {
+    view: 'Read the terminal, chat, files, tasks and board. Nothing can be typed or started from the web.',
+    interact: 'Also type into agents that are already running (send text, keys, answer prompts) and change tasks, notes and the board. Typing can run commands: an agent with shell tools acts on it.',
+    launch: 'Also start, wake and restart agents and browse folders to choose where. Launching runs code on this computer as you.',
+};
 let timer = null;
 
 const $ = (id) => document.getElementById(id);
@@ -63,8 +68,9 @@ function render(st) {
     const enrolled = ['connecting', 'connected', 'retrying', 'revoked', 'key_unreadable', 'upgrade_required'].includes(st.state);
     $('settings-cloud-connect').hidden = !(st.state === 'idle' || st.state === 'revoked');
     $('settings-cloud-disconnect').hidden = !(enrolled || enrolling);
-    $('settings-cloud-launch-row').hidden = !st.configured;
-    $('settings-cloud-allow-launch').checked = !!st.allow_launch;
+    $('settings-cloud-mode-row').hidden = !st.configured;
+    $('settings-cloud-max-mode').value = st.max_mode || 'view';
+    $('settings-cloud-mode-desc').textContent = MODE_HELP[st.max_mode || 'view'];
 }
 
 export async function loadCloudStatus() {
@@ -102,6 +108,6 @@ export function initCloudConnect() {
     c.dataset.bound = '1';
     c.addEventListener('click', () => act('POST', '/api/cloud/connect'));
     $('settings-cloud-disconnect').addEventListener('click', () => act('POST', '/api/cloud/disconnect'));
-    $('settings-cloud-allow-launch').addEventListener('change', (e) =>
-        act('PUT', '/api/cloud/allow-launch', { allow: e.target.checked }));
+    $('settings-cloud-max-mode').addEventListener('change', (e) =>
+        act('PUT', '/api/cloud/max-mode', { mode: e.target.value }));
 }

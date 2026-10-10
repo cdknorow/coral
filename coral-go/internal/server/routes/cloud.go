@@ -8,19 +8,26 @@ import (
 
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
-// AllowLaunchSetting is the user setting behind "allow launching from the web".
-// It is local: the connector reads it on every launch-class request, so neither
-// the hub nor a tunneled request can change it (the /api/cloud routes are not on
-// the tunnel allowlist).
-const AllowLaunchSetting = "cloud_allow_launch"
+// MaxModeSetting is the user setting holding this server's maximum cloud access mode:
+// "view" (default), "interact" or "launch". It is local: the connector reads it on every
+// request, so neither the hub nor a tunneled request can change it (the /api/cloud
+// routes are not in the tunnel route table).
+const MaxModeSetting = "cloud_max_mode"
 
-// AllowLaunchFromSettings reports whether launching from the web is switched on.
-func AllowLaunchFromSettings(ss *store.SessionStore) func() bool {
-	return func() bool {
+// MaxModeFromSettings reads the local maximum mode. Anything missing or unrecognised is view.
+func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
+	return func() tunnel.Mode {
 		s, err := ss.GetSettings(context.Background())
-		return err == nil && strings.EqualFold(s[AllowLaunchSetting], "true")
+		if err != nil {
+			return tunnel.TierView
+		}
+		if m, ok := tunnel.ParseMode(s[MaxModeSetting]); ok {
+			return m
+		}
+		return tunnel.TierView
 	}
 }
 
@@ -122,25 +129,29 @@ func (h *CloudHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.status())
 }
 
-// SetAllowLaunch: PUT /api/cloud/allow-launch {"allow": bool}
-func (h *CloudHandler) SetAllowLaunch(w http.ResponseWriter, r *http.Request) {
+// SetMaxMode: PUT /api/cloud/max-mode {"mode": "view"|"interact"|"launch"}
+func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 	if refuseTunneled(w, r) || !requireJSON(w, r) {
 		return
 	}
 	var body struct {
-		Allow *bool `json:"allow"`
+		Mode string `json:"mode"`
 	}
-	if err := decodeJSON(r, &body); err != nil || body.Allow == nil {
-		errBadRequest(w, "allow (boolean) is required")
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "mode is required")
 		return
 	}
-	v := "false"
-	if *body.Allow {
-		v = "true"
+	mode, ok := tunnel.ParseMode(body.Mode)
+	if !ok {
+		errBadRequest(w, "mode must be view, interact or launch")
+		return
 	}
-	if err := h.ss.SetSetting(r.Context(), AllowLaunchSetting, v); err != nil {
+	if err := h.ss.SetSetting(r.Context(), MaxModeSetting, mode.String()); err != nil {
 		errInternalServer(w, "Could not save the setting")
 		return
+	}
+	if m := h.manager(); m != nil {
+		m.ModeChanged(r.Context())
 	}
 	writeJSON(w, http.StatusOK, h.status())
 }
