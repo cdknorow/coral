@@ -13,7 +13,7 @@ import { renderCaptureText, syncPaneWidth } from './capture.js';
 import { hideRestartModal } from './controls.js';
 import { recordRecentDir, setDirServerResolver } from './browser.js';
 import { updateTerminalTheme, getTerminal } from './xterm_renderer.js';
-import { serverFetch, currentServer, splitKey, identityKey, isHub, normServer, LOCAL_SERVER } from './server_base.js';
+import { serverFetch, currentServer, splitKey, identityKey, isHub, isCloud, normServer, LOCAL_SERVER } from './server_base.js';
 import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
     bareBoardName, postLaunch, waitForLaunched,
@@ -83,6 +83,9 @@ async function _loadServerSettings(server, { fresh = false } = {}) {
     if (id === LOCAL_SERVER) return state.settings || {};
     if (!fresh && _serverSettings.has(id)) return _serverSettings.get(id);
     const resp = await serverFetch(id, '/api/settings');
+    // Through the hub /api/settings is not exposed at all (a machine's settings are never readable
+    // remotely): use the defaults quietly instead of reporting an error on every launch.
+    if (resp.status === 404 && isCloud()) { _serverSettings.set(id, {}); return {}; }
     const data = await resp.json().catch(() => null);
     if (!resp.ok || !data) throw new Error((data && data.error) || `HTTP ${resp.status}`);
     const s = data.settings || {};

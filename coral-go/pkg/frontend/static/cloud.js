@@ -8,6 +8,9 @@
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
 
+/** GET paths that only a machine's own dashboard serves: license, privacy state, custom themes, agent panels. */
+export const NO_HUB_ENDPOINT = /^\/api\/(license\/status|system\/privacy|themes\/(?!variables$)[^/]+|agent\/ui(\/.*)?)$/;
+
 let _session = null;      // {authenticated, email, csrf}
 let _loading = null;
 
@@ -68,6 +71,12 @@ export function installCloudFetch() {
     const orig = window.fetch.bind(window);
     window.fetch = async function (input, init) {
         const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        // Endpoints that exist only on a machine's own dashboard are not reachable through the hub
+        // (and the hub has no stand-in). Answer them locally with a 404 instead of sending a request
+        // that can only fail, which would put a network error in the console on every page load.
+        if (method === 'GET' && sameOrigin(input) && NO_HUB_ENDPOINT.test(new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href).pathname)) {
+            return new Response('{"error":"not available through the hub"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+        }
         if (!SAFE.has(method) && sameOrigin(input)) {
             if (!csrfToken()) await loadSession();
             const headers = new Headers((init && init.headers) || (input instanceof Request ? input.headers : undefined));

@@ -53,3 +53,20 @@ const { pathToFileURL } = require('url');
     assert.strictEqual(sessionKey({ type: 'live', name: 'n', server: 'ws1' }), 'live:@ws1/n');
     console.log('server_base: all checks passed');
 })().catch(e => { console.error(e); process.exit(1); });
+
+// A hub server id is a UUID: its folders must split into server + name like any other key.
+{
+    const assert = require('assert');
+    (async () => {
+        const path = require('path');
+        const { pathToFileURL } = require('url');
+        globalThis.location = globalThis.location || { protocol: 'https:', host: 'hub.example', origin: 'https://hub.example' };
+        globalThis.document = globalThis.document || { addEventListener() {}, getElementById() { return null; } };
+        const m = await import(pathToFileURL(path.resolve(__dirname, '../../coral-go/pkg/frontend/static/server_base.js')).href);
+        const id = '5295fa3b-a6c8-42b6-bd9f-0c7c88f3704e';
+        assert.deepStrictEqual(m.splitKey('@' + id + '/001'), { server: id, name: '001' });
+        assert.strictEqual(m.keyLabel('@' + id + '/my project'), 'my project');
+        assert.deepStrictEqual(m.splitKey('@not a uuid/x'), { server: m.LOCAL_SERVER, name: '@not a uuid/x' });
+        console.log('server_base uuid keys: ok');
+    })().catch(e => { console.error(e); process.exit(1); });
+}

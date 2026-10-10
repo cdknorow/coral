@@ -110,7 +110,7 @@ export function effectiveMode(s) { return lowerMode(hubMode(s), s.local_mode); }
 export function launchNote(s) {
     const want = hubMode(s), eff = effectiveMode(s);
     if (eff !== want) {
-        return `Limited by this machine's local setting: it allows ${MODE_INFO[eff].label} only (you chose ${MODE_INFO[want].label}). To allow more, change "Cloud access" in Coral on that machine.`;
+        return `Limited by this machine's local setting: it allows ${MODE_INFO[eff].label} only (you chose ${MODE_INFO[want].label}). To allow more, open Coral on that machine: Settings > Coral Hub > "Most the hub may do on this computer".`;
     }
     return '';
 }

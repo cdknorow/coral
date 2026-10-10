@@ -12,7 +12,9 @@ const submit = document.getElementById('send');
     if (s.authenticated) { location.replace(next); return; }
     if (!s.github) github.hidden = true;
     else github.href = '/auth/github/login';
-    if (s.magic === false) { form.hidden = true; document.getElementById('or').hidden = true; }
+    if (s.magic === false) form.hidden = true;
+    // The divider only makes sense between two sign-in methods.
+    if (s.magic === false || !s.github) document.getElementById('or').hidden = true;
 
     form.addEventListener('submit', async e => {
         e.preventDefault();
