@@ -1,7 +1,7 @@
 /* Scheduler: scheduled jobs sidebar list, job detail view, and CRUD operations */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, showView, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, showView, jsStr } from './utils.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;

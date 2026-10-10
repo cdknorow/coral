@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, jsStr } from './utils.js';
 import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.js';
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 import { fileIconHtml } from './file_explorer.js';

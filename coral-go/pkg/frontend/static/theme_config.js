@@ -1,7 +1,7 @@
 /* Theme configurator — custom color theme editor with save/load/import/export */
 
 import { state } from './state.js';
-import { escapeHtml, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 
 let variableGroups = {};   // { groupName: { cssVar: label, ... }, ... }
