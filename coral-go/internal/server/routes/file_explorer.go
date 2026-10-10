@@ -10,7 +10,7 @@ import (
 
 // Explorer lists names only, one directory at a time. Preview limits are
 // enforced separately when the user opens a file.
-func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir string) {
+func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir string, strict bool) {
 	const limit = 500
 	offset, ok := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, 1000000)
 	if !ok {
@@ -27,7 +27,7 @@ func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir st
 		return
 	}
 	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
+	if err != nil || (strict && !rootAllowed(realRoot)) {
 		errNotFound(w, "Working directory unavailable")
 		return
 	}
@@ -53,6 +53,21 @@ func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir st
 	if err != nil {
 		errNotFound(w, "Directory unavailable")
 		return
+	}
+	// Strict callers do not see credential files (including .git) in listings; the local
+	// dashboard's explorer lists names only, and reading them is refused for everyone.
+	if strict {
+		if sensitivePath(target) {
+			errNotFound(w, "Directory unavailable")
+			return
+		}
+		kept := listing[:0]
+		for _, item := range listing {
+			if listingVisible(target, item.Name()) {
+				kept = append(kept, item)
+			}
+		}
+		listing = kept
 	}
 	type entry struct {
 		Name string `json:"name"`

@@ -2121,7 +2121,7 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("dir")
 	sessionID := r.URL.Query().Get("session_id")
 	if r.URL.Query().Get("view") == "explorer" {
-		serveExplorerDirectory(w, r, h.resolveGitRoot(r.Context(), name, "", sessionID), dir)
+		serveExplorerDirectory(w, r, h.resolveGitRoot(r.Context(), name, "", sessionID), dir, strictBounds(r))
 		return
 	}
 
@@ -2146,7 +2146,7 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 
 	// Directory browsing mode: list entries in a specific directory
 	if dir != "" {
-		h.searchFilesDir(w, ctx, workdir, dir, query, fileSearchLimit)
+		h.searchFilesDir(w, ctx, workdir, dir, query, fileSearchLimit, strictBounds(r))
 		return
 	}
 
@@ -2159,6 +2159,18 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 	allFiles := strings.Split(strings.TrimSpace(string(out)), "\n")
 	if len(allFiles) == 1 && allFiles[0] == "" {
 		allFiles = nil
+	}
+	if strictBounds(r) {
+		if !rootAllowed(realPath(workdir)) {
+			allFiles = nil
+		}
+		kept := allFiles[:0]
+		for _, fp := range allFiles {
+			if !sensitivePath(fp) {
+				kept = append(kept, fp)
+			}
+		}
+		allFiles = kept
 	}
 
 	if query == "" {
@@ -2210,7 +2222,7 @@ func (h *SessionsHandler) SearchFiles(w http.ResponseWriter, r *http.Request) {
 // like ls/tab-completion. Returns entries with name, path, and type
 // (dir/file). Directories are listed first, then files. An optional
 // filter (from the 'q' parameter) restricts results to matching names.
-func (h *SessionsHandler) searchFilesDir(w http.ResponseWriter, _ context.Context, workdir, dir, filter string, limit int) {
+func (h *SessionsHandler) searchFilesDir(w http.ResponseWriter, _ context.Context, workdir, dir, filter string, limit int, strict bool) {
 	// Normalize dir: strip leading/trailing slashes, use "." for root
 	dir = strings.TrimPrefix(dir, "/")
 	dir = strings.TrimSuffix(dir, "/")
@@ -2232,7 +2244,7 @@ func (h *SessionsHandler) searchFilesDir(w http.ResponseWriter, _ context.Contex
 
 	// A symlink inside the workspace must not lead the listing out of it.
 	realWD, realDir := realPath(workdir), realPath(absDir)
-	if !within(realWD, realDir) {
+	if !within(realWD, realDir) || (strict && (!rootAllowed(realWD) || sensitivePath(realDir))) {
 		writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "dir": dir})
 		return
 	}
@@ -2254,6 +2266,9 @@ func (h *SessionsHandler) searchFilesDir(w http.ResponseWriter, _ context.Contex
 
 	for _, de := range dirEntries {
 		name := de.Name()
+		if strict && !listingVisible(realDir, name) {
+			continue
+		}
 
 		// Skip hidden files/dirs unless filter starts with .
 		if !showHidden && strings.HasPrefix(name, ".") {
@@ -4723,6 +4738,9 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 	if err != nil {
 		return resolvedFileRef{}, errNoWorkdir
 	}
+	if strict && !rootAllowed(realRoot) {
+		return resolvedFileRef{}, errFileNotFound // same answer as any missing file
+	}
 
 	check := func(c string) (resolvedFileRef, bool) {
 		real, err := filepath.EvalSymlinks(c)
@@ -4886,6 +4904,10 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 	}
 	if err != nil {
 		errBadRequest(w, "invalid path")
+		return
+	}
+	if strict && !rootAllowed(realPath(workdir)) {
+		errNotFound(w, "File not found")
 		return
 	}
 	if !tempFile && !isPathWithinDir(workdir, fullPath) {
