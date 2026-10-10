@@ -913,7 +913,10 @@ func TestHubE2E_LaunchOnRemoteOnly(t *testing.T) {
 	require.Equal(t, 201, hub.register("a", a.url(), a.key(), true).Code)
 	require.Equal(t, 201, hub.register("b", b.url(), b.key(), true).Code)
 
-	// Browse the remote's filesystem through the proxy for the working dir.
+	// Browse the remote's filesystem through the proxy for the working dir. A proxied
+	// (Bearer) caller is bounded to the home directory and CORAL_PROJECT_ROOTS, so the
+	// test's temp directories are declared as project roots.
+	t.Setenv("CORAL_PROJECT_ROOTS", filepath.Dir(filepath.Dir(b.work))+string(os.PathListSeparator)+a.dir)
 	var fs struct {
 		Path    string   `json:"path"`
 		Entries []string `json:"entries"`

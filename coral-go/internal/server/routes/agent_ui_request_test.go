@@ -182,7 +182,7 @@ vm.runInContext(src.slice(a, b) + '\nthis.isCoralNudge = isCoralNudge; this.isCo
 const msg = fs.readFileSync(process.argv[2], 'utf8');
 console.log(JSON.stringify({ coral: ctx.isCoralNudge(msg), health: ctx.isCoralHealthNudge(msg), plainUser: ctx.isCoralNudge('Make a cost chart please') }));
 `
-	chat, err := filepath.Abs("../frontend/static/live_chat.js")
+	chat, err := filepath.Abs("../../../pkg/frontend/static/live_chat.js")
 	require.NoError(t, err)
 	out, err := exec.Command(node, "-e", script, chat, msgPath).CombinedOutput()
 	require.NoError(t, err, string(out))

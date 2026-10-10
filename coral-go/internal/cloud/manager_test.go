@@ -216,7 +216,7 @@ func TestEnrollConnectAndServeAllowedRoutes(t *testing.T) {
 	e.local.mu.Lock()
 	h := e.local.seen[0]
 	e.local.mu.Unlock()
-	require.Equal(t, "1", h.Get(TunnelHeader), "forwarded requests carry the tunnel marker")
+	require.Equal(t, "1", h.Get(tunnel.ViaHeader), "forwarded requests carry the tunnel stamp")
 	require.Empty(t, h.Get("Authorization"))
 
 	// Never-routes and routes above the mode never reach the local API (default mode: view).

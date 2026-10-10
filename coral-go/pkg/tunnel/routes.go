@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -69,7 +70,7 @@ func Lower(a, b Mode) Mode {
 // segment. There are no prefix or wildcard rules, so a rule can never swallow a
 // sibling route.
 type route struct {
-	method  string
+	method  string // "*" matches every method (used for explicit TierNever rules)
 	pattern string
 	tier    Tier
 }
@@ -102,6 +103,20 @@ func cat(groups ...[]route) []route {
 //	/api/cloud/*                       the connector's own settings
 //	/api/indexer/*, /api/notifications, /api/call-metrics (POST)
 var routeTable = cat(
+	// ── explicit never rules ────────────────────────────────────────────
+	// First match wins, so a static route that a later parametric rule would otherwise
+	// swallow (for example /api/board/remotes vs /api/board/{project}) is pinned here.
+	// internal/server's census fails when a registered static route is matched through a
+	// {param} rule unless it is listed in testdata/cloud_route_exceptions.txt.
+	rules("*", TierNever,
+		"/api/board/remotes",
+		"/api/board/remotes/{a}",
+		"/api/board/remotes/{a}/{b}",
+		"/api/board/remotes/{a}/{b}/{c}",
+		"/api/board/remotes/{a}/{b}/{c}/{d}",
+		"/api/board/remotes/{a}/{b}/{c}/{d}/{e}",
+	),
+
 	// ── view: reads ─────────────────────────────────────────────────────
 	rules(http.MethodGet, TierView,
 		"/api/health", "/ws/coral", "/ws/terminal/{name}",
@@ -279,45 +294,119 @@ var routeTable = cat(
 	rules(http.MethodPost, TierLaunch, "/api/upload"),
 )
 
-// fileParams name a file or directory in a query. Outside the launch tier they must be
-// relative to the project: the local API reads absolute paths "wherever they are" for a
-// user at the keyboard, which a remote web user must not inherit (P-8).
-var fileParams = []string{"filepath", "dir", "path", "file", "ref", "cwd", "folder", "directory", "root", "working_dir"}
-
-// UnsafeFileRef reports whether v is not a plain project-relative reference: absolute,
-// home-relative, drive-lettered, option-like, containing backslashes, NUL or a ".." segment.
-func UnsafeFileRef(v string) bool {
-	if v == "" {
-		return false
-	}
-	if v[0] == '/' || v[0] == '~' || v[0] == '-' || strings.ContainsAny(v, "\\\x00") || (len(v) > 1 && v[1] == ':') {
-		return true
-	}
-	for _, seg := range strings.Split(v, "/") {
-		if seg == ".." {
-			return true
+// shapeOf is the table key used by routeQueries: parameter names do not matter.
+func shapeOf(method, pattern string) string {
+	segs := strings.Split(pattern, "/")
+	for i, sg := range segs {
+		if strings.HasPrefix(sg, "{") {
+			segs[i] = "{}"
 		}
 	}
-	return false
+	return method + " " + strings.Join(segs, "/")
 }
 
-func queryOK(tier Tier, rawQuery string) bool {
+type paramKind int
+
+const (
+	paramPlain paramKind = iota + 1
+	paramFile
+)
+
+// querySpecs is routeQueries parsed: for each route shape, the parameters it accepts.
+var querySpecs = func() map[string]map[string]paramKind {
+	out := make(map[string]map[string]paramKind, len(routeQueries))
+	for shape, spec := range routeQueries {
+		m := map[string]paramKind{}
+		for _, p := range strings.Split(spec, ",") {
+			if strings.HasSuffix(p, "*") {
+				m[strings.TrimSuffix(p, "*")] = paramFile
+			} else {
+				m[p] = paramPlain
+			}
+		}
+		out[shape] = m
+	}
+	return out
+}()
+
+var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.\-]*:`)
+
+// normalizeRef percent-decodes v until it stops changing (at most 5 rounds). Coral
+// decodes file references again itself, so a once-decoded %2F or file: URL must not
+// pass. A value that still contains '%' afterwards, or does not decode cleanly, is refused.
+func normalizeRef(v string) (string, bool) {
+	for i := 0; i < 5; i++ {
+		d, err := url.PathUnescape(v)
+		if err != nil {
+			return "", false
+		}
+		if d == v {
+			break
+		}
+		v = d
+	}
+	return v, !strings.Contains(v, "%")
+}
+
+// safeRef reports whether v is a plain file reference. allowAbs is for the launch tier,
+// where choosing a folder to launch in legitimately takes an absolute path.
+func safeRef(v string, allowAbs bool) bool {
+	if v == "" {
+		return true
+	}
+	n, ok := normalizeRef(v)
+	if !ok || n == "" {
+		return n == "" && ok
+	}
+	if strings.ContainsAny(n, "#?\\:\x00") || schemeRe.MatchString(n) || strings.ContainsAny(n, compatDotSlash) {
+		return false
+	}
+	for _, r := range n {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	if n[0] == '~' || n[0] == '-' {
+		return false
+	}
+	if n[0] == '/' && !allowAbs {
+		return false
+	}
+	for _, seg := range strings.Split(n, "/") {
+		if seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
+// UnsafeFileRef reports whether v is not a plain project-relative reference: absolute,
+// home-relative, option-like, a URL or drive path, percent-encoded past the point of
+// decoding, containing backslashes, NUL, control or look-alike dot characters, or a
+// ".." segment.
+func UnsafeFileRef(v string) bool { return !safeRef(v, false) }
+
+// queryOK enforces the per-route query table: only the parameters the handler reads are
+// accepted, file references are normalised and checked, and everything else is refused.
+func queryOK(r route, rawQuery string) bool {
 	if rawQuery == "" {
 		return true
 	}
 	if !validQuery(rawQuery) {
 		return false
 	}
-	if tier == TierLaunch {
-		return true // folder browsing for a launch takes absolute paths; it needs launch mode
-	}
 	q, err := url.ParseQuery(rawQuery)
 	if err != nil {
 		return false
 	}
-	for _, p := range fileParams {
-		for _, v := range q[p] {
-			if UnsafeFileRef(v) {
+	spec := querySpecs[shapeOf(r.method, r.pattern)]
+	for name, vals := range q {
+		kind, ok := spec[name]
+		if !ok {
+			return false // unknown parameter
+		}
+		for _, v := range vals {
+			if kind == paramFile && !safeRef(v, r.tier == TierLaunch) {
 				return false
 			}
 		}
@@ -325,8 +414,29 @@ func queryOK(tier Tier, rawQuery string) bool {
 	return true
 }
 
+func methodMatches(rule, method string) bool { return rule == "*" || rule == method }
+
+// RuleFor returns the table pattern and tier that classify a request, ignoring its query.
+// It exists for the route census in internal/server.
+func RuleFor(method, decodedPath string) (pattern string, tier Tier, ok bool) {
+	if method == http.MethodHead {
+		method = http.MethodGet
+	}
+	segs, valid := splitSegments(decodedPath)
+	if !valid {
+		return "", TierNever, false
+	}
+	for _, r := range routeTable {
+		if methodMatches(r.method, method) && matchSegments(r.pattern, segs) {
+			return r.pattern, r.tier, true
+		}
+	}
+	return "", TierNever, false
+}
+
 // Classify returns the tier of a request whose path is already decoded and has passed
-// ValidatePath, or TierNever when the route is not in the table or its query is unsafe.
+// ValidatePath, or TierNever when the route is not in the table or its query is refused.
+// The first matching rule decides.
 func Classify(method, decodedPath, rawQuery string) Tier {
 	if method == http.MethodHead {
 		method = http.MethodGet
@@ -336,8 +446,8 @@ func Classify(method, decodedPath, rawQuery string) Tier {
 		return TierNever
 	}
 	for _, r := range routeTable {
-		if r.method == method && matchSegments(r.pattern, segs) {
-			if !queryOK(r.tier, rawQuery) {
+		if methodMatches(r.method, method) && matchSegments(r.pattern, segs) {
+			if r.tier == TierNever || !queryOK(r, rawQuery) {
 				return TierNever
 			}
 			return r.tier

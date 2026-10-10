@@ -82,3 +82,26 @@ func TestCloudPagesHaveNoInlineScript(t *testing.T) {
 		}
 	}
 }
+
+// The UI makes no third-party requests: fonts and icons are served from /static/vendor/fonts.
+func TestNoThirdPartyHosts(t *testing.T) {
+	out := render(t, PageData{})
+	for _, bad := range []string{"fonts.googleapis.com", "fonts.gstatic.com", "cdn.", "unpkg.com", "jsdelivr"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("index shell references %s", bad)
+		}
+	}
+	css, err := Static.ReadFile("static/css/fonts.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"jakarta-latin.woff2", "jakarta-latin-ext.woff2", "material-icons.woff2"} {
+		if !strings.Contains(string(css), f) {
+			t.Errorf("fonts.css does not use %s", f)
+		}
+		b, err := Static.ReadFile("static/vendor/fonts/" + f)
+		if err != nil || len(b) < 1000 || string(b[:4]) != "wOF2" {
+			t.Errorf("%s is missing or not a woff2 font", f)
+		}
+	}
+}

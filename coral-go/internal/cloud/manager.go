@@ -11,6 +11,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -168,7 +169,8 @@ func (m *Manager) Connect(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
-	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, m.o.Now())
+	host, _ := os.Hostname()
+	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, m.o.Now(), EnrollInfo{Hostname: host, CoralVersion: m.o.CoralVersion})
 	if err != nil {
 		m.setError(StateIdle, "could not reach the hub to start enrollment")
 		return err
@@ -278,7 +280,6 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		BaseURL:      m.o.LocalBaseURL,
 		AllowRequest: tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
 		MaxMode:      m.currentMode,                    // gates WebSocket input frame by frame
-		Authorize:    func(h http.Header) { h.Set(TunnelHeader, "1") },
 	}
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
 		Handler:       local,

@@ -6,19 +6,15 @@ import (
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
-// TunnelHeader is added by the connector to every request it forwards. The server
-// re-checks marked requests (Guard) and routes that manage the connector refuse them.
-// The hub cannot forge or remove it: hub headers are scrubbed to an allowlist and this
-// one is set afterwards.
-const TunnelHeader = "X-Coral-Tunnel"
-
-// Tunneled reports whether the request came through the Cloud Hub tunnel.
-func Tunneled(r *http.Request) bool { return r.Header.Get(TunnelHeader) != "" }
+// Tunneled reports whether the request was executed by the connector for the Cloud
+// Hub. LocalHandler stamps tunnel.ViaHeader on every request it forwards, after
+// scrubbing hub headers, so the hub can neither send nor clear it.
+func Tunneled(r *http.Request) bool { return r.Header.Get(tunnel.ViaHeader) != "" }
 
 // Guard is the server-side half of the route policy. The connector already refuses
 // anything outside the shared route table (pkg/tunnel) or above the local maximum
 // mode before it reaches the local API; Guard repeats the decision, query string
-// included, for every request that carries TunnelHeader, so the policy holds even if
+// included, for every request that carries tunnel.ViaHeader, so the policy holds even if
 // the connector's own check were bypassed or had a bug. Requests without the header
 // (the local dashboard, API keys, agents) are untouched.
 func Guard(maxMode func() tunnel.Mode) func(http.Handler) http.Handler {

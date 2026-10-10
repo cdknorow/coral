@@ -1,5 +1,5 @@
 DELETE /api/agent/ui/{id} never
-DELETE /api/board/remotes interact
+DELETE /api/board/remotes never
 DELETE /api/board/{project} interact
 DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} interact
 DELETE /api/board/{project}/messages/{messageID} interact
