@@ -94,6 +94,7 @@ func TestSupporterReminderRule(t *testing.T) {
 // End to end through the real handler: a brand-new install gets the dashboard,
 // not a pricing page.
 func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
+	skipWhenBuildNeverAsks(t)
 	dir := t.TempDir()
 	counter := license.NewLaunchCounter(dir)
 	counter.Increment()
@@ -118,6 +119,7 @@ func TestFirstEverLaunchServesTheDashboardNotThePricingPage(t *testing.T) {
 // reload must not bring the pricing page back — only the next server start
 // can ask again.
 func TestTheReminderIsServedOncePerServerStart(t *testing.T) {
+	skipWhenBuildNeverAsks(t)
 	dir := t.TempDir()
 	counter := license.NewLaunchCounter(dir)
 	counter.Increment()
@@ -145,6 +147,7 @@ func TestTheReminderIsServedOncePerServerStart(t *testing.T) {
 
 // Concurrent page loads must not each get their own reminder.
 func TestConcurrentLoadsClaimTheReminderOnce(t *testing.T) {
+	skipWhenBuildNeverAsks(t)
 	dir := t.TempDir()
 	counter := license.NewLaunchCounter(dir)
 	counter.Increment()
@@ -217,5 +220,15 @@ func TestActivationPageClaimsNoPaidFeatureGate(t *testing.T) {
 	// The tab title should not read as a paywall on a free product.
 	if strings.Contains(body, "<title>Coral — Activate License</title>") {
 		t.Error("page title still reads as a paywall")
+	}
+}
+
+// skipWhenBuildNeverAsks skips tests of the supporter reminder in builds that never ask for a
+// license (-tags dev or beta): there the reminder is off by design, so the rule under test is not
+// reachable. They run in the production tier.
+func skipWhenBuildNeverAsks(t *testing.T) {
+	t.Helper()
+	if config.TierSkipLicense {
+		t.Skip("dev and beta builds never ask for a license; run without -tags dev to exercise the reminder")
 	}
 }
