@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Runs the CDP/Chrome frontend suites against an ISOLATED Coral dev server and a headless Chrome.
 //
-//   node run_cdp_suites.mjs [--only substring] [--timeout seconds] [--chrome /path/to/chrome]
+//   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -46,8 +46,12 @@ if (b.status !== 0) process.exit(2);
 
 const port = await freePort(), cdp = await freePort();
 const data = path.join(tmp, 'data'); fs.mkdirSync(data);
-const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--backend', 'pty'],
-  { env: { ...process.env, CORAL_DATA_DIR: data, HOME: tmp }, stdio: ['ignore', fs.openSync(path.join(tmp, 'coral.log'), 'w'), fs.openSync(path.join(tmp, 'coral.log'), 'a')] });
+const codexHome = path.join(tmp, 'codex'); fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
+// Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_DATA_DIR', 'CORAL_DIR'].includes(k)));
+const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1' };
+const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
+  { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(path.join(tmp, 'coral.log'), 'w'), fs.openSync(path.join(tmp, 'coral.log'), 'a')] });
 procs.push(coral);
 await waitHttp(`http://127.0.0.1:${port}/api/health`);
 const chrome = spawn(chromePath, ['--headless=new', `--remote-debugging-port=${cdp}`, `--user-data-dir=${path.join(tmp, 'profile')}`,
@@ -58,12 +62,12 @@ console.log(`coral http://127.0.0.1:${port}  chrome cdp :${cdp}  tmp ${tmp}\n`);
 
 const tests = fs.readdirSync(here).filter(f => /\.test\.(js|mjs)$/.test(f))
   .filter(f => fs.readFileSync(path.join(here, f), 'utf8').includes('chrome-remote-interface'))
-  .filter(f => !only || f.includes(only)).sort();
+  .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
 const results = [];
 for (const t of tests) {
   const started = Date.now();
   const r = await new Promise(resolve => {
-    const p = spawn('node', [t], { cwd: here, env: { ...process.env, CORAL_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } });
+    const p = spawn('node', [t], { cwd: here, env: { ...testEnv, CORAL_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } });
     let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
     const timer = setTimeout(() => { p.kill('SIGKILL'); resolve({ code: 'timeout', out }); }, timeoutS * 1000);
     p.on('exit', code => { clearTimeout(timer); resolve({ code, out }); });
@@ -71,7 +75,7 @@ for (const t of tests) {
   const ok = r.code === 0;
   results.push({ test: t, ok, code: r.code, secs: ((Date.now() - started) / 1000).toFixed(1), tail: r.out.trim().split('\n').slice(-6).join('\n') });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${t}  (${results.at(-1).secs}s)${ok ? '' : '  exit=' + r.code}`);
-  if (!ok) console.log(r.out.trim().split('\n').slice(-8).map(l => '      ' + l).join('\n'));
+  if (!ok) console.log(r.out.trim().split('\n').slice(-30).map(l => '      ' + l).join('\n'));
 }
 const failed = results.filter(r => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} suites passed`);
