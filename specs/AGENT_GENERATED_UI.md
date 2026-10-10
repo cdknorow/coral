@@ -148,7 +148,7 @@ adapter. Do not couple persistence or ownership to one transport or agent vendor
 ## POC implementation and validation
 
 Implemented in `coral-go/cmd/coral-agent/ui.go`, the agent UI routes/store, and
-`coral-go/internal/server/frontend/static/agent_ui.js`. Usage is documented in
+`coral-go/pkg/frontend/static/agent_ui.js`. Usage is documented in
 `coral-go/agent_docs/agent-ui.md`. Demo: `examples/agent-ui/workflow.html`.
 
 Validation commands (isolated test infrastructure; no model API calls):

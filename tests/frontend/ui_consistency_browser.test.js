@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const CDP = require('chrome-remote-interface');
-const root = path.resolve(__dirname, '../../coral-go/internal/server/frontend');
+const root = path.resolve(__dirname, '../../coral-go/pkg/frontend');
 const baseline = process.env.CORAL_UI_BASELINE;
 const shots = process.env.CORAL_SCREENSHOT_DIR;
 function template(name) {

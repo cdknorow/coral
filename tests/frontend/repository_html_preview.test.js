@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const http=require('node:http');
 const CDP=require('chrome-remote-interface');
-const root=path.resolve(__dirname,'../../coral-go/internal/server/frontend');
+const root=path.resolve(__dirname,'../../coral-go/pkg/frontend');
 const comparison=process.env.CORAL_HTML_PREVIEW_FIXTURE || path.resolve(__dirname,'../design/coral-workspace-refresh/strong-comparison.html');
 // Design explorations may not be checked into a clean checkout. Still exercise
 // self-contained HTML/data images there; an explicit fixture path must exist.

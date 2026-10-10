@@ -121,11 +121,11 @@ scrolled up and not auto-resuming based on server state.
 ## Files Changed
 
 - `internal/server/routes/websocket.go` — scroll message handlers, in_scroll_mode flag
-- `internal/server/frontend/static/xterm_renderer.js` — wheel handlers, scroll state, buffering
+- `pkg/frontend/static/xterm_renderer.js` — wheel handlers, scroll state, buffering
 - `internal/tmux/client.go` — copy-mode methods
 - `internal/ptymanager/session_terminal.go` — scroll interface methods
 - `internal/ptymanager/session_terminal_tmux.go` — tmux scroll implementation
 - `internal/ptymanager/session_terminal_pty.go` — PTY stubs
-- `internal/server/frontend/static/css/components.css` — pause banner styles
-- `internal/server/frontend/static/message_board.js` — board pause indicator
-- `internal/server/frontend/templates/includes/views/message_board.html` — pause banner HTML
+- `pkg/frontend/static/css/components.css` — pause banner styles
+- `pkg/frontend/static/message_board.js` — board pause indicator
+- `pkg/frontend/templates/includes/views/message_board.html` — pause banner HTML

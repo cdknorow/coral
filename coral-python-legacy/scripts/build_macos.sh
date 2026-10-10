@@ -20,7 +20,7 @@ GO_DIR="$PROJECT_DIR/coral-go"
 cd "$PROJECT_DIR"
 
 APP_NAME="Coral"
-ICON_PNG="$GO_DIR/internal/server/frontend/static/coral.png"
+ICON_PNG="$GO_DIR/pkg/frontend/static/coral.png"
 ICON_ICNS="$PROJECT_DIR/Coral.icns"
 
 # Determine version

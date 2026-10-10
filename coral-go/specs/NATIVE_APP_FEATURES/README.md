@@ -33,12 +33,12 @@ The native app already has an extensible binding system (`w.Bind()` in `cmd/cora
   - Max 50 results displayed
 
 ### New Files
-- `coral-go/internal/server/frontend/static/command_palette.js` — Search modal logic, keyboard shortcut handler, result rendering
-- `coral-go/internal/server/frontend/static/css/command_palette.css` — Modal styling
+- `coral-go/pkg/frontend/static/command_palette.js` — Search modal logic, keyboard shortcut handler, result rendering
+- `coral-go/pkg/frontend/static/css/command_palette.css` — Modal styling
 
 ### Modified Files
-- `coral-go/internal/server/frontend/static/app.js` — Import and init command palette
-- `coral-go/internal/server/frontend/templates/index.html` — Add modal container div
+- `coral-go/pkg/frontend/static/app.js` — Import and init command palette
+- `coral-go/pkg/frontend/templates/index.html` — Add modal container div
 
 ### Implementation Details
 
@@ -169,7 +169,7 @@ Add editor preference to the existing settings panel.
 - `_coralOpenExternal(url)` — Open URL in system browser
 - `_coralLog(level, msg)` — Debug logging (debug mode only)
 
-### Platform Layer (`internal/server/frontend/static/platform/`)
+### Platform Layer (`pkg/frontend/static/platform/`)
 - `detect.js` — Platform detection and capability flags
 - `native.js` — Shared native init (health check, link interceptor)
 - `macos.js` — WKWebView-specific fixes (placeholder)

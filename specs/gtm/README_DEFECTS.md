@@ -136,7 +136,7 @@ while the macOS bundle ships both (`release.yml:226`). Linux is therefore **CLI/
 only**, with no tray and no desktop window.
 
 Any copy describing Coral as a "native desktop app" on Linux is unsupported. I could not
-locate that exact string in `coral-go/internal/server/frontend/` — it is most likely on the
+locate that exact string in `coral-go/pkg/frontend/` — it is most likely on the
 external Lemon Squeezy store page. **Need the exact location from the Dev Advocate before I
 can draft the correction.**
 

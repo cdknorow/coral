@@ -24,7 +24,7 @@ header, and two agents show a solid red `100%` bar with no explanation.
 
 ### P1. Rows carry no identity
 
-`_renderSessionItem` (`internal/server/frontend/static/render.js`) falls back
+`_renderSessionItem` (`pkg/frontend/static/render.js`) falls back
 to the literal string `"Agent"` / `"Terminal"` when `display_name` is empty.
 The goal/summary line is only rendered when the row is the active session:
 
@@ -224,19 +224,19 @@ Phases are independent; 1–3 are the highest leverage and are all inside
 ### Phase 1 — Bug fix + identity (D1, D2)
 
 Files:
-- `internal/server/frontend/static/render.js` — `_renderSessionItem`,
+- `pkg/frontend/static/render.js` — `_renderSessionItem`,
   `_renderAvatar`, `_getInitials`
-- `internal/server/frontend/static/sessions.js` — placeholder text in
+- `pkg/frontend/static/sessions.js` — placeholder text in
   `selectLiveSession`
-- `internal/server/frontend/static/css/session.css` — hide mobile rows
-- `internal/server/frontend/static/css/mobile.css` — verify mobile still
+- `pkg/frontend/static/css/session.css` — hide mobile rows
+- `pkg/frontend/static/css/mobile.css` — verify mobile still
   overrides to `display:block` (it scopes under `#mobile-session-list`;
   confirm specificity beats the new desktop rule)
 - `internal/server/routes/sessions.go` (`List`) **and**
   `internal/server/routes/websocket.go` — add `first_prompt` to both payload
   builders; `internal/jsonl/reader.go` — cache the first prompt per session
   rather than holding every listed session's full transcript in memory
-- `internal/server/frontend/static/websocket.js` — `coral_diff` merge must
+- `pkg/frontend/static/websocket.js` — `coral_diff` merge must
   preserve `first_prompt` (spread-merge, see D1)
 
 Verify: every row shows a second line; no raw "Nothing yet" text on desktop;

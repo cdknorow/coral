@@ -232,8 +232,8 @@ Frontend: load this in `selectHistorySession()` and render in the history sessio
 
 | File | Changes |
 |------|---------|
-| `internal/server/frontend/static/changed_files.js` | Add `copyFilePath()`, render agent names, handle `agent_only` status |
-| `internal/server/frontend/static/css/agentic.css` | Add `.file-agents`, `.file-agent-only` styles |
+| `pkg/frontend/static/changed_files.js` | Add `copyFilePath()`, render agent names, handle `agent_only` status |
+| `pkg/frontend/static/css/agentic.css` | Add `.file-agents`, `.file-agent-only` styles |
 | `internal/server/routes/sessions.go` | Extend `RefreshFiles()` to query agent_events and merge |
 | `internal/store/git.go` | Add `FileAgent` struct, `Agents` field to `ChangedFile` |
 | `internal/server/routes/history.go` | Add `GET /api/sessions/history/{sessionID}/files` endpoint |

@@ -1,0 +1,56 @@
+// Package frontend exports Coral's web UI assets so other binaries (the Cloud
+// Hub) can serve the same frontend as the Coral server. Paths inside the
+// filesystems keep their "static/" and "templates/" prefixes.
+package frontend
+
+import (
+	"embed"
+	"html/template"
+)
+
+// Static holds the files served under /static/ (JavaScript modules, CSS, vendor
+// bundles, icons), rooted at "static/".
+//
+//go:embed all:static
+var Static embed.FS
+
+// Templates holds the Go html/template sources of the single-page app shell,
+// rooted at "templates/".
+//
+//go:embed all:templates
+var Templates embed.FS
+
+// PageData is what the app shell template needs. The Coral server and the Cloud
+// Hub both render it.
+type PageData struct {
+	CoralRoot       string
+	EntryMode       string
+	TargetSessionID string
+	// TargetServer is the registered remote the popout agent lives on; empty
+	// means the hub itself (legacy /agent/{id}).
+	TargetServer string
+	// BootJSON is the content of the <script type="application/json" id="coral-boot">
+	// element: a JSON object the page reads at startup ({"mode":"cloud"} on the
+	// Cloud Hub). It is data, not code, so a CSP without 'unsafe-inline' allows it.
+	// Empty means a standalone Coral: {"mode":"local"}. Must be valid JSON built
+	// by the server from trusted values (it is emitted unescaped).
+	BootJSON template.JS
+}
+
+// IndexTemplateFiles lists the template files that make up the app shell.
+var IndexTemplateFiles = []string{
+	"templates/index.html",
+	"templates/includes/sidebar.html",
+	"templates/includes/modals.html",
+	"templates/includes/views/live_session.html",
+	"templates/includes/views/history_session.html",
+	"templates/includes/views/message_board.html",
+	"templates/includes/views/workflows.html",
+	"templates/includes/views/docs.html",
+	"templates/includes/views/cost_dashboard.html",
+}
+
+// ParseIndex parses the app shell templates.
+func ParseIndex() (*template.Template, error) {
+	return template.ParseFS(Templates, IndexTemplateFiles...)
+}

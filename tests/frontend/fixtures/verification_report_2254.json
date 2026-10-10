@@ -3,9 +3,9 @@
   "outcome": "success",
   "summary": "Added explicit Preview beside Download/Open link for every available managed, inline and HTTP(S) artifact; readable titles also preview. External links render in an in-Coral sandboxed iframe with persistent blocked-embedding explanation and Open link fallback. Declared text/html or application/xhtml+xml (including extensionless inline artifacts served text/plain) renders through sandboxed srcdoc, preserving Download. Existing Markdown/text/image/media rendering, Back, mobile and session-change mechanisms retained.",
   "files": [
-    "coral-go/internal/server/frontend/static/team_artifacts.js",
-    "coral-go/internal/server/frontend/static/changed_files.js",
-    "coral-go/internal/server/frontend/static/css/agentic.css",
+    "coral-go/pkg/frontend/static/team_artifacts.js",
+    "coral-go/pkg/frontend/static/changed_files.js",
+    "coral-go/pkg/frontend/static/css/agentic.css",
     "tests/frontend/team_artifacts_browser.test.js"
   ],
   "isolation": "All HTML frames have explicit sandbox=\"\" (no allow-scripts, allow-same-origin, forms, popups, top navigation or download grants) and no-referrer. srcdoc adds default-src none, inline styles only, data images/fonts only, base-uri none and form-action none. Linked requests are browser frame navigation after Preview, with no server proxy. No eager blob fetches or thumbnails were added.",

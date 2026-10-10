@@ -5,8 +5,8 @@
 A new **bottom preview pane** with tabbed file viewer lives at the bottom of the right sidebar (`.agentic-state`). It was built to replace the old inline file preview that rendered inside the sidebar panels.
 
 ### New files
-- **`internal/server/frontend/static/preview_pane.js`** — Tab management module. Exports `openPreviewTab(filepath, line)`, `closeTab`, `closeAllTabs`, `resetPreviewPane`, `initPreviewPane`. Renders markdown (via `marked` + `DOMPurify`), code (via `hljs`), HTML (sandboxed iframe), images, and media.
-- **`internal/server/frontend/static/draggable.js`** — Reusable `makeDraggable` / `makeDelegatedDraggable` utilities with pointer capture, rAF batching, and CSS containment.
+- **`pkg/frontend/static/preview_pane.js`** — Tab management module. Exports `openPreviewTab(filepath, line)`, `closeTab`, `closeAllTabs`, `resetPreviewPane`, `initPreviewPane`. Renders markdown (via `marked` + `DOMPurify`), code (via `hljs`), HTML (sandboxed iframe), images, and media.
+- **`pkg/frontend/static/draggable.js`** — Reusable `makeDraggable` / `makeDelegatedDraggable` utilities with pointer capture, rAF batching, and CSS containment.
 
 ### Modified files
 - **`live_session.html`** — Preview pane HTML (`#preview-pane-resize-handle`, `#preview-pane` with `.preview-tabs` + `.preview-body`) inserted inside `.agentic-state`, after the bottom agentic block.

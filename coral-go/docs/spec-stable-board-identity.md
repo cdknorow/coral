@@ -134,7 +134,7 @@ The `Subscribe` endpoint gains an optional `session_name` field so the server kn
 - All handlers: extract `subscriber_id` instead of `session_id` from requests
 - `PostMessage`: auto-subscribe uses `subscriber_id`
 
-### internal/server/frontend/static/message_board.js
+### pkg/frontend/static/message_board.js
 
 - Operator identity stays `"dashboard"` (already stable)
 - API calls use `subscriber_id` parameter

@@ -13,7 +13,7 @@ The codebase already has significant update infrastructure wired up but not
 connected to real data:
 
 ### Frontend Toast (working, waiting for real data)
-- `internal/server/frontend/static/update_check.js` — calls `/api/system/update-check`
+- `pkg/frontend/static/update_check.js` — calls `/api/system/update-check`
   on app startup, shows dismissible toast notification with release notes
 - Respects localStorage dismissal (`coral-update-dismissed`, `coral-update-check-enabled`)
 - Displays first 5 release notes as bullet points
@@ -180,9 +180,9 @@ Based on the security audit (session 2026-03-26):
 |------|------|
 | `internal/server/routes/system.go` | UpdateCheck API (needs implementation) |
 | `internal/config/config.go` | Version string (build-time injection) |
-| `internal/server/frontend/static/update_check.js` | Frontend toast notification |
-| `internal/server/frontend/static/css/components.css` | Toast styling |
-| `internal/server/frontend/static/app.js` | Startup check trigger |
+| `pkg/frontend/static/update_check.js` | Frontend toast notification |
+| `pkg/frontend/static/css/components.css` | Toast styling |
+| `pkg/frontend/static/app.js` | Startup check trigger |
 | `cmd/coral-tray/main.go` | Tray app notification (independent GitHub check) |
 | `internal/tracking/posthog.go` | Install vs upgrade detection |
 | `internal/store/connection.go` | Database migration on startup |

@@ -1,0 +1,3050 @@
+/* Rendering functions for session lists, chat history, and status updates */
+
+import { state } from './state.js';
+import { serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
+import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr } from './utils.js';
+import { renderTranscript } from './live_chat.js';
+import { renderSidebarTagDots } from './tags.js';
+import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
+import { updateSectionVisibility } from './sidebar.js';
+import { serverBadgeHtml, serverStripHtml, localFirst, isStaleSession, staleReason, showServerLabels, serverLabel } from './server_status.js';
+import { syncMobileAgentList } from './mobile.js';
+import { getCachedAgentAvailability, refreshTeamAvailability } from './team_availability.js';
+
+/* ── Helpers ────────────────────────────────────────────────────────── */
+
+const _WORKTREE_ICON = '<svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg>';
+
+/** Compact "↑2 ↓1 ●3" divergence summary for a session's git_state, or ''.
+ *  Ahead/behind are measured against the repo's default branch. */
+function _gitStateSummary(gs) {
+    if (!gs) return '';
+    const base = gs.base_branch || 'main';
+    const parts = [];
+    if (gs.ahead) parts.push(`<span class="gs-ahead" title="${escapeAttr(gs.ahead)} commit${gs.ahead !== 1 ? 's' : ''} ahead of ${escapeAttr(base)}">↑${gs.ahead}</span>`);
+    if (gs.behind) parts.push(`<span class="gs-behind" title="${escapeAttr(gs.behind)} commit${gs.behind !== 1 ? 's' : ''} behind ${escapeAttr(base)}">↓${gs.behind}</span>`);
+    if (gs.dirty) parts.push(`<span class="gs-dirty" title="${escapeAttr(gs.dirty)} uncommitted file${gs.dirty !== 1 ? 's' : ''}">●${gs.dirty}</span>`);
+    return parts.join(' ');
+}
+
+function _repoBranch(repoName, branch) {
+    if (repoName && branch) return `${repoName} : ${branch}`;
+    return branch || repoName || '';
+}
+
+/* ── Agent Avatars ──────────────────────────────────────────────────── */
+
+const _roleAvatars = {
+    'orchestrator': '👑', 'lead': '🔨', 'lead dev': '🔨', 'architect': '📐',
+    'frontend': '🎨', 'backend': '⚙️', 'qa': '🔍', 'quality': '🔍', 'test': '🧪',
+    'security': '🛡️', 'devops': '🚀', 'data': '📊', 'llm': '🧠', 'ai': '🤖',
+    'design': '✏️', 'writer': '📝', 'content': '📝', 'research': '🔬',
+    'marketing': '📣', 'seo': '📈', 'product': '💡', 'manager': '📋',
+    'terminal': '💻', 'ops': '🔧', 'infra': '☁️',
+};
+
+function _getAvatarEmoji(name) {
+    if (!name) return null;
+    const lower = name.toLowerCase();
+    for (const [keyword, emoji] of Object.entries(_roleAvatars)) {
+        if (lower.includes(keyword)) return emoji;
+    }
+    return null;
+}
+
+function _getInitials(name) {
+    if (!name) return '?';
+    const words = name.trim().split(/\s+/);
+    if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+}
+
+/* ── Session identity ───────────────────────────────────────────────── */
+
+const GOAL_LINE_MAX = 140;
+
+/** Collapse whitespace/newlines and truncate to one line. */
+export function oneLine(text, max = GOAL_LINE_MAX) {
+    if (!text) return '';
+    const flat = String(text).replace(/\s+/g, ' ').trim();
+    if (flat.length <= max) return flat;
+    return flat.slice(0, max - 1).trimEnd() + '\u2026';
+}
+
+/** Goal text for a session row: summary, else the first user prompt. */
+export function sessionGoalText(s) {
+    if (!s) return '';
+    return oneLine(s.summary || s.first_prompt || '');
+}
+
+/**
+ * Stable identity source for a session, or '' when there is none.
+ * Chain: display_name -> auto_name (D8, transcript-derived, write-once) ->
+ * board_job_title. Neither summary nor first_prompt is identity: the summary
+ * changes as the agent works, and a prompt is a sentence or a path, not a
+ * name (task #85). Both are rendered as goal text only.
+ */
+export function sessionIdentitySource(s) {
+    if (!s) return '';
+    return (s.display_name || '').trim()
+        || (s.auto_name || '').trim()
+        || (s.board_job_title || '').trim();
+}
+
+/** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
+export function resolveSessionIdentity(s) {
+    if (!s) return 'Agent';
+    const src = sessionIdentitySource(s);
+    if (src) return oneLine(src, 60);
+    return s.agent_type === 'terminal' ? 'Terminal' : 'Agent';
+}
+
+function _renderAvatar(s, dotClass) {
+    // Role emoji + initials follow the shared identity chain, then the folder.
+    // Colour is keyed ONLY on the folder/session name (never display_name,
+    // auto_name, board_job_title, summary or first_prompt) so agents in one
+    // folder share a hue (established contract, task #89).
+    const name = sessionIdentitySource(s) || s.name || '';
+    const color = getAgentColor(s.name || '');
+    const statusDot = `<span class="avatar-status-dot ${dotClass}"></span>`;
+
+    // Custom icon takes priority
+    if (s.icon && !s.sleeping) {
+        return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.15)}">
+            <span class="agent-avatar-emoji">${escapeHtml(s.icon)}</span>${statusDot}
+        </div>`;
+    }
+
+    // Sleeping
+    if (s.sleeping) {
+        return `<div class="agent-avatar" style="background:rgba(255,193,7,0.1)">
+            <span class="agent-avatar-emoji">🌙</span>${statusDot}
+        </div>`;
+    }
+
+    // Role-based emoji
+    const emoji = _getAvatarEmoji(name);
+    if (emoji) {
+        return `<div class="agent-avatar" style="background:${hexToRgba(color, 0.15)}">
+            <span class="agent-avatar-emoji">${emoji}</span>${statusDot}
+        </div>`;
+    }
+
+    // Fallback: colored initials from the shared *stable* identity source
+    // (display_name -> auto_name -> board_job_title), then folder/terminal
+    // name. Summary and first_prompt are deliberately excluded: one drifts as
+    // the agent works, the other yields initials from a path or sentence.
+    // Colour stays folder-based (see `color` above) so agents in one folder
+    // share a hue.
+    // With no stable identity the row label is "Agent"/"Terminal", so the
+    // initials are AG/TE rather than letters of the folder name (every agent
+    // in coral-go would read CO).
+    const initialsSource = resolveSessionIdentity(s);
+    const initials = _getInitials(initialsSource);
+    const style = `background:${hexToRgba(color, 0.2)};color:${color}`;
+    return `<div class="agent-avatar" style="${style}">
+        <span class="agent-avatar-initials">${escapeHtml(initials)}</span>${statusDot}
+    </div>`;
+}
+
+function formatShortTime(isoStr) {
+    const d = new Date(isoStr);
+    if (isNaN(d)) return "";
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yy = String(d.getFullYear()).slice(-2);
+    return `${dd}/${mm}/${yy}`;
+}
+
+function formatDuration(sec) {
+    if (sec == null || sec <= 0) return '';
+    if (sec < 60) return `${sec}s`;
+    if (sec < 3600) return `${Math.round(sec / 60)}m`;
+    const h = Math.floor(sec / 3600);
+    const m = Math.round((sec % 3600) / 60);
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function formatStaleness(seconds) {
+    if (seconds === null || seconds === undefined) return "Unknown";
+    if (seconds < 5) return "Just now";
+    if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return `${Math.floor(seconds / 3600)}h ago`;
+}
+
+/* ── Agent state: one resolver, one vocabulary ─────────────────────────
+ * Priority (AGENT_LIST_COMPACT state table):
+ *   Ended (killed/history) > Sleeping > Stuck > Needs input > Check terminal
+ *   > Ready for input (turn ended, awaiting instruction) > Working > Idle
+ * Context, unread and selection are overlays, never winners. Every surface
+ * (row dot/pill/aria, tooltip, mobile chip, workspace header, popout pill,
+ * nav and group counts) reads this table so the words never diverge. */
+export const SESSION_STATES = {
+    ended:          { label: 'Ended',          dot: 'ended',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
+    sleeping:       { label: 'Sleeping',       dot: 'sleeping',  pill: null,             pillClass: '',          chip: 'idle',        attention: false },
+    stuck:          { label: 'Stuck',          dot: 'stuck',     pill: 'Stuck',          pillClass: 'stuck',     chip: 'error',       attention: true },
+    needs_input:    { label: 'Needs input',    dot: 'waiting',   pill: 'Needs input',    pillClass: '',          chip: 'needs-input', attention: true },
+    check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
+    your_turn:      { label: 'Ready for input', dot: 'your-turn', pill: null,            pillClass: '',          chip: '',            attention: false },
+    working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
+    task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: null, pillClass: '', chip: 'idle', attention: true },
+    idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
+};
+
+/** Turn ended and the agent awaits its next instruction. Backend contract:
+ *  `awaiting_user` (boolean, explicit). Servers without the field still send
+ *  the stop-derived `done`, which means exactly this (never "completed"). */
+function _isAwaitingUser(s) {
+    if (s.awaiting_user !== undefined && s.awaiting_user !== null) return !!s.awaiting_user;
+    return !!s.done;
+}
+
+/** Resolve the single winning state key for a session. */
+export function deriveSessionState(s, opts = {}) {
+    if (!s) return 'idle';
+    const ended = opts.ended !== undefined ? opts.ended : !!state.killedSessions?.[s.session_id];
+    if (ended) return 'ended';
+    if (s.sleeping) return 'sleeping';
+    if (s.stuck) return 'stuck';
+    if (s.waiting_for_input) return 'needs_input';
+    if (s.not_started) return 'check_terminal';
+    if (getCachedAgentAvailability(s)?.availability === 'task_idle') return 'task_idle';
+    if (_isAwaitingUser(s)) return 'your_turn';
+    if (s.working) return 'working';
+    return 'idle';
+}
+
+export function sessionStateInfo(s, opts) {
+    const key = deriveSessionState(s, opts);
+    return { key, ...SESSION_STATES[key] };
+}
+
+function getStateLabel(s) {
+    return sessionStateInfo(s).label;
+}
+
+/** Class list for the workspace header status dot (same table as the rows). */
+export function terminalDotClass(s) {
+    return `terminal-status-dot ${sessionStateInfo(s || {}).dot}`;
+}
+
+function getMobileStatusChip(s) {
+    const info = sessionStateInfo(s);
+    return { label: info.label, className: info.chip };
+}
+
+export function buildSessionTooltip(s) {
+    const stateLabel = getStateLabel(s);
+    const lastAction = formatStaleness(s.staleness_seconds);
+    const goal = s.summary || "No goal set";
+    const status = s.status || "No status";
+    const branch = (_repoBranch(s.repo_name, s.branch) || "—") + (s.git_state?.is_worktree ? " (worktree)" : "");
+    const agent = s.agent_type || "claude";
+
+    let rows = [
+        `<tr><td class="tt-label">State</td><td class="tt-value tt-state-${stateLabel.toLowerCase().replace(/ /g, '-')}">${escapeHtml(stateLabel)}</td></tr>`,
+        `<tr><td class="tt-label">Last action</td><td class="tt-value">${escapeHtml(lastAction)}</td></tr>`,
+        `<tr><td class="tt-label">Goal</td><td class="tt-value">${escapeHtml(goal)}</td></tr>`,
+        `<tr><td class="tt-label">Status</td><td class="tt-value">${escapeHtml(status)}</td></tr>`,
+        `<tr><td class="tt-label">Branch</td><td class="tt-value">${escapeHtml(branch)}</td></tr>`,
+        `<tr><td class="tt-label">Agent</td><td class="tt-value">${escapeHtml(agent)}</td></tr>`,
+    ];
+    // Context window usage moved out of the row (AGENT_LIST_COMPACT): explicit
+    // null (unknown model) must read "unknown", never 0% or full.
+    const ctxText = (s.context_pct === null || s.context_pct === undefined)
+        ? 'unknown'
+        : (s.context_window ? `${s.context_pct}% of ${_formatTokens(s.context_window)}` : `${s.context_pct}%`);
+    rows.push(`<tr><td class="tt-label">Context</td><td class="tt-value">${escapeHtml(ctxText)}</td></tr>`);
+    if (s.working_directory) {
+        rows.push(`<tr><td class="tt-label">Directory</td><td class="tt-value" title="${escapeAttr(s.working_directory)}">${escapeHtml(_shortPath(s.working_directory, 3))}</td></tr>`);
+    }
+    if (s.changed_file_count > 0) {
+        rows.push(`<tr><td class="tt-label">Files changed</td><td class="tt-value">${s.changed_file_count}</td></tr>`);
+    }
+    if (s.token_cost_usd > 0 || s.token_input > 0) {
+        const tokIn = _formatTokens(s.token_input || 0);
+        const tokOut = _formatTokens(s.token_output || 0);
+        const tokCache = (s.token_cache_read || 0);
+        let tokenText = `${tokIn} in / ${tokOut} out`;
+        if (tokCache > 0) tokenText += ` / ${_formatTokens(tokCache)} cache`;
+        if (s.token_cost_usd > 0) tokenText += ` · ${_formatCost(s.token_cost_usd)}`;
+        rows.push(`<tr><td class="tt-label">Tokens</td><td class="tt-value">${tokenText}</td></tr>`);
+    }
+    if (s.board_project) {
+        const ttUnread = sessionUnreadCount(s);
+        const unreadBadge = ttUnread > 0 ? ` <span class="tt-unread">(${ttUnread} unread)</span>` : '';
+        rows.push(`<tr><td class="tt-label">Board</td><td class="tt-value">${escapeHtml(s.board_project)}${unreadBadge}</td></tr>`);
+        rows.push(`<tr><td class="tt-label">Role</td><td class="tt-value">${escapeHtml(s.board_job_title)}</td></tr>`);
+    }
+    return `<table class="session-tooltip-table">${rows.join("")}</table>`;
+}
+
+function getDotClass(s) {
+    return sessionStateInfo(s).dot;
+}
+
+// ── Board accent colors (localStorage) ────────────────────────────────
+
+function _getBoardColor(boardName) {
+    try {
+        const colors = JSON.parse(localStorage.getItem('coral-board-colors') || '{}');
+        return colors[boardName] || null;
+    } catch { return null; }
+}
+
+function _setBoardColor(boardName, color) {
+    try {
+        const colors = JSON.parse(localStorage.getItem('coral-board-colors') || '{}');
+        if (color) {
+            colors[boardName] = color;
+        } else {
+            delete colors[boardName];
+        }
+        localStorage.setItem('coral-board-colors', JSON.stringify(colors));
+    } catch { /* ignore */ }
+}
+
+const _colorSwatches = [
+    '#81a1c1', '#98c379', '#c678dd', '#d08770', '#e06c75',
+    '#56b6c2', '#e5c07b', '#8fbcbb', '#58a6ff', '#f778ba',
+    '#4aba60', '#d19a66', '#e05545', '#d2a0ee', '#61afef',
+    '#e0e0e4', '#8c8c94', '#5a5a62',
+];
+
+export function setBoardAccentColor(boardName) {
+    // Remove any existing picker
+    const existing = document.getElementById('board-color-picker');
+    if (existing) { existing.remove(); return; }
+
+    const current = _getBoardColor(boardName) || '#58a6ff';
+    const picker = document.createElement('div');
+    picker.id = 'board-color-picker';
+    picker.className = 'color-picker-popover';
+    picker.innerHTML = `
+        <div class="color-picker-swatches">
+            ${_colorSwatches.map(c =>
+                `<button class="color-swatch${c === current ? ' active' : ''}" style="background:${c}" data-color="${escapeAttr(c)}" title="${escapeAttr(c)}"></button>`
+            ).join('')}
+        </div>
+        <div class="color-picker-custom">
+            <input type="text" class="color-picker-hex" value="${escapeAttr(current)}" placeholder="#hex" maxlength="7">
+            <button class="btn btn-small color-picker-apply">Apply</button>
+            <button class="btn btn-small color-picker-reset">Reset</button>
+        </div>
+    `;
+    document.body.appendChild(picker);
+
+    // Position near the clicked element
+    const rect = event?.target?.getBoundingClientRect();
+    if (rect) {
+        picker.style.top = Math.min(rect.bottom + 4, window.innerHeight - 200) + 'px';
+        picker.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+    }
+
+    const apply = (color) => {
+        _setBoardColor(boardName, color);
+        renderLiveSessions(state.liveSessions);
+        picker.remove();
+    };
+
+    // Swatch clicks
+    picker.querySelectorAll('.color-swatch').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); apply(btn.dataset.color); });
+    });
+
+    // Custom hex apply
+    picker.querySelector('.color-picker-apply').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const hex = picker.querySelector('.color-picker-hex').value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) apply(hex);
+    });
+
+    // Reset
+    picker.querySelector('.color-picker-reset').addEventListener('click', (e) => {
+        e.stopPropagation();
+        _setBoardColor(boardName, null);
+        renderLiveSessions(state.liveSessions);
+        picker.remove();
+    });
+
+    // Close on outside click
+    setTimeout(() => {
+        document.addEventListener('click', function handler(e) {
+            if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', handler); }
+        });
+    }, 0);
+}
+
+// ── Board Chat (right-panel tab) ──────────────────────────────────────
+
+let _boardChatTimer = null;
+let _boardChatLastId = {};
+let _activeBoardChat = null;
+let _boardChatGen = 0;   // bumped whenever the board chat panel is rebuilt, to drop stale loads
+
+/** The board whose chat the panel currently shows (or null). */
+export function getActiveBoardChat() { return _activeBoardChat; }
+let _boardChatMessages = [];
+let _boardChatTotal = 0;
+let _boardChatOffset = 0;
+const _BOARD_CHAT_PAGE = 50;
+let _boardChatSelectMode = false;
+let _boardChatSelectedIds = new Set();
+
+export function showBoardChatTab(boardName) {
+    _activeBoardChat = boardName;
+    ++_boardChatGen;
+    const panel = document.getElementById('agentic-panel-board');
+    if (!panel) return;
+
+    // Populate the board tab content (visibility managed by switchAgenticTab)
+    panel.innerHTML = `
+        <div class="board-chat-header">
+            <a class="board-chat-title" href="#" onclick="event.preventDefault(); selectBoardProject('${jsStr(boardName)}')" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
+            <button class="btn-nav" id="board-chat-pause-btn" onclick="window._toggleBoardChatPause('${jsStr(boardName)}')" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
+            <button class="btn-nav board-select-btn" onclick="window._toggleBoardChatSelect()" title="Export — select messages to export as Markdown">Export</button>
+        </div>
+        <div class="board-paused-banner" id="board-chat-paused-banner" style="display:none">Board reads are paused — agents cannot see new messages</div>
+        <div class="board-chat-messages" id="board-panel-msgs"></div>
+        <div class="board-chat-input-pane" id="board-chat-input-pane">
+            <div class="board-chat-resize-handle" id="board-chat-resize-handle"></div>
+            <div class="command-pane-toolbar board-chat-toolbar">
+                <div class="toolbar-group">
+                    <button class="btn-nav" onclick="const i=document.getElementById('board-panel-input');if(i){i.value='@all '+i.value;i.focus()}" title="Notify all agents">@all</button>
+                </div>
+                <span class="toolbar-spacer"></span>
+                <div class="toolbar-group">
+                    <button class="btn-nav" onclick="window._sendBoardChat('${jsStr(boardName)}')" title="Send message">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="8" x2="14" y2="8"/><polyline points="9 3 14 8 9 13"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="board-chat-editor-wrap">
+                <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)"
+                    onkeydown="if(event.key==='Enter'&&event.ctrlKey){event.preventDefault();window._sendBoardChat('${jsStr(boardName)}')}"
+                    oninput="window._boardMentionInput(event, '${jsStr(boardName)}')"></textarea>
+                <div class="board-mention-dropdown" id="board-mention-dropdown" style="display:none"></div>
+            </div>
+        </div>`;
+
+    // Restore saved input pane height
+    const savedH = localStorage.getItem('coral-boardchat-height');
+    if (savedH) {
+        const pane = document.getElementById('board-chat-input-pane');
+        const h = parseInt(savedH, 10);
+        if (pane && h >= 80) pane.style.height = h + 'px';
+    }
+
+    // Reset pagination and select state for new board
+    _boardChatMessages = [];
+    _boardChatTotal = 0;
+    _boardChatOffset = 0;
+    _boardChatLastId[boardName] = null;
+    _boardChatSelectMode = false;
+    _boardChatSelectedIds.clear();
+
+    _loadBoardPanelChat(boardName);
+    _checkBoardPauseState(boardName);
+    // Start polling
+    if (_boardChatTimer) clearInterval(_boardChatTimer);
+    _boardChatTimer = setInterval(() => _loadBoardPanelChat(boardName), 3000);
+}
+
+export function hideBoardChatTab() {
+    _activeBoardChat = null;
+    ++_boardChatGen;
+    _boardChatSelectMode = false;
+    _boardChatSelectedIds.clear();
+    if (_boardChatTimer) { clearInterval(_boardChatTimer); _boardChatTimer = null; }
+    const panel = document.getElementById('agentic-panel-board');
+    if (panel) panel.innerHTML = '';
+}
+
+function _formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+async function _loadBoardPanelChat(boardName) {
+    if (!document.getElementById('board-panel-msgs')) return;
+    // Rapid agent/team switching rebuilds the panel while requests are in flight;
+    // a response for an older panel must never touch the shared message state.
+    const gen = _boardChatGen;
+    const stale = () => gen !== _boardChatGen || _activeBoardChat !== boardName;
+    try {
+        // First call: get total count and load latest page
+        const countResp = await boardFetch(boardName, `/messages/all?limit=1&offset=0&format=dashboard`);
+        const countData = await countResp.json();
+        if (stale()) return;
+        const msgsEl = document.getElementById('board-panel-msgs');
+        if (!msgsEl) return;
+        const total = countData.total || (Array.isArray(countData) ? countData.length : 0);
+
+        if (total === 0) {
+            msgsEl.innerHTML = '<div class="board-chat-empty">No messages yet</div>';
+            msgsEl.dataset.rendered = '1';
+            _boardChatMessages = [];
+            _boardChatTotal = 0;
+            return;
+        }
+
+        // Nothing new since this panel last rendered
+        if (_boardChatTotal === total && _boardChatMessages.length > 0 && msgsEl.dataset.rendered === '1') return;
+
+        // Load the latest page
+        const startOffset = Math.max(0, total - _BOARD_CHAT_PAGE);
+        const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=${startOffset}&format=dashboard`);
+        const data = await resp.json();
+        if (stale()) return;
+        const messages = Array.isArray(data) ? data : (data.messages || []);
+
+        _boardChatMessages = messages;
+        _boardChatTotal = total;
+        _boardChatOffset = startOffset;
+
+        const el = document.getElementById('board-panel-msgs');
+        if (!el) return;
+        _renderBoardPanelMessages(el, true);
+        el.dataset.rendered = '1';
+    } catch { /* ignore */ }
+}
+
+async function _loadEarlierBoardChat() {
+    if (!_activeBoardChat || _boardChatOffset <= 0) return;
+    const msgsEl = document.getElementById('board-panel-msgs');
+    if (!msgsEl) return;
+    try {
+        const newOffset = Math.max(0, _boardChatOffset - _BOARD_CHAT_PAGE);
+        const fetchCount = _boardChatOffset - newOffset;
+        const resp = await boardFetch(_activeBoardChat, `/messages/all?limit=${fetchCount}&offset=${newOffset}&format=dashboard`);
+        const data = await resp.json();
+        const messages = Array.isArray(data) ? data : (data.messages || []);
+
+        // Save scroll height to preserve position after prepending
+        const prevScrollHeight = msgsEl.scrollHeight;
+
+        _boardChatMessages = [...messages, ..._boardChatMessages];
+        _boardChatOffset = newOffset;
+
+        _renderBoardPanelMessages(msgsEl, false);
+
+        // Restore scroll position so user stays where they were
+        msgsEl.scrollTop = msgsEl.scrollHeight - prevScrollHeight;
+    } catch { /* ignore */ }
+}
+window._loadEarlierBoardChat = _loadEarlierBoardChat;
+
+function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
+    const messages = _boardChatMessages;
+    const wasAtBottom = scrollToBottom || msgsEl.scrollTop >= msgsEl.scrollHeight - msgsEl.clientHeight - 20;
+
+    // "Load Earlier" button
+    let loadEarlierHtml = '';
+    if (_boardChatOffset > 0) {
+        const remaining = _boardChatOffset;
+        loadEarlierHtml = `<div style="text-align:center;padding:6px 0 8px">
+            <button class="btn btn-small" onclick="_loadEarlierBoardChat()" style="font-size:11px;color:var(--text-muted)">
+                ▲ Load ${Math.min(remaining, _BOARD_CHAT_PAGE)} earlier (${remaining} remaining)
+            </button>
+        </div>`;
+    }
+
+    msgsEl.innerHTML = loadEarlierHtml + messages.map((m, i) => {
+        const agent = m.job_title || m.sender_name || 'Unknown';
+        const color = getAgentColor(agent);
+        const prevAgent = i > 0 ? (messages[i - 1].job_title || messages[i - 1].sender_name || 'Unknown') : null;
+        const sameAsPrev = agent === prevAgent;
+        const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
+        const isLeader = /orchestrator/i.test(agent) || m.session_id === 'dashboard';
+        const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
+        const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
+
+        const selectedClass = _boardChatSelectMode && _boardChatSelectedIds.has(m.id) ? ' mb-message-selected' : '';
+        const checkbox = _boardChatSelectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_boardChatSelectedIds.has(m.id) ? 'checked' : ''} onclick="window._toggleBoardChatMsgSelect(${Number(m.id)}, this.checked)">` : '';
+        return `<div class="mb-message ${spacing}${alignClass}${selectedClass}" style="border-left:3px solid rgba(${r},${g},${b},0.55); border-bottom:2px solid rgba(${r},${g},${b},0.3)">
+            <div class="mb-message-header">
+                ${checkbox}
+                <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
+                <span class="mb-message-time">${_formatTime(m.created_at)}</span>
+            </div>
+            <div class="mb-message-body">${renderMarkdown(boardMessageText(m.content))}</div>
+        </div>`;
+    }).join('');
+    if (wasAtBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+    // Update select bar if in select mode
+    if (_boardChatSelectMode) _updateBoardChatSelectBar();
+}
+
+function _toggleBoardChatSelect() {
+    _boardChatSelectMode = !_boardChatSelectMode;
+    _boardChatSelectedIds.clear();
+    const btn = document.querySelector('.board-select-btn');
+    if (btn) btn.classList.toggle('active', _boardChatSelectMode);
+    // Hide chat input when in select mode
+    const inputPane = document.getElementById('board-chat-input-pane');
+    if (inputPane) inputPane.style.display = _boardChatSelectMode ? 'none' : '';
+    _updateBoardChatSelectBar();
+    const msgsEl = document.getElementById('board-panel-msgs');
+    if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
+}
+window._toggleBoardChatSelect = _toggleBoardChatSelect;
+
+function _toggleBoardChatMsgSelect(msgId, checked) {
+    if (checked) {
+        _boardChatSelectedIds.add(msgId);
+    } else {
+        _boardChatSelectedIds.delete(msgId);
+    }
+    const cb = document.querySelector(`#board-panel-msgs .mb-select-checkbox[data-msg-id="${msgId}"]`);
+    if (cb) cb.closest('.mb-message').classList.toggle('mb-message-selected', checked);
+    _updateBoardChatSelectBar();
+}
+window._toggleBoardChatMsgSelect = _toggleBoardChatMsgSelect;
+
+function _boardChatSelectAll() {
+    _boardChatMessages.forEach(m => _boardChatSelectedIds.add(m.id));
+    const msgsEl = document.getElementById('board-panel-msgs');
+    if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
+}
+window._boardChatSelectAll = _boardChatSelectAll;
+
+function _boardChatSelectNone() {
+    _boardChatSelectedIds.clear();
+    const msgsEl = document.getElementById('board-panel-msgs');
+    if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
+}
+window._boardChatSelectNone = _boardChatSelectNone;
+
+function _cancelBoardChatSelect() {
+    _boardChatSelectMode = false;
+    _boardChatSelectedIds.clear();
+    const btn = document.querySelector('.board-select-btn');
+    if (btn) btn.classList.remove('active');
+    // Restore chat input
+    const inputPane = document.getElementById('board-chat-input-pane');
+    if (inputPane) inputPane.style.display = '';
+    _updateBoardChatSelectBar();
+    const msgsEl = document.getElementById('board-panel-msgs');
+    if (msgsEl) _renderBoardPanelMessages(msgsEl, false);
+}
+window._cancelBoardChatSelect = _cancelBoardChatSelect;
+
+function _updateBoardChatSelectBar() {
+    const panel = document.getElementById('agentic-panel-board');
+    if (!panel) return;
+    let bar = document.getElementById('board-chat-select-bar');
+    if (!_boardChatSelectMode) {
+        if (bar) bar.style.display = 'none';
+        return;
+    }
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'board-chat-select-bar';
+        bar.className = 'mb-select-bar';
+        panel.appendChild(bar);
+    }
+    const count = _boardChatSelectedIds.size;
+    bar.innerHTML = `
+        <span class="mb-select-count">${count} selected</span>
+        <button class="btn mb-select-action-btn" onclick="_boardChatSelectAll()">Select All</button>
+        <button class="btn mb-select-action-btn" onclick="_boardChatSelectNone()">None</button>
+        <button class="btn btn-primary mb-select-action-btn" onclick="window._exportBoardChatSelected()" ${count === 0 ? 'disabled' : ''}>Export Markdown</button>
+        <button class="btn mb-select-action-btn" onclick="_cancelBoardChatSelect()">Cancel</button>
+    `;
+    bar.style.display = '';
+}
+
+async function _exportBoardChatSelected() {
+    const selected = _boardChatMessages
+        .filter(m => _boardChatSelectedIds.has(m.id))
+        .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+    if (!selected.length) return;
+
+    const project = _activeBoardChat || 'board';
+    const now = new Date().toLocaleString();
+    let md = `# ${project} — Exported Chat\n\n`;
+    md += `**Exported**: ${now} · **Messages**: ${selected.length}\n\n---\n\n`;
+    for (const m of selected) {
+        const agent = m.job_title || m.sender_name || 'Unknown';
+        const time = _formatTime(m.created_at);
+        md += `### ${agent} — ${time}\n${m.content}\n\n`;
+    }
+    md += `---\n*Exported from Coral*\n`;
+
+    try {
+        await navigator.clipboard.writeText(md);
+        showToast(`Copied ${selected.length} messages to clipboard`);
+    } catch { /* fallback to download only */ }
+
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${project}-selected-export.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    _cancelBoardChatSelect();
+}
+window._exportBoardChatSelected = _exportBoardChatSelected;
+
+async function _sendBoardChat(boardName) {
+    const inputEl = document.getElementById('board-panel-input');
+    if (!inputEl) return;
+    const content = inputEl.value.trim();
+    if (!content) return;
+    inputEl.value = '';
+    try {
+        await boardFetch(boardName, `/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: 'dashboard', content }),
+        });
+        _loadBoardPanelChat(boardName);
+    } catch { /* ignore */ }
+}
+window._sendBoardChat = _sendBoardChat;
+
+async function _toggleBoardChatPause(boardName) {
+    const btn = document.getElementById('board-chat-pause-btn');
+    const banner = document.getElementById('board-chat-paused-banner');
+    const wasPaused = btn?.classList.contains('mb-action-danger');
+    const endpoint = wasPaused ? 'resume' : 'pause';
+    try {
+        await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
+        if (btn) {
+            if (wasPaused) {
+                btn.textContent = 'Pause Board';
+                btn.classList.remove('mb-action-danger');
+            } else {
+                btn.textContent = 'Resume Board';
+                btn.classList.add('mb-action-danger');
+            }
+        }
+        if (banner) {
+            banner.style.display = wasPaused ? 'none' : '';
+        }
+    } catch { /* ignore */ }
+}
+window._toggleBoardChatPause = _toggleBoardChatPause;
+
+async function _toggleBoardPause(boardName) {
+    const btn = document.getElementById('board-pause-btn');
+    const isPaused = btn?.classList.contains('paused');
+    const endpoint = isPaused ? 'resume' : 'pause';
+    try {
+        await boardFetch(boardName, `/${endpoint}`, { method: 'POST' });
+        if (btn) btn.classList.toggle('paused');
+        showToast(isPaused ? `Board "${boardName}" resumed` : `Board "${boardName}" paused`);
+    } catch { /* ignore */ }
+}
+window._toggleBoardPause = _toggleBoardPause;
+
+async function _checkBoardPauseState(boardName) {
+    try {
+        const resp = await boardFetch(boardName, `/paused`);
+        const data = await resp.json();
+        const btn = document.getElementById('board-chat-pause-btn');
+        const banner = document.getElementById('board-chat-paused-banner');
+        if (btn) {
+            if (data.paused) {
+                btn.textContent = 'Resume Board';
+                btn.classList.add('mb-action-danger');
+            } else {
+                btn.textContent = 'Pause Board';
+                btn.classList.remove('mb-action-danger');
+            }
+        }
+        if (banner) {
+            banner.style.display = data.paused ? '' : 'none';
+        }
+    } catch { /* ignore */ }
+}
+
+async function _clearBoardMessages(boardName) {
+    showConfirmModal('Clear Messages', `Clear all messages from "${boardName}"? This cannot be undone.`, async () => {
+        try {
+            await boardFetch(boardName, ``, { method: 'DELETE' });
+            _boardChatLastId[boardName] = null;
+            _loadBoardPanelChat(boardName);
+            showToast(`Cleared messages from "${boardName}"`);
+        } catch { /* ignore */ }
+    });
+}
+window._clearBoardMessages = _clearBoardMessages;
+
+// Board chat @mention autocomplete
+let _boardSubscribers = {};
+async function _boardMentionInput(event, boardName) {
+    const input = event.target;
+    const text = input.value;
+    const cursor = input.selectionStart;
+    const beforeCursor = text.slice(0, cursor);
+    const dropdown = document.getElementById('board-mention-dropdown');
+    if (!dropdown) return;
+
+    // Find @ trigger
+    const atMatch = beforeCursor.match(/@(\w*)$/);
+    if (!atMatch) { dropdown.style.display = 'none'; return; }
+    const query = atMatch[1].toLowerCase();
+
+    // Fetch subscribers if not cached
+    if (!_boardSubscribers[boardName]) {
+        try {
+            const resp = await boardFetch(boardName, `/subscribers`);
+            _boardSubscribers[boardName] = await resp.json();
+        } catch { _boardSubscribers[boardName] = []; }
+    }
+
+    const subs = (_boardSubscribers[boardName] || [])
+        .map(s => s.job_title || s.session_id || 'unknown')
+        .filter(name => name.toLowerCase().includes(query));
+
+    if (subs.length === 0) { dropdown.style.display = 'none'; return; }
+
+    dropdown.innerHTML = subs.map(name =>
+        `<div class="board-mention-item" onmousedown="event.preventDefault(); window._insertBoardMention('${jsStr(name)}')">${escapeHtml(name)}</div>`
+    ).join('');
+    dropdown.style.display = 'block';
+}
+window._boardMentionInput = _boardMentionInput;
+
+function _insertBoardMention(name) {
+    const input = document.getElementById('board-panel-input');
+    const dropdown = document.getElementById('board-mention-dropdown');
+    if (!input) return;
+    const text = input.value;
+    const cursor = input.selectionStart;
+    const beforeCursor = text.slice(0, cursor);
+    const atIdx = beforeCursor.lastIndexOf('@');
+    if (atIdx === -1) return;
+    const after = text.slice(cursor);
+    input.value = beforeCursor.slice(0, atIdx) + '@' + name + ' ' + after;
+    input.selectionStart = input.selectionEnd = atIdx + name.length + 2;
+    input.focus();
+    if (dropdown) dropdown.style.display = 'none';
+}
+window._insertBoardMention = _insertBoardMention;
+
+// ── Session ordering ──────────────────────────────────────────────────
+
+function _getSessionOrder() {
+    try {
+        return JSON.parse(state.settings.session_order || "[]");
+    } catch { return []; }
+}
+
+function _sortByOrder(sessions) {
+    const order = _getSessionOrder();
+    if (!order.length) return sessions;
+    const posMap = {};
+    order.forEach((sid, i) => { posMap[sid] = i; });
+    return [...sessions].sort((a, b) => {
+        const pa = posMap[a.session_id] ?? 9999;
+        const pb = posMap[b.session_id] ?? 9999;
+        return pa - pb;
+    });
+}
+
+async function _saveSessionOrder(orderedIds) {
+    state.settings.session_order = JSON.stringify(orderedIds);
+    try {
+        await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ session_order: state.settings.session_order }),
+        });
+    } catch (e) {
+        console.error("Failed to save session order:", e);
+    }
+}
+
+// ── Group ordering ───────────────────────────────────────────────────
+
+function _getGroupOrder() {
+    try {
+        return JSON.parse(state.settings.group_order || "[]");
+    } catch { return []; }
+}
+
+function _sortGroups(groupEntries) {
+    const order = _getGroupOrder();
+    if (!order.length) return groupEntries;
+    const posMap = {};
+    order.forEach((name, i) => { posMap[name] = i; });
+    return [...groupEntries].sort((a, b) => {
+        const pa = posMap[a[0]] ?? 9999;
+        const pb = posMap[b[0]] ?? 9999;
+        return pa - pb;
+    });
+}
+
+async function _saveGroupOrder(orderedNames) {
+    state.settings.group_order = JSON.stringify(orderedNames);
+    try {
+        await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ group_order: state.settings.group_order }),
+        });
+    } catch (e) {
+        console.error("Failed to save group order:", e);
+    }
+}
+
+function _getCurrentGroupNames() {
+    // Get current group names from the rendered sidebar
+    const headers = document.querySelectorAll('.session-group-header[data-group-name]');
+    return Array.from(headers).map(el => el.dataset.groupName);
+}
+
+export async function moveGroupUp(groupName) {
+    const names = _getCurrentGroupNames();
+    const idx = names.indexOf(groupName);
+    if (idx <= 0) return;
+    [names[idx - 1], names[idx]] = [names[idx], names[idx - 1]];
+    await _saveGroupOrder(names);
+    renderLiveSessions(state.liveSessions || []);
+}
+
+export async function moveGroupDown(groupName) {
+    const names = _getCurrentGroupNames();
+    const idx = names.indexOf(groupName);
+    if (idx < 0 || idx >= names.length - 1) return;
+    [names[idx], names[idx + 1]] = [names[idx + 1], names[idx]];
+    await _saveGroupOrder(names);
+    renderLiveSessions(state.liveSessions || []);
+}
+
+// ── Session reorder (Move Up/Down) ───────────────────────────────────
+
+export function moveSessionUp(sessionId) {
+    _moveSession(sessionId, -1);
+}
+
+export function moveSessionDown(sessionId) {
+    _moveSession(sessionId, 1);
+}
+
+function _moveSession(sessionId, direction) {
+    const list = document.getElementById("live-sessions-list");
+    if (!list) return;
+    const items = [...list.querySelectorAll(".session-group-item")];
+    const ids = items.map(el => el.dataset.sessionId);
+    const idx = ids.indexOf(sessionId);
+    if (idx < 0) return;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= ids.length) return;
+    [ids[idx], ids[targetIdx]] = [ids[targetIdx], ids[idx]];
+    _saveSessionOrder(ids);
+    renderLiveSessions(state.liveSessions);
+}
+
+// ── Group collapse state ─────────────────────────────────────────────
+function _getCollapsedGroups() {
+    try { return JSON.parse(localStorage.getItem('coral_collapsed_groups') || '[]'); }
+    catch { return []; }
+}
+
+function _isGroupCollapsed(groupName) {
+    // While searching, matches inside a collapsed group must stay visible.
+    if (_agentFilter) return false;
+    return _getCollapsedGroups().includes(groupName);
+}
+
+export function toggleGroupCollapse(groupName) {
+    const groups = _getCollapsedGroups();
+    const idx = groups.indexOf(groupName);
+    if (idx >= 0) groups.splice(idx, 1);
+    else groups.push(groupName);
+    localStorage.setItem('coral_collapsed_groups', JSON.stringify(groups));
+    renderLiveSessions(state.liveSessions);
+}
+
+export function killSessionDirect(name, agentType, sessionId) {
+    const server = serverForSession(name, sessionId);
+    showConfirmModal('Kill Session', `Kill session "${name}"? This will terminate the agent.`, async () => { try {
+        const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(name)}/kill`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
+        });
+        const result = await resp.json();
+        if (result.error) { showToast(result.error, true); return; }
+        if (result.changes_artifact_error) {
+            showToast(`Killed, but changes.diff could not be saved: ${result.changes_artifact_error}`, true);
+        } else {
+            showToast(`Killed and saved changes.diff: ${name}`);
+        }
+        // Mark as done and preserve for history link instead of removing
+        const killed = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
+        if (killed) {
+            killed.done = true;
+            killed.working = false;
+            killed.waiting_for_input = false;
+            killed.stuck = false;
+            killed.sleeping = false;
+            state.killedSessions[sessionId] = killed;
+        }
+        state.liveSessions = state.liveSessions.filter(s => s.session_id !== sessionId);
+        if (state.currentSession && state.currentSession.session_id === sessionId) {
+            state.currentSession = null;
+            showView("welcome-screen");
+        }
+        renderLiveSessions(state.liveSessions);
+    } catch (e) {
+        showToast("Failed to kill session", true);
+    } });
+}
+
+export async function showInfoDirect(name, agentType, sessionId) {
+    const { selectLiveSession } = await import('./sessions.js');
+    await selectLiveSession(name, agentType, sessionId, serverForSession(name, sessionId));
+    const { showInfoModal } = await import('./modals.js');
+    showInfoModal();
+}
+
+export async function attachDirect(name, agentType, sessionId) {
+    try {
+        const resp = await serverFetch(serverForSession(name, sessionId), `/api/sessions/live/${encodeURIComponent(name)}/attach`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agent_type: agentType, session_id: sessionId }),
+        });
+        const result = await resp.json();
+        if (result.error) showToast(result.error, true);
+        else showToast("Terminal opened");
+    } catch (e) {
+        showToast("Failed to open terminal", true);
+    }
+}
+
+export async function restartDirect(name, agentType, sessionId) {
+    const { selectLiveSession } = await import('./sessions.js');
+    await selectLiveSession(name, agentType, sessionId, serverForSession(name, sessionId));
+    const { restartSession } = await import('./controls.js');
+    restartSession();
+}
+
+// ── Confirm Modal ────────────────────────────────────────────────────
+
+export function showConfirmModal(title, message, onConfirm) {
+    document.getElementById("confirm-modal-title").textContent = title;
+    document.getElementById("confirm-modal-message").textContent = message;
+    const yesBtn = document.getElementById("confirm-modal-yes");
+    const newBtn = yesBtn.cloneNode(true);
+    yesBtn.parentNode.replaceChild(newBtn, yesBtn);
+    newBtn.addEventListener("click", () => {
+        hideConfirmModal();
+        onConfirm();
+    });
+    document.getElementById("confirm-modal").style.display = "flex";
+}
+
+export function hideConfirmModal() {
+    const modal = document.getElementById("confirm-modal");
+    modal.style.display = "none";
+    // Remove any extra width classes added by export modal
+    const content = modal.querySelector('.modal-content');
+    if (content) content.classList.remove('modal-content-wide', 'modal-content-extra-wide');
+}
+
+// opts.color = { value, auto }: show a colour row (palette swatches plus an
+// "Auto" swatch showing `auto`); onConfirm then receives (text, color) where
+// color is "#rrggbb" or "" for Auto.
+export function showPromptModal(title, label, defaultValue, onConfirm, opts = {}) {
+    document.getElementById("prompt-modal-title").textContent = title;
+    const colorRow = document.getElementById("prompt-modal-colors");
+    let pickedColor = (opts.color && opts.color.value) || "";
+    if (colorRow) {
+        colorRow.style.display = opts.color ? "" : "none";
+        if (opts.color) {
+            const sw = (value, bg, label) => `<button type="button" class="color-swatch${value === pickedColor ? " selected" : ""}" data-color="${escapeAttr(value)}" style="--swatch:${bg}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}" aria-pressed="${value === pickedColor}">${value ? "" : "A"}</button>`;
+            colorRow.querySelector(".color-swatches").innerHTML =
+                sw("", opts.color.auto, "Auto") + AGENT_NAME_PALETTE.map(c => sw(c, c, c)).join("");
+            colorRow.querySelectorAll(".color-swatch").forEach(btn => {
+                btn.onclick = () => {
+                    pickedColor = btn.dataset.color;
+                    colorRow.querySelectorAll(".color-swatch").forEach(b => {
+                        b.classList.toggle("selected", b === btn);
+                        b.setAttribute("aria-pressed", String(b === btn));
+                    });
+                };
+            });
+        }
+    }
+    const labelEl = document.getElementById("prompt-modal-label");
+    if (labelEl) labelEl.textContent = label || '';
+    const input = document.getElementById("prompt-modal-input");
+    input.value = defaultValue || '';
+    const okBtn = document.getElementById("prompt-modal-ok");
+    const newBtn = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newBtn, okBtn);
+    const modal = document.getElementById("prompt-modal");
+    const submit = () => {
+        const val = input.value.trim();
+        if (!val) { input.focus(); return; }
+        hidePromptModal();
+        onConfirm(val, pickedColor);
+    };
+    newBtn.addEventListener("click", submit);
+    input.onkeydown = (e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') hidePromptModal(); };
+    modal.onclick = (e) => { if (e.target === modal) hidePromptModal(); };
+    modal.style.display = "flex";
+    setTimeout(() => input.focus(), 50);
+}
+
+export function hidePromptModal() {
+    document.getElementById("prompt-modal").style.display = "none";
+}
+
+export function showAlertModal(title, message, onClose) {
+    document.getElementById("alert-modal-title").textContent = title;
+    document.getElementById("alert-modal-message").textContent = message;
+    const okBtn = document.getElementById("alert-modal-ok");
+    const newBtn = okBtn.cloneNode(true);
+    okBtn.parentNode.replaceChild(newBtn, okBtn);
+    const modal = document.getElementById("alert-modal");
+    newBtn.addEventListener("click", () => {
+        hideAlertModal();
+        onClose?.();
+    });
+    modal.onclick = (e) => { if (e.target === modal) hideAlertModal(); };
+    modal.style.display = "flex";
+}
+
+export function hideAlertModal() {
+    const modal = document.getElementById("alert-modal");
+    if (!modal) return;
+    modal.style.display = "none";
+}
+
+export function dismissKilledSession(sessionId) {
+    delete state.killedSessions[sessionId];
+    state.liveSessions = state.liveSessions.filter(s => s.session_id !== sessionId);
+    renderLiveSessions(state.liveSessions);
+}
+
+export function dismissBoardKilled(boardName) {
+    const killedIds = Object.keys(state.killedSessions).filter(sid => {
+        const s = state.killedSessions[sid];
+        return s && inTeam(s, boardName);
+    });
+    for (const sid of killedIds) {
+        delete state.killedSessions[sid];
+    }
+    state.liveSessions = state.liveSessions.filter(s => !killedIds.includes(s.session_id));
+    renderLiveSessions(state.liveSessions);
+}
+
+export function copyFolderPath(path) {
+    if (!path) return;
+    navigator.clipboard.writeText(path).then(() => {
+        showToast("Copied path to clipboard");
+    });
+}
+
+export async function killGroup(groupName) {
+    const groupSessions = state.liveSessions.filter(s => sessionFolderKey(s) === groupName);
+    if (!groupSessions.length) return;
+
+    showConfirmModal(
+        "Kill All Agents",
+        `Kill all ${groupSessions.length} agent(s) in "${keyLabel(groupName)}"? This will terminate them.`,
+        async () => {
+            for (const s of groupSessions) {
+                try {
+                    await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
+                    });
+                    // Preserve killed session for history link
+                    s.done = true;
+                    s.working = false;
+                    s.waiting_for_input = false;
+                    s.stuck = false;
+                    s.sleeping = false;
+                    state.killedSessions[s.session_id] = s;
+                } catch (e) {
+                    console.error(`Failed to kill ${s.name}:`, e);
+                }
+            }
+            const killedIds = new Set(groupSessions.map(s => s.session_id));
+            state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
+            renderLiveSessions(state.liveSessions);
+        }
+    );
+}
+
+export async function killBoard(boardName) {
+    const boardSessions = state.liveSessions.filter(s => inTeam(s, boardName));
+    if (!boardSessions.length) return;
+
+    showConfirmModal(
+        "Kill Team",
+        `Kill all ${boardSessions.length} agent(s) on board "${keyLabel(boardName)}"? This will terminate them.`,
+        async () => {
+            for (const s of boardSessions) {
+                try {
+                    await serverFetch(sessionServer(s), `/api/sessions/live/${encodeURIComponent(s.name)}/kill`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ agent_type: s.agent_type, session_id: s.session_id }),
+                    });
+                    s.done = true;
+                    s.working = false;
+                    s.waiting_for_input = false;
+                    s.stuck = false;
+                    s.sleeping = false;
+                    state.killedSessions[s.session_id] = s;
+                } catch (e) {
+                    console.error(`Failed to kill ${s.name}:`, e);
+                }
+            }
+            const killedIds = new Set(boardSessions.map(s => s.session_id));
+            state.liveSessions = state.liveSessions.filter(s => !killedIds.has(s.session_id));
+            renderLiveSessions(state.liveSessions);
+        }
+    );
+}
+
+function _buildTeamTemplateFromBoard(boardName) {
+    const boardSessions = (state.liveSessions || []).filter(s => inTeam(s, boardName));
+    if (!boardSessions.length) return null;
+
+    const agents = [];
+    for (const s of boardSessions) {
+        const agent = {
+            name: s.display_name || s.board_job_title || s.name,
+            prompt: s.prompt || '',
+        };
+        if (s.agent_type) agent.agent_type = s.agent_type;
+        if (s.model) agent.model = s.model;
+        if (s.capabilities) agent.capabilities = s.capabilities;
+        agents.push(agent);
+    }
+    return { name: keyLabel(boardName), agents, flags: '' };
+}
+
+async function _attachKnowledgeToTemplate(boardName, tmpl) {
+    try {
+        const resp = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`);
+        if (!resp.ok) return tmpl;
+        const data = await resp.json();
+        if (!data.exists || !data.agents) return tmpl;
+        const knowledgeMap = {};
+        for (const a of data.agents) {
+            knowledgeMap[a.name.toLowerCase()] = a.content;
+        }
+        for (const agent of tmpl.agents) {
+            const slug = agent.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9_-]/g, '');
+            if (knowledgeMap[slug]) {
+                agent.knowledge = knowledgeMap[slug];
+            }
+        }
+        if (data.index) tmpl.team_knowledge_index = data.index;
+    } catch { /* knowledge is optional */ }
+    return tmpl;
+}
+
+async function _attachWorkingModeToTemplate(boardName, tmpl) {
+    try {
+        const [modeResp, presetsResp] = await Promise.all([
+            boardFetch(boardName, `/working-mode`),
+            boardFetch(boardName, `/working-mode/presets`),
+        ]);
+        if (modeResp.ok) {
+            const mode = await modeResp.json();
+            if (mode.mode && mode.mode !== 'none') {
+                tmpl.working_mode = {
+                    mode: mode.mode,
+                    dependency_guidance: mode.dependency_guidance || false,
+                    custom_instructions: mode.custom_instructions || '',
+                };
+            }
+        }
+        if (presetsResp.ok) {
+            const data = await presetsResp.json();
+            const customPresets = (data.presets || []).filter(p => !p.builtin || p.overridden);
+            if (customPresets.length > 0) {
+                tmpl.workflow_presets = customPresets.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    instructions: p.instructions || '',
+                    builtin: p.builtin || false,
+                }));
+            }
+        }
+    } catch { /* working mode is optional */ }
+    return tmpl;
+}
+
+export async function shareAgentTeam(boardName) {
+    let tmpl = _buildTeamTemplateFromBoard(boardName);
+    if (!tmpl) {
+        showToast("No agents found on this board", "error");
+        return;
+    }
+
+    tmpl = await _attachKnowledgeToTemplate(boardName, tmpl);
+    tmpl = await _attachWorkingModeToTemplate(boardName, tmpl);
+
+    const template = {
+        version: 1,
+        type: "coral-team-templates",
+        templates: [tmpl],
+    };
+
+    const jsonStr = JSON.stringify(template, null, 2);
+    const filename = `coral-team-${keyLabel(boardName).replace(/[^a-zA-Z0-9-_]/g, "_")}.json`;
+
+    // Show export modal with JSON content
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'flex';
+    modal.innerHTML = `
+        <div class="modal-content" style="width:600px">
+            <div class="modal-header">
+                <h3>Export Team: ${escapeHtml(keyLabel(boardName))}</h3>
+                <p style="color:var(--text-secondary);font-size:13px;margin:6px 0 0">${tmpl.agents.length} agents</p>
+            </div>
+            <div class="modal-body">
+                <textarea readonly style="width:100%;height:260px;font-family:monospace;font-size:12px;resize:vertical;background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border);border-radius:8px;padding:12px">${escapeHtml(jsonStr)}</textarea>
+            </div>
+            <div class="modal-actions modal-footer">
+                <button class="btn" data-action="close">Close</button>
+                <button class="btn" data-action="download">Download</button>
+                <button class="btn btn-primary" data-action="copy">Copy to Clipboard</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => {
+        const action = e.target.dataset?.action;
+        if (action === 'close' || e.target === modal) { modal.remove(); return; }
+        if (action === 'copy') {
+            navigator.clipboard.writeText(jsonStr).then(() => showToast('Copied to clipboard'));
+            return;
+        }
+        if (action === 'download') {
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = filename; a.click();
+            URL.revokeObjectURL(url);
+            showToast(`Downloaded ${filename}`);
+        }
+    });
+}
+
+export function saveTeamFromSidebar(boardName) {
+    showPromptModal('Save Team Template', 'Template name', keyLabel(boardName), async (templateName) => {
+        let tmpl = _buildTeamTemplateFromBoard(boardName);
+        if (!tmpl) {
+            showToast("No agents found on this board", "error");
+            return;
+        }
+        tmpl = await _attachKnowledgeToTemplate(boardName, tmpl);
+        tmpl = await _attachWorkingModeToTemplate(boardName, tmpl);
+        tmpl.name = templateName;
+
+        // Save to user_settings via the settings API
+        let existing = [];
+        try {
+            existing = JSON.parse(state.settings.saved_team_templates || "[]");
+        } catch { /* ignore */ }
+        const idx = existing.findIndex(t => t.name === templateName);
+        if (idx >= 0) existing[idx] = tmpl; else existing.push(tmpl);
+        state.settings.saved_team_templates = JSON.stringify(existing);
+        await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ saved_team_templates: state.settings.saved_team_templates }),
+        });
+        showToast(`Saved template "${templateName}" (${tmpl.agents.length} agents)`);
+    });
+}
+
+export function toggleTeamSleep(boardName, action) {
+    const doIt = async () => {
+        try {
+            const resp = await teamFetch(boardName, n => `/api/sessions/live/team/${encodeURIComponent(n)}/${action}`, { method: 'POST' });
+            const data = await resp.json();
+            const sleeping = !!data.sleeping;
+            for (const s of state.liveSessions) {
+                if (inTeam(s, boardName)) s.sleeping = sleeping;
+            }
+            renderLiveSessions(state.liveSessions);
+            showToast(sleeping ? `Team "${keyLabel(boardName)}" is now sleeping` : `Team "${keyLabel(boardName)}" is awake`);
+        } catch (e) {
+            showToast('Failed to toggle team sleep', true);
+        }
+    };
+    if (action === 'sleep') {
+        showConfirmModal('Sleep Team', `Put all agents on "${keyLabel(boardName)}" to sleep?`, doIt);
+    } else {
+        doIt();
+    }
+}
+
+export function sleepAllAgents() {
+    showConfirmModal('Sleep All', 'Put all agents to sleep?', async () => {
+        try {
+            const resp = await fetch('/api/sessions/live/sleep-all', { method: 'POST' });
+            const data = await resp.json();
+            if (data.ok) {
+                for (const s of state.liveSessions) s.sleeping = true;
+                renderLiveSessions(state.liveSessions);
+                showToast(`All agents are now sleeping (${data.sessions_affected} affected)`);
+            }
+        } catch (e) {
+            showToast('Failed to sleep all agents', true);
+        }
+    });
+}
+
+export function wakeAllAgents() {
+    showConfirmModal('Wake All', 'Wake all sleeping agents?', async () => {
+        try {
+            const resp = await fetch('/api/sessions/live/wake-all', { method: 'POST' });
+            const data = await resp.json();
+            if (data.ok) {
+                for (const s of state.liveSessions) s.sleeping = false;
+                renderLiveSessions(state.liveSessions);
+                showToast(`All agents are awake (${data.sessions_relaunched} relaunched)`);
+            }
+        } catch (e) {
+            showToast('Failed to wake agents', true);
+        }
+    });
+}
+
+export function toggleAgentSleep(name, agentType, sessionId, action) {
+    const server = serverForSession(name, sessionId);
+    const doIt = async () => {
+        try {
+            const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(sessionId)}/${action}`, { method: 'POST' });
+            const data = await resp.json();
+            if (!data.ok) { showToast(data.error || 'Failed to toggle sleep', true); return; }
+            const sleeping = !!data.sleeping;
+            const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
+            if (s) s.sleeping = sleeping;
+            renderLiveSessions(state.liveSessions);
+            showToast(sleeping ? `"${name}" is now sleeping` : `"${name}" is awake`);
+        } catch (e) {
+            showToast('Failed to toggle agent sleep', true);
+        }
+    };
+    if (action === 'sleep') {
+        showConfirmModal('Sleep Agent', `Put "${name}" to sleep?`, doIt);
+    } else {
+        doIt();
+    }
+}
+
+// Drag-and-drop state
+let _draggedSid = null;
+
+function _shortPath(fullPath, segments = 2) {
+    if (!fullPath) return '';
+    let p = fullPath.replace(/\/+$/, '');
+    // Try to replace common home dir with tilde
+    p = p.replace(/^\/Users\/[^\/]+/, '~').replace(/^\/home\/[^\/]+/, '~');
+    const parts = p.split('/');
+    if (parts.length <= segments) return p;
+    return '…/' + parts.slice(-segments).join('/');
+}
+
+function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) {
+    const dotClass = getDotClass(s);
+    const isActive = !state.selectedTeam && state.currentSession && state.currentSession.type === "live" && state.currentSession.session_id === s.session_id;
+
+    // Spec: remove agent type from the default row layout
+    const typeTag = "";
+
+    // Directory override chip
+    const hasDirOverride = teamDefaultDir && s.working_directory && s.working_directory !== teamDefaultDir;
+    // Directory override now lives in the tooltip (Directory row), not the row.
+    const dirChip = "";
+    void hasDirOverride;
+
+    // Branch is shown at folder level, except for agents on their own worktree:
+    // those are on a different branch than the folder, so each row says which.
+    const gsWt = s.git_state?.is_worktree ? s.git_state : null;
+    const branchTag = (gsWt && s.branch)
+        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
+        : "";
+    // One pill at most, from the shared state table. Only the attention states
+    // carry a pill. "Ready for input" has none: the tooltip and the aria-label carry
+    // that state (no dot) (operator request, task #175).
+    const stateInfo = sessionStateInfo(s);
+    const waitingBadge = stateInfo.pill
+        ? ` <span class="badge waiting-badge session-state-pill session-attention-pill${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
+        : '';
+    // Context is secondary: any state pill owns line 1 and the ctx pill
+    // collapses to the dot's ring, which survives on every glyph.
+    const ctxPill = waitingBadge ? '' : _renderCtxPill(s);
+    const ctxHigh = s.context_pct !== null && s.context_pct !== undefined && s.context_pct >= 80;
+    const isTerminal = s.agent_type === "terminal";
+    const sid = s.session_id ? escapeAttr(s.session_id) : "";
+    // Goal line is rendered on every row (not just the active one):
+    // summary -> first user prompt -> inline "No goal yet" + generate button.
+    const goalText = sessionGoalText(s);
+    const goalBtn = "";
+    // Row label follows the shared identity chain (display_name -> auto_name
+    // -> board_job_title -> Agent/Terminal). The prompt is never a name; it
+    // shows on the goal line below when there is no summary.
+    const identity = resolveSessionIdentity(s);
+    const displayLabel = identity;
+    const reminder = getCachedAgentAvailability(s);
+    const reminderTag = reminder?.reminder
+        ? `<span class="agent-reminder-icon" title="Periodic reminder every ${escapeAttr(Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60)))} min" aria-label="Periodic reminder active">⏰</span>`
+        : '';
+    let goalLine = "";
+    if (goalText) {
+        goalLine = `<span class="session-goal${isCompact ? ' session-goal-compact' : ''}" title="${escapeAttr(goalText)}">${escapeHtml(goalText)}</span>`;
+    } else if (!isTerminal) {
+        // The "No goal yet" label is PASSIVE text: it sits where users click to
+        // select a row, so it must bubble to the row's click handler. Only the
+        // sparkle button requests a goal.
+        goalLine = `<span class="session-goal session-goal-empty${isCompact ? ' session-goal-compact' : ''}">
+                <button class="sidebar-goal-btn sidebar-goal-btn-inline" onclick="event.stopPropagation(); requestGoal('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:14px">auto_awesome</span></button>
+                <span class="session-goal-empty-label">No goal yet</span>
+            </span>`;
+    }
+    const isDone = !!state.killedSessions?.[s.session_id];
+    // A state without a chip class ("Ready for input") renders no mobile chip. The meta
+    // row is emitted without whitespace so :empty can collapse it on the phone.
+    const mobileStatus = getMobileStatusChip(s);
+    const mobileStatusChip = mobileStatus.className
+        ? `<span class="session-status-chip ${escapeAttr(mobileStatus.className)}">${escapeHtml(mobileStatus.label)}</span>`
+        : '';
+    const lastActivity = formatStaleness(s.staleness_seconds);
+    const needsAttention = sessionNeedsAttention(s);
+    const mobileUnread = sessionUnreadCount(s);
+    const unreadBoardBadge = mobileUnread > 0
+        ? `<span class="session-mobile-meta-pill">${mobileUnread} unread</span>`
+        : '';
+    const activityLabel = (s.waiting_for_input || s.not_started) ? "Waiting since" : "Last activity";
+    const mobileAttentionBanner = stateInfo.key === 'needs_input'
+        ? '<div class="session-mobile-banner">Waiting for your input</div>'
+        : (stateInfo.key === 'check_terminal'
+            ? '<div class="session-mobile-banner">Nothing yet — open the terminal</div>'
+            : (stateInfo.key === 'stuck' ? '<div class="session-mobile-banner error">Session needs attention</div>' : ''));
+    // Unread board messages: a neutral count on line 2 (never an attention colour),
+    // shown on selected rows too.
+    const unreadCount = stateInfo.key === 'ended' ? 0 : sessionUnreadCount(s);
+    // The unread count on agent rows was not useful to users, so no chip is rendered.
+    void unreadCount;
+    const unreadChip = '';
+    void _renderAvatar; // avatars left the list (AGENT_LIST_COMPACT D-A); kept for other callers
+    const _sleepingMenu = `
+            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
+                Open Agent Tab
+            </a>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'wake')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
+                Wake
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
+                Restart
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
+                Rename
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); setAgentIcon('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M5.5 9.5c0 0 1 1.5 2.5 1.5s2.5-1.5 2.5-1.5"/><circle cx="6" cy="6.5" r="0.5" fill="currentColor" stroke="none"/><circle cx="10" cy="6.5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                Set Icon
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                Session Info
+            </button>
+            <hr class="overflow-menu-divider">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
+                Move Up
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionDown('${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
+                Move Down
+            </button>
+            <hr class="overflow-menu-divider">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                Remove Agent
+            </button>`;
+    const _awakeMenu = `
+            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
+                Open Agent Tab
+            </a>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
+                Attach
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
+                Restart
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
+                Rename
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); setAgentIcon('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M5.5 9.5c0 0 1 1.5 2.5 1.5s2.5-1.5 2.5-1.5"/><circle cx="6" cy="6.5" r="0.5" fill="currentColor" stroke="none"/><circle cx="10" cy="6.5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                Set Icon
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                Session Info
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'sleep')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
+                Sleep
+            </button>
+            <hr class="overflow-menu-divider">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
+                Move Up
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionDown('${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
+                Move Down
+            </button>
+            <hr class="overflow-menu-divider">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                Kill Session
+            </button>`;
+    const _doneMenu = `
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); selectHistorySession('${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3h10v10H3z"/><path d="M6 6h4"/><path d="M6 9h4"/></svg>
+                View History
+            </button>
+            <hr class="overflow-menu-divider">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissKilledSession('${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                Dismiss
+            </button>`;
+    const kebabMenuContent = isDone ? _doneMenu : (s.sleeping ? _sleepingMenu : _awakeMenu);
+    const kebabMenu = `<div class="sidebar-kebab-wrapper">
+        <button class="sidebar-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="More actions">&#x22EE;</button>
+        <div class="sidebar-kebab-menu" style="display:none">${kebabMenuContent}
+        </div>
+    </div>`;
+    const tooltip = buildSessionTooltip(s);
+    const compactClass = isCompact ? ' session-compact' : '';
+    const collapsedClass = collapsed ? ' group-collapsed' : '';
+    const sleepingClass = s.sleeping ? ' sleeping' : '';
+    const attentionClass = needsAttention ? ' needs-attention' : '';
+    const doneClass = isDone ? ' session-done' : '';
+    // Hub: an agent on an unreachable server is last-known data only.
+    const stale = isStaleSession(s);
+    const staleClass = stale ? ' session-stale' : '';
+    const clickHandler = stale ? '' : isDone
+        ? `selectHistorySession('${jsStr(sid)}')`
+        : `selectLiveSession('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', '${jsStr(sessionServer(s))}')`;
+    // Focusable list item (not a button: it contains the kebab, the open-tab
+    // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
+    const ariaLabel = `${identity}, ${stateInfo.label}`
+        + (ctxHigh ? `, context ${s.context_pct >= 100 ? 'full' : Math.round(s.context_pct) + '%'}` : '')
+        + (unreadCount > 0 ? `, ${unreadCount} unread` : '');
+    void lastActivity; void activityLabel;
+    const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
+    return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}${staleClass}"
+        draggable="${stale ? 'false' : 'true'}"${stale ? ` aria-disabled="true" title="${escapeAttr(staleReason(s))}"` : ''}
+        data-state="${escapeAttr(stateInfo.key)}"
+        tabindex="0"
+        aria-label="${escapeAttr(ariaLabel)}"${isActive ? ' aria-current="true"' : ''}
+        data-session-id="${escapeAttr(sid)}"
+        data-server="${escapeAttr(sessionServer(s))}"
+        data-group="${escapeAttr(groupName)}"
+        ${clickHandler ? `onclick="${clickHandler}"` : ''}>
+        <span class="drag-grip" title="Drag to reorder">&#x2630;</span>
+        <div class="session-info">
+            <div class="session-name-row">
+                <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
+                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>
+                <span class="session-name-spacer"></span>
+                ${stale ? serverBadgeHtml(s.server, 'server-badge-inline') : waitingBadge + ctxPill}
+                ${goalBtn}
+                ${stale ? '' : kebabMenu}
+            </div>
+            <div class="session-mobile-banner-row">
+                ${mobileAttentionBanner}
+            </div>
+            <div class="session-mobile-meta">${mobileStatusChip}${unreadBoardBadge}</div>
+            ${(stateInfo.key !== 'ended' && (goalLine || unreadChip)) ? `<div class="session-line2">${goalLine}${unreadChip}</div>` : ''}
+            ${branchTag}
+        </div>
+        <div class="session-tooltip">${tooltip}</div>
+    </li>`;
+}
+
+function _renderSleepingSummary(sleepingAgents, groupName, isCompact, teamDefaultDir) {
+    const count = sleepingAgents.length;
+    const expanded = _isSleepingExpanded(groupName);
+    let html = `<li class="sleeping-summary-row" onclick="expandSleepingGroup('${jsStr(groupName)}')">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
+        <span class="sleeping-summary-label">${count} sleeping agent${count !== 1 ? 's' : ''}</span>
+    </li>`;
+    if (expanded) {
+        for (const s of sleepingAgents) {
+            html += _renderSessionItem(s, groupName, isCompact, false, teamDefaultDir);
+        }
+    }
+    return html;
+}
+
+function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact, groupName) {
+    if (!agents.length) return "";
+
+    const awake = agents.filter(s => !s.sleeping);
+    const sleeping = agents.filter(s => s.sleeping);
+
+    // One flat list: an agent's folder is shown in the header bar, not as
+    // sidebar sub-groups.
+    let html = awake.map(s => _renderSessionItem(s, groupName, isCompact, false, teamDefaultDir)).join('');
+
+    if (sleeping.length > 0) {
+        html += _renderSleepingSummary(sleeping, groupName, isCompact, teamDefaultDir);
+    }
+
+    return html;
+}
+
+// ── Agent summary line (the goal text under each agent name) ──────────
+
+/** Stored server-side in user settings (`show_session_summary`); off unless turned on. */
+export function isSessionSummaryShown() {
+    return String(state.settings?.show_session_summary).toLowerCase() === 'true';
+}
+
+export function applySessionSummaryPref() {
+    const shown = isSessionSummaryShown();
+    document.querySelector('.sidebar')?.classList.toggle('summary-hidden', !shown);
+    document.getElementById('sidebar-summary-btn')?.classList.toggle('active', shown);
+    const check = document.getElementById('settings-show-summary');
+    if (check) check.checked = shown;
+}
+
+export async function toggleSessionSummary() {
+    const previous = state.settings?.show_session_summary;
+    const next = !isSessionSummaryShown();
+    state.settings = { ...state.settings, show_session_summary: next ? 'True' : 'False' };
+    applySessionSummaryPref();
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ show_session_summary: next }),
+        });
+        if (!resp.ok) throw new Error(`settings ${resp.status}`);
+    } catch (e) {
+        console.error('Failed to save summary setting:', e);
+        state.settings = { ...state.settings, show_session_summary: previous };
+        applySessionSummaryPref();
+    }
+}
+
+export function toggleGroupByTeam() {
+    const current = localStorage.getItem('coral-group-by-team') !== 'false';
+    localStorage.setItem('coral-group-by-team', !current ? 'true' : 'false');
+    const check = document.getElementById('group-by-team-check-top');
+    if (check) check.style.opacity = !current ? '1' : '0.2';
+    renderLiveSessions(state.liveSessions);
+}
+
+export function expandSleepingGroup(groupName) {
+    const key = `coral-sleeping-expanded:${groupName}`;
+    const current = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, current ? 'false' : 'true');
+    renderLiveSessions(state.liveSessions);
+}
+
+function _isSleepingExpanded(groupName) {
+    try { return localStorage.getItem(`coral-sleeping-expanded:${groupName}`) === 'true'; }
+    catch { return false; }
+}
+
+/** True when the row shows an attention pill (needs input / check terminal / stuck). */
+/** Row-level attention (amber/red tint + attention pill): the three states
+ *  that need the operator at the terminal. */
+export function sessionNeedsAttention(s) {
+    return !!(s && SESSION_STATES[deriveSessionState(s)].attention);
+}
+
+/** board_unread as a safe, finite, non-negative integer (payloads are untrusted input to markup). */
+export function sessionUnreadCount(s) {
+    const n = Number(s && s.board_unread);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+const _RAIL_ICONS = {
+    team: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>',
+    folder: '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg>',
+    workflow: '<span class="material-icons" style="font-size:13px" aria-hidden="true">account_tree</span>',
+};
+
+// Role keyword -> Material icon for the rail tiles (first match wins).
+const _RAIL_ROLE_ICONS = [
+    ['orchestrator', 'hub'], ['architect', 'architecture'], ['design', 'palette'], ['artist', 'palette'],
+    ['devops', 'settings'], ['backend', 'dns'], ['frontend', 'code'], ['qa', 'bug_report'], ['test', 'bug_report'],
+    ['review', 'rate_review'], ['lead', 'construction'], ['dev', 'code'], ['research', 'travel_explore'],
+];
+
+function _railRoleIcon(s) {
+    if (s.agent_type === 'terminal') return 'terminal';
+    const text = `${s.display_name || ''} ${s.board_job_title || ''}`.toLowerCase();
+    const hit = _RAIL_ROLE_ICONS.find(([k]) => text.includes(k));
+    return hit ? hit[1] : '';
+}
+
+function _railTile(s, active) {
+    const label = resolveSessionIdentity(s) + (s.board_project ? ` · ${s.board_project}` : '');
+    const dot = getDotClass(s);
+    const unread = sessionUnreadCount(s);
+    const icon = s.icon && !s.sleeping
+        ? `<span class="rail-tile-emoji">${escapeHtml(s.icon)}</span>`
+        : (_railRoleIcon(s) ? `<span class="material-icons rail-tile-icon" aria-hidden="true">${_railRoleIcon(s)}</span>` : '');
+    let badge = '';
+    if (unread > 0) badge = `<span class="rail-tile-badge rail-tile-unread">${unread > 9 ? '9+' : unread}</span>`;
+    else if (dot === 'done') badge = '<span class="rail-tile-badge rail-tile-done material-icons" aria-hidden="true">check</span>';
+    else badge = `<span class="rail-tile-dot avatar-status-dot ${dot}"></span>`;
+    const railStale = isStaleSession(s);
+    const railLabel = railStale ? `${label}: ${staleReason(s)}` : (showServerLabels() ? `${label} · ${serverLabel(sessionServer(s))}` : label);
+    return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}${railStale ? ' session-stale' : ''}" title="${escapeAttr(railLabel)}" aria-label="${escapeAttr(railLabel)}"${railStale ? ' disabled' : ''}
+        ${railStale ? '' : `onclick="selectLiveSession('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(s.session_id || '')}', '${jsStr(sessionServer(s))}')"`}><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
+}
+
+function _railTeamColor(name) {
+    const custom = _getBoardColor(name);
+    if (custom) return custom;
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+    return `hsl(${((hash % 360) + 360) % 360}, 60%, 55%)`;
+}
+
+/** Icon rail shown when the sidebar is collapsed: a team/folder header per
+ *  group (click to expand or collapse, same state as the full list) with the
+ *  awake agents beneath it. Sleeping agents are left out. */
+function _renderSidebarRail(sessions) {
+    const rail = document.getElementById('sidebar-rail-list');
+    if (!rail) return;
+    const groupByTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+
+    // Same group and agent order as the full list, so both views line up.
+    const isOrchSession = s => (s.display_name || s.board_job_title || '').toLowerCase().includes('orchestrator');
+    const groups = []; // { kind, label, key, agents } in rendered order
+    const bucket = (pick) => {
+        const map = {};
+        for (const s of sessions) {
+            const k = pick(s);
+            if (k !== null) (map[k] = map[k] || []).push(s);
+        }
+        return Object.entries(map);
+    };
+    // Awake agents in the order their rows render.
+    const awakeInRowOrder = (agents) => agents.filter(a => !a.sleeping);
+
+    if (groupByTeam) {
+        const teams = _sortGroups(bucket(s => sessionTeamKey(s) || null));
+        if (!_getGroupOrder().length) {
+            teams.sort((a, b) => (a[1].every(x => x.sleeping) ? 1 : 0) - (b[1].every(x => x.sleeping) ? 1 : 0));
+        }
+        for (const [name, list] of teams) {
+            const ordered = _sortByOrder(list).sort((a, b) => isOrchSession(b) - isOrchSession(a));
+            groups.push({ kind: 'team', key: name, label: keyLabel(name), agents: awakeInRowOrder(ordered, list[0]?.working_directory || '') });
+        }
+        for (const [name, list] of bucket(s => (!s.board_project && s.workflow_name) ? s.workflow_name : null)) {
+            groups.push({ kind: 'workflow', key: 'wf:' + name, label: name, agents: list.filter(a => !a.sleeping) });
+        }
+    }
+    const folders = _sortGroups(bucket(s => (groupByTeam && (s.board_project || s.workflow_name)) ? null : sessionFolderKey(s)));
+    for (const [name, list] of folders) {
+        const ordered = _sortByOrder(list);
+        groups.push({ kind: 'folder', key: name, label: keyLabel(name), agents: awakeInRowOrder(ordered, ordered[0]?.working_directory || '') });
+    }
+
+    let html = '';
+    for (const g of groups) {
+        if (!g.agents.length) continue;
+        const collapsed = _isGroupCollapsed(g.key);
+        const letter = (g.label.trim()[0] || '?').toUpperCase();
+        const accent = g.kind === 'team' ? _railTeamColor(g.key) : getAgentColor(keyLabel(g.key));
+        const style = ` style="--rail-accent:${escapeAttr(accent)}"`;
+        const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
+        html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
+            onclick="toggleGroupCollapse('${jsStr(g.key)}')">${_RAIL_ICONS[g.kind]}<span class="sidebar-rail-letter">${escapeHtml(letter)}</span></button>`;
+        if (collapsed) continue;
+        for (const s of g.agents) {
+            const active = state.currentSession?.type === 'live' && state.currentSession.session_id === s.session_id;
+            html += _railTile(s, active);
+        }
+    }
+    rail.innerHTML = html;
+}
+
+// ── Agent search (sidebar) ────────────────────────────────────────────
+
+let _agentFilter = '';
+let _filteredMatches = [];
+
+// Matches the agent's name only (what the row label shows), not its team, folder or goal.
+function _agentMatches(s, q) {
+    const names = [resolveSessionIdentity(s), s.display_name, s.auto_name, s.board_job_title]
+        .filter(Boolean).join(' ').toLowerCase();
+    return q.split(/\s+/).every(term => names.includes(term));
+}
+
+export function filterLiveAgents(value) {
+    _agentFilter = (value || '').trim().toLowerCase();
+    renderLiveSessions(state.liveSessions || []);
+}
+
+export function focusAgentSearch() {
+    if (document.querySelector('.layout')?.classList.contains('sidebar-collapsed')) window.toggleSidebarRail?.();
+    const input = document.getElementById('agent-search-input');
+    if (input) { input.focus(); input.select(); }
+}
+
+/** Enter opens the first match; Escape clears the search. */
+export function agentSearchKey(e) {
+    if (e.key === 'Escape') {
+        e.target.value = '';
+        filterLiveAgents('');
+    } else if (e.key === 'Enter') {
+        const usable = _filteredMatches.filter(s => !isStaleSession(s));
+        const first = usable.find(s => !s.sleeping) || usable[0];
+        if (first) window.selectLiveSession?.(first.name, first.agent_type, first.session_id || '', sessionServer(first));
+    }
+}
+
+export function renderLiveSessions(sessions) {
+    // Single-agent popout: the sidebar is chrome. Never render rows there —
+    // they would carry session ids and destructive kebab actions into the DOM.
+    if (document.body.classList.contains('popout-mode')) {
+        const list = document.getElementById('live-sessions-list');
+        if (list) list.innerHTML = '';
+        return;
+    }
+
+    // Merge killed sessions back so they appear as "done" with history links.
+    // Use a copy to avoid mutating state.liveSessions.
+    const liveIds = new Set(sessions.map(s => s.session_id));
+    sessions = [...sessions];
+    for (const [sid, ks] of Object.entries(state.killedSessions)) {
+        if (!liveIds.has(sid)) {
+            sessions.push(ks);
+        }
+    }
+
+    applySessionSummaryPref();
+    const unfilteredCount = sessions.length;
+    if (_agentFilter) sessions = sessions.filter(s => _agentMatches(s, _agentFilter));
+    _filteredMatches = sessions;
+
+    _renderSidebarRail(sessions);
+
+    const list = document.getElementById("live-sessions-list");
+    // Re-render replaces every row: remember which row had keyboard focus.
+    const focusedRow = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest('.session-group-item[data-session-id]') : null;
+    const focusedSid = focusedRow ? focusedRow.dataset.sessionId : null;
+    _wireListKeyboard(list);
+    _wireListKeyboard(document.getElementById('mobile-agent-list'));
+
+    updateSectionVisibility('live-sessions', unfilteredCount);
+
+    if (!sessions.length) {
+        list.innerHTML = serverStripHtml() + `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        return;
+    }
+
+    // Sync the Group by Team checkmark
+    const groupByTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+    const check = document.getElementById('group-by-team-check-top');
+    if (check) check.style.opacity = groupByTeam ? '1' : '0.2';
+
+    // Helper to generate a deterministic accent color from a string
+    function _boardAccentColor(name) {
+        // Check for user-set accent color first
+        const custom = _getBoardColor(name);
+        if (custom) return custom;
+        // Default: hash-based color
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+        const hue = ((hash % 360) + 360) % 360;
+        return `hsl(${hue}, 60%, 55%)`;
+    }
+
+    let html = serverStripHtml();   // hub only; '' unless remotes are registered
+
+    if (groupByTeam) {
+    // ── Team-first mode: teams at top level, standalone by folder below ──
+
+    // Step 1: Separate into team (has board_project) vs workflow vs standalone
+    const teamGroups = {};
+    const workflowGroups = {};
+    const standaloneByFolder = {};
+    for (const s of sessions) {
+        if (s.board_project) {
+            const tk = sessionTeamKey(s);
+            if (!teamGroups[tk]) teamGroups[tk] = [];
+            teamGroups[tk].push(s);
+        } else if (s.workflow_name) {
+            const wfKey = s.workflow_name;
+            if (!workflowGroups[wfKey]) workflowGroups[wfKey] = [];
+            workflowGroups[wfKey].push(s);
+        } else {
+            const key = sessionFolderKey(s);
+            if (!standaloneByFolder[key]) standaloneByFolder[key] = [];
+            standaloneByFolder[key].push(s);
+        }
+    }
+
+    // Step 2: Render team groups at top level
+    // Apply saved group order first, then sort active before sleeping
+    const teamEntries = localFirst(_sortGroups(Object.entries(teamGroups)));
+    // Secondary sort: if no saved order, put sleeping teams after active
+    const hasOrder = _getGroupOrder().length > 0;
+    if (!hasOrder) {
+        teamEntries.sort((a, b) => {
+            const aAllSleeping = a[1].every(s => s.sleeping);
+            const bAllSleeping = b[1].every(s => s.sleeping);
+            if (aAllSleeping !== bAllSleeping) return aAllSleeping ? 1 : -1;
+            return 0;
+        });
+    }
+
+    for (const [boardName, boardSessions] of teamEntries) {
+        const accentColor = _boardAccentColor(boardName);
+        const boardCollapsed = _isGroupCollapsed(boardName);
+        const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
+        const boardLink = '';
+        const boardWorkDir = boardSessions[0]?.working_directory || '';
+        const boardBranchSession = boardSessions.find(s => s.branch);
+        const boardBranch = _repoBranch(boardBranchSession?.repo_name, boardBranchSession?.branch);
+        const boardIsSleeping = boardSessions.every(s => s.sleeping);
+        const boardSleepIcon = boardIsSleeping ? ' <span class="agent-icon" title="Team is sleeping">🌙</span>' : '';
+        const sleepLabel = boardIsSleeping ? 'Wake Team' : 'Sleep Team';
+        const sleepAction = boardIsSleeping ? 'wake' : 'sleep';
+        const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
+            <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
+            <div class="sidebar-kebab-menu" style="display:none">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${jsStr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${jsStr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+                    Add Agent
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchTerminalToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+                    Add Terminal
+                </button>
+                <hr class="overflow-menu-divider">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8l2 2v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M6 3v3h4V3"/><rect x="5" y="9" width="6" height="3"/></svg>
+                    Save as Template
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L3 7v7h10V7L8 2z"/><path d="M6 14v-4h4v4"/><line x1="8" y1="7" x2="8" y2="10"/><line x1="6.5" y1="8.5" x2="9.5" y2="8.5"/></svg>
+                    Distill Knowledge
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1"/><polyline points="8 3 8 10"/><polyline points="5 6 8 3 11 6"/></svg>
+                    Share Team
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleTeamSleep('${jsStr(boardName)}', '${jsStr(sleepAction)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
+                    ${sleepLabel}
+                </button>
+                <hr class="overflow-menu-divider">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); setBoardAccentColor('${jsStr(boardName)}'); closeSidebarKebabs()">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 1.5v13M1.5 8h13"/></svg>
+                    Set Color
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamTokenUsage('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13V5h3v8H2zM7 13V3h3v10H7zM12 13V7h3v6h-3z"/></svg>
+                    Token Usage
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
+                    Move Up
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
+                    Move Down
+                </button>
+                <hr class="overflow-menu-divider">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); resetTeam('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8a7 7 0 0 1 12.9-3.8"/><path d="M15 8a7 7 0 0 1-12.9 3.8"/><polyline points="13 1 14 4.2 10.5 4.2"/><polyline points="3 15 2 11.8 5.5 11.8"/></svg>
+                    Reset Team
+                </button>
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                    Kill All
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${jsStr(boardName)}')" title="Remove all killed agents from the sidebar">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
+                    Dismiss All
+                </button>
+            </div>
+        </div>`;
+        const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${jsStr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
+        const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
+        const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents<span class="team-token-usage" data-board="${escapeAttr(boardName)}"></span></div>`;
+        const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
+        html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}" style="--team-accent: ${accentColor}">
+            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+            </div>
+            <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
+
+        // Apply saved order, then always pin orchestrator to top
+        const orderedBoard = _sortByOrder(boardSessions);
+        orderedBoard.sort((a, b) => {
+            const aOrch = (a.display_name || a.board_job_title || '').toLowerCase().includes('orchestrator');
+            const bOrch = (b.display_name || b.board_job_title || '').toLowerCase().includes('orchestrator');
+            if (aOrch && !bOrch) return -1;
+            if (!aOrch && bOrch) return 1;
+            return 0;
+        });
+        html += _renderAgentListWithSubgroups(orderedBoard, boardWorkDir, true, boardName);
+        html += `</ul></li>`;
+    }
+
+    // Step 2b: Render workflow agent groups
+    for (const [wfName, wfSessions] of Object.entries(workflowGroups)) {
+        const wfCollapsed = _isGroupCollapsed('wf:' + wfName);
+        const wfChevron = wfCollapsed ? '&#x25B8;' : '&#x25BE;';
+        const wfRunId = wfSessions[0]?.workflow_run_id || '';
+        const wfSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg> Workflow · ${wfSessions.length} agent${wfSessions.length !== 1 ? 's' : ''}${wfRunId ? ' · Run #' + wfRunId : ''}</div>`;
+        const wfKebab = `<div class="sidebar-kebab-wrapper group-kebab">
+            <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Workflow actions">&#x22EE;</button>
+            <div class="sidebar-kebab-menu" style="display:none">
+                ${wfRunId ? `<button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); selectWorkflowRun(${Number(wfRunId)})">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8h12M10 4l4 4-4 4"/></svg>
+                    View Run
+                </button>` : ''}
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('wf:${jsStr(wfName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                    Kill All
+                </button>
+            </div>
+        </div>`;
+
+        html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
+            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" onclick="toggleGroupCollapse('wf:${jsStr(wfName)}')">
+                <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:14px;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
+            </div>
+            <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
+
+        for (const s of wfSessions) {
+            html += _renderSessionItem(s, 'wf:' + wfName, true, wfCollapsed, '');
+        }
+        html += `</ul></li>`;
+    }
+
+    // Step 3: Render standalone agents grouped by folder
+    const sortedFolders = localFirst(_sortGroups(Object.entries(standaloneByFolder)));
+    for (const [groupName, groupSessions] of sortedFolders) {
+        const sorted = _sortByOrder(groupSessions);
+        const isMulti = sorted.length > 1;
+        const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
+        const collapsed = _isGroupCollapsed(groupName);
+        const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
+        const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
+        const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
+            <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
+            <div class="sidebar-kebab-menu" style="display:none">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+                    Add Agent
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="10" y1="5" x2="14" y2="5"/></svg>
+                    Add Custom Agent
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchStandaloneTerminal('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+                    Add Terminal
+                </button>
+                <hr class="overflow-menu-divider">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${jsStr(groupName)}', this.closest('.session-group-header'))">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
+                    Manage Tags
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${jsStr(groupName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10"/><path d="M4 7l4-4 4 4"/></svg>
+                    Move Up
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${jsStr(groupName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3"/><path d="M4 9l4 4 4-4"/></svg>
+                    Move Down
+                </button>
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                    Kill All
+                </button>
+            </div>
+        </div>`;
+        const groupBranchSession = sorted.find(s => s.branch);
+        const groupBranch = _repoBranch(groupBranchSession?.repo_name, groupBranchSession?.branch);
+        const groupBranchLine = groupBranch ? `<div class="group-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(groupBranch)}</div>` : "";
+        const fTags = getFolderTags(groupName);
+        const tagDots = renderFolderTagPills(fTags);
+        const groupWorkDir = sorted[0]?.working_directory || '';
+        const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
+        const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+
+        if (!collapsed) {
+            html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
+        }
+    }
+
+    } else {
+    // ── Folder-first mode: all sessions grouped by folder, boards nested inside ──
+
+    // Group sessions by folder name (primary grouping)
+    const groups = {};
+    for (const s of sessions) {
+        const key = sessionFolderKey(s);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(s);
+    }
+
+    const sortedGroups = localFirst(_sortGroups(Object.entries(groups)));
+    for (const [groupName, groupSessions] of sortedGroups) {
+        const sorted = _sortByOrder(groupSessions);
+        const isMulti = sorted.length > 1;
+        const countBadge = ` <span class="session-group-count">${sorted.length}</span>`; void isMulti;
+        const collapsed = _isGroupCollapsed(groupName);
+        const chevron = collapsed ? '&#x25B8;' : '&#x25BE;';
+        const groupWorkDirEsc = escapeAttr(sorted[0]?.working_directory || '');
+        const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
+            <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
+            <div class="sidebar-kebab-menu" style="display:none">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+                    Add Agent
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="10" y1="5" x2="14" y2="5"/></svg>
+                    Add Custom Agent
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchStandaloneTerminal('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+                    Add Terminal
+                </button>
+                <hr class="overflow-menu-divider">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${jsStr(groupName)}', this.closest('.session-group-header'))">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
+                    Manage Tags
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${jsStr(groupName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10"/><path d="M4 7l4-4 4 4"/></svg>
+                    Move Up
+                </button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${jsStr(groupName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3"/><path d="M4 9l4 4 4-4"/></svg>
+                    Move Down
+                </button>
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                    Kill All
+                </button>
+            </div>
+        </div>`;
+        const groupBranchSession = sorted.find(s => s.branch);
+        const groupBranch = _repoBranch(groupBranchSession?.repo_name, groupBranchSession?.branch);
+        const groupBranchLine = groupBranch ? `<div class="group-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v5a3 3 0 0 0 3 3h1"/><circle cx="6" cy="3" r="1.5"/><circle cx="11" cy="11" r="1.5"/></svg> ${escapeHtml(groupBranch)}</div>` : "";
+        const fTags = getFolderTags(groupName);
+        const tagDots = renderFolderTagPills(fTags);
+        const groupWorkDir = sorted[0]?.working_directory || '';
+        const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
+        const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+
+        if (collapsed) {
+            // Skip rendering items when collapsed
+        } else {
+            // Sub-group by board within this folder
+            const boardSubs = {};
+            const unboardedItems = [];
+            for (const s of sorted) {
+                if (s.board_project) {
+                    const tk = sessionTeamKey(s);
+                    if (!boardSubs[tk]) boardSubs[tk] = [];
+                    boardSubs[tk].push(s);
+                } else {
+                    unboardedItems.push(s);
+                }
+            }
+
+            // Render board sub-groups as cards within the folder
+            for (const [boardName, boardSessions] of Object.entries(boardSubs)) {
+                const accentColor = _boardAccentColor(boardName);
+                const boardCollapsed = _isGroupCollapsed(boardName);
+                const bChevron = boardCollapsed ? '&#x25B8;' : '&#x25BE;';
+                const boardLink = '';
+                const boardWorkDir = boardSessions[0]?.working_directory || '';
+                const boardBranchSession = boardSessions.find(s => s.branch);
+                const boardBranch = _repoBranch(boardBranchSession?.repo_name, boardBranchSession?.branch);
+                const boardIsSleeping = boardSessions.some(s => s.sleeping);
+                const boardSleepIcon = boardIsSleeping ? ' <span class="agent-icon" title="Team is sleeping">🌙</span>' : '';
+                const sleepLabel = boardIsSleeping ? 'Wake Team' : 'Sleep Team';
+                const sleepAction = boardIsSleeping ? 'wake' : 'sleep';
+                const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
+                    <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
+                    <div class="sidebar-kebab-menu" style="display:none">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${jsStr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${jsStr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
+                            Add Agent
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchTerminalToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
+                            Add Terminal
+                        </button>
+                        <hr class="overflow-menu-divider">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${jsStr(boardName)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8l2 2v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M6 3v3h4V3"/><rect x="5" y="9" width="6" height="3"/></svg>
+                            Save as Template
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${jsStr(boardName)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L3 7v7h10V7L8 2z"/><path d="M6 14v-4h4v4"/><line x1="8" y1="7" x2="8" y2="10"/><line x1="6.5" y1="8.5" x2="9.5" y2="8.5"/></svg>
+                            Distill Knowledge
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${jsStr(boardName)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1"/><polyline points="8 3 8 10"/><polyline points="5 6 8 3 11 6"/></svg>
+                            Share Team
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleTeamSleep('${jsStr(boardName)}', '${jsStr(sleepAction)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
+                            ${sleepLabel}
+                        </button>
+                        <hr class="overflow-menu-divider">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); setBoardAccentColor('${jsStr(boardName)}'); closeSidebarKebabs()">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 1.5v13M1.5 8h13"/></svg>
+                            Set Color
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamTokenUsage('${jsStr(boardName)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13V5h3v8H2zM7 13V3h3v10H7zM12 13V7h3v6h-3z"/></svg>
+                            Token Usage
+                        </button>
+                        <hr class="overflow-menu-divider">
+                        <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                            Kill All
+                        </button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${jsStr(boardName)}')" title="Remove all killed agents from the sidebar">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
+                            Dismiss All
+                        </button>
+                    </div>
+                </div>`;
+                const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${jsStr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
+                const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
+                const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
+                html += `<li class="session-board-card session-team-group" style="--team-accent: ${accentColor}">
+                    <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                    </div>
+                    <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
+                const orderedBoardNested = _sortByOrder(boardSessions);
+                orderedBoardNested.sort((a, b) => {
+                    const aOrch = (a.display_name || a.board_job_title || '').toLowerCase().includes('orchestrator');
+                    const bOrch = (b.display_name || b.board_job_title || '').toLowerCase().includes('orchestrator');
+                    if (aOrch && !bOrch) return -1;
+                    if (!aOrch && bOrch) return 1;
+                    return 0;
+                });
+                html += _renderAgentListWithSubgroups(orderedBoardNested, boardWorkDir, true, groupName);
+                html += `</ul></li>`;
+            }
+
+            // Render unboarded items as flat list with subgroups
+            html += _renderAgentListWithSubgroups(unboardedItems, groupWorkDir, false, groupName);
+        }
+    }
+
+    } // end if/else groupByTeam
+
+    list.innerHTML = html;
+
+    // Attach hover listeners for fixed-position tooltips
+    for (const item of list.querySelectorAll(".session-group-item")) {
+        const tip = item.querySelector(".session-tooltip");
+        if (!tip) continue;
+        item.addEventListener("mouseenter", () => {
+            const rect = item.getBoundingClientRect();
+            tip.style.left = rect.right + 8 + "px";
+            tip.style.top = rect.top + "px";
+            tip.style.display = "block";
+        });
+        item.addEventListener("mouseleave", () => {
+            tip.style.display = "none";
+        });
+    }
+
+    // Attach drag-and-drop listeners for reordering
+    _attachDragListeners(list);
+
+    // Populate team token usage (non-blocking)
+    document.querySelectorAll('.team-token-usage[data-board]').forEach(el => {
+        getTeamTokenUsage(el.dataset.board).then(text => {
+            if (text) el.textContent = ' · ' + text;
+        });
+    });
+
+    // Restore keyboard focus to the same agent after the rebuild
+    if (focusedSid) {
+        const again = list.querySelector(`.session-group-item[data-session-id="${CSS.escape(focusedSid)}"]`);
+        if (again) again.focus({ preventScroll: true });
+    }
+
+    // Sync mobile agent list
+    syncMobileAgentList();
+
+    // Keep sidebar status aligned with the team availability API. The first
+    // render uses the transcript state; the cached API snapshot replaces it
+    // asynchronously when an assigned task is idle.
+    const teams = [...new Set(sessions.map(s => sessionTeamKey(s)).filter(Boolean))];
+    for (const team of teams) {
+        refreshTeamAvailability(team).then(snapshot => {
+            if (snapshot) renderLiveSessions(sessions);
+        });
+    }
+}
+
+function _attachDragListeners(list) {
+    const items = list.querySelectorAll(".session-group-item[draggable]");
+
+    // Allow drops inside nested board-card-agents containers
+    for (const container of list.querySelectorAll(".board-card-agents")) {
+        container.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+        });
+    }
+
+    for (const item of items) {
+        item.addEventListener("dragstart", (e) => {
+            e.stopPropagation(); // Prevent board card from intercepting
+            _draggedSid = item.dataset.sessionId;
+            item.classList.add("dragging");
+            e.dataTransfer.effectAllowed = "move";
+            // Use a minimal drag image to avoid tooltip flash
+            e.dataTransfer.setData("text/plain", _draggedSid);
+        });
+
+        item.addEventListener("dragend", () => {
+            item.classList.remove("dragging");
+            _draggedSid = null;
+            // Clear all drop indicators
+            for (const el of list.querySelectorAll(".drag-over")) {
+                el.classList.remove("drag-over");
+            }
+        });
+
+        item.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            if (!_draggedSid || _draggedSid === item.dataset.sessionId) return;
+            // Only allow reorder within the same group
+            const draggedEl = list.querySelector(`[data-session-id="${_draggedSid}"]`);
+            if (!draggedEl || draggedEl.dataset.group !== item.dataset.group) return;
+            e.dataTransfer.dropEffect = "move";
+            item.classList.add("drag-over");
+        });
+
+        item.addEventListener("dragleave", () => {
+            item.classList.remove("drag-over");
+        });
+
+        item.addEventListener("drop", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            item.classList.remove("drag-over");
+            if (!_draggedSid || _draggedSid === item.dataset.sessionId) return;
+
+            const group = item.dataset.group;
+            const draggedEl = list.querySelector(`[data-session-id="${_draggedSid}"]`);
+            if (!draggedEl || draggedEl.dataset.group !== group) return;
+
+            // Gather current order of session_ids in this group
+            const groupItems = [...list.querySelectorAll(".session-group-item")].filter(el => el.dataset.group === group);
+            const ids = groupItems.map(el => el.dataset.sessionId);
+
+            // Remove dragged from its position and insert before drop target
+            const fromIdx = ids.indexOf(_draggedSid);
+            const toIdx = ids.indexOf(item.dataset.sessionId);
+            if (fromIdx === -1 || toIdx === -1) return;
+
+            ids.splice(fromIdx, 1);
+            ids.splice(toIdx, 0, _draggedSid);
+
+            // Save all session IDs in current DOM order (preserves other groups)
+            const allItems = [...list.querySelectorAll(".session-group-item")];
+            const allIds = allItems.map(el => el.dataset.sessionId);
+            // Replace the current group's IDs with the reordered ones
+            const groupSet = new Set(ids);
+            const merged = [];
+            let groupInserted = false;
+            for (const sid of allIds) {
+                if (groupSet.has(sid)) {
+                    if (!groupInserted) {
+                        merged.push(...ids);
+                        groupInserted = true;
+                    }
+                } else {
+                    merged.push(sid);
+                }
+            }
+            if (!groupInserted) merged.push(...ids);
+
+            // Save and re-render
+            _saveSessionOrder(merged);
+            renderLiveSessions(state.liveSessions);
+        });
+    }
+}
+
+export function renderHistorySessions(sessions, total, page, pageSize) {
+    const list = document.getElementById("history-sessions-list");
+    state.historySessionsList = sessions || [];
+
+    updateSectionVisibility('history', total || (sessions ? sessions.length : 0));
+
+    if (!sessions || !sessions.length) {
+        list.innerHTML = '<li class="empty-state">No history found</li>';
+        renderPaginationControls(0, 1, 50);
+        return;
+    }
+
+    list.innerHTML = sessions.map(s => {
+        const isGroup = s.type === 'group' || (s.session_id && s.session_id.startsWith('board:'));
+        if (isGroup) {
+            const projectName = s.title || s.session_id.replace(/^board:/, '');
+            const label = projectName;
+            const truncated = label.length > 40 ? label.substring(0, 40) + "..." : label;
+            const isActive = state.currentSession && state.currentSession.type === "board" && state.currentSession.name === projectName;
+            const timeStr = s.updated_at ? formatShortTime(s.updated_at) : "";
+            const timeTag = timeStr ? `<span class="session-time">${escapeHtml(timeStr)}</span>` : "";
+            const countInfo = s.message_count != null ? `${s.message_count} msgs` : "";
+            const subsInfo = s.subscriber_count != null ? `${s.subscriber_count} members` : "";
+            const meta = [countInfo, subsInfo].filter(Boolean).join(' · ');
+            return `<li class="${isActive ? 'active' : ''}" onclick="selectBoardProject('${jsStr(projectName)}')">
+                <div class="session-row-top">${timeTag}<span class="badge board-badge">Group</span></div>
+                <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
+                ${meta ? `<div class="session-row-bottom"><span class="session-meta">${escapeHtml(meta)}</span></div>` : ""}
+            </li>`;
+        }
+        const label = s.summary_title || s.summary || s.session_id;
+        const truncated = label.length > 40 ? label.substring(0, 40) + "..." : label;
+        const isActive = state.currentSession && state.currentSession.type === "history" && state.currentSession.name === s.session_id;
+        const typeTag = (s.source_type === "gemini" || s.source_type === "agy" || s.source_type === "antigravity")
+            ? `<span class="badge agy">agy</span>`
+            : "";
+        const agentName = s.display_name || s.agent_name || "";
+        const agentTag = agentName ? `<span class="sidebar-agent-name">${escapeHtml(agentName)}</span>` : "";
+        const reminderTag = getCachedAgentAvailability(s)?.reminder
+            ? `<span class="agent-reminder-icon" title="Periodic reminder active" aria-label="Periodic reminder active">⏰</span>`
+            : "";
+        const sourceTypeTag = s.source_type ? `<span class="sidebar-source-type">${escapeHtml(s.source_type)}</span>` : "";
+        const branchDisplay = _repoBranch(s.repo_name, s.branch);
+        const branchTag = branchDisplay ? `<span class="sidebar-branch">${escapeHtml(branchDisplay)}</span>` : "";
+        const tagDots = s.tags ? renderSidebarTagDots(s.tags) : "";
+        const timeStr = s.last_timestamp ? formatShortTime(s.last_timestamp) : "";
+        const timeTag = timeStr ? `<span class="session-time">${escapeHtml(timeStr)}</span>` : "";
+        const durStr = s.duration_sec != null ? formatDuration(s.duration_sec) : '';
+        const durTag = durStr ? `<span class="session-dur">${escapeHtml(durStr)}</span>` : '';
+        const bottomMeta = [agentTag, reminderTag, sourceTypeTag, branchTag].filter(Boolean).join('');
+        return `<li class="${isActive ? 'active' : ''}" onclick="selectHistorySession('${jsStr(s.session_id)}')">
+            <div class="session-row-top">${timeTag}${durTag}${typeTag}${tagDots}</div>
+            <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
+            ${bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""}
+        </li>`;
+    }).join("");
+
+    if (total !== undefined) {
+        renderPaginationControls(total, page || 1, pageSize || 50);
+    }
+}
+
+export function renderPaginationControls(total, page, pageSize) {
+    let container = document.getElementById("history-pagination");
+    if (!container) {
+        // Create pagination container after the history list
+        const list = document.getElementById("history-sessions-list");
+        container = document.createElement("div");
+        container.id = "history-pagination";
+        container.className = "pagination-controls";
+        list.parentNode.appendChild(container);
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if (totalPages <= 1) {
+        container.innerHTML = `<span class="pagination-info">${total} session${total !== 1 ? 's' : ''}</span>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <button class="btn btn-small" ${page <= 1 ? 'disabled' : ''} onclick="loadHistoryPage(${Number(page - 1)})">Prev</button>
+        <span class="pagination-info">${page} / ${totalPages} (${total})</span>
+        <button class="btn btn-small" ${page >= totalPages ? 'disabled' : ''} onclick="loadHistoryPage(${Number(page + 1)})">Next</button>
+    `;
+}
+
+export function renderHistoryChat(messages, agentType = "claude", baseIndex = 0, focusIndex = null) {
+    const container = document.getElementById("history-messages");
+    container.innerHTML = "";
+
+    // Same renderer as the live Chat view: replies as prose, tool calls and
+    // their output folded into collapsed "N steps" groups.
+    const normalized = messages.map((entry, index) => {
+        const value = normalizeHistoryEntry(entry);
+        if (value) value.__coralMessageIndex = baseIndex + index;
+        return value;
+    }).filter(Boolean);
+    renderTranscript(normalized, container, agentType);
+
+    for (const bubble of container.querySelectorAll(".chat-bubble.human")) {
+        bubble.insertAdjacentHTML("beforeend",
+            `<button class="edit-btn" onclick="editAndResubmit(this)">Edit & Resubmit</button>`);
+    }
+    container.scrollTop = container.scrollHeight;
+    if (focusIndex != null) {
+        requestAnimationFrame(() => {
+            const target = container.querySelector(`[data-message-index="${CSS.escape(String(focusIndex))}"]`);
+            if (target) {
+                target.classList.add('chat-search-target');
+                target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                target.setAttribute('tabindex', '-1');
+                target.focus({ preventScroll: true });
+            } else {
+                const notice = document.createElement('div');
+                notice.className = 'chat-search-status';
+                notice.textContent = 'The matching message is no longer available.';
+                container.prepend(notice);
+            }
+        });
+    }
+}
+
+// The reader returns normalized entries; older raw JSONL entries (content
+// nested under entry.message) are reduced to plain user/assistant text.
+function normalizeHistoryEntry(entry) {
+    if (entry.message) {
+        const msg = entry.message;
+        let content = "";
+        if (typeof msg.content === "string") content = msg.content;
+        else if (typeof msg.text === "string") content = msg.text;
+        else if (Array.isArray(msg.content)) {
+            content = msg.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        }
+        if (!content.trim()) return null;
+        entry = (entry.type === "human" || entry.type === "user")
+            ? { type: "user", content }
+            : { type: "assistant", text: content };
+    }
+    if (entry.type === "human") return { ...entry, type: "user" };
+    if (entry.type === "assistant") {
+        const text = typeof entry.text === "string" ? entry.text : (typeof entry.content === "string" ? entry.content : "");
+        return { ...entry, text };
+    }
+    return entry;
+}
+
+export function updateSessionStatus(status) {
+    const el = document.getElementById("session-status");
+    if (status) {
+        el.querySelector(".status-text").textContent = status;
+    }
+}
+
+/** Line-1 context pill, only at >=80% (D3 thresholds; explicit null = unknown = nothing). */
+function _renderCtxPill(s) {
+    const pct = s.context_pct;
+    if (pct === null || pct === undefined || pct < 80) return '';
+    const label = pct >= 100 ? 'ctx full' : `ctx ${Math.round(pct)}%`;
+    const win = s.context_window || 0;
+    const title = win > 0
+        ? `Context: ${_formatTokens(Math.round(win * pct / 100))} / ${_formatTokens(win)} tokens (${pct}%)`
+        : `Context: ${pct}%`;
+    return ` <span class="badge session-ctx-pill${pct >= 100 ? ' ctx-full' : ''}" title="${escapeAttr(title)}">${label}</span>`;
+}
+
+/** Delegated keyboard selection for a list container (survives the mobile
+ *  cloneNode, which drops element listeners). Enter/Space on a focused row
+ *  selects it; events from the kebab, the open-tab anchor or the sparkle are
+ *  left to those controls; Escape closes any open kebab. */
+function _wireListKeyboard(container) {
+    if (!container || container.dataset.kbWired) return;
+    container.dataset.kbWired = '1';
+    container.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            if (window.closeSidebarKebabs) window.closeSidebarKebabs();
+            return;
+        }
+        const row = e.target.closest ? e.target.closest('.session-group-item') : null;
+        if (!row || e.target !== row) return; // only the row itself, never its inner controls
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault(); // Space must not scroll the pane or start a drag
+            row.click();
+        }
+    });
+}
+
+/** Team details: anchored disclosure with dialog semantics for the metadata
+ *  that left the team header (directory, branch, agents, tokens, activity). */
+let _teamDetailsReturnFocus = null;
+export function showTeamDetails(boardName) {
+    hideTeamDetails();
+    const sessions = (state.liveSessions || []).filter(s => inTeam(s, boardName));
+    const header = document.querySelector(`.session-group-header[data-group-name="${CSS.escape(boardName)}"]`);
+    _teamDetailsReturnFocus = (document.activeElement && document.activeElement !== document.body)
+        ? document.activeElement
+        : (header ? header.querySelector('.sidebar-kebab-btn') : null);
+    const dir = sessions.find(s => s.working_directory)?.working_directory || '';
+    const branchSession = sessions.find(s => s.branch);
+    const branch = _repoBranch(branchSession?.repo_name, branchSession?.branch) || '—';
+    let minStale = null;
+    for (const s of sessions) {
+        if (typeof s.staleness_seconds === 'number' && (minStale === null || s.staleness_seconds < minStale)) minStale = s.staleness_seconds;
+    }
+    const names = sessions.map(s => resolveSessionIdentity(s));
+    const titleId = 'team-details-title';
+    const pop = document.createElement('div');
+    pop.id = 'team-details-popover';
+    pop.className = 'team-details-popover';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-labelledby', titleId);
+    pop.setAttribute('tabindex', '-1');
+    pop.innerHTML = `
+        <div class="team-details-head">
+            <span id="${Number(titleId)}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
+            <button type="button" class="team-details-close" aria-label="Close team details" onclick="hideTeamDetails()">&times;</button>
+        </div>
+        <dl class="team-details-list">
+            <dt>Directory</dt><dd title="${escapeAttr(dir)}">${dir ? escapeHtml(_shortPath(dir, 3)) : '—'}</dd>
+            <dt>Branch</dt><dd>${escapeHtml(branch)}</dd>
+            <dt>Agents</dt><dd>${sessions.length}${names.length ? ' · ' + escapeHtml(names.join(', ')) : ''}</dd>
+            <dt>Tokens</dt><dd class="team-token-usage team-details-tokens" data-board="${escapeAttr(boardName)}">…</dd>
+            <dt>Last activity</dt><dd>${escapeHtml(formatStaleness(minStale))}</dd>
+        </dl>`;
+    document.body.appendChild(pop);
+    const rect = header ? header.getBoundingClientRect() : { left: 12, bottom: 60 };
+    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
+    pop.style.top = Math.min(rect.bottom + 4, window.innerHeight - pop.offsetHeight - 8) + 'px';
+    getTeamTokenUsage(boardName).then(text => {
+        const el = pop.querySelector('.team-details-tokens');
+        if (el) el.textContent = text || '—';
+    }).catch(() => {});
+    pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); hideTeamDetails(); } });
+    setTimeout(() => { document.addEventListener('mousedown', _teamDetailsOutside, true); }, 0);
+    pop.focus();
+}
+
+function _teamDetailsOutside(e) {
+    const pop = document.getElementById('team-details-popover');
+    if (pop && !pop.contains(e.target)) hideTeamDetails();
+}
+
+export function hideTeamDetails() {
+    const pop = document.getElementById('team-details-popover');
+    document.removeEventListener('mousedown', _teamDetailsOutside, true);
+    if (!pop) return;
+    pop.remove();
+    const back = _teamDetailsReturnFocus;
+    _teamDetailsReturnFocus = null;
+    if (back && document.contains(back) && typeof back.focus === 'function') back.focus();
+}
+
+function _renderTokenLine(s) {
+    const pct = s.context_pct || 0;
+    if (pct === 0) return '';
+    const ctxWindow = s.context_window || 0;
+    const barColor = pct >= 80 ? 'var(--error)' : pct >= 50 ? 'var(--warning)' : 'var(--text-muted)';
+    const titleText = ctxWindow > 0 ? `${_formatTokens(Math.round(ctxWindow * pct / 100))} / ${_formatTokens(ctxWindow)} tokens (${pct}%)` : `Context: ${pct}%`;
+    const label = pct >= 100 ? 'ctx full' : `ctx ${pct}%`;
+    const levelClass = pct >= 80 ? ' ctx-error' : pct >= 50 ? ' ctx-warning' : '';
+    // Informational only: no clickable action here. Users compact by typing
+    // /compact directly in the chat/terminal (operator decision, task #75).
+    return `<span class="session-context-bar${levelClass}" title="${escapeAttr(titleText)}">
+        <span class="context-bar-track"><span class="context-bar-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></span></span>
+        <span class="context-bar-label">${label}</span>
+    </span>`;
+}
+
+function _formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return String(n);
+}
+
+function _formatCost(c) {
+    if (c < 0.01) return '$' + c.toFixed(4);
+    return '$' + c.toFixed(2);
+}
+
+export async function updateTokenUsage(sessionId) {
+    const el = document.getElementById('session-token-usage');
+    if (!el) return;
+    if (!sessionId) { el.style.display = 'none'; return; }
+
+    try {
+        const resp = await serverFetch(serverForSession(null, sessionId), `/api/token-usage?session_id=${encodeURIComponent(sessionId)}`);
+        if (!resp.ok) { el.style.display = 'none'; return; }
+        const data = await resp.json();
+        if (!data.totals.total_tokens || data.totals.total_tokens === 0) { el.style.display = 'none'; return; }
+
+        const parts = [_formatTokens(data.totals.total_tokens) + ' tokens'];
+        if (data.totals.cost_usd > 0) parts.push(_formatCost(data.totals.cost_usd));
+        el.textContent = parts.join(' · ');
+        el.style.display = '';
+    } catch {
+        el.style.display = 'none';
+    }
+}
+
+export async function updateHistoryTokenUsage(sessionId) {
+    const container = document.getElementById('history-token-usage');
+    if (!container) return;
+    if (!sessionId) { container.style.display = 'none'; return; }
+
+    try {
+        const resp = await fetch(`/api/token-usage?session_id=${encodeURIComponent(sessionId)}`);
+        if (!resp.ok) { container.style.display = 'none'; return; }
+        const data = await resp.json();
+        const t = data.totals;
+        if (!t || !t.total_tokens || t.total_tokens === 0) { container.style.display = 'none'; return; }
+
+        document.getElementById('htu-input').textContent = _formatTokens(t.input_tokens || 0);
+        document.getElementById('htu-output').textContent = _formatTokens(t.output_tokens || 0);
+        const cache = (t.cache_read_tokens || 0) + (t.cache_write_tokens || 0);
+        document.getElementById('htu-cache').textContent = cache > 0 ? _formatTokens(cache) : '—';
+        document.getElementById('htu-requests').textContent = String(t.num_sessions || '—');
+        document.getElementById('htu-cost').textContent = t.cost_usd > 0 ? _formatCost(t.cost_usd) : '—';
+        container.style.display = '';
+    } catch {
+        container.style.display = 'none';
+    }
+}
+
+export async function getTeamTokenUsage(boardName) {
+    try {
+        const resp = await teamFetch(boardName, n => `/api/token-usage?board_name=${encodeURIComponent(n)}`);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        if (!data.totals.total_tokens || data.totals.total_tokens === 0) return null;
+        const parts = [_formatTokens(data.totals.total_tokens) + ' tokens'];
+        if (data.totals.cost_usd > 0) parts.push(_formatCost(data.totals.cost_usd));
+        if (data.totals.execution_time_sec > 0) parts.push(formatDuration(data.totals.execution_time_sec));
+        return parts.join(' · ');
+    } catch {
+        return null;
+    }
+}
+
+export async function showTeamTokenUsage(boardName) {
+    const modal = document.getElementById('task-detail-modal');
+    const titleEl = document.getElementById('task-detail-modal-title');
+    const content = document.getElementById('task-detail-content');
+    if (!modal || !content) return;
+
+    titleEl.textContent = `Token Usage — ${keyLabel(boardName)}`;
+    content.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">Loading...</div>';
+    modal.style.display = '';
+    modal.onclick = (e) => { if (e.target === modal) { modal.style.display = 'none'; } };
+
+    // Token usage is read from Coral's unified usage API.
+    const usageData = await teamFetch(boardName, n => `/api/token-usage?board_name=${encodeURIComponent(n)}`)
+        .then(resp => resp.ok ? resp.json() : null)
+        .catch(() => null);
+    const agents = (usageData?.by_agent || []).map(a => ({
+        name: a.agent_name || a.session_id || 'Unknown agent',
+        total_input_tokens: a.input_tokens || 0,
+        total_output_tokens: a.output_tokens || 0,
+        total_cache_read_tokens: a.cache_read_tokens || 0,
+        total_cache_write_tokens: a.cache_write_tokens || 0,
+        total_cost_usd: a.cost_usd || 0,
+        total_requests: a.num_sessions || a.requests || 0,
+    })).filter(a => a.total_requests > 0 || a.total_cost_usd > 0);
+
+    // Compute totals
+    let totalIn = 0, totalOut = 0, totalCacheR = 0, totalCacheW = 0, totalCost = 0, totalReqs = 0;
+    for (const a of agents) {
+        totalIn += a.total_input_tokens || 0;
+        totalOut += a.total_output_tokens || 0;
+        totalCacheR += a.total_cache_read_tokens || 0;
+        totalCacheW += a.total_cache_write_tokens || 0;
+        totalCost += a.total_cost_usd || 0;
+        totalReqs += a.total_requests || 0;
+    }
+
+    if (agents.length === 0) {
+        content.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-muted)">No token usage recorded for this team</div>';
+        return;
+    }
+
+    // Render summary + agent table
+    const executionTimeRow = usageData?.totals?.execution_time_sec > 0
+        ? `<span class="info-token-label">Execution Time</span><span class="info-token-value">${formatDuration(usageData.totals.execution_time_sec)}</span>`
+        : '';
+    let html = `<div class="info-token-grid" style="margin-bottom:16px">
+        <span class="info-token-label">Input</span><span class="info-token-value">${_formatTokens(totalIn)}</span>
+        <span class="info-token-label">Output</span><span class="info-token-value">${_formatTokens(totalOut)}</span>
+        <span class="info-token-label">Cache Read</span><span class="info-token-value">${_formatTokens(totalCacheR)}</span>
+        <span class="info-token-label">Cache Write</span><span class="info-token-value">${_formatTokens(totalCacheW)}</span>
+        <span class="info-token-label">Requests</span><span class="info-token-value">${totalReqs}</span>
+        <span class="info-token-label">Cost</span><span class="info-token-value">${_formatCost(totalCost)}</span>
+        ${executionTimeRow}
+    </div>`;
+
+    html += `<table class="cost-table" style="font-size:12px">
+        <thead><tr>
+            <th>Agent</th>
+            <th style="text-align:right">Input</th>
+            <th style="text-align:right">Output</th>
+            <th style="text-align:right">Cache R</th>
+            <th style="text-align:right">Cache W</th>
+            <th style="text-align:right">Cost</th>
+        </tr></thead><tbody>`;
+
+    for (const a of agents.sort((x, y) => (y.total_cost_usd || 0) - (x.total_cost_usd || 0))) {
+        html += `<tr>
+            <td style="font-weight:500">${escapeHtml(a.name)}</td>
+            <td style="text-align:right">${_formatTokens(a.total_input_tokens || 0)}</td>
+            <td style="text-align:right">${_formatTokens(a.total_output_tokens || 0)}</td>
+            <td style="text-align:right">${_formatTokens(a.total_cache_read_tokens || 0)}</td>
+            <td style="text-align:right">${_formatTokens(a.total_cache_write_tokens || 0)}</td>
+            <td style="text-align:right;font-weight:600;color:var(--accent)">${_formatCost(a.total_cost_usd || 0)}</td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    content.innerHTML = html;
+}
+
+export async function distillTeamKnowledge(boardName) {
+    if (window.enterTeamContext) await window.enterTeamContext(boardName, { tab: 'knowledge' });
+    const { distillKnowledgeInTab } = await import('./team_artifacts.js');
+    distillKnowledgeInTab(boardName);
+}
+
+export async function showTeamKnowledge(boardName) {
+    const { reloadKnowledgeTab } = await import('./team_artifacts.js');
+    if (window.enterTeamContext) await window.enterTeamContext(boardName, { tab: 'knowledge' });
+    reloadKnowledgeTab();
+}
+
+// The terminal header shows the git branch; only an agent with no branch
+// shows its folder instead (full path on hover).
+let _headerDir = "";
+let _headerHasBranch = false;
+function _syncHeaderFolder() {
+    const el = document.getElementById("terminal-header-folder");
+    if (!el) return;
+    const show = !!_headerDir && !_headerHasBranch;
+    el.hidden = !show;
+    if (!show) return;
+    el.querySelector(".terminal-folder-text").textContent = _shortPath(_headerDir, 2);
+    el.title = _headerDir;
+}
+
+export function updateSessionFolder(dir) {
+    _headerDir = dir || "";
+    _syncHeaderFolder();
+}
+
+export function updateSessionBranch(branch, repoName, gitState) {
+    const display = _repoBranch(repoName, branch);
+    const el = document.getElementById("session-branch");
+    if (el) {
+        if (display) {
+            el.querySelector(".branch-text").textContent = display;
+            const gsEl = el.querySelector(".branch-git-state");
+            if (gsEl) {
+                const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';
+                gsEl.innerHTML = wt + _gitStateSummary(gitState);
+            }
+            el.style.display = "";
+        } else {
+            el.style.display = "none";
+        }
+    }
+    _headerHasBranch = !!display;
+    _syncHeaderFolder();
+    // Same info in the terminal header, which has room beside the agent name.
+    const th = document.getElementById("terminal-header-branch");
+    if (th) {
+        th.hidden = !display;
+        if (display) {
+            th.querySelector(".terminal-branch-text").textContent = display;
+            th.title = display;
+            const gs = th.querySelector(".branch-git-state");
+            if (gs) {
+                const wt = gitState?.is_worktree ? '<span class="gs-worktree" title="This agent is working in a linked git worktree">worktree</span> ' : '';
+                gs.innerHTML = wt + _gitStateSummary(gitState);
+            }
+        }
+    }
+}
+
+export function updateWaitingIndicator(s) {
+    const dot = document.getElementById("session-status-dot");
+    const banner = document.getElementById("waiting-banner");
+    if (dot) {
+        const key = deriveSessionState(s);
+        dot.classList.toggle("waiting", key === 'needs_input' || key === 'check_terminal');
+        dot.classList.toggle("stuck", key === 'stuck');
+        dot.classList.toggle("working", key === 'working');
+        dot.classList.toggle("your-turn", key === 'your_turn');
+        dot.classList.remove("done"); // green no longer means anything
+    }
+    if (banner) {
+        // Two states share this banner. waiting_for_input is a running agent
+        // asking a question. not_started is an agent that has never done
+        // anything — blocked on a first-run prompt, or simply never given a
+        // task; those are indistinguishable from outside the CLI, so the copy
+        // claims only what is true of both. We never answer a prompt on the
+        // user's behalf: the banner's job is to point at the terminal, where
+        // the question is already on screen.
+        // Same resolver as the rows: the banner follows the WINNING state, so a
+        // sleeping or stuck agent with a stale waiting flag never shows it.
+        const bannerKey = deriveSessionState(s);
+        banner.style.display = (bannerKey === 'needs_input' || bannerKey === 'check_terminal') ? "" : "none";
+        if (bannerKey === 'needs_input') {
+            banner.className = "waiting-banner";
+            banner.textContent = "⏳ Agent is waiting for input";
+        } else if (bannerKey === 'check_terminal') {
+            banner.className = "waiting-banner waiting-banner-not-started";
+            banner.textContent =
+                "⏳ This agent hasn't done anything yet — check the terminal below. Some agents ask permission to trust a folder the first time they run in it.";
+        }
+    }
+}
+
+export function updateSessionSummary(summary) {
+    const el = document.getElementById("session-summary");
+    if (!el) return;
+    if (summary) {
+        el.querySelector(".summary-text").textContent = summary;
+        el.style.display = "";
+    }
+    // Don't hide — a null summary from a WebSocket tick shouldn't
+    // clear a previously-known goal.
+}

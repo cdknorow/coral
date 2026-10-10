@@ -4,7 +4,7 @@ globalThis.localStorage = { getItem: () => null, setItem: () => {} };
 globalThis.document = { createElement: () => ({ textContent: '', get innerHTML() {
     return this.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 } }) };
-const { highlightExcerpt, isSearchResponseUsable } = await import('../../coral-go/internal/server/frontend/static/chat_search.js');
+const { highlightExcerpt, isSearchResponseUsable } = await import('../../coral-go/pkg/frontend/static/chat_search.js');
 
 assert.equal(isSearchResponseUsable('complete'), true);
 assert.equal(isSearchResponseUsable('partial'), true);

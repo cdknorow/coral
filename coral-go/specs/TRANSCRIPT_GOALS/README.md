@@ -70,7 +70,7 @@ button, which types
 Emit a ||PULSE:SUMMARY <your current goal>|| line now to update the dashboard with your current goal.
 ```
 
-into the agent's terminal (`internal/server/frontend/static/controls.js`,
+into the agent's terminal (`pkg/frontend/static/controls.js`,
 `requestGoal` / `refreshGoal`). That:
 
 - spends an agent turn and adds noise to its context;

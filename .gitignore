@@ -43,12 +43,12 @@ coral-go/internal/server/routes/board_state_claude-*.json
 coral-go/new_theme.json
 
 # Frontend bundle backup (created during build, restored after)
-coral-go/internal/server/frontend/static/_src/
-coral-go/internal/server/frontend/static/app.js.map
+coral-go/pkg/frontend/static/_src/
+coral-go/pkg/frontend/static/app.js.map
 
 # Agent docs are synced from coral-go/agent_docs/ at build time
-coral-go/internal/server/frontend/static/agent_docs/*
-!coral-go/internal/server/frontend/static/agent_docs/.gitkeep
+coral-go/pkg/frontend/static/agent_docs/*
+!coral-go/pkg/frontend/static/agent_docs/.gitkeep
 
 # Large video files (use GitHub Releases for distribution)
 icons/history.mp4

@@ -115,7 +115,7 @@ func TranslateToPiPermissions(caps *Capabilities) PiPermissions {
 - `resolvePiTranscript()` — locate JSONL file by session UUID
 - `parsePiEntry()` — parse Pi's message format (similar to Claude's JSONL but different entry types)
 
-**`internal/server/frontend/static/modals.js`** — Add Pi to agent type dropdowns and permission flag map (no-op flag since Pi has no permission modes)
+**`pkg/frontend/static/modals.js`** — Add Pi to agent type dropdowns and permission flag map (no-op flag since Pi has no permission modes)
 
 ### Resume Support
 

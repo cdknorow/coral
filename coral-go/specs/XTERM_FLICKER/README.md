@@ -158,9 +158,9 @@ has been resized by another client, there will be a mismatch. We should either:
 ## Files Involved
 
 - `coral-go/internal/server/routes/websocket.go` — `wsTerminalPolling()`, `doCapture()`, `alt_screen` flag
-- `coral-go/internal/server/frontend/static/xterm_renderer.js` — `onmessage` handler for `terminal_update`, cursor toggle
+- `coral-go/pkg/frontend/static/xterm_renderer.js` — `onmessage` handler for `terminal_update`, cursor toggle
 - `coral-go/internal/tmux/client.go` — `CapturePaneRawTarget()`, `ResizePaneTarget()` (now includes rows)
-- `coral-go/internal/server/frontend/static/css/native.css` — layout height fix for native app
+- `coral-go/pkg/frontend/static/css/native.css` — layout height fix for native app
 - `coral-go/internal/ptymanager/session_terminal.go` — `ResizeTarget` interface (rows param)
 - `coral-go/internal/ptymanager/session_terminal_tmux.go` — tmux resize with rows
 - `coral-go/internal/ptymanager/session_terminal_pty.go` — PTY resize with rows

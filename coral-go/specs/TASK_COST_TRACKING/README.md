@@ -185,7 +185,7 @@ Show cost on completed/skipped tasks in the task list UI (`tasks.js`). For tasks
 | File | Change |
 |------|--------|
 | `internal/board/store.go` | Task struct fields, migrations, update all SELECT queries, modify ClaimTask/CompleteTask/CancelTask |
-| `internal/server/frontend/static/tasks.js` | Display cost on completed tasks |
+| `pkg/frontend/static/tasks.js` | Display cost on completed tasks |
 
 ## Edge Cases
 

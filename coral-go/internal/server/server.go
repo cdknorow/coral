@@ -3,7 +3,6 @@ package server
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"github.com/cdknorow/coral/internal/cloud"
 	"html"
@@ -32,18 +31,20 @@ import (
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/cdknorow/coral/pkg/frontend"
 )
 
 // Frontend assets are embedded at build time. The directories must exist
-// under internal/server/frontend/ even if empty (with .gitkeep placeholders).
+// under pkg/frontend/ (with .gitkeep placeholders where empty).
 // To serve the real Python frontend, copy src/coral/static/ and
 // src/coral/templates/ into these directories before building.
 
-//go:embed all:frontend/static
-var staticFS embed.FS
-
-//go:embed all:frontend/templates
-var templateFS embed.FS
+// staticFS and templateFS are the shared UI assets from pkg/frontend, so the
+// Cloud Hub serves the identical frontend.
+var (
+	staticFS   = frontend.Static
+	templateFS = frontend.Templates
+)
 
 // Server holds dependencies and exposes the HTTP router.
 type Server struct {
@@ -78,14 +79,7 @@ type Server struct {
 var remoteAgentHubConfig background.RemoteAgentHubConfig
 
 // templateData is passed to Go templates during rendering.
-type templateData struct {
-	CoralRoot       string
-	EntryMode       string
-	TargetSessionID string
-	// TargetServer is the registered remote the popout agent lives on; empty
-	// means the hub itself (legacy /agent/{id}).
-	TargetServer string
-}
+type templateData = frontend.PageData
 
 // New creates a Server with all routes registered.
 // If backend is nil, the server will use tmux-based terminal management.
@@ -147,17 +141,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	}
 
 	// Parse Go templates from embedded FS
-	indexTmpl, err := template.ParseFS(templateFS,
-		"frontend/templates/index.html",
-		"frontend/templates/includes/sidebar.html",
-		"frontend/templates/includes/modals.html",
-		"frontend/templates/includes/views/live_session.html",
-		"frontend/templates/includes/views/history_session.html",
-		"frontend/templates/includes/views/message_board.html",
-		"frontend/templates/includes/views/workflows.html",
-		"frontend/templates/includes/views/docs.html",
-		"frontend/templates/includes/views/cost_dashboard.html",
-	)
+	indexTmpl, err := frontend.ParseIndex()
 	if err != nil {
 		log.Printf("Warning: failed to parse index template: %v (serving placeholder)", err)
 	}
@@ -740,7 +724,7 @@ func (s *Server) buildRouter() chi.Router {
 	tasksHandler.SetProxyStore(historicalProxyStore)
 
 	// ── Static Files ────────────────────────────────────────────
-	staticSub, err := fs.Sub(staticFS, "frontend/static")
+	staticSub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		log.Fatalf("Failed to embed static files: %v", err)
 	}
@@ -748,18 +732,18 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/static/sw.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Service-Worker-Allowed", "/")
 		w.Header().Set("Content-Type", "application/javascript")
-		http.ServeFileFS(w, r, staticFS, "frontend/static/sw.js")
+		http.ServeFileFS(w, r, staticFS, "static/sw.js")
 	})
 	r.Handle("/static/*", http.StripPrefix("/static/", noCacheHandler(http.FileServer(http.FS(staticSub)))))
 
 	// API spec for custom views
 	r.Get("/api/spec.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		http.ServeFileFS(w, r, staticFS, "frontend/static/api-spec.json")
+		http.ServeFileFS(w, r, staticFS, "static/api-spec.json")
 	})
 
 	// Agent docs — embedded API reference documentation
-	agentDocsSub, err := fs.Sub(staticFS, "frontend/static/agent_docs")
+	agentDocsSub, err := fs.Sub(staticFS, "static/agent_docs")
 	if err != nil {
 		log.Printf("Warning: failed to load agent_docs: %v", err)
 	} else {
@@ -772,7 +756,7 @@ func (s *Server) buildRouter() chi.Router {
 	// PWA manifest (also accessible at /static/manifest.json)
 	r.Get("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/manifest+json")
-		http.ServeFileFS(w, r, staticFS, "frontend/static/manifest.json")
+		http.ServeFileFS(w, r, staticFS, "static/manifest.json")
 	})
 
 	// ── Dashboard SPA ───────────────────────────────────────────
