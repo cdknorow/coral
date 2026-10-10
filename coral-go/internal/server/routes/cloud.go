@@ -63,11 +63,13 @@ func (h *CloudHandler) status() cloud.Status {
 	return cloud.Status{State: cloud.StateOff}
 }
 
-// refuseTunneled stops requests that arrived through the hub tunnel: the
-// connector's own settings are never remotely configurable.
+// refuseTunneled admits only the positively identified local dashboard (loopback peer,
+// localhost Host, same-origin browser fetch, no tunnel stamp, no Bearer credential). The
+// connector's own settings are not reachable by the hub through the tunnel, by a proxy
+// holding the API key, or by a stray curl: only someone using Coral on this computer.
 func refuseTunneled(w http.ResponseWriter, r *http.Request) bool {
-	if cloud.Tunneled(r) {
-		errForbidden(w, "Not available through the cloud hub")
+	if cloud.Tunneled(r) || !localDashboard(r) {
+		errForbidden(w, "Cloud connector settings are only available from the Coral dashboard on this computer")
 		return true
 	}
 	return false

@@ -105,8 +105,9 @@ func TestCloudAllowlistHasNoDeadOrDangerousRules(t *testing.T) {
 
 func call(h http.Handler, method, target, body string, hdr map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, strings.NewReader(body))
-	req.Host = "127.0.0.1:8420"        // the connector dials loopback, so Host is a loopback IP
-	req.RemoteAddr = "127.0.0.1:50000" // local: the auth middleware lets loopback through, as for the connector
+	req.Host = "127.0.0.1:8420"                     // the connector dials loopback, so Host is a loopback IP
+	req.Header.Set("Sec-Fetch-Site", "same-origin") // the dashboard in a browser on this computer
+	req.RemoteAddr = "127.0.0.1:50000"              // local: the auth middleware lets loopback through, as for the connector
 	for k, v := range hdr {
 		req.Header.Set(k, v)
 	}
@@ -265,4 +266,45 @@ func TestCloudStaticSiblingsAreNotSwallowed(t *testing.T) {
 		}
 	}
 	require.Empty(t, unlisted, "static routes matched through a {param} rule; pin them with a never rule or add to %s:\n%s", cloudExceptions, strings.Join(unlisted, "\n"))
+}
+
+// Only the local dashboard may touch the connector's settings: not the tunnel, not a proxy or
+// script holding the API key, not a request from another machine, not a cross-site page.
+func TestCloudSettingsRoutesNeedTheLocalDashboard(t *testing.T) {
+	r := newE2ERemote(t, "dash", nil)
+	h := r.srv.Router()
+	js := map[string]string{"Content-Type": "application/json"}
+	key := r.key()
+	bearer := map[string]string{"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+	routes := [][3]string{{"GET", "/api/cloud/status", ""}, {"POST", "/api/cloud/connect", "{}"},
+		{"POST", "/api/cloud/disconnect", "{}"}, {"PUT", "/api/cloud/max-mode", `{"mode":"launch"}`}}
+	mk := func(method, target, body string, hdr map[string]string, remote string, fetch string) int {
+		req := httptest.NewRequest(method, target, strings.NewReader(body))
+		req.Host = "127.0.0.1:8420"
+		req.RemoteAddr = remote
+		if fetch != "" {
+			req.Header.Set("Sec-Fetch-Site", fetch)
+		}
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for _, rt := range routes {
+		m, p, b := rt[0], rt[1], rt[2]
+		// The dashboard is allowed.
+		require.NotEqual(t, 403, mk(m, p, b, js, "127.0.0.1:5", "same-origin"), "%s %s dashboard", m, p)
+		// A script on this computer with the API key (Bearer) is not the dashboard: no extra privilege.
+		require.Equal(t, 403, mk(m, p, b, bearer, "127.0.0.1:5", "same-origin"), "%s %s bearer", m, p)
+		// curl without fetch metadata or Origin: not positively the dashboard.
+		require.Equal(t, 403, mk(m, p, b, js, "127.0.0.1:5", ""), "%s %s curl", m, p)
+		// A cross-site page in the user's browser.
+		require.Equal(t, 403, mk(m, p, b, js, "127.0.0.1:5", "cross-site"), "%s %s cross-site", m, p)
+		// Another machine, even with the API key.
+		require.Equal(t, 403, mk(m, p, b, bearer, "203.0.113.9:5", "same-origin"), "%s %s remote", m, p)
+		// The tunnel.
+		require.Equal(t, 403, mk(m, p, b, mergeHdr(js, tunneled), "127.0.0.1:5", "same-origin"), "%s %s tunnel", m, p)
+	}
 }
