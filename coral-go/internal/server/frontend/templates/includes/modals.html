@@ -592,6 +592,23 @@
                     <input type="checkbox" id="settings-remote-access-enabled" aria-describedby="settings-remote-access-status">
                     <div id="settings-remote-access-status" class="settings-hint" role="status">Loading effective access status…</div>
                 </dd>
+                <dt>Coral Hub</dt>
+                <dd id="settings-cloud">
+                    <div id="settings-cloud-status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
+                    <div id="settings-cloud-code" class="settings-cloud-code" hidden>
+                        <div>Open <a id="settings-cloud-link" target="_blank" rel="noopener noreferrer"></a> while signed in and enter this code:</div>
+                        <div id="settings-cloud-usercode" class="settings-mono-input settings-cloud-usercode"></div>
+                    </div>
+                    <div class="settings-cloud-actions">
+                        <button type="button" id="settings-cloud-connect" class="btn btn-small" hidden>Connect to Coral Hub</button>
+                        <button type="button" id="settings-cloud-disconnect" class="btn btn-small" hidden>Disconnect</button>
+                    </div>
+                    <label class="settings-cloud-launch" id="settings-cloud-launch-row" hidden>
+                        <input type="checkbox" id="settings-cloud-allow-launch">
+                        Allow launching agents from the web
+                    </label>
+                    <div class="settings-hint">The hub can read everything you view through it. Typing in terminals and chat works once connected; launching new agents is off unless you allow it here. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
+                </dd>
                 <dt>Database encryption</dt>
                 <dd>
                     <select id="settings-database-encryption" class="settings-select" aria-describedby="settings-database-encryption-status">

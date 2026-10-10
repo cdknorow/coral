@@ -526,6 +526,19 @@ CREATE TABLE IF NOT EXISTS remote_servers (
     last_error    TEXT
 );
 
+-- This server's single Cloud Hub enrollment. token holds a "v1:" secretbox
+-- envelope (see pkg/secretbox), never plaintext.
+CREATE TABLE IF NOT EXISTS cloud_connection (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    hub_url    TEXT NOT NULL,
+    server_id  TEXT NOT NULL,
+    label      TEXT NOT NULL,
+    token      TEXT NOT NULL,
+    state      TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    last_error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS custom_views (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	name       TEXT NOT NULL,

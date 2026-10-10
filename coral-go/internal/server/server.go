@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"github.com/cdknorow/coral/internal/cloud"
 	"html"
 	"html/template"
 	"io/fs"
@@ -46,6 +47,7 @@ var templateFS embed.FS
 
 // Server holds dependencies and exposes the HTTP router.
 type Server struct {
+	cloudHandler    *routes.CloudHandler
 	cfg             *config.Config
 	db              *store.DB
 	boardStore      *board.Store
@@ -180,6 +182,13 @@ func (s *Server) RunRemoteAgents(ctx context.Context) {
 }
 
 // SetScheduler injects the job scheduler into the tasks handler for launching/killing.
+// SetCloud attaches the Cloud Hub connector manager to the /api/cloud routes.
+func (s *Server) SetCloud(m *cloud.Manager) {
+	if s.cloudHandler != nil {
+		s.cloudHandler.SetManager(m)
+	}
+}
+
 func (s *Server) SetScheduler(sched *background.JobScheduler) {
 	if s.tasksHandler != nil {
 		s.tasksHandler.SetScheduler(sched)
@@ -258,6 +267,10 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Middleware
 	r.Use(middleware.Recoverer)
+
+	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
+	// re-checked against the connector's route policy before anything else sees them.
+	r.Use(cloud.Guard(routes.AllowLaunchFromSettings(store.NewSessionStore(s.db))))
 	// NOTE: middleware.RealIP was intentionally removed. It rewrites r.RemoteAddr
 	// from X-Forwarded-For headers, which would allow an attacker to spoof
 	// 127.0.0.1 and bypass auth.IsLocalhost(). Coral is a desktop app with no
@@ -453,6 +466,13 @@ func (s *Server) buildRouter() chi.Router {
 	// WebSocket
 	r.Get("/ws/coral", sessHandler.WSCoral)
 	r.Get("/ws/terminal/{name}", sessHandler.WSTerminal)
+
+	// Cloud Hub connector settings (never reachable through the tunnel)
+	s.cloudHandler = routes.NewCloudHandler(store.NewSessionStore(s.db))
+	r.Get("/api/cloud/status", s.cloudHandler.GetStatus)
+	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
+	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
+	r.Put("/api/cloud/allow-launch", s.cloudHandler.SetAllowLaunch)
 
 	// System / settings
 	r.Get("/api/settings", sysHandler.GetSettings)

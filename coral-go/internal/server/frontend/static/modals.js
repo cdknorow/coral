@@ -1,4 +1,5 @@
 import { checkAgentCLI } from './prerequisites.js';
+import { loadCloudStatus, initCloudConnect } from './cloud_connect.js';
 /* Modal management: launch and info dialogs */
 
 import { state } from './state.js';
@@ -3396,6 +3397,8 @@ export async function showSettingsModal() {
     // Bootstrap database-encryption metadata lives outside the locked DB. The
     // endpoint returns status only; passwords/keys are never sent to the UI.
     loadDatabaseEncryptionStatus();
+    initCloudConnect();
+    loadCloudStatus();
 
     // Theme — populate with built-in options + saved custom themes
     const themeSelect = document.getElementById("settings-theme");

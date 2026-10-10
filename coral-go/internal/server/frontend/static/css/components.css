@@ -3585,3 +3585,9 @@
 .modal-content label.servers-check input { width: auto; margin-top: 3px; flex-shrink: 0; }
 .servers-form-actions { display: flex; justify-content: flex-end; gap: var(--space-md); }
 @media (pointer: coarse) { .servers-row-actions .btn { min-height: 44px; } }
+
+/* Settings > Coral Hub (cloud connector) */
+.settings-cloud-code { margin: 6px 0; font-size: var(--fs-base); }
+.settings-cloud-usercode { font-size: 1.6em; letter-spacing: 0.12em; margin-top: 4px; user-select: all; }
+.settings-cloud-actions { display: flex; gap: 8px; margin: 6px 0; }
+.settings-cloud-launch { display: block; margin: 6px 0; }
