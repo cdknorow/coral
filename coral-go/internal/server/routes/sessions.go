@@ -2230,7 +2230,13 @@ func (h *SessionsHandler) searchFilesDir(w http.ResponseWriter, _ context.Contex
 		absDir = filepath.Join(workdir, dir)
 	}
 
-	dirEntries, err := os.ReadDir(absDir)
+	// A symlink inside the workspace must not lead the listing out of it.
+	realWD, realDir := realPath(workdir), realPath(absDir)
+	if !within(realWD, realDir) {
+		writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "dir": dir})
+		return
+	}
+	dirEntries, err := os.ReadDir(realDir)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{"entries": []any{}, "dir": dir})
 		return
@@ -4652,7 +4658,7 @@ func (h *SessionsHandler) ResolvePath(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "filepath is required")
 		return
 	}
-	f, err := h.resolveFileRef(r.Context(), chi.URLParam(r, "name"), r.URL.Query().Get("session_id"), ref)
+	f, err := h.resolveFileRef(r.Context(), chi.URLParam(r, "name"), r.URL.Query().Get("session_id"), ref, viaTunnel(r))
 	if err != nil {
 		writeResolveErr(w, err)
 		return
@@ -4679,7 +4685,7 @@ func writeResolveErr(w http.ResponseWriter, err error) {
 	}
 }
 
-func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, ref string) (resolvedFileRef, error) {
+func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, ref string, strict bool) (resolvedFileRef, error) {
 	fp, line := strings.TrimSpace(ref), 0
 	if unescaped, err := url.PathUnescape(fp); err == nil {
 		fp = unescaped
@@ -4727,10 +4733,15 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 			return resolvedFileRef{}, false
 		}
 		if !strings.HasPrefix(real, realRoot+string(os.PathSeparator)) {
-			// Absolute paths open read-only wherever they are.
-			if filepath.IsAbs(fp) {
+			// Local dashboard: absolute paths open read-only wherever they are. Through
+			// the tunnel nothing outside the repository resolves, and the answer is the
+			// same as for a missing file (no existence oracle).
+			if filepath.IsAbs(fp) && !strict {
 				return resolvedFileRef{rel: real, abs: real, line: line}, true
 			}
+			return resolvedFileRef{}, false
+		}
+		if strict && sensitivePath(real) {
 			return resolvedFileRef{}, false
 		}
 		rel, err := filepath.Rel(realRoot, real)
@@ -4855,11 +4866,21 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	strict := viaTunnel(r)
 	fullPath, err := filepath.Abs(filepath.Join(workdir, fp))
 	tempFile := false
 	if filepath.IsAbs(fp) {
-		// Absolute paths are read-only, wherever they are.
-		if real, rerr := filepath.EvalSymlinks(fp); rerr == nil {
+		if strict {
+			// Through the tunnel an absolute path is only honoured inside the session's
+			// own repository; anything else looks exactly like a missing file.
+			real := realPath(fp)
+			if !withinAny(h.sessionFileRoots(r, name, sessionID), real) {
+				errNotFound(w, "File not found")
+				return
+			}
+			fullPath = real
+		} else if real, rerr := filepath.EvalSymlinks(fp); rerr == nil {
+			// Local dashboard: absolute paths are read-only, wherever they are.
 			fullPath, err, tempFile = real, nil, true
 		}
 	}
@@ -4868,7 +4889,15 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !tempFile && !isPathWithinDir(workdir, fullPath) {
-		errForbidden(w, "Path traversal not allowed")
+		if strict {
+			errNotFound(w, "File not found")
+		} else {
+			errForbidden(w, "Path traversal not allowed")
+		}
+		return
+	}
+	if strict && sensitivePath(realOrSelf(fullPath)) {
+		errNotFound(w, "File not found")
 		return
 	}
 
@@ -4877,10 +4906,24 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		errNotFound(w, "File not found")
 		return
 	}
+	if info.Size() > maxFileBytes() {
+		errPayloadTooLarge(w, "File too large to preview")
+		return
+	}
 
-	content, err := os.ReadFile(fullPath)
+	f, err := os.Open(fullPath)
 	if err != nil {
-		errInternalServer(w, err.Error())
+		errInternalServer(w, "could not read file")
+		return
+	}
+	content, err := io.ReadAll(io.LimitReader(f, maxFileBytes()+1))
+	f.Close()
+	if err != nil {
+		errInternalServer(w, "could not read file")
+		return
+	}
+	if int64(len(content)) > maxFileBytes() {
+		errPayloadTooLarge(w, "File too large to preview")
 		return
 	}
 	if r.URL.Query().Get("raw") == "1" {
@@ -5095,14 +5138,30 @@ func (h *SessionsHandler) SaveFileContent(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Through the tunnel nothing under .git may be written (hooks run code), nor any
+	// credential-bearing file.
+	if viaTunnel(r) {
+		rel, rerr := filepath.Rel(realWorkdir, fullPath)
+		for _, c := range strings.Split(filepath.ToSlash(rel), "/") {
+			if rerr != nil || strings.EqualFold(c, ".git") {
+				errForbidden(w, "Path not allowed")
+				return
+			}
+		}
+		if sensitivePath(fullPath) {
+			errForbidden(w, "Path not allowed")
+			return
+		}
+	}
+
 	// Create parent directories for new files
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-		errInternalServer(w, err.Error())
+		errInternalServer(w, "could not write file")
 		return
 	}
 
 	if err := os.WriteFile(fullPath, []byte(*body.Content), 0644); err != nil {
-		errInternalServer(w, err.Error())
+		errInternalServer(w, "could not write file")
 		return
 	}
 

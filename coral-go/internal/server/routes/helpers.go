@@ -48,6 +48,10 @@ func errForbidden(w http.ResponseWriter, msg string) {
 	writeJSON(w, http.StatusForbidden, map[string]string{"error": msg})
 }
 
+func errPayloadTooLarge(w http.ResponseWriter, msg string) {
+	writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": msg})
+}
+
 func errConflict(w http.ResponseWriter, msg string) {
 	writeJSON(w, http.StatusConflict, map[string]string{"error": msg})
 }
@@ -128,11 +132,14 @@ func emptyIfNil[T any](s []T) []T {
 // Returns true if the path is safe, false if it escapes the working directory.
 func isPathWithinDir(workdir, fullPath string) bool {
 	realWorkdir, _ := filepath.EvalSymlinks(workdir)
-	realPath, _ := filepath.EvalSymlinks(fullPath)
-	if realPath == "" {
+	if realWorkdir == "" {
+		return false // an unresolvable root contains nothing (the old prefix test passed everything)
+	}
+	realFull, _ := filepath.EvalSymlinks(fullPath)
+	if realFull == "" {
 		return true // file doesn't exist yet; caller handles separately if needed
 	}
-	return strings.HasPrefix(realPath, realWorkdir+string(os.PathSeparator))
+	return strings.HasPrefix(realFull, realWorkdir+string(os.PathSeparator))
 }
 
 // debugEnabled returns true when CORAL_DEBUG=1 is set.

@@ -759,3 +759,17 @@ func TestRetryLaterIsNotPermanent(t *testing.T) {
 		t.Fatal("Run gave up on a retry_later refusal")
 	}
 }
+
+func TestConnectorMarksRequestsAndHubCannotForgeOrRemoveTheMark(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	var got string
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get(ViaHeader)
+	}), func(l *LocalHandler) { l.AllowPath = func(string, string) bool { return true } })
+	req, _ := http.NewRequest("GET", "http://x/api/ping", nil)
+	req.Header.Set(ViaHeader, "") // a hub that tries to clear it
+	resp, err := sess.RoundTrip(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, "1", got)
+}

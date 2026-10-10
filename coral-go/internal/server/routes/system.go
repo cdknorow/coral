@@ -627,6 +627,33 @@ func (h *SystemHandler) RefreshIndexer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// expandHome expands a leading ~ to the home directory.
+func expandHome(p string) string {
+	if strings.HasPrefix(p, "~") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, p[1:])
+	}
+	return p
+}
+
+// browsable resolves a requested directory. Through the tunnel it must lie inside the home
+// directory or a configured project root after symlink resolution and must not be a
+// credential location; otherwise it is reported exactly like a missing directory.
+func browsable(r *http.Request, reqPath string) (string, bool) {
+	expanded, err := filepath.Abs(expandHome(reqPath))
+	if err != nil {
+		return "", false
+	}
+	if !viaTunnel(r) {
+		return expanded, true
+	}
+	real := realPath(expanded)
+	if real == "" || !withinAny(projectRoots(), real) || sensitivePath(real) {
+		return "", false
+	}
+	return real, true
+}
+
 // ListFilesystem lists directories for the directory browser.
 // GET /api/filesystem/list?path=~
 func (h *SystemHandler) ListFilesystem(w http.ResponseWriter, r *http.Request) {
@@ -634,16 +661,9 @@ func (h *SystemHandler) ListFilesystem(w http.ResponseWriter, r *http.Request) {
 	if reqPath == "" {
 		reqPath = "~"
 	}
-
-	// Expand ~ to home directory
-	if strings.HasPrefix(reqPath, "~") {
-		home, _ := os.UserHomeDir()
-		reqPath = filepath.Join(home, reqPath[1:])
-	}
-
-	expanded, err := filepath.Abs(reqPath)
-	if err != nil {
-		errBadRequest(w, "invalid path")
+	expanded, ok := browsable(r, reqPath)
+	if !ok {
+		errForbidden(w, "access denied")
 		return
 	}
 
@@ -659,7 +679,7 @@ func (h *SystemHandler) ListFilesystem(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"path":    expanded,
 			"entries": []any{},
-			"error":   err.Error(),
+			"error":   "cannot read directory",
 		})
 		return
 	}
@@ -690,16 +710,12 @@ func (h *SystemHandler) IsGitDir(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]bool{"is_git": false})
 		return
 	}
-	if strings.HasPrefix(reqPath, "~") {
-		home, _ := os.UserHomeDir()
-		reqPath = filepath.Join(home, reqPath[1:])
-	}
-	expanded, err := filepath.Abs(reqPath)
-	if err != nil {
+	expanded, ok := browsable(r, reqPath)
+	if !ok {
 		writeJSON(w, http.StatusOK, map[string]bool{"is_git": false})
 		return
 	}
-	_, err = os.Stat(filepath.Join(expanded, ".git"))
+	_, err := os.Stat(filepath.Join(expanded, ".git"))
 	writeJSON(w, http.StatusOK, map[string]bool{"is_git": err == nil})
 }
 

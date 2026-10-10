@@ -199,6 +199,11 @@ func (p PathRules) Allow(method, decodedPath string) bool {
 	return ok && (p.Gate == nil || p.Gate(method, decodedPath))
 }
 
+// ViaHeader marks a request that the connector executed on behalf of the Cloud Hub.
+// Coral's file endpoints apply strict bounds to such requests (no absolute paths
+// outside the session's repository, a sensitive-path denylist, generic errors).
+const ViaHeader = "X-Coral-Via-Tunnel"
+
 // ── LocalHandler ────────────────────────────────────────────────────
 
 // LocalHandler executes tunnel streams against the local Coral API on
@@ -253,6 +258,9 @@ func scrub(h http.Header) http.Header {
 			out[http.CanonicalHeaderKey(k)] = append([]string(nil), vs...)
 		}
 	}
+	// The hub cannot send this header (it is not on the allowlist) and cannot remove it:
+	// Coral's file endpoints use it to apply the strict, tunnel-only path bounds.
+	out.Set(ViaHeader, "1")
 	return out
 }
 

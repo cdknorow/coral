@@ -594,15 +594,30 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check file exists
-	info, err := os.Stat(absPath)
-	if err != nil || info.IsDir() {
+	// A symlink inside a step directory must not lead out of it: compare the resolved paths.
+	realStep, realFile := realPath(stepDir), realPath(absPath)
+	if !within(realStep, realFile) {
+		errNotFound(w, "file not found")
+		return
+	}
+	if viaTunnel(r) && sensitivePath(realFile) {
 		errNotFound(w, "file not found")
 		return
 	}
 
+	// Check file exists
+	info, err := os.Stat(realFile)
+	if err != nil || info.IsDir() {
+		errNotFound(w, "file not found")
+		return
+	}
+	if info.Size() > maxFileBytes()*20 {
+		errPayloadTooLarge(w, "file too large")
+		return
+	}
+
 	// Serve the file with appropriate content type
-	http.ServeFile(w, r, absPath)
+	http.ServeFile(w, r, realFile)
 }
 
 // canonicalizeRepoPath resolves symlinks and validates that the path is an existing directory.
