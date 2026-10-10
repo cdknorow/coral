@@ -104,7 +104,7 @@ export function handleCoralMessage(data) {
             // Per-server status ([{id,label,status}]) is only sent when remotes exist.
             state.servers = (state.hub && Array.isArray(data.servers)) ? data.servers : [];
             // Detect sessions that just transitioned to "needs input"
-            for (const s of data.sessions) {
+            for (const s of data.sessions || []) {
                 const id = _feedKey(s);
                 const wasWaiting = state.prevWaitingState[id];
                 const notifyEnabled = state.settings.notify_needs_input !== false;
