@@ -115,6 +115,21 @@ export function launchNote(s) {
     return '';
 }
 
+/** Plain-language text for a hub refusal of a proxied request, or '' when it is not one we explain.
+ *  `local_mode` = the machine's own Cloud access setting is lower than the hub allows (mode is its
+ *  current maximum); `access_mode` / `launch_disabled` = the hub setting is too low. */
+export function refusalMessage(status, body) {
+    if (status !== 403 || !body || typeof body !== 'object') return '';
+    if (body.error === 'local_mode') {
+        const m = MODE_INFO[body.mode] ? MODE_INFO[body.mode].label : 'a lower mode';
+        return `Limited by this machine's local setting (${m}). Change it in Coral on that machine.`;
+    }
+    if (body.error === 'access_mode' || body.error === 'launch_disabled') {
+        return 'Not allowed by this server\'s access mode. Raise it on the Servers page.';
+    }
+    return '';
+}
+
 function row(s) {
     const isBusy = busy.has(s.id);
     const online = s.online === true;
