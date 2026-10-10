@@ -19,15 +19,15 @@ const popoutTestSessionID = "abcdef11-2222-4333-8444-555555555555"
 func newPopoutRouteTestServer(t *testing.T) *Server {
 	t.Helper()
 	tmpl, err := template.ParseFS(templateFS,
-		"frontend/templates/index.html",
-		"frontend/templates/includes/sidebar.html",
-		"frontend/templates/includes/modals.html",
-		"frontend/templates/includes/views/live_session.html",
-		"frontend/templates/includes/views/history_session.html",
-		"frontend/templates/includes/views/message_board.html",
-		"frontend/templates/includes/views/workflows.html",
-		"frontend/templates/includes/views/docs.html",
-		"frontend/templates/includes/views/cost_dashboard.html",
+		"templates/index.html",
+		"templates/includes/sidebar.html",
+		"templates/includes/modals.html",
+		"templates/includes/views/live_session.html",
+		"templates/includes/views/history_session.html",
+		"templates/includes/views/message_board.html",
+		"templates/includes/views/workflows.html",
+		"templates/includes/views/docs.html",
+		"templates/includes/views/cost_dashboard.html",
 	)
 	require.NoError(t, err)
 	return &Server{cfg: &config.Config{CoralRoot: "/tmp/coral"}, indexTmpl: tmpl}
