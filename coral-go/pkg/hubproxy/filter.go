@@ -1,6 +1,7 @@
 package hubproxy
 
 import (
+	"errors"
 	"mime"
 	"net/http"
 	"net/url"
@@ -29,7 +30,7 @@ type Options struct {
 
 // NewWithOptions is New with explicit options.
 func NewWithOptions(resolver Resolver, o Options) *Handler {
-	return &Handler{resolver: resolver, opts: o}
+	return &Handler{resolver: resolver, opts: o, optErr: ValidateOptions(o)}
 }
 
 func isTunnel(t Target) bool {
@@ -45,6 +46,11 @@ func isTunnel(t Target) bool {
 var safeMediaTypes = map[string]bool{
 	"application/json": true, "text/event-stream": true, "text/plain": true, "application/octet-stream": true,
 	"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true,
+	// Harmless media (never SVG, HTML or anything scriptable). They render in the
+	// sandboxed response and are not offered as downloads.
+	"image/avif": true, "image/bmp": true, "image/x-icon": true, "image/vnd.microsoft.icon": true,
+	"audio/mpeg": true, "audio/ogg": true, "audio/wav": true, "audio/webm": true,
+	"video/mp4": true, "video/webm": true,
 }
 
 // stripResponseHeaders are removed from untrusted responses: they set state or
@@ -71,6 +77,7 @@ var stripResponseHeaders = []string{
 //     origin are removed, and so is any Location that leaves the origin.
 func StrictResponseFilter(resp *http.Response) error {
 	h := resp.Header
+	filename := dispositionFilename(h.Get("Content-Disposition"))
 	for _, k := range stripResponseHeaders {
 		h.Del(k)
 	}
@@ -84,14 +91,94 @@ func StrictResponseFilter(resp *http.Response) error {
 			h.Del("Location")
 		}
 	}
-	mt, _, err := mime.ParseMediaType(h.Get("Content-Type"))
-	if err != nil || !safeMediaTypes[strings.ToLower(mt)] {
+	mt, params, err := mime.ParseMediaType(h.Get("Content-Type"))
+	mt = strings.ToLower(mt)
+	if err != nil || !safeMediaTypes[mt] {
 		h.Set("Content-Type", "application/octet-stream")
-		h.Set("Content-Disposition", "attachment")
+		h.Set("Content-Disposition", attachment(filename))
+	} else {
+		// Set (not Add) the single parsed type so a duplicate Content-Type header
+		// cannot survive, and keep only a sanitised attachment filename.
+		h.Set("Content-Type", mime.FormatMediaType(mt, params))
+		if filename != "" {
+			h.Set("Content-Disposition", attachment(filename))
+		}
 	}
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
+	return nil
+}
+
+// dispositionFilename returns a safe ASCII basename from a Content-Disposition header,
+// or "" when there is none. Everything the connector supplies is reduced to
+// [A-Za-z0-9._-], at most 100 characters, with no leading dot.
+func dispositionFilename(cd string) string {
+	if cd == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(cd)
+	if err != nil {
+		return ""
+	}
+	name := params["filename"]
+	if i := strings.LastIndexAny(name, "/\\"); i >= 0 {
+		name = name[i+1:]
+	}
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+		if b.Len() >= 100 {
+			break
+		}
+	}
+	return strings.TrimLeft(b.String(), ".")
+}
+
+func attachment(filename string) string {
+	if filename == "" {
+		return "attachment"
+	}
+	return "attachment; filename=" + filename
+}
+
+// ValidateOptions rejects configurations that would weaken the origin check. The cloud
+// hub calls it at startup; a Handler built with invalid options also refuses every
+// WebSocket upgrade (fail closed).
+func ValidateOptions(o Options) error {
+	for _, p := range o.AllowedOrigins {
+		if err := validOriginPattern(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validOriginPattern(p string) error {
+	if p == "" || strings.ContainsAny(p, "/\\ ") || strings.Contains(p, "://") {
+		return errors.New("hubproxy: AllowedOrigins entries are host[:port] patterns, not URLs")
+	}
+	if !strings.ContainsAny(p, "*?[") {
+		return nil // an exact host
+	}
+	// A wildcard in the host must be anchored on a registrable-looking suffix: "*", "*.com"
+	// and "*:*" would let any site open a stream to a user's machine. A wildcard only in
+	// the port ("hub.example.com:*") is fine.
+	host, _, _ := strings.Cut(p, ":")
+	if !strings.ContainsAny(host, "*?[") {
+		if host == "" {
+			return errors.New("hubproxy: AllowedOrigins pattern has no host")
+		}
+		return nil
+	}
+	if !strings.HasPrefix(host, "*.") || strings.ContainsAny(host[2:], "*?[") || !strings.Contains(host[2:], ".") {
+		return errors.New("hubproxy: a wildcard AllowedOrigins host must look like *.example.com")
+	}
 	return nil
 }
 

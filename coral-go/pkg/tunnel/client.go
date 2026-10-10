@@ -67,6 +67,9 @@ type ClientOptions struct {
 	// Redirects are never followed whatever its CheckRedirect says.
 	HTTPClient *http.Client
 	Backoff    Backoff
+	// LocalMode reports the connector's maximum access mode in the handshake. It is
+	// read on every (re)connect. Nil reports view.
+	LocalMode func() Mode
 	// OnState is called from Run when the tunnel connects (nil error) or a
 	// connection attempt or session ends (with the reason).
 	OnState func(connected bool, err error)
@@ -144,7 +147,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 		return nil, err
 	}
 	c.SetReadLimit(maxHandshakeBytes)
-	hello, _ := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, ServerToken: token, CoralVersion: o.CoralVersion})
+	hello, _ := json.Marshal(Hello{ProtocolVersion: ProtocolVersion, ServerToken: token, CoralVersion: o.CoralVersion, LocalMode: currentMode(o.LocalMode).String()})
 	if err := c.Write(hctx, websocket.MessageBinary, hello); err != nil {
 		_ = c.Close(websocket.StatusInternalError, "")
 		return nil, err

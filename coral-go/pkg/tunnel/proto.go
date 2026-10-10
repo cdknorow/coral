@@ -64,6 +64,10 @@ type Hello struct {
 	ProtocolVersion int    `json:"protocol_version"`
 	ServerToken     string `json:"server_token"`
 	CoralVersion    string `json:"coral_version"`
+	// LocalMode is the connector's own maximum access mode ("view", "interact" or
+	// "launch"). It is informational for the hub (to show "limited by this machine");
+	// the connector enforces it whatever the hub does. Absent or unknown means view.
+	LocalMode string `json:"local_mode,omitempty"`
 }
 
 // Welcome is the server's reply to Hello.
