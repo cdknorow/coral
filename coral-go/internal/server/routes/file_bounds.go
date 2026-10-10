@@ -122,6 +122,9 @@ func withinAny(roots []string, real string) bool {
 
 // sensitiveDirs are directory names whose contents are never served.
 var sensitiveDirs = map[string]bool{
+	// .git holds config with remote URLs that carry tokens, hooks, and logs. The git-aware
+	// endpoints (diff, changes.diff, git, files) run git instead of reading these files.
+	".git": true,
 	".ssh": true, ".aws": true, ".gnupg": true, ".kube": true, ".config": true, ".coral": true,
 	".docker": true, ".azure": true, ".gcloud": true, ".password-store": true, ".git-credentials": true,
 	"keychains": true, ".mozilla": true, ".chrome": true, ".terraform": true, ".vscode-server": true,

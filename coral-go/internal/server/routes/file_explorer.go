@@ -54,6 +54,8 @@ func serveExplorerDirectory(w http.ResponseWriter, r *http.Request, root, dir st
 		errNotFound(w, "Directory unavailable")
 		return
 	}
+	// Strict callers do not see credential files (including .git) in listings; the local
+	// dashboard's explorer lists names only, and reading them is refused for everyone.
 	if strict {
 		if sensitivePath(target) {
 			errNotFound(w, "Directory unavailable")

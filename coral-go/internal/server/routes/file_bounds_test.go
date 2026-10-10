@@ -443,3 +443,45 @@ func TestSensitivePathExtendedList(t *testing.T) {
 		assert.False(t, sensitivePath(p), p)
 	}
 }
+
+// A token in a remote URL lives in .git/config; no caller reads or lists the .git directory.
+func TestGitDirectoryIsNeverServed(t *testing.T) {
+	e := newBoundsEnv(t)
+	require.NoError(t, exec.Command("git", "-C", e.repo, "remote", "add", "origin", "https://user:ghp_SECRETTOKEN@github.com/x/y.git").Run())
+	for _, k := range []kind{kindTunnel, kindCurl, kindBearer, kindCrossSite, kindForgedFetch, kindDashboard} {
+		for _, fp := range []string{".git/config", ".GIT/config", ".Git/HEAD", "./.git/config", filepath.Join(e.repo, ".git", "config"), ".git/hooks/pre-commit.sample"} {
+			code, body := e.doAs("GET", fc, url.Values{"filepath": {fp}, "session_id": {"fb-1"}}, "", k)
+			assert.Equal(t, 404, code, "%d %s", k, fp)
+			assert.NotContains(t, body, "SECRETTOKEN", "%d %s", k, fp)
+			assert.NotContains(t, body, "github.com", "%d %s", k, fp)
+		}
+		if k == kindDashboard {
+			continue // the local explorer lists names only; reads (above) are refused for everyone
+		}
+		for _, dir := range []string{".git", ".git/hooks", "./.git"} {
+			for _, q := range []url.Values{{"dir": {dir}}, {"dir": {dir}, "view": {"explorer"}}} {
+				q.Set("session_id", "fb-1")
+				_, body := e.doAs("GET", "/api/sessions/live/claude-fb/search-files", q, "", k)
+				var resp struct {
+					Entries []map[string]any `json:"entries"`
+					Items   []map[string]any `json:"items"`
+				}
+				_ = json.Unmarshal([]byte(body), &resp)
+				assert.Empty(t, resp.Entries, "%d %v: %s", k, q, body)
+				assert.Empty(t, resp.Items, "%d %v: %s", k, q, body)
+				assert.NotContains(t, body, "info/", "%d %v", k, q)
+			}
+		}
+		code, _ := e.doAs("GET", "/api/sessions/live/claude-fb/resolve-path", url.Values{"filepath": {".git/config"}, "session_id": {"fb-1"}}, "", k)
+		assert.Equal(t, 404, code, "%d resolve-path", k)
+	}
+	// The repository root listing does not show .git either.
+	_, body := e.doAs("GET", "/api/sessions/live/claude-fb/search-files", url.Values{"dir": {"."}, "session_id": {"fb-1"}}, "", kindTunnel)
+	assert.NotContains(t, body, ".git")
+	// A worktree's .git file (a pointer) is covered by the same component rule, and git-aware
+	// callers are unaffected because they run git rather than reading these paths.
+	assert.True(t, sensitivePath("/r/wt/.git"))
+	assert.True(t, sensitivePath("/r/.GIT/config"))
+	assert.False(t, sensitivePath("/r/.github/workflows/ci.yml"))
+	assert.False(t, sensitivePath("/r/.gitignore"))
+}
