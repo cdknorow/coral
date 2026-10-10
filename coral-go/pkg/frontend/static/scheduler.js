@@ -1,7 +1,7 @@
 /* Scheduler: scheduled jobs sidebar list, job detail view, and CRUD operations */
 
 import { state } from './state.js';
-import { escapeHtml, showToast, showView } from './utils.js';
+import { escapeHtml, showToast, showView, jsStr } from './utils.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -57,9 +57,9 @@ function renderJobsSidebar() {
         // identical to a healthy one here — enabled, with a next fire time.
         const fails = job.consecutive_failures || 0;
         const failBadge = fails >= 2
-            ? `<span class="sched-fail-badge" title="The last ${fails} runs all failed">${fails} failed</span>`
+            ? `<span class="sched-fail-badge" title="The last ${escapeAttr(fails)} runs all failed">${fails} failed</span>`
             : '';
-        return `<li class="session-list-item ${active}" onclick="selectScheduledJob(${job.id})">
+        return `<li class="session-list-item ${active}" onclick="selectScheduledJob(${Number(job.id)})">
             <span class="sched-dot">${dot}</span>
             ${typeIcon}
             <span class="session-name">${escapeHtml(job.name)}${status}</span>
@@ -106,7 +106,7 @@ function renderJobDetail(job, runs) {
         const wfName = job.workflow_name || `Workflow #${job.workflow_id}`;
         jobTypeHtml = `
             <dt>Type</dt><dd><span class="material-icons" style="font-size:14px;vertical-align:-2px;color:var(--color-tool-agent)">account_tree</span> Workflow</dd>
-            <dt>Workflow</dt><dd><a href="javascript:void(0)" onclick="selectWorkflow(${job.workflow_id})" style="color:var(--accent)">${escapeHtml(wfName)}</a></dd>`;
+            <dt>Workflow</dt><dd><a href="javascript:void(0)" onclick="selectWorkflow(${Number(job.workflow_id)})" style="color:var(--accent)">${escapeHtml(wfName)}</a></dd>`;
     } else {
         jobTypeHtml = `
             <dt>Type</dt><dd>Agent Job</dd>
@@ -141,9 +141,9 @@ function renderJobDetail(job, runs) {
         <div class="sched-header">
             <h2>${escapeHtml(job.name)}</h2>
             <div class="sched-actions">
-                <button class="btn btn-small" onclick="editScheduledJob(${job.id})">Edit</button>
-                <button class="btn btn-small" onclick="toggleScheduledJob(${job.id})">${toggleLabel}</button>
-                <button class="btn btn-small btn-warning" onclick="deleteScheduledJob(${job.id})">Delete</button>
+                <button class="btn btn-small" onclick="editScheduledJob(${Number(job.id)})">Edit</button>
+                <button class="btn btn-small" onclick="toggleScheduledJob(${Number(job.id)})">${toggleLabel}</button>
+                <button class="btn btn-small btn-warning" onclick="deleteScheduledJob(${Number(job.id)})">Delete</button>
             </div>
         </div>
         ${job.description ? `<p class="sched-desc">${escapeHtml(job.description)}</p>` : ''}
@@ -182,7 +182,7 @@ function renderWorkflowRunsTable(runs) {
                 ? formatDuration(new Date(r.finished_at) - new Date(r.started_at))
                 : r.started_at ? 'running...' : '-';
             const stepsInfo = r.current_step != null ? `${r.current_step + 1}` : '-';
-            return `<tr onclick="selectWorkflowRun(${r.id})" style="cursor:pointer">
+            return `<tr onclick="selectWorkflowRun(${Number(r.id)})" style="cursor:pointer">
                 <td>#${r.id}</td>
                 <td><span class="sched-status ${statusClass}">${r.status}</span></td>
                 <td>${stepsInfo}</td>
@@ -206,7 +206,7 @@ function renderRunsTable(runs) {
                 : r.status === 'running' ? 'status-running'
                 : '';
             const sessionLink = r.session_id
-                ? `<a href="javascript:void(0)" class="run-session-link" title="View session history" onclick="selectHistorySession('${r.session_id}')">${r.session_id.substring(0, 8)}</a>`
+                ? `<a href="javascript:void(0)" class="run-session-link" title="View session history" onclick="selectHistorySession('${jsStr(r.session_id)}')">${r.session_id.substring(0, 8)}</a>`
                 : '-';
             return `<tr>
                 <td>${scheduled}</td>
@@ -292,7 +292,7 @@ async function _loadWorkflowOptions() {
         const data = await resp.json();
         const workflows = data.workflows || [];
         select.innerHTML = '<option value="">Select a workflow...</option>' +
-            workflows.map(w => `<option value="${w.id}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(w.description) : ''}</option>`).join('');
+            workflows.map(w => `<option value="${Number(w.id)}">${escapeHtml(w.name)}${w.description ? ' — ' + escapeHtml(w.description) : ''}</option>`).join('');
     } catch (e) {
         select.innerHTML = '<option value="">Failed to load workflows</option>';
     }

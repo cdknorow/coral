@@ -8,25 +8,35 @@ export function dbg(...args) {
     if (_debugEnabled) console.log('[coral]', ...args);
 }
 
+/** Escape for HTML text AND for double- or single-quoted attribute values: & < > " ' */
 export function escapeHtml(str) {
     if (str == null) return '';
-    const div = document.createElement("div");
-    div.textContent = String(str);
-    return div.innerHTML;
-}
-
-export function escapeAttr(str) {
-    // Escape for safe use in HTML attributes and JS string literals within onclick handlers.
-    // Handles: & < > " ' \ newlines
-    return str
+    return String(str)
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;")
-        .replace(/\\/g, "\\\\")
-        .replace(/\n/g, "\\n")
-        .replace(/\r/g, "\\r");
+        .replace(/'/g, "&#39;");
+}
+
+/** Escape for use as the value of an HTML attribute (data-*, title, value, id, ...). */
+export function escapeAttr(str) {
+    return escapeHtml(str);
+}
+
+/**
+ * Escape for a JS string literal INSIDE an on*= attribute (the literal is single-quoted:
+ * onclick="f('${jsStr(x)}')").
+ *
+ * The browser HTML-decodes an attribute before the JS parser sees it, so entity escaping
+ * (&#39;) does NOT keep a quote inside the string: it decodes back to ' and ends the literal.
+ * Every character that could end the literal, the attribute, or the element is emitted as a
+ * \uXXXX escape instead; JS decodes those after HTML parsing, so the string value is exact
+ * and no raw quote, ampersand or angle bracket reaches the page.
+ */
+export function jsStr(v) {
+    return String(v == null ? '' : v).replace(/[\\'"&<>`$\u0000-\u001f\u007f\u2028\u2029]/g,
+        c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 }
 
 export function showToast(message, isError = false, duration = 4000) {
@@ -161,9 +171,27 @@ export function showView(activeId) {
 
 // options is passed through to marked.parse for this call only, e.g.
 export const DOMPURIFY_CONFIG = {
+    // Agent/file/board content is attacker-influenced: never let it carry styling or form controls.
+    FORBID_ATTR: ['style', 'srcset', 'formaction'],
+    FORBID_TAGS: ['style', 'form', 'textarea', 'select', 'iframe', 'object', 'embed', 'link', 'meta', 'base'],
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix|file|coral):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     ADD_ATTR: ['target', 'rel', 'data-file-ref', 'data-action', 'data-pending-id'],
 };
+
+/**
+ * Sanitize untrusted HTML. Fails CLOSED: if DOMPurify did not load, the markup is shown as
+ * text instead of being inserted as HTML (it used to fall back to the raw string).
+ */
+export function sanitizeHtml(html, config) {
+    if (typeof DOMPurify === 'undefined') return escapeHtml(html);
+    return config ? DOMPurify.sanitize(html, config) : DOMPurify.sanitize(html);
+}
+
+/** Markdown to sanitized HTML; text when marked or DOMPurify is missing. */
+export function sanitizeMarkdown(md, config) {
+    if (typeof marked === 'undefined') return escapeHtml(md);
+    return sanitizeHtml(marked.parse(md), config);
+}
 
 // { breaks: true } to keep single newlines as line breaks.
 export function renderMarkdown(content, options) {
@@ -187,7 +215,7 @@ export function renderMarkdown(content, options) {
                 marked._hljsConfigured = true;
             }
             const html = options ? marked.parse(content, options) : marked.parse(content);
-            return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html, DOMPURIFY_CONFIG) : html;
+            return sanitizeHtml(html, DOMPURIFY_CONFIG);
         } catch { /* fall through */ }
     }
     return escapeHtml(content);
@@ -454,4 +482,15 @@ export function copyBranchName(btn) {
     }).catch(() => {
         showToast("Failed to copy", true);
     });
+}
+
+/** Function names that may be chosen dynamically for an on*= attribute (see tools/gen_handler_shapes.mjs). */
+export const HANDLER_NAMES = ['toggleEventFilter', 'toggleHistoryEventFilter', 'toggleAllEventFilters', 'toggleAllHistoryEventFilters',
+    'window._selectAgentPreset', 'window._applyACFPresetValue'];
+
+/** A function name for an on*= attribute; only names from HANDLER_NAMES are accepted. */
+export function jsIdent(name) {
+    const n = String(name == null ? '' : name);
+    if (!HANDLER_NAMES.includes(n)) throw new Error('unsafe handler name');
+    return n;
 }

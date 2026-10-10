@@ -1,7 +1,7 @@
 /* History tabs — read-only rendering of Activity, Tasks, and Agent Notes for historical sessions */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr, jsStr, sanitizeMarkdown } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 
 // Re-use tool icon/filter definitions from agentic_state.js
@@ -160,7 +160,7 @@ function _refreshHistoryFilterDropdown() {
         const checked = !isHidden;
         const count = historyEvents.filter(group.match).length;
         const countHtml = `<span class="filter-item-count">${count}</span>`;
-        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); toggleHistoryEventFilter('${group.key}')">
+        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); toggleHistoryEventFilter('${jsStr(group.key)}')">
             <span class="filter-item-icon event-filter-char">${group.label}</span>
             <span class="filter-item-label">${group.title}</span>
             ${countHtml}
@@ -191,7 +191,7 @@ function renderHistoryEventTimeline() {
         const icon = getToolIcon(ev.tool_name, ev.event_type);
         const typeCls = (ev.event_type ? `event-type-${ev.event_type}` : '') + (eventFailed(ev) ? ' event-failed' : '');
         const extra = eventDetailText(ev);
-        return `<div class="event-item ${typeCls}" data-tooltip="${icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': '}${escapeAttr(ev.summary)}${extra ? escapeAttr(' (' + extra + ')') : ''}">
+        return `<div class="event-item ${typeCls}" data-tooltip="${escapeAttr(icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': ')}${escapeAttr(ev.summary)}${escapeAttr(extra ? escapeAttr(' (' + extra + ')') : '')}">
             <span class="event-icon ${icon.cls}">${icon.char}</span>
             <span class="event-body">
                 <span class="event-summary">${escapeHtml(ev.summary)}</span>
@@ -272,7 +272,7 @@ function renderHistoryAgentNotes() {
 
     const md = historyAgentNotes.map(n => n.content).join('\n\n');
     if (typeof marked !== 'undefined') {
-        container.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(marked.parse(md)) : marked.parse(md);
+        container.innerHTML = sanitizeMarkdown(md);
     } else {
         container.textContent = md;
     }

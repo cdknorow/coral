@@ -1,7 +1,7 @@
 /* Bottom preview pane — tabbed file/artifact viewer below the terminal/chat area */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml } from './utils.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
 import { makeDraggable } from './draggable.js';
 import { toggleStarFile, isFileStarred } from './changed_files.js';
@@ -210,10 +210,10 @@ function _renderTabs() {
         const active = tab.id === _activeId ? ' active' : '';
         const title = tab.kind === 'artifact' ? (tab.options.filename || tab.filepath) : tab.filepath;
         const preview = tab.pinned ? '' : ' preview';
-        html += `<div class="preview-tab${active}${preview}" data-tab-id="${tab.id}" title="${tab.pinned ? '' : 'Preview — double-click to keep open'}">
+        html += `<div class="preview-tab${active}${preview}" data-tab-id="${Number(tab.id)}" title="${tab.pinned ? '' : 'Preview — double-click to keep open'}">
             <span class="preview-tab-icon">${_fileIcon(tab)}</span>
             <span class="preview-tab-name" title="${escapeAttr(title)}">${escapeHtml(_tabTitle(tab))}${_isDirty(tab) ? ' •' : ''}</span>
-            <button class="preview-tab-close" data-tab-id="${tab.id}" title="Close">&times;</button>
+            <button class="preview-tab-close" data-tab-id="${Number(tab.id)}" title="Close">&times;</button>
         </div>`;
     }
     bar.innerHTML = html;
@@ -241,7 +241,7 @@ function _renderTabs() {
 /* ── Toolbar ───────────────────────────────────────────────── */
 
 function _modeBtn(mode, icon, title, tab) {
-    return `<button class="inline-preview-mode-btn${tab.mode === mode ? ' active' : ''}" data-action="mode" data-mode="${mode}" title="${title}"><span class="material-icons">${icon}</span></button>`;
+    return `<button class="inline-preview-mode-btn${tab.mode === mode ? ' active' : ''}" data-action="mode" data-mode="${escapeAttr(mode)}" title="${escapeAttr(title)}"><span class="material-icons">${icon}</span></button>`;
 }
 
 function _renderToolbar(tab) {
@@ -590,7 +590,7 @@ function _renderContentView(body, content, filepath, line, interpretHtml) {
 
     if (lang === 'markdown' && typeof marked !== 'undefined') {
         const html = marked.parse(content);
-        const safe = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html, DOMPURIFY_CONFIG) : html;
+        const safe = sanitizeHtml(html, DOMPURIFY_CONFIG);
         body.innerHTML = `<div class="preview-pane-markdown">${safe}</div>`;
         if (line > 0) _scrollToLine(body, content, line);
         return;

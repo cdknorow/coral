@@ -48,7 +48,7 @@ function renderResult(result, index) {
     const wrapper = document.createElement('section');
     wrapper.className = 'chat-search-result';
     wrapper.setAttribute('aria-labelledby', `chat-search-result-${index}`);
-    wrapper.innerHTML = `<div class="chat-search-result-header"><strong id="chat-search-result-${index}">${escapeHtml(resultLabel(result))}</strong><span>${escapeHtml(result.type || 'agent')} · ${escapeHtml(result.last_timestamp || '')}</span></div>`;
+    wrapper.innerHTML = `<div class="chat-search-result-header"><strong id="chat-search-result-${Number(index)}">${escapeHtml(resultLabel(result))}</strong><span>${escapeHtml(result.type || 'agent')} · ${escapeHtml(result.last_timestamp || '')}</span></div>`;
     for (const hit of hits) {
         const button = document.createElement('button');
         button.type = 'button';

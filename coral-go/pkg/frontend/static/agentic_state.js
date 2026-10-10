@@ -5,7 +5,7 @@ import { state } from './state.js';
 import { loadChangedFiles } from './changed_files.js';
 import { selectFilesSource } from './team_artifacts.js';
 import { startBoardTaskPoll, stopBoardTaskPoll } from './tasks.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr, jsStr, jsIdent } from './utils.js';
 import { durationChip, eventDetailText, eventFailed, renderActivityChart } from './event_row.js';
 import { serverFetch, serverForSession } from './server_base.js';
 
@@ -164,7 +164,7 @@ function _openFilterDropdown(mode) {
         const count = events ? events.filter(group.match).length : '';
         const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
         const toggleFn = isLive ? 'toggleEventFilter' : 'toggleHistoryEventFilter';
-        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${toggleFn}('${group.key}')">
+        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${jsIdent(toggleFn)}('${jsStr(group.key)}')">
             <span class="filter-item-icon event-filter-char">${group.label}</span>
             <span class="filter-item-label">${group.title}</span>
             ${countHtml}
@@ -176,7 +176,7 @@ function _openFilterDropdown(mode) {
     dropdown.innerHTML = `
         <div class="filter-dropdown-header">
             <span class="filter-dropdown-title">Filter Events</span>
-            <button class="filter-dropdown-toggle" onclick="event.stopPropagation(); ${toggleAllFn}()">Toggle All</button>
+            <button class="filter-dropdown-toggle" onclick="event.stopPropagation(); ${jsIdent(toggleAllFn)}()">Toggle All</button>
         </div>
         <div class="filter-dropdown-list">${items}</div>
     `;
@@ -240,7 +240,7 @@ function _refreshFilterDropdown(mode) {
         const count = events ? events.filter(group.match).length : '';
         const countHtml = count !== '' ? `<span class="filter-item-count">${count}</span>` : '';
         const toggleFn = isLive ? 'toggleEventFilter' : 'toggleHistoryEventFilter';
-        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${toggleFn}('${group.key}')">
+        return `<div class="filter-dropdown-item ${group.cls}" onclick="event.stopPropagation(); ${jsIdent(toggleFn)}('${jsStr(group.key)}')">
             <span class="filter-item-icon event-filter-char">${group.label}</span>
             <span class="filter-item-label">${group.title}</span>
             ${countHtml}
@@ -277,7 +277,7 @@ export function renderEventTimeline() {
         const icon = getToolIcon(ev.tool_name, ev.event_type);
         const typeCls = (ev.event_type ? `event-type-${ev.event_type}` : '') + (eventFailed(ev) ? ' event-failed' : '');
         const extra = eventDetailText(ev);
-        return `<div class="event-item ${typeCls}" data-tooltip="${icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': '}${escapeAttr(ev.summary)}${extra ? escapeAttr(' (' + extra + ')') : ''}">
+        return `<div class="event-item ${typeCls}" data-tooltip="${escapeAttr(icon.title === ev.summary ? '' : escapeAttr(icon.title) + ': ')}${escapeAttr(ev.summary)}${escapeAttr(extra ? escapeAttr(' (' + extra + ')') : '')}">
             <span class="event-icon ${icon.cls}">${icon.char}</span>
             <span class="event-body">
                 <span class="event-summary">${escapeHtml(ev.summary)}</span>

@@ -1,6 +1,6 @@
 /* Token Usage Dashboard — token usage and cost UI */
 
-import { showView, escapeHtml, escapeAttr } from './utils.js';
+import { showView, escapeHtml, escapeAttr, jsStr } from './utils.js';
 import { state } from './state.js';
 
 function _formatTokens(n) {
@@ -65,7 +65,7 @@ function _formatPRLink(prNumber, remoteURL) {
         const parts = base.split(':');
         if (parts.length === 2) base = 'https://' + parts[0].slice(4) + '/' + parts[1];
     }
-    return `<a href="${escapeAttr(base)}/pull/${prNumber}" target="_blank" rel="noopener">#${prNumber}</a>`;
+    return `<a href="${escapeAttr(base)}/pull/${escapeAttr(prNumber)}" target="_blank" rel="noopener">#${prNumber}</a>`;
 }
 
 function _findSession(sessionId) {
@@ -170,9 +170,9 @@ function _sortHeader(table, field, label, extraClass, filterable, valueExtractor
     let filterIcon = '';
     if (filterable) {
         const active = _hasActiveFilter(table, field) ? ' cost-filter-active' : '';
-        filterIcon = `<span class="cost-col-filter${active}" onclick="event.stopPropagation(); _costOpenFilter('${table}','${field}', this)" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
+        filterIcon = `<span class="cost-col-filter${active}" onclick="event.stopPropagation(); _costOpenFilter('${jsStr(table)}','${jsStr(field)}', this)" title="Filter"><span class="material-icons" style="font-size:13px">filter_list</span></span>`;
     }
-    return `<th class="${cls}" onclick="_costToggleSort('${table}','${field}')">${label}${arrow}${filterIcon}</th>`;
+    return `<th class="${cls}" onclick="_costToggleSort('${jsStr(table)}','${jsStr(field)}')">${label}${arrow}${filterIcon}</th>`;
 }
 
 // Open/close the column filter dropdown
@@ -531,10 +531,10 @@ function _renderAgentTable(rows) {
         const displayName = r.display_name || (session && session.display_name) || r.agent_name || r.session_id || '\u2014';
         let nameHtml;
         if (session) {
-            nameHtml = `<a href="#" class="cost-agent-link" onclick="event.preventDefault(); switchNavTab('agents'); selectLiveSession('${escapeAttr(session.name)}', '${escapeAttr(session.agent_type)}', '${escapeAttr(session.session_id)}')">${escapeHtml(displayName)}</a>`;
+            nameHtml = `<a href="#" class="cost-agent-link" onclick="event.preventDefault(); switchNavTab('agents'); selectLiveSession('${jsStr(session.name)}', '${jsStr(session.agent_type)}', '${jsStr(session.session_id)}')">${escapeHtml(displayName)}</a>`;
         } else if (r.session_id) {
             const endedSuffix = r.is_live === false ? ' <span class="cost-agent-ended">(ended)</span>' : '';
-            nameHtml = `<a href="#" class="cost-agent-link cost-agent-terminated" onclick="event.preventDefault(); switchNavTab('history'); selectHistorySession('${escapeAttr(r.session_id)}')">${escapeHtml(displayName)}</a>${endedSuffix}`;
+            nameHtml = `<a href="#" class="cost-agent-link cost-agent-terminated" onclick="event.preventDefault(); switchNavTab('history'); selectHistorySession('${jsStr(r.session_id)}')">${escapeHtml(displayName)}</a>${endedSuffix}`;
         } else {
             nameHtml = escapeHtml(displayName);
         }
@@ -721,7 +721,7 @@ function _renderTaskTable(tasks) {
         const priorityClass = 'board-task-priority-' + (t.priority || 'medium');
         const startTime = t.claimed_at ? _formatTime(t.claimed_at) : '\u2014';
         const duration = _formatDuration(t.claimed_at, t.completed_at);
-        html += `<tr onclick="_showCostTaskDetail(${t.id})" style="cursor:pointer">
+        html += `<tr onclick="_showCostTaskDetail(${Number(t.id)})" style="cursor:pointer">
             <td>${statusIcon(t.status)}</td>
             <td class="cost-task-id">#${t.id}</td>
             <td>${escapeHtml(t.title || '')}</td>

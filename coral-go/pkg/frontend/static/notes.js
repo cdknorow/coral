@@ -1,7 +1,7 @@
 /* Session notes: loading, editing, rendering, and tab switching */
 
 import { state } from './state.js';
-import { showToast } from './utils.js';
+import { showToast, sanitizeHtml } from './utils.js';
 
 let currentNotesData = null;
 let isEditing = false;
@@ -126,7 +126,7 @@ function renderNotes(data) {
 
     try {
         const html = marked.parse(content);
-        container.innerHTML = label + (typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html) : html);
+        container.innerHTML = label + sanitizeHtml(html);
     } catch (e) {
         // Fallback if marked.js didn't load
         container.innerHTML = label + '<pre>' + content.replace(/</g, '&lt;') + '</pre>';

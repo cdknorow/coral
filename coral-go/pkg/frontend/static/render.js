@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
-import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE } from './utils.js';
+import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
@@ -21,9 +21,9 @@ function _gitStateSummary(gs) {
     if (!gs) return '';
     const base = gs.base_branch || 'main';
     const parts = [];
-    if (gs.ahead) parts.push(`<span class="gs-ahead" title="${gs.ahead} commit${gs.ahead !== 1 ? 's' : ''} ahead of ${escapeAttr(base)}">↑${gs.ahead}</span>`);
-    if (gs.behind) parts.push(`<span class="gs-behind" title="${gs.behind} commit${gs.behind !== 1 ? 's' : ''} behind ${escapeAttr(base)}">↓${gs.behind}</span>`);
-    if (gs.dirty) parts.push(`<span class="gs-dirty" title="${gs.dirty} uncommitted file${gs.dirty !== 1 ? 's' : ''}">●${gs.dirty}</span>`);
+    if (gs.ahead) parts.push(`<span class="gs-ahead" title="${escapeAttr(gs.ahead)} commit${gs.ahead !== 1 ? 's' : ''} ahead of ${escapeAttr(base)}">↑${gs.ahead}</span>`);
+    if (gs.behind) parts.push(`<span class="gs-behind" title="${escapeAttr(gs.behind)} commit${gs.behind !== 1 ? 's' : ''} behind ${escapeAttr(base)}">↓${gs.behind}</span>`);
+    if (gs.dirty) parts.push(`<span class="gs-dirty" title="${escapeAttr(gs.dirty)} uncommitted file${gs.dirty !== 1 ? 's' : ''}">●${gs.dirty}</span>`);
     return parts.join(' ');
 }
 
@@ -324,11 +324,11 @@ export function setBoardAccentColor(boardName) {
     picker.innerHTML = `
         <div class="color-picker-swatches">
             ${_colorSwatches.map(c =>
-                `<button class="color-swatch${c === current ? ' active' : ''}" style="background:${c}" data-color="${c}" title="${c}"></button>`
+                `<button class="color-swatch${c === current ? ' active' : ''}" style="background:${c}" data-color="${escapeAttr(c)}" title="${escapeAttr(c)}"></button>`
             ).join('')}
         </div>
         <div class="color-picker-custom">
-            <input type="text" class="color-picker-hex" value="${current}" placeholder="#hex" maxlength="7">
+            <input type="text" class="color-picker-hex" value="${escapeAttr(current)}" placeholder="#hex" maxlength="7">
             <button class="btn btn-small color-picker-apply">Apply</button>
             <button class="btn btn-small color-picker-reset">Reset</button>
         </div>
@@ -401,8 +401,8 @@ export function showBoardChatTab(boardName) {
     // Populate the board tab content (visibility managed by switchAgenticTab)
     panel.innerHTML = `
         <div class="board-chat-header">
-            <a class="board-chat-title" href="#" onclick="event.preventDefault(); selectBoardProject('${escapeAttr(boardName)}')" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
-            <button class="btn-nav" id="board-chat-pause-btn" onclick="window._toggleBoardChatPause('${escapeAttr(boardName)}')" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
+            <a class="board-chat-title" href="#" onclick="event.preventDefault(); selectBoardProject('${jsStr(boardName)}')" title="Open full board view">${escapeHtml(keyLabel(boardName))}</a>
+            <button class="btn-nav" id="board-chat-pause-btn" onclick="window._toggleBoardChatPause('${jsStr(boardName)}')" title="Pause Board — stops agents from receiving new messages until resumed">Pause Board</button>
             <button class="btn-nav board-select-btn" onclick="window._toggleBoardChatSelect()" title="Export — select messages to export as Markdown">Export</button>
         </div>
         <div class="board-paused-banner" id="board-chat-paused-banner" style="display:none">Board reads are paused — agents cannot see new messages</div>
@@ -415,15 +415,15 @@ export function showBoardChatTab(boardName) {
                 </div>
                 <span class="toolbar-spacer"></span>
                 <div class="toolbar-group">
-                    <button class="btn-nav" onclick="window._sendBoardChat('${escapeAttr(boardName)}')" title="Send message">
+                    <button class="btn-nav" onclick="window._sendBoardChat('${jsStr(boardName)}')" title="Send message">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="8" x2="14" y2="8"/><polyline points="9 3 14 8 9 13"/></svg>
                     </button>
                 </div>
             </div>
             <div class="board-chat-editor-wrap">
                 <textarea class="board-chat-textarea" id="board-panel-input" placeholder="Message the team... (@ to mention)"
-                    onkeydown="if(event.key==='Enter'&&event.ctrlKey){event.preventDefault();window._sendBoardChat('${escapeAttr(boardName)}')}"
-                    oninput="window._boardMentionInput(event, '${escapeAttr(boardName)}')"></textarea>
+                    onkeydown="if(event.key==='Enter'&&event.ctrlKey){event.preventDefault();window._sendBoardChat('${jsStr(boardName)}')}"
+                    oninput="window._boardMentionInput(event, '${jsStr(boardName)}')"></textarea>
                 <div class="board-mention-dropdown" id="board-mention-dropdown" style="display:none"></div>
             </div>
         </div>`;
@@ -562,7 +562,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
         const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
 
         const selectedClass = _boardChatSelectMode && _boardChatSelectedIds.has(m.id) ? ' mb-message-selected' : '';
-        const checkbox = _boardChatSelectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${m.id}" ${_boardChatSelectedIds.has(m.id) ? 'checked' : ''} onclick="window._toggleBoardChatMsgSelect(${m.id}, this.checked)">` : '';
+        const checkbox = _boardChatSelectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_boardChatSelectedIds.has(m.id) ? 'checked' : ''} onclick="window._toggleBoardChatMsgSelect(${Number(m.id)}, this.checked)">` : '';
         return `<div class="mb-message ${spacing}${alignClass}${selectedClass}" style="border-left:3px solid rgba(${r},${g},${b},0.55); border-bottom:2px solid rgba(${r},${g},${b},0.3)">
             <div class="mb-message-header">
                 ${checkbox}
@@ -807,7 +807,7 @@ async function _boardMentionInput(event, boardName) {
     if (subs.length === 0) { dropdown.style.display = 'none'; return; }
 
     dropdown.innerHTML = subs.map(name =>
-        `<div class="board-mention-item" onmousedown="event.preventDefault(); window._insertBoardMention('${escapeAttr(name)}')">${escapeHtml(name)}</div>`
+        `<div class="board-mention-item" onmousedown="event.preventDefault(); window._insertBoardMention('${jsStr(name)}')">${escapeHtml(name)}</div>`
     ).join('');
     dropdown.style.display = 'block';
 }
@@ -1063,7 +1063,7 @@ export function showPromptModal(title, label, defaultValue, onConfirm, opts = {}
     if (colorRow) {
         colorRow.style.display = opts.color ? "" : "none";
         if (opts.color) {
-            const sw = (value, bg, label) => `<button type="button" class="color-swatch${value === pickedColor ? " selected" : ""}" data-color="${value}" style="--swatch:${bg}" title="${label}" aria-label="${label}" aria-pressed="${value === pickedColor}">${value ? "" : "A"}</button>`;
+            const sw = (value, bg, label) => `<button type="button" class="color-swatch${value === pickedColor ? " selected" : ""}" data-color="${escapeAttr(value)}" style="--swatch:${bg}" title="${escapeAttr(label)}" aria-label="${escapeAttr(label)}" aria-pressed="${value === pickedColor}">${value ? "" : "A"}</button>`;
             colorRow.querySelector(".color-swatches").innerHTML =
                 sw("", opts.color.auto, "Auto") + AGENT_NAME_PALETTE.map(c => sw(c, c, c)).join("");
             colorRow.querySelectorAll(".color-swatch").forEach(btn => {
@@ -1477,7 +1477,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     // those are on a different branch than the folder, so each row says which.
     const gsWt = s.git_state?.is_worktree ? s.git_state : null;
     const branchTag = (gsWt && s.branch)
-        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : ''}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
+        ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
         : "";
     // One pill at most, from the shared state table. Only the attention states
     // carry a pill. "Ready for input" has none: the tooltip and the aria-label carry
@@ -1503,7 +1503,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const displayLabel = identity;
     const reminder = getCachedAgentAvailability(s);
     const reminderTag = reminder?.reminder
-        ? `<span class="agent-reminder-icon" title="Periodic reminder every ${Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60))} min" aria-label="Periodic reminder active">⏰</span>`
+        ? `<span class="agent-reminder-icon" title="Periodic reminder every ${escapeAttr(Math.max(1, Math.round((reminder.reminder_interval_seconds || 300) / 60)))} min" aria-label="Periodic reminder active">⏰</span>`
         : '';
     let goalLine = "";
     if (goalText) {
@@ -1513,7 +1513,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
         // select a row, so it must bubble to the row's click handler. Only the
         // sparkle button requests a goal.
         goalLine = `<span class="session-goal session-goal-empty${isCompact ? ' session-goal-compact' : ''}">
-                <button class="sidebar-goal-btn sidebar-goal-btn-inline" onclick="event.stopPropagation(); requestGoal('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:14px">auto_awesome</span></button>
+                <button class="sidebar-goal-btn sidebar-goal-btn-inline" onclick="event.stopPropagation(); requestGoal('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')" title="Generate goal" aria-label="Generate goal for ${escapeAttr(identity)}"><span class="material-icons" style="font-size:14px">auto_awesome</span></button>
                 <span class="session-goal-empty-label">No goal yet</span>
             </span>`;
     }
@@ -1544,94 +1544,94 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const unreadChip = '';
     void _renderAvatar; // avatars left the list (AGENT_LIST_COMPACT D-A); kept for other callers
     const _sleepingMenu = `
-            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${sid}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
+            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
                 Open Agent Tab
             </a>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}', 'wake')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'wake')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                 Wake
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                 Restart
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
                 Rename
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); setAgentIcon('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); setAgentIcon('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M5.5 9.5c0 0 1 1.5 2.5 1.5s2.5-1.5 2.5-1.5"/><circle cx="6" cy="6.5" r="0.5" fill="currentColor" stroke="none"/><circle cx="10" cy="6.5" r="0.5" fill="currentColor" stroke="none"/></svg>
                 Set Icon
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
                 Session Info
             </button>
             <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
                 Move Up
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionDown('${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionDown('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
                 Move Down
             </button>
             <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Remove Agent
             </button>`;
     const _awakeMenu = `
-            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${sid}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
+            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
                 Open Agent Tab
             </a>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
                 Attach
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                 Restart
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
                 Rename
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); setAgentIcon('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); setAgentIcon('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M5.5 9.5c0 0 1 1.5 2.5 1.5s2.5-1.5 2.5-1.5"/><circle cx="6" cy="6.5" r="0.5" fill="currentColor" stroke="none"/><circle cx="10" cy="6.5" r="0.5" fill="currentColor" stroke="none"/></svg>
                 Set Icon
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
                 Session Info
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}', 'sleep')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'sleep')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                 Sleep
             </button>
             <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
                 Move Up
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionDown('${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionDown('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
                 Move Down
             </button>
             <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}')">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Kill Session
             </button>`;
     const _doneMenu = `
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); selectHistorySession('${sid}')">
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); selectHistorySession('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 3h10v10H3z"/><path d="M6 6h4"/><path d="M6 9h4"/></svg>
                 View History
             </button>
             <hr class="overflow-menu-divider">
-            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissKilledSession('${sid}')">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissKilledSession('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Dismiss
             </button>`;
@@ -1651,8 +1651,8 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const stale = isStaleSession(s);
     const staleClass = stale ? ' session-stale' : '';
     const clickHandler = stale ? '' : isDone
-        ? `selectHistorySession('${sid}')`
-        : `selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${sid}', '${escapeAttr(sessionServer(s))}')`;
+        ? `selectHistorySession('${jsStr(sid)}')`
+        : `selectLiveSession('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', '${jsStr(sessionServer(s))}')`;
     // Focusable list item (not a button: it contains the kebab, the open-tab
     // anchor and the sparkle). Selection is delegated (see _wireListKeyboard).
     const ariaLabel = `${identity}, ${stateInfo.label}`
@@ -1662,10 +1662,10 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const stuckClass = stateInfo.key === 'stuck' ? ' is-stuck' : '';
     return `<li class="session-group-item${isActive ? ' active' : ''}${compactClass}${collapsedClass}${sleepingClass}${attentionClass}${stuckClass}${doneClass}${staleClass}"
         draggable="${stale ? 'false' : 'true'}"${stale ? ` aria-disabled="true" title="${escapeAttr(staleReason(s))}"` : ''}
-        data-state="${stateInfo.key}"
+        data-state="${escapeAttr(stateInfo.key)}"
         tabindex="0"
         aria-label="${escapeAttr(ariaLabel)}"${isActive ? ' aria-current="true"' : ''}
-        data-session-id="${sid}"
+        data-session-id="${escapeAttr(sid)}"
         data-server="${escapeAttr(sessionServer(s))}"
         data-group="${escapeAttr(groupName)}"
         ${clickHandler ? `onclick="${clickHandler}"` : ''}>
@@ -1693,7 +1693,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
 function _renderSleepingSummary(sleepingAgents, groupName, isCompact, teamDefaultDir) {
     const count = sleepingAgents.length;
     const expanded = _isSleepingExpanded(groupName);
-    let html = `<li class="sleeping-summary-row" onclick="expandSleepingGroup('${escapeAttr(groupName)}')">
+    let html = `<li class="sleeping-summary-row" onclick="expandSleepingGroup('${jsStr(groupName)}')">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
         <span class="sleeping-summary-label">${count} sleeping agent${count !== 1 ? 's' : ''}</span>
     </li>`;
@@ -1823,7 +1823,7 @@ function _railTile(s, active) {
     const railStale = isStaleSession(s);
     const railLabel = railStale ? `${label}: ${staleReason(s)}` : (showServerLabels() ? `${label} · ${serverLabel(sessionServer(s))}` : label);
     return `<button type="button" class="sidebar-rail-item${active ? ' active' : ''}${railStale ? ' session-stale' : ''}" title="${escapeAttr(railLabel)}" aria-label="${escapeAttr(railLabel)}"${railStale ? ' disabled' : ''}
-        ${railStale ? '' : `onclick="selectLiveSession('${escapeAttr(s.name)}', '${escapeAttr(s.agent_type)}', '${escapeAttr(s.session_id || '')}', '${escapeAttr(sessionServer(s))}')"`}><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
+        ${railStale ? '' : `onclick="selectLiveSession('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(s.session_id || '')}', '${jsStr(sessionServer(s))}')"`}><span class="rail-tile">${icon}<span class="rail-tile-text">${escapeHtml(_getInitials(resolveSessionIdentity(s)))}</span></span>${badge}</button>`;
 }
 
 function _railTeamColor(name) {
@@ -1884,7 +1884,7 @@ function _renderSidebarRail(sessions) {
         const style = ` style="--rail-accent:${escapeAttr(accent)}"`;
         const title = `${g.label} (${g.agents.length}) — click to ${collapsed ? 'expand' : 'collapse'}`;
         html += `<button type="button" class="sidebar-rail-group sidebar-rail-group-${g.kind}${collapsed ? ' collapsed' : ''}"${style} title="${escapeAttr(title)}" aria-expanded="${!collapsed}" aria-label="${escapeAttr(title)}"
-            onclick="toggleGroupCollapse('${escapeAttr(g.key)}')">${_RAIL_ICONS[g.kind]}<span class="sidebar-rail-letter">${escapeHtml(letter)}</span></button>`;
+            onclick="toggleGroupCollapse('${jsStr(g.key)}')">${_RAIL_ICONS[g.kind]}<span class="sidebar-rail-letter">${escapeHtml(letter)}</span></button>`;
         if (collapsed) continue;
         for (const s of g.agents) {
             const active = state.currentSession?.type === 'live' && state.currentSession.session_id === s.session_id;
@@ -2041,72 +2041,72 @@ export function renderLiveSessions(sessions) {
         const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${escapeAttr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${escapeAttr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${jsStr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${jsStr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchTerminalToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchTerminalToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
                     Add Terminal
                 </button>
                 <hr class="overflow-menu-divider">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8l2 2v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M6 3v3h4V3"/><rect x="5" y="9" width="6" height="3"/></svg>
                     Save as Template
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L3 7v7h10V7L8 2z"/><path d="M6 14v-4h4v4"/><line x1="8" y1="7" x2="8" y2="10"/><line x1="6.5" y1="8.5" x2="9.5" y2="8.5"/></svg>
                     Distill Knowledge
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1"/><polyline points="8 3 8 10"/><polyline points="5 6 8 3 11 6"/></svg>
                     Share Team
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleTeamSleep('${escapeAttr(boardName)}', '${sleepAction}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleTeamSleep('${jsStr(boardName)}', '${jsStr(sleepAction)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                     ${sleepLabel}
                 </button>
                 <hr class="overflow-menu-divider">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); setBoardAccentColor('${escapeAttr(boardName)}'); closeSidebarKebabs()">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); setBoardAccentColor('${jsStr(boardName)}'); closeSidebarKebabs()">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 1.5v13M1.5 8h13"/></svg>
                     Set Color
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamTokenUsage('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamTokenUsage('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13V5h3v8H2zM7 13V3h3v10H7zM12 13V7h3v6h-3z"/></svg>
                     Token Usage
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
                     Move Up
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3M4 9l4 4 4-4"/></svg>
                     Move Down
                 </button>
                 <hr class="overflow-menu-divider">
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); resetTeam('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); resetTeam('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8a7 7 0 0 1 12.9-3.8"/><path d="M15 8a7 7 0 0 1-12.9 3.8"/><polyline points="13 1 14 4.2 10.5 4.2"/><polyline points="3 15 2 11.8 5.5 11.8"/></svg>
                     Reset Team
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${escapeAttr(boardName)}')">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${escapeAttr(boardName)}')" title="Remove all killed agents from the sidebar">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${jsStr(boardName)}')" title="Remove all killed agents from the sidebar">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
                     Dismiss All
                 </button>
             </div>
         </div>`;
-        const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${escapeAttr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
+        const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${jsStr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
         const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
         const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents<span class="team-token-usage" data-board="${escapeAttr(boardName)}"></span></div>`;
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}" style="--team-accent: ${accentColor}">
-            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+            <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -2132,11 +2132,11 @@ export function renderLiveSessions(sessions) {
         const wfKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Workflow actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                ${wfRunId ? `<button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); selectWorkflowRun(${wfRunId})">
+                ${wfRunId ? `<button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); selectWorkflowRun(${Number(wfRunId)})">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 8h12M10 4l4 4-4 4"/></svg>
                     View Run
                 </button>` : ''}
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('wf:${escapeAttr(wfName)}')">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('wf:${jsStr(wfName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
                 </button>
@@ -2144,7 +2144,7 @@ export function renderLiveSessions(sessions) {
         </div>`;
 
         html += `<li class="session-board-card session-board-card-toplevel session-wf-card" style="border-left-color: var(--color-tool-agent)">
-            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" onclick="toggleGroupCollapse('wf:${escapeAttr(wfName)}')">
+            <div class="session-group-header board-card-header" data-group-name="wf:${escapeAttr(wfName)}" onclick="toggleGroupCollapse('wf:${jsStr(wfName)}')">
                 <div class="group-header-text"><div class="group-name-line"><span class="material-icons" style="font-size:14px;vertical-align:-2px;margin-right:3px;color:var(--color-tool-agent)">account_tree</span>${escapeHtml(wfName)}</div>${wfSubline}</div><span class="session-name-spacer"></span>${wfKebab}
             </div>
             <ul class="board-card-agents${wfCollapsed ? ' board-card-collapsed' : ''}">`;
@@ -2167,32 +2167,32 @@ export function renderLiveSessions(sessions) {
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="10" y1="5" x2="14" y2="5"/></svg>
                     Add Custom Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchStandaloneTerminal('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchStandaloneTerminal('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
                     Add Terminal
                 </button>
                 <hr class="overflow-menu-divider">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${escapeAttr(groupName)}', this.closest('.session-group-header'))">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${jsStr(groupName)}', this.closest('.session-group-header'))">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
                     Manage Tags
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${escapeAttr(groupName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10"/><path d="M4 7l4-4 4 4"/></svg>
                     Move Up
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${escapeAttr(groupName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3"/><path d="M4 9l4 4 4-4"/></svg>
                     Move Down
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${escapeAttr(groupName)}')">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
                 </button>
@@ -2205,8 +2205,8 @@ export function renderLiveSessions(sessions) {
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = sorted[0]?.working_directory || '';
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
-        const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
+        const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
             <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed) {
@@ -2236,32 +2236,32 @@ export function renderLiveSessions(sessions) {
         const groupKebab = `<div class="sidebar-kebab-wrapper group-kebab">
             <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
             <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchDefaultAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                     Add Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddStandaloneAgent('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="10" y1="5" x2="14" y2="5"/></svg>
                     Add Custom Agent
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchStandaloneTerminal('${groupWorkDirEsc}', '${escapeAttr(splitKey(groupName).server)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchStandaloneTerminal('${jsStr(groupWorkDirEsc)}', '${jsStr(splitKey(groupName).server)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
                     Add Terminal
                 </button>
                 <hr class="overflow-menu-divider">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${escapeAttr(groupName)}', this.closest('.session-group-header'))">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showFolderTagDropdown('${jsStr(groupName)}', this.closest('.session-group-header'))">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.5V3a1 1 0 0 1 1-1h5.5l5.5 5.5-5.5 5.5L2 8.5z"/><circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none"/></svg>
                     Manage Tags
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${escapeAttr(groupName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupUp('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10"/><path d="M4 7l4-4 4 4"/></svg>
                     Move Up
                 </button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${escapeAttr(groupName)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveGroupDown('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3"/><path d="M4 9l4 4 4-4"/></svg>
                     Move Down
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${escapeAttr(groupName)}')">
+                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killGroup('${jsStr(groupName)}')">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                     Kill All
                 </button>
@@ -2274,8 +2274,8 @@ export function renderLiveSessions(sessions) {
         const tagDots = renderFolderTagPills(fTags);
         const groupWorkDir = sorted[0]?.working_directory || '';
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
-        const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${escapeAttr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
-        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${escapeAttr(groupName)}')">
+        const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
+        html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
             <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
@@ -2310,59 +2310,59 @@ export function renderLiveSessions(sessions) {
                 const bKebab = `<div class="sidebar-kebab-wrapper group-kebab">
                     <button class="sidebar-kebab-btn group-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="Group actions">&#x22EE;</button>
                     <div class="sidebar-kebab-menu" style="display:none">
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${escapeAttr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
-                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${escapeAttr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamAvailabilityWorkspace('${jsStr(boardName)}')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>Team view</button>
+                <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamWorkingModeWorkspace('${jsStr(boardName)}')"><span class="material-icons" style="font-size:14px;vertical-align:-2px" aria-hidden="true">settings</span> Team settings</button>
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showAddAgentToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
                             Add Agent
                         </button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchTerminalToBoard('${escapeAttr(boardName)}', '${escapeAttr(boardWorkDir)}')">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); launchTerminalToBoard('${jsStr(boardName)}', '${jsStr(boardWorkDir)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="1.5"/><polyline points="5 7 7 9 5 11"/><line x1="9" y1="11" x2="11" y2="11"/></svg>
                             Add Terminal
                         </button>
                         <hr class="overflow-menu-divider">
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${escapeAttr(boardName)}')">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); saveTeamFromSidebar('${jsStr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8l2 2v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M6 3v3h4V3"/><rect x="5" y="9" width="6" height="3"/></svg>
                             Save as Template
                         </button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${escapeAttr(boardName)}')">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); distillTeamKnowledge('${jsStr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2L3 7v7h10V7L8 2z"/><path d="M6 14v-4h4v4"/><line x1="8" y1="7" x2="8" y2="10"/><line x1="6.5" y1="8.5" x2="9.5" y2="8.5"/></svg>
                             Distill Knowledge
                         </button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${escapeAttr(boardName)}')">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); shareAgentTeam('${jsStr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v1a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-1"/><polyline points="8 3 8 10"/><polyline points="5 6 8 3 11 6"/></svg>
                             Share Team
                         </button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleTeamSleep('${escapeAttr(boardName)}', '${sleepAction}')">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleTeamSleep('${jsStr(boardName)}', '${jsStr(sleepAction)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                             ${sleepLabel}
                         </button>
                         <hr class="overflow-menu-divider">
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); setBoardAccentColor('${escapeAttr(boardName)}'); closeSidebarKebabs()">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); setBoardAccentColor('${jsStr(boardName)}'); closeSidebarKebabs()">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6.5"/><path d="M8 1.5v13M1.5 8h13"/></svg>
                             Set Color
                         </button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamTokenUsage('${escapeAttr(boardName)}')">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showTeamTokenUsage('${jsStr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 13V5h3v8H2zM7 13V3h3v10H7zM12 13V7h3v6h-3z"/></svg>
                             Token Usage
                         </button>
                         <hr class="overflow-menu-divider">
-                        <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${escapeAttr(boardName)}')">
+                        <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                             Kill All
                         </button>
-                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${escapeAttr(boardName)}')" title="Remove all killed agents from the sidebar">
+                        <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${jsStr(boardName)}')" title="Remove all killed agents from the sidebar">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
                             Dismiss All
                         </button>
                     </div>
                 </div>`;
-                const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${escapeAttr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
+                const branchLine = boardBranch ? `<div class="board-card-branch-line"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="6" r="2"/><path d="M5 6v4M10.2 5.2 7 8"/></svg> <span class="branch-name">${escapeHtml(boardBranch)}</span><button class="branch-copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${jsStr(boardBranch)}'); this.textContent='✓'; setTimeout(() => this.innerHTML='<svg width=\\'10\\' height=\\'10\\' viewBox=\\'0 0 16 16\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' stroke-linecap=\\'round\\'><rect x=\\'4\\' y=\\'4\\' width=\\'9\\' height=\\'9\\' rx=\\'1\\'/><path d=\\'M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1\\'/></svg>', 1000)" title="Copy branch name"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="4" y="4" width="9" height="9" rx="1"/><path d="M4 8H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/></svg></button></div>` : '';
                 const teamDirLine = boardWorkDir ? `<div class="board-card-dir" title="${escapeAttr(boardWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(boardWorkDir, 3))}</div>${branchLine}` : '';
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card session-team-group" style="--team-accent: ${accentColor}">
-                    <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${escapeAttr(boardName)}')">
-                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${escapeAttr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                    <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
@@ -2547,7 +2547,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
             const countInfo = s.message_count != null ? `${s.message_count} msgs` : "";
             const subsInfo = s.subscriber_count != null ? `${s.subscriber_count} members` : "";
             const meta = [countInfo, subsInfo].filter(Boolean).join(' · ');
-            return `<li class="${isActive ? 'active' : ''}" onclick="selectBoardProject('${escapeAttr(projectName)}')">
+            return `<li class="${isActive ? 'active' : ''}" onclick="selectBoardProject('${jsStr(projectName)}')">
                 <div class="session-row-top">${timeTag}<span class="badge board-badge">Group</span></div>
                 <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
                 ${meta ? `<div class="session-row-bottom"><span class="session-meta">${escapeHtml(meta)}</span></div>` : ""}
@@ -2573,7 +2573,7 @@ export function renderHistorySessions(sessions, total, page, pageSize) {
         const durStr = s.duration_sec != null ? formatDuration(s.duration_sec) : '';
         const durTag = durStr ? `<span class="session-dur">${escapeHtml(durStr)}</span>` : '';
         const bottomMeta = [agentTag, reminderTag, sourceTypeTag, branchTag].filter(Boolean).join('');
-        return `<li class="${isActive ? 'active' : ''}" onclick="selectHistorySession('${escapeAttr(s.session_id)}')">
+        return `<li class="${isActive ? 'active' : ''}" onclick="selectHistorySession('${jsStr(s.session_id)}')">
             <div class="session-row-top">${timeTag}${durTag}${typeTag}${tagDots}</div>
             <div class="session-row-mid"><span class="session-label" title="${escapeHtml(label)}">${escapeHtml(truncated)}</span></div>
             ${bottomMeta ? `<div class="session-row-bottom">${bottomMeta}</div>` : ""}
@@ -2603,9 +2603,9 @@ export function renderPaginationControls(total, page, pageSize) {
     }
 
     container.innerHTML = `
-        <button class="btn btn-small" ${page <= 1 ? 'disabled' : ''} onclick="loadHistoryPage(${page - 1})">Prev</button>
+        <button class="btn btn-small" ${page <= 1 ? 'disabled' : ''} onclick="loadHistoryPage(${Number(page - 1)})">Prev</button>
         <span class="pagination-info">${page} / ${totalPages} (${total})</span>
-        <button class="btn btn-small" ${page >= totalPages ? 'disabled' : ''} onclick="loadHistoryPage(${page + 1})">Next</button>
+        <button class="btn btn-small" ${page >= totalPages ? 'disabled' : ''} onclick="loadHistoryPage(${Number(page + 1)})">Next</button>
     `;
 }
 
@@ -2736,7 +2736,7 @@ export function showTeamDetails(boardName) {
     pop.setAttribute('tabindex', '-1');
     pop.innerHTML = `
         <div class="team-details-head">
-            <span id="${titleId}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
+            <span id="${Number(titleId)}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
             <button type="button" class="team-details-close" aria-label="Close team details" onclick="hideTeamDetails()">&times;</button>
         </div>
         <dl class="team-details-list">
@@ -2784,7 +2784,7 @@ function _renderTokenLine(s) {
     const levelClass = pct >= 80 ? ' ctx-error' : pct >= 50 ? ' ctx-warning' : '';
     // Informational only: no clickable action here. Users compact by typing
     // /compact directly in the chat/terminal (operator decision, task #75).
-    return `<span class="session-context-bar${levelClass}" title="${titleText}">
+    return `<span class="session-context-bar${levelClass}" title="${escapeAttr(titleText)}">
         <span class="context-bar-track"><span class="context-bar-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></span></span>
         <span class="context-bar-label">${label}</span>
     </span>`;

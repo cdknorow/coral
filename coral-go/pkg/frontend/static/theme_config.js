@@ -50,7 +50,7 @@ function renderModal() {
             return `<div class="theme-row">
                 <label class="theme-label" title="${escapeHtml(cssVar)}">${escapeHtml(label)}</label>
                 <div class="theme-color-wrap">
-                    <input type="color" class="theme-color-picker" value="${hexValue}" data-var="${escapeHtml(cssVar)}"
+                    <input type="color" class="theme-color-picker" value="${escapeAttr(hexValue)}" data-var="${escapeHtml(cssVar)}"
                         oninput="updateThemeVar(this)">
                     <input type="text" class="theme-color-text" value="${escapeHtml(value)}" placeholder="default" data-var="${escapeHtml(cssVar)}"
                         oninput="updateThemeVarText(this)">

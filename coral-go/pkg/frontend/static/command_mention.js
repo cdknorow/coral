@@ -133,7 +133,7 @@ function renderDropdown(query) {
         const cls = i === selectedIndex ? "command-mention-item selected" : "command-mention-item";
         const nameHtml = highlightMatch(cmd.command, query);
         const descHtml = escapeHtml(cmd.description || "");
-        return `<div class="${cls}" data-index="${i}">
+        return `<div class="${cls}" data-index="${Number(i)}">
             <span class="cmd-name">${nameHtml}</span>
             <span class="cmd-desc">${descHtml}</span>
         </div>`;

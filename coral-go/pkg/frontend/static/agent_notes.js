@@ -1,7 +1,7 @@
 /* Agent notes — single markdown document with click-to-edit, blur-to-save */
 
 import { state } from './state.js';
-import { showToast } from './utils.js';
+import { showToast, sanitizeMarkdown } from './utils.js';
 import { serverFetch, serverForSession } from './server_base.js';
 import { currentServer } from './server_base.js';
 
@@ -53,7 +53,7 @@ function renderMarkdown() {
     if (!_lastSaved.trim()) {
         rendered.innerHTML = '<div class="note-md-placeholder">Click to add notes...</div>';
     } else if (typeof marked !== 'undefined') {
-        rendered.innerHTML = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(marked.parse(_lastSaved)) : marked.parse(_lastSaved);
+        rendered.innerHTML = sanitizeMarkdown(_lastSaved);
     } else {
         rendered.textContent = _lastSaved;
     }

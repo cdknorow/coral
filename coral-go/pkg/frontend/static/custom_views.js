@@ -1,7 +1,7 @@
 /* Custom Views — user-generated sidebar tabs rendered in sandboxed iframes */
 
 import { state } from './state.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, jsStr } from './utils.js';
 
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
@@ -49,9 +49,9 @@ function _renderViewTabs() {
     if (!container) return;
 
     container.innerHTML = _views.map(v =>
-        `<button class="agentic-tab" onclick="switchAgenticTab('custom-view-${v.id}', 'top')"
-                 id="agentic-tab-custom-view-${v.id}" title="${escapeHtml(v.name)}" aria-label="${escapeHtml(v.name)}"
-                 oncontextmenu="event.preventDefault(); window._showViewContextMenu(event, ${v.id})">
+        `<button class="agentic-tab" onclick="switchAgenticTab('custom-view-${jsStr(v.id)}', 'top')"
+                 id="agentic-tab-custom-view-${Number(v.id)}" title="${escapeHtml(v.name)}" aria-label="${escapeHtml(v.name)}"
+                 oncontextmenu="event.preventDefault(); window._showViewContextMenu(event, ${Number(v.id)})">
             <span class="material-icons">dashboard</span>
         </button>`
     ).join('');
@@ -61,7 +61,7 @@ function _renderViewTabs() {
     if (!panelContainer) return;
 
     panelContainer.innerHTML = _views.map(v =>
-        `<div id="agentic-panel-custom-view-${v.id}" class="agentic-panel custom-view-panel"></div>`
+        `<div id="agentic-panel-custom-view-${Number(v.id)}" class="agentic-panel custom-view-panel"></div>`
     ).join('');
 }
 
@@ -196,8 +196,8 @@ window._showViewContextMenu = function(event, viewId) {
     menu.style.left = event.clientX + 'px';
     menu.style.top = event.clientY + 'px';
     menu.innerHTML = `
-        <button onclick="window._showEditViewModal(${viewId}); this.parentElement.remove()">Edit</button>
-        <button onclick="window._deleteView(${viewId}); this.parentElement.remove()">Delete</button>
+        <button onclick="window._showEditViewModal(${Number(viewId)}); this.parentElement.remove()">Edit</button>
+        <button onclick="window._deleteView(${Number(viewId)}); this.parentElement.remove()">Delete</button>
     `;
     document.body.appendChild(menu);
 

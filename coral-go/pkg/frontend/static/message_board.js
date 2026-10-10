@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr } from './utils.js';
 import { state } from './state.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
@@ -75,7 +75,7 @@ function renderBoardSidebar(projects) {
     }
     list.innerHTML = projects.map(p => {
         const active = currentProject === p.project ? 'active' : '';
-        return `<li class="session-list-item ${active}" onclick="selectBoardProject('${escapeAttr(p.project)}')">
+        return `<li class="session-list-item ${active}" onclick="selectBoardProject('${jsStr(p.project)}')">
             <span class="session-name">${escapeHtml(keyLabel(p.project))}</span>
             <span class="mb-project-count">${p.message_count} msgs</span>
         </li>`;
@@ -166,7 +166,7 @@ async function loadBoardProjectList() {
         }
         empty.style.display = 'none';
         ul.innerHTML = projects.map(p => `
-            <li class="session-list-item" onclick="selectBoardProject('${escapeAttr(p.project)}')"
+            <li class="session-list-item" onclick="selectBoardProject('${jsStr(p.project)}')"
                 style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px">
                 <div>
                     <strong>${escapeHtml(keyLabel(p.project))}</strong>
@@ -258,14 +258,14 @@ function renderMessages(messages) {
         const isLeader = /orchestrator/i.test(agent) || m.subscriber_id === 'dashboard';
         const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
         const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
-        const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${m.id}" ${_selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleMessageSelect(${m.id}, this.checked)">` : '';
+        const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleMessageSelect(${Number(m.id)}, this.checked)">` : '';
         return `
         <div class="mb-message ${spacing}${alignClass}${selectedClass}" data-message-id="${escapeAttr(String(m.id))}" style="border-left:3px solid ${hexToRgba(color, 0.55)}; border-bottom:2px solid ${hexToRgba(color, 0.3)}">
             <div class="mb-message-header">
                 ${checkbox}
                 <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
-                <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${m.id})" title="Delete message">&times;</button>
+                <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${Number(m.id)})" title="Delete message">&times;</button>
             </div>
             <div class="mb-message-body">${renderMarkdown(boardMessageText(m.content))}</div>
         </div>`;
@@ -344,7 +344,7 @@ async function loadBoardSubscribers(project) {
             const sessionName = escapeAttr(s.session_name || '');
             const icon = s.icon ? `<span class="agent-icon">${escapeHtml(s.icon)}</span> ` : '';
             return `<li style="padding:6px 0;border-bottom:1px solid var(--border)">
-                <div style="font-weight:600;font-size:12px">${icon}<a href="javascript:void(0)" class="subscriber-history-link" onclick="navigateToAgentSession('${sessionName}', '${displayName}')" title="View chat history">${escapeHtml(s.job_title)}</a></div>
+                <div style="font-weight:600;font-size:12px">${icon}<a href="javascript:void(0)" class="subscriber-history-link" onclick="navigateToAgentSession('${jsStr(sessionName)}', '${jsStr(displayName)}')" title="View chat history">${escapeHtml(s.job_title)}</a></div>
                 <div style="font-size:10px;color:var(--text-muted)">${escapeHtml(s.subscriber_id)}</div>
             </li>`;
         }).join('');
@@ -590,7 +590,7 @@ export async function showExportBoardModal() {
         const role = escapeHtml(s.job_title || s.subscriber_id);
         const sid = escapeAttr(s.subscriber_id);
         return `<label style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;white-space:nowrap">
-            <input type="checkbox" class="export-agent-cb" value="${sid}" data-role="${escapeAttr(s.job_title || s.subscriber_id)}">
+            <input type="checkbox" class="export-agent-cb" value="${escapeAttr(sid)}" data-role="${escapeAttr(s.job_title || s.subscriber_id)}">
             <span style="font-weight:600;font-size:12px">${role}</span>
         </label>`;
     }).join('');

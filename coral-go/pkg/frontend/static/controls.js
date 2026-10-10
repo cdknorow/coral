@@ -4,7 +4,7 @@ import { dashboardPromptRequested } from './dashboard_analytics.js';
 import { state, sessionKey, saveSessionDraft } from './state.js';
 import { claimOwnership } from './ownership.js';
 import { popoutTerminalBlocked } from './popout.js';
-import { escapeHtml, escapeAttr, showToast, showView } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, showView, jsStr } from './utils.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
@@ -313,8 +313,8 @@ export function renderQuickActions() {
     const macroButtons = macros.map((m, i) => {
         const cls = m.danger ? "btn-nav btn-danger" : "btn-nav";
         return `<span class="macro-btn-wrap">
-            <button class="${cls}" onclick="executeMacro('${escapeAttr(m.command)}')" data-tooltip="${escapeAttr(m.command)}">${escapeHtml(m.label)}</button>
-            <button class="macro-delete-btn" onclick="deleteMacro(${i})" title="Remove macro">&times;</button>
+            <button class="${cls}" onclick="executeMacro('${jsStr(m.command)}')" data-tooltip="${escapeAttr(m.command)}">${escapeHtml(m.label)}</button>
+            <button class="macro-delete-btn" onclick="deleteMacro(${Number(i)})" title="Remove macro">&times;</button>
         </span>`;
     }).join("");
 
@@ -964,9 +964,9 @@ export function renderAttachments(session = state.currentSession) {
     container.style.display = "flex";
     container.innerHTML = list.map((att, i) => `
         <div class="image-attachment" title="${escapeAttr(att.path)}">
-            <img src="${att.previewUrl}" alt="${escapeAttr(att.filename)}" />
+            <img src="${escapeAttr(att.previewUrl)}" alt="${escapeAttr(att.filename)}" />
             <span class="image-attachment-name">${escapeHtml(att.filename)}</span>
-            <button class="image-attachment-remove" onclick="removeAttachment(${i})" title="Remove">&times;</button>
+            <button class="image-attachment-remove" onclick="removeAttachment(${Number(i)})" title="Remove">&times;</button>
         </div>
     `).join("");
 }

@@ -5,7 +5,7 @@
 export function safeNext(raw, fallback = '/') {
     if (typeof raw !== 'string' || raw === '') return fallback;
     if (raw[0] !== '/' || raw[1] === '/' || raw[1] === '\\') return fallback;
-    if (/[\\\u0000-\u001f\u007f]/.test(raw)) return fallback;
+    if (/[\\\u0000-\u001f\u007f]/.test(raw) || /%2f|%5c/i.test(raw)) return fallback; // no raw or encoded slash tricks
     try {
         const u = new URL(raw, location.origin);
         if (u.origin !== location.origin) return fallback;

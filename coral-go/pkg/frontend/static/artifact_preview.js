@@ -86,7 +86,7 @@ function _renderManifest(body, manifest, filename, ctx) {
     const rows = manifest.entries.map((entry, index) => {
         const digest = CORAL_ARTIFACT_URI_RE.exec(entry.uri)[1];
         return `<li class="artifact-manifest-entry">
-        <div class="artifact-manifest-main"><button type="button" class="artifact-manifest-open" data-manifest-index="${index}">
+        <div class="artifact-manifest-main"><button type="button" class="artifact-manifest-open" data-manifest-index="${Number(index)}">
             <span class="artifact-manifest-name">${escapeHtml(entry.name)}</span>
             <span class="artifact-manifest-type">${escapeHtml(_entryType(entry))}</span>
         </button><a class="artifact-manifest-download" href="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" download="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>

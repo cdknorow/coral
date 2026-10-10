@@ -4,9 +4,13 @@
   "private": true,
   "description": "End-to-end tests for Coral frontend JS via headless Chrome + CDP",
   "scripts": {
-    "test": "node acf_model_field.test.js"
+    "test": "node acf_model_field.test.js",
+    "test:cloud": "node csp_shapes_check.test.js && node csp_compat.test.js && node cloud_servers.test.js && node renderer_payloads.test.mjs && node cloud_hardening.test.mjs && node server_base.test.js && node server_status.test.js && node launch_server.test.js"
   },
   "dependencies": {
     "chrome-remote-interface": "^0.33.0"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
   }
 }

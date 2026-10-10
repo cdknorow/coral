@@ -3,7 +3,7 @@ import { checkAgentCLI } from './prerequisites.js';
 
 import { state } from './state.js';
 import { showMobileConnectModal, hideMobileConnectModal } from './mobile_connect.js';
-import { showToast, escapeHtml, escapeAttr } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { loadBoardProjects } from './message_board.js';
 import { getEngineNames, getEngineName, setRendererOverride } from './renderers.js';
@@ -965,12 +965,15 @@ function _updatePermFlagButtons(selectEl) {
     modal.querySelectorAll('.flag-shortcut-btn').forEach(btn => {
         const onclick = btn.getAttribute('onclick') || '';
         // Match buttons that toggle a dangerously- or --full-auto flag
-        if (onclick.includes('dangerously-') || onclick.includes('full-auto') || onclick.includes('_setPermFlagsForInput')) {
-            // Extract the flag input ID from the onclick
+        if (onclick.includes('dangerously-') || onclick.includes('full-auto') || onclick.includes('_setPermFlagsForInput') || btn.dataset.flagInput) {
+            // Extract the flag input ID from the onclick (or from the marker set below)
             const match = onclick.match(/(?:toggleFlag|_setPermFlagsForInput)\('([^']+)'/);
-            if (match) {
-                const flagInputId = match[1];
-                btn.setAttribute('onclick', `window._setPermFlagsForInput('${flagInputId}','${agentType}','${mode}')`);
+            const flagInputId = match ? match[1] : btn.dataset.flagInput;
+            if (flagInputId) {
+                // A real listener, not an interpolated onclick string: the values come from the DOM.
+                btn.removeAttribute('onclick');
+                btn.dataset.flagInput = flagInputId;
+                btn.onclick = () => window._setPermFlagsForInput(flagInputId, agentType, mode);
                 btn.textContent = flag;
             }
         }
@@ -1068,7 +1071,7 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
             </p>
             <div style="background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-family:var(--font-mono);font-size:13px;display:flex;align-items:center;gap:8px">
                 <code style="flex:1;user-select:all">${escapeHtml(info.cmd)}</code>
-                <button class="btn btn-small" onclick="navigator.clipboard.writeText('${info.cmd.replace(/'/g, "\\'")}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                <button class="btn btn-small" onclick="navigator.clipboard.writeText('${jsStr(info.cmd)}'); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
             </div>
             <div class="modal-actions" style="margin-top:16px">
                 ${remote ? '' : '<button class="btn" data-action="settings">Set CLI Path</button>'}
@@ -1329,7 +1332,10 @@ function _renderPresetButtons(containerId, onClickFn, opts = {}) {
     if (!container) return;
     const saved = _getSavedPersonas();
 
-    let html = `<select class="agent-preset-select" onchange="${onClickFn}(this.value); this.value='';">`;
+    const target = opts.target;
+    let html = target
+        ? `<select class="agent-preset-select" onchange="${jsIdent(onClickFn)}(this.value, '${jsStr(target)}'); this.value='';">`
+        : `<select class="agent-preset-select" onchange="${jsIdent(onClickFn)}(this.value); this.value='';">`;
     html += `<option value="" disabled selected>Choose a preset or custom...</option>`;
     html += `<optgroup label="Built-in">`;
     for (const preset of AGENT_PRESETS) {
@@ -1847,7 +1853,7 @@ function _renderPermChips(containerId, type, capabilities) {
     for (const cap of ALL_CAPABILITIES) {
         const isActive = baseCaps.includes(cap);
         const cls = `perm-chip${isActive ? ' active' : ''}`;
-        html += `<button class="${cls}" data-cap="${cap}" data-type="${type}" onclick="window._togglePermChip(this)">${CAPABILITY_LABELS[cap] || cap}</button>`;
+        html += `<button class="${cls}" data-cap="${escapeAttr(cap)}" data-type="${escapeAttr(type)}" onclick="window._togglePermChip(this)">${CAPABILITY_LABELS[cap] || cap}</button>`;
     }
     container.innerHTML = html;
 
@@ -1951,7 +1957,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
 
     let presetHTML = '';
     if (showPreset) {
-        presetHTML = `<div id="${uid}-presets" class="agent-preset-selector" style="margin-bottom:8px"></div>`;
+        presetHTML = `<div id="${escapeAttr(uid)}-presets" class="agent-preset-selector" style="margin-bottom:8px"></div>`;
     }
 
     let nameHTML = '';
@@ -1998,7 +2004,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
             </label>
             <label class="acf-model-wrap">Model <span style="color:var(--text-muted);font-weight:normal">(optional)</span>:
                 <input type="text" class="acf-model" list="acf-models-${uid}" placeholder="Leave blank to use default" autocomplete="off" value="${escapeAttr(modelVal)}">
-                <datalist id="acf-models-${uid}"></datalist>
+                <datalist id="acf-models-${escapeAttr(uid)}"></datalist>
             </label>
         </div>
         <div class="acf-cli-warning" style="display:none;margin:8px 0" role="status"></div>
@@ -2007,18 +2013,18 @@ function renderAgentConfigForm(containerId, opts = {}) {
         </label>
         ${autoPermissionsHTML}
         <div class="permissions-section">
-            <button type="button" class="permissions-toggle-btn" onclick="window._togglePermissions('${uid}-perms')">
+            <button type="button" class="permissions-toggle-btn" onclick="window._togglePermissions('${jsStr(uid)}-perms')">
                 <svg class="permissions-chevron" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M6 4l4 4-4 4z"/></svg>
                 Permissions <span class="acf-perms-summary" style="color:var(--text-muted);font-weight:normal;font-size:11px">(${escapeHtml(permsSummary)})</span>
             </button>
-            <div id="${uid}-perms" class="permissions-editor" style="display:none">
+            <div id="${escapeAttr(uid)}-perms" class="permissions-editor" style="display:none">
                 <div class="perms-group">
                     <label class="perms-label">Allow:</label>
-                    <div id="${uid}-perms-allow" class="perms-chips"></div>
+                    <div id="${escapeAttr(uid)}-perms-allow" class="perms-chips"></div>
                 </div>
                 <div class="perms-group">
                     <label class="perms-label">Deny:</label>
-                    <div id="${uid}-perms-deny" class="perms-chips"></div>
+                    <div id="${escapeAttr(uid)}-perms-deny" class="perms-chips"></div>
                 </div>
                 <div class="perms-shell-patterns" style="display:none">
                     <label class="perms-label">Shell patterns <span style="color:var(--text-muted);font-weight:normal">(comma-separated)</span>:</label>
@@ -2041,7 +2047,7 @@ function renderAgentConfigForm(containerId, opts = {}) {
 
     // Render presets if enabled — pass containerId so the preset handler knows which ACF to update
     if (showPreset) {
-        _renderPresetButtons(`${uid}-presets`, `(function(v){ window._applyACFPresetFor('${containerId}', v) })`);
+        _renderPresetButtons(`${uid}-presets`, 'window._applyACFPresetValue', { target: containerId });
     }
 
     // Loaded values are classified against the provider's known defaults and
@@ -2219,6 +2225,7 @@ function _applyACFPresetFor(containerId, name) {
     }
 }
 window._applyACFPresetFor = _applyACFPresetFor;
+window._applyACFPresetValue = (value, containerId) => _applyACFPresetFor(containerId, value);
 
 // Default team: first 3 presets
 const DEFAULT_TEAM_PRESETS = AGENT_PRESETS.slice(0, 4);
@@ -2599,7 +2606,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
                 </div>
             </div>
             <div class="team-agent-form" hidden>
-                <div id="${acfId}"></div>
+                <div id="${Number(acfId)}"></div>
             </div>
         </div>
     `;
@@ -2692,12 +2699,12 @@ function _showAddAgentPicker() {
 
     let html = '';
     for (const preset of available) {
-        html += `<button class="agent-picker-item" onclick="window._addPresetAgent('${escapeAttr(preset.name)}')">${escapeHtml(preset.name)}</button>`;
+        html += `<button class="agent-picker-item" onclick="window._addPresetAgent('${jsStr(preset.name)}')">${escapeHtml(preset.name)}</button>`;
     }
     if (savedAvailable.length > 0) {
         if (available.length > 0) html += '<div class="agent-picker-divider"></div>';
         for (const persona of savedAvailable) {
-            html += `<button class="agent-picker-item agent-preset-saved" onclick="window._addPresetAgent('${escapeAttr(persona.name)}')">${escapeHtml(persona.name)}</button>`;
+            html += `<button class="agent-picker-item agent-preset-saved" onclick="window._addPresetAgent('${jsStr(persona.name)}')">${escapeHtml(persona.name)}</button>`;
         }
     }
     if (available.length > 0 || savedAvailable.length > 0) {
@@ -3307,7 +3314,7 @@ async function _loadLicenseTierBadge() {
                 storeProURL = supporterURL(sData, 'settings_tier_badge', storeProURL);
             } catch (_) {}
             badge.innerHTML = '<span class="tier-label tier-trial">Free</span>' +
-                `<a href="${storeProURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:var(--accent);margin-left:8px;text-decoration:none">Support the developer</a>`;
+                `<a href="${escapeAttr(storeProURL)}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:var(--accent);margin-left:8px;text-decoration:none">Support the developer</a>`;
         }
         badge.style.display = '';
     } catch { /* silent — non-critical */ }
@@ -3417,7 +3424,7 @@ export async function showSettingsModal() {
             for (const t of customThemes) {
                 const name = escapeAttr(t.name);
                 const label = escapeHtml(t.name);
-                options += `<option value="custom:${name}">${label}</option>`;
+                options += `<option value="custom:${escapeAttr(name)}">${label}</option>`;
             }
         }
         themeSelect.innerHTML = options;
@@ -3622,7 +3629,7 @@ async function _loadLicenseStatus() {
                 }
             } catch { /* use default */ }
             container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Free — fully unlocked. A one-time license supports development and retires the activation reminder.</span>
-                <br><a href="${storeURL}" target="_blank" rel="noopener" onclick="_trackSupporterClick('license_settings_panel')" class="btn btn-small btn-primary" style="margin-top:8px;display:inline-block;text-decoration:none;font-size:11px">Support the developer</a>`;
+                <br><a href="${escapeAttr(storeURL)}" target="_blank" rel="noopener" onclick="_trackSupporterClick('license_settings_panel')" class="btn btn-small btn-primary" style="margin-top:8px;display:inline-block;text-decoration:none;font-size:11px">Support the developer</a>`;
         }
     } catch {
         container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Unable to check license</span>`;

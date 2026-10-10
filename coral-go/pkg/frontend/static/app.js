@@ -570,7 +570,7 @@ function renderFilterTagPills() {
     }
     container.innerHTML = filterState.tagIds.map(id => {
         const name = tagMap[id] || `Tag ${id}`;
-        return `<span class="hf-tag-pill" data-tag-id="${id}">
+        return `<span class="hf-tag-pill" data-tag-id="${Number(id)}">
             ${escapeHtml(name)}
             <span class="hf-tag-remove">&times;</span>
         </span>`;

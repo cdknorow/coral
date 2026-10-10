@@ -1,6 +1,6 @@
 /* Workflows: list, detail, run views, and CRUD */
 
-import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast } from './utils.js';
+import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast, jsStr } from './utils.js';
 import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
 
@@ -218,7 +218,7 @@ function renderWorkflowList() {
             lastRunHtml = '<span style="color:var(--text-muted)">Never run</span>';
         }
 
-        return `<div class="wf-card" onclick="selectWorkflow(${wf.id})">
+        return `<div class="wf-card" onclick="selectWorkflow(${Number(wf.id)})">
             <div class="wf-card-top">
                 <span class="wf-card-name">${esc(wf.name)}</span>
                 <span class="wf-card-badges">
@@ -272,7 +272,7 @@ function renderWorkflowDetail(wf, runs) {
     if (runs.length) {
         const rowsHtml = runs.map(r => {
             const statusIcon = statusIconHtml(r.status);
-            return `<tr onclick="selectWorkflowRun(${r.id})">
+            return `<tr onclick="selectWorkflowRun(${Number(r.id)})">
                 <td>#${r.id}</td>
                 <td>${statusIcon} ${esc(r.status)}</td>
                 <td>${esc(r.trigger_type || '')}</td>
@@ -295,14 +295,14 @@ function renderWorkflowDetail(wf, runs) {
                 ${wf.description ? `<div style="color:var(--text-secondary);font-size:13px;margin-top:2px">${esc(wf.description)}</div>` : ''}
             </div>
             <div class="wf-detail-actions">
-                <button class="btn btn-sm btn-primary" onclick="triggerWorkflow(${wf.id})">
+                <button class="btn btn-sm btn-primary" onclick="triggerWorkflow(${Number(wf.id)})">
                     <span class="material-icons" style="font-size:14px">play_arrow</span> Run
                 </button>
-                <button class="btn btn-sm" onclick="editWorkflow(${wf.id})">Edit</button>
-                <button class="btn btn-sm" onclick="editWorkflowWithAgent(${wf.id})">
+                <button class="btn btn-sm" onclick="editWorkflow(${Number(wf.id)})">Edit</button>
+                <button class="btn btn-sm" onclick="editWorkflowWithAgent(${Number(wf.id)})">
                     <span class="material-icons" style="font-size:14px">smart_toy</span> Edit with Agent
                 </button>
-                <button class="btn btn-sm" style="color:var(--error)" onclick="deleteWorkflow(${wf.id}, '${esc(wf.name)}')">Delete</button>
+                <button class="btn btn-sm" style="color:var(--error)" onclick="deleteWorkflow(${Number(wf.id)}, '${jsStr(wf.name)}')">Delete</button>
             </div>
         </div>
         <div class="wf-detail-meta">
@@ -418,11 +418,11 @@ function renderRunDetail(run) {
             const outputId = `wf-step-output-${run.id}-${i}`;
             const autoExpand = isFailed ? ' wf-expanded' : '';
             outputHtml = `
-                <div class="wf-run-step-output-toggle" onclick="document.getElementById('${outputId}').classList.toggle('wf-expanded')">
+                <div class="wf-run-step-output-toggle" onclick="document.getElementById('${jsStr(outputId)}').classList.toggle('wf-expanded')">
                     <span class="material-icons" style="font-size:14px">terminal</span> Output
                     <span class="material-icons wf-toggle-arrow" style="font-size:14px">expand_more</span>
                 </div>
-                <div id="${outputId}" class="wf-run-step-output${autoExpand}">${esc(s.output_tail)}</div>`;
+                <div id="${Number(outputId)}" class="wf-run-step-output${autoExpand}">${esc(s.output_tail)}</div>`;
         }
 
         // File list for steps with artifacts
@@ -439,7 +439,7 @@ function renderRunDetail(run) {
         // Session link for agent steps
         let agentHtml = '';
         if (s.type === 'agent' && s.session_id) {
-            agentHtml = `<span class="wf-step-agent-link" onclick="event.stopPropagation(); selectLiveSession('${esc(s.session_name || s.session_id)}')">
+            agentHtml = `<span class="wf-step-agent-link" onclick="event.stopPropagation(); selectLiveSession('${jsStr(s.session_name || s.session_id)}')">
                 <span class="material-icons" style="font-size:13px">open_in_new</span> View agent
             </span>`;
         }
@@ -462,13 +462,13 @@ function renderRunDetail(run) {
     }).join('');
 
     const killBtn = isActive
-        ? `<button class="btn btn-sm" style="color:var(--error)" onclick="killWorkflowRun(${run.id})">
+        ? `<button class="btn btn-sm" style="color:var(--error)" onclick="killWorkflowRun(${Number(run.id)})">
             <span class="material-icons" style="font-size:14px">stop</span> Kill
           </button>`
         : '';
 
     const retriggerBtn = !isActive && run.workflow_id
-        ? `<button class="btn btn-sm" onclick="triggerWorkflow(${run.workflow_id})">
+        ? `<button class="btn btn-sm" onclick="triggerWorkflow(${Number(run.workflow_id)})">
             <span class="material-icons" style="font-size:14px">replay</span> Re-run
           </button>`
         : '';

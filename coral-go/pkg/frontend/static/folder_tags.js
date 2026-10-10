@@ -1,7 +1,7 @@
 /* Folder-level tags: load, render, dropdown picker, add/remove */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, jsStr } from './utils.js';
 import { renderLiveSessions } from './render.js';
 import { loadAllTags } from './tags.js';
 
@@ -81,7 +81,7 @@ function _buildDropdownHtml(folderName, currentTags) {
         currentHtml = `<div class="folder-tag-current">${currentTags.map(t =>
             `<span class="tag-pill" style="background:${escapeHtml(t.color)}">
                 ${escapeHtml(t.name)}
-                <span class="tag-remove" onclick="event.stopPropagation(); removeFolderTag('${escapedFolder}', ${t.id})">&times;</span>
+                <span class="tag-remove" onclick="event.stopPropagation(); removeFolderTag('${jsStr(escapedFolder)}', ${Number(t.id)})">&times;</span>
             </span>`
         ).join("")}</div>`;
     }
@@ -95,7 +95,7 @@ function _buildDropdownHtml(folderName, currentTags) {
     if (available.length > 0) {
         availableHtml = `<div class="tag-dropdown-list">${available.map(t =>
             `<span class="tag-dropdown-item" style="background:${escapeHtml(t.color)}"
-                  onclick="event.stopPropagation(); addFolderTag('${escapedFolder}', ${t.id})">
+                  onclick="event.stopPropagation(); addFolderTag('${jsStr(escapedFolder)}', ${Number(t.id)})">
                 ${escapeHtml(t.name)}
             </span>`
         ).join("")}</div>`;
@@ -104,9 +104,9 @@ function _buildDropdownHtml(folderName, currentTags) {
     }
 
     const createHtml = `<div class="tag-dropdown-create">
-        <input type="text" id="folder-tag-new-name" placeholder="New tag name" onkeydown="if(event.key==='Enter'){event.stopPropagation(); createAndAddFolderTag('${escapedFolder}')}" />
+        <input type="text" id="folder-tag-new-name" placeholder="New tag name" onkeydown="if(event.key==='Enter'){event.stopPropagation(); createAndAddFolderTag('${jsStr(escapedFolder)}')}" />
         <input type="color" id="folder-tag-new-color" value="#58a6ff" />
-        <button class="btn btn-small" onclick="event.stopPropagation(); createAndAddFolderTag('${escapedFolder}')">Add</button>
+        <button class="btn btn-small" onclick="event.stopPropagation(); createAndAddFolderTag('${jsStr(escapedFolder)}')">Add</button>
     </div>`;
 
     return `<div class="tag-dropdown-header">Folder Tags</div>

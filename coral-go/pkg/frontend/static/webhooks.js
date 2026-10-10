@@ -65,11 +65,11 @@ function renderWebhookList(webhooks) {
                 </div>
             </div>
             <div class="webhook-row-actions">
-                <button class="btn btn-small" onclick="testWebhook(${w.id})">Test</button>
-                <button class="btn btn-small" onclick="showWebhookHistory(${w.id})">History</button>
-                <button class="btn btn-small" onclick="showWebhookEdit(${w.id})">Edit</button>
+                <button class="btn btn-small" onclick="testWebhook(${Number(w.id)})">Test</button>
+                <button class="btn btn-small" onclick="showWebhookHistory(${Number(w.id)})">History</button>
+                <button class="btn btn-small" onclick="showWebhookEdit(${Number(w.id)})">Edit</button>
                 <button class="btn btn-small btn-danger"
-                    onclick="deleteWebhook(${w.id})">Delete</button>
+                    onclick="deleteWebhook(${Number(w.id)})">Delete</button>
             </div>
         </div>`;
     }).join('');

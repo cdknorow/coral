@@ -34,8 +34,15 @@ export function serverWsBase(server) {
     return `${proto}//${location.host}${serverBase(server)}`;
 }
 
-/** Prefix an absolute-path API url ("/api/...") for `server`. */
+/** Routes a connector must never be asked about from the Cloud Hub: they configure, license or
+ *  administer the machine itself (the hub's route table refuses them anyway; this keeps the UI
+ *  from even trying). */
+const CLOUD_NEVER = /^\/api\/(system|settings|webhooks|license|servers)(\/|\?|$)/;
+
+/** Prefix an absolute-path API url ("/api/...") for `server`. In cloud mode a route from
+ *  CLOUD_NEVER is never sent through /api/remote: it is pointed at a path the hub 404s. */
 export function serverUrl(url, server) {
+    if (isCloud() && !isLocalServer(server) && CLOUD_NEVER.test(url)) return '/api/cloud-unavailable';
     return serverBase(server) + url;
 }
 

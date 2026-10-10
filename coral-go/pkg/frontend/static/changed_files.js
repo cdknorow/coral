@@ -1,7 +1,7 @@
 /* Changed files panel — load and render per-agent file diffs */
 
 import { state } from './state.js';
-import { escapeHtml, showToast } from './utils.js';
+import { escapeHtml, showToast, jsStr } from './utils.js';
 import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.js';
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 import { fileIconHtml } from './file_explorer.js';
@@ -72,11 +72,11 @@ export function renderStarredFiles() {
         starred.map(filepath => {
             const { dir, name } = splitPath(filepath);
             const escapedPath = escapeHtml(filepath).replace(/'/g, "\\'");
-            const starBtn = `<button class="file-star-btn starred" data-filepath="${escapeHtml(filepath)}" onclick="event.stopPropagation(); toggleStarFile('${escapedPath}')" title="Unstar">★</button>`;
-            const copyBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); copyFilePath('${escapedPath}')" title="Copy path"><span class="material-icons">content_copy</span></button>`;
-            const previewBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFilePreview('${escapedPath}')" title="Preview"><span class="material-icons">visibility</span></button>`;
-            const editBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFileEdit('${escapedPath}')" title="Edit"><span class="material-icons">edit</span></button>`;
-            return `<div class="file-item file-starred" onclick="openFilePreview('${escapedPath}')">
+            const starBtn = `<button class="file-star-btn starred" data-filepath="${escapeHtml(filepath)}" onclick="event.stopPropagation(); toggleStarFile('${jsStr(escapedPath)}')" title="Unstar">★</button>`;
+            const copyBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); copyFilePath('${jsStr(escapedPath)}')" title="Copy path"><span class="material-icons">content_copy</span></button>`;
+            const previewBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFilePreview('${jsStr(escapedPath)}')" title="Preview"><span class="material-icons">visibility</span></button>`;
+            const editBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFileEdit('${jsStr(escapedPath)}')" title="Edit"><span class="material-icons">edit</span></button>`;
+            return `<div class="file-item file-starred" onclick="openFilePreview('${jsStr(escapedPath)}')">
                 ${starBtn}
                 <div class="file-path-wrap">
                     <span class="file-name">${escapeHtml(name)}</span>
@@ -118,7 +118,7 @@ function _renderSearchDropdown(files, query) {
     files.slice(0, 50).forEach((filepath, i) => {
         const cls = i === _searchSelectedIdx ? 'file-mention-item selected' : 'file-mention-item';
         _searchResults.push({ path: filepath, type: 'file' });
-        html += `<div class="${cls}" data-index="${i}">${escapeHtml(filepath)}</div>`;
+        html += `<div class="${cls}" data-index="${Number(i)}">${escapeHtml(filepath)}</div>`;
     });
 
     // +create option at the end
@@ -126,7 +126,7 @@ function _renderSearchDropdown(files, query) {
         const createIdx = _searchResults.length;
         _searchResults.push({ path: query, type: 'create' });
         const cls = createIdx === _searchSelectedIdx ? 'file-mention-item selected' : 'file-mention-item';
-        html += `<div class="${cls}" data-index="${createIdx}" style="color:var(--accent)">+ Create ${escapeHtml(query)}</div>`;
+        html += `<div class="${cls}" data-index="${Number(createIdx)}" style="color:var(--accent)">+ Create ${escapeHtml(query)}</div>`;
     }
 
     if (_searchResults.length === 0) {
@@ -346,7 +346,7 @@ function _renderTopBarResults(files, message, workingDir) {
     }
     dropdown.innerHTML = dirHeader + files.slice(0, 20).map(fp => {
         const escaped = escapeHtml(fp).replace(/'/g, "\\'");
-        return `<div class="file-mention-item" onmousedown="event.preventDefault(); openFilePreview('${escaped}')">${escapeHtml(fp)}</div>`;
+        return `<div class="file-mention-item" onmousedown="event.preventDefault(); openFilePreview('${jsStr(escaped)}')">${escapeHtml(fp)}</div>`;
     }).join('');
     dropdown.style.display = 'block';
 }
@@ -593,7 +593,7 @@ export function renderChangedFiles() {
     if (titleEl) {
         const diffMode = _getGitDiffMode();
         const options = _diffModes.map(m =>
-            `<option value="${m}"${m === diffMode ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
+            `<option value="${escapeAttr(m)}"${m === diffMode ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
         ).join('');
         const totals = files.reduce(
             (acc, f) => ({ adds: acc.adds + (f.additions || 0), dels: acc.dels + (f.deletions || 0) }),
@@ -612,7 +612,7 @@ export function renderChangedFiles() {
 
     if (files.length === 0) {
         const emptyOptions = _diffModes.map(m =>
-            `<option value="${m}"${m === _getGitDiffMode() ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
+            `<option value="${escapeAttr(m)}"${m === _getGitDiffMode() ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
         ).join('');
         list.innerHTML = `<div class="file-empty">No changed files<br><select class="diff-mode-select" onchange="setGitDiffMode(this.value)" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select></div>`;
         return;
@@ -633,16 +633,16 @@ export function renderChangedFiles() {
         const agentsHtml = f.agents && f.agents.length > 0
             ? `<span class="file-agents">${escapeHtml(f.agents.map(a => a.name).join(', '))}</span>`
             : '';
-        const starBtn = `<button class="file-star-btn ${isStarred ? 'starred' : ''}" data-filepath="${escapeHtml(f.filepath)}" onclick="event.stopPropagation(); toggleStarFile('${escapedPath}')" title="${isStarred ? 'Unstar' : 'Star'}">${isStarred ? '★' : '☆'}</button>`;
-        const copyBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); copyFilePath('${escapedPath}')" title="Copy path"><span class="material-icons">content_copy</span></button>`;
-        const previewBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFilePreview('${escapedPath}', 0, {diff: true})" title="Preview"><span class="material-icons">visibility</span></button>`;
-        const editBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFileEdit('${escapedPath}', 0, {diff: true})" title="Edit"><span class="material-icons">edit</span></button>`;
+        const starBtn = `<button class="file-star-btn ${isStarred ? 'starred' : ''}" data-filepath="${escapeHtml(f.filepath)}" onclick="event.stopPropagation(); toggleStarFile('${jsStr(escapedPath)}')" title="${isStarred ? 'Unstar' : 'Star'}">${isStarred ? '★' : '☆'}</button>`;
+        const copyBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); copyFilePath('${jsStr(escapedPath)}')" title="Copy path"><span class="material-icons">content_copy</span></button>`;
+        const previewBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFilePreview('${jsStr(escapedPath)}', 0, {diff: true})" title="Preview"><span class="material-icons">visibility</span></button>`;
+        const editBtn = `<button class="file-action-btn" onclick="event.stopPropagation(); openFileEdit('${jsStr(escapedPath)}', 0, {diff: true})" title="Edit"><span class="material-icons">edit</span></button>`;
 
         // Clicking the row opens its diff in the preview pane; the buttons
         // copy the path, preview the file, and open it in the editor.
-        return `<div class="file-item ${statusCls}${agentOnlyCls}" title="${escapeHtml(f.filepath)} (${statusLabel})"
+        return `<div class="file-item ${statusCls}${agentOnlyCls}" title="${escapeHtml(f.filepath)} (${escapeAttr(statusLabel)})"
                      data-filepath="${escapeHtml(f.filepath)}"
-                     onclick="openFilePreview('${escapedPath}', 0, {diff: true})">
+                     onclick="openFilePreview('${jsStr(escapedPath)}', 0, {diff: true})">
             ${starBtn}
             <span class="file-type-icon">${fileIconHtml(name)}</span>
             <div class="file-path-wrap">

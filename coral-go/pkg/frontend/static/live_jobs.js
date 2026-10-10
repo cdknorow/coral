@@ -1,7 +1,7 @@
 /* Jobs: sidebar rendering for active task runs (cron + API-triggered) */
 
 import { selectLiveSession } from './sessions.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr, jsStr } from './utils.js';
 
 let activeRuns = [];
 
@@ -42,7 +42,7 @@ export function renderLiveJobs(runs) {
 
         const clickable = hasSid ? '' : ' style="opacity: 0.5; cursor: default;"';
         const onClick = hasSid
-            ? `onclick="selectLiveJobRun('${escapeAttr(run.session_id)}', '${escapeAttr(run.agent_type || 'claude')}')"`
+            ? `onclick="selectLiveJobRun('${jsStr(run.session_id)}', '${jsStr(run.agent_type || 'claude')}')"`
             : '';
 
         return `<li class="session-list-item"${clickable} ${onClick}>

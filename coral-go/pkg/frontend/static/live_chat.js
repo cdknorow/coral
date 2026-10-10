@@ -397,7 +397,7 @@ async function showFileRefMenu(el) {
     menu.innerHTML = `<div class="chat-file-menu-path" title="${escapeHtml(displayPath)}">${escapeHtml(displayPath)}</div>
         <button type="button" role="menuitem" data-action="preview"><span class="material-icons">visibility</span>Preview in Coral${line > 0 ? ` (line ${line})` : ""}</button>
         ${artifactRef ? '' : `<button type="button" role="menuitem" data-action="edit"><span class="material-icons">edit</span>Edit in Coral${line > 0 ? ` (line ${line})` : ""}</button>
-        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${i}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}`}
+        ${editors.map((ed, i) => `<button type="button" role="menuitem" data-action="editor" data-editor="${Number(i)}"><span class="material-icons">open_in_new</span>Open in ${escapeHtml(ed.name)}</button>`).join("")}`}
         <button type="button" role="menuitem" data-action="copy"><span class="material-icons">content_copy</span>${artifactRef ? 'Copy artifact URI' : 'Copy path'}</button>`;
     document.body.appendChild(menu);
 
@@ -1514,7 +1514,7 @@ function agentDisplayName(session) {
 // answering); the button shows the hook's full label when the screen's was
 // cut off by wrapping.
 function optionButtonHtml(o, desc, fullLabel) {
-    return `<button type="button" class="cni-answer${o.selected ? " is-default" : ""}" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="select">`
+    return `<button type="button" class="cni-answer${o.selected ? " is-default" : ""}" data-n="${Number(o.n)}" data-label="${escapeHtml(o.label)}" data-action="select">`
         + `<kbd class="cni-key">${o.n}</kbd>`
         + `<span class="cni-answer-text"><span class="cni-answer-label">${escapeHtml(fullLabel || o.label)}</span>`
         + (desc ? `<span class="cni-answer-desc">${escapeHtml(desc)}</span>` : "")
@@ -1532,7 +1532,7 @@ function answerControlsHtml(info, descriptions = {}, fullLabels = {}) {
     let foot = "";
     if (review) {
         // Submit answers / Cancel: footer actions, Submit primary
-        foot += selects.map((o, i) => `<button type="button" class="cni-answer btn btn-sm ${i === 0 ? "btn-primary" : ""}" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="select">${escapeHtml(o.label)}</button>`).join("");
+        foot += selects.map((o, i) => `<button type="button" class="cni-answer btn btn-sm ${i === 0 ? "btn-primary" : ""}" data-n="${Number(o.n)}" data-label="${escapeHtml(o.label)}" data-action="select">${escapeHtml(o.label)}</button>`).join("");
     } else if (selects.length) {
         const withDesc = selects.some(o => descriptions[fullLabels[o.label] || o.label] || descriptions[o.label]);
         body += `<div class="cni-options ${withDesc ? "cni-options-cards" : "cni-options-chips"}">`
@@ -1540,12 +1540,12 @@ function answerControlsHtml(info, descriptions = {}, fullLabels = {}) {
     }
     for (const o of texts) {
         const placeholder = /^type something/i.test(o.label) ? "Or type your own answer…" : `${o.label.replace(/\.$/, "")}…`;
-        body += `<form class="cni-text-form" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="text">`
+        body += `<form class="cni-text-form" data-n="${Number(o.n)}" data-label="${escapeHtml(o.label)}" data-action="text">`
             + `<input type="text" class="cni-text-input" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(o.label)}">`
             + `<button type="submit" class="btn btn-sm">Send</button></form>`;
     }
     for (const o of chats) {
-        foot = `<button type="button" class="cni-link cni-answer" data-n="${o.n}" data-label="${escapeHtml(o.label)}" data-action="chat">${escapeHtml(o.label)} instead</button>` + foot;
+        foot = `<button type="button" class="cni-link cni-answer" data-n="${Number(o.n)}" data-label="${escapeHtml(o.label)}" data-action="chat">${escapeHtml(o.label)} instead</button>` + foot;
     }
     return { body, foot };
 }

@@ -1,6 +1,6 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
-import { escapeHtml, escapeAttr } from './utils.js';
+import { escapeHtml, escapeAttr, jsStr, sanitizeHtml } from './utils.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer } from './server_base.js';
 
@@ -317,7 +317,7 @@ async function loadKnowledgeTab() {
     if (!data || !data.exists) {
         panel.innerHTML = `<div class="knowledge-empty">
             <div style="margin-bottom:12px">No distilled knowledge yet for this team.</div>
-            <button class="btn btn-primary" onclick="distillTeamKnowledge('${escapeAttr(boardName)}')">Distill Knowledge</button>
+            <button class="btn btn-primary" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Distill Knowledge</button>
         </div>`;
         return;
     }
@@ -354,7 +354,7 @@ function renderKnowledgePanel(panel, boardName) {
             <span class="knowledge-nav-title">${knowledgeActiveTab === 'index' ? 'Overview' : escapeHtml(knowledgeActiveTab)}</span>
         </div>
         <div class="knowledge-toolbar-actions">
-            <button class="inline-preview-mode-btn knowledge-redistill-btn" onclick="distillTeamKnowledge('${escapeAttr(boardName)}')" title="Re-distill"><span class="material-icons">refresh</span></button>
+            <button class="inline-preview-mode-btn knowledge-redistill-btn" onclick="distillTeamKnowledge('${jsStr(boardName)}')" title="Re-distill"><span class="material-icons">refresh</span></button>
             <button class="inline-preview-mode-btn${knowledgeMode === 'preview' ? ' active' : ''}" data-kmode="preview" title="Preview"><span class="material-icons">visibility</span></button>
             <button class="inline-preview-mode-btn${knowledgeMode === 'edit' ? ' active' : ''}" data-kmode="edit" title="Edit"><span class="material-icons">edit</span></button>
             <button class="inline-preview-save knowledge-save-btn" style="display:${knowledgeMode === 'edit' ? '' : 'none'}">Save</button>
@@ -466,9 +466,7 @@ function renderKnowledgeMD(md, agentNames = []) {
 
     if (typeof marked !== 'undefined') {
         const html = marked.parse(text);
-        const sanitized = typeof DOMPurify !== 'undefined'
-            ? DOMPurify.sanitize(html, { ADD_ATTR: ['data-knowledge-link'] })
-            : html;
+        const sanitized = sanitizeHtml(html, { ADD_ATTR: ['data-knowledge-link'] });
         return `<div class="knowledge-md notes-rendered">${sanitized}</div>`;
     }
 
@@ -514,7 +512,7 @@ export async function distillKnowledgeInTab(boardName) {
                     clearInterval(pollInterval);
                     panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">
                         Distillation failed: ${escapeHtml(status.error || 'Unknown error')}
-                        <button class="btn btn-sm" style="margin-top:12px" onclick="distillTeamKnowledge('${escapeAttr(boardName)}')">Retry</button>
+                        <button class="btn btn-sm" style="margin-top:12px" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Retry</button>
                     </div>`;
                 } else if (status.progress) {
                     const p = status.progress;

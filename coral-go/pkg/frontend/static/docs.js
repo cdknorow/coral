@@ -1,6 +1,6 @@
 /* Documentation: browsable agent_docs viewer */
 
-import { escapeHtml as esc, showView } from './utils.js';
+import { escapeHtml as esc, showView, jsStr } from './utils.js';
 import { apiFetch } from './api.js';
 
 let docsList = [];
@@ -47,7 +47,7 @@ function renderDocNav() {
 
     list.innerHTML = docsList.map(d => {
         const active = selectedDoc === d.name ? ' active' : '';
-        return `<li class="session-list-item${active}" onclick="selectDoc('${esc(d.name)}')">${esc(d.title)}</li>`;
+        return `<li class="session-list-item${active}" onclick="selectDoc('${jsStr(d.name)}')">${esc(d.title)}</li>`;
     }).join('');
 }
 

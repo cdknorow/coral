@@ -1,7 +1,7 @@
 /* Session tags: CRUD, tag pills, dropdown picker */
 
 import { state } from './state.js';
-import { escapeHtml } from './utils.js';
+import { escapeHtml, jsStr } from './utils.js';
 import { showToast } from './utils.js';
 
 let allTags = [];
@@ -44,7 +44,7 @@ export function renderSessionTags(tags) {
     container.innerHTML = tags.map(tag =>
         `<span class="tag-pill" style="background:${escapeHtml(tag.color)}">
             ${escapeHtml(tag.name)}
-            <span class="tag-remove" onclick="removeTagFromSession('${escapeHtml(state.currentSession.name)}', ${tag.id})">&times;</span>
+            <span class="tag-remove" onclick="removeTagFromSession('${jsStr(state.currentSession.name)}', ${Number(tag.id)})">&times;</span>
         </span>`
     ).join("");
 }
@@ -74,7 +74,7 @@ function renderTagDropdownList() {
 
     container.innerHTML = available.map(tag =>
         `<span class="tag-dropdown-item" style="background:${escapeHtml(tag.color)}"
-              onclick="addTagToSession('${escapeHtml(state.currentSession.name)}', ${tag.id})">
+              onclick="addTagToSession('${jsStr(state.currentSession.name)}', ${Number(tag.id)})">
             ${escapeHtml(tag.name)}
         </span>`
     ).join("");

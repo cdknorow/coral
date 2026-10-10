@@ -1,7 +1,7 @@
 /* Agent task bar — CRUD, rendering, drag reorder */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG } from './utils.js';
+import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
 import { serverUrl, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
 
@@ -712,8 +712,8 @@ export function renderBoardTaskList() {
         // The subagent id is read from the data attribute rather than inlined
         // into the handler, so it never has to be escaped as a JS string.
         const clickHandler = isSubagent ? ` onclick="showSubagentDetailModal(this.dataset.subagentId)" style="cursor:pointer"`
-            : isAgent ? ` onclick="showAgentTaskDetailModal(${t.id})" style="cursor:pointer"`
-            : ` onclick="showTaskDetailModal(${t.id})" style="cursor:pointer"`;
+            : isAgent ? ` onclick="showAgentTaskDetailModal(${Number(t.id)})" style="cursor:pointer"`
+            : ` onclick="showTaskDetailModal(${Number(t.id)})" style="cursor:pointer"`;
         const typeCell = isSubagent
             ? `<span class="board-task-type board-task-type-subagent" title="Subagent launched by ${escapeAttr(assignee)}"><span class="material-icons">account_tree</span>sub</span>`
             : `<span class="board-task-type">${isAgent ? 'agent' : 'board'}</span>`;
@@ -758,15 +758,15 @@ function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = null) {
     );
     const selected = new Set(selectedIds.map(Number));
 
-    let html = `<div class="dep-picker-selected" id="${containerId}-tags"></div>`;
-    html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" onclick="document.getElementById('${containerId}-list').style.display = document.getElementById('${containerId}-list').style.display === 'none' ? '' : 'none'">+ Add dependency</a></div>`;
-    html += `<div class="dep-picker-list" id="${containerId}-list" style="display:none">`;
+    let html = `<div class="dep-picker-selected" id="${Number(containerId)}-tags"></div>`;
+    html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" onclick="document.getElementById('${jsStr(containerId)}-list').style.display = document.getElementById('${jsStr(containerId)}-list').style.display === 'none' ? '' : 'none'">+ Add dependency</a></div>`;
+    html += `<div class="dep-picker-list" id="${Number(containerId)}-list" style="display:none">`;
     if (tasks.length === 0) {
         html += `<div class="dep-picker-empty">No eligible tasks</div>`;
     } else {
         tasks.forEach(t => {
             const checked = selected.has(t.id) ? ' checked' : '';
-            html += `<label class="dep-picker-item"><input type="checkbox" value="${t.id}"${checked} onchange="window._updateDepTags('${containerId}')"> #${t.id} — ${escapeHtml(t.title || '')}</label>`;
+            html += `<label class="dep-picker-item"><input type="checkbox" value="${Number(t.id)}"${checked} onchange="window._updateDepTags('${jsStr(containerId)}')"> #${t.id} — ${escapeHtml(t.title || '')}</label>`;
         });
     }
     html += `</div>`;
@@ -786,7 +786,7 @@ window._updateDepTags = function(containerId) {
     }
     const tags = Array.from(checked).map(cb => {
         const label = cb.parentElement.textContent.trim();
-        return `<span class="dep-tag">${escapeHtml(label)} <a onclick="document.querySelector('#${containerId} input[value=\\'${cb.value}\\']').click()">&times;</a></span>`;
+        return `<span class="dep-tag">${escapeHtml(label)} <a onclick="document.querySelector('#${jsStr(containerId)} input[value=\\'${jsStr(cb.value)}\\']').click()">&times;</a></span>`;
     }).join('');
     tagsEl.innerHTML = tags;
 };
@@ -1025,13 +1025,13 @@ export function showTaskDetailModal(taskId) {
             const showPublish = task.status === 'draft';
             const canNudge = (task.status === 'pending' || task.status === 'in_progress') && !!task.assigned_to;
             footer.innerHTML = `
-                <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${task.id})">Cancel Task</button>
+                <button class="btn btn-danger-text" onclick="window.cancelBoardTask(${Number(task.id)})">Cancel Task</button>
                 <span style="flex:1"></span>
                 <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-                ${canNudge ? `<button class="btn" onclick="window.nudgeBoardTask(${task.id})" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button><button class="btn" onclick="window.remindBoardTask(${task.id})" title="Send periodic reminders to ${escapeAttr(task.assigned_to)}">Remind</button><button class="btn" onclick="window.stopBoardTaskReminder(${task.id})" title="Stop periodic reminders">Stop reminders</button>` : ''}
-                <button class="btn" onclick="window.enableTaskEditMode(${task.id})">Edit</button>
-                ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${task.id})">Publish</button>` : ''}
-                ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id})">Complete</button>` : ''}`;
+                ${canNudge ? `<button class="btn" onclick="window.nudgeBoardTask(${Number(task.id)})" title="Remind ${escapeAttr(task.assigned_to)} about this task in their terminal">Nudge</button><button class="btn" onclick="window.remindBoardTask(${Number(task.id)})" title="Send periodic reminders to ${escapeAttr(task.assigned_to)}">Remind</button><button class="btn" onclick="window.stopBoardTaskReminder(${Number(task.id)})" title="Stop periodic reminders">Stop reminders</button>` : ''}
+                <button class="btn" onclick="window.enableTaskEditMode(${Number(task.id)})">Edit</button>
+                ${showPublish ? `<button class="btn btn-primary" onclick="window.publishBoardTask(${Number(task.id)})">Publish</button>` : ''}
+                ${canComplete ? `<button class="btn btn-success" onclick="window.completeBoardTask(${Number(task.id)})">Complete</button>` : ''}`;
         } else {
             footer.innerHTML = `<button class="btn" onclick="window.hideTaskDetailModal()">Close</button>`;
         }
@@ -1072,7 +1072,7 @@ export function showAgentTaskDetailModal(taskId) {
         footer.innerHTML = `
             <span style="flex:1"></span>
             <button class="btn" onclick="window.hideTaskDetailModal()">Close</button>
-            ${open ? `<button class="btn btn-success" onclick="window.completeBoardTask(${task.id}, true)">Complete</button>` : ''}`;
+            ${open ? `<button class="btn btn-success" onclick="window.completeBoardTask(${Number(task.id)}, true)">Complete</button>` : ''}`;
     }
 
     _openTaskDetailModal(modal);
@@ -1127,7 +1127,7 @@ function _taskDetailHtml(task, liveCost) {
         const text = String(value || '').replace(/\s+/g, ' ').trim();
         return text.length > 180 ? `${text.slice(0, 177)}…` : text || '(empty)';
     };
-    html += `<div class="task-detail-section task-detail-revision" data-task-revision="${revision}">
+    html += `<div class="task-detail-section task-detail-revision" data-task-revision="${Number(revision)}">
         <div class="task-detail-label">Instruction revision</div>
         <div class="task-detail-body">Current revision <strong>${revision}</strong>${amendments.length ? ` · ${amendments.length} amendment${amendments.length === 1 ? '' : 's'}` : ''}</div>
         ${amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${amendments.map(amendment => {
@@ -1153,7 +1153,7 @@ function _taskDetailHtml(task, liveCost) {
             const coralMatch = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
             const href = coralMatch ? serverUrl(`/api/artifacts/${coralMatch[1]}`, contextServer()) : uri;
             const uriDisplay = (/^https?:\/\//i.test(uri) || coralMatch)
-                ? `<a href="${coralMatch ? '#' : escapeAttr(href)}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ` onclick="event.preventDefault(); window.hideTaskDetailModal?.(); window.openFilePreview?.('${escapeAttr(uri)}')"` : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
+                ? `<a href="${escapeAttr(coralMatch ? '#' : escapeAttr(href))}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ` onclick="event.preventDefault(); window.hideTaskDetailModal?.(); window.openFilePreview?.('${jsStr(uri)}')"` : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
                 : escapeHtml(uri);
             return `<div class="task-detail-body"><strong>${escapeHtml(a.name)}</strong>${a.revision ? ` · ${escapeHtml(a.revision)}` : ''}${a.digest ? ` · ${escapeHtml(a.digest)}` : ''}${uri ? `<div>${uriDisplay}</div>` : ''}${a.content ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere">${escapeHtml(a.content)}</pre>` : ''}</div>`;
         };
@@ -1246,7 +1246,7 @@ function _taskDetailHtml(task, liveCost) {
             const isCrossBoard = task._source !== 'agent' && dep.board_id && dep.board_id !== keyLabel(boardProject);
             const boardPrefix = isCrossBoard ? `${escapeHtml(dep.board_id)} ` : '';
             const depTitle = dep.title ? ` — ${escapeHtml(dep.title)}` : '';
-            const clickable = !isCrossBoard ? ` onclick="${task._source === 'agent' ? 'showAgentTaskDetailModal' : 'showTaskDetailModal'}(${dep.task_id})" style="cursor:pointer"` : '';
+            const clickable = !isCrossBoard ? ` onclick="${task._source === 'agent' ? 'showAgentTaskDetailModal' : 'showTaskDetailModal'}(${Number(dep.task_id)})" style="cursor:pointer"` : '';
             return `<div class="task-dep-item">
                 <span class="task-dep-status ${depStatusClass}">${depStatusLabel}</span>
                 <a class="task-dep-link"${clickable}>${boardPrefix}#${dep.task_id}${depTitle}</a>
@@ -1365,7 +1365,7 @@ export async function enableTaskEditMode(taskId) {
         _getBoardProject() !== boardProject || !content.isConnected || content.firstChild !== originalContent) return;
 
     const priorityOptions = ['critical', 'high', 'medium', 'low'].map(p =>
-        `<option value="${p}"${p === task.priority ? ' selected' : ''}>${p}</option>`
+        `<option value="${escapeAttr(p)}"${p === task.priority ? ' selected' : ''}>${p}</option>`
     ).join('');
 
     const showDepPicker = task.status === 'blocked' || task.status === 'pending' || task.status === 'draft';
@@ -1403,7 +1403,7 @@ export async function enableTaskEditMode(taskId) {
     if (footer) {
         footer.innerHTML = `
             <button class="btn" onclick="window.cancelTaskEdit()">Cancel</button>
-            <button class="btn btn-primary" onclick="window.saveTaskEdit(${taskId})">Save</button>`;
+            <button class="btn btn-primary" onclick="window.saveTaskEdit(${Number(taskId)})">Save</button>`;
     }
 }
 
@@ -1531,9 +1531,9 @@ export function completeBoardTask(taskId, personal = false) {
             </div>
         </section>`);
     footer.innerHTML = `
-        <button class="btn" onclick="window.${personal ? 'showAgentTaskDetailModal' : '_restoreTaskFooter'}(${taskId})">Back</button>
+        <button class="btn" onclick="window.${personal ? 'showAgentTaskDetailModal' : '_restoreTaskFooter'}(${Number(taskId)})">Back</button>
         <span style="flex:1"></span>
-        <button class="btn btn-success" onclick="window._doCompleteTask(${taskId}, ${personal})">Complete</button>`;
+        <button class="btn btn-success" onclick="window._doCompleteTask(${Number(taskId)}, ${personal ? 'true' : 'false'})">Complete</button>`;
     document.getElementById('task-complete-message').focus();
 }
 
@@ -1654,8 +1654,8 @@ export function cancelBoardTask(taskId) {
         <div class="task-confirm-inline">
             <span class="task-confirm-text">Cancel this task? This cannot be undone.</span>
             <div class="task-confirm-buttons">
-                <button class="btn" onclick="window._restoreTaskFooter(${taskId})">No, Go Back</button>
-                <button class="btn btn-danger" onclick="window._doCancelTask(${taskId})">Yes, Cancel</button>
+                <button class="btn" onclick="window._restoreTaskFooter(${Number(taskId)})">No, Go Back</button>
+                <button class="btn btn-danger" onclick="window._doCancelTask(${Number(taskId)})">Yes, Cancel</button>
             </div>
         </div>`;
 }

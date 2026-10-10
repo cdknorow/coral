@@ -321,7 +321,7 @@ function renderDropdown(query) {
     dropdown.innerHTML = currentResults.map((fp, i) => {
         const cls = i === selectedIndex ? "file-mention-item selected" : "file-mention-item";
         const highlighted = highlightMatch(fp, query);
-        return `<div class="${cls}" data-index="${i}">${highlighted}</div>`;
+        return `<div class="${cls}" data-index="${Number(i)}">${highlighted}</div>`;
     }).join("");
 
     dropdown.style.display = "block";
@@ -363,7 +363,7 @@ function renderDropdownDirectory(entries, dir, filter) {
                 displayName = `${before}<strong>${match}</strong>${after}`;
             }
         }
-        return `<div class="${cls}" data-index="${i}">${icon}${displayName}</div>`;
+        return `<div class="${cls}" data-index="${Number(i)}">${icon}${displayName}</div>`;
     }).join("");
 
     dropdown.innerHTML = breadcrumb + items;
