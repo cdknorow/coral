@@ -726,3 +726,85 @@ body.panel-dragging .xterm-container {
 .image-attachment-remove:hover {
     color: var(--danger);
 }
+
+/* Reading width for rendered markdown, closer to the VS Code preview */
+.preview-pane-markdown {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 24px 32px 48px;
+    line-height: 1.7;
+    overflow-wrap: break-word;
+}
+.preview-pane-markdown h1,
+.preview-pane-markdown h2 {
+    margin: 1.6em 0 0.6em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.25;
+}
+.preview-pane-markdown h1 { font-size: 1.9em; margin-top: 0; }
+.preview-pane-markdown h2 { font-size: 1.45em; }
+.preview-pane-markdown h3 { font-size: 1.2em; margin: 1.4em 0 0.5em; }
+.preview-pane-markdown h4,
+.preview-pane-markdown h5 { margin: 1.2em 0 0.4em; }
+.preview-pane-markdown p,
+.preview-pane-markdown ul,
+.preview-pane-markdown ol,
+.preview-pane-markdown blockquote,
+.preview-pane-markdown pre,
+.preview-pane-markdown table { margin: 0 0 1em; }
+.preview-pane-markdown ul,
+.preview-pane-markdown ol { padding-left: 2em; }
+.preview-pane-markdown li { margin: 0.25em 0; }
+.preview-pane-markdown li > ul,
+.preview-pane-markdown li > ol { margin: 0.25em 0 0; }
+.preview-pane-markdown blockquote {
+    padding: 0 1em;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--border);
+}
+.preview-pane-markdown code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+}
+.preview-pane-markdown pre {
+    padding: 12px 14px;
+    overflow-x: auto;
+    border-radius: 6px;
+    background: var(--bg-tertiary);
+}
+.preview-pane-markdown pre code { padding: 0; background: none; }
+.preview-pane-markdown table { border-collapse: collapse; display: block; overflow-x: auto; }
+.preview-pane-markdown th,
+.preview-pane-markdown td { padding: 6px 12px; border: 1px solid var(--border); }
+.preview-pane-markdown th { background: var(--bg-tertiary); }
+.preview-pane-markdown hr { border: 0; border-top: 1px solid var(--border); margin: 1.5em 0; }
+.preview-pane-markdown img { max-width: 100%; }
+
+/* Current folder in the terminal header bar */
+.terminal-folder {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.terminal-folder[hidden] { display: none; }
+.terminal-folder svg { flex-shrink: 0; }
+.terminal-folder-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 32vw;
+}
+@media (max-width: 767px) { .terminal-folder { display: none; } }
+
+/* Chat/Terminal toggle sits at the left of the header, before the agent name */
+.terminal-header > .live-view-toggle { flex-shrink: 0; margin-right: 10px; }
+.terminal-header-actions .terminal-branch,
+.terminal-header-actions .terminal-folder { margin-right: 8px; }

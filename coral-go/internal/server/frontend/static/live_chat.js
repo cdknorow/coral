@@ -1103,6 +1103,7 @@ function rememberUserMessage(sessionId, msg) {
     entries.push(entry);
     recentUserEntriesBySession.set(sessionId, entries.slice(-200));
     settlePending(sessionId, entry);
+    dropStaleSentPending(sessionId, msg);
 }
 
 
@@ -1239,11 +1240,13 @@ function settlePending(sessionId, msg) {
     const whole = rest;
     const eligible = (p) => Number.isNaN(ts) || ts >= p.at - 10000;
     let settled = 0;
+    let lastSettledId = 0;
     for (let i = 0; i < list.length;) {
         const p = list[i];
         const want = pendingMatchText(p.text);
         const at = eligible(p) && want ? rest.indexOf(want) : -1;
         if (at !== -1) {
+            lastSettledId = Math.max(lastSettledId, p.id);
             rest = rest.slice(0, at) + rest.slice(at + want.length);
             list.splice(i, 1);
             settled++;
@@ -1255,6 +1258,7 @@ function settlePending(sessionId, msg) {
     if (!settled) {
         const i = list.findIndex(p => eligible(p) && pendingMatchText(p.text).includes(whole));
         if (i !== -1) {
+            lastSettledId = Math.max(lastSettledId, list[i].id);
             list.splice(i, 1);
             settled++;
             rest = "";
@@ -1263,9 +1267,36 @@ function settlePending(sessionId, msg) {
     msg.remaining = rest;
     // The agent took one of our messages: it is working on it from then on
     if (settled) {
+        dropEarlierPending(list, lastSettledId);
         lastSendAt.set(sessionId, Number.isNaN(ts) ? Date.now() : ts);
         savePendingToStorage();
     }
+}
+
+// Messages reach the agent in the order they were sent, so once a later one
+// shows up in the transcript every earlier pending message was taken too, even
+// when its text did not match (reworded, merged, image paths). Without this
+// such a bubble would sit at the bottom of the chat until it expired.
+function dropEarlierPending(list, settledId) {
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i].id < settledId) list.splice(i, 1);
+    }
+}
+
+// A "Sent" message (the agent was free) is picked up within moments. When the
+// transcript has moved on well past it, it was taken even if never matched.
+// Queued messages are exempt: they legitimately wait behind a long turn.
+const SENT_STALE_MS = 60 * 1000;
+function dropStaleSentPending(sessionId, msg) {
+    const list = pendingBySession.get(sessionId);
+    if (!list || !list.length) return;
+    const ts = Date.parse(msg.timestamp || "");
+    if (Number.isNaN(ts)) return;
+    const before = list.length;
+    for (let i = list.length - 1; i >= 0; i--) {
+        if (!list[i].queued && ts > list[i].at + SENT_STALE_MS) list.splice(i, 1);
+    }
+    if (list.length !== before) savePendingToStorage();
 }
 
 function syncPendingGroup(container, cls, items, label) {
@@ -1321,6 +1352,7 @@ const SEND_GRACE_MS = 90 * 1000;
 const lastSendAt = new Map(); // session_id -> ms of the last send with no agent output since
 
 function noteAgentActivity(sessionId, msg) {
+    dropStaleSentPending(sessionId, msg);
     const sent = lastSendAt.get(sessionId);
     if (!sent) return;
     const ts = Date.parse(msg.timestamp || "");

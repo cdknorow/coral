@@ -1198,10 +1198,34 @@ func TestSessionsResolvePath(t *testing.T) {
 	assert.Equal(t, float64(12), body["line"])
 
 	// Nothing outside the repo, and nothing that does not exist
-	for _, ref := range []string{"../outside.txt", "../../outside.txt", filepath.Join(base, "outside.txt"), "missing.go", "app"} {
+	for _, ref := range []string{"../outside.txt", "../../outside.txt", "missing.go", "app"} {
 		code, _ := resolve(ref)
 		assert.Equal(t, http.StatusNotFound, code, ref)
 	}
+
+	// ~/ expands to the home directory
+	home, herr := os.UserHomeDir()
+	require.NoError(t, herr)
+	tilde := filepath.Join(home, ".coral-resolve-test-"+filepath.Base(base)+".txt")
+	require.NoError(t, os.WriteFile(tilde, []byte("x"), 0o644))
+	defer os.Remove(tilde)
+	code, body := resolve("~/" + filepath.Base(tilde))
+	assert.Equal(t, http.StatusOK, code)
+	realTilde, _ := filepath.EvalSymlinks(tilde)
+	assert.Equal(t, realTilde, body["filepath"])
+
+	// An absolute path opens
+	// read-only, and its content is served by file-content.
+	outside := filepath.Join(base, "outside.txt")
+	code, body = resolve(outside)
+	assert.Equal(t, http.StatusOK, code)
+	realOutside, _ := filepath.EvalSymlinks(outside)
+	assert.Equal(t, realOutside, body["filepath"])
+	q := url.Values{"filepath": {realOutside}, "session_id": {"resolve-1"}}
+	resp, err := http.Get(server.URL + "/api/sessions/live/claude-resolve/file-content?" + q.Encode())
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
 
 func TestSessionsResolvePathSuffix(t *testing.T) {

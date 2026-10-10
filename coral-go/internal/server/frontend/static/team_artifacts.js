@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr } from './utils.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
-import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey } from './server_base.js';
+import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer } from './server_base.js';
 
 let source = 'files';
 let team = null;
@@ -66,6 +66,14 @@ function artifactType(item) {
     return mime.startsWith('text/') ? 'Text' : 'File';
 }
 
+// Paste into an agent's chat when it does not know how to publish an artifact.
+const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in the Artifacts tab):
+1. Upload the file: coral-agent artifact upload <file>   (prints a coral://artifacts/<digest> URI)
+2. Write a manifest, e.g. artifacts.json: [{"name": "<file name>", "uri": "coral://artifacts/<digest>"}]
+3. Attach it to a task result: coral-agent task complete <task-id> --artifacts artifacts.json --message "<summary>"
+   (no task yet? create and claim one first: coral-agent task add "<title>")
+Local paths like /tmp/<file> are not reachable by the user, so always upload first. Small text reports can go inline as "content" in the manifest. Full docs: artifacts.md in the Coral agent docs.`;
+
 function render() {
     const root = document.getElementById(`${panels[source]}-view`);
     if (!root || !isArtifactSource()) return;
@@ -75,14 +83,28 @@ function render() {
     root.replaceChildren();
     root.setAttribute('aria-busy', String(busy));
     const heading = el('div', 'team-artifacts-heading');
-    heading.append(el('span', '', team ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
+    heading.append(el('span', '', (personal || team) ? `${personal ? 'Artifacts' : 'Team Artifacts'} · ${scopeName}` : personal ? 'Artifacts' : 'Team Artifacts'));
     const refresh = el('button', 'team-artifacts-action', 'Refresh');
-    refresh.type = 'button'; refresh.disabled = busy || !team || (personal && !sessionID);
+    refresh.type = 'button'; refresh.disabled = busy || (personal ? !sessionID : !team);
     refresh.addEventListener('click', () => load(false));
-    heading.append(refresh); root.append(heading);
+    const help = el('button', 'team-artifacts-action team-artifacts-help');
+    help.type = 'button';
+    help.title = 'Copy instructions for agents on how to publish an artifact';
+    help.setAttribute('aria-label', help.title);
+    const helpIcon = el('span', 'material-icons', 'content_copy');
+    helpIcon.setAttribute('aria-hidden', 'true');
+    help.append(helpIcon);
+    help.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(AGENT_ARTIFACT_PROMPT);
+            helpIcon.textContent = 'check';
+        } catch { helpIcon.textContent = 'error_outline'; }
+        setTimeout(() => { helpIcon.textContent = 'content_copy'; }, 1500);
+    });
+    heading.append(refresh, help); root.append(heading);
     const status = el('div', 'team-artifacts-status');
     status.setAttribute('role', error ? 'alert' : 'status');
-    status.textContent = !team ? 'Select an agent on a team to browse its artifacts.'
+    status.textContent = (personal ? !sessionID : !team) ? (personal ? 'Select an agent to browse its artifacts.' : 'Select an agent on a team to browse its artifacts.')
         : error ? error : busy ? (personal ? 'Loading agent artifacts…' : 'Loading team artifacts…')
         : !items.length ? (personal ? 'No artifacts attributed to this agent yet.' : 'No artifacts shared by this team yet.') : `${items.length} artifacts`;
     root.append(status);
@@ -191,24 +213,28 @@ function render() {
 }
 
 async function load(append = false) {
-    if (!team || !isArtifactSource() || (source === 'artifacts' && !sessionID)) return;
+    if (!isArtifactSource() || (source === 'artifacts' ? !sessionID : !team)) return;
     const scope = source;
     const cache = caches[scope];
     cancel(cache);
     const gen = cache.generation;
     cache.controller = new AbortController();
     const requestedTeam = team;
+    // A standalone agent has no team board: its artifacts are the files it uploaded.
+    const standalone = scope === 'artifacts' && !team;
     const requestedSession = sessionID;
     if (!append) { cache.items=[]; cache.hasMore=false; cache.truncated=false; cache.loaded=false; }
     cache.busy=true; cache.error=''; render();
     try {
         const params = new URLSearchParams({limit:'100',offset:String(cache.items.length)});
         if (scope === 'artifacts') params.set('session_id',requestedSession);
-        const response = await boardFetch(team, `/artifacts?${params}`, {signal:cache.controller.signal});
+        const response = await (standalone
+            ? fetch(serverUrl(`/api/session-artifacts?${params}`, sessionServer(state.currentSession)), {signal:cache.controller.signal})
+            : boardFetch(team, `/artifacts?${params}`, {signal:cache.controller.signal}));
         if (!response.ok) throw new Error(`Unable to load ${scope === 'artifacts' ? 'agent' : 'team'} artifacts (${response.status}).`);
         const data = await response.json();
         if (gen !== cache.generation || caches[scope] !== cache || requestedTeam !== currentTeam() || source !== scope || (scope === 'artifacts' && requestedSession !== state.currentSession?.session_id)) return;
-        if (data.project !== requestedTeam || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');
+        if ((!standalone && data.project !== splitKey(requestedTeam).name) || !Array.isArray(data.artifacts) || (scope === 'artifacts' && data.session_id !== requestedSession)) throw new Error('Unable to load artifacts: unexpected response scope.');
         cache.items = append ? [...cache.items,...data.artifacts] : data.artifacts;
         cache.hasMore=!!data.has_more; cache.truncated=!!data.truncated; cache.loaded=true;
     } catch (error) {

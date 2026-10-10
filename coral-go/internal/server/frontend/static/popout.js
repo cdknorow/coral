@@ -17,7 +17,7 @@ import { toggleAgenticPanel } from './sidebar.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
 import { normServer, serverFetch, sessionServer, agentPath, parseAgentPath, isLocalServer } from './server_base.js';
-import { isInteractiveOwner, claimOwnership, releaseOwnership, onOwnershipChange } from './ownership.js';
+import { isInteractiveOwner, claimOwnership, releaseOwnership } from './ownership.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RESOLVE_RETRIES = 3;      // index lag: valid id not yet in the live list
@@ -35,7 +35,6 @@ let _lastSession = null;        // last merged live record for the target
 let _prevIds = null;            // session ids seen on the previous WS tick
 let _restartedId = '';
 let _terminalDown = false;
-let _viewerTimer = null;
 let _attached = false;          // terminal attached for the current target
 let _waking = false;
 const DESTRUCTIVE_SELECTOR = '[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"]';
@@ -128,7 +127,6 @@ export async function initPopout() {
     // the popout DOM at all (not merely hidden).
     document.querySelectorAll(DESTRUCTIVE_SELECTOR).forEach(el => el.remove());
     _wireHeader();
-    _wireViewerChip();
     document.addEventListener('coral:terminal-closed', () => _onTerminalClosed());
     // renderQuickActions() rebuilds the toolbar; keep freshly rendered controls gated.
     const toolbar = document.getElementById('command-toolbar');
@@ -424,36 +422,6 @@ export function popoutRetry() {
     _restartedId = '';
     resolveAndSelect(RESOLVE_RETRIES); // one immediate attempt, no retry loop
 }
-
-// ── Viewer chip (multi-window ownership) ──────────────────────────────────
-
-function _wireViewerChip() {
-    const chip = document.getElementById('popout-viewer-chip');
-    if (!chip) return;
-    chip.addEventListener('click', () => { claimOwnership(); _syncChip(true); });
-    onOwnershipChange((owner) => _syncChip(owner));
-    _syncChip(isInteractiveOwner());
-}
-
-function _syncChip(owner, lostControl = false) {
-    const chip = document.getElementById('popout-viewer-chip');
-    if (!chip) return;
-    if (owner || !state.currentSession || state.currentSession.type !== 'live') {
-        chip.hidden = true;
-        return;
-    }
-    chip.hidden = false;
-    if (_viewerTimer) { clearTimeout(_viewerTimer); _viewerTimer = null; }
-    if (lostControl) {
-        chip.textContent = 'Controlled in another window';
-        _viewerTimer = setTimeout(() => { chip.textContent = 'Viewing — click to take control'; }, 2000);
-    } else {
-        chip.textContent = 'Viewing — click to take control';
-    }
-}
-
-// Viewer chip is useful in the dashboard too (same element); keep it in sync there.
-onOwnershipChange((owner) => { if (!isPopout()) _syncChip(owner, !owner); });
 
 export const popoutApi = {
     isPopout,

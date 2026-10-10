@@ -1,7 +1,7 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
-import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, resolveSessionIdentity, terminalDotClass } from './render.js';
+import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -219,6 +219,7 @@ export function handleCoralMessage(data) {
                     updateSessionStatus(s.status);
                     updateSessionSummary(s.summary);
                     updateSessionBranch(s.branch, s.repo_name, s.git_state);
+                    updateSessionFolder(s.working_directory || "");
                     updateWaitingIndicator(s);
                     updateChangedFileCount(s.changed_file_count || 0);
                     // Update terminal header status dot

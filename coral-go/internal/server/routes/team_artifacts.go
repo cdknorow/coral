@@ -107,6 +107,9 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	items := collectTeamArtifacts(project, tasks, subscribers, sessionFilter)
+	if sessionFilter != "" {
+		items = mergeSessionUploads(items, h.coralDir, sessionFilter)
+	}
 	end := offset + limit
 	hasMore := end < len(items)
 	if offset > len(items) {
@@ -304,4 +307,82 @@ func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(refs[index].Name)))
 	_, _ = w.Write([]byte(refs[index].Content))
+}
+
+// mergeSessionUploads adds the session's uploaded objects that no task result
+// references yet, so an upload shows in the agent's Artifacts tab right away.
+// Items already attached to a task keep their task attribution.
+func mergeSessionUploads(items []teamArtifact, coralDir, sessionID string) []teamArtifact {
+	dir := uploadsDir(coralDir, sessionID)
+	if dir == "" {
+		return items
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return items
+	}
+	have := make(map[string]bool, len(items))
+	for _, it := range items {
+		have[it.ID] = true
+	}
+	for _, e := range entries {
+		id := strings.TrimSuffix(e.Name(), ".json")
+		if e.IsDir() || id == e.Name() || len(id) != 64 || have[id] {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil || len(data) > maxArtifactMetaBytes {
+			continue
+		}
+		var rec agentUploadRecord
+		if json.Unmarshal(data, &rec) != nil {
+			continue
+		}
+		sid := sessionID
+		items = append(items, teamArtifact{
+			ID: id, Name: rec.Name, MediaType: rec.MediaType, CreatedAt: rec.CreatedAt,
+			Source: "upload", URI: "coral://artifacts/" + id, Digest: rec.Digest,
+			ReferenceCount: 1, SessionID: &sid, managed: strings.ToLower(id),
+		})
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].CreatedAt > items[j].CreatedAt })
+	return items
+}
+
+// ListSessionArtifacts lists the files a standalone agent (one with no team
+// board) uploaded. Team agents use ListTeamArtifacts, which also covers task
+// results.
+// GET /api/session-artifacts?session_id=&limit=&offset=
+func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Request) {
+	sessionID := strings.TrimSpace(r.URL.Query().Get("session_id"))
+	if sessionID == "" || len(sessionID) > 128 || strings.ContainsAny(sessionID, "\x00\r\n\t") {
+		errBadRequest(w, "session_id is required")
+		return
+	}
+	limit, ok := parseBoundedInt(r.URL.Query().Get("limit"), defaultTeamArtifactLimit, 1, maxTeamArtifactLimit)
+	offset, ok2 := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, maxTeamArtifactOffset)
+	if !ok || !ok2 {
+		errBadRequest(w, "invalid limit or offset")
+		return
+	}
+	items := mergeSessionUploads(nil, h.coralDir, sessionID)
+	end := offset + limit
+	hasMore := end < len(items)
+	if offset > len(items) {
+		offset = len(items)
+	}
+	if end > len(items) {
+		end = len(items)
+	}
+	page := items[offset:end]
+	for i := range page {
+		enrichTeamArtifact(&page[i], h.artifactObjectDir())
+	}
+	if page == nil {
+		page = []teamArtifact{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"artifacts": page, "limit": limit, "offset": offset, "has_more": hasMore,
+		"truncated": false, "session_id": sessionID,
+	})
 }

@@ -1711,54 +1711,9 @@ function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact, groupN
     const awake = agents.filter(s => !s.sleeping);
     const sleeping = agents.filter(s => s.sleeping);
 
-    // Group agents by directory
-    const clusters = {};
-    for (const s of awake) {
-        const dir = s.working_directory || teamDefaultDir || "";
-        if (!clusters[dir]) clusters[dir] = [];
-        clusters[dir].push(s);
-    }
-
-    const clusterKeys = Object.keys(clusters);
-    const numClusters = clusterKeys.length;
-    const numDiffer = awake.filter(s => {
-        const d = s.working_directory || teamDefaultDir;
-        return d && d !== teamDefaultDir;
-    }).length;
-
-    // Phase 3 criteria updated per review: numClusters >= 3 or (numClusters >= 2 and numDiffer >= 3)
-    const shouldSubgroup = numClusters >= 3 || (numClusters >= 2 && numDiffer >= 3);
-
-    let html = "";
-
-    if (!shouldSubgroup) {
-        html += awake.map(s => _renderSessionItem(s, groupName, isCompact, false, teamDefaultDir)).join('');
-    } else {
-        // Sort clusters: put default directory cluster first, then sort by name
-        clusterKeys.sort((a, b) => {
-            if (a === teamDefaultDir) return -1;
-            if (b === teamDefaultDir) return 1;
-            return a.localeCompare(b);
-        });
-
-        for (const dir of clusterKeys) {
-            const clusterAgents = clusters[dir];
-            const isDefault = dir === teamDefaultDir;
-
-            // Render subgroup header with agent count
-            const shortDir = _shortPath(dir, 1);
-            const fullDir = dir || "No directory";
-            const countBadge = ` <span class="session-group-count">${clusterAgents.length}</span>`;
-            html += `<li class="agent-subgroup-header" title="${escapeAttr(fullDir)}">
-                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg>
-                <span>${escapeHtml(isDefault ? "Team Root" : (shortDir || "No Directory"))}${countBadge}</span>
-            </li>`;
-
-            for (const s of clusterAgents) {
-                html += _renderSessionItem(s, groupName, isCompact, false, teamDefaultDir);
-            }
-        }
-    }
+    // One flat list: an agent's folder is shown in the header bar, not as
+    // sidebar sub-groups.
+    let html = awake.map(s => _renderSessionItem(s, groupName, isCompact, false, teamDefaultDir)).join('');
 
     if (sleeping.length > 0) {
         html += _renderSleepingSummary(sleeping, groupName, isCompact, teamDefaultDir);
@@ -1898,17 +1853,8 @@ function _renderSidebarRail(sessions) {
         }
         return Object.entries(map);
     };
-    // Awake agents in the order their rows render (directory clusters when the list sub-groups them).
-    const awakeInRowOrder = (agents, defaultDir) => {
-        const awake = agents.filter(a => !a.sleeping);
-        const clusters = {};
-        for (const a of awake) (clusters[a.working_directory || defaultDir || ''] ||= []).push(a);
-        const keys = Object.keys(clusters);
-        const differ = awake.filter(a => { const d = a.working_directory || defaultDir; return d && d !== defaultDir; }).length;
-        if (!(keys.length >= 3 || (keys.length >= 2 && differ >= 3))) return awake;
-        keys.sort((x, y) => (x === defaultDir ? -1 : y === defaultDir ? 1 : x.localeCompare(y)));
-        return keys.flatMap(k => clusters[k]);
-    };
+    // Awake agents in the order their rows render.
+    const awakeInRowOrder = (agents) => agents.filter(a => !a.sleeping);
 
     if (groupByTeam) {
         const teams = _sortGroups(bucket(s => sessionTeamKey(s) || null));
@@ -3005,6 +2951,25 @@ export async function showTeamKnowledge(boardName) {
     reloadKnowledgeTab();
 }
 
+// The terminal header shows the git branch; only an agent with no branch
+// shows its folder instead (full path on hover).
+let _headerDir = "";
+let _headerHasBranch = false;
+function _syncHeaderFolder() {
+    const el = document.getElementById("terminal-header-folder");
+    if (!el) return;
+    const show = !!_headerDir && !_headerHasBranch;
+    el.hidden = !show;
+    if (!show) return;
+    el.querySelector(".terminal-folder-text").textContent = _shortPath(_headerDir, 2);
+    el.title = _headerDir;
+}
+
+export function updateSessionFolder(dir) {
+    _headerDir = dir || "";
+    _syncHeaderFolder();
+}
+
 export function updateSessionBranch(branch, repoName, gitState) {
     const display = _repoBranch(repoName, branch);
     const el = document.getElementById("session-branch");
@@ -3021,6 +2986,8 @@ export function updateSessionBranch(branch, repoName, gitState) {
             el.style.display = "none";
         }
     }
+    _headerHasBranch = !!display;
+    _syncHeaderFolder();
     // Same info in the terminal header, which has room beside the agent name.
     const th = document.getElementById("terminal-header-branch");
     if (th) {
