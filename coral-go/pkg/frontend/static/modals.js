@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { showMobileConnectModal, hideMobileConnectModal } from './mobile_connect.js';
 import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent } from './utils.js';
 import { loadLiveSessions } from './api.js';
+import { refreshChangedFiles } from './changed_files.js';
 import { loadBoardProjects } from './message_board.js';
 import { getEngineNames, getEngineName, setRendererOverride } from './renderers.js';
 import { renderCaptureText, syncPaneWidth } from './capture.js';
@@ -3788,7 +3789,7 @@ export async function applySettings() {
         document.body.classList.toggle('no-scrollbars', !showScrollbars);
 
         // Refresh changed files if git diff mode changed
-        if (gitDiffMode !== oldGitDiffMode && typeof refreshChangedFiles === 'function') {
+        if (gitDiffMode !== oldGitDiffMode) {
             refreshChangedFiles();
         }
 

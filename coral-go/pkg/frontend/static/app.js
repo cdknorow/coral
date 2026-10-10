@@ -36,7 +36,7 @@ import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
-import { copyBranchName, escapeHtml, showView } from './utils.js';
+import { copyBranchName, escapeHtml, showView, showToast } from './utils.js';
 import { initPreviewPane, openPreviewTab, closeTab as closePreviewTab, closeAllTabs as closeAllPreviewTabs, resetPreviewPane } from './preview_pane.js';
 import { initScheduler, selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import {

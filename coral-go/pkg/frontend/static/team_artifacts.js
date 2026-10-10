@@ -486,7 +486,7 @@ function renderKnowledgeMD(md, agentNames = []) {
 export function reloadKnowledgeTab() { knowledgeLoaded = false; knowledgeLoading = false; if (source === 'knowledge') loadKnowledgeTab(); }
 
 export async function distillKnowledgeInTab(boardName) {
-    selectSource('knowledge');
+    selectKnowledgeSource();
     const panel = document.getElementById('team-knowledge-view');
     if (!panel) return;
     knowledgeLoaded = true;

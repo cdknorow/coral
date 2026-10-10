@@ -1,6 +1,6 @@
 /* Update notification — checks for new Coral releases on GitHub */
 
-import { escapeHtml, jsStr } from './utils.js';
+import { escapeHtml, jsStr, showToast } from './utils.js';
 
 /**
  * Fetch update info from the backend and show a toast if a new version is available.
