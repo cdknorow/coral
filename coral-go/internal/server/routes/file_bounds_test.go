@@ -77,11 +77,50 @@ func newBoundsEnv(t *testing.T) *boundsEnv {
 	return &boundsEnv{t: t, srv: srv, base: base, repo: repo, outside: filepath.Join(base, "outside.txt"), home: home}
 }
 
+// caller kinds: what the server sees. Only "dashboard" is the relaxed one.
+const (
+	dashboard = false // a same-origin browser fetch from the local dashboard
+	tunneled  = true  // executed by the connector
+)
+
 func (e *boundsEnv) do(method, path string, q url.Values, body string, viaTunnel bool) (int, string) {
 	e.t.Helper()
-	req, _ := http.NewRequest(method, e.srv.URL+path+"?"+q.Encode(), strings.NewReader(body))
 	if viaTunnel {
+		return e.doAs(method, path, q, body, kindTunnel)
+	}
+	return e.doAs(method, path, q, body, kindDashboard)
+}
+
+type kind int
+
+const (
+	kindTunnel      kind = iota // connector: stamp
+	kindDashboard               // browser, same-origin fetch, loopback
+	kindCurl                    // loopback, no fetch metadata
+	kindCrossSite               // browser on another site
+	kindBearer                  // a proxy with a Bearer key (self-hosted hub)
+	kindOriginOnly              // engine without Sec-Fetch-*: Origin is this origin
+	kindForgedFetch             // stamp plus a forged Sec-Fetch-Site
+)
+
+func (e *boundsEnv) doAs(method, path string, q url.Values, body string, k kind) (int, string) {
+	e.t.Helper()
+	req, _ := http.NewRequest(method, e.srv.URL+path+"?"+q.Encode(), strings.NewReader(body))
+	switch k {
+	case kindTunnel:
 		req.Header.Set(tunnel.ViaHeader, "1")
+	case kindDashboard:
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+	case kindCrossSite:
+		req.Header.Set("Sec-Fetch-Site", "cross-site")
+	case kindBearer:
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		req.Header.Set("Authorization", "Bearer spoke-key")
+	case kindOriginOnly:
+		req.Header.Set("Origin", e.srv.URL)
+	case kindForgedFetch:
+		req.Header.Set(tunnel.ViaHeader, "1")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
 	}
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(e.t, err)
@@ -266,4 +305,70 @@ func TestSensitivePathAndWithin(t *testing.T) {
 	assert.False(t, within("/a/b", "/a"))
 	assert.False(t, within("", "/a"))
 	assert.False(t, within("/a", ""))
+}
+
+// The relaxed mode (absolute paths outside the repository) needs every condition of a
+// positively identified local dashboard; anything else, and any doubt, is strict.
+func TestStrictIsTheDefaultAndOnlyTheLocalDashboardRelaxes(t *testing.T) {
+	e := newBoundsEnv(t)
+	q := url.Values{"filepath": {e.outside}, "session_id": {"fb-1"}}
+	cases := []struct {
+		name string
+		k    kind
+		open bool
+	}{
+		{"same-origin browser fetch (dashboard, <img raw=1>)", kindDashboard, true},
+		{"engine without fetch metadata but own Origin", kindOriginOnly, true},
+		{"tunnel stamp", kindTunnel, false},
+		{"stamp plus a forged Sec-Fetch-Site", kindForgedFetch, false},
+		{"loopback curl, no Sec-Fetch", kindCurl, false},
+		{"cross-site browser request", kindCrossSite, false},
+		{"Bearer caller (self-hosted hub proxy)", kindBearer, false},
+	}
+	for _, c := range cases {
+		code, body := e.doAs("GET", fc, q, "", c.k)
+		if c.open {
+			assert.Equal(t, 200, code, c.name)
+			assert.Contains(t, body, "outside-secret", c.name)
+		} else {
+			assert.Equal(t, 404, code, c.name)
+			assert.NotContains(t, body, "outside-secret", c.name)
+		}
+	}
+	// raw=1 image previews take the same decision.
+	img := filepath.Join(e.base, "pic.png")
+	require.NoError(t, os.WriteFile(img, []byte("\x89PNG"), 0o644))
+	qi := url.Values{"filepath": {img}, "session_id": {"fb-1"}, "raw": {"1"}}
+	code, _ := e.doAs("GET", fc, qi, "", kindDashboard)
+	assert.Equal(t, 200, code)
+	code, _ = e.doAs("GET", fc, qi, "", kindCurl)
+	assert.Equal(t, 404, code)
+
+	// The credential denylist holds even for the dashboard.
+	for _, fp := range []string{filepath.Join(e.home, ".ssh", "id_rsa"), filepath.Join(e.repo, ".env")} {
+		code, _ := e.doAs("GET", fc, url.Values{"filepath": {fp}, "session_id": {"fb-1"}}, "", kindDashboard)
+		assert.Equal(t, 404, code, fp)
+	}
+}
+
+func TestLocalDashboardNeedsLocalHostAndPeer(t *testing.T) {
+	mk := func(remote, host string, hdr map[string]string) *http.Request {
+		r := httptest.NewRequest("GET", "http://"+host+"/x", nil)
+		r.RemoteAddr = remote
+		for k, v := range hdr {
+			r.Header.Set(k, v)
+		}
+		return r
+	}
+	same := map[string]string{"Sec-Fetch-Site": "same-origin"}
+	assert.True(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", same)))
+	assert.True(t, localDashboard(mk("[::1]:5555", "[::1]:8420", same)))
+	assert.False(t, localDashboard(mk("203.0.113.9:5555", "localhost:8420", same)), "remote peer")
+	assert.False(t, localDashboard(mk("127.0.0.1:5555", "evil.example", same)), "DNS rebinding host")
+	assert.False(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", map[string]string{"Sec-Fetch-Site": "none"})))
+	assert.False(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", map[string]string{"Origin": "http://evil.example"})))
+	assert.True(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", map[string]string{"Origin": "http://localhost:8420"})))
+	assert.True(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", map[string]string{"Referer": "http://localhost:8420/dash"})))
+	assert.False(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", nil)), "no browser evidence at all")
+	assert.False(t, localDashboard(mk("bad-addr", "localhost:8420", same)), "unparseable peer fails closed")
 }

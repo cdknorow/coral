@@ -4658,7 +4658,7 @@ func (h *SessionsHandler) ResolvePath(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "filepath is required")
 		return
 	}
-	f, err := h.resolveFileRef(r.Context(), chi.URLParam(r, "name"), r.URL.Query().Get("session_id"), ref, viaTunnel(r))
+	f, err := h.resolveFileRef(r.Context(), chi.URLParam(r, "name"), r.URL.Query().Get("session_id"), ref, strictBounds(r))
 	if err != nil {
 		writeResolveErr(w, err)
 		return
@@ -4741,7 +4741,7 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 			}
 			return resolvedFileRef{}, false
 		}
-		if strict && sensitivePath(real) {
+		if sensitivePath(real) {
 			return resolvedFileRef{}, false
 		}
 		rel, err := filepath.Rel(realRoot, real)
@@ -4866,7 +4866,7 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	strict := viaTunnel(r)
+	strict := strictBounds(r)
 	fullPath, err := filepath.Abs(filepath.Join(workdir, fp))
 	tempFile := false
 	if filepath.IsAbs(fp) {
@@ -4896,7 +4896,7 @@ func (h *SessionsHandler) GetFileContent(w http.ResponseWriter, r *http.Request)
 		}
 		return
 	}
-	if strict && sensitivePath(realOrSelf(fullPath)) {
+	if sensitivePath(realOrSelf(fullPath)) {
 		errNotFound(w, "File not found")
 		return
 	}
@@ -5140,7 +5140,7 @@ func (h *SessionsHandler) SaveFileContent(w http.ResponseWriter, r *http.Request
 
 	// Through the tunnel nothing under .git may be written (hooks run code), nor any
 	// credential-bearing file.
-	if viaTunnel(r) {
+	if strictBounds(r) {
 		rel, rerr := filepath.Rel(realWorkdir, fullPath)
 		for _, c := range strings.Split(filepath.ToSlash(rel), "/") {
 			if rerr != nil || strings.EqualFold(c, ".git") {

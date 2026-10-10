@@ -644,7 +644,7 @@ func browsable(r *http.Request, reqPath string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	if !viaTunnel(r) {
+	if !strictBounds(r) {
 		return expanded, true
 	}
 	real := realPath(expanded)

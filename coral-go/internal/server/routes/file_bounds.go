@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,14 +12,73 @@ import (
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
-// Requests that arrive through the Cloud Hub tunnel are untrusted: the hub, and anyone
-// who compromises it or a user's browser session, can ask this server for files. The
-// connector marks every request it executes (tunnel.ViaHeader), and the file endpoints
-// then apply strict bounds. Requests from the local dashboard keep their convenience
-// features (for example opening an absolute path an agent printed).
+// Strict bounds are the DEFAULT for every request: files are served only from inside the
+// session's repository, never from the credential denylist, symlinks are resolved before
+// any check, and anything that cannot be resolved is refused. Only a request that is
+// positively identified as the local dashboard (below) may additionally open an absolute
+// path outside the repository, a convenience for paths an agent printed. The denylist
+// applies to everyone. Requests from the Cloud Hub connector, the self-hosted hub's
+// Bearer-key proxy, curl, and any other proxy or client therefore get the strict rules.
 
-// viaTunnel reports whether the request was executed by the Cloud Hub connector.
+// viaTunnel reports whether the request carries the connector's stamp. The stamp can only
+// force strict mode; its absence never grants anything.
 func viaTunnel(r *http.Request) bool { return r.Header.Get(tunnel.ViaHeader) != "" }
+
+// localDashboard reports whether r is positively the local dashboard in a browser: it
+// comes from a loopback peer, with a localhost Host, as a same-origin browser fetch, with
+// no tunnel stamp and no Bearer credential. Every condition must hold.
+func localDashboard(r *http.Request) bool {
+	if viaTunnel(r) {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Authorization"))), "bearer ") {
+		return false // a proxy such as the self-hosted hub, not a browser
+	}
+	peer, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	if ip := net.ParseIP(peer); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	if !localHostOK(r.Host) {
+		return false
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
+		return site == "same-origin"
+	}
+	// Engines without fetch metadata: Origin (or Referer) must be this very origin.
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	own := scheme + "://" + r.Host
+	if o := r.Header.Get("Origin"); o != "" {
+		return o == own
+	}
+	if ref := r.Header.Get("Referer"); ref != "" {
+		u, err := url.Parse(ref)
+		return err == nil && u.Scheme+"://"+u.Host == own
+	}
+	return false
+}
+
+// strictBounds is the default; only localDashboard relaxes it.
+func strictBounds(r *http.Request) bool { return !localDashboard(r) }
+
+// localHostOK accepts localhost and IP-literal hosts (DNS rebinding defence: a request for
+// an external name is never the local dashboard).
+func localHostOK(host string) bool {
+	if host == "" {
+		return false
+	}
+	h, _, err := net.SplitHostPort(host)
+	if err != nil {
+		h = host
+	}
+	h = strings.Trim(h, "[]")
+	return strings.EqualFold(h, "localhost") || net.ParseIP(h) != nil
+}
 
 const defaultMaxFileBytes = 5 << 20
 

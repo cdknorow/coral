@@ -1167,9 +1167,16 @@ func TestSessionsResolvePath(t *testing.T) {
 	ctx := context.Background()
 	ss.RegisterLiveSession(ctx, &store.LiveSession{AgentName: "claude-resolve", AgentType: "claude", WorkingDir: app, SessionID: "resolve-1"})
 
+	// The local dashboard: a same-origin browser fetch. (Absolute paths outside the repo
+	// open only for this positively identified caller; see file_bounds.go.)
+	browserGet := func(u string) (*http.Response, error) {
+		req, _ := http.NewRequest("GET", u, nil)
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		return http.DefaultClient.Do(req)
+	}
 	resolve := func(ref string) (int, map[string]any) {
 		q := url.Values{"filepath": {ref}, "session_id": {"resolve-1"}}
-		resp, err := http.Get(server.URL + "/api/sessions/live/claude-resolve/resolve-path?" + q.Encode())
+		resp, err := browserGet(server.URL + "/api/sessions/live/claude-resolve/resolve-path?" + q.Encode())
 		require.NoError(t, err)
 		defer resp.Body.Close()
 		var body map[string]any
@@ -1222,7 +1229,7 @@ func TestSessionsResolvePath(t *testing.T) {
 	realOutside, _ := filepath.EvalSymlinks(outside)
 	assert.Equal(t, realOutside, body["filepath"])
 	q := url.Values{"filepath": {realOutside}, "session_id": {"resolve-1"}}
-	resp, err := http.Get(server.URL + "/api/sessions/live/claude-resolve/file-content?" + q.Encode())
+	resp, err := browserGet(server.URL + "/api/sessions/live/claude-resolve/file-content?" + q.Encode())
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)

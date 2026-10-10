@@ -600,7 +600,7 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "file not found")
 		return
 	}
-	if viaTunnel(r) && sensitivePath(realFile) {
+	if sensitivePath(realFile) {
 		errNotFound(w, "file not found")
 		return
 	}

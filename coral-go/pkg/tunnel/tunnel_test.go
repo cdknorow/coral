@@ -773,3 +773,27 @@ func TestConnectorMarksRequestsAndHubCannotForgeOrRemoveTheMark(t *testing.T) {
 	resp.Body.Close()
 	assert.Equal(t, "1", got)
 }
+
+// A hub must not be able to make the connector's request look like a same-origin browser
+// fetch to Coral's file endpoints.
+func TestHubCannotForgeBrowserEvidence(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	var got http.Header
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+	}), func(l *LocalHandler) { l.AllowPath = func(string, string) bool { return true } })
+	req, _ := http.NewRequest("GET", "http://x/api/ping", nil)
+	for k, v := range map[string]string{
+		"Sec-Fetch-Site": "same-origin", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty",
+		"Origin": "http://127.0.0.1", "Referer": "http://127.0.0.1/", "Host": "localhost", "Authorization": "Bearer x",
+	} {
+		req.Header.Set(k, v)
+	}
+	resp, err := sess.RoundTrip(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	for _, h := range []string{"Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-Dest", "Origin", "Referer", "Authorization"} {
+		assert.Empty(t, got.Get(h), h)
+	}
+	assert.Equal(t, "1", got.Get(ViaHeader))
+}
