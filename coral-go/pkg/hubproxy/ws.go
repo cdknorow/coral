@@ -146,20 +146,51 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 
 	ctx, cancel := context.WithCancel(context.WithoutCancel(r.Context()))
 	defer cancel()
+	pol := PolicyFrom(r.Context())
+	if pol.Closed != nil {
+		go func() {
+			select {
+			case <-pol.Closed:
+				// Access was withdrawn: end both sides with a code the UI can recognise.
+				down.Close(StatusAccessChanged, "access changed")
+				up.Close(websocket.StatusGoingAway, "")
+				cancel()
+			case <-ctx.Done():
+			}
+		}()
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); pump(ctx, cancel, down, up, "remote connection lost") }()
-	go func() { defer wg.Done(); pump(ctx, cancel, up, down, "browser connection lost") }()
+	go func() {
+		defer wg.Done()
+		pumpFrom(ctx, cancel, down, up, "remote connection lost", pol.AllowClientFrame, pol.Closed)
+	}()
+	go func() { defer wg.Done(); pumpFrom(ctx, cancel, up, down, "browser connection lost", nil, pol.Closed) }()
 	wg.Wait()
 }
 
 // pump copies frames from src to dst. When src ends, dst is closed with src's
 // close code and reason if it sent one, or with 1011 and lostMsg if it dropped.
 func pump(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string) {
+	pumpFrom(ctx, cancel, src, dst, lostMsg, nil, nil)
+}
+
+// pumpFrom is pump with an optional gate: while allow returns false, frames read from src
+// are dropped instead of forwarded (a read-only terminal).
+func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string, allow func() bool, withdrawn <-chan struct{}) {
 	defer cancel()
 	for {
 		typ, data, err := src.Read(ctx)
 		if err != nil {
+			if withdrawn != nil {
+				select {
+				case <-withdrawn:
+					// Access was withdrawn (this is why the other side dropped): say so.
+					dst.Close(StatusAccessChanged, "access changed")
+					return
+				default:
+				}
+			}
 			code := websocket.CloseStatus(err)
 			reason := ""
 			var ce websocket.CloseError
@@ -181,6 +212,9 @@ func pump(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostM
 				dst.Close(code, reason)
 			}
 			return
+		}
+		if allow != nil && !allow() {
+			continue
 		}
 		if err := dst.Write(ctx, typ, data); err != nil {
 			return

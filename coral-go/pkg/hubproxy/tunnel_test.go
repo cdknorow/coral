@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -360,4 +361,125 @@ func TestRequestHeadersAreAllowlistedToTheConnector(t *testing.T) {
 	assert.Equal(t, "application/json", got.Get("Accept"))
 	assert.Equal(t, "en", got.Get("Accept-Language"))
 	assert.Equal(t, "7", got.Get("Last-Event-Id"))
+}
+
+// A policy can make a proxied WebSocket read-only and end it when access is withdrawn.
+func TestStreamPolicyGatesFramesAndClosesTheBridge(t *testing.T) {
+	var got = make(chan string, 8)
+	local := http.NewServeMux()
+	local.HandleFunc("/ws/terminal/x", func(w http.ResponseWriter, r *http.Request) {
+		c, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			return
+		}
+		for {
+			_, b, err := c.Read(r.Context())
+			if err != nil {
+				return
+			}
+			got <- string(b)
+			c.Write(r.Context(), websocket.MessageText, []byte("out:"+string(b)))
+		}
+	})
+	ls := httptest.NewServer(local)
+	defer ls.Close()
+	sessions := make(chan *tunnel.Session, 1)
+	ths := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, err := tunnel.AcceptHTTP(w, r, func(context.Context, string) (any, error) { return "x", nil }, tunnel.SessionConfig{})
+		if err == nil {
+			sessions <- s
+		}
+	}))
+	defer ths.Close()
+	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
+		Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true }}, AllowInsecure: true,
+	})
+	require.NoError(t, err)
+	defer cs.Close()
+	sess := <-sessions
+	defer sess.Close()
+
+	var allow atomic.Bool
+	closed := make(chan struct{})
+	h := NewWithOptions(tunnelResolver{sess}, Options{AllowedOrigins: []string{"hub.test"}})
+	r := chi.NewRouter()
+	r.Handle("/api/remote/{server}/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		ctx := WithStreamPolicy(req.Context(), StreamPolicy{AllowClientFrame: allow.Load, Closed: closed})
+		h.ServeHTTP(w, req.WithContext(ctx))
+	}))
+	hub := httptest.NewServer(r)
+	defer hub.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	c, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(hub.URL, "http")+"/api/remote/srv/ws/terminal/x", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://hub.test"}},
+	})
+	require.NoError(t, err)
+
+	// Read-only: input is dropped, not forwarded.
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte("rm -rf")))
+	select {
+	case v := <-got:
+		t.Fatalf("input reached the terminal while read-only: %q", v)
+	case <-time.After(300 * time.Millisecond):
+	}
+	// Mode raised: input flows.
+	allow.Store(true)
+	require.NoError(t, c.Write(ctx, websocket.MessageText, []byte("ls")))
+	select {
+	case v := <-got:
+		assert.Equal(t, "ls", v)
+	case <-time.After(3 * time.Second):
+		t.Fatal("input not forwarded")
+	}
+	_, msg, err := c.Read(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "out:ls", string(msg))
+
+	// Access withdrawn: the bridge ends with 4403.
+	close(closed)
+	_, _, err = c.Read(ctx)
+	assert.Equal(t, StatusAccessChanged, websocket.CloseStatus(err))
+}
+
+type countMeter struct{ in, out atomic.Int64 }
+
+func (c *countMeter) WaitIn(_ context.Context, n int) error  { c.in.Add(int64(n)); return nil }
+func (c *countMeter) WaitOut(_ context.Context, n int) error { c.out.Add(int64(n)); return nil }
+
+func TestTunnelTargetMetersBothDirections(t *testing.T) {
+	local := http.NewServeMux()
+	local.HandleFunc("/api/echo", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		w.Write(append([]byte("got:"), b...))
+	})
+	ls := httptest.NewServer(local)
+	defer ls.Close()
+	sessions := make(chan *tunnel.Session, 1)
+	ths := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s, err := tunnel.AcceptHTTP(w, r, func(context.Context, string) (any, error) { return "x", nil }, tunnel.SessionConfig{})
+		if err == nil {
+			sessions <- s
+		}
+	}))
+	defer ths.Close()
+	cs, err := tunnel.Dial(context.Background(), "ws"+strings.TrimPrefix(ths.URL, "http"), "tok", tunnel.ClientOptions{
+		Handler: &tunnel.LocalHandler{BaseURL: ls.URL, AllowPath: func(string, string) bool { return true }}, AllowInsecure: true,
+	})
+	require.NoError(t, err)
+	defer cs.Close()
+	sess := <-sessions
+	defer sess.Close()
+
+	m := &countMeter{}
+	tt := TunnelTarget{Session: sess, Meter: m}
+	req, _ := http.NewRequest("POST", "http://x/api/echo", strings.NewReader(strings.Repeat("a", 1000)))
+	resp, err := tt.RoundTrip(req)
+	require.NoError(t, err)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	assert.Equal(t, 1004, len(b))
+	assert.Equal(t, int64(1000), m.in.Load())
+	assert.Equal(t, int64(1004), m.out.Load())
 }
