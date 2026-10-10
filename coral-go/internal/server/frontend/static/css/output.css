@@ -783,3 +783,23 @@ body.panel-dragging .xterm-container {
 .preview-pane-markdown th { background: var(--bg-tertiary); }
 .preview-pane-markdown hr { border: 0; border-top: 1px solid var(--border); margin: 1.5em 0; }
 .preview-pane-markdown img { max-width: 100%; }
+
+/* Current folder in the terminal header bar */
+.terminal-folder {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.terminal-folder[hidden] { display: none; }
+.terminal-folder svg { flex-shrink: 0; }
+.terminal-folder-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 32vw;
+}
+@media (max-width: 767px) { .terminal-folder { display: none; } }

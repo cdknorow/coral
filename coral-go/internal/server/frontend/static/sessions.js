@@ -5,7 +5,7 @@ import { state, sessionKey, saveSessionDraft } from './state.js';
 import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
@@ -132,6 +132,7 @@ export async function selectLiveSession(name, agentType, sessionId) {
     }
     captureWrapper.classList.remove("loading-skeleton");
     updateSessionBranch(agent?.branch || null, agent?.repo_name || null, agent?.git_state || null);
+    updateSessionFolder(agent?.working_directory || "");
     updateWaitingIndicator(agent || {});
     updateTokenUsage(sessionId);
 
