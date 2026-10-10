@@ -33,7 +33,18 @@ type Target interface {
 	RoundTrip(req *http.Request) (*http.Response, error)
 	// DialWS opens a websocket to the upstream path. path is an escaped path
 	// under /ws/ or /api/. A rejected credential yields ErrRemoteRejected.
-	DialWS(ctx context.Context, path, rawQuery string, protocols []string) (*websocket.Conn, error)
+	DialWS(ctx context.Context, path, rawQuery string, protocols []string) (WSConn, error)
+}
+
+// WSConn is the websocket the proxy pumps frames through. *websocket.Conn
+// satisfies it, as does the tunnel's stream-backed connection.
+type WSConn interface {
+	Read(ctx context.Context) (websocket.MessageType, []byte, error)
+	Write(ctx context.Context, typ websocket.MessageType, p []byte) error
+	Close(code websocket.StatusCode, reason string) error
+	CloseNow() error
+	Subprotocol() string
+	SetReadLimit(n int64)
 }
 
 // Validator is optionally implemented by a Target to reject it before any
@@ -73,12 +84,16 @@ func (t HTTPTarget) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // DialWS implements Target.
-func (t HTTPTarget) DialWS(ctx context.Context, path, rawQuery string, protocols []string) (*websocket.Conn, error) {
+func (t HTTPTarget) DialWS(ctx context.Context, path, rawQuery string, protocols []string) (WSConn, error) {
 	base, err := ValidateTarget(t)
 	if err != nil {
 		return nil, err
 	}
-	return dialWS(ctx, t, base, path, rawQuery, protocols)
+	c, err := dialWS(ctx, t, base, path, rawQuery, protocols)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // Resolver looks up a registered remote by id. It must return ErrUnknownServer

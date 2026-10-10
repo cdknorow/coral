@@ -1,0 +1,355 @@
+// Package tunnel implements the Coral Cloud Hub tunnel protocol, both halves.
+//
+// A Coral server (the connector) dials the hub over one outbound WebSocket.
+// After a small JSON handshake the WebSocket carries a yamux session. The hub
+// opens streams toward the connector; the connector never opens streams. Each
+// stream starts with a length-prefixed JSON Header, then a kind specific body:
+//
+//	http: request body chunks hub→connector, then a ResponseHeader frame and
+//	      response body chunks connector→hub. Bodies use chunk framing
+//	      (uint32 length + data, zero length = clean end) so a truncated body
+//	      is distinguishable from a complete one and every Write is delivered
+//	      immediately (SSE works).
+//	ws:   a ResponseHeader frame (handshake result), then WebSocket messages
+//	      both ways as [type u8][len u32][payload], close frames carry a code.
+//
+// Half-closing a stream from the hub side after the request has been sent
+// means "cancel".
+package tunnel
+
+import (
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"unicode/utf8"
+)
+
+// Protocol versions. The client announces the newest version it speaks; the
+// server accepts min(client, ProtocolVersion) provided that is at least
+// MinProtocolVersion, so older connectors keep working across upgrades.
+const (
+	ProtocolVersion    = 1
+	MinProtocolVersion = 1
+)
+
+// Handshake error codes carried in Welcome.Error.
+const (
+	CodeUnauthorized       = "unauthorized"
+	CodeUnsupportedVersion = "unsupported_version"
+	CodeBadHandshake       = "bad_handshake"
+)
+
+// Stream rejection codes carried in ResponseHeader.ErrorCode.
+const (
+	CodeTooManyStreams = "too_many_streams"
+	CodeBadRequest     = "bad_request"
+	CodePathNotAllowed = "path_not_allowed"
+	CodeUpstream       = "upstream_error"
+)
+
+// Hello is the first message, client to server.
+type Hello struct {
+	ProtocolVersion int    `json:"protocol_version"`
+	ServerToken     string `json:"server_token"`
+	CoralVersion    string `json:"coral_version"`
+}
+
+// Welcome is the server's reply to Hello.
+type Welcome struct {
+	AcceptedVersion int    `json:"accepted_version,omitempty"`
+	Error           string `json:"error,omitempty"`
+	MaxStreams      int    `json:"max_streams,omitempty"`
+}
+
+var (
+	ErrUnauthorized       = errors.New("tunnel: unauthorized")
+	ErrUnsupportedVersion = errors.New("tunnel: unsupported protocol version")
+	ErrBadHandshake       = errors.New("tunnel: bad handshake")
+	ErrSessionClosed      = errors.New("tunnel: session closed")
+	ErrTooManyStreams     = errors.New("tunnel: too many concurrent streams")
+	ErrHeaderTooLarge     = errors.New("tunnel: header too large")
+	ErrBadHeader          = errors.New("tunnel: malformed stream header")
+)
+
+// StreamError is returned when the connector rejected or failed a stream.
+type StreamError struct {
+	Code    string
+	Message string
+	Status  int // upstream status for failed WebSocket handshakes, else 0
+}
+
+func (e *StreamError) Error() string {
+	if e.Message == "" {
+		return "tunnel: stream rejected: " + e.Code
+	}
+	return "tunnel: stream rejected: " + e.Code + ": " + e.Message
+}
+
+// Kind is the stream type.
+type Kind string
+
+const (
+	KindHTTP Kind = "http"
+	KindWS   Kind = "ws"
+)
+
+// Header opens a stream (hub to connector).
+type Header struct {
+	Kind          Kind        `json:"kind"`
+	Method        string      `json:"method,omitempty"`
+	Path          string      `json:"path"`            // escaped path, as sent upstream
+	Query         string      `json:"query,omitempty"` // raw query
+	Headers       http.Header `json:"headers,omitempty"`
+	Protocols     []string    `json:"protocols,omitempty"` // ws subprotocols
+	ContentLength int64       `json:"content_length,omitempty"`
+}
+
+// ResponseHeader answers a Header (connector to hub).
+type ResponseHeader struct {
+	Status      int         `json:"status,omitempty"`
+	Headers     http.Header `json:"headers,omitempty"`
+	Subprotocol string      `json:"subprotocol,omitempty"`
+	Error       string      `json:"error,omitempty"`
+	ErrorCode   string      `json:"error_code,omitempty"`
+}
+
+// Limits bound what a peer may send. Zero fields take the defaults.
+type Limits struct {
+	MaxHeaderBytes int // encoded header frame, default 64 KiB
+	MaxHeaders     int // header names, default 128
+	MaxHeaderValue int // single name or value, default 8 KiB
+	MaxPath        int // default 4 KiB
+	MaxQuery       int // default 8 KiB
+}
+
+func (l Limits) withDefaults() Limits {
+	if l.MaxHeaderBytes <= 0 {
+		l.MaxHeaderBytes = 64 << 10
+	}
+	if l.MaxHeaders <= 0 {
+		l.MaxHeaders = 128
+	}
+	if l.MaxHeaderValue <= 0 {
+		l.MaxHeaderValue = 8 << 10
+	}
+	if l.MaxPath <= 0 {
+		l.MaxPath = 4 << 10
+	}
+	if l.MaxQuery <= 0 {
+		l.MaxQuery = 8 << 10
+	}
+	return l
+}
+
+// DecodeHeader parses and validates an encoded stream Header with default
+// limits. It never panics on malformed input.
+func DecodeHeader(b []byte) (Header, error) { return decodeHeader(b, Limits{}) }
+
+func decodeHeader(b []byte, l Limits) (Header, error) {
+	l = l.withDefaults()
+	var h Header
+	if len(b) > l.MaxHeaderBytes {
+		return h, ErrHeaderTooLarge
+	}
+	if err := json.Unmarshal(b, &h); err != nil {
+		return Header{}, fmt.Errorf("%w: %v", ErrBadHeader, err)
+	}
+	if err := h.validate(l); err != nil {
+		return Header{}, err
+	}
+	return h, nil
+}
+
+func cleanToken(s string, max int, allowEmpty bool) bool {
+	if (!allowEmpty && s == "") || len(s) > max || !utf8.ValidString(s) {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *Header) validate(l Limits) error {
+	switch h.Kind {
+	case KindHTTP:
+		if h.Method == "" || len(h.Method) > 16 || strings.ContainsAny(h.Method, " \t\r\n\x00") || !cleanToken(h.Method, 16, false) {
+			return fmt.Errorf("%w: method", ErrBadHeader)
+		}
+	case KindWS:
+		if h.Method != "" && h.Method != http.MethodGet {
+			return fmt.Errorf("%w: method", ErrBadHeader)
+		}
+	default:
+		return fmt.Errorf("%w: kind", ErrBadHeader)
+	}
+	if !cleanToken(h.Path, l.MaxPath, false) || !cleanToken(h.Query, l.MaxQuery, true) {
+		return fmt.Errorf("%w: path or query", ErrBadHeader)
+	}
+	if h.ContentLength < -1 {
+		return fmt.Errorf("%w: content length", ErrBadHeader)
+	}
+	if len(h.Protocols) > 16 {
+		return fmt.Errorf("%w: protocols", ErrBadHeader)
+	}
+	for _, p := range h.Protocols {
+		if !cleanToken(p, 256, false) {
+			return fmt.Errorf("%w: protocol", ErrBadHeader)
+		}
+	}
+	return validHeaders(h.Headers, l)
+}
+
+func validHeaders(hd http.Header, l Limits) error {
+	if len(hd) > l.MaxHeaders {
+		return fmt.Errorf("%w: too many headers", ErrBadHeader)
+	}
+	n := 0
+	for k, vs := range hd {
+		if !cleanToken(k, l.MaxHeaderValue, false) || strings.ContainsAny(k, " \t:") {
+			return fmt.Errorf("%w: header name", ErrBadHeader)
+		}
+		n += len(vs)
+		if n > 4*l.MaxHeaders {
+			return fmt.Errorf("%w: too many header values", ErrBadHeader)
+		}
+		for _, v := range vs {
+			if !cleanToken(v, l.MaxHeaderValue, true) {
+				return fmt.Errorf("%w: header value", ErrBadHeader)
+			}
+		}
+	}
+	return nil
+}
+
+// ── Framing ─────────────────────────────────────────────────────────
+
+func writeFrame(w io.Writer, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	buf := make([]byte, 4+len(b))
+	binary.BigEndian.PutUint32(buf, uint32(len(b)))
+	copy(buf[4:], b)
+	_, err = w.Write(buf) // single Write: one yamux data frame
+	return err
+}
+
+// readFrame reads one length-prefixed frame, refusing frames above max before
+// allocating.
+func readFrame(r io.Reader, max int) ([]byte, error) {
+	var lb [4]byte
+	if _, err := io.ReadFull(r, lb[:]); err != nil {
+		return nil, err
+	}
+	n := binary.BigEndian.Uint32(lb[:])
+	if uint64(n) > uint64(max) {
+		return nil, ErrHeaderTooLarge
+	}
+	b := make([]byte, n)
+	if _, err := io.ReadFull(r, b); err != nil {
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+		return nil, err
+	}
+	return b, nil
+}
+
+// ── Chunked bodies ──────────────────────────────────────────────────
+
+const maxChunk = 32 << 10
+
+type chunkWriter struct {
+	w    io.Writer
+	done bool
+}
+
+func (c *chunkWriter) Write(p []byte) (int, error) {
+	written := 0
+	for len(p) > 0 {
+		n := len(p)
+		if n > maxChunk {
+			n = maxChunk
+		}
+		buf := make([]byte, 4+n)
+		binary.BigEndian.PutUint32(buf, uint32(n))
+		copy(buf[4:], p[:n])
+		if _, err := c.w.Write(buf); err != nil {
+			return written, err
+		}
+		written += n
+		p = p[n:]
+	}
+	return written, nil
+}
+
+// Close writes the terminating zero-length chunk.
+func (c *chunkWriter) Close() error {
+	if c.done {
+		return nil
+	}
+	c.done = true
+	_, err := c.w.Write([]byte{0, 0, 0, 0})
+	return err
+}
+
+// chunkReader reads chunked data. A stream that ends before the terminator
+// yields io.ErrUnexpectedEOF. limit>0 caps total bytes.
+type chunkReader struct {
+	r     io.Reader
+	left  int
+	eof   bool
+	total int64
+	limit int64
+}
+
+var errBodyTooLarge = errors.New("tunnel: body too large")
+
+func (c *chunkReader) Read(p []byte) (int, error) {
+	if c.eof {
+		return 0, io.EOF
+	}
+	if c.left == 0 {
+		var lb [4]byte
+		if _, err := io.ReadFull(c.r, lb[:]); err != nil {
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
+			return 0, err
+		}
+		n := binary.BigEndian.Uint32(lb[:])
+		if n == 0 {
+			c.eof = true
+			return 0, io.EOF
+		}
+		if n > maxChunk {
+			return 0, ErrBadHeader
+		}
+		c.left = int(n)
+	}
+	if len(p) > c.left {
+		p = p[:c.left]
+	}
+	n, err := c.r.Read(p)
+	c.left -= n
+	c.total += int64(n)
+	if c.limit > 0 && c.total > c.limit {
+		return n, errBodyTooLarge
+	}
+	if err == io.EOF {
+		if c.left > 0 {
+			err = io.ErrUnexpectedEOF
+		} else {
+			err = nil
+		}
+	}
+	return n, err
+}

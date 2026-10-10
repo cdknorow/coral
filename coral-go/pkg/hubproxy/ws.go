@@ -28,7 +28,7 @@ func wsURL(base *url.URL, raw, rawQuery string) string {
 // same SSRF safeguards as the proxy (validation plus dial-time IP check).
 // path is an escaped path under /ws/ or /api/. A 401/403 handshake response
 // yields ErrRemoteRejected. protocols are requested subprotocols.
-func DialWebSocket(ctx context.Context, t Target, path, rawQuery string, protocols []string) (*websocket.Conn, error) {
+func DialWebSocket(ctx context.Context, t Target, path, rawQuery string, protocols []string) (WSConn, error) {
 	_, raw, err := SanitizePath(path)
 	if err != nil {
 		return nil, err
@@ -107,7 +107,7 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 
 // pump copies frames from src to dst. When src ends, dst is closed with src's
 // close code and reason if it sent one, or with 1011 and lostMsg if it dropped.
-func pump(ctx context.Context, cancel context.CancelFunc, src, dst *websocket.Conn, lostMsg string) {
+func pump(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string) {
 	defer cancel()
 	for {
 		typ, data, err := src.Read(ctx)
