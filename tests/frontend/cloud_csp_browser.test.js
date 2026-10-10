@@ -27,6 +27,13 @@ const CSP = BROKEN ? "default-src 'none'; script-src 'none'" : [
   Network.loadingFailed(e => { if (e.blockedReason) blocked.push(`${e.blockedReason} ${e.type}`); });
   try {
     await Promise.all([Page.enable(), Runtime.enable(), Log.enable(), Network.enable()]);
+    // Earlier suites leave this tab on the same URL; a cached document would skip the interception.
+    await Network.setCacheDisabled({ cacheDisabled: true });
+    // Coral registers a service worker (/static/sw.js); earlier suites in the same Chrome profile leave it
+    // active, and it would answer the document before the Fetch interception ever sees the request.
+    await Network.setBypassServiceWorker({ bypass: true });
+    await Page.navigate({ url: 'about:blank' });
+    await Page.loadEventFired();
     await Fetch.enable({ patterns: [
       { urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' },
       { urlPattern: `${BASE}/auth/session`, requestStage: 'Request' }, // the hub's session endpoint; Coral has none
