@@ -278,7 +278,6 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		BaseURL:      m.o.LocalBaseURL,
 		AllowRequest: tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
 		MaxMode:      m.currentMode,                    // gates WebSocket input frame by frame
-		Authorize:    func(h http.Header) { h.Set(TunnelHeader, "1") },
 	}
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
 		Handler:       local,

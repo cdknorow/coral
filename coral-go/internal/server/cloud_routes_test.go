@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -116,7 +115,7 @@ func call(h http.Handler, method, target, body string, hdr map[string]string) *h
 	return rec
 }
 
-var tunneled = map[string]string{cloud.TunnelHeader: "1"}
+var tunneled = map[string]string{tunnel.ViaHeader: "1"}
 
 func TestGuardRefusesTunneledRequestsOutsideThePolicy(t *testing.T) {
 	r := newE2ERemote(t, "guard", nil)
