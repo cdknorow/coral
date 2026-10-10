@@ -120,31 +120,61 @@ func withinAny(roots []string, real string) bool {
 	return false
 }
 
-// sensitiveDirs are directory names whose contents are never served through the tunnel.
+// sensitiveDirs are directory names whose contents are never served.
 var sensitiveDirs = map[string]bool{
 	".ssh": true, ".aws": true, ".gnupg": true, ".kube": true, ".config": true, ".coral": true,
 	".docker": true, ".azure": true, ".gcloud": true, ".password-store": true, ".git-credentials": true,
-	"keychains": true, ".mozilla": true, ".chrome": true,
+	"keychains": true, ".mozilla": true, ".chrome": true, ".terraform": true, ".vscode-server": true,
+	".terraform.d": true, ".npm": true, ".cargo": true, ".gem": true, ".m2": true, ".gradle": true,
 }
 
-// sensitiveNames match on the base name (lower case).
-var sensitiveNames = []string{".env", ".netrc", ".npmrc", ".pypirc", ".pgpass", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "credentials", "secrets", "master.key"}
-var sensitiveSuffixes = []string{".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".ppk", ".tfstate"}
+// sensitiveSeqs are multi-component locations (lower case) that are never served.
+var sensitiveSeqs = [][]string{
+	{"library", "application support"}, {"library", "cookies"}, {"library", "safari"}, {"library", "keychains"},
+	{"library", "mail"}, {"library", "messages"}, {".local", "share", "keyrings"}, {".local", "share", "gnome-keyring"},
+}
 
-// sensitivePath reports whether p names a credential-bearing location. It checks every
-// path component, so it also applies to files inside an otherwise allowed repository.
+// sensitiveNames match the base name (lower case), alone or followed by . - _.
+var sensitiveNames = []string{".env", ".netrc", ".npmrc", ".pypirc", ".pgpass", "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+	"credentials", "secrets", "master.key", "kubeconfig", ".envrc", ".gitconfig", ".git-credentials", ".my.cnf", ".s3cfg"}
+
+// sensitiveExact are base names matched exactly (shell startup files often export tokens).
+var sensitiveExact = map[string]bool{
+	".bashrc": true, ".zshrc": true, ".profile": true, ".bash_profile": true, ".zprofile": true, ".zshenv": true,
+	".bash_login": true, ".lesshst": true, ".viminfo": true, ".wget-hsts": true, "known_hosts": true,
+	"authorized_keys": true, "cookies.sqlite": true, "login data": true,
+}
+var sensitiveSuffixes = []string{".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".ppk", ".tfstate", "_history", ".history"}
+
+// sensitivePath reports whether p names a credential-bearing or history location. It
+// checks every path component, so it also applies inside an otherwise allowed repository.
 func sensitivePath(p string) bool {
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(p)), "/")
+	lower := make([]string, len(parts))
 	for i, c := range parts {
-		lc := strings.ToLower(c)
-		if sensitiveDirs[lc] {
-			return true
-		}
-		if lc == "library" && i+1 < len(parts) && strings.EqualFold(parts[i+1], "keychains") {
+		lower[i] = strings.ToLower(c)
+		if sensitiveDirs[lower[i]] {
 			return true
 		}
 	}
-	base := strings.ToLower(parts[len(parts)-1])
+	for _, seq := range sensitiveSeqs {
+		for i := 0; i+len(seq) <= len(lower); i++ {
+			match := true
+			for j, c := range seq {
+				if lower[i+j] != c {
+					match = false
+					break
+				}
+			}
+			if match {
+				return true
+			}
+		}
+	}
+	base := lower[len(lower)-1]
+	if sensitiveExact[base] {
+		return true
+	}
 	for _, n := range sensitiveNames {
 		if base == n || strings.HasPrefix(base, n+".") || strings.HasPrefix(base, n+"-") || strings.HasPrefix(base, n+"_") {
 			return true
@@ -158,12 +188,30 @@ func sensitivePath(p string) bool {
 	return false
 }
 
+// rootAllowed rejects a session root that is, or contains, the home directory or the
+// filesystem root: a repository rooted there would make everything outside the denylist
+// readable (histories, Documents, application data).
+func rootAllowed(realRoot string) bool {
+	if realRoot == "" || realRoot == string(os.PathSeparator) || filepath.Dir(realRoot) == realRoot {
+		return false
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		if rh := realPath(home); rh != "" && within(realRoot, rh) {
+			return false // the root equals or contains the home directory
+		}
+	}
+	return true
+}
+
+// listingVisible reports whether a directory entry may be shown to a strict caller.
+func listingVisible(dir, name string) bool { return !sensitivePath(filepath.Join(dir, name)) }
+
 // sessionFileRoots are the real directories a tunnel request may read inside: the
 // session's git root and working directory.
 func (h *SessionsHandler) sessionFileRoots(r *http.Request, name, sessionID string) []string {
 	var roots []string
 	for _, d := range []string{h.resolveGitRoot(r.Context(), name, "", sessionID), h.resolveWorkdir(r.Context(), name, "", sessionID)} {
-		if real := realPath(d); real != "" {
+		if real := realPath(d); rootAllowed(real) {
 			roots = append(roots, real)
 		}
 	}

@@ -63,7 +63,7 @@ type dirResponse struct {
 func callSearchFilesDir(t *testing.T, handler *SessionsHandler, workdir, dir, filter string) dirResponse {
 	t.Helper()
 	w := httptest.NewRecorder()
-	handler.searchFilesDir(w, context.Background(), workdir, dir, filter, 10000)
+	handler.searchFilesDir(w, context.Background(), workdir, dir, filter, 10000, false)
 	require.Equal(t, 200, w.Code)
 	var resp dirResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))

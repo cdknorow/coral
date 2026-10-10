@@ -21,7 +21,7 @@ func TestExplorerListsAllFilesAndPages(t *testing.T) {
 	var names []string
 	for _, offset := range []int{0, 500} {
 		w := httptest.NewRecorder()
-		serveExplorerDirectory(w, httptest.NewRequest("GET", fmt.Sprintf("/?offset=%d", offset), nil), root, ".")
+		serveExplorerDirectory(w, httptest.NewRequest("GET", fmt.Sprintf("/?offset=%d", offset), nil), root, ".", false)
 		require.Equal(t, 200, w.Code)
 		var response struct {
 			dirResponse
@@ -57,7 +57,7 @@ func TestExplorerBoundaryAndErrors(t *testing.T) {
 	} {
 		t.Run(tc.dir+tc.query, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			serveExplorerDirectory(w, httptest.NewRequest("GET", "/"+tc.query, nil), root, tc.dir)
+			serveExplorerDirectory(w, httptest.NewRequest("GET", "/"+tc.query, nil), root, tc.dir, false)
 			require.Equal(t, tc.status, w.Code)
 		})
 	}
@@ -115,7 +115,7 @@ func TestExplorerOrderingMatchesReference(t *testing.T) {
 	var got []string
 	for offset := 0; ; offset += 500 {
 		w := httptest.NewRecorder()
-		serveExplorerDirectory(w, httptest.NewRequest("GET", fmt.Sprintf("/?offset=%d", offset), nil), root, ".")
+		serveExplorerDirectory(w, httptest.NewRequest("GET", fmt.Sprintf("/?offset=%d", offset), nil), root, ".", false)
 		require.Equal(t, 200, w.Code)
 		var resp struct {
 			Entries []struct{ Name, Path, Type string }

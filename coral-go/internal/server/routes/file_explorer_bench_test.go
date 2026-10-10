@@ -39,7 +39,7 @@ func BenchmarkExplorerDirectory(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				w := httptest.NewRecorder()
-				serveExplorerDirectory(w, httptest.NewRequest("GET", "/?offset=0", nil), root, ".")
+				serveExplorerDirectory(w, httptest.NewRequest("GET", "/?offset=0", nil), root, ".", false)
 				if w.Code != 200 {
 					b.Fatal(w.Code)
 				}

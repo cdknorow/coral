@@ -372,3 +372,74 @@ func TestLocalDashboardNeedsLocalHostAndPeer(t *testing.T) {
 	assert.False(t, localDashboard(mk("127.0.0.1:5555", "localhost:8420", nil)), "no browser evidence at all")
 	assert.False(t, localDashboard(mk("bad-addr", "localhost:8420", same)), "unparseable peer fails closed")
 }
+
+func TestHomeRootedSessionsAndHistoriesAreRefusedWhenStrict(t *testing.T) {
+	e := newBoundsEnv(t)
+	// A session whose "repository" is the home directory (a dotfiles repo) exposes nothing
+	// but the denylist's complement to a strict caller.
+	require.NoError(t, os.WriteFile(filepath.Join(e.home, ".zsh_history"), []byte("export TOKEN=1"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(e.home, "notes.txt"), []byte("my notes"), 0o644))
+	require.NoError(t, exec.Command("git", "init", "-q", e.home).Run())
+	_, handler, _, ss := func() (*httptest.Server, *SessionsHandler, *mockSessionTerminal, *store.SessionStore) {
+		return setupSessionsTestServer(t)
+	}()
+	ss.RegisterLiveSession(context.Background(), &store.LiveSession{AgentName: "claude-home", AgentType: "claude", WorkingDir: e.home, SessionID: "home-1"})
+	r := chi.NewRouter()
+	r.Get("/api/sessions/live/{name}/file-content", handler.GetFileContent)
+	r.Get("/api/sessions/live/{name}/search-files", handler.SearchFiles)
+	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+	e.srv = srv
+	for _, fp := range []string{"notes.txt", ".zsh_history", filepath.Join(e.home, "notes.txt")} {
+		for _, k := range []kind{kindTunnel, kindCurl, kindBearer} {
+			code, body := e.doAs("GET", "/api/sessions/live/claude-home/file-content", url.Values{"filepath": {fp}, "session_id": {"home-1"}}, "", k)
+			assert.Equal(t, 404, code, "%s %d", fp, k)
+			assert.NotContains(t, body, "my notes")
+			assert.NotContains(t, body, "TOKEN=1")
+			code, _ = e.doAs("GET", "/api/sessions/live/claude-home/resolve-path", url.Values{"filepath": {fp}, "session_id": {"home-1"}}, "", k)
+			assert.Equal(t, 404, code, fp)
+		}
+	}
+	for _, q := range []url.Values{{"dir": {"."}}, {"q": {"notes"}}, {"view": {"explorer"}, "dir": {"."}}} {
+		q.Set("session_id", "home-1")
+		code, body := e.doAs("GET", "/api/sessions/live/claude-home/search-files", q, "", kindTunnel)
+		assert.NotContains(t, body, "notes.txt", "%d %v", code, q)
+	}
+	// The local dashboard still works in a home-rooted repo, apart from the denylist.
+	code, body := e.doAs("GET", "/api/sessions/live/claude-home/file-content", url.Values{"filepath": {"notes.txt"}, "session_id": {"home-1"}}, "", kindDashboard)
+	assert.Equal(t, 200, code)
+	assert.Contains(t, body, "my notes")
+	code, _ = e.doAs("GET", "/api/sessions/live/claude-home/file-content", url.Values{"filepath": {".zsh_history"}, "session_id": {"home-1"}}, "", kindDashboard)
+	assert.Equal(t, 404, code)
+}
+
+func TestListingsHideCredentialFilesFromStrictCallers(t *testing.T) {
+	e := newBoundsEnv(t)
+	sf := "/api/sessions/live/claude-fb/search-files"
+	for _, view := range []string{"", "explorer"} {
+		q := url.Values{"dir": {"."}, "session_id": {"fb-1"}}
+		if view != "" {
+			q.Set("view", view)
+		}
+		_, strictBody := e.doAs("GET", sf, q, "", kindTunnel)
+		assert.NotContains(t, strictBody, ".env", view)
+		assert.NotContains(t, strictBody, "server.pem", view)
+	}
+	_, body := e.doAs("GET", sf, url.Values{"dir": {"certs"}, "session_id": {"fb-1"}}, "", kindTunnel)
+	assert.NotContains(t, body, "server.pem")
+	// Fuzzy search never offers credential files either.
+	_, body = e.doAs("GET", sf, url.Values{"q": {"env"}, "session_id": {"fb-1"}}, "", kindTunnel)
+	assert.NotContains(t, body, ".env")
+}
+
+func TestSensitivePathExtendedList(t *testing.T) {
+	for _, p := range []string{"/h/.zsh_history", "/h/.bash_history", "/h/.psql_history", "/h/.local/share/keyrings/login.keyring",
+		"/Users/u/Library/Application Support/Google/Chrome/Default/Cookies", "/Users/u/Library/Cookies/x", "/h/.terraform/terraform.tfstate",
+		"/h/.vscode-server/data/x", "/h/.kube/config", "/h/kubeconfig", "/h/.gitconfig", "/h/.zshrc", "/h/.envrc", "/r/.git-credentials"} {
+		assert.True(t, sensitivePath(p), p)
+	}
+	for _, p := range []string{"/r/src/history.go", "/r/docs/history.md", "/r/app/profile.go", "/r/zshrc-template/readme.md"} {
+		assert.False(t, sensitivePath(p), p)
+	}
+}
