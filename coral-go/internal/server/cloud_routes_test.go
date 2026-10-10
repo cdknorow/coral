@@ -82,9 +82,9 @@ func TestCloudAllowlistHasNoDeadOrDangerousRules(t *testing.T) {
 	}
 	for _, rule := range tunnel.RoutePatterns() {
 		parts := strings.Fields(rule)
-		method, pattern := parts[0], parts[1]
-		if method == "HEAD" {
-			continue
+		method, pattern, tier := parts[0], parts[1], parts[2]
+		if method == "HEAD" || tier == "never" {
+			continue // explicit never rules pin routes; they need not match a registered one
 		}
 		require.True(t, registered[method+" "+shape(pattern)], "allowlist rule matches no registered route (typo?): %s", rule)
 	}
@@ -221,4 +221,49 @@ func TestCloudSettingsRoutes(t *testing.T) {
 	require.Equal(t, 400, call(h, "POST", "/api/cloud/connect", `{}`, map[string]string{"Content-Type": "text/plain"}).Code)
 	require.Equal(t, 400, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"interact"}`, map[string]string{"Content-Type": "text/plain"}).Code)
 	require.Equal(t, 400, call(h, "PUT", "/api/cloud/max-mode", `{}`, js).Code)
+}
+
+const cloudExceptions = "testdata/cloud_route_exceptions.txt"
+
+// A static route (a literal segment in the router) that the table matches through a {param}
+// rule gets that rule's tier by accident: /api/board/remotes is not a board called "remotes".
+// Every such case must be pinned by an explicit rule or listed, with a reason, in the
+// exceptions file. The failure message prints the exact lines to review.
+func TestCloudStaticSiblingsAreNotSwallowed(t *testing.T) {
+	raw, err := os.ReadFile(cloudExceptions)
+	require.NoError(t, err)
+	allowed := map[string]bool{}
+	for _, ln := range strings.Split(string(raw), "\n") {
+		ln = strings.TrimSpace(ln)
+		if ln == "" || strings.HasPrefix(ln, "#") {
+			continue
+		}
+		key, reason, ok := strings.Cut(ln, " | ")
+		require.True(t, ok && strings.TrimSpace(reason) != "", "exception needs a reason: %q", ln)
+		allowed[strings.TrimSpace(key)] = true
+	}
+	var unlisted []string
+	for _, rt := range registeredRoutes(t) {
+		method, route, _ := strings.Cut(rt, " ")
+		if !strings.HasPrefix(route, "/api/") && !strings.HasPrefix(route, "/ws/") {
+			continue
+		}
+		pat, tier, ok := tunnel.RuleFor(method, concrete(route))
+		if !ok || tier == tunnel.TierNever {
+			continue
+		}
+		ps, rs := strings.Split(pat, "/"), strings.Split(strings.TrimSuffix(route, "/*"), "/")
+		if len(ps) != len(rs) {
+			continue
+		}
+		for i := range ps {
+			if strings.HasPrefix(ps[i], "{") && !strings.HasPrefix(rs[i], "{") {
+				if k := method + " " + route + " -> " + pat; !allowed[k] {
+					unlisted = append(unlisted, k+" | <reason>")
+				}
+				break
+			}
+		}
+	}
+	require.Empty(t, unlisted, "static routes matched through a {param} rule; pin them with a never rule or add to %s:\n%s", cloudExceptions, strings.Join(unlisted, "\n"))
 }

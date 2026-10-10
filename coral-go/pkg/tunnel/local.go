@@ -240,10 +240,11 @@ type LocalHandler struct {
 	// file routes must carry project-relative paths). When set it is used instead of
 	// AllowPath. See AllowRequest in routes.go for the shared classified table.
 	AllowRequest func(method, decodedPath, rawQuery string) bool
-	// MaxMode, when set, gates client-to-server WebSocket frames by the mode in force
+	// MaxMode gates client-to-server WebSocket frames by the mode in force
 	// at the moment each frame arrives: viewing a terminal needs view, typing or
 	// resizing needs interact. A frame above the mode closes the stream (policy
 	// violation), so lowering the mode stops input on streams that are already open.
+	// Nil means view.
 	MaxMode func() Mode
 	// MaxRequestBody caps uploads, default 256 MiB.
 	MaxRequestBody int64
@@ -465,10 +466,9 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		return
 	}
 	down.SetReadLimit(lim)
-	var gate func([]byte) bool
-	if l.MaxMode != nil {
-		gate = func(data []byte) bool { return FrameTier(dec, data) <= currentMode(l.MaxMode) }
-	}
+	// Always gated: an unset MaxMode means view, so a LocalHandler built without one
+	// never forwards terminal input.
+	gate := func(data []byte) bool { return FrameTier(dec, data) <= currentMode(l.MaxMode) }
 	pumpWS(ctx, up, down, gate)
 }
 
