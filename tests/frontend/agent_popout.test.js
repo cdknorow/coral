@@ -322,9 +322,8 @@ async function run() {
     await t2.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await sleep(800);
     let o1 = await t1.ev(`window._coralPopout.isOwner()`); let o2 = await t2.ev(`window._coralPopout.isOwner()`);
     check('28 exactly one interactive owner across two same-profile windows', (o1 ? 1 : 0) + (o2 ? 1 : 0) === 1, JSON.stringify({ first: o1, second: o2 }));
-    const chip2 = await t2.ev(`(() => { const c = document.getElementById('popout-viewer-chip'); return c ? getComputedStyle(c).display !== 'none' : false; })()`);
-    const chip1 = await t1.ev(`(() => { const c = document.getElementById('popout-viewer-chip'); return c ? getComputedStyle(c).display !== 'none' : false; })()`);
-    check('28 viewer chip shown only on the non-owner', (o2 ? chip1 : chip2) && !(o2 ? chip2 : chip1), JSON.stringify({ chip1, chip2 }));
+    const chips = await t2.ev(`document.getElementById('popout-viewer-chip') === null`);
+    check('28 no viewer-chip notification in the header', chips === true, JSON.stringify({ chips }));
     // resize contention: count /resize + WS resize frames from each tab over 4s at different widths
     for (const t of [t1, t2]) await t.ev(`window.__resizeCalls = 0; const of = window.fetch; window.fetch = (u, o) => { if (/\\/resize$/.test(String(u).split('?')[0]) && o && (o.method || 'GET').toUpperCase() === 'POST') window.__resizeCalls++; return of(u, o); }; true`);
     await t1.Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });

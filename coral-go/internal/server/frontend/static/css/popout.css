@@ -78,23 +78,6 @@ body.popout-mode .terminal-session-label {
     color: inherit;
 }
 
-/* ── Viewer chip (multi-window ownership) ─────────────────────────────── */
-
-.popout-viewer-chip {
-    /* In the header actions, so it never covers the chat or terminal */
-    white-space: nowrap;
-    font-size: 11px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    background: var(--bg-elevated, var(--bg-secondary));
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-family: inherit;
-}
-.popout-viewer-chip:hover { color: var(--text-primary); border-color: var(--accent); }
-.popout-viewer-chip[hidden] { display: none !important; }
-
 /* ── Ended / not-found: workspace stays visible, input disabled ───────── */
 
 body.popout-mode.popout-ended #command-input { opacity: 0.6; }

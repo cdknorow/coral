@@ -2938,14 +2938,23 @@ export async function showTeamKnowledge(boardName) {
     reloadKnowledgeTab();
 }
 
-// The agent's current folder in the terminal header bar (full path on hover).
-export function updateSessionFolder(dir) {
+// The terminal header shows the git branch; only an agent with no branch
+// shows its folder instead (full path on hover).
+let _headerDir = "";
+let _headerHasBranch = false;
+function _syncHeaderFolder() {
     const el = document.getElementById("terminal-header-folder");
     if (!el) return;
-    el.hidden = !dir;
-    if (!dir) return;
-    el.querySelector(".terminal-folder-text").textContent = _shortPath(dir, 2);
-    el.title = dir;
+    const show = !!_headerDir && !_headerHasBranch;
+    el.hidden = !show;
+    if (!show) return;
+    el.querySelector(".terminal-folder-text").textContent = _shortPath(_headerDir, 2);
+    el.title = _headerDir;
+}
+
+export function updateSessionFolder(dir) {
+    _headerDir = dir || "";
+    _syncHeaderFolder();
 }
 
 export function updateSessionBranch(branch, repoName, gitState) {
@@ -2964,6 +2973,8 @@ export function updateSessionBranch(branch, repoName, gitState) {
             el.style.display = "none";
         }
     }
+    _headerHasBranch = !!display;
+    _syncHeaderFolder();
     // Same info in the terminal header, which has room beside the agent name.
     const th = document.getElementById("terminal-header-branch");
     if (th) {

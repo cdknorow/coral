@@ -4691,6 +4691,13 @@ func (h *SessionsHandler) resolveFileRef(ctx context.Context, name, sessionID, r
 		fp = fp[:idx]
 	}
 
+	// ~/path is the host user's home directory
+	if fp == "~" || strings.HasPrefix(fp, "~/") {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			fp = filepath.Join(home, strings.TrimPrefix(fp, "~"))
+		}
+	}
+
 	root := h.resolveGitRoot(ctx, name, "", sessionID)
 	if root == "" {
 		root = h.resolveWorkdir(ctx, name, "", sessionID)

@@ -803,3 +803,8 @@ body.panel-dragging .xterm-container {
     max-width: 32vw;
 }
 @media (max-width: 767px) { .terminal-folder { display: none; } }
+
+/* Chat/Terminal toggle sits at the left of the header, before the agent name */
+.terminal-header > .live-view-toggle { flex-shrink: 0; margin-right: 10px; }
+.terminal-header-actions .terminal-branch,
+.terminal-header-actions .terminal-folder { margin-right: 8px; }
