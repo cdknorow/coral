@@ -45,3 +45,6 @@ body.cloud-mode [data-local-only] { display: none !important; }
 .cs-enroll-form { display: flex; gap: 8px; }
 .cs-enroll-form input { flex: 1; }
 [hidden] { display: none !important; }
+.cs-launch { display: flex; align-items: center; gap: 6px; margin-top: 4px; cursor: pointer; }
+.cs-launch input { width: auto; margin: 0; }
+.cs-actions .btn { min-width: 64px; }

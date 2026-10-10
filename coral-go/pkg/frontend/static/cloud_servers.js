@@ -99,7 +99,7 @@ function row(s) {
             h('span', { text: s.label || 'Unnamed server' }),
             h('span', { className: 'sr-only', text: online ? ' (online)' : ' (offline)' }));
     const meta = h('div', { className: 'cs-meta', text: `${online ? 'Online' : 'Offline'} · last seen ${formatLastSeen(s.last_seen)}` });
-    const launch = h('label', { className: 'cs-meta' },
+    const launch = h('label', { className: 'cs-meta cs-launch' },
         h('input', { type: 'checkbox', checked: !!s.allow_launch, disabled: isBusy, onchange: e => call(s.id, 'PATCH', { allow_launch: e.target.checked }) }),
         ' Allow launching agents from the web');
     const actions = confirming === s.id
