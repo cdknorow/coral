@@ -88,6 +88,7 @@ func TestFetchLatestVersion_Non200(t *testing.T) {
 // ── UpdateCheck Handler Tests ───────────────────────────────────────
 
 func TestUpdateCheck_UpdateAvailable(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
 	mockGitHubAPI(t, "v0.14.0", http.StatusOK)
 	origVersion := config.Version
 	config.Version = "0.13.1"
@@ -108,6 +109,7 @@ func TestUpdateCheck_UpdateAvailable(t *testing.T) {
 }
 
 func TestUpdateCheck_UpToDate(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
 	mockGitHubAPI(t, "v0.13.1", http.StatusOK)
 	origVersion := config.Version
 	config.Version = "0.13.1"
@@ -144,6 +146,7 @@ func TestUpdateCheck_NoVersion(t *testing.T) {
 }
 
 func TestUpdateCheck_GitHubError(t *testing.T) {
+	skipWhenUpdateCheckIsOff(t)
 	mockGitHubAPIError(t)
 	origVersion := config.Version
 	config.Version = "0.13.1"
@@ -160,4 +163,13 @@ func TestUpdateCheck_GitHubError(t *testing.T) {
 	assert.Equal(t, false, resp["available"], "should not crash or show update on GitHub error")
 	assert.Equal(t, "0.13.1", resp["current"])
 	assert.Equal(t, "", resp["latest"])
+}
+
+// skipWhenUpdateCheckIsOff: dev and beta builds skip the update check entirely (UpdateCheck returns
+// available=false without asking GitHub), so these tests of the GitHub path only apply to other tiers.
+func skipWhenUpdateCheckIsOff(t *testing.T) {
+	t.Helper()
+	if config.TierSkipLicense {
+		t.Skip("dev and beta builds skip the update check; run without -tags dev to exercise it")
+	}
 }
