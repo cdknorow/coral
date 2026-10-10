@@ -43,6 +43,11 @@ const { pathToFileURL } = require('url');
     assert.ok(strip.includes('Unreachable') && strip.includes('Key rejected'));
     assert.deepStrictEqual(m.localFirst([['@ws1/a', 1], ['b', 2], ['@ws2/c', 3], ['d', 4]]).map(e => e[0]), ['b', 'd', '@ws1/a', '@ws2/c']);
 
+    // Hover text: status, address, agent count, last contact, error when down.
+    const down = m.serverHoverText('ws2');
+    assert.ok(/^Cloud: Unreachable/.test(down) && /agents?/.test(down) && /Last seen:/.test(down));
+    assert.ok(/This server \(the hub\)/.test(m.serverHoverText('local')));
+
     // Stale sessions.
     assert.strictEqual(m.isStaleSession({ stale: true }), true);
     assert.strictEqual(m.isStaleSession({}), false);

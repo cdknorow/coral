@@ -64,12 +64,30 @@ export function staleReason(s) {
     return `${e.label || e.id} is ${statusMeta(e.status).label.toLowerCase()}. This agent shows its last known state and cannot be used until the server is back.`;
 }
 
+/** Multi-line hover text for a server: status, address, agent count, last contact. */
+export function serverHoverText(id) {
+    const e = serverEntry(id);
+    const m = statusMeta(e.status);
+    const local = normServer(e.id) === LOCAL_SERVER;
+    const count = local
+        ? (state.liveSessions || []).filter(x => normServer(x && x.server) === LOCAL_SERVER).length
+        : (typeof e.agents === 'number' ? e.agents : (state.liveSessions || []).filter(x => normServer(x && x.server) === normServer(e.id)).length);
+    const lines = [`${e.label || e.id}: ${m.label}`];
+    lines.push(local ? 'This server (the hub)' : (e.url || e.id));
+    lines.push(`${count} agent${count === 1 ? '' : 's'}`);
+    if (!local && e.version) lines.push(`Version ${e.version}`);
+    if (!local) lines.push(e.status === 'online' ? `Last contact: ${formatLastSeen(e.last_seen)}` : `Last seen: ${formatLastSeen(e.last_seen)}`);
+    if (!local && e.status !== 'online' && e.last_error) lines.push(`Error: ${e.last_error}`);
+    if (!local && e.status !== 'online') lines.push(m.hint);
+    return lines.join('\n');
+}
+
 /** Small "server name + status dot" badge. '' when labels are not shown. */
 export function serverBadgeHtml(id, extraClass) {
     if (!showServerLabels()) return '';
     const e = serverEntry(id);
     const m = statusMeta(e.status);
-    return `<span class="server-badge server-${m.cls}${extraClass ? ' ' + extraClass : ''}" data-server="${escHtml(e.id)}" title="${escHtml((e.label || e.id) + ': ' + m.label)}">`
+    return `<span class="server-badge server-${m.cls}${extraClass ? ' ' + extraClass : ''}" data-server="${escHtml(e.id)}" title="${escHtml(serverHoverText(e.id))}">`
         + `<span class="server-dot" aria-hidden="true"></span>${escHtml(e.label || e.id)}`
         + `<span class="sr-only"> (${escHtml(m.label)})</span></span>`;
 }
@@ -80,7 +98,7 @@ export function serverStripHtml() {
     const rows = [serverEntry(LOCAL_SERVER), ...remoteServers()].map(e => {
         const m = statusMeta(e.status);
         const down = e.status !== 'online' && e.id !== LOCAL_SERVER;
-        return `<li class="server-strip-item server-${m.cls}" data-server="${escHtml(e.id)}" title="${escHtml(m.hint)}">`
+        return `<li class="server-strip-item server-${m.cls}" data-server="${escHtml(e.id)}" title="${escHtml(serverHoverText(e.id))}">`
             + `<span class="server-dot" aria-hidden="true"></span>`
             + `<span class="server-strip-name">${escHtml(e.label || e.id)}</span>`
             + (down ? `<span class="server-strip-state">${escHtml(m.label)}</span>` : '')

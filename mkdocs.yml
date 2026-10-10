@@ -46,6 +46,7 @@ nav:
   - Files and artifacts: files-and-artifacts.md
   - Agent UI: agent-ui.md
   - Remote access: remote-access.md
+  - Multi-server hub: multi-server-hub.md
   - Privacy: privacy.md
   - Troubleshooting: troubleshooting.md
   - Reference: reference.md

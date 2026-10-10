@@ -52,6 +52,12 @@ type RemoteServerStatus struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
 	Status string `json:"status"`
+	// Shown in the sidebar hover card.
+	URL       string `json:"url,omitempty"`
+	LastSeen  string `json:"last_seen,omitempty"`
+	LastError string `json:"last_error,omitempty"`
+	Agents    int    `json:"agents"`
+	Version   string `json:"version,omitempty"`
 }
 
 // RemoteSnapshot is a point-in-time copy of all remote data. Sessions are
@@ -101,13 +107,15 @@ func (c *RemoteAgentHubConfig) fill() {
 }
 
 type remoteState struct {
-	srv      store.RemoteServer
-	cancel   context.CancelFunc
-	status   string
-	sessions []map[string]any
-	feedLive bool
-	lastDB   time.Time // last SetStatus(online) write
-	lastSig  string
+	srv       store.RemoteServer
+	cancel    context.CancelFunc
+	status    string
+	sessions  []map[string]any
+	feedLive  bool
+	lastDB    time.Time // last SetStatus(online) write
+	lastSig   string
+	version   string    // remote's reported version (best effort)
+	versionAt time.Time // when it was last fetched
 }
 
 // RemoteAgentHub implements RemoteAgentSource.
@@ -242,7 +250,14 @@ func (h *RemoteAgentHub) Snapshot() RemoteSnapshot {
 		if label == "" {
 			label = id
 		}
-		snap.Servers = append(snap.Servers, RemoteServerStatus{ID: id, Label: label, Status: status})
+		entry := RemoteServerStatus{ID: id, Label: label, Status: status, URL: st.srv.URL, Agents: len(st.sessions), Version: st.version}
+		if st.srv.LastSeen != nil {
+			entry.LastSeen = *st.srv.LastSeen
+		}
+		if st.srv.LastError != nil && status != store.RemoteStatusOnline {
+			entry.LastError = *st.srv.LastError
+		}
+		snap.Servers = append(snap.Servers, entry)
 		for _, s := range st.sessions {
 			c := make(map[string]any, len(s)+2)
 			for k, v := range s {
@@ -317,6 +332,7 @@ func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
 		var wait time.Duration
 		if err == nil {
 			h.recordOnline(ctx, id, sessions)
+			h.refreshVersion(ctx, id)
 			backoff = h.cfg.MinBackoff
 			wait = h.jitter(h.cfg.PollInterval)
 		} else {
@@ -329,6 +345,47 @@ func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
 		if !sleepCtx(ctx, wait) {
 			return
 		}
+	}
+}
+
+// refreshVersion reads the remote's version from /api/health at most once a
+// minute. It is for display only, so failures are ignored.
+func (h *RemoteAgentHub) refreshVersion(ctx context.Context, id string) {
+	h.mu.Lock()
+	st, ok := h.current(id)
+	due := ok && time.Since(st.versionAt) > time.Minute
+	if due {
+		st.versionAt = time.Now()
+	}
+	h.mu.Unlock()
+	if !due {
+		return
+	}
+	t, err := h.resolver.Resolve(ctx, id)
+	if err != nil {
+		return
+	}
+	rctx, cancel := context.WithTimeout(ctx, h.cfg.RequestTimeout)
+	defer cancel()
+	resp, err := proxy.Get(rctx, t, "/api/health", "")
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Version string `json:"version"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body) != nil || body.Version == "" {
+		return
+	}
+	h.mu.Lock()
+	changed := false
+	if st, ok := h.current(id); ok && st.version != body.Version {
+		st.version, changed = body.Version, true
+	}
+	h.mu.Unlock()
+	if changed {
+		h.notify()
 	}
 }
 
