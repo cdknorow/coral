@@ -6,7 +6,7 @@ import { fetchFileList, fuzzyFilter, getDirBrowseResults } from './file_mention.
 import { initFilesSourcePicker, syncFilesSourceTeam } from './team_artifacts.js';
 import { fileIconHtml } from './file_explorer.js';
 import { openPreviewTab, openArtifactTab, setPreviewSession } from './preview_pane.js';
-import { serverFetch, serverForSession, sessionServer, currentServer } from './server_base.js';
+import { serverFetch, serverForSession, sessionServer, currentServer, isCloud } from './server_base.js';
 
 let _currentFiles = [];
 let _searchTimeout = null;
@@ -520,6 +520,7 @@ const _diffModeLabels = { branch_point: 'vs merge-base', previous_commit: 'vs HE
 
 export async function setGitDiffMode(mode) {
     if (!_diffModes.includes(mode)) return;
+    if (isCloud()) return; // machine-wide setting; not changeable through the hub (selector hidden)
 
     try {
         await fetch('/api/settings', {
@@ -599,12 +600,15 @@ export function renderChangedFiles() {
             (acc, f) => ({ adds: acc.adds + (f.additions || 0), dels: acc.dels + (f.deletions || 0) }),
             { adds: 0, dels: 0 }
         );
+        // The diff base is the machine's own setting and the hub has no way to change it (a per-browser choice would only
+        // relabel the list), so the hub shows no selector.
+        const modeSelect = isCloud() ? '' : `<select class="diff-mode-select" onchange="setGitDiffMode(this.value)" title="Diff comparison mode">${options}</select>`;
         const stats = files.length > 0
             ? `<span class="file-adds">+${totals.adds}</span><span class="file-dels">-${totals.dels}</span>`
             : '';
         titleEl.innerHTML = `<span class="changed-files-count">${files.length} file${files.length !== 1 ? 's' : ''} changed</span>
             ${stats}
-            <select class="diff-mode-select" onchange="setGitDiffMode(this.value)" title="Diff comparison mode">${options}</select>`;
+            ${modeSelect}`;
     }
     if (countEl) {
         countEl.textContent = files.length > 0 ? String(files.length) : '';
@@ -614,7 +618,8 @@ export function renderChangedFiles() {
         const emptyOptions = _diffModes.map(m =>
             `<option value="${escapeAttr(m)}"${m === _getGitDiffMode() ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
         ).join('');
-        list.innerHTML = `<div class="file-empty">No changed files<br><select class="diff-mode-select" onchange="setGitDiffMode(this.value)" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select></div>`;
+        const emptySelect = isCloud() ? '' : `<br><select class="diff-mode-select" onchange="setGitDiffMode(this.value)" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select>`;
+        list.innerHTML = `<div class="file-empty">No changed files${emptySelect}</div>`;
         return;
     }
 

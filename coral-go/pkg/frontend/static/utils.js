@@ -257,7 +257,8 @@ export function isMediaPath(filepath) {
     return MEDIA_EXT_RE.test(filepath || '');
 }
 
-/** Render images into container. `panes` is a list of { label, url, missing }:
+/** Render images into container. `panes` is a list of { label, url, missing } (or `load` instead of `url`, an async
+ *  function resolving to { src, revoke }):
  *  one pane for a preview, Before/After for a diff. A pane whose image fails
  *  to load shows its `missing` text instead (e.g. a file new since the base). */
 export function renderImagePanes(container, panes) {
@@ -292,7 +293,15 @@ export function renderImagePanes(container, panes) {
             frame.appendChild(note);
             meta.textContent = '';
         });
-        img.src = pane.url;
+        if (pane.load) {
+            // Async source (the Cloud Hub): { src, revoke } from image_source.fetchImageSrc.
+            pane.load().then(({ src, revoke }) => {
+                if (revoke) img.addEventListener('load', () => URL.revokeObjectURL(src), { once: true });
+                img.src = src;
+            }).catch(() => img.dispatchEvent(new Event('error')));
+        } else {
+            img.src = pane.url;
+        }
         frame.appendChild(img);
         fig.append(frame, meta);
         wrap.appendChild(fig);

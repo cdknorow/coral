@@ -1587,7 +1587,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
                 Open Agent Tab
             </a>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+            <button class="overflow-menu-item" data-local-only onclick="event.stopPropagation(); closeSidebarKebabs(); attachDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4,4 8,8 4,12"/><line x1="9" y1="12" x2="13" y2="12"/></svg>
                 Attach
             </button>

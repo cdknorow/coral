@@ -1,0 +1,33 @@
+/* CodeMirror inside the shadow root the hub mounts it in (see preview_pane.js _cmHost). The page's own stylesheets do
+   not reach into a shadow root, so the rules agentic.css and output.css apply to the local editor are repeated here. */
+:host { display: block; height: 100%; min-height: 0; overflow: hidden; flex: 1; }
+.cm-shadow-mount { height: 100%; }
+.cm-editor { height: 100%; }
+.cm-scroller { overflow: auto; }
+
+.cm-merge-b .cm-changedLine,
+.cm-inlineChangedLine {
+    background-color: rgba(63, 185, 80, 0.24) !important;
+}
+
+.cm-deletedChunk {
+    background-color: rgba(248, 81, 73, 0.24) !important;
+}
+
+.cm-changedText,
+.cm-insertedLine {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    text-decoration: none !important;
+}
+
+.cm-deletedChunk .cm-deletedText,
+.cm-merge-b .cm-deletedText,
+.cm-deletedLine,
+.cm-deletedLine del {
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    text-decoration: none !important;
+}

@@ -1,7 +1,7 @@
 /* Session-scoped generated panels. Frames never receive ambient Coral privileges. */
 import { state } from './state.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverFetch, serverForSession } from './server_base.js';
+import { serverFetch, serverForSession, isCloud } from './server_base.js';
 
 let session = null;
 let generation = 0;
@@ -90,6 +90,9 @@ function createRequestForm(sid) {
 }
 
 export async function refreshAgentUI() {
+    // Agent-authored UI is served by the machine's /api/agent/ui, which the hub never exposes (it needs an isolated
+    // content origin). The tab is hidden in cloud mode; do not ask for panels that cannot arrive.
+    if (isCloud()) return;
     const container = document.getElementById('agentic-panel-agent-ui');
     if (!container) return;
     const sid = currentID();

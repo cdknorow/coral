@@ -3,7 +3,8 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, renderImagePanes } from './utils.js';
 import { renderJSONReport } from './artifact_report.js';
-import { splitKey, serverUrl, contextServer } from './server_base.js';
+import { splitKey, serverUrl, contextServer, isCloud } from './server_base.js';
+import { isSvg, svgDataUrl } from './image_source.js';
 
 const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
 const MAX_ARTIFACT_MANIFEST_ENTRIES = 200;
@@ -208,7 +209,18 @@ export async function renderArtifact(body, uri, options, ctx) {
         const sizeHeader = Number(resp.headers.get('Content-Length'));
         const size = Number.isFinite(sizeHeader) && sizeHeader >= 0 ? sizeHeader : -1;
         if (ctx.isStale()) return;
-        if (type.startsWith('audio/') || type.startsWith('video/')) {
+        // The hub's response filter rewrites SVG to an octet-stream download, so there SVG is recognised by its declared
+        // type or name, read as text and shown through an <img> data: URL (never inline markup; see image_source.js).
+        const isSvgArtifact = isCloud() && (isSvg(type) || isSvg(declaredType) || filenameHints.some(isSvg));
+        if (isSvgArtifact) {
+            if (size > MAX_ARTIFACT_PREVIEW_BYTES) {
+                _renderFallback(body, { filename, type, size, url: resp.url, reason: `Preview is limited to ${_sizeLabel(MAX_ARTIFACT_PREVIEW_BYTES)}.` });
+            } else {
+                const svgText = await _readText(resp, MAX_ARTIFACT_PREVIEW_BYTES, ctx.signal);
+                if (ctx.isStale()) return;
+                renderImagePanes(body, [{ url: svgDataUrl(svgText), missing: 'Artifact unavailable' }]);
+            }
+        } else if (type.startsWith('audio/') || type.startsWith('video/')) {
             const media = document.createElement(type.startsWith('video/') ? 'video' : 'audio');
             media.controls = true; media.autoplay = false; media.preload = 'metadata';
             media.src = resp.url; media.className = 'artifact-preview-media';

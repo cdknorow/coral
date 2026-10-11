@@ -6,7 +6,8 @@ import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util
 import { makeDraggable } from './draggable.js';
 import { toggleStarFile, isFileStarred } from './changed_files.js';
 import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
-import { serverUrl, currentServer } from './server_base.js';
+import { serverUrl, currentServer, isCloud } from './server_base.js';
+import { fetchImageSrc } from './image_source.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -457,14 +458,20 @@ async function _render(tab) {
     const binaryKind = isImagePath(tab.filepath) ? 'image' : isMediaPath(tab.filepath) ? 'media' : null;
     if (binaryKind) {
         const render = binaryKind === 'image' ? renderImagePanes : renderMediaPanes;
+        // Through the hub the URL must not carry a cache-buster (the machine's route table does not know `t`), so
+        // there the bytes are fetched with cache: 'no-store' and shown from a blob:/data: URL (image_source.js).
+        const cloud = isCloud();
         const t = Date.now(); // the file may have changed since the last look
+        const pane = (label, endpoint, missing) => {
+            const url = _fileUrl(endpoint, tab.filepath, cloud ? { raw: 1 } : { raw: 1, t });
+            return cloud && binaryKind === 'image'
+                ? { label, load: () => fetchImageSrc(url, { name: tab.filepath }), missing }
+                : { label, url, missing };
+        };
         if (tab.mode === 'diff') {
-            render(body, [
-                { label: 'Before', url: _fileUrl('file-original', tab.filepath, { raw: 1, t }), missing: 'New file' },
-                { label: 'After', url: _fileUrl('file-content', tab.filepath, { raw: 1, t }), missing: 'Deleted' },
-            ]);
+            render(body, [pane('Before', 'file-original', 'New file'), pane('After', 'file-content', 'Deleted')]);
         } else {
-            render(body, [{ url: _fileUrl('file-content', tab.filepath, { raw: 1, t }), missing: binaryKind === 'image' ? 'Image not found' : 'Media not found' }]);
+            render(body, [pane(undefined, 'file-content', binaryKind === 'image' ? 'Image not found' : 'Media not found')]);
         }
         return;
     }
@@ -494,12 +501,24 @@ async function _render(tab) {
     }
 }
 
+/** The element an editor mounts into. CodeMirror writes its theme into <style> elements, which the hub's CSP
+ *  (style-src 'self') blocks; inside a shadow root it adopts a constructable stylesheet instead, which the CSP does
+ *  not govern. So in cloud mode the editor lives in a shadow root and the page rules that style it (the same ones
+ *  agentic.css/output.css hold for local mode) come from a stylesheet loaded from /static: no inline style anywhere. */
 function _cmHost(body) {
     body.replaceChildren();
     const host = document.createElement('div');
     host.className = 'inline-preview-cm preview-pane-cm';
     body.appendChild(host);
-    return host;
+    if (!isCloud() || !host.attachShadow) return host;
+    const root = host.attachShadow({ mode: 'open' });
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/static/css/cm_shadow.css';
+    const mount = document.createElement('div');
+    mount.className = 'cm-shadow-mount';
+    root.append(link, mount);
+    return mount;
 }
 
 function _mountEditor(tab, body) {
