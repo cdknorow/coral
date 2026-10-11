@@ -26,6 +26,15 @@ const { JSDOM } = require('jsdom');
     assert.strictEqual(s('a\u0000b\r\nc\u202e.txt'), 'abc.txt');
     assert.strictEqual(s('x'.repeat(300)).length, 100);
     assert.strictEqual(s('dir/'), 'artifact');
+    // trailing dots/spaces, reserved characters, Windows device names
+    assert.strictEqual(s('report.txt.'), 'report.txt');
+    assert.strictEqual(s('report.txt . . '), 'report.txt');
+    assert.strictEqual(s('a:b*c?d"e<f>g|h.txt'), 'abcdefgh.txt');
+    assert.strictEqual(s('::**'), 'artifact');
+    for (const r of ['CON', 'con', 'NUL', 'prn', 'AUX', 'COM1', 'com9', 'LPT1', 'lpt9', 'CON.txt', 'nul.tar.gz']) assert.strictEqual(s(r), '_' + r, r);
+    for (const ok of ['COM0', 'COM10', 'LPT0', 'console.txt', 'nullable', 'conx.txt', 'my.con']) assert.strictEqual(s(ok), ok, ok);
+    assert.strictEqual(s('x'.repeat(99) + '. . '), 'x'.repeat(99));
+    assert.strictEqual(s('a'.repeat(98) + ' .txt').length <= 100, true);
 
     // ── download: blob type, anchor, revoke, no navigation ──
     const body = new TextEncoder().encode('%PDF-fake').buffer;
@@ -56,6 +65,7 @@ const { JSDOM } = require('jsdom');
 
     // cross-origin and failures
     await assert.rejects(m.downloadArtifact('https://evil.example/x', 'x'), /same-origin/);
+    await assert.rejects(m.downloadArtifact('/static/app.js', 'x'), /same-origin API/);
     globalThis.fetch = async () => ({ ok: false, status: 403, headers: { get: () => null } });
     await assert.rejects(m.downloadArtifact('/api/artifacts/' + 'c'.repeat(64), 'x'), /403/);
 

@@ -13,21 +13,30 @@ import { isCloud } from './server_base.js';
 
 export const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
 
-/** A safe file name: no path parts, no control or bidi-override characters, no leading dots, at most 100 characters. */
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+
+/** A safe file name: no path parts, no control or bidi-override characters, none of : * ? " < > |, no leading dots,
+ *  no trailing dots or spaces, a Windows reserved device name (CON, NUL, COM1, LPT1 ...) prefixed with "_", at most
+ *  100 characters, and "artifact" when nothing is left. */
 export function sanitizeDownloadName(name) {
     let n = String(name == null ? '' : name);
     n = n.slice(n.lastIndexOf('/') + 1);
     n = n.slice(n.lastIndexOf('\\') + 1);
     // eslint-disable-next-line no-control-regex
-    n = n.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '').replace(/^[.\s]+/, '').trim();
+    n = n.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff:*?"<>|]/g, '').replace(/^[.\s]+/, '');
     if (n.length > 100) n = n.slice(0, 100);
-    return n || 'artifact';
+    n = n.replace(/[.\s]+$/, '');
+    if (!n) return 'artifact';
+    return WINDOWS_RESERVED.test(n) ? '_' + n : n;
 }
 
-/** Fetch `url` (same-origin GET) and save it as `name`. Throws a user-readable Error on failure. */
+/** Fetch `url` (same-origin GET) and save it as `name`. Throws a user-readable Error on failure.
+ *  `url` must come from the UI's own route building (serverUrl of /api/artifacts/{digest} or an artifact-content
+ *  route); text an artifact supplies (its name, manifest entries, links) only ever labels the file and never chooses
+ *  what is fetched. The same-origin and /api/ checks below are the guard if a caller ever got that wrong. */
 export async function downloadArtifact(url, name) {
     const target = new URL(url, window.location.href);
-    if (target.origin !== window.location.origin) throw new Error('Download refused: not a same-origin link');
+    if (target.origin !== window.location.origin || !target.pathname.startsWith('/api/')) throw new Error('Download refused: not a same-origin API link');
     const resp = await fetch(target.href, { method: 'GET', cache: 'no-store', credentials: 'same-origin' });
     if (!resp.ok) throw new Error(`Download failed (${resp.status})`);
     const declared = Number(resp.headers.get('Content-Length'));
