@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { escapeHtml, jsStr } from './utils.js';
 import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
+import { lockViewFrame, viewDocument, attachViewBridge } from './view_sandbox.js';
 
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
@@ -21,9 +22,9 @@ const DEFAULT_VIEW_HTML = `<!DOCTYPE html>
 <div id="content">Loading...</div>
 <script>
   const ctx = window.CORAL_CONTEXT || {};
-  // Example: fetch live sessions
-  fetch('/api/sessions/live')
-    .then(r => r.json())
+  // The view runs in a sandbox: it can read Coral's status through coral.get() (GET endpoints listed at /api/spec.json)
+  // but cannot call anything else.
+  coral.get('/api/sessions/live')
     .then(data => {
       const sessions = data.sessions || [];
       document.getElementById('content').innerHTML =
@@ -67,17 +68,47 @@ function _renderViewTabs() {
     ).join('');
 }
 
+const _approved = new Set();   // ids of API-created views the user chose to run in this page
+const _detach = new Map();     // view id -> function that removes its message bridge
+
 /** Create the iframe for a custom view when its tab is activated. */
 export function activateCustomView(viewId) {
     const panel = document.getElementById(`agentic-panel-custom-view-${viewId}`);
     if (!panel) return;
 
     // Only create iframe if not already present
-    if (panel.querySelector('iframe')) return;
+    if (panel.querySelector('iframe') || panel.querySelector('.custom-view-gate')) return;
 
     const view = _views.find(v => v.id === viewId);
     if (!view) return;
 
+    // A view written by a caller that was not this dashboard (an agent, a script) does not run until the user says so.
+    if (!isCloud() && view.created_via === 'api' && !_approved.has(viewId)) {
+        _renderGate(panel, view);
+        return;
+    }
+    _mountViewFrame(panel, view);
+}
+
+function _renderGate(panel, view) {
+    const gate = document.createElement('div');
+    gate.className = 'custom-view-gate';
+    const title = document.createElement('strong');
+    title.textContent = view.name || 'Custom view';
+    const note = document.createElement('p');
+    note.textContent = 'This view was created by an automated caller (an agent or a script), not in this dashboard. It runs in a sandbox that cannot reach Coral except to read agent and board status, but review it before you run it.';
+    const src = document.createElement('pre');
+    src.className = 'custom-view-gate-source';
+    src.textContent = String(view.html || '').slice(0, 4000) + (String(view.html || '').length > 4000 ? '\n…' : '');
+    const run = document.createElement('button');
+    run.type = 'button'; run.className = 'btn btn-small btn-primary'; run.textContent = 'Run this view';
+    run.addEventListener('click', () => { _approved.add(view.id); gate.remove(); _mountViewFrame(panel, view); });
+    gate.append(title, note, src, run);
+    panel.innerHTML = '';
+    panel.appendChild(gate);
+}
+
+function _mountViewFrame(panel, view) {
     const iframe = document.createElement('iframe');
     iframe.className = 'custom-view-iframe';
     if (isCloud()) {
@@ -86,26 +117,23 @@ export function activateCustomView(viewId) {
         lockFrame(iframe);
         iframe.srcdoc = sandboxedDoc(view.html);
     } else {
-        iframe.sandbox = 'allow-scripts allow-same-origin';
-        iframe.srcdoc = _injectContext(view.html);
+        // Scripts only, an opaque origin and no network: the view reads Coral through the allowlisted bridge
+        // (view_sandbox.js), never as the dashboard.
+        lockViewFrame(iframe);
+        iframe.srcdoc = viewDocument(view.html, _viewContext());
+        _detach.get(view.id)?.();
+        _detach.set(view.id, attachViewBridge(iframe));
     }
     panel.innerHTML = '';
     panel.appendChild(iframe);
 }
 
-/** Inject CORAL_CONTEXT into the view HTML. */
-function _injectContext(html) {
-    const ctx = {
+function _viewContext() {
+    return {
         agentName: state.currentSession ? state.currentSession.name : null,
         sessionId: state.currentSession ? state.currentSession.session_id : null,
         agentType: state.currentSession ? state.currentSession.agent_type : null,
     };
-    const script = `<script>window.CORAL_CONTEXT = ${JSON.stringify(ctx)};<\/script>`;
-    // Inject before </head> or at the start of <body>
-    if (html.includes('</head>')) {
-        return html.replace('</head>', script + '</head>');
-    }
-    return script + html;
 }
 
 /* ── Modal: Create / Edit View ────────────────────────────── */

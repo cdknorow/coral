@@ -2,7 +2,7 @@
   "title": "Coral API Reference (for Custom Views)",
   "version": "0.9",
   "base_url": "",
-  "description": "Key API endpoints available for building custom sidebar views. All endpoints return JSON.",
+  "description": "Read-only endpoints available to custom sidebar views. A view runs in a sandbox with no network and no access to the dashboard: call coral.get('/api/sessions/live') (returns parsed JSON) or fetch('/api/sessions/live'); only GET requests for the endpoints listed here are answered, and responses are limited to 1 MB. Views cannot change settings, send input to agents or call any other endpoint. window.CORAL_CONTEXT holds the selected agent ({agentName, sessionId, agentType}).",
   "endpoints": [
     {
       "method": "GET",
@@ -119,24 +119,6 @@
       "path": "/api/tags",
       "description": "List all tags",
       "response_example": [{"id": 1, "name": "auth", "color": "#3498db"}]
-    },
-    {
-      "method": "GET",
-      "path": "/api/settings",
-      "description": "Get user settings (key-value pairs)",
-      "response_example": {"theme": "dark", "refresh_files_on_switch": "true"}
-    },
-    {
-      "method": "GET",
-      "path": "/api/system/status",
-      "description": "Get system status (version, uptime, active sessions)",
-      "response_example": {"version": "0.9.24", "uptime_seconds": 3600, "active_sessions": 3}
-    },
-    {
-      "method": "GET",
-      "path": "/api/views",
-      "description": "List all custom views",
-      "response_example": [{"id": 1, "name": "Commit Timeline", "prompt": "Show commits", "html": "<div>...</div>", "tab_order": 0}]
     }
   ]
 }

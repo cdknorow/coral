@@ -2778,3 +2778,8 @@ button.team-artifact-name { cursor: pointer; }
    It appears on hover, and stays visible while that team is selected. */
 .team-open-btn.is-selected { display: inline-flex; align-items: center; color: var(--accent); }
 .team-artifacts-help .material-icons { font-size: 18px; }
+
+/* A custom view written by an automated caller waits for the user's click (custom_views.js). */
+.custom-view-gate { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.custom-view-gate p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.custom-view-gate-source { max-height: 240px; overflow: auto; margin: 0; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
