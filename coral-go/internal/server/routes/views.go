@@ -51,8 +51,13 @@ func (h *ViewsHandler) GetView(w http.ResponseWriter, r *http.Request) {
 }
 
 // viewWriteAllowed admits only the positively identified local dashboard (loopback peer, localhost Host, same-origin
-// browser fetch, no tunnel stamp, no Bearer credential) and a JSON content type, so a plain curl, an agent, a proxy or
-// the Cloud Hub cannot store view HTML that later runs in the user's browser. It writes the 403/400 itself.
+// browser fetch, no tunnel stamp, no Bearer credential) and a JSON content type. What this stops: other websites
+// (CSRF), browsers on another origin, proxies, the Cloud Hub, and an agent or script that simply calls the API with curl
+// or an HTTP library. What it does NOT stop: a process on this computer that deliberately forges the headers
+// (Sec-Fetch-Site and Host are ordinary request headers to a non-browser client). That is why this is one layer of
+// several: the view itself runs in an opaque-origin sandbox with no network, the bridge exposes an allowlist of reads,
+// and a view not written in the dashboard (created_via "api") needs a click before it runs. A per-install dashboard
+// token would close the forged-header gap and is a possible later hardening. It writes the 403/400 itself.
 func viewWriteAllowed(w http.ResponseWriter, r *http.Request, needJSON bool) bool {
 	if !localDashboard(r) {
 		errForbidden(w, "Custom views can only be changed from the Coral dashboard on this computer")

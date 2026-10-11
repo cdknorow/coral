@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased (next patch) — Custom views security fix
+
+- **Security: custom views no longer run with the dashboard's rights.** A view's HTML used to run inside the dashboard's own origin, so a view stored by an agent, a prompt-injected tool call or any local script could call every local API (including settings that run commands) the next time you opened its tab. Views now run in an isolated sandbox with no network and no access to the dashboard, and read data only through a small read-only list of endpoints. Views that called `fetch('/api/...')` keep working for the listed read endpoints; any other endpoint, or any write, no longer works.
+- **Views not written in the dashboard ask first.** Every existing view is treated as "created by an automated caller" after the upgrade: it shows its source and runs only after you press "Run this view" (once per page load). Open and save it in the editor to mark it as yours.
+- **Only the dashboard can change views.** Creating, editing or deleting a view now requires a request that comes from the Coral dashboard in a browser on this computer. This stops other websites, proxies, the Cloud Hub and agents calling the API with curl. It does not stop a program on this computer that deliberately forges browser headers; the sandbox, the allowlist and the click-to-run gate are the protections against that. Opening the dashboard through remote access from another device can no longer create or edit views. A per-install dashboard token is a possible later hardening.
+
+
 ## v1.3.42 — Multi-server hub, Cloud Hub connector and bounded file endpoints
 
 - **Multi-server hub (opt-in).** Start one Coral with `coral --hub` (or `CORAL_HUB=1`), then add other Coral servers under Settings > Servers. Their agents and teams appear in the hub's dashboard, you can open their chat and terminal, and you can launch agents and teams on them, including browsing the remote's folders. Remote API keys are stored encrypted. See the Multi-server hub guide.
