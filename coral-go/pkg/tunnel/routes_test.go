@@ -438,3 +438,41 @@ func TestRealUIQueriesAreNotRefused(t *testing.T) {
 	assert.Equal(t, TierNever, Classify("GET", "/api/board/proj/messages", "project=other"))
 	assert.Equal(t, TierNever, Classify("GET", "/api/sessions/live/001/events", "name=other"))
 }
+
+func TestArtifactRouteIsExactDigestOnly(t *testing.T) {
+	hex := strings.Repeat("ab12", 16) // 64 lowercase hex digits
+	assert.Equal(t, TierView, Classify("GET", "/api/artifacts/"+hex, ""))
+	assert.Equal(t, TierView, Classify("HEAD", "/api/artifacts/"+hex, ""))
+	assert.True(t, AllowRequest(func() Mode { return TierView })("GET", "/api/artifacts/"+hex, ""), "readable in view mode")
+	for _, probe := range []struct{ method, path, query string }{
+		{"GET", "/api/artifacts/" + hex[:63], ""},                    // 63 digits
+		{"GET", "/api/artifacts/" + hex + "0", ""},                   // 65 digits
+		{"GET", "/api/artifacts/" + strings.ToUpper(hex), ""},        // upper case
+		{"GET", "/api/artifacts/" + hex + "/", ""},                   // trailing slash
+		{"GET", "/api/artifacts/" + hex + ".json", ""},               // metadata sidecar suffix
+		{"GET", "/api/artifacts/" + hex + "/..", ""},                 // %2f.. after decoding
+		{"GET", "/api/artifacts/" + hex + "/x", ""},                  // extra segment
+		{"GET", "/api/artifacts/" + hex[:32] + "%2f" + hex[32:], ""}, // encoded slash left in the segment
+		{"GET", "/api/artifacts/" + hex[:63] + "g", ""},              // not hex
+		{"GET", "/api/artifacts/" + hex[:63] + "١", ""},              // look-alike digit
+		{"GET", "/api/artifacts/" + hex[:62] + "\x00a", ""},          // NUL
+		{"GET", "/api/artifacts", ""},                                // no list
+		{"GET", "/api/artifacts/", ""},                               // empty id
+		{"GET", "/api/artifacts/x", ""},                              // wildcard-looking id
+		{"GET", "/api/artifacts/*", ""},                              //
+		{"GET", "/api/artifacts/" + hex, "download=1"},               // no query parameters at all
+		{"GET", "/api/artifacts/" + hex, "x"},                        //
+		{"POST", "/api/artifacts/" + hex, ""},                        // writes
+		{"PUT", "/api/artifacts/" + hex, ""},                         //
+		{"DELETE", "/api/artifacts/" + hex, ""},                      //
+		{"POST", "/api/artifacts", ""},                               // upload is not part of this change
+		{"POST", "/api/agent/artifacts", ""},                         // the agent upload route
+		{"GET", "/api/agent/artifacts", ""},                          //
+		{"GET", "/api/artifacts/" + hex + "/../../agent/ui", ""},     //
+		{"GET", "/api//artifacts/" + hex, ""},                        // empty segment
+		{"GET", "/api/artifacts/./" + hex, ""},                       // dot segment
+		{"GET", "/api/artifacts/" + hex[:32] + "\\" + hex[32:], ""},  // backslash
+	} {
+		assert.Equal(t, TierNever, Classify(probe.method, probe.path, probe.query), "%s %q ?%s must not be reachable", probe.method, probe.path, probe.query)
+	}
+}

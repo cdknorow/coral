@@ -1,10 +1,14 @@
 package hubproxy
 
 import (
+	"bytes"
 	"errors"
+	"io"
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -107,8 +111,65 @@ func StrictResponseFilter(resp *http.Response) error {
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
+	// Whatever the connector says about caching is ignored: this is one account's content on a shared origin. A
+	// browser cache would keep it after sign-out, revoke, or on a shared browser (Coral marks artifacts
+	// "public, max-age=1y, immutable").
+	h.Del("Cache-Control")
+	h.Del("Expires")
+	h.Del("Etag")
+	h.Del("Last-Modified")
+	h.Set("Cache-Control", "private, no-store")
+	if resp.Request != nil && resp.Request.URL != nil && artifactPath.MatchString(resp.Request.URL.Path) {
+		capArtifact(resp)
+	}
 	return nil
 }
+
+// MaxArtifactBytes is the most the hub relays for one artifact. Coral accepts uploads up to 64 MiB; the hub
+// relays at most 25 MiB through a browser fetch.
+const MaxArtifactBytes = 25 << 20
+
+var artifactPath = regexp.MustCompile(`^/api/artifacts/[0-9a-f]{64}$`)
+
+var errArtifactTooLarge = errors.New("artifact exceeds the hub's relay limit")
+
+// capArtifact enforces MaxArtifactBytes: a declared length over the limit is answered with a clear 413, and an
+// undeclared (chunked) body is cut off with an error once it passes the limit, never streamed without bound.
+func capArtifact(resp *http.Response) {
+	if resp.ContentLength > MaxArtifactBytes {
+		_ = resp.Body.Close()
+		body := []byte(`{"error":"artifact_too_large"}` + "\n")
+		resp.StatusCode, resp.Status = http.StatusRequestEntityTooLarge, "413 Request Entity Too Large"
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
+		resp.Header.Set("Content-Type", "application/json")
+		resp.Header.Set("Content-Length", strconv.Itoa(len(body)))
+		resp.Header.Del("Content-Disposition")
+		return
+	}
+	if resp.ContentLength < 0 {
+		resp.Body = &cappedBody{rc: resp.Body, left: MaxArtifactBytes}
+	}
+}
+
+type cappedBody struct {
+	rc   io.ReadCloser
+	left int64
+}
+
+func (c *cappedBody) Read(p []byte) (int, error) {
+	if c.left <= 0 {
+		return 0, errArtifactTooLarge
+	}
+	if int64(len(p)) > c.left {
+		p = p[:c.left]
+	}
+	n, err := c.rc.Read(p)
+	c.left -= int64(n)
+	return n, err
+}
+
+func (c *cappedBody) Close() error { return c.rc.Close() }
 
 // dispositionFilename returns a safe ASCII basename from a Content-Disposition header,
 // or "" when there is none. Everything the connector supplies is reduced to

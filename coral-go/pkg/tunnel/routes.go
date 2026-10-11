@@ -67,7 +67,7 @@ func Lower(a, b Mode) Mode {
 }
 
 // route is "METHOD /path/{param}/more": a {param} matches exactly one non-empty
-// segment. There are no prefix or wildcard rules, so a rule can never swallow a
+// segment, except {hex64}, which matches exactly 64 lowercase hex digits (a content digest). There are no prefix or wildcard rules, so a rule can never swallow a
 // sibling route.
 type route struct {
 	method  string // "*" matches every method (used for explicit TierNever rules)
@@ -200,6 +200,10 @@ var routeTable = cat(
 		"/api/templates/commands", "/api/templates/commands/{category}", "/api/templates/commands/{category}/{name}",
 		"/api/views", "/api/views/{id}",
 		"/api/agent-models", "/api/settings/default-prompts", "/api/session-artifacts",
+		// A content-addressed agent artifact, named by its full SHA-256. Reads only; the exact 64-hex shape is
+		// enforced by the {hex64} segment, and the route takes no query. Upload (POST /api/agent/artifacts) and
+		// the artifact list under /api/agent/ stay unlisted (never).
+		"/api/artifacts/{hex64}",
 	),
 
 	// ── interact: typing into running agents, and changing running work ──
@@ -505,6 +509,12 @@ func matchSegments(pattern string, segs []string) bool {
 		return false
 	}
 	for i, ps := range pat {
+		if ps == "{hex64}" {
+			if !isHex64(segs[i]) {
+				return false
+			}
+			continue
+		}
 		if strings.HasPrefix(ps, "{") && strings.HasSuffix(ps, "}") {
 			continue
 		}
@@ -534,4 +544,18 @@ func FrameTier(decodedPath string, data []byte) Tier {
 		return TierView
 	}
 	return TierInteract
+}
+
+// isHex64 reports whether s is exactly 64 lowercase hexadecimal digits.
+func isHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }

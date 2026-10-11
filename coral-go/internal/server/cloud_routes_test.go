@@ -19,6 +19,9 @@ const cloudGolden = "testdata/cloud_routes.golden"
 // concrete turns a chi pattern into a path the matcher can classify.
 func concrete(route string) string {
 	route = strings.TrimSuffix(route, "/*")
+	if route == "/api/artifacts/{id}" {
+		return "/api/artifacts/" + strings.Repeat("a", 64) // the table only admits a full content digest
+	}
 	segs := strings.Split(route, "/")
 	for i, s := range segs {
 		if strings.HasPrefix(s, "{") {

@@ -30,7 +30,7 @@ GET /api/agent/tasks/{taskID} never
 GET /api/agent/ui never
 GET /api/agent/ui/{id}/content never
 GET /api/agent/ui/{id}/events never
-GET /api/artifacts/{id} never
+GET /api/artifacts/{id} view
 GET /api/board/projects view
 GET /api/board/remotes never
 GET /api/board/remotes/proxy/{remoteServer}/projects never
