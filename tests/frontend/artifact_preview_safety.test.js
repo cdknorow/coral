@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
+const http = require('node:http');
 const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
 if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
 
@@ -94,6 +95,45 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
     assert.match(malformed.raw,/file:\/\/\/tmp\/nope/);
 
     // ── Untrusted artifact content never runs and never becomes live markup in the page ──────────────────────────────
+    // ── The framed document is isolated: no referrer, no network, no messages, no reach into the page ────────────────
+    // A counting server on loopback stands in for "anywhere on the network". Hostile HTML tries every way out it can.
+    const hits = [];
+    const sink = http.createServer((req, res) => { hits.push(req.method + ' ' + req.url); res.writeHead(200, { 'Content-Type': 'text/css' }); res.end('body{}'); });
+    await new Promise(r => sink.listen(0, '127.0.0.1', r));
+    const sinkUrl = 'http://127.0.0.1:' + sink.address().port;
+    let iso;
+    try {
+      iso = await ev(`(async()=>{
+        const wait=ms=>new Promise(r=>setTimeout(r,ms)); const sink=${JSON.stringify(sinkUrl)};
+        // Positive control: the counting server really does see a request the page itself makes.
+        new Image().src=sink+'/control'; await wait(300);
+        window.__closePreview(); window.__messages=0; window.__canary='intact';
+        window.addEventListener('message',()=>{window.__messages++});
+        const hostileHtml='<h1>probe</h1>'
+          +'<img src="'+sink+'/img"><link rel="stylesheet" href="'+sink+'/link.css"><style>@import url("'+sink+'/import.css"); body{background:url("'+sink+'/bg")}</style>'
+          +'<iframe src="'+sink+'/frame"></iframe><meta http-equiv="refresh" content="0;url='+sink+'/refresh">'
+          +'<form id=f action="'+sink+'/form" method="post"><input name=a value=b></form>'
+          +'<script>fetch("'+sink+'/fetch");new Image().src="'+sink+'/imgjs";parent.postMessage("hostile","*");top.postMessage("hostile","*");parent.__canary="pwned";top.__canary="pwned";document.getElementById("f").submit();<\\/script>';
+        window.fetch=async()=>new Response(hostileHtml,{status:200,headers:{'Content-Type':'text/html','Content-Disposition':'inline; filename="probe.html"'}});
+        window.openFilePreview(${JSON.stringify(uri)}); await wait(1500);
+        const frame=document.querySelector('#preview-body iframe');
+        return {hasFrame:!!frame,referrer:frame?frame.referrerPolicy:null,messages:window.__messages,canary:window.__canary};
+      })()`);
+      await new Promise(r => setTimeout(r, 500)); // late loads
+    } finally { await new Promise(r => sink.close(r)); }
+    await ev(`window.__closePreview()`);
+    // Collected and reported together so each property shows up on its own when it is the one that breaks.
+    const isoProblems = [];
+    const controlSeen = hits.some(h => h.endsWith(' /control'));
+    if (!controlSeen) isoProblems.push('positive control failed: the counting server saw no request from the page itself, so zero hits would prove nothing');
+    for (let i = hits.length - 1; i >= 0; i--) if (hits[i].endsWith(' /control')) hits.splice(i, 1);
+    if (!iso.hasFrame) isoProblems.push('no iframe rendered for the probe');
+    if (iso.referrer !== 'no-referrer') isoProblems.push('iframe referrerPolicy is ' + JSON.stringify(iso.referrer) + ', want "no-referrer"');
+    if (hits.length) isoProblems.push('requests left the frame: ' + hits.join(', '));
+    if (iso.messages !== 0) isoProblems.push(iso.messages + ' postMessage event(s) reached the parent');
+    if (iso.canary !== 'intact') isoProblems.push('parent window canary was changed to ' + JSON.stringify(iso.canary));
+    assert.deepEqual(isoProblems, [], 'framed hostile HTML must be fully isolated');
+
     const hostile = await ev(`(async()=>{
       const out={}; const wait=ms=>new Promise(r=>setTimeout(r,ms)); const open=async()=>{window.openFilePreview(${JSON.stringify(uri)}); await wait(500);};
       const respond=(body,type,name,url)=>{window.fetch=async()=>{const r=new Response(body,{status:200,headers:{'Content-Type':type,'Content-Disposition':'inline; filename="'+name+'"'}}); if(url) Object.defineProperty(r,'url',{value:url}); return r;};};
