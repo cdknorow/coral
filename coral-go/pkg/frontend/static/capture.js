@@ -7,7 +7,7 @@ import { renderTaskList } from './tasks.js';
 import { renderEventTimeline } from './agentic_state.js';
 import { getTerminalCols } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
-import { serverFetch, currentServer } from './server_base.js';
+import { serverFetch, currentServer, isCloud } from './server_base.js';
 
 let _refreshCaptureHasRun = false;
 
@@ -36,6 +36,8 @@ function measureTerminalColumns() {
 }
 
 let _lastSyncedCols = null;
+// Servers that refused a pane resize (a View-mode viewer may not change the shared pane): stop asking for this page load.
+const _resizeRefused = new Set();
 
 export async function syncPaneWidth() {
     if (!state.settings?.fit_pane_width) return;
@@ -48,8 +50,17 @@ export async function syncPaneWidth() {
     if (cols === _lastSyncedCols) return;
     _lastSyncedCols = cols;
 
+    const server = currentServer();
+    if (_resizeRefused.has(server)) return;
+    // Through the hub, a viewer (View mode, or a machine limited to View) must not write at all, even in the background:
+    // looking at a session never sends a request the hub would refuse.
+    if (isCloud() && server !== 'local') {
+        const { serverMayInteract } = await import('./cloud_servers.js');
+        if (!(await serverMayInteract(server))) { _lastSyncedCols = null; return; }
+    }
     try {
-        await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/resize`, {
+        // Background request: no toast if the hub or the machine says no (View mode); remember it and do not ask again.
+        const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/resize`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -57,7 +68,9 @@ export async function syncPaneWidth() {
                 agent_type: state.currentSession.agent_type,
                 session_id: state.currentSession.session_id,
             }),
+            quiet: true,
         });
+        if (resp && resp.status === 403) _resizeRefused.add(server);
     } catch (e) {
         console.error("Failed to sync pane width:", e);
     }

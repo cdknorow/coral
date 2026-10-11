@@ -105,7 +105,9 @@ export function installCloudFetch() {
         }
         const resp = await orig(input, init);
         if (resp.status === 403 && !SAFE.has(method)) _session = null; // token may have rotated; refetch next time
-        if (resp.status === 403 && sameOrigin(input)) explainRefusal(resp);
+        // `quiet: true` marks a background request the user did not ask for (e.g. fitting the pane width on open):
+        // a refusal there is not worth a toast, only an action the user took is.
+        if (resp.status === 403 && sameOrigin(input) && !(init && init.quiet)) explainRefusal(resp);
         if (resp.status === 401 && sameOrigin(input) && !/^\/(signin|auth|enroll)/.test(location.pathname)) {
             location.replace(signInUrl());
         }

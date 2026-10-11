@@ -115,6 +115,26 @@ export function launchNote(s) {
     return '';
 }
 
+let _modeCache = { at: 0, byId: null, pending: null };
+/** Whether this tab's account may send interact-level requests to `serverId` right now (the lower of the hub mode and the
+ *  machine's own limit). Cached for 15 s; an unknown server or a failed lookup answers true so a lookup problem never
+ *  blocks the UI (the hub still enforces). Used to skip background writes a viewer could only get refused. */
+export async function serverMayInteract(serverId) {
+    const now = Date.now();
+    if (!_modeCache.byId || now - _modeCache.at > 15000) {
+        _modeCache.pending = _modeCache.pending || fetch('/api/servers', { credentials: 'same-origin', quiet: true })
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => { _modeCache.byId = d && Array.isArray(d.servers) ? Object.fromEntries(d.servers.map(x => [x.id, x])) : (_modeCache.byId || {}); _modeCache.at = Date.now(); })
+            .catch(() => { _modeCache.byId = _modeCache.byId || {}; _modeCache.at = Date.now(); })
+            .finally(() => { _modeCache.pending = null; });
+        await _modeCache.pending;
+    } else if (_modeCache.pending) {
+        await _modeCache.pending;
+    }
+    const s = _modeCache.byId && _modeCache.byId[serverId];
+    return !s || rank(effectiveMode(s)) >= rank('interact');
+}
+
 /** Plain-language text for a hub refusal of a proxied request, or '' when it is not one we explain.
  *  `local_mode` = the machine's own Cloud access setting is lower than the hub allows (mode is its
  *  current maximum); `access_mode` / `launch_disabled` = the hub setting is too low. */

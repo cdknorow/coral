@@ -55,5 +55,18 @@ const { pathToFileURL } = require('url');
         assert.strictEqual((await fetch('/api/servers')).status, 200);
         assert.deepStrictEqual(sent, ['/api/servers']);
     }
+    // serverMayInteract: the lower of hub and machine mode decides; unknown servers and failed lookups never block.
+    {
+        let servers = [{ id: 'v', access_mode: 'view', local_mode: 'launch' }, { id: 'i', access_mode: 'interact', local_mode: 'launch' },
+                       { id: 'm', access_mode: 'launch', local_mode: 'view' }, { id: 'l', access_mode: 'launch', local_mode: 'launch' }];
+        let calls = 0;
+        globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ servers }), { status: 200 }); };
+        assert.strictEqual(await m.serverMayInteract('v'), false, 'hub View');
+        assert.strictEqual(await m.serverMayInteract('m'), false, 'machine limited to View');
+        assert.strictEqual(await m.serverMayInteract('i'), true);
+        assert.strictEqual(await m.serverMayInteract('l'), true);
+        assert.strictEqual(await m.serverMayInteract('unknown'), true, 'unknown server never blocks');
+        assert.strictEqual(calls, 1, 'cached');
+    }
     console.log('cloud_servers.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });
