@@ -113,6 +113,14 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
       out.md={scripts:document.querySelectorAll('#preview-body script').length,handlers:document.querySelectorAll('#preview-body [onerror], #preview-body [onload]').length,
         jsLinks:[...document.querySelectorAll('#preview-body a')].filter(a=>/^javascript:/i.test(a.getAttribute('href')||'')).length,
         pwn:window.__pwnMd===undefined&&window.__pwnMd2===undefined};
+      // 4) A REPOSITORY .html file (not an artifact) takes a different code path in the preview pane: same guarantees
+      window.__closePreview();
+      const st=(await import('/static/state.js')).state; st.currentSession={type:'live',name:'fixture',session_id:'repo-html',working_directory:'/fixture'};
+      window.fetch=async()=>new Response(JSON.stringify({content:'<h1>Repo page</h1><script>window.top.__pwnRepo=1<\\/script><img src=x onerror="window.top.__pwnRepo2=1">',filepath:'x.html',working_directory:'/fixture'}),{status:200});
+      window.openFilePreview('x.html'); await wait(500);
+      const rf=document.querySelector('#preview-body iframe');
+      out.repo={hasFrame:!!rf,sandbox:rf?rf.getAttribute('sandbox'):null,isolated:rf?rf.contentDocument===null:false,csp:!!rf&&/default-src 'none'/.test(rf.getAttribute('srcdoc')||''),
+        pwn:window.__pwnRepo===undefined&&window.__pwnRepo2===undefined,scriptsInPage:document.querySelectorAll('#preview-body script').length};
       window.__closePreview();
       return out;
     })()`);
@@ -128,6 +136,12 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
     assert.equal(hostile.svg.objects, 0);
     assert.ok(hostile.svg.imgs >= 1, 'SVG is shown through <img>');
     assert.equal(hostile.svg.pwn, true);
+    assert.equal(hostile.repo.hasFrame, true, 'a repository .html file renders in an iframe');
+    assert.equal(hostile.repo.sandbox, '', 'the repository HTML iframe sandbox attribute is empty');
+    assert.equal(hostile.repo.isolated, true);
+    assert.equal(hostile.repo.csp, true);
+    assert.equal(hostile.repo.pwn, true, 'no script from a repository HTML file ran');
+    assert.equal(hostile.repo.scriptsInPage, 0);
     assert.deepEqual([hostile.md.scripts, hostile.md.handlers, hostile.md.jsLinks], [0, 0, 0], 'markdown is sanitized');
     assert.equal(hostile.md.pwn, true);
     console.log('PASS artifact preview safety and browsable manifest collection');

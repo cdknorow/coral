@@ -75,7 +75,8 @@ for (const t of tests) {
   const ok = r.code === 0;
   results.push({ test: t, ok, code: r.code, secs: ((Date.now() - started) / 1000).toFixed(1), tail: r.out.trim().split('\n').slice(-6).join('\n') });
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${t}  (${results.at(-1).secs}s)${ok ? '' : '  exit=' + r.code}`);
-  if (!ok) console.log(r.out.trim().split('\n').slice(-30).map(l => '      ' + l).join('\n'));
+  // CDP_FULL=1 prints a failing suite's whole output (the default shows only the last 30 lines, which can hide the failing check).
+  if (!ok) console.log(r.out.trim().split('\n').slice(process.env.CDP_FULL ? 0 : -30).map(l => '      ' + l).join('\n'));
 }
 const failed = results.filter(r => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} suites passed`);
