@@ -2736,7 +2736,7 @@ export function showTeamDetails(boardName) {
     pop.setAttribute('tabindex', '-1');
     pop.innerHTML = `
         <div class="team-details-head">
-            <span id="${Number(titleId)}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
+            <span id="${escapeAttr(titleId)}" class="team-details-title">${escapeHtml(keyLabel(boardName))}</span>
             <button type="button" class="team-details-close" aria-label="Close team details" onclick="hideTeamDetails()">&times;</button>
         </div>
         <dl class="team-details-list">

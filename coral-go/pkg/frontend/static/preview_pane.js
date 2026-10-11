@@ -212,10 +212,10 @@ function _renderTabs() {
         const active = tab.id === _activeId ? ' active' : '';
         const title = tab.kind === 'artifact' ? (tab.options.filename || tab.filepath) : tab.filepath;
         const preview = tab.pinned ? '' : ' preview';
-        html += `<div class="preview-tab${active}${preview}" data-tab-id="${Number(tab.id)}" title="${tab.pinned ? '' : 'Preview — double-click to keep open'}">
+        html += `<div class="preview-tab${active}${preview}" data-tab-id="${escapeAttr(tab.id)}" title="${tab.pinned ? '' : 'Preview — double-click to keep open'}">
             <span class="preview-tab-icon">${_fileIcon(tab)}</span>
             <span class="preview-tab-name" title="${escapeAttr(title)}">${escapeHtml(_tabTitle(tab))}${_isDirty(tab) ? ' •' : ''}</span>
-            <button class="preview-tab-close" data-tab-id="${Number(tab.id)}" title="Close">&times;</button>
+            <button class="preview-tab-close" data-tab-id="${escapeAttr(tab.id)}" title="Close">&times;</button>
         </div>`;
     }
     bar.innerHTML = html;

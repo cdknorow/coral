@@ -758,9 +758,9 @@ function _renderDepPicker(containerId, selectedIds = [], excludeTaskId = null) {
     );
     const selected = new Set(selectedIds.map(Number));
 
-    let html = `<div class="dep-picker-selected" id="${Number(containerId)}-tags"></div>`;
+    let html = `<div class="dep-picker-selected" id="${escapeAttr(containerId)}-tags"></div>`;
     html += `<div class="dep-picker-toggle"><a class="dep-picker-add-link" onclick="document.getElementById('${jsStr(containerId)}-list').style.display = document.getElementById('${jsStr(containerId)}-list').style.display === 'none' ? '' : 'none'">+ Add dependency</a></div>`;
-    html += `<div class="dep-picker-list" id="${Number(containerId)}-list" style="display:none">`;
+    html += `<div class="dep-picker-list" id="${escapeAttr(containerId)}-list" style="display:none">`;
     if (tasks.length === 0) {
         html += `<div class="dep-picker-empty">No eligible tasks</div>`;
     } else {

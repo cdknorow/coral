@@ -16,6 +16,8 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
     await Page.navigate({ url: BASE });
     await Page.loadEventFired();
     await ev(`(async()=>{const {state}=await import('/static/state.js');state.currentSession={type:'live',session_id:'artifact-preview-test'};await import('/static/changed_files.js');})()`);
+    // The preview is a tabbed pane (#preview-body); closing every tab is its reset.
+    await ev(`(async()=>{const m=await import('/static/preview_pane.js');window.__closePreview=()=>m.closeAllTabs();})()`);
     const uri = 'coral://artifacts/a7cfde2b2f1a96d3a9086c715ff5c04afbcb3823daa611dd642fb377e2b23f44';
     const result = await ev(`(async()=>{
       const real=window.fetch; window.__artifactReads=0;
@@ -24,20 +26,20 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
         return new Response(new ReadableStream({start(){window.__artifactReads++}}),{status:200,headers:{'Content-Type':'application/zip','Content-Length':'6096917','Content-Disposition':'inline; filename="final-ember-accord-acceptance.zip"'}});
       };
       window.openFilePreview(${JSON.stringify(uri)}); await new Promise(r=>setTimeout(r,80));
-      return {text:document.querySelector('#inline-preview-body')?.textContent||'',link:document.querySelector('#inline-preview-body a')?.getAttribute('download')||'',reads:window.__artifactReads};
+      return {text:document.querySelector('#preview-body')?.textContent||'',link:document.querySelector('#preview-body a')?.getAttribute('download')||'',reads:window.__artifactReads};
     })()`);
     assert.match(result.text, /binary artifact is not rendered inline/);
     assert.equal(result.link, '');
     assert.equal(result.reads, 1);
-    await ev(`window._closeInlinePreview()`);
+    await ev(`window.__closePreview()`);
     const markdown = await ev(`(async()=>{
       window.fetch=async()=>new Response('# Safe preview\\n\\nThis is markdown.',{status:200,headers:{'Content-Type':'text/markdown','Content-Length':'25','Content-Disposition':'inline; filename="report.md"'}});
       window.openFilePreview(${JSON.stringify(uri)}); await new Promise(r=>setTimeout(r,80));
-      return {heading:document.querySelector('#inline-preview-body h1')?.textContent||'',raw:document.querySelector('#inline-preview-body')?.textContent||''};
+      return {heading:document.querySelector('#preview-body h1')?.textContent||'',raw:document.querySelector('#preview-body')?.textContent||''};
     })()`);
     assert.equal(markdown.heading, 'Safe preview');
     assert.match(markdown.raw, /This is markdown/);
-    await ev(`window._closeInlinePreview()`);
+    await ev(`window.__closePreview()`);
     const manifest = await ev(`(async()=>{
       const manifestUri='coral://artifacts/a7cfde2b2f1a96d3a9086c715ff5c04afbcb3823daa611dd642fb377e2b23f44';
       const childMd='coral://artifacts/b7cfde2b2f1a96d3a9086c715ff5c04afbcb3823daa611dd642fb377e2b23f44';
@@ -57,15 +59,18 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
       links.forEach(a=>a.addEventListener('click',e=>e.preventDefault(),{once:true}));
       links[0].click(); links[2].click();
       const list={names:[...document.querySelectorAll('.artifact-manifest-name')].map(e=>e.textContent),hasUnsafeMarkup:!!document.querySelector('.artifact-manifest-list img'),rawButton:!!document.querySelector('.artifact-manifest-raw'),downloadNames:links.map(e=>e.download),downloadHrefs:links.map(e=>e.getAttribute('href')),fetchesAfterDownloads:window.__manifestFetches};
+      // A tab opened by single click is a replaceable 'preview' tab; pin the collection (double-click) so the entry opens beside it.
+      document.querySelector('.preview-tab').dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); await new Promise(r=>setTimeout(r,40));
       document.querySelector('.artifact-manifest-open').click(); await new Promise(r=>setTimeout(r,80));
-      const child={heading:document.querySelector('#inline-preview-body h1')?.textContent||'',backButton:document.querySelector('.inline-preview-back')?.title||''};
-      document.querySelector('.inline-preview-back').click(); await new Promise(r=>setTimeout(r,40));
+      const tabsAfterOpen=document.querySelectorAll('.preview-tab').length;
+      const child={heading:document.querySelector('#preview-body h1')?.textContent||'',backButton:'Back'};
+      document.querySelector('.preview-tab').click(); await new Promise(r=>setTimeout(r,300));
       const returnedToManifest=!!document.querySelector('.artifact-manifest-list');
       document.querySelector('.artifact-manifest-raw').click(); await new Promise(r=>setTimeout(r,40));
-      const rawView={hasRaw:document.querySelector('#inline-preview-body pre')?.textContent.includes('missing.txt')||false,returnButton:!!document.querySelector('.artifact-manifest-back')};
+      const rawView={hasRaw:document.querySelector('#preview-body pre')?.textContent.includes('missing.txt')||false,returnButton:!!document.querySelector('.artifact-manifest-back')};
       document.querySelector('.artifact-manifest-back').click(); await new Promise(r=>setTimeout(r,20));
-      window._closeInlinePreview(); window.openFilePreview(missing); await new Promise(r=>setTimeout(r,80));
-      return {list,child,returnedToManifest,rawView,error:document.querySelector('#inline-preview-body')?.textContent||''};
+      window.__closePreview(); window.openFilePreview(missing); await new Promise(r=>setTimeout(r,80));
+      return {list,child,tabsAfterOpen,returnedToManifest,rawView,error:document.querySelector('#preview-body')?.textContent||''};
     })()`);
     assert.deepEqual(manifest.list.names,['<unsafe>.md','missing.txt','journey.png']);
     assert.equal(manifest.list.hasUnsafeMarkup,false);
@@ -74,19 +79,57 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
     assert.equal(manifest.list.downloadHrefs[2].startsWith('/api/artifacts/'),true);
     assert.equal(manifest.list.fetchesAfterDownloads,1);
     assert.equal(manifest.child.heading,'Child report');
-    assert.equal(manifest.child.backButton,'Back');
+    assert.equal(manifest.tabsAfterOpen,2,'the entry opens as its own tab and the collection stays open');
     assert.equal(manifest.returnedToManifest,true);
     assert.equal(manifest.rawView.hasRaw,true);
     assert.equal(manifest.rawView.returnButton,true);
     assert.match(manifest.error,/Artifact unavailable/);
-    await ev(`window._closeInlinePreview()`);
+    await ev(`window.__closePreview()`);
     const malformed = await ev(`(async()=>{
       window.fetch=async()=>new Response('[{"name":"bad","uri":"file:///tmp/nope"}]',{status:200,headers:{'Content-Type':'application/json','Content-Disposition':'inline; filename="unrelated.json"'}});
       window.openFilePreview(${JSON.stringify(uri)}); await new Promise(r=>setTimeout(r,80));
-      return {manifest:!!document.querySelector('.artifact-manifest-list'),raw:document.querySelector('#inline-preview-body pre')?.textContent||''};
+      return {manifest:!!document.querySelector('.artifact-manifest-list'),raw:document.querySelector('#preview-body pre')?.textContent||''};
     })()`);
     assert.equal(malformed.manifest,false);
     assert.match(malformed.raw,/file:\/\/\/tmp\/nope/);
+
+    // ── Untrusted artifact content never runs and never becomes live markup in the page ──────────────────────────────
+    const hostile = await ev(`(async()=>{
+      const out={}; const wait=ms=>new Promise(r=>setTimeout(r,ms)); const open=async()=>{window.openFilePreview(${JSON.stringify(uri)}); await wait(500);};
+      const respond=(body,type,name,url)=>{window.fetch=async()=>{const r=new Response(body,{status:200,headers:{'Content-Type':type,'Content-Disposition':'inline; filename="'+name+'"'}}); if(url) Object.defineProperty(r,'url',{value:url}); return r;};};
+      // 1) HTML: script and an onerror handler, trying to reach the parent
+      window.__closePreview(); respond('<h1>Hi</h1><script>window.top.__pwnScript=1;parent.document.title="pwn"</script><img src=x onerror="window.top.__pwnImg=1">','text/html','x.html'); await open();
+      const frame=document.querySelector('#preview-body iframe');
+      out.html={hasFrame:!!frame,sandbox:frame?frame.getAttribute('sandbox'):null,tokens:frame?frame.sandbox.length:-1,contentDocument:frame?frame.contentDocument===null:false,
+        srcdocHasCsp:!!frame&&/Content-Security-Policy[^>]*default-src 'none'/.test(frame.getAttribute('srcdoc')||''),scriptsInPage:document.querySelectorAll('#preview-body script').length,
+        pwnScript:window.__pwnScript===undefined,pwnImg:window.__pwnImg===undefined,title:document.title!=='pwn',
+        parentHasMarkup:!!document.querySelector('#preview-body > h1, #preview-body > img')};
+      // 2) SVG: an image, never inline markup
+      window.__closePreview(); respond('<svg xmlns="http://www.w3.org/2000/svg" onload="window.__pwnSvg=1"><script>window.__pwnSvg2=1</script><circle r="5"/></svg>','image/svg+xml','x.svg','data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="5" height="5"/>')); await open();
+      out.svg={inlineSvg:document.querySelectorAll('#preview-body svg').length,imgs:document.querySelectorAll('#preview-body img').length,objects:document.querySelectorAll('#preview-body object, #preview-body embed').length,
+        pwn:window.__pwnSvg===undefined&&window.__pwnSvg2===undefined};
+      // 3) Markdown: sanitized
+      window.__closePreview(); respond('# T\\n\\n<script>window.__pwnMd=1<\\/script><img src=x onerror="window.__pwnMd2=1"><a href="javascript:window.__pwnMd3=1">x</a>','text/markdown','x.md'); await open();
+      out.md={scripts:document.querySelectorAll('#preview-body script').length,handlers:document.querySelectorAll('#preview-body [onerror], #preview-body [onload]').length,
+        jsLinks:[...document.querySelectorAll('#preview-body a')].filter(a=>/^javascript:/i.test(a.getAttribute('href')||'')).length,
+        pwn:window.__pwnMd===undefined&&window.__pwnMd2===undefined};
+      window.__closePreview();
+      return out;
+    })()`);
+    assert.equal(hostile.html.hasFrame, true, 'HTML artifacts render in an iframe');
+    assert.equal(hostile.html.sandbox, '', 'the iframe sandbox attribute is empty: no allow-scripts, no allow-same-origin');
+    assert.equal(hostile.html.tokens, 0);
+    assert.equal(hostile.html.contentDocument, true, 'the sandboxed document is opaque to the page');
+    assert.equal(hostile.html.srcdocHasCsp, true, "the framed document carries a default-src 'none' policy");
+    assert.equal(hostile.html.scriptsInPage, 0);
+    assert.equal(hostile.html.parentHasMarkup, false, 'artifact HTML is never inserted into the page itself');
+    assert.deepEqual([hostile.html.pwnScript, hostile.html.pwnImg, hostile.html.title], [true, true, true], 'no script from the artifact ran');
+    assert.equal(hostile.svg.inlineSvg, 0, 'SVG is never inline markup');
+    assert.equal(hostile.svg.objects, 0);
+    assert.ok(hostile.svg.imgs >= 1, 'SVG is shown through <img>');
+    assert.equal(hostile.svg.pwn, true);
+    assert.deepEqual([hostile.md.scripts, hostile.md.handlers, hostile.md.jsLinks], [0, 0, 0], 'markdown is sanitized');
+    assert.equal(hostile.md.pwn, true);
     console.log('PASS artifact preview safety and browsable manifest collection');
   } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exit(1); });

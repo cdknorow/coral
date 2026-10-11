@@ -422,7 +422,7 @@ function renderRunDetail(run) {
                     <span class="material-icons" style="font-size:14px">terminal</span> Output
                     <span class="material-icons wf-toggle-arrow" style="font-size:14px">expand_more</span>
                 </div>
-                <div id="${Number(outputId)}" class="wf-run-step-output${autoExpand}">${esc(s.output_tail)}</div>`;
+                <div id="${escAttr(outputId)}" class="wf-run-step-output${autoExpand}">${esc(s.output_tail)}</div>`;
         }
 
         // File list for steps with artifacts

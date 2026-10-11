@@ -2611,7 +2611,7 @@ function _addTeamAgent(defaultName, defaultPrompt, defaultCapabilities, defaultA
                 </div>
             </div>
             <div class="team-agent-form" hidden>
-                <div id="${Number(acfId)}"></div>
+                <div id="${escapeAttr(acfId)}"></div>
             </div>
         </div>
     `;
