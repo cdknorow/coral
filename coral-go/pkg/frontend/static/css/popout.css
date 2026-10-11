@@ -27,9 +27,8 @@ body.popout-mode .main-content {
 
 /* ── Slim header: identity + type + state pill on the left, actions right ── */
 
-.terminal-header-left {
-    min-width: 0;
-}
+/* .terminal-header-left sizing lives in session.css (it must keep room for the identity; a min-width: 0 here, loaded
+   later, used to override it and let the folder path squeeze the name to nothing). */
 
 body.popout-mode .terminal-session-label {
     font-family: inherit;

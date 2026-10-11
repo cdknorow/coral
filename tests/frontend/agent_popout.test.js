@@ -275,7 +275,11 @@ async function run() {
     check('1 popout boot attrs + popout-mode class', s1.mode === 'agent' && s1.target === sid && s1.popoutClass, JSON.stringify({ mode: s1.mode, target: s1.target, cls: s1.popoutClass }));
     check('8 chrome absent/hidden (top bar, sidebar, handle, tablet toggle, mobile bar/list, welcome)', Object.values(s1.chrome).every(v => v !== 'visible'), JSON.stringify(s1.chrome));
     check('8 .layout fills the viewport', s1.layoutH !== null && Math.abs(s1.layoutH - s1.innerH) <= 2, `${s1.layoutH} vs ${s1.innerH}`);
-    check('8 workspace present: live view, command input, quick-action strip, tools pane, split handle and command pane', Object.values(s1.workspace).every(v => v === 'visible'), JSON.stringify(s1.workspace));
+    // On desktop the bottom command pane is hidden in TERMINAL view on purpose (chat.css: the xterm takes keystrokes
+    // itself); it shows in chat view and on mobile. This fixture is a terminal session, so the pane is hidden here and
+    // the input and quick-action strip it contains are still the ones the popout drives.
+    const { commandPane: cmdPane, ...restOfWorkspace } = s1.workspace;
+    check('8 workspace present: live view, command input, quick-action strip, tools pane and split handle (command pane hidden in desktop terminal view)', Object.values(restOfWorkspace).every(v => v === 'visible') && cmdPane === 'hidden', JSON.stringify(s1.workspace));
     check('9 slim header identity is the resolved display name', /Popout QA/.test(s1.identity) && !s1.identity.includes(sid) && !/terminal-[0-9a-f]{8}/.test(s1.identity), s1.identity.trim());
     check('9 header carries no agent-type badge (decluttered)', s1.badge === '' && await t1.ev(`!document.getElementById('terminal-type-badge')`), s1.badge);
     check('9 state pill has an agreed data-state and matching text', ['working', 'idle', 'waiting', 'sleeping', 'ended', 'reconnecting', 'loading', 'not-found'].includes(s1.pill) && (s1.pill !== 'idle' || /^Idle$/i.test(s1.pillText.trim())) && (s1.pill !== 'working' || /^Working$/i.test(s1.pillText.trim())), JSON.stringify({ pill: s1.pill, text: s1.pillText.trim() }));

@@ -117,6 +117,11 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
       window.__closePreview();
       const st=(await import('/static/state.js')).state; st.currentSession={type:'live',name:'fixture',session_id:'repo-html',working_directory:'/fixture'};
       window.fetch=async()=>new Response(JSON.stringify({content:'<h1>Repo page</h1><script>window.top.__pwnRepo=1<\\/script><img src=x onerror="window.top.__pwnRepo2=1">',filepath:'x.html',working_directory:'/fixture'}),{status:200});
+      // .htm and any letter case take the same rendered, sandboxed path (retired repository_html_preview suite's case check)
+      const caseFrames={};
+      for(const nm of ['x.htm','UPPER.HTML']){window.__closePreview();window.openFilePreview(nm);await wait(400);const cf=document.querySelector('#preview-body iframe');caseFrames[nm]=!!cf&&cf.getAttribute('sandbox')==='';}
+      out.caseFrames=caseFrames;
+      window.__closePreview();
       window.openFilePreview('x.html'); await wait(500);
       const rf=document.querySelector('#preview-body iframe');
       out.repo={hasFrame:!!rf,sandbox:rf?rf.getAttribute('sandbox'):null,isolated:rf?rf.contentDocument===null:false,csp:!!rf&&/default-src 'none'/.test(rf.getAttribute('srcdoc')||''),
@@ -137,6 +142,7 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
     assert.ok(hostile.svg.imgs >= 1, 'SVG is shown through <img>');
     assert.equal(hostile.svg.pwn, true);
     assert.equal(hostile.repo.hasFrame, true, 'a repository .html file renders in an iframe');
+    assert.deepEqual(hostile.caseFrames, { 'x.htm': true, 'UPPER.HTML': true }, '.htm and upper-case .HTML render in a sandboxed frame too');
     assert.equal(hostile.repo.sandbox, '', 'the repository HTML iframe sandbox attribute is empty');
     assert.equal(hostile.repo.isolated, true);
     assert.equal(hostile.repo.csp, true);

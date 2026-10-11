@@ -148,8 +148,11 @@ async function run() {
   const chatBar = await bar();
   check('in chat mode the command bar shows only Cancel and Send', JSON.stringify(chatBar) === JSON.stringify(['Cancel', '', '']) || (chatBar.some(t => /^(Cancel|stop)$/i.test(t)) && !chatBar.includes('Esc') && chatBar.length <= 3 && !chatBar.some(t => /Bash|Undo|\u2191|\u2193/.test(t))), JSON.stringify(chatBar));
   await ev(`window.setLiveViewMode('terminal'); true`);
-  const termBar = await bar();
-  check('terminal mode keeps the full command bar with Esc', termBar.includes('Esc') && !termBar.includes('Cancel') && termBar.length > 6, JSON.stringify(termBar));
+  // On desktop the bottom command bar is hidden in terminal view on purpose (chat.css: the xterm takes keystrokes itself;
+  // mobile keeps it). It still carries the full control set with Esc, which shows on mobile: read it from the DOM.
+  const termPaneHidden = await ev(`getComputedStyle(document.getElementById('command-pane')).display === 'none'`);
+  const termBar = await ev(`Array.from(document.querySelectorAll('#command-toolbar button')).filter(b => !b.closest('.send-btn-menu')).map(b => (b.textContent || b.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim())`);
+  check('terminal mode: the command bar is hidden on desktop but keeps the full control set with Esc', termPaneHidden && termBar.some(t => /^Esc/.test(t)) /* the label holds both words: Esc (terminal) and stop (chat) */ && !termBar.includes('Cancel') && termBar.length > 6, JSON.stringify({ termPaneHidden, termBar }));
   await ev(`window.setLiveViewMode('chat'); true`);
 
   // A sent message shows as Queued until the transcript records it

@@ -1788,7 +1788,8 @@
    never do. */
 .terminal-header-left {
     flex: 1 1 auto;
-    min-width: 0;
+    /* The identity keeps room (dot + at least ~120px of name) while the folder/branch in the actions shrink first. */
+    min-width: min(150px, 45%);
     overflow: hidden;
 }
 .terminal-header-left .terminal-session-label {
@@ -1801,7 +1802,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.terminal-header-actions { flex-shrink: 0; }
+.terminal-header-actions {
+    /* The buttons never shrink, but the folder and branch text in front of them do (they ellipsize): otherwise a long
+       path leaves the identity no room and the header overflows (seen at 1024px with a long name). */
+    flex: 0 1 auto;
+    min-width: 0;
+}
+.terminal-header-actions > .terminal-header-btn { flex-shrink: 0; }
+.terminal-header-actions > .terminal-folder { flex: 0 1 auto; min-width: 0; }
+.terminal-header-actions > .terminal-folder .terminal-folder-text { max-width: 100%; }
 
 /* ── Sidebar colour: project headers in the accent, agent names in their colour ── */
 

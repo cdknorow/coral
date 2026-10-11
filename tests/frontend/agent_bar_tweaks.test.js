@@ -538,13 +538,16 @@ async function run() {
                      chip: !!document.getElementById('terminal-branch-chip'), badge: !!document.getElementById('terminal-type-badge') };
         })()`);
         check('selected-agent header leaks no session id (text, title, aria or other attributes)', hdrLeak.leaks.length === 0, JSON.stringify(hdrLeak.leaks));
-        check('the header shows no branch chip or agent-type badge', !hdrLeak.chip && !hdrLeak.badge && !hdrLeak.branchInHeader, JSON.stringify(hdrLeak));
+        // The branch (with its git state) is shown as plain header text by design; what the header must not carry is a branch
+        // chip control or an agent-type badge.
+        check('the header shows the branch as text, with no branch chip or agent-type badge', !hdrLeak.chip && !hdrLeak.badge && hdrLeak.branchInHeader, JSON.stringify(hdrLeak));
         // A long identity at 1024px: it keeps its room and nothing overflows.
         await Emulation.setDeviceMetricsOverride({ width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', display_name: 'Release Wrangler With A Long Name', repo_name: 'cdknorow/coral', branch: 'feature/agent-list-compact-with-a-really-long-branch-name-for-narrow-headers' } ] }); true`);
         await sleep(300);
         const narrow = await evalInPage(`(() => { const hdr = document.querySelector('#live-session-view .terminal-header'); const label = document.getElementById('terminal-header-label'); const actions = hdr.querySelector('.terminal-header-actions'); const hr = hdr.getBoundingClientRect(), ar = actions.getBoundingClientRect();
-            return { hdrW: hr.width, labelW: label.getBoundingClientRect().width, overflow: hdr.scrollWidth - hdr.clientWidth, actionsInside: ar.right <= hr.right + 1 && ar.left >= hr.left - 1 }; })()`);
+            const w = sel => { const e = hdr.querySelector(sel); return e ? Math.round(e.getBoundingClientRect().width) : null; };
+            return { hdrW: hr.width, labelW: label.getBoundingClientRect().width, parts: { toggle: w('.live-view-toggle'), left: w('.terminal-header-left'), actions: w('.terminal-header-actions'), folder: w('.terminal-folder'), branch: w('.terminal-branch') }, overflow: hdr.scrollWidth - hdr.clientWidth, actionsInside: ar.right <= hr.right + 1 && ar.left >= hr.left - 1 }; })()`);
         check('1024px: identity keeps >= 120px (or its full width) and the header/actions do not overflow', (narrow.labelW >= 120 || narrow.labelW >= narrow.hdrW * 0.4) && narrow.overflow <= 1 && narrow.actionsInside, JSON.stringify(narrow));
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
         await sleep(200);
