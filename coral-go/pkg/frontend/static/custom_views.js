@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { escapeHtml, jsStr } from './utils.js';
 import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
-import { lockViewFrame, viewDocument, attachViewBridge } from './view_sandbox.js';
+import { lockViewFrame, viewDocument, viewHostDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
 
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
@@ -96,7 +96,7 @@ function _renderGate(panel, view) {
     const title = document.createElement('strong');
     title.textContent = view.name || 'Custom view';
     const note = document.createElement('p');
-    note.textContent = 'This view was created by an automated caller (an agent or a script), not in this dashboard. It runs in a sandbox that cannot reach Coral except to read agent and board status, but review it before you run it.';
+    note.textContent = 'This view was created by an automated caller (an agent or a script), not in this dashboard. If you run it, it will be able to read ' + API_VIEW_SEES + ', and nothing else: it cannot change anything, read terminal output, files or notes, or reach the network. Review its source before you run it.';
     const src = document.createElement('pre');
     src.className = 'custom-view-gate-source';
     src.textContent = String(view.html || '').slice(0, 4000) + (String(view.html || '').length > 4000 ? '\n…' : '');
@@ -118,14 +118,33 @@ function _mountViewFrame(panel, view) {
         iframe.srcdoc = sandboxedDoc(view.html);
     } else {
         // Scripts only, an opaque origin and no network: the view reads Coral through the allowlisted bridge
-        // (view_sandbox.js), never as the dashboard.
+        // (view_sandbox.js), never as the dashboard. It runs in a child frame of a trusted host frame whose CSP refuses any
+        // navigation of the view (nothing else can stop a document sending data out by navigating itself).
         lockViewFrame(iframe);
-        iframe.srcdoc = viewDocument(view.html, _viewContext());
+        iframe.srcdoc = viewHostDocument(viewDocument(view.html, _viewContext()));
         _detach.get(view.id)?.();
-        _detach.set(view.id, attachViewBridge(iframe));
+        const stop = () => {
+            _detach.get(view.id)?.(); _detach.delete(view.id);
+            iframe.remove();
+            _renderNotice(panel, view, 'This view tried to navigate away from Coral and was stopped.');
+        };
+        _detach.set(view.id, attachViewBridge(iframe, { tier: view.created_via === 'api' ? 'api' : 'ui', onNavigated: stop }));
+        let loads = 0;
+        iframe.addEventListener('load', () => { if (++loads > 1) stop(); }); // the host itself must load exactly once
     }
     panel.innerHTML = '';
     panel.appendChild(iframe);
+}
+
+function _renderNotice(panel, view, text) {
+    const box = document.createElement('div');
+    box.className = 'custom-view-gate';
+    const title = document.createElement('strong');
+    title.textContent = view.name || 'Custom view';
+    const p = document.createElement('p');
+    p.textContent = text;
+    box.append(title, p);
+    panel.replaceChildren(box);
 }
 
 function _viewContext() {

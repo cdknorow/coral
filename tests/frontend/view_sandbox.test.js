@@ -23,17 +23,38 @@ const { JSDOM } = require('jsdom');
     for (const p of no) assert.ok(!m.isAllowedViewRequest('GET', p), String(p));
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']) assert.ok(!m.isAllowedViewRequest(method, '/api/tags'), method);
 
+    // ── tiers: a view created by an automated caller gets the basic list only ──
+    for (const p of ['/api/sessions/live', '/api/sessions/live/a/tasks', '/api/sessions/history', '/api/board/projects', '/api/tags']) {
+        assert.ok(m.isAllowedViewRequest('GET', p, 'api'), 'api tier: ' + p);
+        assert.ok(m.isAllowedViewRequest('GET', p, 'ui'), 'ui tier: ' + p);
+    }
+    for (const p of ['/api/sessions/live/a/capture', '/api/sessions/live/a/files', '/api/sessions/live/a/git', '/api/sessions/live/a/notes', '/api/sessions/live/a/events',
+        '/api/sessions/live/a/events/counts', '/api/sessions/live/a/info', '/api/sessions/live/a', '/api/sessions/history/x/tasks', '/api/sessions/history/x/git',
+        '/api/board/dev/messages/all', '/api/board/dev/subscribers']) {
+        assert.ok(!m.isAllowedViewRequest('GET', p, 'api'), 'api tier must not read ' + p);
+        assert.ok(m.isAllowedViewRequest('GET', p, 'ui'), 'ui tier reads ' + p);
+    }
+    assert.ok(m.isAllowedViewRequest('GET', '/api/tags'), 'the default tier is ui');
+    assert.ok(/agents, their tasks/.test(m.API_VIEW_SEES));
+
     // ── frame and document ──
     const fr = dom.window.document.createElement('iframe');
     m.lockViewFrame(fr);
     assert.strictEqual(fr.getAttribute('sandbox'), 'allow-scripts');
     assert.ok(!fr.getAttribute('sandbox').includes('same-origin'));
-    assert.strictEqual(fr.getAttribute('csp'), "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:");
+    assert.strictEqual(fr.getAttribute('csp'), "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'");
     const doc = m.viewDocument('<h1>x</h1>', { agentName: 'a</script><script>alert(1)', sessionId: 's' });
     assert.ok(doc.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\''));
     assert.ok(doc.includes('<h1>x</h1>'));
     assert.ok(!doc.includes('a</script><script>alert(1)'), 'context cannot break out of the prelude script');
     assert.ok(doc.includes('window.coral') && doc.includes('window.fetch'));
+
+    // ── host frame: its CSP is what refuses a view's navigation; one load only; relays only bridge messages ──
+    const host = m.viewHostDocument('<h1>x</h1><script>1<\/script></body>');
+    assert.ok(host.startsWith('<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; frame-src about:;'));
+    assert.ok(host.includes("sandbox', 'allow-scripts'") && !host.includes('allow-same-origin'));
+    assert.ok(host.includes('loads > 1') && host.includes('coral-view-navigated'));
+    assert.ok(host.split('<script>').length === 2 && !host.includes('</script><script>'), 'the view html cannot close the host script');
 
     // ── bridge ──
     const posted = [];
@@ -73,6 +94,20 @@ const { JSDOM } = require('jsdom');
     m.attachViewBridge(frame, { fetchFn: async () => ({ headers: { get: () => null }, text: async () => 'x'.repeat(big), status: 200 }) });
     await send({ type: 'coral-view-get', id: 7, path: '/api/tags' });
     assert.ok(posted.some(p => p.id === 7 && /too large/.test(p.error)));
+
+    // api tier: refused paths are not fetched; navigation notice reaches the callback only from the frame
+    let navigated = 0; const fetched = [];
+    m.attachViewBridge(frame, { tier: 'api', onNavigated: () => navigated++, fetchFn: async (u) => { fetched.push(u); return { headers: { get: () => null }, text: async () => '[]', status: 200 }; } });
+    posted.length = 0;
+    await send({ type: 'coral-view-get', id: 9, path: '/api/sessions/live/a/capture' });
+    assert.ok(posted.some(p => p.id === 9 && /not available/.test(p.error)));
+    assert.ok(!fetched.includes('/api/sessions/live/a/capture'));
+    await send({ type: 'coral-view-get', id: 10, path: '/api/sessions/live/a/tasks' });
+    assert.ok(fetched.includes('/api/sessions/live/a/tasks'));
+    await send({ type: 'coral-view-navigated' });
+    assert.strictEqual(navigated, 1);
+    await send({ type: 'coral-view-navigated' }, other);
+    assert.strictEqual(navigated, 1, 'only the frame itself can report a navigation');
 
     // detach stops answering
     posted.length = 0; detach();
