@@ -54,10 +54,24 @@ const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', Strin
   { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(path.join(tmp, 'coral.log'), 'w'), fs.openSync(path.join(tmp, 'coral.log'), 'a')] });
 procs.push(coral);
 await waitHttp(`http://127.0.0.1:${port}/api/health`);
-const chrome = spawn(chromePath, ['--headless=new', `--remote-debugging-port=${cdp}`, `--user-data-dir=${path.join(tmp, 'profile')}`,
-  '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900', 'about:blank'], { stdio: 'ignore' });
+// On CI runners (Ubuntu 24.04) unprivileged user namespaces are restricted, so Chrome's sandbox cannot start; the runner is a
+// throwaway VM running only our own test pages, so the sandbox is switched off there and only there.
+const chromeArgs = ['--headless=new', `--remote-debugging-port=${cdp}`, `--user-data-dir=${path.join(tmp, 'profile')}`,
+  '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900',
+  ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []), 'about:blank'];
+const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+let chromeErr = '';
+chrome.stderr.on('data', d => { chromeErr = (chromeErr + d).slice(-8000); });
+let chromeExit = null;
+chrome.on('exit', (code, sig) => { chromeExit = `exit code ${code} signal ${sig}`; });
 procs.push(chrome);
-await waitHttp(`http://127.0.0.1:${cdp}/json/version`);
+try {
+  await waitHttp(`http://127.0.0.1:${cdp}/json/version`, 60000);
+} catch (e) {
+  // The DevTools port never opened: say why (this used to be invisible, stdio was swallowed).
+  console.error(`Chrome did not open its DevTools port: ${e.message}\n  chrome: ${chromePath}\n  state: ${chromeExit || 'still running'}\n  args: ${chromeArgs.join(' ')}\n  stderr (last 8 KB):\n${chromeErr}`);
+  process.exit(2);
+}
 console.log(`coral http://127.0.0.1:${port}  chrome cdp :${cdp}  tmp ${tmp}\n`);
 
 const tests = fs.readdirSync(here).filter(f => /\.test\.(js|mjs)$/.test(f))

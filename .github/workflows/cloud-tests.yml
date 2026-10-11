@@ -95,6 +95,7 @@ jobs:
       - id: chrome
         uses: browser-actions/setup-chrome@4f8e94349a351df0f048634f25fec36c3c91eded # v2.1.1
         with:
+          install-dependencies: true # shared libraries the headless binary needs on a bare runner
           chrome-version: "155.0.8059.39" # the suites were developed on 155.0.8059.40 locally; CI uses the nearest published known-good build of the same major; bump deliberately
       - name: install
         working-directory: tests/frontend
