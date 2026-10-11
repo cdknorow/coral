@@ -168,7 +168,15 @@ type cappedBody struct {
 
 func (c *cappedBody) Read(p []byte) (int, error) {
 	if c.left <= 0 {
-		return 0, errArtifactTooLarge
+		// The limit is reached: a body of EXACTLY the limit must end cleanly, so probe for one more byte.
+		var one [1]byte
+		if n, err := io.ReadFull(c.rc, one[:]); n == 1 {
+			return 0, errArtifactTooLarge
+		} else if err == io.ErrUnexpectedEOF || err == io.EOF {
+			return 0, io.EOF
+		} else {
+			return 0, err
+		}
 	}
 	if int64(len(p)) > c.left {
 		p = p[:c.left]

@@ -144,3 +144,29 @@ func TestAdvisoryLengthGivesAClear413AndIsNotRelayed(t *testing.T) {
 	require.NoError(t, StrictResponseFilter(other))
 	assert.Empty(t, other.Header.Get(tunnel.BodyLengthHeader))
 }
+
+// A body of exactly the limit is relayed whole and ends cleanly; one byte more is an error.
+func TestArtifactCapBoundary(t *testing.T) {
+	path := "/api/artifacts/" + strings.Repeat("9", 64)
+	mk := func(size int64) *http.Response {
+		r := &http.Response{Header: http.Header{}, StatusCode: 200, Request: httptest.NewRequest("GET", path, nil),
+			ContentLength: -1, Body: io.NopCloser(io.LimitReader(zeroReader{}, size))}
+		r.Header.Set("Content-Type", "image/png")
+		return r
+	}
+	exact := mk(MaxArtifactBytes)
+	require.NoError(t, StrictResponseFilter(exact))
+	n, err := io.Copy(io.Discard, exact.Body)
+	assert.NoError(t, err, "exactly the limit is fine")
+	assert.EqualValues(t, MaxArtifactBytes, n)
+	over := mk(MaxArtifactBytes + 1)
+	require.NoError(t, StrictResponseFilter(over))
+	n, err = io.Copy(io.Discard, over.Body)
+	assert.Error(t, err, "one byte over is refused")
+	assert.EqualValues(t, MaxArtifactBytes, n)
+	small := mk(10)
+	require.NoError(t, StrictResponseFilter(small))
+	n, err = io.Copy(io.Discard, small.Body)
+	assert.NoError(t, err)
+	assert.EqualValues(t, 10, n)
+}
