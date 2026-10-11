@@ -7,9 +7,11 @@
 
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
+import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
 
-/** GET paths that only a machine's own dashboard serves: license, privacy state, custom themes, agent panels. */
-export const NO_HUB_ENDPOINT = /^\/api\/(license\/status|system\/privacy|themes\/(?!variables$)[^/]+|agent\/ui(\/.*)?)$/;
+/** GET paths that only a machine's own dashboard serves: license, privacy state, agent panels. (Themes, settings, tags,
+ *  folder tags and views are the hub's own per-user data.) */
+export const NO_HUB_ENDPOINT = /^\/api\/(license\/status|system\/privacy|agent\/ui(\/.*)?)$/;
 
 let _session = null;      // {authenticated, email, csrf}
 let _loading = null;
@@ -63,6 +65,21 @@ function sameOrigin(input) {
     } catch { return false; }
 }
 
+function settingsPath(input) {
+    try { return new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href).pathname; } catch { return ''; }
+}
+
+/** Tell the user why the hub refused a settings or theme write (400/413 JSON bodies). */
+function explainSettingsRefusal(resp) {
+    if (!/json/i.test(resp.headers.get('Content-Type') || '')) return;
+    resp.clone().json().then(async body => {
+        const msg = settingsErrorMessage(resp.status, body);
+        if (!msg) return;
+        const { showToast } = await import('./utils.js');
+        showToast(msg, true, 8000);
+    }).catch(() => {});
+}
+
 let _lastExplained = 0;
 /** Tell the user why the hub or their machine refused a request (JSON 403 bodies only), once per few seconds. */
 function explainRefusal(resp) {
@@ -97,6 +114,18 @@ export function installCloudFetch() {
                 return new Response('{"error":"not available through the hub"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
             }
         }
+        // The hub stores only per-user keys and refuses a whole /api/settings write that has any other key, so the
+        // machine-local keys other callers still include (terminal size, CLI paths, ...) are dropped here.
+        if (method === 'PUT' && sameOrigin(input) && settingsPath(input) === '/api/settings' && init && typeof init.body === 'string') {
+            try {
+                const { kept, dropped } = filterSettingsPayload(JSON.parse(init.body));
+                if (dropped.length) {
+                    console.debug('[coral] settings kept on the machine, not sent to the hub:', dropped.join(', '));
+                    if (!Object.keys(kept).length) return new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+                    init = { ...init, body: JSON.stringify(kept) };
+                }
+            } catch { /* not JSON: let the hub answer */ }
+        }
         if (!SAFE.has(method) && sameOrigin(input)) {
             if (!csrfToken()) await loadSession();
             const headers = new Headers((init && init.headers) || (input instanceof Request ? input.headers : undefined));
@@ -108,6 +137,7 @@ export function installCloudFetch() {
         // `quiet: true` marks a background request the user did not ask for (e.g. fitting the pane width on open):
         // a refusal there is not worth a toast, only an action the user took is.
         if (resp.status === 403 && sameOrigin(input) && !(init && init.quiet)) explainRefusal(resp);
+        if ((resp.status === 400 || resp.status === 413) && method === 'PUT' && sameOrigin(input) && /^\/api\/(settings$|themes\/)/.test(settingsPath(input))) explainSettingsRefusal(resp);
         if (resp.status === 401 && sameOrigin(input) && !/^\/(signin|auth|enroll)/.test(location.pathname)) {
             location.replace(signInUrl());
         }

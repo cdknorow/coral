@@ -13,6 +13,7 @@ import { renderCaptureText, syncPaneWidth } from './capture.js';
 import { hideRestartModal } from './controls.js';
 import { recordRecentDir, setDirServerResolver } from './browser.js';
 import { updateTerminalTheme, getTerminal } from './xterm_renderer.js';
+import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_settings.js';
 import { serverFetch, currentServer, splitKey, identityKey, isHub, isCloud, normServer, LOCAL_SERVER } from './server_base.js';
 import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
@@ -3391,25 +3392,29 @@ window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", ()
 
 export async function showSettingsModal() {
     const s = state.settings || {};
-    const telemetry = document.getElementById('settings-telemetry-enabled');
-    if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
-    const remote = document.getElementById('settings-remote-access-enabled');
-    if (remote) remote.checked = settingBool(s.remote_access_enabled, false);
-    renderRemoteAccessStatus(state.privacyStatus);
-    try {
-        const privacyResp = await fetch('/api/system/privacy');
-        if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
-        state.privacyStatus = await privacyResp.json();
-        if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
+    // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
+    // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
+    if (!isCloud()) {
+        const telemetry = document.getElementById('settings-telemetry-enabled');
+        if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+        const remote = document.getElementById('settings-remote-access-enabled');
+        if (remote) remote.checked = settingBool(s.remote_access_enabled, false);
         renderRemoteAccessStatus(state.privacyStatus);
-    } catch (_) {
-        renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
+        try {
+            const privacyResp = await fetch('/api/system/privacy');
+            if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
+            state.privacyStatus = await privacyResp.json();
+            if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
+            renderRemoteAccessStatus(state.privacyStatus);
+        } catch (_) {
+            renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
+        }
+        // Bootstrap database-encryption metadata lives outside the locked DB. The
+        // endpoint returns status only; passwords/keys are never sent to the UI.
+        loadDatabaseEncryptionStatus();
+        initCloudConnect();
+        loadCloudStatus();
     }
-    // Bootstrap database-encryption metadata lives outside the locked DB. The
-    // endpoint returns status only; passwords/keys are never sent to the UI.
-    loadDatabaseEncryptionStatus();
-    initCloudConnect();
-    loadCloudStatus();
 
     // Theme — populate with built-in options + saved custom themes
     const themeSelect = document.getElementById("settings-theme");
@@ -3470,7 +3475,7 @@ export async function showSettingsModal() {
 
     // API Key
     const apiKeyInput = document.getElementById("settings-api-key");
-    if (apiKeyInput) {
+    if (apiKeyInput && !isCloud()) {
         fetch('/api/system/api-key').then(r => r.ok ? r.json() : null).then(data => {
             if (data && data.key) apiKeyInput.value = data.key;
             else apiKeyInput.value = 'Not configured';
@@ -3566,13 +3571,15 @@ export async function showSettingsModal() {
     }
 
     // License status
-    _loadLicenseStatus();
+    if (!isCloud()) _loadLicenseStatus();
 
     // App version
     fetch('/api/system/status').then(r => r.json()).then(d => {
         const el = document.getElementById('app-version-label');
         if (el && d.version) el.textContent = 'Version ' + d.version;
     }).catch(() => {});
+
+    if (isCloud()) applyCloudSettingsDialog();
 
     document.getElementById("settings-modal").style.display = "flex";
 }
@@ -3706,7 +3713,7 @@ export async function applySettings() {
         customTheme = "";
     }
 
-    const payload = {
+    let payload = {
         theme: theme,
         custom_theme: customTheme,
         default_renderer: engineName,
@@ -3736,10 +3743,13 @@ export async function applySettings() {
         remote_access_enabled: remoteAccessEnabled,
     };
 
+    // The hub accepts only the per-user keys (anything else refuses the whole request); the machine ones are hidden.
+    if (isCloud()) payload = filterSettingsPayload(payload).kept;
+
     const oldGitDiffMode = state.settings?.git_diff_mode || 'previous_commit';
 
     try {
-        await saveDatabaseEncryptionSettings();
+        if (!isCloud()) await saveDatabaseEncryptionSettings();
         const response = await fetch("/api/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
@@ -3747,11 +3757,11 @@ export async function applySettings() {
         });
         if (!response.ok) throw new Error(`settings save failed (${response.status})`);
         state.settings = { ...state.settings, ...payload };
-        if (state.privacyStatus) {
+        if (!isCloud() && state.privacyStatus) {
             state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
             state.privacyStatus.remote_access_restart_required = state.privacyStatus.remote_access_effective !== remoteAccessEnabled;
         }
-        renderRemoteAccessStatus(state.privacyStatus);
+        if (!isCloud()) renderRemoteAccessStatus(state.privacyStatus);
         // Defaults may have changed — force next ACF open to re-fetch.
         _invalidateDefaultModels();
 

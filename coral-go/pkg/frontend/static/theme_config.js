@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast } from './utils.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
+import { isCloud } from './server_base.js';
 
 let variableGroups = {};   // { groupName: { cssVar: label, ... }, ... }
 let currentEdits = {};     // { cssVar: colorValue, ... }
@@ -74,13 +75,13 @@ function renderModal() {
                 <button class="btn btn-sm" onclick="loadSelectedTheme()">Load</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteSelectedTheme()">Delete</button>
                 <span class="toolbar-spacer"></span>
-                <button class="btn btn-sm" onclick="importThemeFile()">Import</button>
+                ${isCloud() ? '' : '<button class="btn btn-sm" onclick="importThemeFile()">Import</button>'}
                 <button class="btn btn-sm" onclick="exportCurrentTheme()">Export</button>
             </div>
-            <div class="theme-generate-bar">
+            ${isCloud() ? '' : `<div class="theme-generate-bar">
                 <input type="text" id="theme-ai-prompt" class="settings-input" placeholder="Describe your theme... (e.g. &quot;cyberpunk neon with pink and teal&quot;)">
                 <button class="btn btn-sm btn-primary" id="theme-generate-btn" onclick="generateThemeFromDescription()">Generate</button>
-            </div>
+            </div>`}
             <div class="theme-editor-scroll">
                 ${groups}
             </div>
@@ -163,7 +164,7 @@ window.saveAndApplyTheme = async function() {
         });
         const data = await resp.json();
         if (data.error) {
-            showToast(data.error, true);
+            if (!isCloud()) showToast(data.error, true); // on the hub the fetch wrapper already explained the refusal
             return;
         }
 

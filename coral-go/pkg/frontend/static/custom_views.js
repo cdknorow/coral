@@ -2,6 +2,8 @@
 
 import { state } from './state.js';
 import { escapeHtml, jsStr } from './utils.js';
+import { isCloud } from './server_base.js';
+import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
@@ -78,8 +80,15 @@ export function activateCustomView(viewId) {
 
     const iframe = document.createElement('iframe');
     iframe.className = 'custom-view-iframe';
-    iframe.sandbox = 'allow-scripts allow-same-origin';
-    iframe.srcdoc = _injectContext(view.html);
+    if (isCloud()) {
+        // A saved view is text an account stored on the hub: it is only ever shown inert (empty sandbox, no scripts, no
+        // same-origin access, CSP), never run on the hub's origin and never given the page's context.
+        lockFrame(iframe);
+        iframe.srcdoc = sandboxedDoc(view.html);
+    } else {
+        iframe.sandbox = 'allow-scripts allow-same-origin';
+        iframe.srcdoc = _injectContext(view.html);
+    }
     panel.innerHTML = '';
     panel.appendChild(iframe);
 }
@@ -102,6 +111,7 @@ function _injectContext(html) {
 /* ── Modal: Create / Edit View ────────────────────────────── */
 
 window._showCreateViewModal = function() {
+    if (isCloud()) return; // views cannot run scripts on the hub, so there is no editor there (saved views are shown read-only)
     const modal = document.getElementById('custom-view-modal');
     document.getElementById('custom-view-modal-title').textContent = 'Create Custom View';
     document.getElementById('custom-view-edit-id').value = '';
@@ -111,6 +121,7 @@ window._showCreateViewModal = function() {
 };
 
 window._showEditViewModal = function(viewId) {
+    if (isCloud()) return; // views cannot run scripts on the hub, so there is no editor there (saved views are shown read-only)
     const view = _views.find(v => v.id === viewId);
     if (!view) return;
     const modal = document.getElementById('custom-view-modal');
@@ -196,7 +207,7 @@ window._showViewContextMenu = function(event, viewId) {
     menu.style.left = event.clientX + 'px';
     menu.style.top = event.clientY + 'px';
     menu.innerHTML = `
-        <button onclick="window._showEditViewModal(${Number(viewId)}); this.parentElement.remove()">Edit</button>
+        ${isCloud() ? '' : `<button onclick="window._showEditViewModal(${Number(viewId)}); this.parentElement.remove()">Edit</button>`}
         <button onclick="window._deleteView(${Number(viewId)}); this.parentElement.remove()">Delete</button>
     `;
     document.body.appendChild(menu);
