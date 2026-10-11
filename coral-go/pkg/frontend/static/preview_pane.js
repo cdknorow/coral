@@ -8,6 +8,7 @@ import { toggleStarFile, isFileStarred } from './changed_files.js';
 import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
 import { serverUrl, currentServer, isCloud } from './server_base.js';
 import { fetchImageSrc } from './image_source.js';
+import { wireDownloads } from './artifact_download.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -252,11 +253,14 @@ function _renderToolbar(tab) {
 
     if (tab.kind === 'artifact') {
         const src = resolveArtifactSource(tab.filepath, tab.options);
+        // The managed-artifact url is server-relative; point it at the viewed server (the hub path) for the link/download.
+        const dlUrl = src ? (src.externalURL ? src.url : serverUrl(src.url, src.server)) : '';
         const link = src
-            ? `<a class="team-artifacts-action" href="${escapeAttr(src.url)}" ${src.externalURL ? 'target="_blank" rel="noopener noreferrer"' : `download="${escapeAttr(tab.options.filename || '')}"`}>${src.externalURL ? 'Open link' : 'Download'}</a>`
+            ? `<a class="team-artifacts-action" href="${escapeAttr(dlUrl)}" ${src.externalURL ? 'target="_blank" rel="noopener noreferrer"' : `download="${escapeAttr(tab.options.filename || '')}" data-artifact-download="${escapeAttr(dlUrl)}" data-artifact-name="${escapeAttr(tab.options.filename || '')}"`}>${src.externalURL ? 'Open link' : 'Download'}</a>`
             : '';
         bar.innerHTML = `<span class="preview-toolbar-path" title="${escapeAttr(tab.options.filename || tab.filepath)}">${escapeHtml(tab.options.filename || 'Artifact preview')}</span>
             <div class="inline-preview-actions">${link}</div>`;
+        wireDownloads(bar);
         return;
     }
 

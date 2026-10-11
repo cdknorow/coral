@@ -1,6 +1,7 @@
 /* Optional, lazy team artifact source for the existing Files viewer. */
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, jsStr, sanitizeHtml } from './utils.js';
+import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer } from './server_base.js';
 
@@ -197,6 +198,7 @@ function render() {
                 download.innerHTML = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4"/><path d="M14 2 7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>';
                 download.title = 'Open link';
             }
+            if (link.preview) bindDownload(download, link.url, name);
             download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
             actions.append(download);
             actionCell.append(actions);

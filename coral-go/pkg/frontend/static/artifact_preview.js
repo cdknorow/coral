@@ -5,6 +5,8 @@ import { escapeHtml, escapeAttr, renderImagePanes } from './utils.js';
 import { renderJSONReport } from './artifact_report.js';
 import { splitKey, serverUrl, contextServer, isCloud } from './server_base.js';
 import { isSvg, svgDataUrl } from './image_source.js';
+import { wireDownloads } from './artifact_download.js';
+import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 
 const MAX_ARTIFACT_PREVIEW_BYTES = 2 * 1024 * 1024;
 const MAX_ARTIFACT_MANIFEST_ENTRIES = 200;
@@ -22,8 +24,9 @@ function _renderFallback(container, { filename, type, size, url, reason }) {
         <strong>${escapeHtml(filename || 'artifact')}</strong>
         <span>${escapeHtml(type || 'application/octet-stream')} · ${escapeHtml(_sizeLabel(size))}</span>
         <p>${escapeHtml(reason)}</p>
-        <a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" download>Download artifact</a>
+        <a href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer" download data-artifact-download="${escapeAttr(url)}" data-artifact-name="${escapeAttr(filename || '')}">Download artifact</a>
     </div>`;
+    wireDownloads(container);
 }
 
 async function _readText(response, maxBytes, signal) {
@@ -90,11 +93,12 @@ function _renderManifest(body, manifest, filename, ctx) {
         <div class="artifact-manifest-main"><button type="button" class="artifact-manifest-open" data-manifest-index="${Number(index)}">
             <span class="artifact-manifest-name">${escapeHtml(entry.name)}</span>
             <span class="artifact-manifest-type">${escapeHtml(_entryType(entry))}</span>
-        </button><a class="artifact-manifest-download" href="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" download="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
+        </button><a class="artifact-manifest-download" href="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" download="${escapeAttr(entry.name)}" data-artifact-download="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" data-artifact-name="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
         <span class="artifact-manifest-uri">${escapeHtml(entry.uri)}</span>
     </li>`;
     }).join('');
     body.innerHTML = `<div class="artifact-manifest-toolbar"><strong>${manifest.entries.length} file${manifest.entries.length === 1 ? '' : 's'}</strong><div class="artifact-manifest-actions"><button type="button" class="inline-preview-mode-btn artifact-manifest-raw">View raw JSON</button><button type="button" class="inline-preview-mode-btn artifact-manifest-download-raw">Download JSON</button></div></div><ul class="artifact-manifest-list">${rows}</ul>`;
+    wireDownloads(body);
     // Entries open as their own tabs so the collection stays available.
     body.querySelectorAll('.artifact-manifest-open').forEach(button => button.addEventListener('click', () => {
         const entry = manifest.entries[Number(button.dataset.manifestIndex)];
@@ -128,10 +132,7 @@ function _renderSandboxed(body, { url, content, name, isStale }) {
         : 'HTML preview: scripts and external resources are disabled. Download the file for the original.';
     const frame = document.createElement('iframe');
     frame.title = `Preview of ${name || 'artifact'}`;
-    // Empty sandbox grants no scripts, same-origin privilege, forms, popups,
-    // downloads or top-level navigation. External fetching is browser-only.
-    frame.setAttribute('sandbox', '');
-    frame.referrerPolicy = 'no-referrer';
+    lockFrame(frame); // empty sandbox + csp: no scripts, same-origin privilege, forms, popups, downloads or navigation
     wrapper.append(note);
     if (url) {
         const status = document.createElement('div');
@@ -145,7 +146,7 @@ function _renderSandboxed(body, { url, content, name, isStale }) {
         wrapper.append(status);
         frame.src = url;
     } else {
-        frame.srcdoc = `<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">${content}`;
+        frame.srcdoc = sandboxedDoc(content);
     }
     wrapper.append(frame);
     body.replaceChildren(wrapper);
@@ -199,7 +200,9 @@ export async function renderArtifact(body, uri, options, ctx) {
         // Scoped inline content is deliberately served as text/plain. Its
         // declared artifact media type still selects HTML or Markdown rendering.
         const declaredType = (options.mediaType || '').split(';')[0].trim().toLowerCase();
-        const isHTML = type === 'text/html' || type === 'application/xhtml+xml' || declaredType === 'text/html' || declaredType === 'application/xhtml+xml';
+        const isHTML = type === 'text/html' || type === 'application/xhtml+xml' || declaredType === 'text/html' || declaredType === 'application/xhtml+xml'
+            // The hub always answers octet-stream for HTML, so there the declared type (above) or the name decides.
+            || (isCloud() && [options.filename || '', _responseFilename(resp.headers.get('Content-Disposition') || '')].some(n => /\.x?html?$/i.test(n)));
         const responseFilename = _responseFilename(resp.headers.get('Content-Disposition') || '');
         const filename = options.filename || responseFilename;
         const filenameHints = [options.filename || '', responseFilename];
