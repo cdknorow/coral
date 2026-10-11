@@ -89,8 +89,13 @@ export function installCloudFetch() {
         // Endpoints that exist only on a machine's own dashboard are not reachable through the hub
         // (and the hub has no stand-in). Answer them locally with a 404 instead of sending a request
         // that can only fail, which would put a network error in the console on every page load.
-        if (method === 'GET' && sameOrigin(input) && NO_HUB_ENDPOINT.test(new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href).pathname)) {
-            return new Response('{"error":"not available through the hub"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+        if (sameOrigin(input)) {
+            const p = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href).pathname;
+            // '/api/cloud-unavailable' is where server_base.serverUrl() points a machine-only route (settings, license, ...)
+            // so it fails cleanly; any method, never sent.
+            if (p === '/api/cloud-unavailable' || (method === 'GET' && NO_HUB_ENDPOINT.test(p))) {
+                return new Response('{"error":"not available through the hub"}', { status: 404, headers: { 'Content-Type': 'application/json' } });
+            }
         }
         if (!SAFE.has(method) && sameOrigin(input)) {
             if (!csrfToken()) await loadSession();

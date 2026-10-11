@@ -40,5 +40,20 @@ const { pathToFileURL } = require('url');
     assert.strictEqual(m.refusalMessage(403, { error: 'csrf' }), '');
     assert.strictEqual(m.refusalMessage(404, { error: 'local_mode' }), '');
     assert.strictEqual(m.refusalMessage(403, null), '');
+    // The wrapper answers machine-only URLs itself and sends nothing; everything else passes through.
+    {
+        const sent = [];
+        globalThis.window = globalThis;
+        globalThis.location = { protocol: 'https:', host: 'hub.example', origin: 'https://hub.example', href: 'https://hub.example/' };
+        globalThis.fetch = async u => { sent.push(String(u)); return new Response('{}', { status: 200 }); };
+        cl.installCloudFetch();
+        for (const [u, init] of [['/api/cloud-unavailable', undefined], ['/api/cloud-unavailable?x=1', { method: 'POST', body: '{}' }], ['/api/license/status', undefined]]) {
+            const r = await fetch(u, init);
+            assert.strictEqual(r.status, 404, u);
+        }
+        assert.deepStrictEqual(sent, [], 'nothing was sent for machine-only URLs');
+        assert.strictEqual((await fetch('/api/servers')).status, 200);
+        assert.deepStrictEqual(sent, ['/api/servers']);
+    }
     console.log('cloud_servers.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });
