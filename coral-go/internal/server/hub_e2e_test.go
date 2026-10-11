@@ -252,6 +252,19 @@ func (r *e2eRemote) seen() []seenReq {
 	return append([]seenReq(nil), r.reqs...)
 }
 
+// seenForeground is seen() without the hub's own background traffic to the remote (health checks, the live-session poll
+// without a query, the feed socket), which can land at any moment and is not what these tests assert about.
+func (r *e2eRemote) seenForeground() []seenReq {
+	var out []seenReq
+	for _, q := range r.seen() {
+		if q.Path == "/ws/coral" || (q.Method == "GET" && (q.Path == "/api/health" || (q.Path == "/api/sessions/live" && q.RawQuery == ""))) {
+			continue
+		}
+		out = append(out, q)
+	}
+	return out
+}
+
 func (r *e2eRemote) count(method, path string) int {
 	n := 0
 	for _, q := range r.seen() {
@@ -1099,7 +1112,7 @@ func TestHubE2E_ProxyRefusals(t *testing.T) {
 	}
 
 	// Path traversal and anything outside /api (or /ws for sockets).
-	before := len(a.seen())
+	before := len(a.seenForeground())
 	for _, p := range []string{
 		"/api/remote/a/api/../etc/passwd",
 		"/api/remote/a/api/%2e%2e/health",
@@ -1116,7 +1129,7 @@ func TestHubE2E_ProxyRefusals(t *testing.T) {
 		code, _ := hubRaw(t, hub, "GET", p)
 		assert.Contains(t, []int{403, 404, 400}, code, p)
 	}
-	assert.Len(t, a.seen(), before, "refused requests never reached the remote")
+	assert.Len(t, a.seenForeground(), before, "refused requests never reached the remote")
 
 	// The browser's credentials never reach the remote; the remote key never
 	// reaches the browser.
@@ -1125,7 +1138,9 @@ func TestHubE2E_ProxyRefusals(t *testing.T) {
 	req.Header.Set("Cookie", "coral_session=browser-secret")
 	code, _ := hub.send(req)
 	require.Equal(t, 200, code)
-	last := a.seen()[len(a.seen())-1]
+	fg := a.seenForeground()
+	last := fg[len(fg)-1]
+	assert.Equal(t, "/api/sessions/live", last.Path)
 	assert.Equal(t, "Bearer "+a.key(), last.Auth)
 	assert.Empty(t, last.Cookie)
 	assert.NotContains(t, last.RawQuery, "browser-secret")
