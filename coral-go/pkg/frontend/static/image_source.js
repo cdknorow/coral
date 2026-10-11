@@ -14,6 +14,8 @@ const MIME_BY_EXT = {
     avif: 'image/avif', bmp: 'image/bmp', ico: 'image/x-icon',
 };
 
+const RASTER_TYPES = new Set(Object.values(MIME_BY_EXT));
+
 /** True for a name or media type that denotes SVG. */
 export function isSvg(nameOrType) {
     return /\.svgz?$/i.test(nameOrType || '') || /^image\/svg\+xml\b/i.test(nameOrType || '');
@@ -49,8 +51,12 @@ export async function fetchImageSrc(url, { name, mediaType, signal } = {}) {
         const text = new TextDecoder().decode(await readLimited(resp, MAX_SVG_BYTES));
         return { src: svgDataUrl(text), revoke: false };
     }
+    // The blob's type comes from the extension, else from the response, and only ever from the raster allowlist:
+    // anything else (including any type containing "svg") is refused, so no SVG-typed blob can exist.
     const ext = (/\.([a-z0-9]+)$/i.exec(name || urlFileName(url)) || [])[1];
-    const type = MIME_BY_EXT[(ext || '').toLowerCase()] || ((resp.headers.get('Content-Type') || '').startsWith('image/') ? resp.headers.get('Content-Type').split(';')[0] : 'image/png');
+    const declared = (resp.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+    const type = MIME_BY_EXT[(ext || '').toLowerCase()] || (RASTER_TYPES.has(declared) && !declared.includes('svg') ? declared : '');
+    if (!type) throw new Error('unsupported image type');
     const blob = new Blob([await readLimited(resp, MAX_IMAGE_BYTES)], { type });
     return { src: URL.createObjectURL(blob), revoke: true };
 }

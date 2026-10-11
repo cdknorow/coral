@@ -47,7 +47,17 @@ const { pathToFileURL } = require('url');
     assert.deepStrictEqual(r, { src: 'blob:x', revoke: true });
     assert.strictEqual(blobType, 'image/png');
 
+    // No extension: the response type is used only if it is in the raster allowlist; never SVG, never unknown.
+    globalThis.fetch = async (url) => respond('x', url.includes('svgtype') ? 'image/svg+xml' : url.includes('weird') ? 'text/html' : 'image/webp');
+    r = await m.fetchImageSrc('/api/artifacts/abc');
+    assert.strictEqual(blobType, 'image/webp');
+    blobType = null;
+    await assert.rejects(m.fetchImageSrc('/api/artifacts/svgtype'), /unsupported image type/);
+    await assert.rejects(m.fetchImageSrc('/api/artifacts/weird'), /unsupported image type/);
+    assert.strictEqual(blobType, null);
+
     // An error status rejects, so the pane shows its "missing" text.
+    globalThis.fetch = async (url) => respond('', 'application/json', 404);
     await assert.rejects(m.fetchImageSrc('/x/missing.png'), /HTTP 404/);
 
     // Over-large SVG text is refused.
