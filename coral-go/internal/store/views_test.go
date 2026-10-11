@@ -178,3 +178,47 @@ func TestViewStore_DefaultScope(t *testing.T) {
 	// Store saves whatever scope is passed — defaulting happens in the handler
 	assert.Equal(t, "", got.Scope)
 }
+
+func TestViewStore_CreatedViaDefaultsToTheCautiousValue(t *testing.T) {
+	db := openTestDB(t)
+	vs := NewViewStore(db)
+	ctx := context.Background()
+	idA, err := vs.CreateView(ctx, &CustomView{Name: "a", Scope: "global"}) // unspecified
+	require.NoError(t, err)
+	idB, err := vs.CreateView(ctx, &CustomView{Name: "b", Scope: "global", CreatedVia: "ui"})
+	require.NoError(t, err)
+	idC, err := vs.CreateView(ctx, &CustomView{Name: "c", Scope: "global", CreatedVia: "admin"}) // not a known value
+	require.NoError(t, err)
+	for id, want := range map[int64]string{idA: "api", idB: "ui", idC: "api"} {
+		v, err := vs.GetView(ctx, id)
+		require.NoError(t, err)
+		assert.Equal(t, want, v.CreatedVia)
+	}
+	// an edit records the editor's provenance, both ways
+	require.NoError(t, vs.UpdateView(ctx, idA, &CustomView{Name: "a", Scope: "global", CreatedVia: "ui"}))
+	v, _ := vs.GetView(ctx, idA)
+	assert.Equal(t, "ui", v.CreatedVia)
+	require.NoError(t, vs.UpdateView(ctx, idA, &CustomView{Name: "a", Scope: "global", CreatedVia: "api"}))
+	v, _ = vs.GetView(ctx, idA)
+	assert.Equal(t, "api", v.CreatedVia)
+	list, err := vs.ListViews(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 3)
+}
+
+// Views that exist before the column does have unknown provenance: they come out as "api", so the dashboard asks once.
+func TestViewStore_ExistingRowsMigrateAsAPI(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	_, err := db.ExecContext(ctx, `ALTER TABLE custom_views DROP COLUMN created_via`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO custom_views (name, prompt, html, tab_order, scope, created_at, updated_at) VALUES ('old', '', '<b>x</b>', 0, 'global', 't', 't')`)
+	require.NoError(t, err)
+	require.NoError(t, db.ensureSchema(ctx)) // what every startup runs
+	vs := NewViewStore(db)
+	list, err := vs.ListViews(ctx)
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	assert.Equal(t, "api", list[0].CreatedVia)
+	assert.Equal(t, "<b>x</b>", list[0].HTML)
+}

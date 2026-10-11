@@ -3,6 +3,7 @@ package routes
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -49,9 +50,36 @@ func (h *ViewsHandler) GetView(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
+// viewWriteAllowed admits only the positively identified local dashboard (loopback peer, localhost Host, same-origin
+// browser fetch, no tunnel stamp, no Bearer credential) and a JSON content type, so a plain curl, an agent, a proxy or
+// the Cloud Hub cannot store view HTML that later runs in the user's browser. It writes the 403/400 itself.
+func viewWriteAllowed(w http.ResponseWriter, r *http.Request, needJSON bool) bool {
+	if !localDashboard(r) {
+		errForbidden(w, "Custom views can only be changed from the Coral dashboard on this computer")
+		return false
+	}
+	if needJSON && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		errBadRequest(w, "Content-Type must be application/json")
+		return false
+	}
+	return true
+}
+
+// viewProvenance is "ui" for a write that carried dashboard evidence. Writes without it are refused above, so this is
+// belt and braces: the stored marker never claims more than was proven.
+func viewProvenance(r *http.Request) string {
+	if localDashboard(r) {
+		return "ui"
+	}
+	return "api"
+}
+
 // CreateView creates a new custom view.
 // POST /api/views
 func (h *ViewsHandler) CreateView(w http.ResponseWriter, r *http.Request) {
+	if !viewWriteAllowed(w, r, true) {
+		return
+	}
 	var body struct {
 		Name     string `json:"name"`
 		Prompt   string `json:"prompt"`
@@ -72,11 +100,12 @@ func (h *ViewsHandler) CreateView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := &store.CustomView{
-		Name:     body.Name,
-		Prompt:   body.Prompt,
-		HTML:     body.HTML,
-		TabOrder: body.TabOrder,
-		Scope:    body.Scope,
+		Name:       body.Name,
+		Prompt:     body.Prompt,
+		HTML:       body.HTML,
+		TabOrder:   body.TabOrder,
+		Scope:      body.Scope,
+		CreatedVia: viewProvenance(r),
 	}
 	id, err := h.vs.CreateView(r.Context(), view)
 	if err != nil {
@@ -90,6 +119,9 @@ func (h *ViewsHandler) CreateView(w http.ResponseWriter, r *http.Request) {
 // UpdateView updates an existing view.
 // PUT /api/views/{id}
 func (h *ViewsHandler) UpdateView(w http.ResponseWriter, r *http.Request) {
+	if !viewWriteAllowed(w, r, true) {
+		return
+	}
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid id")
@@ -111,11 +143,12 @@ func (h *ViewsHandler) UpdateView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := &store.CustomView{
-		Name:     body.Name,
-		Prompt:   body.Prompt,
-		HTML:     body.HTML,
-		TabOrder: body.TabOrder,
-		Scope:    body.Scope,
+		Name:       body.Name,
+		Prompt:     body.Prompt,
+		HTML:       body.HTML,
+		TabOrder:   body.TabOrder,
+		Scope:      body.Scope,
+		CreatedVia: viewProvenance(r),
 	}
 	if err := h.vs.UpdateView(r.Context(), id, view); err != nil {
 		errInternalServer(w, err.Error())
@@ -128,6 +161,9 @@ func (h *ViewsHandler) UpdateView(w http.ResponseWriter, r *http.Request) {
 // DeleteView deletes a view.
 // DELETE /api/views/{id}
 func (h *ViewsHandler) DeleteView(w http.ResponseWriter, r *http.Request) {
+	if !viewWriteAllowed(w, r, false) {
+		return
+	}
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
 		errBadRequest(w, "invalid id")

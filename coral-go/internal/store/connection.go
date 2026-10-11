@@ -136,6 +136,8 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 var columnMigrations = []struct {
 	table, column, definition string
 }{
+	// Existing views have unknown provenance, so they migrate as "api": the dashboard asks once before running them.
+	{"custom_views", "created_via", "TEXT NOT NULL DEFAULT 'api'"},
 	{"agent_notes", "session_id", "TEXT"},
 	{"agent_tasks", "session_id", "TEXT"},
 	{"session_meta", "display_name", "TEXT"},
@@ -546,6 +548,7 @@ CREATE TABLE IF NOT EXISTS custom_views (
 	html       TEXT NOT NULL DEFAULT '',
 	tab_order  INTEGER NOT NULL DEFAULT 0,
 	scope      TEXT NOT NULL DEFAULT 'global',
+	created_via TEXT NOT NULL DEFAULT 'api',
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
 );
