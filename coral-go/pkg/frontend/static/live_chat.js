@@ -6,7 +6,7 @@ import { platform } from './platform/detect.js';
 import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
-import { serverFetch, sessionServer, serverUrl, currentServer } from './server_base.js';
+import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -668,7 +668,9 @@ export async function refreshLiveHistory() {
     if (session.agent_type) {
         params.set("agent_type", session.agent_type);
     }
-    if (session.working_directory) {
+    // Through the hub the machine resolves the directory from session_id (its own stored record), and the hub's route
+    // table refuses an absolute path in a file-ref parameter: sending it would turn the chat into a 404.
+    if (session.working_directory && !(isCloud() && sessionServer(session) !== 'local')) {
         params.set("working_directory", session.working_directory);
     }
 
@@ -805,7 +807,9 @@ async function _loadMoreHistory(generation) {
     if (session.agent_type) {
         params.set("agent_type", session.agent_type);
     }
-    if (session.working_directory) {
+    // Through the hub the machine resolves the directory from session_id (its own stored record), and the hub's route
+    // table refuses an absolute path in a file-ref parameter: sending it would turn the chat into a 404.
+    if (session.working_directory && !(isCloud() && sessionServer(session) !== 'local')) {
         params.set("working_directory", session.working_directory);
     }
     // Pagination is already anchored by offset; omit an explicit after=0 so
