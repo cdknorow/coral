@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // Options configures a Handler.
@@ -115,12 +117,14 @@ func StrictResponseFilter(resp *http.Response) error {
 	// browser cache would keep it after sign-out, revoke, or on a shared browser (Coral marks artifacts
 	// "public, max-age=1y, immutable").
 	h.Del("Cache-Control")
+	advisoryLength := h.Get(tunnel.BodyLengthHeader)
+	h.Del(tunnel.BodyLengthHeader) // advisory, between connector and hub only: never relayed to the browser
 	h.Del("Expires")
 	h.Del("Etag")
 	h.Del("Last-Modified")
 	h.Set("Cache-Control", "private, no-store")
 	if resp.Request != nil && resp.Request.URL != nil && artifactPath.MatchString(resp.Request.URL.Path) {
-		capArtifact(resp)
+		capArtifact(resp, advisoryLength)
 	}
 	return nil
 }
@@ -135,8 +139,14 @@ var errArtifactTooLarge = errors.New("artifact exceeds the hub's relay limit")
 
 // capArtifact enforces MaxArtifactBytes: a declared length over the limit is answered with a clear 413, and an
 // undeclared (chunked) body is cut off with an error once it passes the limit, never streamed without bound.
-func capArtifact(resp *http.Response) {
-	if resp.ContentLength > MaxArtifactBytes {
+func capArtifact(resp *http.Response, advisoryLength string) {
+	declared := resp.ContentLength
+	if declared < 0 { // tunnel responses are chunk-framed: the length is what the connector's header claims
+		if n, err := strconv.ParseInt(advisoryLength, 10, 64); err == nil && n >= 0 {
+			declared = n
+		}
+	}
+	if declared > MaxArtifactBytes {
 		_ = resp.Body.Close()
 		body := []byte(`{"error":"artifact_too_large"}` + "\n")
 		resp.StatusCode, resp.Status = http.StatusRequestEntityTooLarge, "413 Request Entity Too Large"
@@ -147,9 +157,8 @@ func capArtifact(resp *http.Response) {
 		resp.Header.Del("Content-Disposition")
 		return
 	}
-	if resp.ContentLength < 0 {
-		resp.Body = &cappedBody{rc: resp.Body, left: MaxArtifactBytes}
-	}
+	// Whatever length was claimed, never relay more than the limit (a connector can lie about it).
+	resp.Body = &cappedBody{rc: resp.Body, left: MaxArtifactBytes}
 }
 
 type cappedBody struct {

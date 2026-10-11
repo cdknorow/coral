@@ -159,6 +159,9 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			case h.opts.ResponseFilter != nil:
 				return h.opts.ResponseFilter(resp)
 			case isTunnel(t):
+				// The hub's security middleware may already have set Cache-Control on w, and the reverse proxy ADDS
+				// the filtered upstream value as a second header line. The filter owns the field for relayed content.
+				w.Header().Del("Cache-Control")
 				return StrictResponseFilter(resp)
 			}
 			resp.Header.Del("Set-Cookie")

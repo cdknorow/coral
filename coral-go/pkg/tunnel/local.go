@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -220,6 +221,9 @@ func (p PathRules) Allow(method, decodedPath string) bool {
 	return ok && (p.Gate == nil || p.Gate(method, decodedPath))
 }
 
+// BodyLengthHeader carries the machine's declared response length across the (chunk-framed) tunnel.
+const BodyLengthHeader = "X-Coral-Content-Length"
+
 // ViaHeader marks a request that the connector executed on behalf of the Cloud Hub.
 // Coral's file endpoints apply strict bounds to such requests (no absolute paths
 // outside the session's repository, a sensitive-path denylist, generic errors).
@@ -430,6 +434,12 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		hdr.Del(k)
 	}
 	hdr.Del("Content-Length") // the body is re-framed
+	hdr.Del(BodyLengthHeader) // never forward a header the machine's own app set under our name
+	if resp.ContentLength >= 0 {
+		// Advisory only: lets the hub refuse a huge artifact with a clear 413 before streaming. The hub also
+		// caps the body itself, so a connector that omits or falsifies this gains nothing.
+		hdr.Set(BodyLengthHeader, strconv.FormatInt(resp.ContentLength, 10))
+	}
 	rewriteLocation(hdr)
 	w, err := s.Respond(ResponseHeader{Status: resp.StatusCode, Headers: hdr})
 	if err != nil {

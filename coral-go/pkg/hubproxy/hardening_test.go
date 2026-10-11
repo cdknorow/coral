@@ -4,11 +4,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 func TestFilterKeepsASingleContentTypeAndSanitisedFilename(t *testing.T) {
@@ -114,4 +117,30 @@ func (zeroReader) Read(p []byte) (int, error) {
 		p[i] = 0
 	}
 	return len(p), nil
+}
+
+// The connector's advisory length (the tunnel re-frames bodies, so there is no Content-Length) lets the hub answer
+// a clear 413 for a huge artifact; the header itself is never relayed to the browser.
+func TestAdvisoryLengthGivesAClear413AndIsNotRelayed(t *testing.T) {
+	path := "/api/artifacts/" + strings.Repeat("f", 64)
+	resp := &http.Response{Header: http.Header{}, StatusCode: 200, Request: httptest.NewRequest("GET", path, nil),
+		ContentLength: -1, Body: io.NopCloser(strings.NewReader("x"))}
+	resp.Header.Set("Content-Type", "image/png")
+	resp.Header.Set(tunnel.BodyLengthHeader, strconv.FormatInt(MaxArtifactBytes+1, 10))
+	require.NoError(t, StrictResponseFilter(resp))
+	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	assert.Empty(t, resp.Header.Get(tunnel.BodyLengthHeader))
+	// a small claim does not widen the cap: a lying connector is still cut off at the limit
+	resp = &http.Response{Header: http.Header{}, StatusCode: 200, Request: httptest.NewRequest("GET", path, nil),
+		ContentLength: -1, Body: io.NopCloser(io.LimitReader(zeroReader{}, MaxArtifactBytes+10))}
+	resp.Header.Set(tunnel.BodyLengthHeader, "10")
+	require.NoError(t, StrictResponseFilter(resp))
+	n, err := io.Copy(io.Discard, resp.Body)
+	assert.Error(t, err)
+	assert.EqualValues(t, MaxArtifactBytes, n)
+	// the header is stripped from every response, artifact or not
+	other := &http.Response{Header: http.Header{}, Request: httptest.NewRequest("GET", "/api/x", nil), ContentLength: -1, Body: http.NoBody}
+	other.Header.Set(tunnel.BodyLengthHeader, "5")
+	require.NoError(t, StrictResponseFilter(other))
+	assert.Empty(t, other.Header.Get(tunnel.BodyLengthHeader))
 }
