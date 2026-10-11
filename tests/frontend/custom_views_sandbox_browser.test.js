@@ -15,6 +15,16 @@ if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
     try {
         await c.Page.enable();
         await c.Page.navigate({ url: base }); await c.Page.loadEventFired();
+        // Against the REAL server: the dashboard can write a view (created_via 'ui'); a plain caller (no fetch metadata, as
+        // curl or an agent would be) is refused and creates nothing.
+        const plain = await fetch(base + '/api/views', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'agent view', html: '<script>1</script>' }) });
+        assert.equal(plain.status, 403, 'a plain POST /api/views is refused');
+        const real = await ev(`return fetch('/api/views', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'dashboard view', html: '<h1>x</h1>' }) }).then(async r => ({ status: r.status, body: await r.json() }))`);
+        assert.equal(real.status, 201);
+        assert.equal(real.body.created_via, 'ui', 'a dashboard write is marked ui');
+        const listed = await ev(`fetch('/api/views').then(r => r.json())`);
+        assert.deepEqual(listed.map(v => v.name), ['dashboard view'], 'the refused write created nothing');
+        await ev(`fetch('/api/views/' + ${real.body.id}, { method: 'DELETE' }).then(r => r.status)`);
         await ev(`(async () => {
             window.cv = await import('/static/custom_views.js');
             window.probes = {}; window.apiCalls = [];
