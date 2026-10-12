@@ -123,11 +123,22 @@ func StrictResponseFilter(resp *http.Response) error {
 	h.Del("Etag")
 	h.Del("Last-Modified")
 	h.Set("Cache-Control", "private, no-store")
-	if resp.Request != nil && resp.Request.URL != nil && artifactPath.MatchString(resp.Request.URL.Path) {
-		capArtifact(resp, advisoryLength)
+	if resp.Request != nil && resp.Request.URL != nil {
+		switch pth := resp.Request.URL.Path; {
+		case artifactPath.MatchString(pth):
+			capBody(resp, advisoryLength, MaxArtifactBytes, "artifact_too_large")
+		case panelContentPath.MatchString(pth):
+			capBody(resp, advisoryLength, MaxPanelBytes, "panel_too_large")
+		}
 	}
 	return nil
 }
+
+// MaxPanelBytes is the most the hub relays for one Agent UI panel: the machine accepts 2 MiB of HTML and prepends a small
+// bridge script; the dashboard runs it in a sandbox and refuses more.
+const MaxPanelBytes = 2<<20 + 16<<10
+
+var panelContentPath = regexp.MustCompile(`^/api/agent/ui/[A-Za-z0-9_-]{1,64}/content$`)
 
 // MaxArtifactBytes is the most the hub relays for one artifact. Coral accepts uploads up to 64 MiB; the hub
 // relays at most 25 MiB through a browser fetch.
@@ -137,18 +148,18 @@ var artifactPath = regexp.MustCompile(`^/api/artifacts/[0-9a-f]{64}$`)
 
 var errArtifactTooLarge = errors.New("artifact exceeds the hub's relay limit")
 
-// capArtifact enforces MaxArtifactBytes: a declared length over the limit is answered with a clear 413, and an
+// capBody enforces a relay limit (MaxArtifactBytes for artifacts, MaxPanelBytes for panels): a declared length over the limit is answered with a clear 413, and an
 // undeclared (chunked) body is cut off with an error once it passes the limit, never streamed without bound.
-func capArtifact(resp *http.Response, advisoryLength string) {
+func capBody(resp *http.Response, advisoryLength string, limit int64, code string) {
 	declared := resp.ContentLength
 	if declared < 0 { // tunnel responses are chunk-framed: the length is what the connector's header claims
 		if n, err := strconv.ParseInt(advisoryLength, 10, 64); err == nil && n >= 0 {
 			declared = n
 		}
 	}
-	if declared > MaxArtifactBytes {
+	if declared > limit {
 		_ = resp.Body.Close()
-		body := []byte(`{"error":"artifact_too_large"}` + "\n")
+		body := []byte(`{"error":"` + code + `"}` + "\n")
 		resp.StatusCode, resp.Status = http.StatusRequestEntityTooLarge, "413 Request Entity Too Large"
 		resp.Body = io.NopCloser(bytes.NewReader(body))
 		resp.ContentLength = int64(len(body))
@@ -158,7 +169,7 @@ func capArtifact(resp *http.Response, advisoryLength string) {
 		return
 	}
 	// Whatever length was claimed, never relay more than the limit (a connector can lie about it).
-	resp.Body = &cappedBody{rc: resp.Body, left: MaxArtifactBytes}
+	resp.Body = &cappedBody{rc: resp.Body, left: limit}
 }
 
 type cappedBody struct {

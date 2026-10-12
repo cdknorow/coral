@@ -170,3 +170,40 @@ func TestArtifactCapBoundary(t *testing.T) {
 	assert.NoError(t, err)
 	assert.EqualValues(t, 10, n)
 }
+
+// An Agent UI panel is 2 MiB at most; a larger one is a clear 413, an exact-limit body ends cleanly, and the content route is the only
+// panel route capped.
+func TestPanelContentIsCappedAtTwoMiB(t *testing.T) {
+	path := "/api/agent/ui/panel_1/content"
+	mk := func(size int64, declared string) *http.Response {
+		r := &http.Response{Header: http.Header{}, StatusCode: 200, Request: httptest.NewRequest("GET", path+"?session_id=s", nil),
+			ContentLength: -1, Body: io.NopCloser(io.LimitReader(zeroReader{}, size))}
+		r.Header.Set("Content-Type", "text/html")
+		if declared != "" {
+			r.Header.Set(tunnel.BodyLengthHeader, declared)
+		}
+		return r
+	}
+	over := mk(10, strconv.FormatInt(MaxPanelBytes+1, 10))
+	require.NoError(t, StrictResponseFilter(over))
+	assert.Equal(t, http.StatusRequestEntityTooLarge, over.StatusCode)
+	b, _ := io.ReadAll(over.Body)
+	assert.JSONEq(t, `{"error":"panel_too_large"}`, string(b))
+	exact := mk(MaxPanelBytes, "")
+	require.NoError(t, StrictResponseFilter(exact))
+	n, err := io.Copy(io.Discard, exact.Body)
+	assert.NoError(t, err)
+	assert.EqualValues(t, MaxPanelBytes, n)
+	liar := mk(MaxPanelBytes+5, "10")
+	require.NoError(t, StrictResponseFilter(liar))
+	n, err = io.Copy(io.Discard, liar.Body)
+	assert.Error(t, err, "a connector that lies about the length is still cut off")
+	assert.EqualValues(t, MaxPanelBytes, n)
+	// scriptable type still becomes a download, never cached
+	assert.Equal(t, "application/octet-stream", exact.Header.Get("Content-Type"))
+	assert.Equal(t, "private, no-store", exact.Header.Get("Cache-Control"))
+	// other agent/ui routes are not capped by this rule
+	other := &http.Response{Header: http.Header{}, StatusCode: 200, Request: httptest.NewRequest("GET", "/api/agent/ui?session_id=s", nil), ContentLength: MaxPanelBytes + 1, Body: io.NopCloser(strings.NewReader("x"))}
+	require.NoError(t, StrictResponseFilter(other))
+	assert.Equal(t, 200, other.StatusCode)
+}

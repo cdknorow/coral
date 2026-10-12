@@ -6,7 +6,7 @@ import { showToast, escapeHtml, escapeAttr, dbg, showView } from './utils.js';
 import { loadLiveSessionDetail, loadHistoryMessages } from './api.js';
 import { normServer, serverForSession, serverFetch, sessionServer, agentPath, identityKey } from './server_base.js';
 import { stopCaptureRefresh, startCaptureRefresh } from './capture.js';
-import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, terminalDotClass } from './render.js';
+import { updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, updateTokenUsage, updateHistoryTokenUsage, renderHistoryChat, showBoardChatTab, hideBoardChatTab, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderQuickActions, updateSidebarActive, renderAttachments } from './controls.js';
 import { loadSessionNotes, switchHistoryTab } from './notes.js';
 import { loadSessionTags } from './tags.js';
@@ -119,9 +119,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // Update command input placeholder with session target
     const cmdInput = document.getElementById("command-input");
     if (cmdInput) {
-        const typeInfo = agentType ? ` (${agentType})` : '';
-        const boardInfo = agentData && agentData.board_project ? ` on ${agentData.board_project}` : '';
-        cmdInput.placeholder = `Sending to: ${identity}${typeInfo}${boardInfo} \u2014 type a command or paste an image...`;
+        cmdInput.placeholder = commandPlaceholder(identity, agentType, agentData && agentData.board_project);
     }
 
     // Reset summary/status before loading new session detail

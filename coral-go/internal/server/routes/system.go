@@ -205,6 +205,30 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// gitDiffModes are the comparison bases the changed-files panel offers.
+var gitDiffModes = map[string]bool{"branch_point": true, "previous_commit": true, "main_head": true}
+
+// PutGitDiffMode sets only the git_diff_mode setting, validated against the three bases the dashboard offers. It exists so
+// the changed-files panel can change the comparison base through the Cloud Hub without exposing PUT /api/settings (which can
+// set CLI paths and other machine settings and stays unreachable through the hub).
+// PUT /api/settings/git-diff-mode {"mode": "branch_point" | "previous_commit" | "main_head"}
+func (h *SystemHandler) PutGitDiffMode(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+	var body struct {
+		Mode string `json:"mode"`
+	}
+	if err := decodeJSON(r, &body); err != nil || !gitDiffModes[body.Mode] {
+		errBadRequest(w, "mode must be branch_point, previous_commit or main_head")
+		return
+	}
+	if _, err := h.db.ExecContext(r.Context(),
+		"INSERT INTO user_settings (key, value) VALUES ('git_diff_mode', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", body.Mode); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "mode": body.Mode})
+}
+
 // DatabaseSecurityStatus is intentionally metadata-only. Passwords and key
 // material never cross this API boundary.
 func (h *SystemHandler) DatabaseSecurityStatus(w http.ResponseWriter, r *http.Request) {

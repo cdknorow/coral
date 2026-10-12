@@ -1,7 +1,7 @@
 /* Rendering functions for session lists, chat history, and status updates */
 
 import { state } from './state.js';
-import { serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
+import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
@@ -89,6 +89,15 @@ export function sessionIdentitySource(s) {
     return (s.display_name || '').trim()
         || (s.auto_name || '').trim()
         || (s.board_job_title || '').trim();
+}
+
+// Placeholder of the command box. The full text (with the agent type and board) is too long for a phone's box and
+// gets cut off mid-word, so narrow screens get the target only.
+export function commandPlaceholder(identity, agentType, boardProject) {
+    if (window.innerWidth <= 767) return `Send to ${identity}…`;
+    const typeInfo = agentType ? ` (${agentType})` : '';
+    const boardInfo = boardProject ? ` on ${boardProject}` : '';
+    return `Sending to: ${identity}${typeInfo}${boardInfo} \u2014 type a command or paste an image...`;
 }
 
 /** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
@@ -1404,7 +1413,37 @@ export function toggleTeamSleep(boardName, action) {
     }
 }
 
+// On the hub there is no "this machine": Sleep All / Wake All act on every connected server the account can reach, one request
+// per server through the hub (sleep is Interact tier, wake is Launch tier; a server that refuses says so itself).
+function _cloudServersWithAgents() {
+    return [...new Set((state.liveSessions || []).filter(s => !s.stale).map(s => sessionServer(s)))];
+}
+
+async function _cloudBulk(path, verbKey, field) {
+    let affected = 0, reached = 0;
+    for (const server of _cloudServersWithAgents()) {
+        try {
+            const resp = await serverFetch(server, path, { method: 'POST' });
+            if (!resp.ok) continue; // refused (mode too low): the fetch wrapper has already explained it
+            const data = await resp.json();
+            if (data.ok) { reached++; affected += Number(data[field]) || 0; }
+        } catch (e) { /* unreachable server: skipped */ }
+    }
+    return { affected, reached, verb: verbKey };
+}
+
 export function sleepAllAgents() {
+    if (isCloud()) {
+        showConfirmModal('Sleep All', 'Put all agents on every connected server to sleep?', async () => {
+            const r = await _cloudBulk('/api/sessions/live/sleep-all', 'sleep', 'sessions_affected');
+            if (r.reached) {
+                for (const s of state.liveSessions) s.sleeping = true;
+                renderLiveSessions(state.liveSessions);
+                showToast(`Agents are now sleeping (${r.affected} affected on ${r.reached} server${r.reached === 1 ? '' : 's'})`);
+            }
+        });
+        return;
+    }
     showConfirmModal('Sleep All', 'Put all agents to sleep?', async () => {
         try {
             const resp = await fetch('/api/sessions/live/sleep-all', { method: 'POST' });
@@ -1421,6 +1460,17 @@ export function sleepAllAgents() {
 }
 
 export function wakeAllAgents() {
+    if (isCloud()) {
+        showConfirmModal('Wake All', 'Wake all sleeping agents on every connected server?', async () => {
+            const r = await _cloudBulk('/api/sessions/live/wake-all', 'wake', 'sessions_relaunched');
+            if (r.reached) {
+                for (const s of state.liveSessions) s.sleeping = false;
+                renderLiveSessions(state.liveSessions);
+                showToast(`Agents are awake (${r.affected} relaunched on ${r.reached} server${r.reached === 1 ? '' : 's'})`);
+            }
+        });
+        return;
+    }
     showConfirmModal('Wake All', 'Wake all sleeping agents?', async () => {
         try {
             const resp = await fetch('/api/sessions/live/wake-all', { method: 'POST' });

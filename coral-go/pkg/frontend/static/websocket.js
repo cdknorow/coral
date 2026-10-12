@@ -1,13 +1,52 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
-import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, terminalDotClass } from './render.js';
+import { signInUrl } from './cloud.js';
+import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
+import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, showToast, escapeHtml, dbg } from './utils.js';
 import { serverWsBase, identityKey, sessionServer } from './server_base.js';
+import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
+
+// Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
+// a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
+// with jitter (feed_pacing.js). A "session ended" close (4401, sent by the hub) is checked against /auth/session
+// first and stops the retries only when that says the browser is signed out (see recheckSignIn).
+const FEED_CLOSE_SESSION_ENDED = 4401;
+let _feedFailures = 0;
+let _lastSidebarRenderAt = 0;
+
+function scheduleFeedReconnect() {
+    _feedFailures++;
+    setTimeout(connectCoralWs, feedRetryDelay(_feedFailures));
+}
+
+// What the feed does once the browser is confirmed signed out. A seam for tests; the default is the same redirect the
+// fetch wrapper in cloud.js performs on a 401.
+export const feedHooks = {
+    signedOut() {
+        if (!/^\/(signin|auth|enroll)/.test(location.pathname)) location.replace(signInUrl());
+    },
+};
+
+// 4401 says the hub found the session over, but the browser asks before giving up. GET /auth/session answers 200
+// with {authenticated:false} for a browser that is really signed out (it never answers 401): only that stops the
+// retries and sends the browser to sign in. {authenticated:true}, any other status (the hub answers 503 when it
+// cannot check), an unreadable body or a network error mean the close was a blip: reconnect with the backoff.
+async function recheckSignIn() {
+    try {
+        const r = await fetch('/auth/session', { cache: 'no-store', credentials: 'same-origin' });
+        if (r.status === 200) {
+            const body = await r.json();
+            if (body && body.authenticated === false) { feedHooks.signedOut(); return; }
+        }
+    } catch (e) { /* network trouble or a bad body is not a sign-out */ }
+    scheduleFeedReconnect();
+}
 
 export function connectCoralWs() {
     dbg('connectCoralWs: establishing connection');
@@ -18,12 +57,14 @@ export function connectCoralWs() {
     state.coralWs = new WebSocket(url);
 
     state.coralWs.onmessage = (event) => {
+        _feedFailures = 0;   // a socket that delivers is healthy; the next drop starts the backoff over
         handleCoralMessage(JSON.parse(event.data));
     };
 
     state.coralWs.onclose = (ev) => {
         dbg('coralWs CLOSE', { code: ev.code, reason: ev.reason });
-        setTimeout(connectCoralWs, 5000);
+        if (ev.code === FEED_CLOSE_SESSION_ENDED) { recheckSignIn(); return; }
+        scheduleFeedReconnect();
     };
 
     state.coralWs.onerror = (ev) => {
@@ -66,6 +107,12 @@ export function handleCoralMessage(data) {
         // Handle diff updates: merge changed/removed into existing session list
         if (data.type === "coral_diff") {
             let sessions = [...(state.liveSessions || [])];
+
+            // A diff that only ages agents (staleness_seconds) changes nothing the sidebar shows beyond the "Ns ago"
+            // text, so it may skip the full sidebar render, but never for longer than DRIFT_RENDER_MAX_AGE_MS.
+            data._skipSidebarRender = !data.removed?.length && !data.removed_remote?.length && !data.servers
+                && isStalenessDrift(sessions, data.changed, _feedKey)
+                && Date.now() - _lastSidebarRenderAt < DRIFT_RENDER_MAX_AGE_MS;
 
             // Apply changed sessions (update existing or add new)
             if (data.changed) {
@@ -119,9 +166,11 @@ export function handleCoralMessage(data) {
                     const agentType = s.agent_type;
                     const sessionId = s.session_id;
                     const sessionSrv = sessionServer(s);
-                    showNotificationToast(label, detail, () => {
-                        import('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId, sessionSrv));
-                    });
+                    const openSession = () => import('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId, sessionSrv));
+                    showNotificationToast(label, detail, openSession);
+                    // Opt-in desktop alert while this tab is in the background; names only.
+                    const srvLabel = (state.servers || []).find(x => x.id === sessionSrv);
+                    notifyNeedsInput({ agent: s.display_name || s.name, where: srvLabel ? srvLabel.label : '', tag: id, onClick: openSession });
                 }
                 state.prevWaitingState[id] = !!s.waiting_for_input;
 
@@ -147,7 +196,10 @@ export function handleCoralMessage(data) {
                 data.sessions = data.sessions.map(s => mergeSession(prevMap[_feedKey(s)], s));
             }
             state.liveSessions = data.sessions;
-            renderLiveSessions(data.sessions);
+            if (!data._skipSidebarRender) {
+                _lastSidebarRenderAt = Date.now();
+                renderLiveSessions(data.sessions);
+            }
             if (isPopout()) popoutHandleSessionsTick(data.sessions);
 
             // Show notifications pushed via POST /api/notifications
@@ -212,9 +264,7 @@ export function handleCoralMessage(data) {
                     if (termLabel) termLabel.textContent = formatTerminalLabel(headerName, s.session_id);
                     const cmdInput = document.getElementById("command-input");
                     if (cmdInput) {
-                        const typeInfo = s.agent_type ? ` (${s.agent_type})` : '';
-                        const boardInfo = s.board_project ? ` on ${s.board_project}` : '';
-                        cmdInput.placeholder = `Sending to: ${headerName}${typeInfo}${boardInfo} — type a command or paste an image...`;
+                        cmdInput.placeholder = commandPlaceholder(headerName, s.agent_type, s.board_project);
                     }
                     updateSessionStatus(s.status);
                     updateSessionSummary(s.summary);

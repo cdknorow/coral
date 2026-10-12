@@ -1,5 +1,48 @@
 # Release Notes
 
+## v1.3.45 — More of Coral on the Cloud Hub: Agent UI panels, desktop alerts, and lighter browser load
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release is about the Cloud Hub (the hosted dashboard that shows your machines): it closes the gaps found in the last parity audit, adds Agent UI panels and optional desktop alerts there, and makes the dashboard lighter on the network. On your own computer the visible changes are the browser-load fixes and the new Desktop alerts switch below; Agent UI panels there work as before, with a per-panel rate limit on responses.
+
+### New
+
+- **Agent UI panels on the Cloud Hub.** Panels an agent publishes now show in the hub's Agent UI tab and can send responses back to the agent. A panel is agent-authored content, so it is labelled "agent-authored panel" and runs in a locked frame: no network, no storage, no way to reach the dashboard or your hub session, and one kind of message only (a response to the agent, rate-limited per panel). The hub only reads and relays; publishing and deleting panels stay on the machine. Known limits of any browser sandbox, documented in the Agent UI help: a panel can cause a DNS lookup and, through WebRTC, send UDP packets to an address it chooses. Open panels only from agents you trust.
+- **Desktop alerts (off by default).** Settings has a new "Desktop alerts" switch. When it is on, this browser shows a desktop notification while the tab is in the background and an agent needs input. It is per browser (not saved on the hub), needs your browser's permission, uses no service worker, and shows only the agent's name and the server's name, never what the agent said. Your operating system may keep those names in its notification history.
+- **Cloud Hub parity.** The changed-files view has its diff-mode selector, Sleep All / Wake All work per server, On the hub, changing the diff mode needs at least Interact access to that machine. Branch and dirty badges, repository name and context use on hub-connected machines come from the matching hub release.
+
+### Fixes
+
+- **Less browser load.** The terminal poll runs every 3 seconds instead of every 500 ms while the terminal socket is open; the live feed reconnects with backoff and jitter instead of retrying at a fixed pace; a feed update that only changes the idle counter no longer redraws the whole agent list; and the page no longer fetches the session list twice at start-up. When the hub ends your session the dashboard re-checks the session before giving up on the feed.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.3.44.
+
+### Upgrade notes
+
+- No database or configuration changes.
+- Agent UI panels, the hub's git badges and the hub-side diff-mode route need the matching hub release (v1.3.45); until a hub is updated those parts keep working as before or are not offered.
+
+## v1.3.44 — Phone fixes for the Cloud Hub, and signed-release hardening
+
+**No security fixes in this release.** It fixes tapping an agent at phone width when Coral is opened through the Cloud Hub, and tightens how macOS releases are signed and published. v1.3.43 remains the current security release.
+
+### Fixes
+
+- **Agents now open at phone width on the Cloud Hub.** The phone-width agent list re-ran each row's click handler through `eval()`, which the hub's content security policy refuses, so tapping an agent did nothing. The rows now keep their click handlers, and the list uses classes instead of inline styles. Local Coral was unaffected. The settings menu now opens above the side panel.
+- **Phone-width polish.** The panel's close button no longer covers the Tasks tab at 390 px, the artifacts table scrollbar is thinner, and the command box placeholder is a short "Send to <agent>…" instead of a sentence cut off mid-word. Desktop is unchanged.
+- "Check for Updates" is hidden when Coral is shown through the Cloud Hub.
+
+### Release process (first in this release; v1.3.43 did not have these)
+
+- **macOS:** `Coral.app` itself is now notarized and stapled, not only the DMG, so it still passes Gatekeeper offline after being dragged out of the DMG. The release build now verifies the DMG and the app inside it (`codesign --verify --strict`, `spctl`, `stapler validate`, hardened runtime on every executable) and fails if any check fails. The v1.3.43 DMG was already signed with a Developer ID certificate and notarized.
+- **`SHA256SUMS.txt`** is now published with every release, covering all four packages. It sits in the same release as the packages, so it detects a corrupted download, not a compromised release.
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** This is the same as v1.3.43. Windows signing is prepared in the build and stays off until it is enabled.
+
+### Upgrade notes
+
+- No database or configuration changes.
+
 ## v1.3.43 — Security fix: custom views
 
 **Custom views stored by an agent or script could run with the dashboard's rights; fixed (severity: High, local). Update recommended for everyone who uses custom views or runs agents with untrusted input.**

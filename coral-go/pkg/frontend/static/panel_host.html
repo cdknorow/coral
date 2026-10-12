@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src about:; object-src 'none'; base-uri 'none'; form-action 'none'"><title>Agent panel</title>
+<!-- The trusted HOST of an Agent UI panel on the Cloud Hub. It is loaded by URL (so the hub's page CSP is not inherited), served
+     with its own CSP header (see internal/webui: default-src 'none', script-src 'unsafe-inline', frame-src about:, sandbox allow-scripts),
+     and framed by the dashboard with sandbox="allow-scripts" (an opaque origin: no cookies, no storage, no access to the hub).
+     The dashboard posts the panel's HTML once; the host runs it in a child frame that can neither navigate away nor make a request,
+     and relays exactly one upstream message type (coral-ui-event, validated and re-built) and one downstream (coral-ui-result). -->
+<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block;background:#fff}</style></head>
+<body><script>
+(function () {
+  'use strict';
+  var PANEL_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+  var MAX_HTML = 2 * 1024 * 1024 + 16 * 1024, MAX_EVENT_BYTES = 16384, ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  var child = null, started = false, loads = 0;
+  function up(m) { window.parent.postMessage(m, '*'); }
+  function eventSize(payload) { try { return new TextEncoder().encode(JSON.stringify(payload === undefined ? null : payload)).length; } catch (e) { return Infinity; } }
+  window.addEventListener('message', function (e) {
+    var m = e.data;
+    if (!m || typeof m !== 'object') return;
+    if (e.source === window.parent) {
+      if (m.type === 'coral-panel-load' && !started && typeof m.html === 'string' && m.html.length <= MAX_HTML) { started = true; start(m.html); }
+      else if (m.type === 'coral-ui-result' && child && child.contentWindow && typeof m.requestId === 'string' && m.requestId.length <= 64) {
+        child.contentWindow.postMessage({ type: 'coral-ui-result', requestId: m.requestId, error: typeof m.error === 'string' ? m.error.slice(0, 300) : null,
+          id: typeof m.id === 'number' ? m.id : undefined, notified: !!m.notified, notify_error: typeof m.notify_error === 'string' ? m.notify_error.slice(0, 200) : '' }, '*');
+      }
+      return;
+    }
+    // The only thing the panel may send out: one validated panel event, rebuilt field by field.
+    if (child && e.source === child.contentWindow && m.type === 'coral-ui-event') {
+      if (typeof m.action !== 'string' || !ID_RE.test(m.action) || typeof m.requestId !== 'string' || m.requestId.length > 64 || eventSize(m.payload) > MAX_EVENT_BYTES) return;
+      up({ type: 'coral-ui-event', action: m.action, payload: m.payload === undefined ? null : m.payload, requestId: m.requestId });
+    }
+  });
+  function start(html) {
+    var f = document.createElement('iframe');
+    f.setAttribute('sandbox', 'allow-scripts');
+    f.setAttribute('csp', PANEL_CSP);
+    f.referrerPolicy = 'no-referrer';
+    // A document can navigate ITSELF; this host's CSP (frame-src about:) forbids it, and a second load removes the frame.
+    f.addEventListener('load', function () { if (++loads > 1) { f.remove(); child = null; up({ type: 'coral-panel-navigated' }); } });
+    f.srcdoc = '<!doctype html><meta http-equiv="Content-Security-Policy" content="' + PANEL_CSP + '">' + html;
+    child = f;
+    document.body.appendChild(f);
+  }
+  up({ type: 'coral-panel-host-ready' });
+})();
+</script></body></html>

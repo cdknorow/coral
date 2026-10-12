@@ -76,6 +76,10 @@ coral --home /tmp/coral-two --port 8452 --no-browser
 
 A non-default data directory no longer reads the default tmux socket, so it does not list the first instance's agents. Set `CORAL_TMUX_FALLBACK=1` only if you want the old merged view.
 
+## Desktop alerts
+
+Coral shows a toast in the page when an agent needs input. You can also turn on **Desktop alerts** in Settings to get a browser notification while the tab is in the background. Desktop alerts are this browser only; the alert shows the agent's name and the server's name, which your operating system may keep in its notification history. It never includes what the agent said or asked. On the machine running Coral, a desktop alert may duplicate the local alert.
+
 ## Next steps
 
 - [Remote access](remote-access.md)
