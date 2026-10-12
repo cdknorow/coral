@@ -43,11 +43,26 @@ const DEVICES = [
                 window.eval = function () { window.__eval++; window.__evalAt = new Error().stack; throw new EvalError('eval is not allowed (CSP)'); };
                 const orig = window.selectLiveSession;
                 window.selectLiveSession = function (...a) { window.__picked.push(a[0]); try { return orig.apply(this, a); } catch (e) { /* the fake session has no server */ } };
-                const list = document.getElementById('live-sessions-list');
-                list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" onclick="selectLiveSession(\\'' + n + '\\', \\'terminal\\', \\'sid-' + n + '\\', \\'local\\')"><span class="session-label">' + n + '</span></li>').join('');
-                return import('/static/mobile.js').then(m => m.syncMobileAgentList());
+                window.__seedRows = () => {
+                    const list = document.getElementById('live-sessions-list');
+                    list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" onclick="selectLiveSession(\\'' + n + '\\', \\'terminal\\', \\'sid-' + n + '\\', \\'local\\')"><span class="session-label">' + n + '</span></li>').join('');
+                    return import('/static/mobile.js').then(m => m.syncMobileAgentList());
+                };
+                return window.__seedRows();
             })()`);
-            await pause(300);
+            // The app renders the live list (and re-syncs the mobile copy) from its own startup loads, which can land
+            // after the seeding above and replace the fake rows with the server's empty list. Seed again whenever that
+            // happens, and go on once the mobile list has held its rows through a quiet half second.
+            await evaluate(`new Promise(resolve => {
+                const end = Date.now() + 10000; let since = 0;
+                (function check() {
+                    if (!document.querySelector('#live-sessions-list [data-session-id="sid-alpha"]')) { window.__seedRows(); since = 0; }
+                    const n = document.querySelectorAll('#mobile-session-list .session-group-item').length;
+                    since = n === 2 ? (since || Date.now()) : 0;
+                    if ((since && Date.now() - since >= 500) || Date.now() > end) return resolve(n);
+                    setTimeout(check, 50);
+                })();
+            })`);
             const rows = await evaluate(`[...document.querySelectorAll('#mobile-session-list .session-group-item')].map(e => ({ onclick: e.getAttribute('onclick'), label: e.textContent.trim() }))`);
             assert.equal(rows.length, 2, `${d.name}: both rows are in the mobile list`);
             assert.ok(rows.every(r => /^selectLiveSession\(/.test(r.onclick || '')), `${d.name}: each cloned row keeps its inline onclick (csp_compat runs it on the hub)`);
