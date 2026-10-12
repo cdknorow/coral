@@ -51,7 +51,7 @@ function _showMobileHistory(agentList) {
     // Header
     const header = document.createElement('div');
     header.style.cssText = 'padding:12px 16px;';
-    header.innerHTML = '<h2 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">Session History</h2>';
+    header.innerHTML = '<h2 class="mobile-list-title">Session History</h2>';
     agentList.appendChild(header);
 
     // Move the sidebar's history section body content into mobile view
@@ -64,14 +64,8 @@ function _showMobileHistory(agentList) {
             const clone = body.cloneNode(true);
             clone.style.cssText = 'padding:0 12px;overflow-y:auto;flex:1;';
 
-            // Re-wire history item clicks
-            clone.querySelectorAll('.session-list li').forEach(li => {
-                const onclick = li.getAttribute('onclick');
-                if (onclick) {
-                    li.removeAttribute('onclick');
-                    li.addEventListener('click', () => { eval(onclick); });
-                }
-            });
+            // cloneNode keeps the inline onclick attributes, so the clones work as they are: natively on a
+            // local Coral, through csp_compat's delegation on the hub (which forbids eval).
 
             // Re-wire search input
             const searchInput = clone.querySelector('input[type="search"]');
@@ -142,7 +136,7 @@ export function syncMobileAgentList() {
         const header = document.createElement('div');
         header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:12px 16px;';
         header.innerHTML = `
-            <h2 style="font-size:16px;font-weight:600;color:var(--text-primary);margin:0">Live Sessions</h2>
+            <h2 class="mobile-list-title">Live Sessions</h2>
             <button class="btn btn-small btn-primary" onclick="showLaunchModal()">+ New</button>
         `;
         agentList.appendChild(header);
@@ -150,29 +144,8 @@ export function syncMobileAgentList() {
         const clone = sidebarList.cloneNode(true);
         clone.id = 'mobile-session-list';
 
-        // Re-wire click handlers on cloned items
-        clone.querySelectorAll('.session-group-item').forEach(item => {
-            const onclick = item.getAttribute('onclick');
-            if (onclick) {
-                item.removeAttribute('onclick');
-                item.addEventListener('click', () => {
-                    // Execute the original onclick
-                    eval(onclick);
-                });
-            }
-        });
-
-        // Re-wire group collapse handlers
-        clone.querySelectorAll('.session-group-header').forEach(item => {
-            const onclick = item.getAttribute('onclick');
-            if (onclick) {
-                item.removeAttribute('onclick');
-                item.addEventListener('click', () => {
-                    eval(onclick);
-                });
-            }
-        });
-
+        // The cloned items keep their inline onclick attributes: they run natively on a local Coral and through
+        // csp_compat's delegation on the hub. Moving them into eval() would be blocked by the hub's CSP.
         agentList.appendChild(clone);
     }
 }

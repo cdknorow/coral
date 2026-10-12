@@ -1115,7 +1115,7 @@
         width: 100% !important;
         max-width: none !important;
         min-width: 0 !important;
-        z-index: 60;
+        z-index: 19; /* just under .top-bar (20), so the settings menu opens over the panel, not behind it */
         background: var(--bg-secondary);
     }
 
@@ -1469,3 +1469,7 @@
         min-height: var(--control-touch-height);
     }
 }
+
+/* Titles of the phone-width agent and history lists. Classes rather than style="" attributes: the Cloud Hub's CSP
+   (style-src 'self') refuses inline style attributes in markup assigned through innerHTML. */
+.mobile-list-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; }
