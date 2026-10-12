@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 # Release binaries contain the production analytics key. CI execution of those
 # binaries is verification traffic, not product usage.
@@ -128,29 +128,67 @@ jobs:
           go build -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
 
-      - name: Import signing certificate
-        if: env.WINDOWS_CERTIFICATE != ''
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      # Windows is beta: signing is opt-in through the repository variable
+      # WINDOWS_SIGNING ('true' turns it on; unset or anything else leaves the
+      # packages unsigned, as in v1.3.43). When on, every signing step is
+      # required and missing credentials fail the tag build.
+      - name: Warn that Windows packages are unsigned
+        if: vars.WINDOWS_SIGNING != 'true'
+        shell: bash
         run: |
-          $certBytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
-          $certPath = Join-Path $env:RUNNER_TEMP "certificate.pfx"
-          [IO.File]::WriteAllBytes($certPath, $certBytes)
-          echo "CERT_PATH=$certPath" >> $env:GITHUB_ENV
+          echo "::warning::Windows packages are UNSIGNED (beta). Set the repository variable WINDOWS_SIGNING=true and the Trusted Signing secrets to sign them."
+          echo "### :warning: Windows packages are UNSIGNED (beta)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Windows code signing uses Azure Trusted Signing (Artifact Signing): the
+      # private key never leaves Microsoft's HSM, so there is no .pfx to leak.
+      # Release tags are the only trigger for this workflow, so every run must
+      # sign; missing configuration fails the job instead of shipping unsigned.
+      - name: Require Windows release signing credentials
+        if: vars.WINDOWS_SIGNING == 'true'
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          TRUSTED_SIGNING_ENDPOINT: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          TRUSTED_SIGNING_ACCOUNT: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          TRUSTED_SIGNING_PROFILE: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+        run: |
+          for name in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET TRUSTED_SIGNING_ENDPOINT TRUSTED_SIGNING_ACCOUNT TRUSTED_SIGNING_PROFILE; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is required for a signed Windows release"
+              exit 1
+            fi
+          done
 
       - name: Sign executables
-        if: env.CERT_PATH != ''
-        env:
-          WINDOWS_CERTIFICATE_PWD: ${{ secrets.WINDOWS_CERTIFICATE_PWD }}
+        if: vars.WINDOWS_SIGNING == 'true'
+        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist\windows\bin
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signed executables
+        if: vars.WINDOWS_SIGNING == 'true'
+        shell: pwsh
         run: |
-          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
-          foreach ($exe in @("coral.exe", "launch-coral.exe", "coral-board.exe", "coral-agent.exe", "coral-tray.exe", "coral-app.exe")) {
-            $exePath = "dist\windows\bin\$exe"
-            if (Test-Path $exePath) {
-              & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-                /f $env:CERT_PATH /p $env:WINDOWS_CERTIFICATE_PWD $exePath
-            }
+          $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          $exes = Get-ChildItem dist\windows\bin -Filter *.exe
+          if (-not $exes) { throw "no executables found to verify" }
+          foreach ($exe in $exes) {
+            & $signtool verify /pa /v $exe.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed: $($exe.Name)" }
           }
+          echo "SIGNTOOL=$signtool" >> $env:GITHUB_ENV
 
       - name: Install WiX and build MSI
         run: |
@@ -167,23 +205,32 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Sign MSI
-        if: env.CERT_PATH != ''
-        env:
-          WINDOWS_CERTIFICATE_PWD: ${{ secrets.WINDOWS_CERTIFICATE_PWD }}
+        if: vars.WINDOWS_SIGNING == 'true'
+        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist\windows
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signed MSI
+        if: vars.WINDOWS_SIGNING == 'true'
         run: |
-          $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe"
-          & $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-            /f $env:CERT_PATH /p $env:WINDOWS_CERTIFICATE_PWD $env:MSI_PATH
+          & $env:SIGNTOOL verify /pa /v $env:MSI_PATH
+          if ($LASTEXITCODE -ne 0) { throw "signtool verify failed: MSI" }
 
       - name: Create portable ZIP
         run: |
           $zipPath = "dist\windows\Coral-$env:VERSION-x64-portable.zip"
           Compress-Archive -Path "dist\windows\bin\*" -DestinationPath $zipPath
           echo "ZIP_PATH=$zipPath" >> $env:GITHUB_ENV
-
-      - name: Cleanup certificate
-        if: always() && env.CERT_PATH != ''
-        run: Remove-Item $env:CERT_PATH -ErrorAction SilentlyContinue
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v7
@@ -425,6 +472,24 @@ jobs:
           tests/release/verify_standard_bundle.sh dist/Coral.app/Contents/MacOS
           codesign --verify --deep --strict --verbose=2 dist/Coral.app
 
+      # Notarize and staple the app itself so it still passes Gatekeeper
+      # offline after being dragged out of the DMG.
+      - name: Notarize and staple Coral.app
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent dist/Coral.app dist/Coral-notarize.zip
+          xcrun notarytool submit dist/Coral-notarize.zip \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" --wait --timeout 30m
+          # notarytool --wait exits 0 on Invalid too; staple fails unless Accepted.
+          xcrun stapler staple dist/Coral.app
+          xcrun stapler validate dist/Coral.app
+          rm -f dist/Coral-notarize.zip
+
       - name: Create DMG
         run: |
           brew install create-dmg
@@ -465,6 +530,26 @@ jobs:
           xcrun stapler staple "dist/$DMG_NAME"
           xcrun stapler validate "dist/$DMG_NAME"
 
+      - name: Verify signed, notarized release
+        run: |
+          set -euo pipefail
+          codesign --verify --strict --verbose=2 "dist/$DMG_NAME"
+          spctl -a -t open --context context:primary-signature -vv "dist/$DMG_NAME"
+          xcrun stapler validate "dist/$DMG_NAME"
+          MNT="$RUNNER_TEMP/dmgverify"
+          mkdir -p "$MNT"
+          hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$MNT" "dist/$DMG_NAME"
+          codesign --verify --deep --strict --verbose=2 "$MNT/Coral.app"
+          spctl -a -t exec -vv "$MNT/Coral.app"
+          xcrun stapler validate "$MNT/Coral.app"
+          # Hardened runtime on every Mach-O in the bundle.
+          for f in "$MNT"/Coral.app/Contents/MacOS/*; do
+            file "$f" | grep -q "Mach-O" || continue
+            info=$(codesign -dv "$f" 2>&1)
+            grep -q "flags=.*runtime" <<<"$info" || { echo "::error::hardened runtime missing: $f"; exit 1; }
+          done
+          hdiutil detach "$MNT"
+
       - name: Cleanup keychain
         if: always() && env.KEYCHAIN_PATH != ''
         run: security delete-keychain "$KEYCHAIN_PATH" || true
@@ -478,6 +563,8 @@ jobs:
   # ── Create GitHub Release with all assets ──────────────────────
   release:
     if: always() && !failure() && !cancelled()
+    permissions:
+      contents: write
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
@@ -497,9 +584,9 @@ jobs:
           gh release create "$TAG" --title "$TAG" --generate-notes || true
           # Publish install packages only; native macOS slices are build inputs.
           # Linux and the macOS DMG are always built, so a missing package is an
-          # error. Windows packages are optional (skipped unless the tag asks
-          # for them): an absent glob is skipped explicitly, while a failed
-          # upload still fails the step.
+          # error. The Windows packages are built and signed on every tag, so
+          # they are required too: a missing file or a failed upload fails the
+          # step.
           for f in artifacts/coral-linux-amd64/*.tar.gz \
                    artifacts/coral-macos-dmg/*.dmg \
                    artifacts/coral-windows-msi/*.msi \
@@ -510,3 +597,9 @@ jobs:
             fi
             gh release upload "$TAG" "$f" --clobber
           done
+          # Checksums for every published package. Linux has no OS-level code
+          # signing, so users verify the tarball against this file.
+          (cd artifacts && sha256sum coral-linux-amd64/*.tar.gz coral-macos-dmg/*.dmg \
+            coral-windows-msi/*.msi coral-windows-portable/*.zip | sed 's#  [^ ]*/#  #') > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber
