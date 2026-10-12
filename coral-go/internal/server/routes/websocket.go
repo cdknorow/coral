@@ -74,7 +74,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	prevRunsJSON := "[]"
 	firstMessage := true
 	var lastSent time.Time // last message written to this connection
+	// A hub's feed (?feed=hub) is a machine client, not a dashboard: it must
+	// not receive, and so mark delivered, this server's UI notifications.
 	notifications := h.notifications
+	if r.URL.Query().Get("feed") == "hub" {
+		notifications = nil
+	}
 	var notifCursor int64
 	if notifications != nil {
 		notifCursor = notifications.StartCursor()

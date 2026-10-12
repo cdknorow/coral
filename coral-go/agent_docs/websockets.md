@@ -14,7 +14,21 @@ Streams the live session list with diff-based updates to minimize bandwidth.
 ws://localhost:8420/ws/coral
 ```
 
-No query parameters required.
+No query parameters required for a dashboard.
+
+Machine clients that hold a long-lived feed instead of showing a dashboard (a
+Coral hub, the Cloud Hub) should connect with `?feed=hub`:
+
+```
+ws://localhost:8420/ws/coral?feed=hub
+```
+
+The session data is identical; the only difference is that a `feed=hub`
+connection never receives the `notifications` field. UI notifications
+(`POST /api/notifications`) are delivered to every connected dashboard, and
+one pushed while no dashboard is open waits for the next dashboard to
+connect. A feed without the marker counts as a dashboard and would take such
+a waiting notification away from the people it was meant for.
 
 ### Message Flow
 

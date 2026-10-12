@@ -104,3 +104,50 @@ func TestWSCoral_NotificationReachesEveryDashboard(t *testing.T) {
 		}
 	}
 }
+
+// A hub feed (?feed=hub) gets no notifications and does not consume them: a
+// notification pushed while only the feed is connected still reaches the next
+// dashboard.
+func TestWSCoral_HubFeedDoesNotConsumeNotifications(t *testing.T) {
+	server, handler := setupTestServer(t)
+	ns := NewNotificationStore()
+	handler.SetNotificationStore(ns)
+	base := "ws" + server.URL[4:] + "/ws/coral"
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	feed, _, err := websocket.Dial(ctx, base+"?feed=hub", nil)
+	require.NoError(t, err)
+	defer feed.CloseNow()
+	var first map[string]json.RawMessage
+	require.NoError(t, wsjson.Read(ctx, feed, &first))
+	pushed := ns.Push(Notification{Title: "for the people"})
+
+	// Let the feed tick a few times (1s poll in this server); it must never
+	// carry the notification.
+	readCtx, readCancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+	for {
+		var msg struct {
+			Notifications []Notification `json:"notifications"`
+		}
+		if err := wsjson.Read(readCtx, feed, &msg); err != nil {
+			break // read deadline: no more messages in the window
+		}
+		assert.Empty(t, msg.Notifications, "a hub feed never gets notifications")
+	}
+	readCancel()
+
+	dash, _, err := websocket.Dial(ctx, base, nil)
+	require.NoError(t, err)
+	defer dash.CloseNow()
+	for {
+		var msg struct {
+			Notifications []Notification `json:"notifications"`
+		}
+		require.NoError(t, wsjson.Read(ctx, dash, &msg))
+		if len(msg.Notifications) > 0 {
+			assert.Equal(t, []int64{pushed.ID}, notificationIDs(msg.Notifications), "still waiting for a dashboard")
+			return
+		}
+	}
+}

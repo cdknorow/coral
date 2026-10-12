@@ -16,8 +16,8 @@ import (
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
 
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/cdknorow/coral/internal/store"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 )
 
 type fakeRegistry struct {
@@ -93,6 +93,7 @@ type fakeRemote struct {
 	feedDeaf    bool // the feed socket is never read, so pings go unanswered
 	listGets    int
 	healthGets  int
+	feedQuery   string // raw query of the last /ws/coral request
 }
 
 func (fr *fakeRemote) counts() (list, health int) {
@@ -139,6 +140,7 @@ func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
 	mux.HandleFunc("/ws/coral", func(w http.ResponseWriter, r *http.Request) {
 		fr.mu.Lock()
 		noFeed := fr.noFeed
+		fr.feedQuery = r.URL.RawQuery
 		fr.mu.Unlock()
 		if noFeed {
 			http.NotFound(w, r)
@@ -553,4 +555,22 @@ func TestHub_NoHealthEndpointFallsBackToList(t *testing.T) {
 	assert.LessOrEqual(t, health1, 3, "health is not retried every poll once it 404s")
 	assert.Equal(t, "online", statusMap(h.Snapshot())["a"])
 	assert.False(t, h.feedCarriesList("a"))
+}
+
+// The hub's upstream feed identifies itself as a machine feed, so the remote
+// keeps its UI notifications for its own dashboards.
+func TestHub_FeedDialsAsHubFeed(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, time.Hour)
+	startHub(t, h)
+	select {
+	case <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	assert.Equal(t, "feed=hub", a.feedQuery)
 }

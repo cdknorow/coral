@@ -707,7 +707,9 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 		return
 	}
 	dctx, cancel := context.WithTimeout(ctx, h.cfg.RequestTimeout)
-	conn, err := proxy.DialWebSocket(dctx, t, "/ws/coral", "", nil)
+	// feed=hub: this is a machine feed, not a dashboard, so the remote keeps
+	// its UI notifications for its own dashboards (see routes WSCoral).
+	conn, err := proxy.DialWebSocket(dctx, t, "/ws/coral", "feed=hub", nil)
 	cancel()
 	if err != nil {
 		return
