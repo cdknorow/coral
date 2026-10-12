@@ -29,6 +29,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Artifacts](artifacts.md) — Publish files and reports to the Artifacts tabs
 - [Task Workflows](task-workflows.md) — Dependencies, Build → Test → Release, artifacts, retries, and default instructions
 - [Message Board](board.md) — Multi-agent message board, subscriptions, groups, board status/routing, board tasks
+- [Cross-team Messaging](cross-team.md) — Orchestrator-to-Orchestrator messages between teams (`coral-board send`), off by default
 - [Notifications](notifications.md) — Push toast and alert notifications to the Coral UI
 - [Webhooks](webhooks.md) — Webhook management and delivery tracking
 

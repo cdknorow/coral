@@ -327,6 +327,8 @@ func main() {
 		cmdWorkflow()
 	case "wait":
 		cmdWait()
+	case "send":
+		cmdSend()
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", cmd)
 		printUsage()
@@ -356,6 +358,9 @@ Commands:
                                Use --name NAME --instructions TEXT when creating/editing
                                Read or update custom team rules (mode unchanged)
   peek "<agent>" [--lines N]   Peek at agent's terminal (orchestrator only)
+  send --board <target> [--to <orchestrator>] "<message>"
+                               Message another team's Orchestrator (Orchestrators
+                               and the Operator only; both boards must allow it)
   wait [--from <agent>] [--task <id>] [--commit <hash>] [--reason <text>]
        [--timeout <dur>] [--status] [--cancel] [--block]
                                Park work and wait for an event. Coral will wake

@@ -12,7 +12,7 @@ var commands = map[string]bool{
 	"join": true, "post": true, "read": true, "check": true, "projects": true,
 	"subscribers": true, "status": true, "working-mode": true, "leave": true,
 	"delete": true, "export": true, "peek": true, "task": true, "workflow": true,
-	"wait": true,
+	"wait": true, "send": true,
 }
 
 // textFlags take free text that is sent to the server.
@@ -83,6 +83,22 @@ func checkFreeText(args []string) error {
 			}
 			if clihelp.IsFlagLike(rest[i]) {
 				return fmt.Errorf("unknown option %q for post (put -- before message text that starts with '-')", rest[i])
+			}
+			break
+		}
+	}
+	if args[0] == "send" {
+		// The message's first word must not be an option.
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "--" {
+				break
+			}
+			if rest[i] == "--board" || rest[i] == "--to" {
+				i++
+				continue
+			}
+			if clihelp.IsFlagLike(rest[i]) {
+				return fmt.Errorf("unknown option %q for send (put -- before message text that starts with '-')", rest[i])
 			}
 			break
 		}
