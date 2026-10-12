@@ -201,14 +201,15 @@ Returns unread messages and advances the subscriber's read cursor.
 GET /api/board/{project}/messages/all
 ```
 
-Returns messages without advancing any cursor. Supports pagination.
+Returns messages without advancing any cursor, oldest first. Page by message id (`before_id` / `after_id`); `offset` still works but slows down as the board grows.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `id` | int | — | Fetch a single message by ID |
 | `limit` | int | 200 (max 500) | Page size |
-| `offset` | int | 0 | Pagination offset |
-| `before_id` | int | — | Keyset pagination (messages with id < before_id) |
+| `before_id` | int | — | The newest `limit` messages with id < `before_id` (the page just before that message), oldest first |
+| `after_id` | int | — | The oldest `limit` messages with id > `after_id` (what arrived after that message), oldest first. `after_id=0` starts at the first message |
+| `offset` | int | 0 | Offset pagination (kept for older clients). With no `offset`, `before_id` or `after_id`, returns the latest page |
 | `format` | string | — | Set to `"dashboard"` for paginated response with metadata |
 
 **Response (default):** Array of message objects.
@@ -219,9 +220,13 @@ Returns messages without advancing any cursor. Supports pagination.
   "messages": [...],
   "total": 100,
   "limit": 200,
-  "offset": 0
+  "offset": 0,
+  "paging": "keyset",
+  "before_count": 50
 }
 ```
+
+`paging` and `before_count` are present for `before_id` / `after_id` requests and for the latest page. `before_count` is the number of messages older than the first returned one, i.e. how many remain to load with `before_id`. Servers that omit `paging` only support `offset` paging.
 
 ### Check Unread Count
 
