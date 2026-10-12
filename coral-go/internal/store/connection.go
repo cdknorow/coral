@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
@@ -30,6 +31,15 @@ func encryptedKeyHex(key string) string {
 type DB struct {
 	*sqlx.DB
 	TaskEngine *board.Store
+
+	callMetricsInit sync.Once
+	callMetrics     *callMetricBuffer
+}
+
+// Close writes queued request metrics, then closes the database.
+func (d *DB) Close() error {
+	d.closeCallMetrics()
+	return d.DB.Close()
 }
 
 // Open creates a new DB connection to the given SQLite path.

@@ -3,7 +3,6 @@ package routes
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -68,18 +67,6 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			started := time.Now()
 			rw := &metricResponseWriter{ResponseWriter: w}
 			next.ServeHTTP(rw, r)
-			// Browser requests commonly carry only the session ID. Resolve it to
-			// the agent display name before falling back to route parameters;
-			// otherwise many rows are grouped under a generic session/board name.
-			if identity.sessionID != "" {
-				var name string
-				if err := db.GetContext(r.Context(), &name, `SELECT COALESCE(NULLIF(display_name, ''), agent_name) FROM live_sessions WHERE session_id = ?`, identity.sessionID); err == nil {
-					identity.agentName = name
-				}
-			}
-			if identity.agentName == "" {
-				identity.agentName = firstNonEmpty(chi.URLParam(r, "name"), chi.URLParam(r, "sessionID"))
-			}
 			pattern := r.URL.Path
 			if route := chi.RouteContext(r.Context()).RoutePattern(); route != "" {
 				pattern = route
@@ -88,16 +75,22 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			if isProxy {
 				callType = "proxy"
 			}
+			// Browser requests commonly carry only the session ID. The queued
+			// metric resolves it to the agent display name when the batch is
+			// written, falling back to route parameters; otherwise many rows are
+			// grouped under a generic session/board name.
 			metric := &store.CallMetric{
 				CallType: callType, Operation: pattern,
 				AgentName: identity.agentName, SessionID: identity.sessionID,
-				BoardName: urlParam(r, "project"), Method: r.Method,
+				FallbackAgentName: firstNonEmpty(chi.URLParam(r, "name"), chi.URLParam(r, "sessionID")),
+				BoardName:         urlParam(r, "project"), Method: r.Method,
 				StatusCode: rw.statusCode(), DurationMs: time.Since(started).Milliseconds(),
 				IsError: rw.statusCode() >= http.StatusInternalServerError,
 			}
-			// Request logging must not change the response or turn a successful API
-			// call into an error if the metrics database is unavailable.
-			_ = db.RecordCallMetric(context.Background(), metric)
+			// Request logging must not change the response, slow it down, or turn
+			// a successful API call into an error if the metrics database is
+			// unavailable, so metrics are written asynchronously in batches.
+			db.EnqueueCallMetric(metric)
 		})
 	}
 }
