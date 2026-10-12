@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/cdknorow/coral/internal/store"
@@ -37,7 +36,6 @@ func TestRestartPreservesSubscriptionWithoutStoredBoard(t *testing.T) {
 		SessionName string `json:"session_name"`
 	}
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
-	t.Cleanup(func() { os.Remove("board_state_" + result.SessionName + ".json") })
 	ls, err := ss.GetLiveSession(ctx, result.SessionID)
 	require.NoError(t, err)
 	require.NotNil(t, ls)

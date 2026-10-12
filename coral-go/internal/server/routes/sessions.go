@@ -4544,12 +4544,17 @@ func (h *SessionsHandler) setupBoardAndPrompt(sessionID, sessionName, agentType,
 // writeBoardStateFile writes the local board state file that coral-board CLI
 // reads to determine which board a session is subscribed to.
 func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config) {
-	stateDir := ".coral"
-	if home, err := os.UserHomeDir(); err == nil {
+	stateDir := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		stateDir = filepath.Join(home, ".coral")
 	}
 	if cfg != nil {
 		stateDir = cfg.CoralDir()
+	}
+	if stateDir == "" {
+		// No data dir (a Config not built by config.Load, or no home
+		// directory): never resolve the file against the working directory.
+		return
 	}
 	testguard.CheckDataPath(stateDir)
 	os.MkdirAll(stateDir, 0755)
@@ -4580,6 +4585,9 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 // removeBoardStateFile deletes the board state file for a session.
 // Called when a session is killed so state files don't accumulate.
 func removeBoardStateFile(sessionName string, cfg *config.Config) {
+	if cfg == nil || cfg.CoralDir() == "" {
+		return // no data dir: nothing was written (see writeBoardStateFile)
+	}
 	statePath := filepath.Join(cfg.CoralDir(), fmt.Sprintf("board_state_%s.json", sessionName))
 	os.Remove(statePath) // Ignore error — file may not exist
 }

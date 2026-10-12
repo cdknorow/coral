@@ -2885,6 +2885,19 @@ func TestWriteBoardStateFilePersistsLoopbackURLOnDefaultPort(t *testing.T) {
 	assert.Equal(t, "http://127.0.0.1:8420", state["server_url"])
 }
 
+// A Config not built by config.Load has no data dir. The state file must not
+// land in the working directory (it used to, leaving thousands of
+// board_state_*.json files in this package directory after test runs).
+func TestWriteBoardStateFileWithoutDataDirWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeBoardStateFile("no-dir-session", "fixture-board", "Fixture", &config.Config{})
+	removeBoardStateFile("no-dir-session", &config.Config{})
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
+
 func TestWriteBoardStateFileNilConfigUsesHomeCoralDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
