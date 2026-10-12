@@ -90,6 +90,8 @@ type SessionsHandler struct {
 	resumeMu    sync.Mutex
 	resumeCache map[string]string
 	resumeKnown map[string]bool
+
+	cachePrune sessionCachePruneState // session_cache_prune.go
 }
 
 type cachedLogStatus struct {
@@ -395,6 +397,7 @@ type AgentInfo struct {
 }
 
 func (h *SessionsHandler) discoverAgents(ctx *http.Request) ([]AgentInfo, error) {
+	h.maybePruneSessionCaches() // every list path discovers agents first
 	panes, err := h.terminal.ListSessions(ctx.Context())
 	if err != nil {
 		return nil, err

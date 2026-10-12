@@ -303,11 +303,15 @@ func (c *Client) ListPanes(ctx context.Context) ([]Pane, error) {
 		}
 	}
 
-	// Cache which socket each session lives on
-	c.socketsMu.Lock()
+	// Cache which socket each session lives on. The map is rebuilt from this
+	// listing so ended sessions do not accumulate; a session missing from it
+	// is routed to the primary socket with the default socket as fallback.
+	sockets := make(map[string]string, len(panes))
 	for _, p := range panes {
-		c.sessionSockets[p.SessionName] = p.SocketPath
+		sockets[p.SessionName] = p.SocketPath
 	}
+	c.socketsMu.Lock()
+	c.sessionSockets = sockets
 	c.socketsMu.Unlock()
 
 	return panes, nil

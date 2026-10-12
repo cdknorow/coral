@@ -35,6 +35,9 @@ type TokenPoller struct {
 	lastCumulative map[string]cumulativeTokens
 	// Track how many token_count entries we've already processed per session.
 	lastEntryCount map[string]int
+	// mtimeOwner maps each lastMtime path to its session, so the state of a
+	// session that is no longer live can be dropped (token_poller_prune.go).
+	mtimeOwner map[string]string
 }
 
 // NewTokenPoller creates a new TokenPoller.
@@ -48,6 +51,7 @@ func NewTokenPoller(ss *store.SessionStore, us *store.TokenUsageStore, interval 
 		sessionPaths:   make(map[string]string),
 		lastCumulative: make(map[string]cumulativeTokens),
 		lastEntryCount: make(map[string]int),
+		mtimeOwner:     make(map[string]string),
 	}
 }
 
@@ -78,6 +82,7 @@ func (p *TokenPoller) pollOnce(ctx context.Context) {
 		return
 	}
 
+	defer p.pruneEnded(sessions)
 	for _, ls := range sessions {
 		if ls.IsSleeping == 1 {
 			continue
@@ -120,7 +125,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 	if lastMtime, ok := p.lastMtime[rolloutPath]; ok && !info.ModTime().After(lastMtime) {
 		return
 	}
-	p.lastMtime[rolloutPath] = info.ModTime()
+	p.setMtime(ls.SessionID, rolloutPath, info.ModTime())
 
 	// Extract all cumulative token_count entries from the rollout file
 	usage := extractCodexUsage(rolloutPath)
@@ -487,7 +492,7 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 	if lastMtime, ok := p.lastMtime[jsonlPath]; ok && !info.ModTime().After(lastMtime) {
 		return
 	}
-	p.lastMtime[jsonlPath] = info.ModTime()
+	p.setMtime(ls.SessionID, jsonlPath, info.ModTime())
 
 	usage := extractClaudeUsage(jsonlPath)
 	if usage == nil || len(usage.Calls) == 0 {
@@ -600,7 +605,7 @@ func (p *TokenPoller) pollClaudeSubagents(ctx context.Context, ls *store.LiveSes
 		return
 	}
 	for _, f := range touched {
-		p.lastMtime[f.TranscriptPath] = latestMtime(f.TranscriptPath, f.MetaPath)
+		p.setMtime(ls.SessionID, f.TranscriptPath, latestMtime(f.TranscriptPath, f.MetaPath))
 	}
 	if synced > 0 {
 		p.logger.Debug("synced subagent spend", "session_id", ls.SessionID[:8], "subagents", synced)
@@ -743,7 +748,7 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 	if lastMtime, ok := p.lastMtime[jsonlPath]; ok && !info.ModTime().After(lastMtime) {
 		return
 	}
-	p.lastMtime[jsonlPath] = info.ModTime()
+	p.setMtime(ls.SessionID, jsonlPath, info.ModTime())
 
 	usage := extractPiUsage(jsonlPath)
 	if usage == nil || len(usage.Calls) == 0 {
