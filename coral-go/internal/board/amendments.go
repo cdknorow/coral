@@ -137,16 +137,21 @@ func (s *Store) loadTaskAmendments(ctx context.Context, taskID int64) ([]TaskAme
 	if err := s.db.SelectContext(ctx, &rows, "SELECT id,revision,actor,created_at,reason,changes_json,previous_snapshot_json,effective_snapshot_json FROM task_amendments WHERE task_id=? ORDER BY revision", taskID); err != nil {
 		return nil, err
 	}
+	return rows, decodeAmendments(rows)
+}
+
+// decodeAmendments fills the decoded snapshot maps from their JSON columns.
+func decodeAmendments(rows []TaskAmendment) error {
 	for i := range rows {
 		if err := json.Unmarshal([]byte(rows[i].ChangesJSON), &rows[i].Changes); err != nil {
-			return nil, err
+			return err
 		}
 		if err := json.Unmarshal([]byte(rows[i].PreviousJSON), &rows[i].PreviousSnapshot); err != nil {
-			return nil, err
+			return err
 		}
 		if err := json.Unmarshal([]byte(rows[i].EffectiveJSON), &rows[i].EffectiveSnapshot); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return rows, nil
+	return nil
 }

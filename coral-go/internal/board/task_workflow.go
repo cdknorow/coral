@@ -224,16 +224,25 @@ func (s *Store) RewireRetryDependents(ctx context.Context) error {
 }
 
 func loadWorkflow(ctx context.Context, db sqlx.QueryerContext, id int64) (TaskWorkflow, error) {
-	w := TaskWorkflow{Instructions: DefaultTaskWorkflowInstructions}
 	var data string
 	err := sqlx.GetContext(ctx, db, &data, "SELECT data FROM task_workflows WHERE task_id = ?", id)
 	if err == sql.ErrNoRows {
-		return w, nil
+		return decodeWorkflow("", false)
 	}
 	if err != nil {
-		return w, err
+		return TaskWorkflow{Instructions: DefaultTaskWorkflowInstructions}, err
 	}
-	err = json.Unmarshal([]byte(data), &w)
+	return decodeWorkflow(data, true)
+}
+
+// decodeWorkflow turns a task_workflows.data value into a TaskWorkflow; a task
+// without a row gets the default instructions.
+func decodeWorkflow(data string, found bool) (TaskWorkflow, error) {
+	w := TaskWorkflow{Instructions: DefaultTaskWorkflowInstructions}
+	if !found {
+		return w, nil
+	}
+	err := json.Unmarshal([]byte(data), &w)
 	return w, err
 }
 
@@ -261,23 +270,36 @@ func validNames(names []string) error {
 	return nil
 }
 
+// dependencyRuleRow is what a TaskDep's rule evaluation needs about one
+// upstream task, as seen from one downstream task.
+type dependencyRuleRow struct {
+	Condition string `db:"condition"`
+	Required  string `db:"required_artifacts"`
+	Status    string `db:"status"`
+	Data      string `db:"data"`
+}
+
 func (s *Store) loadDependencyRule(ctx context.Context, id int64, d *TaskDep) error {
-	var row struct {
-		Condition string `db:"condition"`
-		Required  string `db:"required_artifacts"`
-		Status    string `db:"status"`
-		Data      string `db:"data"`
-	}
+	var row dependencyRuleRow
 	err := s.db.GetContext(ctx, &row, `SELECT COALESCE(r.condition,'success') AS condition, COALESCE(r.required_artifacts,'[]') AS required_artifacts, b.status, COALESCE(w.data,'{}') AS data
  FROM board_tasks b LEFT JOIN task_dependency_rules r ON r.upstream_id=b.id AND r.task_id=?
  LEFT JOIN task_workflows w ON w.task_id=b.id WHERE b.id=? AND b.board_id=?`, id, d.TaskID, d.BoardID)
 	if err == sql.ErrNoRows {
-		d.Satisfied = false
-		d.BlockedReason = "upstream task not found"
-		return nil
+		return applyDependencyRule(d, nil)
 	}
 	if err != nil {
 		return err
+	}
+	return applyDependencyRule(d, &row)
+}
+
+// applyDependencyRule evaluates d against its upstream row; nil means the
+// upstream task does not exist on the dependency's board.
+func applyDependencyRule(d *TaskDep, row *dependencyRuleRow) error {
+	if row == nil {
+		d.Satisfied = false
+		d.BlockedReason = "upstream task not found"
+		return nil
 	}
 	d.Condition = row.Condition
 	if err := json.Unmarshal([]byte(row.Required), &d.RequiredArtifacts); err != nil {
@@ -341,6 +363,20 @@ func (s *Store) hydrateWorkflow(ctx context.Context, t *Task) error {
 	if err != nil {
 		return err
 	}
+	finishWorkflow(t, w)
+	if t.Status == "pending" {
+		inputs, _, err := dependencyInputs(ctx, s.db, t.ID)
+		if err != nil {
+			return err
+		}
+		t.Workflow.Inputs = inputs
+	}
+	return nil
+}
+
+// finishWorkflow derives the workflow fields computed at read time (effective
+// instructions, implied outcome) and attaches w to t.
+func finishWorkflow(t *Task, w TaskWorkflow) {
 	w.EffectiveInstructions = w.Instructions
 	for _, amendment := range w.Amendments {
 		if value, ok := amendment.Changes["workflow_instructions"].(string); ok && strings.TrimSpace(value) != "" {
@@ -356,25 +392,21 @@ func (s *Store) hydrateWorkflow(ctx context.Context, t *Task) error {
 		}
 	}
 	t.Workflow = w
-	if t.Status == "pending" {
-		inputs, _, err := dependencyInputs(ctx, s.db, t.ID)
-		if err != nil {
-			return err
-		}
-		t.Workflow.Inputs = inputs
-	}
-	return nil
+}
+
+// dependencyInputRow is one upstream of a downstream task, for dependencyInputs.
+type dependencyInputRow struct {
+	TaskID    int64  `db:"task_id"`
+	ID        int64  `db:"id"`
+	Board     string `db:"board_id"`
+	Status    string `db:"status"`
+	Condition string `db:"condition"`
+	Required  string `db:"required_artifacts"`
 }
 
 func dependencyInputs(ctx context.Context, db sqlx.QueryerContext, taskID int64) ([]TaskInput, bool, error) {
-	var rows []struct {
-		ID        int64  `db:"id"`
-		Board     string `db:"board_id"`
-		Status    string `db:"status"`
-		Condition string `db:"condition"`
-		Required  string `db:"required_artifacts"`
-	}
-	err := sqlx.SelectContext(ctx, db, &rows, `SELECT b.id, b.board_id, b.status,
+	var rows []dependencyInputRow
+	err := sqlx.SelectContext(ctx, db, &rows, `SELECT d.task_id, b.id, b.board_id, b.status,
 	 COALESCE(r.condition, 'success') AS condition, COALESCE(r.required_artifacts, '[]') AS required_artifacts
 	 FROM task_dependencies d JOIN board_tasks b ON b.id = d.blocked_by_task_id AND b.board_id = d.blocked_by_board_id
 	 LEFT JOIN task_dependency_rules r ON r.task_id = d.task_id AND r.upstream_id = b.id
@@ -382,9 +414,15 @@ func dependencyInputs(ctx context.Context, db sqlx.QueryerContext, taskID int64)
 	if err != nil {
 		return nil, false, err
 	}
+	return buildDependencyInputs(rows, func(id int64) (TaskWorkflow, error) { return loadWorkflow(ctx, db, id) })
+}
+
+// buildDependencyInputs resolves one task's upstream rows (ordered by upstream
+// id) into inputs; false means some upstream does not satisfy its rule yet.
+func buildDependencyInputs(rows []dependencyInputRow, workflow func(id int64) (TaskWorkflow, error)) ([]TaskInput, bool, error) {
 	var inputs []TaskInput
 	for _, row := range rows {
-		w, err := loadWorkflow(ctx, db, row.ID)
+		w, err := workflow(row.ID)
 		if err != nil {
 			return nil, false, err
 		}

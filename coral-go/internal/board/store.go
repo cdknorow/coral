@@ -1652,9 +1652,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 
 // populateTaskDeps batch-loads dependencies for a slice of tasks.
 func (s *Store) populateTaskDeps(ctx context.Context, tasks []Task) {
-	for i := range tasks {
-		s.hydrateWorkflow(ctx, &tasks[i])
-	}
+	s.hydrateWorkflows(ctx, tasks)
 	s.loadBlockedBy(ctx, tasks)
 }
 
@@ -1693,13 +1691,21 @@ func (s *Store) loadBlockedBy(ctx context.Context, tasks []Task) {
 	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
 		return
 	}
+	if len(rows) == 0 {
+		return
+	}
+	// Like loadDependencyRule per dependency, but batched; on error the
+	// dependencies are listed without rule evaluation, as before.
+	rules, rulesErr := s.loadDependencyRules(ctx, ids)
 	for _, r := range rows {
 		t := idMap[r.TaskID]
 		if t == nil {
 			continue
 		}
 		dep := TaskDep{TaskID: r.BlockedByTaskID, BoardID: r.BlockedByBoardID}
-		s.loadDependencyRule(ctx, t.ID, &dep)
+		if rulesErr == nil {
+			applyDependencyRule(&dep, rules[dependencyRuleKey{t.ID, dep.TaskID}])
+		}
 		if r.Title != nil {
 			dep.Title = *r.Title
 		}
