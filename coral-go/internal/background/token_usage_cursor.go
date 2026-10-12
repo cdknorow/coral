@@ -210,6 +210,13 @@ func scanUsage[P any, C any](c *usageCursor[P], path string, line func(*P, strin
 	return calls, first
 }
 
+// cursorPending reports whether the session's cursor holds back a partial
+// last line, in which case an unchanged file must still be rescanned.
+func cursorPending[P any](m map[string]*usageCursor[P], sessionID string) bool {
+	c := m[sessionID]
+	return c != nil && c.cursor.Pending()
+}
+
 func cursorFor[P any](m map[string]*usageCursor[P], sessionID string) *usageCursor[P] {
 	c := m[sessionID]
 	if c == nil {

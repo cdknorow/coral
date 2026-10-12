@@ -128,7 +128,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 	if err != nil {
 		return
 	}
-	if lastMtime, ok := p.lastMtime[rolloutPath]; ok && !info.ModTime().After(lastMtime) {
+	if lastMtime, ok := p.lastMtime[rolloutPath]; ok && !info.ModTime().After(lastMtime) && !cursorPending(p.codexCursors, ls.SessionID) {
 		return
 	}
 	p.setMtime(ls.SessionID, rolloutPath, info.ModTime())
@@ -442,7 +442,7 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 	if err != nil {
 		return
 	}
-	if lastMtime, ok := p.lastMtime[jsonlPath]; ok && !info.ModTime().After(lastMtime) {
+	if lastMtime, ok := p.lastMtime[jsonlPath]; ok && !info.ModTime().After(lastMtime) && !cursorPending(p.claudeCursors, ls.SessionID) {
 		return
 	}
 	p.setMtime(ls.SessionID, jsonlPath, info.ModTime())
@@ -649,7 +649,7 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 	if err != nil {
 		return
 	}
-	if lastMtime, ok := p.lastMtime[jsonlPath]; ok && !info.ModTime().After(lastMtime) {
+	if lastMtime, ok := p.lastMtime[jsonlPath]; ok && !info.ModTime().After(lastMtime) && !cursorPending(p.piCursors, ls.SessionID) {
 		return
 	}
 	p.setMtime(ls.SessionID, jsonlPath, info.ModTime())

@@ -311,3 +311,42 @@ func TestTokenPollerReplacedTranscriptKeepsProcessedCount(t *testing.T) {
 	require.NoError(t, h.db.Select(&inputs, `SELECT input_tokens FROM token_usage ORDER BY recorded_at`))
 	require.Equal(t, []int{11, 22, 23}, inputs)
 }
+
+// A transcript whose last call has no trailing newline (the writer stopped)
+// is not left unread: the next poll delivers it even though the file's mtime
+// has not moved, and later polls do not record it again.
+func TestTokenPollerRecordsUnterminatedLastCall(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+	proj := filepath.Join(dir, "-w")
+	require.NoError(t, os.MkdirAll(proj, 0o755))
+	sid := "11111111-2222-3333-4444-777777777777"
+	path := filepath.Join(proj, sid+".jsonl")
+	turn := func(ts string, in int) string {
+		return fmt.Sprintf(`{"type":"assistant","timestamp":%q,"message":{"model":"claude-sonnet-4-5","usage":{"input_tokens":%d,"output_tokens":1}}}`, ts, in)
+	}
+	require.NoError(t, os.WriteFile(path, []byte(turn("2026-01-01T00:00:01Z", 11)+"\n"+turn("2026-01-01T00:00:02Z", 12)), 0o644))
+
+	h := newTokenPollerHarness(t)
+	inputs := func() []int {
+		var in []int
+		require.NoError(t, h.db.Select(&in, `SELECT input_tokens FROM token_usage ORDER BY recorded_at`))
+		return in
+	}
+	h.pollClaude(sid, "/w")
+	require.Equal(t, []int{11}, inputs(), "the unterminated line is held on the poll that reads it")
+	h.pollClaude(sid, "/w") // mtime unchanged
+	require.Equal(t, []int{11, 12}, inputs())
+	h.pollClaude(sid, "/w")
+	require.Equal(t, []int{11, 12}, inputs(), "not recorded twice")
+
+	// The writer resumes: its newline and a new call follow.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	f.WriteString("\n" + turn("2026-01-01T00:00:03Z", 13) + "\n")
+	f.Close()
+	future := time.Now().Add(time.Minute)
+	require.NoError(t, os.Chtimes(path, future, future))
+	h.pollClaude(sid, "/w")
+	require.Equal(t, []int{11, 12, 13}, inputs())
+}
