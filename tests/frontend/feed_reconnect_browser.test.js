@@ -26,55 +26,58 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
             const RealWS = window.WebSocket;
             const times = [];
             window.WebSocket = class extends EventTarget {
-                constructor(url) { super(); this.url = url; times.push(performance.now()); setTimeout(() => this.onclose && this.onclose({ code: window.__closeCode || 1006, reason: '' }), 10); }
+                constructor(url) { super(); this.url = url; times.push(performance.now()); setTimeout(() => { if (window.__deliver && this.onmessage) this.onmessage({ data: JSON.stringify({ type: 'noop' }) }); if (this.onclose) this.onclose({ code: window.__closeCode || 1006, reason: '' }); }, 10); }
                 close() {} send() {}
             };
             window.__closeCode = 1006;
             m.connectCoralWs();
             await new Promise(r => { const w = () => times.length >= 4 ? r() : setTimeout(w, 100); w(); });
             const gaps = times.slice(1).map((t, i) => Math.round(t - times[i]));
-            // A session-ended close (4401) is checked against /auth/session: a 401 ends the retries, anything else
-            // (here a 200, then a network error) keeps reconnecting with the backoff.
+            // A session-ended close (4401) is checked against GET /auth/session, which (like the hub) answers 200 with
+            // {authenticated:false} for a browser that is really signed out and never 401. Only that stops the retries
+            // and goes to sign-in; {authenticated:true}, a 503, a bad body or a network error all mean a blip.
             const realFetch = window.fetch;
-            let sessionAnswer = 401, sessionChecks = 0;
+            let answer = null, sessionChecks = 0, signedOutCalls = 0;
+            m.feedHooks.signedOut = () => { signedOutCalls++; };
             window.fetch = async (u, o) => {
                 if (String(u).includes('/auth/session')) {
                     sessionChecks++;
-                    if (sessionAnswer === 'error') throw new TypeError('network down');
-                    return new Response('{}', { status: sessionAnswer });
+                    if (answer === 'error') throw new TypeError('network down');
+                    if (answer === 'badjson') return new Response('<html>', { status: 200 });
+                    if (answer === 503) return new Response('{"error":"unavailable"}', { status: 503 });
+                    return new Response(JSON.stringify({ authenticated: answer === 'true' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
                 }
                 return realFetch(u, o);
             };
             window.__closeCode = 4401;
-            const settle = async () => { const t0 = times.length; await new Promise(r => setTimeout(r, 16000)); return times.length - t0; };
-            // let the attempt that is already scheduled (from the last 1006) fire and close with 4401 first
+            window.__deliver = true;                          // a delivered message resets the backoff to 1-2 s
             await new Promise(r => { const n = times.length; const w = () => times.length > n ? r() : setTimeout(w, 100); w(); });
-            await new Promise(r => setTimeout(r, 100));
-            const checksAt401 = sessionChecks;
-            const ended = await settle();                     // 401: no further attempt
-            sessionAnswer = 200;
-            const out = {};
-            out.checksAfter401 = sessionChecks - checksAt401;
-            m.connectCoralWs();                               // start again: 4401, session still valid
-            await new Promise(r => setTimeout(r, 200));
-            const keepGoing = await settle();                 // 200: backs off and reconnects
-            sessionAnswer = 'error';
-            m.connectCoralWs();
-            await new Promise(r => setTimeout(r, 200));
-            const onError = await settle();                   // network error: also reconnects
+            await new Promise(r => setTimeout(r, 200));       // drain the attempt that was already scheduled
+            const out = { cases: {} };
+            for (const c of ['false', 'true', 503, 'badjson', 'error']) {
+                answer = c; signedOutCalls = 0;
+                const t0 = times.length, checks0 = sessionChecks;
+                m.connectCoralWs();
+                await new Promise(r => setTimeout(r, 3500));
+                out.cases[c] = { attempts: times.length - t0 - 1, checks: sessionChecks - checks0, signedOut: signedOutCalls };
+                // stop this chain before the next case: park every further attempt as signed out
+                answer = 'false'; await new Promise(r => setTimeout(r, 2500));
+            }
             window.fetch = realFetch;
             window.WebSocket = RealWS;
-            return { gaps, ended, keepGoing, onError, checksAt401 };
+            return { gaps, cases: out.cases };
         })()`);
         const [g1, g2, g3] = gaps.gaps;
         assert.ok(g1 >= 1000 && g1 <= 2300, `first retry 1-2 s, was ${g1} ms`);
         assert.ok(g2 >= 2000 && g2 <= 4300, `second retry 2-4 s, was ${g2} ms`);
         assert.ok(g3 >= 4000 && g3 <= 8300, `third retry 4-8 s, was ${g3} ms`);
         // one more attempt may already have been scheduled when the close code changed (it is then the last)
-        assert.ok(gaps.checksAt401 >= 1, 'a 4401 close asks /auth/session');
-        assert.equal(gaps.ended, 0, `a 4401 confirmed by a 401 stops the retries (${gaps.ended} attempts)`);
-        assert.ok(gaps.keepGoing >= 1, `a 4401 the session endpoint does not confirm keeps reconnecting (${gaps.keepGoing} attempts in 17 s)`);
-        assert.ok(gaps.onError >= 1, `a failed session check is not a sign-out either (${gaps.onError} attempts in 17 s)`);
-        console.log(`PASS feed reconnect backs off (${g1}, ${g2}, ${g3} ms); 4401 stops only when /auth/session says 401`);
+        const c = gaps.cases;
+        assert.ok(c.false.checks >= 1 && c.false.signedOut === 1, `{authenticated:false} goes to sign-in once (${JSON.stringify(c.false)})`);
+        assert.equal(c.false.attempts, 0, `and stops the retries (${JSON.stringify(c.false)})`);
+        for (const k of ['true', '503', 'badjson', 'error']) {
+            assert.ok(c[k].attempts >= 1 && c[k].signedOut === 0, `${k}: a blip, not a sign-out: it keeps reconnecting (${JSON.stringify(c[k])})`);
+        }
+        console.log(`PASS feed reconnect backs off (${g1}, ${g2}, ${g3} ms); 4401 stops only when /auth/session says authenticated:false`);
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

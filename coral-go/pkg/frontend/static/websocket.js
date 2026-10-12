@@ -1,6 +1,7 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
+import { signInUrl } from './cloud.js';
 import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
 import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
@@ -13,7 +14,7 @@ import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSe
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
 // with jitter (feed_pacing.js). A "session ended" close (4401, sent by the hub) is checked against /auth/session
-// first and stops the retries only when that answers 401 (see recheckSignIn).
+// first and stops the retries only when that says the browser is signed out (see recheckSignIn).
 const FEED_CLOSE_SESSION_ENDED = 4401;
 let _feedFailures = 0;
 let _lastSidebarRenderAt = 0;
@@ -23,14 +24,26 @@ function scheduleFeedReconnect() {
     setTimeout(connectCoralWs, feedRetryDelay(_feedFailures));
 }
 
-// 4401 says the hub found the session over, but the browser asks before giving up: only a 401 from the session
-// endpoint ends the retries (and the fetch wrapper in cloud.js then sends the browser to sign in). Anything else,
-// an error, a timeout or a 200, means the close was a blip, so the feed reconnects with the usual backoff.
+// What the feed does once the browser is confirmed signed out. A seam for tests; the default is the same redirect the
+// fetch wrapper in cloud.js performs on a 401.
+export const feedHooks = {
+    signedOut() {
+        if (!/^\/(signin|auth|enroll)/.test(location.pathname)) location.replace(signInUrl());
+    },
+};
+
+// 4401 says the hub found the session over, but the browser asks before giving up. GET /auth/session answers 200
+// with {authenticated:false} for a browser that is really signed out (it never answers 401): only that stops the
+// retries and sends the browser to sign in. {authenticated:true}, any other status (the hub answers 503 when it
+// cannot check), an unreadable body or a network error mean the close was a blip: reconnect with the backoff.
 async function recheckSignIn() {
     try {
         const r = await fetch('/auth/session', { cache: 'no-store', credentials: 'same-origin' });
-        if (r.status === 401) return;
-    } catch (e) { /* network trouble is not a sign-out */ }
+        if (r.status === 200) {
+            const body = await r.json();
+            if (body && body.authenticated === false) { feedHooks.signedOut(); return; }
+        }
+    } catch (e) { /* network trouble or a bad body is not a sign-out */ }
     scheduleFeedReconnect();
 }
 
