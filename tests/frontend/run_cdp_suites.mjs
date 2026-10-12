@@ -131,6 +131,7 @@ async function runQueue(shard) {
     const ok = r.code === 0;
     const res = { test: t, ok, code: r.code, secs: ((Date.now() - started) / 1000).toFixed(1), tail: r.out.trim().split('\n').slice(-6).join('\n') };
     if (shards > 1) res.shard = shard.n;
+    if (!ok) res.output = r.out; // a failing suite's whole output: the tail can cut off the failing assertion
     results.push(res);
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${t}  (${res.secs}s)${shards > 1 ? `  [shard ${shard.n}]` : ''}${ok ? '' : '  exit=' + r.code}`);
     // CDP_FULL=1 prints a failing suite's whole output (the default shows only the last 30 lines, which can hide the failing check).
