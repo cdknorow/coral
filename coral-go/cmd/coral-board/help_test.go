@@ -125,17 +125,22 @@ func TestHelpFlagsPrintUsageWithoutSideEffects(t *testing.T) {
 		[]string{"join", "team", "--as", "Dev", "--help"},
 	)
 
-	for _, args := range cases {
-		t.Run(strings.Join(args, "_"), func(t *testing.T) {
-			res := runBoard(t, srv.URL, dataDir, args...)
-			if res.code != 0 {
-				t.Fatalf("exit %d, want 0\nstdout: %s\nstderr: %s", res.code, res.stdout, res.stderr)
-			}
-			if !strings.Contains(res.stdout, "Usage: coral-board") {
-				t.Errorf("no usage on stdout: %q", res.stdout)
-			}
-		})
-	}
+	// The cases run in parallel inside one group, which returns only when all
+	// of them have finished, so the request check below sees every one.
+	t.Run("cases", func(t *testing.T) {
+		for _, args := range cases {
+			t.Run(strings.Join(args, "_"), func(t *testing.T) {
+				t.Parallel()
+				res := runBoard(t, srv.URL, dataDir, args...)
+				if res.code != 0 {
+					t.Fatalf("exit %d, want 0\nstdout: %s\nstderr: %s", res.code, res.stdout, res.stderr)
+				}
+				if !strings.Contains(res.stdout, "Usage: coral-board") {
+					t.Errorf("no usage on stdout: %q", res.stdout)
+				}
+			})
+		}
+	})
 	if reqs := srv.requests(); len(reqs) != 0 {
 		t.Fatalf("help made %d request(s): %v", len(reqs), reqs)
 	}
@@ -151,10 +156,13 @@ func TestHelpShowsTheCommandsOwnUsage(t *testing.T) {
 		"workflow trigger --help": "trigger <name>",
 		"wait --help":             "--timeout <dur>",
 	} {
-		res := runBoard(t, srv.URL, dataDir, strings.Fields(args)...)
-		if !strings.Contains(res.stdout, want) {
-			t.Errorf("%s: usage %q does not mention %q", args, res.stdout, want)
-		}
+		t.Run(args, func(t *testing.T) {
+			t.Parallel()
+			res := runBoard(t, srv.URL, dataDir, strings.Fields(args)...)
+			if !strings.Contains(res.stdout, want) {
+				t.Errorf("%s: usage %q does not mention %q", args, res.stdout, want)
+			}
+		})
 	}
 }
 

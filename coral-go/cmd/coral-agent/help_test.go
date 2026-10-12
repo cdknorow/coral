@@ -94,17 +94,22 @@ func TestAgentHelpFlagsPrintUsageWithoutSideEffects(t *testing.T) {
 		[]string{"bind-codex", "--help", "x"},
 		[]string{"task", "complete", "3", "--message", "done", "--help"},
 	)
-	for _, args := range cases {
-		t.Run(strings.Join(args, "_"), func(t *testing.T) {
-			code, stdout, stderr := runAgent(t, srv.URL, args...)
-			if code != 0 {
-				t.Fatalf("exit %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
-			}
-			if !strings.Contains(stdout, "coral-agent") {
-				t.Errorf("no usage on stdout: %q", stdout)
-			}
-		})
-	}
+	// The cases run in parallel inside one group, which returns only when all
+	// of them have finished, so the request check below sees every one.
+	t.Run("cases", func(t *testing.T) {
+		for _, args := range cases {
+			t.Run(strings.Join(args, "_"), func(t *testing.T) {
+				t.Parallel()
+				code, stdout, stderr := runAgent(t, srv.URL, args...)
+				if code != 0 {
+					t.Fatalf("exit %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+				}
+				if !strings.Contains(stdout, "coral-agent") {
+					t.Errorf("no usage on stdout: %q", stdout)
+				}
+			})
+		}
+	})
 	if reqs := requests(); len(reqs) != 0 {
 		t.Fatalf("help made %d request(s): %v", len(reqs), reqs)
 	}
