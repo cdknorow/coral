@@ -23,12 +23,21 @@ import (
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
+// testWSPoll is the /ws/coral poll interval of setupTestServer: tests wait
+// for ticks, so they tick faster than production's whole seconds.
+const testWSPoll = 100 * time.Millisecond
+
+// testWSQuietWindow is how long a test watches for messages that must not
+// come. Ticks reuse one shared build for up to wsListMaxAge, so the window
+// spans that plus several ticks: it always contains real rebuilds.
+const testWSQuietWindow = wsListMaxAge + 3*testWSPoll
+
 func setupTestServer(t *testing.T) (*httptest.Server, *SessionsHandler) {
 	t.Helper()
 
 	cfg := &config.Config{
-		WSPollIntervalS: 1,
-		LogDir:          t.TempDir(),
+		WSPollInterval: testWSPoll,
+		LogDir:         t.TempDir(),
 	}
 
 	dbPath := t.TempDir() + "/test.db"
@@ -99,9 +108,9 @@ func TestWSCoral_SubsequentDiffsOnlyOnChange(t *testing.T) {
 	json.Unmarshal(msg1["type"], &msgType)
 	assert.Equal(t, "coral_update", msgType)
 
-	// Wait for second poll — with no agents running, there should be no diff
-	// (or a diff with empty changes). Use a short timeout.
-	readCtx, readCancel := context.WithTimeout(ctx, 3*time.Second)
+	// Wait through several polls — with no agents running, there should be
+	// no diff (or a diff with empty changes).
+	readCtx, readCancel := context.WithTimeout(ctx, testWSQuietWindow)
 	defer readCancel()
 
 	var msg2 map[string]json.RawMessage
@@ -542,7 +551,7 @@ func TestWSCoral_AcceptsLocalhostOrigin(t *testing.T) {
 // hub can tell an idle server from a stuck one.
 func TestWSCoral_IdleConnectionSendsHeartbeat(t *testing.T) {
 	prev := wsHeartbeatInterval
-	wsHeartbeatInterval = 1500 * time.Millisecond
+	wsHeartbeatInterval = 6 * testWSPoll
 	t.Cleanup(func() { wsHeartbeatInterval = prev })
 	server, _ := setupTestServer(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -559,13 +568,13 @@ func TestWSCoral_IdleConnectionSendsHeartbeat(t *testing.T) {
 	start := time.Now()
 	require.NoError(t, wsjson.Read(ctx, conn, &msg))
 	assert.Equal(t, "coral_heartbeat", msg.Type, "nothing changed, so the next message is a heartbeat")
-	assert.GreaterOrEqual(t, time.Since(start), wsHeartbeatInterval-500*time.Millisecond, "not before the interval")
+	assert.GreaterOrEqual(t, time.Since(start), wsHeartbeatInterval-2*testWSPoll, "not before the interval")
 }
 
 // The first coral_update arrives on connect, not after the first poll tick.
 func TestWSCoral_FirstUpdateIsImmediate(t *testing.T) {
 	server, handler := setupTestServer(t)
-	handler.cfg.WSPollIntervalS = 5
+	handler.cfg.WSPollInterval = 5 * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	start := time.Now()

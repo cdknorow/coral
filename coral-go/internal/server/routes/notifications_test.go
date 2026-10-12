@@ -163,9 +163,8 @@ func TestWSCoral_HubFeedDoesNotConsumeNotifications(t *testing.T) {
 	require.NoError(t, wsjson.Read(ctx, feed, &first))
 	pushed := ns.Push(Notification{Title: "for the people"})
 
-	// Let the feed tick a few times (1s poll in this server); it must never
-	// carry the notification.
-	readCtx, readCancel := context.WithTimeout(ctx, 3500*time.Millisecond)
+	// Let the feed tick many times; it must never carry the notification.
+	readCtx, readCancel := context.WithTimeout(ctx, testWSQuietWindow)
 	for {
 		var msg struct {
 			Notifications []Notification `json:"notifications"`

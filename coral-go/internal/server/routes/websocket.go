@@ -89,14 +89,20 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pollInterval := time.Duration(h.cfg.WSPollIntervalS) * time.Second
+	if h.cfg.WSPollInterval > 0 {
+		pollInterval = h.cfg.WSPollInterval
+	}
 	if pollInterval == 0 {
 		pollInterval = 5 * time.Second
 	}
+	// Remote feed changes rebuild at most once a second, or once a poll
+	// interval when that is shorter (the ticker rebuilds that often anyway).
+	remoteDebounce := min(time.Second, pollInterval)
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
-	// Remote feed changes trigger an early rebuild, at most once a second.
+	// Remote feed changes trigger an early rebuild (see remoteDebounce).
 	var remoteChanged <-chan struct{}
 	if h.remoteAgents != nil {
 		ch, cancel := h.remoteAgents.Subscribe()
@@ -125,7 +131,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if firstMessage {
 				continue
 			}
-			if wait := time.Second - time.Since(lastBuild); wait > 0 {
+			if wait := remoteDebounce - time.Since(lastBuild); wait > 0 {
 				if debounce == nil {
 					debounce = time.After(wait)
 				}

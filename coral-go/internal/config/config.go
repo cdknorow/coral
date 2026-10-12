@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // PostHogKey is set at build time via ldflags for install tracking.
@@ -62,6 +63,9 @@ type Config struct {
 
 	// WebSocket
 	WSPollIntervalS int
+	// WSPollInterval, when set, replaces WSPollIntervalS. Only tests set it,
+	// to tick faster than once a second.
+	WSPollInterval time.Duration
 
 	// Edition limits (0 = unlimited)
 	MaxLiveTeams  int
