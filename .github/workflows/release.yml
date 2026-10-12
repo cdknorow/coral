@@ -128,11 +128,23 @@ jobs:
           go build -tags $webviewTags -ldflags "-H windowsgui $ldflags" -o "..\dist\windows\bin\coral-app.exe" "./cmd/coral-app/"
           powershell -ExecutionPolicy Bypass -File ..\tests\release\verify_standard_bundle.ps1 -PackageDir ..\dist\windows\bin
 
+      # Windows is beta: signing is opt-in through the repository variable
+      # WINDOWS_SIGNING ('true' turns it on; unset or anything else leaves the
+      # packages unsigned, as in v1.3.43). When on, every signing step is
+      # required and missing credentials fail the tag build.
+      - name: Warn that Windows packages are unsigned
+        if: vars.WINDOWS_SIGNING != 'true'
+        shell: bash
+        run: |
+          echo "::warning::Windows packages are UNSIGNED (beta). Set the repository variable WINDOWS_SIGNING=true and the Trusted Signing secrets to sign them."
+          echo "### :warning: Windows packages are UNSIGNED (beta)" >> "$GITHUB_STEP_SUMMARY"
+
       # Windows code signing uses Azure Trusted Signing (Artifact Signing): the
       # private key never leaves Microsoft's HSM, so there is no .pfx to leak.
       # Release tags are the only trigger for this workflow, so every run must
       # sign; missing configuration fails the job instead of shipping unsigned.
       - name: Require Windows release signing credentials
+        if: vars.WINDOWS_SIGNING == 'true'
         shell: bash
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -150,6 +162,7 @@ jobs:
           done
 
       - name: Sign executables
+        if: vars.WINDOWS_SIGNING == 'true'
         uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -165,6 +178,7 @@ jobs:
           timestamp-digest: SHA256
 
       - name: Verify signed executables
+        if: vars.WINDOWS_SIGNING == 'true'
         shell: pwsh
         run: |
           $signtool = (Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
@@ -191,6 +205,7 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Sign MSI
+        if: vars.WINDOWS_SIGNING == 'true'
         uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -206,6 +221,7 @@ jobs:
           timestamp-digest: SHA256
 
       - name: Verify signed MSI
+        if: vars.WINDOWS_SIGNING == 'true'
         run: |
           & $env:SIGNTOOL verify /pa /v $env:MSI_PATH
           if ($LASTEXITCODE -ne 0) { throw "signtool verify failed: MSI" }
