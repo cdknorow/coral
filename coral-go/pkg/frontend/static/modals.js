@@ -3503,7 +3503,8 @@ export async function showSettingsModal() {
     const agyModel = s.default_model_agy || s.default_model_gemini || "";
     if (defAgy) defAgy.value = agyModel;
     if (defPi) defPi.value = s.default_model_pi || "";
-    _getAgentModels().then(models => {
+    // On the hub the Default Models rows are hidden (machine settings), and the hub has no model catalog of its own to ask.
+    if (!isCloud()) _getAgentModels().then(models => {
         // _getAgentModels swallows errors and resolves with {} on failure; on
         // success it returns the canonical map with an array for each agent type.
         if (!models || !Array.isArray(models.claude)) {

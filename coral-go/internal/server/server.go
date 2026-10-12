@@ -461,6 +461,7 @@ func (s *Server) buildRouter() chi.Router {
 	// System / settings
 	r.Get("/api/settings", sysHandler.GetSettings)
 	r.Put("/api/settings", sysHandler.PutSettings)
+	r.Put("/api/settings/git-diff-mode", sysHandler.PutGitDiffMode)
 	r.Get("/api/system/privacy", sysHandler.GetPrivacyStatus)
 	r.Get("/api/system/database-security", sysHandler.DatabaseSecurityStatus)
 	r.Put("/api/system/database-security", sysHandler.SetDatabaseSecurity)

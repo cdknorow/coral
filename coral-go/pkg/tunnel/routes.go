@@ -247,6 +247,8 @@ var routeTable = cat(
 		"/api/board/{project}/working-mode/presets/{id}/reset",
 	),
 	rules(http.MethodPut, TierInteract,
+		// Only the changed-files comparison base (validated to three values); PUT /api/settings itself stays never.
+		"/api/settings/git-diff-mode",
 		"/api/sessions/live/{name}/display-name",
 		"/api/sessions/live/{name}/icon",
 		"/api/sessions/live/{name}/name-color",

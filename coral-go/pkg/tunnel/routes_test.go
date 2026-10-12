@@ -48,6 +48,13 @@ func TestClassifyTiers(t *testing.T) {
 		// Never: settings, secrets, host access, outbound requests, connector, agent API.
 		{"GET", "/api/settings", "", TierNever},
 		{"PUT", "/api/settings", "", TierNever},
+		{"PUT", "/api/settings/git-diff-mode", "", TierInteract}, // the one narrow setting route (three validated values)
+		{"GET", "/api/settings/git-diff-mode", "", TierNever},
+		{"POST", "/api/settings/git-diff-mode", "", TierNever},
+		{"DELETE", "/api/settings/git-diff-mode", "", TierNever},
+		{"PUT", "/api/settings/git-diff-mode", "mode=main_head", TierNever}, // no query parameters
+		{"PUT", "/api/settings/cli_path_claude", "", TierNever},
+		{"PUT", "/api/settings/git-diff-mode/x", "", TierNever},
 		{"GET", "/api/system/api-key", "", TierNever},
 		{"POST", "/api/system/api-key/regenerate", "", TierNever},
 		{"GET", "/api/system/status", "", TierNever},
