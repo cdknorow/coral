@@ -13,9 +13,12 @@ func (s *TaskStore) GetEditedFileCounts(ctx context.Context, sessionIDs []string
 	if len(sessionIDs) == 0 {
 		return result, nil
 	}
+	// INDEXED BY: with ANALYZE stats the planner prefers the wider
+	// (session_id, event_type) index and reads every tool_use row; the partial
+	// file-edit index holds only the Write/Edit rows this counts.
 	query, args, err := sqlx.In(`SELECT session_id, COUNT(DISTINCT json_extract(detail_json, '$.file_path')) AS cnt
-		FROM agent_events WHERE session_id IN (?) AND event_type = 'tool_use'
-		AND tool_name IN ('Write', 'Edit') AND detail_json IS NOT NULL GROUP BY session_id`, sessionIDs)
+		FROM agent_events INDEXED BY idx_agent_events_edited_files WHERE session_id IN (?) AND event_type = 'tool_use'
+		AND tool_name IN ('Write', 'Edit') AND detail_json IS NOT NULL AND json_valid(detail_json) GROUP BY session_id`, sessionIDs)
 	if err != nil {
 		return nil, err
 	}

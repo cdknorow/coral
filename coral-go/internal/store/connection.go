@@ -135,6 +135,15 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	d.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_agent_events_ref
 		ON agent_events(session_id, event_type, ref_id) WHERE ref_id IS NOT NULL`)
 
+	// The (session_id, created_at) and (session_id, event_type, created_at)
+	// indexes in schemaSQL cover these prefixes; the rowid that SQLite appends
+	// to every index entry lets "latest per session" queries seek backwards
+	// instead of sorting the history.
+	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_agent_events_session`)
+	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_agent_events_session_type`)
+	// Pre-release name of idx_agent_events_edited_files, without json_valid.
+	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_agent_events_file_edits`)
+
 	// Fix double-encoded detail_json rows in agent_events (one-time fixup).
 	// Prior to the fix, makeToolDetail returned a JSON string which was then
 	// re-marshaled, producing '"{\"key\":\"val\"}"' instead of '{"key":"val"}'.
@@ -687,8 +696,14 @@ CREATE INDEX IF NOT EXISTS idx_git_snap_session ON git_snapshots(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_tags_tag_id ON session_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_folder_tags_tag_id ON folder_tags(tag_id);
 CREATE INDEX IF NOT EXISTS idx_session_index_first_ts ON session_index(first_timestamp);
-CREATE INDEX IF NOT EXISTS idx_agent_events_session ON agent_events(session_id);
-CREATE INDEX IF NOT EXISTS idx_agent_events_session_type ON agent_events(session_id, event_type);
+CREATE INDEX IF NOT EXISTS idx_agent_events_session_time ON agent_events(session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_events_session_type_time ON agent_events(session_id, event_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_events_agent ON agent_events(agent_name, session_id);
+-- Named by INDEXED BY in the edited-file queries; keep the WHERE in step with them.
+-- json_valid keeps a malformed detail_json row out of the index: json_extract
+-- would otherwise fail the CREATE (and so startup) and the row's INSERT.
+CREATE INDEX IF NOT EXISTS idx_agent_events_edited_files ON agent_events(session_id, json_extract(detail_json, '$.file_path'))
+	WHERE event_type = 'tool_use' AND tool_name IN ('Write', 'Edit') AND detail_json IS NOT NULL AND json_valid(detail_json);
 CREATE INDEX IF NOT EXISTS idx_git_snap_session_time ON git_snapshots(session_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_git_snap_agent_time ON git_snapshots(agent_name, recorded_at DESC);
 `

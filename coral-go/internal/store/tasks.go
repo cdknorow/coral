@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
@@ -522,32 +523,49 @@ func (s *TaskStore) GetAgentEventCounts(ctx context.Context, agentName string, s
 	return counts, err
 }
 
+// sessionIDsJSON encodes ids, without duplicates, for json_each. Unlike
+// IN (...), joining json_each repeats rows for a repeated id.
+func sessionIDsJSON(sessionIDs []string) (string, error) {
+	seen := make(map[string]bool, len(sessionIDs))
+	unique := make([]string, 0, len(sessionIDs))
+	for _, id := range sessionIDs {
+		if !seen[id] {
+			seen[id] = true
+			unique = append(unique, id)
+		}
+	}
+	b, err := json.Marshal(unique)
+	return string(b), err
+}
+
 // GetLatestEventTypes returns the latest (event_type, summary) per session (excluding status/goal/confidence).
 func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string) (map[string][2]string, error) {
 	if len(sessionIDs) == 0 {
 		return map[string][2]string{}, nil
 	}
-	query, args, err := sqlx.In(
-		`SELECT session_id, event_type, summary FROM agent_events
-		 WHERE session_id IN (?) AND event_type NOT IN ('status', 'goal', 'confidence')
-		 ORDER BY created_at DESC`,
-		sessionIDs)
+	ids, err := sessionIDsJSON(sessionIDs)
 	if err != nil {
 		return nil, err
 	}
+	// One backward index seek per session (idx_agent_events_session_time)
+	// instead of sorting every session's full history. Ties on created_at go
+	// to the newest id.
 	var rows []struct {
 		SessionID string `db:"session_id"`
 		EventType string `db:"event_type"`
 		Summary   string `db:"summary"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.db.SelectContext(ctx, &rows,
+		`SELECT session_id, event_type, summary FROM agent_events WHERE id IN (
+		   SELECT (SELECT e.id FROM agent_events e
+		           WHERE e.session_id = s.value AND e.event_type NOT IN ('status', 'goal', 'confidence')
+		           ORDER BY e.created_at DESC, e.id DESC LIMIT 1)
+		   FROM json_each(?) s)`, ids); err != nil {
 		return nil, err
 	}
-	result := make(map[string][2]string)
+	result := make(map[string][2]string, len(rows))
 	for _, r := range rows {
-		if _, ok := result[r.SessionID]; !ok {
-			result[r.SessionID] = [2]string{r.EventType, r.Summary}
-		}
+		result[r.SessionID] = [2]string{r.EventType, r.Summary}
 	}
 	return result, nil
 }
@@ -556,22 +574,41 @@ func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string
 // state derivation. Keeping this in the store makes the derivation restart
 // safe: notification state is reconstructed from the event log rather than an
 // in-memory latch. Events are returned oldest first for each session.
+//
+// Only the suffix that decides the state is returned: the newest turn boundary
+// (stop, prompt_submit, tool_use or session_reset) and the notifications after
+// it. sessionstate.Derive resets on every boundary, so earlier events cannot
+// change its result, and the suffix keeps the newest timestamp the transcript
+// merge compares against. detail_json is not read; no consumer uses it.
 func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []string) (map[string][]AgentEvent, error) {
 	if len(sessionIDs) == 0 {
 		return map[string][]AgentEvent{}, nil
 	}
-	query, args, err := sqlx.In(
-		`SELECT id, agent_name, session_id, event_type, tool_name, summary, detail_json, created_at
-		 FROM agent_events
-		 WHERE session_id IN (?)
-		   AND event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset')
-		 ORDER BY session_id, created_at ASC, id ASC`,
-		sessionIDs)
+	ids, err := sessionIDsJSON(sessionIDs)
 	if err != nil {
 		return nil, err
 	}
 	var rows []AgentEvent
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.db.SelectContext(ctx, &rows,
+		`WITH boundary AS (
+		   SELECT s.value AS sid,
+		          (SELECT x.id FROM agent_events x
+		           WHERE x.session_id = s.value
+		             AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset')
+		           ORDER BY x.created_at DESC, x.id DESC LIMIT 1) AS bid
+		   FROM json_each(?) s)
+		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.created_at
+		 FROM boundary
+		 JOIN agent_events b ON b.id = boundary.bid
+		 JOIN agent_events e ON e.session_id = boundary.sid
+		 WHERE e.event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset')
+		   AND (e.created_at, e.id) >= (b.created_at, b.id)
+		 UNION ALL
+		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.created_at
+		 FROM boundary
+		 JOIN agent_events e ON e.session_id = boundary.sid
+		 WHERE boundary.bid IS NULL AND e.event_type = 'notification'
+		 ORDER BY 3, 7, 1`, ids); err != nil {
 		return nil, err
 	}
 	result := make(map[string][]AgentEvent, len(sessionIDs))
@@ -606,11 +643,7 @@ func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (ma
 	if len(sessionIDs) == 0 {
 		return map[string]string{}, nil
 	}
-	query, args, err := sqlx.In(
-		`SELECT session_id, summary FROM agent_events
-		 WHERE session_id IN (?) AND event_type = 'goal'
-		 ORDER BY created_at DESC, id DESC`,
-		sessionIDs)
+	ids, err := sessionIDsJSON(sessionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -618,14 +651,17 @@ func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (ma
 		SessionID string `db:"session_id"`
 		Summary   string `db:"summary"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.db.SelectContext(ctx, &rows,
+		`SELECT session_id, summary FROM agent_events WHERE id IN (
+		   SELECT (SELECT e.id FROM agent_events e
+		           WHERE e.session_id = s.value AND e.event_type = 'goal'
+		           ORDER BY e.created_at DESC, e.id DESC LIMIT 1)
+		   FROM json_each(?) s)`, ids); err != nil {
 		return nil, err
 	}
-	result := make(map[string]string)
+	result := make(map[string]string, len(rows))
 	for _, r := range rows {
-		if _, ok := result[r.SessionID]; !ok {
-			result[r.SessionID] = r.Summary
-		}
+		result[r.SessionID] = r.Summary
 	}
 	return result, nil
 }
@@ -693,10 +729,10 @@ func (s *TaskStore) GetAllEditedFileCounts(ctx context.Context) (map[string]int,
 	}
 	err := s.db.SelectContext(ctx, &rows,
 		`SELECT session_id, COUNT(DISTINCT json_extract(detail_json, '$.file_path')) AS cnt
-		 FROM agent_events
+		 FROM agent_events INDEXED BY idx_agent_events_edited_files
 		 WHERE event_type = 'tool_use'
 		   AND tool_name IN ('Write', 'Edit')
-		   AND detail_json IS NOT NULL
+		   AND detail_json IS NOT NULL AND json_valid(detail_json)
 		   AND session_id IS NOT NULL
 		 GROUP BY session_id`)
 	if err != nil {
@@ -720,11 +756,11 @@ func (s *TaskStore) GetEditedFilesBySession(ctx context.Context, sessionIDs []st
 	query, args, err := sqlx.In(
 		`SELECT session_id,
 		        json_extract(detail_json, '$.file_path') as file_path
-		 FROM agent_events
+		 FROM agent_events INDEXED BY idx_agent_events_edited_files
 		 WHERE session_id IN (?)
 		   AND event_type = 'tool_use'
 		   AND tool_name IN ('Write', 'Edit')
-		   AND detail_json IS NOT NULL`,
+		   AND detail_json IS NOT NULL AND json_valid(detail_json)`,
 		sessionIDs)
 	if err != nil {
 		return nil, err

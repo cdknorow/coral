@@ -201,8 +201,12 @@ func TestAgentEventsRetentionIsolatedPerSession(t *testing.T) {
 	if len(events[sessionA]) != 1 || events[sessionA][0].EventType != "notification" {
 		t.Fatalf("session A attention event was pruned by sibling activity: %+v", events[sessionA])
 	}
-	if len(events[sessionB]) != 500 {
-		t.Fatalf("session B retention = %d, want 500", len(events[sessionB]))
+	// GetSessionStateEvents returns only the suffix that decides state, so
+	// count the retained rows directly.
+	retained, err := s.ListAgentEvents(ctx, "", 1000, &sessionB)
+	require.NoError(t, err)
+	if len(retained) != 500 {
+		t.Fatalf("session B retention = %d, want 500", len(retained))
 	}
 }
 
