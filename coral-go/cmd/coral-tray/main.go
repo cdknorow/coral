@@ -377,6 +377,16 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		httpServer.Shutdown(shutdownCtx)
+		// When macOS terminates the app (logout, restart, NSApp terminate),
+		// AppKit exits the process after this callback, so main's deferred
+		// rs.Close never runs. Write the queued request metrics here, with
+		// a context of their own: Shutdown can use up shutdownCtx waiting on
+		// long-polls such as coral-board wait.
+		flushCtx, cancelFlush := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancelFlush()
+		if err := rs.DB.FlushCallMetrics(flushCtx); err != nil {
+			log.Printf("[call-metrics] flush on exit: %v", err)
+		}
 		log.Println("coral-tray exited")
 	})
 }

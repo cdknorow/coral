@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -85,8 +86,12 @@ func (d *DB) EnqueueCallMetric(m *CallMetric) {
 		b.mu.Unlock()
 		return
 	}
+	// Kick an early flush only when this metric crosses the threshold. After
+	// a failed flush re-queues a full batch, the queue stays above it, so a
+	// persistent DB error is retried on the ticker rather than per request.
+	crossed := len(b.pending) < callMetricFlushBatch
 	b.pending = append(b.pending, m)
-	full := len(b.pending) >= callMetricFlushBatch
+	full := crossed && len(b.pending) >= callMetricFlushBatch
 	b.mu.Unlock()
 
 	b.start.Do(func() { go d.callMetricLoop(b) })
@@ -139,6 +144,31 @@ func (d *DB) FlushCallMetrics(ctx context.Context) error {
 		return nil
 	}
 
+	if err := d.writeCallMetrics(ctx, batch); err != nil {
+		// Put the batch back for the next flush (oldest first, within the
+		// queue bound) unless the DB is closing, so a transient error such as
+		// SQLITE_BUSY does not lose it.
+		b.mu.Lock()
+		lost, queued := 0, 0
+		if b.closed {
+			lost = len(batch)
+		} else {
+			merged := append(batch, b.pending...)
+			if len(merged) > callMetricMaxPending {
+				lost = len(merged) - callMetricMaxPending
+				merged = merged[:callMetricMaxPending]
+			}
+			b.pending = merged
+			queued = len(merged)
+		}
+		b.mu.Unlock()
+		return fmt.Errorf("write %d call metrics: %w (%d dropped, %d queued for retry)", len(batch), err, lost, queued)
+	}
+	return nil
+}
+
+// writeCallMetrics inserts batch in one transaction.
+func (d *DB) writeCallMetrics(ctx context.Context, batch []*CallMetric) error {
 	names, err := d.liveDisplayNames(ctx, batch)
 	if err != nil {
 		return err

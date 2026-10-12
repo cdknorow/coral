@@ -3,7 +3,10 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -170,4 +173,66 @@ func TestCallMetricsConcurrentEnqueueFlushAndClose(t *testing.T) {
 	var wrong int
 	require.NoError(t, db.Get(&wrong, `SELECT COUNT(*) FROM call_metrics WHERE agent_name != 'Display'`))
 	assert.Zero(t, wrong)
+}
+
+// A failed flush keeps its batch for the next one instead of dropping it.
+func TestFailedCallMetricFlushRequeuesBatch(t *testing.T) {
+	setCallMetricLimits(t, time.Hour, 1000, 1000)
+	db := openTestDB(t)
+	db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/first"})
+	_, err := db.Exec(`ALTER TABLE call_metrics RENAME TO call_metrics_away`)
+	require.NoError(t, err)
+
+	err = db.FlushCallMetrics(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "0 dropped, 1 queued for retry")
+
+	db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/second"})
+	_, err = db.Exec(`ALTER TABLE call_metrics_away RENAME TO call_metrics`)
+	require.NoError(t, err)
+	require.NoError(t, db.FlushCallMetrics(context.Background()))
+
+	var ops []string
+	require.NoError(t, db.Select(&ops, `SELECT operation FROM call_metrics ORDER BY id`))
+	assert.Equal(t, []string{"/api/first", "/api/second"}, ops, "requeued metrics keep their order")
+}
+
+// A persistent write error is retried on the ticker, not once per request:
+// after a failed flush re-queues a full batch, new metrics must not kick
+// another flush.
+func TestFailedCallMetricFlushDoesNotRetryPerRequest(t *testing.T) {
+	setCallMetricLimits(t, time.Hour, 3, 1000)
+	var logs syncBuffer
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	db := openTestDB(t)
+	_, err := db.Exec(`ALTER TABLE call_metrics RENAME TO call_metrics_away`)
+	require.NoError(t, err)
+
+	for i := 0; i < 3; i++ { // crosses the threshold: one early flush, which fails
+		db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	}
+	require.Eventually(t, func() bool { return strings.Count(logs.String(), "flush failed") == 1 }, 3*time.Second, 5*time.Millisecond)
+	for i := 0; i < 50; i++ {
+		db.EnqueueCallMetric(&CallMetric{CallType: "api", Operation: "/api/x"})
+	}
+	time.Sleep(200 * time.Millisecond)
+	assert.Equal(t, 1, strings.Count(logs.String(), "flush failed"), "no flush per request while the queue stays above the threshold")
+}
+
+type syncBuffer struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
