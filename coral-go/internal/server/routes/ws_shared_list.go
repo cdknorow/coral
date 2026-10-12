@@ -71,7 +71,7 @@ type wsTickCache struct {
 	local    *wsLocalPart
 	remote   *wsRemotePart
 	tick     *wsTick
-	tickFrom [2]any       // the parts tick was assembled from
+	tickFrom [2]any        // the parts tick was assembled from
 	building chan struct{} // closed when the build in progress finishes
 }
 
@@ -195,13 +195,14 @@ func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool) *ws
 
 func (h *SessionsHandler) buildWSRemotePart(gen uint64, genOK bool) *wsRemotePart {
 	p := &wsRemotePart{gen: gen, genOK: genOK, snap: h.remoteSnapshot()}
-	for _, s := range p.snap.Sessions {
+	encoded := p.snap.SessionsJSON() // encoded once per snapshot, shared with the HTTP list
+	for i, s := range p.snap.Sessions {
 		srv, _ := s["server"].(string)
 		k := feedKey(s)
 		if k == "" {
 			continue
 		}
-		b, _ := json.Marshal(s)
+		b := encoded[i]
 		p.sessions = append(p.sessions, s)
 		p.keys = append(p.keys, remoteKey(srv, k))
 		p.serialized = append(p.serialized, string(b))

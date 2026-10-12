@@ -25,13 +25,19 @@ func (h *SessionsHandler) remoteSnapshot() background.RemoteSnapshot {
 }
 
 // mergeRemote tags local sessions with server "local" and appends remote ones.
-func mergeRemote(local []map[string]any, snap background.RemoteSnapshot) []map[string]any {
-	out := make([]map[string]any, 0, len(local)+len(snap.Sessions))
+// mergeRemote returns the hub's list entries: local sessions tagged
+// server "local", then the remote sessions as the snapshot's pre-encoded JSON,
+// which is computed once per snapshot rather than on every request.
+func mergeRemote(local []map[string]any, snap background.RemoteSnapshot) []any {
+	out := make([]any, 0, len(local)+len(snap.Sessions))
 	for _, s := range local {
 		s["server"] = "local"
 		out = append(out, s)
 	}
-	return append(out, snap.Sessions...)
+	for _, raw := range snap.SessionsJSON() {
+		out = append(out, raw)
+	}
+	return out
 }
 
 const remoteKeyPrefix = "r\x00"

@@ -43,8 +43,8 @@ import (
 
 	"nhooyr.io/websocket"
 
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/cdknorow/coral/internal/store"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 )
 
 // RemoteRegistry is the part of store.RemoteServerStore the hub needs.
@@ -66,12 +66,37 @@ type RemoteServerStatus struct {
 	Version   string `json:"version,omitempty"`
 }
 
-// RemoteSnapshot is a point-in-time copy of all remote data. Sessions are
-// already tagged with "server" (and "stale" when applicable); the maps are
-// private copies and safe to mutate shallowly.
+// RemoteSnapshot is a point-in-time view of all remote data. Sessions are
+// already tagged with "server" (and "stale" when applicable). A snapshot is
+// built once per change and shared by every caller until the next one, so it
+// is READ-ONLY: do not modify its slices or maps (copy an entry first).
 type RemoteSnapshot struct {
 	Servers  []RemoteServerStatus
 	Sessions []map[string]any
+
+	enc *snapshotEncoding // per-snapshot cache of the encoded sessions
+}
+
+type snapshotEncoding struct {
+	once     sync.Once
+	sessions []json.RawMessage
+}
+
+// SessionsJSON returns each of Sessions encoded as JSON (encoding/json, as
+// the HTTP and WS writers use), computed once per snapshot.
+func (s RemoteSnapshot) SessionsJSON() []json.RawMessage {
+	encode := func() []json.RawMessage {
+		out := make([]json.RawMessage, len(s.Sessions))
+		for i, sess := range s.Sessions {
+			out[i], _ = json.Marshal(sess)
+		}
+		return out
+	}
+	if s.enc == nil {
+		return encode()
+	}
+	s.enc.once.Do(func() { s.enc.sessions = encode() })
+	return s.enc.sessions
 }
 
 // Configured reports whether any remote is registered.
@@ -143,7 +168,8 @@ type RemoteAgentHub struct {
 	remotes map[string]*remoteState
 	subs    map[int]chan struct{}
 	nextSub int
-	gen     atomic.Uint64 // bumped on every notify, before subscribers are signalled
+	gen     atomic.Uint64   // bumped on every notify, before subscribers are signalled
+	snap    *RemoteSnapshot // built on demand, cleared on every change
 }
 
 // Generation increases whenever subscribers are notified of a change, so a
@@ -243,6 +269,7 @@ func (h *RemoteAgentHub) reconcile(ctx context.Context) {
 			changed = true
 		}
 	}
+	h.snap = nil // the registry rows (last seen, last error, label) are in the snapshot
 	h.mu.Unlock()
 	if changed {
 		h.notify()
@@ -253,6 +280,9 @@ func (h *RemoteAgentHub) reconcile(ctx context.Context) {
 func (h *RemoteAgentHub) Snapshot() RemoteSnapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.snap != nil {
+		return *h.snap
+	}
 	ids := make([]string, 0, len(h.remotes))
 	for id := range h.remotes {
 		ids = append(ids, id)
@@ -291,6 +321,8 @@ func (h *RemoteAgentHub) Snapshot() RemoteSnapshot {
 			snap.Sessions = append(snap.Sessions, c)
 		}
 	}
+	snap.enc = &snapshotEncoding{}
+	h.snap = &snap
 	return snap
 }
 
@@ -310,6 +342,11 @@ func (h *RemoteAgentHub) Subscribe() (<-chan struct{}, func()) {
 }
 
 func (h *RemoteAgentHub) notify() {
+	// Drop the cached snapshot before the generation moves, so a reader that
+	// sees the new generation also gets data at least that new.
+	h.mu.Lock()
+	h.snap = nil
+	h.mu.Unlock()
 	h.gen.Add(1)
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -803,4 +840,11 @@ func (h *RemoteAgentHub) pingFeed(ctx context.Context, conn proxy.WSConn, p feed
 			return
 		}
 	}
+}
+
+// NewRemoteSnapshot builds a snapshot from already tagged sessions, for
+// RemoteAgentSource implementations other than the hub (tests, fakes). Like
+// the hub's, it caches its encoded sessions and must be treated as read-only.
+func NewRemoteSnapshot(servers []RemoteServerStatus, sessions []map[string]any) RemoteSnapshot {
+	return RemoteSnapshot{Servers: servers, Sessions: sessions, enc: &snapshotEncoding{}}
 }
