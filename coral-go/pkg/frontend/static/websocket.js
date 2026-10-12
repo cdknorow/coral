@@ -12,11 +12,27 @@ import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSe
 
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
-// with jitter (feed_pacing.js), and a "session ended" close (4401, sent by the hub) stops them: the next request's
-// 401 sends the browser to sign in.
+// with jitter (feed_pacing.js). A "session ended" close (4401, sent by the hub) is checked against /auth/session
+// first and stops the retries only when that answers 401 (see recheckSignIn).
 const FEED_CLOSE_SESSION_ENDED = 4401;
 let _feedFailures = 0;
 let _lastSidebarRenderAt = 0;
+
+function scheduleFeedReconnect() {
+    _feedFailures++;
+    setTimeout(connectCoralWs, feedRetryDelay(_feedFailures));
+}
+
+// 4401 says the hub found the session over, but the browser asks before giving up: only a 401 from the session
+// endpoint ends the retries (and the fetch wrapper in cloud.js then sends the browser to sign in). Anything else,
+// an error, a timeout or a 200, means the close was a blip, so the feed reconnects with the usual backoff.
+async function recheckSignIn() {
+    try {
+        const r = await fetch('/auth/session', { cache: 'no-store', credentials: 'same-origin' });
+        if (r.status === 401) return;
+    } catch (e) { /* network trouble is not a sign-out */ }
+    scheduleFeedReconnect();
+}
 
 export function connectCoralWs() {
     dbg('connectCoralWs: establishing connection');
@@ -33,9 +49,8 @@ export function connectCoralWs() {
 
     state.coralWs.onclose = (ev) => {
         dbg('coralWs CLOSE', { code: ev.code, reason: ev.reason });
-        if (ev.code === FEED_CLOSE_SESSION_ENDED) return;
-        _feedFailures++;
-        setTimeout(connectCoralWs, feedRetryDelay(_feedFailures));
+        if (ev.code === FEED_CLOSE_SESSION_ENDED) { recheckSignIn(); return; }
+        scheduleFeedReconnect();
     };
 
     state.coralWs.onerror = (ev) => {

@@ -33,20 +33,48 @@ if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
             m.connectCoralWs();
             await new Promise(r => { const w = () => times.length >= 4 ? r() : setTimeout(w, 100); w(); });
             const gaps = times.slice(1).map((t, i) => Math.round(t - times[i]));
-            // A session-ended close must not schedule another attempt.
+            // A session-ended close (4401) is checked against /auth/session: a 401 ends the retries, anything else
+            // (here a 200, then a network error) keeps reconnecting with the backoff.
+            const realFetch = window.fetch;
+            let sessionAnswer = 401, sessionChecks = 0;
+            window.fetch = async (u, o) => {
+                if (String(u).includes('/auth/session')) {
+                    sessionChecks++;
+                    if (sessionAnswer === 'error') throw new TypeError('network down');
+                    return new Response('{}', { status: sessionAnswer });
+                }
+                return realFetch(u, o);
+            };
             window.__closeCode = 4401;
-            const before = times.length;
-            await new Promise(r => setTimeout(r, 17000));
-            const after = times.length;
+            const settle = async () => { const t0 = times.length; await new Promise(r => setTimeout(r, 16000)); return times.length - t0; };
+            // let the attempt that is already scheduled (from the last 1006) fire and close with 4401 first
+            await new Promise(r => { const n = times.length; const w = () => times.length > n ? r() : setTimeout(w, 100); w(); });
+            await new Promise(r => setTimeout(r, 100));
+            const checksAt401 = sessionChecks;
+            const ended = await settle();                     // 401: no further attempt
+            sessionAnswer = 200;
+            const out = {};
+            out.checksAfter401 = sessionChecks - checksAt401;
+            m.connectCoralWs();                               // start again: 4401, session still valid
+            await new Promise(r => setTimeout(r, 200));
+            const keepGoing = await settle();                 // 200: backs off and reconnects
+            sessionAnswer = 'error';
+            m.connectCoralWs();
+            await new Promise(r => setTimeout(r, 200));
+            const onError = await settle();                   // network error: also reconnects
+            window.fetch = realFetch;
             window.WebSocket = RealWS;
-            return { gaps, ended: after - before };
+            return { gaps, ended, keepGoing, onError, checksAt401 };
         })()`);
         const [g1, g2, g3] = gaps.gaps;
         assert.ok(g1 >= 1000 && g1 <= 2300, `first retry 1-2 s, was ${g1} ms`);
         assert.ok(g2 >= 2000 && g2 <= 4300, `second retry 2-4 s, was ${g2} ms`);
         assert.ok(g3 >= 4000 && g3 <= 8300, `third retry 4-8 s, was ${g3} ms`);
         // one more attempt may already have been scheduled when the close code changed (it is then the last)
-        assert.ok(gaps.ended <= 2, `no reconnect loop after a session-ended close (${gaps.ended} attempts in 17 s)`);
-        console.log(`PASS feed reconnect backs off (${g1}, ${g2}, ${g3} ms) and stops on 4401`);
+        assert.ok(gaps.checksAt401 >= 1, 'a 4401 close asks /auth/session');
+        assert.equal(gaps.ended, 0, `a 4401 confirmed by a 401 stops the retries (${gaps.ended} attempts)`);
+        assert.ok(gaps.keepGoing >= 1, `a 4401 the session endpoint does not confirm keeps reconnecting (${gaps.keepGoing} attempts in 17 s)`);
+        assert.ok(gaps.onError >= 1, `a failed session check is not a sign-out either (${gaps.onError} attempts in 17 s)`);
+        console.log(`PASS feed reconnect backs off (${g1}, ${g2}, ${g3} ms); 4401 stops only when /auth/session says 401`);
     } finally { await client.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
