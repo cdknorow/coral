@@ -443,6 +443,18 @@ func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, se
 	return c.SendKeysToTarget(ctx, target, command)
 }
 
+// sendKeysSettle is the pause between typing a command and its Enter.
+var sendKeysSettle = 300 * time.Millisecond
+
+// SetSendKeysSettleForTest shortens the pause SendKeysToTarget takes before
+// Enter and returns a func that restores it. Call it from TestMain, before
+// any test runs: the value is read without a lock.
+func SetSendKeysSettleForTest(d time.Duration) (restore func()) {
+	old := sendKeysSettle
+	sendKeysSettle = d
+	return func() { sendKeysSettle = old }
+}
+
 // SendKeysToTarget sends a command to a specific tmux target.
 // Multi-line text uses tmux paste-buffer -p which respects the pane's
 // bracketed paste mode — if the shell has it enabled, tmux wraps the
@@ -469,7 +481,7 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 	}
 
 	// Brief pause for tmux to deliver keystrokes
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(sendKeysSettle)
 
 	// Always send Enter even if send-keys reported an error — the text
 	// may have been delivered despite a non-zero exit from tmux.

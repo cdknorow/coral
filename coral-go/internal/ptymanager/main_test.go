@@ -3,6 +3,9 @@ package ptymanager
 import (
 	"os"
 	"testing"
+	"time"
+
+	"github.com/cdknorow/coral/internal/tmux"
 )
 
 // TestMain removes the tmux variables a developer's shell may carry. Running these tests from inside
@@ -10,5 +13,8 @@ import (
 func TestMain(m *testing.M) {
 	os.Unsetenv("TMUX")
 	os.Unsetenv("TMUX_PANE")
+	// The tests drive shells, which need no 300ms between a command and its
+	// Enter (production keeps it for agent TUIs).
+	tmux.SetSendKeysSettleForTest(20 * time.Millisecond)
 	os.Exit(m.Run())
 }

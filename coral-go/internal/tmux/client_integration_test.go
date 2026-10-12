@@ -356,18 +356,19 @@ func TestClient_ClearHistory(t *testing.T) {
 
 	createTestSession(t, c, "clear-hist", t.TempDir())
 
-	// Generate scrollback by sending many lines
-	for i := 0; i < 50; i++ {
-		c.SendKeysToTarget(ctx, "clear-hist:0.0", "echo SCROLLBACK_LINE")
-	}
-	time.Sleep(500 * time.Millisecond)
+	// Generate scrollback: 50 lines is more than the pane shows.
+	require.NoError(t, c.SendKeysToTarget(ctx, "clear-hist:0.0", "for i in $(seq 1 50); do echo SCROLLBACK_LINE; done"))
 
-	// Capture with large scrollback should have content
-	before, err := c.CapturePaneTarget(ctx, "clear-hist:0.0", 500)
-	require.NoError(t, err)
+	// Capture with large scrollback should have all of it
+	var before string
+	require.Eventually(t, func() bool {
+		var err error
+		before, err = c.CapturePaneTarget(ctx, "clear-hist:0.0", 500)
+		return err == nil && strings.Count(before, "SCROLLBACK_LINE\n") >= 50
+	}, 10*time.Second, 20*time.Millisecond, "scrollback never held 50 lines")
 
 	// Clear history (removes scrollback buffer, not visible content)
-	err = c.ClearHistory(ctx, "clear-hist:0.0")
+	err := c.ClearHistory(ctx, "clear-hist:0.0")
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
