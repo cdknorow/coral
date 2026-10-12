@@ -3,6 +3,7 @@ package background
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"os"
@@ -52,12 +53,37 @@ type GitPoller struct {
 	logger     *slog.Logger
 	discoverFn func(ctx context.Context) ([]AgentInfo, error)
 	prCache    map[string]prCacheEntry // keyed by "remote_url::branch"
+	// written remembers the changed-file list last written per session (or
+	// agent), so an unchanged list only has its recorded_at refreshed.
+	written map[string]writtenFiles
 
 	// intervalFn, when set, is consulted before every wait so a settings
 	// change takes effect without a restart. A non-positive result pauses
 	// polling entirely, for repositories where scanning is too expensive to
 	// do on a timer at all.
 	intervalFn func() time.Duration
+}
+
+// prCacheTTL is how long a found PR number is reused. A branch's PR number
+// rarely changes, and gh is the slowest call in a pass.
+const prCacheTTL = 10 * time.Minute
+
+// prCacheExpiry keeps a found PR number for prCacheTTL, and a "no PR" answer
+// for one poll interval as before, so a newly opened PR shows up promptly.
+func prCacheExpiry(prNumber int, interval time.Duration) time.Duration {
+	if prNumber == 0 {
+		return interval
+	}
+	return max(interval, prCacheTTL)
+}
+
+// maxChangedFiles caps the list stored per agent on large monorepos.
+const maxChangedFiles = 2000
+
+type writtenFiles struct {
+	hash  [sha256.Size]byte
+	stamp string
+	count int
 }
 
 type prCacheEntry struct {
@@ -82,6 +108,7 @@ func NewGitPoller(gitStore *store.GitStore, runtime AgentRuntime, interval time.
 		interval: interval,
 		logger:   slog.Default().With("service", "git_poller"),
 		prCache:  make(map[string]prCacheEntry),
+		written:  make(map[string]writtenFiles),
 	}
 }
 
@@ -142,23 +169,30 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 		return fmt.Errorf("discover agents: %w", err)
 	}
 
-	// Group agents by working directory to minimize git calls
+	// Group agents by git root, so agents in different subdirectories of one
+	// repository share a single scan (they used to be scanned once per
+	// working directory, with identical results).
+	rootOf := make(map[string]string)
 	dirToAgents := make(map[string][]AgentInfo)
 	for _, agent := range agents {
 		if agent.WorkingDirectory == "" {
 			continue
 		}
-		dirToAgents[agent.WorkingDirectory] = append(dirToAgents[agent.WorkingDirectory], agent)
+		root, ok := rootOf[agent.WorkingDirectory]
+		if !ok {
+			resolveStart := time.Now()
+			root = gitutil.ResolveGitRoot(ctx, agent.WorkingDirectory)
+			p.logger.Debug("git resolve root", "workdir", agent.WorkingDirectory, "root", root, "duration_ms", time.Since(resolveStart).Milliseconds())
+			rootOf[agent.WorkingDirectory] = root
+		}
+		dirToAgents[root] = append(dirToAgents[root], agent)
 	}
 
 	p.logger.Debug("git poll starting", "dirs", len(dirToAgents), "agents", len(agents))
+	seen := make(map[string]bool, len(agents))
 
 	for workdir, dirAgents := range dirToAgents {
 		dirStart := time.Now()
-
-		resolveStart := time.Now()
-		workdir = gitutil.ResolveGitRoot(ctx, workdir)
-		p.logger.Debug("git resolve root", "workdir", workdir, "duration_ms", time.Since(resolveStart).Milliseconds())
 
 		queryStart := time.Now()
 		gitInfo, err := queryGit(ctx, workdir)
@@ -183,6 +217,13 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 		} else {
 			p.logger.Debug("git changed files", "workdir", workdir, "file_count", len(changedFiles), "duration_ms", filesDur.Milliseconds())
 		}
+
+		// Cap file count to prevent DB thrashing on large monorepos
+		if len(changedFiles) > maxChangedFiles {
+			p.logger.Warn("capping changed files", "workdir", workdir, "agents", len(dirAgents), "total", len(changedFiles), "cap", maxChangedFiles)
+			changedFiles = changedFiles[:maxChangedFiles]
+		}
+		filesHash := hashChangedFiles(workdir, changedFiles)
 
 		// Look up PR number for non-default branches
 		prNumber := 0
@@ -219,14 +260,9 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 				p.logger.Warn("upsert snapshot failed", "agent", agent.AgentName, "error", err)
 			}
 
-			// Cap file count to prevent DB thrashing on large monorepos
-			if len(changedFiles) > 2000 {
-				p.logger.Warn("capping changed files", "agent", agent.AgentName, "total", len(changedFiles), "cap", 2000)
-				changedFiles = changedFiles[:2000]
-			}
-			if err := p.store.ReplaceChangedFiles(ctx, agent.AgentName, workdir, changedFiles, sidPtr, "branch_point"); err != nil {
-				p.logger.Warn("replace changed files failed", "agent", agent.AgentName, "error", err)
-			}
+			key := writtenKey(agent.AgentName, sidPtr)
+			seen[key] = true
+			p.writeChangedFiles(ctx, key, agent.AgentName, workdir, changedFiles, sidPtr, filesHash)
 		}
 		p.logger.Debug("git db writes", "workdir", workdir, "agents", len(dirAgents), "duration_ms", time.Since(dbStart).Milliseconds())
 
@@ -234,6 +270,13 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 		if dirDur > 2*time.Second {
 			p.logger.Warn("git poll slow for directory", "workdir", workdir, "total_ms", dirDur.Milliseconds(),
 				"query_ms", queryDur.Milliseconds(), "files_ms", filesDur.Milliseconds())
+		}
+	}
+
+	// Forget agents that are gone, so the map stays bounded.
+	for key := range p.written {
+		if !seen[key] {
+			delete(p.written, key)
 		}
 	}
 
@@ -246,6 +289,48 @@ func (p *GitPoller) PollOnce(ctx context.Context) error {
 	return nil
 }
 
+func writtenKey(agentName string, sessionID *string) string {
+	if sessionID != nil {
+		return "s\x00" + *sessionID
+	}
+	return "a\x00" + agentName
+}
+
+// hashChangedFiles fingerprints a changed-file list as it would be stored.
+func hashChangedFiles(workdir string, files []store.ChangedFile) [sha256.Size]byte {
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\x00%d\x00", workdir, len(files))
+	for _, f := range files {
+		fmt.Fprintf(h, "%s\x00%d\x00%d\x00%s\x00", f.Filepath, f.Additions, f.Deletions, f.Status)
+	}
+	var sum [sha256.Size]byte
+	h.Sum(sum[:0])
+	return sum
+}
+
+// writeChangedFiles stores an agent's changed-file list. When it is the list
+// this poller wrote last time and the cache still holds exactly that write,
+// only its recorded_at is refreshed; otherwise the list is replaced.
+func (p *GitPoller) writeChangedFiles(ctx context.Context, key, agentName, workdir string, files []store.ChangedFile, sessionID *string, hash [sha256.Size]byte) {
+	if prev, ok := p.written[key]; ok && prev.hash == hash {
+		stamp, touched, err := p.store.TouchChangedFiles(ctx, agentName, sessionID, "branch_point", prev.stamp, prev.count)
+		if err != nil {
+			p.logger.Warn("refresh changed files failed", "agent", agentName, "error", err)
+		}
+		if touched {
+			p.written[key] = writtenFiles{hash: hash, stamp: stamp, count: prev.count}
+			return
+		}
+	}
+	stamp, err := p.store.ReplaceChangedFilesStamped(ctx, agentName, workdir, files, sessionID, "branch_point")
+	if err != nil {
+		delete(p.written, key)
+		p.logger.Warn("replace changed files failed", "agent", agentName, "error", err)
+		return
+	}
+	p.written[key] = writtenFiles{hash: hash, stamp: stamp, count: len(files)}
+}
+
 func (p *GitPoller) discoverAgents(ctx context.Context) ([]AgentInfo, error) {
 	if p.discoverFn != nil {
 		return p.discoverFn(ctx)
@@ -254,13 +339,12 @@ func (p *GitPoller) discoverAgents(ctx context.Context) ([]AgentInfo, error) {
 	return p.runtime.ListAgents(ctx)
 }
 
-
 // gitInfo holds parsed git query results.
 type gitInfo struct {
 	Branch          string
 	CommitHash      string
 	CommitSubject   string
-	CommitTimestamp  string
+	CommitTimestamp string
 	RemoteURL       *string
 	Worktree        bool
 	BaseBranch      string
@@ -308,11 +392,11 @@ func queryGit(ctx context.Context, workdir string) (*gitInfo, error) {
 	}
 
 	info := &gitInfo{
-		Branch:         branch,
-		CommitHash:     parts[0],
-		CommitSubject:  parts[1],
+		Branch:          branch,
+		CommitHash:      parts[0],
+		CommitSubject:   parts[1],
 		CommitTimestamp: parts[2],
-		RemoteURL:      remoteURL,
+		RemoteURL:       remoteURL,
 	}
 	queryWorktreeState(ctx, workdir, info)
 	return info, nil
@@ -466,7 +550,7 @@ func (p *GitPoller) lookupPR(ctx context.Context, remoteURL, branch, workdir str
 	prNumber := queryPRNumber(ctx, branch, workdir, p.logger)
 	p.prCache[cacheKey] = prCacheEntry{
 		prNumber:  prNumber,
-		expiresAt: time.Now().Add(p.interval),
+		expiresAt: time.Now().Add(prCacheExpiry(prNumber, p.interval)),
 	}
 	return prNumber
 }

@@ -131,7 +131,7 @@ func (s *GitStore) GetRecentGitSnapshots(ctx context.Context, since string, limi
 func (s *GitStore) GetGitSnapshots(ctx context.Context, agentName string, limit int) ([]GitSnapshot, error) {
 	var snaps []GitSnapshot
 	err := s.db.SelectContext(ctx, &snaps,
-		`SELECT ` + gitSnapshotCols + `
+		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE agent_name = ?
 		 ORDER BY recorded_at DESC LIMIT ?`,
 		agentName, limit)
@@ -142,7 +142,7 @@ func (s *GitStore) GetGitSnapshots(ctx context.Context, agentName string, limit 
 func (s *GitStore) GetLatestGitState(ctx context.Context, agentName string) (*GitSnapshot, error) {
 	var snap GitSnapshot
 	err := s.db.GetContext(ctx, &snap,
-		`SELECT ` + gitSnapshotCols + `
+		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE agent_name = ?
 		 ORDER BY recorded_at DESC LIMIT 1`,
 		agentName)
@@ -156,7 +156,7 @@ func (s *GitStore) GetLatestGitState(ctx context.Context, agentName string) (*Gi
 func (s *GitStore) GetLatestGitStateBySession(ctx context.Context, sessionID string) (*GitSnapshot, error) {
 	var snap GitSnapshot
 	err := s.db.GetContext(ctx, &snap,
-		`SELECT ` + gitSnapshotCols + `
+		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE session_id = ?
 		 ORDER BY recorded_at DESC LIMIT 1`,
 		sessionID)
@@ -201,7 +201,7 @@ func (s *GitStore) GetAllLatestGitState(ctx context.Context) (map[string]*GitSna
 func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID string, limit int) ([]GitSnapshot, error) {
 	var snaps []GitSnapshot
 	err := s.db.SelectContext(ctx, &snaps,
-		`SELECT ` + gitSnapshotCols + `
+		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots WHERE session_id = ?
 		 ORDER BY commit_timestamp ASC LIMIT ?`,
 		sessionID, limit)
@@ -225,7 +225,7 @@ func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID stri
 	}
 
 	err = s.db.SelectContext(ctx, &snaps,
-		`SELECT ` + gitSnapshotCols + `
+		`SELECT `+gitSnapshotCols+`
 		 FROM git_snapshots
 		 WHERE commit_timestamp >= ? AND commit_timestamp <= ?
 		 ORDER BY commit_timestamp ASC LIMIT ?`,
@@ -236,8 +236,15 @@ func (s *GitStore) GetGitSnapshotsForSession(ctx context.Context, sessionID stri
 // ReplaceChangedFiles replaces changed-file records for an agent/session and diff mode.
 // Each (session, diff_mode) pair is cached independently so switching modes is instant.
 func (s *GitStore) ReplaceChangedFiles(ctx context.Context, agentName, workingDir string, files []ChangedFile, sessionID *string, diffMode string) error {
+	_, err := s.ReplaceChangedFilesStamped(ctx, agentName, workingDir, files, sessionID, diffMode)
+	return err
+}
+
+// ReplaceChangedFilesStamped is ReplaceChangedFiles, returning the recorded_at
+// stamp shared by every written row (see TouchChangedFiles).
+func (s *GitStore) ReplaceChangedFilesStamped(ctx context.Context, agentName, workingDir string, files []ChangedFile, sessionID *string, diffMode string) (string, error) {
 	now := nowUTC()
-	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+	return now, s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
 		if sessionID != nil {
 			if _, err := tx.ExecContext(ctx,
 				"DELETE FROM git_changed_files WHERE session_id = ? AND diff_mode = ?",
@@ -252,17 +259,59 @@ func (s *GitStore) ReplaceChangedFiles(ctx context.Context, agentName, workingDi
 			}
 		}
 
+		stmt, err := tx.PreparexContext(ctx, `INSERT INTO git_changed_files
+			 (agent_name, session_id, working_directory, filepath, additions, deletions, status, recorded_at, diff_mode)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
 		for _, f := range files {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO git_changed_files
-				 (agent_name, session_id, working_directory, filepath, additions, deletions, status, recorded_at, diff_mode)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				agentName, sessionID, workingDir, f.Filepath, f.Additions, f.Deletions, f.Status, now, diffMode); err != nil {
+			if _, err := stmt.ExecContext(ctx, agentName, sessionID, workingDir, f.Filepath, f.Additions, f.Deletions, f.Status, now, diffMode); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
+}
+
+// TouchChangedFiles marks an unchanged cached list as fresh again: it moves
+// the recorded_at of the count rows written at stamp to now, so readers that
+// judge freshness by recorded_at (the Files endpoint) keep using the cache.
+// It reports false, changing nothing, when the cached rows are not exactly
+// that write (another writer replaced them, or they were cleared); the caller
+// then writes the list in full.
+func (s *GitStore) TouchChangedFiles(ctx context.Context, agentName string, sessionID *string, diffMode, stamp string, count int) (string, bool, error) {
+	if count <= 0 || stamp == "" {
+		return "", false, nil
+	}
+	now := nowUTC()
+	ok := false
+	err := s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		where, args := "agent_name = ? AND session_id IS NULL AND diff_mode = ?", []any{agentName, diffMode}
+		if sessionID != nil {
+			where, args = "session_id = ? AND diff_mode = ?", []any{*sessionID, diffMode}
+		}
+		var total, matching int
+		if err := tx.QueryRowxContext(ctx,
+			`SELECT COUNT(*), COALESCE(SUM(recorded_at = ?), 0) FROM git_changed_files WHERE `+where,
+			append([]any{stamp}, args...)...).Scan(&total, &matching); err != nil {
+			return err
+		}
+		if total != count || matching != count {
+			return nil
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE git_changed_files SET recorded_at = ? WHERE `+where,
+			append([]any{now}, args...)...); err != nil {
+			return err
+		}
+		ok = true
+		return nil
+	})
+	if err != nil || !ok {
+		return "", false, err
+	}
+	return now, true, nil
 }
 
 // GetChangedFiles returns cached changed files for an agent/session and diff mode.
