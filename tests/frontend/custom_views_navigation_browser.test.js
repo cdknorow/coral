@@ -56,5 +56,5 @@ if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
         // A view that navigates is stopped and the user is told.
         const stopped = await ev(`document.querySelector('#agentic-panel-custom-view-300')?.textContent || ''`);
         console.log('custom_views_navigation_browser.test.js: ok (' + names.length + ' vectors, 0 hits; first view panel: ' + JSON.stringify(stopped.slice(0, 70)) + ')');
-    } finally { await c.close(); server.close(); }
+    } finally { await c.close(); server.closeAllConnections(); server.close(); } // Chrome's keep-alive socket would hold close() ~90s
 })().catch(e => { console.error(e); process.exit(1); });

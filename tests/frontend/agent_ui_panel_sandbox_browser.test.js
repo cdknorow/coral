@@ -188,5 +188,5 @@ if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
             console.log(`  mutant "${n}": caught (${leaks.length} leaks, ${hits.length} hits)`);
         }
         console.log(`agent_ui_panel_sandbox_browser.test.js: ok (${names.length} vectors + probes, 0 hits on the real host; ${Object.keys(mutants).length} mutants all caught)`);
-    } finally { await c.close(); counting.close(); mutantServer.close(); }
+    } finally { await c.close(); for (const s of [counting, mutantServer]) { s.closeAllConnections(); s.close(); } } // Chrome's keep-alive sockets would hold close() ~90s
 })().catch(e => { console.error(e); process.exit(1); });
