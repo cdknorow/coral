@@ -335,6 +335,25 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 
 	// Context window from live sessions
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
+	capabilitiesMap := make(map[string]*string, len(allLive))
+	for _, ls := range allLive {
+		capabilitiesMap[ls.SessionID] = ls.Capabilities
+	}
+
+	// Git state, as /api/sessions/live sends it (branch, repo_name, git_state).
+	gitStates := map[string]*store.GitSnapshot{}
+	if h.gs != nil {
+		sessionAgents := make(map[string]string, len(agents))
+		for _, a := range agents {
+			if a.SessionID != "" {
+				sessionAgents[a.SessionID] = a.AgentName
+			}
+		}
+		if states, err := h.gs.GetLiveGitState(ctx, sessionAgents); err == nil && states != nil {
+			gitStates = states
+		}
+	}
+
 	ctxModelMap := make(map[string]*string, len(allLive))
 	createdAtMap := make(map[string]string, len(allLive))
 	sleepingMap := make(map[string]bool, len(allLive))
@@ -413,6 +432,8 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			entry["token_output"] = usage.OutputTokens
 			entry["token_cost_usd"] = usage.CostUSD
 		}
+		entry["branch"], entry["repo_name"], entry["git_state"] = gitListFields(lookupGitState(gitStates, sid, agent.AgentName))
+		addCapabilities(entry, capabilitiesMap[sid])
 		addContextUsage(entry, ctxModelMap[sid], latestTurnCtx[sid])
 		liveSIDs[sid] = true
 		sessions = append(sessions, entry)
@@ -462,6 +483,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"first_prompt":          h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
 		addContextUsage(sessions[len(sessions)-1], nil, 0)
+		addCapabilities(sessions[len(sessions)-1], ls.Capabilities)
 	}
 
 	return sessions, nil

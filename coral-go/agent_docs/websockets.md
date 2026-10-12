@@ -47,7 +47,13 @@ No query parameters required.
       "board_job_title": "Task Title",
       "board_unread": 0,
       "log_path": "/path/to/log",
-      "sleeping": false
+      "sleeping": false,
+      "branch": "feature/x",
+      "repo_name": "acme/widgets",
+      "git_state": {"is_worktree": true, "base_branch": "main", "ahead": 2, "behind": 1, "dirty": 3},
+      "capabilities": {"allow": ["Read", "Edit"], "deny": ["Bash"]},
+      "context_window": 200000,
+      "context_pct": 20
     }
   ],
   "active_runs": []
@@ -71,7 +77,17 @@ No query parameters required.
 - `removed`: Session IDs that are no longer live.
 - `active_runs`: Only sent when the active runs list changes.
 
-If nothing changed since the last poll, no message is sent.
+If nothing changed since the last poll, no diff is sent. Instead, when a
+connection has received nothing for 15 seconds, the server sends a heartbeat:
+
+```json
+{"type": "coral_heartbeat"}
+```
+
+It carries no data and clients may ignore it. It comes from the same loop
+that builds the session list, so a client holding a long-lived feed (such as
+a hub) can use it to tell an idle server from one whose session list has
+stopped updating.
 
 ### Poll Interval
 
@@ -83,7 +99,7 @@ Configurable via `WSPollIntervalS` in server config. Default: **5 seconds**.
 |-------|------|-------------|
 | `status` | string | Human-readable status from log parsing |
 | `summary` | string | Current activity summary |
-| `staleness_seconds` | float | Seconds since last log activity |
+| `staleness_seconds` | number | Seconds since last log activity, rounded down to the unit the dashboard shows (whole seconds under 1 min, whole minutes under 1 h, then whole hours) |
 | `waiting_for_input` | bool | Agent is waiting for user input (notification event) |
 | `done` | bool | Agent has stopped (stop event) |
 | `working` | bool | Agent is actively running tools |
@@ -92,6 +108,19 @@ Configurable via `WSPollIntervalS` in server config. Default: **5 seconds**.
 | `changed_file_count` | int | Number of files changed by agent |
 | `board_project` | string | Associated message board name |
 | `board_unread` | int | Unread board messages |
+| `branch` | string \| null | Current git branch, null when unknown |
+| `repo_name` | string \| null | `owner/repo` parsed from the git remote, null when unknown |
+| `git_state` | object \| null | Worktree/base-branch state: `is_worktree`, `base_branch`, `ahead`, `behind`, `dirty`. Null unless the agent is in a worktree or its branch has a known base |
+| `capabilities` | object | The agent's tool permissions (`allow`/`deny` lists); absent when none were set |
+| `context_window` | int \| null | Model context window in tokens, null when the model is unknown |
+| `context_pct` | int \| null | Latest turn's context use as a whole percentage of `context_window` (0-100), null when unknown |
+
+These six fields have the same names, types and values as in
+`GET /api/sessions/live`, so a client following this feed does not need to
+fetch the list as well. Some keys can be absent rather than null: entries for
+sleeping sessions omit `git_state` and `repo_name`, and `capabilities` is
+omitted when none were set. Clients should treat an absent key and `null` the
+same.
 
 ---
 

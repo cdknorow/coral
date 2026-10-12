@@ -781,14 +781,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 		sid := agent.SessionID
 
-		// Resolve git state: try session_id first, then agent name
-		var git *store.GitSnapshot
-		if sid != "" {
-			git = gitState[sid]
-		}
-		if git == nil {
-			git = gitState[agent.AgentName]
-		}
+		git := lookupGitState(gitState, sid, agent.AgentName)
 
 		// Resolve changed file count (from Write/Edit tool events)
 		fc := 0
@@ -830,26 +823,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			boardUnread = allUnread[tmuxName]
 		}
 
-		var branchVal any
-		var repoNameVal any
-		var worktreeVal any
-		if git != nil {
-			branchVal = git.Branch
-			if git.Worktree || git.BaseBranch != "" {
-				worktreeVal = map[string]any{
-					"is_worktree": git.Worktree,
-					"base_branch": git.BaseBranch,
-					"ahead":       git.Ahead,
-					"behind":      git.Behind,
-					"dirty":       git.DirtyCount,
-				}
-			}
-			if git.RemoteURL != nil {
-				if rn := gitutil.ParseRepoName(*git.RemoteURL); rn != "" {
-					repoNameVal = rn
-				}
-			}
-		}
+		branchVal, repoNameVal, worktreeVal := gitListFields(git)
 
 		var iconVal any
 		if ic, ok := icons[sid]; ok && sid != "" {
@@ -904,9 +878,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			if extra.Model != nil && *extra.Model != "" {
 				entry["model"] = *extra.Model
 			}
-			if extra.Capabilities != nil && *extra.Capabilities != "" && json.Valid([]byte(*extra.Capabilities)) {
-				entry["capabilities"] = json.RawMessage(*extra.Capabilities)
-			}
+			addCapabilities(entry, extra.Capabilities)
 		}
 
 		// Include token usage data if available
@@ -985,9 +957,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		if ls.Model != nil && *ls.Model != "" {
 			entry["model"] = *ls.Model
 		}
-		if ls.Capabilities != nil && *ls.Capabilities != "" && json.Valid([]byte(*ls.Capabilities)) {
-			entry["capabilities"] = json.RawMessage(*ls.Capabilities)
-		}
+		addCapabilities(entry, ls.Capabilities)
 	}
 
 	if snap := h.remoteSnapshot(); snap.Configured() {
