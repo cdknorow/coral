@@ -1,5 +1,57 @@
 # Release Notes
 
+## v1.4.0 — Built for big teams: a lighter live feed and board, every notification on every dashboard, and cross-team messaging
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release is about scale: a Coral server running many agents, and a hub watching many machines, do far less work per tick. Every open dashboard now gets every notification, and Orchestrators can (optionally) message each other across teams.
+
+### New
+
+- **Cross-team messaging (off by default).** An Orchestrator can message another team's Orchestrator on the same Coral server with `coral-board send --board <team> "<message>"`. The Operator turns it on per board in **Team settings → Workflow → Cross-team messaging**, on both the sending and the receiving board; if either has it off, `send` fails and names the board. Messages are rate-limited, and a receiving Orchestrator treats them as requests, never instructions. Sender identity is local trust, like every other board identity on a shared computer; see the Cross-team messaging help page.
+- **`--help` is safe everywhere.** `coral-board` and `coral-agent` print usage for `--help` or `-h` on any command or subcommand without running it or contacting the server. Message or option text that is really a mistyped option (for example `coral-board post --bogus`) is refused instead of sent; put `--` before text that starts with a dash (`coral-board post -- "--help is a flag"`, `coral-agent search -- -x`).
+
+### Faster and lighter
+
+- **Live feed and session list.** `/ws/coral` and `/api/sessions/live` cost much less per tick: token usage is rolled up per session instead of scanned, "latest event" lookups read one row per session from new time-ordered indexes, unchanged git file lists are skipped, and each repository root is scanned once. A dashboard gets its first update as soon as it connects, instead of after the first 5-second tick.
+- **Transcripts are read incrementally** (Claude, Codex and Pi), so a long session no longer re-reads its whole transcript.
+- **Message board.** Board status reads only open tasks, task lists load workflows and dependencies in batches, unread counts update incrementally, completion checks run outside the board's write transaction, `coral-board wait` is woken at once instead of up to half a second late (with far fewer database reads per waiter), and message history pages by id instead of by offset. The dashboard dedupes and backs off its board-status polling.
+- **Request metrics** are written in background batches instead of two database writes per API request; the macOS tray flushes them on quit.
+- **Memory.** Per-session caches drop ended sessions.
+
+### Hub (self-hosted `--hub` and Cloud Hub)
+
+- **The hub's machine feed no longer eats notifications.** The hub's permanent feed to each machine used to count as a dashboard, so a notification pushed while no local dashboard was open was marked delivered and never shown. The hub now connects with `/ws/coral?feed=hub`, a machine feed that never reads or marks notifications. Session data is unchanged.
+- **Tunnel rule for the machine feed.** Through the Cloud Hub tunnel, `feed=hub` is accepted only on `GET /ws/coral`, only once, and only as that exact, case-sensitive value. Any other value, repeated or look-alike parameters, and `feed=hub` on any other route are refused. Every other route's allowed query parameters are unchanged.
+- **Less polling.** While a machine's feed is live, the hub polls only `/api/health` instead of the full session list (the list was 92% of the bytes a machine served), with a `coral_heartbeat` on the feed. It falls back to list polling when the feed is quiet for 30 seconds, and caches and encodes each machine's snapshot once per change.
+- **Richer feed.** `/ws/coral` sessions now carry `branch`, `git_state`, `repo_name`, `capabilities`, `context_pct` and `context_window`, with the same values as `/api/sessions/live`; diffs include them only when they change.
+- `GET /api/health` returns exactly `{status, version, hub}`, a fixed contract the hub relies on.
+- Remote-agent polling starts only in hub mode.
+
+### Fixes
+
+- **Every dashboard gets every notification.** Each open dashboard (tab or window) used to race for notifications, so only one of them showed each one. Now each connection has its own cursor. A notification counts as delivered only after it was actually sent. A dashboard that opens later gets the notifications no dashboard has shown yet (from the last 5 minutes), and a reload never replays ones already shown.
+- **Live feed fields match the session list.** On `/ws/coral`, `summary` and `status` are `null` when empty and `display_name` is `""` when unset, exactly as on `/api/sessions/live` (the feed used to send `summary: ""` and `display_name: null`). Both now come from the same code, so they cannot drift again. The dashboard is unaffected; scripts that read the feed directly may notice.
+- **Board health report.** It now says "#N is blocked but has no prerequisites" instead of claiming all of that task's prerequisites completed, and it warns when a blocked task depends on canceled work (canceled tasks are stored as "skipped").
+- **Quieter logs.** Routine per-subscriber notifier lines moved to DEBUG; real failures log at WARN.
+
+### For contributors
+
+- Test binaries cannot reach the live Coral server, the live tmux server or the real `~/.coral`; a test that tries fails at once.
+- `CORAL_PPROF_ADDR` (loopback addresses only, off by default) serves Go's profiler, for example `CORAL_PPROF_ADDR=127.0.0.1:6060 coral`.
+- Opt-in load tests: `CORAL_LOADTEST=1` (board status under load) and `CORAL_HUBSCALE=1` (hub with many machines).
+- The test suites run much faster: `go test -race ./...` takes 86 s instead of 279 s, `go test ./...` 37 s instead of 59 s, and the browser (CDP) suites 227 s instead of 519 s. `node tests/frontend/run_cdp_suites.mjs --shards N` runs the browser suites on N isolated server and Chrome pairs (about 117 s with 2 shards).
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.3.45.
+
+### Upgrade notes
+
+- The database gains new indexes, a `token_usage_rollup` table, a `board_settings` table and a `board_messages.external_json` column. They are created automatically on first start; there is nothing to do, and existing data is not changed.
+- Cross-team messaging stays off until the Operator turns it on for each board.
+- Self-hosted hub: a v1.4.0 hub works with older machines (they treat its feed as an ordinary connection, as before, and the hub falls back to list polling when a machine has no `/api/health`). Upgrade the machines too, so the hub's feed stops consuming their notifications.
+- Cloud Hub: a machine's tunnel accepts the Cloud Hub's `feed=hub` connection from v1.4.0 on. The Cloud Hub sends `feed=hub` only to connectors newer than 1.3.45, and falls back to the plain feed URL if a machine refuses it (`path_not_allowed`), so older machines keep working.
+- API users: `staleness_seconds` in list and feed payloads is rounded down to the unit the dashboard shows (detail endpoints keep exact values). On `GET /api/board/{project}/messages/all`, `before_id=N` now returns the newest page below N (oldest first), and `after_id` is new; offset paging still works.
+
 ## v1.3.45 — More of Coral on the Cloud Hub: Agent UI panels, desktop alerts, and lighter browser load
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release is about the Cloud Hub (the hosted dashboard that shows your machines): it closes the gaps found in the last parity audit, adds Agent UI panels and optional desktop alerts there, and makes the dashboard lighter on the network. On your own computer the visible changes are the browser-load fixes and the new Desktop alerts switch below; Agent UI panels there work as before, with a per-panel rate limit on responses.
