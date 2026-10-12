@@ -7,6 +7,7 @@ import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, showToast, escapeHtml, dbg } from './utils.js';
 import { serverWsBase, identityKey, sessionServer } from './server_base.js';
+import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 
 export function connectCoralWs() {
@@ -119,9 +120,11 @@ export function handleCoralMessage(data) {
                     const agentType = s.agent_type;
                     const sessionId = s.session_id;
                     const sessionSrv = sessionServer(s);
-                    showNotificationToast(label, detail, () => {
-                        import('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId, sessionSrv));
-                    });
+                    const openSession = () => import('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId, sessionSrv));
+                    showNotificationToast(label, detail, openSession);
+                    // Opt-in desktop alert while this tab is in the background; names only.
+                    const srvLabel = (state.servers || []).find(x => x.id === sessionSrv);
+                    notifyNeedsInput({ agent: s.display_name || s.name, where: srvLabel ? srvLabel.label : '', tag: id, onClick: openSession });
                 }
                 state.prevWaitingState[id] = !!s.waiting_for_input;
 
