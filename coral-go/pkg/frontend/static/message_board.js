@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr } from './utils.js';
+import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge } from './utils.js';
 import { state } from './state.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
@@ -295,6 +295,7 @@ function renderMessages(messages) {
             <div class="mb-message-header">
                 ${checkbox}
                 <span class="mb-agent-name" style="color:${color}">${m.icon ? escapeHtml(m.icon) + ' ' : ''}${escapeHtml(agent)}</span>
+                ${externalMessageBadge(m)}
                 <span class="mb-message-time">${formatTime(m.created_at)}</span>
                 <button class="mb-delete-msg-btn" onclick="deleteBoardMessage(${Number(m.id)})" title="Delete message">&times;</button>
             </div>

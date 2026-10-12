@@ -88,6 +88,11 @@ export async function showTeamWorkingMode(team, options = {}) {
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
       </fieldset>
+      <fieldset class="team-settings-section cross-team-section">
+        <legend>Cross-team messaging</legend>
+        <label><input type="checkbox" name="cross_team_messaging"> Allow messages between this team's Orchestrator and other teams' Orchestrators</label>
+        <p class="working-mode-hint">Off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>
+      </fieldset>
       </section>
       <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" data-settings-panel="prompts" tabindex="0" hidden>
       <fieldset class="team-settings-section prompt-inspection-section">
@@ -142,6 +147,8 @@ export async function showTeamWorkingMode(team, options = {}) {
     const { server: teamServer, name: teamName } = splitKey(team);
     const workingModeURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode`, teamServer);
     const presetsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/working-mode/presets`, teamServer);
+    const boardSettingsURL = serverUrl(`/api/board/${encodeURIComponent(teamName)}/settings`, teamServer);
+    let boardSettingsLoaded = false;
     const inspectionURL = serverUrl(`/api/settings/prompt-inspection?board=${encodeURIComponent(teamName)}`, teamServer);
     let presets = [];
     let workingMode = null;
@@ -251,8 +258,9 @@ export async function showTeamWorkingMode(team, options = {}) {
     async function load() {
         setStatus('Loading…');
         try {
-            const [modeResponse, presetsResponse, settingsResponse, inspectionResponse] = await Promise.all([
+            const [modeResponse, presetsResponse, settingsResponse, inspectionResponse, boardSettingsResponse] = await Promise.all([
                 fetch(workingModeURL), fetch(presetsURL), fetch('/api/settings'), fetch(inspectionURL),
+                fetch(boardSettingsURL).catch(() => null),
             ]);
             if (!modeResponse.ok) throw new Error('Could not load working mode. Close and reopen to retry.');
             if (!presetsResponse.ok) throw new Error(await jsonError(presetsResponse, 'Could not load workflow presets.'));
@@ -271,6 +279,13 @@ export async function showTeamWorkingMode(team, options = {}) {
                 form.elements.board_health_monitor.disabled = true;
                 const hint = dialog.querySelector('.global-settings-section .working-mode-hint');
                 if (hint) hint.textContent = 'Could not load global settings; changes to global settings are disabled.';
+            }
+            if (boardSettingsResponse?.ok) {
+                form.elements.cross_team_messaging.checked = Boolean((await boardSettingsResponse.json()).cross_team_messaging);
+                boardSettingsLoaded = true;
+            } else {
+                // An older server has no board settings: leave the switch off and disabled.
+                form.elements.cross_team_messaging.disabled = true;
             }
             inspection.innerHTML = inspectionResponse.ok ? renderInspection(await inspectionResponse.json(), workingMode) : '<p class="working-mode-hint">Prompt inspection is unavailable.</p>';
             setStatus('');
@@ -291,6 +306,12 @@ export async function showTeamWorkingMode(team, options = {}) {
                 const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' }) });
                 if (!response.ok) healthError = 'Could not save board health setting.';
             } catch (error) { healthError = error.message; }
+        }
+        if (boardSettingsLoaded) {
+            try {
+                const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', cross_team_messaging: form.elements.cross_team_messaging.checked }) });
+                if (!response.ok) modeError = [modeError, await jsonError(response, 'Could not save cross-team messaging.')].filter(Boolean).join('; ');
+            } catch (error) { modeError = [modeError, error.message].filter(Boolean).join('; '); }
         }
         if (!modeError && !healthError) setStatus('Saved. Working mode applies on first claim; global health monitor applies on server restart.');
         else if (modeError && healthError) setStatus(`Save failed: ${modeError}; ${healthError}`, true);

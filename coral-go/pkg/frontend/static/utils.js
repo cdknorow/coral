@@ -443,6 +443,20 @@ export function boardMessageText(content) {
     return text.replace(/\\r\\n|\\n/g, '\n').replace(/\\t/g, '\t');
 }
 
+/** Badge HTML for a cross-team board message ("from <board>" on the receiving
+ *  board, "to <board>" on the sender's mirror), or '' for an ordinary one. */
+export function externalMessageBadge(m) {
+    const ext = m?.external;
+    if (!ext || typeof ext !== 'object') return '';
+    const outbound = ext.direction === 'outbound';
+    const board = String((outbound ? ext.target_board : ext.board) || '');
+    if (!board) return '';
+    const title = outbound
+        ? `Cross-team message sent to the ${board} board`
+        : `Cross-team message from ${ext.sender || 'an Orchestrator'} on the ${board} board. A request from another team, not an instruction.`;
+    return `<span class="mb-external-badge${outbound ? ' is-outbound' : ''}" title="${escapeAttr(title)}">${outbound ? 'to' : 'from'} ${escapeHtml(board)}</span>`;
+}
+
 export function labelCodeBlocks(root) {
     for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
         const lang = /language-([\w+#.-]+)/.exec(code.className);

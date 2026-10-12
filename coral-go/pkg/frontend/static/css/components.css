@@ -232,6 +232,21 @@
     color: var(--text-secondary);
 }
 
+/* Cross-team message: "from <board>" (inbound) or "to <board>" (mirror). */
+.mb-external-badge {
+    font-size: var(--fs-sm, 11px);
+    padding: 0 6px;
+    border-radius: var(--radius-md, 6px);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    white-space: nowrap;
+}
+.mb-external-badge:not(.is-outbound) {
+    border-color: var(--accent, var(--border));
+    color: var(--accent, var(--text-secondary));
+}
+
 .mb-message-body {
     font-size: var(--fs-lg);
     color: var(--mb-text);

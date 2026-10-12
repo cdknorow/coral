@@ -107,6 +107,9 @@ type Message struct {
 	CreatedAt     string  `db:"created_at" json:"created_at"`
 	JobTitle      string  `db:"job_title" json:"job_title,omitempty"`
 	TargetGroupID *string `db:"target_group_id" json:"target_group_id,omitempty"`
+	// External is the origin envelope of a cross-team message (inbound on the
+	// receiving board, outbound on the sender's mirror copy); absent otherwise.
+	External RawJSON `db:"external_json" json:"external,omitempty"`
 	// Legacy column — kept for DB compat, mirrors SubscriberID for new rows.
 	SessionID string `db:"session_id" json:"-"`
 }
@@ -391,6 +394,7 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_tasks ADD COLUMN cache_read_tokens INTEGER",
 		"ALTER TABLE board_tasks ADD COLUMN cache_write_tokens INTEGER",
 		"ALTER TABLE board_tasks ADD COLUMN revision INTEGER NOT NULL DEFAULT 1",
+		"ALTER TABLE board_messages ADD COLUMN external_json TEXT",
 	}
 	for _, ddl := range alterColumns {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
@@ -448,6 +452,9 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	}
 
 	if err := s.ensureWaitsSchema(ctx); err != nil {
+		return err
+	}
+	if err := s.ensureBoardSettingsSchema(ctx); err != nil {
 		return err
 	}
 
@@ -730,7 +737,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		args = append(args, fetchLimit)
 
 		query := fmt.Sprintf(
-			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.created_at,
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
@@ -753,7 +760,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		}
 	} else {
 		err = s.db.SelectContext(ctx, &messages,
-			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.created_at,
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
@@ -836,7 +843,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 		err = s.db.SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			        m.target_group_id
+			        m.target_group_id, m.external_json
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			 WHERE m.project = ? AND m.id < ?
@@ -847,7 +854,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 		err = s.db.SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			        m.target_group_id
+			        m.target_group_id, m.external_json
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			 WHERE m.project = ?
@@ -859,7 +866,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 			`SELECT * FROM (
 			    SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			           COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			           m.target_group_id
+			           m.target_group_id, m.external_json
 			    FROM board_messages m
 			    LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			    WHERE m.project = ?
@@ -873,7 +880,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 // listMessagesSelect is the dashboard message row; callers append the WHERE.
 const listMessagesSelect = `SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 	        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-	        m.target_group_id
+	        m.target_group_id, m.external_json
 	 FROM board_messages m
 	 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id`
 
@@ -919,7 +926,7 @@ func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) 
 	err := s.db.GetContext(ctx, &msg,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-		        m.target_group_id
+		        m.target_group_id, m.external_json
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 		 WHERE m.id = ?`, id)
@@ -942,7 +949,7 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 	err := s.db.SelectContext(ctx, &messages,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(bs.job_title, m.subscriber_id, 'Unknown') as job_title,
-		        m.target_group_id
+		        m.target_group_id, m.external_json
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers bs ON m.project = bs.project AND m.subscriber_id = bs.subscriber_id
 		 WHERE lower(m.content) LIKE lower(?)

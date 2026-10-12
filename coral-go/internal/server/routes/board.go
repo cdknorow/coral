@@ -51,6 +51,8 @@ type BoardHandler struct {
 	subscriberReminderOps map[string]*sync.Mutex
 	// deleteSubscriberReminder is the durable delete; tests inject failures.
 	deleteSubscriberReminder func(ctx context.Context, project, subscriber string) error
+	// crossTeam rate-limits cross-team messages per sender and target.
+	crossTeam crossTeamLimiter
 }
 
 // SetTaskArtifactWriter configures persistence of task patches under .coral.

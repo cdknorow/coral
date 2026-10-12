@@ -46,6 +46,7 @@ GET /api/board/{project}/messages/all view
 GET /api/board/{project}/messages/check view
 GET /api/board/{project}/paused view
 GET /api/board/{project}/peek view
+GET /api/board/{project}/settings view
 GET /api/board/{project}/status view
 GET /api/board/{project}/subscribers view
 GET /api/board/{project}/tasks view
@@ -182,6 +183,7 @@ POST /api/agent/tasks/{taskID}/publish never
 POST /api/agent/ui-request never
 POST /api/agent/ui/{id}/events never
 POST /api/board/remotes never
+POST /api/board/{project}/external-messages interact
 POST /api/board/{project}/groups/{groupID}/members interact
 POST /api/board/{project}/messages interact
 POST /api/board/{project}/messages/mark-read interact
@@ -267,6 +269,7 @@ POST /api/workflows/by-name/{name}/trigger launch
 POST /api/workflows/runs/{runID}/kill interact
 POST /api/workflows/{workflowID}/trigger launch
 PUT /api/agent/ui/{id} never
+PUT /api/board/{project}/settings interact
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} interact
 PUT /api/cloud/max-mode never
