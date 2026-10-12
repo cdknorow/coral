@@ -27,9 +27,10 @@ type Notification struct {
 // NotificationStore holds UI notifications for the /ws/coral connections.
 // Every connected dashboard receives each notification: a connection reads
 // past its own cursor (Since) rather than removing items, and items expire
-// after maxAge. A notification no dashboard has received yet waits for the
-// next one to connect (StartCursor); one already shown somewhere is not
-// replayed to a dashboard that connects later, e.g. after a reload.
+// after maxAge. A notification counts as delivered only once some connection
+// has written it successfully (Ack). A dashboard that connects later receives
+// exactly the live notifications that were never delivered (Connect), so a
+// failed write does not lose one and a reload does not replay one.
 type NotificationStore struct {
 	mu     sync.Mutex
 	items  []storedNotification // ascending ID
@@ -71,37 +72,56 @@ func (ns *NotificationStore) Push(n Notification) Notification {
 	return n
 }
 
-// StartCursor is the cursor for a newly connected dashboard: it will receive
-// every live notification no dashboard has received yet, and all later ones.
-func (ns *NotificationStore) StartCursor() int64 {
+// Connect starts a dashboard connection: backlog is every live notification
+// no dashboard has received yet (oldest first), and cursor is where Since
+// continues from.
+func (ns *NotificationStore) Connect() (backlog []Notification, cursor int64) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	ns.prune()
 	for _, item := range ns.items {
 		if !item.delivered {
-			return item.n.ID - 1
+			backlog = append(backlog, item.n)
 		}
 	}
-	return ns.nextID
+	return backlog, ns.nextID
 }
 
 // Since returns the live notifications after cursor, oldest first, and the
-// cursor to pass next time.
+// cursor to pass next time. It does not mark them delivered; call Ack once
+// they have been written.
 func (ns *NotificationStore) Since(cursor int64) ([]Notification, int64) {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
 	ns.prune()
 	var out []Notification
-	for i := range ns.items {
-		if ns.items[i].n.ID > cursor {
-			out = append(out, ns.items[i].n)
-			ns.items[i].delivered = true
+	for _, item := range ns.items {
+		if item.n.ID > cursor {
+			out = append(out, item.n)
 		}
 	}
 	if ns.nextID > cursor {
 		cursor = ns.nextID
 	}
 	return out, cursor
+}
+
+// Ack marks notifications delivered after a connection wrote them.
+func (ns *NotificationStore) Ack(sent []Notification) {
+	if len(sent) == 0 {
+		return
+	}
+	ids := make(map[int64]bool, len(sent))
+	for _, n := range sent {
+		ids[n.ID] = true
+	}
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	for i := range ns.items {
+		if ids[ns.items[i].n.ID] {
+			ns.items[i].delivered = true
+		}
+	}
 }
 
 func (ns *NotificationStore) clock() time.Time {

@@ -80,9 +80,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("feed") == "hub" {
 		notifications = nil
 	}
+	// backlog: notifications no dashboard had received when this one
+	// connected; they go out with the first message.
 	var notifCursor int64
+	var backlog []Notification
 	if notifications != nil {
-		notifCursor = notifications.StartCursor()
+		backlog, notifCursor = notifications.Connect()
 	}
 
 	pollInterval := time.Duration(h.cfg.WSPollIntervalS) * time.Second
@@ -151,8 +154,19 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		// Notifications this connection has not seen yet (every dashboard
 		// gets each one).
 		var pending []Notification
+		var nextCursor int64
 		if notifications != nil {
-			pending, notifCursor = notifications.Since(notifCursor)
+			var fresh []Notification
+			fresh, nextCursor = notifications.Since(notifCursor)
+			pending = append(backlog, fresh...)
+		}
+		// sent records a successful write: only then do these notifications
+		// count as delivered and the cursor move past them.
+		sent := func() {
+			if notifications != nil {
+				notifications.Ack(pending)
+				backlog, notifCursor = nil, nextCursor
+			}
 		}
 
 		if firstMessage {
@@ -170,6 +184,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if err := wsjson.Write(ctx, conn, msg); err != nil {
 				return
 			}
+			sent()
 			prevServersJSON = serversJSON
 			prevSessions = currSessions
 			prevRunsJSON = currRunsStr
@@ -225,6 +240,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if err := wsjson.Write(ctx, conn, payload); err != nil {
 				return
 			}
+			sent()
 			lastSent = time.Now()
 			prevServersJSON = serversJSON
 			prevSessions = currSessions

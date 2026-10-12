@@ -20,22 +20,34 @@ func notificationIDs(ns []Notification) []int64 {
 	return ids
 }
 
+// deliver is one dashboard tick: read what is new and, when the write
+// succeeds, acknowledge it.
+func deliver(ns *NotificationStore, cursor int64, writeOK bool) ([]Notification, int64) {
+	got, next := ns.Since(cursor)
+	if !writeOK {
+		return nil, cursor
+	}
+	ns.Ack(got)
+	return got, next
+}
+
 func TestNotificationStore_EveryDashboardGetsEachNotification(t *testing.T) {
 	ns := NewNotificationStore()
-	a, b := ns.StartCursor(), ns.StartCursor()
+	_, a := ns.Connect()
+	_, b := ns.Connect()
 	first := ns.Push(Notification{Title: "one"})
 
-	got, a := ns.Since(a)
+	got, a := deliver(ns, a, true)
 	assert.Equal(t, []int64{first.ID}, notificationIDs(got))
-	got, b = ns.Since(b)
+	got, b = deliver(ns, b, true)
 	assert.Equal(t, []int64{first.ID}, notificationIDs(got), "a second dashboard gets it too")
 
-	got, a = ns.Since(a)
+	got, a = deliver(ns, a, true)
 	assert.Empty(t, got, "each dashboard gets a notification once")
 	second := ns.Push(Notification{Title: "two"})
-	got, _ = ns.Since(b)
+	got, _ = deliver(ns, b, true)
 	assert.Equal(t, []int64{second.ID}, notificationIDs(got))
-	got, _ = ns.Since(a)
+	got, _ = deliver(ns, a, true)
 	assert.Equal(t, []int64{second.ID}, notificationIDs(got))
 }
 
@@ -43,21 +55,49 @@ func TestNotificationStore_PendingWaitsForNextDashboardWithoutReplay(t *testing.
 	ns := NewNotificationStore()
 	early := ns.Push(Notification{Title: "pushed with no dashboard open"})
 
-	first := ns.StartCursor()
-	got, _ := ns.Since(first)
-	assert.Equal(t, []int64{early.ID}, notificationIDs(got), "queued until a dashboard connects")
+	backlog, cursor := ns.Connect()
+	assert.Equal(t, []int64{early.ID}, notificationIDs(backlog), "queued until a dashboard connects")
+	ns.Ack(backlog)
+	got, _ := deliver(ns, cursor, true)
+	assert.Empty(t, got, "the backlog is not repeated by Since")
 
 	late := ns.Push(Notification{Title: "pushed after delivery"})
-	reload := ns.StartCursor() // e.g. a page reload or another tab
-	got, _ = ns.Since(reload)
-	assert.Equal(t, []int64{late.ID}, notificationIDs(got), "undelivered ones still arrive; already-shown ones are not replayed")
+	backlog, _ = ns.Connect() // e.g. a page reload or another tab
+	assert.Equal(t, []int64{late.ID}, notificationIDs(backlog))
+}
+
+// The only dashboard's write fails (socket closing): the notification is not
+// lost; the next dashboard still gets it.
+func TestNotificationStore_FailedWriteIsNotDelivered(t *testing.T) {
+	ns := NewNotificationStore()
+	_, only := ns.Connect()
+	n := ns.Push(Notification{Title: "build finished"})
+	got, _ := deliver(ns, only, false)
+	assert.Empty(t, got)
+
+	backlog, _ := ns.Connect()
+	assert.Equal(t, []int64{n.ID}, notificationIDs(backlog))
+}
+
+// Delivered and undelivered notifications interleave: a reload receives
+// exactly the undelivered ones, none of the delivered ones.
+func TestNotificationStore_ReloadGetsExactlyUndelivered(t *testing.T) {
+	ns := NewNotificationStore()
+	n1 := ns.Push(Notification{Title: "1"})
+	n2 := ns.Push(Notification{Title: "2"})
+	n3 := ns.Push(Notification{Title: "3"})
+	n4 := ns.Push(Notification{Title: "4"})
+	ns.Ack([]Notification{n1, n3}) // written somewhere; 2 and 4 never were
+
+	backlog, _ := ns.Connect()
+	assert.Equal(t, []int64{n2.ID, n4.ID}, notificationIDs(backlog))
 }
 
 func TestNotificationStore_Expiry(t *testing.T) {
 	now := time.Now()
 	ns := NewNotificationStore()
 	ns.now = func() time.Time { return now }
-	cursor := ns.StartCursor()
+	_, cursor := ns.Connect()
 	ns.Push(Notification{Title: "old"})
 	now = now.Add(6 * time.Minute)
 	fresh := ns.Push(Notification{Title: "fresh"})
