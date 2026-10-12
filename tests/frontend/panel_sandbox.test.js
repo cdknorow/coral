@@ -52,5 +52,41 @@ const { pathToFileURL } = require('url');
     // it relays exactly two message types, and rebuilds the event
     const relays = [...host.matchAll(/'coral-[a-z-]+'/g)].map(x => x[0]).filter((v, i, a) => a.indexOf(v) === i).sort();
     assert.deepStrictEqual(relays, ["'coral-panel-host-ready'", "'coral-panel-load'", "'coral-panel-navigated'", "'coral-ui-event'", "'coral-ui-result'"]);
+    // F1: a host frame that reloads (Expand moves the iframe) announces itself again and gets the cached HTML again.
+    {
+        const listeners = [], sent = [];
+        globalThis.window = { addEventListener(_, f) { listeners.push(f); }, removeEventListener() {} };
+        const win = { postMessage(msg) { sent.push(msg); } };
+        const frame = { contentWindow: win };
+        let ready = 0;
+        const panel = m.openPanel(frame, { onReady: () => ready++ });
+        const fire = type => listeners.forEach(f => f({ source: win, data: { type } }));
+        panel.setHtml('<p>hi</p>');
+        assert.strictEqual(sent.length, 0, 'not before the host is ready');
+        fire('coral-panel-host-ready');
+        assert.strictEqual(sent.length, 1);
+        fire('coral-panel-host-ready'); // reload
+        assert.strictEqual(sent.length, 2, 'the cached html is handed over again');
+        assert.deepStrictEqual(sent[1], { type: 'coral-panel-load', html: '<p>hi</p>' });
+        listeners.forEach(f => f({ source: {}, data: { type: 'coral-panel-host-ready' } }));
+        assert.strictEqual(sent.length, 2, 'only this host counts');
+    }
+
+    // F2: per-panel throttle: one in flight, ~2/s, ~100/min.
+    {
+        let t = 1000;
+        const th = m.createEventThrottle(() => t);
+        assert.strictEqual(th.tryStart(), '');
+        assert.match(th.tryStart(), /previous/, 'one in flight');
+        th.done(); t += 100;
+        assert.match(th.tryStart(), /slow down/, 'at most about 2 a second');
+        t += 500;
+        assert.strictEqual(th.tryStart(), ''); th.done();
+        let allowed = 2;
+        for (let i = 0; i < 300; i++) { t += 500; if (th.tryStart() === '') { allowed++; th.done(); } if (t - 1000 > 59000) break; }
+        assert.ok(allowed <= 100, 'no more than 100 in a minute: ' + allowed);
+        t += 60000;
+        assert.strictEqual(th.tryStart(), '', 'the window slides');
+    }
     console.log('panel_sandbox.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });

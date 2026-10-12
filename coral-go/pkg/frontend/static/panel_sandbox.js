@@ -56,9 +56,32 @@ export function openPanel(frame, { onNavigated, onReady } = {}) {
         if (e.source !== frame.contentWindow) return; // only this host
         const m = e.data;
         if (!m || typeof m !== 'object') return;
-        if (m.type === 'coral-panel-host-ready') { ready = true; trySend(); }
+        if (m.type === 'coral-panel-host-ready') {
+            // A repeat ready means the host frame was reloaded (moving an iframe, e.g. Expand, reloads it): hand the HTML over again.
+            if (ready) sent = false;
+            ready = true; trySend();
+        }
         else if (m.type === 'coral-panel-navigated' && onNavigated) onNavigated();
     };
     window.addEventListener('message', handler);
     return { setHtml(h) { html = String(h); trySend(); }, detach() { window.removeEventListener('message', handler); } };
+}
+
+/** Per-panel limit on panel events: one in flight, at most ~2 a second and ~100 a minute. `now` is injectable for tests.
+ *  tryStart() returns '' when the event may go ahead (then call done() when its request finishes) or the reason it may not. */
+export function createEventThrottle(now = () => Date.now(), { minGapMs = 500, perMinute = 100 } = {}) {
+    let inflight = false, last = -Infinity;
+    const stamps = [];
+    return {
+        tryStart() {
+            const t = now();
+            if (inflight) return 'Still sending the previous response.';
+            if (t - last < minGapMs) return 'Too many responses; slow down.';
+            while (stamps.length && t - stamps[0] >= 60000) stamps.shift();
+            if (stamps.length >= perMinute) return 'Too many responses this minute.';
+            inflight = true; last = t; stamps.push(t);
+            return '';
+        },
+        done() { inflight = false; },
+    };
 }

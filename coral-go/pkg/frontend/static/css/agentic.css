@@ -2548,6 +2548,7 @@ body.panel-dragging .agentic-state {
 .agent-ui-card header { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
 .agent-ui-card strong { overflow-wrap:anywhere; min-width:0; }
 .agent-ui-event-count { display:inline-block; margin-left:6px; padding:2px 6px; color:var(--text-secondary); background:var(--bg-secondary); border:1px solid var(--border); border-radius:999px; font-size:11px; font-weight:400; white-space:nowrap; }
+.agent-ui-authored { display:inline-block; margin-left:6px; padding:2px 6px; color:var(--warning, #b45309); border:1px solid currentColor; border-radius:999px; font-size:11px; font-weight:400; white-space:nowrap; }
 .agent-ui-card button, #agent-ui-expanded > button { padding:6px 10px; cursor:pointer; font:inherit; font-size: var(--fs-md); color:var(--text-primary); background:var(--bg-secondary); border:1px solid var(--border); border-radius: var(--radius-md); flex-shrink:0;
     min-height: var(--control-compact-height);
 }

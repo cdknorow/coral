@@ -4,6 +4,7 @@
 // MUTATION-CHECKED: with the sandbox, the child CSP or the host's frame-src weakened, it must fail.
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const dgram = require('node:dgram');
 const CDP = require('chrome-remote-interface');
 const base = process.env.CORAL_URL;
 if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
@@ -153,6 +154,22 @@ if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
         const real = await leaksOf('', 'real');
         assert.deepEqual(real, [], 'the real panel host leaks: ' + JSON.stringify(real));
         assert.deepEqual(hits, [], 'no request left any panel: ' + JSON.stringify(hits.slice(0, 5)));
+        // KNOWN GAPS (documented, NOT gates): neither is blocked by CSP in Chrome and neither is an HTTP request the counting server can see.
+        // dns-prefetch leaks a hostname lookup; WebRTC can send UDP (STUN) to an address of the panel's choosing. We report what Chrome does so a
+        // change in either direction is visible in the log; the visible "agent-authored panel" label is the user-facing mitigation.
+        {
+            const udp = dgram.createSocket('udp4'); let udpHits = 0; udp.on('message', () => { udpHits++; });
+            await new Promise(r => udp.bind(0, '127.0.0.1', r));
+            const gap = {
+                'dns-prefetch': `document.head.insertAdjacentHTML('beforeend','<link rel="dns-prefetch" href="//exfil-gap-check.invalid">')`,
+                'webrtc': `try { var pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:${udp.address().port}' }] }); pc.createDataChannel('x'); pc.createOffer().then(function (o) { return pc.setLocalDescription(o); }); } catch (e) {}`,
+            };
+            for (const [n, body] of Object.entries(gap)) await ev(`window.runPanel(${JSON.stringify('gap:' + n)}, ${JSON.stringify(page(body))}, '', '')`);
+            await sleep(3000);
+            console.log(`  known gaps (not gates): webrtc STUN packets seen on loopback: ${udpHits}; dns-prefetch: not observable from here`);
+            udp.close();
+            await ev(`for (const f of window.hostFrames) f.remove(); window.hostFrames.length = 0`);
+        }
         // A panel that navigates is stopped and the dashboard is told (when the navigation produced a second load).
         // MUTATION CHECK: each weakened host must be caught by the very same checks.
         for (const n of Object.keys(mutants)) {

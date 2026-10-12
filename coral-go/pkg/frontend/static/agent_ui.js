@@ -2,7 +2,7 @@
 import { state } from './state.js';
 import { addPendingMessage } from './live_chat.js';
 import { serverFetch, serverForSession, isCloud } from './server_base.js';
-import { createPanelFrame, openPanel, isPanelEvent, MAX_PANEL_BYTES, MAX_PANELS } from './panel_sandbox.js';
+import { createPanelFrame, openPanel, isPanelEvent, createEventThrottle, MAX_PANEL_BYTES, MAX_PANELS } from './panel_sandbox.js';
 
 let session = null;
 let generation = 0;
@@ -145,6 +145,11 @@ export async function refreshAgentUI() {
             metric.textContent = `${Number(panel.event_count || 0)} event${Number(panel.event_count || 0) === 1 ? '' : 's'}`;
             metric.title = 'Persisted interactions from this panel';
             title.append(' ', metric);
+            if (isCloud()) {
+                const label = document.createElement('span'); label.className = 'agent-ui-authored';
+                label.textContent = 'agent-authored panel'; label.title = 'This content was written by the agent and runs in a restricted frame. Open panels only from agents you trust.';
+                title.append(' ', label);
+            }
             const expand = document.createElement('button'); expand.innerHTML = '<span class="material-icons">open_in_full</span>'; expand.title = 'Expand panel';
             expand.setAttribute('aria-label', 'Expand panel');
             const popout = document.createElement('button'); popout.innerHTML = '<span class="material-icons">open_in_new</span>'; popout.title = 'Open in new tab';
@@ -169,7 +174,7 @@ export async function refreshAgentUI() {
                 frame.src = contentPath;
             }
             card.append(header, frame, status); container.append(card); card.hidden = activePanel !== panel.id;
-            const item = { card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
+            const item = { throttle: createEventThrottle(), card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
             dismiss.onclick = () => {
                 if (activePanel === panel.id) activePanel = 'home';
                 refreshAgentUI();
@@ -249,6 +254,12 @@ export function initAgentUI() {
         const { action, payload, requestId } = event.data;
         if (typeof requestId !== 'string' || requestId.length > 64) return;
         let error = null, result = {};
+        const refused = item.throttle.tryStart();
+        if (refused) {
+            item.status.textContent = refused;
+            event.source.postMessage({ type: 'coral-ui-result', requestId, error: refused }, '*');
+            return;
+        }
         try {
             if (typeof action !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(action)) throw new Error('Invalid action');
             const body = JSON.stringify({ revision: item.revision, action, payload });
@@ -264,6 +275,7 @@ export function initAgentUI() {
                 ? 'Response saved; agent notified.'
                 : 'Response saved; agent not notified' + (result.notify_error ? ': ' + result.notify_error : '.') + ' You can ask the agent to read it.';
         } catch (e) { error = e.message; item.status.textContent = error; }
+        item.throttle.done();
         event.source.postMessage({ type: 'coral-ui-result', requestId, error, id: result.id, notified: result.notified, notify_error: result.notify_error }, '*');
     });
 }
