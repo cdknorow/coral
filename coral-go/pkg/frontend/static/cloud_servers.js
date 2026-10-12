@@ -84,7 +84,7 @@ export const MODES = ['view', 'interact', 'launch'];
 
 export const MODE_INFO = {
     view: { label: 'View', text: 'Read terminals, chats, files, tasks and boards. Nothing you do here changes anything on the machine.' },
-    interact: { label: 'Interact', text: 'Also type into agents, change tasks and boards, and stop or delete work (kill agents, delete boards). Agents can run commands, so this can make the machine run code.' },
+    interact: { label: 'Interact', text: 'Also type into agents, change tasks and boards, and stop or delete work (kill agents, delete boards). Agents can run commands, so this can make the machine run code. It can also change board settings, including turning on cross-team messaging.' },
     launch: { label: 'Launch', text: 'Also start new agents and teams and browse the machine\'s folders.' },
 };
 

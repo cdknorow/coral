@@ -31,6 +31,7 @@ const { pathToFileURL } = require('url');
     for (const k of ['view', 'interact', 'launch']) assert.ok(m.MODE_INFO[k].text.length > 20);
     assert.match(m.MODE_INFO.interact.text, /run commands/);
     assert.match(m.MODE_INFO.interact.text, /delete boards/);
+    assert.match(m.MODE_INFO.interact.text, /board settings, including turning on cross-team messaging/);
     const cl = await import(pathToFileURL(path.join(dir, 'cloud.js')).href);
     for (const ok of ['/api/license/status', '/api/system/privacy', '/api/agent/ui', '/api/agent/ui/x']) assert.ok(cl.NO_HUB_ENDPOINT.test(ok), ok);
     for (const no of ['/api/themes/variables', '/api/themes', '/api/themes/Dark', '/api/settings', '/api/tags', '/api/views', '/api/servers', '/api/remote/x/api/license/status', '/api/sessions/live']) assert.ok(!cl.NO_HUB_ENDPOINT.test(no), no);
