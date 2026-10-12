@@ -68,12 +68,33 @@ function artifactType(item) {
 }
 
 // Paste into an agent's chat when it does not know how to publish an artifact.
-const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in the Artifacts tab):
-1. Upload the file: coral-agent artifact upload <file>   (prints a coral://artifacts/<digest> URI)
-2. Write a manifest, e.g. artifacts.json: [{"name": "<file name>", "uri": "coral://artifacts/<digest>"}]
-3. Attach it to a task result: coral-agent task complete <task-id> --artifacts artifacts.json --message "<summary>"
-   (no task yet? create and claim one first: coral-agent task add "<title>")
-Local paths like /tmp/<file> are not reachable by the user, so always upload first. Small text reports can go inline as "content" in the manifest. Full docs: artifacts.md in the Coral agent docs.`;
+const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in the Artifacts tab): run coral-agent artifact upload <file> (prints a coral://artifacts/<digest> URI).
+It appears in the Artifacts tab right away.
+Local paths like /tmp/<file> are not reachable by the user, so always upload. Full docs: artifacts.md in the Coral agent docs.`;
+
+const COPY_ICONS = {
+    copy: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2l-.8.8"/><path d="M9.5 6.5a3 3 0 0 0-4.2 0L3 8.8a3 3 0 0 0 4.2 4.2l.8-.8"/></svg>',
+    done: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.5 3 3 7-7"/></svg>',
+    failed: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h0"/></svg>',
+};
+
+// Copies the artifact's absolute URL, with the header copy button's check /
+// error icon feedback.
+function copyLinkButton(url, name) {
+    const button = el('button', 'team-artifacts-action team-artifact-icon-btn team-artifact-copy-link');
+    button.type = 'button';
+    button.innerHTML = COPY_ICONS.copy;
+    button.title = 'Copy link';
+    button.setAttribute('aria-label', `Copy link to ${name}`);
+    button.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(new URL(url, location.href).href);
+            button.innerHTML = COPY_ICONS.done;
+        } catch { button.innerHTML = COPY_ICONS.failed; }
+        setTimeout(() => { button.innerHTML = COPY_ICONS.copy; }, 1500);
+    });
+    return button;
+}
 
 function render() {
     const root = document.getElementById(`${panels[source]}-view`);
@@ -200,7 +221,7 @@ function render() {
             }
             if (link.preview) bindDownload(download, link.url, name);
             download.setAttribute('aria-label', `${link.preview ? 'Download' : 'Open'} ${name}`);
-            actions.append(download);
+            actions.append(download, copyLinkButton(link.url, name));
             actionCell.append(actions);
         } else actionCell.append(el('span', 'team-artifact-missing', item.available === false ? 'Missing' : 'Unavailable'));
         rows.append(row);
