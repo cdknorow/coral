@@ -64,8 +64,26 @@ const DEVICES = [
             await tap('.top-bar-settings-wrapper button, #top-bar-settings-btn');
             const over = await evaluate(`(() => { const m = document.querySelector('.top-bar-settings-menu'); if (!m) return 'no menu'; const b = m.getBoundingClientRect(); const top = document.elementFromPoint(b.x + b.width/2, b.y + 12); return m.contains(top) ? 'ok' : 'covered by ' + (top && (top.id || top.className)); })()`);
             assert.equal(over, 'ok', `${d.name}: settings menu is on top of the open panel`);
+            // Panel tab strip: the close button leads it and covers no tab at rest; every tab is reachable by scrolling.
+            const strip = await evaluate(`(() => { const s = document.querySelector('#agentic-state .agentic-state-tabs'); const x = document.getElementById('agentic-mobile-close-btn').getBoundingClientRect(); const tabs = [...s.children].filter(e => e !== document.getElementById('agentic-mobile-close-btn') && e.offsetParent); const overlap = tabs.filter(t => { const b = t.getBoundingClientRect(); return b.left < x.right && b.right > x.left; }).map(t => t.id); s.scrollLeft = s.scrollWidth; const last = tabs[tabs.length - 1].getBoundingClientRect(); const reach = last.right <= s.getBoundingClientRect().right + 1; s.scrollLeft = 0; return { xLeft: Math.round(x.left), overlap, reach, n: tabs.length }; })()`);
+            assert.ok(strip.xLeft <= 8, `${d.name}: the panel's close button leads the tab strip (left=${strip.xLeft})`);
+            assert.deepEqual(strip.overlap, [], `${d.name}: no tab is hidden behind the close button at rest`);
+            assert.ok(strip.reach, `${d.name}: the last of ${strip.n} tabs scrolls into view`);
+            // The command box placeholder is short enough to read whole on a phone.
+            const ph = await evaluate(`import('/static/render.js').then(m => m.commandPlaceholder('a-long-agent-name', 'claude', 'a-board'))`);
+            assert.ok(ph.length <= 40 && !/type a command/.test(ph), `${d.name}: short placeholder on a phone (${ph})`);
             console.log(`PASS ${d.name} ${d.width}x${d.height}: tap opens the agent, no eval, menu over the panel`);
         }
+        // Desktop is unchanged: the full placeholder, the close button last (and hidden) in the strip.
+        await Emulation.setDeviceMetricsOverride({ width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+        await Emulation.setTouchEmulationEnabled({ enabled: false });
+        await Page.navigate({ url: BASE });
+        await Page.loadEventFired();
+        const desk = await evaluate(`import('/static/render.js').then(m => ({ ph: m.commandPlaceholder('n', 'claude', 'b'), closeShown: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).display !== 'none', order: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).order }))`);
+        assert.equal(desk.ph, 'Sending to: n (claude) on b \u2014 type a command or paste an image...', 'desktop keeps the full placeholder');
+        assert.equal(desk.closeShown, false, 'desktop does not show the panel close button');
+        assert.equal(desk.order, '0', 'desktop strip order is untouched');
+        console.log('PASS desktop unchanged');
     } finally {
         await Emulation.clearDeviceMetricsOverride().catch(() => {});
         await Emulation.setTouchEmulationEnabled({ enabled: false }).catch(() => {});

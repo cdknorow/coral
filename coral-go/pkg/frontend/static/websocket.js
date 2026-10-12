@@ -1,7 +1,7 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
-import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, terminalDotClass } from './render.js';
+import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -212,9 +212,7 @@ export function handleCoralMessage(data) {
                     if (termLabel) termLabel.textContent = formatTerminalLabel(headerName, s.session_id);
                     const cmdInput = document.getElementById("command-input");
                     if (cmdInput) {
-                        const typeInfo = s.agent_type ? ` (${s.agent_type})` : '';
-                        const boardInfo = s.board_project ? ` on ${s.board_project}` : '';
-                        cmdInput.placeholder = `Sending to: ${headerName}${typeInfo}${boardInfo} — type a command or paste an image...`;
+                        cmdInput.placeholder = commandPlaceholder(headerName, s.agent_type, s.board_project);
                     }
                     updateSessionStatus(s.status);
                     updateSessionSummary(s.summary);

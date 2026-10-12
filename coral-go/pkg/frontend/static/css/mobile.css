@@ -1171,13 +1171,16 @@
         background: var(--accent-dim);
     }
 
+    /* The close button leads the strip and stays put while the tabs scroll under it. At the end of the strip it
+       covered the tabs it was stuck over (a half-hidden Tasks tab at 390px); on the left nothing is hidden at rest
+       and the tab cut off by the right edge shows that the strip scrolls. */
     .agentic-state.mobile-panel-overlay #agentic-mobile-close-btn {
         display: flex !important;
         align-items: center;
         justify-content: center;
-        margin-left: auto;
+        order: -1;
         position: sticky;
-        right: 0;
+        left: 0;
         min-width: 44px;
         min-height: 40px;
         height: 40px;
@@ -1473,3 +1476,8 @@
 /* Titles of the phone-width agent and history lists. Classes rather than style="" attributes: the Cloud Hub's CSP
    (style-src 'self') refuses inline style attributes in markup assigned through innerHTML. */
 .mobile-list-title { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0; }
+
+/* The artifacts table scrolls sideways; on a phone the default scrollbar is a thick grey bar under the header. */
+@media (max-width: 767px) {
+    .team-artifacts-scroll { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+}
