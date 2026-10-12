@@ -70,6 +70,8 @@ async function run() {
   await Emulation.setDeviceMetricsOverride({ width: 1500, height: 950, deviceScaleFactor: 1, mobile: false });
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
   for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
+  // The 10 s board/subagent poll runs every second here (tasks.js boardTaskPollHooks): same timer, shorter period.
+  await ev(`import('/static/tasks.js').then(m => { m.boardTaskPollHooks.intervalMs = 1000; return true; })`);
   await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
 
   const open = async (sid) => { await ev(`window.__currentIsA = ${JSON.stringify(sid)} === ${JSON.stringify(A)}; true`); await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(sid)})).then(() => { window.switchAgenticTab('tasks', 'top'); return true; })`); await sleep(700); };
@@ -174,11 +176,11 @@ async function run() {
   const leaked = await ev(`performance.getEntriesByType('resource').filter(e => /attacker\\.example/.test(e.name)).length`);
   check('...and no request was made to the remote image host', leaked === 0, String(leaked));
 
-  // Reading position survives the 10s poll
+  // Reading position survives the poll
   check('long result scrolls inside its box', m.md.scrollable === true);
   const mark = () => ev(`(() => { const el = document.querySelectorAll('#task-detail-content .subagent-detail-text')[1]; el.scrollTop = 150; el.__marked = true; return el.scrollTop; })()`);
   const probe = () => ev(`(() => { const el = document.querySelectorAll('#task-detail-content .subagent-detail-text')[1]; return { scrollTop: el.scrollTop, sameNode: el.__marked === true }; })()`);
-  const waitForPoll = async () => { const before = (await ev(`window.__subagentFetches.length`)); for (let i = 0; i < 28; i++) { await sleep(500); if ((await ev(`window.__subagentFetches.length`)) > before) break; } await sleep(300); };
+  const waitForPoll = async () => { const before = (await ev(`window.__subagentFetches.length`)); for (let i = 0; i < 100; i++) { await sleep(50); if ((await ev(`window.__subagentFetches.length`)) > before) break; } await sleep(300); };
   const setTo = await mark();
   await waitForPoll();
   let pr = await probe();
@@ -206,7 +208,7 @@ async function run() {
   // ── Live update via the poll, with the modal open ──
   await ev(`window.__subagents[${JSON.stringify(A)}][1] = { ...window.__subagents[${JSON.stringify(A)}][1], finished: true, status: 'completed', cost_usd: 1.25, last_activity_at: '2026-09-17T02:25:30Z' }; window.__details.b7running00000000.result = 'The design is done.'; window.__detailFetches.length = 0; true`);
   let flipped = null;
-  for (let i = 0; i < 28; i++) { await sleep(500); flipped = bySub(await rows(), 'b7running00000000'); if (flipped && !flipped.spinner) break; }
+  for (let i = 0; i < 100; i++) { await sleep(50); flipped = bySub(await rows(), 'b7running00000000'); if (flipped && !flipped.spinner) break; }
   check('poll refreshes the row without user action', flipped && !flipped.spinner && flipped.icon === 'check_circle' && flipped.cost === '$1.25', flipped && `${flipped.icon} ${flipped.cost}`);
   await sleep(400);
   m = await modal();
@@ -218,7 +220,7 @@ async function run() {
   m = await modal();
   check('board task modal still works', m.open && m.header === 'Task #77' && m.title === '#77 · A board task', m.header + ' / ' + m.title);
   await ev(`window.__subagents[${JSON.stringify(A)}][0] = { ...window.__subagents[${JSON.stringify(A)}][0], cost_usd: 9.99 }; true`);
-  for (let i = 0; i < 28; i++) { await sleep(500); const r = bySub(await rows(), 'aca6223d75309e7ca'); if (r && r.cost === '$9.99') break; }
+  for (let i = 0; i < 100; i++) { await sleep(50); const r = bySub(await rows(), 'aca6223d75309e7ca'); if (r && r.cost === '$9.99') break; }
   m = await modal();
   check('a subagent poll does not overwrite an open board task modal', m.header === 'Task #77' && m.title === '#77 · A board task' && !('Subagent ID' in m.fields), m.header + ' / ' + m.title);
   await ev(`window.hideTaskDetailModal(); true`);

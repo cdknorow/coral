@@ -22,15 +22,17 @@ let _lastSidebarRenderAt = 0;
 
 function scheduleFeedReconnect() {
     _feedFailures++;
-    setTimeout(connectCoralWs, feedRetryDelay(_feedFailures));
+    feedHooks.schedule(connectCoralWs, feedRetryDelay(_feedFailures));
 }
 
-// What the feed does once the browser is confirmed signed out. A seam for tests; the default is the same redirect the
-// fetch wrapper in cloud.js performs on a 401.
+// Seams for tests. signedOut is what the feed does once the browser is confirmed signed out; the default is the same
+// redirect the fetch wrapper in cloud.js performs on a 401. schedule runs a reconnect after the backoff delay; a test
+// records the requested delays and runs them faster instead of waiting out the real backoff.
 export const feedHooks = {
     signedOut() {
         if (!/^\/(signin|auth|enroll)/.test(location.pathname)) location.replace(signInUrl());
     },
+    schedule(fn, ms) { setTimeout(fn, ms); },
 };
 
 // 4401 says the hub found the session over, but the browser asks before giving up. GET /auth/session answers 200

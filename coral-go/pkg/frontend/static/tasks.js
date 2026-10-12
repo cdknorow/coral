@@ -7,6 +7,8 @@ import { serverUrl, contextServer, keyLabel, serverFetch, currentServer, serverF
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
+// Seam for tests: the poll period, read when the poll starts (tests shorten it instead of waiting 10 s per tick).
+export const boardTaskPollHooks = { intervalMs: 10000 };
 // Live cost cache: taskID → { cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, request_count }
 let _liveCosts = {};
 
@@ -19,7 +21,7 @@ export function startBoardTaskPoll() {
     // Subagents are loaded by the poll below, every tick: their status and
     // spend keep changing while they run, with no user action to trigger a reload.
     _pollBoardTasksOnce();
-    _boardTaskPollTimer = setInterval(_pollBoardTasksOnce, 10000);
+    _boardTaskPollTimer = setInterval(_pollBoardTasksOnce, boardTaskPollHooks.intervalMs);
 }
 
 export function stopBoardTaskPoll() {

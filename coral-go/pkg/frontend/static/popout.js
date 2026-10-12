@@ -25,6 +25,13 @@ const RESOLVE_RETRY_MS = 1000;
 const RESOLVER_DOWN_BASE_MS = 750; // first retry while the resolver is unreachable
 const RESOLVER_DOWN_MAX_MS = 5000; // backoff cap while the resolver is unreachable
 let _resolverRetryTimer = null;
+// Seam for tests: every resolve retry delay below is multiplied by this (1 = production timing), so a fixture can run
+// the same retry sequence without waiting it out.
+// Clamped to [0.01, 1]: a stray value can never make the retries spin or stall.
+const _delayScale = () => {
+    const v = typeof window !== 'undefined' ? Number(window.__coralPopoutDelayScale) : NaN;
+    return Number.isFinite(v) && v > 0 ? Math.min(1, Math.max(0.01, v)) : 1;
+};
 
 let _mode = null;               // 'dashboard' | 'agent' | 'invalid'
 let _targetId = '';
@@ -165,14 +172,14 @@ export async function resolveAndSelect(attempt = 0, downAttempt = 0) {
         const delay = downAttempt < 6
             ? RESOLVER_DOWN_BASE_MS
             : Math.min(RESOLVER_DOWN_BASE_MS * Math.pow(2, downAttempt - 5), RESOLVER_DOWN_MAX_MS);
-        _resolverRetryTimer = setTimeout(() => resolveAndSelect(attempt, downAttempt + 1), delay);
+        _resolverRetryTimer = setTimeout(() => resolveAndSelect(attempt, downAttempt + 1), delay * _delayScale());
         return;
     }
     _resolved = r;
     state.popoutTarget = r;
     if (r.state === 'not_found') {
         if (attempt < RESOLVE_RETRIES) {
-            setTimeout(() => resolveAndSelect(attempt + 1), RESOLVE_RETRY_MS);
+            setTimeout(() => resolveAndSelect(attempt + 1), RESOLVE_RETRY_MS * _delayScale());
             return;
         }
         _setState('not-found');

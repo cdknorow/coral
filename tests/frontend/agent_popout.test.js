@@ -49,6 +49,7 @@ const randomUuid = () => require('crypto').randomUUID();
 function stubSource(fx) {
     return `
     window.__fx = ${JSON.stringify(fx)};
+    window.__coralPopoutDelayScale = 0.1; // popout.js resolve retries run 10x faster: same sequence, no waiting it out
     window.__calls = []; window.__wsAttempts = []; window.__opened = []; window.__resolveCalls = 0;
     (function () {
         const Real = window.WebSocket;
@@ -238,7 +239,10 @@ async function run() {
     const sid = launch.data && launch.data.session_id; const sname = launch.data && launch.data.session_name;
     check('B launch isolated terminal session', !!sid && UUID_RE.test(sid), JSON.stringify({ sid, sname, status: launch.status }));
     if (!sid) throw new Error('cannot launch a terminal session on the isolated server');
-    await sleep(2500);
+    // wait until the resolver knows the new session (it used to be a fixed 2.5 s)
+    for (let i = 0; i < 100; i++) { const r = await httpJson('GET', `/api/sessions/${sid}/resolve`); if (r.data && r.data.name && r.data.state && r.data.state !== 'not_found') break; await sleep(100); }
+    // until the pane's shell is up: a capture with any content
+    for (let i = 0; i < 100; i++) { const c = await httpJson('GET', `/api/sessions/live/${encodeURIComponent(sname)}/capture?agent_type=terminal&session_id=${sid}`); if (c.data && (c.data.capture || '').trim()) break; await sleep(100); }
 
     const resolveLive = await httpJson('GET', `/api/sessions/${sid}/resolve`);
     const rl = resolveLive.data || {};
@@ -311,10 +315,12 @@ async function run() {
     s1 = await t1.ev(SHELL_PROBE);
     check('6 refresh re-renders the same session from server data', s1.target === sid && /Popout QA/.test(s1.identity) && s1.workspace.cmd === 'visible' && !s1.inputDisabled, JSON.stringify({ target: s1.target, identity: s1.identity.trim(), disabled: s1.inputDisabled }));
 
+    // Wait until the pane shows marker (the command ran), up to 8 s; returns the last capture.
+    const waitCapture = async (marker) => { let c; for (let i = 0; i < 80; i++) { c = await httpJson('GET', `/api/sessions/live/${encodeURIComponent(aname)}/capture?agent_type=terminal&session_id=${sid}`); if (new RegExp(marker).test((c.data && c.data.capture) || '')) break; await sleep(100); } return c; };
     // 26: command targeting through the popout's own send path
     await t1.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-1'; true`);
-    await t1.ev(`window.sendCommand(); true`); await sleep(1500);
-    let cap1 = await httpJson('GET', `/api/sessions/live/${encodeURIComponent(aname)}/capture?agent_type=terminal&session_id=${sid}`);
+    await t1.ev(`window.sendCommand(); true`);
+    let cap1 = await waitCapture('POPOUT-QA-MARKER-1');
     check('26 command typed in the popout reaches exactly this session\'s pane', /POPOUT-QA-MARKER-1/.test((cap1.data && cap1.data.capture) || ''));
     const sendReqs = t1.requests.filter(r => /\/send(\?|$)/.test(r.url) && r.method === 'POST');
     const audit1 = auditRouting(t1.requests, { agent_type: 'terminal', session_id: sid, name: aname, tmux_session: `terminal-${sid}` });
@@ -342,8 +348,8 @@ async function run() {
     await viewer.ev(`window._coralPopout.claimOwnership(); true`); await sleep(500);
     const afterClaim = { v: await viewer.ev(`window._coralPopout.isOwner()`), o: await owner.ev(`window._coralPopout.isOwner()`) };
     check('28 claimOwnership() transfers ownership to the viewer and revokes the previous owner', afterClaim.v === true && afterClaim.o === false, JSON.stringify(afterClaim));
-    await viewer.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-2'; window.sendCommand(); true`); await sleep(1500);
-    cap1 = await httpJson('GET', `/api/sessions/live/${encodeURIComponent(aname)}/capture?agent_type=terminal&session_id=${sid}`);
+    await viewer.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-2'; window.sendCommand(); true`);
+    cap1 = await waitCapture('POPOUT-QA-MARKER-2');
     check('28 new owner input reaches the pane', /POPOUT-QA-MARKER-2/.test((cap1.data && cap1.data.capture) || ''));
     await t2.close();
     await sleep(600);
@@ -359,8 +365,8 @@ async function run() {
     check('30 cross-profile viewer renders the same exact session with no exceptions', s3.target === sid && /Popout QA/.test(s3.identity) && t3.exceptions.length === 0, JSON.stringify({ target: s3.target, identity: s3.identity.trim(), exc: t3.exceptions.slice(0, 2) }));
     const ws3 = t3.wsCreated.filter(u => /\/ws\/terminal\//.test(u));
     check('30 cross-profile viewer attaches only to the exact tmux tuple (no cross-session targeting)', ws3.length >= 1 && ws3.every(u => u.includes(`/ws/terminal/terminal-${sid}`) && u.includes(`session_id=${sid}`)), JSON.stringify(ws3));
-    await t3.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-3'; window.sendCommand(); true`); await sleep(1500);
-    cap1 = await httpJson('GET', `/api/sessions/live/${encodeURIComponent(aname)}/capture?agent_type=terminal&session_id=${sid}`);
+    await t3.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-3'; window.sendCommand(); true`);
+    cap1 = await waitCapture('POPOUT-QA-MARKER-3');
     check('30 documented limitation: cross-profile client can still send (input reached this pane only)', /POPOUT-QA-MARKER-3/.test((cap1.data && cap1.data.capture) || ''));
     const audit3 = auditRouting(t3.requests, { agent_type: 'terminal', session_id: sid, name: aname, tmux_session: `terminal-${sid}` });
     check('30 cross-profile viewer also sends only the exact tuple', audit3.length === 0, JSON.stringify(audit3.slice(0, 3)));
@@ -508,9 +514,10 @@ async function run() {
         const blockedSends = await tr.ev(`window.__calls.filter(c => /\\/(send|keys)$/.test(c.path)).length + window.__wsAttempts.filter(u => /\\/ws\\/terminal/.test(u)).length`);
         check(`D5a resolver ${mode}: programmatic sendCommand/sendRawKeys are refused while reconnecting (no /send, /keys, or terminal socket)`, blockedSends === 0, String(blockedSends));
         check(`D5a resolver ${mode}: terminal quick actions that send input are disabled while reconnecting`, liveActions.length === 0, JSON.stringify(liveActions));
+        // Same counter before and after (window.__calls was reset above, window.__resolveCalls was not).
         const resolveCallsBefore = await tr.ev(`window.__resolveCalls`);
-        await sleep(2500);
-        const resolveCallsAfter = await tr.ev(`window.__calls.filter(c => /\\/resolve$/.test(c.path)).length`);
+        await tr.waitFor(`window.__resolveCalls > ${resolveCallsBefore}`, 6000, 50);
+        const resolveCallsAfter = await tr.ev(`window.__resolveCalls`);
         check(`D5 resolver ${mode}: retries only the resolver`, resolveCallsAfter > resolveCallsBefore, `${resolveCallsBefore} -> ${resolveCallsAfter}`);
         // recovery: resolver comes back -> attach with the resolver's identity
         await tr.ev(`window.__fx.resolveFail = {}; true`);

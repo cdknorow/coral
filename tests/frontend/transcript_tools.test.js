@@ -49,8 +49,8 @@ const STUB = `
     if (path==='/api/sessions/live') return json(window.__sessions);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path) && qs.get('limit')) window.__chatLimits = (window.__chatLimits||[]).concat([qs.get('limit')]);
     if (/^\\/api\\/sessions\\/live\\/[^/]+\\/chat$/.test(path)) { const after=parseInt(qs.get('after')||'0',10);
-      const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, 400)).then(() => json(body)); }
-    if (/\\/pending-tool$/.test(path)) return json({ pending: window.__pendingTool || null });
+      const body={messages: window.__msgs.slice(after), total: window.__msgs.length, has_more: false}; return new Promise(r => setTimeout(r, window.__chatDelay ?? 400)).then(() => json(body)); }
+    if (/\\/pending-tool$/.test(path)) { window.__pendingFetches = (window.__pendingFetches || 0) + 1; return json({ pending: window.__pendingTool || null }); }
     if (/\\/prompt-options$/.test(path)) return json(window.__promptScreen || { question: '', options: [] });
     if (/\\/resolve-path$/.test(path)) { window.__resolves = (window.__resolves||[]).concat([qs.get('filepath')]); return json({ filepath: 'resolved/' + qs.get('filepath').replace(/:.*$/, ''), line: 0 }); }
     if (/^\\/api\\/board\\//.test(path)) return json({});
@@ -61,6 +61,9 @@ async function run() {
   await Promise.all([Page.enable(), Runtime.enable()]);
   await Page.addScriptToEvaluateOnNewDocument({ source: STUB });
   const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
+  // Run n history-poll cycles now (the same refreshLiveHistory the 1 s timer calls, which keeps running as in
+  // production) instead of sleeping until the timer has done them, then let the async parts render.
+  const cycles = async (n) => { for (let i = 0; i < n; i++) { await ev(`import('/static/live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`); await sleep(30); } await sleep(60); };
   await Emulation.setDeviceMetricsOverride({ width: 1500, height: 950, deviceScaleFactor: 1, mobile: false });
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
   for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
@@ -72,7 +75,7 @@ async function run() {
   const top = () => ev(`Array.from(${C}.children).map(el => el.classList.contains('work-group')
       ? { kind: 'group', open: el.open, steps: el.querySelector('.work-group-count').textContent, latest: el.querySelector('.work-group-latest').textContent }
       : { kind: el.classList.contains('human') ? 'user' : 'reply', final: el.classList.contains('turn-final'), text: (el.querySelector('.message-text') || el).innerText.trim() })`);
-  await sleep(1500);
+  await cycles(3);
   let t = await top();
   check('history loads in pages of 400 messages', (await ev(`window.__chatLimits || []`)).every(l => l === '400') && (await ev(`(window.__chatLimits || []).length`)) > 0, JSON.stringify(await ev(`window.__chatLimits`)));
   check('overlapping initial loads render the history once', t.filter(x => x.kind === 'user').length === 1, JSON.stringify(t.map(x => x.kind)));
@@ -83,6 +86,7 @@ async function run() {
   check('final reply is visible and marked final', t[3].final && t[3].text === 'Done — spacing fixed.');
   check('intermediate text, commands and output hidden while collapsed', await ev(`(() => { const x = ${C}.innerText; return x.includes('Please tidy the modal spacing.') && !x.includes('Looking at the') && !x.includes('git diff --stat') && !x.includes('line 39') && !x.includes('Which spacing?'); })()`));
   check('result HTML is escaped', await ev(`!window.__xss && !${C}.querySelector('script')`));
+  await ev(`window.__chatDelay = 80; true`); // the initial-load overlap is checked; later polls need no slow answer
 
   await ev(`${C}.querySelectorAll('.work-group > summary')[1].click(); true`);
   await sleep(100);
@@ -102,11 +106,11 @@ async function run() {
 
   // Live polling: a reply shown as final folds into the group once more work arrives.
   await ev(`window.__msgs.push({ type: 'user', content: 'Now the header.' }, { type: 'assistant', text: 'Interim note.' }); true`);
-  await sleep(1500);
+  await cycles(3);
   t = await top();
   check('new reply appears as final', t[t.length - 1].final && t[t.length - 1].text === 'Interim note.', JSON.stringify(t[t.length - 1]));
   await ev(`window.__msgs.push({ type: 'assistant', text: '', tool_uses: [{ name: 'Read', tool_use_id: 't9', input_summary: 'header.css' }] }, { type: 'assistant', text: 'Header done.' }); true`);
-  await sleep(1500);
+  await cycles(3);
   t = await top();
   check('earlier reply folds into a new group once work follows', JSON.stringify(t.slice(-3).map(x => x.kind)) === '["user","group","reply"]' && t[t.length - 2].steps === '2 steps' && t[t.length - 1].text === 'Header done.', JSON.stringify(t.slice(-3)));
   check('earlier groups keep their open state across polls', t[2].open === true);
@@ -161,11 +165,11 @@ async function run() {
   const pend = await ev(`(() => { const p = ${C}.querySelector('.chat-bubble.human.pending'); const kids = Array.from(${C}.children); return { shown: !!p, label: p && p.querySelector('.pending-label').textContent, tail: kids.slice(-2).map(e => e.className), text: p && p.querySelector('.message-text').textContent.trim() }; })()`);
   check('a message sent to an idle agent appears at once as Sent, with Working below it', pend.shown && pend.label === 'Sent' && pend.text === 'Please also fix the header' && JSON.stringify(pend.tail) === '["pending-messages pending-sent","chat-working"]', JSON.stringify(pend));
   await ev(`window.__msgs.push({ type: 'assistant', text: 'Still working on the modal.' }); true`);
-  await sleep(1500);
+  await cycles(3);
   const still = await ev(`({ pending: !!${C}.querySelector('.chat-bubble.human.pending'), last: ${C}.lastElementChild.classList.contains('pending-messages') })`);
   check('queued message stays at the bottom while the agent keeps replying', still.pending && still.last, JSON.stringify(still));
   await ev(`window.__msgs.push({ type: 'user', content: 'Please also fix the header', timestamp: new Date().toISOString() }); true`);
-  await sleep(1500);
+  await cycles(3);
   const settled = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.human.pending').length, real: Array.from(${C}.querySelectorAll('.chat-bubble.human:not(.pending)')).filter(b => b.textContent.includes('Please also fix the header')).length })`);
   check('once the transcript records it, the queued bubble is replaced by the real one', settled.pending === 0 && settled.real === 1, JSON.stringify(settled));
 
@@ -174,10 +178,10 @@ async function run() {
   await sleep(200);
   check('three sends show three queued bubbles', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 3);
   await ev(`window.__msgs.push({ type: 'user', content: 'test\\ntest', timestamp: new Date().toISOString() }); true`);
-  await sleep(1500);
+  await cycles(3);
   check('a merged entry settles every queued message it contains, and only those', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 1);
   await ev(`window.__msgs.push({ type: 'user', content: 'test', timestamp: new Date().toISOString() }); true`);
-  await sleep(1500);
+  await cycles(3);
   check('the remaining queued message settles when it arrives', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 0);
 
   // Working indicator: right after a send, and while the agent's state is Working
@@ -185,22 +189,22 @@ async function run() {
   let w = await W();
   check('after a send, a Working row shows before the agent has output anything', w.shown && /^Working/.test(w.text) && w.abovePending, JSON.stringify(w));
   await ev(`window.__msgs.push({ type: 'assistant', text: 'All three received.', timestamp: new Date().toISOString() }); true`);
-  await sleep(1500);
+  await cycles(3);
   w = await W();
   check('the row goes away once the agent replies and is no longer working', !w.shown, JSON.stringify(w));
   await ev(`import('/static/state.js').then(st => { st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}).working = true; window.__msgs.push({ type: 'assistant', text: '', tool_uses: [{ name: 'Bash', tool_use_id: 'tw', description: 'Run the test suite', command: 'npm test' }] }); return true; })`);
-  await sleep(1500);
+  await cycles(3);
   w = await W();
   check('while the agent is Working the row shows just "Working" (the step is in the group summary)', w.shown && w.text === 'Working', JSON.stringify(w));
   const groupsBefore = await ev(`${C}.querySelectorAll(':scope > .work-group').length`);
   for (const [id, desc] of [['tw2', 'Build the app'], ['tw3', 'Lint the code']]) {
     await ev(`window.__msgs.push({ type: 'assistant', text: '', tool_uses: [{ name: 'Bash', tool_use_id: '${id}', description: '${desc}', command: 'make' }] }, { type: 'tool_result', tool_use_id: '${id}', content: 'ok' }); true`);
-    await sleep(1300);
+    await cycles(3);
   }
   const grp = await ev(`(() => { const gs = ${C}.querySelectorAll(':scope > .work-group'); const g = gs[gs.length - 1]; return { groups: gs.length, steps: g.querySelector('.work-group-count').textContent, rows: g.querySelectorAll('.tool-call').length, rowText: (${C}.querySelector(':scope > .chat-working') || {}).textContent }; })()`);
   check('tool calls arriving while Working is shown join the same group (no new little groups)', grp.groups === groupsBefore && grp.rows === 3 && grp.steps === '4 steps', JSON.stringify({ before: groupsBefore, ...grp }));
   await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; return true; })`);
-  await sleep(1500);
+  await cycles(3);
   w = await W();
   check('the row hides when the turn ends', !w.shown, JSON.stringify(w));
 
@@ -213,14 +217,14 @@ async function run() {
 
   // Esc: the interrupt shows as a note, and the queued message is now being worked on
   await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; window.__msgs.push({ type: 'user', content: '[Request interrupted by user]', timestamp: new Date().toISOString() }); return true; })`);
-  await sleep(1500);
+  await cycles(3);
   const intr = await ev(`(() => { const notes = Array.from(${C}.querySelectorAll('.chat-note')).map(n => n.textContent); const asUser = Array.from(${C}.querySelectorAll('.chat-bubble.human')).some(b => b.textContent.includes('Request interrupted'));
     const p = ${C}.querySelector('.chat-bubble.pending'); const w = ${C}.querySelector(':scope > .chat-working');
     return { notes, asUser, label: p && p.querySelector('.pending-label').textContent, rowBelow: !!w && !!p && w.previousElementSibling === p.parentElement }; })()`);
   check('an interrupt shows as an "Interrupted" note, not a user message', intr.notes.includes('Interrupted') && !intr.asUser, JSON.stringify(intr));
   check('after an interrupt the queued message flips to Sent and Working moves below it', intr.label === 'Sent' && intr.rowBelow, JSON.stringify(intr));
   await ev(`window.__msgs.push({ type: 'user', content: 'Then update the docs', timestamp: new Date().toISOString() }, { type: 'assistant', text: 'Docs updated.', timestamp: new Date(Date.now() + 1000).toISOString() }); true`);
-  await sleep(1500);
+  await cycles(3);
   const done = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.pending').length, working: !!${C}.querySelector(':scope > .chat-working') })`);
   check('once it lands and the agent replies, nothing is pending and Working is gone', done.pending === 0 && !done.working, JSON.stringify(done));
 
@@ -236,13 +240,13 @@ async function run() {
       working: !!${C}.querySelector(':scope > .chat-working'), last: ${C}.lastElementChild === c }; })()`);
   await setRow({ working: true, awaiting_user: false, waiting_for_input: false });
   await ev(`window.__pendingTool = { tool_use_id: 'q1', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which layout?', options: [{ label: 'Compact', description: 'Denser rows' }, { label: 'Roomy' }] }] } }; true`);
-  await sleep(2600);
+  await cycles(4);
   let cd = await card();
   check('an open question shows as a card with the question up front, replacing the Working row', cd && cd.kicker === 'Claude is asking' && cd.question === 'Which layout?' && !cd.working && cd.last, JSON.stringify(cd));
 
   // Answer from the chat: every option on screen, numbered like the terminal's keys
   await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }, { n: 3, label: 'Type something.', action: 'text' }, { n: 4, label: 'Chat about this', action: 'chat' }] }; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   check('options show as numbered cards (they have descriptions), the default outlined', cd.layout === 'cards' && JSON.stringify(cd.options) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows', dflt: true }, { n: '2', label: 'Roomy', desc: '', dflt: false }]), JSON.stringify(cd.options));
   check('Type something is an inline field and Chat about this a footer link', cd.textForm === 'Or type your own answer…' && cd.chat === 'Chat about this instead', JSON.stringify({ textForm: cd.textForm, chat: cd.chat }));
@@ -258,26 +262,26 @@ async function run() {
   check('Chat about this sends its number and focuses the command box', chat.answers.length === 1 && chat.answers[0].n === 4 && chat.focused === 'command-input', JSON.stringify(chat));
   // Short options without descriptions are compact chips
   await ev(`window.__pendingTool = { tool_use_id: 'q2', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Next?', options: [{ label: 'Release' }, { label: 'Polish' }] }] } }; window.__promptScreen = { question: 'Next?', options: [{ n: 1, label: 'Release', selected: true, action: 'select' }, { n: 2, label: 'Polish', action: 'select' }] }; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   check('short options without descriptions are chips', cd.layout === 'chips' && cd.options.length === 2, JSON.stringify(cd));
   // A long question/label the screen cut short (wrapping): the card shows the hook's full text,
   // while the answer still carries the on-screen label the server checks.
   await ev(`window.__pendingTool = { tool_use_id: 'q3', tool_name: 'AskUserQuestion', input: { questions: [{ question: "There's only one player right now (the dev user, no real auth). Who is on the other side of a battle in the first version?", options: [{ label: 'Local hotseat on one shared screen for now', description: 'Two people take turns' }, { label: 'AI opponent' }] }] } };
     window.__promptScreen = { question: 'the other side of a battle in the first version?', options: [{ n: 1, label: 'Local hotseat on one shared', selected: true, action: 'select' }, { n: 2, label: 'AI opponent', action: 'select' }] }; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   const firstBtn = await ev(`(() => { const b = ${C}.querySelector('.cni-options .cni-answer[data-n="1"]'); return b ? { shown: b.querySelector('.cni-answer-label').textContent, sent: b.dataset.label } : null; })()`);
   check('a question or label the screen cut short shows in full from the hook', cd.question.startsWith("There's only one player right now") && firstBtn && firstBtn.shown === 'Local hotseat on one shared screen for now' && firstBtn.sent === 'Local hotseat on one shared', JSON.stringify({ q: cd.question, btn: firstBtn }));
 
   // The review step: each question with its answer, Submit primary
   await ev(`window.__promptScreen = { question: 'Ready to submit your answers?', options: [{ n: 1, label: 'Submit answers', selected: true, action: 'select' }, { n: 2, label: 'Cancel', action: 'select' }], review: [{ question: 'Which layout?', answer: 'Roomy' }, { question: 'Which theme?', answer: 'Dark' }] }; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   const primary = await ev(`!!${C}.querySelector('.cni-foot .btn-primary.cni-answer[data-n="1"]')`);
   check('the review step lists each question with its answer, with Submit as the primary action', cd.question === 'Ready to submit your answers?' && JSON.stringify(cd.review) === '[["Which layout?","Roomy"],["Which theme?","Dark"]]' && JSON.stringify(cd.foot) === '["Submit answers","Cancel"]' && primary && cd.options.length === 0, JSON.stringify(cd));
   await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }] }; true`);
-  await sleep(2600);
+  await cycles(4);
   await ev(`window.__answers = []; window.__answerFail = true; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
   await sleep(500);
   const refused = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).some(b => b.disabled) })`);
@@ -295,24 +299,24 @@ async function run() {
   // A permission prompt: the Notification sets waiting_for_input; PreToolUse says what for
   await setRow({ working: false, waiting_for_input: true, waiting_summary: 'Notification: Claude needs your permission to use Bash' });
   await ev(`window.__pendingTool = { tool_use_id: 'b1', tool_name: 'Bash', input: { command: 'rm -rf build', description: 'Clean the build folder' } }; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   check('a permission prompt names the tool and shows the command', cd && cd.kicker === 'Permission needed · Bash' && /rm -rf build/.test(cd.text) && /Clean the build folder/.test(cd.text), JSON.stringify(cd));
 
   // Agents launched before the hook existed: the notification text alone
   await ev(`window.__pendingTool = null; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   check('without hook details the card shows the notification text', cd && cd.question === 'Claude needs your permission to use Bash' && /Answer in the terminal/.test(cd.text), JSON.stringify(cd));
   // ...and the question the terminal shows, when it shows one (e.g. an AskUserQuestion from an agent without the hook)
   await ev(`window.__promptScreen = { question: 'Which color do you prefer?', options: [{ n: 1, label: 'Red', selected: true, action: 'select' }, { n: 2, label: 'Green', action: 'select' }] }; true`);
-  await sleep(2600);
+  await cycles(4);
   cd = await card();
   check('without hook details the card still shows the on-screen question and options', cd && cd.question === 'Which color do you prefer?' && JSON.stringify(cd.options.map(o => o.label)) === '["Red","Green"]', JSON.stringify(cd));
   await ev(`window.__promptScreen = null; true`);
 
   await setRow({ waiting_for_input: false, waiting_summary: null, awaiting_user: true });
-  await sleep(1500);
+  await cycles(3);
   check('the card goes away once the prompt is answered', (await card()) === null);
 
   // A plain terminal has no transcript: always Terminal, toggle hidden
@@ -353,21 +357,21 @@ async function run() {
   check('history: user turns keep Edit & Resubmit', hist.editBtns === hist.kinds.filter(k => k === 'user').length && hist.editBtns > 0, JSON.stringify(hist.kinds));
 
   await ev(`window.__msgs.push({type:'user',content:${JSON.stringify(made.pending)},timestamp:new Date().toISOString()}); true`);
-  await sleep(2000);
+  await cycles(3);
   // Image paths and transcript envelopes must not leave acknowledged sends stuck.
   await ev(`import('/static/live_chat.js').then(m => { m.addPendingMessage(${JSON.stringify(SID)}, '/Users/test/.coral/uploads/shot.png Remove team borders and shadows.'); window.__msgs.push({type:'user', content:'<image name=[Image #1] path="/Users/test/.coral/uploads/shot.png"></image>[Image #1]', timestamp:new Date().toISOString()}, {type:'user', content:'About the sidebar: Remove team borders and shadows.', timestamp:new Date().toISOString()}); })`);
-  await sleep(2000);
+  await cycles(3);
   check('image attachment recorded separately still settles its message text', await ev(`!${C}.querySelector('.pending-messages')`));
   check('acknowledged image send is removed from persisted pending state', await ev(`!(JSON.parse(localStorage.getItem('coral-pending-messages') || '{}')[${JSON.stringify(SID)}] || []).length`));
 
   await ev(`window.fastSendAt = Date.now(); window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
-  await sleep(2000);
+  await cycles(3);
   await ev(`import('/static/live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement', window.fastSendAt))`);
   check('transcript receipt arriving before send response settles immediately', await ev(`!${C}.querySelector('.pending-messages')`));
   await ev(`import('/static/live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement'))`);
   check('one transcript receipt cannot acknowledge a repeated send twice', await ev(`!!${C}.querySelector('.pending-messages')`));
   await ev(`window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
-  await sleep(2000);
+  await cycles(3);
   check('repeated send settles only on its own receipt', await ev(`!${C}.querySelector('.pending-messages')`));
 
   // Codex Scenario A & B: Image-only followed by subsequent text, and paths with spaces
@@ -378,14 +382,14 @@ async function run() {
   check('separate image and subsequent text both show pending bubbles', await ev(`${C}.querySelectorAll('.pending-messages .chat-bubble.pending').length === 2`));
   // Codex receipt for image-only entry
   await ev(`window.__msgs.push({type:'user', content:'/Users/test user/.coral/uploads/image 1.png', timestamp:new Date().toISOString()}); true`);
-  await sleep(2000);
+  await cycles(3);
   check('image receipt settles image-only pending message leaving text pending', await ev(`(() => {
     const bubbles = ${C}.querySelectorAll('.pending-messages .chat-bubble.pending');
     return bubbles.length === 1 && bubbles[0].textContent.includes('Inspect this diagram');
   })()`));
   // Codex receipt for subsequent text
   await ev(`window.__msgs.push({type:'user', content:'Inspect this diagram', timestamp:new Date().toISOString()}); true`);
-  await sleep(2000);
+  await cycles(3);
   check('subsequent text receipt settles text pending message completely', await ev(`!${C}.querySelector('.pending-messages')`));
 
   // Actual payload verification for in-flight image upload + text send
@@ -397,7 +401,7 @@ async function run() {
       return c.sendCommand();
     });
   `);
-  await sleep(1000);
+  for (let i = 0; i < 150 && !(await ev(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`)); i++) await sleep(20); // the upload finishes, then the paired send
   const pairedSendPost = await ev(`(window.__posts || []).find(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('in-flight upload and typed text produces atomic paired send payload', !!pairedSendPost && pairedSendPost[2] && pairedSendPost[2].command === '/Users/test/.coral/uploads/shot.png Please inspect this', JSON.stringify(pairedSendPost));
 
@@ -425,7 +429,7 @@ async function run() {
       c.sendCommand();
     });
   `);
-  await sleep(1000);
+  for (let i = 0; i < 150 && !(await ev(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`)); i++) await sleep(20); await sleep(300); // first send, then room for a duplicate
   const repeatSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('repeat send while awaiting upload fires only once', repeatSends.length === 1 && repeatSends[0][2].command.includes('Repeat send check'), JSON.stringify(repeatSends));
 
@@ -442,7 +446,7 @@ async function run() {
       s.state.currentSession = { session_id: 'switched-session-id', name: 'other-session', type: 'live', agent_type: 'codex' };
     });
   `);
-  await sleep(1000);
+  await sleep(1000); // proves a negative: no send may happen once the 500 ms upload has finished
   const switchedSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('session switch while awaiting upload cancels send without dispatching to switched session', switchedSends.length === 0, JSON.stringify(switchedSends));
   // Restore currentSession
