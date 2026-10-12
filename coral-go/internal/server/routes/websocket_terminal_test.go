@@ -101,6 +101,22 @@ func spawnTestSession(t *testing.T, backend *ptymanager.TmuxBackend, agentName, 
 	return naming.SessionName("claude", sessionID)
 }
 
+// waitForForegroundCommand waits until command is the foreground process of
+// the session's pane, so input is read by it rather than typed ahead into the
+// shell that launches it.
+func waitForForegroundCommand(t *testing.T, socket, session, command string) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("tmux", "-S", socket, "display-message", "-p", "-t", session, "#{pane_current_command}").Output()
+		if err == nil && strings.TrimSpace(string(out)) == command {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("%q never became the foreground command of %s", command, session)
+}
+
 // dialTerminalWS connects a WebSocket client to /ws/terminal/{name}.
 func dialTerminalWS(t *testing.T, server *httptest.Server, tmuxName string) (*websocket.Conn, context.Context, context.CancelFunc) {
 	t.Helper()
@@ -255,11 +271,16 @@ func TestWSTerminal_LiveStreamAfterReplay(t *testing.T) {
 // TestWSTerminal_InputNotDuplicated verifies that input sent via WebSocket
 // is echoed the expected number of times (no unexpected duplication).
 func TestWSTerminal_InputNotDuplicated(t *testing.T) {
-	backend, _ := newTerminalTestTmuxBackend(t)
+	// A plain sh (no line editor, no user dotfiles) runs the command, and the
+	// input is sent only once cat owns the terminal. Typed ahead of that, an
+	// interactive shell echoes and redraws it, so under load "hello" showed up
+	// three times without anything being duplicated by Coral.
+	t.Setenv("SHELL", "/bin/sh")
+	backend, client := newTerminalTestTmuxBackend(t)
 	server := setupTerminalTestServer(t, backend)
 
 	tmuxName := spawnTestSession(t, backend, "nodup-agent", "dddddddd-1111-2222-3333-444444444444", "cat")
-	time.Sleep(500 * time.Millisecond)
+	waitForForegroundCommand(t, client.SocketPath, tmuxName, "cat")
 
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
