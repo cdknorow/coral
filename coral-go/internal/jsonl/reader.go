@@ -4,6 +4,7 @@ package jsonl
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -695,7 +696,7 @@ func resolveCodexTranscriptByMarker(basePath, sessionID string) string {
 		if !strings.HasPrefix(filepath.Base(path), "rollout-") || !strings.HasSuffix(path, ".jsonl") {
 			return nil
 		}
-		if codexTranscriptCoralSessionID(path) == sessionID {
+		if codexTranscriptCoralSessionIDCached(path, info) == sessionID {
 			matches = append(matches, candidate{path: path, mod: info.ModTime()})
 		}
 		return nil
@@ -713,10 +714,32 @@ func codexTranscriptCoralSessionID(path string) string {
 		return ""
 	}
 	defer f.Close()
+	id, _, _ := scanCodexMarker(f)
+	return id
+}
 
-	scanner := bufio.NewScanner(f)
+// scanCodexMarker returns the Coral session id from the first developer
+// message carrying a marker. Without one, complete is the number of bytes of
+// newline-terminated lines read (an unterminated last line may still be
+// mid-write), and stuck reports that scanning stopped at a line too long for
+// the scanner, which later appends cannot change.
+func scanCodexMarker(r io.Reader) (id string, complete int64, stuck bool) {
+	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
+	var pos int64
+	var terminated bool
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		advance, token, err := bufio.ScanLines(data, atEOF)
+		if advance > 0 {
+			pos += int64(advance)
+			terminated = bytes.IndexByte(data[:advance], '\n') >= 0
+		}
+		return advance, token, err
+	})
 	for scanner.Scan() {
+		if terminated {
+			complete = pos
+		}
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
@@ -736,10 +759,82 @@ func codexTranscriptCoralSessionID(path string) string {
 			continue
 		}
 		if sessionID := agent.ExtractCoralSessionID(payload["content"]); sessionID != "" {
-			return sessionID
+			return sessionID, complete, false
 		}
 	}
-	return ""
+	return "", complete, scanner.Err() != nil
+}
+
+// Rollout files are append-only, so a file's marker answer only changes by
+// lines appended after the ones already read. Resolving an unlinked Codex
+// session would otherwise re-parse every rollout under ~/.codex/sessions
+// (gigabytes on a long-lived install) each time it is retried.
+type codexMarkerEntry struct {
+	info     os.FileInfo
+	size     int64
+	modTime  time.Time
+	head     [sha256.Size]byte
+	complete int64
+	id       string
+	stuck    bool
+}
+
+var codexMarkers struct {
+	sync.Mutex
+	entries map[string]codexMarkerEntry
+}
+
+const codexMarkerHeadBytes = 4096
+
+// codexTranscriptCoralSessionIDCached returns what codexTranscriptCoralSessionID
+// would, reading only the bytes appended since the previous call. A replaced,
+// truncated or rewritten file (identity, size or first 4KB changed) is read
+// again from the start. seen is the file's info from the directory walk, if
+// any: a file whose identity, size and mtime are unchanged is not opened.
+func codexTranscriptCoralSessionIDCached(path string, seen os.FileInfo) string {
+	if seen != nil {
+		codexMarkers.Lock()
+		prev, ok := codexMarkers.entries[path]
+		codexMarkers.Unlock()
+		if ok && os.SameFile(prev.info, seen) && seen.Size() == prev.size && seen.ModTime().Equal(prev.modTime) {
+			return prev.id
+		}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	headBuf := make([]byte, codexMarkerHeadBytes)
+	n, _ := f.ReadAt(headBuf, 0)
+	head := sha256.Sum256(headBuf[:n])
+
+	codexMarkers.Lock()
+	prev, ok := codexMarkers.entries[path]
+	codexMarkers.Unlock()
+	var start int64
+	if ok && os.SameFile(prev.info, info) && prev.head == head && info.Size() >= prev.size {
+		if prev.id != "" || prev.stuck || info.Size() == prev.size {
+			return prev.id
+		}
+		start = prev.complete
+	}
+	if _, err := f.Seek(start, io.SeekStart); err != nil {
+		return ""
+	}
+	id, complete, stuck := scanCodexMarker(f)
+
+	codexMarkers.Lock()
+	if codexMarkers.entries == nil || len(codexMarkers.entries) >= 4096 {
+		codexMarkers.entries = make(map[string]codexMarkerEntry)
+	}
+	codexMarkers.entries[path] = codexMarkerEntry{info: info, size: info.Size(), modTime: info.ModTime(), head: head, complete: start + complete, id: id, stuck: stuck}
+	codexMarkers.Unlock()
+	return id
 }
 
 func agyTranscriptCoralSessionID(path string) string {

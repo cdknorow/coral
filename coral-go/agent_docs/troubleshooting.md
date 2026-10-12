@@ -276,6 +276,19 @@ port 8420 is already in use
 Coral binds the port before opening the database. Use `--port`, and pair it with `--home`
 so the two instances do not share state.
 
+## Performance
+
+### Profiling a slow server
+
+Set `CORAL_PPROF_ADDR` to a loopback address, e.g.
+`CORAL_PPROF_ADDR=127.0.0.1:6060 coral`, and Go's profiler is served at
+`http://127.0.0.1:6060/debug/pprof/` (`go tool pprof http://127.0.0.1:6060/debug/pprof/profile`).
+It is off by default, runs on its own port (never the dashboard's), and
+refuses anything but a loopback IP such as `127.0.0.1` or `[::1]`. Loopback
+is not per-user: while it is on, any local account can read heap and
+goroutine dumps, which can contain prompts and other session data. Turn it
+off when you are done.
+
 ## Platform
 
 ### Windows

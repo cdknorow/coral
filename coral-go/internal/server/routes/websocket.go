@@ -13,7 +13,6 @@ import (
 	"nhooyr.io/websocket/wsjson"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -115,66 +114,20 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		}
 		lastBuild = time.Now()
 
-		sessions, err := h.buildSessionListForWS(r)
+		tick, err := h.sharedWSTick(r)
 		if err != nil {
 			slog.Warn("ws/coral build session list failed", "error", err)
 			continue
 		}
-
-		// Merge remote agents (multi-server hub). With no remotes registered
-		// the session list and messages are exactly as before.
-		var remoteServers []background.RemoteServerStatus
-		var remoteSessions []map[string]any
-		snap := h.remoteSnapshot()
-		hasRemotes := snap.Configured()
-		if hasRemotes {
-			remoteServers = snap.Servers
-			remoteSessions = snap.Sessions
-			for _, s := range sessions {
-				s["server"] = "local"
-			}
-		}
-
-		// Fetch active job runs
-		activeRuns := h.getActiveRuns(r.Context())
-
-		// Build per-session state map for diff
-		currSessions := make(map[string]string, len(sessions))
-		sessionByKey := make(map[string]map[string]any, len(sessions))
-		for _, s := range sessions {
-			key := ""
-			if sid, ok := s["session_id"].(string); ok && sid != "" {
-				key = sid
-			} else if name, ok := s["name"].(string); ok {
-				key = name
-			}
-			if key == "" {
-				continue
-			}
-			serialized, _ := json.Marshal(s)
-			currSessions[key] = string(serialized)
-			sessionByKey[key] = s
-		}
-		for _, s := range remoteSessions {
-			srv, _ := s["server"].(string)
-			k := feedKey(s)
-			if k == "" {
-				continue
-			}
-			key := remoteKey(srv, k)
-			serialized, _ := json.Marshal(s)
-			currSessions[key] = string(serialized)
-			sessionByKey[key] = s
-			sessions = append(sessions, s)
-		}
-		serversJSON := ""
-		if hasRemotes {
-			b, _ := json.Marshal(remoteServers)
-			serversJSON = string(b)
-		}
-
-		currRunsJSON, _ := json.Marshal(activeRuns)
-		currRunsStr := string(currRunsJSON)
+		// Shared with every connection: read, never modify.
+		sessions := tick.sessions
+		remoteServers := tick.servers
+		hasRemotes := tick.hasRemotes
+		activeRuns := tick.activeRuns
+		currSessions := tick.current
+		sessionByKey := tick.byKey
+		serversJSON := tick.serversJSON
+		currRunsStr := tick.runsJSON
 
 		// Drain pending notifications
 		var notifications []Notification
@@ -320,15 +273,21 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		}
 	}
 
-	fileCounts, _ := h.ts.GetAllEditedFileCounts(ctx)
+	fileCounts, _ := h.ts.GetEditedFileCounts(ctx, sessionIDs)
 	if fileCounts == nil {
 		fileCounts = map[string]int{}
 	}
 
-	// Board unread counts
+	// Board unread counts, only for the sessions being shown.
 	var allUnread map[string]int
 	if h.bs != nil {
-		allUnread, _ = h.bs.GetAllUnreadCounts(ctx)
+		tmuxNames := make([]string, 0, len(agents))
+		for _, a := range agents {
+			if a.TmuxSession != "" {
+				tmuxNames = append(tmuxNames, a.TmuxSession)
+			}
+		}
+		allUnread, _ = h.bs.GetUnreadCountsForSessions(ctx, tmuxNames)
 	}
 	if allUnread == nil {
 		allUnread = map[string]int{}
@@ -372,7 +331,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	var sessions []map[string]any
 	liveSIDs := make(map[string]bool)
 	for _, agent := range agents {
-		logInfo := getLogStatus(agent.LogPath)
+		logInfo := h.cachedLogStatus(agent.LogPath)
 		sid := agent.SessionID
 
 		// Compute waiting/done/working from latest event
@@ -410,7 +369,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"tmux_session":          agent.TmuxSession,
 			"status":                logInfo["status"],
 			"summary":               summary,
-			"staleness_seconds":     logInfo["staleness_seconds"],
+			"staleness_seconds":     listStaleness(logInfo["staleness_seconds"]),
 			"display_name":          nilIfEmpty(displayNames[sid]),
 			"icon":                  nilIfEmpty(icons[sid]),
 			"name_color":            nilIfEmpty(nameColors[sid]),

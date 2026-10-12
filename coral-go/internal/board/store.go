@@ -1181,6 +1181,10 @@ func (s *Store) GetUnreadCountsForSessions(ctx context.Context, sessionNames []s
 }
 
 func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map[string]int, error) {
+	return s.countUnread(ctx, sessionNames, true)
+}
+
+func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bool) (map[string]int, error) {
 	var subs []struct {
 		Project      string `db:"project"`
 		SubscriberID string `db:"subscriber_id"`
@@ -1235,18 +1239,24 @@ func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map
 		groupsByKey[key][gr.SubscriberID] = true
 	}
 
-	// Group subscribers by project
+	// Group subscribers by project. Counts are incremental (see
+	// unread_cache.go): each subscriber resumes at its cached watermark, and a
+	// project's messages are streamed once from the lowest of them.
 	type subInfo struct {
 		SubscriberID string
 		SessionName  string
 		JobTitle     string
 		LastReadID   int64
 		ReceiveMode  string
+		key          sidebarUnreadKey
+		start        int64
+		count        int
 	}
+	epoch := s.unreadCounts.epoch.Load()
 	result := make(map[string]int)
-	byProject := make(map[string][]subInfo)
+	byProject := make(map[string][]*subInfo)
 	for _, sub := range subs {
-		result[sub.SessionName] = 0
+		result[sub.SessionName] += 0
 		rm := sub.ReceiveMode
 		if rm == "none" {
 			continue
@@ -1254,26 +1264,28 @@ func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map
 		if rm == "" {
 			rm = "mentions"
 		}
-		byProject[sub.Project] = append(byProject[sub.Project], subInfo{
-			sub.SubscriberID, sub.SessionName, sub.JobTitle, sub.LastReadID, rm,
-		})
+		info := &subInfo{SubscriberID: sub.SubscriberID, SessionName: sub.SessionName, JobTitle: sub.JobTitle, LastReadID: sub.LastReadID, ReceiveMode: rm,
+			key: sidebarUnreadKey{sub.Project, sub.SubscriberID, sub.SessionName}}
+		info.start, info.count = s.unreadCounts.sidebarUnreadStart(info.key, sub.LastReadID, sub.JobTitle, rm, epoch)
+		byProject[sub.Project] = append(byProject[sub.Project], info)
 	}
 
 	for project, projectSubs := range byProject {
-		minCursor := projectSubs[0].LastReadID
+		minStart := projectSubs[0].start
 		for _, sub := range projectSubs {
-			if sub.LastReadID < minCursor {
-				minCursor = sub.LastReadID
+			if sub.start < minStart {
+				minStart = sub.start
 			}
 		}
 
 		// Stream messages instead of retaining every unread body in memory.
 		rows, err := s.db.QueryxContext(ctx,
 			"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
-			project, minCursor)
+			project, minStart)
 		if err != nil {
 			return nil, err
 		}
+		hi := minStart
 		for rows.Next() {
 			var id int64
 			var sender, content string
@@ -1281,8 +1293,9 @@ func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map
 				rows.Close()
 				return nil, err
 			}
+			hi = id
 			for _, sub := range projectSubs {
-				if id <= sub.LastReadID || sender == sub.SubscriberID {
+				if id <= sub.start || sender == sub.SubscriberID {
 					continue
 				}
 				eligible := false
@@ -1295,7 +1308,7 @@ func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map
 					eligible = groupsByKey[groupKey{project, sub.ReceiveMode}][sender]
 				}
 				if eligible {
-					result[sub.SessionName]++
+					sub.count++
 				}
 			}
 		}
@@ -1307,6 +1320,16 @@ func (s *Store) getUnreadCounts(ctx context.Context, sessionNames []string) (map
 		if closeErr != nil {
 			return nil, closeErr
 		}
+		for _, sub := range projectSubs {
+			result[sub.SessionName] += sub.count
+			s.unreadCounts.storeSidebarUnread(sub.key, sidebarUnreadEntry{lastReadID: sub.LastReadID, jobTitle: sub.JobTitle, receiveMode: sub.ReceiveMode,
+				scannedTo: max(hi, sub.start), count: sub.count, epoch: epoch})
+		}
+	}
+	if retry && s.unreadCounts.epoch.Load() != epoch {
+		// Messages were deleted or groups changed meanwhile: cached bases may
+		// be stale, so count again.
+		return s.countUnread(ctx, sessionNames, false)
 	}
 	return result, nil
 }
@@ -1343,18 +1366,22 @@ func (s *Store) GetAllUnreadStates(ctx context.Context) (map[string]UnreadState,
 
 // AddToGroup adds a subscriber to a board group.
 func (s *Store) AddToGroup(ctx context.Context, project, groupID, subscriberID string) error {
+	s.unreadCounts.invalidate() // before and after, as for message deletes
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO board_groups (project, group_id, session_id, subscriber_id) VALUES (?, ?, ?, ?)
 		 ON CONFLICT(project, group_id, session_id) DO NOTHING`,
 		project, groupID, subscriberID, subscriberID)
+	s.unreadCounts.invalidate()
 	return err
 }
 
 // RemoveFromGroup removes a subscriber from a board group. Returns true if removed.
 func (s *Store) RemoveFromGroup(ctx context.Context, project, groupID, subscriberID string) (bool, error) {
+	s.unreadCounts.invalidate() // before and after, as for message deletes
 	result, err := s.db.ExecContext(ctx,
 		"DELETE FROM board_groups WHERE project = ? AND group_id = ? AND subscriber_id = ?",
 		project, groupID, subscriberID)
+	s.unreadCounts.invalidate()
 	if err != nil {
 		return false, err
 	}

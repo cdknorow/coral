@@ -115,17 +115,23 @@ func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 	n, err := s.CheckUnread(ctx, "team", "Dev")
 	require.NoError(t, err)
 	require.Equal(t, 1, n)
-	cached := func() int {
+	_, err = s.GetUnreadCountsForSessions(ctx, []string{"sess-dev"})
+	require.NoError(t, err)
+	cached := func() (int, int) {
 		s.unreadCounts.mu.Lock()
 		defer s.unreadCounts.mu.Unlock()
-		return len(s.unreadCounts.entries)
+		return len(s.unreadCounts.entries), len(s.unreadCounts.sidebar)
 	}
-	require.Equal(t, 1, cached())
+	mentions, sidebar := cached()
+	require.Equal(t, 1, mentions)
+	require.Equal(t, 1, sidebar)
 
 	// Unsubscribing drops the subscriber's entries.
 	_, err = s.Unsubscribe(ctx, "team", "Dev")
 	require.NoError(t, err)
-	require.Zero(t, cached())
+	mentions, sidebar = cached()
+	require.Zero(t, mentions)
+	require.Zero(t, sidebar)
 
 	// A subscriber whose row is gone is dropped when it is next asked about.
 	_, err = s.Subscribe(ctx, "team", "Gone", "Developer", "sess-gone", nil, nil, "mentions")
@@ -136,7 +142,8 @@ func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 	require.NoError(t, err)
 	_, err = s.CheckUnread(ctx, "team", "Gone")
 	require.NoError(t, err)
-	require.Zero(t, cached())
+	mentions, _ = cached()
+	require.Zero(t, mentions)
 
 	// Deletes invalidate both before and after the DELETE.
 	before := s.unreadCounts.epoch.Load()
@@ -145,5 +152,14 @@ func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
 	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
 	before = s.unreadCounts.epoch.Load()
 	require.NoError(t, s.DeleteProject(ctx, "team"))
+	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
+
+	// Group changes too (group-mode eligibility depends on membership).
+	before = s.unreadCounts.epoch.Load()
+	require.NoError(t, s.AddToGroup(ctx, "team", "devs", "Lead"))
+	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
+	before = s.unreadCounts.epoch.Load()
+	_, err = s.RemoveFromGroup(ctx, "team", "devs", "Lead")
+	require.NoError(t, err)
 	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
 }

@@ -50,16 +50,16 @@ import (
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
 	remoteAgents background.RemoteAgentSource
-	db        *store.DB
-	ss        *store.SessionStore
-	ts        *store.TaskStore
-	subagents *store.SubagentStore
-	gs        *store.GitStore
-	bs        *board.Store
-	cfg       *config.Config
-	terminal  ptymanager.SessionTerminal
-	jsonl     *jsonl.SessionReader
-	backend   ptymanager.TerminalBackend // nil = use tmux directly
+	db           *store.DB
+	ss           *store.SessionStore
+	ts           *store.TaskStore
+	subagents    *store.SubagentStore
+	gs           *store.GitStore
+	bs           *board.Store
+	cfg          *config.Config
+	terminal     ptymanager.SessionTerminal
+	jsonl        *jsonl.SessionReader
+	backend      ptymanager.TerminalBackend // nil = use tmux directly
 
 	boardHandler  *BoardHandler          // for sleep/wake board pausing
 	licenseMgr    *license.Manager       // for runtime trial limit checks
@@ -71,6 +71,8 @@ type SessionsHandler struct {
 	goals GoalRequester // nil until the goal generator starts
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
+
+	wsList wsTickCache // one /ws/coral build shared by all clients (ws_shared_list.go)
 
 	// logStatusCache avoids rereading each agent's bounded log tail on every
 	// sidebar poll. Entries are invalidated by size/mtime and capped so a
@@ -867,7 +869,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"tmux_session":          agent.TmuxSession,
 			"status":                nilIfEmpty(status),
 			"summary":               nilIfEmpty(summary),
-			"staleness_seconds":     staleness,
+			"staleness_seconds":     listStaleness(staleness),
 			"working_directory":     agent.WorkingDir,
 			"display_name":          displayNames[sid],
 			"icon":                  iconVal,

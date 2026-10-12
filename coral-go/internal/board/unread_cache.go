@@ -29,10 +29,14 @@ type mentionCountEntry struct {
 	epoch      uint64
 }
 
-// unreadCountCache holds CheckUnread's incremental mentions-mode counts.
+// unreadCountCache holds both incremental unread counts: CheckUnread's
+// (SQL LIKE, mentions mode) and getUnreadCounts' (Go mention matching, every
+// mode, for the session list badges). The two match mentions differently, so
+// they are cached separately.
 type unreadCountCache struct {
 	mu      sync.Mutex
 	entries map[mentionCountKey]mentionCountEntry
+	sidebar map[sidebarUnreadKey]sidebarUnreadEntry
 	epoch   atomic.Uint64
 }
 
@@ -46,15 +50,55 @@ func (c *unreadCountCache) invalidate() {
 	c.epoch.Add(1)
 	c.mu.Lock()
 	c.entries = nil
+	c.sidebar = nil
 	c.mu.Unlock()
 }
 
-// forget drops a subscriber's cached count, e.g. when it unsubscribes, so the
-// map holds only subscribers that still exist.
+// forget drops a subscriber's cached counts, e.g. when it unsubscribes, so the
+// maps hold only subscribers that still exist.
 func (c *unreadCountCache) forget(project, subscriberID string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.entries, mentionCountKey{project, subscriberID})
+	for key := range c.sidebar {
+		if key.project == project && key.subscriberID == subscriberID {
+			delete(c.sidebar, key)
+		}
+	}
+}
+
+type sidebarUnreadKey struct{ project, subscriberID, sessionName string }
+
+type sidebarUnreadEntry struct {
+	lastReadID  int64
+	jobTitle    string
+	receiveMode string
+	scannedTo   int64
+	count       int
+	epoch       uint64
+}
+
+// sidebarUnreadStart returns where a subscriber's count must resume and the
+// count already accumulated up to there.
+func (c *unreadCountCache) sidebarUnreadStart(key sidebarUnreadKey, lastReadID int64, jobTitle, receiveMode string, epoch uint64) (int64, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if e, ok := c.sidebar[key]; ok && e.epoch == epoch && e.lastReadID == lastReadID && e.jobTitle == jobTitle && e.receiveMode == receiveMode {
+		return e.scannedTo, e.count
+	}
+	return lastReadID, 0
+}
+
+func (c *unreadCountCache) storeSidebarUnread(key sidebarUnreadKey, e sidebarUnreadEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.epoch.Load() != e.epoch {
+		return
+	}
+	if c.sidebar == nil {
+		c.sidebar = make(map[sidebarUnreadKey]sidebarUnreadEntry)
+	}
+	c.sidebar[key] = e
 }
 
 // countMentionsUnread returns the number of unread messages after lastReadID

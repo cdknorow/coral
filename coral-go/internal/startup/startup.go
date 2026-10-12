@@ -336,6 +336,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 
 	// Start all background services
 	startBackgroundServices(ctx, db, cfg, srv, agentRT)
+	startPprof(ctx)
 
 	// Start HTTP server in background goroutine using the already-bound listener
 	onErr := opts.OnServerError
