@@ -541,3 +541,23 @@ func TestAgentUIRoutes(t *testing.T) {
 	assert.False(t, AllowRequest(func() Mode { return TierView })("POST", "/api/agent/ui/"+id+"/events", "session_id=s1"), "but not interact with one")
 	assert.True(t, AllowRequest(func() Mode { return TierInteract })("POST", "/api/agent/ui-request", "session_id=s1"))
 }
+
+// The hub's machine feed connects with feed=hub (a client that must not consume the machine's UI notifications). Exactly that value,
+// once, on exactly that route: look-alikes, other values, repeats and the parameter anywhere else are refused.
+func TestFeedHubIsAnExactValueOnTheCoralFeedOnly(t *testing.T) {
+	for _, q := range []string{"feed=hub", "feed=hub&session_id=abc", "agent_type=claude&feed=hub", "feed=%68ub" /* decodes to exactly hub, as Coral reads it */} {
+		assert.Equal(t, TierView, Classify("GET", "/ws/coral", q), q)
+	}
+	for _, q := range []string{
+		"feed=", "feed", "feed=Hub", "feed=HUB", "feed=hub2", "feed=hubb", "feed=hu", "feed=%68ubx", "feed=hub%00", "feed=hub+", "feed= hub",
+		"feed=hub&feed=hub", "feed=hub&feed=x", "feed=x&feed=hub", "feed=hub;x=1", "Feed=hub", "feed[]=hub", "feeds=hub", "feed=hub&bogus=1",
+	} {
+		assert.Equal(t, TierNever, Classify("GET", "/ws/coral", q), q)
+	}
+	for _, p := range []string{"/ws/terminal/a", "/api/sessions/live", "/api/health", "/api/agent/ui"} {
+		assert.Equal(t, TierNever, Classify("GET", p, "feed=hub"), p)
+	}
+	assert.Equal(t, TierView, Classify("GET", "/ws/coral", ""), "no query still works (older hubs)")
+	// the table text is what the Go code and the generator agree on
+	assert.Contains(t, routeQueries["GET /ws/coral"], "feed=hub")
+}

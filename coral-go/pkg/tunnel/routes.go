@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -328,18 +329,27 @@ type paramKind int
 const (
 	paramPlain paramKind = iota + 1
 	paramFile
+	paramEnum // only the exact values listed for it in the table, and only once
 )
 
+// paramSpec is how one query parameter is validated.
+type paramSpec struct {
+	kind   paramKind
+	values []string // paramEnum: the accepted values
+}
+
 // querySpecs is routeQueries parsed: for each route shape, the parameters it accepts.
-var querySpecs = func() map[string]map[string]paramKind {
-	out := make(map[string]map[string]paramKind, len(routeQueries))
+var querySpecs = func() map[string]map[string]paramSpec {
+	out := make(map[string]map[string]paramSpec, len(routeQueries))
 	for shape, spec := range routeQueries {
-		m := map[string]paramKind{}
+		m := map[string]paramSpec{}
 		for _, p := range strings.Split(spec, ",") {
-			if strings.HasSuffix(p, "*") {
-				m[strings.TrimSuffix(p, "*")] = paramFile
+			if name, vals, ok := strings.Cut(p, "="); ok {
+				m[name] = paramSpec{kind: paramEnum, values: strings.Split(vals, "|")}
+			} else if strings.HasSuffix(p, "*") {
+				m[strings.TrimSuffix(p, "*")] = paramSpec{kind: paramFile}
 			} else {
-				m[p] = paramPlain
+				m[p] = paramSpec{kind: paramPlain}
 			}
 		}
 		out[shape] = m
@@ -419,12 +429,15 @@ func queryOK(r route, rawQuery string) bool {
 	}
 	spec := querySpecs[shapeOf(r.method, r.pattern)]
 	for name, vals := range q {
-		kind, ok := spec[name]
+		ps, ok := spec[name]
 		if !ok {
 			return false // unknown parameter
 		}
+		if ps.kind == paramEnum && (len(vals) != 1 || !slices.Contains(ps.values, vals[0])) {
+			return false // exact value, once: no look-alikes, no repeats
+		}
 		for _, v := range vals {
-			if kind == paramFile && !safeRef(v, r.tier == TierLaunch) {
+			if ps.kind == paramFile && !safeRef(v, r.tier == TierLaunch) {
 				return false
 			}
 		}
