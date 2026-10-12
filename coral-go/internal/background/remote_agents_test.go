@@ -87,13 +87,44 @@ type fakeRemote struct {
 	delay    time.Duration
 	noFeed   bool
 	feedConn chan *websocket.Conn
+
+	healthDelay time.Duration
+	noHealthAPI bool // an older remote: /api/health is 404
+	feedDeaf    bool // the feed socket is never read, so pings go unanswered
+	listGets    int
+	healthGets  int
+}
+
+func (fr *fakeRemote) counts() (list, health int) {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	return fr.listGets, fr.healthGets
 }
 
 func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
 	fr := &fakeRemote{sessions: sessions, feedConn: make(chan *websocket.Conn, 8)}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		fr.mu.Lock()
+		fr.healthGets++
+		d, missing := fr.healthDelay, fr.noHealthAPI
+		fr.mu.Unlock()
+		if missing {
+			http.NotFound(w, r)
+			return
+		}
+		if d > 0 {
+			select {
+			case <-time.After(d):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "version": "fake-1"})
+	})
 	mux.HandleFunc("/api/sessions/live", func(w http.ResponseWriter, r *http.Request) {
 		fr.mu.Lock()
+		fr.listGets++
 		s, d := fr.sessions, fr.delay
 		fr.mu.Unlock()
 		if d > 0 {
@@ -106,7 +137,10 @@ func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
 		json.NewEncoder(w).Encode(s)
 	})
 	mux.HandleFunc("/ws/coral", func(w http.ResponseWriter, r *http.Request) {
-		if fr.noFeed {
+		fr.mu.Lock()
+		noFeed := fr.noFeed
+		fr.mu.Unlock()
+		if noFeed {
 			http.NotFound(w, r)
 			return
 		}
@@ -118,8 +152,15 @@ func newFakeRemote(t *testing.T, sessions ...map[string]any) *fakeRemote {
 		s := fr.sessions
 		fr.mu.Unlock()
 		wsjson.Write(r.Context(), c, map[string]any{"type": "coral_update", "sessions": s})
+		fr.mu.Lock()
+		deaf := fr.feedDeaf
+		fr.mu.Unlock()
+		ctx := r.Context()
+		if !deaf {
+			ctx = c.CloseRead(ctx) // reading answers the hub's pings, as the real server does
+		}
 		fr.feedConn <- c
-		<-r.Context().Done()
+		<-ctx.Done()
 	})
 	fr.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+testKey {
@@ -336,4 +377,180 @@ func newListener(addr string) (net.Listener, error) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return nil, err
+}
+
+// feedHub is fastHub with a feed quiet window long enough not to trigger.
+func feedHub(reg *fakeRegistry, quiet time.Duration) *RemoteAgentHub {
+	return NewRemoteAgentHub(reg, regResolver{reg}, RemoteAgentHubConfig{
+		PollInterval: 80 * time.Millisecond, RequestTimeout: 300 * time.Millisecond,
+		RegistryRefresh: 50 * time.Millisecond, MinBackoff: 20 * time.Millisecond, MaxBackoff: 100 * time.Millisecond,
+		FeedQuietRefresh: quiet,
+	})
+}
+
+// While the feed is live and active, the hub does not re-fetch the list: it
+// only checks /api/health, and keeps the remote online.
+func TestHub_FeedLiveSkipsListPoll(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, time.Hour)
+	startHub(t, h)
+	var conn *websocket.Conn
+	select {
+	case conn = <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	require.Eventually(t, func() bool { return h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	list0, health0 := a.counts()
+	time.Sleep(800 * time.Millisecond) // ~10 poll intervals
+	list1, health1 := a.counts()
+	assert.Equal(t, list0, list1, "list must not be polled while the feed is live")
+	assert.GreaterOrEqual(t, health1-health0, 5, "liveness is checked every poll interval")
+	assert.Equal(t, "online", statusMap(h.Snapshot())["a"])
+	assert.Equal(t, "fake-1", h.Snapshot().Servers[0].Version, "version comes from the health check")
+
+	// Feed data still flows into the list.
+	require.NoError(t, wsjson.Write(context.Background(), conn, map[string]any{
+		"type": "coral_diff", "changed": []map[string]any{{"name": "one", "session_id": "a-1", "status": "Idle"}},
+	}))
+	require.Eventually(t, func() bool {
+		s := h.Snapshot().Sessions
+		return len(s) == 1 && s[0]["status"] == "Idle"
+	}, 2*time.Second, 10*time.Millisecond)
+
+	// When the feed drops (and cannot reconnect), list polling resumes.
+	a.mu.Lock()
+	a.noFeed = true
+	a.mu.Unlock()
+	conn.Close(websocket.StatusNormalClosure, "")
+	require.Eventually(t, func() bool { l, _ := a.counts(); return l > list1 }, 3*time.Second, 10*time.Millisecond)
+}
+
+// A feed that has been quiet for FeedQuietRefresh no longer suppresses the list
+// poll: a remote whose handlers hang can keep a silent socket open.
+func TestHub_QuietFeedRefreshesList(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, 400*time.Millisecond)
+	startHub(t, h)
+	select {
+	case <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	require.Eventually(t, func() bool { return h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	list0, _ := a.counts()
+	a.set(sess("polled", "p-1")) // only visible through the list
+	require.Eventually(t, func() bool {
+		l, _ := a.counts()
+		s := h.Snapshot().Sessions
+		return l > list0 && !h.feedCarriesList("a") && len(s) == 1
+	}, 3*time.Second, 10*time.Millisecond)
+}
+
+// A remote whose HTTP hangs while its feed socket stays open (and answers
+// pings) is still marked non-online within about RequestTimeout+PollInterval.
+func TestHub_HungRemoteWithLiveFeedGoesStale(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, time.Hour)
+	startHub(t, h)
+	select {
+	case <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	require.Eventually(t, func() bool { return h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	a.mu.Lock()
+	a.healthDelay, a.delay = 5*time.Second, 5*time.Second
+	a.mu.Unlock()
+	start := time.Now()
+	require.Eventually(t, func() bool { return statusMap(h.Snapshot())["a"] != "online" }, 2*time.Second, 10*time.Millisecond)
+	assert.Less(t, time.Since(start), 300*time.Millisecond+80*time.Millisecond+200*time.Millisecond, "detected within ~timeout + one poll interval")
+	for _, s := range h.Snapshot().Sessions {
+		assert.Equal(t, true, s["stale"])
+	}
+}
+
+// A feed socket whose pings go unanswered is dropped, so list polling resumes.
+func TestHub_UnansweredPingDropsFeed(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	a.feedDeaf = true
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, time.Hour)
+	startHub(t, h)
+	select {
+	case <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	require.Eventually(t, func() bool { return h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	// Ping every 80ms, 300ms timeout: the feed must drop and the list resume.
+	require.Eventually(t, func() bool { return !h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	list0, _ := a.counts()
+	require.Eventually(t, func() bool { l, _ := a.counts(); return l > list0 }, 2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "online", statusMap(h.Snapshot())["a"], "a dropped feed alone does not make the remote unreachable")
+}
+
+// An idle remote's feed sends only coral_heartbeat (no diffs). Heartbeats keep
+// the feed fresh, so the list is not polled again after the quiet window.
+func TestHub_HeartbeatOnlyFeedStaysFresh(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, 300*time.Millisecond)
+	startHub(t, h)
+	var conn *websocket.Conn
+	select {
+	case conn = <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	require.Eventually(t, func() bool { return h.feedCarriesList("a") }, 2*time.Second, 10*time.Millisecond)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(100 * time.Millisecond):
+				_ = wsjson.Write(context.Background(), conn, map[string]any{"type": "coral_heartbeat"})
+			}
+		}
+	}()
+	list0, _ := a.counts()
+	time.Sleep(time.Second) // > 3x the quiet window
+	list1, health1 := a.counts()
+	assert.Equal(t, list0, list1, "heartbeats keep the feed fresh: no list polls")
+	assert.Greater(t, health1, 0)
+	assert.True(t, h.feedCarriesList("a"))
+}
+
+// A remote without /api/health (older version) whose feed is live stays online:
+// the 404 switches it to list polling instead of marking it unreachable.
+func TestHub_NoHealthEndpointFallsBackToList(t *testing.T) {
+	a := newFakeRemote(t, sess("one", "a-1"))
+	a.noHealthAPI = true
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := feedHub(reg, time.Hour)
+	startHub(t, h)
+	select {
+	case <-a.feedConn:
+	case <-time.After(3 * time.Second):
+		t.Fatal("hub never opened an upstream feed socket")
+	}
+	list0, _ := a.counts()
+	time.Sleep(800 * time.Millisecond)
+	list1, health1 := a.counts()
+	assert.Greater(t, list1, list0, "list polling continues")
+	assert.LessOrEqual(t, health1, 3, "health is not retried every poll once it 404s")
+	assert.Equal(t, "online", statusMap(h.Snapshot())["a"])
+	assert.False(t, h.feedCarriesList("a"))
 }

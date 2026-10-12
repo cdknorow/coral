@@ -20,8 +20,13 @@ package background
 // polls GET /api/sessions/live every ~5s (jittered, per-request timeout, backoff
 // 1s..30s on failure) and a second goroutine holding an upstream /ws/coral feed
 // socket. While the feed is connected its data supersedes the poll for the
-// session list; the poll keeps running to track status. When the feed cannot
-// be established the poll data is used.
+// session list, so the poll only checks liveness with GET /api/health (the list
+// is ~1 KB per agent and costs the remote a full build; health is ~40 bytes and
+// static). The full list is fetched again when the feed drops, or when it has
+// been quiet for FeedQuietRefresh (a remote whose handlers hang keeps a silent
+// socket). The feed socket is pinged every PollInterval and dropped when a ping
+// goes unanswered for RequestTimeout. When the feed cannot be established the
+// poll data is used.
 
 import (
 	"context"
@@ -33,6 +38,7 @@ import (
 	"net/http"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"nhooyr.io/websocket"
@@ -86,6 +92,9 @@ type RemoteAgentHubConfig struct {
 	RegistryRefresh time.Duration // default 10s
 	MinBackoff      time.Duration // default 1s
 	MaxBackoff      time.Duration // default 30s
+	// FeedQuietRefresh: while the feed is live the list is not polled, unless
+	// no feed message arrived for this long. Default 30s.
+	FeedQuietRefresh time.Duration
 }
 
 func (c *RemoteAgentHubConfig) fill() {
@@ -104,6 +113,9 @@ func (c *RemoteAgentHubConfig) fill() {
 	if c.MaxBackoff <= 0 {
 		c.MaxBackoff = 30 * time.Second
 	}
+	if c.FeedQuietRefresh <= 0 {
+		c.FeedQuietRefresh = 30 * time.Second
+	}
 }
 
 type remoteState struct {
@@ -112,6 +124,8 @@ type remoteState struct {
 	status    string
 	sessions  []map[string]any
 	feedLive  bool
+	feedMsgAt time.Time // last message of any type received on the feed
+	noHealth  bool      // remote predates /api/health (404): liveness uses the list
 	lastDB    time.Time // last SetStatus(online) write
 	lastSig   string
 	version   string    // remote's reported version (best effort)
@@ -129,7 +143,12 @@ type RemoteAgentHub struct {
 	remotes map[string]*remoteState
 	subs    map[int]chan struct{}
 	nextSub int
+	gen     atomic.Uint64 // bumped on every notify, before subscribers are signalled
 }
+
+// Generation increases whenever subscribers are notified of a change, so a
+// reader can tell whether a snapshot it holds predates the latest change.
+func (h *RemoteAgentHub) Generation() uint64 { return h.gen.Load() }
 
 // NewRemoteAgentHub creates the hub. Call Run to start it.
 func NewRemoteAgentHub(reg RemoteRegistry, resolver proxy.Resolver, cfg RemoteAgentHubConfig) *RemoteAgentHub {
@@ -182,7 +201,7 @@ func (h *RemoteAgentHub) reconcile(ctx context.Context) {
 		if st != nil && (st.srv.URL != rs.URL || st.srv.AllowPrivate != rs.AllowPrivate) && st.cancel != nil {
 			st.cancel()
 			st.cancel = nil
-			st.sessions, st.feedLive, st.status = nil, false, ""
+			st.sessions, st.feedLive, st.status, st.noHealth = nil, false, "", false
 		}
 		if st == nil {
 			st = &remoteState{}
@@ -291,6 +310,7 @@ func (h *RemoteAgentHub) Subscribe() (<-chan struct{}, func()) {
 }
 
 func (h *RemoteAgentHub) notify() {
+	h.gen.Add(1)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, ch := range h.subs {
@@ -325,14 +345,36 @@ func (h *RemoteAgentHub) current(id string) (*remoteState, bool) {
 func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
 	backoff := h.cfg.MinBackoff
 	for {
-		sessions, err := h.fetchLive(ctx, id)
+		var sessions []map[string]any
+		var err error
+		feedFresh := h.feedCarriesList(id)
+		if feedFresh {
+			// The feed supplies the list; only check that the remote answers.
+			if err = h.checkHealth(ctx, id); errors.Is(err, errNoHealthEndpoint) {
+				// An older remote: fall back to the list for good, never
+				// mark a working remote unreachable.
+				h.mu.Lock()
+				if st, ok := h.current(id); ok {
+					st.noHealth = true
+				}
+				h.mu.Unlock()
+				feedFresh = false
+			}
+		}
+		if !feedFresh {
+			sessions, err = h.fetchLive(ctx, id)
+		}
 		if ctx.Err() != nil {
 			return
 		}
 		var wait time.Duration
 		if err == nil {
-			h.recordOnline(ctx, id, sessions)
-			h.refreshVersion(ctx, id)
+			if feedFresh {
+				h.recordAlive(ctx, id)
+			} else {
+				h.recordOnline(ctx, id, sessions)
+				h.refreshVersion(ctx, id)
+			}
 			backoff = h.cfg.MinBackoff
 			wait = h.jitter(h.cfg.PollInterval)
 		} else {
@@ -345,6 +387,86 @@ func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
 		if !sleepCtx(ctx, wait) {
 			return
 		}
+	}
+}
+
+// feedCarriesList reports whether the remote's feed is connected and has
+// delivered a message within FeedQuietRefresh, so polling the list would only
+// fetch data the feed already supersedes.
+func (h *RemoteAgentHub) feedCarriesList(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	st, ok := h.current(id)
+	return ok && st.feedLive && !st.noHealth && time.Since(st.feedMsgAt) < h.cfg.FeedQuietRefresh
+}
+
+// errNoHealthEndpoint means the remote answered /api/health with 404: it
+// predates the endpoint, which says nothing about whether it is up.
+var errNoHealthEndpoint = errors.New("remote has no /api/health endpoint")
+
+// checkHealth GETs /api/health and records the reported version. It is the
+// liveness check used while the feed carries the list.
+func (h *RemoteAgentHub) checkHealth(ctx context.Context, id string) error {
+	t, err := h.resolver.Resolve(ctx, id)
+	if err != nil {
+		return err
+	}
+	rctx, cancel := context.WithTimeout(ctx, h.cfg.RequestTimeout)
+	defer cancel()
+	resp, err := proxy.Get(rctx, t, "/api/health", "")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return errNoHealthEndpoint
+	}
+	if resp.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return errors.New("remote returned HTTP " + resp.Status)
+	}
+	var body struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&body); err != nil {
+		return errors.New("remote returned an invalid health response")
+	}
+	if body.Version != "" {
+		h.mu.Lock()
+		changed := false
+		if st, ok := h.current(id); ok && st.version != body.Version {
+			st.version, st.versionAt, changed = body.Version, time.Now(), true
+		}
+		h.mu.Unlock()
+		if changed {
+			h.notify()
+		}
+	}
+	return nil
+}
+
+// recordAlive is recordOnline for a liveness check that carries no list: the
+// status and the periodic last_seen write, sessions untouched.
+func (h *RemoteAgentHub) recordAlive(ctx context.Context, id string) {
+	h.mu.Lock()
+	st, ok := h.current(id)
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	changed := st.status != store.RemoteStatusOnline
+	st.status = store.RemoteStatusOnline
+	writeDB := changed || time.Since(st.lastDB) > 30*time.Second
+	if writeDB {
+		st.lastDB = time.Now()
+	}
+	h.mu.Unlock()
+	if writeDB {
+		_ = h.reg.SetStatus(ctx, id, store.RemoteStatusOnline, "")
+	}
+	if changed {
+		h.notify()
 	}
 }
 
@@ -555,6 +677,11 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 	}
 	defer conn.CloseNow()
 	conn.SetReadLimit(32 << 20)
+	fctx, stopFeed := context.WithCancel(ctx)
+	defer stopFeed()
+	if p, ok := conn.(feedPinger); ok {
+		go h.pingFeed(fctx, conn, p)
+	}
 
 	feed := map[string]map[string]any{}
 	order := []string{}
@@ -566,13 +693,20 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 		h.mu.Unlock()
 	}()
 	for {
-		_, data, err := conn.Read(ctx)
+		_, data, err := conn.Read(fctx)
 		if err != nil {
 			if websocket.CloseStatus(err) == -1 && ctx.Err() == nil {
 				h.logger.Debug("remote feed dropped", "server", id)
 			}
 			return
 		}
+		// Any message (coral_heartbeat included) shows the remote's feed loop
+		// is alive, so the list does not need re-polling.
+		h.mu.Lock()
+		if st, ok := h.current(id); ok {
+			st.feedMsgAt = time.Now()
+		}
+		h.mu.Unlock()
 		var msg struct {
 			Type     string           `json:"type"`
 			Sessions []map[string]any `json:"sessions"`
@@ -634,6 +768,39 @@ func (h *RemoteAgentHub) runFeed(ctx context.Context, id string) {
 		h.mu.Unlock()
 		if changed {
 			h.notify()
+		}
+	}
+}
+
+// feedPinger is implemented by sockets that support websocket pings
+// (*websocket.Conn). Tunnel sockets do not; their feed relies on the quiet
+// refresh and the remote closing the stream.
+type feedPinger interface {
+	Ping(ctx context.Context) error
+}
+
+// pingFeed pings the upstream feed every PollInterval and drops the socket when
+// a ping is not answered within RequestTimeout (a half-open connection or a
+// remote that stopped reading). Dropping it only ends feedLive: the poll goes
+// back to fetching the list, which decides the remote's status.
+func (h *RemoteAgentHub) pingFeed(ctx context.Context, conn proxy.WSConn, p feedPinger) {
+	t := time.NewTicker(h.cfg.PollInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		pctx, cancel := context.WithTimeout(ctx, h.cfg.RequestTimeout)
+		err := p.Ping(pctx)
+		cancel()
+		if err != nil {
+			if ctx.Err() == nil {
+				h.logger.Debug("remote feed ping failed; dropping feed", "error", err)
+			}
+			conn.CloseNow()
+			return
 		}
 	}
 }

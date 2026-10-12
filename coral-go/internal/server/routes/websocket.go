@@ -73,6 +73,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	prevSessions := make(map[string]string) // session key -> json string
 	prevRunsJSON := "[]"
 	firstMessage := true
+	var lastSent time.Time // last message written to this connection
 
 	pollInterval := time.Duration(h.cfg.WSPollIntervalS) * time.Second
 	if pollInterval == 0 {
@@ -154,6 +155,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			prevSessions = currSessions
 			prevRunsJSON = currRunsStr
 			firstMessage = false
+			lastSent = time.Now()
 			continue
 		}
 
@@ -204,12 +206,26 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if err := wsjson.Write(ctx, conn, payload); err != nil {
 				return
 			}
+			lastSent = time.Now()
 			prevServersJSON = serversJSON
 			prevSessions = currSessions
 			prevRunsJSON = currRunsStr
+		} else if time.Since(lastSent) >= wsHeartbeatInterval {
+			// Nothing changed for a while. Say so, so a hub holding this feed
+			// can tell an idle server from one whose tick loop is stuck (it
+			// falls back to polling the list when the feed goes quiet).
+			// Dashboards ignore the type.
+			if err := wsjson.Write(ctx, conn, map[string]any{"type": "coral_heartbeat"}); err != nil {
+				return
+			}
+			lastSent = time.Now()
 		}
 	}
 }
+
+// wsHeartbeatInterval is how long /ws/coral may stay silent before it sends a
+// coral_heartbeat. It is half the hub's default FeedQuietRefresh (30s).
+var wsHeartbeatInterval = 15 * time.Second
 
 // buildSessionListForWS builds the enriched session list (same fields as List handler).
 func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]any, error) {

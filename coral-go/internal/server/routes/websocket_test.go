@@ -536,3 +536,27 @@ func TestWSCoral_AcceptsLocalhostOrigin(t *testing.T) {
 
 	conn.Close(websocket.StatusNormalClosure, "done")
 }
+
+// An idle /ws/coral sends coral_heartbeat rather than staying silent, so a
+// hub can tell an idle server from a stuck one.
+func TestWSCoral_IdleConnectionSendsHeartbeat(t *testing.T) {
+	prev := wsHeartbeatInterval
+	wsHeartbeatInterval = 1500 * time.Millisecond
+	t.Cleanup(func() { wsHeartbeatInterval = prev })
+	server, _ := setupTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, _, err := websocket.Dial(ctx, "ws"+server.URL[4:]+"/ws/coral", nil)
+	require.NoError(t, err)
+	defer conn.CloseNow()
+
+	var msg struct {
+		Type string `json:"type"`
+	}
+	require.NoError(t, wsjson.Read(ctx, conn, &msg))
+	require.Equal(t, "coral_update", msg.Type)
+	start := time.Now()
+	require.NoError(t, wsjson.Read(ctx, conn, &msg))
+	assert.Equal(t, "coral_heartbeat", msg.Type, "nothing changed, so the next message is a heartbeat")
+	assert.GreaterOrEqual(t, time.Since(start), wsHeartbeatInterval-500*time.Millisecond, "not before the interval")
+}
