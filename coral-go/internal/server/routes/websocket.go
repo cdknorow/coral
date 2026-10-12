@@ -430,6 +430,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 
 		// Goal line: the newest goal event.
 		summary := latestGoals[sid]
+		statusVal, summaryVal, displayVal, iconVal := listTextFields(logInfo, summary, displayNames, icons, sid)
 
 		// Board unread
 		tmuxName := agent.TmuxSession
@@ -443,11 +444,11 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"agent_type":            agent.AgentType,
 			"session_id":            sid,
 			"tmux_session":          agent.TmuxSession,
-			"status":                logInfo["status"],
-			"summary":               summary,
+			"status":                statusVal,
+			"summary":               summaryVal,
 			"staleness_seconds":     listStaleness(logInfo["staleness_seconds"]),
-			"display_name":          nilIfEmpty(displayNames[sid]),
-			"icon":                  nilIfEmpty(icons[sid]),
+			"display_name":          displayVal,
+			"icon":                  iconVal,
 			"name_color":            nilIfEmpty(nameColors[sid]),
 			"working_directory":     agent.WorkingDir,
 			"waiting_for_input":     state.NeedsInput,

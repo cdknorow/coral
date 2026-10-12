@@ -55,3 +55,16 @@ func addCapabilities(entry map[string]any, raw *string) {
 		entry["capabilities"] = json.RawMessage(*raw)
 	}
 }
+
+// listTextFields returns status, summary, display_name and icon as both
+// session lists send them: status and summary are null when empty,
+// display_name is the stored name ("" when unset), and icon is null unless
+// one is stored for the session.
+func listTextFields(logInfo map[string]any, summary string, displayNames, icons map[string]string, sessionID string) (status, summ, displayName, icon any) {
+	logStatus, _ := logInfo["status"].(string)
+	status, summ, displayName = nilIfEmpty(logStatus), nilIfEmpty(summary), displayNames[sessionID]
+	if ic, ok := icons[sessionID]; ok && sessionID != "" {
+		icon = ic
+	}
+	return status, summ, displayName, icon
+}

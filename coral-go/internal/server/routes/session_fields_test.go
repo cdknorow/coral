@@ -15,7 +15,8 @@ import (
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
-var listFieldsShared = []string{"branch", "git_state", "repo_name", "capabilities", "context_pct", "context_window"}
+var listFieldsShared = []string{"branch", "git_state", "repo_name", "capabilities", "context_pct", "context_window",
+	"summary", "status", "display_name", "icon"}
 
 // sessionFieldsFixture is one live agent with git state, capabilities and a
 // recorded turn, so all six fields have values.
@@ -101,6 +102,11 @@ func TestSessionFields_WSMatchesList(t *testing.T) {
 	require.JSONEq(t, `{"allow":["Read","Edit"],"deny":["Bash"]}`, wsFields["capabilities"])
 	require.Equal(t, `200000`, wsFields["context_window"])
 	require.Equal(t, `20`, wsFields["context_pct"])
+	// An agent with no goal yet: summary is null on both (#3004), not "".
+	require.Equal(t, `null`, wsFields["summary"])
+	require.Equal(t, `null`, wsFields["status"])
+	require.Equal(t, `""`, wsFields["display_name"])
+	require.Equal(t, `null`, wsFields["icon"])
 }
 
 // An idle agent's six fields do not change between ticks, so they cause no
@@ -122,4 +128,40 @@ func TestSessionFields_IdleAgentNoDiff(t *testing.T) {
 	first := snapshot()
 	time.Sleep(1100 * time.Millisecond)
 	require.Equal(t, first, snapshot())
+}
+
+// With a goal, a display name and an icon, the text fields still match.
+func TestSessionFields_WSMatchesListWithGoalAndName(t *testing.T) {
+	h, sid := sessionFieldsFixture(t)
+	ctx := context.Background()
+	_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "proj", SessionID: &sid, EventType: "goal", Summary: "Ship the feed parity fix"})
+	require.NoError(t, err)
+	require.NoError(t, h.ss.SetDisplayName(ctx, sid, "Builder"))
+	icon := "🛠"
+	require.NoError(t, h.ss.SetIcon(ctx, sid, &icon))
+
+	w := httptest.NewRecorder()
+	h.List(w, httptest.NewRequest("GET", "/api/sessions/live", nil))
+	var list []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+	ws, err := h.buildSessionListForWS(httptest.NewRequest("GET", "/ws/coral", nil))
+	require.NoError(t, err)
+	b, err := json.Marshal(ws)
+	require.NoError(t, err)
+	var wsDecoded []map[string]any
+	require.NoError(t, json.Unmarshal(b, &wsDecoded))
+	find := func(entries []map[string]any) map[string]any {
+		for _, e := range entries {
+			if e["session_id"] == sid {
+				return e
+			}
+		}
+		t.Fatalf("session %s not in list", sid)
+		return nil
+	}
+	wsFields := pickFields(t, find(wsDecoded))
+	require.Equal(t, pickFields(t, find(list)), wsFields)
+	require.Equal(t, `"Ship the feed parity fix"`, wsFields["summary"])
+	require.Equal(t, `"Builder"`, wsFields["display_name"])
+	require.Equal(t, `"🛠"`, wsFields["icon"])
 }

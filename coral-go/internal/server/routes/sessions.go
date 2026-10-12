@@ -776,7 +776,6 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		skipExpensive := sleeping || largeList && (!logReady || !h.transcriptReady(agent.SessionID))
 
-		status, _ := logInfo["status"].(string)
 		staleness := logInfo["staleness_seconds"]
 
 		sid := agent.SessionID
@@ -825,10 +824,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 		branchVal, repoNameVal, worktreeVal := gitListFields(git)
 
-		var iconVal any
-		if ic, ok := icons[sid]; ok && sid != "" {
-			iconVal = ic
-		}
+		statusVal, summaryVal, displayVal, iconVal := listTextFields(logInfo, summary, displayNames, icons, sid)
 
 		firstPrompt := h.jsonl.CachedFirstUserPrompt(sid)
 		if !skipExpensive {
@@ -841,11 +837,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"agent_type":            agent.AgentType,
 			"session_id":            sid,
 			"tmux_session":          agent.TmuxSession,
-			"status":                nilIfEmpty(status),
-			"summary":               nilIfEmpty(summary),
+			"status":                statusVal,
+			"summary":               summaryVal,
 			"staleness_seconds":     listStaleness(staleness),
 			"working_directory":     agent.WorkingDir,
-			"display_name":          displayNames[sid],
+			"display_name":          displayVal,
 			"icon":                  iconVal,
 			"name_color":            nilIfEmpty(nameColors[sid]),
 			"branch":                branchVal,

@@ -163,7 +163,7 @@ func TestWSCoral_NewSessionDiffIncludesFirstPrompt(t *testing.T) {
 	require.Equal(t, "coral_diff", diff.Type)
 	require.Len(t, diff.Changed, 1)
 	assert.Equal(t, sessionID, diff.Changed[0]["session_id"])
-	assert.Equal(t, "", diff.Changed[0]["summary"])
+	assert.Nil(t, diff.Changed[0]["summary"], "no goal yet: null, as on /api/sessions/live (#3004)")
 	assert.Equal(t, "Investigate the websocket payload", diff.Changed[0]["first_prompt"])
 }
 
