@@ -277,6 +277,7 @@ PUT /api/sessions/live/{name}/file-content launch
 PUT /api/sessions/live/{name}/icon interact
 PUT /api/sessions/live/{name}/name-color interact
 PUT /api/settings never
+PUT /api/settings/git-diff-mode interact
 PUT /api/system/database-security never
 PUT /api/teams/detail/{name}/knowledge/{agentName} never
 PUT /api/themes/{name} never

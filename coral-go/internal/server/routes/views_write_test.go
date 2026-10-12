@@ -120,3 +120,30 @@ func TestViewWritesStayNeverForTheTunnel(t *testing.T) {
 }
 
 func viewID(i int64) string { return strconv.FormatInt(i, 10) }
+
+// The hub may change the changed-files comparison base, and nothing else about the machine's settings, through this route.
+func TestPutGitDiffModeValidatesAndStoresOnlyThatKey(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "coral.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	h := &SystemHandler{db: db, ss: store.NewSessionStore(db)}
+	r := chi.NewRouter()
+	r.Put("/api/settings/git-diff-mode", h.PutGitDiffMode)
+	for _, mode := range []string{"branch_point", "previous_commit", "main_head"} {
+		w := do(r, "PUT", "/api/settings/git-diff-mode", `{"mode":"`+mode+`"}`)
+		require.Equal(t, 200, w.Code, mode)
+		var v string
+		require.NoError(t, db.QueryRow("SELECT value FROM user_settings WHERE key = 'git_diff_mode'").Scan(&v))
+		assert.Equal(t, mode, v)
+	}
+	for _, bad := range []string{`{"mode":"HEAD"}`, `{"mode":""}`, `{"mode":"main_head; DROP TABLE user_settings"}`, `{"mode":["main_head"]}`, `{}`, `[]`, `not json`,
+		`{"mode":"main_head","cli_path_claude":"/bin/evil"}`[:0] + `{"mode":"nope","cli_path_claude":"/bin/evil"}`} {
+		assert.Equal(t, 400, do(r, "PUT", "/api/settings/git-diff-mode", bad).Code, bad)
+	}
+	var n int
+	require.NoError(t, db.QueryRow("SELECT count(*) FROM user_settings WHERE key <> 'git_diff_mode'").Scan(&n))
+	assert.Zero(t, n, "no other setting was written")
+	var v string
+	require.NoError(t, db.QueryRow("SELECT value FROM user_settings WHERE key = 'git_diff_mode'").Scan(&v))
+	assert.Equal(t, "main_head", v, "a refused request changed nothing")
+}

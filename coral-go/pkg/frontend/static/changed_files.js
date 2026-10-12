@@ -387,6 +387,7 @@ export async function loadChangedFiles(agentName, sessionId) {
         if (!resp.ok) throw new Error(`files fetch failed: ${resp.status}`);
         const data = await resp.json();
         _currentFiles = data.files || [];
+        if (data.diff_mode) _cloudDiffMode = data.diff_mode;
     } catch (e) {
         _currentFiles = [];
     }
@@ -518,9 +519,23 @@ window._createFile = async function(filePath) {
 const _diffModes = ['branch_point', 'previous_commit', 'main_head'];
 const _diffModeLabels = { branch_point: 'vs merge-base', previous_commit: 'vs HEAD~1', main_head: 'vs main' };
 
+// On the hub the comparison base is the machine's own setting: it is read from the files response and changed through the one
+// narrow route the hub allows (PUT /api/settings/git-diff-mode, Interact tier), not through the hub's per-user settings.
+let _cloudDiffMode = '';
+
 export async function setGitDiffMode(mode) {
     if (!_diffModes.includes(mode)) return;
-    if (isCloud()) return; // machine-wide setting; not changeable through the hub (selector hidden)
+    if (isCloud()) {
+        try {
+            const resp = await serverFetch(currentServer(), '/api/settings/git-diff-mode', {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }),
+            });
+            if (!resp.ok) { renderChangedFiles(); return; } // refused (view-only server): the wrapper has explained it; show the real mode again
+            _cloudDiffMode = mode;
+        } catch (e) { renderChangedFiles(); return; }
+        refreshChangedFiles();
+        return;
+    }
 
     try {
         await fetch('/api/settings', {
@@ -545,6 +560,7 @@ export async function toggleGitDiffMode() {
 }
 
 function _getGitDiffMode() {
+    if (isCloud()) return _cloudDiffMode || 'branch_point';
     return (state.settings || {}).git_diff_mode || 'branch_point';
 }
 
@@ -571,6 +587,7 @@ export async function refreshChangedFiles() {
         if (resp.ok) {
             const data = await resp.json();
             _currentFiles = data.files || [];
+            if (data.diff_mode) _cloudDiffMode = data.diff_mode;
             renderStarredFiles();
             renderChangedFiles();
         } else {
@@ -600,9 +617,7 @@ export function renderChangedFiles() {
             (acc, f) => ({ adds: acc.adds + (f.additions || 0), dels: acc.dels + (f.deletions || 0) }),
             { adds: 0, dels: 0 }
         );
-        // The diff base is the machine's own setting and the hub has no way to change it (a per-browser choice would only
-        // relabel the list), so the hub shows no selector.
-        const modeSelect = isCloud() ? '' : `<select class="diff-mode-select" onchange="setGitDiffMode(this.value)" title="Diff comparison mode">${options}</select>`;
+        const modeSelect = `<select class="diff-mode-select" onchange="setGitDiffMode(this.value)" title="Diff comparison mode">${options}</select>`;
         const stats = files.length > 0
             ? `<span class="file-adds">+${totals.adds}</span><span class="file-dels">-${totals.dels}</span>`
             : '';
@@ -618,7 +633,7 @@ export function renderChangedFiles() {
         const emptyOptions = _diffModes.map(m =>
             `<option value="${escapeAttr(m)}"${m === _getGitDiffMode() ? ' selected' : ''}>${escapeHtml(_diffModeLabels[m])}</option>`
         ).join('');
-        const emptySelect = isCloud() ? '' : `<br><select class="diff-mode-select" onchange="setGitDiffMode(this.value)" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select>`;
+        const emptySelect = `<br><select class="diff-mode-select" onchange="setGitDiffMode(this.value)" style="margin-top:8px" title="Diff comparison mode">${emptyOptions}</select>`;
         list.innerHTML = `<div class="file-empty">No changed files${emptySelect}</div>`;
         return;
     }
