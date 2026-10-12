@@ -59,6 +59,10 @@ func cmdHistorySearch(args []string) {
 	var flagArgs []string
 	var queryParts []string
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--" { // everything after is query text
+			queryParts = append(queryParts, args[i+1:]...)
+			break
+		}
 		if strings.HasPrefix(args[i], "-") {
 			flagArgs = append(flagArgs, args[i])
 			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && !strings.Contains(args[i], "=") {

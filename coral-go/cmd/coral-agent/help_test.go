@@ -135,3 +135,13 @@ func TestAgentTextContainingHelpIsSent(t *testing.T) {
 		t.Fatalf("note not sent: %v", reqs)
 	}
 }
+
+// "--" lets a search query start with a dash: everything after it is query.
+func TestAgentSearchQueryAfterDoubleDash(t *testing.T) {
+	srv, requests := failingServer(t)
+	runAgent(t, srv.URL, "search", "--", "--help", "flag")
+	reqs := strings.Join(requests(), "\n")
+	if !strings.Contains(reqs, "--help flag") && !strings.Contains(reqs, "--help+flag") && !strings.Contains(reqs, "--help%20flag") {
+		t.Fatalf("query not sent: %q", reqs)
+	}
+}
