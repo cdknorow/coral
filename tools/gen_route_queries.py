@@ -23,6 +23,13 @@ FILE_PARAMS = {'filepath', 'dir', 'path', 'working_directory', 'file', 'ref', 'c
 EXTRA = {
     # file_explorer.js pages a directory listing with offset; the handler returns the first page regardless.
     'GET /api/sessions/live/{}/search-files': {'offset'},
+    # The Agent UI routes are registered by SessionsHandler.RegisterAgentUI, which the registration scan above does not follow.
+    # What the handlers read (internal/server/routes/agent_ui.go, agent_ui_request.go): the session, the pinned revision, the event cursor.
+    'GET /api/agent/ui': {'session_id'},
+    'GET /api/agent/ui/{}/content': {'session_id', 'revision'},
+    'GET /api/agent/ui/{}/events': {'session_id', 'after'},
+    'POST /api/agent/ui/{}/events': {'session_id'},
+    'POST /api/agent/ui-request': {'session_id'},
 }
 
 src = {f: open(f).read() for f in glob.glob(ROOT + '/routes/*.go') if not f.endswith('_test.go')}

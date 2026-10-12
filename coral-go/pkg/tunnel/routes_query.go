@@ -12,6 +12,9 @@ var routeQueries = map[string]string{
 	"GET /api/agent/history/search":                     "include_ancestors,limit,max_excerpt_chars,offset,q,query,roles,session_id,target_session_id",
 	"GET /api/agent/tasks":                              "session_id",
 	"GET /api/agent/tasks/{}":                           "session_id",
+	"GET /api/agent/ui":                                 "session_id",
+	"GET /api/agent/ui/{}/content":                      "revision,session_id",
+	"GET /api/agent/ui/{}/events":                       "after,session_id",
 	"GET /api/board/remotes/proxy/{}/{}/messages/all":   "limit",
 	"GET /api/board/remotes/proxy/{}/{}/messages/check": "session_id",
 	"GET /api/board/tasks":                              "limit",
@@ -79,6 +82,8 @@ var routeQueries = map[string]string{
 	"GET /ws/coral":                                     "agent_type,session_id",
 	"GET /ws/terminal/{}":                               "agent_type,session_id",
 	"PATCH /api/sessions/live/{}/tasks/{}":              "project",
+	"POST /api/agent/ui-request":                        "session_id",
+	"POST /api/agent/ui/{}/events":                      "session_id",
 	"POST /api/sessions/live/{}/tasks":                  "project",
 	"PUT /api/sessions/live/{}/file-content":            "filepath*,session_id",
 }

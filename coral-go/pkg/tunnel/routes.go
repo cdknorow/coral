@@ -204,10 +204,19 @@ var routeTable = cat(
 		// enforced by the {hex64} segment, and the route takes no query. Upload (POST /api/agent/artifacts) and
 		// the artifact list under /api/agent/ stay unlisted (never).
 		"/api/artifacts/{hex64}",
+		// Agent UI (option B): the panel list, a panel's HTML (read as text and run in a sandbox by the dashboard) and its saved
+		// events. {uiid} is exactly the machine's panel id shape. Publishing and removing panels (PUT/DELETE) are the agent's own
+		// actions on its machine and stay unlisted (never).
+		"/api/agent/ui",
+		"/api/agent/ui/{uiid}/content",
+		"/api/agent/ui/{uiid}/events",
 	),
 
 	// ── interact: typing into running agents, and changing running work ──
 	rules(http.MethodPost, TierInteract,
+		// A panel interaction and a request to the agent put user text in front of an agent, like send.
+		"/api/agent/ui/{uiid}/events",
+		"/api/agent/ui-request",
 		"/api/sessions/live/{name}/send",
 		"/api/sessions/live/{name}/keys",
 		"/api/sessions/live/{name}/resize",
@@ -515,6 +524,12 @@ func matchSegments(pattern string, segs []string) bool {
 			}
 			continue
 		}
+		if ps == "{uiid}" {
+			if !isUIID(segs[i]) {
+				return false
+			}
+			continue
+		}
 		if strings.HasPrefix(ps, "{") && strings.HasSuffix(ps, "}") {
 			continue
 		}
@@ -554,6 +569,20 @@ func isHex64(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// isUIID reports whether s has the shape of an Agent UI panel id: 1 to 64 of [A-Za-z0-9_-].
+func isUIID(s string) bool {
+	if len(s) == 0 || len(s) > 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-') {
 			return false
 		}
 	}
