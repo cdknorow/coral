@@ -4,7 +4,7 @@ package tunnel
 
 // routeQueries lists, per route shape ("METHOD /path/{}/more"), the query parameters the
 // Coral handler reads. A name ending in "*" is a file or directory reference. A route not
-// listed here accepts no query parameters at all.
+// listed here accepts no query parameters at all. "name=a|b" accepts only those exact values, once.
 var routeQueries = map[string]string{
 	"DELETE /api/board/{}/waits":                        "subscriber_id",
 	"DELETE /api/sessions/live/{}/events":               "session_id",
@@ -79,7 +79,7 @@ var routeQueries = map[string]string{
 	"GET /api/webhooks/{}/deliveries":                   "limit",
 	"GET /api/workflows/runs/recent":                    "limit,offset,status",
 	"GET /api/workflows/{}/runs":                        "limit,offset,status",
-	"GET /ws/coral":                                     "agent_type,feed,session_id",
+	"GET /ws/coral":                                     "agent_type,feed=hub,session_id",
 	"GET /ws/terminal/{}":                               "agent_type,session_id",
 	"PATCH /api/sessions/live/{}/tasks/{}":              "project",
 	"POST /api/agent/ui-request":                        "session_id",
