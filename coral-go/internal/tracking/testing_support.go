@@ -10,6 +10,9 @@ func ConfigureForTest(captureURL, dir, installID string) (restore func()) {
 	prereqMu.Lock()
 	prereqSeen = map[string]bool{} // each test observes prerequisites afresh
 	prereqMu.Unlock()
+	browserMu.Lock()
+	seenPages, failuresPerCode = map[string]bool{}, map[string]int{} // and dashboard events (go test -count>1)
+	browserMu.Unlock()
 	posthogURL, coralDir, cachedInstallID = captureURL, dir, installID
 	retryDelays = nil // no retries/sleeps in other packages' tests
 	installIDOnce.Do(func() {})

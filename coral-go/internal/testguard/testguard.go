@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -61,14 +62,50 @@ func CheckDataPath(path string) {
 }
 
 func protected(path string) (string, bool) {
-	p := filepath.Clean(path)
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	for _, d := range protectedDirs() {
-		if p == d || strings.HasPrefix(p, d+string(filepath.Separator)) {
+	return protectedIn(path, protectedDirs())
+}
+
+// protectedIn reports whether path is, or is inside, one of dirs. Both sides
+// are compared as real paths (symlinks resolved), and without regard to case
+// on macOS, whose default filesystem is case-insensitive, so ~/.Coral or a
+// symlink to ~/.coral is caught too.
+func protectedIn(path string, dirs []string) (string, bool) {
+	p := comparable(path)
+	for _, d := range dirs {
+		cd := comparable(d)
+		if p == cd || strings.HasPrefix(p, cd+string(filepath.Separator)) {
 			return d, true
 		}
 	}
 	return "", false
+}
+
+func comparable(path string) string {
+	p := realPath(path)
+	if runtime.GOOS == "darwin" {
+		p = strings.ToLower(p)
+	}
+	return p
+}
+
+// realPath is path made absolute with symlinks resolved. A path that does
+// not exist yet (a socket or database about to be created) is resolved
+// through its nearest existing ancestor.
+func realPath(path string) string {
+	p := filepath.Clean(path)
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	var rest []string
+	for cur := p; ; {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			return filepath.Join(append([]string{resolved}, rest...)...)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		rest = append([]string{filepath.Base(cur)}, rest...)
+		cur = parent
+	}
 }

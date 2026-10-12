@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/cdknorow/coral/internal/testguard"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -48,7 +49,7 @@ func runBoard(t *testing.T, serverURL, dataDir string, args ...string) boardRun 
 	}
 	cmd.Env = append(cmd.Env,
 		"CORAL_BOARD_HELPER=1", "CORAL_BOARD_ARGS="+string(encoded),
-		"CORAL_URL="+serverURL, "CORAL_DATA_DIR="+dataDir, "CORAL_DIR="+dataDir,
+		"CORAL_URL="+serverURL, testguard.TestURLEnv+"=1", "CORAL_DATA_DIR="+dataDir, "CORAL_DIR="+dataDir,
 		"HOME="+t.TempDir(), "CORAL_SESSION_NAME=help-test", "CORAL_SUBSCRIBER_ID=Tester")
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

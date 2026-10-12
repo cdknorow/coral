@@ -22,6 +22,12 @@ import (
 )
 
 func TestCLIVersionProbeBoundsExcessiveOutput(t *testing.T) {
+	// This checks the output bound, not the timeout: under a full parallel
+	// test run, writing 64KB through a shell can take longer than the
+	// production 3s, so allow time (restored after the test).
+	prev := cliProbeTimeout
+	cliProbeTimeout = 30 * time.Second
+	t.Cleanup(func() { cliProbeTimeout = prev })
 	path := filepath.Join(t.TempDir(), "cli")
 	script := "#!/bin/sh\nprintf '%s' '" + strings.Repeat("x", 65536) + "'\n"
 	require.NoError(t, os.WriteFile(path, []byte(script), 0700))
@@ -48,10 +54,10 @@ func useFakeCLIs(t *testing.T) *fakeCLIs {
 		return "", errors.New("not found")
 	}
 	cliCommonPath = func(string) string { return "" }
-	// Generous: a healthy fake CLI is a shell script, and on a loaded machine one that takes
-	// over a few hundred milliseconds must not be reported as a timeout. The test that wants a
-	// timeout shortens this itself.
-	cliProbeTimeout = 5 * time.Second
+	// Generous: a healthy fake CLI is a shell script, and under a full parallel test run one
+	// can take several seconds to start; it must not be reported as a timeout. The test that
+	// wants a timeout shortens this itself.
+	cliProbeTimeout = 30 * time.Second
 	tmuxProbe = func() (string, bool) { return "", false }
 	t.Cleanup(func() {
 		cliLookPath, cliCommonPath, cliProbeTimeout, tmuxProbe = prevLook, prevCommon, prevTimeout, prevTmux

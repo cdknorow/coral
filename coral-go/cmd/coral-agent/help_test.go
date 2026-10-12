@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"github.com/cdknorow/coral/internal/testguard"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -41,7 +42,7 @@ func runAgent(t *testing.T, serverURL string, args ...string) (int, string, stri
 	}
 	dir := t.TempDir()
 	cmd.Env = append(cmd.Env, "CORAL_AGENT_HELPER=1", "CORAL_AGENT_ARGS="+string(encoded),
-		"CORAL_URL="+serverURL, "CORAL_DATA_DIR="+dir, "CORAL_DIR="+dir, "HOME="+t.TempDir(),
+		"CORAL_URL="+serverURL, testguard.TestURLEnv+"=1", "CORAL_DATA_DIR="+dir, "CORAL_DIR="+dir, "HOME="+t.TempDir(),
 		"CORAL_SESSION_NAME=claude-00000000-0000-4000-8000-000000000000")
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
