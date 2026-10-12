@@ -56,3 +56,6 @@ export function sessionKey(session) {
 }
 
 export const CAPTURE_REFRESH_MS = 500;
+// While the terminal socket is up the output arrives on that socket; the poll then only keeps tasks, events and
+// the Mode label fresh, so it runs at this slower pace. 500 ms returns the moment the socket is down.
+export const CAPTURE_REFRESH_STREAMING_MS = 3000;

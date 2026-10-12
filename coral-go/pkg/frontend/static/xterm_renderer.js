@@ -484,6 +484,12 @@ export function setPanelDragging(dragging) {
     document.body.classList.toggle('panel-dragging', dragging);
 }
 
+// True while the terminal socket is open: the terminal is then streamed live, and the polled capture is only needed
+// for the panels that ride on it (tasks, events, the Mode label).
+export function isTerminalWsOpen() {
+    return !!terminalWs && terminalWs.readyState === WebSocket.OPEN;
+}
+
 export function getTerminalCols() {
     return terminal ? terminal.cols : null;
 }
