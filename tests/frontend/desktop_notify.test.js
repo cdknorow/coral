@@ -58,6 +58,27 @@ const { JSDOM } = require('jsdom');
     assert.strictEqual(opened, 1);
     assert.ok(n2.closed);
 
+    // zero-width and Arabic-letter-mark characters go too
+    assert.strictEqual(m.safeName('a\u200bb\u200dc\ufeffd\u061ce'), 'a b c d e');
+
+    // rate cap: 1 per agent per 30 s, 10 per minute overall
+    {
+        m._resetRateForTests(); perm = 'granted'; shown.length = 0;
+        const realNow = Date.now; let t = 1e9; Date.now = () => t;
+        try {
+            assert.ok(m.notifyNeedsInput({ agent: 'a', tag: 'a' }));
+            assert.strictEqual(m.notifyNeedsInput({ agent: 'a', tag: 'a' }), null, 'same agent within 30 s');
+            t += 29000; assert.strictEqual(m.notifyNeedsInput({ agent: 'a', tag: 'a' }), null);
+            t += 1500; assert.ok(m.notifyNeedsInput({ agent: 'a', tag: 'a' }), 'after 30 s');
+            m._resetRateForTests(); shown.length = 0; t += 120000;
+            for (let i = 0; i < 25; i++) m.notifyNeedsInput({ agent: 'x' + i, tag: 'x' + i });
+            assert.strictEqual(shown.length, 10, 'ten a minute overall');
+            t += 61000;
+            assert.ok(m.notifyNeedsInput({ agent: 'y', tag: 'y' }), 'the window slides');
+        } finally { Date.now = realNow; }
+        dom.window.localStorage.setItem(m.DESKTOP_NOTIFY_KEY, '1');
+    }
+
     // permission revoked in the browser: off again even though the flag is stored
     perm = 'denied';
     assert.strictEqual(m.desktopNotifyEnabled(), false);

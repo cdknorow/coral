@@ -5,6 +5,8 @@
  * browser's localStorage only. The text carries names, never agent output: no summary, prompt, path or tool input. */
 export const DESKTOP_NOTIFY_KEY = 'coral-desktop-notify';
 const MAX_NAME = 60;
+const MIN_GAP_MS = 30000, PER_MINUTE = 10; // per agent, and overall
+const lastByTag = new Map(), recent = [];
 
 function api() { return typeof Notification === 'undefined' ? null : Notification; }
 function read() { try { return localStorage.getItem(DESKTOP_NOTIFY_KEY) === '1'; } catch { return false; } }
@@ -35,7 +37,7 @@ export function disableDesktopNotify() { write(false); }
 
 /** A display name reduced to short plain text: control and bidi characters removed, length capped. */
 export function safeName(v) {
-    const s = String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g, ' ').replace(/\s+/g, ' ').trim();
+    const s = String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, ' ').replace(/\s+/g, ' ').trim();
     return s.length > MAX_NAME ? s.slice(0, MAX_NAME - 1) + '…' : s;
 }
 
@@ -51,6 +53,12 @@ export function notifyNeedsInput({ agent, where, tag, onClick }) {
     const N = api();
     if (!N || !desktopNotifyEnabled()) return null;
     if (typeof document !== 'undefined' && !document.hidden) return null; // the in-page toast covers a visible page
+    const now = Date.now();
+    while (recent.length && now - recent[0] >= 60000) recent.shift();
+    const key = String(tag || agent || '');
+    if (recent.length >= PER_MINUTE || now - (lastByTag.get(key) ?? -Infinity) < MIN_GAP_MS) return null;
+    if (lastByTag.size > 500) lastByTag.clear();
+    lastByTag.set(key, now); recent.push(now);
     const { title, body } = alertText(agent, where);
     try {
         const n = new N(title, { body, tag: tag ? `needs-input:${String(tag).slice(0, 200)}` : undefined, silent: false });
@@ -62,3 +70,6 @@ export function notifyNeedsInput({ agent, where, tag, onClick }) {
         return n;
     } catch { return null; }
 }
+
+/** Test hook: forget the rate-limit history. */
+export function _resetRateForTests() { lastByTag.clear(); recent.length = 0; }
