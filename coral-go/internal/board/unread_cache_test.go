@@ -101,3 +101,49 @@ func TestCheckUnread_IncrementalMentionsCountMatchesFullCount(t *testing.T) {
 	require.Positive(t, reads)
 	require.Positive(t, titles)
 }
+
+func TestUnreadCache_StrictBoundAndDeleteBrackets(t *testing.T) {
+	ctx := context.Background()
+	s, err := NewStore(filepath.Join(t.TempDir(), "board.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	_, err = s.Subscribe(ctx, "team", "Dev", "Developer", "sess-dev", nil, nil, "mentions")
+	require.NoError(t, err)
+	msg, err := s.PostMessage(ctx, "team", "Lead", "@Dev hello", nil)
+	require.NoError(t, err)
+
+	n, err := s.CheckUnread(ctx, "team", "Dev")
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
+	cached := func() int {
+		s.unreadCounts.mu.Lock()
+		defer s.unreadCounts.mu.Unlock()
+		return len(s.unreadCounts.entries)
+	}
+	require.Equal(t, 1, cached())
+
+	// Unsubscribing drops the subscriber's entries.
+	_, err = s.Unsubscribe(ctx, "team", "Dev")
+	require.NoError(t, err)
+	require.Zero(t, cached())
+
+	// A subscriber whose row is gone is dropped when it is next asked about.
+	_, err = s.Subscribe(ctx, "team", "Gone", "Developer", "sess-gone", nil, nil, "mentions")
+	require.NoError(t, err)
+	_, err = s.CheckUnread(ctx, "team", "Gone")
+	require.NoError(t, err)
+	_, err = s.db.Exec("DELETE FROM board_subscribers WHERE subscriber_id = 'Gone'")
+	require.NoError(t, err)
+	_, err = s.CheckUnread(ctx, "team", "Gone")
+	require.NoError(t, err)
+	require.Zero(t, cached())
+
+	// Deletes invalidate both before and after the DELETE.
+	before := s.unreadCounts.epoch.Load()
+	_, err = s.DeleteMessage(ctx, msg.ID)
+	require.NoError(t, err)
+	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
+	before = s.unreadCounts.epoch.Load()
+	require.NoError(t, s.DeleteProject(ctx, "team"))
+	require.Equal(t, before+2, s.unreadCounts.epoch.Load())
+}

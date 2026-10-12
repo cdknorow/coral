@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
@@ -559,6 +560,7 @@ func (s *Store) Unsubscribe(ctx context.Context, project, subscriberID string) (
 	if err != nil {
 		return false, err
 	}
+	s.unreadCounts.forget(project, subscriberID)
 	n, _ := result.RowsAffected()
 	return n > 0, nil
 }
@@ -1011,6 +1013,9 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 		"SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			s.unreadCounts.forget(project, subscriberID)
+		}
 		return 0, nil
 	}
 
@@ -1385,6 +1390,7 @@ func (s *Store) ListGroups(ctx context.Context, project string) ([]GroupInfo, er
 
 // DeleteMessage deletes a single message by ID.
 func (s *Store) DeleteMessage(ctx context.Context, messageID int64) (bool, error) {
+	s.unreadCounts.invalidate()
 	result, err := s.db.ExecContext(ctx, "DELETE FROM board_messages WHERE id = ?", messageID)
 	if err != nil {
 		return false, err
@@ -1472,6 +1478,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 		return err
 	}
 	defer tx.Rollback()
+	s.unreadCounts.invalidate()
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_messages WHERE project = ?", project); err != nil {
 		return err
 	}

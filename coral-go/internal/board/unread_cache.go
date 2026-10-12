@@ -49,6 +49,14 @@ func (c *unreadCountCache) invalidate() {
 	c.mu.Unlock()
 }
 
+// forget drops a subscriber's cached count, e.g. when it unsubscribes, so the
+// map holds only subscribers that still exist.
+func (c *unreadCountCache) forget(project, subscriberID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, mentionCountKey{project, subscriberID})
+}
+
 // countMentionsUnread returns the number of unread messages after lastReadID
 // matching filter (a boolean SQL expression over board_messages with filterArgs).
 func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, jobTitle string, lastReadID int64, filter string, filterArgs []any) (int, error) {
