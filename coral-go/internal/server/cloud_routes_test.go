@@ -97,7 +97,7 @@ func TestCloudAllowlistHasNoDeadOrDangerousRules(t *testing.T) {
 		"GET /api/system/editors",
 		"POST /api/webhooks", "PUT /api/system/database-security", "POST /api/license/activate",
 		"GET /api/cloud/status", "POST /api/cloud/connect", "POST /api/cloud/disconnect", "PUT /api/cloud/max-mode",
-		"POST /api/board/remotes", "GET /api/agent/ui", "POST /api/workflows", "POST /api/scheduled/jobs",
+		"POST /api/board/remotes", "PUT /api/agent/ui/x", "DELETE /api/agent/ui/x", "POST /api/agent/artifacts", "GET /api/agent/tasks", "POST /api/workflows", "POST /api/scheduled/jobs",
 	} {
 		method, path, _ := strings.Cut(never, " ")
 		require.Equal(t, tunnel.TierNever, tunnel.Classify(method, path, ""), never)

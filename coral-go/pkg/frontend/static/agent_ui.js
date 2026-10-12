@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { addPendingMessage } from './live_chat.js';
 import { serverFetch, serverForSession, isCloud } from './server_base.js';
+import { createPanelFrame, openPanel, isPanelEvent, createEventThrottle, MAX_PANEL_BYTES, MAX_PANELS } from './panel_sandbox.js';
 
 let session = null;
 let generation = 0;
@@ -90,9 +91,6 @@ function createRequestForm(sid) {
 }
 
 export async function refreshAgentUI() {
-    // Agent-authored UI is served by the machine's /api/agent/ui, which the hub never exposes (it needs an isolated
-    // content origin). The tab is hidden in cloud mode; do not ask for panels that cannot arrive.
-    if (isCloud()) return;
     const container = document.getElementById('agentic-panel-agent-ui');
     if (!container) return;
     const sid = currentID();
@@ -110,8 +108,10 @@ export async function refreshAgentUI() {
     try {
         const response = await serverFetch(serverForSession(null, sid), endpoint(sid));
         if (!response.ok) throw new Error(`Unable to load agent UI (${response.status})`);
-        const allPanels = await response.json();
+        let allPanels = await response.json();
         if (token !== generation || sid !== currentID()) return;
+        // On the hub at most MAX_PANELS panels per agent are shown (the newest), however many the machine lists.
+        if (isCloud() && Array.isArray(allPanels) && allPanels.length > MAX_PANELS) allPanels = allPanels.slice(-MAX_PANELS);
         const panels = allPanels;
         if (activePanel !== 'home' && !panels.some(p => p.id === activePanel)) activePanel = 'home';
         container.querySelector('.agent-ui-notice')?.remove();
@@ -132,12 +132,12 @@ export async function refreshAgentUI() {
             row.append(label, meta); row.onclick = () => { activePanel = p.id; refreshAgentUI(); }; listing.append(row);
         }
         for (const [id, item] of mounted) {
-            if (!panels.some(p => p.id === id)) { item.close?.(); item.card.remove(); mounted.delete(id); }
+            if (!panels.some(p => p.id === id)) { item.close?.(); item.panel?.detach(); item.card.remove(); mounted.delete(id); }
         }
         for (const panel of panels) {
             if (mounted.get(panel.id)?.revision === panel.revision) continue;
             const previous = mounted.get(panel.id);
-            previous?.close?.(); previous?.card.remove();
+            previous?.close?.(); previous?.panel?.detach(); previous?.card.remove();
             const card = document.createElement('section'); card.className = 'agent-ui-card';
             const header = document.createElement('header');
             const title = document.createElement('strong'); title.textContent = `${panel.title} · v${panel.revision}`;
@@ -145,6 +145,11 @@ export async function refreshAgentUI() {
             metric.textContent = `${Number(panel.event_count || 0)} event${Number(panel.event_count || 0) === 1 ? '' : 's'}`;
             metric.title = 'Persisted interactions from this panel';
             title.append(' ', metric);
+            if (isCloud()) {
+                const label = document.createElement('span'); label.className = 'agent-ui-authored';
+                label.textContent = 'agent-authored panel'; label.title = 'This content was written by the agent and runs in a restricted frame. Open panels only from agents you trust.';
+                title.append(' ', label);
+            }
             const expand = document.createElement('button'); expand.innerHTML = '<span class="material-icons">open_in_full</span>'; expand.title = 'Expand panel';
             expand.setAttribute('aria-label', 'Expand panel');
             const popout = document.createElement('button'); popout.innerHTML = '<span class="material-icons">open_in_new</span>'; popout.title = 'Open in new tab';
@@ -157,12 +162,19 @@ export async function refreshAgentUI() {
             const actions = document.createElement('div'); actions.className = 'agent-ui-actions';
             actions.append(expand, popout, dismiss, remove); header.append(title, actions);
             const status = document.createElement('p'); status.className = 'agent-ui-status'; status.setAttribute('role', 'status');
-            const frame = document.createElement('iframe'); frame.title = panel.title;
-            frame.setAttribute('sandbox', 'allow-scripts');
-            frame.setAttribute('referrerpolicy', 'no-referrer');
-            frame.src = endpoint(sid, panel.id).replace('?','/content?') + '&revision=' + panel.revision;
+            const contentPath = endpoint(sid, panel.id).replace('?','/content?') + '&revision=' + panel.revision;
+            let frame;
+            if (isCloud()) {
+                // On the hub the panel is read as TEXT (a View-tier GET) and run in the sandboxed host frame, never as a URL of its own.
+                frame = createPanelFrame(panel.title);
+            } else {
+                frame = document.createElement('iframe'); frame.title = panel.title;
+                frame.setAttribute('sandbox', 'allow-scripts');
+                frame.setAttribute('referrerpolicy', 'no-referrer');
+                frame.src = contentPath;
+            }
             card.append(header, frame, status); container.append(card); card.hidden = activePanel !== panel.id;
-            const item = { card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
+            const item = { throttle: createEventThrottle(), card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
             dismiss.onclick = () => {
                 if (activePanel === panel.id) activePanel = 'home';
                 refreshAgentUI();
@@ -186,6 +198,16 @@ export async function refreshAgentUI() {
                 }
             };
             popout.onclick = () => window.open(frame.src, '_blank', 'noopener,noreferrer');
+            if (isCloud()) {
+                // Publishing and removing panels is the agent's own action on its machine (the hub never forwards PUT/DELETE), and a
+                // sandboxed panel has no URL of its own to open in a tab.
+                remove.hidden = true; popout.hidden = true;
+                item.panel = openPanel(frame, {
+                    onReady: () => { status.textContent = ''; },
+                    onNavigated: () => { status.textContent = 'This panel tried to navigate away from Coral and was stopped.'; frame.remove(); },
+                });
+                loadCloudPanel(item, contentPath, status);
+            }
             expand.onclick = () => {
                 const dialog = document.createElement('dialog'); dialog.id = 'agent-ui-expanded';
                 // Moving an iframe reloads it in browsers. Expanded view reloads the same revision.
@@ -217,14 +239,27 @@ export async function refreshAgentUI() {
 
 export function initAgentUI() {
     refreshAgentUI();
-    setInterval(() => { if (!document.hidden) refreshAgentUI(); }, 2000);
+    let tick = 0;
+    setInterval(() => {
+        if (document.hidden) return;
+        // Every request on the hub is a tunnel round trip: poll fast only while the Agent UI tab is open, slowly (for the unread count) otherwise.
+        if (isCloud() && ++tick % 5 && !document.getElementById('agentic-panel-agent-ui')?.classList.contains('active')) return;
+        refreshAgentUI();
+    }, 2000);
     window.addEventListener('message', async event => {
         if (event.data?.type !== 'coral-ui-event') return;
+        if (isCloud() && !isPanelEvent(event.data)) return; // the host already validated it; so does the dashboard
         const item = [...mounted.values()].find(p => p.frame.contentWindow === event.source);
         if (!item || item.sid !== currentID()) return;
         const { action, payload, requestId } = event.data;
         if (typeof requestId !== 'string' || requestId.length > 64) return;
         let error = null, result = {};
+        const refused = item.throttle.tryStart();
+        if (refused) {
+            item.status.textContent = refused;
+            event.source.postMessage({ type: 'coral-ui-result', requestId, error: refused }, '*');
+            return;
+        }
         try {
             if (typeof action !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(action)) throw new Error('Invalid action');
             const body = JSON.stringify({ revision: item.revision, action, payload });
@@ -240,6 +275,19 @@ export function initAgentUI() {
                 ? 'Response saved; agent notified.'
                 : 'Response saved; agent not notified' + (result.notify_error ? ': ' + result.notify_error : '.') + ' You can ask the agent to read it.';
         } catch (e) { error = e.message; item.status.textContent = error; }
+        item.throttle.done();
         event.source.postMessage({ type: 'coral-ui-result', requestId, error, id: result.id, notified: result.notified, notify_error: result.notify_error }, '*');
     });
+}
+
+// Read one panel as text through the hub and hand it to the sandboxed host frame.
+async function loadCloudPanel(item, contentPath, status) {
+    try {
+        status.textContent = 'Loading panel…';
+        const response = await serverFetch(serverForSession(null, item.sid), contentPath);
+        if (!response.ok) throw new Error(response.status === 409 ? 'The panel was updated; it will reload.' : `Unable to load the panel (${response.status})`);
+        const html = await response.text();
+        if (html.length > MAX_PANEL_BYTES) throw new Error('This panel is larger than 2 MiB and is not shown.');
+        item.panel.setHtml(html);
+    } catch (e) { status.textContent = e.message; }
 }

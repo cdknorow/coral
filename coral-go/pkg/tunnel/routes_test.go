@@ -66,7 +66,7 @@ func TestClassifyTiers(t *testing.T) {
 		{"POST", "/api/scheduled/jobs", "", TierNever},
 		{"POST", "/api/servers", "", TierNever},
 		{"POST", "/api/board/remotes", "", TierNever},
-		{"GET", "/api/agent/ui", "", TierNever},
+		{"PUT", "/api/agent/ui/x", "", TierNever}, // Agent UI reads are listed (TestAgentUIRoutes); publishing a panel is never reachable
 		{"GET", "/api/cloud/status", "", TierNever},
 		{"POST", "/api/license/activate", "", TierNever},
 		// Method and shape.
@@ -482,4 +482,62 @@ func TestArtifactRouteIsExactDigestOnly(t *testing.T) {
 	} {
 		assert.Equal(t, TierNever, Classify(probe.method, probe.path, probe.query), "%s %q ?%s must not be reachable", probe.method, probe.path, probe.query)
 	}
+}
+
+// Agent UI on the hub: panels are listed and read at View, interactions and requests need Interact, and publishing or removing a
+// panel (PUT/DELETE) is never reachable. The panel id is exactly the machine's shape.
+func TestAgentUIRoutes(t *testing.T) {
+	id := "panel_1-A"
+	for _, tc := range []struct {
+		method, path, query string
+		want                Tier
+	}{
+		{"GET", "/api/agent/ui", "session_id=s1", TierView},
+		{"GET", "/api/agent/ui/" + id + "/content", "session_id=s1&revision=3", TierView},
+		{"GET", "/api/agent/ui/" + id + "/events", "session_id=s1&after=12", TierView},
+		{"HEAD", "/api/agent/ui", "session_id=s1", TierView},
+		{"POST", "/api/agent/ui/" + id + "/events", "session_id=s1", TierInteract},
+		{"POST", "/api/agent/ui-request", "session_id=s1", TierInteract},
+		// publishing and removing stay with the agent on its machine
+		{"PUT", "/api/agent/ui/" + id, "session_id=s1", TierNever},
+		{"DELETE", "/api/agent/ui/" + id, "session_id=s1", TierNever},
+		{"PUT", "/api/agent/ui", "", TierNever},
+		{"POST", "/api/agent/ui", "", TierNever},
+		{"DELETE", "/api/agent/ui", "", TierNever},
+		{"PUT", "/api/agent/ui/" + id + "/content", "", TierNever},
+		{"POST", "/api/agent/ui/" + id + "/content", "", TierNever},
+		{"DELETE", "/api/agent/ui/" + id + "/events", "", TierNever},
+		{"PUT", "/api/agent/ui/" + id + "/events", "", TierNever},
+		{"GET", "/api/agent/ui-request", "", TierNever},
+		{"PUT", "/api/agent/ui-request", "", TierNever},
+		// shapes and parameters
+		{"GET", "/api/agent/ui", "", TierView},                   // the machine decides what a missing session means
+		{"GET", "/api/agent/ui", "session_id=s1&x=1", TierNever}, // unlisted parameter
+		{"GET", "/api/agent/ui/" + id + "/content", "revision=1&evil=1", TierNever},
+		{"GET", "/api/agent/ui/" + id + "/events", "after=1&limit=5", TierNever},
+		{"POST", "/api/agent/ui/" + id + "/events", "after=1", TierNever},
+		{"GET", "/api/agent/ui/", "", TierNever},
+		{"GET", "/api/agent/ui/" + id, "", TierNever}, // no bare panel read: only content, events
+		{"GET", "/api/agent/ui/" + id + "/content/x", "", TierNever},
+		{"GET", "/api/agent/ui/" + id + "/other", "", TierNever},
+		{"GET", "/api/agent/ui/" + strings.Repeat("a", 65) + "/content", "", TierNever}, // longer than the machine's 64
+		{"GET", "/api/agent/ui/" + strings.Repeat("a", 64) + "/content", "", TierView},
+		{"GET", "/api/agent/ui/a.b/content", "", TierNever},
+		{"GET", "/api/agent/ui/a%2fb/content", "", TierNever},
+		{"GET", "/api/agent/ui/a b/content", "", TierNever},
+		{"GET", "/api/agent/ui/a\\b/content", "", TierNever},
+		{"GET", "/api/agent/ui/../history/content", "", TierNever},
+		{"GET", "/api/agent/ui/\u00e9/content", "", TierNever},
+		{"GET", "/api/agent/ui//content", "", TierNever},
+		// the rest of /api/agent/* is the machine's own agent API and stays unreachable
+		{"POST", "/api/agent/artifacts", "", TierNever},
+		{"GET", "/api/agent/tasks", "", TierNever},
+		{"GET", "/api/agent/history/search", "", TierNever},
+		{"POST", "/api/agent/ui-x", "", TierNever},
+	} {
+		assert.Equal(t, tc.want, Classify(tc.method, tc.path, tc.query), "%s %s ?%s", tc.method, tc.path, tc.query)
+	}
+	assert.True(t, AllowRequest(func() Mode { return TierView })("GET", "/api/agent/ui/"+id+"/content", "session_id=s1"), "a viewer can read a panel")
+	assert.False(t, AllowRequest(func() Mode { return TierView })("POST", "/api/agent/ui/"+id+"/events", "session_id=s1"), "but not interact with one")
+	assert.True(t, AllowRequest(func() Mode { return TierInteract })("POST", "/api/agent/ui-request", "session_id=s1"))
 }

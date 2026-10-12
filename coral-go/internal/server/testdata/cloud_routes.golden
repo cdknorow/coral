@@ -27,9 +27,9 @@ GET /api/agent/history/context never
 GET /api/agent/history/search never
 GET /api/agent/tasks never
 GET /api/agent/tasks/{taskID} never
-GET /api/agent/ui never
-GET /api/agent/ui/{id}/content never
-GET /api/agent/ui/{id}/events never
+GET /api/agent/ui view
+GET /api/agent/ui/{id}/content view
+GET /api/agent/ui/{id}/events view
 GET /api/artifacts/{id} view
 GET /api/board/projects view
 GET /api/board/remotes never
@@ -179,8 +179,8 @@ POST /api/agent/tasks/current never
 POST /api/agent/tasks/{taskID}/cancel never
 POST /api/agent/tasks/{taskID}/complete never
 POST /api/agent/tasks/{taskID}/publish never
-POST /api/agent/ui-request never
-POST /api/agent/ui/{id}/events never
+POST /api/agent/ui-request interact
+POST /api/agent/ui/{id}/events interact
 POST /api/board/remotes never
 POST /api/board/{project}/groups/{groupID}/members interact
 POST /api/board/{project}/messages interact

@@ -104,4 +104,4 @@ jobs:
         working-directory: tests/frontend
         env:
           CHROME: ${{ steps.chrome.outputs.chrome-path }}
-        run: node run_cdp_suites.mjs --timeout 90 --only cloud_csp_browser,fetch_metadata_browser
+        run: node run_cdp_suites.mjs --timeout 180 --only cloud_csp_browser,fetch_metadata_browser,agent_ui_panel_sandbox_browser
