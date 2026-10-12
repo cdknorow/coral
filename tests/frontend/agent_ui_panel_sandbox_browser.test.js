@@ -154,6 +154,15 @@ if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
         const real = await leaksOf('', 'real');
         assert.deepEqual(real, [], 'the real panel host leaks: ' + JSON.stringify(real));
         assert.deepEqual(hits, [], 'no request left any panel: ' + JSON.stringify(hits.slice(0, 5)));
+        // F1: moving the host iframe (Expand does) reloads it; the panel must be handed its HTML again and run again.
+        {
+            await ev(`window.accepted.length = 0; window.runPanel('reload', ${JSON.stringify(page("parent.postMessage({ type: 'coral-ui-event', action: 'ran', requestId: 'r' + Math.random().toString(36).slice(2, 8), payload: {} }, '*')"))}, '', '')`);
+            const ran = async n => { for (let i = 0; i < 40 && (await ev(`window.accepted.filter(a => a.action === 'ran').length`)) < n; i++) await sleep(150); return ev(`window.accepted.filter(a => a.action === 'ran').length`); };
+            assert.equal(await ran(1), 1, 'the panel ran once');
+            await ev(`(() => { const f = window.hostFrames[window.hostFrames.length - 1]; const box = document.createElement('div'); document.body.appendChild(box); box.appendChild(f); })()`);
+            assert.equal(await ran(2), 2, 'after the host frame was moved (reloaded) the panel ran again: the html was handed over again');
+            await ev(`for (const f of window.hostFrames) f.remove(); window.hostFrames.length = 0`);
+        }
         // KNOWN GAPS (documented, NOT gates): neither is blocked by CSP in Chrome and neither is an HTTP request the counting server can see.
         // dns-prefetch leaks a hostname lookup; WebRTC can send UDP (STUN) to an address of the panel's choosing. We report what Chrome does so a
         // change in either direction is visible in the log; the visible "agent-authored panel" label is the user-facing mitigation.
