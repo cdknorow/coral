@@ -1,11 +1,11 @@
 /* Capture text rendering and auto-refresh */
 
-import { state, CAPTURE_REFRESH_MS } from './state.js';
+import { state, CAPTURE_REFRESH_MS, CAPTURE_REFRESH_STREAMING_MS } from './state.js';
 import { isInteractiveOwner } from './ownership.js';
 import { getRenderer } from './renderers.js';
 import { renderTaskList } from './tasks.js';
 import { renderEventTimeline } from './agentic_state.js';
-import { getTerminalCols } from './xterm_renderer.js';
+import { getTerminalCols, isTerminalWsOpen } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
 import { serverFetch, currentServer, isCloud } from './server_base.js';
 
@@ -147,10 +147,21 @@ export async function refreshCapture() {
     }
 }
 
+let _lastCaptureAt = 0;
+
+// One tick of the capture timer. The timer keeps its 500 ms beat so the fast pace is back within one beat of the
+// terminal socket dropping; while the socket is up most beats do nothing.
+export function captureTick(now = Date.now()) {
+    if (isTerminalWsOpen() && now - _lastCaptureAt < CAPTURE_REFRESH_STREAMING_MS) return;
+    _lastCaptureAt = now;
+    refreshCapture();
+}
+
 export function startCaptureRefresh() {
     stopCaptureRefresh();
+    _lastCaptureAt = Date.now();
     refreshCapture();
-    state.captureInterval = setInterval(refreshCapture, CAPTURE_REFRESH_MS);
+    state.captureInterval = setInterval(captureTick, CAPTURE_REFRESH_MS);
 }
 
 export function stopCaptureRefresh() {

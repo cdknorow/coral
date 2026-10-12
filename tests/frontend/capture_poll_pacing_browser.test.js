@@ -1,0 +1,56 @@
+// The capture poll (GET .../sessions/live/{n}/poll) ran every 500 ms for as long as an agent was open, although the
+// terminal socket already carries the output: 120 requests/min per open agent (P2 of the T137 profile). With the
+// terminal socket open it now runs every 3 s; the moment the socket is down it is back to 500 ms.
+// The terminal socket and the poll endpoint are stubbed; real timers, real capture.js.
+const assert = require('node:assert/strict');
+const CDP = require('chrome-remote-interface');
+const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
+if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
+(async () => {
+    const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
+    const { Page, Runtime } = client;
+    const evaluate = async expression => {
+        const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true });
+        if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails));
+        return r.result.value;
+    };
+    try {
+        await Promise.all([Page.enable(), Runtime.enable()]);
+        await Page.navigate({ url: BASE });
+        await Page.loadEventFired();
+        await evaluate(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`);
+        const r = await evaluate(`(async () => {
+            const { state } = await import('/static/state.js');
+            const cap = await import('/static/capture.js');
+            const xt = await import('/static/xterm_renderer.js');
+            const RealWS = window.WebSocket, realFetch = window.fetch;
+            // A terminal socket that is open until told otherwise.
+            let sock;
+            window.WebSocket = class { static OPEN = 1; static CONNECTING = 0; static CLOSED = 3; constructor(u) { this.url = u; this.readyState = 1; sock = this; } close() { this.readyState = 3; } send() {} };
+            let polls = 0;
+            window.fetch = async (u, o) => {
+                if (/\\/sessions\\/live\\/pacing-agent\\/poll/.test(String(u))) { polls++; return new Response(JSON.stringify({ capture: { capture: 'x' }, tasks: [], events: [] }), { headers: { 'Content-Type': 'application/json' } }); }
+                return realFetch(u, o);
+            };
+            document.getElementById('pane-capture') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'pane-capture' }));
+            state.currentSession = { type: 'live', name: 'pacing-agent', agent_type: 'terminal', session_id: 'pacing-sid', server: 'local' };
+            xt.connectTerminalWs('pacing-agent', 'terminal', 'pacing-sid', 'local');
+            const up = xt.isTerminalWsOpen();
+            cap.startCaptureRefresh();
+            const wait = ms => new Promise(r => setTimeout(r, ms));
+            await wait(7200);
+            const whileUp = polls;          // the immediate one, then one every 3 s
+            sock.readyState = 3;            // the terminal socket dropped
+            const downFrom = polls;
+            await wait(3200);
+            const whileDown = polls - downFrom;
+            cap.stopCaptureRefresh();
+            window.WebSocket = RealWS; window.fetch = realFetch; state.currentSession = null;
+            return { up, whileUp, whileDown };
+        })()`);
+        assert.equal(r.up, true, 'the stubbed terminal socket counts as open');
+        assert.ok(r.whileUp >= 2 && r.whileUp <= 4, `with the terminal socket up: ${r.whileUp} polls in 7.2 s (was ~14); expected the initial poll plus one per 3 s`);
+        assert.ok(r.whileDown >= 5, `with the terminal socket down: ${r.whileDown} polls in 3.2 s; expected the 500 ms pace`);
+        console.log(`PASS capture poll: ${r.whileUp} polls in 7.2 s with the terminal socket up, ${r.whileDown} in 3.2 s with it down`);
+    } finally { await client.close(); }
+})().catch(e => { console.error(e); process.exitCode = 1; });

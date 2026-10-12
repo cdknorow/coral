@@ -62,7 +62,19 @@ export async function apiFetch(url, options) {
     return resp.json();
 }
 
-export async function loadLiveSessions(onFailure) {
+// A load that is already in flight is shared: the page start asks for the list twice in the same moment (once on
+// DOMContentLoaded, once when the startup poll finds nothing to wait for), and that was two full list fetches per
+// page load. Only a caller with the same failure handler joins, so no failure goes unreported.
+let _liveLoad = null;
+
+export function loadLiveSessions(onFailure) {
+    if (_liveLoad && _liveLoad.onFailure === onFailure) return _liveLoad.promise;
+    const promise = _loadLiveSessions(onFailure).finally(() => { if (_liveLoad && _liveLoad.promise === promise) _liveLoad = null; });
+    _liveLoad = { onFailure, promise };
+    return promise;
+}
+
+async function _loadLiveSessions(onFailure) {
     let rendering = false;
     try {
         await initHub();

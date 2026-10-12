@@ -1,6 +1,7 @@
 /* WebSocket connection for real-time coral updates */
 
 import { state } from './state.js';
+import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
 import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
@@ -8,6 +9,14 @@ import { updateSectionVisibility } from './sidebar.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, showToast, escapeHtml, dbg } from './utils.js';
 import { serverWsBase, identityKey, sessionServer } from './server_base.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
+
+// Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
+// a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
+// with jitter (feed_pacing.js), and a "session ended" close (4401, sent by the hub) stops them: the next request's
+// 401 sends the browser to sign in.
+const FEED_CLOSE_SESSION_ENDED = 4401;
+let _feedFailures = 0;
+let _lastSidebarRenderAt = 0;
 
 export function connectCoralWs() {
     dbg('connectCoralWs: establishing connection');
@@ -18,12 +27,15 @@ export function connectCoralWs() {
     state.coralWs = new WebSocket(url);
 
     state.coralWs.onmessage = (event) => {
+        _feedFailures = 0;   // a socket that delivers is healthy; the next drop starts the backoff over
         handleCoralMessage(JSON.parse(event.data));
     };
 
     state.coralWs.onclose = (ev) => {
         dbg('coralWs CLOSE', { code: ev.code, reason: ev.reason });
-        setTimeout(connectCoralWs, 5000);
+        if (ev.code === FEED_CLOSE_SESSION_ENDED) return;
+        _feedFailures++;
+        setTimeout(connectCoralWs, feedRetryDelay(_feedFailures));
     };
 
     state.coralWs.onerror = (ev) => {
@@ -66,6 +78,12 @@ export function handleCoralMessage(data) {
         // Handle diff updates: merge changed/removed into existing session list
         if (data.type === "coral_diff") {
             let sessions = [...(state.liveSessions || [])];
+
+            // A diff that only ages agents (staleness_seconds) changes nothing the sidebar shows beyond the "Ns ago"
+            // text, so it may skip the full sidebar render, but never for longer than DRIFT_RENDER_MAX_AGE_MS.
+            data._skipSidebarRender = !data.removed?.length && !data.removed_remote?.length && !data.servers
+                && isStalenessDrift(sessions, data.changed, _feedKey)
+                && Date.now() - _lastSidebarRenderAt < DRIFT_RENDER_MAX_AGE_MS;
 
             // Apply changed sessions (update existing or add new)
             if (data.changed) {
@@ -147,7 +165,10 @@ export function handleCoralMessage(data) {
                 data.sessions = data.sessions.map(s => mergeSession(prevMap[_feedKey(s)], s));
             }
             state.liveSessions = data.sessions;
-            renderLiveSessions(data.sessions);
+            if (!data._skipSidebarRender) {
+                _lastSidebarRenderAt = Date.now();
+                renderLiveSessions(data.sessions);
+            }
             if (isPopout()) popoutHandleSessionsTick(data.sessions);
 
             // Show notifications pushed via POST /api/notifications
