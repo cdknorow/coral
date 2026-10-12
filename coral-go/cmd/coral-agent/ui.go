@@ -12,15 +12,7 @@ import (
 	"strings"
 )
 
-func cmdUI(args []string) {
-	if err := runUI(args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-func runUI(args []string) error {
-	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
-		fmt.Println(`Usage: coral-agent ui <publish|list|events|remove> [flags]
+const uiUsageText = `Usage: coral-agent ui <publish|list|events|remove> [flags]
   publish --id ID --file FILE [--title TITLE]  Publish HTML, SVG, PNG, JPEG, GIF, or WebP
   list                                        List your panels
   events --id ID [--after N]                   Read up to 100 interaction events
@@ -30,7 +22,17 @@ Agent workflow: delegate panel creation, validation, and publishing to a subagen
 using the originating Coral session. The parent hands off without reviewing,
 retesting, publishing, or sending progress/completion text. The panel is the
 response; report only blockers unless the user requests otherwise.
-See agent_docs/agent-ui.md for the full handoff rule.`)
+See agent_docs/agent-ui.md for the full handoff rule.`
+
+func cmdUI(args []string) {
+	if err := runUI(args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+func runUI(args []string) error {
+	if len(args) == 0 || args[0] == "help" || args[0] == "--help" {
+		fmt.Println(uiUsageText)
 		return nil
 	}
 	sub := args[0]

@@ -1,0 +1,137 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"strings"
+	"sync"
+	"testing"
+)
+
+// TestHelperRunAgent runs main() with the arguments in CORAL_AGENT_ARGS when
+// started as a subprocess by runAgent; otherwise it does nothing.
+func TestHelperRunAgent(t *testing.T) {
+	if os.Getenv("CORAL_AGENT_HELPER") != "1" {
+		return
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(os.Getenv("CORAL_AGENT_ARGS")), &args); err != nil {
+		os.Exit(99)
+	}
+	os.Args = append([]string{"coral-agent"}, args...)
+	main()
+	os.Exit(0)
+}
+
+// runAgent runs coral-agent in a subprocess with no Coral or tmux variables
+// from the calling agent, pointed at serverURL.
+func runAgent(t *testing.T, serverURL string, args ...string) (int, string, string) {
+	t.Helper()
+	encoded, _ := json.Marshal(args)
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperRunAgent$")
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "CORAL_") && !strings.HasPrefix(kv, "TMUX") && !strings.HasPrefix(kv, "HOME=") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	dir := t.TempDir()
+	cmd.Env = append(cmd.Env, "CORAL_AGENT_HELPER=1", "CORAL_AGENT_ARGS="+string(encoded),
+		"CORAL_URL="+serverURL, "CORAL_DATA_DIR="+dir, "CORAL_DIR="+dir, "HOME="+t.TempDir(),
+		"CORAL_SESSION_NAME=claude-00000000-0000-4000-8000-000000000000")
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), stdout.String(), stderr.String()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	return 0, stdout.String(), stderr.String()
+}
+
+func failingServer(t *testing.T) (*httptest.Server, func() []string) {
+	var mu sync.Mutex
+	var reqs []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		reqs = append(reqs, r.Method+" "+r.URL.String()+" "+string(body))
+		mu.Unlock()
+		w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), reqs...)
+	}
+}
+
+func TestAgentHelpFlagsPrintUsageWithoutSideEffects(t *testing.T) {
+	srv, requests := failingServer(t)
+	cases := [][]string{{"--help"}, {"-h"}, {"help"}, {"task", "help"}, {"ui", "help"}, {"history", "help"}}
+	for cmd := range commands {
+		cases = append(cases, []string{cmd, "--help"}, []string{cmd, "-h"})
+	}
+	for _, sub := range []string{"add", "list", "claim", "current", "detail", "edit", "publish", "complete", "cancel"} {
+		cases = append(cases, []string{"task", sub, "--help"}, []string{"task", sub, "-h"})
+	}
+	cases = append(cases,
+		[]string{"search", "deploy", "--help"},
+		[]string{"history", "search", "-h"},
+		[]string{"history", "context", "--help"},
+		[]string{"ui", "publish", "--help"},
+		[]string{"artifact", "upload", "--help"},
+		[]string{"artifact", "download", "-h"},
+		[]string{"launch", ".", "--prompt", "hi", "-h"},
+		[]string{"bind-codex", "--help", "x"},
+		[]string{"task", "complete", "3", "--message", "done", "--help"},
+	)
+	for _, args := range cases {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			code, stdout, stderr := runAgent(t, srv.URL, args...)
+			if code != 0 {
+				t.Fatalf("exit %d, want 0\nstdout: %s\nstderr: %s", code, stdout, stderr)
+			}
+			if !strings.Contains(stdout, "coral-agent") {
+				t.Errorf("no usage on stdout: %q", stdout)
+			}
+		})
+	}
+	if reqs := requests(); len(reqs) != 0 {
+		t.Fatalf("help made %d request(s): %v", len(reqs), reqs)
+	}
+}
+
+func TestAgentFlagShapedTextIsRejected(t *testing.T) {
+	srv, requests := failingServer(t)
+	for _, args := range [][]string{
+		{"task", "complete", "3", "--message", "--bogus"},
+		{"task", "cancel", "3", "--message=-x"},
+		{"task", "add", "Title", "--body", "--priority"},
+		{"launch", ".", "--prompt", "--model"},
+	} {
+		if code, _, stderr := runAgent(t, srv.URL, args...); code != 2 {
+			t.Errorf("%v: exit %d, want 2 (stderr %q)", args, code, stderr)
+		}
+	}
+	if reqs := requests(); len(reqs) != 0 {
+		t.Fatalf("rejected input made %d request(s): %v", len(reqs), reqs)
+	}
+}
+
+// A note that merely mentions --help is still sent.
+func TestAgentTextContainingHelpIsSent(t *testing.T) {
+	srv, requests := failingServer(t)
+	runAgent(t, srv.URL, "task", "complete", "3", "--message", "fixed --help handling")
+	reqs := requests()
+	if len(reqs) == 0 || !strings.Contains(strings.Join(reqs, "\n"), "fixed --help handling") {
+		t.Fatalf("note not sent: %v", reqs)
+	}
+}

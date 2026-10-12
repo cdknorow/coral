@@ -279,6 +279,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Help and flag-shaped text are handled before any command runs, so
+	// neither can load state, resolve identity or reach the server.
+	if handled, code := handleHelp(os.Args[1:], os.Stdout); handled {
+		os.Exit(code)
+	}
+	if err := checkFreeText(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		if u := commandUsage(os.Args[1], os.Args[2:]); u != "" {
+			fmt.Fprintln(os.Stderr, u)
+		}
+		os.Exit(2)
+	}
+
 	cmd := os.Args[1]
 	switch cmd {
 	case "join":
@@ -322,11 +335,15 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintln(os.Stderr, `Usage: coral-board <command> [args]
+	fmt.Fprintln(os.Stderr, usageText)
+}
+
+const usageText = `Usage: coral-board <command> [args]
 
 Commands:
   join <project> --as <role>   Subscribe to a board
-  post "<message>" [--to "a,b"] Post a message (optionally @mention agents)
+  post "<message>" [--to "a,b"] Post a message (optionally @mention agents);
+                               use -- before text that starts with '-'
   read [--all] [--last N] [--id N]     Read new messages (tagged only by default; --all
                                for all), the newest N (marks older unread
                                as read), or a specific message by ID
@@ -363,8 +380,7 @@ Commands:
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
-  CORAL_PORT  Server port (overrides CORAL_URL)`)
-}
+  CORAL_PORT  Server port (overrides CORAL_URL)`
 
 func cmdWorkingMode(args []string) {
 	if err := runWorkingMode(args); err != nil {
@@ -539,6 +555,10 @@ func cmdPost() {
 	var toNames string
 	var msgParts []string
 	for i := 2; i < len(os.Args); i++ {
+		if os.Args[i] == "--" { // everything after is message text
+			msgParts = append(msgParts, os.Args[i+1:]...)
+			break
+		}
 		if os.Args[i] == "--to" && i+1 < len(os.Args) {
 			toNames = os.Args[i+1]
 			i++ // skip the value
@@ -1404,7 +1424,15 @@ Subcommands:
 	case "amend":
 		cmdTaskAmend(st, taskArgs)
 	case "--help", "-h", "help":
-		fmt.Fprintln(os.Stderr, `Usage: coral-board task <subcommand> [args]
+		fmt.Println(taskUsageText)
+		os.Exit(0)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
+		os.Exit(1)
+	}
+}
+
+const taskUsageText = `Usage: coral-board task <subcommand> [args]
 
 Subcommands:
   add "title" [--body "details"] [--priority P] [--assignee "Agent Name"]
@@ -1425,13 +1453,7 @@ Workflow options for add:
   --blocked-by '[{"task_id":1,"condition":"success","required_artifacts":["build"]}]'
   --workflow-instructions "project-specific guidance" --parent <id> --retry-of <id>
   --completion-gates '[{"type":"report","artifact":"report"}]'  (EXPERIMENTAL, disabled by default: the server rejects new gate declarations unless it enables the feature; existing gates are inactive)
-Conditions: success (default), failure, termination. Completed results are immutable.`)
-		os.Exit(0)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown task subcommand: %s\n", sub)
-		os.Exit(1)
-	}
-}
+Conditions: success (default), failure, termination. Completed results are immutable.`
 
 func cmdTaskAdd(st *boardState, args []string) {
 	// Reorder args: pull the title (first non-flag arg) out so flags can appear after it.
@@ -1923,7 +1945,10 @@ func cmdWorkflow() {
 }
 
 func printWorkflowUsage() {
-	fmt.Fprintln(os.Stderr, `Usage: coral-board workflow <subcommand> [args]
+	fmt.Fprintln(os.Stderr, workflowUsageText)
+}
+
+const workflowUsageText = `Usage: coral-board workflow <subcommand> [args]
 
 Subcommands:
   create --file <path>                    Create a workflow from a JSON file
@@ -1931,8 +1956,7 @@ Subcommands:
   trigger <name> [--context '{"k":"v"}']  Trigger a workflow by name
   status <run-id>                         Check run status with step details
   runs [--workflow <name>] [--status <s>] List recent runs
-  kill <run-id>                           Kill a running workflow`)
-}
+  kill <run-id>                           Kill a running workflow`
 
 func cmdWorkflowCreate() {
 	args := os.Args[3:]

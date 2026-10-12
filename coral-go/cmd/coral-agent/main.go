@@ -33,7 +33,10 @@ import (
 var serverURL = hooks.CoralBase()
 
 func printUsage() {
-	fmt.Println(`coral-agent - launch Coral agents and work with your own tasks
+	fmt.Println(agentUsageText)
+}
+
+const agentUsageText = `coral-agent - launch Coral agents and work with your own tasks
 
 Commands:
   bind-codex <coral-id> <thread-id> Link a verified native Codex transcript
@@ -57,13 +60,22 @@ Commands:
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
-  CORAL_PORT  Server port (overrides CORAL_URL)`)
-}
+  CORAL_PORT  Server port (overrides CORAL_URL)`
 
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
+	}
+	// Help and option-shaped text are handled before any command runs, so
+	// neither can reach the server or be taken as data.
+	if handled, code := handleHelp(os.Args[1:], os.Stdout); handled {
+		os.Exit(code)
+	}
+	if err := checkFreeText(os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintln(os.Stderr, commandUsage(os.Args[1], os.Args[2:]))
+		os.Exit(2)
 	}
 	switch os.Args[1] {
 	case "bind-codex":
@@ -97,6 +109,8 @@ func main() {
 	}
 }
 
+const artifactUsageText = "Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]\n       coral-agent artifact download <coral://artifacts/digest> [--output FILE]"
+
 func cmdArtifact(args []string) {
 	if len(args) >= 2 && args[0] == "download" {
 		fs := flag.NewFlagSet("artifact-download", flag.ExitOnError)
@@ -111,7 +125,7 @@ func cmdArtifact(args []string) {
 		return
 	}
 	if len(args) < 2 || args[0] != "upload" {
-		fmt.Fprintln(os.Stderr, "Usage: coral-agent artifact upload <file> [--name NAME] [--media-type TYPE]\n       coral-agent artifact download <coral://artifacts/digest> [--output FILE]")
+		fmt.Fprintln(os.Stderr, artifactUsageText)
 		os.Exit(1)
 	}
 	file := args[1]

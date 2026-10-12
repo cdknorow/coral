@@ -13,7 +13,10 @@ import (
 )
 
 func printHistoryUsage() {
-	fmt.Println(`coral-agent history - search your conversation history and inspect context
+	fmt.Println(historyUsageText)
+}
+
+const historyUsageText = `coral-agent history - search your conversation history and inspect context
 
 Commands:
   history search <query> [flags]         Search your earlier assistant and user messages
@@ -30,8 +33,7 @@ Flags for 'history search':
 
 Flags for 'history context':
   --window W      Number of messages before/after target turn (default: 2, max: 10)
-  --json          Output raw JSON response`)
-}
+  --json          Output raw JSON response`
 
 func cmdHistory(args []string) {
 	if len(args) == 0 {
