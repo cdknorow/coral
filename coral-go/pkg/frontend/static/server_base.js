@@ -38,11 +38,13 @@ export function serverWsBase(server) {
  *  administer the machine itself (the hub's route table refuses them anyway; this keeps the UI
  *  from even trying). */
 const CLOUD_NEVER = /^\/api\/(system|settings|webhooks|license|servers)(\/|\?|$)/;
+/** The one machine-settings route the hub does expose: the changed-files comparison base (Interact tier, three validated values). */
+const CLOUD_ALLOWED = /^\/api\/settings\/git-diff-mode$/;
 
 /** Prefix an absolute-path API url ("/api/...") for `server`. In cloud mode a route from
  *  CLOUD_NEVER is never sent through /api/remote: it is pointed at a path the hub 404s. */
 export function serverUrl(url, server) {
-    if (isCloud() && !isLocalServer(server) && CLOUD_NEVER.test(url)) return '/api/cloud-unavailable';
+    if (isCloud() && !isLocalServer(server) && CLOUD_NEVER.test(url) && !CLOUD_ALLOWED.test(url)) return '/api/cloud-unavailable';
     return serverBase(server) + url;
 }
 
