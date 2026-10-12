@@ -9,7 +9,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -103,7 +103,7 @@ func TestVerification_PrivacyRoutes_StatusAndSettings(t *testing.T) {
 // 4. Localhost requests follow local authority and reject DNS rebinding attempts.
 func TestVerification_AuthAuthority_RemoteRejectionAndAntiSpoofing(t *testing.T) {
 	tempDir := t.TempDir()
-	db, err := store.Open(tempDir + "/auth_test.db")
+	db, err := storetest.Open(t, tempDir+"/auth_test.db")
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -219,4 +219,3 @@ func TestVerification_TrackingHandler_BrowserEventGating(t *testing.T) {
 	r.ServeHTTP(w, allowedReq)
 	assert.Equal(t, http.StatusOK, w.Code)
 }
-

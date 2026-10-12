@@ -7,6 +7,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,7 +15,7 @@ import (
 func TestVerification_ApplyPrivacySettings_RemoteAccess_Disabled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -35,7 +36,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_OptIn(t *testing.T) {
 	ctx := context.Background()
 	open := func(t *testing.T) *store.DB {
 		t.Helper()
-		db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+		db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 		require.NoError(t, err)
 		t.Cleanup(func() { db.Close() })
 		return db
@@ -70,7 +71,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_OptIn(t *testing.T) {
 
 // If the opt-in cannot be read, the bind must fail closed rather than widen.
 func TestVerification_ApplyPrivacySettings_RemoteAccess_UnreadableSettingsFailClosed(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
@@ -82,7 +83,7 @@ func TestVerification_ApplyPrivacySettings_RemoteAccess_UnreadableSettingsFailCl
 func TestVerification_ApplyPrivacySettings_Telemetry_FailsClosed(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 
 	// Close DB so GetSettings fails

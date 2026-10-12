@@ -52,6 +52,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // ── shared plumbing ─────────────────────────────────────────────────
@@ -159,7 +160,7 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 	if mutate != nil {
 		mutate(cfg)
 	}
-	db, err := store.Open(cfg.DBPath)
+	db, err := storetest.Open(t, cfg.DBPath)
 	require.NoError(t, err)
 	stack := newTermStack(t)
 	backend := stack.backend
@@ -326,7 +327,7 @@ func newE2EHub(t *testing.T, env *e2eEnv, dir string, hubMode bool) *e2eHub {
 	}
 	cfg := newE2EConfig(t, dir)
 	cfg.HubMode = hubMode
-	db, err := store.Open(cfg.DBPath)
+	db, err := storetest.Open(t, cfg.DBPath)
 	require.NoError(t, err)
 	stack := newTermStack(t)
 	backend := stack.backend

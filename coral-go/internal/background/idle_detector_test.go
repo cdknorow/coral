@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // The needs_input webhook pages a human. It must fire only for a request made
@@ -45,7 +46,7 @@ func TestIdleDetector_NeedsInputWebhookOnlyForADirectRequest(t *testing.T) {
 			logDir := t.TempDir()
 			t.Setenv("TMPDIR", logDir)
 
-			db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
+			db, err := storetest.Open(t, filepath.Join(t.TempDir(), "sessions.db"))
 			require.NoError(t, err)
 			t.Cleanup(func() { db.Close() })
 			tasks := store.NewTaskStore(db)

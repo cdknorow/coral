@@ -4,26 +4,27 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
-	at "github.com/cdknorow/coral/internal/agenttypes"
-	"github.com/cdknorow/coral/internal/board"
-	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
-	"github.com/go-chi/chi/v5"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func setupHistoryVerificationServer(t *testing.T) (*httptest.Server, *HistoryHandler, *store.SessionStore, string, string, string) {
 	t.Helper()
 
 	dbDir := t.TempDir()
-	db, err := store.Open(filepath.Join(dbDir, "test.db"))
+	db, err := storetest.Open(t, filepath.Join(dbDir, "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

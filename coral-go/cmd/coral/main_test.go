@@ -11,7 +11,7 @@ import (
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func TestStandardBuildEncryptionSelfTestUnavailable(t *testing.T) {
@@ -43,7 +43,7 @@ func setupTestServerWithHub(t *testing.T, hub bool) *httptest.Server {
 		HubMode:         hub,
 	}
 
-	db, err := store.Open(cfg.DBPath)
+	db, err := storetest.Open(t, cfg.DBPath)
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}

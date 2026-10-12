@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -19,7 +19,7 @@ import (
 // single connection.
 func BenchmarkRequestMetrics(b *testing.B) {
 	const agents, history = 50, 200_000
-	db, err := store.Open(filepath.Join(b.TempDir(), "sessions.db"))
+	db, err := storetest.Open(b, filepath.Join(b.TempDir(), "sessions.db"))
 	if err != nil {
 		b.Fatal(err)
 	}

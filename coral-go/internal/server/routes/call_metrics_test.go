@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 	"nhooyr.io/websocket"
 )
 
 func TestRequestMetricsRecordsAPIIdentityAndExcludesMetricsRoutes(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "metrics.db"))
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -63,7 +64,7 @@ func TestRequestMetricsRecordsAPIIdentityAndExcludesMetricsRoutes(t *testing.T) 
 }
 
 func TestRequestMetricsResolvesSessionToAgentDisplayName(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "metrics.db"))
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -84,7 +85,7 @@ func TestRequestMetricsResolvesSessionToAgentDisplayName(t *testing.T) {
 }
 
 func TestCallMetricSummaryResolvesHistoricalSessionTeam(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "metrics.db"))
 	require.NoError(t, err)
 	defer db.Close()
 
@@ -103,7 +104,7 @@ func TestCallMetricSummaryResolvesHistoricalSessionTeam(t *testing.T) {
 // The metrics wrapper must not hide http.Hijacker/Flusher: WebSockets and SSE
 // on /api/ routes (the hub's /api/remote/{server}/ws/... bridge) depend on it.
 func TestRequestMetricsKeepsWebSocketAndStreamingWorking(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "metrics.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "metrics.db"))
 	require.NoError(t, err)
 	defer db.Close()
 

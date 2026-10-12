@@ -28,6 +28,7 @@ import (
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func TestKnownContextWindow_UnknownMetadataIsSuppressed(t *testing.T) {
@@ -976,7 +977,7 @@ func TestSessionsLaunchTeam_MissingBoardName(t *testing.T) {
 
 func TestSessionsLaunchTeam_StripsForeignPermissionFlags(t *testing.T) {
 	cfg := &config.Config{LogDir: t.TempDir()}
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -1008,7 +1009,7 @@ func TestSessionsLaunchTeam_StripsForeignPermissionFlags(t *testing.T) {
 func TestSessionsLaunchTeam_PreservesToolsAndMCPServers(t *testing.T) {
 	cfg := &config.Config{LogDir: t.TempDir()}
 	dbPath := t.TempDir() + "/test.db"
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -2039,7 +2040,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	}
 
 	dbPath := t.TempDir() + "/test.db"
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

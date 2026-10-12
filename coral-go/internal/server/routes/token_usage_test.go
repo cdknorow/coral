@@ -12,12 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func setupTokenUsageTest(t *testing.T) (*store.TokenUsageStore, *TokenUsageHandler, *chi.Mux) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "token_test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -347,7 +348,7 @@ func TestUsageSummary_SumsPerTurnDeltas(t *testing.T) {
 func setupTokenUsageTestWithGit(t *testing.T) (*store.TokenUsageStore, *store.GitStore, *TokenUsageHandler, *chi.Mux) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "token_branch_test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -549,7 +550,7 @@ func TestUsageSummaryByBranch_IgnoresSessionsWithoutGit(t *testing.T) {
 
 func TestTokenUsageHandler_StoreAccessor(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "accessor_test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

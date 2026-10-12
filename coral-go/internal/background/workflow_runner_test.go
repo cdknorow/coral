@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // ── Hooks Tests ─────────────────────────────────────────────
@@ -219,9 +220,9 @@ func TestStepStatusStr(t *testing.T) {
 
 // wfMockRuntime implements AgentRuntime for workflow runner testing.
 type wfMockRuntime struct {
-	alive    map[string]bool
-	spawned  []string
-	killed   []string
+	alive   map[string]bool
+	spawned []string
+	killed  []string
 }
 
 func newWfMockRuntime() *wfMockRuntime {
@@ -239,14 +240,14 @@ func (m *wfMockRuntime) KillAgent(_ context.Context, name string) error {
 	delete(m.alive, name)
 	return nil
 }
-func (m *wfMockRuntime) IsAlive(_ context.Context, name string) bool { return m.alive[name] }
+func (m *wfMockRuntime) IsAlive(_ context.Context, name string) bool       { return m.alive[name] }
 func (m *wfMockRuntime) ListAgents(_ context.Context) ([]AgentInfo, error) { return nil, nil }
 
 func setupTestDB(t *testing.T) *store.DB {
 	t.Helper()
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
@@ -762,4 +763,3 @@ func joinLines(lines []string) string {
 	}
 	return result
 }
-

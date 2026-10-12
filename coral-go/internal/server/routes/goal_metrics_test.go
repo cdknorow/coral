@@ -15,14 +15,17 @@ import (
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
-type fakeGoalStatus struct{ st background.GoalGeneratorStatus }
+type fakeGoalStatus struct {
+	st background.GoalGeneratorStatus
+}
 
 func (f fakeGoalStatus) Status(context.Context) background.GoalGeneratorStatus { return f.st }
 
 func TestGoalMetricsEndpoint(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "t.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	h := NewGoalMetricsHandler(db)

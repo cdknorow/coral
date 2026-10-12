@@ -21,7 +21,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -77,7 +77,7 @@ func setupTerminalTestServer(t *testing.T, backend ptymanager.TerminalBackend) *
 	}
 
 	dbPath := t.TempDir() + "/test.db"
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

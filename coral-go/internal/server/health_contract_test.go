@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // GET /api/health is a contract: the native app polls it to detect crashes,
@@ -21,7 +21,7 @@ func TestHealthEndpointContract(t *testing.T) {
 		dir := t.TempDir()
 		cfg := newE2EConfig(t, dir)
 		cfg.HubMode = hub
-		db, err := store.Open(cfg.DBPath)
+		db, err := storetest.Open(t, cfg.DBPath)
 		require.NoError(t, err)
 		t.Cleanup(func() { db.Close() })
 		stack := newTermStack(t)

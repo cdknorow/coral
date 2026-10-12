@@ -13,6 +13,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // A warm, isolated 26-agent request with 200 historical sessions. It exercises
@@ -20,7 +21,7 @@ import (
 func BenchmarkLiveRefreshList(b *testing.B) {
 	root := b.TempDir()
 	b.Setenv("CLAUDE_PROJECTS_DIR", root)
-	db, err := store.Open(filepath.Join(root, "sessions.db"))
+	db, err := storetest.Open(b, filepath.Join(root, "sessions.db"))
 	if err != nil {
 		b.Fatal(err)
 	}

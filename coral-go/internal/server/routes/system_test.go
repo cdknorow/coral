@@ -16,7 +16,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func setupSystemTestServer(t *testing.T) (*httptest.Server, *SystemHandler) {
@@ -27,7 +27,7 @@ func setupSystemTestServer(t *testing.T) (*httptest.Server, *SystemHandler) {
 	}
 
 	dbPath := t.TempDir() + "/test.db"
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 
@@ -71,7 +71,7 @@ func TestDatabaseSecurityModeContract(t *testing.T) {
 	dbcrypt.SetEffectiveMode("disabled")
 	dir := t.TempDir()
 	cfg := config.Load(dir)
-	db, err := store.Open(filepath.Join(dir, "sessions.db"))
+	db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	h := NewSystemHandler(db, cfg)

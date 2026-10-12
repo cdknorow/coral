@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func newSettingsStore(t *testing.T) *store.SessionStore {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "sessions.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

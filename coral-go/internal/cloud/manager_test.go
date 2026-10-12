@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/cdknorow/coral/pkg/secretbox"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -123,7 +124,7 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 	t.Setenv(secretbox.EnvKey, "")
 	dir := t.TempDir()
-	db, err := store.Open(filepath.Join(dir, "sessions.db"))
+	db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	rs := store.NewRemoteServerStore(db, dir)

@@ -16,7 +16,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // countingTerminal can hold session discovery open. Builds are asserted by
@@ -63,7 +63,7 @@ func (f *fakeRemoteHub) set(agents ...string) {
 
 func newSharedListHandler(t *testing.T) (*SessionsHandler, *countingTerminal) {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	term := &countingTerminal{mockSessionTerminal: newMockTerminal()}

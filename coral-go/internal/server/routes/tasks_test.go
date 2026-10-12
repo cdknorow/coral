@@ -12,11 +12,11 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/proxy"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func TestTaskStatusIncludesProxyCosts(t *testing.T) {
-	db, err := store.Open(t.TempDir() + "/tasks_test.db")
+	db, err := storetest.Open(t, t.TempDir()+"/tasks_test.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

@@ -21,6 +21,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 type testHistoryEnv struct {
@@ -36,7 +37,7 @@ func setupAgentHistoryTestEnv(t *testing.T) *testHistoryEnv {
 	t.Helper()
 
 	dbDir := t.TempDir()
-	db, err := store.Open(filepath.Join(dbDir, "test.db"))
+	db, err := storetest.Open(t, filepath.Join(dbDir, "test.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

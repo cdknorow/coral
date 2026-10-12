@@ -21,6 +21,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -59,7 +60,7 @@ func TestBoardStatusLoad(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(prevLogger) })
 	ctx := context.Background()
 
-	db, err := store.Open(filepath.Join(dataDir, "sessions.db"))
+	db, err := storetest.Open(t, filepath.Join(dataDir, "sessions.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	boardPath := filepath.Join(dataDir, "messageboard.db")

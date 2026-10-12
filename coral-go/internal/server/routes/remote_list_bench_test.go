@@ -11,7 +11,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 type staticRemoteSource struct{ snap background.RemoteSnapshot }
@@ -46,7 +46,7 @@ func benchRemoteSnapshot(k, n int) background.RemoteSnapshot {
 func BenchmarkMergedRemoteList(b *testing.B) {
 	for _, kn := range [][2]int{{5, 50}, {20, 20}} {
 		b.Run(fmt.Sprintf("K=%d_N=%d", kn[0], kn[1]), func(b *testing.B) {
-			db, err := store.Open(b.TempDir() + "/test.db")
+			db, err := storetest.Open(b, b.TempDir()+"/test.db")
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -68,7 +68,7 @@ func BenchmarkMergedRemoteList(b *testing.B) {
 // what encoding the session maps produced, including characters the encoder
 // escapes (<, >, &, U+2028) and non-ASCII text.
 func TestMergedRemoteListBytesUnchanged(t *testing.T) {
-	db, err := store.Open(t.TempDir() + "/test.db")
+	db, err := storetest.Open(t, t.TempDir()+"/test.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	h := NewSessionsHandler(db, &config.Config{LogDir: t.TempDir()}, nil, newMockTerminal(), nil)

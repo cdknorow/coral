@@ -28,6 +28,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // TestHubScale measures a hub with K fake remotes x N agents each and M
@@ -283,7 +284,7 @@ func newScaleHub(t *testing.T) *scaleHub {
 	cfg := newE2EConfig(t, dir)
 	cfg.HubMode = true
 	cfg.WSPollIntervalS = 5 // production cadence
-	db, err := store.Open(cfg.DBPath)
+	db, err := storetest.Open(t, cfg.DBPath)
 	require.NoError(t, err)
 	stack := newTermStack(t)
 	h := &e2eHub{t: t, dir: dir, cfg: cfg, db: db, backend: stack.backend, done: make(chan struct{}), env: &e2eEnv{logs: &lockedBuf{}}}

@@ -13,12 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 func viewsRouter(t *testing.T) (http.Handler, *store.ViewStore) {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "coral.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "coral.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	h := NewViewsHandler(db)
@@ -123,7 +124,7 @@ func viewID(i int64) string { return strconv.FormatInt(i, 10) }
 
 // The hub may change the changed-files comparison base, and nothing else about the machine's settings, through this route.
 func TestPutGitDiffModeValidatesAndStoresOnlyThatKey(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "coral.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "coral.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	h := &SystemHandler{db: db, ss: store.NewSessionStore(db)}

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 // changedFileRows returns the row ids and recorded_at stamps of a session's
@@ -38,7 +39,7 @@ func TestGitPollerSkipsUnchangedListsAndSharesRepoScans(t *testing.T) {
 	runGit(t, repo, "commit", "-q", "-m", "base")
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "sub", "a.txt"), []byte("one\ntwo\n"), 0o644))
 
-	db, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "sessions.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	gs := store.NewGitStore(db)

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 func openTestDB(t *testing.T) *DB {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
+	require.NoError(t, os.WriteFile(dbPath, migratedTemplate(t), 0o644))
 	db, err := Open(dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })

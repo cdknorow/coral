@@ -14,7 +14,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/ptymanager"
-	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/stretchr/testify/assert"
@@ -74,7 +74,7 @@ func (f *fakeCLIs) install(t *testing.T, name, script string) {
 
 func newSystemHandlerForTest(t *testing.T) *SystemHandler {
 	t.Helper()
-	db, err := store.Open(t.TempDir() + "/sys.db")
+	db, err := storetest.Open(t, t.TempDir()+"/sys.db")
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	return NewSystemHandler(db, &config.Config{LogDir: t.TempDir()})

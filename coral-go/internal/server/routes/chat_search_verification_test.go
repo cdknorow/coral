@@ -13,6 +13,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,7 +21,7 @@ func setupChatSearchTestEnv(t *testing.T) (*store.DB, *store.SessionStore, *boar
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 
 	boardDBPath := filepath.Join(dir, "board.db")

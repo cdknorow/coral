@@ -20,6 +20,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
 func setupTestServer(t *testing.T) (*httptest.Server, *SessionsHandler) {
@@ -31,7 +32,7 @@ func setupTestServer(t *testing.T) (*httptest.Server, *SessionsHandler) {
 	}
 
 	dbPath := t.TempDir() + "/test.db"
-	db, err := store.Open(dbPath)
+	db, err := storetest.Open(t, dbPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 

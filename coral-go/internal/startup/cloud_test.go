@@ -14,6 +14,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/cdknorow/coral/pkg/secretbox"
 )
 
@@ -33,7 +34,7 @@ func cloudEnv(t *testing.T, cloudURL string) (*cloud.Manager, *atomic.Int64) {
 	dir := t.TempDir()
 	cfg := config.Load(dir)
 	cfg.CloudURL = cloudURL
-	db, err := store.Open(filepath.Join(dir, "sessions.db"))
+	db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { db.Close() })
 	ctx, cancel := context.WithCancel(context.Background())
