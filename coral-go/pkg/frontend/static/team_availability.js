@@ -1,9 +1,20 @@
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
 import { boardFetch, inTeam, keyLabel, sessionTeamKey } from './server_base.js';
+import { platform } from './platform/detect.js';
 
 const availabilityCache = new Map();
-const availabilityFetchedAt = new Map();
+// Polling state per team: when the next background refresh is allowed and the
+// request in flight, if any. Every window polls on each sidebar render, so one
+// slow /status must not stack identical requests behind it.
+const availabilityNextAt = new Map();
+const availabilityInFlight = new Map();
+// Request order per team: a response only replaces the cache when it was
+// started after the one that last wrote it, so a slow background poll cannot
+// overwrite a newer forced refresh (e.g. right after removing a reminder).
+let availabilitySeq = 0;
+const availabilityWrittenSeq = new Map();
+const AVAILABILITY_MIN_INTERVAL_MS = 5000;
 
 export function getCachedAgentAvailability(session) {
     if (!session) return null;
@@ -20,21 +31,62 @@ export function getCachedAgentAvailability(session) {
     return null;
 }
 
+function fetchTeamAvailability(team) {
+    const started = Date.now();
+    const seq = ++availabilitySeq;
+    const request = (async () => {
+        try {
+            const response = await boardFetch(team, `/status`, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`Availability could not be loaded (${response.status}).`);
+            const data = await response.json();
+            if (seq > (availabilityWrittenSeq.get(team) || 0)) {
+                availabilityWrittenSeq.set(team, seq);
+                availabilityCache.set(team, data);
+            }
+            return data;
+        } finally {
+            // Measured from completion and backed off when the server is slow,
+            // so a /status slower than the interval cannot overlap itself.
+            const latency = Date.now() - started;
+            availabilityNextAt.set(team, Date.now() + Math.max(AVAILABILITY_MIN_INTERVAL_MS, 2 * latency));
+            if (availabilityInFlight.get(team) === request) availabilityInFlight.delete(team);
+        }
+    })();
+    availabilityInFlight.set(team, request);
+    return request;
+}
+
+/** Background polls skip hidden tabs, a team with a request in flight (its
+ *  starter re-renders on the result), and the backoff window; they serve the
+ *  cache on error. Native webviews can report hidden permanently, so they
+ *  always poll. force (the team view: open, Refresh, after a reminder change)
+ *  always sends its own request, since one already in flight may predate the
+ *  change the user just made, and throws on error. */
 export async function refreshTeamAvailability(team, force = false) {
     if (!team) return null;
-    const now = Date.now();
-    if (!force && now - (availabilityFetchedAt.get(team) || 0) < 5000) return null;
-    availabilityFetchedAt.set(team, now);
+    if (!force) {
+        if (!platform.isNative && document.hidden) return null;
+        if (availabilityInFlight.has(team) || Date.now() < (availabilityNextAt.get(team) || 0)) return null;
+    }
     try {
-        const response = await boardFetch(team, `/status`, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Availability could not be loaded (${response.status}).`);
-        const data = await response.json();
-        availabilityCache.set(team, data);
-        return data;
+        return await fetchTeamAvailability(team);
     } catch (err) {
         if (force) throw err;
         return availabilityCache.get(team) || null;
     }
+}
+
+function availabilitySignature(data) {
+    return JSON.stringify((data?.agents || []).map(a => [a.session_id, a.subscriber_id, a.name, a.availability, !!a.reminder, a.reminder_interval_seconds || 0]));
+}
+
+/** Background refresh for the sidebar: resolves true only when the fields the
+ *  sidebar renders (availability badge, reminder) changed, so a poll with no
+ *  change does not trigger another full re-render. */
+export async function refreshTeamAvailabilityIfChanged(team) {
+    const before = availabilitySignature(availabilityCache.get(team));
+    const snapshot = await refreshTeamAvailability(team);
+    return !!snapshot && availabilitySignature(snapshot) !== before;
 }
 
 export function showTeamAvailability(team, options = {}) {

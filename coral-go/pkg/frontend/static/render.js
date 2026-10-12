@@ -9,7 +9,7 @@ import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { serverBadgeHtml, serverStripHtml, localFirst, isStaleSession, staleReason, showServerLabels, serverLabel } from './server_status.js';
 import { syncMobileAgentList } from './mobile.js';
-import { getCachedAgentAvailability, refreshTeamAvailability } from './team_availability.js';
+import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './team_availability.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -2423,13 +2423,20 @@ export function renderLiveSessions(sessions) {
     // Keep sidebar status aligned with the team availability API. The first
     // render uses the transcript state; the cached API snapshot replaces it
     // asynchronously when an assigned task is idle.
+    // Re-render from the current list (not this call's, which may be stale by
+    // the time the snapshot lands) and only when a badge actually changed.
     const teams = [...new Set(sessions.map(s => sessionTeamKey(s)).filter(Boolean))];
     for (const team of teams) {
-        refreshTeamAvailability(team).then(snapshot => {
-            if (snapshot) renderLiveSessions(sessions);
+        refreshTeamAvailabilityIfChanged(team).then(changed => {
+            if (changed) renderLiveSessions(state.liveSessions || []);
         });
     }
 }
+
+// Hidden tabs skip availability polls; catch up as soon as the tab is shown.
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.liveSessions?.length) renderLiveSessions(state.liveSessions);
+});
 
 function _attachDragListeners(list) {
     const items = list.querySelectorAll(".session-group-item[draggable]");
