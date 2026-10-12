@@ -13,6 +13,7 @@ import { renderCaptureText, syncPaneWidth } from './capture.js';
 import { hideRestartModal } from './controls.js';
 import { recordRecentDir, setDirServerResolver } from './browser.js';
 import { updateTerminalTheme, getTerminal } from './xterm_renderer.js';
+import { desktopNotifySupported, desktopNotifyEnabled, enableDesktopNotify, disableDesktopNotify } from './desktop_notify.js';
 import { applyCloudSettingsDialog, filterSettingsPayload } from './cloud_settings.js';
 import { serverFetch, currentServer, splitKey, identityKey, isHub, isCloud, normServer, LOCAL_SERVER } from './server_base.js';
 import {
@@ -3539,6 +3540,20 @@ export async function showSettingsModal() {
     // Notify Needs Input
     const notifyCheck = document.getElementById("settings-notify-needs-input");
     if (notifyCheck) notifyCheck.checked = !!s.notify_needs_input;
+
+    // Desktop alerts: a per-browser opt-in, never sent to the server
+    const desktopCheck = document.getElementById("settings-desktop-notify");
+    if (desktopCheck) {
+        desktopCheck.checked = desktopNotifyEnabled();
+        desktopCheck.disabled = !desktopNotifySupported();
+        if (!desktopCheck.dataset.bound) {
+            desktopCheck.dataset.bound = "1";
+            desktopCheck.addEventListener("change", async () => {
+                if (desktopCheck.checked) desktopCheck.checked = await enableDesktopNotify();
+                else disableDesktopNotify();
+            });
+        }
+    }
 
     // Check for Updates (stored in localStorage, defaults to on)
     const updateCheck = document.getElementById("settings-check-updates");
