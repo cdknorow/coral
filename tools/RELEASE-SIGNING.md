@@ -16,11 +16,11 @@ Every `.exe` in the bundle and the `.msi` are signed with SHA-256 and an RFC 316
 
 ## Linux
 
-No OS-level signing. The release carries `SHA256SUMS.txt` covering every package.
+No OS-level signing. The release carries `SHA256SUMS.txt` covering every package. It sits in the same release as the packages, so it detects corruption, not a compromised release: anyone who can replace a package can replace the file.
 
 ## Accepted residuals
 
-- The WiX toolset is installed from NuGet at a pinned version (`wix` 5.0.2) but without hash pinning, and `choco install mingw` is unpinned. Both run before signing, so a compromised package would be signed. Accepted for now.
+- The WiX toolset is installed from NuGet at a pinned version (`wix` 5.0.2) but without hash pinning, and `choco install mingw` is unpinned. Both run before signing, so a compromised package would be signed. The Trusted Signing action also fetches the Trusted Signing client tooling from NuGet at run time, unpinned and unverified, and that code handles the signing credentials. Accepted for now.
 - The macOS secret check (`Require macOS release signing credentials`) runs at the start of `build-macos` and fails the tag build if any of the six secrets is empty.
 
 ## Recommendations for the operator (not yet applied)
