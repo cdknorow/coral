@@ -146,8 +146,13 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		// stale session_name, and inferring ownership from a display name can
 		// deliver another agent's unread messages.
 		sub, err := n.boardStore.GetSubscriptionBySessionName(ctx, sessName)
-		if err != nil || sub == nil {
-			n.logger.Info("no subscription found", "subscriber_id", subscriberID, "session_name", sessName, "error", err)
+		if err != nil {
+			n.logger.Warn("subscription lookup failed", "subscriber_id", subscriberID, "session_name", sessName, "error", err)
+			continue
+		}
+		if sub == nil {
+			// Normal for sessions that never joined a board.
+			n.logger.Debug("no subscription found", "subscriber_id", subscriberID, "session_name", sessName)
 			continue
 		}
 		// The session-name lookup is authoritative across restarts. Discovery
