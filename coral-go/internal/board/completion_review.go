@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // CompletionReview preserves an unaccepted candidate independently of the final
@@ -70,38 +72,55 @@ func (s *Store) submitCompletionReviewAtRevisionAndCandidate(ctx context.Context
 		return nil, err
 	}
 	reviewerErr := s.RequireTaskReviewer(ctx, project, actor)
+	// Run twice: before the gates (read transaction, closed before slow
+	// registered checks run) and inside the write transaction. See
+	// completion_snapshot.go.
+	validate := func(q sqlx.QueryerContext) (TaskWorkflow, error) {
+		var row struct {
+			Status     string  `db:"status"`
+			AssignedTo *string `db:"assigned_to"`
+			Revision   int     `db:"revision"`
+		}
+		if err := sqlx.GetContext(ctx, q, &row, "SELECT status,assigned_to,revision FROM board_tasks WHERE id=? AND board_id=?", id, project); err != nil {
+			return TaskWorkflow{}, err
+		}
+		if row.Revision > 1 && (expectedRevision == nil || *expectedRevision != row.Revision) {
+			return TaskWorkflow{}, fmt.Errorf("task #%d has revision %d; reread task detail before submitting review", id, row.Revision)
+		}
+		if row.Status != "in_progress" {
+			return TaskWorkflow{}, fmt.Errorf("only an in-progress task can submit completion evidence")
+		}
+		if (row.AssignedTo == nil || *row.AssignedTo != actor) && reviewerErr != nil {
+			return TaskWorkflow{}, reviewerErr
+		}
+		w, err := loadWorkflow(ctx, q, id)
+		if err != nil {
+			return w, err
+		}
+		if w.CompletionReview != nil {
+			return w, fmt.Errorf("completion review evidence is already recorded and immutable")
+		}
+		return w, nil
+	}
+	w, snapshot, err := readForGates(ctx, s.db, project, id, validate)
+	if err != nil {
+		return nil, err
+	}
+	gateResults, gateErr := checkCompletionGatesWithPolicy(w.CompletionGates, artifacts, candidateRevision, s.completionCheckRunner, s.completionChecksEnabled)
+	if gateErr != nil && outcome == "success" {
+		return nil, gateErr
+	}
+
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	var row struct {
-		Status     string  `db:"status"`
-		AssignedTo *string `db:"assigned_to"`
-		Revision   int     `db:"revision"`
-	}
-	if err := tx.GetContext(ctx, &row, "SELECT status,assigned_to,revision FROM board_tasks WHERE id=? AND board_id=?", id, project); err != nil {
+	if w, err = validate(tx); err != nil {
 		return nil, err
 	}
-	if row.Revision > 1 && (expectedRevision == nil || *expectedRevision != row.Revision) {
-		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before submitting review", id, row.Revision)
-	}
-	if row.Status != "in_progress" {
-		return nil, fmt.Errorf("only an in-progress task can submit completion evidence")
-	}
-	if (row.AssignedTo == nil || *row.AssignedTo != actor) && reviewerErr != nil {
-		return nil, reviewerErr
-	}
-	w, err := loadWorkflow(ctx, tx, id)
-	if err != nil {
+	if err := requireUnchanged(ctx, tx, project, id, snapshot); err != nil {
 		return nil, err
-	}
-	if w.CompletionReview != nil {
-		return nil, fmt.Errorf("completion review evidence is already recorded and immutable")
-	}
-	gateResults, gateErr := checkCompletionGatesWithPolicy(w.CompletionGates, artifacts, candidateRevision, s.completionCheckRunner, s.completionChecksEnabled)
-	if gateErr != nil && outcome == "success" {
-		return nil, gateErr
 	}
 	w.CompletionReview = &CompletionReview{SubmittedBy: actor, SubmittedAt: nowUTC(), Message: message, ProposedOutcome: outcome, Reason: reason, Artifacts: artifacts, CandidateRevision: candidateRevision, GateResults: gateResults}
 	if err := saveWorkflow(ctx, tx, id, w); err != nil {

@@ -472,52 +472,69 @@ func (s *Store) completeTaskWithArtifactsAtRevisionAndCandidate(ctx context.Cont
 		return nil, err
 	}
 	reviewerErr := s.RequireTaskReviewer(ctx, project, subscriberID)
+	// validate is run twice: before the completion gates (no transaction, so
+	// slow registered checks never hold the board database) and again inside
+	// the write transaction. See completion_snapshot.go.
+	validate := func(q sqlx.QueryerContext) (TaskWorkflow, error) {
+		w, err := loadWorkflow(ctx, q, taskID)
+		if err != nil {
+			return w, err
+		}
+		var revision int
+		if err := sqlx.GetContext(ctx, q, &revision, "SELECT revision FROM board_tasks WHERE id=? AND board_id=?", taskID, project); err != nil {
+			return w, err
+		}
+		if revision > 1 && (expectedRevision == nil || *expectedRevision != revision) {
+			return w, fmt.Errorf("task #%d has revision %d; reread task detail before completing, then retry with --revision %d (API: expected_revision=%d). Reading task detail does not set this value automatically. --candidate-revision identifies the source/build revision and does not replace --revision", taskID, revision, revision, revision)
+		}
+		if w.CompletionReview != nil && reviewerErr != nil {
+			return w, reviewerErr
+		}
+		// An explicit assignment is exclusive for completion too: another worker
+		// must not be able to finish a task that is assigned to someone else, for
+		// instance a pending task they were never allowed to claim. The assignee,
+		// the Operator identity and an active registered orchestrator may complete.
+		var assignee sql.NullString
+		if err := sqlx.GetContext(ctx, q, &assignee, "SELECT assigned_to FROM board_tasks WHERE id=? AND board_id=?", taskID, project); err != nil {
+			return w, err
+		}
+		if assignee.Valid && assignee.String != "" && assignee.String != subscriberID && subscriberID != "Operator" && reviewerErr != nil {
+			return w, fmt.Errorf("task #%d is assigned to %s; only the assignee, Operator or an active registered orchestrator may complete it", taskID, assignee.String)
+		}
+		if outcome == "success" {
+			for _, required := range w.RequiredOutputs {
+				found := false
+				for _, name := range names {
+					if name == required {
+						found = true
+					}
+				}
+				if !found {
+					return w, fmt.Errorf("required output %q is missing", required)
+				}
+			}
+		}
+		return w, nil
+	}
+	w, snapshot, err := readForGates(ctx, s.db, project, taskID, validate)
+	if err != nil {
+		return nil, err
+	}
+	gateResults, gateErr := checkCompletionGatesWithPolicy(w.CompletionGates, artifacts, candidateRevision, s.completionCheckRunner, s.completionChecksEnabled)
+	if gateErr != nil && outcome == "success" {
+		return nil, gateErr
+	}
+
 	tx, err := s.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	w, err := loadWorkflow(ctx, tx, taskID)
-	if err != nil {
+	if w, err = validate(tx); err != nil {
 		return nil, err
 	}
-	var revision int
-	if err := tx.GetContext(ctx, &revision, "SELECT revision FROM board_tasks WHERE id=? AND board_id=?", taskID, project); err != nil {
+	if err := requireUnchanged(ctx, tx, project, taskID, snapshot); err != nil {
 		return nil, err
-	}
-	if revision > 1 && (expectedRevision == nil || *expectedRevision != revision) {
-		return nil, fmt.Errorf("task #%d has revision %d; reread task detail before completing, then retry with --revision %d (API: expected_revision=%d). Reading task detail does not set this value automatically. --candidate-revision identifies the source/build revision and does not replace --revision", taskID, revision, revision, revision)
-	}
-	if w.CompletionReview != nil && reviewerErr != nil {
-		return nil, reviewerErr
-	}
-	// An explicit assignment is exclusive for completion too: another worker
-	// must not be able to finish a task that is assigned to someone else, for
-	// instance a pending task they were never allowed to claim. The assignee,
-	// the Operator identity and an active registered orchestrator may complete.
-	var assignee sql.NullString
-	if err := tx.GetContext(ctx, &assignee, "SELECT assigned_to FROM board_tasks WHERE id=? AND board_id=?", taskID, project); err != nil {
-		return nil, err
-	}
-	if assignee.Valid && assignee.String != "" && assignee.String != subscriberID && subscriberID != "Operator" && reviewerErr != nil {
-		return nil, fmt.Errorf("task #%d is assigned to %s; only the assignee, Operator or an active registered orchestrator may complete it", taskID, assignee.String)
-	}
-	if outcome == "success" {
-		for _, required := range w.RequiredOutputs {
-			found := false
-			for _, name := range names {
-				if name == required {
-					found = true
-				}
-			}
-			if !found {
-				return nil, fmt.Errorf("required output %q is missing", required)
-			}
-		}
-	}
-	gateResults, gateErr := checkCompletionGatesWithPolicy(w.CompletionGates, artifacts, candidateRevision, s.completionCheckRunner, s.completionChecksEnabled)
-	if gateErr != nil && outcome == "success" {
-		return nil, gateErr
 	}
 	inputs, ready, err := dependencyInputs(ctx, tx, taskID)
 	if err != nil {
