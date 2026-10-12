@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 # Release binaries contain the production analytics key. CI execution of those
 # binaries is verification traffic, not product usage.
@@ -150,7 +150,7 @@ jobs:
           done
 
       - name: Sign executables
-        uses: azure/trusted-signing-action@v0.5.1
+        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -191,7 +191,7 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Sign MSI
-        uses: azure/trusted-signing-action@v0.5.1
+        uses: azure/trusted-signing-action@0d74250c661747df006298d0fb49944c10f16e03 # v0.5.1
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -529,7 +529,8 @@ jobs:
           # Hardened runtime on every Mach-O in the bundle.
           for f in "$MNT"/Coral.app/Contents/MacOS/*; do
             file "$f" | grep -q "Mach-O" || continue
-            codesign -dv "$f" 2>&1 | grep -q "flags=.*runtime" || { echo "::error::hardened runtime missing: $f"; exit 1; }
+            info=$(codesign -dv "$f" 2>&1)
+            grep -q "flags=.*runtime" <<<"$info" || { echo "::error::hardened runtime missing: $f"; exit 1; }
           done
           hdiutil detach "$MNT"
 
@@ -546,6 +547,8 @@ jobs:
   # ── Create GitHub Release with all assets ──────────────────────
   release:
     if: always() && !failure() && !cancelled()
+    permissions:
+      contents: write
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
@@ -565,9 +568,9 @@ jobs:
           gh release create "$TAG" --title "$TAG" --generate-notes || true
           # Publish install packages only; native macOS slices are build inputs.
           # Linux and the macOS DMG are always built, so a missing package is an
-          # error. Windows packages are optional (skipped unless the tag asks
-          # for them): an absent glob is skipped explicitly, while a failed
-          # upload still fails the step.
+          # error. The Windows packages are built and signed on every tag, so
+          # they are required too: a missing file or a failed upload fails the
+          # step.
           for f in artifacts/coral-linux-amd64/*.tar.gz \
                    artifacts/coral-macos-dmg/*.dmg \
                    artifacts/coral-windows-msi/*.msi \

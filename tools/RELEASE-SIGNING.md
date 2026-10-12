@@ -17,3 +17,14 @@ Every `.exe` in the bundle and the `.msi` are signed with SHA-256 and an RFC 316
 ## Linux
 
 No OS-level signing. The release carries `SHA256SUMS.txt` covering every package.
+
+## Accepted residuals
+
+- The WiX toolset is installed from NuGet at a pinned version (`wix` 5.0.2) but without hash pinning, and `choco install mingw` is unpinned. Both run before signing, so a compromised package would be signed. Accepted for now.
+- The macOS secret check (`Require macOS release signing credentials`) runs at the start of `build-macos` and fails the tag build if any of the six secrets is empty.
+
+## Recommendations for the operator (not yet applied)
+
+1. **GitHub Environment `release`.** Put the signing steps behind an Environment named `release` with required reviewers, and add a tag ruleset restricting who can create `v*` tags. Move the Apple and Azure secrets into that Environment so a branch or fork workflow can never read them.
+2. **OIDC instead of `AZURE_CLIENT_SECRET`.** Create a federated credential on the service principal (subject `repo:cdknorow/coral:environment:release`) and grant the job `id-token: write`. This removes the long-lived Azure secret.
+3. **Action migration.** `azure/trusted-signing-action` has been renamed to `Azure/artifact-signing-action`. Plan to move to it (pinned by SHA) once its inputs are confirmed on the throwaway signtest tag build, which needs operator OK and the Azure secrets first.
