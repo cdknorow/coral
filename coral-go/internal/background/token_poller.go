@@ -3,7 +3,6 @@ package background
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -38,6 +37,10 @@ type TokenPoller struct {
 	// mtimeOwner maps each lastMtime path to its session, so the state of a
 	// session that is no longer live can be dropped (token_poller_prune.go).
 	mtimeOwner map[string]string
+	// Incremental transcript readers per session (token_usage_cursor.go).
+	codexCursors  map[string]*usageCursor[codexParser]
+	claudeCursors map[string]*usageCursor[claudeParser]
+	piCursors     map[string]*usageCursor[piParser]
 }
 
 // NewTokenPoller creates a new TokenPoller.
@@ -52,6 +55,9 @@ func NewTokenPoller(ss *store.SessionStore, us *store.TokenUsageStore, interval 
 		lastCumulative: make(map[string]cumulativeTokens),
 		lastEntryCount: make(map[string]int),
 		mtimeOwner:     make(map[string]string),
+		codexCursors:   make(map[string]*usageCursor[codexParser]),
+		claudeCursors:  make(map[string]*usageCursor[claudeParser]),
+		piCursors:      make(map[string]*usageCursor[piParser]),
 	}
 }
 
@@ -127,18 +133,21 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 	}
 	p.setMtime(ls.SessionID, rolloutPath, info.ModTime())
 
-	// Extract all cumulative token_count entries from the rollout file
-	usage := extractCodexUsage(rolloutPath)
-	if usage == nil || len(usage.Calls) == 0 {
+	// Parse the token_count entries appended since the last poll.
+	cur := cursorFor(p.codexCursors, ls.SessionID)
+	appended, first := scanUsage(cur, rolloutPath, (*codexParser).line, (*codexParser).takeCalls)
+	total := cur.total
+	if total == 0 {
 		return
 	}
 
 	// Skip entries we've already processed
 	alreadyProcessed := p.lastEntryCount[ls.SessionID]
-	if len(usage.Calls) <= alreadyProcessed {
+	if total <= alreadyProcessed {
 		return
 	}
-	newCalls := usage.Calls[alreadyProcessed:]
+	newCalls := unprocessed(appended, first, alreadyProcessed)
+	sessionStartAt := cur.parser.SessionStartAt
 
 	agentName := ""
 	if ls.DisplayName != nil {
@@ -183,7 +192,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 			CacheReadTokens: deltaCached,
 			TotalTokens:     deltaTotal,
 			CostUSD:         costUSD,
-			SessionStartAt:  usage.SessionStartAt,
+			SessionStartAt:  sessionStartAt,
 			LastActivityAt:  call.Timestamp,
 			RecordedAt:      call.Timestamp,
 			Source:          "jsonl",
@@ -211,7 +220,7 @@ func (p *TokenPoller) pollCodexSession(ctx context.Context, ls *store.LiveSessio
 	}
 
 	p.lastCumulative[ls.SessionID] = prev
-	p.lastEntryCount[ls.SessionID] = len(usage.Calls)
+	p.lastEntryCount[ls.SessionID] = total
 }
 
 // codexUsageData holds token usage extracted from a Codex rollout file.
@@ -242,74 +251,18 @@ type codexUsageData struct {
 // extractCodexUsage reads a Codex rollout JSONL file and extracts ALL
 // cumulative token_count entries. The caller computes deltas using tracked state.
 func extractCodexUsage(path string) *codexUsageData {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil
-	}
-
-	result := &codexUsageData{}
-	var currentModel string
-
+	var p codexParser
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		var entry struct {
-			Type      string `json:"type"`
-			Timestamp string `json:"timestamp"`
-			Payload   struct {
-				Type string `json:"type"`
-				Info struct {
-					TotalTokenUsage struct {
-						InputTokens           int `json:"input_tokens"`
-						CachedInputTokens     int `json:"cached_input_tokens"`
-						OutputTokens          int `json:"output_tokens"`
-						ReasoningOutputTokens int `json:"reasoning_output_tokens"`
-						TotalTokens           int `json:"total_tokens"`
-					} `json:"total_token_usage"`
-				} `json:"info"`
-				Model string `json:"model"`
-				CWD   string `json:"cwd"`
-			} `json:"payload"`
-		}
-
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-
-		if entry.Type == "session_meta" && entry.Timestamp != "" {
-			result.SessionStartAt = entry.Timestamp
-		}
-
-		if entry.Type == "turn_context" && entry.Payload.Model != "" {
-			currentModel = entry.Payload.Model
-		}
-
-		if entry.Type == "event_msg" && entry.Payload.Type == "token_count" {
-			tu := entry.Payload.Info.TotalTokenUsage
-			result.Calls = append(result.Calls, codexCallData{
-				InputTokens:  tu.InputTokens,
-				OutputTokens: tu.OutputTokens + tu.ReasoningOutputTokens,
-				CachedInput:  tu.CachedInputTokens,
-				TotalTokens:  tu.TotalTokens,
-				Timestamp:    entry.Timestamp,
-				Model:        currentModel,
-			})
-		}
+		p.line(line)
 	}
-
-	if len(result.Calls) == 0 {
+	if len(p.Calls) == 0 {
 		return nil
 	}
-	return result
+	return &p.codexUsageData
 }
 
 // findCodexRollout finds the Codex rollout file for a live session.
@@ -494,18 +447,16 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 	}
 	p.setMtime(ls.SessionID, jsonlPath, info.ModTime())
 
-	usage := extractClaudeUsage(jsonlPath)
-	if usage == nil || len(usage.Calls) == 0 {
+	cur := cursorFor(p.claudeCursors, ls.SessionID)
+	appended, first := scanUsage(cur, jsonlPath, (*claudeParser).line, (*claudeParser).takeCalls)
+	total := cur.total
+	if total == 0 {
 		return
 	}
 
 	// Team launches may not know the concrete Claude model up front. Learn it
 	// from transcript metadata so the persisted context denominator self-heals.
-	for i := len(usage.Calls) - 1; i >= 0; i-- {
-		observedModel := strings.TrimSpace(usage.Calls[i].Model)
-		if observedModel == "" {
-			continue
-		}
+	if observedModel := cur.parser.lastModel; observedModel != "" {
 		window := proxy.LookupContextWindow(observedModel)
 		storedModel := ""
 		if ls.Model != nil {
@@ -516,15 +467,15 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 				p.logger.Error("failed to update Claude model context window", "session_id", ls.SessionID, "model", observedModel, "error", err)
 			}
 		}
-		break
 	}
 
 	// Skip entries we've already processed
 	alreadyProcessed := p.lastEntryCount[ls.SessionID]
-	if len(usage.Calls) <= alreadyProcessed {
+	if total <= alreadyProcessed {
 		return
 	}
-	newCalls := usage.Calls[alreadyProcessed:]
+	newCalls := unprocessed(appended, first, alreadyProcessed)
+	sessionStartAt := cur.parser.SessionStartAt
 
 	agentName := ""
 	if ls.DisplayName != nil {
@@ -556,7 +507,7 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 			CacheWriteTokens: call.CacheWriteTokens,
 			TotalTokens:      call.InputTokens + call.OutputTokens + call.CacheReadTokens + call.CacheWriteTokens,
 			CostUSD:          costUSD,
-			SessionStartAt:   usage.SessionStartAt,
+			SessionStartAt:   sessionStartAt,
 			LastActivityAt:   call.Timestamp,
 			RecordedAt:       call.Timestamp,
 			Source:           "jsonl",
@@ -577,7 +528,7 @@ func (p *TokenPoller) pollClaudeSession(ctx context.Context, ls *store.LiveSessi
 			"timestamp", call.Timestamp)
 	}
 
-	p.lastEntryCount[ls.SessionID] = len(usage.Calls)
+	p.lastEntryCount[ls.SessionID] = total
 }
 
 // pollClaudeSubagents records the spend of the subagents this session has
@@ -615,65 +566,18 @@ func (p *TokenPoller) pollClaudeSubagents(ctx context.Context, ls *store.LiveSes
 // extractClaudeUsage reads a Claude JSONL file and extracts per-turn token usage
 // from assistant entries. Unlike Codex (cumulative), Claude values are per-turn.
 func extractClaudeUsage(path string) *claudeUsageData {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil
-	}
-
-	result := &claudeUsageData{}
-
+	var p claudeParser
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		var entry struct {
-			Type      string `json:"type"`
-			Timestamp string `json:"timestamp"`
-			Message   struct {
-				Model string `json:"model"`
-				Usage struct {
-					InputTokens              int `json:"input_tokens"`
-					OutputTokens             int `json:"output_tokens"`
-					CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-					CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				} `json:"usage"`
-			} `json:"message"`
-		}
-
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-
-		// Capture first timestamp as session start
-		if entry.Timestamp != "" && result.SessionStartAt == "" {
-			result.SessionStartAt = entry.Timestamp
-		}
-
-		// Extract usage from assistant entries
-		if entry.Type == "assistant" && entry.Message.Usage.InputTokens > 0 {
-			result.Calls = append(result.Calls, claudeCallData{
-				InputTokens:      entry.Message.Usage.InputTokens,
-				OutputTokens:     entry.Message.Usage.OutputTokens,
-				CacheReadTokens:  entry.Message.Usage.CacheReadInputTokens,
-				CacheWriteTokens: entry.Message.Usage.CacheCreationInputTokens,
-				Model:            entry.Message.Model,
-				Timestamp:        entry.Timestamp,
-			})
-		}
+		p.line(line)
 	}
-
-	if len(result.Calls) == 0 {
+	if len(p.Calls) == 0 {
 		return nil
 	}
-	return result
+	return &p.claudeUsageData
 }
 
 // resolveClaudeTranscriptPath finds the Claude JSONL file for a session.
@@ -750,16 +654,19 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 	}
 	p.setMtime(ls.SessionID, jsonlPath, info.ModTime())
 
-	usage := extractPiUsage(jsonlPath)
-	if usage == nil || len(usage.Calls) == 0 {
+	cur := cursorFor(p.piCursors, ls.SessionID)
+	appended, first := scanUsage(cur, jsonlPath, (*piParser).line, (*piParser).takeCalls)
+	total := cur.total
+	if total == 0 {
 		return
 	}
 
 	alreadyProcessed := p.lastEntryCount[ls.SessionID]
-	if len(usage.Calls) <= alreadyProcessed {
+	if total <= alreadyProcessed {
 		return
 	}
-	newCalls := usage.Calls[alreadyProcessed:]
+	newCalls := unprocessed(appended, first, alreadyProcessed)
+	sessionStartAt := cur.parser.SessionStartAt
 
 	agentName := ""
 	if ls.DisplayName != nil {
@@ -783,7 +690,7 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 			CacheWriteTokens: call.CacheWriteTokens,
 			TotalTokens:      call.TotalTokens,
 			CostUSD:          call.CostUSD,
-			SessionStartAt:   usage.SessionStartAt,
+			SessionStartAt:   sessionStartAt,
 			LastActivityAt:   call.Timestamp,
 			RecordedAt:       call.Timestamp,
 			Source:           "jsonl",
@@ -804,74 +711,22 @@ func (p *TokenPoller) pollPiSession(ctx context.Context, ls *store.LiveSession) 
 			"timestamp", call.Timestamp)
 	}
 
-	p.lastEntryCount[ls.SessionID] = len(usage.Calls)
+	p.lastEntryCount[ls.SessionID] = total
 }
 
 func extractPiUsage(path string) *piUsageData {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil
 	}
-	defer f.Close()
-
-	data, err := io.ReadAll(f)
-	if err != nil {
-		return nil
-	}
-
-	result := &piUsageData{}
-
+	var p piParser
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		var entry struct {
-			Type      string `json:"type"`
-			Timestamp string `json:"timestamp"`
-			Message   struct {
-				Role  string `json:"role"`
-				Model string `json:"model"`
-				Usage struct {
-					Input       int `json:"input"`
-					Output      int `json:"output"`
-					CacheRead   int `json:"cacheRead"`
-					CacheWrite  int `json:"cacheWrite"`
-					TotalTokens int `json:"totalTokens"`
-					Cost        struct {
-						Total float64 `json:"total"`
-					} `json:"cost"`
-				} `json:"usage"`
-			} `json:"message"`
-		}
-
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
-			continue
-		}
-
-		if entry.Timestamp != "" && result.SessionStartAt == "" {
-			result.SessionStartAt = entry.Timestamp
-		}
-
-		if entry.Type == "message" && entry.Message.Role == "assistant" && entry.Message.Usage.Input > 0 {
-			result.Calls = append(result.Calls, piCallData{
-				InputTokens:      entry.Message.Usage.Input,
-				OutputTokens:     entry.Message.Usage.Output,
-				CacheReadTokens:  entry.Message.Usage.CacheRead,
-				CacheWriteTokens: entry.Message.Usage.CacheWrite,
-				TotalTokens:      entry.Message.Usage.TotalTokens,
-				CostUSD:          entry.Message.Usage.Cost.Total,
-				Model:            entry.Message.Model,
-				Timestamp:        entry.Timestamp,
-			})
-		}
+		p.line(line)
 	}
-
-	if len(result.Calls) == 0 {
+	if len(p.Calls) == 0 {
 		return nil
 	}
-	return result
+	return &p.piUsageData
 }
 
 // resolvePiSessionPath finds the Pi JSONL file for a Coral session.

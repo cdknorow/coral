@@ -38,6 +38,21 @@ func (p *TokenPoller) pruneEnded(live []store.LiveSession) {
 			delete(p.lastEntryCount, id)
 		}
 	}
+	for id := range p.codexCursors {
+		if !keep[id] {
+			delete(p.codexCursors, id)
+		}
+	}
+	for id := range p.claudeCursors {
+		if !keep[id] {
+			delete(p.claudeCursors, id)
+		}
+	}
+	for id := range p.piCursors {
+		if !keep[id] {
+			delete(p.piCursors, id)
+		}
+	}
 	for path := range p.lastMtime {
 		if owner, ok := p.mtimeOwner[path]; !ok || !keep[owner] {
 			delete(p.lastMtime, path)
