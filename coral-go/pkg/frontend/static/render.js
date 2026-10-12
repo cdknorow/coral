@@ -91,6 +91,15 @@ export function sessionIdentitySource(s) {
         || (s.board_job_title || '').trim();
 }
 
+// Placeholder of the command box. The full text (with the agent type and board) is too long for a phone's box and
+// gets cut off mid-word, so narrow screens get the target only.
+export function commandPlaceholder(identity, agentType, boardProject) {
+    if (window.innerWidth <= 767) return `Send to ${identity}…`;
+    const typeInfo = agentType ? ` (${agentType})` : '';
+    const boardInfo = boardProject ? ` on ${boardProject}` : '';
+    return `Sending to: ${identity}${typeInfo}${boardInfo} \u2014 type a command or paste an image...`;
+}
+
 /** Shared identity resolver used by row label, avatar, header, terminal label and placeholder. */
 export function resolveSessionIdentity(s) {
     if (!s) return 'Agent';
