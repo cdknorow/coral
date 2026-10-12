@@ -858,6 +858,49 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 	return messages, err
 }
 
+// listMessagesSelect is the dashboard message row; callers append the WHERE.
+const listMessagesSelect = `SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
+	        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
+	        m.target_group_id
+	 FROM board_messages m
+	 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id`
+
+// Keyset paging queries; the EXPLAIN test checks these exact strings.
+const (
+	listMessagesBeforeSQL = `SELECT * FROM (` + listMessagesSelect + `
+	    WHERE m.project = ? AND m.id < ?
+	    ORDER BY m.id DESC LIMIT ?
+	 ) sub ORDER BY id ASC`
+	listMessagesAfterSQL = listMessagesSelect + `
+	 WHERE m.project = ? AND m.id > ?
+	 ORDER BY m.id ASC LIMIT ?`
+	countMessagesBeforeSQL = "SELECT COUNT(*) FROM board_messages WHERE project = ? AND id < ?"
+)
+
+// ListMessagesBefore returns the newest limit messages with id < beforeID,
+// oldest first: the page just before a loaded one. Unlike OFFSET paging it
+// seeks the (project, id) index, so its cost does not grow with board size.
+func (s *Store) ListMessagesBefore(ctx context.Context, project string, beforeID int64, limit int) ([]Message, error) {
+	var messages []Message
+	err := s.db.SelectContext(ctx, &messages, listMessagesBeforeSQL, project, beforeID, limit)
+	return messages, err
+}
+
+// ListMessagesAfter returns the oldest limit messages with id > afterID,
+// oldest first: what arrived after the newest loaded message.
+func (s *Store) ListMessagesAfter(ctx context.Context, project string, afterID int64, limit int) ([]Message, error) {
+	var messages []Message
+	err := s.db.SelectContext(ctx, &messages, listMessagesAfterSQL, project, afterID, limit)
+	return messages, err
+}
+
+// CountMessagesBefore counts the project's messages with id < beforeID.
+func (s *Store) CountMessagesBefore(ctx context.Context, project string, beforeID int64) (int, error) {
+	var count int
+	err := s.db.GetContext(ctx, &count, countMessagesBeforeSQL, project, beforeID)
+	return count, err
+}
+
 // GetMessageByID returns a single message by its ID.
 func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) {
 	var msg Message

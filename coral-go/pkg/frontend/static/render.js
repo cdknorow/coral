@@ -387,7 +387,8 @@ let _boardChatGen = 0;   // bumped whenever the board chat panel is rebuilt, to 
 export function getActiveBoardChat() { return _activeBoardChat; }
 let _boardChatMessages = [];
 let _boardChatTotal = 0;
-let _boardChatOffset = 0;
+let _boardChatOffset = 0;   // older messages not loaded yet
+let _boardChatKeyset = false; // the board's server pages by message id (before_id)
 const _BOARD_CHAT_PAGE = 50;
 let _boardChatSelectMode = false;
 let _boardChatSelectedIds = new Set();
@@ -440,6 +441,7 @@ export function showBoardChatTab(boardName) {
     _boardChatMessages = [];
     _boardChatTotal = 0;
     _boardChatOffset = 0;
+    _boardChatKeyset = false;
     _boardChatLastId[boardName] = null;
     _boardChatSelectMode = false;
     _boardChatSelectedIds.clear();
@@ -493,16 +495,17 @@ async function _loadBoardPanelChat(boardName) {
         // Nothing new since this panel last rendered
         if (_boardChatTotal === total && _boardChatMessages.length > 0 && msgsEl.dataset.rendered === '1') return;
 
-        // Load the latest page
-        const startOffset = Math.max(0, total - _BOARD_CHAT_PAGE);
-        const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=${startOffset}&format=dashboard`);
+        // Load the latest page: offset=0 returns it on every server version
+        // without the OFFSET scan that grows with board size.
+        const resp = await boardFetch(boardName, `/messages/all?limit=${_BOARD_CHAT_PAGE}&offset=0&format=dashboard`);
         const data = await resp.json();
         if (stale()) return;
         const messages = Array.isArray(data) ? data : (data.messages || []);
 
         _boardChatMessages = messages;
         _boardChatTotal = total;
-        _boardChatOffset = startOffset;
+        _boardChatKeyset = data?.paging === 'keyset';
+        _boardChatOffset = _boardChatKeyset ? Number(data.before_count) || 0 : Math.max(0, total - messages.length);
 
         const el = document.getElementById('board-panel-msgs');
         if (!el) return;
@@ -515,18 +518,26 @@ async function _loadEarlierBoardChat() {
     if (!_activeBoardChat || _boardChatOffset <= 0) return;
     const msgsEl = document.getElementById('board-panel-msgs');
     if (!msgsEl) return;
+    const boardName = _activeBoardChat;
+    const gen = _boardChatGen;
     try {
-        const newOffset = Math.max(0, _boardChatOffset - _BOARD_CHAT_PAGE);
-        const fetchCount = _boardChatOffset - newOffset;
-        const resp = await boardFetch(_activeBoardChat, `/messages/all?limit=${fetchCount}&offset=${newOffset}&format=dashboard`);
+        const keyset = _boardChatKeyset && _boardChatMessages.length > 0;
+        const newOffset = keyset ? 0 : Math.max(0, _boardChatOffset - _BOARD_CHAT_PAGE);
+        const page = keyset
+            ? `limit=${_BOARD_CHAT_PAGE}&before_id=${encodeURIComponent(_boardChatMessages[0].id)}`
+            : `limit=${_boardChatOffset - newOffset}&offset=${newOffset}`;
+        const resp = await boardFetch(boardName, `/messages/all?${page}&format=dashboard`);
         const data = await resp.json();
+        // The panel may have switched boards or reloaded while this was in flight.
+        if (gen !== _boardChatGen || _activeBoardChat !== boardName) return;
         const messages = Array.isArray(data) ? data : (data.messages || []);
 
         // Save scroll height to preserve position after prepending
         const prevScrollHeight = msgsEl.scrollHeight;
 
-        _boardChatMessages = [...messages, ..._boardChatMessages];
-        _boardChatOffset = newOffset;
+        const byId = new Map([...messages, ..._boardChatMessages].map(m => [m.id, m]));
+        _boardChatMessages = [...byId.values()].sort((a, b) => a.id - b.id);
+        _boardChatOffset = keyset ? Number(data.before_count) || 0 : newOffset;
 
         _renderBoardPanelMessages(msgsEl, false);
 

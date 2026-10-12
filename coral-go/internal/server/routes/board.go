@@ -902,19 +902,57 @@ func (h *BoardHandler) ListAllMessages(w http.ResponseWriter, r *http.Request) {
 	offset := queryInt(r, "offset", 0)
 	beforeID := int64(queryInt(r, "before_id", 0))
 	format := r.URL.Query().Get("format")
-	messages, err := h.bs.ListMessages(r.Context(), project, limit, offset, beforeID)
+	// Keyset paging: before_id returns the page just before that message and
+	// after_id what arrived after it. Both seek the (project, id) index, while
+	// OFFSET (kept for older clients and remotes) steps over every skipped
+	// row. after_id=0 is meaningful (from the start), so its presence counts.
+	query := r.URL.Query()
+	keyset := offset == 0 && (beforeID > 0 || query.Has("after_id"))
+	var messages []board.Message
+	var err error
+	switch {
+	case keyset && query.Has("after_id"):
+		messages, err = h.bs.ListMessagesAfter(r.Context(), project, int64(queryInt(r, "after_id", 0)), limit)
+	case keyset:
+		messages, err = h.bs.ListMessagesBefore(r.Context(), project, beforeID, limit)
+	default:
+		messages, err = h.bs.ListMessages(r.Context(), project, limit, offset, beforeID)
+	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
 	if format == "dashboard" {
 		total, _ := h.bs.CountMessages(r.Context(), project)
-		writeJSON(w, http.StatusOK, map[string]any{
+		resp := map[string]any{
 			"messages": messages,
 			"total":    total,
 			"limit":    limit,
 			"offset":   offset,
-		})
+		}
+		// For keyset requests and the latest page, say how many older
+		// messages remain so the dashboard can page by id. Older servers
+		// omit "paging"; the dashboard then keeps using offsets.
+		if keyset || (offset == 0 && beforeID == 0) {
+			resp["paging"] = "keyset"
+			// Older than the first returned message, or than the requested
+			// boundary when the page is empty.
+			var anchor int64
+			switch {
+			case len(messages) > 0:
+				anchor = messages[0].ID
+			case query.Has("after_id"):
+				anchor = int64(queryInt(r, "after_id", 0)) + 1
+			default:
+				anchor = beforeID
+			}
+			before := 0
+			if anchor > 0 {
+				before, _ = h.bs.CountMessagesBefore(r.Context(), project, anchor)
+			}
+			resp["before_count"] = before
+		}
+		writeJSON(w, http.StatusOK, resp)
 	} else {
 		// Default: bare array for CLI consumers
 		writeJSON(w, http.StatusOK, emptyIfNil(messages))

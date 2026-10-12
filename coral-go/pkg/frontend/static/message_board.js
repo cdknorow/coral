@@ -13,7 +13,18 @@ let isSleeping = false;
 const PAGE_SIZE = 50;
 let _allMessages = [];
 let _totalMessages = 0;
-let _loadedOffset = 0;
+let _loadedOffset = 0; // older messages not loaded yet (the offset of the first loaded one)
+let _keyset = false;    // the board's server pages by message id (before_id / after_id)
+let _loadedProject = null; // board whose initial page is loaded; polls wait for it
+let _pollInFlight = false;
+
+// Responses can arrive after a board switch or overlap another request; keep
+// each message once, in id order.
+function mergeMessages(...lists) {
+    const byId = new Map();
+    for (const list of lists) for (const m of list) byId.set(m.id, m);
+    return [...byId.values()].sort((a, b) => a.id - b.id);
+}
 let _selectMode = false;
 let _selectedIds = new Set();
 let pendingMessageId = null;
@@ -38,14 +49,23 @@ async function fetchProjects() {
     return [...local, ...lists.flat()];
 }
 
-async function fetchMessages(project, limit = PAGE_SIZE, offset = 0) {
-    const resp = await boardFetch(project, `/messages/all?limit=${limit}&offset=${offset}&format=dashboard`);
+// page is {offset} or {before_id} / {after_id}. Servers that page by id say
+// so (paging: "keyset") and report before_count, the messages older than the
+// page; OFFSET paging slows down linearly with board size.
+async function fetchMessages(project, limit = PAGE_SIZE, page = {}) {
+    const params = new URLSearchParams({ limit: String(limit), format: 'dashboard' });
+    for (const [k, v] of Object.entries(page)) params.set(k, String(v));
+    if (!('offset' in page)) params.set('offset', '0');
+    const resp = await boardFetch(project, `/messages/all?${params}`);
     const data = await resp.json();
     // Support both old format (array) and new format ({messages, total})
     if (Array.isArray(data)) {
-        return { messages: data, total: data.length, offset: 0 };
+        return { messages: data, total: data.length, offset: 0, keyset: false, beforeCount: 0 };
     }
-    return { messages: data.messages || [], total: data.total || 0, offset: data.offset || 0 };
+    return {
+        messages: data.messages || [], total: data.total || 0, offset: data.offset || 0,
+        keyset: data.paging === 'keyset', beforeCount: Number(data.before_count) || 0,
+    };
 }
 
 async function fetchSubscribers(project) {
@@ -194,14 +214,16 @@ async function loadBoardMessages(project) {
         loadingEl.textContent = 'Loading messages';
         msgsEl.appendChild(loadingEl);
     }
+    _loadedProject = null;
     try {
-        // Load the latest page — calculate offset to get the last PAGE_SIZE messages
-        const countResult = await fetchMessages(project, 1, 0);
-        _totalMessages = countResult.total;
-        const startOffset = Math.max(0, _totalMessages - PAGE_SIZE);
-        const result = await fetchMessages(project, PAGE_SIZE, startOffset);
+        // offset=0 returns the latest page on every server version.
+        const result = await fetchMessages(project, PAGE_SIZE);
+        if (currentProject !== project) return;
+        _loadedProject = project;
+        _keyset = result.keyset;
+        _totalMessages = result.total;
         _allMessages = result.messages;
-        _loadedOffset = startOffset;
+        _loadedOffset = _keyset ? result.beforeCount : Math.max(0, _totalMessages - _allMessages.length);
         renderMessages(_allMessages);
     } catch (e) {
         console.error('Failed to load board messages:', e);
@@ -209,13 +231,22 @@ async function loadBoardMessages(project) {
 }
 
 async function loadEarlierMessages() {
-    if (!currentProject || _loadedOffset <= 0) return;
+    const project = currentProject;
+    if (!project || _loadedProject !== project || _loadedOffset <= 0) return;
     try {
-        const newOffset = Math.max(0, _loadedOffset - PAGE_SIZE);
-        const fetchCount = _loadedOffset - newOffset;
-        const result = await fetchMessages(currentProject, fetchCount, newOffset);
-        _allMessages = [...result.messages, ..._allMessages];
-        _loadedOffset = newOffset;
+        if (_keyset && _allMessages.length) {
+            const result = await fetchMessages(project, PAGE_SIZE, { before_id: _allMessages[0].id });
+            if (currentProject !== project) return;
+            _allMessages = mergeMessages(result.messages, _allMessages);
+            _loadedOffset = result.beforeCount;
+        } else {
+            const newOffset = Math.max(0, _loadedOffset - PAGE_SIZE);
+            const fetchCount = _loadedOffset - newOffset;
+            const result = await fetchMessages(project, fetchCount, { offset: newOffset });
+            if (currentProject !== project) return;
+            _allMessages = mergeMessages(result.messages, _allMessages);
+            _loadedOffset = newOffset;
+        }
         renderMessages(_allMessages);
     } catch (e) {
         console.error('Failed to load earlier messages:', e);
@@ -478,13 +509,21 @@ export function deleteMessageBoardProject() {
 // ── Polling ──────────────────────────────────────────────────────────────
 
 async function _pollNewMessages() {
-    if (!currentProject || isPaused) return;
+    const project = currentProject;
+    // Wait for the initial page (an after_id=0 poll would fetch the oldest
+    // page), and never run two polls at once.
+    if (!project || isPaused || _loadedProject !== project || _pollInFlight) return;
+    _pollInFlight = true;
     try {
         // Fetch a small batch from the end — if total grew, we have new messages
-        const knownEnd = _loadedOffset + _allMessages.length;
-        const result = await fetchMessages(currentProject, PAGE_SIZE, knownEnd);
-        if (result.total > _totalMessages && result.messages.length > 0) {
-            _allMessages = [..._allMessages, ...result.messages];
+        const last = _allMessages[_allMessages.length - 1];
+        const result = _keyset
+            ? await fetchMessages(project, PAGE_SIZE, { after_id: last ? last.id : 0 })
+            : await fetchMessages(project, PAGE_SIZE, { offset: _loadedOffset + _allMessages.length });
+        if (currentProject !== project || _loadedProject !== project) return;
+        // With after_id every returned row is new, even if deletes kept the total flat.
+        if (result.messages.length > 0 && (_keyset || result.total > _totalMessages)) {
+            _allMessages = mergeMessages(_allMessages, result.messages);
             _totalMessages = result.total;
             renderMessages(_allMessages);
         } else if (result.total !== _totalMessages) {
@@ -493,6 +532,8 @@ async function _pollNewMessages() {
         }
     } catch (e) {
         // Silent fail on poll
+    } finally {
+        _pollInFlight = false;
     }
 }
 
