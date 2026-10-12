@@ -10,14 +10,19 @@ const BASE = process.env.CORAL_URL;
 if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('isolated server required');
 
 const HOST = new URL(BASE).host;
-const BROKEN = process.env.CSP_SELFCHECK === '1'; // serve a policy that blocks Coral's own scripts: the test must then FAIL
-const CSP = BROKEN ? "default-src 'none'; script-src 'none'" : [
+// The mutation policy: it blocks Coral's own scripts, so loading the page under it MUST be reported as violations (checked below on every run).
+const BROKEN_CSP = "default-src 'none'; script-src 'none'";
+const CSP = [
   "default-src 'self'", "script-src 'self'", "style-src 'self'", "style-src-attr 'unsafe-inline'", "font-src 'self'",
   "img-src 'self' data: blob:", `connect-src 'self' ws://${HOST}`, "object-src 'none'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'",
 ].join('; ');
 
-(async () => {
-  const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
+// Every load happens in its OWN fresh tab (never the shared first tab other suites leave behind, whose buffered log entries and late
+// frames, e.g. the panel suite's deliberately blocked leak attempts, would otherwise be replayed into this suite's listeners).
+async function load(policy, { strict }) {
+  const port = Number(process.env.CDP_PORT || 9222);
+  const tab = await CDP.New({ port, url: 'about:blank' });
+  const client = await CDP({ port, target: tab });
   const { Page, Runtime, Log, Network, Fetch } = client;
   const violations = [], exceptions = [], blocked = [];
   const note = (src, text) => { if (/content security policy|refused to (load|execute|apply|connect|frame)|violates the following/i.test(text)) violations.push(`${src}: ${text.slice(0, 300)}`); };
@@ -27,10 +32,9 @@ const CSP = BROKEN ? "default-src 'none'; script-src 'none'" : [
   Network.loadingFailed(e => { if (e.blockedReason) blocked.push(`${e.blockedReason} ${e.type}`); });
   try {
     await Promise.all([Page.enable(), Runtime.enable(), Log.enable(), Network.enable()]);
-    // Earlier suites leave this tab on the same URL; a cached document would skip the interception.
     await Network.setCacheDisabled({ cacheDisabled: true });
-    // Coral registers a service worker (/static/sw.js); earlier suites in the same Chrome profile leave it
-    // active, and it would answer the document before the Fetch interception ever sees the request.
+    // Coral registers a service worker (/static/sw.js); an earlier suite in the same Chrome profile may have left it active, and it
+    // would answer the document before the Fetch interception ever sees the request.
     await Network.setBypassServiceWorker({ bypass: true });
     await Page.navigate({ url: 'about:blank' });
     await Page.loadEventFired();
@@ -51,28 +55,40 @@ const CSP = BROKEN ? "default-src 'none'; script-src 'none'" : [
       html = html.replace('{"mode":"local"}', '{"mode":"cloud"}');
       served++;
       const headers = (ev.responseHeaders || []).filter(h => !/^content-(security-policy|length)$/i.test(h.name))
-        .concat([{ name: 'Content-Security-Policy', value: CSP }]);
+        .concat([{ name: 'Content-Security-Policy', value: policy }]);
       await Fetch.fulfillRequest({ requestId: ev.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
     });
     await Page.navigate({ url: BASE + '/' });
     await Page.loadEventFired();
     await new Promise(r => setTimeout(r, 3000));
     assert.equal(served, 1, 'the page was served through the policy interception');
-    const where = await Runtime.evaluate({ expression: `location.pathname`, returnByValue: true });
-    assert.equal(where.result.value, '/', 'stayed on the dashboard (no redirect to sign-in)');
-    const mode = await Runtime.evaluate({ expression: `JSON.parse(document.getElementById('coral-boot').textContent).mode`, returnByValue: true });
-    assert.equal(mode.result.value, 'cloud', 'cloud mode boot flag');
-    const inline = await Runtime.evaluate({ expression: `document.querySelectorAll('script:not([src]):not([type="application/json"])').length`, returnByValue: true });
-    assert.equal(inline.result.value, 0, 'no executable inline <script> in the page');
-    // Exercise a few screens that build markup with handlers and styles.
-    for (const expr of [
-      `import('/static/modals.js').then(m => m.showSettingsModal && m.showSettingsModal())`,
-      `import('/static/utils.js').then(() => 1)`,
-    ]) { await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true }); await new Promise(r => setTimeout(r, 800)); }
-    assert.deepEqual(violations, [], 'CSP violations:\n' + violations.join('\n'));
-    assert.deepEqual(blocked.filter(b => /csp/i.test(b)), [], 'resources blocked by CSP');
-    const bad = exceptions.filter(e => /escapeAttr|is not defined|csp/i.test(e));
-    assert.deepEqual(bad, [], 'page exceptions:\n' + bad.join('\n'));
-    console.log(`PASS cloud-mode page under the hub CSP: no violations, no inline script (${exceptions.length} unrelated exceptions ignored)`);
-  } finally { await client.close(); }
+    if (strict) {
+      const where = await Runtime.evaluate({ expression: `location.pathname`, returnByValue: true });
+      assert.equal(where.result.value, '/', 'stayed on the dashboard (no redirect to sign-in)');
+      const mode = await Runtime.evaluate({ expression: `JSON.parse(document.getElementById('coral-boot').textContent).mode`, returnByValue: true });
+      assert.equal(mode.result.value, 'cloud', 'cloud mode boot flag');
+      const inline = await Runtime.evaluate({ expression: `document.querySelectorAll('script:not([src]):not([type="application/json"])').length`, returnByValue: true });
+      assert.equal(inline.result.value, 0, 'no executable inline <script> in the page');
+      // Exercise a few screens that build markup with handlers and styles.
+      for (const expr of [
+        `import('/static/modals.js').then(m => m.showSettingsModal && m.showSettingsModal())`,
+        `import('/static/utils.js').then(() => 1)`,
+      ]) { await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true }); await new Promise(r => setTimeout(r, 800)); }
+    }
+    return { violations, exceptions, blocked };
+  } finally { await client.close(); await CDP.Close({ port, id: tab.id }).catch(() => {}); }
+}
+
+(async () => {
+  // 1. The hub's policy: zero violations.
+  const { violations, exceptions, blocked } = await load(CSP, { strict: true });
+  assert.deepEqual(violations, [], 'CSP violations:\n' + violations.join('\n'));
+  assert.deepEqual(blocked.filter(b => /csp/i.test(b)), [], 'resources blocked by CSP');
+  const bad = exceptions.filter(e => /escapeAttr|is not defined|csp/i.test(e));
+  assert.deepEqual(bad, [], 'page exceptions:\n' + bad.join('\n'));
+  // 2. MUTATION CHECK, every run: a policy that blocks Coral's own scripts must be reported, so the filter above cannot be hiding a real
+  //    violation (it counts everything its own tab reports; there is no allow-list).
+  const mutant = await load(BROKEN_CSP, { strict: false });
+  assert.ok(mutant.violations.length > 0 || mutant.blocked.some(b => /csp/i.test(b)), 'the suite did NOT notice a policy that blocks the page\'s own scripts');
+  console.log(`PASS cloud-mode page under the hub CSP: no violations, no inline script (${exceptions.length} unrelated exceptions ignored); mutant policy caught (${mutant.violations.length} violations, ${mutant.blocked.length} blocked)`);
 })().catch(e => { console.error(e); process.exit(1); });
