@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"strings"
-
-	"github.com/jmoiron/sqlx"
 )
 
 // TokenUsage represents a token usage snapshot for a session.
@@ -329,28 +327,36 @@ func (s *TokenUsageStore) ListUsage(ctx context.Context, f UsageFilter) ([]Token
 	return results, err
 }
 
+// latestUsageRollup selects the rollup rows that count for each requested
+// session under the sourceDedup rule: its jsonl row if it has one, otherwise
+// all of its rows. Reading the rollup instead of token_usage keeps the
+// per-tick cost independent of how many turns a session has had.
+const latestUsageRollup = `WITH r AS (
+	SELECT * FROM token_usage_rollup WHERE session_id IN (SELECT value FROM json_each(?))
+), counted AS (
+	SELECT * FROM r WHERE source = 'jsonl'
+	   OR NOT EXISTS (SELECT 1 FROM r j WHERE j.session_id = r.session_id AND j.source = 'jsonl')
+)`
+
 // GetLatestUsageBySessionIDs returns the latest token usage record per session
 // for the given session IDs, keyed by session_id.
 func (s *TokenUsageStore) GetLatestUsageBySessionIDs(ctx context.Context, sessionIDs []string) (map[string]*TokenUsage, error) {
 	if len(sessionIDs) == 0 {
 		return map[string]*TokenUsage{}, nil
 	}
-
-	query, args, err := sqlx.In(
-		`SELECT MAX(id) as id, session_id, MAX(agent_name) as agent_name, MAX(agent_type) as agent_type,
-		 MAX(team_id) as team_id, MAX(board_name) as board_name,
-		 COALESCE(SUM(input_tokens), 0) as input_tokens, COALESCE(SUM(output_tokens), 0) as output_tokens,
-		 COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens, COALESCE(SUM(cache_write_tokens), 0) as cache_write_tokens,
-		 COALESCE(SUM(total_tokens), 0) as total_tokens, COALESCE(SUM(cost_usd), 0) as cost_usd,
-		 COUNT(*) as num_turns, MAX(recorded_at) as recorded_at
-		 FROM token_usage WHERE session_id IN (?) AND `+sourceDedup+`
-		 GROUP BY session_id`, sessionIDs)
+	ids, err := sessionIDsJSON(sessionIDs)
 	if err != nil {
 		return nil, err
 	}
-
 	var records []TokenUsage
-	if err := s.db.SelectContext(ctx, &records, query, args...); err != nil {
+	if err := s.db.SelectContext(ctx, &records, latestUsageRollup+`
+		SELECT MAX(max_id) as id, session_id, MAX(agent_name) as agent_name, MAX(agent_type) as agent_type,
+		 MAX(team_id) as team_id, MAX(board_name) as board_name,
+		 SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens,
+		 SUM(cache_read_tokens) as cache_read_tokens, SUM(cache_write_tokens) as cache_write_tokens,
+		 SUM(total_tokens) as total_tokens, SUM(cost_usd) as cost_usd,
+		 SUM(num_turns) as num_turns, MAX(recorded_at) as recorded_at
+		FROM counted GROUP BY session_id`, ids); err != nil {
 		return nil, err
 	}
 
@@ -369,29 +375,20 @@ func (s *TokenUsageStore) GetLatestTurnContextBySessionIDs(ctx context.Context, 
 	if len(sessionIDs) == 0 {
 		return map[string]int{}, nil
 	}
-
-	// Use qualified sourceDedup for the outer WHERE to avoid ambiguous column name
-	qualifiedDedup := `(COALESCE(t.source,'jsonl') = 'jsonl' OR t.session_id NOT IN (SELECT DISTINCT session_id FROM token_usage WHERE source = 'jsonl'))`
-	query, args, err := sqlx.In(
-		`SELECT t.session_id, (t.input_tokens + t.cache_read_tokens + t.cache_write_tokens) as context_tokens
-		 FROM token_usage t
-		 INNER JOIN (
-		     SELECT session_id, MAX(recorded_at) as max_at
-		     FROM token_usage
-		     WHERE session_id IN (?) AND `+sourceDedup+`
-		     GROUP BY session_id
-		 ) latest ON t.session_id = latest.session_id AND t.recorded_at = latest.max_at
-		 WHERE t.session_id IN (?) AND `+qualifiedDedup, sessionIDs, sessionIDs)
+	ids, err := sessionIDsJSON(sessionIDs)
 	if err != nil {
 		return nil, err
 	}
-
-	type row struct {
+	// With a single MAX() aggregate, SQLite takes the bare latest_context
+	// from the row holding the newest turn.
+	var rows []struct {
 		SessionID     string `db:"session_id"`
 		ContextTokens int    `db:"context_tokens"`
+		RecordedAt    string `db:"recorded_at"`
 	}
-	var rows []row
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.db.SelectContext(ctx, &rows, latestUsageRollup+`
+		SELECT session_id, latest_context as context_tokens, MAX(recorded_at) as recorded_at
+		FROM counted GROUP BY session_id`, ids); err != nil {
 		return nil, err
 	}
 

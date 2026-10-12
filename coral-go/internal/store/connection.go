@@ -144,6 +144,13 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	// Pre-release name of idx_agent_events_edited_files, without json_valid.
 	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_agent_events_file_edits`)
 
+	// Indexes on migrated columns cannot live in schemaSQL (see above).
+	// sourceDedup's NOT IN subquery reads every jsonl session id.
+	d.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_token_usage_source ON token_usage(source, session_id)`)
+	if err := d.ensureTokenUsageRollup(ctx); err != nil {
+		return err
+	}
+
 	// Fix double-encoded detail_json rows in agent_events (one-time fixup).
 	// Prior to the fix, makeToolDetail returned a JSON string which was then
 	// re-marshaled, producing '"{\"key\":\"val\"}"' instead of '{"key":"val"}'.
