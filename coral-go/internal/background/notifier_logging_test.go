@@ -3,10 +3,15 @@ package background
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"fmt"
 	"log/slog"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -105,4 +110,67 @@ func TestBoardNotifier_MentionsNudgesTrackUnreadCount(t *testing.T) {
 	n.now = func() time.Time { return time.Now().Add(6 * defaultRemindAfter) }
 	pass()
 	assert.Len(t, rt.sent, sent, "no nudge once everything is read")
+}
+
+// Routine passes are quiet: nothing at INFO for subscribers with nothing new
+// or already nudged. Only sending a nudge is logged at INFO.
+func TestBoardNotifier_RoutinePassesLogNothingAtInfo(t *testing.T) {
+	ctx := context.Background()
+	bs := testBoardStore(t)
+	rt := &mockRuntime{}
+	n := NewBoardNotifier(bs, rt, 10*time.Second)
+	n.SetIsPausedFn(func(string) bool { return false })
+	var agents []AgentInfo
+	for i := 0; i < 5; i++ {
+		sid := fmt.Sprintf("11111111-2222-3333-4444-%012d", i)
+		name := fmt.Sprintf("Dev%d", i)
+		agents = append(agents, AgentInfo{AgentType: "claude", AgentName: name, SessionID: sid, DisplayName: name})
+		_, err := bs.Subscribe(ctx, "team", name, "Developer", "claude-"+sid, nil, nil, "mentions")
+		require.NoError(t, err)
+	}
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) { return agents, nil })
+
+	logs := captureNotifierLogs(n)
+	require.NoError(t, n.RunOnce(ctx))
+	assert.NotContains(t, logs.String(), "level=INFO", "nothing unread")
+
+	_, err := bs.PostMessage(ctx, "team", "Lead", "@Dev0 please look", nil)
+	require.NoError(t, err)
+	logs = captureNotifierLogs(n)
+	require.NoError(t, n.RunOnce(ctx))
+	assert.Contains(t, logs.String(), `level=INFO msg="sending nudge"`)
+	assert.Equal(t, 1, strings.Count(logs.String(), "level=INFO"), "only the nudge itself")
+
+	logs = captureNotifierLogs(n)
+	require.NoError(t, n.RunOnce(ctx))
+	assert.NotContains(t, logs.String(), "level=INFO", "already notified")
+}
+
+// Real lookup failures are WARN with the error.
+func TestBoardNotifier_UnreadLookupFailureIsWarn(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "board.db")
+	bs, err := board.NewStore(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { bs.Close() })
+	sid := "11111111-2222-3333-4444-555555555555"
+	_, err = bs.Subscribe(ctx, "team", "Dev", "Developer", "claude-"+sid, nil, nil, "mentions")
+	require.NoError(t, err)
+	raw, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	defer raw.Close()
+	_, err = raw.Exec("DROP TABLE board_messages")
+	require.NoError(t, err)
+
+	n := NewBoardNotifier(bs, &mockRuntime{}, 10*time.Second)
+	n.SetIsPausedFn(func(string) bool { return false })
+	n.SetDiscoverFn(func(context.Context) ([]AgentInfo, error) {
+		return []AgentInfo{{AgentType: "claude", AgentName: "Dev", SessionID: sid, DisplayName: "Dev"}}, nil
+	})
+	logs := captureNotifierLogs(n)
+	require.NoError(t, n.RunOnce(ctx))
+	out := logs.String()
+	assert.Contains(t, out, `level=WARN msg="check unread failed"`)
+	assert.Contains(t, out, "error=")
+	assert.NotContains(t, out, "level=INFO")
 }

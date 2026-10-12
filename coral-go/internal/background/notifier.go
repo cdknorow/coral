@@ -123,13 +123,13 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		return err
 	}
 
-	n.logger.Info("notification pass", "agent_count", len(agents))
+	n.logger.Debug("notification pass", "agent_count", len(agents))
 
 	liveSessions := make(map[string]bool)
 
 	for _, a := range agents {
 		if a.SessionID == "" {
-			n.logger.Info("skipping agent with no session ID", "agent", a.AgentName)
+			n.logger.Debug("skipping agent with no session ID", "agent", a.AgentName)
 			continue
 		}
 		// Terminals don't process board messages — skip them
@@ -161,22 +161,22 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		subscriberID = sub.SubscriberID
 		// Skip remote subscribers
 		if sub.OriginServer != nil && *sub.OriginServer != "" {
-			n.logger.Info("skipping remote subscriber", "subscriber_id", subscriberID)
+			n.logger.Debug("skipping remote subscriber", "subscriber_id", subscriberID)
 			continue
 		}
 		// Skip agents on paused/sleeping boards
 		if n.isPausedFn != nil && sub.Project != "" && n.isPausedFn(sub.Project) {
-			n.logger.Info("skipping paused board", "subscriber_id", subscriberID, "project", sub.Project)
+			n.logger.Debug("skipping paused board", "subscriber_id", subscriberID, "project", sub.Project)
 			continue
 		}
 
 		unread, err := n.boardStore.CheckUnread(ctx, sub.Project, subscriberID)
 		if err != nil {
-			n.logger.Info("check unread failed", "subscriber_id", subscriberID, "error", err)
+			n.logger.Warn("check unread failed", "subscriber_id", subscriberID, "error", err)
 			continue
 		}
 
-		n.logger.Info("unread check", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "project", sub.Project)
+		n.logger.Debug("unread check", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "project", sub.Project)
 
 		if unread == 0 {
 			n.notifiedMu.Lock()
@@ -186,7 +186,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		}
 		latestID, err := n.boardStore.LatestUnreadMessageID(ctx, sub.Project, subscriberID)
 		if err != nil {
-			n.logger.Info("latest unread lookup failed", "subscriber_id", subscriberID, "error", err)
+			n.logger.Warn("latest unread lookup failed", "subscriber_id", subscriberID, "error", err)
 			continue
 		}
 
@@ -204,7 +204,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		// mention-based coalescing and retain their one-nudge-per-batch policy.
 		newBatch := sub.ReceiveMode == "all" && last.latestID > 0 && latestID > last.latestID
 		if notified && !newBatch && (unread <= last.count || sub.ReceiveMode != "all") && n.now().Sub(last.at) < n.remindAfter {
-			n.logger.Info("already notified", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "notified_unread", last.count)
+			n.logger.Debug("already notified", "subscriber_id", subscriberID, "session", sessName, "unread", unread, "notified_unread", last.count)
 			continue
 		}
 
@@ -215,18 +215,18 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		}
 		health, healthErr := n.boardStore.HasUnreadHealthMessage(ctx, sub.Project, subscriberID)
 		if healthErr != nil {
-			n.logger.Info("health message classification failed", "subscriber_id", subscriberID, "error", healthErr)
+			n.logger.Warn("health message classification failed", "subscriber_id", subscriberID, "error", healthErr)
 		}
 		isOrchestrator := sub.CanPeek != 0 || strings.EqualFold(strings.TrimSpace(sub.JobTitle), "Orchestrator")
 		if health {
 			nonHealth, nonHealthErr := n.boardStore.HasUnreadNonHealthMessage(ctx, sub.Project, subscriberID)
 			if nonHealthErr != nil {
-				n.logger.Info("non-health message classification failed", "subscriber_id", subscriberID, "error", nonHealthErr)
+				n.logger.Warn("non-health message classification failed", "subscriber_id", subscriberID, "error", nonHealthErr)
 			}
 			if nonHealth {
 				health = false
 			} else if !isOrchestrator {
-				n.logger.Info("suppressing health-only nudge for non-orchestrator", "subscriber_id", subscriberID, "session", sessName)
+				n.logger.Debug("suppressing health-only nudge for non-orchestrator", "subscriber_id", subscriberID, "session", sessName)
 				continue
 			}
 		}
