@@ -275,15 +275,21 @@ func availabilityHealthReport(tasks []board.Task) []string {
 			parallel++
 		}
 		if t.Status == "blocked" {
+			if len(t.BlockedBy) == 0 {
+				report = append(report, fmt.Sprintf("#%d is blocked but has no prerequisites", t.ID))
+				continue
+			}
+			// "skipped" is the board's canceled state (the status CHECK has no
+			// "canceled").
 			allDone, canceled := true, false
 			for _, d := range t.BlockedBy {
 				if d.Status != "completed" && d.Status != "skipped" {
 					allDone = false
 				}
-				canceled = canceled || d.Status == "canceled"
+				canceled = canceled || d.Status == "skipped"
 			}
 			if allDone {
-				report = append(report, fmt.Sprintf("#%d is blocked after all prerequisites completed", t.ID))
+				report = append(report, fmt.Sprintf("#%d is blocked after all prerequisites resolved", t.ID))
 			}
 			if canceled {
 				report = append(report, fmt.Sprintf("#%d depends on canceled work", t.ID))
