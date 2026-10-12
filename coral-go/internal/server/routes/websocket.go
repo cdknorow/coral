@@ -74,6 +74,11 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	prevRunsJSON := "[]"
 	firstMessage := true
 	var lastSent time.Time // last message written to this connection
+	notifications := h.notifications
+	var notifCursor int64
+	if notifications != nil {
+		notifCursor = notifications.StartCursor()
+	}
 
 	pollInterval := time.Duration(h.cfg.WSPollIntervalS) * time.Second
 	if pollInterval == 0 {
@@ -130,10 +135,11 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		serversJSON := tick.serversJSON
 		currRunsStr := tick.runsJSON
 
-		// Drain pending notifications
-		var notifications []Notification
-		if h.notifications != nil {
-			notifications = h.notifications.Drain()
+		// Notifications this connection has not seen yet (every dashboard
+		// gets each one).
+		var pending []Notification
+		if notifications != nil {
+			pending, notifCursor = notifications.Since(notifCursor)
 		}
 
 		if firstMessage {
@@ -142,8 +148,8 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 				"sessions":    sessions,
 				"active_runs": activeRuns,
 			}
-			if len(notifications) > 0 {
-				msg["notifications"] = notifications
+			if len(pending) > 0 {
+				msg["notifications"] = pending
 			}
 			if hasRemotes {
 				msg["servers"] = remoteServers
@@ -182,7 +188,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 
 		runsChanged := currRunsStr != prevRunsJSON
 
-		hasNotifications := len(notifications) > 0
+		hasNotifications := len(pending) > 0
 		if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications {
 			payload := map[string]any{"type": "coral_diff"}
 			if len(changed) > 0 {
@@ -201,7 +207,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 				payload["active_runs"] = activeRuns
 			}
 			if hasNotifications {
-				payload["notifications"] = notifications
+				payload["notifications"] = pending
 			}
 			if err := wsjson.Write(ctx, conn, payload); err != nil {
 				return

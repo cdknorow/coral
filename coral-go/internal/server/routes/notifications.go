@@ -24,56 +24,103 @@ type Notification struct {
 	CreatedAt string            `json:"created_at"`
 }
 
-// NotificationStore is a simple in-memory queue for UI notifications.
-// Notifications are ephemeral — they're delivered via WebSocket and
-// discarded after being read or after expiry.
+// NotificationStore holds UI notifications for the /ws/coral connections.
+// Every connected dashboard receives each notification: a connection reads
+// past its own cursor (Since) rather than removing items, and items expire
+// after maxAge. A notification no dashboard has received yet waits for the
+// next one to connect (StartCursor); one already shown somewhere is not
+// replayed to a dashboard that connects later, e.g. after a reload.
 type NotificationStore struct {
-	mu      sync.Mutex
-	items   []Notification
-	nextID  int64
-	maxAge  time.Duration
+	mu     sync.Mutex
+	items  []storedNotification // ascending ID
+	nextID int64
+	maxAge time.Duration
+	now    func() time.Time
+}
+
+type storedNotification struct {
+	n         Notification
+	at        time.Time
+	delivered bool // sent to at least one connection
 }
 
 // NewNotificationStore creates a new notification store.
 func NewNotificationStore() *NotificationStore {
 	return &NotificationStore{
 		maxAge: 5 * time.Minute,
+		now:    time.Now,
 	}
 }
 
-// Push adds a notification to the queue.
+// Push adds a notification for every connected dashboard.
 func (ns *NotificationStore) Push(n Notification) Notification {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
+	ns.prune()
 	ns.nextID++
 	n.ID = ns.nextID
-	n.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	now := ns.clock()
+	n.CreatedAt = now.UTC().Format(time.RFC3339)
 	if n.Type == "" {
 		n.Type = "toast"
 	}
 	if n.Level == "" {
 		n.Level = "info"
 	}
-	ns.items = append(ns.items, n)
+	ns.items = append(ns.items, storedNotification{n: n, at: now})
 	return n
 }
 
-// Drain returns and removes all pending notifications, pruning expired ones.
-func (ns *NotificationStore) Drain() []Notification {
+// StartCursor is the cursor for a newly connected dashboard: it will receive
+// every live notification no dashboard has received yet, and all later ones.
+func (ns *NotificationStore) StartCursor() int64 {
 	ns.mu.Lock()
 	defer ns.mu.Unlock()
-	if len(ns.items) == 0 {
-		return nil
-	}
-	cutoff := time.Now().Add(-ns.maxAge)
-	var live []Notification
-	for _, n := range ns.items {
-		if t, err := time.Parse(time.RFC3339, n.CreatedAt); err == nil && t.After(cutoff) {
-			live = append(live, n)
+	ns.prune()
+	for _, item := range ns.items {
+		if !item.delivered {
+			return item.n.ID - 1
 		}
 	}
-	ns.items = nil
-	return live
+	return ns.nextID
+}
+
+// Since returns the live notifications after cursor, oldest first, and the
+// cursor to pass next time.
+func (ns *NotificationStore) Since(cursor int64) ([]Notification, int64) {
+	ns.mu.Lock()
+	defer ns.mu.Unlock()
+	ns.prune()
+	var out []Notification
+	for i := range ns.items {
+		if ns.items[i].n.ID > cursor {
+			out = append(out, ns.items[i].n)
+			ns.items[i].delivered = true
+		}
+	}
+	if ns.nextID > cursor {
+		cursor = ns.nextID
+	}
+	return out, cursor
+}
+
+func (ns *NotificationStore) clock() time.Time {
+	if ns.now == nil {
+		return time.Now()
+	}
+	return ns.now()
+}
+
+// prune drops expired notifications. Callers hold ns.mu.
+func (ns *NotificationStore) prune() {
+	cutoff := ns.clock().Add(-ns.maxAge)
+	i := 0
+	for i < len(ns.items) && !ns.items[i].at.After(cutoff) {
+		i++
+	}
+	if i > 0 {
+		ns.items = append(ns.items[:0], ns.items[i:]...)
+	}
 }
 
 // NotificationHandler handles the POST /api/notifications endpoint.
