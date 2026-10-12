@@ -1614,6 +1614,26 @@ func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 	return tasks, nil
 }
 
+// ListOpenTasks returns the board's pending, in-progress, blocked and draft
+// tasks with their BlockedBy dependencies, but without workflow hydration
+// (Task.Workflow is left zero). It is the cheap read for frequently polled views
+// such as the team status endpoint: ListTasks hydrates every task, completed
+// ones included, with several queries each, which on a long-lived board means
+// thousands of queries holding the single connection per call.
+func (s *Store) ListOpenTasks(ctx context.Context, project string) ([]Task, error) {
+	var tasks []Task
+	err := s.db.SelectContext(ctx, &tasks,
+		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
+		 WHERE board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')
+		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
+		project)
+	if err != nil {
+		return nil, err
+	}
+	s.loadBlockedBy(ctx, tasks)
+	return tasks, nil
+}
+
 // ListAllTasks returns the most recent tasks across all boards.
 func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	if limit <= 0 {
@@ -1635,6 +1655,11 @@ func (s *Store) populateTaskDeps(ctx context.Context, tasks []Task) {
 	for i := range tasks {
 		s.hydrateWorkflow(ctx, &tasks[i])
 	}
+	s.loadBlockedBy(ctx, tasks)
+}
+
+// loadBlockedBy batch-loads the BlockedBy dependencies for a slice of tasks.
+func (s *Store) loadBlockedBy(ctx context.Context, tasks []Task) {
 	if len(tasks) == 0 {
 		return
 	}

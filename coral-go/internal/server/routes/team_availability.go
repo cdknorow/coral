@@ -80,7 +80,8 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 			return
 		}
 	}
-	tasks, err := h.bs.ListTasks(ctx, name)
+	// Only open tasks matter here; see ListOpenTasks for why not ListTasks.
+	tasks, err := h.bs.ListOpenTasks(ctx, name)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
