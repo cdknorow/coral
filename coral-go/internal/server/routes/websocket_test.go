@@ -560,3 +560,53 @@ func TestWSCoral_IdleConnectionSendsHeartbeat(t *testing.T) {
 	assert.Equal(t, "coral_heartbeat", msg.Type, "nothing changed, so the next message is a heartbeat")
 	assert.GreaterOrEqual(t, time.Since(start), wsHeartbeatInterval-500*time.Millisecond, "not before the interval")
 }
+
+// The first coral_update arrives on connect, not after the first poll tick.
+func TestWSCoral_FirstUpdateIsImmediate(t *testing.T) {
+	server, handler := setupTestServer(t)
+	handler.cfg.WSPollIntervalS = 5
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	conn, _, err := websocket.Dial(ctx, "ws"+server.URL[4:]+"/ws/coral", nil)
+	require.NoError(t, err)
+	defer conn.CloseNow()
+	var msg struct {
+		Type string `json:"type"`
+	}
+	require.NoError(t, wsjson.Read(ctx, conn, &msg))
+	assert.Equal(t, "coral_update", msg.Type)
+	assert.Less(t, time.Since(start), time.Second, "no wait for the 5s tick")
+}
+
+// Many clients connecting at once still share one build.
+func TestWSCoral_SimultaneousConnectsShareBuild(t *testing.T) {
+	h, term := newSharedListHandler(t)
+	h.cfg.WSPollIntervalS = 5
+	term.hold = make(chan struct{})
+	r := chi.NewRouter()
+	r.Get("/ws/coral", h.WSCoral)
+	server := httptest.NewServer(r)
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var conns []*websocket.Conn
+	for i := 0; i < 8; i++ {
+		conn, _, err := websocket.Dial(ctx, "ws"+server.URL[4:]+"/ws/coral", nil)
+		require.NoError(t, err)
+		defer conn.CloseNow()
+		conns = append(conns, conn)
+	}
+	time.Sleep(100 * time.Millisecond) // all eight are waiting on the held build
+	close(term.hold)
+	for _, conn := range conns {
+		var msg struct {
+			Type string `json:"type"`
+		}
+		require.NoError(t, wsjson.Read(ctx, conn, &msg))
+		require.Equal(t, "coral_update", msg.Type)
+	}
+	// One shared build; the session-cache sweep may list sessions once more.
+	assert.LessOrEqual(t, term.lists.Load(), int64(2))
+}

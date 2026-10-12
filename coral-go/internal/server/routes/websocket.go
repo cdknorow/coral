@@ -104,11 +104,19 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	lastBuild := time.Time{}
 	prevServersJSON := ""
 
+	// The first coral_update goes out at once rather than after the first
+	// tick, so a dashboard or hub feed is not empty for a poll interval. It
+	// comes from the shared tick, so clients connecting together still share
+	// one build.
+	connected := make(chan struct{}, 1)
+	connected <- struct{}{}
+
 	for {
 		select {
 		case <-ctx.Done():
 			conn.Close(websocket.StatusNormalClosure, "")
 			return
+		case <-connected:
 		case <-ticker.C:
 		case <-remoteChanged:
 			if firstMessage {
