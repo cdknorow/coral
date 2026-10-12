@@ -61,7 +61,7 @@ func TestCheckUnread_IncrementalMentionsCountMatchesFullCount(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(2905))
 	var deletions, reads, titles int
-	for step := 0; step < 1500; step++ {
+	for step := 0; step < equivalenceSteps; step++ {
 		board := boards[rng.Intn(len(boards))]
 		switch op := rng.Intn(100); {
 		case op < 70:

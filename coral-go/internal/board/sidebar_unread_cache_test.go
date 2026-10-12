@@ -103,7 +103,7 @@ func TestGetUnreadCounts_IncrementalMatchesFullCount(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(2913))
 	ops := map[string]int{}
-	for step := 0; step < 1500; step++ {
+	for step := 0; step < equivalenceSteps; step++ {
 		board := boards[rng.Intn(len(boards))]
 		sub := subs[rng.Intn(len(subs))]
 		switch op := rng.Intn(100); {
