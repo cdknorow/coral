@@ -63,7 +63,14 @@ async function run() {
   const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
   // Run n history-poll cycles now (the same refreshLiveHistory the 1 s timer calls, which keeps running as in
   // production) instead of sleeping until the timer has done them, then let the async parts render.
-  const cycles = async (n) => { for (let i = 0; i < n; i++) { await ev(`import('/static/live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`); await sleep(30); } await sleep(60); };
+  // A refresh that overlaps the timer's can be cut short, so count COMPLETED refreshes (each one ends by fetching
+  // /pending-tool) and keep refreshing until n have completed.
+  const refreshOnce = () => ev(`import('/static/live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
+  const cycles = async (n) => { const start = await ev(`window.__pendingFetches || 0`); for (let i = 0; i < n * 10 && (await ev(`window.__pendingFetches || 0`)) < start + n; i++) { await refreshOnce(); await sleep(30); } await sleep(60); };
+  // For a state the poll converges to: refresh until cond holds (up to 40 cycles), so a loaded machine only waits longer.
+  // The card re-renders when a poll lands; wait for the element a step is about to use (up to 3 s).
+  const waitEl = async (sel) => { for (let i = 0; i < 60 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)})`)); i++) await sleep(50); };
+  const settleUntil = async (cond) => { for (let i = 0; i < 40 && !(await ev(cond)); i++) { await refreshOnce(); await sleep(50); } };
   await Emulation.setDeviceMetricsOverride({ width: 1500, height: 950, deviceScaleFactor: 1, mobile: false });
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
   for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
@@ -178,10 +185,10 @@ async function run() {
   await sleep(200);
   check('three sends show three queued bubbles', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 3);
   await ev(`window.__msgs.push({ type: 'user', content: 'test\\ntest', timestamp: new Date().toISOString() }); true`);
-  await cycles(3);
+  await settleUntil(`${C}.querySelectorAll('.chat-bubble.human.pending').length <= 1`);
   check('a merged entry settles every queued message it contains, and only those', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 1);
   await ev(`window.__msgs.push({ type: 'user', content: 'test', timestamp: new Date().toISOString() }); true`);
-  await cycles(3);
+  await settleUntil(`${C}.querySelectorAll('.chat-bubble.human.pending').length === 0`);
   check('the remaining queued message settles when it arrives', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 0);
 
   // Working indicator: right after a send, and while the agent's state is Working
@@ -224,7 +231,7 @@ async function run() {
   check('an interrupt shows as an "Interrupted" note, not a user message', intr.notes.includes('Interrupted') && !intr.asUser, JSON.stringify(intr));
   check('after an interrupt the queued message flips to Sent and Working moves below it', intr.label === 'Sent' && intr.rowBelow, JSON.stringify(intr));
   await ev(`window.__msgs.push({ type: 'user', content: 'Then update the docs', timestamp: new Date().toISOString() }, { type: 'assistant', text: 'Docs updated.', timestamp: new Date(Date.now() + 1000).toISOString() }); true`);
-  await cycles(3);
+  await settleUntil(`${C}.querySelectorAll('.chat-bubble.pending').length === 0 && !${C}.querySelector(':scope > .chat-working')`);
   const done = await ev(`({ pending: ${C}.querySelectorAll('.chat-bubble.pending').length, working: !!${C}.querySelector(':scope > .chat-working') })`);
   check('once it lands and the agent replies, nothing is pending and Working is gone', done.pending === 0 && !done.working, JSON.stringify(done));
 
@@ -251,11 +258,13 @@ async function run() {
   check('options show as numbered cards (they have descriptions), the default outlined', cd.layout === 'cards' && JSON.stringify(cd.options) === JSON.stringify([{ n: '1', label: 'Compact', desc: 'Denser rows', dflt: true }, { n: '2', label: 'Roomy', desc: '', dflt: false }]), JSON.stringify(cd.options));
   check('Type something is an inline field and Chat about this a footer link', cd.textForm === 'Or type your own answer…' && cd.chat === 'Chat about this instead', JSON.stringify({ textForm: cd.textForm, chat: cd.chat }));
   // A typed answer is sent with the Type something option's number
+  await waitEl('#live-history-messages .cni-text-form[data-n="3"]');
   await ev(`(() => { window.__answers = []; const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); f.querySelector('input').value = 'Something in between'; f.requestSubmit(); return true; })()`);
   await sleep(300);
   const typed = await ev(`window.__answers`);
   check('a typed answer is sent with the Type something option', JSON.stringify(typed) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 3, label: 'Type something.', text: 'Something in between' }]), JSON.stringify(typed));
   // Chat about this: its number, then the command box is ready for the reply
+  await waitEl('#live-history-messages .cni-answer[data-n="4"]');
   await ev(`window.__answers = []; ${C}.querySelectorAll('.cni-answer, .cni-text-form input, .cni-text-form button').forEach(b => b.disabled = false); ${C}.querySelector('.cni-answer[data-n="4"]').click(); true`);
   await sleep(300);
   const chat = await ev(`({ answers: window.__answers, focused: document.activeElement && document.activeElement.id })`);
@@ -429,7 +438,7 @@ async function run() {
       c.sendCommand();
     });
   `);
-  for (let i = 0; i < 150 && !(await ev(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`)); i++) await sleep(20); await sleep(300); // first send, then room for a duplicate
+  for (let i = 0; i < 150 && !(await ev(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`)); i++) await sleep(20); await sleep(700); // first send, then a window longer than the 500 ms upload for any duplicate
   const repeatSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('repeat send while awaiting upload fires only once', repeatSends.length === 1 && repeatSends[0][2].command.includes('Repeat send check'), JSON.stringify(repeatSends));
 
