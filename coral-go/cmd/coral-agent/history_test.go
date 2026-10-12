@@ -62,7 +62,11 @@ func TestCLIHistorySearch_MockServer(t *testing.T) {
 	defer func() { serverURL = origURL }()
 
 	// Mock session env var
-	t.Setenv("CORAL_SESSION_NAME", "claude-test-sess-uuid")
+	// A real Coral session name ({type}-{uuid}) and no TMUX, so the session
+	// resolves from this variable in a clean environment (CI) instead of
+	// exiting, and never from the tmux session the test happens to run in.
+	t.Setenv("TMUX", "")
+	t.Setenv("CORAL_SESSION_NAME", "claude-00000000-0000-4000-8000-0000000000a1")
 
 	// Verify cmdHistorySearch with flags
 	cmdHistorySearch([]string{"port 8420", "--roles", "assistant", "--limit", "5", "--offset", "2"})
@@ -119,7 +123,11 @@ func TestCLIHistoryContext_MockServer(t *testing.T) {
 	serverURL = ts.URL
 	defer func() { serverURL = origURL }()
 
-	t.Setenv("CORAL_SESSION_NAME", "claude-test-sess-uuid")
+	// A real Coral session name ({type}-{uuid}) and no TMUX, so the session
+	// resolves from this variable in a clean environment (CI) instead of
+	// exiting, and never from the tmux session the test happens to run in.
+	t.Setenv("TMUX", "")
+	t.Setenv("CORAL_SESSION_NAME", "claude-00000000-0000-4000-8000-0000000000a1")
 
 	// Call context with explicit session and index
 	cmdHistoryContext([]string{"custom-ancestor-uuid", "5", "--window", "3"})
