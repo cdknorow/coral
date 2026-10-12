@@ -157,12 +157,21 @@ func (s *Server) Router() chi.Router {
 	return s.router
 }
 
+// HasRemoteAgents reports whether this server runs the remote agent hub
+// (hub mode only). Callers use it to decide whether to start RunRemoteAgents.
+func (s *Server) HasRemoteAgents() bool {
+	return s.remoteAgents != nil
+}
+
 // RunRemoteAgents polls registered remote servers and feeds the merged agent
-// list until ctx ends. It blocks.
+// list until ctx ends. It blocks until ctx is done, even outside hub mode, so a
+// supervisor never sees it return early.
 func (s *Server) RunRemoteAgents(ctx context.Context) {
-	if s.remoteAgents != nil {
-		s.remoteAgents.Run(ctx)
+	if s.remoteAgents == nil {
+		<-ctx.Done()
+		return
 	}
+	s.remoteAgents.Run(ctx)
 }
 
 // SetScheduler injects the job scheduler into the tasks handler for launching/killing.

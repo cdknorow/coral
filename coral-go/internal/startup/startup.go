@@ -674,8 +674,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	// it opens no outbound connection and starts no goroutine.
 	startCloudConnector(ctx, db, cfg, srv, sessStore)
 
-	// Multi-server hub: remote agent poller and feed relay.
-	safeGo(ctx, "remote_agents", func() { srv.RunRemoteAgents(ctx) })
+	// Multi-server hub: remote agent poller and feed relay. Hub mode only;
+	// a standalone server has nothing to poll.
+	if srv.HasRemoteAgents() {
+		safeGo(ctx, "remote_agents", func() { srv.RunRemoteAgents(ctx) })
+	}
 
 	// Git poller. Its cadence is a user setting, re-read before every wait, so
 	// someone on a repository where scanning is slow can stretch it out or
