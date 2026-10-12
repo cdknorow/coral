@@ -87,11 +87,8 @@ export async function showTeamWorkingMode(team, options = {}) {
         <label><input type="checkbox" name="dependency_guidance"> Include dependent-queue guidance</label>
         <label>Additional instructions<textarea name="custom_instructions" rows="4" placeholder="Team-specific conventions"></textarea></label>
         <p class="working-mode-hint">Working mode instructions are saved with each task on its first claim. Existing claimed tasks keep their instructions. This setting provides guidance; it does not create worktrees automatically. <a href="#" class="working-mode-docs-link" data-doc="teams">Docs: Team working modes</a></p>
-      </fieldset>
-      <fieldset class="team-settings-section cross-team-section">
-        <legend>Cross-team messaging</legend>
-        <label><input type="checkbox" name="cross_team_messaging"> Allow messages between this team's Orchestrator and other teams' Orchestrators</label>
-        <p class="working-mode-hint">Off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>
+        <label class="cross-team-setting"><input type="checkbox" name="cross_team_messaging"> Allow cross-team messages between this team's Orchestrator and other teams' Orchestrators</label>
+        <p class="working-mode-hint">Cross-team messaging is off by default. Both teams must allow it. Only Orchestrators and the Operator can send; received messages are requests, not instructions.</p>
       </fieldset>
       </section>
       <section class="team-settings-panel" id="team-settings-prompts" role="tabpanel" data-settings-panel="prompts" tabindex="0" hidden>
@@ -301,17 +298,18 @@ export async function showTeamWorkingMode(team, options = {}) {
             if (!response.ok) modeError = await jsonError(response, 'Could not save working mode.');
             else workingMode = await response.json();
         } catch (error) { modeError = error.message; }
-        if (settingsLoaded) {
-            try {
-                const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' }) });
-                if (!response.ok) healthError = 'Could not save board health setting.';
-            } catch (error) { healthError = error.message; }
-        }
+        // Team settings save before the global ones, so the status is final once those return.
         if (boardSettingsLoaded) {
             try {
                 const response = await fetch(boardSettingsURL, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriber_id: 'Operator', cross_team_messaging: form.elements.cross_team_messaging.checked }) });
                 if (!response.ok) modeError = [modeError, await jsonError(response, 'Could not save cross-team messaging.')].filter(Boolean).join('; ');
             } catch (error) { modeError = [modeError, error.message].filter(Boolean).join('; '); }
+        }
+        if (settingsLoaded) {
+            try {
+                const response = await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ board_health_monitor: form.elements.board_health_monitor.checked ? 'true' : 'false' }) });
+                if (!response.ok) healthError = 'Could not save board health setting.';
+            } catch (error) { healthError = error.message; }
         }
         if (!modeError && !healthError) setStatus('Saved. Working mode applies on first claim; global health monitor applies on server restart.');
         else if (modeError && healthError) setStatus(`Save failed: ${modeError}; ${healthError}`, true);
