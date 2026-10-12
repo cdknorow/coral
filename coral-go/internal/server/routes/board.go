@@ -2064,30 +2064,46 @@ func (h *BoardHandler) PollWait(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
 
+	// Sleep until a wait changes in the store (resolve, cancel, expiry), the
+	// wait's own expiry, or the deadline, instead of querying every 500ms per
+	// waiter. waitPollRecheck is a safety net for a change the signal missed.
 	for {
+		changed := h.bs.WaitsChanged() // before the read, so no change slips between
+		wait, err := h.bs.GetActiveWait(r.Context(), project, subscriberID)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if wait == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"status": "resolved"})
+			return
+		}
+		now := time.Now()
+		if now.After(deadline) {
+			writeJSON(w, http.StatusOK, map[string]any{"status": "timeout", "wait": wait})
+			return
+		}
+		next := min(deadline.Sub(now), waitPollRecheck)
+		if expires, err := time.Parse(time.RFC3339, wait.ExpiresAt); err == nil {
+			// GetActiveWait expires it once the second has passed.
+			next = min(next, expires.Add(time.Second).Sub(now))
+		}
+		timer := time.NewTimer(max(next, 10*time.Millisecond))
 		select {
 		case <-r.Context().Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
-			wait, err := h.bs.GetActiveWait(r.Context(), project, subscriberID)
-			if err != nil {
-				errInternalServer(w, err.Error())
-				return
-			}
-			if wait == nil {
-				writeJSON(w, http.StatusOK, map[string]any{"status": "resolved"})
-				return
-			}
-			if time.Now().After(deadline) {
-				writeJSON(w, http.StatusOK, map[string]any{"status": "timeout", "wait": wait})
-				return
-			}
+		case <-changed:
+		case <-timer.C:
 		}
+		timer.Stop()
 	}
 }
+
+// waitPollRecheck bounds how long a long-poll sleeps without re-reading its
+// wait, in case a change did not signal (for example, an older writer).
+var waitPollRecheck = 5 * time.Second
 
 func (h *BoardHandler) resolveMessageWaits(project, senderID, content string) {
 	ctx := context.Background()

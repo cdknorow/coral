@@ -662,10 +662,19 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		if err != nil {
 			return nil, err
 		}
-		// Look up display names from live_sessions for stable board subscriber_id
-		for i, a := range agents {
-			if ls, err := sessStore.GetLiveSession(ctx, a.SessionID); err == nil && ls != nil && ls.DisplayName != nil {
-				agents[i].DisplayName = *ls.DisplayName
+		// Look up display names from live_sessions for stable board
+		// subscriber_id, in one query rather than one per agent.
+		ids := make([]string, 0, len(agents))
+		for _, a := range agents {
+			if a.SessionID != "" {
+				ids = append(ids, a.SessionID)
+			}
+		}
+		if names, err := sessStore.GetLiveDisplayNames(ctx, ids); err == nil {
+			for i, a := range agents {
+				if name, ok := names[a.SessionID]; ok {
+					agents[i].DisplayName = name
+				}
 			}
 		}
 		return agents, nil

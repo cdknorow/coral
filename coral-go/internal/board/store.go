@@ -132,6 +132,7 @@ type Store struct {
 	completionCheckRunner   CompletionCheckRunner
 	completionChecksEnabled bool
 	unreadCounts            unreadCountCache
+	waitChanges             waitSignal
 }
 
 // UnreadState is the startup notification baseline for one active session.
@@ -426,6 +427,17 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	for _, bf := range backfills {
 		if _, err := s.db.ExecContext(ctx, bf.sql); err != nil {
 			log.Printf("[board] migration %s failed: %v", bf.desc, err)
+		}
+	}
+
+	// Lookups by session name (notifier, waits) and by subscriber id across
+	// boards. Both columns are migrated, so the indexes follow the ALTERs.
+	for _, ddl := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_board_subscribers_session_name ON board_subscribers(session_name)",
+		"CREATE INDEX IF NOT EXISTS idx_board_subscribers_subscriber ON board_subscribers(subscriber_id, project)",
+	} {
+		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
+			log.Printf("[board] index warning: %v", err)
 		}
 	}
 
@@ -1515,8 +1527,11 @@ func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, er
 		     p.project,
 		     (SELECT COUNT(*) FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1) as subscriber_count,
 		     (SELECT COUNT(*) FROM board_messages m WHERE m.project = p.project) as message_count,
-		     (SELECT MIN(created_at) FROM board_messages m WHERE m.project = p.project) as first_message_at,
-		     (SELECT MAX(created_at) FROM board_messages m WHERE m.project = p.project) as last_message_at,
+		     -- The first and last rows by id: a seek on (project, id) instead of
+		     -- scanning every message's created_at. Messages are stamped at
+		     -- insert, so id order is time order.
+		     (SELECT created_at FROM board_messages m WHERE m.project = p.project ORDER BY m.id ASC LIMIT 1) as first_message_at,
+		     (SELECT created_at FROM board_messages m WHERE m.project = p.project ORDER BY m.id DESC LIMIT 1) as last_message_at,
 		     (SELECT GROUP_CONCAT(s.job_title, ', ')
 		      FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1
 		      ORDER BY s.subscribed_at LIMIT 5) as participant_names
@@ -1525,7 +1540,7 @@ func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, er
 		     UNION
 		     SELECT DISTINCT project FROM board_messages
 		 ) p
-		 ORDER BY (SELECT MAX(created_at) FROM board_messages m WHERE m.project = p.project) DESC`)
+		 ORDER BY last_message_at DESC`)
 	return projects, err
 }
 
@@ -1714,7 +1729,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 	var tasks []Task
 	err := s.db.SelectContext(ctx, &tasks,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
-		 ORDER BY created_at DESC LIMIT ?`, limit)
+		 ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}

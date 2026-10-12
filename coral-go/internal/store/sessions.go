@@ -45,28 +45,28 @@ type SessionIndex struct {
 
 // LiveSession represents a persistent live session record.
 type LiveSession struct {
-	SessionID    string  `db:"session_id" json:"session_id"`
-	AgentType    string  `db:"agent_type" json:"agent_type"`
-	AgentName    string  `db:"agent_name" json:"agent_name"`
-	WorkingDir   string  `db:"working_dir" json:"working_dir"`
-	DisplayName  *string `db:"display_name" json:"display_name,omitempty"`
-	ResumeFromID *string `db:"resume_from_id" json:"resume_from_id,omitempty"`
-	Flags        *string `db:"flags" json:"flags,omitempty"`
-	IsJob        int     `db:"is_job" json:"is_job"`
-	Prompt       *string `db:"prompt" json:"prompt,omitempty"`
-	BoardName    *string `db:"board_name" json:"board_name,omitempty"`
-	BoardServer  *string `db:"board_server" json:"board_server,omitempty"`
-	Backend      *string `db:"backend" json:"backend,omitempty"`
-	Icon         *string `db:"icon" json:"icon,omitempty"`
-	NameColor    *string `db:"name_color" json:"name_color,omitempty"`
-	IsSleeping   int     `db:"is_sleeping" json:"is_sleeping"`
-	BoardType    *string `db:"board_type" json:"board_type,omitempty"`
-	GitDiffMode  *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
-	Capabilities *string `db:"capabilities" json:"capabilities,omitempty"`
-	Model        *string `db:"model" json:"model,omitempty"`
-	ContextWindow int    `db:"context_window" json:"context_window,omitempty"`
-	Tools        *string `db:"tools" json:"tools,omitempty"`
-	MCPServers   *string `db:"mcp_servers" json:"mcp_servers,omitempty"`
+	SessionID     string  `db:"session_id" json:"session_id"`
+	AgentType     string  `db:"agent_type" json:"agent_type"`
+	AgentName     string  `db:"agent_name" json:"agent_name"`
+	WorkingDir    string  `db:"working_dir" json:"working_dir"`
+	DisplayName   *string `db:"display_name" json:"display_name,omitempty"`
+	ResumeFromID  *string `db:"resume_from_id" json:"resume_from_id,omitempty"`
+	Flags         *string `db:"flags" json:"flags,omitempty"`
+	IsJob         int     `db:"is_job" json:"is_job"`
+	Prompt        *string `db:"prompt" json:"prompt,omitempty"`
+	BoardName     *string `db:"board_name" json:"board_name,omitempty"`
+	BoardServer   *string `db:"board_server" json:"board_server,omitempty"`
+	Backend       *string `db:"backend" json:"backend,omitempty"`
+	Icon          *string `db:"icon" json:"icon,omitempty"`
+	NameColor     *string `db:"name_color" json:"name_color,omitempty"`
+	IsSleeping    int     `db:"is_sleeping" json:"is_sleeping"`
+	BoardType     *string `db:"board_type" json:"board_type,omitempty"`
+	GitDiffMode   *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
+	Capabilities  *string `db:"capabilities" json:"capabilities,omitempty"`
+	Model         *string `db:"model" json:"model,omitempty"`
+	ContextWindow int     `db:"context_window" json:"context_window,omitempty"`
+	Tools         *string `db:"tools" json:"tools,omitempty"`
+	MCPServers    *string `db:"mcp_servers" json:"mcp_servers,omitempty"`
 	PID           int     `db:"pid" json:"pid,omitempty"`
 	WorktreePath  *string `db:"worktree_path" json:"worktree_path,omitempty"`
 	WorktreeRepo  *string `db:"worktree_repo" json:"worktree_repo,omitempty"`
@@ -223,6 +223,32 @@ func (s *SessionStore) GetDisplayNames(ctx context.Context, sessionIDs []string)
 		return nil, err
 	}
 
+	result := make(map[string]string, len(rows))
+	for _, r := range rows {
+		result[r.SessionID] = r.DisplayName
+	}
+	return result, nil
+}
+
+// GetLiveDisplayNames returns live_sessions.display_name for each of the
+// given sessions that has one (the batched form of GetLiveSession(...).DisplayName).
+func (s *SessionStore) GetLiveDisplayNames(ctx context.Context, sessionIDs []string) (map[string]string, error) {
+	if len(sessionIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	query, args, err := sqlx.In(
+		"SELECT session_id, display_name FROM live_sessions WHERE session_id IN (?) AND display_name IS NOT NULL",
+		sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		SessionID   string `db:"session_id"`
+		DisplayName string `db:"display_name"`
+	}
+	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+		return nil, err
+	}
 	result := make(map[string]string, len(rows))
 	for _, r := range rows {
 		result[r.SessionID] = r.DisplayName
@@ -1618,4 +1644,3 @@ func (s *SessionStore) GetSessionAncestry(ctx context.Context, sessionID string)
 
 	return lineage, nil
 }
-

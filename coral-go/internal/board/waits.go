@@ -119,6 +119,7 @@ func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, session
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	s.waitChanges.signal()
 
 	return &RegisteredWait{
 		ID:           id,
@@ -148,6 +149,7 @@ func (s *Store) GetActiveWait(ctx context.Context, project, subscriberID string)
 		_, _ = s.db.ExecContext(ctx,
 			"UPDATE board_waits SET status = 'expired', resolved_at = ? WHERE id = ?",
 			nowStr, wait.ID)
+		s.waitChanges.signal()
 		return nil, nil
 	}
 	return &wait, nil
@@ -169,6 +171,7 @@ func (s *Store) ListActiveWaits(ctx context.Context, project string) ([]Register
 			_, _ = s.db.ExecContext(ctx,
 				"UPDATE board_waits SET status = 'expired', resolved_at = ? WHERE id = ?",
 				now.Format(time.RFC3339), w.ID)
+			s.waitChanges.signal()
 			continue
 		}
 		active = append(active, w)
@@ -182,6 +185,9 @@ func (s *Store) CancelActiveWait(ctx context.Context, project, subscriberID stri
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE board_waits SET status = 'cancelled', resolved_at = ? WHERE project = ? AND subscriber_id = ? AND status = 'active'",
 		nowStr, project, subscriberID)
+	if err == nil {
+		s.waitChanges.signal()
+	}
 	return err
 }
 
@@ -254,6 +260,9 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 			}
 		}
 	}
+	if len(matched) > 0 {
+		s.waitChanges.signal()
+	}
 	return matched, nil
 }
 
@@ -286,6 +295,9 @@ func (s *Store) ResolveMatchingTaskWaits(ctx context.Context, project string, ta
 				matched = append(matched, w)
 			}
 		}
+	}
+	if len(matched) > 0 {
+		s.waitChanges.signal()
 	}
 	return matched, nil
 }
@@ -321,6 +333,9 @@ func (s *Store) ResolveMatchingCommitWaits(ctx context.Context, project, commitH
 				matched = append(matched, w)
 			}
 		}
+	}
+	if len(matched) > 0 {
+		s.waitChanges.signal()
 	}
 	return matched, nil
 }

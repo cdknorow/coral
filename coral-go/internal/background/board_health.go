@@ -80,7 +80,9 @@ func (m *BoardHealthMonitor) scan(ctx context.Context) {
 }
 
 func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
-	tasks, err := m.store.ListTasks(ctx, project)
+	// Only open tasks matter here, and ListOpenTasks skips the per-task
+	// workflow hydration ListTasks does for every task, completed ones included.
+	tasks, err := m.store.ListOpenTasks(ctx, project)
 	if err != nil {
 		return
 	}
@@ -88,55 +90,7 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 	if err != nil {
 		return
 	}
-	var issues []string
-	assigned := map[string]int{}
-	planned := 0
-	parallel := 0
-	for _, t := range tasks {
-		// Queued assignments are intentional landing slots; only active work
-		// contributes to execution-load imbalance.
-		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "in_progress" {
-			assigned[*t.AssignedTo]++
-		}
-		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "pending" {
-			planned++
-		}
-		// Assigned pending tasks already have an owner and may be deliberately
-		// serialized. Recommend parallelization only for unassigned candidates.
-		if t.Status == "pending" && t.AssignedTo == nil && len(t.BlockedBy) == 0 {
-			parallel++
-		}
-		if t.Status == "blocked" {
-			allDone, canceled := true, false
-			for _, d := range t.BlockedBy {
-				if d.Status != "completed" && d.Status != "skipped" {
-					allDone = false
-				}
-				if d.Status == "canceled" {
-					canceled = true
-				}
-			}
-			if allDone {
-				issues = append(issues, fmt.Sprintf("#%d is blocked but all prerequisites are complete; refresh its dependency state", t.ID))
-			}
-			if canceled {
-				issues = append(issues, fmt.Sprintf("#%d depends on canceled work; rewire or cancel it", t.ID))
-			}
-		}
-	}
-	if len(assigned) > 1 {
-		vals := make([]int, 0, len(assigned))
-		for _, n := range assigned {
-			vals = append(vals, n)
-		}
-		sort.Ints(vals)
-		if vals[len(vals)-1] >= vals[0]+2 {
-			issues = append(issues, "assignment load is imbalanced across agents")
-		}
-	}
-	if parallel > 1 {
-		issues = append(issues, fmt.Sprintf("%d unblocked tasks can potentially run in parallel", parallel))
-	}
+	issues, assigned, planned := taskQueueIssues(tasks)
 	recipients := orchestratorRecipients(subs)
 	if len(recipients) == 0 {
 		if len(issues) == 0 {
@@ -180,6 +134,65 @@ func (m *BoardHealthMonitor) scanProject(ctx context.Context, project string) {
 		}
 	}
 	m.mu.Unlock()
+}
+
+// taskQueueIssues reports queue problems among a board's open tasks, the
+// in-progress count per assignee, and the number of assigned pending tasks.
+func taskQueueIssues(tasks []board.Task) (issues []string, assigned map[string]int, planned int) {
+	assigned = map[string]int{}
+	parallel := 0
+	for _, t := range tasks {
+		// Queued assignments are intentional landing slots; only active work
+		// contributes to execution-load imbalance.
+		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "in_progress" {
+			assigned[*t.AssignedTo]++
+		}
+		if t.AssignedTo != nil && *t.AssignedTo != "" && t.Status == "pending" {
+			planned++
+		}
+		// Assigned pending tasks already have an owner and may be deliberately
+		// serialized. Recommend parallelization only for unassigned candidates.
+		if t.Status == "pending" && t.AssignedTo == nil && len(t.BlockedBy) == 0 {
+			parallel++
+		}
+		if t.Status == "blocked" {
+			if len(t.BlockedBy) == 0 {
+				issues = append(issues, fmt.Sprintf("#%d is blocked but has no prerequisites; unblock or cancel it", t.ID))
+				continue
+			}
+			// "skipped" is the board's canceled state (as in #2916's
+			// availabilityHealthReport fix).
+			allDone, canceled := true, false
+			for _, d := range t.BlockedBy {
+				if d.Status != "completed" && d.Status != "skipped" {
+					allDone = false
+				}
+				if d.Status == "skipped" {
+					canceled = true
+				}
+			}
+			if allDone {
+				issues = append(issues, fmt.Sprintf("#%d is blocked but all prerequisites are resolved; refresh its dependency state", t.ID))
+			}
+			if canceled {
+				issues = append(issues, fmt.Sprintf("#%d depends on canceled work; rewire or cancel it", t.ID))
+			}
+		}
+	}
+	if len(assigned) > 1 {
+		vals := make([]int, 0, len(assigned))
+		for _, n := range assigned {
+			vals = append(vals, n)
+		}
+		sort.Ints(vals)
+		if vals[len(vals)-1] >= vals[0]+2 {
+			issues = append(issues, "assignment load is imbalanced across agents")
+		}
+	}
+	if parallel > 1 {
+		issues = append(issues, fmt.Sprintf("%d unblocked tasks can potentially run in parallel", parallel))
+	}
+	return issues, assigned, planned
 }
 
 type idleFinding struct {
