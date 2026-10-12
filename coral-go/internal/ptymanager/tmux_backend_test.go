@@ -33,7 +33,7 @@ func newTestTmuxBackend(t *testing.T) *TmuxBackend {
 	}
 	exec.Command("tmux", "-S", sock, "kill-server").Run()
 
-	client := tmux.NewClient()
+	client := tmux.NewClient(t.TempDir())
 	client.SocketPath = sock
 	client.FallbackToDefault = false
 

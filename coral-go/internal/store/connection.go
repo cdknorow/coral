@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/cdknorow/coral/internal/testguard"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -50,6 +51,7 @@ func OpenWithContext(ctx context.Context, dbPath string) (*DB, error) {
 }
 
 func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
+	testguard.CheckDataPath(dbPath)
 	if key == "" {
 		if err := dbcrypt.RejectEncryptedFile(dbPath); err != nil {
 			return nil, err

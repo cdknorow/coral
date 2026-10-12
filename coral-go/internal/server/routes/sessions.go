@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/testguard"
 	"io"
 	"log"
 	"log/slog"
@@ -4575,6 +4576,7 @@ func writeBoardStateFile(sessionName, boardName, role string, cfg *config.Config
 	if cfg != nil {
 		stateDir = cfg.CoralDir()
 	}
+	testguard.CheckDataPath(stateDir)
 	os.MkdirAll(stateDir, 0755)
 
 	state := map[string]string{

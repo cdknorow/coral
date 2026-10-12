@@ -13,7 +13,7 @@ import (
 
 func TestListPanes_ParsesOutput(t *testing.T) {
 	// Use a real tmux call if tmux is available, otherwise skip
-	c := NewClient()
+	c := NewClient(t.TempDir())
 	ctx := context.Background()
 
 	panes, err := c.ListPanes(ctx)
@@ -63,7 +63,7 @@ func TestListPanes_ParsesFormat(t *testing.T) {
 }
 
 func TestNewClient_Defaults(t *testing.T) {
-	c := NewClient()
+	c := NewClient(t.TempDir())
 	assert.NotEmpty(t, c.TmuxBin)
 	if c.TmuxBin != "tmux" {
 		assert.True(t, executableFileExists(c.TmuxBin), "resolved tmux path should be executable")
@@ -81,7 +81,7 @@ func TestIsAvailable_UsesExplicitTmuxBin(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, tmuxPath, got)
 
-	c := NewClient()
+	c := NewClient(t.TempDir())
 	assert.Equal(t, tmuxPath, c.TmuxBin)
 }
 

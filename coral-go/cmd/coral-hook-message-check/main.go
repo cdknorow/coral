@@ -6,6 +6,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/internal/testguard"
 	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"log"
@@ -128,6 +129,12 @@ func exec(name string, args ...string) (string, error) {
 // agent, falling back to ~/.coral. Coral sets CORAL_DATA_DIR in every agent's
 // environment; see agent.CoralEnv.
 func coralDir() string {
+	dir := resolveCoralDir()
+	testguard.CheckDataPath(dir)
+	return dir
+}
+
+func resolveCoralDir() string {
 	for _, k := range []string{"CORAL_DATA_DIR", "CORAL_DIR"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 			return v

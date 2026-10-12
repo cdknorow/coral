@@ -4,6 +4,7 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"github.com/cdknorow/coral/internal/testguard"
 	"log"
 	"os"
 	"os/exec"
@@ -208,6 +209,7 @@ func NewClient(coralDir ...string) *Client {
 			c.SocketPath = filepath.Join(home, ".coral", "tmux.sock")
 		}
 	}
+	testguard.CheckDataPath(c.SocketPath)
 	c.FallbackToDefault = defaultSocketFallback(c.SocketPath)
 	log.Printf("[tmux] NewClient: tmux_bin=%q socket=%q fallback=%v path=%q shell=%q coral_tmux_bin=%q", c.TmuxBin, c.SocketPath, c.FallbackToDefault, os.Getenv("PATH"), os.Getenv("SHELL"), os.Getenv("CORAL_TMUX_BIN"))
 	return c

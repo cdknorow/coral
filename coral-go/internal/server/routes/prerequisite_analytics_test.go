@@ -247,7 +247,7 @@ func TestStatusReportsTmuxAvailabilityEffectiveBackendAndKeepsExistingFields(t *
 	s = get()
 	assert.Equal(t, "pty", s["effective_backend"])
 	assert.Equal(t, false, s["tmux_required"])
-	h.SetTerminal(ptymanager.NewTmuxSessionTerminal(tmux.NewClient()))
+	h.SetTerminal(ptymanager.NewTmuxSessionTerminal(tmux.NewClient(t.TempDir())))
 	s = get()
 	assert.Equal(t, "tmux", s["effective_backend"])
 	assert.Equal(t, true, s["tmux_required"])

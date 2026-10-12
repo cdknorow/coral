@@ -3,6 +3,7 @@ package license
 import (
 	"bufio"
 	"fmt"
+	"github.com/cdknorow/coral/internal/testguard"
 	"log"
 	"os"
 	"path/filepath"
@@ -67,6 +68,7 @@ func WriteEULAMarker() error {
 	if marker == "" {
 		return nil
 	}
+	testguard.CheckDataPath(marker)
 	dir := filepath.Dir(marker)
 	os.MkdirAll(dir, 0755)
 	return os.WriteFile(marker, []byte("accepted\n"), 0644)

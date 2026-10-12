@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cdknorow/coral/internal/taskcli"
+	"github.com/cdknorow/coral/internal/testguard"
 	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"net"
@@ -66,6 +67,12 @@ type boardState struct {
 // both failed to find its own subscription and wrote a file into the user's
 // real install. Coral sets CORAL_DATA_DIR in every agent's environment.
 func coralDir() string {
+	dir := resolveCoralDir()
+	testguard.CheckDataPath(dir)
+	return dir
+}
+
+func resolveCoralDir() string {
 	for _, k := range []string{"CORAL_DATA_DIR", "CORAL_DIR"} {
 		if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 			return v

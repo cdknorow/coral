@@ -3,6 +3,7 @@
 package config
 
 import (
+	"github.com/cdknorow/coral/internal/testguard"
 	"net"
 	"os"
 	"path/filepath"
@@ -89,6 +90,7 @@ func Load(dataDir ...string) *Config {
 	}
 
 	// Ensure data directory exists
+	testguard.CheckDataPath(coralDir)
 	os.MkdirAll(coralDir, 0755)
 
 	cfg := &Config{

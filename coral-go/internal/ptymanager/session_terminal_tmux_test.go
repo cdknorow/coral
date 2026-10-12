@@ -35,7 +35,7 @@ func newTmuxTestTerminal(t *testing.T) *TmuxSessionTerminal {
 	exec.Command("tmux", "-S", sock, "kill-server").Run()
 
 	// Use NewClient to get a properly initialized client (sessionSockets map, etc.)
-	c := tmux.NewClient()
+	c := tmux.NewClient(t.TempDir())
 	c.SocketPath = sock
 	c.FallbackToDefault = false // isolate from real sessions
 

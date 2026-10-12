@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"github.com/cdknorow/coral/internal/testguard"
 	"log"
 	"net/url"
 	"os"
@@ -167,6 +168,7 @@ func NewStore(dbPath string) (*Store, error) {
 
 // NewStoreWithKey opens the board database with SQLCipher when key is set.
 func NewStoreWithKey(dbPath, key string) (*Store, error) {
+	testguard.CheckDataPath(dbPath)
 	if key == "" {
 		if err := dbcrypt.RejectEncryptedFile(dbPath); err != nil {
 			return nil, err
