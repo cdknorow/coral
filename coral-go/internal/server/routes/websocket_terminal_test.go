@@ -364,26 +364,25 @@ func TestWSTerminal_BinaryFrameType(t *testing.T) {
 	assert.Equal(t, websocket.MessageBinary, msgType, "replay should be binary")
 	assert.True(t, len(data) > 0, "replay should not be empty")
 
-	// Kill session — may produce terminal_closed JSON text frame
-	backend.Kill("frametype-agent")
+	// Killing the session the socket tails (the tmux name, not the agent
+	// name) ends the tail, which must be reported as a terminal_closed text
+	// frame before the close.
+	require.NoError(t, backend.Kill(tmuxName))
 
 	closeCtx, closeCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer closeCancel()
 
 	for {
 		msgType, data, err = conn.Read(closeCtx)
-		if err != nil {
-			break
-		}
+		require.NoError(t, err, "connection ended without a terminal_closed frame")
 		if msgType == websocket.MessageText {
 			var msg map[string]string
-			if json.Unmarshal(data, &msg) == nil && msg["type"] == "terminal_closed" {
+			require.NoError(t, json.Unmarshal(data, &msg), "control frame should be JSON: %q", data)
+			if msg["type"] == "terminal_closed" {
 				return
 			}
 		}
 	}
-	// Connection close without explicit text frame is acceptable
-	t.Log("session ended without explicit terminal_closed frame (acceptable)")
 }
 
 // TestWSTerminal_GoroutineCleanup verifies that WebSocket connect/disconnect
