@@ -129,6 +129,7 @@ type Store struct {
 	sessionsDB              *sqlx.DB // optional reference to the main sessions DB for cross-DB queries
 	completionCheckRunner   CompletionCheckRunner
 	completionChecksEnabled bool
+	unreadCounts            unreadCountCache
 }
 
 // UnreadState is the startup notification baseline for one active session.
@@ -1034,25 +1035,14 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 	if receiveMode == "mentions" {
 		terms := mentionTerms(subscriberID, sub.JobTitle)
 		// Convert terms to SQL LIKE patterns (% wildcard matches any substring)
-		patterns := make([]string, len(terms))
+		whereClauses := make([]string, len(terms))
+		args := []any{subscriberID}
 		for i, t := range terms {
-			patterns[i] = "%" + t + "%"
-		}
-
-		whereClauses := make([]string, len(patterns))
-		args := []interface{}{project, sub.LastReadID, subscriberID}
-		for i, p := range patterns {
 			whereClauses[i] = "content LIKE ? COLLATE NOCASE"
-			args = append(args, p)
+			args = append(args, "%"+t+"%")
 		}
-
-		var count int
-		query := fmt.Sprintf(
-			`SELECT COUNT(*) FROM board_messages
-			 WHERE project = ? AND id > ? AND subscriber_id != ?`+systemFilter+` AND (%s)`,
-			strings.Join(whereClauses, " OR "))
-		err = s.db.GetContext(ctx, &count, query, args...)
-		return count, err
+		filter := "subscriber_id != ?" + systemFilter + " AND (" + strings.Join(whereClauses, " OR ") + ")"
+		return s.countMentionsUnread(ctx, project, subscriberID, sub.JobTitle, sub.LastReadID, filter, args)
 	}
 
 	// Group-based mode: count messages from group members only
@@ -1397,6 +1387,7 @@ func (s *Store) DeleteMessage(ctx context.Context, messageID int64) (bool, error
 	if err != nil {
 		return false, err
 	}
+	s.unreadCounts.invalidate()
 	n, _ := result.RowsAffected()
 	return n > 0, nil
 }
@@ -1494,7 +1485,9 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM board_groups WHERE project = ?", project); err != nil {
 		return err
 	}
-	return tx.Commit()
+	err = tx.Commit()
+	s.unreadCounts.invalidate()
+	return err
 }
 
 // ── Tasks ───────────────────────────────────────────────────────────
