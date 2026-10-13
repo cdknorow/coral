@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -82,8 +83,9 @@ func TestHTTPTargetRelaysGzipUnchanged(t *testing.T) {
 }
 
 // Through the Cloud Hub tunnel the connector's request-header allowlist drops
-// Accept-Encoding, so the machine answers plain JSON. A gzipped answer is still
-// relayed with its Content-Encoding intact and is not encoded a second time.
+// Accept-Encoding, so the machine answers plain JSON. A local app that gzips
+// anyway is decoded by the connector: the hub never relays a compressed body
+// (BREACH), and gets plain bytes with no Content-Encoding.
 func TestTunnelTargetCompression(t *testing.T) {
 	var seen string
 	local := http.NewServeMux()
@@ -100,6 +102,43 @@ func TestTunnelTargetCompression(t *testing.T) {
 	assert.Equal(t, chatPage, decodeJSON(t, body, false))
 
 	resp, body = fetch(t, hub.URL+"/api/remote/srv/api/forced-gzip", "gzip")
-	assert.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
-	assert.Equal(t, chatPage, decodeJSON(t, body, true), "relayed once-encoded, not stripped or re-encoded")
+	assert.Empty(t, resp.Header.Get("Content-Encoding"))
+	assert.Equal(t, chatPage, decodeJSON(t, body, false), "decoded by the connector, relayed plain")
+}
+
+// The hub's relay caps count DECODED bytes: a small gzip body from the local
+// app that inflates past MaxArtifactBytes is cut off at the cap, not relayed in
+// full, and its compressed length is not passed off as the body's length.
+func TestTunnelGzipBombIsCappedOnDecodedBytes(t *testing.T) {
+	digest := strings.Repeat("ab", 32)
+	var bomb bytes.Buffer
+	zw, _ := gzip.NewWriterLevel(&bomb, gzip.BestCompression)
+	zeros := make([]byte, 1<<20)
+	for range MaxArtifactBytes/len(zeros) + 8 { // 8 MiB past the cap
+		_, _ = zw.Write(zeros)
+	}
+	require.NoError(t, zw.Close())
+	require.Less(t, bomb.Len(), 1<<20, "the compressed body is small")
+
+	local := http.NewServeMux()
+	local.HandleFunc("/api/artifacts/"+digest, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Length", strconv.Itoa(bomb.Len()))
+		_, _ = w.Write(bomb.Bytes())
+	})
+	hub := cloudHub(t, tunnelResolver{connectLocal(t, local, nil)}, nil)
+
+	req, err := http.NewRequest(http.MethodGet, hub.URL+"/api/remote/srv/api/artifacts/"+digest, nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "identity")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Empty(t, resp.Header.Get("Content-Encoding"))
+	n, err := io.Copy(io.Discard, resp.Body)
+	assert.Error(t, err, "the relay is cut off, not completed")
+	assert.LessOrEqual(t, n, int64(MaxArtifactBytes), "never more than the cap of decoded bytes")
+	assert.Greater(t, n, int64(bomb.Len()), "the cap was counted on decoded bytes, not on the compressed length")
 }

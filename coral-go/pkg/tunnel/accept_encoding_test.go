@@ -1,8 +1,12 @@
 package tunnel
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -115,4 +119,85 @@ func TestChatBeforeCursorPassesTheTunnel(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, older, got, "the query reaches the machine unchanged")
+}
+
+// A Content-Encoding set by the local app is never relayed: gzip is decoded by
+// the connector (and no length is claimed for the decoded body, whose size is
+// not known in advance), identity passes, a bodyless response just loses the
+// header, and any other or stacked encoding is answered 502 with a JSON error
+// rather than relayed opaque or failed as a stream.
+func TestLocalContentEncodingIsNeverRelayed(t *testing.T) {
+	const page = `{"messages":["one","two"]}`
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	_, _ = zw.Write([]byte(page))
+	require.NoError(t, zw.Close())
+
+	local := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/gzip", "/api/head-gzip":
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Content-Length", strconv.Itoa(gz.Len()))
+			if r.Method != http.MethodHead {
+				w.Write(gz.Bytes())
+			}
+		case "/api/x-gzip":
+			w.Header().Set("Content-Encoding", "X-GZIP")
+			w.Write(gz.Bytes())
+		case "/api/identity":
+			w.Header().Set("Content-Encoding", "identity")
+			w.Write([]byte(page))
+		case "/api/br":
+			w.Header().Set("Content-Encoding", "br")
+			w.Write([]byte("not really brotli"))
+		case "/api/stacked":
+			w.Header().Add("Content-Encoding", "gzip")
+			w.Header().Add("Content-Encoding", "gzip")
+			w.Write(gz.Bytes())
+		case "/api/corrupt":
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Write([]byte("this is not gzip"))
+		case "/api/no-content":
+			w.Header().Set("Content-Encoding", "gzip")
+			w.WriteHeader(http.StatusNoContent)
+		}
+	})
+	hub := newHub(t, fastCfg())
+	sess, _ := connect(t, hub, local, nil)
+
+	get := func(method, path string) (*http.Response, string) {
+		t.Helper()
+		resp := do(t, sess, method, path, "", strings.NewReader(""), nil)
+		defer resp.Body.Close()
+		b, err := io.ReadAll(resp.Body)
+		require.NoError(t, err, path)
+		return resp, string(b)
+	}
+
+	for _, path := range []string{"/api/gzip", "/api/x-gzip", "/api/identity"} {
+		resp, body := get(http.MethodGet, path)
+		assert.Equal(t, http.StatusOK, resp.StatusCode, path)
+		assert.Empty(t, resp.Header.Values("Content-Encoding"), path)
+		assert.Equal(t, page, body, path)
+	}
+	resp, _ := get(http.MethodGet, "/api/gzip")
+	assert.Empty(t, resp.Header.Get(BodyLengthHeader), "the compressed length is not claimed for the decoded body")
+	resp, _ = get(http.MethodGet, "/api/identity")
+	assert.Equal(t, strconv.Itoa(len(page)), resp.Header.Get(BodyLengthHeader), "a plain body still declares its length")
+
+	for _, path := range []string{"/api/br", "/api/stacked", "/api/corrupt"} {
+		resp, body := get(http.MethodGet, path)
+		assert.Equal(t, http.StatusBadGateway, resp.StatusCode, path)
+		assert.Empty(t, resp.Header.Values("Content-Encoding"), path)
+		assert.JSONEq(t, `{"error":"unsupported content encoding"}`, body, path)
+	}
+
+	resp, body := get(http.MethodHead, "/api/head-gzip")
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Empty(t, resp.Header.Values("Content-Encoding"))
+	assert.Empty(t, body)
+	resp, _ = get(http.MethodGet, "/api/no-content")
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
+	assert.Empty(t, resp.Header.Values("Content-Encoding"))
 }

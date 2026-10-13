@@ -39,6 +39,17 @@ func (h *Handler) writeErr(w http.ResponseWriter, code int, msg, server string) 
 	_ = json.NewEncoder(w).Encode(body)
 }
 
+// writeCodedErr is writeErr with a machine-readable code, for refusals the client acts on.
+func (h *Handler) writeCodedErr(w http.ResponseWriter, status int, msg, code, server string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	body := map[string]string{"error": msg, "code": code}
+	if !h.opts.HideServerID {
+		body["server"] = server
+	}
+	_ = json.NewEncoder(w).Encode(body)
+}
+
 func isUpgrade(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket") &&
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")
@@ -193,13 +204,16 @@ func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, i
 	case errors.As(err, &se) && se.Code == tunnel.CodePathNotAllowed:
 		// The connector's route table refused this path or query (for example an older machine that does not
 		// accept a newer parameter). That is an answer, not an outage: 403, and the server is not marked.
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		body := map[string]string{"error": "path not allowed", "code": tunnel.CodePathNotAllowed}
-		if !h.opts.HideServerID {
-			body["server"] = id
-		}
-		_ = json.NewEncoder(w).Encode(body)
+		h.writeCodedErr(w, http.StatusForbidden, "path not allowed", tunnel.CodePathNotAllowed, id)
+	case errors.As(err, &se) && se.Code == tunnel.CodeTooManyStreams, errors.Is(err, tunnel.ErrTooManyStreams):
+		// The connector (or this session) is at its concurrent-stream cap: a busy dashboard, not an outage.
+		// 503 with a short Retry-After, and the server keeps its status.
+		w.Header().Set("Retry-After", "1")
+		h.writeCodedErr(w, http.StatusServiceUnavailable, "remote busy", tunnel.CodeTooManyStreams, id)
+	case errors.As(err, &se) && se.Code == tunnel.CodeBadRequest:
+		// The connector could not accept this request as sent (bad header, method or body). The request is at
+		// fault, not the machine: 400, not marked.
+		h.writeCodedErr(w, http.StatusBadRequest, "bad request", tunnel.CodeBadRequest, id)
 	case errors.Is(err, ErrRemoteRejected):
 		h.mark(ctx, id, StatusUnauthorized, "remote rejected API key")
 		h.writeErr(w, http.StatusBadGateway, "remote rejected API key", id)

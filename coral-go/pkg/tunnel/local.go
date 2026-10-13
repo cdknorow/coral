@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -435,9 +436,32 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	}
 	hdr.Del("Content-Length") // the body is re-framed
 	hdr.Del(BodyLengthHeader) // never forward a header the machine's own app set under our name
-	if resp.ContentLength >= 0 {
+	// The hub never asks for compression (Accept-Encoding is not forwarded), and a compressed body is never
+	// relayed: compressing a secret next to attacker-influenced text leaks it through the length (BREACH). gzip
+	// from the local app is decoded here, so the hub sees and caps the decoded bytes; anything else is refused.
+	respBody := io.Reader(resp.Body)
+	decoded := false
+	if enc := resp.Header.Values("Content-Encoding"); len(enc) > 0 && !bodyless(h.Method, resp.StatusCode) {
+		switch strings.ToLower(strings.TrimSpace(strings.Join(enc, ","))) {
+		case "", "identity":
+		case "gzip", "x-gzip":
+			zr, err := gzip.NewReader(resp.Body)
+			if err != nil {
+				respondUnsupportedEncoding(s)
+				return
+			}
+			defer zr.Close()
+			respBody, decoded = zr, true
+		default:
+			respondUnsupportedEncoding(s)
+			return
+		}
+	}
+	hdr.Del("Content-Encoding")
+	if resp.ContentLength >= 0 && !decoded {
 		// Advisory only: lets the hub refuse a huge artifact with a clear 413 before streaming. The hub also
-		// caps the body itself, so a connector that omits or falsifies this gains nothing.
+		// caps the body itself, so a connector that omits or falsifies this gains nothing. A decoded body's
+		// length is not known in advance, so none is claimed for it.
 		hdr.Set(BodyLengthHeader, strconv.FormatInt(resp.ContentLength, 10))
 	}
 	rewriteLocation(hdr)
@@ -447,7 +471,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 	}
 	buf := make([]byte, maxChunk)
 	for {
-		n, rerr := resp.Body.Read(buf)
+		n, rerr := respBody.Read(buf)
 		if n > 0 {
 			if _, werr := w.Write(buf[:n]); werr != nil {
 				return
@@ -460,6 +484,23 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 			return // anything else: leave the body unterminated so the hub sees a truncated response
 		}
 	}
+}
+
+// bodyless reports whether a response to method with status carries no body.
+func bodyless(method string, status int) bool {
+	return method == http.MethodHead || status == http.StatusNoContent || status == http.StatusNotModified || (status >= 100 && status < 200)
+}
+
+// respondUnsupportedEncoding answers a local response whose Content-Encoding the
+// connector will not relay. It is an answer (502 with a JSON error), not a stream
+// failure, so the hub does not take the machine for unreachable.
+func respondUnsupportedEncoding(s *Stream) {
+	w, err := s.Respond(ResponseHeader{Status: http.StatusBadGateway, Headers: http.Header{"Content-Type": {"application/json"}}})
+	if err != nil {
+		return
+	}
+	_, _ = io.WriteString(w, `{"error":"unsupported content encoding"}`+"\n")
+	_ = w.Close()
 }
 
 // rewriteLocation keeps redirects meaningful without leaking the loopback
