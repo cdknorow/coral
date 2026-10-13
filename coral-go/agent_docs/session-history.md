@@ -2,7 +2,7 @@
 
 The Session History API provides access to past agent sessions — browsing, searching, viewing conversation logs, and managing notes and tags.
 
-All endpoints are prefixed with `/api/sessions/history`.
+All endpoints are prefixed with `/api/sessions/history`, except the live chat transcript (`/api/sessions/live/{name}/chat`, under Session Detail).
 
 ---
 
@@ -101,6 +101,35 @@ If the session is not found:
 ```json
 {"error": "Session 'abc123' not found"}
 ```
+
+### GET `/api/sessions/live/{name}/chat` (live agent transcript, paged)
+
+The transcript of a live (or sleeping/archived) agent, read from its JSONL log. Unlike the history routes it lives under `/api/sessions/live`. Pass `session_id` and `agent_type` (and `working_directory` when known); missing ones are looked up from the live session.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `after` | int | 0 | `0` (or absent): a history page. `> 0`: a poll, returns `messages[after:]` (everything after the client's own message count) |
+| `limit` | int | 100 | History page size |
+| `before` | int | | Absolute message index (exclusive) the page ends at. Wins over `offset`. Non-integer or negative: 400 `{"error": "before must be a non-negative integer"}` |
+| `offset` | int | 0 | Legacy paging: skip the newest N messages. Shifts when messages arrive between pages; prefer `before` |
+
+**History page response** (`after` 0/absent; an empty transcript is a page with `start: 0`):
+```json
+{"messages": [...], "total": 842, "start": 742, "has_more": true, "limit_notice": ""}
+```
+
+- `start` is the absolute index of the first returned message; pass it as the next `before` to get the page above. `has_more` is `start > 0`.
+- Gzip-compressed when the request sends `Accept-Encoding: gzip` and the body is at least 8 KB.
+
+**Poll response** (`after > 0`): `{"messages": [...], "total": N, "limit_notice": ...}`, never compressed, no `start`/`has_more`.
+
+```bash
+# Newest 100 messages, then the 200 above them
+curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&after=0&limit=100"
+curl -s --compressed "http://localhost:PORT/api/sessions/live/NAME/chat?session_id=SID&agent_type=claude&limit=200&before=742"
+```
+
+**Dashboard behaviour:** the Chat view loads the newest 100 messages, then polls every second with `after=<count>`. Older pages (200 messages, `before=<start>`) load automatically as you scroll near the top; the **Load older messages** button at the top is the scroll sentinel and stays for find-in-chat and retrying a failed load. If a server or hub route refuses `before=` (400/403/404, or 502 `path_not_allowed`), the dashboard pages that server by `offset` instead. Sleeping and archived agents show the same scrollable history.
 
 ---
 

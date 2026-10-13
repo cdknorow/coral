@@ -11,7 +11,7 @@ Streams the live session list with diff-based updates to minimize bandwidth.
 ### Connection
 
 ```
-ws://localhost:8420/ws/coral
+ws://localhost:PORT/ws/coral
 ```
 
 No query parameters required for a dashboard.
@@ -20,19 +20,19 @@ Machine clients that hold a long-lived feed instead of showing a dashboard (a
 Coral hub, the Cloud Hub) should connect with `?feed=hub`:
 
 ```
-ws://localhost:8420/ws/coral?feed=hub
+ws://localhost:PORT/ws/coral?feed=hub
 ```
 
 The session data is identical; the only difference is that a `feed=hub`
-connection never receives the `notifications` field. UI notifications
-(`POST /api/notifications`) are delivered to every connected dashboard, and
-one pushed while no dashboard is open waits for the next dashboard to
-connect. A feed without the marker counts as a dashboard and would take such
-a waiting notification away from the people it was meant for.
+connection never receives, and never marks delivered, the `notifications`
+field (see [Notifications](#notifications)). A feed without the marker counts
+as a dashboard and would take a waiting notification away from the people it
+was meant for.
 
 ### Message Flow
 
-**First message** — full snapshot of all sessions:
+**First message** — full snapshot of all sessions, sent as soon as the
+connection opens (not after the first poll tick):
 
 ```json
 {
@@ -62,6 +62,7 @@ a waiting notification away from the people it was meant for.
       "board_unread": 0,
       "log_path": "/path/to/log",
       "sleeping": false,
+      "archived": false,
       "branch": "feature/x",
       "repo_name": "acme/widgets",
       "git_state": {"is_worktree": true, "base_branch": "main", "ahead": 2, "behind": 1, "dirty": 3},
@@ -87,9 +88,13 @@ a waiting notification away from the people it was meant for.
 }
 ```
 
-- `changed`: Full session objects for sessions whose state changed (no field-level diffs).
-- `removed`: Session IDs that are no longer live.
+- `changed`: Full session objects for sessions whose state changed (no field-level diffs). A session appears only when some field changed, and then with every field, so an unarchive carries `archived: false` explicitly.
+- `removed`: Session IDs (the agent name when there is none) that are no longer live.
 - `active_runs`: Only sent when the active runs list changes.
+- `notifications`: Only when this connection has undelivered notifications (dashboards only).
+
+Sessions are ordered with archived agents last, as in
+`GET /api/sessions/live`.
 
 If nothing changed since the last poll, no diff is sent. Instead, when a
 connection has received nothing for 15 seconds, the server sends a heartbeat:
@@ -103,22 +108,33 @@ that builds the session list, so a client holding a long-lived feed (such as
 a hub) can use it to tell an idle server from one whose session list has
 stopped updating.
 
-### Poll Interval
+### Poll Interval and Immediate Updates
 
-Configurable via `WSPollIntervalS` in server config. Default: **5 seconds**.
+The list is rebuilt every poll tick, configurable via `WSPollIntervalS` in
+server config. Default: **5 seconds**.
+
+State changes made through this server's API do not wait for the tick:
+sleep, wake (including `sleep-all` / `wake-all`), archive, unarchive,
+restart, resume, kill, launch, and team launch / kill / reset push a
+`coral_diff` to every connection (dashboards and `feed=hub`) within about
+50 ms. A burst of changes is coalesced into one rebuild. Remote-machine
+changes on a hub rebuild within about a second; everything else (agent
+activity, log status, notifications) arrives on the tick.
 
 ### Session Status Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | string | Human-readable status from log parsing |
-| `summary` | string | Current activity summary |
+| `status` | string \| null | Human-readable status from log parsing, null when empty |
+| `summary` | string \| null | Current goal/activity summary, null when empty |
+| `display_name` | string | Custom name, `""` when unset |
 | `staleness_seconds` | number | Seconds since last log activity, rounded down to the unit the dashboard shows (whole seconds under 1 min, whole minutes under 1 h, then whole hours) |
 | `waiting_for_input` | bool | Agent is waiting for user input (notification event) |
 | `done` | bool | Agent has stopped (stop event) |
 | `working` | bool | Agent is actively running tools |
 | `stuck` | bool | Reserved (currently always false) |
 | `sleeping` | bool | Session is in sleep state |
+| `archived` | bool | Agent is archived; present on every entry (`false` when not) |
 | `changed_file_count` | int | Number of files changed by agent |
 | `board_project` | string | Associated message board name |
 | `board_unread` | int | Unread board messages |
@@ -129,12 +145,29 @@ Configurable via `WSPollIntervalS` in server config. Default: **5 seconds**.
 | `context_window` | int \| null | Model context window in tokens, null when the model is unknown |
 | `context_pct` | int \| null | Latest turn's context use as a whole percentage of `context_window` (0-100), null when unknown |
 
-These six fields have the same names, types and values as in
+The six fields `branch`, `repo_name`, `git_state`, `capabilities`,
+`context_window` and `context_pct` (and `status`, `summary`, `display_name`)
+have the same names, types and values as in
 `GET /api/sessions/live`, so a client following this feed does not need to
 fetch the list as well. Some keys can be absent rather than null: entries for
 sleeping sessions omit `git_state` and `repo_name`, and `capabilities` is
 omitted when none were set. Clients should treat an absent key and `null` the
 same.
+
+### Notifications
+
+UI notifications (`POST /api/notifications`, see the Notifications doc) are
+delivered on `/ws/coral` as a `notifications` array on `coral_update` or
+`coral_diff`:
+
+- **Every dashboard gets every notification.** Each connection keeps its own
+  cursor, so open tabs and windows do not race for them.
+- A notification counts as delivered only after a write to some connection
+  succeeded; a failed send does not lose it.
+- A dashboard that connects later receives, with its first message, the
+  notifications no dashboard has received yet from the last 5 minutes.
+  Already-delivered ones are not replayed on reload.
+- `feed=hub` connections never receive or acknowledge notifications.
 
 ---
 
@@ -145,7 +178,7 @@ Bidirectional WebSocket for real-time terminal interaction. Both PTY and tmux ba
 ### Connection
 
 ```
-ws://localhost:8420/ws/terminal/{name}
+ws://localhost:PORT/ws/terminal/{name}
 ```
 
 ### Client → Server Messages (JSON text frames)

@@ -58,6 +58,12 @@ Coral's session UUID, not a model provider's conversation/thread ID.
 | `coral-agent task cancel <id> --message "reason"` | Cancel unfinished work |
 | `coral-agent artifact upload <file>` | Store a durable, reachable artifact |
 
+`--help` or `-h` on any command or subcommand (`coral-agent task complete --help`)
+prints its usage without running it or contacting the server. A text option
+(`--message`, `--body`, `--title`, `--workflow-instructions`) whose value is
+itself an option, such as `--message --bogus`, is refused instead of sent
+(`--help` anywhere prints usage and sends nothing).
+
 `add` supports `--body`, `--priority`, `--blocked-by` (JSON), `--outputs`
 (comma-separated names), `--workflow`, `--stage`, `--workflow-instructions`,
 `--parent`, and `--retry-of`. `edit` supports `--title`, `--body`, `--priority`,
@@ -84,20 +90,21 @@ Coral first:
 coral-agent artifact upload report.md
 ```
 
-Use the returned `coral://artifacts/<digest>` URI in the manifest. The matching
-`/api/artifacts/<digest>` URL is available to the browser.
+Use the returned `uri` (`coral://artifacts/<hex>`) in the manifest. The matching
+`url` (`/api/artifacts/<hex>`) is available to the browser. The `digest` field is
+`sha256:<hex>`; do not build a URL from it.
 
 This is also the default meaning of "publish" or "share" an artifact: upload the
 file and attach it to the task result so Coral's Artifacts and Team Artifacts views show
 it. Use external cloud publishing only when the user explicitly asks for it, and
 do not treat an external link alone as a Coral-managed artifact. Without a task,
-upload the file and give the user the `coral://` URI or `/api/artifacts/<digest>`
-URL; it is listed in your own Artifacts view, and in Team Artifacts once attached to a task result.
+upload the file and give the user the `coral://` URI or `/api/artifacts/<hex>`
+URL; it is listed in your own Artifacts view and, for a team agent, in Team Artifacts.
 
 To inspect a shared screenshot, download it first:
 
 ```sh
-coral-agent artifact download coral://artifacts/<digest>
+coral-agent artifact download coral://artifacts/<hex>
 # Prints a verified local path ending in .png, .jpg, or the artifact's media extension.
 ```
 

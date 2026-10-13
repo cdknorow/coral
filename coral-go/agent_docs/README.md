@@ -8,14 +8,14 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 ## API Documentation
 
 ### Sessions & Real-Time
-- [Sessions](sessions.md) — Live session management, PTY interaction, file browsing, git info
-- [Session History](session-history.md) — Historical session data, notes, events, tags
-- [WebSockets](websockets.md) — Real-time terminal and event streams
+- [Sessions](sessions.md) — Live session management, sleep / wake / archive, input (`/send`, `/keys`), file browsing, git info
+- [Session History](session-history.md) — Historical session data, notes, events, tags, and the live chat transcript (paged by `before`)
+- [WebSockets](websockets.md) — Real-time terminal and event streams, immediate updates on state changes, notifications
 
 ### Getting Started
 - [Quickstart](quickstart.md) — Install, launch your first agent, and get a committed change
 - [Worked Demos](worked-demos.md) — Three multi-agent scenarios run end to end, with real output
-- [Troubleshooting](troubleshooting.md) — Observed failure modes and their causes
+- [Troubleshooting](troubleshooting.md) — Observed failure modes and their causes, profiling, isolated test servers
 
 ### Automation
 - [Workflow Quickstart](workflow-quickstart.md) — Build your first workflow in 5 minutes
@@ -34,7 +34,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 - [Webhooks](webhooks.md) — Webhook management and delivery tracking
 
 ### Configuration
-- [Multi-Server Hub](hub.md) — Register remote Coral servers, merged agent list, proxy and remote launch
+- [Multi-Server Hub](hub.md) — Register remote Coral servers, merged agent list, proxy and remote launch, Cloud Hub tunnel refusals, versions
 - [Settings & System](settings-system.md) — App settings, status, CLI checks, network info
 - [Teams](teams.md) — Team lifecycle management, members, and resurrection
 - [Team Configuration](team-config.md) — Agent team configuration (agent.json schema)
@@ -59,7 +59,7 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 ### Health & System
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/health` | Health check (always `{"status":"ok"}`) |
+| `GET` | `/api/health` | Health check: exactly `{"status":"ok","version":"…","hub":false}` |
 | `GET` | `/api/system/status` | System status (version, uptime, sessions) |
 | `GET` | `/api/system/update-check` | Check for new Coral versions |
 | `GET` | `/api/system/cli-check` | Check installed CLI tools |

@@ -1,7 +1,7 @@
 # Troubleshooting
 
 Symptoms with the cause for each. Statements about behavior were checked against the
-v1.3.23 source. Some entries were first observed on older builds; where the current source
+v1.4.3 source. Some entries were first observed on older builds; where the current source
 no longer shows the problem, the entry says so. Items marked *unverified* were not
 re-tested on the current build.
 
@@ -24,10 +24,11 @@ for every provider), so the agent can appear alive and idle.
 Open the agent's terminal in the dashboard and answer it, or over the API:
 
 ```bash
-# NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
-curl -s -X POST "http://localhost:8420/api/sessions/live/$NAME/keys" \
+# NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live;
+# PORT is your server's port (8420 by default).
+curl -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" -d "{\"keys\":[\"Down\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
-curl -s -X POST "http://localhost:8420/api/sessions/live/$NAME/keys" \
+curl -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" -d "{\"keys\":[\"Enter\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
 
@@ -80,11 +81,16 @@ $ coral --version
 flag provided but not defined: -version
 ```
 
-The version is in the startup log, or in the `version` field of `/api/system/status`.
+The version is in the `[STARTUP]` log line, or in the `version` field of `GET /api/health`.
+`/api/system/status` also has a `version` field, but it is empty on dev and local builds.
 
 ### Version shows `0.0.0-dev+<commit>`
 
-You built with plain `go build`. Build with `make dev` or `make build` to report the next release base (e.g. `1.4.2-dev+<commit>`). Hubs treat `0.0.0-dev` as a very old version.
+You built with plain `go build`. `make dev` and `make build` stamp the latest release tag, so the
+build reports the next patch, `<next>-dev+<commit>[.dirty]` (e.g. `1.4.3-dev+<commit>` after
+v1.4.2; `ReportedVersion` in `internal/config/version.go`). This is the version shown in
+`/api/health`, the startup log and the Cloud Hub tunnel Hello. Hubs treat `0.0.0-dev` as a very
+old version.
 
 ## Agents
 
@@ -272,6 +278,23 @@ directory short (`/tmp/coral-t1`). Confirm which backend an agent really used by
 `tmux_session` in `/api/sessions/live`, or the `terminal` field in the launch response. The
 launch response's `backend` field names the launch path and reads `pty` even for
 tmux-backed sessions.
+
+### Running a test server or the frontend suites
+
+Never point a test server at `~/.coral`; that is the live instance's database. Give a manual
+test server its own data directory and port:
+
+```bash
+CORAL_DATA_DIR=$(mktemp -d) ./coral --host 127.0.0.1 --port PORT
+```
+
+The frontend CDP suites read their server from `CORAL_TEST_URL` (`tests/frontend/test_base.js`),
+never `CORAL_URL`: shells a running Coral spawns export `CORAL_URL` pointing at the live server.
+A URL on port 8420, or with no explicit port, is refused. Prefer the runners, which build a dev
+binary, start an isolated server with a temp data directory and set `CORAL_TEST_URL` for you:
+`tests/frontend/run.sh` (port from `CORAL_TEST_PORT`, default 8462) or
+`node tests/frontend/run_cdp_suites.mjs [--only name] [--shards N]` (N isolated server+Chrome
+pairs).
 
 ### Port already in use
 

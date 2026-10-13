@@ -22,21 +22,50 @@ API keys are encrypted at rest (AES-256-GCM, bound to the server id). The master
 
 ## Proxy
 
-`/api/remote/{server}/{path}` forwards to `{remote url}/{path}` for `/api/**` paths and WebSockets (for example `/api/remote/ws1/ws/terminal/...`). The hub strips the browser's `Authorization`, `Cookie` and `api_key`, and adds `Authorization: Bearer <remote key>`.
+`/api/remote/{server}/{path}` forwards to `{remote url}/{path}` for `/api/**` paths and WebSockets (for example `/api/remote/ws1/ws/terminal/...`). The hub strips the browser's `Authorization`, `Cookie`, `Origin`, `Referer`, forwarding headers (`Forwarded`, `X-Forwarded-*`, `X-Real-Ip`) and `api_key`, and adds `Authorization: Bearer <remote key>`.
 
 | Result | Meaning |
 |---|---|
 | 404 | Unknown server id |
-| 502 `{"error":"remote unreachable"}` | Connect or dial failure |
+| 403 `{"error":"path not allowed"}` | The path is not proxyable |
+| 502 `{"error":"remote unreachable"}` | Connect or dial failure. The server is marked `unreachable`. |
 | 502 `{"error":"remote rejected API key"}` | The remote answered 401. The server is marked `unauthorized`. |
+| 502 `{"error":"remote address not allowed"}` | Private address without `allow_private` |
 
-Requests are never handled locally as a fallback. Targets are always registered servers, and private addresses need `allow_private`.
+A remote's own 403 (demo limit, forbidden path, ...) is passed through unchanged. Requests are never handled locally as a fallback. Targets are always registered servers, and private addresses need `allow_private`.
+
+Connections are reused: all remotes share one pooled transport (idle connections kept 5 minutes), and the background `/api/health` poll uses the same pool, so a request after a quiet spell usually skips a new TCP/TLS handshake.
+
+Compression: the browser's `Accept-Encoding` is passed through, and a gzip response is relayed unchanged (the hub neither adds nor decodes compression).
+
+### Cloud Hub tunnel refusals
+
+Through a Cloud Hub tunnel the machine's connector can refuse a request. These are answers, not outages: none marks the machine `unreachable`.
+
+| Result | Meaning |
+|---|---|
+| 403 `{"error":"path not allowed","code":"path_not_allowed"}` | The connector's route table refused the path or a query parameter (e.g. an older machine) |
+| 503 `{"error":"remote busy","code":"too_many_streams"}` + `Retry-After: 1` | Concurrent-stream cap reached; retry |
+| 400 `{"error":"bad request","code":"bad_request"}` | The connector could not accept the request as sent (header, method or body) |
+| 403 `{"error":"local_mode","mode":"view"\|"interact"}` | The machine's own access setting is below what the hub allows |
+
+A real transport failure still answers 502 `remote unreachable` and marks the machine. The tunnel forwards only an allowlist of request headers, never `Accept-Encoding`; the connector decodes a gzip response from the machine before relaying it and answers 502 `{"error":"unsupported content encoding"}` for any other encoding.
 
 ## Merged session list
 
-`GET /api/sessions/live` returns a plain array when no remotes are registered. Otherwise it returns `{"sessions": [...], "servers": [{id, label, status}]}`. Each session has `server` (`local` or the remote id). Sessions from an offline remote carry `stale: true`.
+`GET /api/sessions/live` returns a plain array when no remotes are registered. Otherwise it returns `{"sessions": [...], "servers": [...]}`; each `servers` entry has `id`, `label`, `status`, `agents` and, when known, `url`, `last_seen`, `last_error`, `version`. Each session has `server` (`local` or the remote id). Sessions from an offline remote carry `stale: true`.
 
 The `/ws/coral` feed tags updates with `server` and sends `removed_remote` when a remote's sessions disappear.
+
+### How the hub follows a remote (hub mode only)
+
+Remote-agent tracking runs only in hub mode. For each remote the hub holds a `/ws/coral?feed=hub` socket (a machine feed: it does not consume the remote's UI notifications). While that feed is live, the ~5s background poll only calls `GET /api/health`, which returns exactly `{status, version, hub}`. The full `GET /api/sessions/live` list is polled again when the feed drops, or when no feed message (including `coral_heartbeat`, sent after 15s of silence) arrived for 30s. A remote whose `/api/health` answers 404 is always list-polled. The merged view is cached and rebuilt once per change.
+
+### Versions and archived agents
+
+`version` in `/api/health` (and in the Cloud Hub tunnel Hello) is the release version, or for a `make dev` / `make build` build `<next patch>-dev+<commit>[.dirty]`; a plain `go build` reports `0.0.0-dev+<commit>`, which hubs treat as very old.
+
+Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for rows that carry the `archived` field, so it is hidden for older remotes. A machine lists archived agents last and never reports them as waiting for input; the hub's per-machine `agents` count excludes them.
 
 ## Identity
 

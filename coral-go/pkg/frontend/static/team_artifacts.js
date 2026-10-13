@@ -69,8 +69,8 @@ function artifactType(item) {
 }
 
 // Paste into an agent's chat when it does not know how to publish an artifact.
-const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in the Artifacts tab): run coral-agent artifact upload <file> (prints a coral://artifacts/<digest> URI).
-It appears in the Artifacts tab right away.
+const AGENT_ARTIFACT_PROMPT = `To publish an artifact in Coral (so it shows in the Artifacts tab): run coral-agent artifact upload <file> (prints JSON whose "uri" is the coral://artifacts/<digest> reference).
+It appears in the Artifacts tab right away. A team agent's upload also appears in Team Artifacts.
 Local paths like /tmp/<file> are not reachable by the user, so always upload. Full docs: artifacts.md in the Coral agent docs.`;
 
 const COPY_ICONS = {

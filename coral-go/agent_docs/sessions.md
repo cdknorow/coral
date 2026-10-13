@@ -10,7 +10,7 @@ All endpoints are prefixed with `/api/sessions`.
 
 ### GET `/api/sessions/live`
 
-List all live (running) agent sessions with enriched status.
+List all live (running) agent sessions with enriched status. Archived agents are listed last.
 
 **Response:**
 ```json
@@ -38,12 +38,15 @@ List all live (running) agent sessions with enriched status.
     "board_job_title": "Task Title",
     "board_unread": 0,
     "log_path": "/path/to/log",
-    "sleeping": false
+    "sleeping": false,
+    "archived": false
   }
 ]
 ```
 
-Sleeping sessions (no active tmux) are included as placeholder entries with `"sleeping": true` and `"status": "Sleeping"`.
+Sleeping sessions (no active tmux) are included as placeholder entries with `"sleeping": true`, `"status": "Sleeping"` and `"staleness_seconds": null`. Every row carries `archived` (`true` only for an archived agent, which is always also `sleeping`; see [Sleep / Wake](#sleep--wake)).
+
+`staleness_seconds` is rounded down to the unit the dashboard shows: whole seconds under a minute, whole minutes (a multiple of 60) under an hour, whole hours (a multiple of 3600) above. `/ws/coral` rows use the same value; detail endpoints keep the exact value.
 
 ---
 
@@ -85,6 +88,27 @@ Get detailed info for a single session, including pane capture, status, and rece
 |-----------|------|-------------|
 | `agent_type` | string | Agent type (e.g., `claude`, `codex`) |
 | `session_id` | string | Session UUID |
+
+---
+
+### GET `/api/sessions/{sessionID}/resolve`
+
+Routing and identity record for one session ID (used by the popout). `sessionID` must be a canonical UUID (else 400). An unknown ID answers 200 with `state: "not_found"` (or `"finished"` if it is in the history index) so callers can retry.
+
+```json
+{
+  "session_id": "6f1c2a7e-3b9d-4e2a-9c51-0d8b7a4e2f10",
+  "state": "sleeping",
+  "active": true,
+  "sleeping": true,
+  "archived": false,
+  "agent_type": "claude",
+  "name": "my-project",
+  "tmux_session": null
+}
+```
+
+`state` is `active`, `sleeping`, `finished` or `not_found`. `tmux_session` is `null` unless the session is awake. The full record also carries `working_directory`, `display_name`, `board_project`, `icon`, `status`, `first_prompt` and the turn-state fields of the list rows.
 
 ---
 
@@ -149,7 +173,7 @@ Session metadata: tmux info, git state, log path, prompt, board association.
 
 ### GET `/api/sessions/live/{name}/chat`
 
-Read the agent's JSONL conversation log with pagination.
+Read the agent's JSONL conversation log with pagination. Works for sleeping and archived agents too (their transcript stays on disk). Full details: [session-history.md](session-history.md).
 
 **Query Parameters:**
 
@@ -158,18 +182,23 @@ Read the agent's JSONL conversation log with pagination.
 | `agent_type` | string | Agent type |
 | `session_id` | string | Session UUID |
 | `working_directory` | string | Working directory for log lookup |
-| `after` | int | Message index to start after |
-| `limit` | int | Max messages to return |
-| `offset` | int | Skip N messages |
+| `after` | int | Poll: return messages after this count. `0` (or omitted) returns a history page |
+| `limit` | int | History page size (default 100) |
+| `before` | int | History page: absolute message index to end before (exclusive). Wins over `offset`; 400 if negative or not a number |
+| `offset` | int | History page (older paging): skip the newest N messages. Shifts as messages arrive; prefer `before` |
 
-**Response:**
+**Response (history page, `after=0`):**
 ```json
 {
   "messages": [...],
-  "total": 42,
-  "has_more": true
+  "total": 342,
+  "start": 242,
+  "has_more": true,
+  "limit_notice": ""
 }
 ```
+
+`start` is the absolute index of the first message returned; pass it as the next `before` to get the page above. History pages are gzip-compressed when the request sends `Accept-Encoding: gzip`. A poll (`after>0`) returns `{messages, total, limit_notice}`.
 
 ---
 
@@ -307,7 +336,26 @@ Git snapshot for the agent's working directory.
 
 ### POST `/api/sessions/live/{name}/send`
 
-Send a text command to the agent's terminal. `agent_type` and `session_id` are required and must match the live session named in the path (its name or its terminal name); otherwise the request is refused and nothing is sent: 400 with code `session_id_required` when either is missing, 400 on a mismatch, 404 for an unknown session. A sleeping agent answers 409 `session is sleeping`, an archived one 409 `session is archived`.
+Send a text command to the agent's terminal. `agent_type` and `session_id` are required and must match the live session named in the path (its name or its terminal name); a call by bare name is refused. Nothing is sent when the request is refused:
+
+| Status | Body | When |
+|--------|------|------|
+| 400 | `{"error": "session_id and agent_type are required", "code": "session_id_required"}` | either field missing |
+| 400 | `{"error": "invalid session_id"}` | `session_id` is not a UUID |
+| 400 | `{"error": "session target mismatch"}` | `agent_type` or path name does not match that session |
+| 404 | `{"error": "live session not found"}` | unknown or ended session |
+| 409 | `{"error": "session is sleeping"}` | sleeping agent (wake it first) |
+| 409 | `{"error": "session is archived"}` | archived agent |
+| 503 | `{"error": "...", "code": "agent_metadata_unavailable", "not_sent": true}` | session metadata could not be read; retry |
+| 500 | `{"error": "session \"NAME\" not found"}` | the session is listed as awake but its terminal is gone |
+
+Checks run in this order: required fields, `session_id` format, unknown session, sleeping/archived, then target match. So a mismatched request to a sleeping agent answers 409, not 400.
+
+```bash
+curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/send \
+  -H 'Content-Type: application/json' \
+  -d '{"command": "/compact", "agent_type": "claude", "session_id": "SID"}'
+```
 
 **Request Body:**
 ```json
@@ -325,7 +373,13 @@ Send a text command to the agent's terminal. `agent_type` and `session_id` are r
 
 ### POST `/api/sessions/live/{name}/keys`
 
-Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C). The same exact-target rules as `/send` apply: `agent_type` and `session_id` are required.
+Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C). The same exact-target rules and errors as `/send` apply (`agent_type` and `session_id` required; 409 for a sleeping or archived agent), except that a metadata failure is a plain 503 `{error}`. `keys` must be a non-empty list (else 400).
+
+```bash
+curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/keys \
+  -H 'Content-Type: application/json' \
+  -d '{"keys": ["Enter"], "agent_type": "claude", "session_id": "SID"}'
+```
 
 **Request Body:**
 ```json
@@ -350,7 +404,7 @@ Resize the terminal pane.
 {
   "columns": 120,
   "agent_type": "claude",
-  "session_id": "abc123"
+  "session_id": "6f1c2a7e-3b9d-4e2a-9c51-0d8b7a4e2f10"
 }
 ```
 
@@ -376,7 +430,7 @@ Launch a new agent session.
   "flags": ["--flag1"],
   "prompt": "System prompt for the agent",
   "board_name": "my-board",
-  "board_server": "http://remote:8420",
+  "board_server": "http://remote:PORT",
   "backend": "pty",
   "board_type": "default",
   "model": "claude-sonnet-4-20250514",
@@ -493,7 +547,7 @@ The response includes `changes_artifact` when the snapshot succeeds and `changes
 Download the current or persisted session changes using only the session ID:
 
 ```bash
-curl -fsS http://localhost:8420/api/sessions/{sessionID}/changes -o changes.diff
+curl -fsS http://localhost:PORT/api/sessions/SID/changes -o changes.diff
 ```
 
 `GET /api/sessions/{sessionID}/changes` prefers a freshly generated live diff and
@@ -510,7 +564,7 @@ Terminate a session.
 ```json
 {
   "agent_type": "claude",
-  "session_id": "abc123"
+  "session_id": "6f1c2a7e-3b9d-4e2a-9c51-0d8b7a4e2f10"
 }
 ```
 
@@ -527,7 +581,7 @@ Open the session in a native terminal window (macOS only — uses `open -a Termi
 ```json
 {
   "agent_type": "claude",
-  "session_id": "abc123"
+  "session_id": "6f1c2a7e-3b9d-4e2a-9c51-0d8b7a4e2f10"
 }
 ```
 
@@ -743,6 +797,12 @@ the local agent hooks. The JSON body accepts `session_id`, `input_tokens`,
 
 Sleep suspends agent sessions (kills the process, preserves state). Wake relaunches them.
 
+**Archived** is a sleeping agent put away on purpose (stored as `live_sessions.is_archived`; archived always implies sleeping). It stays asleep through Wake All and team Wake, does not count against the live-agent limit, is never assigned tasks (task create/edit/reassign naming it answers 409 `{error, code: "assignee_archived"}`; board status reports `availability: "archived"`) and is never nudged by the task queue. Waking it individually unarchives it; Unarchive returns it to plain sleeping without starting it.
+
+Sleep, wake, archive and unarchive (like launch, restart and kill) push the change to `/ws/coral` at once instead of on the next tick.
+
+**Dashboard:** selecting a sleeping agent shows its chat history (scrollable, older pages load as you scroll up); the composer reads "This agent is sleeping" with **Wake** and **Restart…** (the popout offers Wake only), the input is disabled and every send path is refused. The agent menu offers **Archive** (asks to confirm; a running agent is stopped first), shown only for servers whose rows carry `archived`. Archived agents leave the main list, team groups and counts and appear in one collapsed **Archived (N)** section at the bottom of the list, captioned by team ("No team" last). Their composer reads "This agent is archived" with **Unarchive** and **Wake** (no Restart).
+
 ### Team Sleep/Wake
 
 #### GET `/api/sessions/live/team/{boardName}/sleep-status`
@@ -764,6 +824,8 @@ Sleep suspends agent sessions (kills the process, preserves state). Wake relaunc
 ```
 
 #### POST `/api/sessions/live/team/{boardName}/wake`
+
+Relaunches the board's sleeping agents, skipping archived ones, up to the live-agent limit.
 
 ```json
 {
@@ -801,9 +863,31 @@ persisted team stopped, and removes a Coral-owned team worktree.
 
 #### POST `/api/sessions/live/{sessionID}/wake`
 
+Relaunches one sleeping agent and unpauses its board. Waking an archived agent also unarchives it.
+
 ```json
 {"ok": true, "sleeping": false}
 ```
+
+An unknown or awake session answers 200 `{"ok": false, "error": "Session not found" | "Session is not sleeping"}`; the live-agent limit answers 403.
+
+#### POST `/api/sessions/live/{sessionID}/archive`
+
+Archives an agent. A running agent is put to sleep first (its terminal is killed).
+
+```json
+{"ok": true, "sleeping": true, "archived": true}
+```
+
+#### POST `/api/sessions/live/{sessionID}/unarchive`
+
+Returns an archived agent to plain sleeping; it does not start it (use wake).
+
+```json
+{"ok": true, "sleeping": true, "archived": false}
+```
+
+Both answer 200 `{"ok": false, "error": "Session not found"}` for an unknown session.
 
 ### Bulk Sleep/Wake
 
@@ -814,6 +898,8 @@ persisted team stopped, and removes a Coral-owned team worktree.
 ```
 
 #### POST `/api/sessions/live/wake-all`
+
+Wakes every sleeping agent except archived ones.
 
 ```json
 {"ok": true, "sessions_relaunched": 5}
@@ -835,7 +921,8 @@ All endpoints return JSON. Error format:
 |------|---------|
 | 200 | Success |
 | 400 | Bad request (missing/invalid parameters) |
-| 403 | Forbidden (auth required) |
+| 403 | Forbidden (auth required), or live-agent/demo limit reached |
 | 404 | Session not found |
+| 409 | Conflict (e.g. input sent to a sleeping or archived agent) |
 | 500 | Internal server error |
-| 503 | Demo limit reached (beta tier) |
+| 503 | Agent metadata temporarily unavailable (`code: "agent_metadata_unavailable"`); retry |

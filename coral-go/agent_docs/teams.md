@@ -30,6 +30,7 @@ Each team has a fixed set of **member slots** — one per agent defined in the t
 
 - When the team launches, each slot gets a `session_id` pointing to its live session.
 - When the team sleeps, sessions are killed but slots keep their `session_id` — waking reuses it to preserve history.
+- Team wake skips archived agents: they stay asleep and their slots stay `sleeping` until the agent is woken (which unarchives it) or unarchived.
 - When the team stops, slots are marked `stopped` with a `stopped_at` timestamp.
 - On resurrect, the slots that were active when the team stopped are relaunched with fresh sessions.
 
@@ -70,7 +71,7 @@ This means `session_id` gets updated on restart, but the slot identity (agent na
 | Status | Description |
 |--------|-------------|
 | `active` | Member has a running session. |
-| `sleeping` | Session killed, recoverable via team wake. |
+| `sleeping` | Session killed, recoverable via team wake (except archived agents, which only wake individually). |
 | `stopped` | Terminated. `stopped_at` records when. |
 
 ---
@@ -192,7 +193,7 @@ Teams are also managed through the session endpoints:
 |--------|----------|-------------|
 | Launch | `POST /api/sessions/launch-team` | Create and start a new team. See [Team Configuration](team-config.md). |
 | Sleep | `POST /api/sessions/live/team/{boardName}/sleep` | Pause team, kill sessions, pause board. |
-| Wake | `POST /api/sessions/live/team/{boardName}/wake` | Resume sleeping team, relaunch sessions. |
+| Wake | `POST /api/sessions/live/team/{boardName}/wake` | Resume sleeping team, relaunch sessions. Archived agents stay asleep. |
 | Reset | `POST /api/sessions/live/team/{boardName}/reset` | Kill and relaunch all agents with original config. |
 | Sleep status | `GET /api/sessions/live/team/{boardName}/sleep-status` | Check if team is sleeping. |
 
@@ -202,7 +203,7 @@ Teams are also managed through the session endpoints:
 
 ```bash
 # 1. Launch a team
-curl -X POST http://localhost:8420/api/sessions/launch-team \
+curl -X POST http://localhost:PORT/api/sessions/launch-team \
   -H "Content-Type: application/json" \
   -d '{
     "board_name": "api-team",
@@ -214,25 +215,25 @@ curl -X POST http://localhost:8420/api/sessions/launch-team \
   }'
 
 # 2. List running teams
-curl http://localhost:8420/api/teams/all?status=running
+curl http://localhost:PORT/api/teams/all?status=running
 
 # 3. Get team detail
-curl http://localhost:8420/api/teams/detail/api-team
+curl http://localhost:PORT/api/teams/detail/api-team
 
 # 4. Sleep the team (pause without losing state)
-curl -X POST http://localhost:8420/api/sessions/live/team/api-team/sleep
+curl -X POST http://localhost:PORT/api/sessions/live/team/api-team/sleep
 
 # 5. Wake it back up
-curl -X POST http://localhost:8420/api/sessions/live/team/api-team/wake
+curl -X POST http://localhost:PORT/api/sessions/live/team/api-team/wake
 
 # 6. Stop the team (terminate)
 # (done via killing all sessions on the board)
 
 # 7. Resurrect — bring back the agents that were running
-curl -X POST http://localhost:8420/api/teams/detail/api-team/resurrect
+curl -X POST http://localhost:PORT/api/teams/detail/api-team/resurrect
 
 # 8. Or delete the stopped team
-curl -X DELETE http://localhost:8420/api/teams/detail/api-team
+curl -X DELETE http://localhost:PORT/api/teams/detail/api-team
 ```
 
 
@@ -261,15 +262,18 @@ The response contains `board`, compatibility `team`, UTC `observed_at`, `summary
 |---|---|
 | `available` | Confirmed idle, live, subscribed agent with no active or pending assigned work |
 | `busy` | In-progress personal/board task, or reported runtime activity |
+| `task_idle` | Has an in-progress task but the session is idle |
 | `queued` | Has pending assigned work |
+| `waiting` | Has a registered `coral-board wait`; see `waiting_on` |
 | `needs_input` | Waiting for user input or approval |
+| `archived` | Agent is archived; tasks cannot be assigned to it until it is unarchived |
 | `sleeping` | Session is asleep |
 | `offline` | No observed local runtime/session |
 | `unknown` | No confirmed idle signal, or remote state cannot be observed locally |
 | `unavailable` | Terminal or no active board subscription |
 
 Blocked and draft tasks are shown but do not by themselves reserve an idle agent.
-Sleeping/offline/input states take precedence over task occupancy; inspect
+Archived/sleeping/offline/input states take precedence over task occupancy; inspect
 `tasks` to see assignments in those states. Unassigned tasks are listed once at
 team level. Completed/cancelled tasks are omitted. Runtime activity uses Coral's
 session event state. For Codex, explicit transcript turn-start/completion events

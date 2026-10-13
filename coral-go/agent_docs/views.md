@@ -2,6 +2,10 @@
 
 Custom views allow users to create additional dashboard tabs with custom HTML content and system prompts. Views are stored in the SQLite database.
 
+**Reads are open; writes are dashboard-only.** `POST`, `PUT` and `DELETE` are accepted only from the Coral dashboard in a browser on this computer (loopback peer, localhost `Host`, same-origin fetch, no Cloud Hub tunnel, no `Authorization: Bearer`). Anything else, including an agent or script calling with curl, gets `403 {"error": "Custom views can only be changed from the Coral dashboard on this computer"}`. `POST` and `PUT` also need `Content-Type: application/json` (else 400).
+
+A view runs in an isolated sandbox with no network and reads data only through a read-only endpoint allowlist. `created_via` records who wrote it: `"ui"` (the dashboard) or `"api"` (any other caller or unknown provenance). The dashboard shows an `"api"` view's source and runs it only after **Run this view**; open and save it in the editor to make it `"ui"`.
+
 ## List Views
 
 ```
@@ -19,7 +23,10 @@ Returns all custom views as a JSON array.
     "prompt": "You are a metrics assistant...",
     "html": "<div>...</div>",
     "tab_order": 0,
-    "scope": "global"
+    "scope": "global",
+    "created_via": "ui",
+    "created_at": "2026-10-01T12:00:00.000000+00:00",
+    "updated_at": "2026-10-01T12:00:00.000000+00:00"
   }
 ]
 ```
@@ -61,7 +68,7 @@ Returns a single view by ID.
 POST /api/views
 ```
 
-Creates a new custom view. Returns HTTP 201 on success.
+Creates a new custom view (dashboard only, see above). Returns HTTP 201 on success.
 
 **Request Body:**
 ```json
@@ -82,7 +89,7 @@ Creates a new custom view. Returns HTTP 201 on success.
 | `tab_order` | int | no | Sort order for the tab (default: 0) |
 | `scope` | string | no | Scope of the view: `"global"` (default) |
 
-**Response (201):**
+**Response (201):** the stored view, with its real timestamps.
 ```json
 {
   "id": 1,
@@ -90,12 +97,16 @@ Creates a new custom view. Returns HTTP 201 on success.
   "prompt": "You are a metrics assistant...",
   "html": "<div>Custom view content</div>",
   "tab_order": 0,
-  "scope": "global"
+  "scope": "global",
+  "created_via": "ui",
+  "created_at": "2026-10-01T12:00:00.000000+00:00",
+  "updated_at": "2026-10-01T12:00:00.000000+00:00"
 }
 ```
 
 **Errors:**
-- `400` — Invalid JSON or missing `name`
+- `400` — Invalid JSON, missing `name`, or not `application/json`
+- `403` — Not from the local dashboard
 
 ## Update View
 
@@ -103,7 +114,7 @@ Creates a new custom view. Returns HTTP 201 on success.
 PUT /api/views/{id}
 ```
 
-Updates an existing view. All fields are replaced.
+Updates an existing view (dashboard only). All fields are replaced, and `created_via` becomes `"ui"`.
 
 **Parameters:**
 | Name | In | Description |
@@ -112,7 +123,7 @@ Updates an existing view. All fields are replaced.
 
 **Request Body:** Same structure as Create.
 
-**Response:**
+**Response:** the stored view (`created_at` is kept, `updated_at` is the update time).
 ```json
 {
   "id": 1,
@@ -125,7 +136,9 @@ Updates an existing view. All fields are replaced.
 ```
 
 **Errors:**
-- `400` — Invalid ID or invalid JSON
+- `400` — Invalid ID, invalid JSON, or not `application/json`
+- `403` — Not from the local dashboard
+- `404` — View not found
 
 ## Delete View
 
@@ -133,7 +146,7 @@ Updates an existing view. All fields are replaced.
 DELETE /api/views/{id}
 ```
 
-Deletes a view.
+Deletes a view (dashboard only).
 
 **Parameters:**
 | Name | In | Description |
@@ -149,3 +162,4 @@ Deletes a view.
 
 **Errors:**
 - `400` — Invalid ID
+- `403` — Not from the local dashboard
