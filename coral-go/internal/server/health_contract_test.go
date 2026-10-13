@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/store/storetest"
 )
 
@@ -45,6 +46,9 @@ func TestHealthEndpointContract(t *testing.T) {
 		assert.Equal(t, []string{"hub", "status", "version"}, keys, "exact field set")
 		assert.Equal(t, "ok", body["status"])
 		assert.IsType(t, "", body["version"])
+		// A build without a release Version (tests, make dev) still reports its dev stamp, never "".
+		assert.Equal(t, config.ReportedVersion(), body["version"])
+		assert.NotEmpty(t, body["version"])
 		assert.Equal(t, hub, body["hub"])
 	}
 }

@@ -315,7 +315,7 @@ func (s *Server) buildRouter() chi.Router {
 		w.WriteHeader(http.StatusOK)
 		// "version" is additive; older hubs ignore unknown fields.
 		// "hub" tells the frontend whether to show the multi-server UI.
-		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "version": config.Version, "hub": s.cfg.HubMode})
+		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "version": config.ReportedVersion(), "hub": s.cfg.HubMode})
 	})
 
 	// License endpoints (ungated — must be accessible to activate)

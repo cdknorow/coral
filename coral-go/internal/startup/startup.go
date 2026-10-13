@@ -141,7 +141,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	exe, exeErr := os.Executable()
 	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
 		devStartupMarker,
-		config.Version,
+		config.ReportedVersion(),
 		config.TierName,
 		opts.BackendType,
 		os.Getpid(),
@@ -822,7 +822,7 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		Store:        store.NewCloudStore(db, store.NewRemoteServerStore(db, cfg.CoralDir())),
 		LocalBaseURL: "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(cfg.Port)),
 		MaxMode:      routes.MaxModeFromSettings(ss),
-		CoralVersion: config.Version,
+		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),
 	})
 	srv.SetCloud(mgr)
