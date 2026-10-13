@@ -66,7 +66,11 @@ const UNDERSIZED = `(() => {
         await ev(`new Promise(r => { const t = Date.now(); const w = () => (window._coralGetLiveSessions?.() || []).some(s => s.session_id === ${JSON.stringify(sid)}) || Date.now() - t > 8000 ? r() : setTimeout(w, 100); w(); })`);
         await coralReady();
         await ev(`window.selectLiveSession(${JSON.stringify(sname)}, 'terminal', ${JSON.stringify(sid)})`);
-        await coralReady('agentSelected', sname);
+        // The sweep needs the agent's view on screen, not its terminal attached (which can take longer than the
+        // hook's 10 s on a throttled shard): wait for the header, and take the attach if it comes.
+        await waitFor(`import((window.__coralStatic||'/static/')+'state.js').then(m => m.state.currentSession?.session_id === ${JSON.stringify(sid)}
+            && (document.getElementById('session-name') || {}).textContent?.trim().length > 0)`, 'the agent header for the selected agent');
+        await coralReady('agentSelected', sname).catch(() => {});
         // The sweep measures every control: go on once the layout holds still.
         await waitStable(`document.body.getBoundingClientRect().height + ':' + document.querySelectorAll('button, a[href], input, select').length`, 'the layout', 200).catch(() => {});
     };

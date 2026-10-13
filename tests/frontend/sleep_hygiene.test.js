@@ -5,7 +5,8 @@
 // `new Promise(r => setTimeout(r, N))` in Node or in page-evaluated strings. Each file may have at most
 // its count in sleep_baseline.json. The baseline only goes down: a file below it fails too, until the
 // baseline is lowered with `node sleep_hygiene.test.js --update`, so a migrated sleep can't quietly
-// come back. A sleep that really is the thing under test (e.g. "nothing happens within 2 s") is allowed
+// come back. --update only lowers: it refuses to raise any file's baseline (or add a new file) unless
+// --allow-raise is given as well. A sleep that really is the thing under test (e.g. "nothing happens within 2 s") is allowed
 // with a `// sleep-ok: <reason>` comment on its line.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -36,6 +37,14 @@ const files = fs.readdirSync(DIR).filter(f => /\.test\.m?js$/.test(f) || f === '
 const counts = Object.fromEntries(files.map(f => [f, count(fs.readFileSync(path.join(DIR, f), 'utf8'))]).filter(([, n]) => n > 0));
 
 if (process.argv.includes('--update')) {
+    const old = JSON.parse(fs.readFileSync(BASELINE, 'utf8'));
+    const raised = Object.entries(counts).filter(([f, n]) => n > (old[f] || 0));
+    if (raised.length && !process.argv.includes('--allow-raise')) {
+        console.error(raised.map(([f, n]) => `${f}: ${n} fixed sleeps over ${MIN_MS}ms, baseline ${old[f] || 0}`).join('\n') +
+            '\nNot raising the baseline. Wait for the condition instead (helpers/wait.js), or mark a deliberate one with // sleep-ok: <reason>.' +
+            '\nIf a raise is really intended, run with --update --allow-raise.');
+        process.exit(1);
+    }
     fs.writeFileSync(BASELINE, JSON.stringify(counts, null, 2) + '\n');
     console.log(`sleep_baseline.json: ${Object.keys(counts).length} files, ${Object.values(counts).reduce((a, b) => a + b, 0)} fixed sleeps`);
     process.exit(0);
