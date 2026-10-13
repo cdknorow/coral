@@ -1,5 +1,101 @@
 # Release Notes
 
+## v1.4.14 — Security fix: input could reach the wrong agent; auto-accept permission prompts
+
+**Security fix — please upgrade.** Input meant for an agent whose terminal had closed could reach another agent's terminal. This release also adds auto-accept for agents' permission prompts, fixes a hub's remote server that stayed Unreachable until you clicked Test, makes Coral use the agent CLI path you set everywhere it starts one, and fixes a batch of smaller problems.
+
+### Security
+
+- **Input for an agent whose terminal had closed could reach another agent's terminal.** When an agent's terminal had gone (for example it was closed or crashed) but Coral still listed the agent, Coral looked for the terminal by a loose name match. A message, a key press or an answer to a permission prompt meant for that agent could then go to another agent's terminal: one working in the same folder, one whose name started with the same letters, or, for a short name, an unrelated agent. Answering a permission prompt this way could approve the other agent's pending action. Coral reported success, and this could last up to about a minute, until the agent was marked asleep.
+  - **Affected:** earlier versions, when one agent's terminal closed while other agents were running.
+  - **Fixed:** Coral now reaches an agent only through that agent's own terminal. If it's gone, sending a message or keys, answering a prompt, resizing, restarting or resuming is refused with "The agent's terminal is gone" and nothing is sent anywhere; the agent's prompt and screen read as empty instead of showing another agent's. Kill, Kill All and Sleep end only that agent's own session (before, they could end another agent's). About a minute later the agent shows as asleep, and **Wake** brings it back.
+  - Write routes require `session_id`; input is never routed by name. Routes that read or act on one agent (its screen, kill, restart, the terminal socket) also require `session_id` or the agent's exact terminal name.
+  - Auto-accept (new in this release) already checked for the agent's own terminal.
+
+### New: auto-accept permission prompts
+
+For an agent you trust with its task, Coral can answer its permission prompts for you. Open the agent's menu (⋮) and turn on **Auto-accept prompts**. Claude and Codex agents are supported.
+
+**Risky actions can be auto-approved.** Coral answers "Yes" to the agent's permission prompts, and that can include deleting files, force-pushing, running `sudo` or changing files outside the agent's folder. Coral warns you about this before turning it on. Only use it for a task you trust, ideally in a sandbox or a disposable worktree.
+
+- **Only "approve once":** Coral answers only prompts asking to approve a tool call, and never picks "always allow" or an option that changes settings.
+- **What still waits for you:** questions, plan approvals and anything Coral doesn't recognise.
+- **A best-effort safety net, not a guarantee:** Coral holds back some high-risk actions it recognises, such as recursive deletes outside the agent's folder, force pushes, `sudo`, and writes outside the folder. It says why in the agent's **Activity**. It is not a full shell parser and doesn't follow scripts, so risky actions may still be approved.
+- **Easy to see and stop:**
+  - An amber **AUTO** chip marks the agent; click it to turn auto-accept off. In a popped-out agent, the header button is the switch.
+  - **Stop all auto-accept** in the top-bar menu (or `coral auto-accept off --all`) turns it off everywhere.
+  - Every approval is listed in the agent's Activity.
+- **Turns itself off:**
+  - when the agent restarts, resumes or wakes, or when the time limit you chose (optional, 15 minutes to 8 hours) runs out;
+  - when the same prompt keeps coming back, or there are more than 30 approvals in a minute.
+- **Runs on the Coral server,** so it keeps working with the dashboard closed. It answers only in the agent's own terminal: if that terminal is gone, Coral sends nothing, rather than risk typing into another agent's.
+- **Only you can turn it on, from a dashboard:** on this computer, or on another device after logging in. Coral refuses it from agents, from their tools and CLI, from API keys, and from pages on other sites.
+- **From the Cloud Hub:** needs Launch access on this computer and always has a time limit (1 hour unless you choose, at most 8 hours). It also ends when Coral restarts, the Cloud link is removed, or the hub's access drops below Launch. The new Settings switch **Cloud Hub can turn on auto-accept** (on by default) can only be changed on this computer; turning it off ends any auto-accept the hub turned on.
+
+### Fixes
+
+- **A remote server no longer stays Unreachable until you click Test.** On a hub, if one request to a remote failed during a short network blip (for example while you had one of its agents open), the Servers page could keep showing the server as Unreachable for up to a minute after it was back, or until you clicked **Test**. If that failure was an unreadable key, the hub stopped checking the server altogether until Test. Now a failed request makes the hub check the server again at once, so it shows Online within about a second when it's fine, and a key that can be read again is picked up without Test. The hub's log records each server status change on one line.
+- **Workflows, Distill and summaries find the Claude CLI you configured.** Coral now looks for an agent's CLI the same way everywhere it starts one: the path in **Settings > CLI Paths** first, then `PATH`, then the usual install locations (`/usr/local/bin`, `/opt/homebrew/bin`, `~/.local/bin`, nvm). Before, agent workflow steps, Team Knowledge Distill, session summaries and **Generate Team** (Generate a team with AI) ignored the setting. In the macOS app started from Finder, which has no Homebrew `PATH`, they failed with `agent binary "claude" not found`, and summaries quietly fell back to a plain extract. When no CLI is found, the error now says to install it or set its path in Settings > CLI Paths. The launch-time "CLI not found" warning also checks the configured path, so it no longer shows when a custom path is set.
+- **Scheduled jobs, one-off task runs, Restart and Resume use the agent CLI you configured** in **Settings > CLI Paths**. Before, they ran whichever `claude` (or other agent CLI) came first on `PATH`.
+- **Launching in a directory that doesn't exist** returns a clear error that names the directory field (400, not 500). The launch dialog marks the field and puts focus on it.
+- **A failed workflow step shows why.** The run view shows the step's error output (the last 40 lines it wrote to stderr), and the run header quotes its last line, for example `step 1 (two) failed: exit code 3: boom`. A collapsed output no longer shows a clipped strip, and the Output toggle is a real button.
+- **Team view:**
+  - The team-view button is always shown and reachable by keyboard (Enter opens it).
+  - The group menu shows on keyboard focus.
+  - Opening the team view scrolls the team chat to the newest message.
+  - Closing the team view from its Tasks tab no longer leaves the team chat stuck under the task list.
+- **Tasks panel:**
+  - In a narrow panel each task wraps, with its full title on its own line, so there's no sideways scroll.
+  - Priority reads High, Medium, Low or Critical, and a blocked task reads Blocked.
+  - The task id is a button you can reach by keyboard.
+  - Dependency reasons are in plain words, for example "not finished yet (in progress); this task starts when it succeeds".
+- **Agent panels:**
+  - Clicking a panel in an agent's panel list shows it at once, even while the panels are refreshing; before, it waited for that refresh to finish. Closing a panel returns to the list at once, too.
+  - Deleting a panel removes it from view right away; before, its card stayed visible until you switched agents.
+- **Message board:** a long unbroken word wraps instead of widening the feed.
+- **Docs tab:** if the docs fail to load, the tab says so with a Retry button instead of staying blank.
+- **Chats tab:** with no chat open, it shows an empty state for chats instead of the Agents home.
+- **Analytics, Tool & API Calls:** shows agents' tool calls only. The dashboard's own internal requests (`/api/health`, `/api/tracking/event`, `/api/system/status`, `/api/remote/…`) are no longer recorded, and rows already stored for them are left out of the summary.
+- **Durations:** minutes carry into the hour, so a duration never reads "60m" or "69h 60m".
+- **Settings, API key:** the key is masked, has its own full-width line, and has Show/Hide and Copy buttons. Copy also works over http. At desktop width the field had been squeezed to almost nothing.
+- **Servers tab:**
+  - "Last contact" everywhere, shown only for a server that isn't online.
+  - An unreachable server adds "Is Coral running on that machine? Check the URL."
+  - The Local row shows "This hub · Coral <version> · N agents".
+- **Phone:**
+  - The tab strip has no scrollbar and fades at the edge where more tabs are hidden.
+  - The "+T" button is now a team icon, labelled "Send with team reminder".
+- **Desktop:** the agent search box says "Search", so the placeholder is no longer cut off.
+- **Links to a view:** a link to a view restores only the view the page was opened with. A view you open before the agent list first loads is no longer reopened, and the list no longer loads twice.
+
+### Upgrade notes
+
+- **Cloud Hub:** auto-accept through the Cloud Hub works once the hub updates to Coral 1.4.14 (Coral's team coordinates that). Until then, turn it on from Coral's own dashboard.
+- **Reverse proxy:** if you run Coral behind a reverse proxy on the same machine that rewrites the `Host` header, the dashboard behind it can't turn auto-accept on (the request's origin no longer matches). Turning it off still works.
+- API users:
+  - New routes `POST /api/sessions/live/{session_id}/auto-accept/enable` and `…/disable`, and `POST /api/auto-accept/disable-all`. Live sessions gain the `auto_accept*` fields; see the agent docs.
+  - When an agent's own terminal is gone, `send`, `keys`, `resize`, `answer-prompt`, `restart` and `resume` return 409 `{error, code: "terminal_gone", not_sent: true}` (`send` returned 500 "session not found" before, or wrongly succeeded).
+  - Write routes (`send`, `keys`, `answer-prompt`, `resize`) require `session_id` (and `agent_type`). `answer-prompt` and `resize` are new to this; without them they return 400 `{code: "session_id_required"}`. The dashboard always sends both.
+  - **May break scripts and custom views:** the routes that read or act on one agent now also need `session_id` unless `{name}` is the agent's exact terminal name (`claude-<uuid>` and the like). These are `GET /api/sessions/live/{name}`, `/capture`, `/poll`, `/info`, `/prompt-options`, `/kill`, `/restart`, `/attach`, `/resume` (its `current_session_id`) and the `/ws/terminal` socket. Called with a bare agent or folder name, they return 400 `{code: "session_id_required"}` (the socket closes with 1008). Add `?session_id=` (it's in the live list), or use the exact terminal name. Custom views that read an agent by name need the same change.
+  - A launch with a missing working directory now returns 400 `{error, field: "working_dir"}` instead of 500.
+  - Workflow step results gain an `error_tail` field on failed steps.
+  - A task's dependency reason is now plain words ("not finished yet (in review)") instead of the raw status ("review_pending").
+- **Database:** Coral adds four auto-accept columns to its sessions table the first time it starts after the upgrade; there's nothing to run by hand.
+
+### For contributors
+
+- Test runners (`tests/frontend/run.sh`, `run_cdp_suites.mjs`, `tests/stress/*.sh`) and Go test binaries drop an agent shell's `CORAL_*` identity, its production links (Cloud Hub URL, hub mode, tmux socket) and its workflow/step variables, so a test started from an agent shell can't pick them up.
+- All Go code is gofmt-clean, and a new `gofmt` CI workflow keeps it that way.
+- Flakes fixed:
+  - Two tmux tests (`TestSendPromptCancelledAfterPasteStillSubmits`, `TestClient_ListPanes_WithSessions`) wait on state instead of fixed timing.
+  - `artifact_preview_safety` counts only artifact reads.
+  - `agent_ui`, `mobile_connect`, `sleeping_agent_view`, `agent_popout` and `papercuts_browser` wait for the state they check.
+- New browser suites: `auto_accept_browser`, `terminal_gone_browser`, `papercuts_browser`, `board_team_ux_browser`.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.13.
+
 ## v1.4.13 — Artifact links work through the Cloud Hub again
 
 **No new security fixes in this release.** v1.4.12 remains the current security release; this release fixes a problem it introduced for Cloud Hub users.
