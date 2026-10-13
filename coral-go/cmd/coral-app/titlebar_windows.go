@@ -21,10 +21,10 @@ var (
 )
 
 const (
-	dwmwaUseImmersiveDarkMode  = 20
+	dwmwaUseImmersiveDarkMode   = 20
 	dwmwaWindowCornerPreference = 33
-	dwmwaBorderColor           = 34
-	dwmwaCaptionColor          = 35
+	dwmwaBorderColor            = 34
+	dwmwaCaptionColor           = 35
 )
 
 // setupNativeTitlebar styles the Windows title bar to match the Coral dark

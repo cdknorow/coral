@@ -19,19 +19,19 @@ import (
 
 // columns that contain timestamps or UUIDs to normalize during comparison
 var normalizeColumns = map[string]bool{
-	"created_at":      true,
-	"updated_at":      true,
-	"recorded_at":     true,
-	"scheduled_at":    true,
-	"started_at":      true,
-	"finished_at":     true,
-	"attempted_at":    true,
-	"delivered_at":    true,
-	"next_retry_at":   true,
-	"indexed_at":      true,
-	"subscribed_at":   true,
-	"session_id":      true,
-	"resume_from_id":  true,
+	"created_at":       true,
+	"updated_at":       true,
+	"recorded_at":      true,
+	"scheduled_at":     true,
+	"started_at":       true,
+	"finished_at":      true,
+	"attempted_at":     true,
+	"delivered_at":     true,
+	"next_retry_at":    true,
+	"indexed_at":       true,
+	"subscribed_at":    true,
+	"session_id":       true,
+	"resume_from_id":   true,
 	"commit_timestamp": true,
 }
 
@@ -50,9 +50,9 @@ var skipTables = map[string]bool{
 // between Python and Go due to dead features or background-service-only data.
 // Format: "table" for whole-table exclusion, "table.column" for column exclusion.
 var knownAcceptableDiffs = map[string]string{
-	"board_groups":                    "Python-only table (dead feature, not referenced in source)",
-	"board_subscribers.receive_mode":  "Python-only column (dead feature, not referenced in source)",
-	"git_snapshots":                   "Populated by background git poller only (not API-testable)",
+	"board_groups":                   "Python-only table (dead feature, not referenced in source)",
+	"board_subscribers.receive_mode": "Python-only column (dead feature, not referenced in source)",
+	"git_snapshots":                  "Populated by background git poller only (not API-testable)",
 	"git_changed_files":              "Populated by background git poller only (not API-testable)",
 	"agent_live_state":               "Populated by live session parser (not API-testable)",
 }
@@ -347,8 +347,8 @@ func normalizeValue(s string) string {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 type columnInfo struct {
-	name     string
-	colType  string
+	name    string
+	colType string
 }
 
 func listTables(db *sql.DB) []string {

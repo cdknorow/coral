@@ -8,9 +8,10 @@ import (
 
 // TestTierValues verifies the compile-time tier configuration.
 // Run with different build tags to test each tier:
-//   go test ./internal/config/ -run TestTier           → prod tier
-//   go test -tags dev ./internal/config/ -run TestTier  → dev tier
-//   go test -tags beta ./internal/config/ -run TestTier → beta tier
+//
+//	go test ./internal/config/ -run TestTier           → prod tier
+//	go test -tags dev ./internal/config/ -run TestTier  → dev tier
+//	go test -tags beta ./internal/config/ -run TestTier → beta tier
 func TestTierValues(t *testing.T) {
 	t.Logf("TierName=%s SkipEULA=%v SkipLicense=%v DemoLimits=%v",
 		TierName, TierSkipEULA, TierSkipLicense, TierDemoLimits)

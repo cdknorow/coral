@@ -37,16 +37,16 @@ func (h *TeamsHandler) ListTeams(w http.ResponseWriter, r *http.Request) {
 
 	// Build response with member counts
 	type teamSummary struct {
-		ID            int64   `json:"id"`
-		Name          string  `json:"name"`
-		Status        string  `json:"status"`
-		WorkingDir    string  `json:"working_dir"`
-		IsWorktree    int     `json:"is_worktree"`
-		MemberCount   int     `json:"member_count"`
-		ActiveCount   int     `json:"active_count"`
-		CreatedAt     string  `json:"created_at"`
-		UpdatedAt     string  `json:"updated_at"`
-		StoppedAt     *string `json:"stopped_at,omitempty"`
+		ID          int64   `json:"id"`
+		Name        string  `json:"name"`
+		Status      string  `json:"status"`
+		WorkingDir  string  `json:"working_dir"`
+		IsWorktree  int     `json:"is_worktree"`
+		MemberCount int     `json:"member_count"`
+		ActiveCount int     `json:"active_count"`
+		CreatedAt   string  `json:"created_at"`
+		UpdatedAt   string  `json:"updated_at"`
+		StoppedAt   *string `json:"stopped_at,omitempty"`
 	}
 
 	results := make([]teamSummary, 0, len(teams))

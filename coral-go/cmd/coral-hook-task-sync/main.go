@@ -157,4 +157,3 @@ func cacheRead(taskID string) string {
 	}
 	return string(data)
 }
-

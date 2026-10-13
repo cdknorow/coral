@@ -15,7 +15,7 @@ import (
 type PaneInfo struct {
 	PaneTitle   string `json:"pane_title"`
 	SessionName string `json:"session_name"`
-	Target      string `json:"target"`      // tmux target or PTY process ID
+	Target      string `json:"target"` // tmux target or PTY process ID
 	CurrentPath string `json:"current_path"`
 }
 

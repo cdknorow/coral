@@ -9,9 +9,9 @@ import (
 
 func TestUrlParam_DecodesSpecialChars(t *testing.T) {
 	tests := []struct {
-		name     string
-		rawPath  string
-		want     string
+		name    string
+		rawPath string
+		want    string
 	}{
 		{"apostrophe encoded", "/api/board/The%20WorkerB%27s/messages", "The WorkerB's"},
 		{"apostrophe raw", "/api/board/The%20WorkerB's/messages", "The WorkerB's"},
@@ -44,6 +44,6 @@ type discardResponseWriter struct {
 	code int
 }
 
-func (d *discardResponseWriter) Header() http.Header        { return http.Header{} }
+func (d *discardResponseWriter) Header() http.Header         { return http.Header{} }
 func (d *discardResponseWriter) Write(b []byte) (int, error) { return len(b), nil }
 func (d *discardResponseWriter) WriteHeader(code int)        { d.code = code }

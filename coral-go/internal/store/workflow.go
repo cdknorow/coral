@@ -55,8 +55,8 @@ type WorkflowRun struct {
 	CreatedAt      string  `db:"created_at" json:"created_at"`
 
 	// Computed fields populated by queries
-	WorkflowName *string             `db:"workflow_name" json:"workflow_name,omitempty"`
-	Steps        []json.RawMessage   `db:"-" json:"steps,omitempty"`
+	WorkflowName *string           `db:"workflow_name" json:"workflow_name,omitempty"`
+	Steps        []json.RawMessage `db:"-" json:"steps,omitempty"`
 }
 
 // HydrateSteps parses StepsJSON and DefaultAgentJSON into their typed fields.

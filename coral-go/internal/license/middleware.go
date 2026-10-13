@@ -104,13 +104,13 @@ func (lr *Routes) Status(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"valid":                    info.Valid,
-		"activated":                true,
-		"customer_name":            info.CustomerName,
-		"customer_email":           info.CustomerEmail,
-		"product_name":             info.ProductName,
-		"activated_at":             info.ActivatedAt,
-		"last_validated":           info.LastValidated,
+		"valid":                   info.Valid,
+		"activated":               true,
+		"customer_name":           info.CustomerName,
+		"customer_email":          info.CustomerEmail,
+		"product_name":            info.ProductName,
+		"activated_at":            info.ActivatedAt,
+		"last_validated":          info.LastValidated,
 		"machine_id":              machineFingerprint(),
 		"days_until_revalidation": daysUntilRevalidation,
 		"trial_ends_at":           info.TrialEndsAt,

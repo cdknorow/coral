@@ -52,7 +52,7 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 
 func (p *windowsPTY) Read(b []byte) (int, error)  { return p.cpty.Read(b) }
 func (p *windowsPTY) Write(b []byte) (int, error) { return p.cpty.Write(b) }
-func (p *windowsPTY) Done() <-chan struct{}        { return p.done }
+func (p *windowsPTY) Done() <-chan struct{}       { return p.done }
 
 func (p *windowsPTY) Resize(cols, rows uint16) error {
 	return p.cpty.Resize(int(cols), int(rows))

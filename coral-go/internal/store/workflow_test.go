@@ -44,9 +44,9 @@ func TestWorkflowStore_GetByName(t *testing.T) {
 	ctx := context.Background()
 
 	wf := &Workflow{
-		Name:     "by-name-test",
+		Name:      "by-name-test",
 		StepsJSON: `[{"name":"s","type":"shell","command":"true"}]`,
-		Enabled:  1,
+		Enabled:   1,
 	}
 	_, err := ws.CreateWorkflow(ctx, wf)
 	require.NoError(t, err)

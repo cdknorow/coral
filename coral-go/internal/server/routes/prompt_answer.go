@@ -27,9 +27,9 @@ import (
 // How an option is answered:
 //   - "select": its digit answers it
 //   - "text":   its digit opens a text field ("Type something.", "Tell Claude
-//               what to change"); the answer is typed, then Enter
+//     what to change"); the answer is typed, then Enter
 //   - "chat":   its digit closes the dialog so the user can reply in chat
-//               ("Chat about this")
+//     ("Chat about this")
 type promptOption struct {
 	N        int    `json:"n"`
 	Label    string `json:"label"`

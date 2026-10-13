@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/cdknorow/coral/internal/store"
+	proxy "github.com/cdknorow/coral/pkg/hubproxy"
 )
 
 // RemoteResolver adapts the remote server registry to proxy.Resolver and

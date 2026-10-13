@@ -111,8 +111,8 @@ type GoalMetrics struct {
 	WindowHours float64 `json:"window_hours"`
 	Since       string  `json:"since"`
 
-	Attempts      int            `json:"attempts"`        // every recorded attempt
-	CLICalls      int            `json:"cli_calls"`       // attempts that ran the CLI
+	Attempts      int            `json:"attempts"`  // every recorded attempt
+	CLICalls      int            `json:"cli_calls"` // attempts that ran the CLI
 	CLICallsPerHr float64        `json:"cli_calls_per_hour"`
 	ByTrigger     map[string]int `json:"by_trigger"`
 	ByOutcome     map[string]int `json:"by_outcome"`

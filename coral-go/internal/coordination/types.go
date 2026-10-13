@@ -289,18 +289,18 @@ type RepetitiveHandoffLoop struct {
 }
 
 type CoordinationScorecard struct {
-	TotalScore             float64 `json:"total_score"`                        // 0 to 100 (0 when suppressed)
-	ObservedPoints         float64 `json:"observed_points"`                    // Raw points supported by evidence
-	AvailablePoints        float64 `json:"available_points"`                   // Maximum points supported by evidence
-	CoverageRatio          float64 `json:"coverage_ratio"`                     // AvailablePoints / 100.0 (0.0 to 1.0)
-	ScoreSuppressed        bool    `json:"score_suppressed"`                   // True when coverage is inadequate (< 100)
-	SuppressionRationale   string  `json:"suppression_rationale,omitempty"`    // Explicit rationale explaining why aggregate score is suppressed
-	ClaimPromptnessScore   float64 `json:"claim_promptness_score"`             // 0 to 25
-	SlotFluidityScore      float64 `json:"slot_fluidity_score"`                // 0 to 25
-	DependencyClarityScore float64 `json:"dependency_clarity_score"`           // 0 to 20
-	NotificationCleanScore float64 `json:"notification_clean_score"`           // 0 to 15
-	RecoveryEconomyScore   float64 `json:"recovery_economy_score"`             // 0 to 15
-	ValidationStatus       string  `json:"validation_status"`                  // e.g. "Provisional / Pending Audit", "Suppressed / Incomplete Evidence"
+	TotalScore             float64 `json:"total_score"`                     // 0 to 100 (0 when suppressed)
+	ObservedPoints         float64 `json:"observed_points"`                 // Raw points supported by evidence
+	AvailablePoints        float64 `json:"available_points"`                // Maximum points supported by evidence
+	CoverageRatio          float64 `json:"coverage_ratio"`                  // AvailablePoints / 100.0 (0.0 to 1.0)
+	ScoreSuppressed        bool    `json:"score_suppressed"`                // True when coverage is inadequate (< 100)
+	SuppressionRationale   string  `json:"suppression_rationale,omitempty"` // Explicit rationale explaining why aggregate score is suppressed
+	ClaimPromptnessScore   float64 `json:"claim_promptness_score"`          // 0 to 25
+	SlotFluidityScore      float64 `json:"slot_fluidity_score"`             // 0 to 25
+	DependencyClarityScore float64 `json:"dependency_clarity_score"`        // 0 to 20
+	NotificationCleanScore float64 `json:"notification_clean_score"`        // 0 to 15
+	RecoveryEconomyScore   float64 `json:"recovery_economy_score"`          // 0 to 15
+	ValidationStatus       string  `json:"validation_status"`               // e.g. "Provisional / Pending Audit", "Suppressed / Incomplete Evidence"
 	AuditCaveat            string  `json:"audit_caveat"`
 	ScoringMethodology     string  `json:"scoring_methodology"`
 }

@@ -31,7 +31,7 @@ type AgentHistoryMatch struct {
 // SessionSearchStatus describes the search readiness for each session in a lineage.
 type SessionSearchStatus struct {
 	SessionID        string `json:"session_id"`
-	Role             string `json:"role"` // "current" or "ancestor"
+	Role             string `json:"role"`   // "current" or "ancestor"
 	Status           string `json:"status"` // "ready", "transcript_unavailable", "empty"
 	MessagesSearched int    `json:"messages_searched"`
 	Error            string `json:"error,omitempty"`

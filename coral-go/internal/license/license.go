@@ -36,7 +36,6 @@ const (
 // setActivateURL overrides the activate endpoint (for testing).
 func setActivateURL(url string) { activateEndpoint = url }
 
-
 // CachedLicense is persisted to ~/.coral/license.json.
 type CachedLicense struct {
 	LicenseKey    string `json:"license_key"`

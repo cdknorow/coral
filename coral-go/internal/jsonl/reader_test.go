@@ -939,9 +939,9 @@ The current local time is: 2026-09-27T19:50:21-07:00.
 			want: "You have 2 unread messages on the message board. Run 'coral-board read' to see them.",
 		},
 		{
-			name: "plan mode prefix on wait resolved",
+			name:    "plan mode prefix on wait resolved",
 			content: `/plan [Wait resolved] Task #42 (DB Migration) is now completed. Run 'coral-board task detail 42' to review.`,
-			want: "[Wait resolved] Task #42 (DB Migration) is now completed. Run 'coral-board task detail 42' to review.",
+			want:    "[Wait resolved] Task #42 (DB Migration) is now completed. Run 'coral-board task detail 42' to review.",
 		},
 		{
 			name: "regular user plan slash command is preserved",
@@ -951,24 +951,24 @@ The current local time is: 2026-09-27T19:50:21-07:00.
 			want: "/plan Please design the new database schema",
 		},
 		{
-			name: "plan mode prefix on mention-tagged task available",
+			name:    "plan mode prefix on mention-tagged task available",
 			content: `/plan @QA Engineer You have tasks available — run 'coral-board task claim' to start`,
-			want: "@QA Engineer You have tasks available — run 'coral-board task claim' to start",
+			want:    "@QA Engineer You have tasks available — run 'coral-board task claim' to start",
 		},
 		{
-			name: "plan mode prefix on personal task notification",
+			name:    "plan mode prefix on personal task notification",
 			content: `/plan You have a new task in Coral (#42: Review PR). Claim it with ` + "`coral-agent task claim`" + ` to see the details, then run ` + "`coral-agent task complete 42`" + ` when it's done.`,
-			want: "You have a new task in Coral (#42: Review PR). Claim it with `coral-agent task claim` to see the details, then run `coral-agent task complete 42` when it's done.",
+			want:    "You have a new task in Coral (#42: Review PR). Claim it with `coral-agent task claim` to see the details, then run `coral-agent task complete 42` when it's done.",
 		},
 		{
-			name: "plan mode prefix on coral UI action",
+			name:    "plan mode prefix on coral UI action",
 			content: `/plan [Coral UI action #1] A user responded to panel p1 (revision 1).`,
-			want: "[Coral UI action #1] A user responded to panel p1 (revision 1).",
+			want:    "[Coral UI action #1] A user responded to panel p1 (revision 1).",
 		},
 		{
-			name: "multiple slash prefixes on board unread reminder",
+			name:    "multiple slash prefixes on board unread reminder",
 			content: `/plan /goal You have 1 unread message on the message board. Run 'coral-board read' to see them.`,
-			want: "You have 1 unread message on the message board. Run 'coral-board read' to see them.",
+			want:    "You have 1 unread message on the message board. Run 'coral-board read' to see them.",
 		},
 	}
 

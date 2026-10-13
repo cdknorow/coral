@@ -14,5 +14,5 @@ var (
 	TierMaxAgents   = 12
 
 	// Test store (Lemon Squeezy sandbox) — single product with built-in free trial
-	StoreURL   = "https://store.coralai.ai/checkout/buy/44df39dc-9891-4094-8b77-f73c1d2596ae"
+	StoreURL = "https://store.coralai.ai/checkout/buy/44df39dc-9891-4094-8b77-f73c1d2596ae"
 )

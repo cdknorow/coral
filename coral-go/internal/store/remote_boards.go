@@ -6,13 +6,13 @@ import (
 
 // RemoteBoardSub represents a remote board subscription for local tmux notification.
 type RemoteBoardSub struct {
-	ID                  int64  `db:"id" json:"id"`
-	SessionID           string `db:"session_id" json:"session_id"`
-	RemoteServer        string `db:"remote_server" json:"remote_server"`
-	Project             string `db:"project" json:"project"`
-	JobTitle            string `db:"job_title" json:"job_title"`
-	LastNotifiedUnread  int    `db:"last_notified_unread" json:"last_notified_unread"`
-	CreatedAt           string `db:"created_at" json:"created_at"`
+	ID                 int64  `db:"id" json:"id"`
+	SessionID          string `db:"session_id" json:"session_id"`
+	RemoteServer       string `db:"remote_server" json:"remote_server"`
+	Project            string `db:"project" json:"project"`
+	JobTitle           string `db:"job_title" json:"job_title"`
+	LastNotifiedUnread int    `db:"last_notified_unread" json:"last_notified_unread"`
+	CreatedAt          string `db:"created_at" json:"created_at"`
 }
 
 // RemoteBoardStore provides operations on the remote_board_subscriptions table.

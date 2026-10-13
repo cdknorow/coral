@@ -267,7 +267,7 @@ func TestSession_WorkingDirectory(t *testing.T) {
 
 func TestParseCommand_ShellMetachars(t *testing.T) {
 	tests := []struct {
-		input    string
+		input     string
 		wantShell bool
 	}{
 		{"echo hello", false},

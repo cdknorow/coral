@@ -203,4 +203,3 @@ func TestSingleSessionEndpointsAntigravityTranscript(t *testing.T) {
 	assert.Equal(t, false, live["awaiting_user"])
 	assert.Equal(t, true, live["waiting_for_input"])
 }
-

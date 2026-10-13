@@ -602,10 +602,10 @@ var themeVariableGroups = map[string]map[string]string{
 		"--rail-tile-bg": "Rail tile background", "--rail-tile-bg-hover": "Rail tile hover background",
 		"--rail-tile-border": "Rail tile border", "--rail-tile-text": "Rail tile text",
 		"--rail-tile-active-bg": "Selected rail tile background", "--rail-tile-active-border": "Selected rail tile border",
-		"--rail-chip-text": "Rail team/folder chip text",
+		"--rail-chip-text":    "Rail team/folder chip text",
 		"--rail-badge-unread": "Rail unread badge", "--rail-badge-done": "Rail done badge", "--rail-badge-text": "Rail badge text",
 	},
-	"Agent Badges":    {"--badge-claude": "Claude badge", "--badge-agy": "Antigravity badge", "--badge-gemini": "Gemini badge"},
+	"Agent Badges": {"--badge-claude": "Claude badge", "--badge-agy": "Antigravity badge", "--badge-gemini": "Gemini badge"},
 	"Syntax Highlighting": {
 		"--sh-keyword": "Keyword", "--sh-string": "String", "--sh-comment": "Comment",
 		"--sh-number": "Number", "--sh-builtin": "Builtin", "--sh-decorator": "Decorator",

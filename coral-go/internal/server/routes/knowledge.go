@@ -217,4 +217,3 @@ func InjectKnowledgeIntoPrompt(coralDir, teamName, agentName, prompt string) str
 	}
 	return prompt + knowledgeSection
 }
-

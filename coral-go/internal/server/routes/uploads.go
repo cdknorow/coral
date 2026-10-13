@@ -25,13 +25,13 @@ var (
 	}
 
 	contentTypeToExt = map[string]string{
-		"image/png":     ".png",
-		"image/jpeg":    ".jpg",
-		"image/gif":     ".gif",
-		"image/webp":    ".webp",
-		"image/bmp":     ".bmp",
+		"image/png":  ".png",
+		"image/jpeg": ".jpg",
+		"image/gif":  ".gif",
+		"image/webp": ".webp",
+		"image/bmp":  ".bmp",
 		// "image/svg+xml" excluded: XSS risk
-		"image/tiff":    ".tiff",
+		"image/tiff": ".tiff",
 	}
 
 	maxFileSize int64 = 20 * 1024 * 1024 // 20 MB
@@ -42,7 +42,6 @@ var (
 func InitUploadDir(coralDir string) {
 	uploadDir = filepath.Join(coralDir, "uploads")
 }
-
 
 // UploadFile handles POST /api/upload — upload an image and return its path.
 func UploadFile(w http.ResponseWriter, r *http.Request) {

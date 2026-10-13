@@ -100,15 +100,15 @@ func (h *WorkflowHandler) GetWorkflowByName(w http.ResponseWriter, r *http.Reque
 // POST /api/workflows
 func (h *WorkflowHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name            string              `json:"name"`
-		Description     string              `json:"description"`
-		Steps           []json.RawMessage   `json:"steps"`
-		DefaultAgent    json.RawMessage     `json:"default_agent"`
-		RepoPath        string              `json:"repo_path"`
-		BaseBranch      string              `json:"base_branch"`
-		MaxDurationS    *int                `json:"max_duration_s"`
-		CleanupWorktree *int                `json:"cleanup_worktree"`
-		Enabled         *int                `json:"enabled"`
+		Name            string            `json:"name"`
+		Description     string            `json:"description"`
+		Steps           []json.RawMessage `json:"steps"`
+		DefaultAgent    json.RawMessage   `json:"default_agent"`
+		RepoPath        string            `json:"repo_path"`
+		BaseBranch      string            `json:"base_branch"`
+		MaxDurationS    *int              `json:"max_duration_s"`
+		CleanupWorktree *int              `json:"cleanup_worktree"`
+		Enabled         *int              `json:"enabled"`
 	}
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")

@@ -26,7 +26,7 @@ func TestConcurrentSessionReads(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		msg := map[string]any{
-			"type": "USER_INPUT",
+			"type":    "USER_INPUT",
 			"content": fmt.Sprintf("Message %d for Session B", i),
 		}
 		b, _ := json.Marshal(msg)
@@ -102,7 +102,7 @@ func TestConcurrentMultiSessionStress(t *testing.T) {
 		require.NoError(t, err)
 		for j := 0; j < 10; j++ {
 			msg := map[string]any{
-				"type": "USER_INPUT",
+				"type":    "USER_INPUT",
 				"content": fmt.Sprintf("Session %d Message %d", i, j),
 			}
 			b, _ := json.Marshal(msg)

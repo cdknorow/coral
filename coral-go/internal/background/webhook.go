@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	retryDelays            = []int{30, 120, 600}   // 30s, 2m, 10m
+	retryDelays             = []int{30, 120, 600} // 30s, 2m, 10m
 	circuitBreakerThreshold = 10
 )
 

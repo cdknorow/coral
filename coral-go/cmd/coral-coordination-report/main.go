@@ -13,14 +13,14 @@ import (
 
 func main() {
 	var (
-		boardFlag       = flag.String("board", "", "Target board ID (e.g. death-or-trade-ai-auto)")
-		sinceFlag       = flag.String("since", "", "Filter events created at or after this RFC3339 timestamp (e.g. 2026-09-29T06:11:53Z)")
-		untilFlag       = flag.String("until", "", "Filter events created at or before this RFC3339 timestamp")
-		formatFlag      = flag.String("format", "markdown", "Output format: markdown, json, or text")
-		outputFlag      = flag.String("output", "", "Output file path (default: stdout)")
-		serverFlag      = flag.String("server", "http://localhost:8420", "Coral HTTP server URL")
-		dbFlag          = flag.String("db", "", "Path to messageboard.db for direct read-only SQLite queries")
-		thresholdFlag   = flag.String("threshold", "15m", "Duration threshold for active-without-progress candidates (e.g. 15m, 30m)")
+		boardFlag     = flag.String("board", "", "Target board ID (e.g. death-or-trade-ai-auto)")
+		sinceFlag     = flag.String("since", "", "Filter events created at or after this RFC3339 timestamp (e.g. 2026-09-29T06:11:53Z)")
+		untilFlag     = flag.String("until", "", "Filter events created at or before this RFC3339 timestamp")
+		formatFlag    = flag.String("format", "markdown", "Output format: markdown, json, or text")
+		outputFlag    = flag.String("output", "", "Output file path (default: stdout)")
+		serverFlag    = flag.String("server", "http://localhost:8420", "Coral HTTP server URL")
+		dbFlag        = flag.String("db", "", "Path to messageboard.db for direct read-only SQLite queries")
+		thresholdFlag = flag.String("threshold", "15m", "Duration threshold for active-without-progress candidates (e.g. 15m, 30m)")
 	)
 	flag.Parse()
 

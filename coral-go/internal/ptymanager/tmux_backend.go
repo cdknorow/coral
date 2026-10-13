@@ -13,8 +13,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 

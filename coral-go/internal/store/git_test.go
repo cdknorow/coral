@@ -46,7 +46,7 @@ func TestGitSnapshotUpsert(t *testing.T) {
 
 	snaps, err := s.GetGitSnapshots(ctx, "my-repo", 10)
 	require.NoError(t, err)
-	assert.Len(t, snaps, 1) // Still just one
+	assert.Len(t, snaps, 1)                            // Still just one
 	assert.Equal(t, "feature-branch", snaps[0].Branch) // But branch updated
 }
 
