@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.7 — A compact server button in the agent list, and the phone side panel fixed
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release replaces the agent list's server pill and chips with a compact server button, shows each machine's version, agent count and update status in the Servers tab, and fixes the phone top bar covering the side panel's tabs (a v1.4.6 regression).
+
+### New
+
+- **A compact server button in the agent list.** The large server pill above the list and the server chips on each row are replaced by one button in the search row: `● <name> ▾` for one server, `● N servers ▾` for several. It opens a details panel you can tap or reach by keyboard: status, version, last contact, number of agents, any update notice, and **Open in Servers**. Server names are shortened to the hub's label for the server, or its hostname without the domain; when two servers would get the same short name, both keep their full name.
+- **Show server and Group by server.** The agent list's ≡ menu adds **Show server**, which puts each agent's short server name on its row (on by default when you have two or more servers), and **Group by server**, which groups agents into collapsible server sections. **Show server** is saved with your settings; **Group by server** and which sections are collapsed are remembered in this browser.
+
+### Fixes
+
+- **Servers tab rows show version, agents and updates.** Each machine's row reads like "Online · Coral 1.4.2 · 7 agents · last seen …" (the version is left out when unknown). On the Cloud Hub, a machine that needs an update shows the **Update** / **Update required** badge in its row, linking to the latest release.
+- **Servers tab (Cloud Hub):** the stray word "null" under the introduction is gone, and the screen-reader-only "(online)/(offline)" text no longer shows up visibly or breaks long machine names.
+- **Phone: the top bar no longer covers the side panel's tabs.** In v1.4.6 the larger touch targets made the phone top bar taller, but the side panel (Browse, Artifacts) still opened at the old height, so the bar covered its tabs. The panels now open below the top bar's measured height, whatever it is at your screen width, and follow it if it changes. The tablet sidebar and the team settings workspace get the same fix.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.6.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- Cloud Hub: the new **Show server** setting is saved as `show_session_server` (`true`/`false`; unset means automatic). Add it to the account settings allowlist so it persists in cloud mode; without it the setting lasts only for the session.
+
 ## v1.4.6 — A much faster dashboard on slow connections, a Servers tab, and phone-sized touch targets
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release makes the dashboard load several times faster on a slow phone connection and almost instantly on a revisit, turns Servers into a top-level tab, and makes the dashboard comfortable to use by touch.
