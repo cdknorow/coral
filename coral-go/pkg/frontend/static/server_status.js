@@ -97,6 +97,13 @@ export function updateBadgeHtml(e) {
         + ` title="${escHtml(n.text)}" aria-label="${escHtml(n.text)}">${escHtml(n.label)}</a>`;
 }
 
+/** The Coral version a servers entry reports: coral_version from the Cloud Hub,
+ *  version from a self-hosted hub's remote. '' when unknown. */
+export function serverVersion(e) {
+    const v = e && (e.coral_version || e.version);
+    return typeof v === 'string' ? v.trim() : '';
+}
+
 /** Multi-line hover text for a server: status, address, agent count, last contact. */
 export function serverHoverText(id) {
     const e = serverEntry(id);
@@ -110,7 +117,7 @@ export function serverHoverText(id) {
     const lines = [`${e.label || e.id}: ${m.label}`];
     lines.push(local ? 'This server (the hub)' : (e.url || e.id));
     lines.push(`${count} agent${count === 1 ? '' : 's'}`);
-    if (!local && e.version) lines.push(`Version ${e.version}`);
+    if (!local && serverVersion(e)) lines.push(`Version ${serverVersion(e)}`);
     if (!local) lines.push(e.status === 'online' ? `Last contact: ${formatLastSeen(e.last_seen)}` : `Last seen: ${formatLastSeen(e.last_seen)}`);
     if (!local && e.status !== 'online' && e.last_error) lines.push(`Error: ${e.last_error}`);
     if (!local && e.status !== 'online') lines.push(m.hint);
@@ -162,7 +169,8 @@ export function shortServerName(e) {
     return clash ? String(e.label || e.id) : short;
 }
 
-function serverAgentCount(e) {
+/** Agents on a server: the hub's count for a remote when it sent one, else the agent list's. Archived agents are not counted. */
+export function serverAgentCount(e) {
     const local = normServer(e.id) === LOCAL_SERVER;
     const own = (state.liveSessions || []).filter(x => x && !x.archived && normServer(x.server) === normServer(e.id)).length;
     return local || typeof e.agents !== 'number' ? own : e.agents;
@@ -178,7 +186,7 @@ export function serverDetailsHtml(e) {
         ['Name', e.label || e.id],
         local ? ['Server', 'This server (the hub)'] : (e.url ? ['Address', e.url] : null),
         ['Agents', String(count)],
-        !local && e.version ? ['Version', e.version] : null,
+        !local && serverVersion(e) ? ['Version', serverVersion(e)] : null,
         !local ? [e.status === 'online' ? 'Last contact' : 'Last seen', formatLastSeen(e.last_seen)] : null,
         !local && e.status !== 'online' && e.last_error ? ['Error', e.last_error] : null,
     ].filter(Boolean);

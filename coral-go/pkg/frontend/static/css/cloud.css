@@ -35,7 +35,9 @@ body.cloud-mode [data-local-only] { display: none !important; }
 /* minmax(0,1fr): a long name or URL wraps instead of widening the row (#3070 F3). */
 .cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border, #2a3140); }
 .cs-main { min-width: 0; overflow-wrap: anywhere; }
-.cs-title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.cs-title { font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; overflow-wrap: anywhere; }
+/* The row's "(online)" / "(offline)" is for screen readers only; the dot shows it. */
+.cs-title .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .cs-meta { font-size: 12px; opacity: .7; margin-top: 2px; }
 .cs-note { grid-column: 1 / -1; font-size: 12px; padding: 6px 10px; border-radius: 6px; background: rgba(210,153,34,.12); border: 1px solid rgba(210,153,34,.45); }
 .cs-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }

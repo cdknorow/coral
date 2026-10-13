@@ -16,7 +16,7 @@
 
 import { state } from './state.js';
 import { h } from './cloud.js';
-import { formatLastSeen, updateNotice, RELEASES_URL } from './server_status.js';
+import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount } from './server_status.js';
 import { accessBlockedMessage } from './hub_access.js';
 
 // The Servers tab (#3070) hosts this list; there is no separate dialog.
@@ -171,7 +171,16 @@ export function refusalMessage(status, body, serverName = '') {
     return '';
 }
 
+/** The row's update badge (a link to the releases page), or null. */
+function updateBadge(e) {
+    const n = updateNotice(e);
+    return n ? h('a', { className: `server-update-badge server-update-${n.level}`, href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer',
+        title: n.text, 'aria-label': n.text, text: n.label }) : null;
+}
+
 function row(s) {
+    // Version, agent count and the update notice come with the live list's servers entry (#3059, #3099).
+    const live = { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) };
     const isBusy = busy.has(s.id);
     const online = s.online === true;
     const title = renaming === s.id
@@ -182,8 +191,11 @@ function row(s) {
         : h('div', { className: 'cs-title' },
             h('span', { className: 'cs-dot ' + (online ? 'online' : 'offline'), 'aria-hidden': 'true' }),
             h('span', { text: s.label || 'Unnamed server' }),
-            h('span', { className: 'sr-only', text: online ? ' (online)' : ' (offline)' }));
-    const meta = h('div', { className: 'cs-meta', text: `${online ? 'Online' : 'Offline'} · last seen ${formatLastSeen(s.last_seen)}` });
+            h('span', { className: 'sr-only', text: online ? ' (online)' : ' (offline)' }),
+            updateBadge(live));
+    const version = serverVersion(live);
+    const agents = serverAgentCount(live);
+    const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, `last seen ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
     const mode = hubMode(s);
     const legacy = rank(s.access_mode) < 0;
     const picker = h('label', { className: 'cs-meta cs-launch' }, 'Access ',
@@ -214,8 +226,7 @@ function row(s) {
         : [h('button', { type: 'button', className: 'btn btn-small', text: 'Rename', disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
            h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
     const note = launchNote(s);
-    // The update notice comes with the live list's servers entry (#3059).
-    const update = updateNotice((state.servers || []).find(x => x && x.id === s.id) || s);
+    const update = updateNotice(live);
     const updateNote = update
         ? h('div', { className: `cs-note cs-update cs-update-${update.level}` },
             h('span', { text: update.text + ' ' }),
@@ -256,11 +267,12 @@ function render() {
     const list = servers.length
         ? h('ul', { className: 'cs-list', 'aria-label': 'Your servers' }, servers.map(row))
         : h('p', { className: 'servers-empty', text: loadError ? '' : 'No servers connected yet.' });
-    host.replaceChildren(
+    // replaceChildren() would render a null as the text "null": leave it out.
+    host.replaceChildren(...[
         h('p', { className: 'servers-intro', text: 'Servers connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),
         loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
         list,
-        enrollBlock());
+        enrollBlock()].filter(Boolean));
     if (keep) {
         const r = document.getElementById(keep.row);
         const again = r && [...r.querySelectorAll('button, select, input')].find(el => el.textContent === keep.text);

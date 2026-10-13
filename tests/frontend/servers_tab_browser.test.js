@@ -24,6 +24,15 @@ const SERVERS = [
     { id: 'm4', label: 'Box Four', online: true, access_mode: 'interact', effective_mode: 'view', limited_by: 'hub', last_seen: '2026-10-13T00:00:00Z' },
 ];
 
+// The live list's servers entries (#3099): version, agent count and the hub's update notice per machine.
+const LIVE = [
+    { id: 'm1', label: 'Box One', status: 'online', coral_version: '1.4.2', agents: 7, update: 'required', latest_coral: '1.5.0' },
+    { id: 'm2', label: 'Box Two', status: 'online', version: '1.4.6', agents: 1, update: 'available', latest_coral: '1.5.0' },
+    { id: 'm3', label: 'Box Three', status: 'offline', coral_version: '1.5.0', agents: 0, update: 'current' },
+    { id: 'm4', label: 'Box Four', status: 'online', agents: 2, update: 'unknown' },
+];
+const RELEASES = 'https://github.com/cdknorow/coral/releases/latest';
+
 const CLOUD_PRELOAD = `(() => {
     window.__qaServers = ${JSON.stringify(SERVERS)};
     window.__patches = []; window.__serverGets = 0;
@@ -84,7 +93,7 @@ const contrast = (a, b) => {
         await Page.navigate({ url: BASE + '/' + hash });
         await Page.loadEventFired();
         await install();
-        await ev(`(() => { T.state.servers = ${JSON.stringify(SERVERS.map(s => ({ id: s.id, label: s.label, status: s.online ? 'online' : 'offline' })))}; return true; })()`);
+        await ev(`(() => { T.state.servers = ${JSON.stringify(LIVE)}; return true; })()`);
     };
     const tabState = () => ev(`(() => {
         const tab = document.getElementById('nav-tab-servers'), view = document.getElementById('servers-view');
@@ -143,6 +152,39 @@ const contrast = (a, b) => {
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'Raise sends PATCH /api/servers/m1 {access_mode: launch}');
         await waitFor(`!document.querySelector('#server-row-m1 .cs-raise')`, 'Raise gone once the hub allows Launch', 6000);
         console.log('   ✓ Hub/Machine/Effective per row, Raise only for m1, PATCH {access_mode:"launch"}, then gone');
+
+        console.log('2b. Row meta (status · Coral version · agents · last seen), update badge, no "null", hidden sr-only state');
+        const rowInfo = await ev(`Object.fromEntries([...document.querySelectorAll('#servers-view .cs-row')].map(r => {
+            const meta = r.querySelector('.cs-meta');
+            const badges = [...r.querySelectorAll('a.server-update-badge')].map(a => ({ cls: a.className, href: a.getAttribute('href'), aria: a.getAttribute('aria-label'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), inTitle: !!a.closest('.cs-title') }));
+            const title = r.querySelector('.cs-title');
+            const sr = title && title.querySelector('.sr-only');
+            return [r.id.replace('server-row-', ''), { meta: meta ? meta.textContent.replace(/\\s+/g, ' ').trim() : '', badges, srText: sr ? sr.textContent : null,
+                srVisible: sr ? (b => b.width > 2 && b.height > 2)(sr.getBoundingClientRect()) : false, visibleTitle: title ? title.innerText.trim() : '' }];
+        }))`);
+        const metaOf = id => rowInfo[id].meta;
+        assert.match(metaOf('m1'), /^Online · Coral 1\.4\.2 · 7 agents · last seen /, `m1 meta (${metaOf('m1')})`);
+        assert.match(metaOf('m2'), /^Online · Coral 1\.4\.6 · 1 agent · last seen /, `m2 meta: version from 'version', singular agent (${metaOf('m2')})`);
+        assert.match(metaOf('m3'), /^Offline · Coral 1\.5\.0 · 0 agents · last seen /, `m3 meta (${metaOf('m3')})`);
+        assert.match(metaOf('m4'), /^Online · 2 agents · last seen /, `m4 meta: no version when unknown (${metaOf('m4')})`);
+        const notice = { m1: 'Update required: this Coral (1.4.2) is too old for some Cloud Hub features. Update to 1.5.0.', m2: 'Update available: 1.5.0' };
+        for (const [id, level] of [['m1', 'required'], ['m2', 'available']]) {
+            assert.equal(rowInfo[id].badges.length, 1, `${id}: one update badge`);
+            const b = rowInfo[id].badges[0];
+            assert.equal(b.cls, `server-update-badge server-update-${level}`);
+            assert.equal(b.href, RELEASES, `${id}: constant releases link`);
+            assert.equal(b.aria, notice[id], `${id}: aria-label is the notice`);
+            assert.ok(b.inTitle, `${id}: badge sits in the row title`);
+            assert.equal(b.target, '_blank'); assert.equal(b.rel, 'noopener noreferrer');
+        }
+        assert.equal(rowInfo.m3.badges.length, 0, 'no badge when current'); assert.equal(rowInfo.m4.badges.length, 0, 'no badge when unknown');
+        const nulls = await ev(`(() => { const w = document.createTreeWalker(document.getElementById('servers-view'), NodeFilter.SHOW_TEXT); const out = []; for (let n = w.nextNode(); n; n = w.nextNode()) if (/\\bnull\\b/.test(n.nodeValue)) out.push(n.nodeValue.trim()); return out; })()`);
+        assert.deepEqual(nulls, [], 'no literal "null" text in the Servers view');
+        for (const id of ['m1', 'm3']) {
+            assert.match(rowInfo[id].srText || '', /\((online|offline)\)/, `${id}: status for screen readers`);
+            assert.equal(rowInfo[id].srVisible, false, `${id}: the sr-only status is not visible`);
+        }
+        console.log('   ✓ meta per row (version from coral_version|version, omitted when unknown, 1 agent/N agents), badges m1/m2 only, no "null", sr-only hidden');
 
         console.log('3. Revoke reads as an action (contrast >= 4.5:1)');
         const rv = await ev(`(() => {
@@ -213,10 +255,21 @@ const contrast = (a, b) => {
         t = await tabState();
         assert.equal(t.tabShown, false, 'a local Coral with no remotes has no Servers tab');
         assert.equal(t.viewShown, false, '#servers is a no-op there');
-        await ev(`(async () => { T.state.hub = true; T.state.servers = [{ id: 'r1', label: 'Remote', status: 'online' }]; (await import((window.__coralStatic||'/static/')+'servers_tab.js')).updateServersTabVisibility(); return true; })()`);
+        await ev(`(async () => {
+            const real = window.fetch;
+            window.fetch = (u, o) => (new URL(String(u), location.origin).pathname === '/api/servers' && (!o || !o.method || o.method === 'GET'))
+                ? Promise.resolve(new Response(JSON.stringify([{ id: 'r1', label: 'Remote', url: 'https://r1.example:8420', last_seen: new Date().toISOString(), allow_private: false }]), { status: 200, headers: { 'content-type': 'application/json' } }))
+                : real(u, o);
+            T.state.hub = true; T.state.servers = [{ id: 'r1', label: 'Remote', status: 'online', version: '1.4.5', agents: 3 }];
+            (await import((window.__coralStatic||'/static/')+'servers_tab.js')).updateServersTabVisibility(); return true;
+        })()`);
         assert.ok((await tabState()).tabShown, 'a hub with a remote shows the tab');
         await ev(`window.switchNavTab('servers'); true`);
         await waitFor(`document.getElementById('nav-tab-servers').getAttribute('aria-selected') === 'true'`, 'tab selected', 3000);
+        await waitFor(`!!document.querySelector('#server-row-r1 .servers-row-meta')`, 'self-hosted r1 row', 3000);
+        const sh = await ev(`(() => { const r = document.querySelector('#server-row-r1 .servers-row-meta'); return { meta: r.textContent.replace(/\\s+/g, ' ').trim(), badges: document.querySelectorAll('#servers-view a.server-update-badge').length }; })()`);
+        assert.match(sh.meta, /^https:\/\/r1\.example:8420 · Coral 1\.4\.5 · 3 agents · last seen /, `self-hosted meta (${sh.meta})`);
+        assert.equal(sh.badges, 0, 'self-hosted rows have no update badge');
         await ev(`(async () => { T.state.servers = []; (await import((window.__coralStatic||'/static/')+'servers_tab.js')).updateServersTabVisibility(); return true; })()`);
         t = await tabState();
         assert.equal(t.tabShown, false, 'the last remote gone: tab hidden');

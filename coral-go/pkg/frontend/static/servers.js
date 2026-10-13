@@ -11,6 +11,7 @@ import { isHub, initHub, isCloud } from './server_base.js';
 import { showToast } from './utils.js';
 import {
     statusMeta, escHtml, describeServerError, formatLastSeen, isValidServerId,
+    serverVersion, serverAgentCount, updateBadgeHtml,
 } from './server_status.js';
 
 let _servers = [];
@@ -98,10 +99,16 @@ function rowHtml(s) {
     const err = s.last_error ? `<div class="servers-row-error" role="status">${escHtml(s.last_error)}</div>` : '';
     const hint = (s.status === 'key_unreadable' || s.status === 'unauthorized')
         ? `<div class="servers-row-error">${escHtml(statusMeta(s.status).hint)}</div>` : '';
+    // Version, agent count and update come with the live list's servers entry (#3099).
+    const live = { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) };
+    const version = serverVersion(live);
+    const agents = serverAgentCount(live);
+    const badge = updateBadgeHtml(live);
+    const meta = [s.url, version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, `last seen ${formatLastSeen(s.last_seen)}`].filter(Boolean);
     return `<li class="servers-row" id="server-row-${escHtml(s.id)}" tabindex="-1" data-id="${escHtml(s.id)}">
         <div class="servers-row-main">
-            <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}</div>
-            <div class="servers-row-meta">${escHtml(s.url)} &middot; last seen ${escHtml(formatLastSeen(s.last_seen))}</div>
+            <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}${badge ? ' ' + badge : ''}</div>
+            <div class="servers-row-meta">${meta.map(escHtml).join(' &middot; ')}</div>
             ${err}${hint}
         </div>
         <div class="servers-row-status">${statusPill(s.status)}</div>
