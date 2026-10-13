@@ -3,10 +3,12 @@ package server
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -246,4 +248,55 @@ func TestIndexUsesVersionedStaticBase(t *testing.T) {
 	require.NoError(t, tmpl.Execute(&plain, frontend.PageData{CoralRoot: "/srv/coral"}))
 	assert.Contains(t, plain.String(), `<script type="module" src="/static/app.js"></script>`)
 	assert.NotContains(t, plain.String(), "/static/b/")
+}
+
+// The manifest names its icons relatively, so the copy linked under the
+// versioned prefix fetches them under it (no unversioned coral.png). The root
+// /manifest.json anchors the same icons at /static/ so they still resolve.
+func TestManifestIconsFollowTheManifestURL(t *testing.T) {
+	sub, err := fs.Sub(frontend.Static, "static")
+	require.NoError(t, err)
+	icons := func(data []byte) []string {
+		var m struct {
+			Name  string `json:"name"`
+			Icons []struct {
+				Src string `json:"src"`
+			} `json:"icons"`
+		}
+		require.NoError(t, json.Unmarshal(data, &m))
+		require.Equal(t, "Coral", m.Name)
+		var out []string
+		for _, i := range m.Icons {
+			out = append(out, i.Src)
+		}
+		require.NotEmpty(t, out)
+		return out
+	}
+
+	embedded, err := fs.ReadFile(sub, "manifest.json")
+	require.NoError(t, err)
+	base, _ := url.Parse("http://h/static/b/abcdef012345/manifest.json")
+	for _, src := range icons(embedded) {
+		ref, err := url.Parse(src)
+		require.NoError(t, err)
+		resolved := base.ResolveReference(ref).Path
+		assert.True(t, strings.HasPrefix(resolved, "/static/b/abcdef012345/"), "%s resolves to %s", src, resolved)
+		_, err = fs.Stat(sub, strings.TrimPrefix(resolved, "/static/b/abcdef012345/"))
+		assert.NoError(t, err, "icon %s exists", src)
+	}
+
+	srv := httptest.NewServer(rootManifestHandler(frontend.Static))
+	t.Cleanup(srv.Close)
+	resp, body := get(t, http.MethodGet, srv.URL+"/manifest.json", nil)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "application/manifest+json", resp.Header.Get("Content-Type"))
+	assert.Equal(t, "no-cache", resp.Header.Get("Cache-Control"))
+	assert.NotEmpty(t, resp.Header.Get("ETag"))
+	root := icons(body)
+	assert.Contains(t, root, "/static/coral.png")
+	for _, src := range root {
+		require.True(t, strings.HasPrefix(src, "/static/"), src)
+		_, err := fs.Stat(sub, strings.TrimPrefix(src, "/static/"))
+		assert.NoError(t, err, "icon %s exists", src)
+	}
 }

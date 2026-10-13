@@ -784,11 +784,8 @@ func (s *Server) buildRouter() chi.Router {
 		r.Get("/api/agent-docs/{name}", docsHandler.Get)
 	}
 
-	// PWA manifest (also accessible at /static/manifest.json)
-	r.Get("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/manifest+json")
-		http.ServeFileFS(w, r, staticFS, "static/manifest.json")
-	})
+	// PWA manifest (also at /static/manifest.json and under the versioned prefix)
+	r.Get("/manifest.json", rootManifestHandler(staticFS))
 
 	// ── Dashboard SPA ───────────────────────────────────────────
 	r.Get("/agent/{sessionID}", s.serveAgentPopout)

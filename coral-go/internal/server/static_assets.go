@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"io/fs"
 	"mime"
@@ -200,4 +201,45 @@ func (p *renderedPage) serve(w http.ResponseWriter, r *http.Request, key string,
 	p.mu.Unlock()
 	serveCachedAsset(w, r, page, cacheRevalidate)
 	return nil
+}
+
+// rootManifestHandler serves the PWA manifest at /manifest.json. The embedded
+// manifest's icon URLs are relative, so a manifest loaded from /static/ or a
+// versioned /static/b/<build>/ fetches icons under that same prefix; at the
+// root they would resolve to /coral.png, so this copy anchors them at /static/.
+func rootManifestHandler(fsys fs.FS) http.HandlerFunc {
+	var (
+		once  sync.Once
+		asset *staticAsset
+	)
+	return func(w http.ResponseWriter, r *http.Request) {
+		once.Do(func() {
+			data, err := fs.ReadFile(fsys, "static/manifest.json")
+			if err != nil {
+				return
+			}
+			var m map[string]any
+			if json.Unmarshal(data, &m) == nil {
+				if icons, ok := m["icons"].([]any); ok {
+					for _, ic := range icons {
+						if icon, ok := ic.(map[string]any); ok {
+							if src, ok := icon["src"].(string); ok && !strings.HasPrefix(src, "/") && !strings.Contains(src, ":") {
+								icon["src"] = "/static/" + src
+							}
+						}
+					}
+				}
+				if out, err := json.MarshalIndent(m, "", "  "); err == nil {
+					data = out
+				}
+			}
+			asset = newStaticAsset("manifest.json", data)
+			asset.contentType = "application/manifest+json"
+		})
+		if asset == nil {
+			http.NotFound(w, r)
+			return
+		}
+		serveCachedAsset(w, r, asset, cacheRevalidate)
+	}
 }

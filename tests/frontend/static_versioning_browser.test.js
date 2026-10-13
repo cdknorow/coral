@@ -1,4 +1,4 @@
-// Build-versioned static URLs (#3079):  run via run_cdp_suites.mjs
+// Build-versioned static URLs (#3079, #3092):  run via run_cdp_suites.mjs
 // The shell loads every stylesheet, script, module and font from one
 // /static/b/<build>/ prefix, served immutable; csp_compat.js is the same URL as
 // app.js's import (one module instance, fetched once); a revisit fetches none
@@ -8,6 +8,7 @@ const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const UNVERSIONED_OK = new Set(['/static/sw.js', '/static/panel_host.html']);
 
 (async () => {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -47,8 +48,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         assert.equal(csp[0].url, new URL('csp_compat.js', appSrc).href, "csp_compat's tag URL is app.js's import URL (one instance)");
         assert.equal(await ev(`performance.getEntriesByType('resource').filter(e => e.name.endsWith('/csp_compat.js')).length`), 1);
 
-        const plainCode = cold.filter(r => !new URL(r.url).pathname.startsWith(prefix) && /\.(js|css|woff2)$/.test(new URL(r.url).pathname) && !r.url.endsWith('/sw.js'));
-        assert.deepEqual(plainCode.map(r => r.url), [], 'no script, stylesheet or font from an unversioned path');
+        // Only the files that must keep a fixed URL (the service worker and the
+        // panel sandbox host) are fetched outside the prefix; images included.
+        const unversioned = rs => rs.filter(r => !new URL(r.url).pathname.startsWith(prefix) && !UNVERSIONED_OK.has(new URL(r.url).pathname)).map(r => r.url);
+        assert.deepEqual(unversioned(cold), [], 'no static file from an unversioned path');
+        // The manifest is linked under the prefix and names its icons relatively,
+        // so an install (or the browser's icon fetch) stays under it too.
+        const man = await Page.getAppManifest();
+        assert.equal(new URL(man.url).pathname, prefix + 'manifest.json', 'the manifest is linked under the prefix');
+        const icons = JSON.parse(man.data).icons.map(i => new URL(i.src, man.url).pathname);
+        assert.ok(icons.includes(prefix + 'coral.png'), 'coral.png resolves under the prefix: ' + JSON.stringify(icons));
+        assert.deepEqual(icons.filter(p => !p.startsWith(prefix)), [], 'every manifest icon resolves under the prefix');
         const versioned = cold.filter(r => new URL(r.url).pathname.startsWith(prefix));
         assert.ok(versioned.length > 50, 'the module graph loads under the prefix: ' + versioned.length);
         assert.ok(versioned.some(r => r.url.includes('/vendor/fonts/')), 'fonts (relative url() in fonts.css) load under the prefix');
@@ -62,6 +72,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         const fetched = warm.filter(r => new URL(r.url).pathname.startsWith(prefix) && !r.fromCache);
         assert.deepEqual(fetched.map(r => r.url), [], 'a revisit fetches no versioned file from the network');
         assert.ok(warm.filter(r => r.status === 304).length === 0, 'and revalidates none');
+        assert.deepEqual(unversioned(warm), [], 'nor any unversioned static file');
         console.log(`PASS warm: ${warm.filter(r => new URL(r.url).pathname.startsWith(prefix)).length} versioned files from cache, 0 requests`);
 
         // With the service worker in control, versioned files never land in Cache
