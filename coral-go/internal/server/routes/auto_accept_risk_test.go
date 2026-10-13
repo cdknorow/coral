@@ -110,6 +110,42 @@ func TestPathInsideResolvesSymlinkedPrefixes(t *testing.T) {
 // Shell writes outside the working directory wait too: redirection targets,
 // tee, cp/install/ln destinations, mv paths and dd of= (Orchestrator, #3182).
 // Writes inside the repo and to /dev/null stay auto-approved.
+// Wrappers and find's leading options do not hide a risky command (review of v2.3).
+func TestShellRiskSeesThroughWrappers(t *testing.T) {
+	wd := t.TempDir()
+	for _, cmd := range []string{
+		"find -L / -name x -delete",
+		"find -H .. -delete",
+		"find -P -O3 /var -delete",
+		"find -D tree /tmp/zz -exec rm {} +",
+		"nice rm -rf /etc",
+		"nice -n 10 rm -rf /etc",
+		"nohup rm -rf /etc &",
+		"time rm -rf /etc",
+		"timeout 30 rm -rf /etc",
+		"timeout -s KILL 5m rm -rf /etc",
+		"env FOO=1 rm -rf /etc",
+		"env -u HOME chmod -R 777 /usr/local",
+		"command rm -rf /etc",
+		"exec rm -rf /etc",
+		"stdbuf -o L tee /etc/motd < x",
+		"FOO=1 nice -n 5 git push --force",
+		"nice git reset --hard",
+	} {
+		assert.NotEmpty(t, shellRisk(cmd, wd), cmd)
+	}
+	for _, cmd := range []string{
+		"find -L . -name '*.tmp' -delete",
+		"nice -n 10 make test",
+		"timeout 60 go test ./...",
+		"time rm -rf build",
+		"env CGO_ENABLED=0 go build ./...",
+		"nohup ./server > server.log 2>&1 &",
+	} {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+}
+
 func TestShellWriteRisk(t *testing.T) {
 	wd := t.TempDir()
 	outside := t.TempDir()

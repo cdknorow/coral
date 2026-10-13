@@ -77,9 +77,7 @@ func shellRiskFrom(command, workDir, dir string) string {
 		}
 		words := shellWords(seg)
 		// Skip env assignments and shell wrappers (bash -lc '…' is split by the caller).
-		for len(words) > 0 && envAssignRe.MatchString(words[0]) {
-			words = words[1:]
-		}
+		words = unwrapCommand(words)
 		if len(words) == 0 {
 			continue
 		}
@@ -264,6 +262,59 @@ func writeTargets(cmd string, args []string) []string {
 	return paths[len(paths)-1:]
 }
 
+// unwrapCommand drops what runs the real command on its behalf, so the checks
+// see that command: environment assignments (FOO=1 rm …) and the wrappers env,
+// nice, nohup, time, timeout, command, exec, stdbuf and ionice, with their
+// options. (xargs is not unwrapped: its targets come from input, a documented
+// limit.)
+func unwrapCommand(words []string) []string {
+	for len(words) > 0 {
+		w := words[0]
+		if envAssignRe.MatchString(w) {
+			words = words[1:]
+			continue
+		}
+		var takesArg map[string]bool // options of the wrapper that take a value
+		positional := 0              // leading values after the options (timeout's duration)
+		switch filepath.Base(bareCommand(w)) {
+		case "env":
+			takesArg = map[string]bool{"-u": true, "--unset": true, "-C": true, "--chdir": true, "-S": true, "--split-string": true}
+		case "nice":
+			takesArg = map[string]bool{"-n": true, "--adjustment": true}
+		case "nohup", "command", "builtin":
+		case "time":
+		case "timeout":
+			takesArg = map[string]bool{"-s": true, "--signal": true, "-k": true, "--kill-after": true}
+			positional = 1
+		case "exec":
+			takesArg = map[string]bool{"-a": true}
+		case "stdbuf":
+			takesArg = map[string]bool{"-i": true, "-o": true, "-e": true}
+		case "ionice":
+			takesArg = map[string]bool{"-c": true, "-n": true, "-p": true}
+		default:
+			return words
+		}
+		words = words[1:]
+	opts:
+		for len(words) > 0 {
+			a := words[0]
+			switch {
+			case takesArg[a]:
+				words = words[min(2, len(words)):]
+			case strings.HasPrefix(a, "-") && a != "-":
+				words = words[1:]
+			case positional > 0:
+				positional--
+				words = words[1:]
+			default:
+				break opts
+			}
+		}
+	}
+	return words
+}
+
 // bareCommand strips what can hide a command name: a leading backslash (\sudo), a
 // subshell or substitution opener ((sudo, $(sudo, `sudo, {), a closing ) or `.
 func bareCommand(w string) string {
@@ -320,6 +371,18 @@ func changeDir(dir string, args []string) string {
 func findDeletes(args []string) ([]string, bool) {
 	var roots []string
 	i := 0
+	// Options before the search paths: -H, -L, -P, -D debugopts, -Olevel.
+	for i < len(args) {
+		switch a := args[i]; {
+		case a == "-H" || a == "-L" || a == "-P" || strings.HasPrefix(a, "-O"):
+			i++
+			continue
+		case a == "-D":
+			i += 2
+			continue
+		}
+		break
+	}
 	for ; i < len(args); i++ {
 		a := args[i]
 		if strings.HasPrefix(a, "-") || a == "(" || a == "!" {
