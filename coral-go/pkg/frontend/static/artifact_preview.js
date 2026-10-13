@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, renderImagePanes } from './utils.js';
 import { renderJSONReport } from './artifact_report.js';
-import { splitKey, serverUrl, contextServer, isCloud } from './server_base.js';
+import { splitKey, serverUrl, contextServer, isCloud, artifactPath } from './server_base.js';
 import { isSvg, svgDataUrl } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
@@ -93,7 +93,7 @@ function _renderManifest(body, manifest, filename, ctx) {
         <div class="artifact-manifest-main"><button type="button" class="artifact-manifest-open" data-manifest-index="${Number(index)}">
             <span class="artifact-manifest-name">${escapeHtml(entry.name)}</span>
             <span class="artifact-manifest-type">${escapeHtml(_entryType(entry))}</span>
-        </button><a class="artifact-manifest-download" href="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" download="${escapeAttr(entry.name)}" data-artifact-download="${escapeAttr(serverUrl(`/api/artifacts/${digest}`, contextServer()))}" data-artifact-name="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
+        </button><a class="artifact-manifest-download" href="${escapeAttr(serverUrl(artifactPath(digest), contextServer()))}" download="${escapeAttr(entry.name)}" data-artifact-download="${escapeAttr(serverUrl(artifactPath(digest), contextServer()))}" data-artifact-name="${escapeAttr(entry.name)}" aria-label="Download ${escapeAttr(entry.name)}">Download</a></div>
         <span class="artifact-manifest-uri">${escapeHtml(entry.uri)}</span>
     </li>`;
     }).join('');
@@ -175,7 +175,7 @@ export function resolveArtifactSource(uri, options = {}) {
         if (parsed.protocol === 'https:' || parsed.protocol === 'http:') externalURL = parsed.href;
     } catch { /* Only explicit HTTP(S) links can be embedded. */ }
     if (!match && !inlineURL && !externalURL) return null;
-    return { url: externalURL || inlineURL || `/api/artifacts/${match[1]}`, externalURL, server: contextServer() };
+    return { url: externalURL || inlineURL || artifactPath(match[1]), externalURL, server: contextServer() };
 }
 
 /**

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/pkg/hubproxy"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -121,7 +122,7 @@ func TestTeamArtifactsIsolationOrderDedupeAndMissing(t *testing.T) {
 	require.True(t, report.Available)
 	require.NotNil(t, report.Size)
 	require.EqualValues(t, len("# report\n"), *report.Size, "size comes from the stored blob, not stale metadata")
-	require.Equal(t, "/api/artifacts/"+present, report.PreviewURL)
+	require.Equal(t, "/api/artifacts/"+present+"?v=2", report.PreviewURL)
 	require.Equal(t, report.PreviewURL, report.DownloadURL)
 	require.Equal(t, "text/markdown", report.MediaType)
 
@@ -190,6 +191,7 @@ func TestTeamArtifactContentIsTeamScoped(t *testing.T) {
 	require.Equal(t, "<script>1</script>", body)
 	require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"), "active content is never served as HTML")
 	require.Equal(t, "nosniff", resp.Header.Get("X-Content-Type-Options"))
+	require.Equal(t, hubproxy.SandboxCSP, resp.Header.Get("Content-Security-Policy"), "agent-written content is sandboxed")
 
 	// The same task id requested through another team is not found.
 	resp, _ = get(fmt.Sprintf("/api/board/beta/tasks/%d/artifact-content?index=0", id))
@@ -394,7 +396,7 @@ func TestTeamArtifactsListsSessionUploads(t *testing.T) {
 	require.Len(t, mine.Artifacts, 1)
 	require.Equal(t, "draft.md", mine.Artifacts[0].Name)
 	require.True(t, mine.Artifacts[0].Available)
-	require.Equal(t, "/api/artifacts/"+id, mine.Artifacts[0].PreviewURL)
+	require.Equal(t, "/api/artifacts/"+id+"?v=2", mine.Artifacts[0].PreviewURL)
 
 	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts?session_id=sess-2", http.StatusOK).Artifacts)
 	require.Empty(t, getTeamArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK).Artifacts, "team view lists task results only")
@@ -468,7 +470,7 @@ func TestTeamArtifactsListsUntaskedUploadsOfTeamMembers(t *testing.T) {
 		require.Equal(t, "text/markdown", a.MediaType)
 		require.NotNil(t, a.Size)
 		require.NotEmpty(t, a.CreatedAt)
-		require.Equal(t, "/api/artifacts/"+id, a.PreviewURL)
+		require.Equal(t, "/api/artifacts/"+id+"?v=2", a.PreviewURL)
 	}
 	require.Equal(t, sessAlice, *byID[draft].SessionID)
 	require.Equal(t, "completion", byID[attached].Source, "an upload a task references keeps its task link")

@@ -105,7 +105,7 @@ func (h *SessionsHandler) uploadAgentArtifact(w http.ResponseWriter, r *http.Req
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"uri":        "coral://artifacts/" + hex.EncodeToString(digestBytes[:]),
-		"url":        "/api/artifacts/" + hex.EncodeToString(digestBytes[:]),
+		"url":        artifactURL(hex.EncodeToString(digestBytes[:])),
 		"name":       name,
 		"media_type": mediaType,
 		"size":       len(data),
@@ -130,10 +130,10 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 		errNotFound(w, "artifact not found")
 		return
 	}
-	w.Header().Set("Content-Type", meta.MediaType)
+	// An agent chose these bytes and their type: an HTML or SVG upload must not
+	// run on the dashboard's origin when someone opens its link.
+	setUntrustedContentHeaders(w.Header(), meta.MediaType, meta.Name)
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", meta.Size))
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(meta.Name)))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	http.ServeFile(w, r, path)
 }

@@ -10,10 +10,10 @@ Uploading a file lists it in your own **Artifacts** tab right away, and, if you 
 
    ```sh
    coral-agent artifact upload report.md [--name NAME] [--media-type TYPE]
-   # prints JSON: {"uri": "coral://artifacts/<hex>", "url": "/api/artifacts/<hex>", "name", "media_type", "size", "digest": "sha256:<hex>"}
+   # prints JSON: {"uri": "coral://artifacts/<hex>", "url": "/api/artifacts/<hex>?v=2", "name", "media_type", "size", "digest": "sha256:<hex>"}
    ```
 
-   `uri` and `url` use the bare 64-character hex; `digest` carries the `sha256:` prefix, so do not build a URL from it.
+   `uri` and `url` use the bare 64-character hex (`url` adds `?v=2`; the plain `/api/artifacts/<hex>` also works); `digest` carries the `sha256:` prefix, so do not build a URL from it.
 
    That is enough to share it: the upload is listed under your name in Artifacts and Team Artifacts.
 
@@ -28,7 +28,7 @@ Uploading a file lists it in your own **Artifacts** tab right away, and, if you 
 
    Do not create a task just to share a file; the upload alone is listed.
 
-3. Tell the user the name. They open it from the Artifacts tab, or at `/api/artifacts/<hex>` in the browser.
+3. Tell the user the name. They open it from the Artifacts tab, which previews it (HTML in a sandbox that runs no script). The link (`url`) opens plain text, images, JSON and audio/video in the browser; HTML, SVG, XML, JavaScript, PDF, Markdown and any other type download instead. Every artifact response is sandboxed (`Content-Security-Policy: sandbox; default-src 'none'`, `nosniff`), so an artifact never runs script on the dashboard.
 
 Local paths such as `/tmp/report.md` are not reachable by the user or other agents. Always upload first. For small reports you can put the text inline as `content` in the manifest instead of uploading.
 

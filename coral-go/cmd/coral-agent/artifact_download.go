@@ -11,19 +11,26 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
+
+// linkVersion is the query of a versioned artifact link (/api/artifacts/<digest>?v=2).
+var linkVersion = regexp.MustCompile(`^v=[0-9]+$`)
 
 func artifactDigest(base, ref string) (string, error) {
 	id := strings.TrimPrefix(ref, "coral://artifacts/")
 	if strings.HasPrefix(ref, "/api/artifacts/") {
 		id = strings.TrimPrefix(ref, "/api/artifacts/")
+		if i := strings.IndexByte(id, '?'); i >= 0 && linkVersion.MatchString(id[i+1:]) {
+			id = id[:i] // the ?v=N link form (v1.4.12)
+		}
 	}
 	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
 		u, err := url.Parse(ref)
 		b, baseErr := url.Parse(base)
-		if err != nil || baseErr != nil || u.Scheme != b.Scheme || u.Host != b.Host || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		if err != nil || baseErr != nil || u.Scheme != b.Scheme || u.Host != b.Host || u.User != nil || (u.RawQuery != "" && !linkVersion.MatchString(u.RawQuery)) || u.Fragment != "" {
 			return "", fmt.Errorf("artifact URL must belong to the configured Coral server")
 		}
 		id = strings.TrimPrefix(u.Path, "/api/artifacts/")

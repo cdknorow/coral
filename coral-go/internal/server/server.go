@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -822,6 +823,7 @@ func (s *Server) staticBase() string {
 
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	purgePreSandboxCache(w, r)
 
 	if s.claimSupporterReminder(r) {
 		s.serveActivation(w, r)
@@ -1209,4 +1211,59 @@ func envTrue(name string) bool {
 		return true
 	}
 	return false
+}
+
+// cacheMarkerCookie records that this browser has had the v1.4.12 cache purge.
+const cacheMarkerCookie = "coral_csd"
+
+// purgePreSandboxCache clears this origin's HTTP cache once per browser (v1.4.12, #3168).
+//
+// Before 1.4.12 /api/artifacts/<digest> served agent-written HTML and SVG inline, with no
+// sandbox, as "public, max-age=1y, immutable". A browser that opened such a link keeps that
+// response and can answer the same link from it for a year, whatever the server now sends.
+// Clear-Site-Data: "cache" drops those entries (the static bundle is versioned and simply
+// reloads).
+//
+// Browsers act on Clear-Site-Data only in a secure context (https, or a loopback host), so
+// the marker is set only there: over plain http on a LAN address the header is ignored and
+// sent again on every load, and the purge happens as soon as the dashboard is opened over
+// https or on this machine.
+func purgePreSandboxCache(w http.ResponseWriter, r *http.Request) {
+	if _, err := r.Cookie(cacheMarkerCookie); err == nil {
+		return
+	}
+	w.Header().Set("Clear-Site-Data", `"cache"`)
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	if !secure && !loopbackHost(r.Host) {
+		// Ignored here: keep revalidating normally and try again on the next load.
+		return
+	}
+	// The purge runs once: send the full page so it is not a 304 that might bypass the
+	// browser's handling of the header.
+	r.Header.Del("If-None-Match")
+	r.Header.Del("If-Modified-Since")
+	http.SetCookie(w, &http.Cookie{
+		Name:     cacheMarkerCookie,
+		Value:    "1412",
+		Path:     "/",
+		MaxAge:   10 * 365 * 24 * 60 * 60,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+	})
+}
+
+// loopbackHost reports whether a Host header names this machine the way browsers treat as a
+// secure context: localhost (and *.localhost), 127.0.0.0/8 or ::1.
+func loopbackHost(hostport string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.TrimSuffix(strings.Trim(host, "[]"), ".")
+	if strings.EqualFold(host, "localhost") || strings.HasSuffix(strings.ToLower(host), ".localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

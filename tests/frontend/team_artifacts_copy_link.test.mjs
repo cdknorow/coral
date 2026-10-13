@@ -44,7 +44,7 @@ assert.equal(rows[0].querySelectorAll('.team-artifact-actions > *').length, 3, '
 
 buttons[0].click();
 await new Promise(r => setTimeout(r, 0));
-assert.deepEqual(copied, [`https://hub.example/api/artifacts/${digest}`], 'managed artifacts copy an absolute URL');
+assert.deepEqual(copied, [`https://hub.example/api/artifacts/${digest}?v=2`], 'managed artifacts copy an absolute URL in the v1.4.12 link form');
 assert.ok(buttons[0].querySelector('path[d="m3 8.5 3 3 7-7"]'), 'success shows the check icon');
 buttons[1].click();
 await new Promise(r => setTimeout(r, 0));

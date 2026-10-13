@@ -47,6 +47,26 @@ func isTunnel(t Target) bool {
 	return false
 }
 
+// SandboxCSP is set on every response whose bytes an agent, a repo or a remote
+// controls: if a browser opens it as a document anyway, it gets an opaque origin
+// and runs no script.
+const SandboxCSP = "sandbox; default-src 'none'"
+
+// InlineSafe reports whether content of this media type (no parameters,
+// lower case) may be shown inline on a Coral origin. Anything else that
+// untrusted code can influence is sent as a download.
+func InlineSafe(mediaType string) bool { return safeMediaTypes[mediaType] }
+
+// Disposition builds a Content-Disposition of kind ("inline" or "attachment")
+// that keeps only a sanitised base name of filename.
+func Disposition(kind, filename string) string {
+	name := dispositionFilename(mime.FormatMediaType(kind, map[string]string{"filename": filename}))
+	if name == "" {
+		return kind
+	}
+	return kind + "; filename=" + name
+}
+
 // safeMediaTypes may be served inline from the hub origin. Everything the
 // connector can influence that is not on this list is forced to a download.
 var safeMediaTypes = map[string]bool{
@@ -111,7 +131,7 @@ func StrictResponseFilter(resp *http.Response) error {
 		}
 	}
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Security-Policy", "sandbox; default-src 'none'")
+	h.Set("Content-Security-Policy", SandboxCSP)
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
 	// Whatever the connector says about caching is ignored: this is one account's content on a shared origin. A
 	// browser cache would keep it after sign-out, revoke, or on a shared browser (Coral marks artifacts

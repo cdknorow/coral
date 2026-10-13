@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, jsStr, sanitizeHtml } from './utils.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
-import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer } from './server_base.js';
+import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath } from './server_base.js';
 
 let source = 'files';
 let team = null;
@@ -39,8 +39,8 @@ function readableName(item) {
 
 function artifactLink(item) {
     if (item.available === false) return null;
-    const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})$/i.exec(item.uri || '');
-    if (managed) return { url: serverUrl(`/api/artifacts/${managed[1]}`, splitKey(team).server), preview: true };
+    const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
+    if (managed) return { url: serverUrl(artifactPath(managed[1]), splitKey(team).server), preview: true };
     const contentPath = `/api/board/${encodeURIComponent(splitKey(team).name)}/tasks/${item.task_id}/artifact-content`;
     if (item.inline && item.content_url?.startsWith(contentPath + '?')) {
         return { url: serverUrl(item.content_url, splitKey(team).server), preview: true };
@@ -157,7 +157,7 @@ function render() {
         const link = artifactLink(item);
         const doPreview = () => {
             if (!link || !previewArtifact) return;
-            const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})$/i.exec(item.uri || '');
+            const managed = /^(?:coral:\/\/artifacts\/|\/api\/artifacts\/)([a-f0-9]{64})(?:\?v=\d+)?$/i.exec(item.uri || '');
             previewArtifact({
                 ...item, name,
                 uri: managed ? `coral://artifacts/${managed[1].toLowerCase()}` : (item.uri || ''),

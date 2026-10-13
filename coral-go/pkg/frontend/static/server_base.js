@@ -41,6 +41,13 @@ const CLOUD_NEVER = /^\/api\/(system|settings|webhooks|license|servers)(\/|\?|$)
 /** The one machine-settings route the hub does expose: the changed-files comparison base (Interact tier, three validated values). */
 const CLOUD_ALLOWED = /^\/api\/settings\/git-diff-mode$/;
 
+/** The dashboard's link to a Coral-managed artifact. The `?v=2` form (v1.4.12) is new on purpose:
+ *  before 1.4.12 the bare /api/artifacts/<digest> was served inline without a sandbox and cached
+ *  for a year, so a link made now never matches such a cache entry. The server accepts both forms. */
+export function artifactPath(digest) {
+    return `/api/artifacts/${digest}?v=2`;
+}
+
 /** Prefix an absolute-path API url ("/api/...") for `server`. In cloud mode a route from
  *  CLOUD_NEVER is never sent through /api/remote: it is pointed at a path the hub 404s. */
 export function serverUrl(url, server) {

@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverUrl, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
+import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -1153,7 +1153,7 @@ function _taskDetailHtml(task, liveCost) {
         const artifactHtml = a => {
             const uri = String(a.uri || '');
             const coralMatch = /^coral:\/\/artifacts\/([a-f0-9]{64})$/i.exec(uri);
-            const href = coralMatch ? serverUrl(`/api/artifacts/${coralMatch[1]}`, contextServer()) : uri;
+            const href = coralMatch ? serverUrl(artifactPath(coralMatch[1]), contextServer()) : uri;
             const uriDisplay = (/^https?:\/\//i.test(uri) || coralMatch)
                 ? `<a href="${escapeAttr(coralMatch ? '#' : escapeAttr(href))}" data-artifact-uri="${escapeAttr(uri)}"${coralMatch ? ` onclick="event.preventDefault(); window.hideTaskDetailModal?.(); window.openFilePreview?.('${jsStr(uri)}')"` : ' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(uri)}</a>`
                 : escapeHtml(uri);

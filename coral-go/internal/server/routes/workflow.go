@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -616,7 +618,10 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serve the file with appropriate content type
+	// A step (a shell command or an agent) wrote this file, under any name: an
+	// .html or .svg must not run on the dashboard's origin. ServeFile keeps the
+	// headers set here and only adds the length and ranges.
+	setUntrustedContentHeaders(w.Header(), stepFileType(realFile), filepath.Base(realFile))
 	http.ServeFile(w, r, realFile)
 }
 
@@ -811,4 +816,23 @@ func validateTemplateRefs(text string, stepIndex, totalSteps int) string {
 	}
 
 	return ""
+}
+
+// stepFileType is a step file's media type: from its extension, otherwise
+// sniffed, with anything textual (including sniffed HTML) shown as plain text.
+func stepFileType(path string) string {
+	if t := mediatype.FromName(path); t != "" {
+		return t
+	}
+	head := make([]byte, 512)
+	f, err := os.Open(path)
+	if err != nil {
+		return mediatype.Generic
+	}
+	n, _ := io.ReadFull(f, head)
+	f.Close()
+	if t := http.DetectContentType(head[:n]); !strings.HasPrefix(t, "text/") {
+		return t
+	}
+	return "text/plain; charset=utf-8"
 }

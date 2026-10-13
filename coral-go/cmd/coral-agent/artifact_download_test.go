@@ -84,3 +84,20 @@ func TestArtifactDownloadRejectsUnrelatedURLs(t *testing.T) {
 		}
 	}
 }
+
+// The dashboard hands out /api/artifacts/<digest>?v=2 links from v1.4.12; both forms name the same artifact,
+// and any other query is still refused.
+func TestArtifactDigestAcceptsTheVersionedLink(t *testing.T) {
+	id := strings.Repeat("ab", 32)
+	for _, ref := range []string{"/api/artifacts/" + id + "?v=2", "http://localhost:8420/api/artifacts/" + id + "?v=2", "/api/artifacts/" + id} {
+		got, err := artifactDigest("http://localhost:8420", ref)
+		if err != nil || got != id {
+			t.Fatalf("%q: got %q, %v", ref, got, err)
+		}
+	}
+	for _, ref := range []string{"/api/artifacts/" + id + "?x=1", "http://localhost:8420/api/artifacts/" + id + "?v=2&x=1"} {
+		if _, err := artifactDigest("http://localhost:8420", ref); err == nil {
+			t.Fatalf("accepted %q", ref)
+		}
+	}
+}

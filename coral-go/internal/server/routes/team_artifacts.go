@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/pkg/hubproxy"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -27,7 +28,7 @@ const (
 
 var digestLikeName = regexp.MustCompile(`^(?:sha256:)?[a-fA-F0-9]{32,64}$`)
 
-var coralArtifactURI = regexp.MustCompile(`^(?:coral://artifacts/|/api/artifacts/)([a-fA-F0-9]{64})$`)
+var coralArtifactURI = regexp.MustCompile(`^(?:coral://artifacts/|/api/artifacts/)([a-fA-F0-9]{64})(?:\?v=[0-9]+)?$`)
 
 // teamArtifact is one deduplicated artifact reference in a team's task results.
 type teamArtifact struct {
@@ -229,7 +230,7 @@ func collectTeamArtifacts(project string, tasks []board.TeamArtifactTask, subscr
 func enrichTeamArtifact(it *teamArtifact, objectDir string) {
 	switch {
 	case it.managed != "":
-		it.PreviewURL = "/api/artifacts/" + it.managed
+		it.PreviewURL = artifactURL(it.managed)
 		it.DownloadURL = it.PreviewURL
 		if objectDir == "" {
 			return
@@ -312,8 +313,10 @@ func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	// Already plain text; sandboxed as well, like every agent-written response.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filepath.Base(refs[index].Name)))
+	w.Header().Set("Content-Security-Policy", hubproxy.SandboxCSP)
+	w.Header().Set("Content-Disposition", hubproxy.Disposition("inline", refs[index].Name))
 	_, _ = w.Write([]byte(refs[index].Content))
 }
 
