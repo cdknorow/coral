@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cdknorow/coral/pkg/tunnel"
 	"github.com/stretchr/testify/assert"
@@ -93,10 +94,16 @@ func TestStreamCapIs503AndDoesNotMarkUnreachable(t *testing.T) {
 
 			close(release)
 			assert.Equal(t, http.StatusOK, <-held)
-			resp, err = http.Get(hub.URL + "/api/remote/srv/api/ok")
-			require.NoError(t, err)
-			resp.Body.Close()
-			assert.Equal(t, http.StatusOK, resp.StatusCode, "the stream slot is free again")
+			// The held stream's slot is released just after its response is
+			// delivered (connector and hub sides), so wait for it rather than race it.
+			require.Eventually(t, func() bool {
+				resp, err := http.Get(hub.URL + "/api/remote/srv/api/ok")
+				if err != nil {
+					return false
+				}
+				resp.Body.Close()
+				return resp.StatusCode == http.StatusOK
+			}, 2*time.Second, 10*time.Millisecond, "the stream slot is free again")
 		})
 	}
 }

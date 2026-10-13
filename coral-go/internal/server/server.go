@@ -7,6 +7,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"html"
 	"html/template"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -59,6 +60,7 @@ type Server struct {
 	keyStore        *auth.KeyStore
 	router          chi.Router
 	indexTmpl       *template.Template
+	indexPage       renderedPage // the dashboard page, rendered and compressed once per data
 	tasksHandler    *routes.TasksHandler
 	boardHandler    *routes.BoardHandler
 	historyHandler  *routes.HistoryHandler
@@ -750,7 +752,9 @@ func (s *Server) buildRouter() chi.Router {
 		w.Header().Set("Content-Type", "application/javascript")
 		http.ServeFileFS(w, r, staticFS, "static/sw.js")
 	})
-	r.Handle("/static/*", http.StripPrefix("/static/", noCacheHandler(http.FileServer(http.FS(staticSub)))))
+	// Files: ETag + no-cache revalidation, gzip for text (static_assets.go). Directories
+	// and misses keep the old no-store FileServer behaviour.
+	r.Handle("/static/*", http.StripPrefix("/static/", staticAssetHandler(staticSub, noCacheHandler(http.FileServer(http.FS(staticSub))))))
 
 	// API spec for custom views
 	r.Get("/api/spec.json", func(w http.ResponseWriter, r *http.Request) {
@@ -807,7 +811,8 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := templateData{CoralRoot: s.cfg.CoralRoot}
-	if err := s.indexTmpl.Execute(w, data); err != nil {
+	render := func(out io.Writer) error { return s.indexTmpl.Execute(out, data) }
+	if err := s.indexPage.serve(w, r, data.CoralRoot, render); err != nil {
 		log.Printf("Error rendering index template: %v", err)
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 	}
@@ -844,7 +849,11 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 		TargetSessionID: sessionID,
 		TargetServer:    server,
 	}
-	if err := s.indexTmpl.Execute(w, data); err != nil {
+	// Rendered per request (the data names the session); served with the same
+	// revalidation and compression as the dashboard page.
+	var page renderedPage
+	render := func(out io.Writer) error { return s.indexTmpl.Execute(out, data) }
+	if err := page.serve(w, r, "", render); err != nil {
 		log.Printf("Error rendering agent popout template: %v", err)
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 	}
