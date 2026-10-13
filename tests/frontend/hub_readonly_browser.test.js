@@ -84,8 +84,8 @@ const CLOUD_PRELOAD = `(() => {
     const w = require('./helpers/wait').bind(ev);
     const afterEnter = async () => {
         await waitFor(`document.querySelectorAll('.toast, .notification-toast').length > 0 || window.__wsSent.length > 0`, 'a refusal or a send', 3000).catch(() => {});
-        let last = JSON.stringify(await sends()), since = Date.now();
-        while (Date.now() - since < 300) { await sleep(25); const now = JSON.stringify(await sends()); if (now !== last) { last = now; since = Date.now(); } }
+        let last = JSON.stringify(await sends()), since = Date.now(); const end = since + 8000;
+        while (Date.now() - since < 300 && Date.now() < end) { await sleep(25); const now = JSON.stringify(await sends()); if (now !== last) { last = now; since = Date.now(); } }
     };
     const pressEnter = () => ev(`document.getElementById('command-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); true`);
     const draft = () => ev(`document.getElementById('command-input').value`);

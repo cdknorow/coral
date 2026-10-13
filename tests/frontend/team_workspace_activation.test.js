@@ -83,7 +83,7 @@ const BASE = require('./test_base').BASE;
     await ev(`window.showTeamWorkingModeWorkspace('alpha'); true`);
     await w.waitFor(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent === 'alpha' && document.querySelector('#team-settings-workspace .working-mode-form')?.dataset.initialState !== undefined`, 'alpha settings to load', { soft: true });
     await ev(`document.querySelector('#team-settings-workspace textarea[name="custom_instructions"]').value = 'alpha-only draft'`);
-    await ev(`window.showTeamWorkingModeWorkspace('beta'); new Promise(r => setTimeout(r, 80))`);
+    await ev(`window.showTeamWorkingModeWorkspace('beta'); new Promise(r => setTimeout(r, 80))`); // sleep-ok: negative check, the declined switch must change nothing
     assert.equal(await ev(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent`), 'alpha');
     assert.equal(await ev(`location.hash`), '#team-settings=alpha');
     await ev(`window.confirm = () => true; window.showTeamWorkingModeWorkspace('beta'); true`);
