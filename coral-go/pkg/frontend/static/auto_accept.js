@@ -19,11 +19,10 @@ import { scheduleLiveSessionsRender } from './render.js';
 import { isPopout } from './popout.js';
 
 const WARNING_TITLE = 'Turn on auto-accept for this agent?';
-const WARNING_TEXT = 'Coral will answer “Yes” to this agent’s permission prompts for you: it will run commands, '
-    + 'edit and delete files and use tools without asking. Only do this for a task you trust, ideally in a '
-    + 'sandbox or a disposable worktree. Questions, plan approvals and risky actions (such as recursive '
-    + 'deletes, force pushes, sudo, or files outside the agent’s folder) still wait for you, and it turns '
-    + 'off when the agent restarts or wakes.';
+const WARNING_TEXT = 'Coral will answer “Yes” to this agent’s permission prompts for you, which can include '
+    + 'risky actions such as deleting files, force-pushing, running sudo or changing files outside the agent’s '
+    + 'folder. Only turn this on for a task you trust, ideally in a sandbox or a disposable worktree. Questions '
+    + 'and plan approvals still wait for you. It turns off when the agent restarts or wakes.';
 
 // Why Coral turned it off (auto_accept_paused_code). The server sends codes only; the words are ours.
 export const PAUSED_TEXT = {

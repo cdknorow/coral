@@ -6,8 +6,10 @@ import (
 	"strings"
 )
 
-// High-risk actions are never auto-approved (#3182, Coral Hub review E); they
-// wait for the user, with an auto_accept_skipped event saying why. The list
+// A best-effort safety net, not a guarantee (#3182; operator, 2026-10-13): the
+// high-risk actions it recognises wait for the user, with an auto_accept_skipped
+// event saying why. It is not a full shell parser, so risky actions can still be
+// approved, and the user is told so when turning auto-accept on. The list
 // applies to every auto-accept, local or from the Cloud Hub:
 //
 //   - recursive rm (-r, -R, -rf, --recursive) of anything outside the session's

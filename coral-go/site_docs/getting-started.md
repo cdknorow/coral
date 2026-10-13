@@ -68,9 +68,10 @@ Launching successfully means the agent process was started. It does not prove th
 
 ## Auto-accept permission prompts
 
-For an agent you trust with its task, you can let Coral answer its permission prompts for you: open the agent's menu (⋮) and turn on **Auto-accept prompts**. Coral warns you first, because the agent will then run commands, edit and delete files and use tools without asking; use it for trusted tasks, ideally in a sandbox or a disposable worktree. You can give it a time limit.
+For an agent you trust with its task, you can let Coral answer its permission prompts for you: open the agent's menu (⋮) and turn on **Auto-accept prompts**. Coral warns you first, because the agent will then run commands, edit and delete files and use tools without asking, and that can include risky actions; use it only for trusted tasks, ideally in a sandbox or a disposable worktree. You can give it a time limit.
 
-- Coral only approves tool-permission prompts, and only with "approve once"; it never picks "always allow". Questions, plan approvals, anything it does not recognise, and risky actions (recursive deletes, force pushes, `sudo`, files outside the agent's folder and similar) still wait for you.
+- Coral only approves tool-permission prompts, and only with "approve once"; it never picks "always allow". Questions, plan approvals and anything it does not recognise still wait for you.
+- Risky actions such as deleting files, force-pushing, running `sudo` or changing files outside the agent's folder **can be approved**. Coral holds back some high-risk actions it recognises, as a best-effort safety net, not a guarantee.
 - An amber **AUTO** chip marks the agent while it is on; click the chip in the agent's header (or use the menu) to turn it off. **Stop all auto-accept** in the top-bar menu turns it off everywhere.
 - Every approval is listed in the agent's **Activity**. If the same prompt keeps coming back, Coral turns auto-accept off and tells you why.
 - It turns off by itself when the agent restarts, resumes or wakes, or when its time limit runs out. It stays on if only Coral restarts while the agent keeps running.

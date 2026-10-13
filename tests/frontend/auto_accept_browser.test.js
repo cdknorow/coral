@@ -93,8 +93,10 @@ const BASE = require('./test_base').BASE;
         assert.equal(d.modal, true, 'a modal dialog');
         assert.equal(d.title, 'Turn on auto-accept for this agent?');
         assert.equal(d.agent, 'Builder', 'the dialog names the agent as the sidebar does (display name)');
-        assert.match(d.text, /run commands, edit and delete files and use tools without asking/);
-        assert.match(d.text, /Questions, plan approvals and risky actions/);
+        // The warning promises no safety net for risky actions (#3182, operator): it says they can be approved.
+        assert.match(d.text, /which can include risky actions such as deleting files, force-pushing, running sudo or changing files outside the agent’s folder/);
+        assert.match(d.text, /Questions and plan approvals still wait for you\. It turns off when the agent restarts or wakes\./);
+        assert.doesNotMatch(d.text, /risky actions[^.]*still wait/, 'no claim that risky actions wait');
         assert.deepEqual(await ev(`(() => { const sel = document.getElementById('auto-accept-duration'); return [sel.value, [...sel.options].map(o => o.text)]; })()`),
             ['', ['No time limit', '15 minutes', '30 minutes', '1 hour', '2 hours', '4 hours', '8 hours']], 'local: no time limit by default');
         await ev(`[...document.querySelectorAll('dialog.auto-accept-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
