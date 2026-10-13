@@ -14,6 +14,7 @@ const BASE = require('./test_base').BASE;
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails));
         return r.result.value;
     };
+    const { coralReady } = require('./helpers/wait').bind(ev);
     const tick = () => ev('new Promise(r=>setTimeout(r,60))');
     const status = () => ev(`document.getElementById('mobile-connect-status').textContent`);
     const action = label => ev(`[...document.querySelectorAll('#mobile-connect-actions button')].find(b=>b.textContent===${JSON.stringify(label)}).click()`);
@@ -33,6 +34,8 @@ const BASE = require('./test_base').BASE;
         await Page.enable();
         await client.Emulation.setDeviceMetricsOverride({width:1200,height:900,deviceScaleFactor:1,mobile:false});
         await Page.navigate({url:BASE}); await Page.loadEventFired();
+        // Startup's loadSettings() reads /api/system/privacy too: let it finish before the mock starts counting calls.
+        await coralReady('startup', 'settings');
         await ev(`(async()=>{
             await import((window.__coralStatic||'/static/')+'modals.js');
             const {state}=await import((window.__coralStatic||'/static/')+'state.js');window.__state=state;

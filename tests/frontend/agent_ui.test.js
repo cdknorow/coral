@@ -85,7 +85,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',session_id:${JSON.stringify(sid)}};await (await import((window.__coralStatic||'/static/')+'agent_ui.js')).refreshAgentUI();})()`);
   assert.equal(await ev(`document.querySelector('.agent-ui-card')?.hidden`),true,'dismissal survives reload');
   await ev(`document.querySelector('.agent-ui-home-row').click()`);
-  await waitFor(`document.querySelectorAll('.agent-ui-card').length >= 1`, 'the reopened card', { soft: true });
+  // The dismissed card still exists (hidden) after the reload, so wait for it to be SHOWN: the click's refresh is
+  // dropped while another refresh is in flight, and the card un-hides only when that one finishes.
+  await waitFor(`!!document.querySelector('.agent-ui-card') && !document.querySelector('.agent-ui-card').hidden`, 'the reopened card to show');
   assert.equal(await ev(`document.querySelectorAll('.agent-ui-card').length`),1);
   await ev(`document.querySelector('.agent-ui-card button').click()`);
   await waitFor(`!!document.getElementById('agent-ui-expanded')?.open`, 'the expanded panel', { soft: true });
