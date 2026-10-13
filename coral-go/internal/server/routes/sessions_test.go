@@ -583,6 +583,45 @@ func TestSessionsChat_BeforeCursorIsStableAcrossAppends(t *testing.T) {
 	}
 }
 
+// An empty transcript still answers a history request (after=0) with a page
+// (no messages, start 0, has_more false), and before= is validated there too.
+// A poll (after>0) keeps the poll shape.
+func TestSessionsChat_EmptyTranscriptIsAPageAndValidatesBefore(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+	sid := "00000000-0000-0000-0000-000000000204"
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, sid+".jsonl"), nil, 0644))
+
+	get := func(query string) (int, map[string]any) {
+		t.Helper()
+		resp, err := http.Get(fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&%s", server.URL, sid, sid, query))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return resp.StatusCode, out
+	}
+	for _, q := range []string{"after=0&limit=100", "after=0&limit=100&offset=0", "after=0&limit=200&before=5", "limit=100"} {
+		code, out := get(q)
+		require.Equal(t, http.StatusOK, code, q)
+		assert.Equal(t, []any{}, out["messages"], q)
+		assert.Equal(t, float64(0), out["start"], q)
+		assert.Equal(t, false, out["has_more"], q)
+		assert.Equal(t, float64(0), out["total"], q)
+	}
+	for _, bad := range []string{"before=abc", "before=-1"} {
+		code, _ := get("after=0&limit=100&" + bad)
+		assert.Equal(t, http.StatusBadRequest, code, bad)
+	}
+	code, out := get("after=3")
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, []any{}, out["messages"])
+	assert.NotContains(t, out, "start", "a poll keeps the poll shape")
+}
+
 // A history page is the large response of a chat switch; it is gzipped for a
 // client that accepts it, which the hub proxy relays unchanged.
 func TestSessionsChat_HistoryPageIsGzipped(t *testing.T) {

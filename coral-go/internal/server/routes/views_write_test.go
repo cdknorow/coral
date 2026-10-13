@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -147,4 +148,34 @@ func TestPutGitDiffModeValidatesAndStoresOnlyThatKey(t *testing.T) {
 	var v string
 	require.NoError(t, db.QueryRow("SELECT value FROM user_settings WHERE key = 'git_diff_mode'").Scan(&v))
 	assert.Equal(t, "main_head", v, "a refused request changed nothing")
+}
+
+// Create and update answer with the stored record: real created_at/updated_at,
+// and the created_via the store kept. Updating a view that does not exist is a 404.
+func TestViewWritesReturnStoredTimestamps(t *testing.T) {
+	h, vs := viewsRouter(t)
+	w := do(h, http.MethodPost, "/api/views", viewJSON, asDashboard)
+	require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	var created store.CustomView
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &created))
+	require.NotZero(t, created.ID)
+	require.NotEmpty(t, created.CreatedAt)
+	require.NotEmpty(t, created.UpdatedAt)
+	stored, err := vs.GetView(t.Context(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, *stored, created, "the response is the stored record")
+
+	w = do(h, http.MethodPut, "/api/views/"+viewID(created.ID), `{"name":"v2","html":"<i>x</i>","scope":"global"}`, asDashboard)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var updated store.CustomView
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &updated))
+	assert.Equal(t, "v2", updated.Name)
+	assert.Equal(t, created.CreatedAt, updated.CreatedAt, "created_at is kept")
+	assert.NotEmpty(t, updated.UpdatedAt)
+	stored, err = vs.GetView(t.Context(), created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, *stored, updated)
+
+	w = do(h, http.MethodPut, "/api/views/999999", viewJSON, asDashboard)
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }

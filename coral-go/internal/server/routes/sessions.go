@@ -1367,8 +1367,9 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	// `start` to get the page above it. `offset` counts backwards from the
 	// current end and is kept for older clients, but it shifts whenever a
 	// message arrives between two pages. `start` is the absolute index of the
-	// first message returned.
-	if after == 0 && len(messages) > 0 {
+	// first message returned. An empty transcript is a page too (start 0), and
+	// a bad before is refused whether or not there are messages.
+	if after == 0 {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 		if limit <= 0 {
 			limit = 100 // default page size

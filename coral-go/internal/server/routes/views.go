@@ -117,8 +117,14 @@ func (h *ViewsHandler) CreateView(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	view.ID = id
-	writeJSON(w, http.StatusCreated, view)
+	// Answer with the stored record, so created_at/updated_at (set by the store)
+	// are the real ones.
+	stored, err := h.vs.GetView(r.Context(), id)
+	if err != nil || stored == nil {
+		errInternalServer(w, "view was created but could not be read back")
+		return
+	}
+	writeJSON(w, http.StatusCreated, stored)
 }
 
 // UpdateView updates an existing view.
@@ -159,8 +165,16 @@ func (h *ViewsHandler) UpdateView(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	view.ID = id
-	writeJSON(w, http.StatusOK, view)
+	stored, err := h.vs.GetView(r.Context(), id)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if stored == nil {
+		errNotFound(w, "view not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, stored)
 }
 
 // DeleteView deletes a view.
