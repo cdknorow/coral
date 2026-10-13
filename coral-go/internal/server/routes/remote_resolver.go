@@ -11,8 +11,19 @@ import (
 // RemoteResolver adapts the remote server registry to proxy.Resolver and
 // proxy.StatusReporter. Plaintext keys exist only in the returned Target.
 type RemoteResolver struct {
-	store *store.RemoteServerStore
+	store    *store.RemoteServerStore
+	failures FailureSink
 }
+
+// FailureSink takes a failure the proxy saw (background.RemoteAgentHub). It
+// returns false when it does not track id, and the resolver writes the row.
+type FailureSink interface {
+	ReportFailure(ctx context.Context, id, status, errMsg string) bool
+}
+
+// SetFailureSink routes the proxy's failures through the remote workers, so the
+// registry row and the worker's status cannot disagree (#3202).
+func (r *RemoteResolver) SetFailureSink(s FailureSink) { r.failures = s }
 
 // NewRemoteResolver wraps the registry store for use by the proxy and poller.
 func NewRemoteResolver(s *store.RemoteServerStore) *RemoteResolver {
@@ -38,5 +49,8 @@ func (r *RemoteResolver) Resolve(ctx context.Context, id string) (proxy.Target, 
 }
 
 func (r *RemoteResolver) MarkStatus(ctx context.Context, id, status, errMsg string) {
+	if r.failures != nil && r.failures.ReportFailure(ctx, id, status, errMsg) {
+		return
+	}
 	_ = r.store.SetStatus(ctx, id, status, errMsg)
 }

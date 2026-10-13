@@ -156,6 +156,27 @@ type remoteState struct {
 	lastSig   string
 	version   string    // remote's reported version (best effort)
 	versionAt time.Time // when it was last fetched
+	// wake asks the poll loop to probe now instead of after its wait, e.g.
+	// after a proxied request to this remote failed (#3202).
+	wake chan struct{}
+}
+
+func newRemoteState() *remoteState { return &remoteState{wake: make(chan struct{}, 1)} }
+
+// kick wakes the poll loop (coalesced). Call with h.mu held.
+func (st *remoteState) kick() {
+	select {
+	case st.wake <- struct{}{}:
+	default:
+	}
+}
+
+// rowNeedsWrite reports whether the registry row must be rewritten now: the
+// status changed, the row says something else (another writer, such as Test or
+// the proxy, put a different status there), or the periodic last_seen write is
+// due. Call with h.mu held.
+func (st *remoteState) rowNeedsWrite(changed bool, status string) bool {
+	return changed || st.srv.Status != status || time.Since(st.lastDB) >= remoteSeenWriteEvery
 }
 
 // remoteSeenWriteEvery bounds the remote_servers writes for a remote whose
@@ -226,6 +247,17 @@ func (h *RemoteAgentHub) reconcile(ctx context.Context) {
 		}
 		return
 	}
+	// A row marked key_unreadable stops its worker only if the key really cannot
+	// be read now. Another writer (the proxy) may have put that status there, and
+	// a stopped worker would otherwise stay stopped until Test (#3202). Checked
+	// outside the lock: it reads and decrypts the key.
+	keyUnreadable := map[string]bool{}
+	for _, rs := range list {
+		if rs.Status == store.RemoteStatusKeyUnreadable {
+			_, rerr := h.resolver.Resolve(ctx, rs.ID)
+			keyUnreadable[rs.ID] = errors.Is(rerr, proxy.ErrKeyUnreadable)
+		}
+	}
 	changed := false
 	h.mu.Lock()
 	seen := map[string]bool{}
@@ -238,17 +270,18 @@ func (h *RemoteAgentHub) reconcile(ctx context.Context) {
 			st.sessions, st.feedLive, st.status, st.noHealth = nil, false, "", false
 		}
 		if st == nil {
-			st = &remoteState{}
+			st = newRemoteState()
 			h.remotes[rs.ID] = st
 			changed = true
 		}
 		st.srv = rs
-		if rs.Status == store.RemoteStatusKeyUnreadable {
+		if rs.Status == store.RemoteStatusKeyUnreadable && keyUnreadable[rs.ID] {
 			if st.cancel != nil {
 				st.cancel()
 				st.cancel = nil
 			}
 			if st.status != store.RemoteStatusKeyUnreadable {
+				h.logTransition(rs.ID, st.status, store.RemoteStatusKeyUnreadable, "stored key cannot be decrypted")
 				st.status, st.feedLive = store.RemoteStatusKeyUnreadable, false
 				changed = true
 			}
@@ -387,8 +420,16 @@ func (h *RemoteAgentHub) current(id string) (*remoteState, bool) {
 
 // pollLoop polls one remote until ctx ends.
 func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
+	h.mu.Lock()
+	st, ok := h.current(id)
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+	wake := st.wake
 	backoff := h.cfg.MinBackoff
 	for {
+		probed := time.Now()
 		var sessions []map[string]any
 		var err error
 		feedFresh := h.feedCarriesList(id)
@@ -428,9 +469,26 @@ func (h *RemoteAgentHub) pollLoop(ctx context.Context, id string) {
 				backoff = h.cfg.MaxBackoff
 			}
 		}
-		if !sleepCtx(ctx, wait) {
+		if !h.waitOrWake(ctx, wake, wait, probed) {
 			return
 		}
+	}
+}
+
+// waitOrWake waits for d, or less if the loop is kicked (a proxied request to
+// the remote failed), so the next probe settles the status at once (#3202).
+// Probes stay at least MinBackoff apart, so a burst of failures cannot turn
+// into a burst of probes. It returns false when ctx ends.
+func (h *RemoteAgentHub) waitOrWake(ctx context.Context, wake <-chan struct{}, d time.Duration, probed time.Time) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	case <-wake:
+		return sleepCtx(ctx, h.cfg.MinBackoff-time.Since(probed))
 	}
 }
 
@@ -500,10 +558,13 @@ func (h *RemoteAgentHub) recordAlive(ctx context.Context, id string) {
 		return
 	}
 	changed := st.status != store.RemoteStatusOnline
+	if changed {
+		h.logTransition(id, st.status, store.RemoteStatusOnline, "")
+	}
 	st.status = store.RemoteStatusOnline
-	writeDB := changed || time.Since(st.lastDB) >= remoteSeenWriteEvery
+	writeDB := st.rowNeedsWrite(changed, store.RemoteStatusOnline)
 	if writeDB {
-		st.lastDB = time.Now()
+		st.lastDB, st.srv.Status = time.Now(), store.RemoteStatusOnline
 	}
 	h.mu.Unlock()
 	if writeDB {
@@ -620,6 +681,9 @@ func (h *RemoteAgentHub) recordOnline(ctx context.Context, id string, sessions [
 	}
 	changed := st.status != store.RemoteStatusOnline
 	statusChanged := changed
+	if changed {
+		h.logTransition(id, st.status, store.RemoteStatusOnline, "")
+	}
 	st.status = store.RemoteStatusOnline
 	if !st.feedLive {
 		if sig := sessionsSig(sessions); sig != st.lastSig || changed {
@@ -630,9 +694,9 @@ func (h *RemoteAgentHub) recordOnline(ctx context.Context, id string, sessions [
 	}
 	// The row records status and last_seen, not sessions: a session change
 	// does not need a write (#3142).
-	writeDB := statusChanged || time.Since(st.lastDB) >= remoteSeenWriteEvery
+	writeDB := st.rowNeedsWrite(statusChanged, store.RemoteStatusOnline)
 	if writeDB {
-		st.lastDB = time.Now()
+		st.lastDB, st.srv.Status = time.Now(), store.RemoteStatusOnline
 	}
 	h.mu.Unlock()
 	if writeDB {
@@ -662,13 +726,16 @@ func (h *RemoteAgentHub) recordFailure(ctx context.Context, id string, err error
 		msg = "remote rejected API key"
 	}
 	changed := st.status != status
+	if changed {
+		h.logTransition(id, st.status, status, msg)
+	}
 	st.status = status
 	st.feedLive = false
 	// A repeated failure with the same error is written at most once a minute;
 	// a new status or a different error is written at once (#3142).
-	writeDB := changed || msg != st.lastErr || time.Since(st.lastDB) >= remoteSeenWriteEvery
+	writeDB := st.rowNeedsWrite(changed, status) || msg != st.lastErr
 	if writeDB {
-		st.lastDB = time.Now()
+		st.lastDB, st.srv.Status = time.Now(), status
 		st.lastErr = msg
 	}
 	h.mu.Unlock()
@@ -678,6 +745,48 @@ func (h *RemoteAgentHub) recordFailure(ctx context.Context, id string, err error
 	if changed {
 		h.notify()
 	}
+}
+
+// ReportFailure records a failure seen outside the worker, i.e. a proxied
+// dashboard request to the remote (#3202). The worker's own status changes with
+// the registry row, so the two never disagree, and the worker probes again at
+// once: a remote that is fine is back to online within a probe, instead of the
+// row staying failed until the next periodic write or a Test. A key_unreadable
+// report does not stop the worker; its own probe decides. It returns false if
+// no worker runs for id, and the caller records the status itself.
+func (h *RemoteAgentHub) ReportFailure(ctx context.Context, id, status, msg string) bool {
+	h.mu.Lock()
+	st, ok := h.current(id)
+	if !ok || st.cancel == nil {
+		h.mu.Unlock()
+		return false
+	}
+	changed := st.status != status
+	if changed {
+		h.logTransition(id, st.status, status, msg+" (proxied request)")
+	}
+	st.status = status
+	st.lastDB, st.lastErr, st.srv.Status = time.Now(), msg, status
+	st.kick()
+	h.mu.Unlock()
+	_ = h.reg.SetStatus(ctx, id, status, msg)
+	if changed {
+		h.notify()
+	}
+	return true
+}
+
+// logTransition logs one line per status change. msg is an error message the
+// registry also stores, never key material.
+func (h *RemoteAgentHub) logTransition(id, from, to, msg string) {
+	if from == "" {
+		from = store.RemoteStatusUnknown
+	}
+	if msg == "" {
+		h.logger.Info("remote status changed", "server", id, "from", from, "to", to)
+		return
+	}
+	h.logger.Info("remote status changed", "server", id, "from", from, "to", to, "error", msg)
 }
 
 // feedLoop maintains the upstream /ws/coral socket for one remote while the
