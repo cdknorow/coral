@@ -92,6 +92,10 @@ const UNDERSIZED = `(() => {
         await open(820, 1180, false);
         await ev(`(async () => { const ui = await import('/static/agent_ui.js'); await ui.refreshAgentUI(); window.switchAgenticTab('agent-ui', 'top'); })()`);
         await sleep(600);
+        // The panel list (home rows) is on screen before a panel is opened.
+        assert.ok(await ev(`!!document.querySelector('.agent-ui-home-row') && document.querySelector('.agent-ui-home-row').getBoundingClientRect().height > 0`), 'the Agent UI panel list is shown');
+        const homeSmall = await ev(UNDERSIZED);
+        assert.deepEqual(homeSmall, [], 'iPad 820 with the Agent UI panel list shown: every control is at least 44x44: ' + JSON.stringify(homeSmall));
         await ev(`document.querySelector('.agent-ui-home-row').click()`); await sleep(300);
         const panelSmall = await ev(UNDERSIZED);
         assert.deepEqual(panelSmall, [], 'iPad 820 with the Agent UI panel open: every control is at least 44x44: ' + JSON.stringify(panelSmall));
