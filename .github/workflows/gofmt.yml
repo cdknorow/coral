@@ -1,0 +1,36 @@
+name: gofmt
+# Every Go file under coral-go/ stays gofmt-clean. Runs on pushes to main (most changes land there
+# directly) as well as on pull requests. Fix locally with: cd coral-go && gofmt -w <files listed>.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "coral-go/**.go"
+      - ".github/workflows/gofmt.yml"
+  pull_request:
+    paths:
+      - "coral-go/**.go"
+      - ".github/workflows/gofmt.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gofmt:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: coral-go/go.mod
+          cache: false
+      - name: gofmt -l (must list nothing)
+        working-directory: coral-go
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt (cd coral-go && gofmt -w <file>):"
+            echo "$unformatted"
+            exit 1
+          fi
