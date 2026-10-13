@@ -79,6 +79,7 @@ type mockSessionTerminal struct {
 	raw              map[string][]string // keys sent with SendRawInput
 	killSessionCalls []string
 	sendErr          error
+	gone             bool              // the agent's own terminal is gone: writes fail with ErrTerminalGone (#3211)
 	onCapture        func(name string) // called (unlocked) after each capture, e.g. to change the screen
 	onRaw            func(name string) // called (unlocked) after each SendRawInput, e.g. the agent's next prompt
 }
@@ -117,6 +118,9 @@ func (m *mockSessionTerminal) ListSessions(_ context.Context) ([]ptymanager.Pane
 func (m *mockSessionTerminal) FindSession(_ context.Context, name, _, _ string) (*ptymanager.PaneInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.gone {
+		return nil, nil
+	}
 	if p, ok := m.sessions[name]; ok {
 		return p, nil
 	}
@@ -141,6 +145,9 @@ func (m *mockSessionTerminal) CaptureOutput(_ context.Context, name string, _ in
 func (m *mockSessionTerminal) SendInput(_ context.Context, name, command, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.gone {
+		return fmt.Errorf("%w: pane %q", ptymanager.ErrTerminalGone, name)
+	}
 	if _, ok := m.sessions[name]; !ok {
 		return fmt.Errorf("session %q not found", name)
 	}
@@ -151,6 +158,9 @@ func (m *mockSessionTerminal) SendInput(_ context.Context, name, command, _, _ s
 func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, _ string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.gone {
+		return fmt.Errorf("%w: pane %q", ptymanager.ErrTerminalGone, name)
+	}
 	if _, ok := m.sessions[name]; !ok {
 		return fmt.Errorf("session %q not found", name)
 	}
@@ -219,7 +229,12 @@ func (m *mockSessionTerminal) RenameSession(_ context.Context, oldName, newName 
 	return nil
 }
 
-func (m *mockSessionTerminal) ResizeSession(_ context.Context, _ string, _ int, _, _ string) error {
+func (m *mockSessionTerminal) ResizeSession(_ context.Context, name string, _ int, _, _ string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.gone {
+		return fmt.Errorf("%w: pane %q", ptymanager.ErrTerminalGone, name)
+	}
 	return nil
 }
 func (m *mockSessionTerminal) ResizeTarget(_ context.Context, _ string, _, _ int) error { return nil }

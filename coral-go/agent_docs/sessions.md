@@ -347,9 +347,11 @@ Send a text command to the agent's terminal. `agent_type` and `session_id` are r
 | 409 | `{"error": "session is sleeping"}` | sleeping agent (wake it first) |
 | 409 | `{"error": "session is archived"}` | archived agent |
 | 503 | `{"error": "...", "code": "agent_metadata_unavailable", "not_sent": true}` | session metadata could not be read; retry |
-| 500 | `{"error": "session \"NAME\" not found"}` | the session is listed as awake but its terminal is gone |
+| 409 | `{"error": "The agent's terminal is gone", "code": "terminal_gone", "not_sent": true}` | the session is listed as awake but its own terminal no longer exists |
 
 Checks run in this order: required fields, `session_id` format, unknown session, sleeping/archived, then target match. So a mismatched request to a sleeping agent answers 409, not 400.
+
+**A request with a `session_id` only ever reaches that session's own terminal.** If it is gone, Coral answers `terminal_gone` and sends nothing; it never falls back to another terminal with the same name, folder or a similar name (teammates often share a folder). The same holds for `/keys`, `/resize`, `/answer-prompt`, restart and resume (409 `terminal_gone`), kill, sleep and Kill All (they end only that session), board and task nudges, and reads such as `/prompt-options` and capture (an empty result). Only legacy calls without a `session_id` still match by name.
 
 ```bash
 curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/send \

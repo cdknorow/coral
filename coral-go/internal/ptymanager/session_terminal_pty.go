@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 )
 
@@ -35,10 +36,21 @@ func (p *PTYSessionTerminal) ListSessions(_ context.Context) ([]PaneInfo, error)
 }
 
 func (p *PTYSessionTerminal) FindSession(_ context.Context, name, agentType, sessionID string) (*PaneInfo, error) {
+	if sessionID == "" {
+		if _, sid := logparse.ParseSessionName(name); sid != "" {
+			sessionID = sid // an exact session name names one session
+		}
+	}
 	sessions := p.backend.ListSessions()
 	for _, s := range sessions {
 		sessName := naming.SessionName(s.AgentType, s.SessionID)
-		if sessName == name || s.AgentName == name || s.SessionID == sessionID {
+		// With a session id only that session matches (#3211): an agent name or folder is
+		// shared by team agents, and the first match would be another agent's terminal.
+		match := s.SessionID == sessionID
+		if sessionID == "" {
+			match = sessName == name || s.AgentName == name
+		}
+		if match {
 			return &PaneInfo{
 				PaneTitle:   s.AgentName,
 				SessionName: sessName,
@@ -48,6 +60,25 @@ func (p *PTYSessionTerminal) FindSession(_ context.Context, name, agentType, ses
 		}
 	}
 	return nil, nil
+}
+
+// keyFor is the backend key of the agent's own session: by session id when there is one
+// (and ErrTerminalGone when that session is gone: never another session with the same name
+// or folder, #3211), else by name for legacy callers.
+func (p *PTYSessionTerminal) keyFor(name, sessionID string) (string, error) {
+	if sessionID == "" {
+		if _, sid := logparse.ParseSessionName(name); sid != "" {
+			sessionID = sid // an exact session name names one session
+		} else {
+			return p.resolveSessionKey(name), nil
+		}
+	}
+	for _, s := range p.backend.ListSessions() {
+		if s.SessionID == sessionID {
+			return naming.SessionName(s.AgentType, s.SessionID), nil // never a shared name or folder
+		}
+	}
+	return "", fmt.Errorf("%w: session %s", ErrTerminalGone, sessionID)
 }
 
 // resolveSessionKey maps a display name, folder name, session ID, or session
@@ -69,26 +100,41 @@ func (p *PTYSessionTerminal) resolveSessionKey(name string) string {
 	return name
 }
 
-func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, _ string) (string, error) {
-	data, err := p.backend.Replay(p.resolveSessionKey(name))
+func (p *PTYSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, sessionID string) (string, error) {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return "", nil // gone: nothing to show, and never another session's output
+	}
+	data, err := p.backend.Replay(key)
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
 }
 
-func (p *PTYSessionTerminal) SendInput(_ context.Context, name, command, _, _ string) error {
-	return p.backend.SendLine(p.resolveSessionKey(name), command)
+func (p *PTYSessionTerminal) SendInput(_ context.Context, name, command, _, sessionID string) error {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
+	return p.backend.SendLine(key, command)
 }
 
 // SendPrompt delivers text as one bracketed paste followed by Enter, only while
 // the session's application has bracketed paste mode enabled.
-func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, name, text, _, _ string) error {
-	return p.backend.SendPrompt(ctx, p.resolveSessionKey(name), text)
+func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, name, text, _, sessionID string) error {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
+	return p.backend.SendPrompt(ctx, key, text)
 }
 
-func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, _ string) error {
-	resolved := p.resolveSessionKey(name)
+func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, sessionID string) error {
+	resolved, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
 	for _, key := range keys {
 		if err := p.backend.SendInput(resolved, []byte(key)); err != nil {
 			return err
@@ -136,31 +182,31 @@ func (p *PTYSessionTerminal) KillSessionOnly(ctx context.Context, name, agentTyp
 	return p.killByAnyKey(ctx, name, agentType, sessionID)
 }
 
-// killByAnyKey finds a session by name, agentType-sessionID, or sessionID and kills it.
+// killByAnyKey kills the agent's own session: by session id when there is one (#3211: a
+// shared name or folder would kill another agent), else by key, agent name or folder.
 func (p *PTYSessionTerminal) killByAnyKey(_ context.Context, name, agentType, sessionID string) error {
-	// Try direct name match first (fastest path)
+	if sessionID != "" || isSessionName(name) {
+		key, err := p.keyFor(name, sessionID)
+		if err != nil {
+			return err
+		}
+		return p.backend.Kill(key)
+	}
+	// Legacy callers without a session id: direct key first, then agent or folder name.
 	if err := p.backend.Kill(name); err == nil {
 		return nil
 	}
-	// Try agentType-sessionID format
-	if sessionID != "" {
-		composed := naming.SessionName(agentType, sessionID)
-		if err := p.backend.Kill(composed); err == nil {
-			return nil
-		}
-		// Try sessionID alone
-		if err := p.backend.Kill(sessionID); err == nil {
-			return nil
-		}
-	}
-	// Search through all sessions for a matching agent name, session ID, or folder name
 	for _, s := range p.backend.ListSessions() {
-		sessName := naming.SessionName(s.AgentType, s.SessionID)
-		if s.AgentName == name || s.SessionID == sessionID || filepath.Base(s.WorkingDir) == name {
-			return p.backend.Kill(sessName)
+		if s.AgentName == name || filepath.Base(s.WorkingDir) == name {
+			return p.backend.Kill(naming.SessionName(s.AgentType, s.SessionID))
 		}
 	}
 	return fmt.Errorf("session %q not found", name)
+}
+
+func isSessionName(name string) bool {
+	_, sid := logparse.ParseSessionName(name)
+	return sid != ""
 }
 
 func (p *PTYSessionTerminal) RestartPane(_ context.Context, target, _ string) error {
@@ -173,8 +219,12 @@ func (p *PTYSessionTerminal) RenameSession(_ context.Context, _, _ string) error
 	return nil
 }
 
-func (p *PTYSessionTerminal) ResizeSession(_ context.Context, name string, columns int, _, _ string) error {
-	return p.backend.Resize(name, uint16(columns), 50)
+func (p *PTYSessionTerminal) ResizeSession(_ context.Context, name string, columns int, _, sessionID string) error {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
+	return p.backend.Resize(key, uint16(columns), 50)
 }
 
 func (p *PTYSessionTerminal) ResizeTarget(_ context.Context, target string, columns, rows int) error {

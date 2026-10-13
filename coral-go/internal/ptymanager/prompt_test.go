@@ -325,14 +325,15 @@ func TestSendPromptWaitingForTheLockHonoursCancellation(t *testing.T) {
 
 func TestPTYSessionTerminalImplementsPromptSender(t *testing.T) {
 	withFastSubmit(t)
-	b, s, proc := newFakeBackend(t, "claude-x")
+	b, s, proc := newFakeBackend(t, "claude-sid")
+	s.agentType, s.sessionID = "claude", "sid" // a real PTY key is naming.SessionName(type, sid)
 	s.bracketedPaste.Store(true)
 	var terminal SessionTerminal = NewPTYSessionTerminal(b)
 	sender, ok := terminal.(PromptSender)
 	if !ok {
 		t.Fatal("PTYSessionTerminal must implement PromptSender")
 	}
-	if err := sender.SendPrompt(context.Background(), "claude-x", "p\nq", "claude", "sid"); err != nil {
+	if err := sender.SendPrompt(context.Background(), "claude-sid", "p\nq", "claude", "sid"); err != nil {
 		t.Fatal(err)
 	}
 	if got := proc.written(); len(got) != 2 || string(got[0]) != "\x1b[200~p\nq\x1b[201~" {

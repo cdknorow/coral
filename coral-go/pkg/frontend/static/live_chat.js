@@ -7,6 +7,7 @@ import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
 import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
+import { responseErrorText } from './server_status.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -1798,9 +1799,8 @@ async function sendPromptAnswer(card, n, label, action, text) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),
         });
-        const data = await resp.json().catch(() => ({}));
         if (!resp.ok) {
-            showToast(data.error || "Could not send the answer. Use the terminal.", true);
+            showToast(await responseErrorText(resp, sessionServer(session), "Could not send the answer. Use the terminal."), true);
             controls.forEach(c => { c.disabled = false; });
             return false;
         }

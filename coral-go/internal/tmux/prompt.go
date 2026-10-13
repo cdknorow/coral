@@ -128,7 +128,7 @@ func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, ses
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("pane %q not found in any tmux session", agentName)
+		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 	if enabled, known := BracketedPasteHint(ctx); !known || !enabled {
 		return ErrBracketedPasteUnavailable

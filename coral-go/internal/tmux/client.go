@@ -3,6 +3,7 @@ package tmux
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 )
 
@@ -363,6 +365,10 @@ func parsePaneList(out, socketPath string) []Pane {
 	return panes
 }
 
+// ErrTerminalGone means the agent's own terminal (its session-id pane) no longer exists.
+// Nothing is sent to, read from or killed in any other pane in its place.
+var ErrTerminalGone = errors.New("the agent's terminal is gone")
+
 // FindPane finds the tmux pane for a given agent, matching by session_id or agent_name.
 func (c *Client) FindPane(ctx context.Context, agentName string, agentType string, sessionID string) (*Pane, error) {
 	panes, err := c.ListPanes(ctx)
@@ -370,7 +376,18 @@ func (c *Client) FindPane(ctx context.Context, agentName string, agentType strin
 		return nil, err
 	}
 
-	// Fast path: match by session_id in tmux session name
+	// An exact session name ("claude-<uuid>", as board nudges, the notifier and the
+	// launcher pass) names one session: treat it as that session's id.
+	if sessionID == "" {
+		if _, sid := logparse.ParseSessionName(agentName); sid != "" {
+			sessionID = sid
+		}
+	}
+
+	// With a session id, only that session's own pane will do. If it is gone, the agent's
+	// terminal is gone: never fall back to a name match, which picks whichever pane happens
+	// to share a folder, a name prefix or a substring (#3211: input, prompt answers and kills
+	// for one agent reached another agent's pane).
 	if sessionID != "" {
 		sidLow := strings.ToLower(sessionID)
 		for i := range panes {
@@ -378,9 +395,10 @@ func (c *Client) FindPane(ctx context.Context, agentName string, agentType strin
 				return &panes[i], nil
 			}
 		}
+		return nil, nil
 	}
 
-	// Fallback: fuzzy match by agent_name
+	// Legacy callers without a session id: fuzzy match by agent_name
 	agentLow := strings.ToLower(agentName)
 	normName := strings.ToLower(strings.ReplaceAll(agentName, "_", "-"))
 	typeLow := strings.ToLower(agentType)
@@ -437,7 +455,7 @@ func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, se
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("pane %q not found in any tmux session", agentName)
+		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
 	return c.SendKeysToTarget(ctx, target, command)
@@ -526,7 +544,7 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("pane %q not found in any tmux session", agentName)
+		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
 	for _, key := range keys {
@@ -613,7 +631,7 @@ func (c *Client) killTmuxSession(ctx context.Context, agentName, agentType, sess
 		return err
 	}
 	if pane == nil {
-		return fmt.Errorf("pane %q not found in any tmux session", agentName)
+		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
 	_, err = c.run(ctx, "kill-session", "-t", pane.SessionName)
@@ -630,7 +648,7 @@ func (c *Client) ResizePane(ctx context.Context, agentName string, columns int, 
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("pane %q not found in any tmux session", agentName)
+		return fmt.Errorf("%w: pane %q not found in any tmux session", ErrTerminalGone, agentName)
 	}
 
 	_, err = c.run(ctx, "resize-window", "-t", target, "-x", fmt.Sprintf("%d", columns))

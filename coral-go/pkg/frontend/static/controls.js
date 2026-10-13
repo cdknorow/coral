@@ -437,6 +437,10 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ keys, agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
         });
+        if (!resp.ok) {
+            showToast(await responseErrorText(resp, currentServer(), `The keys were not sent (HTTP ${resp.status}).`), true);
+            return;
+        }
         const result = await resp.json();
         if (result.error) {
             showToast(result.error, true);

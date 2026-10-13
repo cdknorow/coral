@@ -37,6 +37,10 @@ var ErrBracketedPasteUnavailable = tmux.ErrBracketedPasteUnavailable
 // reached the agent before a failure. It must not be retried.
 var ErrDeliveryUnknown = tmux.ErrDeliveryUnknown
 
+// ErrTerminalGone means the agent's own terminal no longer exists (#3211). Nothing is sent
+// to, read from or killed in another agent's terminal in its place.
+var ErrTerminalGone = tmux.ErrTerminalGone
+
 // WithBracketedPasteHint passes what the caller knows about the target's
 // bracketed paste mode to SendPrompt (used by the tmux backend, whose panes
 // expose no way to query it). The PTY backend tracks the mode itself.

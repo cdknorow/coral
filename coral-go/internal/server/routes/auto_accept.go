@@ -430,10 +430,10 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	a.h.kickWS()
 }
 
-// paneName is the session's own terminal (named after its session id). The
-// terminal falls back to a fuzzy agent-name match when that pane is gone, so
-// every read and keystroke first checks the pane it resolves to is this
-// session's: a digit must never reach another agent.
+// paneName is the session's own terminal (named after its session id). With a
+// session id the terminal never falls back to another pane (#3211); every read
+// and keystroke still checks the pane it resolves to is this session's, as a
+// second guard: a digit must never reach another agent.
 func paneName(s store.AutoAcceptState) string { return naming.SessionName(s.AgentType, s.SessionID) }
 
 func (a *AutoAcceptor) ownPane(ctx context.Context, s store.AutoAcceptState) bool {

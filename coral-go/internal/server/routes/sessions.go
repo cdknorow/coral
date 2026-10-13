@@ -1174,6 +1174,19 @@ func writeExactTargetError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, body)
 }
 
+// terminalGoneMessage is shown in the composer, prompt bar and keys (#3211).
+const terminalGoneMessage = "The agent's terminal is gone"
+
+// writeTerminalError answers a terminal write or action that failed: 409 terminal_gone when
+// the agent's own terminal no longer exists (nothing was sent anywhere, #3211), else 500.
+func writeTerminalError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ptymanager.ErrTerminalGone) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": terminalGoneMessage, "code": "terminal_gone", "not_sent": true})
+		return
+	}
+	errInternalServer(w, err.Error())
+}
+
 func shouldValidateExactTarget(agentType, sessionID string) bool {
 	return agentType != "" || sessionID != ""
 }
@@ -2486,7 +2499,7 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.terminal.SendInput(r.Context(), name, body.Command, body.AgentType, body.SessionID); err != nil {
-		errInternalServer(w, err.Error())
+		writeTerminalError(w, err)
 		return
 	}
 	// The terminal accepted the input over HTTP: the narrowly labelled
@@ -2515,7 +2528,7 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.terminal.SendRawInput(r.Context(), name, body.Keys, body.AgentType, body.SessionID); err != nil {
-		errInternalServer(w, err.Error())
+		writeTerminalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "keys": body.Keys})
@@ -2542,7 +2555,7 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.terminal.ResizeSession(r.Context(), name, body.Columns, body.AgentType, body.SessionID); err != nil {
-		errInternalServer(w, err.Error())
+		writeTerminalError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "columns": body.Columns})
@@ -2801,6 +2814,10 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		target = newSessionName + ".0"
 	} else {
 		pane, err := h.terminal.FindSession(ctx, name, agentType, body.SessionID)
+		if err == nil && pane == nil && body.SessionID != "" {
+			writeTerminalError(w, ptymanager.ErrTerminalGone)
+			return
+		}
 		if err != nil || pane == nil {
 			errNotFound(w, "Pane not found")
 			return
@@ -3075,6 +3092,10 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pane, _ := h.terminal.FindSession(ctx, name, agentType, body.CurrentSessionID)
+	if pane == nil && body.CurrentSessionID != "" {
+		writeTerminalError(w, ptymanager.ErrTerminalGone)
+		return
+	}
 	if pane == nil {
 		errNotFound(w, "Pane not found")
 		return

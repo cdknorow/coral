@@ -330,11 +330,16 @@ export function proxyErrorMessage(httpStatus, body, serverId) {
     return '';
 }
 
-/** A plain sentence for a failed response: the proxy's mapped text, else the
- *  body's own error string (never raw JSON), else `fallback`. Reads the body. */
+/** The agent's own terminal no longer exists (409 terminal_gone, #3211): nothing was sent. */
+export const TERMINAL_GONE_MESSAGE = "The agent's terminal is gone";
+
+/** A plain sentence for a failed response: terminal_gone's fixed text, the proxy's
+ *  mapped text, else the body's own error string (never raw JSON), else `fallback`.
+ *  Reads the body. */
 export async function responseErrorText(resp, serverId, fallback) {
     let body = null;
     try { body = await resp.clone().json(); } catch { /* not JSON */ }
+    if (body && body.code === 'terminal_gone') return TERMINAL_GONE_MESSAGE;
     const mapped = proxyErrorMessage(resp.status, body, serverId);
     if (mapped) return mapped;
     if (body && typeof body.error === 'string' && body.error.trim()) return body.error.trim();

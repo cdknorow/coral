@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/cdknorow/coral/internal/ptymanager"
 )
 
 // Answering an agent's prompt from the chat.
@@ -254,6 +256,13 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// The agent's own terminal is gone: say so, rather than "the prompt changed" (#3211)
+	if body.SessionID != "" {
+		if pane, err := h.terminal.FindSession(r.Context(), name, body.AgentType, body.SessionID); err == nil && pane == nil {
+			writeTerminalError(w, ptymanager.ErrTerminalGone)
+			return
+		}
+	}
 	screen, ok := h.capturePromptScreen(r, name, body.AgentType, body.SessionID)
 	if !ok || body.N > len(screen.Options) {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "The prompt is no longer open. Check the terminal."})
@@ -271,14 +280,14 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.terminal.SendRawInput(r.Context(), name, []string{strconv.Itoa(body.N)}, body.AgentType, body.SessionID); err != nil {
-		errInternalServer(w, err.Error())
+		writeTerminalError(w, err)
 		return
 	}
 	if opt.Action == "text" {
 		// The digit turns the option into a text field; type into it, then Enter
 		time.Sleep(promptTextDelay)
 		if err := h.terminal.SendInput(r.Context(), name, text, body.AgentType, body.SessionID); err != nil {
-			errInternalServer(w, err.Error())
+			writeTerminalError(w, err)
 			return
 		}
 	}
