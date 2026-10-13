@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
+if (/:8420(\/|$)/.test(BASE)) throw new Error('Refusing to run tests on production port 8420');
 const PORT = new URL(BASE).port;
 // Built on the fly unless CORAL_AGENT_BIN points at a coral-agent binary.
 let BIN = process.env.CORAL_AGENT_BIN;

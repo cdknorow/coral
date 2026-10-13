@@ -10,13 +10,17 @@ import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from '.
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
-let historyOffset = 0;      // pagination offset for "Load More"
+let historyOffset = 0;      // messages rendered, counted from the end (offset paging, for servers without keyset)
+let historyStart = 0;       // absolute index of the oldest rendered message (keyset cursor)
 let historyHasMore = false;  // whether older messages exist
 let initialLoadDone = false; // whether the initial full load has completed
 let loadingMore = false;     // an older page is being fetched
-// Messages per page. Tool calls and results each count as one, and they are
-// folded away in the chat, so a page needs to be large to cover a few turns.
-const HISTORY_PAGE = 400;
+// Messages per page. Tool calls and results each count as one and are folded
+// away in the chat, so a page covers fewer turns than its size suggests. The
+// first page is small so a switch paints quickly (the payload crosses the hub
+// leg); older pages load as the reader scrolls toward the top.
+const FIRST_PAGE = 100;
+const OLDER_PAGE = 200;
 // Bumped on reset so responses for a previous session are dropped, and used to
 // keep a single refresh in flight: overlapping initial loads would otherwise
 // both render the full history.
@@ -677,7 +681,7 @@ export async function refreshLiveHistory() {
     if (!initialLoadDone) {
         // First load: fetch most recent messages with pagination
         params.set("after", "0");
-        params.set("limit", String(HISTORY_PAGE));
+        params.set("limit", String(FIRST_PAGE));
         params.set("offset", "0");
     } else {
         // Subsequent polls: only fetch new messages
@@ -721,13 +725,17 @@ export async function refreshLiveHistory() {
                 }
                 historyHasMore = data.has_more || false;
                 historyOffset = data.messages.length;
+                historyStart = pageStart(data);
                 _updateLoadMoreButton(container);
                 initialLoadDone = true;
             } else {
-                // Poll — append new messages at the bottom
+                // Poll — append new messages at the bottom. They count toward
+                // offset, which a server without keyset paging measures from
+                // the current end.
                 for (const msg of data.messages) {
                     renderMessage(msg, container, session.agent_type);
                 }
+                historyOffset += data.messages.length;
             }
             for (const msg of data.messages) {
                 if (msg.type === "user" && INTERRUPT_RE.test(String(msg.content || "").trim())) noteInterrupt(session.session_id, msg);
@@ -789,11 +797,26 @@ export async function loadMoreHistory() {
     if (!state.currentSession || !historyHasMore || loadingMore) return;
     loadingMore = true;
     const generation = historyGeneration;
+    let ok = false;
     try {
-        await _loadMoreHistory(generation);
+        ok = await _loadMoreHistory(generation);
     } finally {
-        loadingMore = false;
+        if (generation === historyGeneration) loadingMore = false;
     }
+    // A page shorter than the view leaves the sentinel in sight, and the
+    // observer only reports changes: keep loading while it is still within
+    // reach. Measured, because the observer's entry for the prepend has not
+    // been delivered yet.
+    if (ok && generation === historyGeneration && historyHasMore && sentinelInReach()) {
+        loadMoreHistory();
+    }
+}
+
+function sentinelInReach() {
+    const container = document.getElementById("live-history-messages");
+    const btn = container && container.querySelector(":scope > .load-more-btn");
+    if (!btn || !container.clientHeight) return false;
+    return btn.getBoundingClientRect().bottom >= container.getBoundingClientRect().top - AUTO_LOAD_PX;
 }
 
 async function _loadMoreHistory(generation) {
@@ -812,9 +835,13 @@ async function _loadMoreHistory(generation) {
     if (session.working_directory && !(isCloud() && sessionServer(session) !== 'local')) {
         params.set("working_directory", session.working_directory);
     }
-    // Pagination is already anchored by offset; omit an explicit after=0 so
+    // Pagination is anchored by the cursor; omit an explicit after=0 so
     // providers and test harnesses can distinguish load-more from initial load.
-    params.set("limit", String(HISTORY_PAGE));
+    // before= is the oldest rendered message's absolute index, so messages
+    // appended since the first page do not shift the window. offset is what a
+    // server without keyset paging reads.
+    params.set("limit", String(OLDER_PAGE));
+    params.set("before", String(historyStart));
     params.set("offset", String(historyOffset));
 
     if (activeLoadMoreAbortController) {
@@ -852,7 +879,8 @@ async function _loadMoreHistory(generation) {
             stitchPages(lastOlder);
 
             historyOffset += data.messages.length;
-            historyHasMore = data.has_more || false;
+            historyStart = pageStart(data, historyStart);
+            historyHasMore = (data.has_more || false) && historyStart > 0;
 
             // Restore scroll position so the view doesn't jump
             container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
@@ -861,9 +889,11 @@ async function _loadMoreHistory(generation) {
         }
 
         _updateLoadMoreButton(container);
+        return true;
     } catch (e) {
-        if (e.name === 'AbortError') return;
+        if (e.name === 'AbortError') return false;
         console.error("Failed to load more history:", e);
+        return false;
     } finally {
         if (activeLoadMoreAbortController === abortCtrl) {
             activeLoadMoreAbortController = null;
@@ -871,17 +901,50 @@ async function _loadMoreHistory(generation) {
     }
 }
 
+// Absolute index of a page's first message. A server with keyset paging says
+// so (start); otherwise it is derived: a page ends where the previous began,
+// or, for the first page, at the end of the transcript.
+function pageStart(data, end) {
+    if (Number.isInteger(data.start)) return data.start;
+    if (end === undefined) end = Number.isInteger(data.total) ? data.total : data.messages.length;
+    return Math.max(0, end - data.messages.length);
+}
+
+// The button at the top of the chat is also the autoload sentinel: when it
+// comes within AUTO_LOAD_PX of the visible area, the next older page loads.
+// The button stays for find-in-chat and for when a load failed.
+const AUTO_LOAD_PX = 200;
+let sentinelObserver = null;
+
+function observeSentinel(container, btn) {
+    if (typeof IntersectionObserver === "undefined") return;
+    if (sentinelObserver && sentinelObserver.root !== container) {
+        sentinelObserver.disconnect();
+        sentinelObserver = null;
+    }
+    if (!sentinelObserver) {
+        sentinelObserver = new IntersectionObserver((entries) => {
+            for (const e of entries) {
+                if (e.isIntersecting && historyHasMore && initialLoadDone) loadMoreHistory();
+            }
+        }, { root: container, rootMargin: `${AUTO_LOAD_PX}px 0px 0px 0px` });
+    }
+    sentinelObserver.observe(btn);
+}
+
 function _updateLoadMoreButton(container) {
     let btn = container.querySelector(".load-more-btn");
     if (historyHasMore) {
         if (!btn) {
             btn = document.createElement("button");
-            btn.className = "load-more-btn";
+            btn.className = "load-more-btn chat-history-sentinel";
             btn.textContent = "Load older messages";
             btn.onclick = loadMoreHistory;
             container.insertBefore(btn, container.firstChild);
+            observeSentinel(container, btn);
         }
     } else if (btn) {
+        if (sentinelObserver) sentinelObserver.unobserve(btn);
         btn.remove();
     }
 }
@@ -913,9 +976,19 @@ export function stopLiveHistoryPoll() {
 export function resetLiveHistory({ resume = false } = {}) {
     const wasPolling = !!historyPollInterval;
     stopLiveHistoryPoll();
+    // Free the connections of the previous chat's fetches right away: through
+    // the hub, a switch otherwise queues behind them.
     if (activeLoadMoreAbortController) {
         activeLoadMoreAbortController.abort();
         activeLoadMoreAbortController = null;
+    }
+    if (activeChatAbortController) {
+        activeChatAbortController.abort();
+        activeChatAbortController = null;
+    }
+    if (sentinelObserver) {
+        sentinelObserver.disconnect();
+        sentinelObserver = null;
     }
     const container = document.getElementById("live-history-messages");
     if (container) container.innerHTML = "";
@@ -923,6 +996,7 @@ export function resetLiveHistory({ resume = false } = {}) {
     refreshInFlight = -1;
     historyMessageCount = 0;
     historyOffset = 0;
+    historyStart = 0;
     historyHasMore = false;
     initialLoadDone = false;
     loadingMore = false;
@@ -1404,14 +1478,6 @@ function syncWorkingIndicator(container, session) {
         container.appendChild(el);
     }
 }
-
-// Load older messages automatically when the reader scrolls near the top.
-const AUTO_LOAD_PX = 200;
-document.addEventListener("scroll", (e) => {
-    const el = e.target;
-    if (!el || el.id !== "live-history-messages") return;
-    if (el.scrollTop < AUTO_LOAD_PX && historyHasMore && initialLoadDone) loadMoreHistory();
-}, true);
 
 // ── Needs input ──────────────────────────────────────────────────────────
 // Claude Code writes a tool call to the transcript only once it completes, so

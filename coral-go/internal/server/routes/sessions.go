@@ -1342,29 +1342,37 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	messages = emptyIfNil(messages)
 
-	// Pagination for full history: return the most recent `limit` messages,
-	// with `offset` counting backwards from the end for "Load More".
+	// Pagination for full history: return the `limit` messages before a
+	// cursor. `before` is an absolute message index (exclusive), so an older
+	// page stays put while new messages are appended; pass the previous page's
+	// `start` to get the page above it. `offset` counts backwards from the
+	// current end and is kept for older clients, but it shifts whenever a
+	// message arrives between two pages. `start` is the absolute index of the
+	// first message returned.
 	if after == 0 && len(messages) > 0 {
 		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 		if limit <= 0 {
 			limit = 100 // default page size
 		}
-		// offset=0 means the most recent messages; offset=100 means skip the last 100
-		end := len(messages) - offset
-		start := end - limit
-		if start < 0 {
-			start = 0
+		end := len(messages)
+		if raw := r.URL.Query().Get("before"); raw != "" {
+			before, err := strconv.Atoi(raw)
+			if err != nil || before < 0 {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "before must be a non-negative integer"})
+				return
+			}
+			end = min(before, end)
+		} else {
+			// offset=0 means the most recent messages; offset=100 means skip the last 100
+			offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+			end = max(end-max(offset, 0), 0)
 		}
-		if end < 0 {
-			end = 0
-		}
-		hasMore := start > 0
-		messages = messages[start:end]
-		writeJSON(w, http.StatusOK, map[string]any{
-			"messages":     messages,
+		start := max(end-limit, 0)
+		httputil.WriteJSONCompressed(w, r, http.StatusOK, map[string]any{
+			"messages":     messages[start:end],
 			"total":        total,
-			"has_more":     hasMore,
+			"start":        start,
+			"has_more":     start > 0,
 			"limit_notice": limitNotice,
 		})
 		return

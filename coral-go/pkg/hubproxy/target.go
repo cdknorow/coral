@@ -131,6 +131,11 @@ var (
 const (
 	connectTimeout = 5 * time.Second
 	headerTimeout  = 30 * time.Second
+	// idleConnTimeout keeps a pooled hub->remote connection open between uses.
+	// The remote poller's /api/health check (every PollInterval) shares this
+	// pool, so with a timeout well above that interval the next chat switch
+	// reuses a warm connection instead of paying a new TCP (and TLS) handshake.
+	idleConnTimeout = 5 * time.Minute
 )
 
 // ── Path safety ─────────────────────────────────────────────────────
@@ -219,7 +224,7 @@ func transport(allowPrivate bool) *http.Transport {
 		DialContext:         d.DialContext,
 		TLSHandshakeTimeout: 10 * time.Second,
 		MaxIdleConnsPerHost: 8,
-		IdleConnTimeout:     60 * time.Second,
+		IdleConnTimeout:     idleConnTimeout,
 		DisableCompression:  true,
 	}
 	transes[allowPrivate] = t

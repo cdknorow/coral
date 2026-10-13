@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -497,6 +498,124 @@ func TestSessionsChat_MultipleClientsEachSeeNewMessages(t *testing.T) {
 	assert.Empty(t, a, "nothing new on the next poll")
 	a, _ = chat(99)
 	assert.Empty(t, a, "after beyond the end is clamped")
+}
+
+// Older history is paged with before=<absolute index>: the page above a page
+// is before=<its start>, and messages appended in between must not shift it.
+// offset counts from the current end, so the same request by offset repeats
+// messages the client already shows.
+func TestSessionsChat_BeforeCursorIsStableAcrossAppends(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	sid := "00000000-0000-0000-0000-000000000202"
+	transcript := filepath.Join(projectDir, sid+".jsonl")
+	userLine := func(i int) string {
+		return fmt.Sprintf("{\"type\":\"user\",\"message\":{\"content\":\"m%d\"}}\n", i)
+	}
+	var lines strings.Builder
+	for i := range 10 {
+		lines.WriteString(userLine(i))
+	}
+	require.NoError(t, os.WriteFile(transcript, []byte(lines.String()), 0644))
+
+	type page struct {
+		Texts   []string
+		Start   int
+		HasMore bool
+		Total   int
+	}
+	get := func(query string) (int, page) {
+		t.Helper()
+		resp, err := http.Get(fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&after=0&%s", server.URL, sid, sid, query))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return resp.StatusCode, page{}
+		}
+		var body struct {
+			Messages []map[string]any `json:"messages"`
+			Start    *int             `json:"start"`
+			HasMore  bool             `json:"has_more"`
+			Total    int              `json:"total"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+		require.NotNil(t, body.Start, "a history page carries its start index")
+		p := page{Start: *body.Start, HasMore: body.HasMore, Total: body.Total, Texts: []string{}}
+		for _, m := range body.Messages {
+			p.Texts = append(p.Texts, fmt.Sprint(m["content"]))
+		}
+		return resp.StatusCode, p
+	}
+
+	_, first := get("limit=3&offset=0")
+	assert.Equal(t, page{Texts: []string{"m7", "m8", "m9"}, Start: 7, HasMore: true, Total: 10}, first)
+
+	f, err := os.OpenFile(transcript, os.O_APPEND|os.O_WRONLY, 0644)
+	require.NoError(t, err)
+	_, err = f.WriteString(userLine(10) + userLine(11))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	_, older := get(fmt.Sprintf("limit=3&before=%d", first.Start))
+	assert.Equal(t, page{Texts: []string{"m4", "m5", "m6"}, Start: 4, HasMore: true, Total: 12}, older,
+		"before=<start> returns the page directly above, whatever was appended since")
+	_, byOffset := get("limit=3&offset=3")
+	assert.Equal(t, []string{"m6", "m7", "m8"}, byOffset.Texts, "offset is still honoured, counted from the current end")
+
+	_, top := get("limit=3&before=1")
+	assert.Equal(t, page{Texts: []string{"m0"}, Start: 0, HasMore: false, Total: 12}, top)
+	_, none := get("limit=3&before=0")
+	assert.Equal(t, page{Texts: []string{}, Start: 0, HasMore: false, Total: 12}, none)
+	_, clamped := get("limit=3&before=999")
+	assert.Equal(t, []string{"m9", "m10", "m11"}, clamped.Texts, "before past the end is clamped")
+	_, negOffset := get("limit=3&offset=-5")
+	assert.Equal(t, []string{"m9", "m10", "m11"}, negOffset.Texts, "a negative offset is treated as 0")
+	_, beforeWins := get("limit=3&before=4&offset=0")
+	assert.Equal(t, []string{"m1", "m2", "m3"}, beforeWins.Texts, "before takes precedence over offset")
+
+	for _, bad := range []string{"before=-1", "before=abc"} {
+		code, _ := get("limit=3&" + bad)
+		assert.Equal(t, http.StatusBadRequest, code, bad)
+	}
+}
+
+// A history page is the large response of a chat switch; it is gzipped for a
+// client that accepts it, which the hub proxy relays unchanged.
+func TestSessionsChat_HistoryPageIsGzipped(t *testing.T) {
+	server, _, _, _ := setupSessionsTestServer(t)
+	dir := t.TempDir()
+	projectDir := filepath.Join(dir, "project")
+	require.NoError(t, os.MkdirAll(projectDir, 0755))
+	t.Setenv("CLAUDE_PROJECTS_DIR", dir)
+
+	sid := "00000000-0000-0000-0000-000000000203"
+	var lines strings.Builder
+	for i := range 40 {
+		fmt.Fprintf(&lines, "{\"type\":\"user\",\"message\":{\"content\":%q}}\n", fmt.Sprintf("m%d %s", i, strings.Repeat("tool output ", 50)))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(projectDir, sid+".jsonl"), []byte(lines.String()), 0644))
+
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/api/sessions/live/claude-%s/chat?session_id=%s&after=0&limit=30", server.URL, sid, sid), nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept-Encoding", "gzip") // set explicitly, so the client leaves the body encoded
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, "gzip", resp.Header.Get("Content-Encoding"))
+	zr, err := gzip.NewReader(resp.Body)
+	require.NoError(t, err)
+	var body struct {
+		Messages []map[string]any `json:"messages"`
+		Start    int              `json:"start"`
+	}
+	require.NoError(t, json.NewDecoder(zr).Decode(&body))
+	assert.Len(t, body.Messages, 30)
+	assert.Equal(t, 10, body.Start)
 }
 
 func TestSessionsChat_CodexResumeLineageRoute(t *testing.T) {
