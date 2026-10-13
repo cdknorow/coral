@@ -1,5 +1,22 @@
 # Release Notes
 
+## v1.4.13 — Artifact links work through the Cloud Hub again
+
+**No new security fixes in this release.** v1.4.12 remains the current security release; this release fixes a problem it introduced for Cloud Hub users.
+
+### Fixes
+
+- **Artifact links work through the Cloud Hub.** In 1.4.12, new artifact links gained a `?v=2` suffix (`/api/artifacts/<id>?v=2`), and the Cloud Hub refused them because the hub only passes query parameters it knows for each route. Opening an artifact's link or its preview through the Cloud Hub failed. The hub now passes exactly `v=2` on that route; any other value or parameter is still refused, both by the hub and by Coral itself. Links opened directly on Coral, and older links without `?v=2`, were not affected.
+
+### Upgrade notes
+
+- The Cloud Hub picks this up when it updates to Coral 1.4.13 (Coral's team coordinates that), and machines connected to it should be upgraded to 1.4.13 as well.
+- Nothing to migrate; there are no database changes.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.12.
+
 ## v1.4.12 — Security fix: artifact links could run script on the dashboard
 
 **Security fix — please upgrade.** This release fixes a way for a file an agent uploaded to run script with the dashboard's access.
