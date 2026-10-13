@@ -1,5 +1,29 @@
 # Release Notes
 
+## v1.4.5 — View-only Cloud Hub servers say so instead of pretending to send
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release makes the dashboard tell you, before anything is sent, when a Cloud Hub server only allows View, and explains every access refusal in plain words.
+
+### Fixes
+
+- **In a Cloud Hub View-mode server the dashboard no longer says Sent when nothing was sent.** A server limited to View drops terminal input without an error, so the dashboard used to show "Sent" while the agent never got the message. Now every way of typing into an agent checks the server's access first: the message box, keys, quick commands, macros, team and board prompts, and typing in the terminal. Nothing is sent and your draft is kept. A toast explains what blocked it, for example "Blocked: my-mac needs Interact (Hub: View · This machine allows: Interact · Effective: View). Raise it in Servers.", with an **Open Servers** button. When the machine's own setting is the limit, the toast says to change it in Coral on that machine instead. The terminal header shows a read-only chip while the server is View-only.
+- **Access refusals are explained, not shown as codes.** A launch or action that a server refuses for access (`access_mode`, `launch_disabled`, `local_mode`) shows the same "Blocked: …" explanation, naming the server, the access it needs and which setting is the limit.
+- **Toasts are easier to use.** Every toast has a Dismiss button and closes with Escape. Errors are announced to screen readers right away, other toasts politely. A toast with an action button stays for at least 10 seconds.
+- **Settings › Coral Hub** explains that the hub has its own access setting for each server (View by default), and the lower of the two applies.
+
+### Hub (Cloud Hub)
+
+- The dashboard reads the server's access from the Servers list, and also from a `{"type": "hub_read_only"}` message the Cloud Hub can send on an agent's terminal connection. Once received, the terminal stays read-only for that connection. Other non-JSON text messages on the terminal connection are ignored.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.4.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- Cloud Hub: a hub may send `{"type": "hub_read_only"}` on a terminal WebSocket to mark that terminal read-only. Older dashboards ignore it.
+
 ## v1.4.4 — Coral Hub tells you when a machine needs an update, and history links always offer Resume
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release shows Coral Hub's update notice for machines running an older Coral, and fixes the Resume button missing when a past session is opened from a link.
