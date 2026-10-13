@@ -31,7 +31,8 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          # THE list of watched paths, the only place to change it. A path ending in "/" matches everything below it;
+          # THE list of watched paths, the only place to change it. Keep it identical to the WATCHED list in
+          # coral-watch.yml in subgentic/coral-hub. A path ending in "/" matches everything below it;
           # any other entry is one exact file. Plain path matching, no heuristics. Lines starting with # are comments.
           WATCHED: |
             # The tunnel protocol the connector speaks to the hub: frames, handshake, limits. A change here can break
@@ -49,6 +50,14 @@ jobs:
             coral-go/internal/server/routes/websocket.go
             # The session list the hub's feed reconciles against; its fields must stay in step with the feed's.
             coral-go/internal/server/routes/ws_shared_list.go
+            # The UI the hub serves: the hub's static files are compared byte for byte with this directory at each release.
+            coral-go/pkg/frontend/
+            # Encryption of secrets; a format change can break machines that are already enrolled.
+            coral-go/pkg/secretbox/
+            # The session field list the hub's feed and its reconcile allow-list follow.
+            coral-go/internal/server/routes/session_fields.go
+            # Golden file of the routes the hub may expose; a change here is a change to the hub's route allow-list.
+            coral-go/internal/server/testdata/cloud_routes.golden
         run: |
           set -euo pipefail
           marker='<!-- cloud-hub-impact -->'
