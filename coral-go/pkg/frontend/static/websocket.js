@@ -13,6 +13,7 @@ import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 import { applySleepingView } from './sleeping_view.js';
 import { updateServersTabVisibility } from './servers_tab.js';
+import { markReady } from './ready.js';
 
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
@@ -59,6 +60,7 @@ export function connectCoralWs() {
     const url = `${serverWsBase('local')}/ws/coral`;
 
     state.coralWs = new WebSocket(url);
+    state.coralWs.addEventListener('open', () => markReady('feed')); // window.__coralReady (#3118)
 
     state.coralWs.onmessage = (event) => {
         _feedFailures = 0;   // a socket that delivers is healthy; the next drop starts the backoff over

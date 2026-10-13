@@ -11,6 +11,7 @@ import { updateSectionVisibility } from './sidebar.js';
 import { localFirst, isStaleSession, staleReason, showServerLabels, serverLabel, serversShown, serverSwitcherHtml, serverGroupHeaderHtml, statusMeta } from './server_status.js';
 import { syncMobileAgentList } from './mobile.js';
 import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './team_availability.js';
+import { liveListRendered } from './ready.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -2255,6 +2256,12 @@ export function agentSearchKey(e) {
 }
 
 export function renderLiveSessions(sessions) {
+    const result = _renderLiveSessions(sessions);
+    liveListRendered(Array.isArray(sessions) ? sessions.length : 0); // window.__coralReady (#3118)
+    return result;
+}
+
+function _renderLiveSessions(sessions) {
     // Single-agent popout: the sidebar is chrome. Never render rows there —
     // they would carry session ids and destructive kebab actions into the DOM.
     if (document.body.classList.contains('popout-mode')) {

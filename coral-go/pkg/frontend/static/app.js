@@ -59,6 +59,7 @@ import { teamFetch } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Cloud Hub (inert elsewhere)
+import { markReady } from './ready.js';
 import { lazyFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch } from './lazy_panels.js';
 
 // Panels off the landing view load on first use (#3083 phase 2, lazy_panels.js).
@@ -569,9 +570,9 @@ function loadHistoryPage(page) {
 
 function loadHistoryFiltered() {
     serializeToUrl(historyPage);
-    if (filterState.q) searchChats(filterState.q, historyPage);
-    else loadHistorySessionsPaged(historyPage, 50);
+    const loaded = filterState.q ? searchChats(filterState.q, historyPage) : loadHistorySessionsPaged(historyPage, 50);
     updateFilterBadge();
+    return loaded;
 }
 
 async function populateHfTagSelect() {
@@ -732,7 +733,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     await initCloud();   // no-op unless the page's boot data says mode "cloud"
-    loadSettings();
+    loadSettings().finally(() => markReady('settings'));
     initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
 
     // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.
@@ -744,6 +745,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     historyPage = restored.page;
 
     loadLiveSessions(dashboardFailed).then(ok => {
+        markReady('liveList'); // already marked by the render; this covers a failed first load
         dashboardSessionsLoaded(ok);
         // Dashboard deep link: #chat/<sessionId> restores the live session once the list is loaded.
         if (!popout) restoreChatFromHash();
@@ -758,12 +760,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!popout) {
         populateHfTagSelect().then(() => {
             syncFilterDomToState();
-            loadHistoryFiltered();
-        });
+            return loadHistoryFiltered();
+        }).finally(() => markReady('history'));
         initScheduler();
         initLiveJobs();
         initMessageBoard();
     }
+    if (popout) markReady('history'); // a popout has no history list
     initMobile();
 
     initPrerequisiteChecks();

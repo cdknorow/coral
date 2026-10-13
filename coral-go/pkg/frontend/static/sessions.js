@@ -21,6 +21,7 @@ import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode } from './live
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
 import { loadXterm, xtermReady, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
+import { agentSwitchStarted, agentViewReady } from './ready.js';
 import { getRendererMode } from './renderers.js';
 import { invalidateFileCache, fetchFileList } from './file_mention.js';
 import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
@@ -40,6 +41,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // Selecting an agent leaves the team view (declining to discard unsaved team settings cancels).
     if (window.exitTeamContext && window.exitTeamContext({ goBack: false }) === false) return;
     const generation = ++switchGeneration;
+    agentSwitchStarted(name, sessionId || null); // window.__coralReady.agentSelected (#3118)
     stopCaptureRefresh();
     stopLiveHistoryPoll();
     disconnectTerminalWs();
@@ -203,6 +205,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // attachable pane (tmux_session null) so the terminal is not connected.
     const popoutTarget = isPopout() ? popoutResolved() : null;
     const canAttach = !isPopout() || !!(popoutTarget && popoutTarget.tmux_session);
+    // Settles when the terminal is attached (or when there is no terminal to attach).
+    let terminalAttached = Promise.resolve();
     if (mode === "xterm" && canAttach) {
         dbg('switching to xterm mode, creating terminal + WS');
         document.getElementById("pane-capture").style.display = "none";
@@ -229,9 +233,11 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
             console.error('[coral]', err);
             if (generation === switchGeneration) showVendorLoadError(container, 'The terminal', loadThenAttach);
         };
+        let attached;
+        terminalAttached = new Promise(r => { attached = r; });
         const tryAttach = () => {
             if (generation !== switchGeneration) return;
-            try { attach(); } catch (err) { failed(err); }
+            try { attach(); attached(); } catch (err) { failed(err); }
         };
         const loadThenAttach = () => {
             if (xtermReady()) { tryAttach(); return; }
@@ -253,6 +259,10 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // Show terminal or chat in the center pane (starts the transcript poll in chat mode)
     // A sleeping agent has no terminal to show: its history is the view.
     const transcriptReady = applyLiveViewMode(state.currentSession.sleeping ? "chat" : undefined);
+    const chatView = !!document.getElementById("capture-wrapper")?.classList.contains("chat-mode");
+    (chatView ? Promise.resolve(transcriptReady).catch(() => {}) : terminalAttached).then(() => {
+        if (generation === switchGeneration) agentViewReady(name, chatView ? 'chat' : 'terminal', sessionId || null);
+    });
 
     // Load secondary data in background (non-blocking, after terminal is connected)
     loadAgentTasks(name, sessionId);
