@@ -160,6 +160,13 @@ const BASE = require('./test_base').BASE;
         // opened with). A hub with one remote, so the Servers tab stays available.
         fakeHub = true;
         holdNextList = true;
+        // The /ws/coral feed is the test server's (not a hub), and its first full coral_update sets the server list
+        // to none. Mark when that snapshot has been applied, so the held list (with a remote) lands after it.
+        await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
+            const W = window.WebSocket;
+            window.WebSocket = class extends W { constructor(u, p) { super(u, p);
+                if (/\\/ws\\/coral/.test(String(u))) this.addEventListener('message', e => { if (/"type":"coral_update"/.test(String(e.data))) setTimeout(() => { window.__feedFull = true; }); }); } };
+        })()` });
         await Page.navigate({ url: 'about:blank' }); await Page.loadEventFired();
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         await waitFor(`typeof window.switchNavTab === 'function'`, 'the dashboard');
@@ -173,6 +180,7 @@ const BASE = require('./test_base').BASE;
             return true;
         })()`);
         assert.equal(await ev(`location.hash`), '#servers');
+        await waitFor(`window.__feedFull === true`, "the feed's first full update applied");
         await Fetch.fulfillRequest({ requestId: holdList, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
             body: Buffer.from(JSON.stringify({ sessions: [], servers: [{ id: 'r1', label: 'Remote', status: 'online' }] })).toString('base64') });
         holdList = null;
