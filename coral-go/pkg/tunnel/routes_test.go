@@ -562,3 +562,18 @@ func TestFeedHubIsAnExactValueOnTheCoralFeedOnly(t *testing.T) {
 	// the table text is what the Go code and the generator agree on
 	assert.Contains(t, routeQueries["GET /ws/coral"], "feed=hub")
 }
+
+// Since v1.4.12 (#3168) every artifact link is /api/artifacts/<digest>?v=2. Through the tunnel exactly that passes, as does
+// the bare link; any other value, a repeat or another parameter is refused (#3179).
+func TestArtifactLinkVersionIsAnExactValue(t *testing.T) {
+	hex := strings.Repeat("ab", 32)
+	p := "/api/artifacts/" + hex
+	for _, q := range []string{"", "v=2", "v=%32" /* decodes to exactly 2 */} {
+		assert.Equal(t, TierView, Classify("GET", p, q), q)
+		assert.True(t, AllowRequest(func() Mode { return TierView })("GET", p, q), "readable in view mode: %q", q)
+	}
+	for _, q := range []string{"v=3", "v=", "v", "v=02", "v=2&v=2", "v=2&x=1", "x=1", "V=2", "v=2;x", "v=2%00", "download=1"} {
+		assert.Equal(t, TierNever, Classify("GET", p, q), q)
+	}
+	assert.Equal(t, "v=2", routeQueries["GET /api/artifacts/{}"])
+}

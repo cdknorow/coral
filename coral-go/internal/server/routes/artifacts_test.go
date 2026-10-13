@@ -91,3 +91,30 @@ func TestAgentArtifactUploadRecoversMarkdownType(t *testing.T) {
 		require.Equal(t, payload, string(data))
 	}
 }
+
+// The link form is /api/artifacts/<digest>?v=2 (#3168); the handler accepts exactly what the tunnel does (#3179).
+func TestAgentArtifactLinkVersion(t *testing.T) {
+	_, h, _, ss := setupSessionsTestServer(t)
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: "artifact-session", AgentName: "artifact-agent", AgentType: "codex", WorkingDir: t.TempDir()}))
+	r := chi.NewRouter()
+	h.RegisterAgentArtifacts(r)
+	server := httptest.NewServer(r)
+	defer server.Close()
+	req, err := http.NewRequest(http.MethodPost, server.URL+"/api/agent/artifacts?session_id=artifact-session", strings.NewReader("hello"))
+	require.NoError(t, err)
+	req.Header.Set("X-Artifact-Name", "note.txt")
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	var up struct {
+		URL string `json:"url"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&up))
+	resp.Body.Close()
+	bare := strings.TrimSuffix(up.URL, "?v=2")
+	for q, want := range map[string]int{"": http.StatusOK, "?v=2": http.StatusOK, "?v=3": http.StatusBadRequest, "?v=": http.StatusBadRequest, "?v=2&v=2": http.StatusBadRequest} {
+		resp, err := http.Get(server.URL + bare + q)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, want, resp.StatusCode, q)
+	}
+}

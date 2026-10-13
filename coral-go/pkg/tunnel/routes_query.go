@@ -15,6 +15,7 @@ var routeQueries = map[string]string{
 	"GET /api/agent/ui":                                 "session_id",
 	"GET /api/agent/ui/{}/content":                      "revision,session_id",
 	"GET /api/agent/ui/{}/events":                       "after,session_id",
+	"GET /api/artifacts/{}":                             "v=2",
 	"GET /api/board/remotes/proxy/{}/{}/messages/all":   "limit",
 	"GET /api/board/remotes/proxy/{}/{}/messages/check": "session_id",
 	"GET /api/board/tasks":                              "limit",

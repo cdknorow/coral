@@ -30,6 +30,9 @@ EXTRA = {
     'GET /api/agent/ui/{}/events': {'session_id', 'after'},
     'POST /api/agent/ui/{}/events': {'session_id'},
     'POST /api/agent/ui-request': {'session_id'},
+    # The artifact route is registered by SessionsHandler.RegisterAgentArtifacts (not followed by the scan above). Since v1.4.12
+    # (#3168) every artifact link is /api/artifacts/<digest>?v=2; the handler reads v and accepts only absent or 2 (#3179).
+    'GET /api/artifacts/{}': {'v'},
 }
 
 # Parameters that accept only exact values. The spec token becomes name=a|b. The hub's machine feed connects with feed=hub
@@ -37,6 +40,8 @@ EXTRA = {
 # notifications. Only that exact value is accepted through the tunnel; anything else (feed=, feed=Hub, feed=hub2, two values) is refused.
 ENUM = {
     'GET /ws/coral': {'feed': ['hub']},
+    # The artifact link form (#3168): only v=2 passes; any other value or a second v is refused.
+    'GET /api/artifacts/{}': {'v': ['2']},
 }
 
 src = {f: open(f).read() for f in glob.glob(ROOT + '/routes/*.go') if not f.endswith('_test.go')}

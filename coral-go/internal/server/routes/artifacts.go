@@ -123,6 +123,12 @@ func (h *SessionsHandler) getAgentArtifact(w http.ResponseWriter, r *http.Reques
 		errBadRequest(w, "invalid artifact id")
 		return
 	}
+	// The link form (#3168): /api/artifacts/<digest>?v=2. The tunnel accepts exactly that, so the
+	// handler does too: v absent or 2, nothing else (#3179).
+	if q := r.URL.Query(); q.Has("v") && (len(q["v"]) != 1 || q.Get("v") != "2") {
+		errBadRequest(w, "invalid artifact link version")
+		return
+	}
 	path := filepath.Join(h.artifactDir(), id)
 	meta := agentArtifactMeta{}
 	metaData, err := os.ReadFile(path + ".json")
