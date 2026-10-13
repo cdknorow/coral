@@ -97,6 +97,8 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	}
 	// Remote feed changes rebuild at most once a second, or once a poll
 	// interval when that is shorter (the ticker rebuilds that often anyway).
+	// The limit counts only builds that carried a remote change: a kick or a
+	// tick does not hold the next remote change back (#3142).
 	remoteDebounce := min(time.Second, pollInterval)
 
 	ticker := time.NewTicker(pollInterval)
@@ -114,7 +116,8 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	kicked, cancelKick := h.wsKick.subscribe()
 	defer cancelKick()
 	var kickWait <-chan time.Time
-	lastBuild := time.Time{}
+	lastRemoteBuild := time.Time{} // last build that carried a remote change
+	remotePending := false         // a remote change not yet in a build
 	prevServersJSON := ""
 
 	// The first coral_update goes out at once rather than after the first
@@ -135,7 +138,11 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			if firstMessage {
 				continue
 			}
-			if wait := remoteDebounce - time.Since(lastBuild); wait > 0 {
+			remotePending = true
+			if kickWait != nil {
+				continue // rides the kick's build, due within wsKickCoalesce
+			}
+			if wait := remoteDebounce - time.Since(lastRemoteBuild); wait > 0 {
 				if debounce == nil {
 					debounce = time.After(wait)
 				}
@@ -154,7 +161,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		case <-kickWait:
 			kickWait = nil
 		}
-		lastBuild = time.Now()
+		if remotePending {
+			// This build carries the remote change, whatever triggered it.
+			lastRemoteBuild = time.Now()
+			remotePending = false
+			debounce = nil
+		}
 
 		tick, err := h.sharedWSTick(r)
 		if err != nil {

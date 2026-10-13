@@ -231,6 +231,17 @@ func transport(allowPrivate bool) *http.Transport {
 	return t
 }
 
+// CloseIdleConnections closes the idle keep-alive connections of the shared
+// remote transports, for a hub that stops talking to its remotes (#3142).
+// Requests in flight are not affected; a later request dials again.
+func CloseIdleConnections() {
+	transMu.Lock()
+	defer transMu.Unlock()
+	for _, t := range transes {
+		t.CloseIdleConnections()
+	}
+}
+
 // ── Helpers reusable by background services ─────────────────────────
 
 func stripAPIKey(rawQuery string) string {

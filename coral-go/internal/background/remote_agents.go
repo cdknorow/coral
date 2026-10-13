@@ -151,11 +151,18 @@ type remoteState struct {
 	feedLive  bool
 	feedMsgAt time.Time // last message of any type received on the feed
 	noHealth  bool      // remote predates /api/health (404): liveness uses the list
-	lastDB    time.Time // last SetStatus(online) write
+	lastDB    time.Time // last SetStatus write (online or failure)
+	lastErr   string    // error message of the last failure write
 	lastSig   string
 	version   string    // remote's reported version (best effort)
 	versionAt time.Time // when it was last fetched
 }
+
+// remoteSeenWriteEvery bounds the remote_servers writes for a remote whose
+// status is unchanged: last_seen (and a repeated error) is refreshed at most
+// this often, so the UI's "last contact" is accurate to about a minute. A
+// status change is always written at once (#3142).
+var remoteSeenWriteEvery = time.Minute
 
 // RemoteAgentHub implements RemoteAgentSource.
 type RemoteAgentHub struct {
@@ -202,6 +209,7 @@ func (h *RemoteAgentHub) Run(ctx context.Context) {
 				}
 			}
 			h.mu.Unlock()
+			proxy.CloseIdleConnections() // no keep-alive connections left behind
 			return
 		case <-t.C:
 			h.reconcile(ctx)
@@ -493,7 +501,7 @@ func (h *RemoteAgentHub) recordAlive(ctx context.Context, id string) {
 	}
 	changed := st.status != store.RemoteStatusOnline
 	st.status = store.RemoteStatusOnline
-	writeDB := changed || time.Since(st.lastDB) > 30*time.Second
+	writeDB := changed || time.Since(st.lastDB) >= remoteSeenWriteEvery
 	if writeDB {
 		st.lastDB = time.Now()
 	}
@@ -611,6 +619,7 @@ func (h *RemoteAgentHub) recordOnline(ctx context.Context, id string, sessions [
 		return
 	}
 	changed := st.status != store.RemoteStatusOnline
+	statusChanged := changed
 	st.status = store.RemoteStatusOnline
 	if !st.feedLive {
 		if sig := sessionsSig(sessions); sig != st.lastSig || changed {
@@ -619,7 +628,9 @@ func (h *RemoteAgentHub) recordOnline(ctx context.Context, id string, sessions [
 			st.sessions = sessions
 		}
 	}
-	writeDB := changed || time.Since(st.lastDB) > 30*time.Second
+	// The row records status and last_seen, not sessions: a session change
+	// does not need a write (#3142).
+	writeDB := statusChanged || time.Since(st.lastDB) >= remoteSeenWriteEvery
 	if writeDB {
 		st.lastDB = time.Now()
 	}
@@ -646,16 +657,24 @@ func (h *RemoteAgentHub) recordFailure(ctx context.Context, id string, err error
 		h.mu.Unlock()
 		return
 	}
-	changed := st.status != status
-	st.status = status
-	st.feedLive = false
-	st.lastDB = time.Time{}
-	h.mu.Unlock()
 	msg := err.Error()
 	if status == store.RemoteStatusUnauthorized {
 		msg = "remote rejected API key"
 	}
-	_ = h.reg.SetStatus(ctx, id, status, msg)
+	changed := st.status != status
+	st.status = status
+	st.feedLive = false
+	// A repeated failure with the same error is written at most once a minute;
+	// a new status or a different error is written at once (#3142).
+	writeDB := changed || msg != st.lastErr || time.Since(st.lastDB) >= remoteSeenWriteEvery
+	if writeDB {
+		st.lastDB = time.Now()
+		st.lastErr = msg
+	}
+	h.mu.Unlock()
+	if writeDB {
+		_ = h.reg.SetStatus(ctx, id, status, msg)
+	}
 	if changed {
 		h.notify()
 	}
