@@ -2547,11 +2547,10 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "columns must be >= 10")
 		return
 	}
-	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
-		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
-			writeExactTargetError(w, status, message)
-			return
-		}
+	// As for Send: a resize always names its exact target (#3211).
+	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+		writeExactTargetError(w, status, message)
+		return
 	}
 
 	if err := h.terminal.ResizeSession(r.Context(), name, body.Columns, body.AgentType, body.SessionID); err != nil {

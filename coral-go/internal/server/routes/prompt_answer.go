@@ -250,11 +250,11 @@ func (h *SessionsHandler) AnswerPrompt(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "n (1-9) and label are required")
 		return
 	}
-	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
-		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
-			writeExactTargetError(w, status, message)
-			return
-		}
+	// An answer always names its exact target, as for Send: a bare name would reach
+	// whatever pane matches it and could answer another agent's prompt (#3211).
+	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+		writeExactTargetError(w, status, message)
+		return
 	}
 	// The agent's own terminal is gone: say so, rather than "the prompt changed" (#3211)
 	if body.SessionID != "" {

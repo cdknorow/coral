@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/store"
 )
 
 // Screens captured from Claude Code 2.1.278 in a tmux pane.
@@ -176,8 +179,11 @@ func TestParsePromptScreen(t *testing.T) {
 }
 
 func TestAnswerPrompt(t *testing.T) {
-	server, _, terminal, _ := setupSessionsTestServer(t)
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-00000000a5c0"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude-ask", WorkingDir: "/tmp/test"}))
 	terminal.addSession("claude-ask", "/tmp/test")
+	ident := map[string]any{"session_id": sid, "agent_type": "claude"}
 	promptTextDelay = 0
 	base := server.URL + "/api/sessions/live/claude-ask"
 	setScreen := func(s string) {
@@ -196,7 +202,7 @@ func TestAnswerPrompt(t *testing.T) {
 		return append([]string(nil), terminal.sent["claude-ask"]...)
 	}
 	answerText := func(n int, label, text string) (int, map[string]any) {
-		b, _ := json.Marshal(map[string]any{"n": n, "label": label, "text": text})
+		b, _ := json.Marshal(map[string]any{"n": n, "label": label, "text": text, "session_id": ident["session_id"], "agent_type": ident["agent_type"]})
 		resp, err := http.Post(base+"/answer-prompt", "application/json", bytes.NewReader(b))
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -205,7 +211,7 @@ func TestAnswerPrompt(t *testing.T) {
 		return resp.StatusCode, body
 	}
 	answer := func(n int, label string) (int, map[string]any) {
-		b, _ := json.Marshal(map[string]any{"n": n, "label": label})
+		b, _ := json.Marshal(map[string]any{"n": n, "label": label, "session_id": ident["session_id"], "agent_type": ident["agent_type"]})
 		resp, err := http.Post(base+"/answer-prompt", "application/json", bytes.NewReader(b))
 		require.NoError(t, err)
 		defer resp.Body.Close()
@@ -249,6 +255,14 @@ func TestAnswerPrompt(t *testing.T) {
 
 	code, _ = answer(0, "x")
 	assert.Equal(t, http.StatusBadRequest, code)
+
+	// A bare name is refused before the screen is read (#3211): it could reach another agent's pane
+	setScreen(screenPermission)
+	ident = map[string]any{}
+	code, body := answer(1, "Yes")
+	assert.Equal(t, http.StatusBadRequest, code)
+	assert.Equal(t, "session_id_required", body["code"])
+	assert.Equal(t, []string{"4", "4", "5"}, sentKeys(), "a bare-name answer sends no keys")
 }
 
 // Codex's startup menus, captured from a fresh install: the sign-in choice

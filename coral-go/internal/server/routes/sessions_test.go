@@ -1024,16 +1024,25 @@ func TestSessionsSend_Success(t *testing.T) {
 }
 
 func TestSessionsResize(t *testing.T) {
-	server, _, terminal, _ := setupSessionsTestServer(t)
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-000000000005"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-"+sid, "/tmp/test")
 
-	terminal.addSession("claude-00000000-0000-0000-0000-000000000005", "/tmp/test")
-
-	body := bytes.NewBufferString(`{"columns": 120}`)
-	resp, err := http.Post(server.URL+"/api/sessions/live/claude-00000000-0000-0000-0000-000000000005/resize", "application/json", body)
+	body := bytes.NewBufferString(`{"columns": 120, "agent_type": "claude", "session_id": "` + sid + `"}`)
+	resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/resize", "application/json", body)
 	require.NoError(t, err)
 	defer resp.Body.Close()
-
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// A bare name is refused (#3211): it could resize another agent's pane
+	bare, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/resize", "application/json", bytes.NewBufferString(`{"columns": 120}`))
+	require.NoError(t, err)
+	defer bare.Body.Close()
+	var got map[string]any
+	require.NoError(t, json.NewDecoder(bare.Body).Decode(&got))
+	assert.Equal(t, http.StatusBadRequest, bare.StatusCode)
+	assert.Equal(t, "session_id_required", got["code"])
 }
 
 func TestSessionsKill(t *testing.T) {

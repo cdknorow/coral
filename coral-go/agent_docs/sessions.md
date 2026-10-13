@@ -351,7 +351,7 @@ Send a text command to the agent's terminal. `agent_type` and `session_id` are r
 
 Checks run in this order: required fields, `session_id` format, unknown session, sleeping/archived, then target match. So a mismatched request to a sleeping agent answers 409, not 400.
 
-**A request with a `session_id` only ever reaches that session's own terminal.** If it is gone, Coral answers `terminal_gone` and sends nothing; it never falls back to another terminal with the same name, folder or a similar name (teammates often share a folder). The same holds for `/keys`, `/resize`, `/answer-prompt`, restart and resume (409 `terminal_gone`), kill, sleep and Kill All (they end only that session), board and task nudges, and reads such as `/prompt-options` and capture (an empty result). Only legacy calls without a `session_id` still match by name.
+**A request with a `session_id` only ever reaches that session's own terminal.** If it is gone, Coral answers `terminal_gone` and sends nothing; it never falls back to another terminal with the same name, folder or a similar name (teammates often share a folder). The same holds for `/keys`, `/resize`, `/answer-prompt`, restart and resume (409 `terminal_gone`), kill, sleep and Kill All (they end only that session), board and task nudges, and reads such as `/prompt-options` and capture (an empty result). `/send`, `/keys`, `/resize` and `/answer-prompt` require `session_id` and `agent_type` (400 `session_id_required` otherwise), so input is never routed by name; only reads and internal callers without a `session_id` still match by name.
 
 ```bash
 curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/send \
@@ -399,7 +399,7 @@ curl -s -X POST http://localhost:PORT/api/sessions/live/NAME/keys \
 
 ### POST `/api/sessions/live/{name}/resize`
 
-Resize the terminal pane.
+Resize the terminal pane. The same exact-target rules and errors as `/send` apply (`agent_type` and `session_id` required).
 
 **Request Body:**
 ```json
