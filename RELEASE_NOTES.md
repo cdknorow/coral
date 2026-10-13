@@ -1,5 +1,46 @@
 # Release Notes
 
+## v1.4.6 — A much faster dashboard on slow connections, a Servers tab, and phone-sized touch targets
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release makes the dashboard load several times faster on a slow phone connection and almost instantly on a revisit, turns Servers into a top-level tab, and makes the dashboard comfortable to use by touch.
+
+> **Embedders (Cloud Hub), action needed:** `templates/cloud/signin.html` and `templates/cloud/enroll.html` are now Go templates and must be executed with `frontend.PageData` (or any value with a `StaticBase` field) instead of being served as files. An empty `StaticBase` renders the previous `/static/` paths. See **Upgrade notes**.
+
+### Faster
+
+- **Much faster first load.** Scripts, stylesheets and other text files are sent gzip-compressed (text assets 3.97 MB → 1.16 MB), and the code editor, syntax highlighter and terminal libraries no longer block the page from drawing. On a throttled phone at 390 px connecting directly to Coral (not through the Cloud Hub, which already compressed and cached), the first paint went from 11.9 s to 1.24 s.
+- **Revisits download almost nothing.** The dashboard's files are served from a build-specific address, `/static/b/<build>/`, that the browser keeps for good, so a revisit loads them from its cache without asking the server again. The page itself is checked on every visit, so after an upgrade it always loads the new build. On the same throttled phone connecting directly to Coral (not through the Cloud Hub), a revisit now finishes loading in about 0.3 s, with 139 bytes of static files on the wire (v1.4.5 transferred 3.9 MB).
+
+### New
+
+- **Servers is a top-level tab** (on the Cloud Hub, or on a hub with remote machines), replacing the Servers dialogs. Each machine's row shows its Hub, Machine and Effective access, with a one-click **Raise hub mode**. Opening the tab puts focus on its heading, or on the machine's row when you arrive from a link. The server chips in the agent list are now buttons that open that machine's row, as does **Open Servers** on an access refusal. Status, version, last contact and access are shown on the row, not only in a hover tooltip. On a phone the rows stack (520 px and narrower), and Revoke and Remove use the error colour so they no longer look disabled (Revoke measured 4.99:1).
+
+### Fixes
+
+- **Touch-friendly controls.** On touch screens, the dashboard's buttons and links have hit areas of at least 44 × 44 px, including the Agent UI panel list. Mouse and trackpad layouts are unchanged.
+- **Agent UI panel dialog.** The expanded panel is a proper dialog named after the panel, with a 44 px **Close** button. Focus moves to Close when it opens and back to **Expand** when it closes (Close, Escape or a click outside).
+
+### Hub (self-hosted `--hub` and Cloud Hub)
+
+- **Cloud Hub sign-in and enroll pages are templates now** (see the note at the top). They load their files through `StaticBase`, so the Cloud Hub can serve them from its own versioned prefix (`/static/v/…`); Coral's own prefix is `/static/b/…`.
+- Through the Cloud Hub tunnel, files are still sent uncompressed (the connector never forwards `Accept-Encoding`).
+
+### For contributors
+
+- New tests pin that the compressed, cached dashboard and popout pages carry no secrets: the page data's fields must each be reviewed, and two different visitors get byte-identical pages.
+- Code that imports dashboard modules from outside the page (devtools snippets, test harnesses) must import through `window.__coralStatic`, or it gets a second copy of each module. The browser suites do this.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.5.
+
+### Upgrade notes
+
+- **Embedders (Cloud Hub):** execute `templates/cloud/signin.html` and `templates/cloud/enroll.html` as Go templates with `frontend.PageData` (or any value with a `StaticBase` field), rather than serving them raw. An empty `StaticBase` renders the previous `/static/` paths.
+- **Static files:** the standalone server serves the dashboard's scripts, stylesheets, fonts and icons from `/static/b/<build>/` with `Cache-Control: public, max-age=31536000, immutable`. Plain `/static/` paths still work for one release, with `no-cache` and an `ETag`. Text files are gzip-compressed when the browser accepts it.
+- **Service worker:** its cache is renamed to `coral-v4`, which clears what earlier versions stored, and it no longer stores the build-specific files (the browser cache keeps them). On the Cloud Hub the service worker is not used.
+- Nothing to migrate; there are no database changes.
+
 ## v1.4.5 — View-only Cloud Hub servers say so instead of pretending to send
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release makes the dashboard tell you, before anything is sent, when a Cloud Hub server only allows View, and explains every access refusal in plain words.
