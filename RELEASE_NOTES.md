@@ -1,5 +1,36 @@
 # Release Notes
 
+## v1.4.10 — A much faster agent list, and scheduled jobs that don't fire the moment you create them
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release makes the agent list update far more cheaply on busy servers, stops new scheduled jobs from running immediately, and makes the dashboard more resilient to a flaky connection.
+
+### Faster
+
+- **The agent list keeps up with busy servers.** Live updates are now drawn at most once per animation frame, so a burst of changes collapses into one update. Only the rows that changed are touched; the rest keep their elements. On a 250-agent list with the CPU slowed 4×, one agent's change went from 176 ms to 39 ms of main-thread time, a burst of updates from 98 ms to 5 ms per message, and the longest freeze from about 200 ms to under 50 ms.
+- **Syntax highlighting loads when first needed.** The dashboard no longer loads any third-party script before it draws. Code in chat, the docs and file previews is coloured as soon as the highlighter has loaded, and stays plain if it can't load.
+
+### Fixes
+
+- **A new scheduled job no longer runs the moment you create it.** A job that had never run looked back a full day, so a "weekdays at 9:00" job created at 10:00 ran straight away. On a fresh install after 9:00 on a weekday, the built-in demo job did the same, starting a real agent and showing its "Daily Motivation" message. A job now only runs at times after it was created or last changed. An unchanged job still catches up on a time it missed while Coral was off.
+- **Parts of the dashboard recover from a failed load.** If a panel or feature fails to load (for example on a flaky connection), Coral says so ("Could not load …. Check the connection to Coral, then try again.") and loads it properly next time, instead of failing until you reload the page.
+- **Bigger touch targets, round three.** On touch screens: agent list rows, the agent search box, the sidebar's collapse and summary buttons, menu items, the list display options and the welcome screen's links and buttons.
+
+### For contributors
+
+- **Test readiness signals:** `window.__coralReady` lets tests wait for the app instead of sleeping. It resolves after startup, and offers `.liveListRendered()` and `.agentSelected(name or session id)`. The browser suites now use it; fixed sleeps over 100 ms are capped per file by a ratchet (`sleep_hygiene`), which only goes down.
+- **Isolated browser tests:** before every suite the runner opens a fresh tab and clears the Coral site's browser storage, and test servers set `CORAL_NO_DEMO_SEED=1`. Under `npm run test:cdp:stress` (CPU 4×, 3 runs) the whole browser suite now passes every run.
+- **Agent list kill switch:** setting `localStorage['coral-no-morph'] = '1'` (or opening the dashboard with `?nomorph=1`) turns off the incremental list updates and redraws the whole list each time, as before.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.9.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- **Scheduled jobs:** editing, enabling or disabling a job now counts as changing it, so it won't run a time that passed before the change; it runs at its next time. A job you leave alone behaves as before.
+- **`CORAL_NO_DEMO_SEED=1`** (also `true`/`yes`) starts Coral without the demo workflow and its scheduled job. It's meant for test and automation setups.
+
 ## v1.4.9 — View-only servers stay view-only, and raising a server to Launch asks first
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release fixes a race that could make a Cloud Hub View-only agent look writable again, and asks for confirmation before a server is allowed to launch agents from the Cloud Hub.
