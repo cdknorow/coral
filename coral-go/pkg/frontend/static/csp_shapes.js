@@ -181,7 +181,6 @@ export const SHAPES = new Set([
     "id:openFilePreview(S,N,{diff:B})",
     "id:pickSchedulePreset(id:this)",
     "id:popoutRetry()",
-    "id:popoutWake()",
     "id:postBoardMessage()",
     "id:previewTheme()",
     "id:refreshChangedFiles()",

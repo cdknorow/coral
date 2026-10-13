@@ -151,7 +151,7 @@ const MAX_FIRST_PAGE = 200;
         // Open a session the way the app does when an agent is picked.
         const open = name => ev(`(async () => {
             window.__chatMock.requests.length = 0;
-            T.state.autoScroll = true;
+            // No autoScroll reset here: a switch must open at the bottom on its own (#3029).
             await T.sessions.selectLiveSession(${JSON.stringify(name)}, 'claude', ${JSON.stringify(name + '-id')}, window.__chatMock.sessions[${JSON.stringify(name)}].server);
         })()`);
         const rendered = () => ev('window.__rendered()');
@@ -278,7 +278,6 @@ const MAX_FIRST_PAGE = 200;
             m.add('qa-e', 'E', 600, { delay: 250 });
             m.add('qa-f', 'F', 600, { delay: 60 });
             m.requests.length = 0;
-            T.state.autoScroll = true;
             // No awaits between switches: each one supersedes the last.
             T.sessions.selectLiveSession('qa-d', 'claude', 'qa-d-id', 'local');
             T.sessions.selectLiveSession('qa-e', 'claude', 'qa-e-id', 'local');
@@ -307,7 +306,6 @@ const MAX_FIRST_PAGE = 200;
         await waitFor(`window.__chatMock.requests.some(r => r.older)`, 'older page in flight');
         const olderReq = (await requests()).findIndex(r => r.older);
         await ev(`(async () => {
-            T.state.autoScroll = true;
             await T.sessions.selectLiveSession('qa-h', 'claude', 'qa-h-id', 'local');
         })()`);
         await waitFor(`window.__rendered().length > 0 && window.__rendered()[0][0] === 'H'`, 'qa-h');
@@ -354,22 +352,21 @@ const MAX_FIRST_PAGE = 200;
         await open('qa-k');
         await stopPoll();
         await waitFor(`window.__rendered().length > 0`, 'first page');
-        const fillsView = await ev(`(() => { const c = document.getElementById('live-history-messages'); return c.scrollHeight > c.clientHeight; })()`);
-        if (!fillsView) {
-            await waitFor(`window.__chatMock.requests.some(r => r.older)`, 'an older page for a view the first page does not fill', 2000);
-            // It keeps going until the view is filled or the start is reached, one page at a time.
-            await waitFor(`(() => { const c = document.getElementById('live-history-messages'); return c.scrollHeight > c.clientHeight || !document.querySelector('#live-history-messages .chat-history-sentinel'); })()`, 'the view to fill', 5000);
-            await idle();
-            await sleep(200);
-            await idle();
-            const olderReqs = (await requests()).filter(r => r.older);
-            const before = olderReqs.map(r => Number(r.before));
-            assert.equal(new Set(before).size, before.length, `each older page is fetched once (before=${before.join(',')})`);
-            const ids = await rendered();
-            expectRange(ids, 'K', 1000 - ids.length, 1000, 'autofilled view');
-            console.log(`   ✓ ${olderReqs.length} older pages loaded without a scroll, ${ids.length} msgs, no refetch`);
-        } else {
-            assert.fail('fixture error: the first page of one-line messages filled a 20000px view');
+        {
+        // 100 one-line messages cannot fill a 20000px view, so older pages must load without a scroll
+        // (they may already have by now: the check is that they did, once each).
+        await waitFor(`window.__chatMock.requests.some(r => r.older)`, 'an older page for a view the first page does not fill', 2000);
+        // It keeps going until the view is filled or the start is reached, one page at a time.
+        await waitFor(`(() => { const c = document.getElementById('live-history-messages'); return c.scrollHeight > c.clientHeight || !document.querySelector('#live-history-messages .chat-history-sentinel'); })()`, 'the view to fill', 5000);
+        await idle();
+        await sleep(200);
+        await idle();
+        const olderReqs = (await requests()).filter(r => r.older);
+        const before = olderReqs.map(r => Number(r.before));
+        assert.equal(new Set(before).size, before.length, `each older page is fetched once (before=${before.join(',')})`);
+        const ids = await rendered();
+        expectRange(ids, 'K', 1000 - ids.length, 1000, 'autofilled view');
+        console.log(`   ✓ ${olderReqs.length} older pages loaded without a scroll, ${ids.length} msgs, no refetch`);
         }
         await ev(`document.getElementById('qa-chat-host').style.height = '600px'`);
 

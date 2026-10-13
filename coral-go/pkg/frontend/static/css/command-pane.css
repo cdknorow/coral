@@ -434,3 +434,41 @@
 /* Size composer glyphs independently of the established control boxes. */
 #command-pane .btn-nav svg { width: var(--icon-inline-size); height: var(--icon-inline-size); }
 #command-pane .btn-esc .material-icons { font-size: var(--icon-size); }
+
+/* ── Sleeping agent: Wake / Restart… in place of the send controls ── */
+
+.sleeping-composer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+}
+.sleeping-composer[hidden] {
+    display: none;
+}
+.sleeping-composer-label {
+    flex: 1;
+    min-width: 0;
+}
+.sleeping-composer-actions {
+    display: flex;
+    gap: 8px;
+}
+.sleeping-composer-actions .btn {
+    margin: 0;
+}
+/* Mobile and the popout force the toolbar and send buttons visible. */
+#command-pane.agent-sleeping .command-pane-toolbar,
+#command-pane.agent-sleeping .mobile-send-btn,
+#command-pane.agent-sleeping .image-attachments {
+    display: none !important;
+}
+#command-pane.agent-sleeping textarea:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

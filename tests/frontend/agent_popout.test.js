@@ -186,10 +186,10 @@ const SHELL_PROBE = `(() => {
         state: p && p.getState ? p.getState() : null, isOwner: p && p.isOwner ? p.isOwner() : null, targetId: p && p.targetSessionId ? p.targetSessionId() : null,
         workspace: { live: vis('#live-session-view'), cmd: vis('#command-input'), toolbar: vis('#command-toolbar'), panel: vis('#agentic-state'), splitHandle: vis('#task-bar-resize-handle'), commandPane: vis('#command-pane') },
         inputDisabled: !!(document.getElementById('command-input') && document.getElementById('command-input').disabled),
-        overlays: { notFound: vis('#popout-not-found'), ended: vis('#popout-ended'), endedOverlay: vis('#session-ended-overlay'), sleeping: vis('#session-sleeping-overlay'), lost: vis('#session-lost-connection'), chip: vis('#popout-viewer-chip'), waiting: vis('#waiting-banner') },
+        overlays: { notFound: vis('#popout-not-found'), ended: vis('#popout-ended'), endedOverlay: vis('#session-ended-overlay'), sleeping: vis('#sleeping-composer'), lost: vis('#session-lost-connection'), chip: vis('#popout-viewer-chip'), waiting: vis('#waiting-banner') },
         restartedHref: (() => { const a = document.getElementById('popout-restarted-link'); return a ? a.getAttribute('href') : null; })(),
         history: (() => { const a = document.getElementById('popout-open-history'); if (!a) return null; const cs = getComputedStyle(a); const r = a.getBoundingClientRect(); return { tag: a.tagName, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel'), visible: cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0 }; })(),
-        destructive: Array.from(document.querySelectorAll('[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"]')).map(el => (el.id || el.textContent.trim().slice(0, 30)) + ':' + (el.getAttribute('onclick') || '').slice(0, 40)),
+        destructive: Array.from(document.querySelectorAll('[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"],[data-action="restart"]')).map(el => (el.id || el.textContent.trim().slice(0, 30)) + ':' + (el.getAttribute('onclick') || '').slice(0, 40)),
         toasts: document.querySelectorAll('.notification-toast').length,
     };
 })()`;
@@ -478,7 +478,7 @@ async function run() {
     const wsBeforeSleep = await ta.ev(`window.__wsAttempts.filter(u => /\\/ws\\/terminal/.test(u)).length`);
     await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', sleeping: true, status: 'Sleeping', tmux_session: null, waiting_for_input: false, working: false })}] }); true`); await sleep(400);
     sa = await ta.ev(SHELL_PROBE);
-    check('23 sleeping tick -> overlay + pill sleeping + title ◌, Wake control present', sa.overlays.sleeping === 'visible' && sa.pill === 'sleeping' && /^◌ /.test(sa.title) && await ta.ev(`!!document.querySelector('#session-sleeping-overlay button, #session-sleeping-overlay [onclick*="wake" i]')`), JSON.stringify({ sleeping: sa.overlays.sleeping, pill: sa.pill, title: sa.title }));
+    check('23 sleeping tick -> sleeping composer + pill sleeping + title ◌, Wake control present', sa.overlays.sleeping === 'visible' && sa.pill === 'sleeping' && /^◌ /.test(sa.title) && await ta.ev(`!!document.querySelector('#sleeping-composer button[data-action="wake"]')`), JSON.stringify({ sleeping: sa.overlays.sleeping, pill: sa.pill, title: sa.title }));
     check('23 sleeping does not attempt a terminal attach', (await ta.ev(`window.__wsAttempts.filter(u => /\\/ws\\/terminal/.test(u)).length`)) === wsBeforeSleep);
     // restart: A removed, same-name B appears -> ended, link, never follow
     await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, session_id: B, tmux_session: `claude-${B}`, display_name: 'Renamed Bot', sleeping: false, working: true })}], removed: [${JSON.stringify(A)}] }); true`); await sleep(500);

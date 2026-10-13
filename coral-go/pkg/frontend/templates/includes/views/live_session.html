@@ -84,14 +84,6 @@
                             </div>
                             <!-- Chat view: rendered JSONL transcript (shown when the view toggle is on Chat) -->
                             <div id="live-history-messages" class="chat-messages chat-prose live-history-panel live-history-center"></div>
-                            <div id="session-sleeping-overlay" class="session-sleeping-overlay" style="display:none">
-                                <div class="session-sleeping-content">
-                                    <span class="sleeping-emoji">🌙</span>
-                                    <p>This agent is sleeping</p>
-                                    <button class="btn btn-primary" id="popout-wake-btn" type="button" onclick="popoutWake()" hidden>Wake</button>
-                                    <button class="btn" type="button" onclick="restartSession()" title="Start a fresh session with new settings instead of resuming">Restart…</button>
-                                </div>
-                            </div>
                             <div id="session-ended-overlay" class="session-ended-overlay" style="display:none">
                                 <div class="session-ended-content" id="session-ended-default">
                                     <p>Session ended</p>
@@ -121,6 +113,14 @@
                         </div>
 
                         <div class="command-pane" id="command-pane">
+                            <!-- Sleeping agent: replaces the toolbar and send controls (sleeping_view.js) -->
+                            <div id="sleeping-composer" class="sleeping-composer" role="status" hidden>
+                                <span class="sleeping-composer-label"><span aria-hidden="true">🌙</span> This agent is sleeping</span>
+                                <span class="sleeping-composer-actions">
+                                    <button class="btn btn-primary btn-small" id="sleeping-wake-btn" type="button" data-action="wake">Wake</button>
+                                    <button class="btn btn-secondary btn-small" id="sleeping-restart-btn" type="button" data-action="restart" title="Start a fresh session with new settings instead of resuming">Restart…</button>
+                                </span>
+                            </div>
                             <div class="command-pane-toolbar" id="command-toolbar">
                                 <!-- All buttons populated dynamically -->
                             </div>

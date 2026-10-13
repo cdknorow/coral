@@ -10,6 +10,7 @@ import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, resetLiveHistory } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
+import { applySleepingView } from './sleeping_view.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -45,6 +46,14 @@ export const pendingAttachments = new Proxy([], {
     }
 });
 
+// A sleeping agent has no terminal to receive input. The composer hides the
+// send controls; this is the barrier behind them for every send path.
+function sleepingBlocked(silent = false) {
+    if (!(state.currentSession && state.currentSession.sleeping)) return false;
+    if (!silent) showToast("Agent is sleeping — wake it to send commands", true);
+    return true;
+}
+
 export async function sendCommand() {
     if (_isSending) return;
     const targetSession = state.currentSession;
@@ -52,6 +61,7 @@ export async function sendCommand() {
         showToast("No live session selected", true);
         return;
     }
+    if (sleepingBlocked()) return;
     if (popoutTerminalBlocked()) {
         showToast("Agent is not ready to receive input", true);
         return;
@@ -165,6 +175,7 @@ export async function sendCommandWithTeam() {
         return;
     }
 
+    if (sleepingBlocked()) return; // before the reminder is added to the draft
     const input = document.getElementById("command-input");
     const s = state.settings || {};
     const isOrch = _isOrchestratorSession(state.currentSession);
@@ -194,6 +205,7 @@ export async function sendBoardProtocol() {
         showToast("No live session selected", true);
         return;
     }
+    if (sleepingBlocked()) return; // before the protocol is added to the draft
     const input = document.getElementById("command-input");
     const current = input.value.trim();
     input.value = current ? `${current}\n\n${BOARD_PROTOCOL}` : BOARD_PROTOCOL;
@@ -205,6 +217,7 @@ export async function resendInputPrompt() {
         showToast("No live session selected", true);
         return;
     }
+    if (sleepingBlocked()) return; // before the prompt replaces the draft
     const s = state.currentSession;
     const boardName = s.board_project || "";
     if (!boardName) {
@@ -258,6 +271,7 @@ export async function saveMacros(macros) {
 
 export function executeMacro(command) {
     // Support chained commands with "&&" separator (1s delay between each)
+    if (sleepingBlocked()) return; // keep the draft
     const parts = command.split("&&").map(c => c.trim()).filter(Boolean);
     if (parts.length === 0) return;
     document.getElementById("command-input").value = parts[0];
@@ -389,6 +403,7 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
         showToast("No live session selected", true);
         return;
     }
+    if (sleepingBlocked(silent)) return;
     if (popoutTerminalBlocked()) {
         if (!silent) showToast("Agent is not ready to receive input", true);
         return;
@@ -557,8 +572,7 @@ export async function confirmRestart() {
         } else {
             // A restarted sleeping agent is running again
             state.currentSession.sleeping = false;
-            const sleepOverlay = document.getElementById("session-sleeping-overlay");
-            if (sleepOverlay) sleepOverlay.style.display = "none";
+            applySleepingView(false);
             // Update state with the new session_id (tmux session was renamed)
             if (result.session_id) {
                 state.currentSession.session_id = result.session_id;
@@ -779,6 +793,7 @@ export function cycleModeToggle() {
 }
 
 export function sendQuickCommand(command) {
+    if (sleepingBlocked()) return; // keep the draft
     document.getElementById("command-input").value = command;
     sendCommand();
 }

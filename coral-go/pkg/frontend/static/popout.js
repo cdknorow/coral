@@ -18,6 +18,7 @@ import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
 import { normServer, serverFetch, sessionServer, agentPath, parseAgentPath, isLocalServer } from './server_base.js';
 import { isInteractiveOwner, claimOwnership, releaseOwnership } from './ownership.js';
+import { applySleepingView, SLEEPING_PLACEHOLDER } from './sleeping_view.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RESOLVE_RETRIES = 3;      // index lag: valid id not yet in the live list
@@ -44,7 +45,7 @@ let _restartedId = '';
 let _terminalDown = false;
 let _attached = false;          // terminal attached for the current target
 let _waking = false;
-const DESTRUCTIVE_SELECTOR = '[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"]';
+const DESTRUCTIVE_SELECTOR = '[onclick*="killSession"],[onclick*="restartSession"],[onclick*="renameAgent"],[onclick*="confirmRestart"],[onclick*="killSessionDirect"],[onclick*="restartDirect"],[data-action="restart"]';
 
 /** States in which the target is attached and may receive input. */
 const LIVE_STATES = new Set(['working', 'waiting', 'check', 'stuck', 'your-turn', 'idle']);
@@ -323,8 +324,7 @@ function _renderCards(next) {
         if (lost) lost.style.display = 'none';
         if (ended) ended.style.display = next === 'ended' ? '' : 'none';
         if (notFound) notFound.style.display = next === 'not-found' ? '' : 'none';
-        const sleep = document.getElementById('session-sleeping-overlay');
-        if (sleep) sleep.style.display = 'none';
+        applySleepingView(false, { manageInput: false });
     } else {
         if (ended) ended.style.display = 'none';
         if (notFound) notFound.style.display = 'none';
@@ -375,14 +375,12 @@ function _applyLiveState(s) {
 }
 
 function _syncSleeping(sleeping) {
-    const overlay = document.getElementById('session-sleeping-overlay');
-    if (overlay) overlay.style.display = sleeping ? '' : 'none';
-    const wake = document.getElementById('popout-wake-btn');
-    if (wake) wake.hidden = !sleeping;
+    // The composer's Wake calls popoutWake; the input follows _state here.
+    applySleepingView(sleeping, { manageInput: false });
     if (sleeping) {
         _attached = false;
         const input = document.getElementById('command-input');
-        if (input) { input.disabled = true; input.placeholder = 'Agent is sleeping — wake it to send commands'; }
+        if (input) { input.disabled = true; input.placeholder = SLEEPING_PLACEHOLDER; }
     }
 }
 

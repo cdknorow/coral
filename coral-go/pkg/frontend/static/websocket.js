@@ -11,6 +11,7 @@ import { showNotificationToast, showWorkflowNotification, showAlertNotification,
 import { serverWsBase, identityKey, sessionServer } from './server_base.js';
 import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
+import { applySleepingView } from './sleeping_view.js';
 
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
@@ -278,6 +279,17 @@ export function handleCoralMessage(data) {
                     const termDot = document.getElementById('terminal-status-dot');
                     if (termDot) termDot.className = terminalDotClass(s);
                     popoutUpdateFromSession(s);
+                    // The agent went to sleep or woke up elsewhere (sidebar, team
+                    // wake): select it again so the terminal attaches or the
+                    // history takes over. The popout follows its own lifecycle.
+                    if (!isPopout()) {
+                        if (!!s.sleeping !== !!state.currentSession.sleeping) {
+                            const cur = state.currentSession;
+                            window.selectLiveSession(cur.name, cur.agent_type, cur.session_id, sessionServer(cur));
+                        } else if (s.sleeping) {
+                            applySleepingView(true); // the placeholder above was the awake one
+                        }
+                    }
                 }
             }
         }

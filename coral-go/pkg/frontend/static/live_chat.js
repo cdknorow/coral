@@ -826,6 +826,15 @@ export async function loadMoreHistory() {
     if (ok && generation === historyGeneration && historyHasMore && sentinelInReach()) {
         loadMoreHistory();
     }
+    // Re-arm the observer: observe() reports the current state, so a reader
+    // who left and came back to the top while the page loaded is not stuck.
+    if (ok && generation === historyGeneration && sentinelObserver) {
+        const btn = document.querySelector("#live-history-messages > .load-more-btn");
+        if (btn) {
+            sentinelObserver.unobserve(btn);
+            sentinelObserver.observe(btn);
+        }
+    }
 }
 
 function sentinelInReach() {
@@ -1019,6 +1028,9 @@ export function resetLiveHistory({ resume = false } = {}) {
     if (container) container.innerHTML = "";
     historyGeneration++;
     refreshInFlight = -1;
+    // A new chat opens at the bottom. Only scroll events set autoScroll, and
+    // the one emptying the container fires after the first page renders.
+    state.autoScroll = true;
     historyMessageCount = 0;
     historyOffset = 0;
     historyStart = 0;

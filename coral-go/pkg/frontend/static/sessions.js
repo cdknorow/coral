@@ -24,6 +24,7 @@ import { getRendererMode } from './renderers.js';
 import { invalidateFileCache, fetchFileList } from './file_mention.js';
 import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
 import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
+import { applySleepingView } from './sleeping_view.js';
 
 // Bumped on every switch, so deferred work started for one agent can tell it
 // is no longer the selected one.
@@ -65,6 +66,9 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
 
     syncFilesViewerSession();
     refreshAgentUI();
+    // A sleeping agent keeps its transcript readable; the composer offers Wake
+    // instead of sending. The popout corrects this from its resolver below.
+    applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout() });
 
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);
@@ -121,6 +125,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     if (cmdInput) {
         cmdInput.placeholder = commandPlaceholder(identity, agentType, agentData && agentData.board_project);
     }
+    // Keep the sleeping placeholder over the awake one just set.
+    if (state.currentSession.sleeping && !isPopout()) applySleepingView(true);
 
     // Reset summary/status before loading new session detail
     const summaryEl = document.getElementById("session-summary");
@@ -148,12 +154,6 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
             document.dispatchEvent(new CustomEvent('coral:terminal-updated'));
         }
     });
-
-    // Show sleeping overlay if agent is sleeping
-    const sleepOverlay = document.getElementById('session-sleeping-overlay');
-    if (sleepOverlay) {
-        sleepOverlay.style.display = (agent && agent.sleeping) ? '' : 'none';
-    }
 
     // Set up quick action buttons
     state.currentCommands = (agent && agent.commands) || [
@@ -228,7 +228,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     setTimeout(syncPaneWidth, 100);
 
     // Show terminal or chat in the center pane (starts the transcript poll in chat mode)
-    const transcriptReady = applyLiveViewMode();
+    // A sleeping agent has no terminal to show: its history is the view.
+    const transcriptReady = applyLiveViewMode(state.currentSession.sleeping ? "chat" : undefined);
 
     // Load secondary data in background (non-blocking, after terminal is connected)
     loadAgentTasks(name, sessionId);

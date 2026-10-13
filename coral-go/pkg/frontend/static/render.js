@@ -1488,25 +1488,28 @@ export function wakeAllAgents() {
 
 export function toggleAgentSleep(name, agentType, sessionId, action) {
     const server = serverForSession(name, sessionId);
+    // Resolves true when the server applied the action.
     const doIt = async () => {
         try {
             const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(sessionId)}/${action}`, { method: 'POST' });
             const data = await resp.json();
-            if (!data.ok) { showToast(data.error || 'Failed to toggle sleep', true); return; }
+            if (!data.ok) { showToast(data.error || 'Failed to toggle sleep', true); return false; }
             const sleeping = !!data.sleeping;
             const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
             if (s) s.sleeping = sleeping;
             renderLiveSessions(state.liveSessions);
             showToast(sleeping ? `"${name}" is now sleeping` : `"${name}" is awake`);
+            return true;
         } catch (e) {
             showToast('Failed to toggle agent sleep', true);
+            return false;
         }
     };
     if (action === 'sleep') {
         showConfirmModal('Sleep Agent', `Put "${name}" to sleep?`, doIt);
-    } else {
-        doIt();
+        return Promise.resolve(false);
     }
+    return doIt();
 }
 
 // Drag-and-drop state
