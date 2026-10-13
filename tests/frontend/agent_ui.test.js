@@ -94,6 +94,30 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await ev(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))`);
   await waitFor(`!document.getElementById('agent-ui-expanded')`, 'the expanded panel to close', { soft: true });
   assert.equal(await ev(`Boolean(document.querySelector('.agent-ui-card') && !document.querySelector('.agent-ui-card').hidden && !document.getElementById('agent-ui-expanded'))`),true,'close expanded panel returns to the card');
+  // A panel click while a refresh is in flight (#3170 follow-up): the card shows AT ONCE from what is mounted, and the
+  // click's refresh is not dropped: it runs once more when the in-flight one finishes, and awaiting it waits for that run.
+  await ev(`(async()=>{const d=document.querySelector('.agent-ui-card .agent-ui-dismiss'); if(d) d.click(); return true;})()`);
+  await waitFor(`!document.querySelector('.agent-ui-home')?.hidden`, 'back on the home list');
+  const coalesced = await ev(`(async()=>{
+    const ui = await import((window.__coralStatic||'/static/')+'agent_ui.js');
+    const real = window.fetch; let n = 0;
+    window.fetch = async (url, opts) => { if (String(url).includes('/api/agent/ui?')) { n++; await new Promise(r => setTimeout(r, 400)); /* sleep-ok: simulated network latency, not a wait */ } return real(url, opts); };
+    try {
+      const first = ui.refreshAgentUI();            // in flight: busy and its request start synchronously
+      document.querySelector('.agent-ui-home-row').click();
+      const shownAtOnce = !document.querySelector('.agent-ui-card').hidden && document.querySelector('.agent-ui-home').hidden;
+      const second = ui.refreshAgentUI();           // asked while busy
+      const isPromise = !!second && typeof second.then === 'function';
+      await second;
+      const afterSecond = n;
+      await first;
+      return { shownAtOnce, isPromise, afterSecond };
+    } finally { window.fetch = real; }
+  })()`);
+  assert.equal(coalesced.shownAtOnce, true, 'a panel click shows its card at once, even with a refresh in flight');
+  assert.equal(coalesced.isPromise, true, 'a refresh asked for while busy returns a promise');
+  // >= 2, not exactly 2: the dashboard's own 2 s poll may land during the follow-up and (correctly) queue one more.
+  assert.ok(coalesced.afterSecond >= 2, `and it resolves after one follow-up request has run, not dropped (${coalesced.afterSecond} requests)`);
   assert.equal(cli(['publish','--id','demo','--file',file]).revision,3);
   await ev(`import((window.__coralStatic||'/static/')+'agent_ui.js').then(m=>m.refreshAgentUI())`);
   assert.equal(await ev(`document.querySelectorAll('.agent-ui-card').length`),1,'a new revision resurfaces the panel');

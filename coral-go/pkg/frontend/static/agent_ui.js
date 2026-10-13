@@ -9,6 +9,9 @@ import { responseErrorText } from './server_status.js';
 let session = null;
 let generation = 0;
 let busy = false;
+// A refresh asked for while one is in flight (a panel click during a poll) runs once more when that one
+// finishes, instead of being dropped until the next poll; callers that await it wait for that run.
+let followUp = null, followUpDone = null;
 let activePanel = 'home';
 const mounted = new Map();
 const seen = new Map();
@@ -92,19 +95,30 @@ function createRequestForm(sid) {
     form.append(title,hint,input,button,status); updateRequestForm(form,value); return form;
 }
 
+/** Show the selected panel (or the home list) from what is already mounted: no request needed. */
+function showActivePanel() {
+    for (const [id, item] of mounted) item.card.hidden = activePanel !== id;
+    const home = document.querySelector('#agentic-panel-agent-ui .agent-ui-home');
+    if (home) home.hidden = activePanel !== 'home';
+}
+
 export async function refreshAgentUI() {
     const container = document.getElementById('agentic-panel-agent-ui');
     if (!container) return;
     const sid = currentID();
     if (sid !== session) {
         session = sid; generation++; busy = false; activePanel = 'home';
+        if (followUpDone) { followUpDone(); followUp = followUpDone = null; }
         mounted.clear(); container.replaceChildren();
         document.getElementById('agent-ui-count').textContent = '';
         const dialog = document.getElementById('agent-ui-expanded');
         if (dialog) dialog.remove();
     }
     if (!sid) { container.textContent = 'Select a live agent to see its UI.'; return; }
-    if (busy) return;
+    if (busy) {
+        if (!followUp) followUp = new Promise(resolve => { followUpDone = resolve; });
+        return followUp;
+    }
     // Not while the agent's server is unreachable; back off after gateway errors (#3151).
     const srv = serverForSession(null, sid);
     if (sessionUnreachable(state.currentSession) || backoffBlocked('ui:' + srv)) return;
@@ -135,7 +149,8 @@ export async function refreshAgentUI() {
             const row = document.createElement('button'); row.className = 'agent-ui-home-row';
             const label = document.createElement('strong'); label.textContent = p.title;
             const meta = document.createElement('span'); meta.textContent = `Revision ${p.revision} · ${Number(p.event_count || 0)} event${Number(p.event_count || 0) === 1 ? '' : 's'}`;
-            row.append(label, meta); row.onclick = () => { activePanel = p.id; refreshAgentUI(); }; listing.append(row);
+            // Show the panel at once from what is already mounted; the refresh only brings newer data.
+            row.append(label, meta); row.onclick = () => { activePanel = p.id; showActivePanel(); refreshAgentUI(); }; listing.append(row);
         }
         for (const [id, item] of mounted) {
             if (!panels.some(p => p.id === id)) { item.close?.(); item.panel?.detach(); item.card.remove(); mounted.delete(id); }
@@ -241,8 +256,7 @@ export async function refreshAgentUI() {
             };
             mounted.set(panel.id, item);
         }
-        for (const [id, item] of mounted) item.card.hidden = activePanel !== id;
-        home.hidden = activePanel !== 'home';
+        showActivePanel();
         if (container.classList.contains('active')) {
             for (const p of panels) seen.set(sid + '/' + p.id, p.revision);
         }
@@ -254,7 +268,16 @@ export async function refreshAgentUI() {
             if (!notice) { notice = document.createElement('p'); notice.className = 'agent-ui-notice'; container.append(notice); }
             notice.textContent = error.message;
         }
-    } finally { if (token === generation) busy = false; }
+    } finally {
+        if (token === generation) {
+            busy = false;
+            if (followUp) {
+                const done = followUpDone;
+                followUp = followUpDone = null;
+                refreshAgentUI().finally(done);
+            }
+        }
+    }
 }
 
 export function initAgentUI() {
