@@ -36,17 +36,17 @@ async function connect() {
             requests: [],        // every mocked request, in order
             wakeDelay: 0,
             wakeResult: 'ok',    // 'ok' | 'notok' | 'network'
-            add(name, prefix, n, { sleeping = true, archived = false, server = 'local', agent_type = 'claude', session_id = null, board_project = null } = {}) {
+            add(name, prefix, n, { sleeping = true, archived = false, server = 'local', agent_type = 'claude', session_id = null, board_project = null, workflow_name = null } = {}) {
                 const msgs = [];
                 for (let i = 0; i < n; i++) msgs.push(make(prefix, i));
-                const a = { name, session_id: session_id || name + '-id', prefix, msgs, sleeping: sleeping || archived, archived, server, agent_type, board_project };
+                const a = { name, session_id: session_id || name + '-id', prefix, msgs, sleeping: sleeping || archived, archived, server, agent_type, board_project, workflow_name };
                 this.agents[a.session_id] = a;
                 if (window.__qaState) window.__qaState.liveSessions = (window.__qaState.liveSessions || []).filter(s => s.session_id !== a.session_id).concat([this.entry(a)]);
                 return a;
             },
             entry(a) {
                 return { session_id: a.session_id, name: a.name, display_name: a.name, agent_type: a.agent_type,
-                    working_directory: '/tmp/' + a.name, server: a.server, sleeping: a.sleeping, archived: !!a.archived, board_project: a.board_project || null,
+                    working_directory: '/tmp/' + a.name, server: a.server, sleeping: a.sleeping, archived: !!a.archived, board_project: a.board_project || null, workflow_name: a.workflow_name || null,
                     status: a.sleeping ? 'sleeping' : 'idle' };
             },
             byPathSeg(seg) {
@@ -103,7 +103,7 @@ async function connect() {
                     return Promise.resolve(new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } }));
                 }
             }
-            const m = u.match(/^(?:\\/api\\/remote\\/([^/]+))?\\/api\\/sessions\\/live\\/([^/?]+)\\/(chat|wake|sleep|send|keys|archive|unarchive)(?:\\?(.*))?$/);
+            const m = u.match(/^(?:\\/api\\/remote\\/([^/]+))?\\/api\\/sessions\\/live\\/([^/?]+)\\/(chat|wake|sleep|send|keys|archive|unarchive|kill)(?:\\?(.*))?$/);
             const a = m && mock.byPathSeg(m[2]);
             if (!a) return origFetch(url, opts);
             const kind = m[3];

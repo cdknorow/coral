@@ -1183,13 +1183,27 @@ export function copyFolderPath(path) {
     });
 }
 
+// The agents a folder or workflow group shows, and only those (#3053): team
+// members are listed (and killed) under their team, archived agents in the
+// Archived section, and with Group by Team on, workflow-run agents in their
+// workflow group. A search narrows the group as it does in the list.
+function _groupMembers(groupName) {
+    const byTeam = localStorage.getItem('coral-group-by-team') !== 'false';
+    const shown = state.liveSessions.filter(s => !s.archived && !s.board_project && (!_agentFilter || _agentMatches(s, _agentFilter)));
+    if (groupName.startsWith('wf:')) {
+        const wf = groupName.slice(3);
+        return byTeam ? shown.filter(s => s.workflow_name === wf) : [];
+    }
+    return shown.filter(s => sessionFolderKey(s) === groupName && !(byTeam && s.workflow_name));
+}
+
 export async function killGroup(groupName) {
-    const groupSessions = state.liveSessions.filter(s => sessionFolderKey(s) === groupName);
+    const groupSessions = _groupMembers(groupName);
     if (!groupSessions.length) return;
 
     showConfirmModal(
         "Kill All Agents",
-        `Kill all ${groupSessions.length} agent(s) in "${keyLabel(groupName)}"? This will terminate them.`,
+        `Kill all ${groupSessions.length} agent(s) in "${groupName.startsWith('wf:') ? groupName.slice(3) : keyLabel(groupName)}"? This will terminate them.`,
         async () => {
             for (const s of groupSessions) {
                 try {
