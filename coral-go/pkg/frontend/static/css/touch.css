@@ -66,6 +66,39 @@
         opacity: 1;
     }
 
+    /* Dropdown rows (#3131): the top-bar settings menu, the Cloud Hub account
+       menu (Servers / Sign out) and the agent row menus share this class. */
+    .overflow-menu-item {
+        min-height: var(--control-touch-height);
+    }
+
+    /* The docked sidebar on a tablet (#3131): its toolbar buttons, the agent
+       search, the Display options rows (the label is the checkbox's hit area)
+       and the agent rows. The phone agent list keeps its own row sizing
+       (#mobile-session-list, mobile.css). */
+    .sidebar-collapse-btn,
+    #sidebar-summary-btn {
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+    #agent-search-input,
+    .session-group-item,
+    /* the compact one-line rows when summaries are hidden (layout.css) */
+    .sidebar.summary-hidden .session-group-item:not(:has(.session-unread-chip)),
+    .sidebar.summary-hidden .board-card-agents .session-group-item:not(:has(.session-unread-chip)) {
+        min-height: var(--control-touch-height);
+    }
+    /* The home view's link row (Documentation, GitHub, Forum, Mobile QR code). */
+    .welcome-links a,
+    .welcome-links button {
+        min-height: var(--control-touch-height);
+    }
+    .list-display-option {
+        display: flex;
+        align-items: center;
+        min-height: var(--control-touch-height);
+    }
+
     /* Browse and Team Artifacts rows, the file filter, the list actions and
        the Servers tab's Access select. */
     .explorer-item,

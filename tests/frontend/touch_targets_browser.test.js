@@ -16,7 +16,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const UNDERSIZED = `(() => {
     const out = [];
     for (const el of document.querySelectorAll('button, a[href], [role=button], input:not([type=hidden]), select, summary, [onclick]')) {
-        const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+        // A checkbox or radio inside its label is tapped through the label.
+        const hit = el.matches('input[type=checkbox], input[type=radio]') && el.closest('label') ? el.closest('label') : el;
+        const r = hit.getBoundingClientRect(); const cs = getComputedStyle(el);
         if (!r.width || !r.height || cs.visibility === 'hidden' || cs.display === 'none') continue;
         if (r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth) continue;
         if (r.width >= 44 && r.height >= 44) continue;
@@ -49,7 +51,7 @@ const UNDERSIZED = `(() => {
     execFileSync(bin, ['ui', 'publish', '--id', 'touch', '--title', 'Touch Panel', '--file', panelFile], { env, encoding: 'utf8' });
 
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
-    const { Page, Runtime, Emulation, Input } = client;
+    const { Page, Runtime, Emulation, Input, Fetch, Network } = client;
     const ev = async expression => {
         const r = await Runtime.evaluate({ expression, returnByValue: true, awaitPromise: true });
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails));
@@ -77,6 +79,17 @@ const UNDERSIZED = `(() => {
         assert.deepEqual(await ev(UNDERSIZED), [], 'phone 390: every control is at least 44x44');
         assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), 'phone 390: no horizontal overflow');
         console.log('PASS phone 390 coarse: no control under 44px, no overflow');
+
+        // Round 3 (#3131): the top-bar settings dropdown's rows.
+        const menuRows = sel => ev(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(e => e.getBoundingClientRect()).filter(r => r.width && r.height).map(r => [Math.round(r.width), Math.round(r.height)])`);
+        await ev(`toggleTopBarSettings()`); await sleep(200);
+        const settingsRows = await menuRows('#top-bar-settings-menu .overflow-menu-item');
+        assert.ok(settingsRows.length >= 2, 'the settings dropdown is open with its rows: ' + JSON.stringify(settingsRows));
+        for (const [w, h] of settingsRows) assert.ok(w >= 44 && h >= 44, `settings dropdown row ${w}x${h} under 44px`);
+        const settingsSmall = await ev(UNDERSIZED);
+        assert.deepEqual(settingsSmall, [], 'phone 390 with the settings dropdown open: every control is at least 44x44: ' + JSON.stringify(settingsSmall));
+        await ev(`closeTopBarSettings()`);
+        console.log(`PASS phone 390 coarse: settings dropdown rows at least 44px (${settingsRows.length} rows)`);
 
         // Round 2 (#3098, Coral Hub v1.4.6 re-check): the side panel's tabs, the
         // Files list (favourite stars) and Browse (row icons) on the phone overlay.
@@ -138,6 +151,38 @@ const UNDERSIZED = `(() => {
         }
         console.log('PASS phone 390 coarse: cloud sign-in and enroll inputs and buttons at least 44x44');
 
+        // The Cloud Hub account dropdown (Servers / Sign out, #3131): the dashboard
+        // as the hub serves it (cloud-mode boot flag, a signed-in session).
+        Fetch.requestPaused(async e => {
+            if (e.resourceType === 'Document') {
+                const { body, base64Encoded } = await Fetch.getResponseBody({ requestId: e.requestId });
+                const html = (base64Encoded ? Buffer.from(body, 'base64').toString('utf8') : body).replace('{"mode":"local"}', '{"mode":"cloud"}');
+                const headers = (e.responseHeaders || []).filter(h => !/^content-length$/i.test(h.name));
+                return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: headers, body: Buffer.from(html).toString('base64') });
+            }
+            return Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+                body: Buffer.from(JSON.stringify({ authenticated: true, email: 'touch@example.com', csrf: 'x' })).toString('base64') });
+        });
+        // The service worker would answer the document before Fetch sees it.
+        await Network.enable(); await Network.setBypassServiceWorker({ bypass: true });
+        await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: '*/auth/session*', requestStage: 'Request' }] });
+        try {
+            await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+            for (let i = 0; i < 80 && !(await ev(`!!document.querySelector('.cloud-account-btn')`)); i++) await sleep(100);
+            const where = await ev(`({ path: location.pathname, mode: (document.getElementById('coral-boot') || {}).textContent, cloud: document.body.classList.contains('cloud-mode'), btn: !!document.querySelector('.cloud-account-btn') })`);
+            assert.ok(where.btn, 'the hub account button is shown: ' + JSON.stringify(where));
+            await ev(`document.querySelector('.cloud-account-btn').click()`); await sleep(200);
+            const accountRows = await menuRows('#cloud-account-menu .overflow-menu-item');
+            assert.equal(accountRows.length, 2, 'the account dropdown shows Servers and Sign out: ' + JSON.stringify(accountRows));
+            for (const [w, h] of accountRows) assert.ok(w >= 44 && h >= 44, `account dropdown row ${w}x${h} under 44px`);
+            const accountSmall = await ev(`(() => { const m = document.getElementById('cloud-account-menu'); const out = []; for (const el of m.querySelectorAll('button, a[href]')) { const r = el.getBoundingClientRect(); if (r.width && r.height && (r.width < 44 || r.height < 44)) out.push(Math.round(r.width) + 'x' + Math.round(r.height) + ' ' + el.textContent.trim()); } return out; })()`);
+            assert.deepEqual(accountSmall, [], 'account dropdown: every control is at least 44x44');
+            console.log('PASS phone 390 coarse: account dropdown rows (Servers, Sign out) at least 44px');
+        } finally {
+            await Fetch.disable();
+            await Network.setBypassServiceWorker({ bypass: false });
+        }
+
         await open(820, 1180, false);
         assert.deepEqual(await ev(UNDERSIZED), [], 'iPad 820: every control is at least 44x44');
         await ev(`document.querySelector('.tablet-sidebar-toggle')?.click()`); await sleep(400);
@@ -146,12 +191,31 @@ const UNDERSIZED = `(() => {
         for (const [w, h] of rows) assert.ok(w >= 44 && h >= 44, `sidebar row control ${w}x${h} under 44px`);
         console.log(`PASS iPad 820 coarse: no control under 44px; ${rows.length} sidebar row controls >=44`);
 
+        // Round 3 (#3131, Coral Hub v1.4.8 re-check at iPad 768x1024): the docked
+        // sidebar (Display options, Collapse, Search agents, agent rows) and the
+        // home view's links.
+        await open(768, 1024, false);
+        await ev(`document.querySelector('.tablet-sidebar-toggle:not([hidden])')?.offsetParent && document.querySelector('.tablet-sidebar-toggle').click()`); await sleep(400);
+        const ipadSmall = await ev(UNDERSIZED);
+        assert.deepEqual(ipadSmall, [], 'iPad 768 with an agent selected: every control is at least 44x44: ' + JSON.stringify(ipadSmall));
+        const agentRows = await menuRows('.session-group-item');
+        assert.ok(agentRows.length >= 1, 'the sidebar lists the agent');
+        for (const [w, h] of agentRows) assert.ok(h >= 44, `agent row ${w}x${h} under 44px tall`);
+        await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
+        await ev(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`); await sleep(800);
+        await ev(`document.querySelector('.tablet-sidebar-toggle:not([hidden])')?.offsetParent && document.querySelector('.tablet-sidebar-toggle').click()`); await sleep(400);
+        const ipadHomeSmall = await ev(UNDERSIZED);
+        assert.deepEqual(ipadHomeSmall, [], 'iPad 768 home view: every control is at least 44x44: ' + JSON.stringify(ipadHomeSmall));
+        console.log(`PASS iPad 768 coarse: sidebar controls, ${agentRows.length} agent row(s) and the home links at least 44px`);
+
         // A fine pointer keeps the desktop look.
         await coarse(false);
         await open(1280, 800, false);
         const home = await ev(`(() => { const r = document.querySelector('.top-bar-btn').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`);
         assert.ok(home[0] < 44 && home[1] < 44, 'desktop (fine pointer) top-bar buttons keep their size: ' + home);
-        console.log('PASS desktop fine pointer unchanged (' + home + ')');
+        const deskRow = await ev(`(() => { const r = document.querySelector('#live-sessions-list .session-group-item')?.getBoundingClientRect(); return r ? Math.round(r.height) : 0; })()`);
+        assert.ok(deskRow > 0 && deskRow < 44, 'desktop (fine pointer) agent rows keep their compact height: ' + deskRow);
+        console.log('PASS desktop fine pointer unchanged (' + home + '; agent row ' + deskRow + 'px)');
 
         // F2: the expanded Agent UI panel, on a touch tablet where the side panel is on screen.
         await coarse(true);
