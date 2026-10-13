@@ -1,5 +1,48 @@
 # Release Notes
 
+## v1.4.2 — Sleeping agents keep their history, an Archived state for agents you are done with, and input that always names its agent
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release changes what you see for a sleeping agent, adds an Archived state that Wake All and team wake leave alone, and makes the input endpoints refuse anything that does not name its exact agent.
+
+### New
+
+- **Archived agents.** Archive an agent you are done with but want to keep: from the agent's menu choose **Archive** (a running agent is stopped first). Archived agents leave the main list, team groups, sleeping summaries and agent counts and appear in one collapsed **Archived (N)** section at the bottom of the agent list, captioned by team. Selecting one shows its history read-only, with **Unarchive** (back to plain sleeping) and **Wake** (wakes and unarchives it). **Wake All** and **team Wake** leave archived agents asleep, and an archived agent is never counted against the live-agent limit.
+- **Tasks are never given to an archived agent.** `coral-board status` reports it as `archived` (not available), creating, editing or reassigning a task to it is refused with "unarchive it before assigning it work", and the task queue never nudges it, including the "tasks available" nudge for unassigned work, which now always goes to an agent that can claim it.
+- **Sleeping agents show their chat history.** Selecting a sleeping agent shows its conversation as usual, scrollable and with older history loading as you scroll up, instead of an overlay. The composer says "This agent is sleeping" with **Wake** (and **Restart…**; the popout shows Wake only) and the input is disabled; nothing can be sent to a sleeping agent from any control.
+
+### Fixes
+
+- **Switching agents after scrolling up opens the next chat at the bottom** again, instead of at the top, and no longer fetches an older page it does not need (a regression in v1.4.1's scroll loading; through a hub that was a wasted round trip to the machine). Older-history loading can no longer stall after a page lands.
+
+### Changed
+
+- **`/send` and `/keys` require the exact agent.** `POST /api/sessions/live/{name}/send` and `/keys` now always need `session_id` and `agent_type` matching the agent in the path. A call by bare name used to reach whatever terminal carried that name, including a sleeping or archived agent's leftover pane; it is now refused with 400 `{error, code: "session_id_required"}` and nothing is typed. A sleeping agent answers 409 `session is sleeping`, an archived one 409 `session is archived`. The dashboard, popout, mobile view, macros and quick actions already send both (the `coral-board` and `coral-agent` CLIs do not call these endpoints); scripts calling them by name must add both fields (the curl examples in the Troubleshooting and Quickstart docs are updated).
+
+### Hub (self-hosted `--hub` and Cloud Hub)
+
+- **Archive needs v1.4.2 on the machine.** The dashboard offers Archive only for machines that report the `archived` field (v1.4.2, server and connector); on older machines the menu item is hidden. Archived agents are listed last in a machine's feed and session list, are not counted in the hub's per-machine agent count, and never report "waiting for input".
+
+### For contributors
+
+- Dev and local builds report a version in `/api/health`, the startup log and to Coral Hub: `<next>-dev+<commit>` (for example `1.4.2-dev+337c80bc`, `.dirty` with uncommitted changes) instead of an empty string. Use `make dev` or `make build` to get that base; a plain `go build` reports `0.0.0-dev+<commit>`, which hubs treat as very old. Release builds are unchanged, and dev builds still never offer themselves an update.
+- CI's Linux jobs are pinned to `ubuntu-24.04` ahead of GitHub moving `ubuntu-latest` to Ubuntu 26; the Linux release build was verified on `ubuntu-26.04` with the new manual **Linux runner dry run** workflow.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.1.
+
+### Upgrade notes
+
+- **Archive needs v1.4.2 on the machine** (server and connector). Through a hub, older machines don't offer Archive.
+- **`/send` and `/keys` refuse calls that don't name the exact agent:** 400 `session_id_required` without `session_id` and `agent_type`, 409 `session is sleeping` or `session is archived`. Scripts calling them by name must add both fields; see **Changed**.
+- **Database:** adds one column, `live_sessions.is_archived`, migrated automatically on first start. Nothing else to do. An older Coral started on the same data directory ignores the column, so archived agents appear there as plain sleeping agents; any it wakes are unarchived automatically when this release starts again.
+- **API users:**
+  - `POST /api/sessions/live/{session_id}/archive` and `/unarchive` return `{ok, sleeping, archived}`; `POST .../wake` on an archived agent also unarchives it. Both new routes are `interact` through the Cloud Hub tunnel, like sleep.
+  - `/api/sessions/live` rows and `/ws/coral` entries (including `feed=hub`) carry `archived: true|false` on every row, and an unarchive diff carries `archived: false` explicitly.
+  - `GET /api/board/{project}/status` reports `availability: "archived"` and counts it in `summary.archived`.
+  - Task create, edit (`assigned_to`) and reassign naming an archived agent answer 409 `{error, code: "assignee_archived"}`.
+  - `/send` and `/keys`: see **Changed** above.
+
 ## v1.4.1 — Faster agent switching through the hub, chat history that loads as you scroll, and steadier hub connections
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release makes switching between agents fast on a hub, even over a slow link, and stops the hub from calling a busy machine unreachable.
