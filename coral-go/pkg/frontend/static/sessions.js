@@ -29,6 +29,7 @@ import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel 
 import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
 import { applySleepingView } from './sleeping_view.js';
 import { refreshHubAccess, syncUnreachableBanner } from './hub_access.js';
+import { syncAutoAcceptHeader } from './auto_accept.js';
 
 // Bumped on every switch, so deferred work started for one agent can tell it
 // is no longer the selected one.
@@ -76,6 +77,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout(), archived: !!(agentData && agentData.archived) });
     // Cloud Hub: show the read-only chip at once for a View-only server (#3068).
     syncUnreachableBanner(); // an agent on an unreachable server shows why (#3151)
+    syncAutoAcceptHeader(); // AUTO chip in the header while auto-accept is on (#3182)
     refreshHubAccess(state.currentSession);
 
     // Restore input text for the new session

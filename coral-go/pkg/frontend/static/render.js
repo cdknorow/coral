@@ -14,6 +14,7 @@ import { syncMobileAgentList } from './mobile.js';
 import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './team_availability.js';
 import { liveListRendered } from './ready.js';
 import { morphHtml } from './dom_morph.js';
+import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -1828,6 +1829,7 @@ ${_archiveItem}            <button class="overflow-menu-item" onclick="event.sto
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                 Restart
             </button>
+            ${autoAcceptMenuItem(s)}
             <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); renameAgent('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M11.5 1.5l3 3L5 14H2v-3z"/></svg>
                 Rename
@@ -1929,7 +1931,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
         <div class="session-info">
             <div class="session-name-row">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
-                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>
+                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>${autoAcceptChip(s)}
                 <span class="session-name-spacer"></span>
                 ${stale ? '' : waitingBadge + ctxPill}
                 ${goalBtn}

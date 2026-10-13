@@ -793,6 +793,42 @@ the local agent hooks. The JSON body accepts `session_id`, `input_tokens`,
 
 ---
 
+## Auto-accept
+
+Per agent, the user can let Coral answer that agent's **permission prompts** for it. While it is on, an amber **AUTO** chip shows on the agent's row and in its header.
+
+**Agents must never turn auto-accept on, for themselves or another agent:** it is the user's decision, made in the dashboard after a warning. Coral refuses the request when it comes from an agent, and if a task seems to need it, ask the user instead.
+
+- **What is answered:** only a prompt asking to approve a tool call. Coral picks the agent type's *approve once* option ("Yes", "Yes, proceed", "Allow once"); never "always", "don't ask again" or an option that changes settings.
+- **What always waits for the user:** questions (AskUserQuestion and the like), plan approvals, free-text prompts, anything Coral does not recognise, and **high-risk actions**:
+  - a recursive delete (`rm -r`, `-R`, `-rf`, `--recursive`) of anything outside the agent's working directory, or aimed at `/` or `~`;
+  - `git push --force` / `-f` / `--force-with-lease` / `--mirror` / a `+ref` push;
+  - git commands that destroy uncommitted work: `git reset --hard`, `git clean` (unless a dry run, `-n`), `git checkout -- …` / `git checkout .` / `git checkout -f`, and `git restore` (except `--staged` only);
+  - `sudo` or `doas`, however written (`\sudo`, `(sudo …)`, `$(sudo …)`, `` `sudo …` ``, `/usr/bin/sudo`);
+  - `find … -delete` or `find … -exec rm …` with a search path outside the working directory, and `sed -i` on a file outside it;
+  - recursive `chmod` / `chown` on a path outside the working directory;
+  - a download run by a shell (`curl` or `wget` piped into `sh`, `bash` or `zsh`, or `bash <(curl …)`);
+  - reading or writing a file outside the working directory (Write, Edit, MultiEdit, NotebookEdit, Read; a Codex edit's destination), with symbolic links resolved, so a link inside the repository that points out of it counts as outside;
+  - a shell command that writes outside the working directory: a `>`, `>>`, `>|`, `&>` or `2>` redirection, `tee`, the destination of `cp`, `install` or `ln` (including `-t`), any path of `mv`, or `dd of=`. `$VAR` and `~` targets count as outside; `/dev/null`, `/dev/stdout`, `/dev/stderr`, `/dev/tty` and `2>&1` are fine.
+
+  Coral checks the tool's input as the agent reported it and the command shown in the prompt, including commands wrapped in `bash -c` / `zsh -lc`, chained with `&&`, `;` or `|`, or behind an environment-variable prefix. A `cd` (or `pushd`) out of the working directory earlier in the same command moves every later path with it (`cd .. && rm -rf x`, `cd /tmp; echo x > f`); a `cd` that cannot be read literally (`cd`, `cd ~`, `cd $X`, `cd -`) makes later relative paths count as outside. It does not block ordinary work inside the repository (`rm -rf build`, a plain `git push`, `chmod -R` or writes inside the repo). Known limits: it is not a full shell parser, so when unsure it leaves the prompt for you (a `>` inside quotes can do that), and `touch`, `mkdir`, scripts and interpreters (`python -c`, `perl -e`, `node -e`) are not path-checked. Each action left for the user is an `auto_accept_skipped` event saying why (at most one per prompt and one per minute).
+- **Where:** on the Coral server, so it works with the dashboard closed and through the Cloud Hub. Each approval is an `auto_accept` event (e.g. "Auto-approved Bash: npm test") in the agent's Activity.
+- **Safety:** a prompt is answered once. The same prompt approved 5 times in a minute, or more than 30 approvals in a minute, turns auto-accept off (`auto_accept_paused`). Turning it on or off is itself an event (`auto_accept_enabled`, naming whether it came from the dashboard or the Cloud Hub, and `auto_accept_disabled`), so every change shows in Activity.
+- **Time limit:** optional when turned on in the dashboard (15 minutes to 8 hours, or none); from the Cloud Hub always set (1 hour unless chosen, at most 8 hours).
+- **Turned off automatically** (an `auto_accept_cleared` event says why): when the agent process starts again (relaunch, restart, resume, wake from sleep) or the time limit runs out. A dashboard-enabled auto-accept survives a Coral server restart while the same agent run is alive; one turned on from the Cloud Hub also ends when Coral restarts, the Cloud link is removed or revoked, the hub's access drops below Launch, or the owner turns off the switch below.
+- **From the Cloud Hub:** needs Launch access on this computer (the owner's opt-in) and the local switch **Cloud Hub can turn on auto-accept** in Coral's Settings (on by default while access is Launch; it cannot be changed through the hub; turning it off ends any hub-enabled auto-accept). Turning it on through the hub needs Launch; turning it off needs Interact.
+- **Stop all:** the top-bar menu's **Stop all auto-accept**, or `coral auto-accept off --all`, turns it off for every agent at once.
+
+```
+POST /api/sessions/live/{session_id}/auto-accept/enable    {"session_id": "...", "acknowledged": true, "duration_s": 3600}
+POST /api/sessions/live/{session_id}/auto-accept/disable   {"session_id": "..."}
+POST /api/auto-accept/disable-all                          -> {"stopped": N}
+```
+
+These routes are for the dashboard (and the Cloud Hub's dashboard); `{session_id}` may also be the agent's name, and it must name the same agent as the body's `session_id` (404 otherwise). Enabling requires `acknowledged: true` (the client showed the warning) and a `duration_s` of 1 to 28800 seconds if given (400 otherwise). It is refused with 403 and a `code`: `agent_identity` (the request carries an agent's identity), `no_dashboard_provenance` (it is not a dashboard in a browser: the dashboard on this computer, or one opened from another device (a LAN address or the phone's QR link) after logging in; an API key, in a header or the URL, never qualifies, and neither does a request whose `Origin` or `Referer` names another page; nor from the Cloud Hub) or `hub_auto_accept_disabled` (from the hub while the owner has turned that off). An asleep agent is 409. An agent type Coral cannot answer for is 409 and an unknown session 404. Turning it off is always allowed. A request counts as coming from the Cloud Hub only when Coral's own connector marked it (with a secret that exists only in Coral's memory), so a copied hub header does not unlock anything. The limits are honest ones: the dashboard check (the browser's `Sec-Fetch-Site`) stops ordinary clients and agent tools, not a deliberately hostile program on the same machine, and an agent with an unrestricted shell is outside what Coral can enforce (it could type into its own terminal). The point is that no Coral agent API or CLI path turns auto-accept on.
+
+The live session always carries `auto_accept` (bool), `auto_accept_until` (unix seconds or null), `auto_accept_source` (`hub`, `local` or null), `auto_accept_supported` (bool), `auto_accept_unsupported_code` (`agent_type_unsupported` or null) and `auto_accept_paused_code` (`repeat_loop`, `rate_cap`, `expired`, `mode_lowered`, `hub_allow_off`, `link_removed`, `stopped_by_owner`, `coral_restarted`, or null). Prompt text and tool details are only in the agent's events.
+
 ## Sleep / Wake
 
 Sleep suspends agent sessions (kills the process, preserves state). Wake relaunches them.

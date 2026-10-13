@@ -71,6 +71,14 @@ function render(st) {
     $('settings-cloud-mode-row').hidden = !st.configured;
     $('settings-cloud-max-mode').value = st.max_mode || 'view';
     $('settings-cloud-mode-desc').textContent = MODE_HELP[st.max_mode || 'view'];
+    // Auto-accept from the hub (#3182): a local kill switch, shown only with Launch (the owner's opt-in),
+    // on unless the owner turned it off here. Only changeable on this computer.
+    const allowRow = $('settings-cloud-auto-accept-row');
+    const allow = $('settings-cloud-allow-auto-accept');
+    if (allowRow && allow) {
+        allowRow.hidden = (st.max_mode || 'view') !== 'launch';
+        allow.checked = st.allow_hub_auto_accept !== false;
+    }
 }
 
 export async function loadCloudStatus() {
@@ -110,4 +118,6 @@ export function initCloudConnect() {
     $('settings-cloud-disconnect').addEventListener('click', () => act('POST', '/api/cloud/disconnect'));
     $('settings-cloud-max-mode').addEventListener('change', (e) =>
         act('PUT', '/api/cloud/max-mode', { mode: e.target.value }));
+    $('settings-cloud-allow-auto-accept')?.addEventListener('change', (e) =>
+        act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked }));
 }

@@ -2812,3 +2812,8 @@ button.team-artifact-name { cursor: pointer; }
 .custom-view-gate { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .custom-view-gate p { margin: 0; color: var(--text-secondary); font-size: 13px; }
 .custom-view-gate-source { max-height: 240px; overflow: auto; margin: 0; padding: 8px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; white-space: pre-wrap; word-break: break-all; }
+
+/* Auto-accept events in Activity (#3182). */
+.event-icon.tool-auto-accept { color: var(--warning); background: rgba(var(--warning-rgb), 0.12); }
+.event-icon.tool-auto-accept-paused { color: var(--error); background: rgba(var(--error-rgb), 0.12); }
+.event-icon.tool-auto-accept-skipped { color: var(--text-secondary); background: rgba(136, 136, 136, 0.12); }

@@ -3649,3 +3649,53 @@ input[aria-invalid="true"] {
     border-color: var(--error, #e05545) !important;
     box-shadow: 0 0 0 1px var(--error, #e05545);
 }
+
+/* Auto-accept (#3182): the AUTO chip (agent row and header), the menu switch's state and the warning dialog. */
+.auto-accept-chip {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 4px;
+    padding: 0 5px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 16px;
+    color: var(--warning);
+    background: rgba(var(--warning-rgb), 0.14);
+    border: 1px solid rgba(var(--warning-rgb), 0.45);
+}
+button.auto-accept-header-chip { cursor: pointer; font-family: inherit; margin: 0 4px 0 0; }
+button.auto-accept-header-chip:hover { background: rgba(var(--warning-rgb), 0.24); }
+button.auto-accept-header-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.auto-accept-menu-item .auto-accept-state { margin-left: auto; padding-left: 12px; font-size: var(--fs-sm, 11px); color: var(--text-muted); }
+.auto-accept-menu-item[aria-checked="true"] .auto-accept-state { color: var(--warning); font-weight: 600; }
+.auto-accept-menu-item[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+dialog.auto-accept-confirm {
+    margin: auto;
+    width: min(460px, calc(100vw - 32px));
+    box-sizing: border-box;
+    padding: 20px 22px;
+    border: 1px solid rgba(var(--warning-rgb), 0.5);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+dialog.auto-accept-confirm::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 16px; }
+.auto-accept-confirm-agent { margin: 0 0 10px; color: var(--text-secondary); font-weight: 600; }
+#auto-accept-confirm-text { margin: 0 0 18px; line-height: 1.5; color: var(--text-secondary); }
+.auto-accept-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.auto-accept-confirm-enable { background: var(--warning); border-color: var(--warning); color: #111; font-weight: 600; }
+.auto-accept-confirm-enable:hover { filter: brightness(1.08); }
+#stop-all-auto-accept[hidden] { display: none; }
+.auto-accept-confirm-duration { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; color: var(--text-secondary); }
+.auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
+.settings-cloud-auto-accept { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+#settings-cloud-auto-accept-row[hidden] { display: none; }
+/* The popout's switch while auto-accept is off (#3182): an outlined, quiet header button. */
+button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 11px; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--border); cursor: pointer; }
+button.auto-accept-header-off:hover { color: var(--text-primary); border-color: rgba(var(--warning-rgb), 0.6); }
+button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

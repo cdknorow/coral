@@ -16,6 +16,7 @@ import { applySleepingView } from './sleeping_view.js';
 import { updateServersTabVisibility } from './servers_tab.js';
 import { markReady } from './ready.js';
 import { syncUnreachableBanner } from './hub_access.js';
+import { syncAutoAcceptHeader, noteAutoAcceptPauses } from './auto_accept.js';
 
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
@@ -206,6 +207,8 @@ export function handleCoralMessage(data) {
             }
             state.liveSessions = data.sessions;
             syncUnreachableBanner(); // the selected agent's server went away or came back (#3151)
+            syncAutoAcceptHeader(); // the selected agent's AUTO chip follows the feed (#3182)
+            noteAutoAcceptPauses(data.sessions); // Coral stopped someone's auto-accept: say so once
             if (!data._skipSidebarRender) {
                 _lastSidebarRenderAt = Date.now();
                 scheduleLiveSessionsRender(); // a burst of feed messages renders once per frame (#3121)

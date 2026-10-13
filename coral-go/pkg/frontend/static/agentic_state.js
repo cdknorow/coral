@@ -25,6 +25,10 @@ const TOOL_ICONS = {
     Task:       { char: '&#xea21;', cls: 'tool-agent' },
 };
 
+// What Coral did for an agent with Auto-accept on (#3182): approved a prompt, paused itself, left one for the user, or
+// turned it off because the agent restarted, resumed or woke; and every time it was turned on or off.
+const AUTO_ACCEPT_EVENTS = ['auto_accept', 'auto_accept_paused', 'auto_accept_skipped', 'auto_accept_cleared', 'auto_accept_enabled', 'auto_accept_disabled'];
+
 // Filter groups — maps display label to the set of tool_names/event_types it covers
 const FILTER_GROUPS = [
     { key: 'read',   label: '&#xe8f4;', title: 'Read',          cls: 'tool-read',   match: ev => ev.tool_name === 'Read' },
@@ -40,7 +44,8 @@ const FILTER_GROUPS = [
     { key: 'goal',       label: '&#xe153;', title: 'Goal',            cls: 'tool-goal',       match: ev => ev.event_type === 'goal' },
     { key: 'confidence', label: '&#xe8e8;', title: 'Confidence',      cls: 'tool-confidence', match: ev => ev.event_type === 'confidence' },
     { key: 'system',     label: '&#xe002;', title: 'Stop / Notify',   cls: 'tool-stop',       match: ev => ev.event_type === 'stop' || ev.event_type === 'notification' },
-    { key: 'pulse',      label: '&#xe87e;', title: 'Pulse (other)',   cls: 'tool-pulse',      match: ev => ev.event_type && !ev.tool_name && !['thinking','status','goal','confidence','stop','notification'].includes(ev.event_type) },
+    { key: 'autoaccept', label: '&#xe877;', title: 'Auto-accept',     cls: 'tool-auto-accept', match: ev => AUTO_ACCEPT_EVENTS.includes(ev.event_type) },
+    { key: 'pulse',      label: '&#xe87e;', title: 'Pulse (other)',   cls: 'tool-pulse',      match: ev => ev.event_type && !ev.tool_name && !['thinking','status','goal','confidence','stop','notification', ...AUTO_ACCEPT_EVENTS].includes(ev.event_type) },
 ];
 
 // Hidden filters are persisted per-session in state
@@ -61,6 +66,12 @@ const EVENT_ICONS = {
     confidence:   { char: '&#xe8e8;', cls: 'tool-confidence', title: 'Confidence' },
     stop:         { char: '&#xe002;', cls: 'tool-stop',       title: 'Stop' },
     notification: { char: '&#xe7f4;', cls: 'tool-notification', title: 'Notification' },
+    auto_accept:         { char: '&#xe877;', cls: 'tool-auto-accept', title: 'Auto-approved' },
+    auto_accept_paused:  { char: '&#xe034;', cls: 'tool-auto-accept-paused', title: 'Auto-accept paused' },
+    auto_accept_skipped: { char: '&#xe8fd;', cls: 'tool-auto-accept-skipped', title: 'Left for you to answer' },
+    auto_accept_cleared: { char: '&#xe034;', cls: 'tool-auto-accept-skipped', title: 'Auto-accept turned off' },
+    auto_accept_enabled: { char: '&#xe877;', cls: 'tool-auto-accept-paused', title: 'Auto-accept turned on' },
+    auto_accept_disabled: { char: '&#xe034;', cls: 'tool-auto-accept-skipped', title: 'Auto-accept turned off' },
 };
 
 function getToolIcon(toolName, eventType) {
