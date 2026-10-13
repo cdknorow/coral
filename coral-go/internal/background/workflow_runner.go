@@ -440,14 +440,23 @@ func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, ste
 	return stepErr
 }
 
+// settings are the user's settings (for the CLI path); nil when unavailable.
+func (wr *WorkflowRunner) settings(ctx context.Context) map[string]string {
+	if wr.store == nil || wr.store.DB() == nil {
+		return nil
+	}
+	s, _ := store.NewSessionStore(wr.store.DB()).GetSettings(ctx)
+	return s
+}
+
 // executeAgentPrint runs an agent in non-interactive --print mode.
 // When the agent config includes tools/capabilities, those are passed via a settings
 // file (same as BuildLaunchCommand) so the agent has tool access in headless mode.
 // Captures stdout/stderr to step files. No tmux session.
 func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, step StepDef, stepDir, repoPath string, env []string, agentCfg *AgentStepConfig, prompt string, stepHooks map[string]interface{}, result *StepResult) error {
-	binPath, err := exec.LookPath(agentCfg.AgentType)
+	binPath, err := agent.FindCLI(wr.settings(ctx), agentCfg.AgentType)
 	if err != nil {
-		return fmt.Errorf("agent binary %q not found: %w", agentCfg.AgentType, err)
+		return fmt.Errorf("step %q: %w", step.Name, err)
 	}
 
 	// Build the full launch command via the agent package when tools/capabilities

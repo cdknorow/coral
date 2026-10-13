@@ -505,6 +505,17 @@ func (h *SystemHandler) CLICheck(w http.ResponseWriter, r *http.Request) {
 		}
 		binaryPath = info.Binary
 		installCmd = info.InstallCommand
+		// The CLI path setting is what launch runs, so a check by type looks
+		// there first: a configured path is not reported as "not found" (#3169).
+		if h.ss != nil {
+			if settings, _ := h.ss.GetSettings(r.Context()); settings != nil {
+				if p := agent.ResolveCLIPath(settings, agentType); p != "" {
+					if _, err := cliLookPath(p); err == nil {
+						binaryPath = p
+					}
+				}
+			}
+		}
 	}
 
 	// Analytics tracks only the known tools checked by agent type; a caller-
@@ -1066,10 +1077,11 @@ func (h *SystemHandler) GenerateTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claudePath, err := exec.LookPath("claude")
+	settings, _ := h.ss.GetSettings(r.Context())
+	claudePath, err := agent.FindCLI(settings, agenttypes.Claude)
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error": "Claude CLI not found — install Claude Code (npm install -g @anthropic-ai/claude-code)",
+			"error": "Claude CLI not found — install Claude Code (npm install -g @anthropic-ai/claude-code) or set its path in Settings > CLI Paths",
 		})
 		return
 	}

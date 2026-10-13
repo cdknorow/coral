@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -343,6 +344,34 @@ func ResolveCLIPath(settings map[string]string, agentType string) string {
 		return strings.TrimSpace(settings[CLIPathSettingKey(at.Agy)])
 	}
 	return ""
+}
+
+// FindCLI returns the executable to run for agentType, the way launch finds
+// it: the configured path (cli_path_<type> in settings), then the binary on
+// PATH, then the common install locations. The macOS app started from Finder
+// has no Homebrew PATH, so a bare exec of "claude" fails there even though
+// agents launch fine; every caller that runs an agent CLI uses this (#3169).
+// A configured path that is not an executable falls back to the others, with
+// a warning naming it (launch reports it instead, so the two can differ).
+func FindCLI(settings map[string]string, agentType string) (string, error) {
+	if p := ResolveCLIPath(settings, agentType); p != "" {
+		if resolved, err := exec.LookPath(p); err == nil {
+			return resolved, nil
+		}
+		slog.Warn("configured CLI path is not an executable; falling back to PATH and common locations",
+			"agent_type", agentType, "configured", p)
+	}
+	bin := agentType
+	if info := GetCLIInfo(agentType); info != nil && info.Binary != "" {
+		bin = info.Binary
+	}
+	if p, err := exec.LookPath(bin); err == nil {
+		return p, nil
+	}
+	if p := FindCLIInCommonPaths(bin); p != "" {
+		return p, nil
+	}
+	return "", fmt.Errorf("%s CLI %q not found: install it or set its path in Settings > CLI Paths", agentType, bin)
 }
 
 // resolveBinary returns cliPath if non-empty, otherwise the default binary name.

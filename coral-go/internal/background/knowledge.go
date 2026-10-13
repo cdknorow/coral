@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +12,8 @@ import (
 
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/agent"
+	at "github.com/cdknorow/coral/internal/agenttypes"
 )
 
 // KnowledgeBundle holds the OKF output for a team.
@@ -142,12 +143,12 @@ func inferRole(prompt string) string {
 
 // DistillTeamKnowledge runs the three-pass knowledge distillation pipeline for a team.
 func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store.TeamStore, teamName, coralDir string, progressFn func(DistillProgress)) (*KnowledgeBundle, error) {
-	claudePath, err := checkClaudeCLI(ctx)
+	settings, _ := ss.GetSettings(ctx)
+	claudePath, err := checkClaudeCLI(ctx, settings)
 	if err != nil {
 		return nil, err
 	}
 
-	settings, _ := ss.GetSettings(ctx)
 	callTimeout := knowledgeCallTimeoutFromSettings(settings)
 
 	bundle := &KnowledgeBundle{
@@ -403,10 +404,10 @@ func knowledgeCallTimeoutFromSettings(settings map[string]string) time.Duration 
 
 // checkClaudeCLI verifies the Claude CLI is installed and can run
 // non-interactively. Returns the path or an error.
-func checkClaudeCLI(ctx context.Context) (string, error) {
-	claudePath, err := exec.LookPath("claude")
+func checkClaudeCLI(ctx context.Context, settings map[string]string) (string, error) {
+	claudePath, err := agent.FindCLI(settings, at.Claude)
 	if err != nil {
-		return "", fmt.Errorf("claude CLI not found in PATH")
+		return "", err
 	}
 	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

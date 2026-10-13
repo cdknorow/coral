@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
@@ -628,16 +627,11 @@ func truncateRunes(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// resolveClaudeCLI finds the claude binary the way launch does: the
-// cli_path_claude setting, then PATH, then common install locations.
+// resolveClaudeCLI finds the claude binary the way launch does (agent.FindCLI);
+// "" when there is none.
 func resolveClaudeCLI(settings map[string]string) string {
-	if p := strings.TrimSpace(settings[agent.CLIPathSettingKey(at.Claude)]); p != "" {
-		return p
-	}
-	if p, err := exec.LookPath("claude"); err == nil {
-		return p
-	}
-	return agent.FindCLIInCommonPaths("claude")
+	p, _ := agent.FindCLI(settings, at.Claude)
+	return p
 }
 
 // runGoalCLI asks the claude CLI for a goal with the cheapest model. The

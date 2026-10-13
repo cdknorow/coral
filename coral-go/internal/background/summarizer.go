@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/agent"
+	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -39,7 +40,8 @@ func BuildSummarizeFn(sessionStore *store.SessionStore) func(ctx context.Context
 		}
 
 		// Call Claude CLI to generate summary
-		summary, err := callClaude(ctx, transcript)
+		settings, _ := sessionStore.GetSettings(ctx)
+		summary, err := callClaude(ctx, settings, transcript)
 		if err != nil {
 			summary = fmt.Sprintf("*Auto-summarization failed: %v*", err)
 		}
@@ -134,8 +136,8 @@ func extractContent(msg map[string]any) string {
 }
 
 // callClaude calls the Claude CLI to generate a summary.
-func callClaude(ctx context.Context, transcript string) (string, error) {
-	claudePath, err := exec.LookPath("claude")
+func callClaude(ctx context.Context, settings map[string]string, transcript string) (string, error) {
+	claudePath, err := agent.FindCLI(settings, at.Claude)
 	if err != nil {
 		return fallbackSummary(transcript), nil
 	}
