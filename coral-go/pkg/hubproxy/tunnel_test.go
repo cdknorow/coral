@@ -518,9 +518,11 @@ func TestLocalModeRefusalBecomes403WithTheMode(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 	assert.JSONEq(t, `{"error":"local_mode","mode":"view"}`, string(body))
 
-	// An unlisted route stays the opaque refusal.
+	// An unlisted route stays the opaque refusal: path_not_allowed, without saying which rule refused it.
 	resp, err = http.Get(hub.URL + "/api/remote/srv/api/system/api-key")
 	require.NoError(t, err)
+	body, _ = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	assert.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	assert.JSONEq(t, `{"error":"path not allowed","code":"path_not_allowed","server":"srv"}`, string(body))
 }

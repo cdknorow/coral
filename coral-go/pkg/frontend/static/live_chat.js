@@ -28,6 +28,22 @@ let historyGeneration = 0;
 let refreshInFlight = -1;
 let activeChatAbortController = null;
 let activeLoadMoreAbortController = null;
+// Servers that refused a before= page; older pages there go by offset.
+const beforeRefused = new Set();
+// Whether a response refuses the request itself (an unknown parameter), as
+// opposed to a transient failure (401, 429, an unreachable remote) that is
+// retried as a normal error. 400/403/404: the server or a hub's route
+// allowlist. 502 only when it says path_not_allowed.
+async function refusedParam(resp) {
+    if (resp.status === 400 || resp.status === 403 || resp.status === 404) return true;
+    if (resp.status !== 502) return false;
+    try {
+        const body = await resp.clone().json();
+        return body && (body.code === "path_not_allowed" || body.error === "path_not_allowed");
+    } catch (_) {
+        return false;
+    }
+}
 
 
 const TOOL_ICONS = {
@@ -841,7 +857,8 @@ async function _loadMoreHistory(generation) {
     // appended since the first page do not shift the window. offset is what a
     // server without keyset paging reads.
     params.set("limit", String(OLDER_PAGE));
-    params.set("before", String(historyStart));
+    const server = sessionServer(session);
+    if (!beforeRefused.has(server)) params.set("before", String(historyStart));
     params.set("offset", String(historyOffset));
 
     if (activeLoadMoreAbortController) {
@@ -851,10 +868,18 @@ async function _loadMoreHistory(generation) {
     activeLoadMoreAbortController = abortCtrl;
 
     try {
-        const resp = await serverFetch(sessionServer(session), `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`, {
-            signal: abortCtrl.signal,
-        });
+        const url = () => `/api/sessions/live/${encodeURIComponent(session.name)}/chat?${params}`;
+        let resp = await serverFetch(server, url(), { signal: abortCtrl.signal });
         if (generation !== historyGeneration) return; // switched agents meanwhile
+        if (!resp.ok && params.has("before") && await refusedParam(resp)) {
+            // A route allowlist between here and the machine (the Cloud Hub
+            // tunnel) can refuse a parameter it does not know yet. Page by
+            // offset for this server from now on.
+            beforeRefused.add(server);
+            params.delete("before");
+            resp = await serverFetch(server, url(), { signal: abortCtrl.signal });
+            if (generation !== historyGeneration) return;
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (generation !== historyGeneration) return;

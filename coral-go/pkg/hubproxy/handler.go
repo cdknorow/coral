@@ -190,6 +190,16 @@ func (h *Handler) writeUpstreamErr(w http.ResponseWriter, ctx context.Context, i
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "local_mode", "mode": mode})
+	case errors.As(err, &se) && se.Code == tunnel.CodePathNotAllowed:
+		// The connector's route table refused this path or query (for example an older machine that does not
+		// accept a newer parameter). That is an answer, not an outage: 403, and the server is not marked.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		body := map[string]string{"error": "path not allowed", "code": tunnel.CodePathNotAllowed}
+		if !h.opts.HideServerID {
+			body["server"] = id
+		}
+		_ = json.NewEncoder(w).Encode(body)
 	case errors.Is(err, ErrRemoteRejected):
 		h.mark(ctx, id, StatusUnauthorized, "remote rejected API key")
 		h.writeErr(w, http.StatusBadGateway, "remote rejected API key", id)

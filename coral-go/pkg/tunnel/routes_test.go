@@ -428,6 +428,7 @@ func TestRealUIQueriesAreNotRefused(t *testing.T) {
 		{"GET", "/api/sessions/live/001/search-files", "session_id=abc&dir=src&view=explorer&offset=100"},
 		{"GET", "/api/sessions/live/001/search-files", "session_id=abc&q=main"},
 		{"GET", "/api/sessions/live/001/chat", "session_id=abc&agent_type=claude&after=0&limit=100&offset=0"},
+		{"GET", "/api/sessions/live/001/chat", "session_id=abc&agent_type=claude&limit=200&before=900&offset=105"},
 		{"GET", "/api/sessions/live/001/poll", "session_id=abc&agent_type=claude&events_limit=50"},
 		{"GET", "/api/sessions/live/001/tasks", "session_id=abc&limit=50"},
 		{"GET", "/api/sessions/live/001/git", "session_id=abc&limit=10"},
