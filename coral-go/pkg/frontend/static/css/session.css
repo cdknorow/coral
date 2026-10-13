@@ -2108,3 +2108,18 @@
 }
 .session-group-item.session-stale .session-dot { background: var(--text-muted); animation: none; }
 .sidebar-rail-item.session-stale { opacity: 0.55; cursor: not-allowed; }
+
+/* Cloud Hub: this server only allows viewing (#3068). Text, not colour alone. */
+.hub-readonly-chip {
+    display: inline-flex;
+    align-items: center;
+    margin-left: var(--space-sm);
+    padding: 0 var(--space-sm);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-sm, 4px);
+    color: var(--warning);
+    font-size: var(--fs-sm, 11px);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.hub-readonly-chip[hidden] { display: none; }

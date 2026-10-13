@@ -96,9 +96,23 @@ export function parseLaunchBody(text) {
     try { const v = JSON.parse(text); return v && typeof v === 'object' ? v : null; } catch { return null; }
 }
 
+/** The access-refusal message for a launch response ('' when it is not one).
+ *  cloud_servers.js owns the wording (refusalMessage); it is loaded only when a
+ *  403 arrives, so this module stays light. */
+async function accessRefusal(status, body, serverName) {
+    if (status !== 403 || !body || typeof body !== 'object') return '';
+    if (!['access_mode', 'launch_disabled', 'local_mode'].includes(body.error)) return '';
+    try {
+        const { refusalMessage } = await import('./cloud_servers.js');
+        return refusalMessage(status, body, serverName) || '';
+    } catch {
+        return '';
+    }
+}
+
 /**
  * Send a launch to `server`.
- * Resolves {ok, status, data, error, demoLimit}; it does not throw for HTTP or
+ * Resolves {ok, status, data, error, demoLimit, refused}; it does not throw for HTTP or
  * network failures (error carries the message to show). When `server` is not
  * usable nothing is sent at all.
  */
@@ -119,6 +133,12 @@ export async function postLaunch(server, path, payload, { hub = state.hub, serve
     }
     const data = parseLaunchBody(await resp.text().catch(() => ''));
     const status = resp.status;
+    // An access refusal (the hub's or the machine's mode is too low) reads as the
+    // same "Blocked: ..." message everywhere, never as the raw error code.
+    const refusal = await accessRefusal(status, data, isLocalServer(id) ? '' : serverLabel(id, servers));
+    if (refusal) {
+        return { ok: false, status, data, error: refusal, demoLimit: false, sent: true, refused: true };
+    }
     if (status === 403 && isLocalServer(id)) {
         return { ok: false, status, data, error: (data && data.error) || 'Demo limit reached', demoLimit: true, sent: true };
     }

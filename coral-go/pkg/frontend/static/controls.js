@@ -11,6 +11,7 @@ import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
 import { addPendingMessage, resetLiveHistory } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
+import { hubBlocked } from './hub_access.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -74,6 +75,10 @@ export async function sendCommand() {
 
     _isSending = true;
     try {
+        // Through the Cloud Hub, a View-only server drops terminal input silently:
+        // refuse here so nothing says "Sent" and the draft is kept (#3068). Inside
+        // the _isSending guard, so a double Enter cannot get past it twice.
+        if (await hubBlocked(targetSession)) return;
         const activeUploads = activeUploadPromisesBySession.get(targetSessionId);
         if (activeUploads && activeUploads.length > 0) {
             showToast("Waiting for image upload to complete...");
@@ -175,7 +180,7 @@ export async function sendCommandWithTeam() {
         return;
     }
 
-    if (sleepingBlocked()) return; // before the reminder is added to the draft
+    if (sleepingBlocked() || await hubBlocked(state.currentSession)) return; // before the reminder is added to the draft
     const input = document.getElementById("command-input");
     const s = state.settings || {};
     const isOrch = _isOrchestratorSession(state.currentSession);
@@ -205,7 +210,7 @@ export async function sendBoardProtocol() {
         showToast("No live session selected", true);
         return;
     }
-    if (sleepingBlocked()) return; // before the protocol is added to the draft
+    if (sleepingBlocked() || await hubBlocked(state.currentSession)) return; // before the protocol is added to the draft
     const input = document.getElementById("command-input");
     const current = input.value.trim();
     input.value = current ? `${current}\n\n${BOARD_PROTOCOL}` : BOARD_PROTOCOL;
@@ -217,7 +222,7 @@ export async function resendInputPrompt() {
         showToast("No live session selected", true);
         return;
     }
-    if (sleepingBlocked()) return; // before the prompt replaces the draft
+    if (sleepingBlocked() || await hubBlocked(state.currentSession)) return; // before the prompt replaces the draft
     const s = state.currentSession;
     const boardName = s.board_project || "";
     if (!boardName) {
@@ -269,9 +274,9 @@ export async function saveMacros(macros) {
     }
 }
 
-export function executeMacro(command) {
+export async function executeMacro(command) {
     // Support chained commands with "&&" separator (1s delay between each)
-    if (sleepingBlocked()) return; // keep the draft
+    if (sleepingBlocked() || await hubBlocked(state.currentSession)) return; // keep the draft
     const parts = command.split("&&").map(c => c.trim()).filter(Boolean);
     if (parts.length === 0) return;
     document.getElementById("command-input").value = parts[0];
@@ -404,6 +409,7 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
         return;
     }
     if (sleepingBlocked(silent)) return;
+    if (await hubBlocked(state.currentSession, { silent })) return;
     if (popoutTerminalBlocked()) {
         if (!silent) showToast("Agent is not ready to receive input", true);
         return;
@@ -792,8 +798,8 @@ export function cycleModeToggle() {
     sendRawKeys(["BTab"], { silent: true });
 }
 
-export function sendQuickCommand(command) {
-    if (sleepingBlocked()) return; // keep the draft
+export async function sendQuickCommand(command) {
+    if (sleepingBlocked() || await hubBlocked(state.currentSession)) return; // keep the draft
     document.getElementById("command-input").value = command;
     sendCommand();
 }

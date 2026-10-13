@@ -967,6 +967,60 @@
     color: var(--error);
 }
 
+.toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: min(520px, calc(100vw - 40px));
+}
+
+/* A toast with an action stays until dismissed or timed out; it must not fade
+   while its button is still meant to be used. */
+.toast.has-action {
+    animation: slideIn 0.3s ease;
+}
+
+.toast-message {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.toast-action,
+.toast-close {
+    flex: none;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 6px;
+}
+
+.toast-action {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent-dim);
+    padding: 3px 10px;
+}
+
+.toast-close {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    padding: 0 2px;
+    font-size: 16px;
+    line-height: 1;
+}
+
+.toast-action:hover,
+.toast-close:hover {
+    color: var(--text-primary);
+}
+
+.toast-action:focus-visible,
+.toast-close:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* ── Notification Toast (top-right, larger) ───────────────── */
 
 .notification-toast {

@@ -17,6 +17,7 @@
 import { state } from './state.js';
 import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL } from './server_status.js';
+import { accessBlockedMessage } from './hub_access.js';
 
 let modal = null;
 let servers = [];
@@ -116,10 +117,8 @@ export function launchNote(s) {
 }
 
 let _modeCache = { at: 0, byId: null, pending: null };
-/** Whether this tab's account may send interact-level requests to `serverId` right now (the lower of the hub mode and the
- *  machine's own limit). Cached for 15 s; an unknown server or a failed lookup answers true so a lookup problem never
- *  blocks the UI (the hub still enforces). Used to skip background writes a viewer could only get refused. */
-export async function serverMayInteract(serverId) {
+
+async function _serverRow(serverId) {
     const now = Date.now();
     if (!_modeCache.byId || now - _modeCache.at > 15000) {
         _modeCache.pending = _modeCache.pending || fetch('/api/servers', { credentials: 'same-origin', quiet: true })
@@ -131,21 +130,48 @@ export async function serverMayInteract(serverId) {
     } else if (_modeCache.pending) {
         await _modeCache.pending;
     }
-    const s = _modeCache.byId && _modeCache.byId[serverId];
-    return !s || rank(effectiveMode(s)) >= rank('interact');
+    return (_modeCache.byId && _modeCache.byId[serverId]) || null;
 }
+
+/** Whether this tab's account may send interact-level requests to `serverId` right now (the lower of the hub mode and the
+ *  machine's own limit). Cached for 15 s; an unknown server or a failed lookup answers true so a lookup problem never
+ *  blocks the UI (the hub still enforces). Used to skip background writes a viewer could only get refused. */
+export async function serverMayInteract(serverId) {
+    const a = await serverAccess(serverId);
+    return !a || a.mayInteract;
+}
+
+/** What the Cloud Hub lets this account do on `serverId`: {hub, local, effective, limitedBy, mayInteract, label},
+ *  or null for an unknown server (a lookup problem never blocks the UI; the hub still enforces). Prefers the hub's own
+ *  effective_mode / limited_by when the row carries them. */
+export async function serverAccess(serverId) {
+    const s = await _serverRow(serverId);
+    if (!s) return null;
+    const hub = hubMode(s);
+    const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
+    const effective = rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s);
+    let limitedBy = s.limited_by === 'hub' || s.limited_by === 'machine' ? s.limited_by : null;
+    if (!limitedBy && rank(effective) < rank('launch')) limitedBy = local && rank(local) < rank(hub) ? 'machine' : 'hub';
+    return { hub, local, effective, limitedBy, mayInteract: rank(effective) >= rank('interact'), label: s.label || serverId };
+}
+
 
 /** Plain-language text for a hub refusal of a proxied request, or '' when it is not one we explain.
  *  `local_mode` = the machine's own Cloud access setting is lower than the hub allows (mode is its
  *  current maximum); `access_mode` / `launch_disabled` = the hub setting is too low. */
-export function refusalMessage(status, body) {
+export function refusalMessage(status, body, serverName = '') {
     if (status !== 403 || !body || typeof body !== 'object') return '';
+    const known = m => (rank(m) >= 0 ? m : null);
     if (body.error === 'local_mode') {
-        const m = MODE_INFO[body.mode] ? MODE_INFO[body.mode].label : 'a lower mode';
-        return `Limited by this machine's local setting (${m}). Change it in Coral on that machine.`;
+        const m = known(body.mode);
+        return accessBlockedMessage({ local: m, effective: m, limitedBy: 'machine', label: serverName }, known(body.required));
     }
     if (body.error === 'access_mode' || body.error === 'launch_disabled') {
-        return 'Not allowed by this server\'s access mode. Raise it on the Servers page.';
+        const hub = known(body.hub_mode), local = known(body.local_mode);
+        const effective = hub && local ? lowerMode(hub, local) : hub || local;
+        const limitedBy = hub && local && rank(local) < rank(hub) ? 'machine' : 'hub';
+        return accessBlockedMessage({ hub, local, effective, limitedBy, label: serverName },
+            known(body.required) || (body.error === 'launch_disabled' ? 'launch' : null));
     }
     return '';
 }

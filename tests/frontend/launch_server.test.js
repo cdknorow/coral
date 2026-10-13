@@ -86,6 +86,29 @@ const { pathToFileURL } = require('url');
     r = await m.postLaunch('local', '/p', {}, { hub: false, servers: [], fetchFn: mk(200, '{"error":"nope"}') });
     assert.ok(!r.ok && !r.demoLimit && r.error === 'nope');
 
+    // Access refusals (#3068 C5) read as the one refusalMessage wording, naming
+    // the server, never as the raw code; other 403s are unchanged.
+    const { refusalMessage } = await import(pathToFileURL(path.join(dir, 'cloud_servers.js')).href);
+    for (const body of [
+        { error: 'access_mode', required: 'launch', hub_mode: 'view', local_mode: 'launch' },
+        { error: 'access_mode', required: 'launch', hub_mode: 'launch', local_mode: 'interact' },
+        { error: 'access_mode', required: 'launch' },
+        { error: 'launch_disabled' },
+        { error: 'local_mode', mode: 'view' },
+    ]) {
+        r = await m.postLaunch('a', '/p', {}, { hub: true, servers, fetchFn: mk(403, JSON.stringify(body)) });
+        const want = refusalMessage(403, body, 'Box A');
+        assert.ok(want.startsWith('Blocked:'), JSON.stringify(body));
+        assert.strictEqual(r.error, want, JSON.stringify(body));
+        assert.ok(!r.ok && r.refused && !r.demoLimit && r.sent && r.status === 403, JSON.stringify(body));
+        assert.ok(r.error.includes('Box A'), 'names the server');
+        assert.ok(!/access_mode|launch_disabled|local_mode/.test(r.error), 'no raw code');
+    }
+    r = await m.postLaunch('a', '/p', {}, { hub: true, servers, fetchFn: mk(403, '{"error":"path not allowed","code":"path_not_allowed"}') });
+    assert.ok(!r.ok && !r.refused && r.error === 'Box A: path not allowed', 'a non-access 403 is unchanged');
+    r = await m.postLaunch('local', '/p', {}, { hub: false, servers: [], fetchFn: mk(403, '{"error":"Demo limit reached: maximum 8"}') });
+    assert.ok(!r.ok && r.demoLimit && !r.refused, 'the local demo limit is unchanged');
+
     // Recognising the launched agent in the merged list (same name on another server does not count).
     const live = [{ name: 'x', server: 'local', session_id: 's0' }, { name: 'y', server: 'a', session_id: 's2', board_project: 'T' }];
     assert.strictEqual(m.launchedVisible(live, 'a', { sessionName: 'x' }), false);

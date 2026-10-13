@@ -40,9 +40,14 @@ const { pathToFileURL } = require('url');
     const cl = await import(pathToFileURL(path.join(dir, 'cloud.js')).href);
     for (const ok of ['/api/license/status', '/api/system/privacy', '/api/agent/ui', '/api/agent/ui/x']) assert.ok(cl.NO_HUB_ENDPOINT.test(ok), ok);
     for (const no of ['/api/themes/variables', '/api/themes', '/api/themes/Dark', '/api/settings', '/api/tags', '/api/views', '/api/servers', '/api/remote/x/api/license/status', '/api/sessions/live']) assert.ok(!cl.NO_HUB_ENDPOINT.test(no), no);
-    assert.match(m.refusalMessage(403, { error: 'local_mode', mode: 'view' }), /Limited by this machine's local setting \(View\)/);
-    assert.match(m.refusalMessage(403, { error: 'local_mode', mode: 'x<b>' }), /lower mode/, 'unknown mode text is never echoed');
-    assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact' }), /Servers page/);
+    // C2 (#3068): refusals start with 'Blocked:', name what each side allows and who can fix it.
+    assert.match(m.refusalMessage(403, { error: 'local_mode', mode: 'view' }, 'Work Mac'), /^Blocked: Work Mac .*This machine allows: View.*Change it in Coral on that machine/);
+    assert.doesNotMatch(m.refusalMessage(403, { error: 'local_mode', mode: 'x<b>' }), /x<b>/, 'unknown mode text is never echoed');
+    assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact', hub_mode: 'view', local_mode: 'launch' }, 'Work Mac'),
+        /^Blocked: Work Mac needs Interact \(Hub: View · This machine allows: Launch · Effective: View\)\. Raise it in Servers\.$/);
+    assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact', hub_mode: 'launch', local_mode: 'view' }), /^Blocked: this server .*Change it in Coral on that machine/);
+    assert.doesNotMatch(m.refusalMessage(403, { error: 'access_mode', required: '<i>', hub_mode: '<b>' }), /<[ib]>/);
+    assert.match(m.refusalMessage(403, { error: 'access_mode', required: 'interact' }), /^Blocked: .*needs Interact.*Raise it in Servers/);
     assert.strictEqual(m.refusalMessage(403, { error: 'csrf' }), '');
     assert.strictEqual(m.refusalMessage(404, { error: 'local_mode' }), '');
     assert.strictEqual(m.refusalMessage(403, null), '');

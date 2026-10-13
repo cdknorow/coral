@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { dbg } from './utils.js';
 import { normServer, serverWsBase, sessionServer } from './server_base.js';
+import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
 
 let terminal = null;
 let fitAddon = null;
@@ -198,6 +199,8 @@ export function createTerminal(containerEl) {
 
     _onDataDisposable = terminal.onData((data) => {
         if (!state.currentSession || state.currentSession.type !== "live") return;
+        // A View-only server (Cloud Hub) would drop it anyway: say so instead (#3068).
+        if (hubBlocksKeystrokes()) return;
         // A keystroke in a viewer window takes interactive control (multi-window ownership).
         claimOwnership();
 
@@ -386,7 +389,10 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             return;
         }
 
-        const data = JSON.parse(event.data);
+        // Text frames are JSON control messages; one that does not parse is ignored.
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (!data || typeof data !== 'object') return;
         if (_msgCount <= 3 || _msgCount % 50 === 0) {
             dbg('terminalWs msg #' + _msgCount, { type: data.type, hasTerminal: !!terminal,
                 cols: terminal?.cols, rows: terminal?.rows });
@@ -396,7 +402,11 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             _setDisconnectedBadge(false);
             _setSessionEndedOverlay(true);
             document.dispatchEvent(new CustomEvent('coral:terminal-closed'));
+        } else if (data.type === "hub_read_only") {
+            // The Cloud Hub dropped our input for this server's access mode (#3068).
+            applyHubReadOnlyFrame(data);
         }
+        // Other types are ignored.
     };
 
     terminalWs.onclose = (ev) => {

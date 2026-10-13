@@ -39,12 +39,65 @@ export function jsStr(v) {
         c => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'));
 }
 
-export function showToast(message, isError = false, duration = 4000) {
+/**
+ * Show a short message at the bottom right. Errors are announced at once
+ * (role=alert) and informational toasts politely (role=status); every toast can
+ * be dismissed (close button, or Escape while focused).
+ *
+ * opts.blocked: prefix the text with "Blocked: " (once) so a refusal is clear
+ *   without relying on colour.
+ * opts.action: {label, onClick} adds a button; clicking it dismisses the toast
+ *   and runs onClick. A toast with an action stays at least 10s and does not
+ *   fade, so the button stays usable.
+ *
+ * Returns the toast element. Text is set with textContent only.
+ */
+export function showToast(message, isError = false, duration = 4000, opts = {}) {
+    const error = !!isError;
     const toast = document.createElement("div");
-    toast.className = `toast ${isError ? "error" : ""}`;
-    toast.textContent = message;
+    toast.className = `toast ${error ? "error" : ""}`;
+    toast.setAttribute("role", error ? "alert" : "status");
+    toast.setAttribute("aria-live", error ? "assertive" : "polite");
+    toast.setAttribute("aria-atomic", "true");
+
+    let text = String(message ?? "");
+    if (opts.blocked && !/^Blocked:/.test(text)) text = `Blocked: ${text}`;
+    const body = document.createElement("span");
+    body.className = "toast-message";
+    body.textContent = text;
+    toast.appendChild(body);
+
+    let timer = 0;
+    const dismiss = () => {
+        clearTimeout(timer);
+        toast.remove();
+    };
+    const action = opts.action;
+    if (action && action.label && typeof action.onClick === "function") {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "toast-action";
+        button.textContent = action.label;
+        button.addEventListener("click", () => {
+            dismiss();
+            try { action.onClick(); } catch (e) { console.error("toast action failed:", e); }
+        });
+        toast.appendChild(button);
+        toast.classList.add("has-action");
+        duration = Math.max(duration, 10000);
+    }
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "toast-close";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "×";
+    close.addEventListener("click", dismiss);
+    toast.appendChild(close);
+    toast.addEventListener("keydown", (e) => { if (e.key === "Escape") dismiss(); });
+
     document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), duration);
+    timer = setTimeout(dismiss, duration);
+    return toast;
 }
 
 export function showWorkflowNotification(title, message, level = 'info', duration = 8000) {

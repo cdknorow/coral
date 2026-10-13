@@ -25,6 +25,7 @@ import { invalidateFileCache, fetchFileList } from './file_mention.js';
 import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
 import { joinSessionOwnership, leaveSessionOwnership } from './ownership.js';
 import { applySleepingView } from './sleeping_view.js';
+import { refreshHubAccess } from './hub_access.js';
 
 // Bumped on every switch, so deferred work started for one agent can tell it
 // is no longer the selected one.
@@ -69,6 +70,8 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     // A sleeping agent keeps its transcript readable; the composer offers Wake
     // instead of sending. The popout corrects this from its resolver below.
     applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout(), archived: !!(agentData && agentData.archived) });
+    // Cloud Hub: show the read-only chip at once for a View-only server (#3068).
+    refreshHubAccess(state.currentSession);
 
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);
