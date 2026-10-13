@@ -12,17 +12,24 @@ CGO_OPENSSL_FLAGS := $(if $(OPENSSL_PREFIX),CGO_CFLAGS="-I$(OPENSSL_PREFIX)/incl
 sync-docs:
 	@../tools/sync-agent-docs.sh
 
+# Local builds leave config.Version empty (no update offers) and report
+# "<next patch>-dev+<commit>[.dirty]" instead (in /api/health and to Coral Hub),
+# based on the latest release tag. Use make dev / make build to get that base: a
+# plain `go build` reports 0.0.0-dev+<commit>, which hubs treat as a very old version.
+DEV_BASE := $(shell git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' 2>/dev/null)
+DEV_LDFLAGS := -ldflags "-X github.com/cdknorow/coral/internal/config.DevBase=$(DEV_BASE)"
+
 # Dev build (skips EULA + license)
 .PHONY: dev
 dev: sync-docs
 	@mkdir -p $(BINDIR)
-	$(CGO_OPENSSL_FLAGS) go build -tags "dev fts5" -o $(BINDIR)/ $(CMD_PACKAGES)
+	$(CGO_OPENSSL_FLAGS) go build -tags "dev fts5" $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Production build
 .PHONY: build
 build: sync-docs
 	@mkdir -p $(BINDIR)
-	$(CGO_OPENSSL_FLAGS) go build -tags fts5 -o $(BINDIR)/ $(CMD_PACKAGES)
+	$(CGO_OPENSSL_FLAGS) go build -tags fts5 $(DEV_LDFLAGS) -o $(BINDIR)/ $(CMD_PACKAGES)
 
 # Dev build + run
 .PHONY: run
