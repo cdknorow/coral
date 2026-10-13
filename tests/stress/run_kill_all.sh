@@ -17,6 +17,8 @@
 # test's own socket under its CORAL_DATA_DIR (CORAL_TMUX_NO_FALLBACK=1), never your default one.
 #
 set -euo pipefail
+# Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

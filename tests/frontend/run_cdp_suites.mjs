@@ -45,6 +45,7 @@
 // <tmpdir>/coral-cdp-runner-<runner pid>.json. At start, a runner kills the groups listed by any runner
 // that is no longer alive (runners running at the same time are left alone), and only groups whose
 // command line still names that run's temp directory, so a reused pid is never hit.
+// Never run bare 'tmux' from an agent shell: $TMUX there points at production Coral's ~/.coral/tmux.sock.
 import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
@@ -139,7 +140,14 @@ const b = spawnSync('go', ['build', '-tags', 'dev fts5', '-o', bin, './cmd/coral
 if (b.status !== 0) process.exit(2);
 
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
-const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_HOST', 'CORAL_DATA_DIR', 'CORAL_DIR', 'CORAL_TEST_URL', 'TMUX', 'TMUX_PANE'].includes(k)));
+// An agent shell's identity and production links (Cloud Hub URL, hub mode, tmux socket, workflow
+// context) never reach a test server or suite.
+// Keep in step with tests/lib/agent_env.sh and agentShellVars in coral-go/internal/testguard.
+const AGENT_SHELL_VARS = ['CORAL_SESSION_NAME', 'CORAL_SESSION_ID', 'CORAL_SUBSCRIBER_ID', 'CORAL_CLOUD_URL', 'CORAL_HUB', 'CORAL_SHELL', 'CORAL_TMUX_SOCKET',
+  'CORAL_TMUX_FALLBACK', 'CORAL_AGENT_HELPER', 'CORAL_AGENT_ARGS', 'CORAL_BOARD_HELPER', 'CORAL_BOARD_ARGS'];
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => ![
+  'CORAL_PORT', 'CORAL_URL', 'CORAL_HOST', 'CORAL_DATA_DIR', 'CORAL_DIR', 'CORAL_TEST_URL', 'TMUX', 'TMUX_PANE', ...AGENT_SHELL_VARS,
+].includes(k) && !k.startsWith('CORAL_WORKFLOW_') && !k.startsWith('CORAL_PREV') && !k.startsWith('CORAL_STEP_')));
 // Host-data locations the server would otherwise read from this machine (agent transcripts, settings).
 // They are stripped from what the server inherits and its HOME points into the shard, so a test server
 // never indexes the real ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi.

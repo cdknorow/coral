@@ -4,6 +4,8 @@
 # Tests worktree lifecycle and board membership across agent restarts.
 #
 set -euo pipefail
+# Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

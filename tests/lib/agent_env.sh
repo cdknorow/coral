@@ -1,0 +1,20 @@
+# Sourced by every test runner (bash), right after 'set -e…'.
+#
+# A runner started from an agent shell would otherwise inherit that agent's identity and
+# production links: its session and subscriber, the Cloud Hub URL, hub mode, the tmux
+# socket, and the workflow/step context. None of it belongs to a test run, so it is cleared
+# here, by name and by prefix (so new step variables can't slip through).
+#
+# Never run bare 'tmux' from an agent shell: $TMUX there points at production Coral's
+# ~/.coral/tmux.sock.
+#
+# Keep in step with AGENT_SHELL_VARS in tests/frontend/run_cdp_suites.mjs and
+# agentShellVars in coral-go/internal/testguard.
+unset CORAL_SESSION_NAME CORAL_SESSION_ID CORAL_SUBSCRIBER_ID CORAL_CLOUD_URL CORAL_HUB CORAL_SHELL \
+    CORAL_TMUX_SOCKET CORAL_TMUX_FALLBACK CORAL_AGENT_HELPER CORAL_AGENT_ARGS CORAL_BOARD_HELPER CORAL_BOARD_ARGS
+for _coral_v in $(compgen -e); do
+    case "$_coral_v" in
+        CORAL_WORKFLOW_*|CORAL_PREV*|CORAL_STEP_*) unset "$_coral_v" ;;
+    esac
+done
+unset _coral_v

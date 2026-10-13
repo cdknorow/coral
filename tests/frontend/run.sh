@@ -8,6 +8,8 @@
 #   - A built dev coral binary (or CORAL_BIN env override)
 
 set -euo pipefail
+# Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/../.." && pwd)"
