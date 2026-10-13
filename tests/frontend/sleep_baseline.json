@@ -1,7 +1,6 @@
 {
   "acf_model_field.test.js": 4,
   "agent_model_provider_switch.test.js": 4,
-  "agent_ui.test.js": 9,
   "agent_ui_panel_sandbox_browser.test.js": 4,
   "archived_agents_browser.test.js": 3,
   "artifact_preview_safety.test.js": 3,
@@ -25,7 +24,6 @@
   "servers_tab_browser.test.js": 2,
   "sleeping_agent_view_browser.test.js": 9,
   "static_versioning_browser.test.js": 4,
-  "subagent_tasks.test.js": 6,
   "task_completion_modal.test.js": 1,
   "team_availability.test.js": 1,
   "team_view_responsive_rows.test.js": 2,

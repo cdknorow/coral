@@ -68,12 +68,20 @@ async function run() {
   const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
   await Emulation.setDeviceMetricsOverride({ width: 1500, height: 950, deviceScaleFactor: 1, mobile: false });
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-  for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
+  // Condition waits (#3118). The coral socket is stubbed, so startup is everything but the feed.
+  const { waitFor, waitStable, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
+  const until = (expression, what, timeout = 5000) => waitFor(expression, what, { soft: true, timeout });
+  await coralReady('startup', 'liveList', 'history', 'settings');
+  const MODAL_OPEN = `(m => !!m && getComputedStyle(m).display !== 'none')(document.getElementById('task-detail-modal'))`;
+  const settledHtml = (sel, what) => waitStable(`(document.querySelector(${JSON.stringify(sel)}) || {}).innerHTML || ''`, what, 200).catch(() => {});
   // The 10 s board/subagent poll runs every second here (tasks.js boardTaskPollHooks): same timer, shorter period.
   await ev(`import((window.__coralStatic||'/static/')+'tasks.js').then(m => { m.boardTaskPollHooks.intervalMs = 1000; return true; })`);
   await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
 
-  const open = async (sid) => { await ev(`window.__currentIsA = ${JSON.stringify(sid)} === ${JSON.stringify(A)}; true`); await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(sid)})).then(() => { window.switchAgenticTab('tasks', 'top'); return true; })`); await sleep(700); };
+  const open = async (sid) => { await ev(`window.__currentIsA = ${JSON.stringify(sid)} === ${JSON.stringify(A)}; true`); await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(sid)})).then(() => { window.switchAgenticTab('tasks', 'top'); return true; })`);
+    // The agent's task list (rows, or the empty state) has loaded and stopped changing.
+    await until(`!!document.querySelector('#board-task-list .board-task-item:not(.board-task-header), #board-task-list .board-task-empty')`, 'the task list');
+    await settledHtml('#board-task-list', 'the task list'); };
   const rows = () => ev(`Array.from(document.querySelectorAll('#board-task-list .board-task-item:not(.board-task-header)')).map(el => { const q = s => el.querySelector(s); const cs = getComputedStyle(el);
     return { sub: el.classList.contains('board-task-subagent'), classes: el.className, subagentId: el.dataset.subagentId || null,
       type: (q('.board-task-type')||{}).textContent, typeIsChip: !!q('.board-task-type-subagent'), typeIcon: (q('.board-task-type-subagent .material-icons')||{}).textContent || null, typeTitle: q('.board-task-type') ? q('.board-task-type').getAttribute('title') : null,
@@ -148,7 +156,8 @@ async function run() {
           whiteSpace: resultBox ? getComputedStyle(resultBox).whiteSpace : null, thBorder: resultBox && resultBox.querySelector('th') ? getComputedStyle(resultBox.querySelector('th')).borderTopStyle : null,
           scrollable: resultBox ? resultBox.scrollHeight > resultBox.clientHeight + 20 : null }; })(),
       footer: document.getElementById('task-detail-modal-footer').textContent.trim() }; })()`);
-  const clickRow = async (id) => { await ev(`document.querySelector('#board-task-list [data-subagent-id="${id}"]').click(); true`); await sleep(350); };
+  const clickRow = async (id) => { await ev(`document.querySelector('#board-task-list [data-subagent-id="${id}"]').click(); true`);
+    await until(MODAL_OPEN, 'the task modal'); await settledHtml('#task-detail-content', 'the task modal'); };
 
   check('modal is closed to begin with', !(await modal()).open);
   await clickRow('aca6223d75309e7ca');
@@ -179,7 +188,10 @@ async function run() {
   check('long result scrolls inside its box', m.md.scrollable === true);
   const mark = () => ev(`(() => { const el = document.querySelectorAll('#task-detail-content .subagent-detail-text')[1]; el.scrollTop = 150; el.__marked = true; return el.scrollTop; })()`);
   const probe = () => ev(`(() => { const el = document.querySelectorAll('#task-detail-content .subagent-detail-text')[1]; return { scrollTop: el.scrollTop, sameNode: el.__marked === true }; })()`);
-  const waitForPoll = async () => { const before = (await ev(`window.__subagentFetches.length`)); for (let i = 0; i < 100; i++) { await sleep(50); if ((await ev(`window.__subagentFetches.length`)) > before) break; } await sleep(300); };
+  const waitForPoll = async () => { const before = (await ev(`window.__subagentFetches.length`)); for (let i = 0; i < 100; i++) { await sleep(50); if ((await ev(`window.__subagentFetches.length`)) > before) break; } await settledHtml('#task-detail-content', 'the modal after the poll'); };
+  // Let one poll land since the modal opened (it can bring fresher data than the row it opened from), so the next
+  // poll is the 'no changes' one this check is about.
+  await waitForPoll();
   const setTo = await mark();
   await waitForPoll();
   let pr = await probe();
@@ -192,7 +204,7 @@ async function run() {
   check('modal: footer is just Close', m.footer === 'Close', m.footer);
 
   check('modal: finished subagent with no recorded end time shows no duration (not time-since-start)', !('Duration' in m.fields), JSON.stringify(m.fields));
-  await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true`); await sleep(150);
+  await ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); true`); await until(`!${MODAL_OPEN}`, 'the modal to close');
   check('Escape closes it', !(await modal()).open);
 
   await clickRow('c0nometa000000000');
@@ -209,13 +221,13 @@ async function run() {
   let flipped = null;
   for (let i = 0; i < 100; i++) { await sleep(50); flipped = bySub(await rows(), 'b7running00000000'); if (flipped && !flipped.spinner) break; }
   check('poll refreshes the row without user action', flipped && !flipped.spinner && flipped.icon === 'check_circle' && flipped.cost === '$1.25', flipped && `${flipped.icon} ${flipped.cost}`);
-  await sleep(400);
+  await until(`/The design is done\\./.test(document.getElementById('task-detail-content').textContent)`, 'the finished result in the open modal');
   m = await modal();
   check('open modal follows: completed, final cost, duration', m.open && m.status === 'Completed' && m.cost === '$1.25' && !m.costLive && m.fields['Duration'] === '5m 30s', JSON.stringify([m.status, m.cost, m.fields['Duration']]));
   check('open modal fetches the result once the subagent finishes', (await ev(`window.__detailFetches`)).includes('b7running00000000') && /The design is done\./.test(m.sections['Result']), m.sections['Result']);
 
   // ── The overlay is shared with board tasks ──
-  await ev(`(async () => { const {state} = await import((window.__coralStatic||'/static/')+'state.js'); state.currentBoardTasks = JSON.parse(JSON.stringify(window.__boardTasks)); window.showTaskDetailModal(77); return true; })()`); await sleep(200);
+  await ev(`(async () => { const {state} = await import((window.__coralStatic||'/static/')+'state.js'); state.currentBoardTasks = JSON.parse(JSON.stringify(window.__boardTasks)); window.showTaskDetailModal(77); return true; })()`); await until(MODAL_OPEN, 'the board task modal'); await settledHtml('#task-detail-content', 'the board task modal');
   m = await modal();
   check('board task modal still works', m.open && m.header === 'Task #77' && m.title === '#77 · A board task', m.header + ' / ' + m.title);
   await ev(`window.__subagents[${JSON.stringify(A)}][0] = { ...window.__subagents[${JSON.stringify(A)}][0], cost_usd: 9.99 }; true`);
