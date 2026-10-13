@@ -65,6 +65,8 @@ Remote-agent tracking runs only in hub mode. For each remote the hub holds a `/w
 
 `version` in `/api/health` (and in the Cloud Hub tunnel Hello) is the release version, or for a `make dev` / `make build` build `<next patch>-dev+<commit>[.dirty]`; a plain `go build` reports `0.0.0-dev+<commit>`, which hubs treat as very old.
 
+The Cloud Hub may add `coral_version`, `latest_coral` (no `v`) and `update` (`current`, `available`, `required` or `unknown`) to a `servers` entry. The dashboard shows nothing for `current` or `unknown`. For `available` and `required` it shows an **Update** / **Update required** badge on the server row, a line in its tooltip and in the Servers dialog, all linking to the latest GitHub release. Nothing is disabled.
+
 Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for rows that carry the `archived` field, so it is hidden for older remotes. A machine lists archived agents last and never reports them as waiting for input; the hub's per-machine `agents` count excludes them.
 
 ## Identity

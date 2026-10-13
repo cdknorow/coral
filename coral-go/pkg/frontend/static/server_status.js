@@ -66,6 +66,37 @@ export function staleReason(s) {
     return `${e.label || e.id} is ${statusMeta(e.status).label.toLowerCase()}. This agent shows its last known state and cannot be used until the server is back.`;
 }
 
+// Cloud Hub update notice (#3059; coral-hub docs/proxy-feed.md "Update notice").
+// A servers entry may carry coral_version, latest_coral and
+// update: current | available | required | unknown. Only available and
+// required show anything, and nothing is ever disabled. The link is this
+// constant, never built from a field the server sent.
+export const RELEASES_URL = 'https://github.com/cdknorow/coral/releases/latest';
+
+/** {level, label, text} for an entry that needs an update, else null. */
+export function updateNotice(e) {
+    if (!e || (e.update !== 'available' && e.update !== 'required')) return null;
+    const field = v => (typeof v === 'string' ? v.trim() : '');
+    const latest = field(e.latest_coral);
+    if (e.update === 'available') {
+        return { level: 'available', label: 'Update', text: latest ? `Update available: ${latest}` : 'Update available' };
+    }
+    const current = field(e.coral_version);
+    return {
+        level: 'required', label: 'Update required',
+        text: `Update required: this Coral${current ? ` (${current})` : ''} is too old for some Cloud Hub features. `
+            + (latest ? `Update to ${latest}.` : 'Update to the latest release.'),
+    };
+}
+
+/** The update badge for a server row: a link to the releases page. '' when none. */
+export function updateBadgeHtml(e) {
+    const n = updateNotice(e);
+    if (!n) return '';
+    return `<a class="server-update-badge server-update-${n.level}" href="${escHtml(RELEASES_URL)}" target="_blank" rel="noopener noreferrer"`
+        + ` title="${escHtml(n.text)}" aria-label="${escHtml(n.text)}">${escHtml(n.label)}</a>`;
+}
+
 /** Multi-line hover text for a server: status, address, agent count, last contact. */
 export function serverHoverText(id) {
     const e = serverEntry(id);
@@ -83,6 +114,8 @@ export function serverHoverText(id) {
     if (!local) lines.push(e.status === 'online' ? `Last contact: ${formatLastSeen(e.last_seen)}` : `Last seen: ${formatLastSeen(e.last_seen)}`);
     if (!local && e.status !== 'online' && e.last_error) lines.push(`Error: ${e.last_error}`);
     if (!local && e.status !== 'online') lines.push(m.hint);
+    const notice = local ? null : updateNotice(e);
+    if (notice) lines.push(notice.text);
     return lines.join('\n');
 }
 
@@ -106,6 +139,7 @@ export function serverStripHtml() {
             + `<span class="server-dot" aria-hidden="true"></span>`
             + `<span class="server-strip-name">${escHtml(e.label || e.id)}</span>`
             + (down ? `<span class="server-strip-state">${escHtml(m.label)}</span>` : '')
+            + (e.id === LOCAL_SERVER ? '' : updateBadgeHtml(e))
             + `</li>`;
     }).join('');
     return `<li class="server-strip-row" aria-label="Servers"><ul class="server-strip">${rows}</ul></li>`;

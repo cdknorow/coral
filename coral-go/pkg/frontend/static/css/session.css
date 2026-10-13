@@ -2084,6 +2084,21 @@
 .server-strip-item.server-unauthorized { color: var(--text-primary); border-color: var(--warning); }
 .server-strip-item.server-unauthorized { border-color: var(--error); }
 .server-strip-state { font-weight: 600; }
+/* Cloud Hub update notice (#3059): a link, nothing is disabled. */
+.server-update-badge {
+    margin-left: var(--space-xs);
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius-sm, 4px);
+    font-size: var(--fs-sm, 11px);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    color: var(--accent);
+    border: 1px solid currentColor;
+}
+.server-update-badge.server-update-required { color: var(--warning); }
+.server-update-badge:hover { text-decoration: underline; }
+.cs-update-required { color: var(--warning); }
 
 /* Agents on an unreachable server: last-known data, not actionable. */
 .session-group-item.session-stale {

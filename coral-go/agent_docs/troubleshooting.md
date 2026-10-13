@@ -90,7 +90,9 @@ You built with plain `go build`. `make dev` and `make build` stamp the latest re
 build reports the next patch, `<next>-dev+<commit>[.dirty]` (e.g. `1.4.3-dev+<commit>` after
 v1.4.2; `ReportedVersion` in `internal/config/version.go`). This is the version shown in
 `/api/health`, the startup log and the Cloud Hub tunnel Hello. Hubs treat `0.0.0-dev` as a very
-old version.
+old version: the Cloud Hub then connects with the plain `/ws/coral` feed instead of `feed=hub`, so
+that machine's dashboard notifications are taken by the hub's feed and never shown locally, and
+the hub shows it as needing an update. Build with `make build` or `make dev`.
 
 ## Agents
 

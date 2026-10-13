@@ -48,6 +48,29 @@ const { pathToFileURL } = require('url');
     assert.ok(/^Cloud: Unreachable/.test(down) && /agents?/.test(down) && /Last seen:/.test(down));
     assert.ok(/This server \(the hub\)/.test(m.serverHoverText('local')));
 
+    // Cloud Hub update notice (#3059): only available/required show anything, the
+    // link is the constant releases page, and server-sent text is escaped.
+    for (const update of [undefined, 'current', 'unknown', 'bogus']) {
+        assert.strictEqual(m.updateNotice({ update, latest_coral: '9.9.9' }), null, String(update));
+        assert.strictEqual(m.updateBadgeHtml({ update }), '');
+    }
+    assert.strictEqual(m.updateNotice({ update: 'available', latest_coral: '1.4.4' }).text, 'Update available: 1.4.4');
+    assert.strictEqual(m.updateNotice({ update: 'required', coral_version: '1.3.40', latest_coral: '1.4.4' }).text,
+        'Update required: this Coral (1.3.40) is too old for some Cloud Hub features. Update to 1.4.4.');
+    assert.ok(/Update to the latest release\.$/.test(m.updateNotice({ update: 'required', coral_version: '1.3.40' }).text));
+    const hostile = { update: 'required', coral_version: '<img src=x onerror=1>', latest_coral: '"><script>x</script>' };
+    const ub = m.updateBadgeHtml(hostile);
+    assert.ok(!ub.includes('<img') && !ub.includes('<script') && ub.includes('&lt;img'), ub);
+    assert.ok(ub.includes('href="https://github.com/cdknorow/coral/releases/latest"') && ub.includes('rel="noopener noreferrer"') && ub.includes('target="_blank"'));
+    assert.strictEqual((ub.match(/href=/g) || []).length, 1, 'the only link is the constant one');
+    const prevServers = state.servers;
+    state.servers = [{ id: 'ws1', label: 'Work', status: 'online', update: 'available', latest_coral: '1.4.4' }, { id: 'ws2', label: 'Cloud', status: 'online', update: 'current' }];
+    assert.ok(/Update available: 1\.4\.4/.test(m.serverHoverText('ws1')));
+    assert.ok(!/Update/.test(m.serverHoverText('ws2')));
+    const us = m.serverStripHtml();
+    assert.strictEqual((us.match(/server-update-badge/g) || []).length, 1, 'one badge, on ws1 only');
+    state.servers = prevServers;
+
     // Stale sessions.
     assert.strictEqual(m.isStaleSession({ stale: true }), true);
     assert.strictEqual(m.isStaleSession({}), false);

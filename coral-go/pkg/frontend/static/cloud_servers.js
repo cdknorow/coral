@@ -16,7 +16,7 @@
 
 import { state } from './state.js';
 import { h } from './cloud.js';
-import { formatLastSeen } from './server_status.js';
+import { formatLastSeen, updateNotice, RELEASES_URL } from './server_status.js';
 
 let modal = null;
 let servers = [];
@@ -178,11 +178,19 @@ function row(s) {
         : [h('button', { type: 'button', className: 'btn btn-small', text: 'Rename', disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
            h('button', { type: 'button', className: 'btn btn-small btn-danger-text', text: 'Revoke', disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
     const note = launchNote(s);
+    // The update notice comes with the live list's servers entry (#3059).
+    const update = updateNotice((state.servers || []).find(x => x && x.id === s.id) || s);
+    const updateNote = update
+        ? h('div', { className: `cs-note cs-update cs-update-${update.level}` },
+            h('span', { text: update.text + ' ' }),
+            h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Get the latest release' }))
+        : null;
     return h('li', { className: 'cs-row', dataset: { id: s.id } },
         h('div', {}, title, meta, launch),
         h('div', { className: 'cs-actions' }, actions),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
-        note ? h('div', { className: 'cs-note', text: note }) : null);
+        note ? h('div', { className: 'cs-note', text: note }) : null,
+        updateNote);
 }
 
 function enrollBlock() {
@@ -216,5 +224,4 @@ function render() {
             loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
             list,
             enrollBlock())));
-    void state;
 }
