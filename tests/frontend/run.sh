@@ -50,6 +50,8 @@ CHROME_PROFILE="$(mktemp -d /tmp/coral-frontend-chrome.XXXXXX)"
 # reads Codex transcripts from it, never from the real ~/.codex.
 export CODEX_HOME="$CORAL_HOME/codex"
 export CORAL_TELEMETRY_DISABLED=1
+# No demo workflow/scheduled job: it would run a real agent and pop an alert mid-suite.
+export CORAL_NO_DEMO_SEED=1
 mkdir -p "$CODEX_HOME/sessions"
 
 CORAL_BIN="${CORAL_BIN:-}"

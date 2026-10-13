@@ -35,6 +35,11 @@
 // results.json (path printed at the end) has every suite with its status and every attempt (with the
 // log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
 //
+// Before every suite attempt, the shard's Chrome gets one fresh about:blank tab (every other page is
+// closed) and the Coral origin's browser storage (localStorage, sessionStorage via the fresh tab,
+// IndexedDB, cookies, caches, service workers) is cleared, so suites can't leak state into each other
+// through the browser. Server-side state (agents, boards, settings) is not reset; suites own that.
+//
 // Leftovers: suites, Coral servers and Chromes run in their own process groups, killed on exit, Ctrl-C
 // and SIGTERM. A runner killed with SIGKILL can't clean up, so each runner records its groups in
 // <tmpdir>/coral-cdp-runner-<runner pid>.json. At start, a runner kills the groups listed by any runner
@@ -165,7 +170,9 @@ async function startShard(n, gen = 0) {
   const port = await freePort();
   const data = path.join(dir, 'data'); fs.mkdirSync(data);
   const codexHome = path.join(dir, 'codex'); fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
-  const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1' };
+  // CORAL_NO_DEMO_SEED: no demo workflow or scheduled job, which would run a real agent and pop an alert
+  // on top of whichever suite is on screen ~30 s after startup.
+  const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1', CORAL_NO_DEMO_SEED: '1' };
   const log = path.join(dir, 'coral.log');
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
     { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
@@ -230,10 +237,39 @@ const tests = fs.readdirSync(here).filter(f => /\.test\.(js|mjs)$/.test(f))
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
 if (!tests.length) { console.error('no CDP suites matched'); process.exit(2); }
 
+// clearOrigin gives the next suite a clean browser: it opens one fresh about:blank tab and closes every
+// other page (a reused tab would keep its sessionStorage, and the previous suite's still-open document
+// could write storage again through its timers), then wipes the Coral origin's storage (localStorage,
+// IndexedDB, cookies, caches, service workers) in the shard's Chrome. Suites that connect with
+// CDP({port}) attach to that fresh tab.
+async function clearOrigin(shard) {
+  let client;
+  try {
+    const version = await (await fetch(`http://127.0.0.1:${shard.env.CDP_PORT}/json/version`, { signal: AbortSignal.timeout(5000) })).json();
+    client = await CDP({ target: version.webSocketDebuggerUrl, local: true });
+    // The fresh tab is created first, so Chrome always has a page open.
+    const { targetId } = await client.send('Target.createTarget', { url: 'about:blank' });
+    const { targetInfos } = await client.send('Target.getTargets');
+    for (const t of targetInfos) {
+      if (t.type === 'page' && t.targetId !== targetId) await client.send('Target.closeTarget', { targetId: t.targetId }).catch(() => {});
+    }
+    // Chrome answers 'Internal error' to this on the browser target, so it is sent through a page session
+    // (the fresh tab: the call clears the named origin, not the page's own).
+    const { sessionId } = await client.send('Target.attachToTarget', { targetId, flatten: true });
+    await client.send('Storage.clearDataForOrigin', { origin: shard.env.CORAL_TEST_URL, storageTypes: 'all' }, sessionId);
+    await client.send('Target.detachFromTarget', { sessionId });
+  } catch (e) {
+    console.log(`  [runner] could not clear browser storage on shard ${shard.n}: ${e.message}`);
+  } finally {
+    try { if (client) await client.close(); } catch { /* closed */ }
+  }
+}
+
 // runAttempt runs one suite once in its own process group, with the hard per-attempt timeout.
-function runAttempt(t, shard) {
+async function runAttempt(t, shard) {
+  await clearOrigin(shard);
   const started = Date.now();
-  return new Promise(resolve => {
+  return await new Promise(resolve => {
     const p = spawn('node', [t], { cwd: here, env: shard.env, detached: true });
     track(p);
     let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
