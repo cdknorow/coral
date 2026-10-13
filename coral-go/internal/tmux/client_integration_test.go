@@ -372,11 +372,19 @@ func TestClient_ClearHistory(t *testing.T) {
 
 	// Capture with large scrollback should have all of it
 	var before string
-	require.Eventually(t, func() bool {
-		var err error
-		before, err = c.CapturePaneTarget(ctx, "clear-hist:0.0", 500)
-		return err == nil && strings.Count(before, "SCROLLBACK_LINE\n") >= 50
+	var captureErr error
+	ok := assert.Eventually(t, func() bool {
+		before, captureErr = c.CapturePaneTarget(ctx, "clear-hist:0.0", 500)
+		return captureErr == nil && strings.Count(before, "SCROLLBACK_LINE\n") >= 50
 	}, 10*time.Second, 20*time.Millisecond, "scrollback never held 50 lines")
+	if !ok {
+		// Seen once under heavy load and not reproduced since: say what the pane held, so the next one explains itself.
+		tail := before
+		if len(tail) > 600 {
+			tail = tail[len(tail)-600:]
+		}
+		t.Fatalf("%d of 50 lines; capture error %v; pane tail:\n%s", strings.Count(before, "SCROLLBACK_LINE\n"), captureErr, tail)
+	}
 
 	// Clear history (removes scrollback buffer, not visible content)
 	err := c.ClearHistory(ctx, "clear-hist:0.0")
