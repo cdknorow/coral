@@ -1,0 +1,70 @@
+name: Linux runner dry run
+
+# Manual check that the Linux release build still works on a newer runner image
+# (for example before moving release.yml off its pinned ubuntu-24.04). Mirrors
+# release.yml's build-linux job, but with no secrets, a dry-run version string and
+# no uploads; nothing it builds is published.
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: "Runner label to build on"
+        required: true
+        default: "ubuntu-26.04"
+
+permissions:
+  contents: read
+
+env:
+  CORAL_TELEMETRY_DISABLED: "1"
+
+jobs:
+  build-linux:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Runner image
+        run: |
+          cat /etc/os-release
+          echo "ImageOS=${ImageOS:-} ImageVersion=${ImageVersion:-}"
+          docker --version
+          python3 --version
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.9"
+          cache-dependency-path: coral-go/go.sum
+
+      - name: Sync agent docs
+        run: bash tools/sync-agent-docs.sh
+
+      - name: Build Linux binaries (amd64)
+        working-directory: coral-go
+        run: |
+          LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.Version=0.0.0-dryrun"
+          mkdir -p ../dist/linux
+          for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
+            [ -d "./cmd/$cmd" ] || continue
+            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+              -tags fts5 \
+              -ldflags "$LDFLAGS" \
+              -o "../dist/linux/$cmd" \
+              "./cmd/$cmd/"
+          done
+          ../tests/release/verify_standard_bundle.sh ../dist/linux
+
+      - name: Smoke test package on Ubuntu 22.04
+        run: |
+          set -euo pipefail
+          package="$PWD/dist/linux"
+          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral -h
+          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/launch-coral -h
+          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral-board workflow --help
+
+      - name: Verify server and board commands without shared libraries
+        run: python3 tests/release/smoke_standard_linux.py dist/linux
+
+      - name: Create tarball
+        run: tar czf dist/coral-linux-amd64-dryrun.tar.gz -C dist/linux .

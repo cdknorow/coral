@@ -15,8 +15,9 @@ env:
 
 jobs:
   # ── Linux ──────────────────────────────────────────────────────
+  # linux-runner-dryrun.yml mirrors these steps; keep the two in step.
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 
@@ -566,7 +567,7 @@ jobs:
     permissions:
       contents: write
     needs: [build-linux, build-windows, build-macos]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 
