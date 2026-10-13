@@ -9,15 +9,11 @@
 // isolation pattern as agent_bar_tweaks / agent_list_compact). State flips go
 // through window._coralHandleWsMessage so the real merge path is exercised.
 //
-// Expects CORAL_URL + CDP_PORT from tests/frontend/run.sh. Exit 0 / 1 / 2.
+// Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh. Exit 0 / 1 / 2.
 
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
+const BASE = require('./test_base').BASE;
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
-if (/:8420(\/|$)/.test(BASE) && !process.env.CORAL_TEST_ALLOW_PROD) {
-    console.error(`Refusing to run against ${BASE}: that is the production Coral port. Use tests/frontend/run.sh.`);
-    process.exit(2);
-}
 
 const results = [];
 function check(label, cond, detail) {

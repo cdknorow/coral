@@ -19,6 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORAL_DIR="$REPO_ROOT/coral-go"
 PORT=${CORAL_TEST_PORT:-8474}
+if [[ "$PORT" == 8420 ]]; then echo "ERROR: refusing port 8420 (production Coral server); pick another port." >&2; exit 2; fi
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
 PASS=0
@@ -367,7 +368,7 @@ fi
 source "$SCRIPT_DIR/agent_task_assignment.sh"
 
 log "Assignment editor browser regressions..."
-if CORAL_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
+if CORAL_TEST_URL="$BASE_URL" bash "$SCRIPT_DIR/run_assignment_browser.sh" >"$TMPDIR_AT/assignment-browser.log" 2>&1; then
     cat "$TMPDIR_AT/assignment-browser.log"
     pass "assignment editor preserves ownership and rejects stale forms"
 else

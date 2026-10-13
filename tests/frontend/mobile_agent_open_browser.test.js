@@ -5,8 +5,7 @@
 // either shows up here, on a plain local Coral, the same way the hub's CSP would show it.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
-if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
+const BASE = require('./test_base').BASE;
 const DEVICES = [
     { name: 'iPhone 14', width: 390, height: 844, ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' },
     { name: 'Pixel 7', width: 412, height: 915, ua: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36' },

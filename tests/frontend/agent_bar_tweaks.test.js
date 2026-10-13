@@ -16,7 +16,7 @@
 // Drives a running Coral server via headless Chrome + Chrome DevTools Protocol.
 //
 // Expects:
-//   CORAL_URL  — base URL of a running Coral dev server (default http://127.0.0.1:8462)
+//   CORAL_TEST_URL  — base URL of a running Coral dev server (default http://127.0.0.1:8462)
 //   CDP_PORT   — port of a running headless Chrome with --remote-debugging-port
 //                (default 9222)
 //
@@ -24,16 +24,8 @@
 
 const CDP = require('chrome-remote-interface');
 
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
+const BASE = require('./test_base').BASE;
 
-// Safety: shells spawned by a running Coral inherit CORAL_URL=http://127.0.0.1:8420
-// (production). This suite mutates server state, so refuse the production port
-// unless explicitly overridden. tests/frontend/run.sh always sets CORAL_URL to
-// its isolated server.
-if (/:8420(\/|$)/.test(BASE) && !process.env.CORAL_TEST_ALLOW_PROD) {
-    console.error(`Refusing to run against ${BASE}: that is the production Coral port. Use tests/frontend/run.sh.`);
-    process.exit(2);
-}
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
 const results = [];

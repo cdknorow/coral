@@ -3,8 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL;
-if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated server');
+const BASE = require('./test_base').BASE;
 const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report_2254.json'),'utf8');
 
 (async()=>{

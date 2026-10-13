@@ -17,20 +17,16 @@
 //   D. Main-app regression: kebab/header anchors, #chat/<sid> restore, null
 //      DOM targets.
 //
-// Expects CORAL_URL + CDP_PORT from tests/frontend/run.sh (isolated server,
+// Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh (isolated server,
 // temp home, production-port guard). Exits 0 on success, 1 on any FAIL,
 // 2 on harness error.
 
 const CDP = require('chrome-remote-interface');
 const http = require('http');
 
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
+const BASE = require('./test_base').BASE;
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 
-if (/:8420(\/|$)/.test(BASE) && !process.env.CORAL_TEST_ALLOW_PROD) {
-    console.error(`Refusing to run against ${BASE}: that is the production Coral port. Use tests/frontend/run.sh.`);
-    process.exit(2);
-}
 
 const results = [];
 function check(label, cond, detail) {

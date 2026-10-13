@@ -2,8 +2,7 @@
 // Real Chrome against an isolated Coral (see run_cdp_suites.mjs): the view's script runs for real.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
-const base = process.env.CORAL_URL;
-if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
+const base = require('./test_base').BASE;
 (async () => {
     const c = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
     const ev = async expression => {

@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORAL_DIR="$REPO_ROOT/coral-go"
 PORT=${CORAL_TEST_PORT:-8473}
+if [[ "$PORT" == 8420 ]]; then echo "ERROR: refusing port 8420 (production Coral server); pick another port." >&2; exit 2; fi
 HOST="127.0.0.1"
 BASE_URL="http://${HOST}:${PORT}"
 PASS=0

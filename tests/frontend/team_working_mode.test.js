@@ -1,7 +1,6 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
-if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
+const BASE = require('./test_base').BASE;
 const BOARD = 'working-mode-browser-' + Date.now().toString(36); // a fresh board per run: reruns on one server do not collide
 (async () => {
  const client = await CDP({port:Number(process.env.CDP_PORT || 9222)});

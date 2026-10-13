@@ -3,9 +3,8 @@
 // live status and spend. Same isolation pattern as the other suites: fetch
 // and the coral WebSocket are stubbed before navigation.
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
+const BASE = require('./test_base').BASE;
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
-if (/:8420(\/|$)/.test(BASE) && !process.env.CORAL_TEST_ALLOW_PROD) { console.error('Refusing to run against the production port; use tests/frontend/run.sh.'); process.exit(2); }
 const results = []; const check = (l, c, d) => { const v = c ? 'PASS' : 'FAIL'; results.push(v); console.log(`[${v}] ${l}${d !== undefined ? ' — ' + d : ''}`); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const U = () => require('crypto').randomUUID();

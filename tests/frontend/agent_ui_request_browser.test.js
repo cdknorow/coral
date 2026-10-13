@@ -1,6 +1,6 @@
 // No real agent notifications: API fixtures exercise the shipped form/chat modules.
 const assert=require('node:assert/strict');const fs=require('node:fs');const CDP=require('chrome-remote-interface');
-const base=process.env.CORAL_URL;if(!base||/:8420(\/|$)/.test(base))throw Error('Use isolated server');
+const base=require('./test_base').BASE;
 (async()=>{
  const c=await CDP({port:Number(process.env.CDP_PORT||9222)});
  const ev=async expression=>{const r=await c.Runtime.evaluate({expression:expression.includes("await ") && !expression.startsWith("(async") ? `(async()=>{${expression}})()` : expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};

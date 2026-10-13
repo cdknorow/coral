@@ -4,8 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
-if (/:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated server');
+const BASE = require('./test_base').BASE;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 (async () => {
  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-ui-test-'));

@@ -1,7 +1,7 @@
 // Isolated browser regression: subscriber discovery must never clear assignment.
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
-const base = process.env.CORAL_URL;
+const base = require('./test_base').BASE;
 if (!base || !/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base) || /:8420\/?$/.test(base)) throw Error('Use an isolated local server');
 (async () => {
     const c = await CDP({port:Number(process.env.CDP_PORT || 9222)});

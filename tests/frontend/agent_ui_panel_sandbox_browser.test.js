@@ -6,8 +6,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const dgram = require('node:dgram');
 const CDP = require('chrome-remote-interface');
-const base = process.env.CORAL_URL;
-if (!base || /:8420(\/|$)/.test(base)) throw Error('Use isolated server');
+const base = require('./test_base').BASE;
 (async () => {
     const hits = [];
     const counting = http.createServer((req, res) => { hits.push(req.method + ' ' + req.url); res.writeHead(200, { 'Content-Type': 'text/html', 'Access-Control-Allow-Origin': '*' }).end('<h1>exfil</h1>'); });

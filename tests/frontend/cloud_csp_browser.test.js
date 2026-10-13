@@ -6,8 +6,7 @@
 // Keep CSP in sync with coral-hub internal/webui ContentSecurityPolicy().
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL;
-if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('isolated server required');
+const BASE = require('./test_base').BASE;
 
 const HOST = new URL(BASE).host;
 // The mutation policy: it blocks Coral's own scripts, so loading the page under it MUST be reported as violations (checked below on every run).

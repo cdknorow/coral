@@ -19,9 +19,9 @@ CORAL_PORT="${CORAL_TEST_PORT:-8462}"
 CDP_PORT="${CDP_PORT:-9222}"
 PROD_PORT=8420
 
-if [ "$CORAL_PORT" = "$PROD_PORT" ] && [ -z "${CORAL_TEST_ALLOW_PROD:-}" ]; then
+if [ "$CORAL_PORT" = "$PROD_PORT" ]; then
     echo "ERROR: refusing to run the frontend suite on :$PROD_PORT (production Coral port)." >&2
-    echo "       Set CORAL_TEST_PORT to a free non-production port (or CORAL_TEST_ALLOW_PROD=1 to override deliberately)." >&2
+    echo "       Set CORAL_TEST_PORT to a free non-production port." >&2
     exit 2
 fi
 
@@ -133,7 +133,10 @@ if ! curl -sS "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null 2>&1; then
     exit 2
 fi
 
-export CORAL_URL="http://127.0.0.1:$CORAL_PORT"
+# Suites read CORAL_TEST_URL via test_base.js. Drop the inherited live-server variables so nothing
+# a suite spawns can fall back to them.
+export CORAL_TEST_URL="http://127.0.0.1:$CORAL_PORT"
+unset CORAL_URL CORAL_PORT CORAL_HOST CORAL_DATA_DIR CORAL_DIR
 export CDP_PORT
 cd "$HERE"
 

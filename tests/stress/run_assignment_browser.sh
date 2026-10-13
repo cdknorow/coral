@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Assignment editor regression against the caller's isolated, built Coral server.
-# Usage: CORAL_URL=http://127.0.0.1:8474 bash tests/stress/run_assignment_browser.sh
+# Usage: CORAL_TEST_URL=http://127.0.0.1:8474 bash tests/stress/run_assignment_browser.sh
 # Optional: CORAL_CHROME_BIN=/path/to/chrome. Installs no dependencies.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -67,10 +67,10 @@ function findChrome() {
 }
 (async () => {
     try {
-        const base = process.env.CORAL_URL || '';
+        const base = process.env.CORAL_TEST_URL || '';
         if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base) ||
             !Number(new URL(base).port) || Number(new URL(base).port) === 8420) {
-            throw Error('CORAL_URL must name an isolated local server, e.g. http://127.0.0.1:8474 (not port 8420)');
+            throw Error('CORAL_TEST_URL must name an isolated local server, e.g. http://127.0.0.1:8474 (not port 8420)');
         }
         if (!fs.existsSync(testFile)) throw Error(`Regression test missing: ${testFile}`);
         try { createRequire(testFile)('chrome-remote-interface'); }
@@ -101,7 +101,7 @@ function findChrome() {
         if (!port) throw Error('Chrome startup exceeded 20 seconds');
         log(`Running assignment regression against ${base}, private CDP port ${port}`);
         test = spawn(process.execPath, [testFile], {
-            env:{...process.env, CORAL_URL:base, CDP_PORT:String(port)}, stdio:'inherit',
+            env:{...process.env, CORAL_TEST_URL:base, CDP_PORT:String(port)}, stdio:'inherit',
         });
         let timedOut = false;
         const timer = setTimeout(() => { timedOut = true; if (running(test)) test.kill('SIGKILL'); }, 60000);

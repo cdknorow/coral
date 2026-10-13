@@ -10,8 +10,7 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 
-const BASE = process.env.CORAL_URL || 'http://127.0.0.1:8462';
-if (/:8420(\/|$)/.test(BASE)) throw new Error('Refusing to run tests on production port 8420');
+const BASE = require('./test_base').BASE;
 
 // The first page must be smaller than the old 400-message page.
 const MAX_FIRST_PAGE = 200;

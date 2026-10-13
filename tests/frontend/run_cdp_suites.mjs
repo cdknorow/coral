@@ -51,7 +51,7 @@ const b = spawnSync('go', ['build', '-tags', 'dev fts5', '-o', bin, './cmd/coral
 if (b.status !== 0) process.exit(2);
 
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
-const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_DATA_DIR', 'CORAL_DIR', 'TMUX', 'TMUX_PANE'].includes(k)));
+const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_HOST', 'CORAL_DATA_DIR', 'CORAL_DIR', 'CORAL_TEST_URL', 'TMUX', 'TMUX_PANE'].includes(k)));
 
 // startShard starts one isolated Coral server and one headless Chrome. Each shard has its own data dir,
 // Codex home, ports and Chrome profile, so shards share nothing but the built binary.
@@ -104,7 +104,7 @@ async function startShard(n) {
     process.exit(2);
   }
   console.log(`${shards > 1 ? `shard ${n}: ` : ''}coral http://127.0.0.1:${port}  chrome cdp :${cdp}  tmp ${dir}`);
-  return { n, log, env: { ...testEnv, CORAL_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } };
+  return { n, log, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } };
 }
 // Shards start one after another: freePort() releases the port before coral binds it, so two shards
 // starting at once could be handed the same port. Each shard also waits for coral's own "bound" log line.

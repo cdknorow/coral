@@ -4,8 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const CDP = require('chrome-remote-interface');
-const BASE = process.env.CORAL_URL;
-if (!BASE || /:8420(\/|$)/.test(BASE)) throw new Error('Use an isolated test server');
+const BASE = require('./test_base').BASE;
 
 (async () => {
     const client = await CDP({port: Number(process.env.CDP_PORT || 9222)});
