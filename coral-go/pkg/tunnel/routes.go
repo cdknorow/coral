@@ -203,7 +203,7 @@ var routeTable = cat(
 		"/api/views", "/api/views/{id}",
 		"/api/agent-models", "/api/settings/default-prompts", "/api/session-artifacts",
 		// A content-addressed agent artifact, named by its full SHA-256. Reads only; the exact 64-hex shape is
-		// enforced by the {hex64} segment, and the route takes no query. Upload (POST /api/agent/artifacts) and
+		// enforced by the {hex64} segment, and the only query is the link form v=2 (routes_query.go, #3179). Upload (POST /api/agent/artifacts) and
 		// the artifact list under /api/agent/ stay unlisted (never).
 		"/api/artifacts/{hex64}",
 		// Agent UI (option B): the panel list, a panel's HTML (read as text and run in a sandbox by the dashboard) and its saved
