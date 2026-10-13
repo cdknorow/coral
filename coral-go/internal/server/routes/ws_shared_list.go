@@ -45,7 +45,8 @@ type wsTick struct {
 // wsLocalPart is this server's sessions and job runs, serialized.
 type wsLocalPart struct {
 	builtAt    time.Time
-	hasRemotes bool // whether entries carry server: "local"
+	kickGen    uint64 // wsTickCache.kickGen when the build started
+	hasRemotes bool   // whether entries carry server: "local"
 	err        error
 	sessions   []map[string]any
 	keys       []string // diff key per session; "" is sent but not diffed
@@ -73,6 +74,7 @@ type wsTickCache struct {
 	tick     *wsTick
 	tickFrom [2]any        // the parts tick was assembled from
 	building chan struct{} // closed when the build in progress finishes
+	kickGen  uint64        // bumped by kickWS: a local part from before it is stale
 }
 
 // remoteGeneration reports the remote hub's change counter, if it has one.
@@ -95,7 +97,7 @@ func (h *SessionsHandler) sharedWSTick(r *http.Request) (*wsTick, error) {
 		gen, genOK := h.remoteGeneration()
 		c.mu.Lock()
 		remoteFresh := c.remote != nil && genOK && c.remote.genOK && c.remote.gen == gen && time.Since(c.remote.builtAt) < wsListMaxAge
-		localFresh := c.local != nil && time.Since(c.local.builtAt) < wsListMaxAge
+		localFresh := c.local != nil && c.local.kickGen == c.kickGen && time.Since(c.local.builtAt) < wsListMaxAge
 		if remoteFresh && localFresh && c.local.hasRemotes == c.remote.snap.Configured() {
 			if c.tick == nil || c.tickFrom != [2]any{c.local, c.remote} {
 				c.tick = assembleWSTick(c.local, c.remote)
@@ -116,9 +118,9 @@ func (h *SessionsHandler) sharedWSTick(r *http.Request) (*wsTick, error) {
 		}
 		done := make(chan struct{})
 		c.building = done
-		local, remote := c.local, c.remote
+		local, remote, kickGen := c.local, c.remote, c.kickGen
 		c.mu.Unlock()
-		return h.buildSharedWSTick(r, done, local, remote, !localFresh, !remoteFresh, gen, genOK)
+		return h.buildSharedWSTick(r, done, local, remote, !localFresh, !remoteFresh, gen, genOK, kickGen)
 	}
 }
 
@@ -127,7 +129,7 @@ func (h *SessionsHandler) sharedWSTick(r *http.Request) (*wsTick, error) {
 // wake up: otherwise one panic during a build would block every /ws/coral
 // connection for good. A panic is logged and returned as an error, and nothing
 // is published, so the previous parts stay in place.
-func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{}, local *wsLocalPart, remote *wsRemotePart, localStale, remoteStale bool, gen uint64, genOK bool) (tick *wsTick, err error) {
+func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{}, local *wsLocalPart, remote *wsRemotePart, localStale, remoteStale bool, gen uint64, genOK bool, kickGen uint64) (tick *wsTick, err error) {
 	c := &h.wsList
 	published := false
 	defer func() {
@@ -150,6 +152,7 @@ func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{},
 	}
 	if localStale || local.hasRemotes != remote.snap.Configured() {
 		local = h.buildWSLocalPart(r, remote.snap.Configured())
+		local.kickGen = kickGen // a kick during this build leaves it stale for the next request
 	}
 
 	c.mu.Lock()
@@ -163,7 +166,14 @@ func (h *SessionsHandler) buildSharedWSTick(r *http.Request, done chan struct{},
 	return tick, local.err
 }
 
+// wsLocalBuildHook, when set by a test before any connection, runs at the start
+// of every shared local build.
+var wsLocalBuildHook func()
+
 func (h *SessionsHandler) buildWSLocalPart(r *http.Request, hasRemotes bool) *wsLocalPart {
+	if wsLocalBuildHook != nil {
+		wsLocalBuildHook()
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), wsListBuildTimeout)
 	defer cancel()
 	sessions, err := h.buildSessionListForWS(r.Clone(ctx))

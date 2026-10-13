@@ -110,6 +110,10 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		remoteChanged = ch
 	}
 	var debounce <-chan time.Time
+	// A kick (a state change on this server) rebuilds after wsKickCoalesce.
+	kicked, cancelKick := h.wsKick.subscribe()
+	defer cancelKick()
+	var kickWait <-chan time.Time
 	lastBuild := time.Time{}
 	prevServersJSON := ""
 
@@ -139,6 +143,16 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			}
 		case <-debounce:
 			debounce = nil
+		case <-kicked:
+			if firstMessage {
+				continue // the first coral_update is built fresh anyway
+			}
+			if kickWait == nil {
+				kickWait = time.After(wsKickCoalesce)
+			}
+			continue
+		case <-kickWait:
+			kickWait = nil
 		}
 		lastBuild = time.Now()
 

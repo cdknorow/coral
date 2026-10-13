@@ -73,6 +73,7 @@ type SessionsHandler struct {
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
 
 	wsList wsTickCache // one /ws/coral build shared by all clients (ws_shared_list.go)
+	wsKick wsKicker    // prompt /ws/coral rebuilds after state changes (ws_kick.go)
 
 	// logStatusCache avoids rereading each agent's bounded log tail on every
 	// sidebar poll. Entries are invalidated by size/mtime and capped so a
@@ -2526,6 +2527,7 @@ func (h *SessionsHandler) Resize(w http.ResponseWriter, r *http.Request) {
 // Kill terminates a tmux session.
 // POST /api/sessions/live/{name}/kill
 func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	name := chi.URLParam(r, "name")
 	var body struct {
 		AgentType string `json:"agent_type"`
@@ -2670,6 +2672,7 @@ func sendLaunchCommand(ctx context.Context, terminal ptymanager.SessionTerminal,
 // Restart restarts the agent session.
 // POST /api/sessions/live/{name}/restart
 func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	name := chi.URLParam(r, "name")
 	var body struct {
 		AgentType    string              `json:"agent_type"`
@@ -3009,6 +3012,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 // Resume restarts with --resume to continue a historical session.
 // POST /api/sessions/live/{name}/resume
 func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	name := chi.URLParam(r, "name")
 	var body struct {
 		SessionID        string `json:"session_id"`
@@ -3201,6 +3205,7 @@ func (h *SessionsHandler) SetDisplayName(w http.ResponseWriter, r *http.Request)
 // Launch creates a new agent session.
 // POST /api/sessions/launch
 func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	var body struct {
 		WorkingDir      string                 `json:"working_dir"`
 		AgentType       string                 `json:"agent_type"`
@@ -3310,6 +3315,7 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 // LaunchTeam launches multiple agents on a shared message board.
 // POST /api/sessions/launch-team
 func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	var body struct {
 		BoardName   string   `json:"board_name"`
 		WorkingDir  string   `json:"working_dir"`
@@ -3635,6 +3641,7 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 // original prompts and configuration. Each agent gets a fresh context.
 // POST /api/sessions/live/team/{boardName}/reset
 func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	boardName := urlParam(r, "boardName")
 	if boardName == "" {
 		errBadRequest(w, "boardName is required")
@@ -5315,6 +5322,7 @@ func (h *SessionsHandler) SleepStatus(w http.ResponseWriter, r *http.Request) {
 // KillTeam kills all agents in a team, atomically marking active members as stopped.
 // POST /api/sessions/live/team/{boardName}/kill
 func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	boardName := urlParam(r, "boardName")
 	ctx := r.Context()
 	bgCtx := context.Background()
@@ -5507,6 +5515,7 @@ func (h *SessionsHandler) ResurrectTeam(w http.ResponseWriter, r *http.Request) 
 // Sleep puts a team to sleep: sets is_sleeping, kills tmux sessions, pauses board.
 // POST /api/sessions/live/team/{boardName}/sleep
 func (h *SessionsHandler) Sleep(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	boardName := urlParam(r, "boardName")
 	ctx := r.Context()
 
@@ -5566,6 +5575,7 @@ func (h *SessionsHandler) Sleep(w http.ResponseWriter, r *http.Request) {
 // Wake wakes a sleeping team: relaunches sessions, clears sleeping, unpauses board.
 // POST /api/sessions/live/team/{boardName}/wake
 func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	boardName := urlParam(r, "boardName")
 	ctx := r.Context()
 
@@ -5762,6 +5772,7 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 // SleepSession puts a single agent to sleep.
 // POST /api/sessions/live/{sessionID}/sleep
 func (h *SessionsHandler) SleepSession(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	sessionID := chi.URLParam(r, "sessionID")
 	ctx := r.Context()
 
@@ -5785,6 +5796,7 @@ func (h *SessionsHandler) SleepSession(w http.ResponseWriter, r *http.Request) {
 // unarchives it: it is an explicit request for that one agent.
 // POST /api/sessions/live/{sessionID}/wake
 func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	sessionID := chi.URLParam(r, "sessionID")
 	ctx := r.Context()
 
@@ -5829,6 +5841,7 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 // of Wake All, team wake and task assignment until unarchived or woken.
 // POST /api/sessions/live/{sessionID}/archive
 func (h *SessionsHandler) ArchiveSession(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	sessionID := chi.URLParam(r, "sessionID")
 	ctx := r.Context()
 
@@ -5857,6 +5870,7 @@ func (h *SessionsHandler) ArchiveSession(w http.ResponseWriter, r *http.Request)
 // start the agent; wake does that.
 // POST /api/sessions/live/{sessionID}/unarchive
 func (h *SessionsHandler) UnarchiveSession(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	sessionID := chi.URLParam(r, "sessionID")
 	ctx := r.Context()
 
@@ -5877,6 +5891,7 @@ func (h *SessionsHandler) UnarchiveSession(w http.ResponseWriter, r *http.Reques
 // SleepAll puts all active agents to sleep.
 // POST /api/sessions/live/sleep-all
 func (h *SessionsHandler) SleepAll(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	ctx := r.Context()
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 
@@ -5923,6 +5938,7 @@ func (h *SessionsHandler) SleepAll(w http.ResponseWriter, r *http.Request) {
 // WakeAll wakes all sleeping agents except archived ones.
 // POST /api/sessions/live/wake-all
 func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
+	defer h.kickWS() // the feed shows the change now, not on the next tick
 	ctx := r.Context()
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 
