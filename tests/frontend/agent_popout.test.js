@@ -525,6 +525,8 @@ async function run() {
         // recovery: resolver comes back -> attach with the resolver's identity
         await tr.ev(`window.__fx.resolveFail = {}; true`);
         const recovered = await tr.waitFor(`window._coralPopout.getState && ['working','idle','waiting'].includes(window._coralPopout.getState())`, 8000);
+        // The attachable state comes first and the terminal socket opens just after it: wait for the attach before checking its identity.
+        await tr.waitFor(`window.__wsAttempts.some(u => /\\/ws\\/terminal/.test(u))`, 5000);
         const srr = await tr.ev(SHELL_PROBE); const crr = await tr.ev(`window.__wsAttempts`);
         const crrCalls = await tr.ev(`window.__calls.filter(c => /\\/api\\/sessions\\/live\\/[^/]+\\/(capture|poll|send|keys|resize)/.test(c.path) || /^\\/api\\/sessions\\/live\\/[^/]+$/.test(c.path)).map(c => c.path)`);
         const wrongRouted = crrCalls.filter(pth => pth.includes('/live/wrong-name/')).length + crr.filter(u => u.includes('claude-WRONG')).length;

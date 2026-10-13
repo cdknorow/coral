@@ -280,7 +280,8 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await waitFor(`!document.getElementById('command-input').disabled`, 'popout: input enabled after wake', 8000);
         r = await reqs();
         assert.equal(r.filter(x => x.kind === 'wake').length, 1, 'popout: one POST /wake');
-        assert.ok(await ev(`window.__wsAttempts.some(u => /\\/ws\\/terminal/.test(u))`), 'popout: the terminal attaches after waking');
+        // Input re-enables on the wake; the terminal socket opens after it, so wait for the attach itself.
+        await waitFor(`window.__wsAttempts.some(u => /\\/ws\\/terminal/.test(u))`, 'popout: the terminal attaches after waking', 8000);
         console.log('   ✓ popout: history, Wake only, wake re-enables input and attaches');
         // Ended while asleep: the composer goes with it.
         await ev(`window.__feed('${PID}', { sleeping: true })`);
