@@ -199,6 +199,9 @@ var columnMigrations = []struct {
 	{"live_sessions", "stopped_at", "TEXT"},
 	// User-chosen colour for the agent's name in the sidebar (#rrggbb); NULL = palette default.
 	{"live_sessions", "name_color", "TEXT"},
+	// Archived: put away by the operator. Always set together with is_sleeping=1 (so every "running" check already
+	// excludes it); unlike plain sleeping it is left out of Wake All, team wake and orphan cleanup.
+	{"live_sessions", "is_archived", "INTEGER NOT NULL DEFAULT 0"},
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},

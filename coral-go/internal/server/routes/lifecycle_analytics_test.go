@@ -11,6 +11,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -57,23 +58,33 @@ func itoa(n int64) string { b, _ := json.Marshal(n); return string(b) }
 // input over HTTP /send, once per install, and never carries the prompt.
 func TestFirstPromptSubmittedOnlyAfterTheTerminalAcceptsHTTPSend(t *testing.T) {
 	sink := captureAnalytics(t)
-	_, handler, terminal, _ := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
+	_, handler, terminal, ss := setupSessionsTestServerWithConfig(t, config.Load(t.TempDir()))
+	const sid, noPane, unknown = "00000000-0000-4000-8000-0000000000c1", "00000000-0000-4000-8000-0000000000c2", "00000000-0000-4000-8000-0000000000c3"
+	for _, id := range []string{sid, noPane} {
+		require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: id, AgentType: "claude", AgentName: "agent-" + id[len(id)-2:], WorkingDir: "/tmp"}))
+	}
 	terminal.mu.Lock()
-	terminal.sessions["agent-1"] = &ptymanager.PaneInfo{SessionName: "agent-1"}
+	terminal.sessions["agent-c1"] = &ptymanager.PaneInfo{SessionName: "agent-c1"}
 	terminal.mu.Unlock()
 	r := chi.NewRouter()
 	r.Post("/api/sessions/live/{name}/send", handler.Send)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
+	send := func(name, id, command string) int {
+		return postLaunch(t, srv.URL, "/api/sessions/live/"+name+"/send", map[string]any{"command": command, "agent_type": "claude", "session_id": id})
+	}
 
-	// Unknown session: the terminal refuses, nothing is recorded.
-	require.Equal(t, 500, postLaunch(t, srv.URL, "/api/sessions/live/missing/send", map[string]any{"command": "secret prompt text"}))
+	// Unknown session: refused before the terminal, nothing is recorded.
+	require.Equal(t, 404, send("missing", unknown, "secret prompt text"))
+	sink.none(t, tracking.EventFirstPromptSubmitted)
+	// A registered session whose terminal refuses the input: nothing is recorded.
+	require.Equal(t, 500, send("agent-c2", noPane, "secret prompt text"))
 	sink.none(t, tracking.EventFirstPromptSubmitted)
 
-	require.Equal(t, 200, postLaunch(t, srv.URL, "/api/sessions/live/agent-1/send", map[string]any{"command": "secret prompt text"}))
+	require.Equal(t, 200, send("agent-c1", sid, "secret prompt text"))
 	p := sink.wait(t, tracking.EventFirstPromptSubmitted, 1)[0]
 	assert.Equal(t, "http_send", p["source"])
-	require.Equal(t, 200, postLaunch(t, srv.URL, "/api/sessions/live/agent-1/send", map[string]any{"command": "again"}))
+	require.Equal(t, 200, send("agent-c1", sid, "again"))
 	sink.none(t, tracking.EventPromptSubmitRequested)
 	assert.Len(t, sink.named(tracking.EventFirstPromptSubmitted), 1, "once per install")
 	assert.NotContains(t, sink.allRaw(), "secret prompt text")

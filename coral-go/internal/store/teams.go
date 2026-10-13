@@ -270,6 +270,17 @@ func (s *TeamStore) SetAllMembersStatus(ctx context.Context, teamID int64, fromS
 	return err
 }
 
+// WakeTeamMembers marks a team's sleeping members active, except members whose
+// live session is archived: team wake leaves those asleep.
+func (s *TeamStore) WakeTeamMembers(ctx context.Context, teamID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE team_members SET status = 'active', stopped_at = NULL
+		 WHERE team_id = ? AND status = 'sleeping'
+		 AND (session_id IS NULL OR session_id NOT IN (SELECT session_id FROM live_sessions WHERE is_archived = 1 AND status = 'active'))`,
+		teamID)
+	return err
+}
+
 // StopTeam atomically stops a team and its active members with the same timestamp.
 // This ensures GetMembersForResurrect can match stopped_at between members and team.
 func (s *TeamStore) StopTeam(ctx context.Context, teamID int64) error {

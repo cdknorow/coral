@@ -178,12 +178,13 @@ question (`Do you trust the contents of this directory?`).
 Answering over the API:
 
 ```bash
-curl -s -X POST "http://127.0.0.1:8420/api/sessions/live/$SESSION/keys" \
+# NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
+curl -s -X POST "http://127.0.0.1:8420/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" \
-  -d '{"keys":["Down"],"agent_type":"claude"}'
-curl -s -X POST "http://127.0.0.1:8420/api/sessions/live/$SESSION/keys" \
+  -d "{\"keys\":[\"Down\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
+curl -s -X POST "http://127.0.0.1:8420/api/sessions/live/$NAME/keys" \
   -H "Content-Type: application/json" \
-  -d '{"keys":["Enter"],"agent_type":"claude"}'
+  -d "{\"keys\":[\"Enter\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
 
 Trust is remembered per repository, so later agents in the same repo skip it.

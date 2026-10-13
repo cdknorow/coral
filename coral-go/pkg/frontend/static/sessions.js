@@ -68,7 +68,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     refreshAgentUI();
     // A sleeping agent keeps its transcript readable; the composer offers Wake
     // instead of sending. The popout corrects this from its resolver below.
-    applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout() });
+    applySleepingView(!!(agentData && agentData.sleeping), { manageInput: !isPopout(), archived: !!(agentData && agentData.archived) });
 
     // Restore input text for the new session
     const newKey = sessionKey(state.currentSession);

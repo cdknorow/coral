@@ -60,6 +60,7 @@ type LiveSession struct {
 	Icon          *string `db:"icon" json:"icon,omitempty"`
 	NameColor     *string `db:"name_color" json:"name_color,omitempty"`
 	IsSleeping    int     `db:"is_sleeping" json:"is_sleeping"`
+	IsArchived    int     `db:"is_archived" json:"is_archived"`
 	BoardType     *string `db:"board_type" json:"board_type,omitempty"`
 	GitDiffMode   *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
 	Capabilities  *string `db:"capabilities" json:"capabilities,omitempty"`
@@ -926,7 +927,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	var sessions []LiveSession
 	err := s.db.SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
 	return sessions, err
 }
@@ -944,7 +945,7 @@ func (s *SessionStore) GetBoardSessions(ctx context.Context, boardName string) (
 	var sessions []LiveSession
 	err := s.db.SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, board_type, capabilities, model, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE board_name = ? AND status = 'active' ORDER BY created_at`, boardName)
 	return sessions, err
 }
@@ -1023,7 +1024,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.db.GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1213,9 +1214,11 @@ func (s *SessionStore) SetBoardSleeping(ctx context.Context, boardName string, s
 	if sleeping {
 		val = 1
 	}
-	result, err := s.db.ExecContext(ctx,
-		"UPDATE live_sessions SET is_sleeping = ? WHERE board_name = ?",
-		val, boardName)
+	query := "UPDATE live_sessions SET is_sleeping = ? WHERE board_name = ?"
+	if !sleeping {
+		query = "UPDATE live_sessions SET is_sleeping = ?, is_archived = 0 WHERE board_name = ?"
+	}
+	result, err := s.db.ExecContext(ctx, query, val, boardName)
 	if err != nil {
 		return 0, err
 	}
@@ -1223,16 +1226,35 @@ func (s *SessionStore) SetBoardSleeping(ctx context.Context, boardName string, s
 	return int(n), nil
 }
 
-// SetSessionSleeping sets is_sleeping for a single session.
+// SetSessionSleeping sets is_sleeping for a single session. Waking also clears
+// is_archived: an archived session is always a sleeping one.
 func (s *SessionStore) SetSessionSleeping(ctx context.Context, sessionID string, sleeping bool) error {
-	val := 0
-	if sleeping {
-		val = 1
+	query := "UPDATE live_sessions SET is_sleeping = 1 WHERE session_id = ?"
+	if !sleeping {
+		query = "UPDATE live_sessions SET is_sleeping = 0, is_archived = 0 WHERE session_id = ?"
 	}
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE live_sessions SET is_sleeping = ? WHERE session_id = ?",
-		val, sessionID)
+	_, err := s.db.ExecContext(ctx, query, sessionID)
 	return err
+}
+
+// SetSessionArchived archives a session (archived implies sleeping) or
+// unarchives it, which leaves it sleeping. It does not stop a running agent;
+// the caller does that first.
+func (s *SessionStore) SetSessionArchived(ctx context.Context, sessionID string, archived bool) error {
+	query := "UPDATE live_sessions SET is_sleeping = 1, is_archived = 1 WHERE session_id = ?"
+	if !archived {
+		query = "UPDATE live_sessions SET is_archived = 0 WHERE session_id = ?"
+	}
+	_, err := s.db.ExecContext(ctx, query, sessionID)
+	return err
+}
+
+// IsSessionArchived reports whether an active live session is archived.
+func (s *SessionStore) IsSessionArchived(ctx context.Context, sessionID string) (bool, error) {
+	var archived bool
+	err := s.db.GetContext(ctx, &archived,
+		"SELECT EXISTS(SELECT 1 FROM live_sessions WHERE session_id = ? AND status = 'active' AND is_archived = 1)", sessionID)
+	return archived, err
 }
 
 // GetSleepingBoardNames returns board names where ALL sessions are sleeping.
@@ -1251,6 +1273,7 @@ func (s *SessionStore) GetSleepingBoardNames(ctx context.Context) ([]string, err
 // CleanupOrphanedSleeping removes sleeping session rows where an awake
 // version with the same display_name and board_name already exists.
 // This cleans up duplicates from old wake code that created new sessions.
+// Archived rows are kept: the operator put that copy away on purpose.
 func (s *SessionStore) CleanupOrphanedSleeping(ctx context.Context) (int, error) {
 	now := nowUTC()
 	result, err := s.db.ExecContext(ctx, `
@@ -1261,6 +1284,7 @@ func (s *SessionStore) CleanupOrphanedSleeping(ctx context.Context) (int, error)
 			ON sleeping.board_name = awake.board_name
 			AND sleeping.display_name = awake.display_name
 			AND sleeping.is_sleeping = 1
+			AND sleeping.is_archived = 0
 			AND awake.is_sleeping = 0
 			AND sleeping.session_id != awake.session_id
 			AND sleeping.status = 'active'

@@ -307,14 +307,14 @@ Git snapshot for the agent's working directory.
 
 ### POST `/api/sessions/live/{name}/send`
 
-Send a text command to the agent's terminal.
+Send a text command to the agent's terminal. `agent_type` and `session_id` are required and must match the live session named in the path (its name or its terminal name); otherwise the request is refused (400 when missing or mismatched, 404 for an unknown session) and nothing is sent. A sleeping agent answers 409 `session is sleeping`, an archived one 409 `session is archived`.
 
 **Request Body:**
 ```json
 {
   "command": "/compact",
   "agent_type": "claude",
-  "session_id": "abc123"
+  "session_id": "6f1c2a7e-3b9d-4e2a-9c51-0d8b7a4e2f10"
 }
 ```
 
@@ -325,14 +325,14 @@ Send a text command to the agent's terminal.
 
 ### POST `/api/sessions/live/{name}/keys`
 
-Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C).
+Send raw tmux key codes to the terminal (e.g., Enter, Ctrl-C). The same exact-target rules as `/send` apply: `agent_type` and `session_id` are required.
 
 **Request Body:**
 ```json
 {
   "keys": ["Enter"],
   "agent_type": "claude",
-  "session_id": "abc123"
+  "session_id": "6f1c2a7e-3b9d-4e2a-9c51-0d8b7a4e2f10"
 }
 ```
 

@@ -467,6 +467,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"board_is_orchestrator": boardSubscriberFlag(boardSubs[tmuxName]),
 			"log_path":              agent.LogPath,
 			"sleeping":              state.Sleeping,
+			"archived":              false, // archived agents are always sleeping placeholders below
 			"first_prompt":          h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
 		if usage, ok := tokenUsageMap[sid]; ok {
@@ -522,6 +523,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"board_is_orchestrator": nil,
 			"log_path":              "",
 			"sleeping":              true,
+			"archived":              ls.IsArchived == 1,
 			"first_prompt":          h.jsonl.FirstUserPrompt(ls.SessionID, ls.WorkingDir, ls.AgentType),
 		})
 		addContextUsage(sessions[len(sessions)-1], nil, 0)

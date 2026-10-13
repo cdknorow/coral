@@ -287,7 +287,8 @@ export function handleCoralMessage(data) {
                             const cur = state.currentSession;
                             window.selectLiveSession(cur.name, cur.agent_type, cur.session_id, sessionServer(cur));
                         } else if (s.sleeping) {
-                            applySleepingView(true); // the placeholder above was the awake one
+                            // The placeholder above was the awake one; archived may have changed.
+                            applySleepingView(true, { archived: !!s.archived });
                         }
                     }
                 }

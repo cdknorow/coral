@@ -24,10 +24,11 @@ for every provider), so the agent can appear alive and idle.
 Open the agent's terminal in the dashboard and answer it, or over the API:
 
 ```bash
-curl -s -X POST "http://localhost:8420/api/sessions/live/$SESSION/keys" \
-  -H "Content-Type: application/json" -d '{"keys":["Down"],"agent_type":"claude"}'
-curl -s -X POST "http://localhost:8420/api/sessions/live/$SESSION/keys" \
-  -H "Content-Type: application/json" -d '{"keys":["Enter"],"agent_type":"claude"}'
+# NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
+curl -s -X POST "http://localhost:8420/api/sessions/live/$NAME/keys" \
+  -H "Content-Type: application/json" -d "{\"keys\":[\"Down\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
+curl -s -X POST "http://localhost:8420/api/sessions/live/$NAME/keys" \
+  -H "Content-Type: application/json" -d "{\"keys\":[\"Enter\"],\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
 
 Trust is remembered per repository. Launching a team of four agents into a fresh repo
@@ -116,9 +117,10 @@ tokens, and produce no work, with no error anywhere in the UI. Check board reach
 first (above), then send a direct instruction:
 
 ```bash
-curl -s -X POST "http://localhost:<port>/api/sessions/live/$SESSION/send" \
+# NAME and SID are the agent's "name" and "session_id" from GET /api/sessions/live.
+curl -s -X POST "http://localhost:<port>/api/sessions/live/$NAME/send" \
   -H "Content-Type: application/json" \
-  -d '{"command":"Skip the board and do the task now.","agent_type":"claude"}'
+  -d "{\"command\":\"Skip the board and do the task now.\",\"agent_type\":\"claude\",\"session_id\":\"$SID\"}"
 ```
 
 ### Two agents overwrote each other's code

@@ -2,6 +2,7 @@
 
 import { state } from './state.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
+import { applySleepingView } from './sleeping_view.js';
 import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
@@ -1053,20 +1054,33 @@ export async function restartDirect(name, agentType, sessionId) {
 
 // ── Confirm Modal ────────────────────────────────────────────────────
 
-export function showConfirmModal(title, message, onConfirm) {
+// Called when the open confirm modal is dismissed without confirming.
+let _confirmCancel = null;
+
+export function showConfirmModal(title, message, onConfirm, onCancel) {
+    _dismissConfirm(); // a modal replaced before an answer counts as cancelled
     document.getElementById("confirm-modal-title").textContent = title;
     document.getElementById("confirm-modal-message").textContent = message;
     const yesBtn = document.getElementById("confirm-modal-yes");
     const newBtn = yesBtn.cloneNode(true);
     yesBtn.parentNode.replaceChild(newBtn, yesBtn);
     newBtn.addEventListener("click", () => {
+        _confirmCancel = null;
         hideConfirmModal();
         onConfirm();
     });
+    _confirmCancel = onCancel || null;
     document.getElementById("confirm-modal").style.display = "flex";
 }
 
+function _dismissConfirm() {
+    const cancel = _confirmCancel;
+    _confirmCancel = null;
+    if (cancel) cancel();
+}
+
 export function hideConfirmModal() {
+    _dismissConfirm();
     const modal = document.getElementById("confirm-modal");
     modal.style.display = "none";
     // Remove any extra width classes added by export modal
@@ -1398,7 +1412,8 @@ export function toggleTeamSleep(boardName, action) {
             const data = await resp.json();
             const sleeping = !!data.sleeping;
             for (const s of state.liveSessions) {
-                if (inTeam(s, boardName)) s.sleeping = sleeping;
+                // Team wake leaves archived agents asleep (#3030).
+                if (inTeam(s, boardName) && !s.archived) s.sleeping = sleeping;
             }
             renderLiveSessions(state.liveSessions);
             showToast(sleeping ? `Team "${keyLabel(boardName)}" is now sleeping` : `Team "${keyLabel(boardName)}" is awake`);
@@ -1437,7 +1452,7 @@ export function sleepAllAgents() {
         showConfirmModal('Sleep All', 'Put all agents on every connected server to sleep?', async () => {
             const r = await _cloudBulk('/api/sessions/live/sleep-all', 'sleep', 'sessions_affected');
             if (r.reached) {
-                for (const s of state.liveSessions) s.sleeping = true;
+                for (const s of state.liveSessions) if (!s.archived) s.sleeping = true;
                 renderLiveSessions(state.liveSessions);
                 showToast(`Agents are now sleeping (${r.affected} affected on ${r.reached} server${r.reached === 1 ? '' : 's'})`);
             }
@@ -1449,7 +1464,7 @@ export function sleepAllAgents() {
             const resp = await fetch('/api/sessions/live/sleep-all', { method: 'POST' });
             const data = await resp.json();
             if (data.ok) {
-                for (const s of state.liveSessions) s.sleeping = true;
+                for (const s of state.liveSessions) if (!s.archived) s.sleeping = true;
                 renderLiveSessions(state.liveSessions);
                 showToast(`All agents are now sleeping (${data.sessions_affected} affected)`);
             }
@@ -1464,7 +1479,7 @@ export function wakeAllAgents() {
         showConfirmModal('Wake All', 'Wake all sleeping agents on every connected server?', async () => {
             const r = await _cloudBulk('/api/sessions/live/wake-all', 'wake', 'sessions_relaunched');
             if (r.reached) {
-                for (const s of state.liveSessions) s.sleeping = false;
+                for (const s of state.liveSessions) if (!s.archived) s.sleeping = false; // archived stay asleep (#3030)
                 renderLiveSessions(state.liveSessions);
                 showToast(`Agents are awake (${r.affected} relaunched on ${r.reached} server${r.reached === 1 ? '' : 's'})`);
             }
@@ -1476,7 +1491,7 @@ export function wakeAllAgents() {
             const resp = await fetch('/api/sessions/live/wake-all', { method: 'POST' });
             const data = await resp.json();
             if (data.ok) {
-                for (const s of state.liveSessions) s.sleeping = false;
+                for (const s of state.liveSessions) if (!s.archived) s.sleeping = false; // archived stay asleep (#3030)
                 renderLiveSessions(state.liveSessions);
                 showToast(`All agents are awake (${data.sessions_relaunched} relaunched)`);
             }
@@ -1496,7 +1511,10 @@ export function toggleAgentSleep(name, agentType, sessionId, action) {
             if (!data.ok) { showToast(data.error || 'Failed to toggle sleep', true); return false; }
             const sleeping = !!data.sleeping;
             const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
-            if (s) s.sleeping = sleeping;
+            if (s) {
+                s.sleeping = sleeping;
+                if (!sleeping) s.archived = false; // waking unarchives (#3030)
+            }
             renderLiveSessions(state.liveSessions);
             showToast(sleeping ? `"${name}" is now sleeping` : `"${name}" is awake`);
             return true;
@@ -1510,6 +1528,88 @@ export function toggleAgentSleep(name, agentType, sessionId, action) {
         return Promise.resolve(false);
     }
     return doIt();
+}
+
+/**
+ * Archive or unarchive one agent (#3030). Archiving stops a running agent and
+ * keeps it out of team wake, Wake All and the main list; unarchiving leaves it
+ * sleeping. Resolves true when the server applied it, false on failure or
+ * when the archive confirmation is cancelled.
+ */
+export function toggleAgentArchive(name, agentType, sessionId, action) {
+    const server = serverForSession(name, sessionId);
+    const doIt = async () => {
+        try {
+            const resp = await serverFetch(server, `/api/sessions/live/${encodeURIComponent(sessionId)}/${action}`, { method: 'POST' });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) { showToast(data.error || `Failed to ${action} agent`, true); return false; }
+            const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
+            if (s) { s.archived = !!data.archived; s.sleeping = !!data.sleeping; }
+            renderLiveSessions(state.liveSessions);
+            // The agent on screen follows now, not on the next feed tick.
+            const cur = state.currentSession;
+            if (cur && cur.type === 'live' && cur.session_id === sessionId && sessionServer(cur) === server) {
+                if (!!cur.sleeping !== !!data.sleeping) {
+                    window.selectLiveSession(cur.name, cur.agent_type, cur.session_id, server);
+                } else if (data.sleeping) {
+                    applySleepingView(true, { archived: !!data.archived, manageInput: !document.body.classList.contains('popout-mode') });
+                }
+            }
+            showToast(data.archived ? `"${name}" is archived` : `"${name}" is unarchived (sleeping)`);
+            return true;
+        } catch (e) {
+            showToast(`Failed to ${action} agent`, true);
+            return false;
+        }
+    };
+    if (action === 'archive') {
+        const s = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
+        const stops = s && !s.sleeping ? ' It will be stopped.' : '';
+        return new Promise(resolve => showConfirmModal('Archive Agent',
+            `Archive "${name}"?${stops} Archived agents are not woken with their team or by Wake All.`,
+            async () => resolve(await doIt()), () => resolve(false)));
+    }
+    return doIt();
+}
+
+// ── Archived section (#3030) ─────────────────────────────────────────────
+// One global collapsed section at the bottom of the list. The grouping is all
+// in here so it can become per-team later.
+
+function _archivedTeamLabel(s) {
+    return s.board_project ? keyLabel(sessionTeamKey(s)) : 'No team';
+}
+
+function _renderArchivedSection(archived) {
+    if (!archived.length) return '';
+    const expanded = _isArchivedExpanded();
+    let html = `<li class="sleeping-summary-row archived-summary-row" role="button" tabindex="0" aria-expanded="${expanded}" onclick="toggleArchivedSection()">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
+        <span class="sleeping-summary-label">Archived (${archived.length})</span>
+    </li>`;
+    if (!expanded) return html;
+    const byTeam = new Map();
+    for (const s of archived) {
+        const label = _archivedTeamLabel(s);
+        if (!byTeam.has(label)) byTeam.set(label, []);
+        byTeam.get(label).push(s);
+    }
+    const labels = [...byTeam.keys()].sort((a, b) => (a === 'No team') - (b === 'No team') || a.localeCompare(b));
+    for (const label of labels) {
+        html += `<li class="archived-team-caption">${escapeHtml(label)}</li>`;
+        for (const s of byTeam.get(label)) html += _renderSessionItem(s, '__archived__', true, false, '');
+    }
+    return html;
+}
+
+export function toggleArchivedSection() {
+    try { localStorage.setItem('coral-archived-expanded', _isArchivedExpanded() ? 'false' : 'true'); } catch { /* per-viewer only */ }
+    renderLiveSessions(state.liveSessions);
+}
+
+function _isArchivedExpanded() {
+    try { return localStorage.getItem('coral-archived-expanded') === 'true'; }
+    catch { return false; }
 }
 
 // Drag-and-drop state
@@ -1617,6 +1717,10 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                 Wake
             </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentArchive('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'archive')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
+                Archive
+            </button>
             <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                 Restart
@@ -1676,6 +1780,10 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                 Sleep
             </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentArchive('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'archive')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
+                Archive
+            </button>
             <hr class="overflow-menu-divider">
             <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
@@ -1700,7 +1808,30 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
                 Dismiss
             </button>`;
-    const kebabMenuContent = isDone ? _doneMenu : (s.sleeping ? _sleepingMenu : _awakeMenu);
+    // Archived: no Restart, Rename or reordering (#3030).
+    const _archivedMenu = `
+            <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
+                Open Agent Tab
+            </a>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentArchive('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'unarchive')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M8 12V8M6 10l2-2 2 2"/></svg>
+                Unarchive
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentSleep('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'wake')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
+                Wake
+            </button>
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); showInfoDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.5"/><line x1="8" y1="7" x2="8" y2="11"/><circle cx="8" cy="5" r="0.5" fill="currentColor" stroke="none"/></svg>
+                Session Info
+            </button>
+            <hr class="overflow-menu-divider">
+            <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killSessionDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
+                Remove Agent
+            </button>`;
+    const kebabMenuContent = isDone ? _doneMenu : (s.archived ? _archivedMenu : (s.sleeping ? _sleepingMenu : _awakeMenu));
     const kebabMenu = `<div class="sidebar-kebab-wrapper">
         <button class="sidebar-kebab-btn" onclick="event.stopPropagation(); toggleSidebarKebab(this)" title="More actions">&#x22EE;</button>
         <div class="sidebar-kebab-menu" style="display:none">${kebabMenuContent}
@@ -2017,6 +2148,10 @@ export function renderLiveSessions(sessions) {
     const unfilteredCount = sessions.length;
     if (_agentFilter) sessions = sessions.filter(s => _agentMatches(s, _agentFilter));
     _filteredMatches = sessions;
+    // Archived agents leave the main list, its groups and counts; they are
+    // listed in their own section at the bottom.
+    const archived = sessions.filter(s => s.archived);
+    sessions = sessions.filter(s => !s.archived);
 
     _renderSidebarRail(sessions);
 
@@ -2030,7 +2165,7 @@ export function renderLiveSessions(sessions) {
 
     updateSectionVisibility('live-sessions', unfilteredCount);
 
-    if (!sessions.length) {
+    if (!sessions.length && !archived.length) {
         list.innerHTML = serverStripHtml() + `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
     }
@@ -2449,6 +2584,7 @@ export function renderLiveSessions(sessions) {
 
     } // end if/else groupByTeam
 
+    html += _renderArchivedSection(archived);
     list.innerHTML = html;
 
     // Attach hover listeners for fixed-position tooltips

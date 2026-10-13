@@ -710,6 +710,22 @@
     font-style: italic;
 }
 
+/* Archived section (#3030): one collapsed row at the bottom of the list. */
+.session-list .archived-summary-row {
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    padding-top: 10px;
+}
+.session-list .archived-team-caption {
+    font-size: var(--fs-sm, 11px);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 6px 8px 2px 14px;
+    list-style: none;
+}
+
 .board-card-agents {
     list-style: none;
     padding: 0 0 4px 4px;
