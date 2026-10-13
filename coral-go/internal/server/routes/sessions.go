@@ -3250,6 +3250,13 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, err.Error())
 		return
 	}
+	// A directory that does not exist is the caller's mistake: 400 naming the
+	// field, so the dialog can mark it (it used to surface as a 500) (#3152).
+	if msg := launchDirError(body.WorkingDir); msg != "" {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailWorkdirUnavailable, 0, 1)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": msg, "field": "working_dir"})
+		return
+	}
 	slog.Info("launch request received",
 		"working_dir", body.WorkingDir,
 		"agent_type", body.AgentType,
@@ -4212,10 +4219,10 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	flags []string, prompt, boardName, boardServer, backend, boardType, model string, capabilities *agent.Capabilities,
 	tools []string, mcpServers map[string]any, hooks map[string]interface{}) (map[string]any, error) {
 
-	absDir, err := filepath.Abs(workDir)
-	if err != nil || !isDir(absDir) {
-		return nil, fmt.Errorf("directory not found: %s", workDir)
+	if msg := launchDirError(workDir); msg != "" {
+		return nil, errors.New(msg)
 	}
+	absDir, _ := filepath.Abs(workDir)
 
 	if agentType == "" {
 		agentType = at.Claude
@@ -6117,4 +6124,14 @@ func classifyLaunchError(err error) string {
 		return tracking.FailSpawnFailed
 	}
 	return tracking.FailInternal
+}
+
+// launchDirError is the error for a launch working directory that is not an
+// existing directory, or "" when it is usable.
+func launchDirError(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil || !isDir(abs) {
+		return fmt.Sprintf("directory not found: %s", dir)
+	}
+	return ""
 }

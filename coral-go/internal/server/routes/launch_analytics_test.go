@@ -233,8 +233,9 @@ func TestLaunchLabelsTheClaudeFallbackAndSkippedTeamMembers(t *testing.T) {
 	require.Equal(t, 200, postLaunch(t, server.URL, "/api/sessions/launch", map[string]any{"working_dir": t.TempDir()}))
 	assert.Equal(t, "claude", sink.wait(t, tracking.EventLaunchResult, 1)[0]["provider"])
 
-	// A nonexistent directory is a controlled workdir_unavailable failure.
-	require.Equal(t, 500, postLaunch(t, server.URL, "/api/sessions/launch", map[string]any{"working_dir": "/definitely/not/a/real/dir", "agent_type": "claude"}))
+	// A nonexistent directory is the caller's mistake: 400 (it was a 500, #3152),
+	// still recorded as a controlled workdir_unavailable failure.
+	require.Equal(t, 400, postLaunch(t, server.URL, "/api/sessions/launch", map[string]any{"working_dir": "/definitely/not/a/real/dir", "agent_type": "claude"}))
 	var dirFail map[string]any
 	require.Eventually(t, func() bool {
 		for _, r := range sink.named(tracking.EventLaunchResult) {

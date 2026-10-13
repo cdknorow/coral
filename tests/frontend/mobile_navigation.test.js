@@ -26,7 +26,7 @@ const BASE = require('./test_base').BASE;
             await evaluate(`window._goHome()`);
             assert.deepEqual(await visible(), ['mobile-agent-list']);
             await evaluate(`window.switchNavTab('history')`);
-            assert.deepEqual(await visible(), ['welcome-screen']);
+            assert.deepEqual(await visible(), ['chats-empty-view'], 'Chats with nothing open shows its own empty state, not the Agents home (#3152)');
             await evaluate(`window.switchNavTab('agents')`);
             assert.deepEqual(await visible(), ['mobile-agent-list']);
             await evaluate(`window.switchNavTab('jobs')`);

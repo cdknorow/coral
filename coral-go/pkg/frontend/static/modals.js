@@ -3,7 +3,7 @@ import { checkAgentCLI } from './prerequisites.js';
 /* Modal management: launch and info dialogs */
 
 import { state } from './state.js';
-import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent, copyText } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { refreshChangedFiles } from './changed_files.js';
 import { loadBoardProjects } from './message_board.js';
@@ -333,6 +333,7 @@ function _resetDirInputs(ids, server, settings, { switching = false } = {}) {
     for (const id of ids) {
         const el = document.getElementById(id);
         if (!el) continue;
+        clearFieldInvalid(el); // a reset value is not the rejected one
         if (el.dataset.localPlaceholder === undefined) el.dataset.localPlaceholder = el.placeholder || '';
         if (remote) {
             el.value = settings.default_working_dir || '';
@@ -433,15 +434,47 @@ function _launchBlocked(server) {
  * on success, or null after showing the error. Never falls back to another
  * server.
  */
-async function _launchOn(server, path, payload, agentType) {
+async function _launchOn(server, path, payload, agentType, { dirInput = null } = {}) {
     const res = await postLaunch(server, path, payload);
     if (res.demoLimit) { _showDemoLimitModal(res.error); return null; }
     if (!res.ok) {
         if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
         else showToast(res.error, true);
+        if (dirInput && res.data && res.data.field === 'working_dir') markFieldInvalid(dirInput, res.error);
         return null;
     }
     return res.data;
+}
+
+/** Mark a form field the server rejected: aria-invalid, a red outline and the
+ *  reason as its title, focused. Cleared by the next edit, typed or set by
+ *  Browse ('change'), and when the dialog closes or its fields reset (#3152). */
+export function markFieldInvalid(input, message) {
+    clearFieldInvalid(input);
+    const previousTitle = input.title;
+    input.setAttribute('aria-invalid', 'true');
+    input.classList.add('input-invalid');
+    input.title = message;
+    input.focus();
+    const clear = () => clearFieldInvalid(input);
+    input._clearInvalid = () => {
+        input.removeEventListener('input', clear);
+        input.removeEventListener('change', clear);
+        input.removeAttribute('aria-invalid');
+        input.classList.remove('input-invalid');
+        input.title = previousTitle;
+    };
+    input.addEventListener('input', clear);
+    input.addEventListener('change', clear);
+}
+
+/** Undo markFieldInvalid, if the field is marked. */
+export function clearFieldInvalid(input) {
+    if (input && input._clearInvalid) {
+        const undo = input._clearInvalid;
+        input._clearInvalid = null;
+        undo();
+    }
 }
 
 /** Refresh the agent list after a launch; on a remote wait for the hub poller to see the new agent. */
@@ -450,8 +483,40 @@ function _refreshAfterLaunch(server, target) {
     waitForLaunched(server, target, loadLiveSessions);
 }
 
+// ── Settings: API key (#3152) ─────────────────────────────────────────────
+// Masked at full width with Show and Copy; a status message (not configured,
+// not available) is shown as plain text with the controls off.
+
+function _setApiKey(input, key, message) {
+    const show = document.getElementById('settings-api-key-show');
+    const copy = document.getElementById('settings-api-key-copy');
+    input.value = key || message;
+    input.type = key ? 'password' : 'text';
+    if (show) { show.hidden = !key; show.textContent = 'Show'; show.setAttribute('aria-pressed', 'false'); }
+    if (copy) copy.disabled = !key;
+}
+
+function _wireApiKeyControls(input) {
+    if (input.dataset.wired) return;
+    input.dataset.wired = '1';
+    const show = document.getElementById('settings-api-key-show');
+    const copy = document.getElementById('settings-api-key-copy');
+    show?.addEventListener('click', () => {
+        const reveal = input.type === 'password';
+        input.type = reveal ? 'text' : 'password';
+        show.textContent = reveal ? 'Hide' : 'Show';
+        show.setAttribute('aria-pressed', String(reveal));
+    });
+    copy?.addEventListener('click', async () => {
+        const ok = await copyText(input.value);
+        copy.textContent = ok ? 'Copied!' : 'Copy failed';
+        setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+    });
+}
+
 export function hideLaunchModal() {
     document.getElementById("launch-modal").style.display = "none";
+    for (const id of ['launch-dir', 'launch-terminal-dir']) clearFieldInvalid(document.getElementById(id));
 }
 
 function _setTeamWizardError(message = '') {
@@ -1258,7 +1323,8 @@ export async function launchSession() {
     if (launchBtn) { launchBtn.disabled = true; launchBtn.textContent = 'Launching...'; }
 
     try {
-        const result = await _launchOn(server, "/api/sessions/launch", payload, type);
+        const dirInput = document.getElementById(_launchMode === "terminal" ? "launch-terminal-dir" : "launch-dir");
+        const result = await _launchOn(server, "/api/sessions/launch", payload, type, { dirInput });
         if (result) {
             recordRecentDir(dir, server);
             showToast(server === LOCAL_SERVER ? `Launched: ${result.session_name}` : `Launched on ${serverLabel(server, state.servers)}: ${result.session_name}`);
@@ -3265,10 +3331,10 @@ export async function showSettingsModal() {
     // API Key
     const apiKeyInput = document.getElementById("settings-api-key");
     if (apiKeyInput && !isCloud()) {
+        _wireApiKeyControls(apiKeyInput);
         fetch('/api/system/api-key').then(r => r.ok ? r.json() : null).then(data => {
-            if (data && data.key) apiKeyInput.value = data.key;
-            else apiKeyInput.value = 'Not configured';
-        }).catch(() => { apiKeyInput.value = 'Not available'; });
+            _setApiKey(apiKeyInput, data && data.key, 'Not configured');
+        }).catch(() => _setApiKey(apiKeyInput, '', 'Not available'));
     }
 
     // CLI Paths

@@ -4,7 +4,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
-import { escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
+import { formatDurationSec as formatDuration, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
@@ -167,15 +167,6 @@ function formatShortTime(isoStr) {
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const yy = String(d.getFullYear()).slice(-2);
     return `${dd}/${mm}/${yy}`;
-}
-
-function formatDuration(sec) {
-    if (sec == null || sec <= 0) return '';
-    if (sec < 60) return `${sec}s`;
-    if (sec < 3600) return `${Math.round(sec / 60)}m`;
-    const h = Math.floor(sec / 3600);
-    const m = Math.round((sec % 3600) / 60);
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 function formatStaleness(seconds) {

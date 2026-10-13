@@ -177,7 +177,6 @@ export const SHAPES = new Set([
     "id:navigateToAgentSession(S,S)",
     "id:navigator.clipboard.writeText(S);id:this.textContent=S;id:setTimeout(()=>id:this.textContent=S,N)",
     "id:navigator.clipboard.writeText(id:document.getElementById(S).textContent);id:this.textContent=S;id:setTimeout(()=>id:this.textContent=S,N)",
-    "id:navigator.clipboard.writeText(id:document.getElementById(S).value);id:this.textContent=S;id:setTimeout(()=>id:this.textContent=S,N)",
     "id:openFilePreview(S)",
     "id:openFilePreview(S,N,{diff:B})",
     "id:pickSchedulePreset(id:this)",

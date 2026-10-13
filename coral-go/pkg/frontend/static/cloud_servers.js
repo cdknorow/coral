@@ -1,5 +1,5 @@
 /* Servers dialog for the Cloud Hub: the servers enrolled to this account.
- * List (name, online/offline, last seen), rename, "allow launching from the
+ * List (name, online/offline, last contact), rename, "allow launching from the
  * web" switch, revoke (confirmed in the dialog, never window.confirm), and the
  * enrollment instructions. All text from the server goes through textContent.
  *
@@ -248,7 +248,7 @@ function row(s) {
             updateBadge(live));
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
-    const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, `last seen ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
+    const meta = h('div', { className: 'cs-meta', text: [online ? 'Online' : 'Offline', version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, online ? '' : `last contact ${formatLastSeen(s.last_seen)}`].filter(Boolean).join(' · ') });
     const mode = hubMode(s);
     const legacy = rank(s.access_mode) < 0;
     const picker = h('label', { className: 'cs-meta cs-launch' }, 'Access ',

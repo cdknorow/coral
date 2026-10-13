@@ -367,10 +367,29 @@ function _initTopBarHeight() {
     window.addEventListener('resize', update);
 }
 
+// ── Nav Strip Edge Fade ───────────────────────────────────────────────────
+
+// On a phone the top nav tabs scroll sideways with no scrollbar; the edge that
+// hides more tabs fades out so they are discoverable (#3152).
+function _initNavFade() {
+    const nav = document.querySelector('.top-nav-tabs');
+    if (!nav) return;
+    const update = () => {
+        const max = nav.scrollWidth - nav.clientWidth;
+        nav.classList.toggle('fade-left', nav.scrollLeft > 2);
+        nav.classList.toggle('fade-right', max > 2 && nav.scrollLeft < max - 2);
+    };
+    nav.addEventListener('scroll', update, { passive: true });
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(update).observe(nav);
+    else window.addEventListener('resize', update);
+    update();
+}
+
 // ── Initialize Mobile ─────────────────────────────────────────────────────
 
 export function initMobile() {
     _initTopBarHeight();
+    _initNavFade();
     // Popout mode has no agent list, tab bar or swipe navigation.
     if (document.body.classList.contains('popout-mode')) {
         _initKeyboardDetection();

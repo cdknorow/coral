@@ -285,7 +285,7 @@ function switchNavTab(tab, opts = {}) {
         if (state.currentSession && state.currentSession.type === 'history') {
             showView('history-session-view');
         } else {
-            showView('welcome-screen');
+            showView('chats-empty-view');
         }
     } else if (tab === 'agents' && window.innerWidth <= 767) {
         syncMobileAgentList();
@@ -757,11 +757,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const restored = deserializeFromUrl();
     historyPage = restored.page;
 
+    // The hash the page was opened with: a deep link to restore. A hash the user
+    // sets while the list loads (e.g. opening Servers) is not restored again,
+    // which would re-open that view a second time (#3152).
+    const startupHash = window.location.hash;
     loadLiveSessions(dashboardFailed).then(ok => {
         markReady('liveList'); // already marked by the render; this covers a failed first load
         dashboardSessionsLoaded(ok);
         // Dashboard deep link: #chat/<sessionId> restores the live session once the list is loaded.
-        if (!popout) restoreChatFromHash();
+        if (!popout && window.location.hash === startupHash) restoreChatFromHash();
     });
     loadAllFolderTags();
     loadCustomViews();

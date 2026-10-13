@@ -90,22 +90,30 @@ function statusPill(status) {
 
 function rowHtml(s) {
     if (s.local || s.id === 'local') {
+        // This hub: its version and agent count, like the remote rows (#3152).
+        const n = serverAgentCount({ id: 'local' });
+        const localMeta = ['This hub', state.localVersion ? `Coral ${state.localVersion}` : '', `${n} agent${n === 1 ? '' : 's'}`].filter(Boolean);
         return `<li class="servers-row servers-row-local" id="server-row-local" tabindex="-1">
             <div class="servers-row-main"><div class="servers-row-title">${escHtml(s.label || 'Local')} <span class="servers-id">local</span></div>
-            <div class="servers-row-meta">This hub. Always available.</div></div>
+            <div class="servers-row-meta">${localMeta.map(escHtml).join(' &middot; ')}</div></div>
             <div class="servers-row-status">${statusPill('online')}</div></li>`;
     }
     const busy = _busy.has(s.id);
     const confirming = _confirmDelete === s.id;
     const err = s.last_error ? `<div class="servers-row-error" role="status">${escHtml(s.last_error)}</div>` : '';
     const hint = (s.status === 'key_unreadable' || s.status === 'unauthorized')
-        ? `<div class="servers-row-error">${escHtml(statusMeta(s.status).hint)}</div>` : '';
+        ? `<div class="servers-row-error">${escHtml(statusMeta(s.status).hint)}</div>`
+        : s.status === 'unreachable'
+            ? `<div class="servers-row-error servers-row-hint">Is Coral running on that machine? Check the URL.</div>` : '';
     // Version, agent count and update come with the live list's servers entry (#3099).
     const live = { ...s, ...((state.servers || []).find(x => x && x.id === s.id) || {}) };
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
     const badge = updateBadgeHtml(live);
-    const meta = [s.url, version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, `last seen ${formatLastSeen(s.last_seen)}`].filter(Boolean);
+    // An online server's status is live from the feed; 'last contact' (refreshed
+    // about once a minute) is shown only once it is not online (#3152).
+    const contact = (live.status || s.status) !== 'online' ? `last contact ${formatLastSeen(s.last_seen)}` : '';
+    const meta = [s.url, version ? `Coral ${version}` : '', `${agents} agent${agents === 1 ? '' : 's'}`, contact].filter(Boolean);
     return `<li class="servers-row" id="server-row-${escHtml(s.id)}" tabindex="-1" data-id="${escHtml(s.id)}">
         <div class="servers-row-main">
             <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}${badge ? ' ' + badge : ''}</div>

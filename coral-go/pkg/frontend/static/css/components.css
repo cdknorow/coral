@@ -1779,12 +1779,14 @@
 
 .settings-api-key-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     width: 100%;
 }
 
 .settings-api-key-row .settings-input {
+    flex: 1 1 100%; /* the key on its own full-width line, its buttons below (#3152) */
     min-width: 0;
 }
 
@@ -3634,3 +3636,10 @@
 .settings-cloud-usercode { font-size: 1.6em; letter-spacing: 0.12em; margin-top: 4px; user-select: all; }
 .settings-cloud-actions { display: flex; gap: 8px; margin: 6px 0; }
 .settings-cloud-launch { display: block; margin: 6px 0; }
+
+/* A field the server rejected (e.g. a launch directory that does not exist, #3152). */
+.input-invalid,
+input[aria-invalid="true"] {
+    border-color: var(--error, #e05545) !important;
+    box-shadow: 0 0 0 1px var(--error, #e05545);
+}

@@ -570,8 +570,9 @@
                 <dt>API Key</dt>
                 <dd>
                     <div class="settings-api-key-row">
-                        <input type="text" id="settings-api-key" class="settings-input settings-mono-input" readonly placeholder="Loading...">
-                        <button class="btn btn-small settings-copy-btn" onclick="navigator.clipboard.writeText(document.getElementById('settings-api-key').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+                        <input type="password" id="settings-api-key" class="settings-input settings-mono-input" readonly autocomplete="off" placeholder="Loading..." aria-label="API key">
+                        <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-show" aria-pressed="false" hidden>Show</button>
+                        <button class="btn btn-small settings-copy-btn" type="button" id="settings-api-key-copy" disabled>Copy</button>
                         <button class="btn btn-small" type="button" onclick="window._showMobileConnectModal()" style="margin-left:6px" title="Show QR code for mobile connection"><span class="material-icons" style="font-size:14px;vertical-align:middle">qr_code_2</span> Mobile QR</button>
                     </div>
                     <span class="settings-hint">Used for remote/mobile access. Keep secret.</span>

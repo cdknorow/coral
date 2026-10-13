@@ -45,7 +45,8 @@ const { pathToFileURL } = require('url');
 
     // Hover text: status, address, agent count, last contact, error when down.
     const down = m.serverHoverText('ws2');
-    assert.ok(/^Cloud: Unreachable/.test(down) && /agents?/.test(down) && /Last seen:/.test(down));
+    assert.ok(/^Cloud: Unreachable/.test(down) && /agents?/.test(down) && /Last contact:/.test(down), 'one wording, Last contact, online or not (#3152): ' + down);
+    assert.ok(!/Last seen/.test(down));
     assert.ok(/This server \(the hub\)/.test(m.serverHoverText('local')));
 
     // Cloud Hub update notice (#3059): only available/required show anything, the

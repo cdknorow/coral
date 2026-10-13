@@ -117,6 +117,15 @@
     transform: scale(0.95);
 }
 
+/* Send with a team reminder (#3152: was a cryptic "+T"). */
+.mobile-send-team-btn {
+    margin-right: 4px;
+    opacity: 0.75;
+}
+.mobile-send-team-btn .material-icons {
+    font-size: 18px;
+}
+
 /* ── Mobile Agent List (full screen) ──────────────────────── */
 
 .mobile-agent-list {
@@ -309,6 +318,23 @@
         margin: 0 8px;
         overflow-x: auto;
         overscroll-behavior-x: contain;
+        scrollbar-width: none; /* an empty scrollbar track wasted space (#3152) */
+    }
+    .top-nav-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    /* Clipped tabs: the edge with more tabs fades out (mobile.js sets the classes). */
+    .top-nav-tabs.fade-right {
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    }
+    .top-nav-tabs.fade-left {
+        -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+        mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+    }
+    .top-nav-tabs.fade-left.fade-right {
+        -webkit-mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+        mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
     }
 
     .top-nav-tab,

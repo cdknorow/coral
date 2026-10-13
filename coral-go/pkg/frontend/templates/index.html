@@ -185,6 +185,17 @@
                 </div>
             </div>
 
+            <!-- Chats tab with no chat open (#3152): not the Agents home -->
+            <div id="chats-empty-view" class="welcome" style="display:none">
+                <div class="welcome-shell">
+                    <header class="welcome-header">
+                        <span class="welcome-eyebrow">Chats</span>
+                        <h1>Open a chat to read it</h1>
+                        <p>Every agent conversation on this machine is listed on the left. Pick one to read its transcript, notes and changes, or resume it as a new agent.</p>
+                    </header>
+                </div>
+            </div>
+
             {{ template "includes/views/live_session.html" . }}
 
             {{ template "includes/views/history_session.html" . }}

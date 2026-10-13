@@ -182,6 +182,7 @@ export function showNotificationToast(agentLabel, detail, onClick) {
 const VIEW_IDS = [
     "mobile-agent-list",
     "welcome-screen",
+    "chats-empty-view",
     "live-session-view",
     "history-session-view",
     "scheduler-view",
@@ -197,6 +198,7 @@ const VIEW_IDS = [
 const VIEW_DISPLAY = {
     "mobile-agent-list": "flex",
     "welcome-screen": "flex",
+    "chats-empty-view": "flex",
     "live-session-view": "flex",
     "history-session-view": "flex",
     "scheduler-view": "block",
@@ -318,6 +320,20 @@ export function highlightCodeIn(root) {
         code.innerHTML = sanitizeHtml(hljs.highlight(code.textContent, { language, ignoreIllegals: true }).value, DOMPURIFY_CONFIG);
         code.classList.add('hljs');
     }
+}
+
+/** A duration in seconds as "45s", "12m", "1h" or "69h 59m". Minutes are
+ *  rounded on the total, so they carry into the hour: 3599s is "1h", never
+ *  "60m", and nothing reads "69h 60m" (#3152). Empty for none or zero. */
+export function formatDurationSec(sec) {
+    const n = Number(sec);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    if (n < 60) return `${Math.floor(n)}s`;
+    const mins = Math.round(n / 60);
+    if (mins < 60) return `${mins}m`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
 /** Label fenced code blocks with their language (shown by .chat-prose CSS). */

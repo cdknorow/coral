@@ -11,23 +11,56 @@ let selectedDoc = null;
 
 export async function showDocsTab() {
     showView('docs-view');
-    if (!docsList.length) {
-        await fetchDocsList();
-        renderDocNav();
-        // Auto-select README
-        const readme = docsList.find(d => d.name === 'README');
-        if (readme) selectDoc(readme.name);
+    if (!docsList.length) await loadDocsList();
+}
+
+/** Load the list and open README; a failed load shows an error with Retry
+ *  instead of a blank page (#3152). */
+async function loadDocsList() {
+    const content = document.getElementById('docs-content');
+    if (content) content.innerHTML = '<div class="docs-empty"><span class="material-icons" style="font-size:24px;animation:spin 1s linear infinite">refresh</span></div>';
+    const ok = await fetchDocsList();
+    renderDocNav();
+    if (!ok) {
+        showDocsError('Could not load the documentation. Check the connection to Coral, then try again.', loadDocsList);
+        return;
     }
+    // Auto-select README, else the first document; an empty list says so.
+    const first = docsList.find(d => d.name === 'README') || docsList[0];
+    if (first) selectDoc(first.name);
+    else if (content) content.innerHTML = '<div class="docs-empty"><p>No documentation found.</p></div>';
+}
+
+/** An error in the content pane with a Retry button that calls retry. */
+function showDocsError(message, retry) {
+    const content = document.getElementById('docs-content');
+    if (!content) return;
+    const box = document.createElement('div');
+    box.className = 'docs-empty docs-error';
+    box.setAttribute('role', 'alert');
+    const p = document.createElement('p');
+    p.textContent = message;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-small';
+    btn.textContent = 'Retry';
+    btn.addEventListener('click', () => retry());
+    box.append(p, btn);
+    content.replaceChildren(box);
 }
 
 // ── API ────────────────────────────────────────────────────────────────
 
+/** Fetch the docs list; false when it could not be loaded. */
 async function fetchDocsList() {
     try {
-        docsList = await apiFetch('/api/agent-docs');
+        const list = await apiFetch('/api/agent-docs');
+        docsList = Array.isArray(list) ? list : [];
+        return Array.isArray(list);
     } catch (e) {
         console.error('Failed to fetch docs list:', e);
         docsList = [];
+        return false;
     }
 }
 
@@ -65,7 +98,7 @@ export async function selectDoc(name) {
 
     const doc = await fetchDocContent(name);
     if (!doc || !doc.content) {
-        content.innerHTML = '<div class="docs-empty"><p>Failed to load document</p></div>';
+        showDocsError('Could not load this document. Check the connection to Coral, then try again.', () => selectDoc(name));
         return;
     }
 

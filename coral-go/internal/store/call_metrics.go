@@ -267,6 +267,34 @@ type CallMetricSummary struct {
 	AvgDurationMs float64 `db:"avg_duration_ms" json:"avg_duration_ms"`
 }
 
+// internalMetricOperations are the dashboard's and hub's own plumbing routes:
+// liveness polls, usage beacons and the dashboard's status poll. They are not
+// tool or API calls anyone made, so they are neither recorded nor shown in the
+// call summary (#3152).
+var internalMetricOperations = []string{"/api/health", "/api/tracking/event", "/api/system/status"}
+
+// IsInternalMetricOperation reports whether a route pattern is plumbing (see
+// internalMetricOperations).
+func IsInternalMetricOperation(op string) bool {
+	for _, o := range internalMetricOperations {
+		if op == o {
+			return true
+		}
+	}
+	return false
+}
+
+// IsInternalRemotePath reports whether a request the hub proxies to a remote
+// (/api/remote/{server}/<path>) is plumbing: the remote's health, status and
+// agent-list polls. Proxied user actions (launch, send, …) are calls like any
+// other and are kept (#3152).
+func IsInternalRemotePath(method, path string) bool {
+	if IsInternalMetricOperation(path) {
+		return true
+	}
+	return method == "GET" && path == "/api/sessions/live"
+}
+
 // CallMetricSummary first writes queued metrics so the summary includes
 // every request recorded so far.
 func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetricSummary, error) {
@@ -282,9 +310,11 @@ func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetr
 		COALESCE(AVG(cm.duration_ms), 0) AS avg_duration_ms
 		FROM call_metrics cm LEFT JOIN live_sessions ls ON ls.session_id = cm.session_id
 		WHERE cm.created_at >= ?
+		AND cm.operation NOT IN (?, ?, ?)
 		GROUP BY cm.operation, cm.call_type,
 		COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, ''),
 		COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '')
-		ORDER BY COUNT(*) DESC`, since.UTC().Format(time.RFC3339Nano))
+		ORDER BY COUNT(*) DESC`, since.UTC().Format(time.RFC3339Nano),
+		internalMetricOperations[0], internalMetricOperations[1], internalMetricOperations[2])
 	return out, err
 }

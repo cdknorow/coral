@@ -71,6 +71,14 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			if route := chi.RouteContext(r.Context()).RoutePattern(); route != "" {
 				pattern = route
 			}
+			if store.IsInternalMetricOperation(pattern) {
+				return // dashboard and hub plumbing, not a tool or API call (#3152)
+			}
+			// Through the hub's proxy, skip only the remote's polls; proxied
+			// actions (launch, send, …) count like local ones.
+			if pattern == "/api/remote/{server}/*" && store.IsInternalRemotePath(r.Method, "/"+chi.URLParam(r, "*")) {
+				return
+			}
 			callType := "api"
 			if isProxy {
 				callType = "proxy"

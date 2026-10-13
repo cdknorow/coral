@@ -118,7 +118,7 @@ export function serverHoverText(id) {
     lines.push(local ? 'This server (the hub)' : (e.url || e.id));
     lines.push(`${count} agent${count === 1 ? '' : 's'}`);
     if (!local && serverVersion(e)) lines.push(`Version ${serverVersion(e)}`);
-    if (!local) lines.push(e.status === 'online' ? `Last contact: ${formatLastSeen(e.last_seen)}` : `Last seen: ${formatLastSeen(e.last_seen)}`);
+    if (!local) lines.push(`Last contact: ${formatLastSeen(e.last_seen)}`);
     if (!local && e.status !== 'online' && e.last_error) lines.push(`Error: ${e.last_error}`);
     if (!local && e.status !== 'online') lines.push(m.hint);
     const notice = local ? null : updateNotice(e);
@@ -187,7 +187,7 @@ export function serverDetailsHtml(e) {
         local ? ['Server', 'This server (the hub)'] : (e.url ? ['Address', e.url] : null),
         ['Agents', String(count)],
         !local && serverVersion(e) ? ['Version', serverVersion(e)] : null,
-        !local ? [e.status === 'online' ? 'Last contact' : 'Last seen', formatLastSeen(e.last_seen)] : null,
+        !local ? ['Last contact', formatLastSeen(e.last_seen)] : null,
         !local && e.status !== 'online' && e.last_error ? ['Error', e.last_error] : null,
     ].filter(Boolean);
     const notice = local ? null : updateNotice(e);

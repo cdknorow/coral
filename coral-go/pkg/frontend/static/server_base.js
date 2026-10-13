@@ -224,7 +224,12 @@ export function initHub() {
     if (!_hubPromise) {
         _hubPromise = fetch('/api/health')
             .then(r => (r.ok ? r.json() : {}))
-            .then(d => { state.hub = d.hub === true; return state.hub; })
+            .then(d => {
+                state.hub = d.hub === true;
+                // This server's own version, for the Servers tab's Local row (#3152).
+                state.localVersion = typeof d.version === 'string' ? d.version : '';
+                return state.hub;
+            })
             .catch(() => { state.hub = false; return false; });
     }
     return _hubPromise;

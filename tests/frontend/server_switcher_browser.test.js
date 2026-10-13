@@ -159,7 +159,7 @@ const SETTINGS_PRELOAD = `(() => {
         // ⋮ details on the offline server.
         await ev(`document.querySelector('li.server-group-header[data-server-group="m3"] details[data-server-details]').open = true; true`);
         const d3 = await ev(`(() => { const p = document.querySelector('li.server-group-header[data-server-group="m3"] .server-switcher-panel'); const dl = Object.fromEntries([...p.querySelectorAll('dt')].map(dt => [dt.textContent, dt.nextElementSibling.textContent])); return { dl, hint: !!p.querySelector('.server-details-hint'), buttons: [...p.querySelectorAll('button')].map(b => b.textContent) }; })()`);
-        assert.equal(d3.dl.Status, 'Unreachable'); assert.equal(d3.dl.Error, 'dial tcp: timeout'); assert.ok('Last seen' in d3.dl); assert.ok(d3.hint, 'offline hint');
+        assert.equal(d3.dl.Status, 'Unreachable'); assert.equal(d3.dl.Error, 'dial tcp: timeout'); assert.ok('Last contact' in d3.dl, 'one wording, Last contact, online or not (#3152)'); assert.ok(d3.hint, 'offline hint');
         assert.deepEqual(d3.buttons, ['Open in Servers', 'Collapse']);
         // Persistence across a reload.
         await Page.navigate({ url: BASE });
