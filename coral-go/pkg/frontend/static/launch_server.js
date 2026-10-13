@@ -12,6 +12,7 @@
  *  - Every path in the payload (working_dir) is interpreted by the target
  *    server, so the UI must never carry a directory across a server change. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { LOCAL_SERVER, normServer, isLocalServer, serverFetch, splitKey } from './server_base.js';
 
@@ -103,7 +104,7 @@ async function accessRefusal(status, body, serverName) {
     if (status !== 403 || !body || typeof body !== 'object') return '';
     if (!['access_mode', 'launch_disabled', 'local_mode'].includes(body.error)) return '';
     try {
-        const { refusalMessage } = await import('./cloud_servers.js');
+        const { refusalMessage } = await importOnce('./cloud_servers.js');
         return refusalMessage(status, body, serverName) || '';
     } catch {
         return '';

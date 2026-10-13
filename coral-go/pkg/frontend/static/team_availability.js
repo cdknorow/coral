@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
 import { boardFetch, inTeam, keyLabel, sessionTeamKey } from './server_base.js';
@@ -165,7 +166,7 @@ export function showTeamAvailability(team, options = {}) {
 
 /** Open the team: Team view in the center and the team tabs in the sidebar. */
 export function showTeamAvailabilityWorkspace(team, options = {}) {
-    return import('./team_context.js').then(m => m.enterTeamContext(team, { restore: options.restore }));
+    return importOnce('./team_context.js').then(m => m.enterTeamContext(team, { restore: options.restore }));
 }
 
 window.remindAgent = async (team, subscriber, existing = null) => {

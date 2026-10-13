@@ -5,6 +5,7 @@
  * data) and registers its own listeners, so it works under a CSP without
  * 'unsafe-inline'. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
@@ -75,7 +76,7 @@ function explainSettingsRefusal(resp) {
     resp.clone().json().then(async body => {
         const msg = settingsErrorMessage(resp.status, body);
         if (!msg) return;
-        const { showToast } = await import('./utils.js');
+        const { showToast } = await importOnce('./utils.js');
         showToast(msg, true, 8000);
     }).catch(() => {});
 }
@@ -86,11 +87,11 @@ function explainRefusal(resp) {
     if (Date.now() - _lastExplained < 3000) return;
     if (!/json/i.test(resp.headers.get('Content-Type') || '')) return;
     resp.clone().json().then(async body => {
-        const { refusalMessage } = await import('./cloud_servers.js');
+        const { refusalMessage } = await importOnce('./cloud_servers.js');
         const msg = refusalMessage(resp.status, body);
         if (!msg) return;
         _lastExplained = Date.now();
-        const { showToast } = await import('./utils.js');
+        const { showToast } = await importOnce('./utils.js');
         showToast(msg, true, 8000);
     }).catch(() => {});
 }
@@ -153,7 +154,7 @@ async function signOut() {
 function buildAccountMenu(email) {
     const menu = h('div', { className: 'cloud-account-menu', id: 'cloud-account-menu', hidden: true, role: 'menu' },
         h('div', { className: 'cloud-account-email', text: email, title: email }),
-        h('button', { type: 'button', className: 'overflow-menu-item', role: 'menuitem', text: 'Servers', onclick: () => { menu.hidden = true; import('./cloud_servers.js').then(m => m.showCloudServers()); } }),
+        h('button', { type: 'button', className: 'overflow-menu-item', role: 'menuitem', text: 'Servers', onclick: () => { menu.hidden = true; importOnce('./cloud_servers.js', 'the server list').then(m => m.showCloudServers(), () => {}); } }),
         h('button', { type: 'button', className: 'overflow-menu-item', role: 'menuitem', text: 'Sign out', onclick: signOut }),
     );
     const btn = h('button', {

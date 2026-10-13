@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 import { dashboardPromptRequested } from './dashboard_analytics.js';
 /* Quick actions, command sending, mode toggling, and session controls */
 
@@ -16,7 +17,7 @@ import { hubBlocked } from './hub_access.js';
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
 async function _getXtermModule() {
-    if (!_xtermModule) _xtermModule = await import('./xterm_renderer.js');
+    if (!_xtermModule) _xtermModule = await importOnce('./xterm_renderer.js');
     return _xtermModule;
 }
 

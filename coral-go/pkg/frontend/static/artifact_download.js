@@ -9,6 +9,7 @@
  *   - the file name is a sanitised basename;
  *   - at most MAX_DOWNLOAD_BYTES are held in memory.
  * Off the hub the links keep working as plain links. */
+import { importOnce } from './import_once.js';
 import { isCloud } from './server_base.js';
 
 export const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024;
@@ -62,7 +63,7 @@ async function _run(url, name) {
     try {
         await downloadArtifact(url, name);
     } catch (e) {
-        const { showToast } = await import('./utils.js');
+        const { showToast } = await importOnce('./utils.js');
         showToast(e && e.message ? e.message : 'Download failed', true);
     }
 }

@@ -6,6 +6,7 @@
  * row: #servers/<id>, the server chips in the agent list, and the "Open
  * Servers" action of a refused send. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud, isHub, normServer, LOCAL_SERVER } from './server_base.js';
 
@@ -35,10 +36,10 @@ export async function showServersTabContent(focusId) {
     if (!body) return;
     _active = true;
     if (isCloud()) {
-        const m = await import('./cloud_servers.js');
+        const m = await importOnce('./cloud_servers.js', 'the server list');
         await m.renderCloudServersInto(body);
     } else {
-        const m = await import('./servers.js');
+        const m = await importOnce('./servers.js');
         await m.renderServersInto(body);
     }
     if (!_active) return;
@@ -49,8 +50,8 @@ export async function showServersTabContent(focusId) {
 export async function leaveServersTab() {
     if (!_active) return;
     _active = false;
-    if (isCloud()) (await import('./cloud_servers.js')).hideCloudServers();
-    else (await import('./servers.js')).hideServersModal();
+    if (isCloud()) (await importOnce('./cloud_servers.js')).hideCloudServers();
+    else (await importOnce('./servers.js')).hideServersModal();
 }
 
 function focusRow(focusId) {

@@ -4,23 +4,19 @@
  * window functions in place (inline handlers and switchNavTab call them); the
  * first call imports the module, swaps the real functions onto window and runs.
  *
- * A failed import shows a toast and is forgotten, so the next use tries again.
- * Chrome caches a failed module fetch for the life of the page (the same URL
- * is never requested again), so a retry imports the module with a ?retry=N
- * suffix. Every importer of these modules must go through the loaders below:
- * a plain import('./docs.js') elsewhere would get the cached failure. */
+ * Loads go through importOnce (import_once.js): a failed import shows a toast
+ * and is forgotten, so the next use tries again (as ?retry=N, because Chrome
+ * caches the failed URL for the life of the page). Every importer of these
+ * modules must use the loaders below or importOnce, never a plain import(). */
 
-function panel(label, importer) {
+import { importOnce } from './import_once.js';
+
+function panel(label, spec) {
     let pending = null;
-    let attempt = 0;
     const load = () => {
         if (!pending) {
-            const suffix = attempt ? `?retry=${attempt}` : '';
-            attempt++;
-            pending = importer(suffix).then(m => { load.module = m; load.loaded.forEach(f => f(m)); return m; }, err => {
+            pending = importOnce(spec, label).then(m => { load.module = m; load.loaded.forEach(f => f(m)); return m; }, err => {
                 pending = null;
-                console.error('[coral]', err);
-                import('./utils.js').then(u => u.showToast(`Could not load ${label}. Check the connection to Coral, then try again.`, true)).catch(() => {});
                 throw err;
             });
         }
@@ -31,12 +27,12 @@ function panel(label, importer) {
     return load;
 }
 
-export const loadWorkflows = panel('Workflows', s => import('./workflows.js' + s));
-export const loadCostDashboard = panel('the token dashboard', s => import('./cost_dashboard.js' + s));
-export const loadDocs = panel('Docs', s => import('./docs.js' + s));
-export const loadThemeConfig = panel('the theme editor', s => import('./theme_config.js' + s));
-export const loadTemplateBrowser = panel('the template browser', s => import('./template_browser.js' + s));
-export const loadChatSearch = panel('chat search', s => import('./chat_search.js' + s));
+export const loadWorkflows = panel('Workflows', './workflows.js');
+export const loadCostDashboard = panel('the token dashboard', './cost_dashboard.js');
+export const loadDocs = panel('Docs', './docs.js');
+export const loadThemeConfig = panel('the theme editor', './theme_config.js');
+export const loadTemplateBrowser = panel('the template browser', './template_browser.js');
+export const loadChatSearch = panel('chat search', './chat_search.js');
 
 /** Stubs for `names` exported by the module `load` imports. A stub loads the
  *  module and calls through. However the module loads (a stub, or switchNavTab

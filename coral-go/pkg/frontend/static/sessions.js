@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 import { refreshAgentUI } from './agent_ui.js';
 /* Session selection and management */
 
@@ -423,7 +424,7 @@ export function renameAgent(name, agentType, sessionId) {
                 document.getElementById("session-name").textContent = newName;
             }
             // Re-render sidebar
-            const { renderLiveSessions } = await import('./render.js');
+            const { renderLiveSessions } = await importOnce('./render.js');
             renderLiveSessions(state.liveSessions);
             showToast(nameChanged ? "Agent renamed" : "Agent color updated");
         } catch (e) {
@@ -448,7 +449,7 @@ export async function setAgentIcon(name, agentType, sessionId) {
             }
             const current = state.liveSessions.find(s => s.session_id === sessionId && sessionServer(s) === server);
             if (current) current.icon = emoji;
-            const { renderLiveSessions } = await import('./render.js');
+            const { renderLiveSessions } = await importOnce('./render.js');
             renderLiveSessions(state.liveSessions);
             showToast(emoji ? "Icon set" : "Icon removed");
         } catch (e) {

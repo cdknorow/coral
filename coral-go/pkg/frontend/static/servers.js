@@ -6,6 +6,7 @@
  * API key is write-only: it is sent on add/edit and never rendered, echoed,
  * logged or kept after the request completes. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isHub, initHub, isCloud } from './server_base.js';
 import { showToast } from './utils.js';
@@ -29,7 +30,7 @@ export async function initServersUi() {
     try { await initHub(); } catch { /* treated as non-hub */ }
     const hub = isHub();
     document.querySelectorAll('[data-hub-only]').forEach(el => { el.style.display = hub ? '' : 'none'; });
-    const { updateServersTabVisibility } = await import('./servers_tab.js');
+    const { updateServersTabVisibility } = await importOnce('./servers_tab.js');
     updateServersTabVisibility();
     return hub;
 }
@@ -37,7 +38,7 @@ export async function initServersUi() {
 /** Open the Servers tab (the settings menu's "Servers" entry), optionally at a row. */
 export async function showServersModal(focusId) {
     if (!isCloud() && !isHub()) return;   // hub features are off: no UI, no /api/servers calls
-    const { openServersTab } = await import('./servers_tab.js');
+    const { openServersTab } = await importOnce('./servers_tab.js');
     return openServersTab(focusId);
 }
 

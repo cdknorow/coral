@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 import { checkAgentCLI } from './prerequisites.js';
 import { loadCloudStatus, initCloudConnect } from './cloud_connect.js';
 /* Modal management: launch and info dialogs */
@@ -3820,7 +3821,7 @@ export async function applySettings() {
         if (term) {
             term.options.fontSize = parseInt(terminalFontSize, 10) || 13;
             term.options.scrollback = parseInt(terminalScrollback, 10) || 20000;
-            const { fitTerminal } = await import('./xterm_renderer.js');
+            const { fitTerminal } = await importOnce('./xterm_renderer.js');
             fitTerminal();
         }
 

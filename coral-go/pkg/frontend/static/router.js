@@ -1,6 +1,7 @@
 /* Lightweight hash-based router for back/forward navigation.
    Pushes state on view transitions, restores on popstate. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { normServer, sessionServer, isLocalServer } from './server_base.js';
 
@@ -63,7 +64,7 @@ export function restoreChatFromHash() {
     const { view, params } = _parseHash(window.location.hash);
     if (view === 'chat' && params.sessionId) return _restoreChat(params.sessionId, params.server);
     if (view === 'servers') {
-        import('./servers_tab.js').then(m => m.openServersTab(params.sessionId || null, { fromHistory: true }));
+        importOnce('./servers_tab.js').then(m => m.openServersTab(params.sessionId || null, { fromHistory: true }));
         return true;
     }
     return false;
@@ -115,7 +116,7 @@ function _restoreView(view, params) {
             break;
         case 'servers':
             // #servers or #servers/<id> (a deep link to one machine's row).
-            import('./servers_tab.js').then(m => m.openServersTab(params.serverId || params.sessionId || null, { fromHistory: true }));
+            importOnce('./servers_tab.js').then(m => m.openServersTab(params.serverId || params.sessionId || null, { fromHistory: true }));
             break;
         default:
             // Unknown view — go to agents

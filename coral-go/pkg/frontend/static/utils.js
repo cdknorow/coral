@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 /* Utility functions: HTML escaping and toast notifications */
 
 // Debug logging — enabled via ?debug=1 URL param or localStorage coral-debug=1
@@ -142,7 +143,7 @@ export function showAlertNotification(title, message, level = 'info', link = nul
             if (link.url.startsWith('docs://')) {
                 const docName = link.url.replace('docs://', '');
                 if (window.switchNavTab) window.switchNavTab('docs');
-                import('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
+                importOnce('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
             } else if (link.url.startsWith('http')) {
                 window.open(link.url, '_blank');
             } else {

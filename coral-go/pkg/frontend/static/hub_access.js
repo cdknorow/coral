@@ -6,11 +6,12 @@
  * Servers list (serverAccess) or from a {type: "hub_read_only"} frame the hub
  * sends on the terminal socket. Outside the Cloud Hub nothing here applies. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud, sessionServer } from './server_base.js';
 // utils.js is loaded on demand: these message builders stay importable from
 // pure-node tests (utils touches localStorage when it loads).
-const toast = (...args) => import('./utils.js').then(u => u.showToast(...args));
+const toast = (...args) => importOnce('./utils.js').then(u => u.showToast(...args));
 
 const LABEL = { view: 'View', interact: 'Interact', launch: 'Launch' };
 // Only known modes are named: a value the server sent is never echoed.
@@ -59,7 +60,7 @@ export async function refreshHubAccess(session) {
     if (!session || session.type !== 'live' || !isCloud()) { setHubReadOnly(session, null); return; }
     const server = sessionServer(session);
     if (!server || server === 'local') { setHubReadOnly(session, null); return; }
-    const { serverAccess } = await import('./cloud_servers.js');
+    const { serverAccess } = await importOnce('./cloud_servers.js');
     const a = await serverAccess(server);
     // A hub_read_only frame on the terminal socket is authoritative until the agent
     // is reselected: a lookup that resolves after it (a slow or cached Servers list)
@@ -96,7 +97,7 @@ export async function hubBlocked(session, { silent = false } = {}) {
 // The refusal toast; when the hub setting is what limits, it offers the Servers dialog.
 function showBlocked(ro) {
     const opts = ro.hubLimits
-        ? { action: { label: 'Open Servers', onClick: () => import('./servers_tab.js').then(m => m.openServersTab(ro.server)) } }
+        ? { action: { label: 'Open Servers', onClick: () => importOnce('./servers_tab.js').then(m => m.openServersTab(ro.server)) } }
         : {};
     toast(ro.message, true, 6000, opts);
 }

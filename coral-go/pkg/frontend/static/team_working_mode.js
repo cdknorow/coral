@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 import { escapeHtml } from './utils.js';
 import { splitKey, keyLabel, serverUrl } from './server_base.js';
 
@@ -23,7 +24,7 @@ export function confirmTeamWorkspaceChange() {
 
 /** Open the team: team view in the center, team tabs (settings first) in the sidebar. */
 export function showTeamWorkingModeWorkspace(team, options = {}) {
-    return import('./team_context.js').then(m => m.enterTeamContext(team, { tab: 'team-settings', restore: options.restore }));
+    return importOnce('./team_context.js').then(m => m.enterTeamContext(team, { tab: 'team-settings', restore: options.restore }));
 }
 
 function jsonError(response, fallback) {
@@ -125,7 +126,7 @@ export async function showTeamWorkingMode(team, options = {}) {
             event.preventDefault();
             const docName = docLink.dataset.doc;
             if (window.switchNavTab) window.switchNavTab('docs');
-            import('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
+            importOnce('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
         }
     });
 

@@ -1,5 +1,6 @@
 /* WebSocket connection for real-time coral updates */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { signInUrl } from './cloud.js';
 import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
@@ -173,7 +174,7 @@ export function handleCoralMessage(data) {
                     const agentType = s.agent_type;
                     const sessionId = s.session_id;
                     const sessionSrv = sessionServer(s);
-                    const openSession = () => import('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId, sessionSrv));
+                    const openSession = () => importOnce('./sessions.js').then(m => m.selectLiveSession(sessionName, agentType, sessionId, sessionSrv));
                     showNotificationToast(label, detail, openSession);
                     // Opt-in desktop alert while this tab is in the background; names only.
                     const srvLabel = (state.servers || []).find(x => x.id === sessionSrv);

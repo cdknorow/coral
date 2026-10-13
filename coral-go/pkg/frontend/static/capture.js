@@ -1,5 +1,6 @@
 /* Capture text rendering and auto-refresh */
 
+import { importOnce } from './import_once.js';
 import { state, CAPTURE_REFRESH_MS, CAPTURE_REFRESH_STREAMING_MS } from './state.js';
 import { isInteractiveOwner } from './ownership.js';
 import { getRenderer } from './renderers.js';
@@ -55,7 +56,7 @@ export async function syncPaneWidth() {
     // Through the hub, a viewer (View mode, or a machine limited to View) must not write at all, even in the background:
     // looking at a session never sends a request the hub would refuse.
     if (isCloud() && server !== 'local') {
-        const { serverMayInteract } = await import('./cloud_servers.js');
+        const { serverMayInteract } = await importOnce('./cloud_servers.js');
         if (!(await serverMayInteract(server))) { _lastSyncedCols = null; return; }
     }
     try {

@@ -1,3 +1,4 @@
+import { importOnce } from './import_once.js';
 import { initPrerequisiteChecks } from './prerequisites.js';
 import { beginDashboardAnalytics, dashboardInitialized, dashboardSessionsLoaded, dashboardStartupComplete, dashboardFailed } from './dashboard_analytics.js';
 import { initAgentUI } from './agent_ui.js';
@@ -222,7 +223,7 @@ function switchNavTab(tab, opts = {}) {
     };
     // Clean up any active cost dashboard timer when leaving tokens tab
     stopCostDashboard();
-    if (tab !== 'servers') import('./servers_tab.js').then(m => m.leaveServersTab());
+    if (tab !== 'servers') importOnce('./servers_tab.js').then(m => m.leaveServersTab());
 
     // Toggle sidebar visibility — full-width views hide the sidebar
     const fullWidthTabs = new Set(['tokens', 'workflows', 'servers']);
@@ -261,7 +262,7 @@ function switchNavTab(tab, opts = {}) {
     } else if (tab === 'servers') {
         showView('servers-view');
         if (window._pushView && !opts.fromHistory) window._pushView('servers', opts.focusId ? { serverId: opts.focusId } : {});
-        import('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
+        importOnce('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
     } else if (tab === 'tokens') {
         showWhenLoaded(loadCostDashboard, 'showCostDashboard');
     } else if (tab === 'history') {
@@ -334,7 +335,7 @@ window._handleTeamFolderImport = async function(input) {
     }
 
     if (!orchestrator && agents.length === 0) {
-        const { showToast } = await import('./utils.js');
+        const { showToast } = await importOnce('./utils.js');
         showToast('No valid .md files found (expected SKILL.md and/or agents/*.md)', true);
         return;
     }
@@ -371,7 +372,7 @@ window._handleTeamFolderImport = async function(input) {
         if (window._addTeamAgent) window._addTeamAgent(agent.name, prompt);
     }
 
-    const { showToast } = await import('./utils.js');
+    const { showToast } = await importOnce('./utils.js');
     const count = (orchestrator ? 1 : 0) + agents.length;
     showToast(`Imported ${count} agent${count !== 1 ? 's' : ''} from folder`);
 };
@@ -464,7 +465,7 @@ window.showMacroAddMenu = function(btn) {
     }, 50);
 };
 window.browseCommandTemplates = async function() {
-    const { getMacros, saveMacros } = await import('./controls.js');
+    const { getMacros, saveMacros } = await importOnce('./controls.js');
     showTemplateBrowser('commands', async (template) => {
         const label = template.description || template.name || 'Template';
         const truncLabel = label.length > 20 ? label.substring(0, 20) + '...' : label;
@@ -472,7 +473,7 @@ window.browseCommandTemplates = async function() {
         const macros = getMacros();
         macros.push({ label: truncLabel, command });
         await saveMacros(macros);
-        const { renderQuickActions } = await import('./controls.js');
+        const { renderQuickActions } = await importOnce('./controls.js');
         renderQuickActions();
     });
 };

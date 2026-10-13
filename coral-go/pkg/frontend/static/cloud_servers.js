@@ -14,6 +14,7 @@
  * so raising the hub setting alone never grants more than the machine permits.
  * Servers without `access_mode` (older hub) fall back to the `allow_launch` switch. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount } from './server_status.js';
@@ -30,7 +31,7 @@ let timer = null;
 
 /** Open the Servers tab, optionally at one server's row. */
 export async function showCloudServers(focusId) {
-    const { openServersTab } = await import('./servers_tab.js');
+    const { openServersTab } = await importOnce('./servers_tab.js');
     return openServersTab(focusId);
 }
 

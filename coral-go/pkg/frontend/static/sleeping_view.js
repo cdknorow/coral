@@ -4,6 +4,7 @@
    in place of the send controls. Same in the dashboard, the popout and on
    mobile, for local and hub-remote agents. */
 
+import { importOnce } from './import_once.js';
 import { state } from './state.js';
 
 const PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
@@ -83,7 +84,7 @@ async function wakeCurrent(btn) {
     btn.disabled = true;
     btn.textContent = 'Waking…';
     try {
-        const { isPopout, popoutWake } = await import('./popout.js');
+        const { isPopout, popoutWake } = await importOnce('./popout.js');
         if (isPopout()) {
             await popoutWake();
             return;
