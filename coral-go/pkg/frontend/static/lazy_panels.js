@@ -33,6 +33,9 @@ export const loadDocs = panel('Docs', './docs.js');
 export const loadThemeConfig = panel('the theme editor', './theme_config.js');
 export const loadTemplateBrowser = panel('the template browser', './template_browser.js');
 export const loadChatSearch = panel('chat search', './chat_search.js');
+// The launch, settings, resume, info and team dialogs (#3140). settings_core.js keeps
+// what runs at startup (loadSettings, the theme) and inside links (trackSupporterClick).
+export const loadModals = panel('this dialog', './modals.js');
 
 /** Stubs for `names` exported by the module `load` imports. A stub loads the
  *  module and calls through. However the module loads (a stub, or switchNavTab
@@ -47,5 +50,19 @@ export function lazyFns(load, names) {
     load.loaded.push(m => {
         for (const n of names) if (window[n] === stubs[n] && typeof m[n] === 'function') window[n] = m[n];
     });
+    return stubs;
+}
+
+/** Stubs for functions a module assigns to window itself when it loads (not
+ *  exports). The load replaces the stubs on window; a stub called before that
+ *  waits for the load and calls the real one. */
+export function lazyWindowFns(load, names) {
+    const stubs = {};
+    for (const name of names) {
+        stubs[name] = (...args) => load().then(() => {
+            const real = window[name];
+            if (typeof real === 'function' && real !== stubs[name]) return real(...args);
+        }, () => undefined);
+    }
     return stubs;
 }

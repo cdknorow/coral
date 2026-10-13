@@ -13,6 +13,7 @@ import { addPendingMessage, resetLiveHistory } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
+import { loadModals } from './lazy_panels.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -525,7 +526,11 @@ export function restartSession() {
     showRestartModal();
 }
 
-function showRestartModal() {
+async function showRestartModal() {
+    // The agent config form (renderAgentConfigForm / getAgentConfig) lives with the
+    // dialogs, which load on first use (#3140): load it before showing, so a restart
+    // never goes out with an empty config. A failed load already showed a toast.
+    try { await loadModals(); } catch { return; }
     const s = state.currentSession;
     document.getElementById("restart-modal-name").textContent =
         `Restarting: ${s.display_name || s.name}`;

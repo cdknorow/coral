@@ -82,8 +82,9 @@ async function run() {
 
     await Page.navigate({ url: BASE + '/' });
     await Page.loadEventFired();
-    // Give the app's JS bundle a moment to parse; renderAgentConfigForm must be present.
-    await new Promise(r => setTimeout(r, 1200));
+    // renderAgentConfigForm and the model helpers live with the dialogs, which load on
+    // first use (#3140): load them the way the app does.
+    await evalInPage(`window.__coralReady.startup('liveList', 'settings').then(() => import((window.__coralStatic || '/static/') + 'lazy_panels.js')).then(l => l.loadModals()).then(() => typeof window.renderAgentConfigForm)`);
 
     // Baseline: clear any stale default model settings.
     await putSettings({
