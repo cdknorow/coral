@@ -6,6 +6,20 @@ Custom views allow users to create additional dashboard tabs with custom HTML co
 
 A view runs in an isolated sandbox with no network and reads data only through a read-only endpoint allowlist. `created_via` records who wrote it: `"ui"` (the dashboard) or `"api"` (any other caller or unknown provenance). The dashboard shows an `"api"` view's source and runs it only after **Run this view**; open and save it in the editor to make it `"ui"`.
 
+## Reading Coral data from a view
+
+A view's HTML runs in a sandbox and reads Coral through `coral.get(path)` (or `fetch('/api/...')`), GET only. A view created in the dashboard may read the agent list (`/api/sessions/live`), an agent's detail, capture and info, files, git, notes, events, tasks and board messages; one created by an API caller gets the agent list, tasks, tags, board names and history only.
+
+**Name the agent's session.** Per-agent reads that touch its terminal (`/api/sessions/live/{name}`, `/capture`, `/info`, `/poll`) need `?session_id=` (with `agent_type`), else they answer 400 `session_id_required`: a bare agent or folder name is shared by teammates and would read whichever terminal matched. Take both from `/api/sessions/live`:
+
+```js
+const agents = await coral.get('/api/sessions/live');
+for (const a of agents) {
+  const q = `?agent_type=${encodeURIComponent(a.agent_type)}&session_id=${encodeURIComponent(a.session_id)}`;
+  const { capture } = await coral.get(`/api/sessions/live/${encodeURIComponent(a.name)}/capture${q}`);
+}
+```
+
 ## List Views
 
 ```

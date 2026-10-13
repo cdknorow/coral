@@ -214,6 +214,10 @@ func (h *SessionsHandler) PromptOptions(w http.ResponseWriter, r *http.Request) 
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
 			writeExactTargetError(w, status, message)

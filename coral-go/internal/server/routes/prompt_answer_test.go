@@ -222,7 +222,7 @@ func TestAnswerPrompt(t *testing.T) {
 
 	// Options are read from the screen
 	setScreen(screenPermission)
-	resp, err := http.Get(base + "/prompt-options?" + url.Values{}.Encode())
+	resp, err := http.Get(base + "/prompt-options?" + url.Values{"session_id": {sid}, "agent_type": {"claude"}}.Encode())
 	require.NoError(t, err)
 	var screen promptScreen
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&screen))

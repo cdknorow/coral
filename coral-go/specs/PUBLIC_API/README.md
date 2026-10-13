@@ -120,9 +120,10 @@ Content-Type: application/json
 
 #### Get terminal output
 ```
-GET /api/sessions/live/{name}/capture
+GET /api/sessions/live/{name}/capture?agent_type=claude&session_id=uuid
 ```
-Returns the current terminal pane content.
+Returns the current terminal pane content. `session_id` is required (400
+`session_id_required`) unless `{name}` is the exact terminal name.
 
 #### Batch poll (capture + tasks + events)
 ```
@@ -566,7 +567,7 @@ curl -X POST http://localhost:8420/api/sessions/live/claude-abc123/send \
   -d '{"input":"run tests"}'
 
 # Get terminal output
-curl http://localhost:8420/api/sessions/live/claude-abc123/capture
+curl 'http://localhost:8420/api/sessions/live/my-project/capture?agent_type=claude&session_id=uuid'
 ```
 
 ## Example: Build a Custom Dashboard

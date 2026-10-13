@@ -135,11 +135,13 @@ Resolve session info by process IDs (used by CLI integrations).
 
 ## Session Metadata & Monitoring
 
+**Every per-agent route that reaches its terminal names the session.** `GET live/{name}`, `/capture`, `/poll`, `/info`, `/prompt-options`, `/ws/terminal/{name}` (query `session_id`) and `/kill`, `/restart`, `/attach` (body `session_id`), `/resume` (body `current_session_id`) answer 400 `{"error": "session_id is required", "code": "session_id_required"}` without one (the WebSocket closes with 1008), unless `{name}` is the agent's exact terminal name (`claude-<uuid>`). A bare agent or folder name is shared by teammates and would reach whichever terminal matched it. Take `name` and `session_id` from `GET /api/sessions/live`.
+
 ### GET `/api/sessions/live/{name}/capture`
 
 Capture current terminal content (tmux pane snapshot).
 
-**Query Parameters:** `agent_type`, `session_id`
+**Query Parameters:** `agent_type`, `session_id` (required, see above)
 
 **Response:**
 ```json
@@ -154,7 +156,7 @@ Capture current terminal content (tmux pane snapshot).
 
 Batch endpoint returning capture, tasks, and events in a single call. Reduces round-trips for the dashboard.
 
-**Query Parameters:** `agent_type`, `session_id`, `events_limit`
+**Query Parameters:** `agent_type`, `session_id` (required), `events_limit`
 
 **Response:**
 ```json
@@ -169,7 +171,7 @@ Batch endpoint returning capture, tasks, and events in a single call. Reduces ro
 
 Session metadata: tmux info, git state, log path, prompt, board association.
 
-**Query Parameters:** `agent_type`, `session_id`
+**Query Parameters:** `agent_type`, `session_id` (required)
 
 ### GET `/api/sessions/live/{name}/chat`
 

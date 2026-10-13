@@ -178,8 +178,10 @@ Bidirectional WebSocket for real-time terminal interaction. Both PTY and tmux ba
 ### Connection
 
 ```
-ws://localhost:PORT/ws/terminal/{name}
+ws://localhost:PORT/ws/terminal/{name}?agent_type=claude&session_id=<uuid>
 ```
+
+`session_id` is required unless `{name}` is the exact terminal name (`claude-<uuid>`); without it the socket closes with 1008 `session_id is required` (a bare name could attach to another agent's terminal).
 
 ### Client → Server Messages (JSON text frames)
 

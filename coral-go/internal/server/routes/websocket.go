@@ -618,6 +618,12 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) { // a bare name could attach to (and type into) another agent's terminal (#3211)
+		if conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r)); err == nil {
+			conn.Close(websocket.StatusPolicyViolation, "session_id is required")
+		}
+		return
+	}
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, true); status != 0 {
 			conn, err := websocket.Accept(w, r, h.wsAcceptOptions(r))

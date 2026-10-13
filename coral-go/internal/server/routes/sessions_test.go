@@ -758,7 +758,16 @@ func TestSessionsChat_CodexResumeLineageRoute(t *testing.T) {
 func TestSessionsCapture_NotFound(t *testing.T) {
 	server, _, _, _ := setupSessionsTestServer(t)
 
-	resp, err := http.Get(server.URL + "/api/sessions/live/nonexistent/capture")
+	// A bare name is refused (#3211): it could read another agent's screen
+	bare, err := http.Get(server.URL + "/api/sessions/live/nonexistent/capture")
+	require.NoError(t, err)
+	var refused map[string]any
+	require.NoError(t, json.NewDecoder(bare.Body).Decode(&refused))
+	bare.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, bare.StatusCode)
+	assert.Equal(t, "session_id_required", refused["code"])
+
+	resp, err := http.Get(server.URL + "/api/sessions/live/claude-00000000-0000-0000-0000-00000000dead/capture")
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -2342,6 +2351,8 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Post("/api/sessions/live/{name}/open-in-editor", handler.OpenInEditor)
 	r.Post("/api/sessions/live/{name}/restart", handler.Restart)
 	r.Post("/api/sessions/live/{name}/resume", handler.Resume)
+	r.Get("/api/sessions/live/{name}/info", handler.Info)
+	r.Post("/api/sessions/live/{name}/attach", handler.Attach)
 	r.Get("/api/sessions/live/{name}/file-content", handler.GetFileContent)
 	r.Get("/api/sessions/live/{name}/file-original", handler.GetFileOriginal)
 	r.Get("/api/system/editors", handler.ListEditors)

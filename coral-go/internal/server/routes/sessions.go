@@ -1187,6 +1187,23 @@ func writeTerminalError(w http.ResponseWriter, err error) {
 	errInternalServer(w, err.Error())
 }
 
+// namesNoSession is true when a request has no session id and its name is not an exact
+// "type-<uuid>" terminal name (which names one session; the terminal resolves it by id).
+func namesNoSession(name, sessionID string) bool {
+	if sessionID != "" {
+		return false
+	}
+	_, sid := logparse.ParseSessionName(name)
+	return sid == ""
+}
+
+// writeSessionIDRequired refuses a per-session request that names no session id: by bare
+// name it would reach whichever terminal matches the name, another agent's included (#3211).
+func writeSessionIDRequired(w http.ResponseWriter) {
+	// (Callers check namesNoSession first: an exact "type-<uuid>" terminal name names one session.)
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "session_id is required", "code": "session_id_required"})
+}
+
 func shouldValidateExactTarget(agentType, sessionID string) bool {
 	return agentType != "" || sessionID != ""
 }
@@ -1197,6 +1214,10 @@ func (h *SessionsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
 			writeExactTargetError(w, status, message)
@@ -1232,6 +1253,10 @@ func (h *SessionsHandler) Capture(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
 			writeExactTargetError(w, status, message)
@@ -1253,6 +1278,10 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
 			writeExactTargetError(w, status, message)
@@ -1445,6 +1474,10 @@ func (h *SessionsHandler) Info(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
+	if namesNoSession(name, sessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 	ctx := r.Context()
 
 	pane, _ := h.terminal.FindSession(ctx, name, agentType, sessionID)
@@ -2572,6 +2605,10 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"session_id"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
+	if namesNoSession(name, body.SessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 
 	slog.Info("killing agent", "agent_name", name, "session_id", body.SessionID, "agent_type", body.AgentType)
 
@@ -2721,6 +2758,10 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		Capabilities *agent.Capabilities `json:"capabilities"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
+	if namesNoSession(name, body.SessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 
 	ctx := r.Context()
 	agentType := body.AgentType
@@ -3090,6 +3131,10 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if namesNoSession(name, body.CurrentSessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 	pane, _ := h.terminal.FindSession(ctx, name, agentType, body.CurrentSessionID)
 	if pane == nil && body.CurrentSessionID != "" {
 		writeTerminalError(w, ptymanager.ErrTerminalGone)
@@ -3203,6 +3248,10 @@ func (h *SessionsHandler) Attach(w http.ResponseWriter, r *http.Request) {
 		SessionID string `json:"session_id"`
 	}
 	json.NewDecoder(r.Body).Decode(&body)
+	if namesNoSession(name, body.SessionID) {
+		writeSessionIDRequired(w)
+		return
+	}
 
 	pane, _ := h.terminal.FindSession(r.Context(), name, body.AgentType, body.SessionID)
 	if pane == nil {
