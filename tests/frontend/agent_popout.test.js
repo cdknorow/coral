@@ -147,9 +147,14 @@ async function openTab(url, { contextId, stub, width = 1280, height = 800, mobil
     };
     const waitFor = async (expr, ms = 8000, step = 100) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { try { if (await ev(expr)) return true; } catch {} await sleep(step); } return false; };
     const goto = async (u) => { await Page.navigate({ url: u }); await Page.loadEventFired(); };
+    // Condition waits (#3118): two frames after a synchronous change; or the popout's whole visible state holding
+    // still for 300 ms after it boots (identity, pill, title and overlays settle from several async loads).
+    const w = require('./helpers/wait').bind(ev);
+    const nextFrame = () => w.nextFrame();
+    const settled = () => w.waitStable(SHELL_PROBE, 'the popout to settle', 300, { timeout: 8000 }).catch(() => {});
     const close = async () => { try { await client.close(); } catch {} try { const b = await browserClient(); await b.Target.closeTarget({ targetId }); await b.close(); } catch {} };
     await goto(url);
-    return { client, Page, Runtime, Network, Emulation, targetId, ev, waitFor, goto, close, exceptions, wsCreated, requests };
+    return { client, Page, Runtime, Network, Emulation, targetId, ev, waitFor, goto, close, exceptions, wsCreated, requests, nextFrame, settled };
 }
 // Every /api/sessions/live/{name}/... call made by the popout must carry BOTH
 // routing fields from the resolver and use the resolver's name (agent name).
@@ -255,7 +260,6 @@ async function run() {
     check('4 send with unknown session_id -> 404/400', unknownSend.status === 404 || unknownSend.status === 400, `status=${unknownSend.status}`);
     const wrongType = await httpJson('POST', `/api/sessions/live/${encodeURIComponent(aname)}/resize`, { columns: 100, agent_type: 'claude', session_id: sid });
     check('3 resize with mismatched agent_type -> 400/404', wrongType.status === 400 || wrongType.status === 404, `status=${wrongType.status}`);
-    await sleep(800);
     const tmuxForm = await httpJson('POST', `/api/sessions/live/terminal-${sid}/send`, { command: 'echo POPOUT-TMUXNAME-MARKER', agent_type: 'terminal', session_id: sid });
     check('4 REST accepts the canonical tmux name (launch session_name) as {name} with a matching tuple (compat)', tmuxForm.status === 200, `status=${tmuxForm.status} ${JSON.stringify(tmuxForm.data).slice(0, 80)}`);
     const cap0 = await httpJson('GET', `/api/sessions/live/${encodeURIComponent(aname)}/capture?agent_type=terminal&session_id=${sid}`);
@@ -269,8 +273,7 @@ async function run() {
 
     // popout tab (real route, real sockets)
     const t1 = await openTab(`${BASE}/agent/${sid}`);
-    await t1.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000);
-    await sleep(800);
+    await t1.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await t1.settled();
     let s1 = await t1.ev(SHELL_PROBE);
     check('1 popout boot attrs + popout-mode class', s1.mode === 'agent' && s1.target === sid && s1.popoutClass, JSON.stringify({ mode: s1.mode, target: s1.target, cls: s1.popoutClass }));
     check('8 chrome absent/hidden (top bar, sidebar, handle, tablet toggle, mobile bar/list, welcome)', Object.values(s1.chrome).every(v => v !== 'visible'), JSON.stringify(s1.chrome));
@@ -300,14 +303,17 @@ async function run() {
 
     // 12: panel toggle + storage isolation
     await t1.ev(`localStorage.removeItem('coral-agentic-collapsed'); localStorage.setItem('coral-taskbar-width', '333'); true`);
-    await t1.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`); await sleep(300);
+    const pressed0 = await t1.ev(`document.getElementById('popout-panel-toggle-btn').getAttribute('aria-pressed')`);
+    await t1.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`);
+    await t1.waitFor(`document.getElementById('popout-panel-toggle-btn').getAttribute('aria-pressed') !== ${JSON.stringify(pressed0)}`, 3000);
     const st = await t1.ev(`({ pressed: document.getElementById('popout-panel-toggle-btn').getAttribute('aria-pressed'), main: localStorage.getItem('coral-agentic-collapsed'), pop: localStorage.getItem('coral-agentic-collapsed:popout'), width: localStorage.getItem('coral-taskbar-width'), panel: getComputedStyle(document.getElementById('agentic-state')).display })`);
     check('12 panel toggle persists under :popout key and leaves main-app keys untouched', st.pop !== null && st.main === null && st.width === '333', JSON.stringify(st));
-    await t1.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`); await sleep(200);
+    await t1.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`);
+    await t1.waitFor(`document.getElementById('popout-panel-toggle-btn').getAttribute('aria-pressed') === ${JSON.stringify(pressed0)}`, 3000);
 
     // 6: refresh keeps the session
     await t1.Page.reload(); await t1.Page.loadEventFired();
-    await t1.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await sleep(600);
+    await t1.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await t1.settled();
     s1 = await t1.ev(SHELL_PROBE);
     check('6 refresh re-renders the same session from server data', s1.target === sid && /Popout QA/.test(s1.identity) && s1.workspace.cmd === 'visible' && !s1.inputDisabled, JSON.stringify({ target: s1.target, identity: s1.identity.trim(), disabled: s1.inputDisabled }));
 
@@ -325,7 +331,7 @@ async function run() {
 
     // 28/29: same-browser owner/viewer
     const t2 = await openTab(`${BASE}/agent/${sid}`, { width: 900, height: 700 });
-    await t2.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await sleep(800);
+    await t2.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await t2.settled();
     let o1 = await t1.ev(`window._coralPopout.isOwner()`); let o2 = await t2.ev(`window._coralPopout.isOwner()`);
     check('28 exactly one interactive owner across two same-profile windows', (o1 ? 1 : 0) + (o2 ? 1 : 0) === 1, JSON.stringify({ first: o1, second: o2 }));
     const chips = await t2.ev(`document.getElementById('popout-viewer-chip') === null`);
@@ -334,29 +340,30 @@ async function run() {
     for (const t of [t1, t2]) await t.ev(`window.__resizeCalls = 0; const of = window.fetch; window.fetch = (u, o) => { if (/\\/resize$/.test(String(u).split('?')[0]) && o && (o.method || 'GET').toUpperCase() === 'POST') window.__resizeCalls++; return of(u, o); }; true`);
     await t1.Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     await t2.Emulation.setDeviceMetricsOverride({ width: 900, height: 700, deviceScaleFactor: 1, mobile: false });
-    await sleep(4000);
+    await sleep(4000); // sleep-ok: the observation window for resize oscillation
     const r1 = await t1.ev(`window.__resizeCalls`); const r2 = await t2.ev(`window.__resizeCalls`);
     o1 = await t1.ev(`window._coralPopout.isOwner()`); o2 = await t2.ev(`window._coralPopout.isOwner()`);
     const viewerCalls = o1 ? r2 : r1; const ownerCalls = o1 ? r1 : r2;
     check('29 only the owner posts /resize; no oscillation (viewer 0, owner <= 2 after settle)', viewerCalls === 0 && ownerCalls <= 2, JSON.stringify({ owner: ownerCalls, viewer: viewerCalls, o1, o2 }));
     // ownership transfer
     const viewer = o1 ? t2 : t1; const owner = o1 ? t1 : t2;
-    await viewer.ev(`window._coralPopout.claimOwnership(); true`); await sleep(500);
+    await viewer.ev(`window._coralPopout.claimOwnership(); true`);
+    await viewer.waitFor(`window._coralPopout.isOwner()`, 3000); await owner.waitFor(`!window._coralPopout.isOwner()`, 3000);
     const afterClaim = { v: await viewer.ev(`window._coralPopout.isOwner()`), o: await owner.ev(`window._coralPopout.isOwner()`) };
     check('28 claimOwnership() transfers ownership to the viewer and revokes the previous owner', afterClaim.v === true && afterClaim.o === false, JSON.stringify(afterClaim));
     await viewer.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-2'; window.sendCommand(); true`);
     cap1 = await waitCapture('POPOUT-QA-MARKER-2');
     check('28 new owner input reaches the pane', /POPOUT-QA-MARKER-2/.test((cap1.data && cap1.data.capture) || ''));
     await t2.close();
-    await sleep(600);
+    await t1.waitFor(`window._coralPopout.isOwner()`, 2000); // released on pagehide; claimed below if not
     let backOwner = await t1.ev(`window._coralPopout.isOwner()`);
-    if (!backOwner) { await t1.ev(`window._coralPopout.claimOwnership(); true`); await sleep(400); backOwner = await t1.ev(`window._coralPopout.isOwner()`); }
+    if (!backOwner) { await t1.ev(`window._coralPopout.claimOwnership(); true`); await t1.waitFor(`window._coralPopout.isOwner()`, 3000); backOwner = await t1.ev(`window._coralPopout.isOwner()`); }
     check('28 after the owner closes (pagehide release) the remaining window can claim ownership', backOwner === true, String(backOwner));
 
     // 30: cross-context viewer (separate profile => no BroadcastChannel)
     const ctx = await newContext();
     const t3 = await openTab(`${BASE}/agent/${sid}`, { contextId: ctx, width: 1000, height: 700 });
-    await t3.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await sleep(800);
+    await t3.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await t3.settled();
     const s3 = await t3.ev(SHELL_PROBE);
     check('30 cross-profile viewer renders the same exact session with no exceptions', s3.target === sid && /Popout QA/.test(s3.identity) && t3.exceptions.length === 0, JSON.stringify({ target: s3.target, identity: s3.identity.trim(), exc: t3.exceptions.slice(0, 2) }));
     const ws3 = t3.wsCreated.filter(u => /\/ws\/terminal\//.test(u));
@@ -402,14 +409,14 @@ async function run() {
     check('20 ended state offers #popout-open-history as a noopener anchor to /#session/<uuid>', !!s1.history && s1.history.tag === 'A' && s1.history.visible && s1.history.href === `/#session/${sid}` && s1.history.target === '_blank' && /noopener/.test(s1.history.rel || '') && /noreferrer/.test(s1.history.rel || ''), JSON.stringify(s1.history));
     const leakEnded = await t1.ev(LEAK_PROBE(sid));
     check('9 ended state: id only in boot attr and allowed hrefs', leakEnded.text.length === 0 && !leakEnded.title && leakEnded.attrs.length === 0, JSON.stringify(leakEnded));
-    await sleep(3500);
+    await sleep(3500); // sleep-ok: proves a negative, no reconnect attempt after the session ended
     const wsAfter = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u)).length;
     check('24 no terminal reconnect attempts after terminal_closed', wsAfter === wsBefore, `${wsBefore} -> ${wsAfter}`);
     const dEnded = (await t1.ev(SHELL_PROBE)).destructive; check('37 still no destructive controls after ending', dEnded.length === 0, JSON.stringify(dEnded));
     await t1.close();
     // cleanup: wait until the session is gone from the live list
     let gone = false;
-    for (let i = 0; i < 50 && !gone; i++) { const l = await httpJson('GET', '/api/sessions/live'); gone = Array.isArray(l.data) && !l.data.some(s => s.session_id === sid); if (!gone) await sleep(200); }
+    for (let i = 0; i < 50 && !gone; i++) { const l = await httpJson('GET', '/api/sessions/live'); gone = Array.isArray(l.data) && !l.data.some(s => s.session_id === sid); if (!gone) await sleep(100); }
     check('B cleanup: test session removed from /api/sessions/live', gone);
 
     // ── C. Fixture-driven states ──────────────────────────────────────────
@@ -422,7 +429,7 @@ async function run() {
 
     // not found
     const tn = await openTab(`${BASE}/agent/${N}`, { stub: stubSource(fx) });
-    await tn.waitFor(`(() => { const e = document.getElementById('popout-not-found'); return e && getComputedStyle(e).display !== 'none'; })()`, 8000); await sleep(400);
+    await tn.waitFor(`(() => { const e = document.getElementById('popout-not-found'); return e && getComputedStyle(e).display !== 'none'; })()`, 8000); await tn.settled();
     let sn = await tn.ev(SHELL_PROBE); const cn = await tn.ev(`({ calls: window.__calls, ws: window.__wsAttempts })`);
     check('19 valid unknown id -> not-found state, pill not-found', sn.overlays.notFound === 'visible' && sn.pill === 'not-found', JSON.stringify({ nf: sn.overlays.notFound, pill: sn.pill }));
     check('19 not-found makes zero send/resize/attach calls and opens no terminal socket', cn.calls.filter(c => c.method !== 'GET' && /\/(send|keys|resize|kill|wake)$/.test(c.path)).length === 0 && cn.ws.filter(u => /\/ws\/terminal/.test(u)).length === 0, JSON.stringify(cn));
@@ -433,7 +440,7 @@ async function run() {
 
     // history-only
     const th = await openTab(`${BASE}/agent/${H}`, { stub: stubSource(fx) });
-    await th.waitFor(`(() => { const e = document.getElementById('popout-ended'); return e && getComputedStyle(e).display !== 'none'; })()`, 8000); await sleep(400);
+    await th.waitFor(`(() => { const e = document.getElementById('popout-ended'); return e && getComputedStyle(e).display !== 'none'; })()`, 8000); await th.settled();
     const sh = await th.ev(SHELL_PROBE); const ch = await th.ev(`({ ws: window.__wsAttempts, calls: window.__calls })`);
     check('20 history-only id -> Ended, input disabled, identity from history, no attach', sh.overlays.ended === 'visible' && sh.pill === 'ended' && sh.inputDisabled && /Finished One/.test(sh.identity) && ch.ws.filter(u => /\/ws\/terminal/.test(u)).length === 0, JSON.stringify({ ended: sh.overlays.ended, pill: sh.pill, disabled: sh.inputDisabled, identity: sh.identity.trim(), ws: ch.ws }));
     check('20 ended title uses the ✕ glyph and no id', /^✕ .*Finished One · Coral$/.test(sh.title) && !sh.title.includes(H), sh.title);
@@ -444,7 +451,7 @@ async function run() {
 
     // live fixture: identity chain, pill, title, rename, sleeping, toasts, restart
     const ta = await openTab(`${BASE}/agent/${A}`, { stub: stubSource(fx) });
-    await ta.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await sleep(500);
+    await ta.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await ta.settled();
     let sa = await ta.ev(SHELL_PROBE);
     check('9 identity chain: auto_name wins over board_job_title when display_name empty', /^Auto Bot/.test(sa.identity.trim()), sa.identity.trim());
     check('9 pill reflects waiting_for_input from the resolver before any WS tick (no state flash)', sa.pill === 'waiting', JSON.stringify({ pill: sa.pill, banner: sa.overlays.waiting }));
@@ -454,17 +461,17 @@ async function run() {
     check('4 fixture popout: every per-session REST call uses resolver name + both routing fields', fxCalls.length > 0 && fxBad.length === 0, JSON.stringify({ n: fxCalls.length, bad: fxBad.slice(0, 3) }));
     check('26 placeholder names the resolved identity', await ta.ev(`/^Sending to: Auto Bot/.test(document.getElementById('command-input').placeholder)`));
     // rename via WS diff
-    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', waiting_for_input: false, working: true })}] }); true`); await sleep(300);
+    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', waiting_for_input: false, working: true })}] }); true`); await ta.nextFrame();
     sa = await ta.ev(SHELL_PROBE);
     check('25 rename via live tick updates identity, pill and title in place', /^Renamed Bot/.test(sa.identity.trim()) && sa.pill === 'working' && /^● Renamed Bot · Coral$/.test(sa.title) && sa.hash === '', JSON.stringify({ identity: sa.identity.trim(), pill: sa.pill, title: sa.title, hash: sa.hash }));
-    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'coral-go', agent_type: 'claude', session_id: ${JSON.stringify(A)}, summary: 'Completely different summary' }] }); true`); await sleep(200);
+    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [{ name: 'coral-go', agent_type: 'claude', session_id: ${JSON.stringify(A)}, summary: 'Completely different summary' }] }); true`); await ta.nextFrame();
     check('25 summary-only tick leaves identity alone', /^Renamed Bot/.test((await ta.ev(SHELL_PROBE)).identity.trim()));
     // unified state vocabulary on the popout pill + title glyph (tasks #165-#167)
     {
         const OFF = { working: false, waiting_for_input: false, awaiting_user: false, not_started: false, stuck: false, done: false, sleeping: false };
         const seen = [];
         for (const [patch, pill, text, glyph] of [[{ awaiting_user: true }, 'your-turn', 'Ready for input', '◯'], [{ awaiting_user: true, not_started: true }, 'check', 'Check terminal', '⏸'], [{ awaiting_user: true, waiting_for_input: true }, 'waiting', 'Needs input', '⏸'], [{ waiting_for_input: true, stuck: true }, 'stuck', 'Stuck', '!'], [{}, 'idle', 'Idle', '○'], [{ working: true }, 'working', 'Working', '●']]) {
-            await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', ...OFF, ...patch })}] }); true`); await sleep(250);
+            await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', ...OFF, ...patch })}] }); true`); await ta.nextFrame();
             const p = await ta.ev(SHELL_PROBE);
             seen.push({ want: pill, pill: p.pill, text: p.pillText.trim(), okText: p.pillText.trim() === text, okTitle: p.title === `${glyph} Renamed Bot · Coral` });
         }
@@ -472,16 +479,16 @@ async function run() {
         check('state vocabulary: popout pill data-state, sentence-case text and title glyph follow the shared priority', seen.every(x => x.want === x.pill && x.okText && x.okTitle), JSON.stringify(seen));
     }
     // other-session toast suppressed
-    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveO, waiting_for_input: true, waiting_summary: 'needs you' })}] }); true`); await sleep(300);
+    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveO, waiting_for_input: true, waiting_summary: 'needs you' })}] }); true`); await ta.nextFrame();
     check('27 needs-input toast for another session is suppressed in the popout', (await ta.ev(SHELL_PROBE)).toasts === 0);
     // sleeping
     const wsBeforeSleep = await ta.ev(`window.__wsAttempts.filter(u => /\\/ws\\/terminal/.test(u)).length`);
-    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', sleeping: true, status: 'Sleeping', tmux_session: null, waiting_for_input: false, working: false })}] }); true`); await sleep(400);
+    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Renamed Bot', sleeping: true, status: 'Sleeping', tmux_session: null, waiting_for_input: false, working: false })}] }); true`); await ta.nextFrame();
     sa = await ta.ev(SHELL_PROBE);
     check('23 sleeping tick -> sleeping composer + pill sleeping + title ◌, Wake control present', sa.overlays.sleeping === 'visible' && sa.pill === 'sleeping' && /^◌ /.test(sa.title) && await ta.ev(`!!document.querySelector('#sleeping-composer button[data-action="wake"]')`), JSON.stringify({ sleeping: sa.overlays.sleeping, pill: sa.pill, title: sa.title }));
     check('23 sleeping does not attempt a terminal attach', (await ta.ev(`window.__wsAttempts.filter(u => /\\/ws\\/terminal/.test(u)).length`)) === wsBeforeSleep);
     // restart: A removed, same-name B appears -> ended, link, never follow
-    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, session_id: B, tmux_session: `claude-${B}`, display_name: 'Renamed Bot', sleeping: false, working: true })}], removed: [${JSON.stringify(A)}] }); true`); await sleep(500);
+    await ta.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, session_id: B, tmux_session: `claude-${B}`, display_name: 'Renamed Bot', sleeping: false, working: true })}], removed: [${JSON.stringify(A)}] }); true`); await ta.nextFrame();
     sa = await ta.ev(SHELL_PROBE);
     check('22 target removed while a same-name session appears -> Ended, restart link offered, target unchanged', sa.overlays.ended === 'visible' && sa.pill === 'ended' && sa.restartedHref === `/agent/${B}` && sa.targetId === A && sa.inputDisabled, JSON.stringify({ ended: sa.overlays.ended, pill: sa.pill, href: sa.restartedHref, target: sa.targetId, disabled: sa.inputDisabled }));
     check('22 ended-after-restart also offers the history link for the ORIGINAL id', !!sa.history && sa.history.visible && sa.history.href === `/agent/${A}`.replace('/agent/', '/#session/'), JSON.stringify(sa.history));
@@ -499,14 +506,14 @@ async function run() {
         const liveR = { ...liveA, session_id: R, name: 'wrong-name', tmux_session: 'claude-WRONG', display_name: 'Should Not Route' };
         const fxR = { live: [liveR], resolve: { [R]: { ...resolveA, session_id: R, tmux_session: `claude-${R}`, display_name: 'Recovered' } }, resolveFail: { [R]: mode }, history: { [R]: { session_id: R, display_name: 'Should Not Route', agent_type: 'claude' } } };
         const tr = await openTab(`${BASE}/agent/${R}`, { stub: stubSource(fxR) });
-        await tr.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 6000); await sleep(1200);
+        await tr.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 6000); await tr.settled();
         const sr = await tr.ev(SHELL_PROBE);
         const cr = await tr.ev(`({ ws: window.__wsAttempts, calls: window.__calls.map(c => c.path) })`);
         const routed = cr.calls.filter(pth => /\/api\/sessions\/live\/[^/]+\//.test(pth) || /\/api\/sessions\/history\//.test(pth));
         check(`D5 resolver ${mode}: no routing derived from the live list or history (no per-session or history calls)`, routed.length === 0, JSON.stringify(routed.slice(0, 4)));
         check(`D5 resolver ${mode}: reconnecting/retry state, not attached, input disabled, not-found hidden`, sr.pill === 'reconnecting' && sr.inputDisabled && sr.overlays.notFound !== 'visible' && cr.ws.filter(u => /\/ws\/terminal/.test(u)).length === 0 && !/Should Not Route/.test(sr.identity), JSON.stringify({ pill: sr.pill, disabled: sr.inputDisabled, nf: sr.overlays.notFound, terminalWs: cr.ws.filter(u => /\/ws\/terminal/.test(u)).length, identity: sr.identity.trim() }));
         const liveActions = await tr.ev(`Array.from(document.querySelectorAll('#command-toolbar button, #command-pane button')).filter(b => /sendCommand|sendRawKeys|cycleModeToggle|sendModeToggle|sendQuickCommand|executeMacro|sendBoardProtocol|resendInputPrompt|sendCommandWithTeam/.test(b.getAttribute('onclick') || '')).filter(b => !b.disabled && b.getAttribute('aria-disabled') !== 'true' && getComputedStyle(b).pointerEvents !== 'none').map(b => (b.textContent.trim() || b.getAttribute('aria-label') || 'btn').slice(0, 20))`);
-        await tr.ev(`window.__calls = []; const inp = document.getElementById('command-input'); inp.disabled = false; inp.value = 'echo MUST-NOT-SEND'; try { window.sendCommand(); } catch {} try { window.sendRawKeys(['Enter']); } catch {} true`); await sleep(400);
+        await tr.ev(`window.__calls = []; const inp = document.getElementById('command-input'); inp.disabled = false; inp.value = 'echo MUST-NOT-SEND'; try { window.sendCommand(); } catch {} try { window.sendRawKeys(['Enter']); } catch {} true`); await sleep(400); // sleep-ok: proves a negative, nothing is sent
         const blockedSends = await tr.ev(`window.__calls.filter(c => /\\/(send|keys)$/.test(c.path)).length + window.__wsAttempts.filter(u => /\\/ws\\/terminal/.test(u)).length`);
         check(`D5a resolver ${mode}: programmatic sendCommand/sendRawKeys are refused while reconnecting (no /send, /keys, or terminal socket)`, blockedSends === 0, String(blockedSends));
         check(`D5a resolver ${mode}: terminal quick actions that send input are disabled while reconnecting`, liveActions.length === 0, JSON.stringify(liveActions));
@@ -530,13 +537,14 @@ async function run() {
 
     // mobile 390px direct workspace
     const tm = await openTab(`${BASE}/agent/${A}`, { stub: stubSource(fx), width: 390, height: 844, mobile: true });
-    await tm.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await sleep(500);
+    await tm.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await tm.settled();
     const sm = await tm.ev(SHELL_PROBE);
     const mob = await tm.ev(`(() => { const tb = document.getElementById('command-toolbar'); const r = tb ? tb.getBoundingClientRect() : null; const btns = tb ? Array.from(tb.querySelectorAll('button')).map(b => b.getBoundingClientRect().height) : []; const hdr = document.querySelector('.terminal-header'); const hcs = hdr ? getComputedStyle(hdr) : null; const ta = document.getElementById('command-input'); return { toolbarVisible: !!r && r.height > 0, minBtn: btns.length ? Math.min(...btns.filter(h => h > 0)) : 0, scrollable: tb ? (tb.scrollWidth > tb.clientWidth || getComputedStyle(tb).overflowX === 'auto' || getComputedStyle(tb).overflowX === 'scroll') : false, headerPos: hcs ? hcs.position : null, fontSize: ta ? getComputedStyle(ta).fontSize : null, width: window.innerWidth }; })()`);
     check('31 390px: chrome absent, workspace direct (no tab bar / mobile list / overlay promotion)', sm.chrome.mobileBar !== 'visible' && sm.chrome.mobileList !== 'visible' && sm.workspace.live === 'visible' && sm.workspace.cmd === 'visible', JSON.stringify({ chrome: sm.chrome, ws: sm.workspace }));
     check('31 390px: quick-action strip visible and scrollable with >=44px targets', mob.toolbarVisible && mob.scrollable && mob.minBtn >= 44, JSON.stringify(mob));
     check('31 390px: header sticky, textarea 16px', (mob.headerPos === 'sticky' || mob.headerPos === 'fixed') && parseFloat(mob.fontSize || '0') >= 16, JSON.stringify({ pos: mob.headerPos, font: mob.fontSize }));
-    await tm.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`); await sleep(300);
+    await tm.ev(`document.getElementById('popout-panel-toggle-btn').click(); true`);
+    await tm.waitFor(`(() => { const p = document.getElementById('agentic-state'); return !!p && (p.classList.contains('mobile-panel-overlay') || getComputedStyle(p).display !== 'none'); })()`, 3000); await tm.nextFrame();
     check('31 390px: panel toggle opens the tools pane as an overlay', await tm.ev(`(() => { const p = document.getElementById('agentic-state'); return !!p && (p.classList.contains('mobile-panel-overlay') || getComputedStyle(p).display !== 'none'); })()`));
     await tm.close();
 
@@ -548,10 +556,10 @@ async function run() {
     const liveI = { name: 'coral-go', display_name: 'Idle Dev', agent_type: 'claude', session_id: I, tmux_session: `claude-${I}`, summary: 'finished', context_pct: 9, working_directory: '/repo/coral-go', board_project: null, working: false, waiting_for_input: false, awaiting_user: true, waiting_reason: null, waiting_summary: null, not_started: false, stuck: false, done: false, sleeping: false };
     const resolveI = { ...realIdleResolve, session_id: I, agent_type: 'claude', name: 'coral-go', tmux_session: `claude-${I}`, display_name: 'Idle Dev' };
     const ti = await openTab(`${BASE}/agent/${I}`, { stub: stubSource({ live: [liveI], resolve: { [I]: resolveI }, history: {} }) });
-    await ti.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await sleep(500);
+    await ti.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 8000); await ti.settled();
     let si = await ti.ev(SHELL_PROBE);
     check('33 popout: real idle resolver reply merged over the live row shows Ready for input, not Needs input', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting, resolver: { waiting_for_input: resolveI.waiting_for_input, awaiting_user: resolveI.awaiting_user } }));
-    await ti.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify(liveI)}] }); true`); await sleep(300);
+    await ti.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify(liveI)}] }); true`); await ti.nextFrame();
     si = await ti.ev(SHELL_PROBE);
     check('33 popout: still Ready for input after a WS tick', si.pill === 'your-turn' && si.overlays.waiting !== 'visible', JSON.stringify({ pill: si.pill, waiting: si.overlays.waiting }));
     check('33 popout idle fixture: no exceptions', ti.exceptions.length === 0, JSON.stringify(ti.exceptions.slice(0, 2)));
@@ -561,7 +569,10 @@ async function run() {
     console.log('\n── D. main app');
     const fxMain = { live: [liveA, liveO, { ...liveO, session_id: randomUuid(), display_name: 'Sleeper', sleeping: true, tmux_session: null }], resolve: { [A]: resolveA } };
     const td = await openTab(`${BASE}/#chat/${A}`, { stub: stubSource(fxMain), width: 1440, height: 900 });
-    await td.waitFor(`typeof window._coralSetLiveSessions === 'function'`, 8000); await sleep(1200);
+    await td.waitFor(`typeof window._coralSetLiveSessions === 'function'`, 8000);
+    // #chat/<sid> restores the agent once the live list has loaded: wait for that, then for the header to settle.
+    await td.waitFor(`document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId === ${JSON.stringify(A)}`, 8000);
+    await require('./helpers/wait').waitStable(td.ev, `(document.getElementById('session-name') || {}).textContent || ''`, 'the header', 300).catch(() => {});
     const dm = await td.ev(`(() => { const lv = document.getElementById('live-session-view'); const active = document.querySelector('#live-sessions-list .session-group-item.active'); return { liveShown: lv ? getComputedStyle(lv).display !== 'none' : false, activeSid: active ? active.dataset.sessionId : null, header: (document.getElementById('session-name') || {}).textContent, mode: document.body.getAttribute('data-entry-mode') }; })()`);
     check('34 main app: #chat/<sid> restores the live session on load', dm.liveShown && dm.activeSid === A && /Auto Bot/.test(dm.header || ''), JSON.stringify(dm));
     check('1 main app: dashboard boot attr is empty (not agent mode)', dm.mode === '' || dm.mode === null, String(dm.mode));
@@ -583,10 +594,10 @@ async function run() {
     // 35: null DOM targets must not throw
     await td.ev(`for (const id of ['nav-tab-agents-badge', 'terminal-header-label', 'session-name']) { const el = document.getElementById(id); if (el) el.remove(); } true`);
     const excBefore = td.exceptions.length;
-    await td.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Null Guard', waiting_for_input: true })}] }); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(300);
+    await td.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify({ ...liveA, display_name: 'Null Guard', waiting_for_input: true })}] }); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await td.nextFrame();
     check('35 main app: live tick with badge/header/name targets removed throws nothing', td.exceptions.length === excBefore, JSON.stringify(td.exceptions.slice(excBefore, excBefore + 2)));
     // done row must not offer the anchor: simulate killed row
-    await td.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [], removed: [${JSON.stringify(O)}] }); true`); await sleep(300);
+    await td.ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [], removed: [${JSON.stringify(O)}] }); true`); await td.nextFrame();
     const doneRow = await td.ev(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="${O}"]'); return li ? { present: true, anchor: !!li.querySelector('a.overflow-menu-open-window') } : { present: false, anchor: false }; })()`);
     check('15 done row (killed) offers no open-in-window anchor', !doneRow.anchor, JSON.stringify(doneRow));
     await td.close();
