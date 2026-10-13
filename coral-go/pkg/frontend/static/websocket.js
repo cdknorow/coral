@@ -4,7 +4,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { signInUrl } from './cloud.js';
 import { feedRetryDelay, isStalenessDrift, DRIFT_RENDER_MAX_AGE_MS } from './feed_pacing.js';
-import { renderLiveSessions, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
+import { scheduleLiveSessionsRender, updateSessionStatus, updateSessionSummary, updateSessionBranch, updateSessionFolder, updateWaitingIndicator, resolveSessionIdentity, commandPlaceholder, terminalDotClass } from './render.js';
 import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -206,7 +206,7 @@ export function handleCoralMessage(data) {
             state.liveSessions = data.sessions;
             if (!data._skipSidebarRender) {
                 _lastSidebarRenderAt = Date.now();
-                renderLiveSessions(data.sessions);
+                scheduleLiveSessionsRender(); // a burst of feed messages renders once per frame (#3121)
             }
             if (isPopout()) popoutHandleSessionsTick(data.sessions);
 

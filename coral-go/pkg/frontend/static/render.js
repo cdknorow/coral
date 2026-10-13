@@ -2256,10 +2256,28 @@ export function agentSearchKey(e) {
     }
 }
 
+/** Render the agent list now (user actions, which may read the DOM right after).
+ *  A pending scheduled render is dropped: this one shows the latest list. */
 export function renderLiveSessions(sessions) {
+    if (_scheduledRender) { cancelAnimationFrame(_scheduledRender); _scheduledRender = 0; }
     const result = _renderLiveSessions(sessions);
     liveListRendered(Array.isArray(sessions) ? sessions.length : 0); // window.__coralReady (#3118)
     return result;
+}
+
+// High-frequency callers (the live feed, the team-availability refresh after a
+// render, a tab coming back) schedule instead: a burst becomes one render of
+// state.liveSessions in the next animation frame (#3121). A hidden tab renders
+// nothing until it is shown again (visibilitychange renders then).
+let _scheduledRender = 0;
+export function scheduleLiveSessionsRender() {
+    if (_scheduledRender) return;
+    _scheduledRender = requestAnimationFrame(() => { _scheduledRender = 0; renderLiveSessions(state.liveSessions || []); });
+}
+
+/** Run a scheduled render now (for code that needs the list in the DOM at once). */
+export function flushLiveSessionsRender() {
+    if (_scheduledRender) renderLiveSessions(state.liveSessions || []);
 }
 
 function _renderLiveSessions(sessions) {
@@ -2786,14 +2804,14 @@ function _renderLiveSessions(sessions) {
     const teams = [...new Set(sessions.map(s => sessionTeamKey(s)).filter(Boolean))];
     for (const team of teams) {
         refreshTeamAvailabilityIfChanged(team).then(changed => {
-            if (changed) renderLiveSessions(state.liveSessions || []);
+            if (changed) scheduleLiveSessionsRender(); // several teams changing: one render
         });
     }
 }
 
 // Hidden tabs skip availability polls; catch up as soon as the tab is shown.
 document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.liveSessions?.length) renderLiveSessions(state.liveSessions);
+    if (!document.hidden && state.liveSessions?.length) renderLiveSessions(state.liveSessions); // also drops a frame scheduled while hidden
 });
 
 function _attachDragListeners(list) {
