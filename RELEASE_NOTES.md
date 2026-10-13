@@ -1,5 +1,30 @@
 # Release Notes
 
+## v1.4.8 — A first load about 37% smaller, and Resume that never guesses the agent
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release makes the dashboard's first load much lighter by loading the code editor, the terminal and rarely used panels only when you open them. It also stops Resume from guessing an agent's type, and enlarges more touch targets.
+
+### Faster
+
+- **About 37% less to download on the first load.** The code editor and the terminal now load the first time a view needs them, as do the Workflows, Cost, Docs, theme editor, template browser and chat search panels. On a throttled phone connecting directly to Coral, the first load went from 1.27 MB to 800 KB on the wire and finishes about 2 seconds sooner (7.4 s → 5.4 s), with half as much JavaScript to run. Revisits stay as fast as in v1.4.6.
+- Opening one of those panels for the first time loads it once; later opens are instant. If it can't load, a message says so ("Could not load Docs. Check the connection to Coral, then try again.") and the next try loads it again.
+- **The last unversioned file is versioned.** The app icon and the web manifest now load from the build-specific `/static/b/<build>/` address too, so a revisit asks the server for no static files at all.
+
+### Fixes
+
+- **Resume uses the session's real agent type.** When a past session was opened from a link before the history list had loaded it, and Coral couldn't look the session up, Resume could start a Codex session as Claude. The agent type now comes from the history list, else from the session's own transcript. If it's still unknown, Coral says so and doesn't open the Resume dialog.
+- **Bigger touch targets, round two.** On touch screens: the side panel's tabs and close button, favourite stars, Browse icons and row actions (now visible without hovering), file explorer rows, the file filter, team artifact actions and the Servers tab's access selector. On the Cloud Hub sign-in and enroll pages, inputs and buttons are larger on touch too.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.7.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- Code that calls the dashboard's panel functions from outside the page (devtools snippets, test harnesses), such as `selectWorkflow`, still works: each is a stub that loads its module on first use.
+- `/manifest.json` at the site root still works; its icon paths now point under `/static/`.
+
 ## v1.4.7 — A compact server button in the agent list, and the phone side panel fixed
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release replaces the agent list's server pill and chips with a compact server button, shows each machine's version, agent count and update status in the Servers tab, and fixes the phone top bar covering the side panel's tabs (a v1.4.6 regression).
