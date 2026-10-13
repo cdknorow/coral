@@ -1,4 +1,4 @@
-// Mobile a11y (#3073, Coral Hub mobile audit F2 + F4):  run via run_cdp_suites.mjs
+// Mobile a11y (#3073, #3098; Coral Hub mobile audit F2 + F4):  run via run_cdp_suites.mjs
 // F4: on a coarse pointer (phone 390px, iPad 820px with touch) every visible
 //     control is at least 44x44 CSS px; a fine pointer keeps the desktop sizes.
 // F2: the expanded Agent UI panel is a named dialog with a 44px Close button;
@@ -38,6 +38,12 @@ const UNDERSIZED = `(() => {
     const sid = launch.session_id;
     const sname = launch.session_name || launch.name || '';
     const env = { ...process.env, CORAL_URL: BASE, CORAL_SESSION_NAME: 'terminal-' + sid }; delete env.TMUX;
+    // A repository with one changed file, so the Files tab lists a row (with its star).
+    fs.writeFileSync(path.join(dir, '.gitignore'), 'coral-agent\npanel.html\n');
+    fs.writeFileSync(path.join(dir, 'notes.md'), 'one\n');
+    const git = (...a) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: dir, stdio: 'ignore' });
+    git('init', '-q'); git('add', '.'); git('commit', '-qm', 'init');
+    fs.writeFileSync(path.join(dir, 'notes.md'), 'one\ntwo\n');
     const panelFile = path.join(dir, 'panel.html');
     fs.writeFileSync(panelFile, '<p>touch panel</p>');
     execFileSync(bin, ['ui', 'publish', '--id', 'touch', '--title', 'Touch Panel', '--file', panelFile], { env, encoding: 'utf8' });
@@ -71,6 +77,66 @@ const UNDERSIZED = `(() => {
         assert.deepEqual(await ev(UNDERSIZED), [], 'phone 390: every control is at least 44x44');
         assert.ok(await ev(`document.documentElement.scrollWidth <= innerWidth`), 'phone 390: no horizontal overflow');
         console.log('PASS phone 390 coarse: no control under 44px, no overflow');
+
+        // Round 2 (#3098, Coral Hub v1.4.6 re-check): the side panel's tabs, the
+        // Files list (favourite stars) and Browse (row icons) on the phone overlay.
+        await ev(`toggleAgenticPanel(true)`); await sleep(300);
+        await ev(`switchAgenticTab('files', 'top')`);
+        await ev(`new Promise(r => { const t = Date.now(); const w = () => document.querySelector('#agentic-state .file-star-btn') || Date.now() - t > 15000 ? r() : setTimeout(w, 200); w(); })`);
+        assert.ok(await ev(`!!document.querySelector('#agentic-state .file-star-btn')`), 'the Files tab lists the changed file with its star');
+        const filesSmall = await ev(UNDERSIZED);
+        assert.deepEqual(filesSmall, [], 'phone 390, side panel Files: every control is at least 44x44: ' + JSON.stringify(filesSmall));
+        await ev(`switchAgenticTab('browse', 'top')`);
+        await ev(`new Promise(r => { const t = Date.now(); const w = () => document.querySelector('#file-explorer-view .explorer-action-btn') || Date.now() - t > 8000 ? r() : setTimeout(w, 100); w(); })`);
+        assert.ok(await ev(`!!document.querySelector('#file-explorer-view .explorer-item')`), 'Browse lists the working directory');
+        const browseSmall = await ev(UNDERSIZED);
+        assert.deepEqual(browseSmall, [], 'phone 390, side panel Browse: every control is at least 44x44: ' + JSON.stringify(browseSmall));
+        await ev(`toggleAgenticPanel(false)`);
+        console.log('PASS phone 390 coarse: side panel tabs, Files stars and Browse controls are at least 44x44');
+
+        // The Servers tab (the Cloud Hub's list, with its Access select).
+        const serversSmall = await ev(`(async () => {
+            const real = window.fetch;
+            window.fetch = (u, o) => String(u).startsWith('/api/servers')
+                ? Promise.resolve(new Response(JSON.stringify({ servers: [{ id: 's1', label: 'Work Mac', online: true, last_seen: '2026-10-13T00:00:00Z', access_mode: 'view', local_mode: 'launch' }] }), { status: 200, headers: { 'content-type': 'application/json' } }))
+                : real(u, o);
+            const { showView } = await import((window.__coralStatic||'/static/')+'utils.js');
+            const cs = await import((window.__coralStatic||'/static/')+'cloud_servers.js');
+            const body = document.getElementById('servers-tab-body');
+            showView(body.closest('.view, [id$=-view]')?.id || 'servers-view');
+            await cs.renderCloudServersInto(body);
+            await new Promise(r => setTimeout(r, 200));
+            const hasSelect = !!body.querySelector('.cs-row select');
+            const small = ${UNDERSIZED};
+            cs.hideCloudServers();
+            window.fetch = real;
+            return { hasSelect, small };
+        })()`);
+        assert.ok(serversSmall.hasSelect, 'the Servers row shows its Access select');
+        assert.deepEqual(serversSmall.small, [], 'phone 390, Servers tab: every control is at least 44x44: ' + JSON.stringify(serversSmall.small));
+        console.log('PASS phone 390 coarse: Servers tab (Access select) at least 44x44');
+
+        // The Cloud Hub sign-in and enroll pages (templates the hub renders with
+        // our stylesheets): every input and button is at least 44px tall.
+        for (const page of ['signin', 'enroll']) {
+            const tpl = fs.readFileSync(path.resolve(__dirname, '../../coral-go/pkg/frontend/templates/cloud', page + '.html'), 'utf8')
+                .replace(/\{\{-?\s*\$base\s*:=[^}]*\}\}/, '').replace(/\{\{\s*\$base\s*\}\}/g, '/static/')
+                .replace(/<script[\s\S]*?<\/script>/g, '');
+            assert.ok(!/\{\{/.test(tpl), page + ': template fully mapped');
+            const { frameTree } = await Page.getFrameTree();
+            await Page.setDocumentContent({ frameId: frameTree.frame.id, html: tpl });
+            await ev(`Promise.all(Array.from(document.styleSheets).map(() => true)).then(() => new Promise(r => setTimeout(r, 300)))`);
+            // Show every step; a link inside a sentence is exempt (WCAG 2.5.8 inline
+            // exception), so it is taken out of the sweep.
+            const small = await ev(`(() => {
+                for (const el of document.querySelectorAll('[hidden]')) el.hidden = false;
+                for (const a of document.querySelectorAll('p a[href]')) if (getComputedStyle(a).display === 'inline') a.removeAttribute('href');
+                return ${UNDERSIZED};
+            })()`);
+            assert.ok(await ev(`document.querySelectorAll('input:not([type=hidden]), .cloud-btn').length`) >= 2, page + ': the page has its inputs and buttons');
+            assert.deepEqual(small, [], `phone 390, cloud ${page}: every control is at least 44x44: ` + JSON.stringify(small));
+        }
+        console.log('PASS phone 390 coarse: cloud sign-in and enroll inputs and buttons at least 44x44');
 
         await open(820, 1180, false);
         assert.deepEqual(await ev(UNDERSIZED), [], 'iPad 820: every control is at least 44x44');

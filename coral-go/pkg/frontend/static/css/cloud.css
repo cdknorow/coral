@@ -87,3 +87,9 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 .cs-row:focus-visible, .servers-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .server-row-target { background: var(--bg-hover, rgba(88,166,255,.08)); transition: background .4s; }
 .cs-enroll-title { font-size: var(--fs-md, 14px); margin: 0; }
+
+/* Touch hit areas (#3098): these pages do not load touch.css; on a coarse
+   pointer their inputs and buttons are at least 44px tall, like the dashboard. */
+@media (pointer: coarse) {
+    .cloud-card input, .cloud-card select, .cloud-btn { min-height: var(--control-touch-height, 44px); }
+}

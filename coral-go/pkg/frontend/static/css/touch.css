@@ -39,4 +39,39 @@
     .diff-mode-select {
         min-height: var(--control-touch-height);
     }
+
+    /* Round 2 (#3098). The phone side-panel overlay fixes its tabs at 40px
+       (mobile.css, more specific than .agentic-tab above); its strip grows to fit. */
+    .agentic-state.mobile-panel-overlay .agentic-tab,
+    .agentic-state.mobile-panel-overlay #agentic-mobile-close-btn {
+        height: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+    .agentic-state.mobile-panel-overlay .agentic-state-tabs {
+        height: auto;
+    }
+
+    /* Small icon buttons in file rows (favourite stars, Browse row actions):
+       the glyph keeps its size; the button around it is the 44px hit area. */
+    .file-star-btn,
+    .explorer-action-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+    /* Browse rows reveal their actions on hover, which a touch screen has not got. */
+    .explorer-actions {
+        opacity: 1;
+    }
+
+    /* Browse and Team Artifacts rows, the file filter, the list actions and
+       the Servers tab's Access select. */
+    .explorer-item,
+    .files-search-input,
+    .team-artifacts-action,
+    .cs-launch select {
+        min-height: var(--control-touch-height);
+    }
 }
