@@ -13,6 +13,7 @@ import { localFirst, isStaleSession, staleReason, showServerLabels, serverLabel,
 import { syncMobileAgentList } from './mobile.js';
 import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './team_availability.js';
 import { liveListRendered } from './ready.js';
+import { morphHtml } from './dom_morph.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -2218,7 +2219,7 @@ function _renderSidebarRail(sessions) {
             html += _railTile(s, active);
         }
     }
-    rail.innerHTML = html;
+    morphHtml(rail, html); // unchanged rail entries keep their nodes (#3121)
 }
 
 // ── Agent search (sidebar) ────────────────────────────────────────────
@@ -2270,6 +2271,11 @@ export function renderLiveSessions(sessions) {
 // state.liveSessions in the next animation frame (#3121). A hidden tab renders
 // nothing until it is shown again (visibilitychange renders then).
 let _scheduledRender = 0;
+
+let _lastListHtml = '';
+/** The markup of the last agent-list render (for the suite that checks the
+ *  incremental DOM update equals a fresh parse of it). */
+export function lastLiveListHtml() { return _lastListHtml; }
 export function scheduleLiveSessionsRender() {
     if (_scheduledRender) return;
     _scheduledRender = requestAnimationFrame(() => { _scheduledRender = 0; renderLiveSessions(state.liveSessions || []); });
@@ -2760,10 +2766,13 @@ function _renderLiveSessions(sessions) {
     }
 
     html += _renderArchivedSection(archived);
-    list.innerHTML = html;
+    // Only the parts that changed are re-parsed; unchanged rows keep their nodes,
+    // listeners and late-filled text (#3121). `added` is what is new.
+    _lastListHtml = html;
+    const added = morphHtml(list, html);
 
-    // Attach hover listeners for fixed-position tooltips
-    for (const item of list.querySelectorAll(".session-group-item")) {
+    // Attach hover listeners for fixed-position tooltips (new rows only)
+    for (const item of _within(added, ".session-group-item")) {
         const tip = item.querySelector(".session-tooltip");
         if (!tip) continue;
         item.addEventListener("mouseenter", () => {
@@ -2778,10 +2787,10 @@ function _renderLiveSessions(sessions) {
     }
 
     // Attach drag-and-drop listeners for reordering
-    _attachDragListeners(list);
+    _attachDragListeners(list, added);
 
-    // Populate team token usage (non-blocking)
-    document.querySelectorAll('.team-token-usage[data-board]').forEach(el => {
+    // Populate team token usage (non-blocking; kept cards keep their text)
+    _within(added, '.team-token-usage[data-board]').forEach(el => {
         getTeamTokenUsage(el.dataset.board).then(text => {
             if (text) el.textContent = ' · ' + text;
         });
@@ -2814,11 +2823,23 @@ document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.liveSessions?.length) renderLiveSessions(state.liveSessions); // also drops a frame scheduled while hidden
 });
 
-function _attachDragListeners(list) {
-    const items = list.querySelectorAll(".session-group-item[draggable]");
+/** Elements matching `sel` among `roots` and their descendants. */
+function _within(roots, sel) {
+    const out = [];
+    for (const r of roots) {
+        if (r.matches(sel)) out.push(r);
+        out.push(...r.querySelectorAll(sel));
+    }
+    return out;
+}
+
+/** Wire drag-and-drop on the rows and containers under `roots` (the nodes a
+ *  render added; kept nodes already have their listeners). */
+function _attachDragListeners(list, roots = [list]) {
+    const items = _within(roots, ".session-group-item[draggable]");
 
     // Allow drops inside nested board-card-agents containers
-    for (const container of list.querySelectorAll(".board-card-agents")) {
+    for (const container of _within(roots, ".board-card-agents")) {
         container.addEventListener("dragover", (e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = "move";
