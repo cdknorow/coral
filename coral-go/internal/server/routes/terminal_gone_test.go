@@ -14,7 +14,8 @@ import (
 )
 
 // #3211: when the agent's own terminal is gone, every write and terminal action answers
-// 409 {code: terminal_gone, error: "The agent's terminal is gone"} and sends nothing.
+// 409 {code: terminal_gone, error: "The agent's terminal is gone"} and sends nothing. (Restart
+// and Resume start the agent in a fresh terminal instead: TestRestartAndResumeRecoverAGoneTerminal.)
 func TestRoutesAnswerTerminalGone(t *testing.T) {
 	server, _, terminal, ss := setupSessionsTestServer(t)
 	const sid = "00000000-0000-0000-0000-000000003211"
@@ -28,7 +29,6 @@ func TestRoutesAnswerTerminalGone(t *testing.T) {
 		{"keys", `{"keys":["Escape"],` + ident + `}`},
 		{"resize", `{"columns":100,` + ident + `}`},
 		{"answer-prompt", `{"n":1,"label":"Yes",` + ident + `}`},
-		{"restart", `{` + ident + `}`},
 	} {
 		resp, err := http.Post(server.URL+"/api/sessions/live/team/"+c.path, "application/json", bytes.NewBufferString(c.body))
 		require.NoError(t, err)

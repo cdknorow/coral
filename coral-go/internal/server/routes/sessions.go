@@ -2820,6 +2820,15 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if storedSession != nil && storedSession.IsSleeping == 1 {
 		sleeping = storedSession
 	}
+	// An awake agent whose own terminal is gone (it crashed or was closed) restarts the
+	// same way: a fresh terminal in its working directory, never another agent's pane
+	// (#3213; before, the restart answered terminal_gone until the agent showed asleep).
+	fresh, terminalGone := sleeping, false
+	if fresh == nil && storedSession != nil && storedSession.WorkingDir != "" {
+		if pane, err := h.terminal.FindSession(ctx, name, agentType, body.SessionID); err == nil && pane == nil {
+			fresh, terminalGone = storedSession, true
+		}
+	}
 
 	newSessionID := generateUUID()
 	newSessionName := naming.SessionName(agentType, newSessionID)
@@ -2827,8 +2836,8 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 
 	var workdir, target string
 	usePTY := false
-	if sleeping != nil {
-		if h.effectiveMaxAgents() > 0 {
+	if fresh != nil {
+		if h.effectiveMaxAgents() > 0 && !terminalGone { // a gone terminal's agent is already counted: it replaces itself
 			if count, err := h.ss.CountActiveLiveSessions(ctx); err == nil && count >= h.effectiveMaxAgents() {
 				writeJSON(w, http.StatusForbidden, map[string]string{
 					"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
@@ -2836,8 +2845,8 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		workdir = sleeping.WorkingDir
-		usePTY = sleeping.Backend != nil && *sleeping.Backend == "pty" && h.backend != nil
+		workdir = fresh.WorkingDir
+		usePTY = fresh.Backend != nil && *fresh.Backend == "pty" && h.backend != nil
 		if usePTY {
 			if err := h.backend.Spawn(newSessionName, agentType, workdir, newSessionID, "", 200, 50); err != nil {
 				errInternalServer(w, fmt.Sprintf("pty spawn failed: %v", err))
@@ -3135,20 +3144,28 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		writeSessionIDRequired(w)
 		return
 	}
+	// The agent's own terminal, or (#3213) when it is gone a fresh one in the agent's
+	// working directory: never another agent's pane.
+	var workdir string
 	pane, _ := h.terminal.FindSession(ctx, name, agentType, body.CurrentSessionID)
 	if pane == nil && body.CurrentSessionID != "" {
-		writeTerminalError(w, ptymanager.ErrTerminalGone)
-		return
-	}
-	if pane == nil {
+		if ls, err := h.ss.GetLiveSession(ctx, body.CurrentSessionID); err == nil && ls != nil && ls.WorkingDir != "" {
+			workdir = ls.WorkingDir
+		} else {
+			writeTerminalError(w, ptymanager.ErrTerminalGone)
+			return
+		}
+	} else if pane == nil {
 		errNotFound(w, "Pane not found")
 		return
+	} else {
+		workdir = pane.CurrentPath
 	}
 
 	slog.Info("resuming agent", "agent_name", name, "session_id", body.SessionID, "agent_type", agentType)
 
 	// Prepare resume files
-	agent.TryPrepareResume(agentImpl, body.SessionID, pane.CurrentPath)
+	agent.TryPrepareResume(agentImpl, body.SessionID, workdir)
 
 	newSessionID := generateUUID()
 	newSessionName := naming.SessionName(agentType, newSessionID)
@@ -3174,22 +3191,31 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	userSettings, _ := h.ss.GetSettings(ctx)
 
-	h.terminal.StopLogging(ctx, pane.Target)
-	h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
-	h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
-
 	target := fmt.Sprintf("%s:0.0", newSessionName)
-	time.Sleep(500 * time.Millisecond)
-	h.terminal.ClearHistory(ctx, target)
-	os.WriteFile(newLogPath, []byte{}, 0644)
-	h.terminal.StartLogging(ctx, target, newLogPath)
+	if pane == nil {
+		os.WriteFile(newLogPath, []byte{}, 0644)
+		if err := h.terminal.CreateSession(ctx, newSessionName, workdir); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		target = newSessionName + ".0"
+		h.terminal.StartLogging(ctx, newSessionName, newLogPath)
+	} else {
+		h.terminal.StopLogging(ctx, pane.Target)
+		h.terminal.RestartPane(ctx, pane.Target, pane.CurrentPath)
+		h.terminal.RenameSession(ctx, pane.SessionName, newSessionName)
+		time.Sleep(500 * time.Millisecond)
+		h.terminal.ClearHistory(ctx, target)
+		os.WriteFile(newLogPath, []byte{}, 0644)
+		h.terminal.StartLogging(ctx, target, newLogPath)
+	}
 
 	cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(agent.LaunchParams{
 		SessionID:       newSessionID,
 		SessionName:     newSessionName,
 		ProtocolPath:    h.protocolPath(),
 		ResumeSessionID: body.SessionID,
-		WorkingDir:      pane.CurrentPath,
+		WorkingDir:      workdir,
 		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
 		BoardName:       storedBoard,
 		Role:            role,
@@ -3219,8 +3245,8 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	h.ss.ReplaceLiveSession(ctx, body.CurrentSessionID, &store.LiveSession{
 		SessionID:    newSessionID,
 		AgentType:    agentType,
-		AgentName:    filepath.Base(strings.TrimRight(pane.CurrentPath, "/")),
-		WorkingDir:   pane.CurrentPath,
+		AgentName:    filepath.Base(strings.TrimRight(workdir, "/")),
+		WorkingDir:   workdir,
 		ResumeFromID: strPtr(body.SessionID),
 		Prompt:       strPtr(storedPrompt),
 		BoardName:    strPtr(storedBoard),
