@@ -357,6 +357,8 @@ export async function selectHistorySession(sessionId, locator = null) {
             if (generation !== switchGeneration) return;
             if (focused?.messages?.length) { data = focused; messageBaseIndex = Math.max(0, data.total - end); }
         }
+        // Resume reads the type from here when the history list has no entry.
+        if (data.agent_type) state.currentSession.agent_type = data.agent_type;
         renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude", messageBaseIndex, locator?.message_index);
         // A session opened before the history list has it (a #session/<id> link,
         // or one beyond the loaded page) still gets Resume from its own record.

@@ -2989,7 +2989,9 @@ export async function showResumeModal() {
 
     const sessionId = state.currentSession.name;
     const historyEntry = state.historySessionsList.find(s => s.session_id === sessionId);
-    let agentType = (historyEntry && historyEntry.source_type) || "claude";
+    // The list entry, else the loaded transcript (a #session/<id> link that is not
+    // in the list); /resume-info below overrides both. Never guess a type.
+    let agentType = historyEntry?.source_type || state.currentSession.agent_type || "";
 
     const dirInput = document.getElementById("resume-dir");
     const boardRow = document.getElementById("resume-board-row");
@@ -3011,6 +3013,10 @@ export async function showResumeModal() {
             if (info.display_name) displayName = info.display_name;
         }
     } catch (_) { /* best-effort */ }
+    if (!agentType) {
+        showToast("Can't resume: this session's agent type is unknown", true);
+        return;
+    }
 
     // Pre-fill working directory: saved working dir > settings default > coral root
     const defaultDir = resumeDir || state.settings?.default_working_dir || dirInput.dataset.coralRoot || "";
@@ -3054,7 +3060,11 @@ export async function resumeLaunchNew() {
     }
 
     const modal = document.getElementById("resume-modal");
-    const agentType = modal.dataset.agentType || "claude";
+    const agentType = modal.dataset.agentType;
+    if (!agentType) {
+        showToast("Can't resume: this session's agent type is unknown", true);
+        return;
+    }
     const resumeSessionId = modal.dataset.resumeSessionId || sessionId;
     const displayName = modal.dataset.displayName || "";
     const boardCheck = document.getElementById("resume-board-check");
