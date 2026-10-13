@@ -147,7 +147,127 @@ const contrast = (a, b) => {
         assert.match(access('m4'), /Effective: View/, "the hub's effective_mode wins over the computed one");
         assert.equal(r['server-row-m4'].raise, null, 'no Raise to an unknown machine mode');
         assert.ok(Object.values(r).every(x => x.tabindex === '-1'), 'rows are focus targets (tabindex=-1)');
+        // Raising to Launch asks first (#3115). Every way out but 'Raise to Launch' sends nothing.
+        const dlgState = () => ev(`(() => {
+            const d = document.querySelectorAll('dialog.cs-confirm');
+            const x = d[0]; if (!x) return { n: 0 };
+            const by = id => (document.getElementById(x.getAttribute(id)) || {}).textContent || null;
+            return { n: d.length, open: x.open, modal: x.matches(':modal'), title: by('aria-labelledby'), text: by('aria-describedby'),
+                focus: document.activeElement && document.activeElement.textContent, buttons: [...x.querySelectorAll('button')].map(b => b.textContent) };
+        })()`);
+        const raiseM1 = async () => {
+            await ev(`document.querySelector('#server-row-m1 .cs-raise').click(); true`);
+            await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
+        };
+        const noDialog = what => waitFor(`!document.querySelector('dialog.cs-confirm')`, `the dialog gone after ${what}`, 3000);
+        const settled = () => ev(`new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => r(true))))`);
+        // After a cancel the row re-renders; focus goes back to the control the user came from, not the heading.
+        const focusIs = (sel, what) => waitFor(`document.activeElement === document.querySelector(${JSON.stringify(sel)})`, what, 3000,
+            `(() => { const a = document.activeElement; return a ? a.tagName + '#' + a.id + '.' + a.className : null; })()`);
+        await raiseM1();
+        let d = await dlgState();
+        assert.equal(d.n, 1, 'one dialog');
+        assert.ok(d.open && d.modal, 'a modal dialog (showModal)');
+        assert.equal(d.title, 'Allow Box One to launch agents from the Cloud Hub?', 'aria-labelledby names the server');
+        assert.equal(d.text, 'This lets the hub start new processes on that machine.', 'aria-describedby says what Launch allows');
+        assert.deepEqual(d.buttons, ['Cancel', 'Raise to Launch']);
+        assert.equal(d.focus, 'Cancel', 'Cancel has focus, so Enter does not raise');
+        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
+        await noDialog('Cancel');
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [], 'Cancel sends nothing');
+        await focusIs('#server-row-m1 .cs-raise', 'focus back on Raise after Cancel');
+        assert.ok(await ev(`!!document.querySelector('#server-row-m1 .cs-raise')`), 'Raise is still offered after Cancel');
+
+        await raiseM1();
+        await client.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await client.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+        await noDialog('Escape');
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [], 'Escape sends nothing');
+        await focusIs('#server-row-m1 .cs-raise', 'focus back on Raise after Escape');
+
+        await raiseM1();
+        await ev(`document.querySelector('dialog.cs-confirm').close(); true`);
+        await noDialog('close()');
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [], 'closing the dialog any other way sends nothing');
+        await focusIs('#server-row-m1 .cs-raise', 'focus back on Raise after close()');
+
+        // A double click on Raise gives one dialog; a double click on 'Raise to Launch' one PATCH.
+        await ev(`(() => { const b = document.querySelector('#server-row-m1 .cs-raise'); b.click(); b.click(); return true; })()`);
+        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
+        assert.equal((await dlgState()).n, 1, 'a double click on Raise opens one dialog');
+        await ev(`(() => { const b = [...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch'); b.click(); b.click(); return true; })()`);
+        await waitFor(`window.__patches.length > 0`, 'the PATCH', 3000);
+        await noDialog('confirm');
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'a double click on Raise to Launch sends one PATCH');
+        // Put m1 back for the rest of the suite.
+        await ev(`(async () => { window.__qaServers.find(s => s.id === 'm1').access_mode = 'view'; window.__patches = []; const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); await cs.renderCloudServersInto(document.getElementById('servers-tab-body')); return true; })()`);
+        await waitFor(`!!document.querySelector('#server-row-m1 .cs-raise')`, 'Raise back on m1', 3000);
+
+        // The Access select goes through the same gate: only a raise TO Launch asks.
+        const pick = (id, mode) => ev(`(() => { const s = document.querySelector('#server-row-${id} select'); s.value = ${JSON.stringify(mode)}; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+        const selectOf = id => ev(`document.querySelector('#server-row-' + ${JSON.stringify(id)} + ' select').value`);
+        await pick('m1', 'interact');
+        await waitFor(`window.__patches.length > 0`, 'the Interact PATCH', 3000);
+        await settled();
+        assert.equal((await dlgState()).n, 0, 'raising to Interact does not ask');
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'interact' } }], 'select Interact: one PATCH, no dialog');
+        await waitFor(`document.querySelector('#server-row-m1 select').value === 'interact'`, 'm1 at Interact', 3000);
+        await ev(`window.__patches = []; true`);
+        await pick('m1', 'launch');
+        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation from the select', 3000);
+        assert.equal((await dlgState()).title, 'Allow Box One to launch agents from the Cloud Hub?');
+        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
+        await noDialog('Cancel from the select');
+        await waitFor(`document.querySelector('#server-row-m1 select').value === 'interact'`, 'the select back on the current mode', 3000);
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [], 'select Launch then Cancel: nothing sent');
+        assert.equal(await selectOf('m1'), 'interact', 'select Launch then Cancel: the select shows the current mode again');
+        await focusIs('#server-row-m1 .cs-launch select', 'focus back on the Access select after Cancel');
+        // Lowering never asks.
+        await pick('m3', 'view');
+        await waitFor(`window.__patches.length > 0`, 'the lowering PATCH', 3000);
+        await settled();
+        assert.equal((await dlgState()).n, 0, 'lowering from Launch does not ask');
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'view' } }]);
+        // ...and raising it back through the select asks, and confirming sends exactly that.
+        await waitFor(`document.querySelector('#server-row-m3 select').value === 'view'`, 'm3 at View', 3000);
+        await ev(`window.__patches = []; true`);
+        await pick('m3', 'launch');
+        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation for m3', 3000);
+        assert.equal((await dlgState()).title, 'Allow Box Three to launch agents from the Cloud Hub?', 'the dialog names the server whose select changed');
+        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
+        await waitFor(`window.__patches.length > 0`, 'the m3 PATCH', 3000);
+        await settled();
+        assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'launch' } }], 'select Launch then confirm: one PATCH');
+        // Put m1 back to View for the original Raise check below.
+        await ev(`(async () => { window.__qaServers.find(s => s.id === 'm1').access_mode = 'view'; window.__patches = []; const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); await cs.renderCloudServersInto(document.getElementById('servers-tab-body')); return true; })()`);
+        await waitFor(`!!document.querySelector('#server-row-m1 .cs-raise') && document.querySelector('#server-row-m3 select').value === 'launch'`, 'm1 back at View, m3 at Launch', 3000);
+
+        // The label is text, never markup; exactly one callback runs.
+        const xss = await ev(`(async () => {
+            const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js');
+            const calls = [];
+            const dlg = cs.confirmLaunch('<img src=x onerror="window.__qaXss=1">', () => calls.push('yes'), () => calls.push('no'));
+            const r = { img: !!dlg.querySelector('img'), title: dlg.querySelector('h3').textContent };
+            dlg.querySelector('button').click();
+            dlg.close();
+            await new Promise(res => setTimeout(res, 0));
+            return { ...r, calls, xss: !!window.__qaXss };
+        })()`);
+        assert.equal(xss.img, false, 'a label with markup renders no element');
+        assert.equal(xss.title, 'Allow <img src=x onerror="window.__qaXss=1"> to launch agents from the Cloud Hub?');
+        assert.equal(xss.xss, false);
+        assert.deepEqual(xss.calls, ['no'], 'Cancel then close(): exactly one callback');
+        console.log('   ✓ Launch confirmation: modal, labelled, Cancel focused; Cancel/Escape/close send nothing and focus returns to Raise/the select; one dialog and one PATCH on double clicks; select Interact and lowering never ask; select Launch asks and Cancel restores it; label is text');
+
         await ev(`document.querySelector('#server-row-m1 .cs-raise').click(); true`);
+        // Raising to Launch asks first (#3115); confirm it.
+        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
+        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
         await waitFor(`window.__patches.length > 0`, 'the PATCH', 3000);
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'Raise sends PATCH /api/servers/m1 {access_mode: launch}');
         await waitFor(`!document.querySelector('#server-row-m1 .cs-raise')`, 'Raise gone once the hub allows Launch', 6000);

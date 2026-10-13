@@ -93,3 +93,10 @@ body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
 @media (pointer: coarse) {
     .cloud-card input, .cloud-card select, .cloud-btn { min-height: var(--control-touch-height, 44px); }
 }
+
+/* Confirm before raising a server to Launch (#3115) */
+dialog.cs-confirm { margin: auto; /* the base reset's margin:0 would pin it top-left */ width: min(420px, calc(100vw - 32px)); box-sizing: border-box; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-secondary); color: var(--text-primary); }
+dialog.cs-confirm::backdrop { background: rgba(0, 0, 0, .55); }
+dialog.cs-confirm h3 { margin: 0 0 8px; font-size: var(--fs-md, 15px); overflow-wrap: anywhere; }
+dialog.cs-confirm p { margin: 0 0 16px; color: var(--text-secondary); font-size: var(--fs-sm, 13px); }
+.cs-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }

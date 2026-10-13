@@ -76,6 +76,49 @@ async function call(id, method, body) {
     await load();
 }
 
+/** Ask before raising a server's hub mode to Launch (#3115): Launch lets the hub
+ *  start processes on that machine. A modal <dialog> with Cancel focused; Escape,
+ *  Cancel and closing all count as no. Exactly one of the callbacks runs. */
+export function confirmLaunch(label, onConfirm, onCancel) {
+    document.querySelectorAll('dialog.cs-confirm').forEach(d => d.remove());
+    const cancel = h('button', { type: 'button', className: 'btn', text: 'Cancel', autofocus: true });
+    const ok = h('button', { type: 'button', className: 'btn btn-primary', text: 'Raise to Launch' });
+    const dlg = h('dialog', { className: 'cs-confirm', 'aria-labelledby': 'cs-confirm-title', 'aria-describedby': 'cs-confirm-text' },
+        h('h3', { id: 'cs-confirm-title', text: `Allow ${label} to launch agents from the Cloud Hub?` }),
+        h('p', { id: 'cs-confirm-text', text: 'This lets the hub start new processes on that machine.' }),
+        h('div', { className: 'cs-confirm-actions' }, cancel, ok));
+    let done = false;
+    const finish = (yes) => {
+        if (done) return;
+        done = true;
+        if (dlg.open) dlg.close();
+        dlg.remove();
+        if (yes) onConfirm(); else if (onCancel) onCancel();
+    };
+    cancel.addEventListener('click', () => finish(false));
+    ok.addEventListener('click', () => finish(true));
+    dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(false); }); // Escape
+    dlg.addEventListener('close', () => finish(false));
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    cancel.focus();
+    return dlg;
+}
+
+/** Change a server's hub mode; raising it to Launch asks first. A cancelled
+ *  change re-renders, so the Access select shows the current mode again, and
+ *  focus goes back to the control the user came from (`via`: 'raise' or 'select'). */
+function setHubMode(s, mode, legacy, via) {
+    const send = () => call(s.id, 'PATCH', legacy ? { allow_launch: mode === 'launch' } : { access_mode: mode });
+    if (mode !== 'launch' || hubMode(s) === 'launch') { send(); return; }
+    confirmLaunch(s.label || 'this server', send, () => {
+        render();
+        const r = document.getElementById(rowId(s.id));
+        const back = r && (r.querySelector(via === 'select' ? '.cs-launch select' : '.cs-raise') || r);
+        if (back) back.focus();
+    });
+}
+
 export const MODES = ['view', 'interact', 'launch'];
 
 export const MODE_INFO = {
@@ -201,7 +244,7 @@ function row(s) {
     const picker = h('label', { className: 'cs-meta cs-launch' }, 'Access ',
         h('select', {
             disabled: isBusy, 'aria-label': 'Access mode', value: mode,
-            onchange: e => call(s.id, 'PATCH', legacy ? { allow_launch: e.target.value === 'launch' } : { access_mode: e.target.value }),
+            onchange: e => setHubMode(s, e.target.value, legacy, 'select'),
         }, MODES.map(m => h('option', { value: m, selected: m === mode, text: MODE_INFO[m].label }))));
     const modeText = h('div', { className: 'cs-meta', text: MODE_INFO[mode].text });
     // C1: what each side allows and what applies. The hub's effective_mode and
@@ -217,7 +260,7 @@ function row(s) {
     // The hub is what holds this server back: one click raises it to what the machine allows.
     const raise = limitedBy === 'hub' && machine && rank(machine) > rank(mode) && !legacy
         ? h('button', { type: 'button', className: 'btn btn-small btn-primary cs-raise', disabled: isBusy,
-            text: `Raise hub mode to ${MODE_INFO[machine].label}`, onclick: () => call(s.id, 'PATCH', { access_mode: machine }) })
+            text: `Raise hub mode to ${MODE_INFO[machine].label}`, onclick: () => setHubMode(s, machine, false, 'raise') })
         : null;
     const launch = h('div', {}, access, raise, picker, modeText);
     const actions = confirming === s.id
