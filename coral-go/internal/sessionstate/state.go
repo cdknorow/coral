@@ -137,6 +137,15 @@ var awaitingUserPhrases = []string{
 	"waiting for input",
 }
 
+// IsApprovalRequest reports whether a request is a tool permission or approval
+// prompt ("needs your permission" / "needs your approval"), as opposed to an
+// input dialog ("needs your input", MCP elicitation) that only the user answers.
+// Auto-accept answers only the former (#3182).
+func IsApprovalRequest(summary string) bool {
+	text := strings.ToLower(summary)
+	return strings.Contains(text, "needs your permission") || strings.Contains(text, "needs your approval")
+}
+
 // Classify maps a notification summary to its effect on the session state.
 func Classify(summary string) NotificationClass {
 	text := strings.ToLower(summary)

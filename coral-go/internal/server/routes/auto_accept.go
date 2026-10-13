@@ -19,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -324,15 +325,26 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 		pending = &t
 	}
 	if s.AgentType == at.Claude {
-		// Claude reports its permission prompts; without that request nothing
-		// on screen is answered.
-		if !a.h.deriveSingleSessionState(ctx, s.SessionID, 0).NeedsInput {
+		// Claude reports its permission prompts. Only an open request whose
+		// latest notification is a permission/approval one is answered: never
+		// "needs your input" (an MCP input dialog, a question), whatever the
+		// screen shows.
+		st := a.h.deriveSingleSessionState(ctx, s.SessionID, 0)
+		if !st.NeedsInput || !sessionstate.IsApprovalRequest(st.WaitingSummary) {
 			return
 		}
 	}
 	capture := a.capture(ctx, s)
 	d := classifyApproval(s.AgentType, capture)
 	if !d.Prompt {
+		return
+	}
+	if s.AgentType == at.Claude && pending == nil {
+		// Claude sends PreToolUse before every permission prompt; without it the
+		// tool is unknown (the hook failed, or Coral restarted while the prompt
+		// was open: the record is kept in memory), so it can be neither checked
+		// against the high-risk list nor told apart from a question.
+		a.skip(ctx, s, d.FP, "Not auto-accepted: the tool is unknown", nil)
 		return
 	}
 	if pending != nil {

@@ -247,6 +247,7 @@ func TestAutoAcceptClaudePermissionPrompt(t *testing.T) {
 	assert.Empty(t, r.keys(at.Claude, sid), "off: nothing is answered")
 
 	r.enable("dev", sid)
+	r.h.pending.set(sid, pendingTool{ToolName: "Bash", Input: map[string]any{"command": "touch probe.txt"}, At: r.now})
 	r.run()
 	assert.Equal(t, []string{"1"}, r.keys(at.Claude, sid), "the approve-once option")
 	ev := r.events(sid, "auto_accept")
@@ -307,7 +308,7 @@ func TestAutoAcceptNeverAnswersQuestionsPlansOrRisks(t *testing.T) {
 			sid := r.agent(at.Claude, "dev", tc.screen)
 			r.enable("dev", sid)
 			r.h.pending.set(sid, pendingTool{ToolName: tc.tool, Input: tc.input, At: r.now})
-			r.notify("dev", sid, "Notification: Claude needs your input")
+			r.notify("dev", sid, "Notification: Claude needs your permission to use "+tc.tool)
 			for i := 0; i < 3; i++ {
 				r.run()
 				r.now = r.now.Add(5 * time.Second)
@@ -750,4 +751,50 @@ func TestAutoAcceptFieldsHideStaleLimit(t *testing.T) {
 	f := autoAcceptFields(at.Claude, st)
 	assert.Nil(t, f["auto_accept_until"])
 	assert.Nil(t, f["auto_accept_source"])
+}
+
+// QA's #3182 scenarios: for Claude only a permission/approval request with a
+// PreToolUse record is answered. An MCP input dialog ("needs your input") with
+// a Yes/No screen is not; a permission prompt without the record is not (one
+// skipped event: the tool is unknown), which also covers a Coral restart with
+// a question-shaped prompt open (the record is kept in memory).
+func TestAutoAcceptClaudeNeedsAnApprovalRequestAndAPendingTool(t *testing.T) {
+	yesNo := " Do you want to proceed?\n ❯ 1. Yes\n   2. No\n"
+	r := newAutoAcceptRig(t)
+
+	mcp := r.agent(at.Claude, "mcp", yesNo)
+	r.enable("mcp", mcp)
+	r.h.pending.set(mcp, pendingTool{ToolName: "mcp__deploy__run", Input: map[string]any{"env": "prod"}, At: r.now})
+	r.notify("mcp", mcp, "Notification: Claude needs your input")
+	r.run()
+	assert.Empty(t, r.keys(at.Claude, mcp), "an input dialog is never answered")
+	// A permission request after it is the latest: answered.
+	r.notify("mcp", mcp, "Notification: Claude needs your permission to use mcp__deploy__run")
+	r.run()
+	assert.Equal(t, []string{"1"}, r.keys(at.Claude, mcp))
+
+	bare := r.agent(at.Claude, "bare", autoAcceptScreen(t, "claude_bash"))
+	r.enable("bare", bare)
+	r.notify("bare", bare, "Notification: Claude needs your permission to use Bash")
+	for i := 0; i < 3; i++ {
+		r.run()
+		r.now = r.now.Add(2 * time.Minute)
+	}
+	assert.Empty(t, r.keys(at.Claude, bare), "no PreToolUse record: not answered")
+	skipped := r.events(bare, "auto_accept_skipped")
+	require.Len(t, skipped, 1)
+	assert.Equal(t, "Not auto-accepted: the tool is unknown", skipped[0].Summary)
+
+	// After a restart: a question-shaped Yes/No is open, its notification is
+	// in the log, the in-memory PreToolUse record is gone.
+	q := r.agent(at.Claude, "q", yesNo)
+	r.enable("q", q)
+	r.notify("q", q, "Notification: Claude needs your input")
+	after := NewAutoAcceptor(r.h)
+	after.now = func() time.Time { return r.now }
+	after.Start(context.Background())
+	after.RunOnce(context.Background())
+	r.notify("q", q, "Notification: Claude needs your permission to use AskUserQuestion")
+	after.RunOnce(context.Background())
+	assert.Empty(t, r.keys(at.Claude, q), "never answered after a restart either")
 }

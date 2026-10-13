@@ -185,3 +185,18 @@ func TestDeriveArchivedNeverWaits(t *testing.T) {
 		t.Fatalf("a sleeping (not archived) agent keeps its pending request: %+v", sleeping)
 	}
 }
+
+func TestIsApprovalRequest(t *testing.T) {
+	for summary, want := range map[string]bool{
+		permission:  true,
+		approval:    true,
+		elicitation: false,
+		idle:        false,
+		login:       false,
+		"Notification: Claude NEEDS YOUR PERMISSION to use Bash": true,
+	} {
+		if got := IsApprovalRequest(summary); got != want {
+			t.Errorf("IsApprovalRequest(%q) = %v, want %v", summary, got, want)
+		}
+	}
+}
