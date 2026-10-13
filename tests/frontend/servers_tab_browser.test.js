@@ -244,7 +244,8 @@ const contrast = (a, b) => {
         await settled();
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm3', body: { access_mode: 'launch' } }], 'select Launch then confirm: one PATCH');
         // Put m1 back to View for the original Raise check below.
-        await ev(`(async () => { window.__qaServers.find(s => s.id === 'm1').access_mode = 'view'; window.__patches = []; const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); await cs.renderCloudServersInto(document.getElementById('servers-tab-body')); return true; })()`);
+        // The stub row is reset behind the app's back, so drop the access cache too: since #3138 the app re-reads it after each change (it would still hold m1 at Interact from the PATCH above).
+        await ev(`(async () => { window.__qaServers.find(s => s.id === 'm1').access_mode = 'view'; window.__patches = []; const cs = await import((window.__coralStatic || '/static/') + 'cloud_servers.js'); cs.invalidateServerAccess(); await cs.renderCloudServersInto(document.getElementById('servers-tab-body')); return true; })()`);
         await waitFor(`!!document.querySelector('#server-row-m1 .cs-raise') && document.querySelector('#server-row-m3 select').value === 'launch'`, 'm1 back at View, m3 at Launch', 3000);
 
         // The label is text, never markup; exactly one callback runs.

@@ -17,10 +17,18 @@ const BASE = require('./test_base').BASE;
 
 // Installed after the harness PRELOAD: /api/servers from window.__qaServers, and a fake terminal socket.
 const CLOUD_PRELOAD = `(() => {
-    window.__qaServers = { rows: [], delay: 0, fail: false, resolved: [] };
+    window.__qaServers = { rows: [], delay: 0, fail: false, resolved: [], patches: [] };
     window.__wsSent = []; window.__wsTerm = null;
     const inner = window.fetch;
     window.fetch = (url, opts) => {
+        const path = new URL(String(url), location.origin).pathname;
+        if (path.startsWith('/api/servers/') && opts && opts.method === 'PATCH') { // a Servers-tab change: applied to the stub rows (#3138)
+            const q = window.__qaServers, body = JSON.parse(opts.body || '{}'), id = decodeURIComponent(path.slice('/api/servers/'.length));
+            q.patches.push({ id, body });
+            const r = q.rows.find(x => x.id === id);
+            if (r && body.access_mode) r.access_mode = body.access_mode;
+            return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } }));
+        }
         if (new URL(String(url), location.origin).pathname === '/api/servers') {
             const q = window.__qaServers;
             const body = q.fail ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ servers: q.rows }), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -237,6 +245,43 @@ const CLOUD_PRELOAD = `(() => {
         c = await chip();
         assert.ok(c.shown, `the hub's frame still holds after the slower Servers lookup resolves (${JSON.stringify(c)})`);
         console.log('   ✓ frame state survives a late Interact lookup');
+
+        console.log('7. The user raising the server in the Servers tab re-decides the open agent (no reselect needed)');
+        // (a) The hub limits (View) and the machine allows Launch: Raise -> effective Launch -> the lock clears.
+        await setServers([row('m6', 'view', 'launch'), row('m7', 'view', 'view')]);
+        await ev(`window.__m.add('raised', 'R', 3, { sleeping: false, server: 'm6' }); true`);
+        await ev(`window.selectLiveSession('raised', 'claude', 'raised-id', 'm6'); true`);
+        await waitFor(`window.__wsTerm && window.__wsTerm.url.includes('raised-id') && window.__wsTerm.readyState === 1`, 'raised socket', 3000);
+        await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); window.__sessBefore = T.state.currentSession; true`);
+        await waitFor(`!!(T.state.currentSession.hubReadOnly && T.state.currentSession.hubReadOnly.fromFrame)`, 'the frame lock', 3000);
+        await ev(`window.switchNavTab('servers'); true`);
+        await waitFor(`!!document.querySelector('#server-row-m6 .cs-raise')`, 'the Raise button for m6', 5000);
+        await ev(`document.querySelector('#server-row-m6 .cs-raise').click(); true`);
+        await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
+        await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
+        await waitFor(`T.state.currentSession.hubReadOnly === null`, 'the lock clearing after the raise', 5000);
+        const a = await ev(`({ same: T.state.currentSession === window.__sessBefore, chipHidden: document.getElementById('hub-readonly-chip').hidden, patches: window.__qaServers.patches })`);
+        assert.ok(a.same, 'the same session object: no reselect');
+        assert.ok(a.chipHidden, 'the read-only chip is gone');
+        assert.deepEqual(a.patches, [{ id: 'm6', body: { access_mode: 'launch' } }], 'one PATCH: m6 -> launch');
+        console.log('   ✓ raise to an effective Launch clears the frame lock on the open agent, no reselect');
+
+        // (b) The machine's own limit keeps the effective mode at View: the lock stays, now saying why.
+        await ev(`window.switchNavTab('agents'); window.__qaServers.patches = []; true`);
+        await ev(`window.__m.add('capped', 'C', 3, { sleeping: false, server: 'm7' }); true`);
+        await ev(`window.selectLiveSession('capped', 'claude', 'capped-id', 'm7'); true`);
+        await waitFor(`window.__wsTerm && window.__wsTerm.url.includes('capped-id') && window.__wsTerm.readyState === 1`, 'capped socket', 3000);
+        await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); true`);
+        await waitFor(`!!(T.state.currentSession.hubReadOnly && T.state.currentSession.hubReadOnly.fromFrame)`, 'the frame lock on m7', 3000);
+        await ev(`window.switchNavTab('servers'); true`);
+        await waitFor(`!!document.querySelector('#server-row-m7 .cs-launch select')`, 'the Access select for m7', 5000);
+        await ev(`(() => { const s = document.querySelector('#server-row-m7 .cs-launch select'); s.value = 'interact'; s.dispatchEvent(new Event('change')); return true; })()`);
+        await waitFor(`window.__qaServers.patches.length === 1 && T.state.currentSession.hubReadOnly && /This machine/.test(T.state.currentSession.hubReadOnly.chip)`, 'the lock re-explained by the machine limit', 5000);
+        const b = await ev(`({ ro: T.state.currentSession.hubReadOnly, chip: document.getElementById('hub-readonly-chip').textContent })`);
+        assert.equal(b.ro.fromFrame, true, 'still frame-sticky: a later lookup still cannot clear it');
+        assert.equal(b.chip, 'Read-only: This machine: View', 'the chip names the machine limit');
+        assert.match(b.ro.message, /Change it in Coral on that machine/, 'the refusal says where to change it');
+        console.log('   ✓ machine-limited (effective View): the lock stays and names the machine limit');
 
         console.log('\nAll hub read-only checks passed');
     } finally {

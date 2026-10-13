@@ -69,6 +69,20 @@ export async function refreshHubAccess(session) {
     setHubReadOnly(session, a && !a.mayInteract ? a : null);
 }
 
+/** The user changed `serverId`'s access in the Servers tab, and `a` is a fresh
+ *  lookup made after it (#3138). A frame-set read-only state otherwise stays until
+ *  reselect (#3125); the user's own successful change is the one thing that
+ *  re-decides it: an effective mode of Interact or more clears it, anything less
+ *  keeps the lock with the lookup's reason (for example the machine's own limit).
+ *  A failed lookup changes nothing. If the hub still refuses, it re-sends
+ *  hub_read_only on the next dropped input, so the dashboard can't stay wrongly writable. */
+export function accessChanged(serverId, a) {
+    const session = state.currentSession;
+    if (!a || !session || session.type !== 'live' || !isCloud() || sessionServer(session) !== serverId) return;
+    if (a.mayInteract) setHubReadOnly(session, null);
+    else setHubReadOnly(session, a, 'interact', !!(session.hubReadOnly && session.hubReadOnly.fromFrame));
+}
+
 /** The hub said so on the terminal socket: {type: "hub_read_only", required, hub_mode}. */
 export function applyHubReadOnlyFrame(frame) {
     const session = state.currentSession;

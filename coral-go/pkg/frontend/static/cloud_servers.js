@@ -18,7 +18,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount } from './server_status.js';
-import { accessBlockedMessage } from './hub_access.js';
+import { accessBlockedMessage, accessChanged } from './hub_access.js';
 
 // The Servers tab (#3070) hosts this list; there is no separate dialog.
 let host = null;
@@ -66,15 +66,20 @@ async function load() {
 
 async function call(id, method, body) {
     busy.add(id); render();
+    const accessChange = method === 'PATCH' && !!body && ('access_mode' in body || 'allow_launch' in body);
+    let changed = false;
     try {
         const r = await fetch(`/api/servers/${encodeURIComponent(id)}`, {
             method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
         });
         if (!r.ok) loadError = r.status === 404 ? 'That server no longer exists.' : 'The change was not saved.';
-        else { loadError = ''; invalidateServerAccess(); }
+        else { loadError = ''; invalidateServerAccess(); changed = accessChange; }
     } catch { loadError = 'Could not reach the hub.'; }
     busy.delete(id);
     await load();
+    // An agent already open on this server re-decides its read-only state from a
+    // fresh lookup: the effective mode, not the hub setting alone (#3138).
+    if (changed) accessChanged(id, await serverAccess(id));
 }
 
 /** Ask before raising a server's hub mode to Launch (#3115): Launch lets the hub
