@@ -770,6 +770,16 @@ func (h *RemoteAgentHub) ReportFailure(ctx context.Context, id, status, msg stri
 	st.kick()
 	h.mu.Unlock()
 	_ = h.reg.SetStatus(ctx, id, status, msg)
+	// A probe may have finished between the unlock and the write: it wrote its own
+	// status (say online) and recorded that the row says so, and this write then put
+	// the failure back in the row. Record what the row really says now, so the next
+	// probe sees the mismatch and corrects the row at once.
+	h.mu.Lock()
+	if st, ok := h.current(id); ok && st.status != status {
+		st.srv.Status = status
+		st.kick()
+	}
+	h.mu.Unlock()
 	if changed {
 		h.notify()
 	}

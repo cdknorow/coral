@@ -100,3 +100,49 @@ func TestRemoteFailureWritesAreCoalesced(t *testing.T) {
 func TestRemoteSeenWriteInterval(t *testing.T) {
 	assert.Equal(t, time.Minute, remoteSeenWriteEvery)
 }
+
+// hookRegistry runs before, once, just before a write of status lands: what
+// another goroutine does between ReportFailure's unlock and its row write.
+type hookRegistry struct {
+	*countingRegistry
+	status string
+	before func()
+}
+
+func (h *hookRegistry) SetStatus(ctx context.Context, id, status, msg string) error {
+	if f := h.before; f != nil && status == h.status {
+		h.before = nil
+		f()
+	}
+	return h.countingRegistry.SetStatus(ctx, id, status, msg)
+}
+
+func (h *hookRegistry) row(id string) string {
+	h.fakeRegistry.mu.Lock()
+	defer h.fakeRegistry.mu.Unlock()
+	return h.fakeRegistry.status[id]
+}
+
+// A probe that finishes while a proxied failure is being written (its online
+// write lands first, the failure write last) leaves the row saying unreachable.
+// The worker must notice and correct the row on its next probe, not on the
+// once-a-minute write (#3202 review).
+func TestReportFailureRaceWithAProbeIsCorrected(t *testing.T) {
+	h, counting := newWriteTestHub(t, time.Hour) // no periodic write to hide behind
+	ctx := context.Background()
+	reg := &hookRegistry{countingRegistry: counting, status: store.RemoteStatusUnreachable}
+	h.reg = reg
+	h.remotes["a"] = newRemoteState()
+	h.remotes["a"].srv = store.RemoteServer{ID: "a"}
+	h.remotes["a"].cancel = func() {} // a worker runs
+	h.recordAlive(ctx, "a")
+	reg.take()
+
+	// The probe finishes between ReportFailure's unlock and its write.
+	reg.before = func() { h.recordAlive(ctx, "a") }
+	assert.True(t, h.ReportFailure(ctx, "a", store.RemoteStatusUnreachable, "connect failed"))
+	assert.Equal(t, store.RemoteStatusUnreachable, reg.row("a"), "the late write left the row failed")
+
+	h.recordAlive(ctx, "a") // the next probe
+	assert.Equal(t, store.RemoteStatusOnline, reg.row("a"), "corrected at once")
+}
