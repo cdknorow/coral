@@ -3,6 +3,8 @@ import { state } from './state.js';
 import { addPendingMessage } from './live_chat.js';
 import { serverFetch, serverForSession, isCloud } from './server_base.js';
 import { createPanelFrame, openPanel, isPanelEvent, createEventThrottle, MAX_PANEL_BYTES, MAX_PANELS } from './panel_sandbox.js';
+import { sessionUnreachable, backoffBlocked, backoffRecord } from './remote_health.js';
+import { responseErrorText } from './server_status.js';
 
 let session = null;
 let generation = 0;
@@ -103,11 +105,15 @@ export async function refreshAgentUI() {
     }
     if (!sid) { container.textContent = 'Select a live agent to see its UI.'; return; }
     if (busy) return;
+    // Not while the agent's server is unreachable; back off after gateway errors (#3151).
+    const srv = serverForSession(null, sid);
+    if (sessionUnreachable(state.currentSession) || backoffBlocked('ui:' + srv)) return;
     busy = true;
     const token = generation;
     try {
-        const response = await serverFetch(serverForSession(null, sid), endpoint(sid));
-        if (!response.ok) throw new Error(`Unable to load agent UI (${response.status})`);
+        const response = await serverFetch(srv, endpoint(sid));
+        backoffRecord('ui:' + srv, response.ok ? 200 : response.status);
+        if (!response.ok) throw new Error(await responseErrorText(response, srv, `Unable to load agent UI (HTTP ${response.status}).`));
         let allPanels = await response.json();
         if (token !== generation || sid !== currentID()) return;
         // On the hub at most MAX_PANELS panels per agent are shown (the newest), however many the machine lists.

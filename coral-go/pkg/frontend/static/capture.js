@@ -9,6 +9,7 @@ import { renderEventTimeline } from './agentic_state.js';
 import { getTerminalCols, isTerminalWsOpen } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
 import { serverFetch, currentServer, isCloud } from './server_base.js';
+import { sessionUnreachable, liveViewShown, backoffBlocked, backoffRecord } from './remote_health.js';
 
 let _refreshCaptureHasRun = false;
 
@@ -97,6 +98,11 @@ export async function refreshCapture() {
     // subsequent polls and leaves the agentic state panel blank.
     if (!platform.isNative && document.hidden && _refreshCaptureHasRun) return;
     _refreshCaptureHasRun = true;
+    // Nothing to poll while the agent's server is unreachable or the agent view is not
+    // on screen; after gateway errors, back off (#3151). The feed says when it is back.
+    if (sessionUnreachable(state.currentSession) || !liveViewShown()) return;
+    const backoffKey = 'poll:' + currentServer();
+    if (backoffBlocked(backoffKey)) return;
 
     try {
         const params = new URLSearchParams();
@@ -106,7 +112,12 @@ export async function refreshCapture() {
 
         // Single batch endpoint replaces separate capture + tasks + events calls
         const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/poll${qs}`);
-        if (!resp.ok) throw new Error(`poll failed: ${resp.status}`);
+        const gateway = backoffRecord(backoffKey, resp.ok ? 200 : resp.status);
+        if (!resp.ok) {
+            if (gateway) { if (!_gatewayLogged) { _gatewayLogged = true; console.warn(`capture poll: server not reachable (${resp.status}); backing off`); } return; }
+            throw new Error(`poll failed: ${resp.status}`);
+        }
+        _gatewayLogged = false;
         const data = await resp.json();
 
         // ── Capture ──
@@ -149,6 +160,7 @@ export async function refreshCapture() {
 }
 
 let _lastCaptureAt = 0;
+let _gatewayLogged = false;
 
 // One tick of the capture timer. The timer keeps its 500 ms beat so the fast pace is back within one beat of the
 // terminal socket dropping; while the socket is up most beats do nothing.

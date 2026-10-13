@@ -2218,3 +2218,16 @@
     font-size: var(--fs-sm, 11px); font-weight: 600; color: var(--accent); white-space: nowrap;
 }
 .server-update-marker.server-update-required { color: var(--warning); }
+
+/* The selected agent's server is unreachable (#3151) */
+.server-unreachable-banner {
+    margin: 8px 8px 0;
+    padding: 8px 12px;
+    border: 1px solid var(--warning, #d29922);
+    border-radius: 8px;
+    background: rgba(210, 153, 34, 0.10);
+    color: var(--text-primary);
+    font-size: var(--fs-sm, 13px);
+    line-height: 1.4;
+}
+.server-unreachable-banner[hidden] { display: none; }

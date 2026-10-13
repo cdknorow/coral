@@ -14,6 +14,7 @@ import { serverFetch, currentServer, serverForSession, sessionServer } from './s
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
 import { loadModals } from './lazy_panels.js';
+import { responseErrorText } from './server_status.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -139,9 +140,9 @@ export async function sendCommand() {
                 body: JSON.stringify({ command, agent_type: targetAgentType, session_id: sentSessionId }),
             });
             if (!resp.ok) {
-                const text = await resp.text();
-                showToast(`Server error ${resp.status}: ${text}`, true);
-                console.error("Send failed:", resp.status, text);
+                // Plain text naming the server; never the raw response (#3151). The draft stays.
+                showToast(await responseErrorText(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`), true);
+                console.error("Send failed:", resp.status);
                 return;
             }
             const result = await resp.json();
@@ -929,8 +930,7 @@ export async function uploadAndInsertImage(file, session = state.currentSession)
                 body: formData,
             });
             if (!resp.ok) {
-                const text = await resp.text();
-                showToast(`Failed to upload image: ${text || resp.status}`, true);
+                showToast(`Image not uploaded: ${await responseErrorText(resp, sessionServer(targetSession), `HTTP ${resp.status}`)}`, true);
                 return false;
             }
             const result = await resp.json();

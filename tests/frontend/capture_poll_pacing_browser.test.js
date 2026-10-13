@@ -33,6 +33,8 @@ const BASE = require('./test_base').BASE;
             };
             document.getElementById('pane-capture') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'pane-capture' }));
             state.currentSession = { type: 'live', name: 'pacing-agent', agent_type: 'terminal', session_id: 'pacing-sid', server: 'local' };
+            // Polls run only while the agent view is on screen (#3151), as after a real selection.
+            (await import((window.__coralStatic||'/static/')+'utils.js')).showView('live-session-view');
             xt.connectTerminalWs('pacing-agent', 'terminal', 'pacing-sid', 'local');
             const up = xt.isTerminalWsOpen();
             cap.startCaptureRefresh();

@@ -9,6 +9,7 @@
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud, sessionServer } from './server_base.js';
+import { sessionUnreachable, unreachableReason, backoffReset } from './remote_health.js';
 // utils.js is loaded on demand: these message builders stay importable from
 // pure-node tests (utils touches localStorage when it loads).
 const toast = (...args) => importOnce('./utils.js').then(u => u.showToast(...args));
@@ -98,7 +99,15 @@ export function applyHubReadOnlyFrame(frame) {
 /** True (after showing the reason unless silent) when the selected agent's
  *  server only allows viewing. Every terminal write path calls this first. */
 export async function hubBlocked(session, { silent = false } = {}) {
-    if (!session || !isCloud()) return false;
+    if (!session) return false;
+    // The agent's server is unreachable (any hub, not only the Cloud Hub): nothing
+    // can reach it, so refuse with the reason instead of a failed send (#3151).
+    const down = unreachableReason(session);
+    if (down) {
+        if (!silent) toast(down, true, 6000);
+        return true;
+    }
+    if (!isCloud()) return false;
     // The Servers list is cached for 15 s, so a raised mode is picked up; a
     // refusal the hub sent on the terminal socket stays until reselect.
     if (!(session.hubReadOnly && session.hubReadOnly.fromFrame)) await refreshHubAccess(session);
@@ -119,8 +128,31 @@ function showBlocked(ro) {
 let _lastKeyToast = 0;
 /** Synchronous check for keystrokes typed into the terminal (uses the known state). */
 export function hubBlocksKeystrokes() {
+    const down = unreachableReason(state.currentSession);
+    if (down) {
+        if (Date.now() - _lastKeyToast > 5000) { _lastKeyToast = Date.now(); toast(down, true, 6000); }
+        return true;
+    }
     const ro = state.currentSession && state.currentSession.hubReadOnly;
     if (!ro) return false;
     if (Date.now() - _lastKeyToast > 5000) { _lastKeyToast = Date.now(); showBlocked(ro); }
     return true;
+}
+
+// The agent-view banner for an unreachable server (#3151): the same reason as the
+// agent row's title, but visible on touch screens too. Called when an agent is
+// selected and on every feed update; when the server comes back it clears the
+// polls' back-off so they resume at once.
+let _bannerFor = null, _bannerDown = false;
+export function syncUnreachableBanner() {
+    const s = state.currentSession;
+    const live = !!(s && s.type === 'live');
+    const key = live ? `${sessionServer(s)}|${s.session_id}` : null;
+    const down = live && sessionUnreachable(s);
+    if (key === _bannerFor && _bannerDown && !down) backoffReset(sessionServer(s));
+    _bannerFor = key; _bannerDown = down;
+    const el = document.getElementById('server-unreachable-banner');
+    if (!el) return;
+    el.hidden = !down;
+    el.textContent = down ? unreachableReason(s) : '';
 }

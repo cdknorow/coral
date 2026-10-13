@@ -306,6 +306,41 @@ export function describeServerError(httpStatus, body) {
     return msg || `Request failed (HTTP ${httpStatus}).`;
 }
 
+// The hub's proxy answers a request it could not pass to a server with
+// {error, server} (pkg/hubproxy writeErr). Each known error gets a sentence that
+// names the server; nothing a server sent is echoed (#3151).
+const PROXY_ERRORS = {
+    'remote unreachable': l => `${l} is unreachable. Check that Coral is running there and that this hub can reach it.`,
+    'remote unavailable': l => `${l} is not available right now. Try again in a moment.`,
+    'remote key unreadable': l => `This hub cannot read the stored API key for ${l}. Enter the key again in Servers.`,
+    'remote rejected API key': l => `${l} rejected this hub's API key. Update the key in Servers.`,
+    'remote address not allowed': l => `${l}'s address is not allowed. If it is on your LAN or tailnet, allow private network for it in Servers.`,
+    'unknown server': l => `${l} is no longer registered with this hub.`,
+    'too_many_streams': l => `${l} is busy. Try again in a moment.`,
+};
+
+/** Plain text for a hub-proxy failure talking to `serverId`, or '' when the
+ *  response is not one (the caller then uses its own message). */
+export function proxyErrorMessage(httpStatus, body, serverId) {
+    const e = serverEntry(serverId);
+    const label = (e && (e.label || e.id)) || 'The server';
+    const code = body && typeof body === 'object' ? (body.error || body.code || '') : '';
+    if (typeof code === 'string' && PROXY_ERRORS[code]) return PROXY_ERRORS[code](label);
+    if (httpStatus === 502 || httpStatus === 503 || httpStatus === 504) return `${label} is not responding. Try again in a moment.`;
+    return '';
+}
+
+/** A plain sentence for a failed response: the proxy's mapped text, else the
+ *  body's own error string (never raw JSON), else `fallback`. Reads the body. */
+export async function responseErrorText(resp, serverId, fallback) {
+    let body = null;
+    try { body = await resp.clone().json(); } catch { /* not JSON */ }
+    const mapped = proxyErrorMessage(resp.status, body, serverId);
+    if (mapped) return mapped;
+    if (body && typeof body.error === 'string' && body.error.trim()) return body.error.trim();
+    return fallback;
+}
+
 /** Relative "x ago" for an RFC3339 timestamp; '' / 'never' for empty. */
 export function formatLastSeen(ts, now = Date.now()) {
     if (!ts) return 'never';
