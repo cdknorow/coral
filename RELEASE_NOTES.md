@@ -1,5 +1,44 @@
 # Release Notes
 
+## v1.4.3 — Kill all no longer kills team agents, a live feed that keeps up, and team artifacts that fit any panel
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release fixes a folder group's **Kill all** killing agents the group doesn't show, makes the dashboard react to agent changes at once, lists uploaded files with a team's task results, reworks the team artifacts panel for narrow windows, and brings the agent docs up to date with v1.4.x.
+
+### Faster
+
+- **Changes show up at once.** Launching, restarting, resuming, renaming, killing, sleeping, waking, archiving or unarchiving agents (one agent, a team, or all) now reaches every open dashboard within about 50 ms, instead of on the next poll of the live feed. A burst of changes, such as Sleep All, still costs one update.
+
+### New
+
+- **Uploaded files appear in Team Artifacts.** A team's artifact list now includes files its agents uploaded with `coral-agent artifact upload`, next to task results, newest first, including uploads from a member's earlier sessions. They show "No task" and source "upload" in Details, with Preview and Download.
+
+### Fixes
+
+- **Kill all on a folder group kills only the agents that group shows.** It used to kill every agent in that directory, including team members (listed under their team), archived agents and workflow-run agents, none of which the folder group lists. The confirmation now counts exactly the agents it will stop, and an active agent search narrows it the same way it narrows the list. A workflow group's **Kill all**, which did nothing before, now stops that workflow's agents.
+- **Team artifacts fit narrow panels.** The table shows Name, Type, Created and Actions, with Size and Task moved into each row's Details. There is no horizontal scrolling at any panel width or at 200% zoom. Below about 520 px only Name and Actions show, long names wrap to two lines (the full name is in the tooltip), and the actions stay on one row.
+- **Producer is shown in artifact Details.** It was blank for every artifact.
+- An untasked artifact with no readable name is called "Uploaded artifact" instead of "Task #0 artifact".
+- **API:** `GET /api/sessions/live/{name}/chat` (`after=0`) on an agent with no messages yet returns an empty page with `start: 0` instead of the poll shape, and rejects a bad `before=` there too. `POST /api/views` and `PUT /api/views/{id}` return the saved view with its real `created_at`/`updated_at` (they were empty), and `PUT` of a view that doesn't exist answers 404 `view not found`.
+
+### Docs
+
+- The agent docs (`coral-go/agent_docs`, also served in the app) are updated for v1.4.x and checked against the code: sleeping and archived agents, the `/send` and `/keys` exact-target rules and their error codes, chat history paging, the `/ws/coral` feed, hub and Cloud Hub behaviour, the board CLI's `--help` and option checks, cross-team messaging limits, artifacts and uploads, and dev-build versions. `GET /api/sessions/{id}/resolve` is now documented. Stale examples are fixed: artifact URIs use the bare hex id (`coral://artifacts/<hex>`), not the `sha256:` digest.
+
+### For contributors
+
+- `bash tests/stress/run.sh --kill-all` runs the folder Kill all check with real agents and the real dashboard on an isolated server. It fails on v1.4.2.
+- Pull requests that touch code the Cloud Hub depends on are labelled `cloud-hub-impact` and get one comment listing the watched files (`.github/workflows/hub-impact.yml`).
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.2.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- API users: `GET /api/board/{project}/artifacts` can now return upload rows: `source: "upload"`, `task_id: 0`, an empty `task_title`, `uri: "coral://artifacts/<hex>"`, and `produced_by` when known (otherwise `null`). Rows are deduplicated by id, and a task result wins over the same file as an upload.
+- API users: see **Fixes** for the `/chat` empty-transcript page and the views `PUT` 404.
+
 ## v1.4.2 — Sleeping agents keep their history, an Archived state for agents you are done with, and input that always names its agent
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release changes what you see for a sleeping agent, adds an Archived state that Wake All and team wake leave alone, and makes the input endpoints refuse anything that does not name its exact agent.
