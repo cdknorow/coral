@@ -392,6 +392,22 @@ body.panel-dragging .preview-pane {
     color: var(--text-secondary);
 }
 
+/* Editor / terminal library loading or failed to load (#3083, vendor_loader.js) */
+.vendor-load-notice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 16px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: var(--font-sans);
+}
+
+.vendor-load-notice.vendor-load-error {
+    color: var(--error);
+}
+
 /* ── xterm.js Container ────────────────────────────────────── */
 
 .xterm-container {

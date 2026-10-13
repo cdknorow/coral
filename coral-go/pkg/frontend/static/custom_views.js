@@ -5,6 +5,7 @@ import { escapeHtml, jsStr } from './utils.js';
 import { isCloud } from './server_base.js';
 import { lockFrame, sandboxedDoc } from './sandbox_frame.js';
 import { lockViewFrame, viewDocument, viewHostDocument, attachViewBridge, API_VIEW_SEES } from './view_sandbox.js';
+import { loadCodeMirror } from './vendor_loader.js';
 
 let _views = [];       // cached views from API
 let _cmEditor = null;  // CodeMirror editor for the view code
@@ -184,14 +185,19 @@ window._hideViewModal = function() {
     if (_cmEditor) { _cmEditor.destroy(); _cmEditor = null; }
 };
 
-function _initViewEditor(content) {
+let _editorGen = 0;
+
+async function _initViewEditor(content) {
     const container = document.getElementById('custom-view-editor');
     if (!container) return;
     container.innerHTML = '';
 
     if (_cmEditor) { _cmEditor.destroy(); _cmEditor = null; }
 
-    const cm = window.CoralCM;
+    // CodeMirror loads on first use (#3083). A newer open (another view) wins.
+    const gen = ++_editorGen;
+    const cm = await loadCodeMirror().catch(e => { console.error('[coral]', e); return null; });
+    if (gen !== _editorGen) return;
     if (cm) {
         _cmEditor = new cm.EditorView({
             state: cm.EditorState.create({

@@ -142,7 +142,7 @@ export function showAlertNotification(title, message, level = 'info', link = nul
             if (link.url.startsWith('docs://')) {
                 const docName = link.url.replace('docs://', '');
                 if (window.switchNavTab) window.switchNavTab('docs');
-                import('./docs.js').then(m => m.selectDoc(docName));
+                import('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
             } else if (link.url.startsWith('http')) {
                 window.open(link.url, '_blank');
             } else {
@@ -215,7 +215,12 @@ const FULL_WIDTH_VIEWS = new Set([
     "servers-view",
 ]);
 
+let _viewChanges = 0;
+/** How many times showView has run: a view that loads asynchronously compares it to tell whether another view was shown meanwhile. */
+export function viewChanges() { return _viewChanges; }
+
 export function showView(activeId) {
+    _viewChanges++;
     for (const id of VIEW_IDS) {
         const el = document.getElementById(id);
         if (el) el.style.display = id === activeId ? VIEW_DISPLAY[id] : "none";

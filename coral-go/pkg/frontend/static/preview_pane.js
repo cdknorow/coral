@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml } from './utils.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
+import { loadCodeMirror, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { makeDraggable } from './draggable.js';
 import { toggleStarFile, isFileStarred } from './changed_files.js';
 import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
@@ -496,6 +497,24 @@ async function _render(tab) {
         }
     }
 
+    if (tab.mode === 'edit' || tab.mode === 'diff') {
+        // CodeMirror loads on first use (#3083). A failed load shows Retry; the
+        // tab's unsaved text stays on tab.content.
+        if (!window.CoralCM) {
+            _setBody('');
+            const notice = showVendorLoading(body, 'the editor');
+            try {
+                await loadCodeMirror();
+            } catch (e) {
+                console.error('[coral]', e);
+                notice.remove();
+                if (current()) showVendorLoadError(body, 'The editor', () => { if (_activeId === tab.id) _render(tab); });
+                return;
+            }
+            notice.remove();
+            if (!current()) return;
+        }
+    }
     if (tab.mode === 'edit') {
         _mountEditor(tab, body);
     } else if (tab.mode === 'diff') {

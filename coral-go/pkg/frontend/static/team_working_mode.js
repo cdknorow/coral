@@ -125,7 +125,7 @@ export async function showTeamWorkingMode(team, options = {}) {
             event.preventDefault();
             const docName = docLink.dataset.doc;
             if (window.switchNavTab) window.switchNavTab('docs');
-            import('./docs.js').then(m => m.selectDoc(docName));
+            import('./lazy_panels.js').then(l => l.loadDocs()).then(m => m.selectDoc(docName)).catch(() => {});
         }
     });
 

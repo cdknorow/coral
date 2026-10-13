@@ -20,6 +20,7 @@ import { loadHistoryChanges } from './history_changes.js';
 import { stopLiveHistoryPoll, resetLiveHistory, applyLiveViewMode } from './live_chat.js';
 import { syncPaneWidth, resetSyncedCols } from './capture.js';
 import { disposeTerminal, createTerminal, connectTerminalWs, disconnectTerminalWs, fitTerminal } from './xterm_renderer.js';
+import { loadXterm, xtermReady, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { getRendererMode } from './renderers.js';
 import { invalidateFileCache, fetchFileList } from './file_mention.js';
 import { isPopout, popoutResolved, popoutUpdateFromSession, formatTerminalLabel } from './popout.js';
@@ -195,30 +196,49 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
     state.currentBoardTasks = [];
     renderTaskList();
     const mode = getRendererMode(agentType, sessionId);
-    dbg('renderer mode:', mode, 'Terminal available:', typeof Terminal !== 'undefined');
+    dbg('renderer mode:', mode, 'xterm loaded:', xtermReady());
     // Always start capture refresh — it polls tasks and events for any mode
     startCaptureRefresh();
     // Popout: routing comes from the resolver only; a sleeping target has no
     // attachable pane (tmux_session null) so the terminal is not connected.
     const popoutTarget = isPopout() ? popoutResolved() : null;
     const canAttach = !isPopout() || !!(popoutTarget && popoutTarget.tmux_session);
-    if (mode === "xterm" && typeof Terminal !== 'undefined' && canAttach) {
+    if (mode === "xterm" && canAttach) {
         dbg('switching to xterm mode, creating terminal + WS');
         document.getElementById("pane-capture").style.display = "none";
         const container = document.getElementById("xterm-container");
         container.style.display = "flex";
-        // Don't clear innerHTML — createTerminal reuses the existing xterm
-        // instance to avoid canvas recreation issues in WebKit webview
-        createTerminal(container);
+        container.querySelector(':scope > .vendor-load-notice')?.remove(); // a previous agent's failed load
         const tmuxName = popoutTarget ? popoutTarget.tmux_session : (agentData ? (agentData.tmux_session || name) : name);
-        dbg('terminal WS using tmux_session:', tmuxName, '(agent name:', name, ')');
-        connectTerminalWs(tmuxName, agentType, sessionId, srv);
-        // Fit terminal after session switch — the container may already be
-        // visible at the right size so ResizeObserver won't fire.
-        // Double-fit: first at 50ms for quick response, second at 250ms
-        // after layout has fully settled (WebKit webview can be slow).
-        setTimeout(fitTerminal, 50);
-        setTimeout(fitTerminal, 250);
+        const attach = () => {
+            // Don't clear innerHTML — createTerminal reuses the existing xterm
+            // instance to avoid canvas recreation issues in WebKit webview
+            createTerminal(container);
+            dbg('terminal WS using tmux_session:', tmuxName, '(agent name:', name, ')');
+            connectTerminalWs(tmuxName, agentType, sessionId, srv);
+            // Fit terminal after session switch — the container may already be
+            // visible at the right size so ResizeObserver won't fire.
+            // Double-fit: first at 50ms for quick response, second at 250ms
+            // after layout has fully settled (WebKit webview can be slow).
+            setTimeout(fitTerminal, 50);
+            setTimeout(fitTerminal, 250);
+        };
+        // xterm.js loads on the first terminal view (#3083). A failed load shows
+        // Retry in the pane; a switch meanwhile drops the result.
+        const failed = (err) => {
+            console.error('[coral]', err);
+            if (generation === switchGeneration) showVendorLoadError(container, 'The terminal', loadThenAttach);
+        };
+        const tryAttach = () => {
+            if (generation !== switchGeneration) return;
+            try { attach(); } catch (err) { failed(err); }
+        };
+        const loadThenAttach = () => {
+            if (xtermReady()) { tryAttach(); return; }
+            const notice = showVendorLoading(container, 'the terminal');
+            loadXterm().then(() => { notice.remove(); tryAttach(); }, (err) => { notice.remove(); failed(err); });
+        };
+        loadThenAttach();
     } else {
         dbg('switching to capture mode, disposing terminal');
         document.getElementById("xterm-container").style.display = "none";

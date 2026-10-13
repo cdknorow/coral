@@ -181,7 +181,8 @@ func TestIndexDefersVendorScripts(t *testing.T) {
 			assert.Contains(t, line, " defer ", "parser-blocking vendor script in <head>: %s", strings.TrimSpace(line))
 		}
 	}
-	assert.GreaterOrEqual(t, n, 7, "codemirror, highlight.js, xterm and its addons")
+	// highlight.js; CodeMirror and xterm load on first use (vendor_loader.js, #3083).
+	assert.GreaterOrEqual(t, n, 1, "highlight.js")
 	assert.Contains(t, string(page), `<script type="module" src="{{ $base }}app.js"></script>`)
 }
 
@@ -234,7 +235,10 @@ func TestIndexUsesVersionedStaticBase(t *testing.T) {
 	page := rr.Body.String()
 	assert.Contains(t, page, `<script type="module" src="/static/b/abcdef012345/app.js"></script>`)
 	assert.Contains(t, page, `href="/static/b/abcdef012345/css/base.css"`)
-	assert.Contains(t, page, `src="/static/b/abcdef012345/vendor/xterm/xterm.min.js"`)
+	assert.Contains(t, page, `src="/static/b/abcdef012345/vendor/hljs/highlight.min.js"`)
+	// The editor and terminal libraries load on first use (vendor_loader.js, #3083).
+	assert.NotContains(t, page, "vendor/xterm/")
+	assert.NotContains(t, page, "vendor/codemirror/")
 	assert.Contains(t, page, `href="/static/b/abcdef012345/manifest.json"`)
 	assert.Equal(t, strings.Count(page, `"/static/`), strings.Count(page, `"/static/b/abcdef012345/`), "every static URL is versioned")
 

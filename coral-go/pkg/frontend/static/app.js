@@ -23,7 +23,6 @@ import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } fro
 import { loadSessionNotes, saveNotes, generateSummary, resummarize, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
 import { loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
-import { showTemplateBrowser } from './template_browser.js';
 import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
 import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles, initFileSearch, initTopBarSearch, showTopBarSearch, hideTopBarSearch } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
@@ -36,7 +35,7 @@ import { isInteractiveOwner, claimOwnership } from './ownership.js';
 import { setLiveViewMode, showTerminalView, refreshLiveHistory, initCommandInputAutosize } from './live_chat.js';
 import { switchAgenticTab, restoreAgenticTabs, loadAgentEvents, toggleEventFilter, toggleAllEventFilters, toggleFilterDropdown, showFilterPopup, hideFilterPopup } from './agentic_state.js';
 import { toggleHistoryEventFilter, toggleAllHistoryEventFilters } from './history_tabs.js';
-import { copyBranchName, escapeHtml, showView, showToast } from './utils.js';
+import { copyBranchName, escapeHtml, showView, showToast, viewChanges } from './utils.js';
 import { initPreviewPane, openPreviewTab, closeTab as closePreviewTab, closeAllTabs as closeAllPreviewTabs, resetPreviewPane } from './preview_pane.js';
 import { initScheduler, selectScheduledJob, toggleScheduledJob, deleteScheduledJob, editScheduledJob, showJobModal, hideJobModal, validateCronPreview, saveScheduledJob, switchJobType, pickSchedulePreset } from './scheduler.js';
 import {
@@ -45,19 +44,14 @@ import {
     testWebhook, showWebhookHistory,
 } from './webhooks.js';
 import { initLiveJobs, renderLiveJobs, selectLiveJobRun } from './live_jobs.js';
-import { showThemeConfigurator, hideThemeConfigurator } from './theme_config.js';
 import { initMessageBoard, selectBoardProject, showMessageBoardProjects, postBoardMessage, deleteMessageBoardProject, toggleBoardPause, toggleBoardSleep, deleteBoardMessage, showExportBoardModal, doExportBoard, toggleSelectMode, toggleMessageSelect, selectAllMessages, selectNoneMessages, cancelSelectMode, exportSelectedAsMarkdown } from './message_board.js';
 import { loadAllFolderTags, showFolderTagDropdown, hideFolderTagDropdown, addFolderTag, removeFolderTag, createAndAddFolderTag } from './folder_tags.js';
-import { initWorkflows, showWorkflowsTab, selectWorkflow, selectWorkflowRun, triggerWorkflow, killWorkflowRun, deleteWorkflow, showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflow, editWorkflowWithAgent, workflowAddStep, workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent } from './workflows.js';
-import { showCostDashboard, stopCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } from './cost_dashboard.js';
-import { showDocsTab, selectDoc } from './docs.js';
 import { initMobile, syncMobileAgentList } from './mobile.js';
 import { platform } from './platform/detect.js';
 import { initNative } from './platform/native.js';
 import { initMacOS } from './platform/macos.js';
 import { initWindows } from './platform/windows.js';
 import { initBrowser } from './platform/browser.js';
-import { searchChats } from './chat_search.js';
 import { initChatFind } from './chat_find.js';
 
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
@@ -65,6 +59,24 @@ import { teamFetch } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Cloud Hub (inert elsewhere)
+import { lazyFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch } from './lazy_panels.js';
+
+// Panels off the landing view load on first use (#3083 phase 2, lazy_panels.js).
+const {
+    showWorkflowsTab, selectWorkflow, selectWorkflowRun, triggerWorkflow, killWorkflowRun, deleteWorkflow,
+    showWorkflowCreateModal, hideWorkflowCreateModal, editWorkflow, editWorkflowWithAgent, workflowAddStep,
+    workflowStepTypeChanged, saveWorkflow, workflowsBackToList, launchWorkflowAgent,
+} = lazyFns(loadWorkflows, ['showWorkflowsTab', 'selectWorkflow', 'selectWorkflowRun', 'triggerWorkflow', 'killWorkflowRun', 'deleteWorkflow',
+    'showWorkflowCreateModal', 'hideWorkflowCreateModal', 'editWorkflow', 'editWorkflowWithAgent', 'workflowAddStep',
+    'workflowStepTypeChanged', 'saveWorkflow', 'workflowsBackToList', 'launchWorkflowAgent']);
+const { showCostDashboard, _refreshCostDashboard, _costTimeRangeChanged } =
+    lazyFns(loadCostDashboard, ['showCostDashboard', '_refreshCostDashboard', '_costTimeRangeChanged']);
+// Runs on every tab switch: there is nothing to stop until the dashboard has loaded.
+const stopCostDashboard = () => { loadCostDashboard.module?.stopCostDashboard(); };
+const { showDocsTab, selectDoc } = lazyFns(loadDocs, ['showDocsTab', 'selectDoc']);
+const { showThemeConfigurator, hideThemeConfigurator } = lazyFns(loadThemeConfig, ['showThemeConfigurator', 'hideThemeConfigurator']);
+const { showTemplateBrowser } = lazyFns(loadTemplateBrowser, ['showTemplateBrowser']);
+const { searchChats } = lazyFns(loadChatSearch, ['searchChats']);
 import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
 
@@ -196,7 +208,17 @@ function resetTeam(boardName) {
 }
 
 // ── Top Nav Tab Switching ─────────────────────────────────────────────
+let _navGeneration = 0;
+
 function switchNavTab(tab, opts = {}) {
+    // A panel that loads on first use (lazy_panels.js) shows its view only if
+    // nothing else was selected or shown while it loaded. Once loaded it shows at once.
+    const generation = ++_navGeneration;
+    const showWhenLoaded = (load, fn) => {
+        if (load.module) { load.module[fn](); return; }
+        const views = viewChanges();
+        load().then(m => { if (generation === _navGeneration && views === viewChanges()) m[fn](); }, () => {});
+    };
     // Clean up any active cost dashboard timer when leaving tokens tab
     stopCostDashboard();
     if (tab !== 'servers') import('./servers_tab.js').then(m => m.leaveServersTab());
@@ -232,15 +254,15 @@ function switchNavTab(tab, opts = {}) {
     } else if (tab === 'jobs') {
         showView('scheduler-view');
     } else if (tab === 'workflows') {
-        showWorkflowsTab();
+        showWhenLoaded(loadWorkflows, 'showWorkflowsTab');
     } else if (tab === 'docs') {
-        showDocsTab();
+        showWhenLoaded(loadDocs, 'showDocsTab');
     } else if (tab === 'servers') {
         showView('servers-view');
         if (window._pushView && !opts.fromHistory) window._pushView('servers', opts.focusId ? { serverId: opts.focusId } : {});
         import('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
     } else if (tab === 'tokens') {
-        showCostDashboard();
+        showWhenLoaded(loadCostDashboard, 'showCostDashboard');
     } else if (tab === 'history') {
         // History is populated by the background indexer, so the cached list may
         // have changed while another tab was active. Refresh it whenever the

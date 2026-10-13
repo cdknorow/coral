@@ -8,13 +8,10 @@
 // hanging the tab.
 export const DIFF_CONFIG = { scanLimit: 20000, timeout: 1500 };
 
-/** Get the CodeMirror module (loaded via IIFE script tag as window.CoralCM). */
+/** Get the CodeMirror module (window.CoralCM), or null when it is not loaded yet.
+ *  It loads on demand (vendor_loader.loadCodeMirror, #3083): callers await that first. */
 export function getCm() {
-    if (!window.CoralCM) {
-        console.error('[coral] CodeMirror not available — codemirror-bundle.js may not have loaded');
-        return null;
-    }
-    return window.CoralCM;
+    return window.CoralCM || null;
 }
 
 /** Resolve a language extension by name, or null when unsupported. */
