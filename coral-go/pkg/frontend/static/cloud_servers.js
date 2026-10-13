@@ -19,40 +19,35 @@ import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL } from './server_status.js';
 import { accessBlockedMessage } from './hub_access.js';
 
-let modal = null;
+// The Servers tab (#3070) hosts this list; there is no separate dialog.
+let host = null;
 let servers = [];
 let loadError = '';
 let confirming = null;   // id awaiting revoke confirmation
 let renaming = null;     // id being renamed
 let busy = new Set();
 let timer = null;
-let lastFocus = null;
 
-function ensureModal() {
-    if (modal) return modal;
-    modal = h('div', { id: 'cloud-servers-modal', className: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'cloud-servers-title' });
-    modal.style.display = 'none';
-    modal.addEventListener('mousedown', e => { if (e.target === modal) hideCloudServers(); });
-    modal.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); hideCloudServers(); } });
-    document.body.append(modal);
-    return modal;
+/** Open the Servers tab, optionally at one server's row. */
+export async function showCloudServers(focusId) {
+    const { openServersTab } = await import('./servers_tab.js');
+    return openServersTab(focusId);
 }
 
-export async function showCloudServers() {
-    ensureModal();
-    lastFocus = document.activeElement;
+/** Render the server list into `el` (the Servers tab) and keep it fresh. Resolves once loaded. */
+export async function renderCloudServersInto(el) {
+    host = el;
     confirming = null; renaming = null; loadError = '';
-    modal.style.display = 'flex';
     render();
     await load();
     clearInterval(timer);
     timer = setInterval(() => { if (!renaming && !busy.size) load(); }, 5000);
 }
 
+/** Leaving the Servers tab: stop refreshing. */
 export function hideCloudServers() {
     clearInterval(timer); timer = null;
-    if (modal) modal.style.display = 'none';
-    if (lastFocus && lastFocus.focus) { try { lastFocus.focus(); } catch { /* ignore */ } }
+    host = null;
 }
 
 async function load() {
@@ -197,12 +192,27 @@ function row(s) {
             onchange: e => call(s.id, 'PATCH', legacy ? { allow_launch: e.target.value === 'launch' } : { access_mode: e.target.value }),
         }, MODES.map(m => h('option', { value: m, selected: m === mode, text: MODE_INFO[m].label }))));
     const modeText = h('div', { className: 'cs-meta', text: MODE_INFO[mode].text });
-    const launch = h('div', {}, picker, modeText);
+    // C1: what each side allows and what applies. The hub's effective_mode and
+    // limited_by win; older hubs fall back to the lower of the two here.
+    const machine = rank(s.local_mode) >= 0 ? s.local_mode : null;
+    const effective = rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s);
+    const limitedBy = s.limited_by === 'hub' || s.limited_by === 'machine' ? s.limited_by
+        : (machine && rank(machine) < rank(mode) ? 'machine' : (rank(effective) < rank(machine || 'launch') ? 'hub' : null));
+    const access = h('div', { className: 'cs-access', role: 'group', 'aria-label': 'Access' },
+        h('span', { className: 'cs-access-item', text: `Hub: ${MODE_INFO[mode].label}` }),
+        h('span', { className: 'cs-access-item', text: `Machine: ${machine ? MODE_INFO[machine].label : 'unknown'}` }),
+        h('span', { className: 'cs-access-item cs-access-effective', text: `Effective: ${MODE_INFO[effective].label}` }));
+    // The hub is what holds this server back: one click raises it to what the machine allows.
+    const raise = limitedBy === 'hub' && machine && rank(machine) > rank(mode) && !legacy
+        ? h('button', { type: 'button', className: 'btn btn-small btn-primary cs-raise', disabled: isBusy,
+            text: `Raise hub mode to ${MODE_INFO[machine].label}`, onclick: () => call(s.id, 'PATCH', { access_mode: machine }) })
+        : null;
+    const launch = h('div', {}, access, raise, picker, modeText);
     const actions = confirming === s.id
         ? [h('button', { type: 'button', className: 'btn btn-small btn-danger', text: 'Confirm revoke', onclick: () => { confirming = null; call(s.id, 'DELETE'); } }),
            h('button', { type: 'button', className: 'btn btn-small', text: 'Cancel', onclick: () => { confirming = null; render(); } })]
         : [h('button', { type: 'button', className: 'btn btn-small', text: 'Rename', disabled: isBusy, onclick: () => { renaming = s.id; render(); } }),
-           h('button', { type: 'button', className: 'btn btn-small btn-danger-text', text: 'Revoke', disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
+           h('button', { type: 'button', className: 'btn btn-small btn-danger-text cs-revoke', text: 'Revoke', disabled: isBusy, onclick: () => { confirming = s.id; render(); } })];
     const note = launchNote(s);
     // The update notice comes with the live list's servers entry (#3059).
     const update = updateNotice((state.servers || []).find(x => x && x.id === s.id) || s);
@@ -211,8 +221,8 @@ function row(s) {
             h('span', { text: update.text + ' ' }),
             h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Get the latest release' }))
         : null;
-    return h('li', { className: 'cs-row', dataset: { id: s.id } },
-        h('div', {}, title, meta, launch),
+    return h('li', { className: 'cs-row', id: rowId(s.id), tabIndex: -1, dataset: { id: s.id } },
+        h('div', { className: 'cs-main' }, title, meta, launch),
         h('div', { className: 'cs-actions' }, actions),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
         note ? h('div', { className: 'cs-note', text: note }) : null,
@@ -226,7 +236,7 @@ function enrollBlock() {
         location.href = '/enroll' + (v ? '?code=' + encodeURIComponent(v) : '');
     };
     return h('div', { className: 'cs-enroll' },
-        h('strong', { text: 'Connect a server' }),
+        h('h3', { className: 'cs-enroll-title', text: 'Add a machine' }),
         h('ol', {},
             h('li', {}, 'On the machine, open Coral → Settings → ', h('strong', { text: 'Connect to Coral Hub' }), ' (or start it with ', h('code', { text: `--cloud-url ${location.origin}` }), ').'),
             h('li', { text: 'Coral shows a short code. Enter it below.' }),
@@ -235,19 +245,25 @@ function enrollBlock() {
             h('button', { type: 'submit', className: 'btn btn-primary', text: 'Continue' })));
 }
 
+/** The DOM id of a server's row, for deep links. */
+export function rowId(id) { return 'server-row-' + String(id).replace(/[^A-Za-z0-9_-]/g, '_'); }
+
 function render() {
-    if (!modal) return;
+    if (!host) return;
+    // Re-rendering replaces every row: keep focus on the same control where we can.
+    const active = document.activeElement && host.contains(document.activeElement) ? document.activeElement : null;
+    const keep = active && active.closest('.cs-row') ? { row: active.closest('.cs-row').id, text: active.textContent } : null;
     const list = servers.length
         ? h('ul', { className: 'cs-list', 'aria-label': 'Your servers' }, servers.map(row))
         : h('p', { className: 'servers-empty', text: loadError ? '' : 'No servers connected yet.' });
-    modal.replaceChildren(h('div', { className: 'modal-content modal-content-wide' },
-        h('div', { className: 'modal-header' },
-            h('h3', { id: 'cloud-servers-title', text: 'Servers' }),
-            h('button', { type: 'button', className: 'modal-close-btn', 'aria-label': 'Close dialog', onclick: hideCloudServers },
-                h('span', { className: 'material-icons', 'aria-hidden': 'true', text: 'close' }))),
-        h('div', { className: 'modal-body' },
-            h('p', { className: 'servers-intro', text: 'Servers connected to your account. Each one connects out to this hub; no inbound port is needed.' }),
-            loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
-            list,
-            enrollBlock())));
+    host.replaceChildren(
+        h('p', { className: 'servers-intro', text: 'Servers connected to your account. Each one connects out to this hub; no inbound port is needed. New machines start in View.' }),
+        loadError ? h('div', { className: 'servers-form-error', role: 'alert', text: loadError }) : null,
+        list,
+        enrollBlock());
+    if (keep) {
+        const r = document.getElementById(keep.row);
+        const again = r && [...r.querySelectorAll('button, select, input')].find(el => el.textContent === keep.text);
+        if (again) again.focus(); else if (r) r.focus();
+    }
 }

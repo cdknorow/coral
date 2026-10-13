@@ -21,57 +21,44 @@ let _loadError = '';
 let _formError = '';
 let _draft = null;        // non-secret field values kept across a failed submit
 let _timer = null;
-let _lastFocus = null;
+let _host = null;         // the Servers tab body (#3070); there is no separate dialog
 
 /** Unhide hub-only entry points. Safe to call on every page load. */
 export async function initServersUi() {
     try { await initHub(); } catch { /* treated as non-hub */ }
     const hub = isHub();
     document.querySelectorAll('[data-hub-only]').forEach(el => { el.style.display = hub ? '' : 'none'; });
+    const { updateServersTabVisibility } = await import('./servers_tab.js');
+    updateServersTabVisibility();
     return hub;
 }
 
-function modalEl() {
-    let m = document.getElementById('servers-modal');
-    if (!m) {
-        m = document.createElement('div');
-        m.id = 'servers-modal';
-        m.className = 'modal';
-        m.setAttribute('role', 'dialog');
-        m.setAttribute('aria-modal', 'true');
-        m.setAttribute('aria-labelledby', 'servers-modal-title');
-        m.style.display = 'none';
-        m.addEventListener('mousedown', e => { if (e.target === m) hideServersModal(); });
-        m.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); hideServersModal(); } });
-        m.addEventListener('click', onClick);
-        m.addEventListener('submit', onSubmit);
-        document.body.appendChild(m);
-    }
-    return m;
+/** Open the Servers tab (the settings menu's "Servers" entry), optionally at a row. */
+export async function showServersModal(focusId) {
+    if (!isCloud() && !isHub()) return;   // hub features are off: no UI, no /api/servers calls
+    const { openServersTab } = await import('./servers_tab.js');
+    return openServersTab(focusId);
 }
 
-export async function showServersModal() {
-    if (isCloud()) { const m = await import('./cloud_servers.js'); return m.showCloudServers(); }
-    if (!isHub()) return;   // hub features are off: no UI, no /api/servers calls
-    const m = modalEl();
+/** Render the registry into `el` (the Servers tab) and keep it fresh. Resolves once loaded. */
+export async function renderServersInto(el) {
+    if (_host !== el) {
+        el.addEventListener('click', onClick);
+        el.addEventListener('submit', onSubmit);
+    }
+    _host = el;
     _editing = null; _draft = null; _confirmDelete = null; _formError = ''; _loadError = '';
-    _lastFocus = document.activeElement;
-    m.style.display = 'flex';
     render();
     await load();
     clearInterval(_timer);
-    // Keep status / last-seen fresh while the page is open.
+    // Keep status / last-seen fresh while the tab is open.
     _timer = setInterval(() => { if (_editing === null && !_busy.size) load(); }, 5000);
-    const first = m.querySelector('[data-action="close"]');
-    if (first) first.focus();
 }
 
+/** Leaving the Servers tab: stop refreshing and drop an open form. */
 export function hideServersModal() {
     clearInterval(_timer); _timer = null;
-    const m = document.getElementById('servers-modal');
-    if (m) m.style.display = 'none';
     _editing = null;
-    if (_lastFocus && _lastFocus.focus) { try { _lastFocus.focus(); } catch { /* ignore */ } }
 }
 
 async function readBody(resp) {
@@ -101,7 +88,7 @@ function statusPill(status) {
 
 function rowHtml(s) {
     if (s.local || s.id === 'local') {
-        return `<li class="servers-row servers-row-local">
+        return `<li class="servers-row servers-row-local" id="server-row-local" tabindex="-1">
             <div class="servers-row-main"><div class="servers-row-title">${escHtml(s.label || 'Local')} <span class="servers-id">local</span></div>
             <div class="servers-row-meta">This hub. Always available.</div></div>
             <div class="servers-row-status">${statusPill('online')}</div></li>`;
@@ -111,7 +98,7 @@ function rowHtml(s) {
     const err = s.last_error ? `<div class="servers-row-error" role="status">${escHtml(s.last_error)}</div>` : '';
     const hint = (s.status === 'key_unreadable' || s.status === 'unauthorized')
         ? `<div class="servers-row-error">${escHtml(statusMeta(s.status).hint)}</div>` : '';
-    return `<li class="servers-row" data-id="${escHtml(s.id)}">
+    return `<li class="servers-row" id="server-row-${escHtml(s.id)}" tabindex="-1" data-id="${escHtml(s.id)}">
         <div class="servers-row-main">
             <div class="servers-row-title">${escHtml(s.label || s.id)} <span class="servers-id">${escHtml(s.id)}</span>${s.allow_private ? ' <span class="servers-tag" title="Private network addresses are allowed for this server">private network</span>' : ''}</div>
             <div class="servers-row-meta">${escHtml(s.url)} &middot; last seen ${escHtml(formatLastSeen(s.last_seen))}</div>
@@ -124,7 +111,7 @@ function rowHtml(s) {
             ${confirming
                 ? `<button type="button" class="btn btn-small btn-danger" data-action="delete-confirm" data-id="${escHtml(s.id)}">Confirm remove</button>
                    <button type="button" class="btn btn-small" data-action="delete-cancel">Cancel</button>`
-                : `<button type="button" class="btn btn-small btn-danger-text" data-action="delete" data-id="${escHtml(s.id)}"${busy ? ' disabled' : ''}>Remove</button>`}
+                : `<button type="button" class="btn btn-small btn-danger-text servers-remove" data-action="delete" data-id="${escHtml(s.id)}"${busy ? ' disabled' : ''}>Remove</button>`}
         </div>
     </li>`;
 }
@@ -159,23 +146,23 @@ function formHtml() {
 }
 
 function render() {
-    const m = modalEl();
+    const m = _host;
+    if (!m) return;
     const remotes = _servers.filter(s => !(s.local || s.id === 'local'));
     const local = _servers.find(s => s.local || s.id === 'local') || { local: true, id: 'local', label: 'Local' };
-    // Preserve typed form values across the periodic refresh (never the key).
-    m.innerHTML = `<div class="modal-content modal-content-wide servers-modal-content">
-        <div class="modal-header">
-            <h3 id="servers-modal-title">Servers</h3>
-            <button type="button" class="modal-close-btn" data-action="close" aria-label="Close dialog"><span class="material-icons" aria-hidden="true">close</span></button>
-        </div>
-        <div class="modal-body">
-            <p class="servers-intro">Servers whose agents and teams appear in this hub. The hub stores each server's API key (encrypted); a key grants full control of that server.</p>
+    // The periodic refresh must not pull focus out of a row the user is on.
+    const activeRow = document.activeElement && m.contains(document.activeElement) ? document.activeElement.closest('.servers-row') : null;
+    const keep = activeRow && _editing === null ? { row: activeRow.id, action: document.activeElement.dataset.action } : null;
+    m.innerHTML = `<p class="servers-intro">Servers whose agents and teams appear in this hub. The hub stores each server's API key (encrypted); a key grants full control of that server.</p>
             ${_loadError ? `<div class="servers-form-error" role="alert">${escHtml(_loadError)}</div>` : ''}
             <ul class="servers-list" aria-label="Registered servers">${rowHtml(local)}${remotes.map(rowHtml).join('')}</ul>
             ${!remotes.length && !_loadError ? '<p class="servers-empty">No remote servers yet.</p>' : ''}
-            ${_editing !== null ? formHtml() : '<div class="servers-form-actions"><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>'}
-        </div>
-    </div>`;
+            ${_editing !== null ? formHtml() : '<div class="servers-form-actions"><button type="button" class="btn btn-primary" data-action="add">Add server</button></div>'}`;
+    if (keep) {
+        const r = document.getElementById(keep.row);
+        const again = r && (keep.action ? r.querySelector(`[data-action="${keep.action}"]`) : null);
+        if (again) again.focus(); else if (r) r.focus();
+    }
     if (_editing !== null) {
         const f = m.querySelector('#servers-form');
         const target = f && (f.elements[_editing === '' ? 'id' : 'label']);
@@ -190,7 +177,6 @@ async function onClick(e) {
     if (!btn) return;
     const action = btn.dataset.action;
     const id = btn.dataset.id;
-    if (action === 'close') return hideServersModal();
     if (action === 'add') { _editing = ''; _formError = ''; _draft = null; return render(); }
     if (action === 'edit') { _editing = id; _formError = ''; _draft = null; _confirmDelete = null; return render(); }
     if (action === 'cancel-form') { _editing = null; _formError = ''; _draft = null; return render(); }

@@ -189,6 +189,7 @@ const VIEW_IDS = [
     "timeline-view",
     "kanban-view",
     "docs-view",
+    "servers-view",
 ];
 
 const VIEW_DISPLAY = {
@@ -203,6 +204,7 @@ const VIEW_DISPLAY = {
     "timeline-view": "flex",
     "kanban-view": "flex",
     "docs-view": "block",
+    "servers-view": "block",
 };
 
 const FULL_WIDTH_VIEWS = new Set([
@@ -210,6 +212,7 @@ const FULL_WIDTH_VIEWS = new Set([
     "timeline-view",
     "kanban-view",
     "workflows-view",
+    "servers-view",
 ]);
 
 export function showView(activeId) {

@@ -50,7 +50,7 @@ function renderChip() {
  *  session still on screen is updated. */
 export function setHubReadOnly(session, a, required = 'interact', fromFrame = false) {
     if (!session || state.currentSession !== session) return;
-    session.hubReadOnly = a ? { message: accessBlockedMessage(a, required), chip: readOnlyChipText(a), fromFrame, hubLimits: a.limitedBy !== 'machine' } : null;
+    session.hubReadOnly = a ? { message: accessBlockedMessage(a, required), chip: readOnlyChipText(a), fromFrame, hubLimits: a.limitedBy !== 'machine', server: sessionServer(session) } : null;
     renderChip();
 }
 
@@ -92,7 +92,7 @@ export async function hubBlocked(session, { silent = false } = {}) {
 // The refusal toast; when the hub setting is what limits, it offers the Servers dialog.
 function showBlocked(ro) {
     const opts = ro.hubLimits
-        ? { action: { label: 'Open Servers', onClick: () => import('./cloud_servers.js').then(m => m.showCloudServers()) } }
+        ? { action: { label: 'Open Servers', onClick: () => import('./servers_tab.js').then(m => m.openServersTab(ro.server)) } }
         : {};
     toast(ro.message, true, 6000, opts);
 }

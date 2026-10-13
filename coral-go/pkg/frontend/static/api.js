@@ -31,6 +31,7 @@ import { state } from './state.js';
 import { renderLiveSessions, renderHistorySessions } from './render.js';
 import { buildApiParams } from './search_filters.js';
 import { serverUrl, serverForSession, initHub } from './server_base.js';
+import { updateServersTabVisibility } from './servers_tab.js';
 
 export {
     LOCAL_SERVER, initHub, isHub, normServer, isLocalServer, serverBase, serverWsBase, serverUrl,
@@ -83,6 +84,7 @@ async function _loadLiveSessions(onFailure) {
         const sessions = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.sessions) ? raw.sessions : null);
         if (!sessions) throw new SyntaxError('Invalid live session list');
         state.servers = (state.hub && raw && !Array.isArray(raw) && Array.isArray(raw.servers)) ? raw.servers : [];
+        updateServersTabVisibility();
         state.liveSessions = sessions;
         rendering = true;
         renderLiveSessions(state.liveSessions);

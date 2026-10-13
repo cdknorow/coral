@@ -71,6 +71,7 @@
             <button class="top-nav-tab" data-local-only id="nav-tab-jobs" onclick="switchNavTab('jobs')">Jobs</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-tokens" onclick="switchNavTab('tokens')" title="Analytics — token usage and cost">Analytics</button>
             <button class="top-nav-tab" id="nav-tab-docs" onclick="switchNavTab('docs')">Docs</button>
+            <button class="top-nav-tab" id="nav-tab-servers" onclick="switchNavTab('servers')" role="tab" aria-controls="servers-view" hidden>Servers</button>
             <button class="top-nav-tab" id="nav-tab-board" onclick="switchNavTab('board')" style="display:none">Board</button>
         </nav>
         <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
@@ -216,6 +217,7 @@
             {{ template "includes/views/cost_dashboard.html" . }}
 
             {{ template "includes/views/docs.html" . }}
+            {{ template "includes/views/servers.html" . }}
         </main>
     </div>
 

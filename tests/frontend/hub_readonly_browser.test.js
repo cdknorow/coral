@@ -144,8 +144,10 @@ const CLOUD_PRELOAD = `(() => {
         assert.equal(blocked.role, 'alert');
         assert.equal(blocked.action, 'Open Servers');
         await ev(`[...document.querySelectorAll('.toast .toast-action')].find(b => b.textContent.trim() === 'Open Servers').click(); true`);
-        await waitFor(`!!document.getElementById('cloud-servers-modal') && getComputedStyle(document.getElementById('cloud-servers-modal')).display !== 'none'`, 'Servers dialog from Open Servers', 3000);
-        await ev(`(async () => { (await import('/static/cloud_servers.js')).hideCloudServers(); return true; })()`);
+        // 'Open Servers' opens the Servers tab at the refused server's row (#3070).
+        await waitFor(`(() => { const v = document.getElementById('servers-view'); return !!v && getComputedStyle(v).display !== 'none' && document.activeElement && document.activeElement.id === 'server-row-m1'; })()`, 'Servers tab focused on the refused server', 3000);
+        await ev(`window.switchNavTab('agents'); true`);
+        await select('ro-hub', 'm1');
         await clearSends(); await clearToasts();
         const typed = await allPaths();
         s = await sends();

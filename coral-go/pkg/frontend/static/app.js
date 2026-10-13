@@ -63,6 +63,7 @@ import { initChatFind } from './chat_find.js';
 import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 import { teamFetch } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
+import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
 import './csp_compat.js';   // runs inline handlers without eval on the Cloud Hub (inert elsewhere)
 import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
@@ -195,19 +196,20 @@ function resetTeam(boardName) {
 }
 
 // ── Top Nav Tab Switching ─────────────────────────────────────────────
-function switchNavTab(tab) {
+function switchNavTab(tab, opts = {}) {
     // Clean up any active cost dashboard timer when leaving tokens tab
     stopCostDashboard();
+    if (tab !== 'servers') import('./servers_tab.js').then(m => m.leaveServersTab());
 
     // Toggle sidebar visibility — full-width views hide the sidebar
-    const fullWidthTabs = new Set(['tokens', 'workflows']);
+    const fullWidthTabs = new Set(['tokens', 'workflows', 'servers']);
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', fullWidthTabs.has(tab));
 
     // Update tab button states
-    document.querySelectorAll('.top-nav-tab').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.top-nav-tab').forEach(btn => { btn.classList.remove('active'); btn.setAttribute('aria-selected', 'false'); });
     const activeTab = document.getElementById(`nav-tab-${tab}`);
-    if (activeTab) activeTab.classList.add('active');
+    if (activeTab) { activeTab.classList.add('active'); activeTab.setAttribute('aria-selected', 'true'); }
 
     // Show/hide sidebar sections based on tab
     const liveSection = document.querySelector('[data-section="live-sessions"]');
@@ -233,6 +235,10 @@ function switchNavTab(tab) {
         showWorkflowsTab();
     } else if (tab === 'docs') {
         showDocsTab();
+    } else if (tab === 'servers') {
+        showView('servers-view');
+        if (window._pushView && !opts.fromHistory) window._pushView('servers', opts.focusId ? { serverId: opts.focusId } : {});
+        import('./servers_tab.js').then(m => m.showServersTabContent(opts.focusId));
     } else if (tab === 'tokens') {
         showCostDashboard();
     } else if (tab === 'history') {

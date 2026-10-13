@@ -102,17 +102,18 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         assert.ok(badgeTitle.split('\n').includes(EXPECT['srv-req'].text), `a remote agent's server badge tooltip carries the notice (${JSON.stringify(badgeTitle)})`);
         console.log('   ✓ badges only for available/required, exact texts, constant link, tooltips, hostile text inert');
 
-        console.log('2. Cloud Hub Servers dialog');
+        console.log('2. Cloud Hub server list (Servers tab)');
         const dialog = await ev(`(async () => {
             const real = window.fetch;
             window.fetch = (u, o) => String(u).startsWith('/api/servers')
                 ? Promise.resolve(new Response(JSON.stringify({ servers: ${JSON.stringify(SERVERS.map(({ id, label, status }) => ({ id, label, online: status === 'online', last_seen: '2026-10-13T00:00:00Z', access_mode: 'view' })))} }), { status: 200, headers: { 'content-type': 'application/json' } }))
                 : real(u, o);
             const cs = await import('/static/cloud_servers.js');
-            await cs.showCloudServers();
+            // The Cloud Hub's server list, as the Servers tab renders it (#3070).
+            await cs.renderCloudServersInto(document.getElementById('servers-tab-body'));
             await new Promise(r => setTimeout(r, 200));
             const out = {};
-            for (const li of document.querySelectorAll('#cloud-servers-modal .cs-row')) {
+            for (const li of document.querySelectorAll('#servers-tab-body .cs-row')) {
                 const note = li.querySelector('.cs-update');
                 out[li.dataset.id] = note ? {
                     cls: note.className, text: note.querySelector('span').textContent.trim(),
@@ -136,7 +137,7 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         for (const id of NONE) assert.equal(dialog[id], null, `dialog: no note for ${id}`);
         for (const sv of SERVERS) assert.equal(dialog[sv.id + ':disabled'], 0, `dialog: nothing disabled on ${sv.id}`);
         assert.equal(await ev('window.__pwned'), undefined, 'dialog: hostile strings did not run');
-        console.log('   ✓ dialog notes and link for available/required only, nothing disabled');
+        console.log('   ✓ server list notes and link for available/required only, nothing disabled');
 
         console.log('3. Phone width: the agent list clone shows the same badges');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

@@ -32,7 +32,9 @@ body.cloud-mode [data-local-only] { display: none !important; }
 
 /* Servers dialog */
 .cs-list { list-style: none; margin: 0; padding: 0; }
-.cs-row { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border, #2a3140); }
+/* minmax(0,1fr): a long name or URL wraps instead of widening the row (#3070 F3). */
+.cs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--border, #2a3140); }
+.cs-main { min-width: 0; overflow-wrap: anywhere; }
 .cs-title { font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .cs-meta { font-size: 12px; opacity: .7; margin-top: 2px; }
 .cs-note { grid-column: 1 / -1; font-size: 12px; padding: 6px 10px; border-radius: 6px; background: rgba(210,153,34,.12); border: 1px solid rgba(210,153,34,.45); }
@@ -54,3 +56,32 @@ body.cloud-mode [data-local-only] { display: none !important; }
 
 body.cloud-mode .settings-grid [hidden], body.cloud-mode #license-section[hidden] { display: none !important; }
 body.cloud-mode .settings-cloud-note { margin: 0 0 12px; }
+
+/* C1: what each side allows and what applies (#3070). */
+.cs-access { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12px; }
+.cs-access-effective { font-weight: 600; }
+.cs-raise { margin-top: 6px; }
+/* An enabled destructive action reads as enabled: error colour, not muted
+   grey (#3070 F5, was ~2.9:1); a disabled one is visibly dimmed. */
+.cs-revoke, .servers-remove { color: var(--error); }
+.cs-revoke:disabled, .servers-remove:disabled { opacity: .5; cursor: not-allowed; }
+/* Narrow (phone): actions go under the server details, full width (#3070 F3). */
+@container servers-tab (max-width: 520px) {
+    .cs-row { grid-template-columns: minmax(0, 1fr); }
+    .cs-actions { justify-content: flex-start; }
+}
+@media (max-width: 520px) {
+    .cs-row { grid-template-columns: minmax(0, 1fr); }
+    .cs-actions { justify-content: flex-start; }
+    .cs-enroll-form { flex-wrap: wrap; }
+}
+
+/* Servers tab (#3070) */
+.servers-view { padding: var(--space-lg, 16px); overflow-y: auto; height: 100%; box-sizing: border-box; }
+.servers-tab { max-width: 880px; margin: 0 auto; container-type: inline-size; container-name: servers-tab; }
+.servers-tab-title { font-size: var(--fs-xl, 18px); margin: 0 0 var(--space-md, 8px); }
+.servers-tab-title:focus { outline: none; }
+.servers-tab-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cs-row:focus-visible, .servers-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.server-row-target { background: var(--bg-hover, rgba(88,166,255,.08)); transition: background .4s; }
+.cs-enroll-title { font-size: var(--fs-md, 14px); margin: 0; }

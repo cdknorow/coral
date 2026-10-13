@@ -2084,6 +2084,20 @@
 .server-strip-item.server-unauthorized { color: var(--text-primary); border-color: var(--warning); }
 .server-strip-item.server-unauthorized { border-color: var(--error); }
 .server-strip-state { font-weight: 600; }
+/* The chip is a button that opens the Servers tab at that server (#3070 F7). */
+.server-strip-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+.server-strip-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm, 4px); }
+@media (pointer: coarse) { .server-strip-btn { min-height: var(--control-touch-height, 44px); } }
 /* Cloud Hub update notice (#3059): a link, nothing is disabled. */
 .server-update-badge {
     margin-left: var(--space-xs);

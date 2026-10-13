@@ -27,6 +27,7 @@ function _buildHash(view, params) {
     }
     if (view === 'board' && params.boardName) return `#board/${encodeURIComponent(params.boardName)}`;
     if (view === 'history' && params.sessionId) return `#history/${params.sessionId}`;
+    if (view === 'servers' && params.serverId) return `#servers/${encodeURIComponent(params.serverId)}`;
     return `#${view}`;
 }
 
@@ -61,6 +62,10 @@ function _restoreChat(sessionId, server) {
 export function restoreChatFromHash() {
     const { view, params } = _parseHash(window.location.hash);
     if (view === 'chat' && params.sessionId) return _restoreChat(params.sessionId, params.server);
+    if (view === 'servers') {
+        import('./servers_tab.js').then(m => m.openServersTab(params.sessionId || null, { fromHistory: true }));
+        return true;
+    }
     return false;
 }
 
@@ -107,6 +112,10 @@ function _restoreView(view, params) {
             if (window.switchNavTab) {
                 window.switchNavTab('tokens');
             }
+            break;
+        case 'servers':
+            // #servers or #servers/<id> (a deep link to one machine's row).
+            import('./servers_tab.js').then(m => m.openServersTab(params.serverId || params.sessionId || null, { fromHistory: true }));
             break;
         default:
             // Unknown view — go to agents

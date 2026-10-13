@@ -12,6 +12,7 @@ import { serverWsBase, identityKey, sessionServer } from './server_base.js';
 import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 import { applySleepingView } from './sleeping_view.js';
+import { updateServersTabVisibility } from './servers_tab.js';
 
 // Reconnect pacing for the live feed. A fixed 5 s retry made every open dashboard reconnect in the same second after
 // a hub restart or deploy, and kept retrying forever after the sign-in ended. Retries now back off exponentially
@@ -153,6 +154,7 @@ export function handleCoralMessage(data) {
         if (data.type === "coral_update") {
             // Per-server status ([{id,label,status}]) is only sent when remotes exist.
             state.servers = (state.hub && Array.isArray(data.servers)) ? data.servers : [];
+            updateServersTabVisibility();
             // Detect sessions that just transitioned to "needs input"
             for (const s of data.sessions || []) {
                 const id = _feedKey(s);

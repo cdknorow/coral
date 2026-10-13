@@ -135,10 +135,15 @@ export function serverStripHtml() {
     const rows = [...(state.cloud === true ? [] : [serverEntry(LOCAL_SERVER)]), ...remoteServers()].map(e => {
         const m = statusMeta(e.status);
         const down = e.status !== 'online' && e.id !== LOCAL_SERVER;
+        // A button: its details (status, version, last contact) are in the Servers
+        // tab it opens, so they reach touch and keyboard users, not only a hover title.
         return `<li class="server-strip-item server-${m.cls}" data-server="${escHtml(e.id)}" title="${escHtml(serverHoverText(e.id))}">`
+            + `<button type="button" class="server-strip-btn" data-server-open="${escHtml(e.id)}"`
+            + ` aria-label="${escHtml(`${e.label || e.id}: ${m.label}. Open in Servers`)}">`
             + `<span class="server-dot" aria-hidden="true"></span>`
             + `<span class="server-strip-name">${escHtml(e.label || e.id)}</span>`
             + (down ? `<span class="server-strip-state">${escHtml(m.label)}</span>` : '')
+            + `</button>`
             + (e.id === LOCAL_SERVER ? '' : updateBadgeHtml(e))
             + `</li>`;
     }).join('');
