@@ -15,8 +15,22 @@ const BASE = require('./test_base').BASE;
 
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
+        // The page loads its own history list at startup; when that lands after the fixtures below it
+        // replaces them with the isolated server's (empty) list. Flag when it has been applied (#3062).
+        await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
+            const real = window.fetch.bind(window);
+            window.fetch = (url, opts) => {
+                const p = real(url, opts);
+                if (new URL(String(url), location.origin).pathname === '/api/sessions/history') {
+                    p.then(r => r.clone().json()).catch(() => null).finally(() => setTimeout(() => { window.__historyListLoaded = true; }, 50));
+                }
+                return p;
+            };
+        })();` });
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
+        for (let i = 0; i < 100 && !(await ev('window.__historyListLoaded === true')); i++) await new Promise(r => setTimeout(r, 50));
+        assert.equal(await ev('window.__historyListLoaded === true'), true, "the page's own history list loaded before the fixtures go in");
 
         // Initialize test environment on the page
         await ev(`(async () => {
@@ -294,6 +308,22 @@ const BASE = require('./test_base').BASE;
             stateCurrentSessionPreserved: true,
             launchPayloadValidated: true,
         }));
+        // ---------------------------------------------------------------------
+        // Test 4: a session the history list does not have yet (#session/<id> link,
+        // or beyond the loaded page): Resume comes from the session's own record.
+        // ---------------------------------------------------------------------
+        console.log('Testing Resume for a session missing from the history list...');
+        await ev(`window.testState.historySessionsList = []; true`);
+        await ev(`window.testSessions.selectHistorySession(window.__codexMarker)`);
+        assert.equal(await ev(`document.getElementById('btn-resume-session').style.display !== 'none'`), true,
+            'codex session not in the list: Resume shown from its own agent_type');
+        await ev(`window.testSessions.selectHistorySession(window.__agyMarker)`);
+        assert.equal(await ev(`document.getElementById('btn-resume-session').style.display`), 'none',
+            'a non-resumable type stays hidden');
+        await ev(`window.testSessions.selectHistorySession(window.__claudeID)`);
+        assert.equal(await ev(`document.getElementById('btn-resume-session').style.display !== 'none'`), true,
+            'claude session not in the list: Resume shown');
+        console.log('PASS: Resume without a history-list entry');
     } finally {
         await client.close();
     }

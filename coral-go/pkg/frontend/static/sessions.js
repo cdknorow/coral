@@ -335,6 +335,12 @@ export async function selectHistorySession(sessionId, locator = null) {
             if (focused?.messages?.length) { data = focused; messageBaseIndex = Math.max(0, data.total - end); }
         }
         renderHistoryChat(data.messages, data.agent_type || historyEntry?.source_type || "claude", messageBaseIndex, locator?.message_index);
+        // A session opened before the history list has it (a #session/<id> link,
+        // or one beyond the loaded page) still gets Resume from its own record.
+        if (!historyEntry && (data.agent_type === "claude" || data.agent_type === "codex")) {
+            const resumeBtn = document.getElementById("btn-resume-session");
+            if (resumeBtn) resumeBtn.style.display = "";
+        }
     }
 
     // Load notes, tags, commits, token usage, and history tabs in parallel

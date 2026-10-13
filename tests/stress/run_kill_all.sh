@@ -69,8 +69,14 @@ log "Starting coral on $BASE_URL (data $CORAL_DATA_DIR) ..."
 env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u TMUX -u TMUX_PANE \
     "$TMP/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
-for _ in $(seq 1 60); do curl -s -m 2 "$BASE_URL/api/health" >/dev/null 2>&1 && break; sleep 0.5; done
-curl -s -m 2 "$BASE_URL/api/health" >/dev/null || { log "ERROR: server did not start"; exit 1; }
+# Ready only when OUR server says it bound the port (its own log line), not when anything answers.
+for _ in $(seq 1 60); do
+    grep -q "Coral dashboard: http://localhost:${PORT}" "$TMP/server.log" 2>/dev/null && break
+    kill -0 "$SERVER_PID" 2>/dev/null || { log "ERROR: server exited:"; tail -20 "$TMP/server.log"; exit 1; }
+    sleep 0.5
+done
+grep -q "Coral dashboard: http://localhost:${PORT}" "$TMP/server.log" || { log "ERROR: server did not start"; exit 1; }
+curl -s -m 2 "$BASE_URL/api/health" >/dev/null || { log "ERROR: $BASE_URL does not answer"; exit 1; }
 api PUT "/api/settings" -d "{\"cli_path_claude\": \"$TMP/mock-agent\"}" >/dev/null
 
 # Rows of the live list as TSV: session_id, name, display_name, board_project, sleeping, archived, tmux_session
