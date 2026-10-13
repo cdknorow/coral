@@ -285,7 +285,7 @@ body.panel-dragging .agentic-state {
 @media(max-width: 767px) {
     .agentic-state.team-settings-workspace-active {
         position: fixed;
-        inset: 49px 0 0;
+        inset: var(--top-bar-height, 49px) 0 0;
         width: 100% !important;
         max-width: none;
         min-width: 0;

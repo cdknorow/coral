@@ -349,9 +349,28 @@ function _initKeyboardDetection() {
     });
 }
 
+// ── Top Bar Height ────────────────────────────────────────────────────────
+
+// Fixed overlays below the top bar (side panel, sidebar, backdrop) start at
+// --top-bar-height. The bar's height is not a constant (44px touch targets on a
+// coarse pointer, safe-area padding, wrapping), so it is measured.
+function _initTopBarHeight() {
+    const bar = document.querySelector('header.top-bar');
+    if (!bar) return;
+    const root = document.documentElement;
+    const update = () => {
+        const bottom = Math.ceil(bar.getBoundingClientRect().bottom);
+        if (bottom > 0) root.style.setProperty('--top-bar-height', bottom + 'px');
+    };
+    update();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(update).observe(bar);
+    window.addEventListener('resize', update);
+}
+
 // ── Initialize Mobile ─────────────────────────────────────────────────────
 
 export function initMobile() {
+    _initTopBarHeight();
     // Popout mode has no agent list, tab bar or swipe navigation.
     if (document.body.classList.contains('popout-mode')) {
         _initKeyboardDetection();

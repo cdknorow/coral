@@ -178,7 +178,7 @@
         width: 280px;
         min-width: 280px;
         position: fixed;
-        top: 49px;
+        top: var(--top-bar-height, 49px);
         left: 0;
         bottom: 0;
         z-index: 50;
@@ -206,7 +206,7 @@
     .tablet-sidebar-backdrop {
         display: none;
         position: fixed;
-        top: 49px;
+        top: var(--top-bar-height, 49px);
         left: 0;
         right: 0;
         bottom: 0;
@@ -1108,7 +1108,7 @@
         display: flex !important;
         flex-direction: column !important;
         position: fixed;
-        top: 49px;
+        top: var(--top-bar-height, 49px);
         left: 0;
         right: 0;
         bottom: 0;
