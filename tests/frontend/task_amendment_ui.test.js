@@ -16,8 +16,8 @@ const BASE = require('./test_base').BASE;
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.navigate({ url: BASE }); await Page.loadEventFired();
         await ev(`(async () => {
-            const {state} = await import('/static/state.js');
-            const tasks = await import('/static/tasks.js');
+            const {state} = await import((window.__coralStatic||'/static/')+'state.js');
+            const tasks = await import((window.__coralStatic||'/static/')+'tasks.js');
             window.testState = state; window.testTasks = tasks;
             state.currentSession = {name:'amendment-fixture', board_project:'amendment-fixture', type:'live'};
             state.currentAgentTasks = []; state.currentSubagents = [];

@@ -1,6 +1,8 @@
 /* Coral Service Worker — caches app shell for fast loads */
 
-const CACHE_NAME = 'coral-v3';
+// v4: build-versioned /static/b/<build>/ files are no longer cached here (see
+// fetch); bumping the name drops what v3 accumulated.
+const CACHE_NAME = 'coral-v4';
 const SHELL_ASSETS = [
     '/',
     '/static/style.css',
@@ -29,6 +31,13 @@ self.addEventListener('fetch', (event) => {
 
     // API and WebSocket requests: always go to network
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) {
+        return;
+    }
+
+    // Build-versioned files (/static/b/<build>/) are immutable: the browser's HTTP
+    // cache keeps them. Caching them here too would add a full copy per build that
+    // nothing ever evicts.
+    if (url.pathname.startsWith('/static/b/')) {
         return;
     }
 

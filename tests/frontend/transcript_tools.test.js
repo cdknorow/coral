@@ -64,7 +64,7 @@ async function run() {
   // production) instead of sleeping until the timer has done them, then let the async parts render.
   // A refresh that overlaps the timer's can be cut short, so count COMPLETED refreshes (each one ends by fetching
   // /pending-tool) and keep refreshing until n have completed.
-  const refreshOnce = () => ev(`import('/static/live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
+  const refreshOnce = () => ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
   const cycles = async (n) => { const start = await ev(`window.__pendingFetches || 0`); for (let i = 0; i < n * 10 && (await ev(`window.__pendingFetches || 0`)) < start + n; i++) { await refreshOnce(); await sleep(30); } await sleep(60); };
   // For a state the poll converges to: refresh until cond holds (up to 40 cycles), so a loaded machine only waits longer.
   // The card re-renders when a poll lands; wait for the element a step is about to use (up to 3 s).
@@ -150,7 +150,7 @@ async function run() {
   check('there is no separate Chat Highlight setting', await ev(`!document.getElementById('settings-chat-highlight')`));
 
   // Chat is the default center view
-  const dflt = await ev(`(() => { localStorage.removeItem('coral-live-view-mode'); return import('/static/live_chat.js').then(m => { m.applyLiveViewMode(); return { mode: m.getLiveViewMode(), chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggle: !document.querySelector('.live-view-toggle').hidden }; }); })()`);
+  const dflt = await ev(`(() => { localStorage.removeItem('coral-live-view-mode'); return import((window.__coralStatic||'/static/')+'live_chat.js').then(m => { m.applyLiveViewMode(); return { mode: m.getLiveViewMode(), chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggle: !document.querySelector('.live-view-toggle').hidden }; }); })()`);
   check('Chat is the default center view', dflt.mode === 'chat' && dflt.chat && dflt.toggle, JSON.stringify(dflt));
 
   // Chat mode: the command bar keeps just Cancel (Esc) and Send
@@ -198,7 +198,7 @@ async function run() {
   await cycles(3);
   w = await W();
   check('the row goes away once the agent replies and is no longer working', !w.shown, JSON.stringify(w));
-  await ev(`import('/static/state.js').then(st => { st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}).working = true; window.__msgs.push({ type: 'assistant', text: '', tool_uses: [{ name: 'Bash', tool_use_id: 'tw', description: 'Run the test suite', command: 'npm test' }] }); return true; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'state.js').then(st => { st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}).working = true; window.__msgs.push({ type: 'assistant', text: '', tool_uses: [{ name: 'Bash', tool_use_id: 'tw', description: 'Run the test suite', command: 'npm test' }] }); return true; })`);
   await cycles(3);
   w = await W();
   check('while the agent is Working the row shows just "Working" (the step is in the group summary)', w.shown && w.text === 'Working', JSON.stringify(w));
@@ -209,20 +209,20 @@ async function run() {
   }
   const grp = await ev(`(() => { const gs = ${C}.querySelectorAll(':scope > .work-group'); const g = gs[gs.length - 1]; return { groups: gs.length, steps: g.querySelector('.work-group-count').textContent, rows: g.querySelectorAll('.tool-call').length, rowText: (${C}.querySelector(':scope > .chat-working') || {}).textContent }; })()`);
   check('tool calls arriving while Working is shown join the same group (no new little groups)', grp.groups === groupsBefore && grp.rows === 3 && grp.steps === '4 steps', JSON.stringify({ before: groupsBefore, ...grp }));
-  await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; return true; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; return true; })`);
   await cycles(3);
   w = await W();
   check('the row hides when the turn ends', !w.shown, JSON.stringify(w));
 
   // Sent while busy: Queued, below the Working row
-  await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = true; r.awaiting_user = false; return true; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = true; r.awaiting_user = false; return true; })`);
   await ev(`document.getElementById('command-input').value = 'Then update the docs'; window.sendCommand(); true`);
   await sleep(300);
   const busy = await ev(`(() => { const q = ${C}.querySelector('.pending-queued .chat-bubble.pending'); const w = ${C}.querySelector(':scope > .chat-working'); return { label: q && q.querySelector('.pending-label').textContent, rowAbove: !!w && w.nextElementSibling === q.parentElement }; })()`);
   check('a message sent while the agent is working is Queued, below the Working row', busy.label === 'Queued' && busy.rowAbove, JSON.stringify(busy));
 
   // Esc: the interrupt shows as a note, and the queued message is now being worked on
-  await ev(`import('/static/state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; window.__msgs.push({ type: 'user', content: '[Request interrupted by user]', timestamp: new Date().toISOString() }); return true; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = false; r.awaiting_user = true; window.__msgs.push({ type: 'user', content: '[Request interrupted by user]', timestamp: new Date().toISOString() }); return true; })`);
   await cycles(3);
   const intr = await ev(`(() => { const notes = Array.from(${C}.querySelectorAll('.chat-note')).map(n => n.textContent); const asUser = Array.from(${C}.querySelectorAll('.chat-bubble.human')).some(b => b.textContent.includes('Request interrupted'));
     const p = ${C}.querySelector('.chat-bubble.pending'); const w = ${C}.querySelector(':scope > .chat-working');
@@ -235,7 +235,7 @@ async function run() {
   check('once it lands and the agent replies, nothing is pending and Working is gone', done.pending === 0 && !done.working, JSON.stringify(done));
 
   // Needs input: an open question (PreToolUse) shows as a card in place of Working
-  const setRow = (o) => ev(`import('/static/state.js').then(st => { Object.assign(st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}), ${JSON.stringify(o)}); return true; })`);
+  const setRow = (o) => ev(`import((window.__coralStatic||'/static/')+'state.js').then(st => { Object.assign(st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}), ${JSON.stringify(o)}); return true; })`);
   const card = () => ev(`(() => { const c = ${C}.querySelector(':scope > .chat-needs-input'); if (!c) return null;
     const t = (sel) => (c.querySelector(sel) || {}).textContent || '';
     return { kicker: t('.cni-kicker'), question: t('.cni-question'), text: c.textContent.replace(/\\s+/g, ' ').trim(),
@@ -328,7 +328,7 @@ async function run() {
   check('the card goes away once the prompt is answered', (await card()) === null);
 
   // A plain terminal has no transcript: always Terminal, toggle hidden
-  const term = await ev(`Promise.all([import('/static/state.js'), import('/static/live_chat.js')]).then(([st, m]) => {
+  const term = await ev(`Promise.all([import((window.__coralStatic||'/static/')+'state.js'), import((window.__coralStatic||'/static/')+'live_chat.js')]).then(([st, m]) => {
     const prev = st.state.currentSession.agent_type; st.state.currentSession.agent_type = 'terminal'; m.applyLiveViewMode();
     const r = { chat: document.getElementById('capture-wrapper').classList.contains('chat-mode'), toggleHidden: getComputedStyle(document.querySelector('.live-view-toggle')).display === 'none' };
     st.state.currentSession.agent_type = prev; m.applyLiveViewMode(); return r; })`);
@@ -336,7 +336,7 @@ async function run() {
 
   // Tasks for an agent without a board: + Task is always there, creates an agent
   // task and (by default) sends it to the agent
-  const tasksTab = await ev(`import('/static/agentic_state.js').then(a => { a.switchAgenticTab('tasks', 'top'); return import('/static/tasks.js'); }).then(t => { t.renderBoardTaskList(); const sec = document.getElementById('board-tasks-section');
+  const tasksTab = await ev(`import((window.__coralStatic||'/static/')+'agentic_state.js').then(a => { a.switchAgenticTab('tasks', 'top'); return import((window.__coralStatic||'/static/')+'tasks.js'); }).then(t => { t.renderBoardTaskList(); const sec = document.getElementById('board-tasks-section');
     return { shown: getComputedStyle(sec).display !== 'none', addBtn: !!sec.querySelector('.btn-create-task'), empty: (document.querySelector('#board-task-list .board-task-empty') || {}).textContent || '' }; })`);
   check('a solo agent\'s Tasks tab shows + Task and an empty state', tasksTab.shown && tasksTab.addBtn && /No tasks yet/.test(tasksTab.empty), JSON.stringify(tasksTab));
   await ev(`document.querySelector('#board-tasks-section .btn-create-task').click(); true`);
@@ -351,11 +351,11 @@ async function run() {
   const sendPost = (made.posts || []).find(p => /\/send$/.test(p[1]));
   check('submitting stores the task (with its details) and asks the server to tell the agent', !!taskPost && taskPost[2].title === 'Add a battle log' && taskPost[2].body === 'Log each round.' && taskPost[2].session_id === SID && taskPost[2].notify === true && !sendPost && !made.modalOpen, JSON.stringify({ taskPost, sendPost, modalOpen: made.modalOpen }));
   check('the claim prompt the server sent shows in the chat as a pending message', /^You have a new task in Coral \(#7: Add a battle log\)/.test(made.pending) && /coral-agent task claim/.test(made.pending), made.pending);
-  await ev(`import('/static/agentic_state.js').then(a => { a.switchAgenticTab('files', 'top'); return true; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'agentic_state.js').then(a => { a.switchAgenticTab('files', 'top'); return true; })`);
 
   // History Chat tab renders the same transcript through the same renderer:
   // tool output folds into step groups instead of being shown as reply prose.
-  const hist = await ev(`import('/static/render.js').then(r => { r.renderHistoryChat(window.__msgs); const H = document.getElementById('history-messages');
+  const hist = await ev(`import((window.__coralStatic||'/static/')+'render.js').then(r => { r.renderHistoryChat(window.__msgs); const H = document.getElementById('history-messages');
     const top = Array.from(H.children); return {
       kinds: top.map(e => e.classList.contains('work-group') ? 'group' : e.classList.contains('human') ? 'user' : e.classList.contains('assistant') ? 'reply' : e.tagName),
       outputInProse: Array.from(H.querySelectorAll(':scope > .chat-bubble.assistant')).some(b => /line 39|boom/.test(b.textContent)),
@@ -367,23 +367,23 @@ async function run() {
   await ev(`window.__msgs.push({type:'user',content:${JSON.stringify(made.pending)},timestamp:new Date().toISOString()}); true`);
   await cycles(3);
   // Image paths and transcript envelopes must not leave acknowledged sends stuck.
-  await ev(`import('/static/live_chat.js').then(m => { m.addPendingMessage(${JSON.stringify(SID)}, '/Users/test/.coral/uploads/shot.png Remove team borders and shadows.'); window.__msgs.push({type:'user', content:'<image name=[Image #1] path="/Users/test/.coral/uploads/shot.png"></image>[Image #1]', timestamp:new Date().toISOString()}, {type:'user', content:'About the sidebar: Remove team borders and shadows.', timestamp:new Date().toISOString()}); })`);
+  await ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => { m.addPendingMessage(${JSON.stringify(SID)}, '/Users/test/.coral/uploads/shot.png Remove team borders and shadows.'); window.__msgs.push({type:'user', content:'<image name=[Image #1] path="/Users/test/.coral/uploads/shot.png"></image>[Image #1]', timestamp:new Date().toISOString()}, {type:'user', content:'About the sidebar: Remove team borders and shadows.', timestamp:new Date().toISOString()}); })`);
   await cycles(3);
   check('image attachment recorded separately still settles its message text', await ev(`!${C}.querySelector('.pending-messages')`));
   check('acknowledged image send is removed from persisted pending state', await ev(`!(JSON.parse(localStorage.getItem('coral-pending-messages') || '{}')[${JSON.stringify(SID)}] || []).length`));
 
   await ev(`window.fastSendAt = Date.now(); window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
   await cycles(3);
-  await ev(`import('/static/live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement', window.fastSendAt))`);
+  await ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement', window.fastSendAt))`);
   check('transcript receipt arriving before send response settles immediately', await ev(`!${C}.querySelector('.pending-messages')`));
-  await ev(`import('/static/live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement'))`);
+  await ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => m.addPendingMessage(${JSON.stringify(SID)}, 'Fast acknowledgement'))`);
   check('one transcript receipt cannot acknowledge a repeated send twice', await ev(`!!${C}.querySelector('.pending-messages')`));
   await ev(`window.__msgs.push({type:'user', content:'Fast acknowledgement', timestamp:new Date().toISOString()}); true`);
   await cycles(3);
   check('repeated send settles only on its own receipt', await ev(`!${C}.querySelector('.pending-messages')`));
 
   // Codex Scenario A & B: Image-only followed by subsequent text, and paths with spaces
-  await ev(`import('/static/live_chat.js').then(m => {
+  await ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => {
     m.addPendingMessage(${JSON.stringify(SID)}, '/Users/test user/.coral/uploads/image 1.png');
     m.addPendingMessage(${JSON.stringify(SID)}, 'Inspect this diagram');
   })`);
@@ -403,7 +403,7 @@ async function run() {
   // Actual payload verification for in-flight image upload + text send
   await ev(`window.__posts = []; window.__failUpload = false; window.__uploadDelay = 300;
     const file = new File(['fake image data'], 'shot.png', { type: 'image/png' });
-    import('/static/controls.js').then(c => {
+    import((window.__coralStatic||'/static/')+'controls.js').then(c => {
       c.uploadAndInsertImage(file);
       document.getElementById('command-input').value = 'Please inspect this';
       return c.sendCommand();
@@ -416,7 +416,7 @@ async function run() {
   // Upload failure aborts send, prevents partial caption-only dispatch, and preserves input
   await ev(`window.__posts = []; window.__failUpload = true; window.__uploadDelay = 100;
     const failFile = new File(['fake data'], 'bad.png', { type: 'image/png' });
-    import('/static/controls.js').then(c => {
+    import((window.__coralStatic||'/static/')+'controls.js').then(c => {
       document.getElementById('command-input').value = 'Do not send without image';
       c.uploadAndInsertImage(failFile);
       return c.sendCommand();
@@ -430,7 +430,7 @@ async function run() {
   // Repeat-send debouncing while upload is in-flight
   await ev(`window.__posts = []; window.__failUpload = false; window.__uploadDelay = 500;
     const file2 = new File(['fake data'], 'shot2.png', { type: 'image/png' });
-    import('/static/controls.js').then(c => {
+    import((window.__coralStatic||'/static/')+'controls.js').then(c => {
       document.getElementById('command-input').value = 'Repeat send check';
       c.uploadAndInsertImage(file2);
       c.sendCommand();
@@ -444,12 +444,12 @@ async function run() {
   // Session-switch safety while upload is in-flight
   await ev(`window.__posts = []; window.__failUpload = false; window.__uploadDelay = 600;
     const file3 = new File(['fake data'], 'shot3.png', { type: 'image/png' });
-    import('/static/controls.js').then(c => {
+    import((window.__coralStatic||'/static/')+'controls.js').then(c => {
       document.getElementById('command-input').value = 'Session switch check';
       c.uploadAndInsertImage(file3);
       c.sendCommand();
       // Switch active session while upload is in-flight
-      return import('/static/state.js');
+      return import((window.__coralStatic||'/static/')+'state.js');
     }).then(s => {
       s.state.currentSession = { session_id: 'switched-session-id', name: 'other-session', type: 'live', agent_type: 'codex' };
     });
@@ -458,17 +458,17 @@ async function run() {
   const switchedSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('session switch while awaiting upload cancels send without dispatching to switched session', switchedSends.length === 0, JSON.stringify(switchedSends));
   // Restore currentSession
-  await ev(`import('/static/state.js').then(s => { s.state.currentSession = (window.__sessions || []).find(x => x.session_id === ${JSON.stringify(SID)}) || s.state.currentSession; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'state.js').then(s => { s.state.currentSession = (window.__sessions || []).find(x => x.session_id === ${JSON.stringify(SID)}) || s.state.currentSession; })`);
 
   // Lead Developer finding #1366: upload started in session 1 then switching to session 2 before completion
   await ev(`window.__posts = []; window.__uploadDelay = 400;
     const file4 = new File(['fake data'], 'shot4.png', { type: 'image/png' });
     const s1 = (window.__sessions || []).find(x => x.session_id === ${JSON.stringify(SID)});
-    import('/static/controls.js').then(c => {
+    import((window.__coralStatic||'/static/')+'controls.js').then(c => {
       // Start upload in session 1
       c.uploadAndInsertImage(file4, s1);
       // Switch to session 2 before upload completes
-      return import('/static/sessions.js');
+      return import((window.__coralStatic||'/static/')+'sessions.js');
     }).then(sm => {
       return sm.selectLiveSession('session-two', 'claude', 'sid-two');
     });
@@ -476,7 +476,7 @@ async function run() {
   // Wait for upload to finish while in session 2
   await sleep(800);
   // Send from session 2
-  await ev(`import('/static/controls.js').then(c => {
+  await ev(`import((window.__coralStatic||'/static/')+'controls.js').then(c => {
     document.getElementById('command-input').value = 'Message in session two';
     return c.sendCommand();
   })`);
@@ -485,9 +485,9 @@ async function run() {
   check('upload started in session 1 does not leak attachment into session 2 send', !!s2Send && s2Send[2].command === 'Message in session two' && !s2Send[2].command.includes('shot4.png'), JSON.stringify(s2Send));
 
   // Switch back to session 1; verify attachment is retained and sent to session 1
-  await ev(`import('/static/sessions.js').then(sm => sm.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)}))`);
+  await ev(`import((window.__coralStatic||'/static/')+'sessions.js').then(sm => sm.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)}))`);
   await sleep(400);
-  const s1Attachments = await ev(`import('/static/controls.js').then(c => c.getPendingAttachments().length)`);
+  const s1Attachments = await ev(`import((window.__coralStatic||'/static/')+'controls.js').then(c => c.getPendingAttachments().length)`);
   check('session 1 retains its uploaded attachment after returning', s1Attachments >= 1, String(s1Attachments));
 
   await client.close();

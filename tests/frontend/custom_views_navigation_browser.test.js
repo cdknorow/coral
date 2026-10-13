@@ -38,7 +38,7 @@ const base = require('./test_base').BASE;
         await c.Page.enable();
         await c.Page.navigate({ url: base }); await c.Page.loadEventFired();
         await ev(`(async () => {
-            window.cv = await import('/static/custom_views.js');
+            window.cv = await import((window.__coralStatic||'/static/')+'custom_views.js');
             const views = ${JSON.stringify(names.map((n, i) => ({ id: 300 + i, name: n, html: vectors[n], created_via: 'ui' })))};
             const real = window.fetch.bind(window);
             window.fetch = async (url, init) => { const u = new URL(url, location.origin); if (u.pathname === '/api/views') return new Response(JSON.stringify(views), { headers: { 'Content-Type': 'application/json' } }); return real(url, init); };

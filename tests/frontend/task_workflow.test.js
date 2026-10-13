@@ -13,8 +13,8 @@ const BASE = require('./test_base').BASE;
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.navigate({ url: BASE }); await Page.loadEventFired();
         await ev(`(async () => {
-            const {state} = await import('/static/state.js');
-            const tasks = await import('/static/tasks.js');
+            const {state} = await import((window.__coralStatic||'/static/')+'state.js');
+            const tasks = await import((window.__coralStatic||'/static/')+'tasks.js');
             window.testTasks = tasks;
             state.currentSession = {name:'workflow-browser', board_project:'workflow-browser', type:'live'};
             await tasks.showCreateTaskModal();
@@ -48,7 +48,7 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`window.invalidDependencyError`), 'dependency #1 cannot require artifact "candidate": upstream declares outputs [build]');
 
         await ev(`(async () => {
-            const {state} = await import('/static/state.js');
+            const {state} = await import((window.__coralStatic||'/static/')+'state.js');
             const r = await fetch('/api/sessions/launch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({working_dir:'/tmp',agent_type:'terminal',display_name:'Personal workflow browser'})});
             if (!r.ok) throw new Error('launch failed');
             const session = await r.json();

@@ -35,6 +35,14 @@ type PageData struct {
 	// Empty means a standalone Coral: {"mode":"local"}. Must be valid JSON built
 	// by the server from trusted values (it is emitted unescaped).
 	BootJSON template.JS
+	// StaticBase prefixes every static URL in the shell templates (index and
+	// the cloud sign-in/enroll pages); empty means "/static/". It is set by the
+	// embedder, is trusted and constant for a build, always ends in "/", has no
+	// query or fragment, and is NEVER derived from the request: the rendered page
+	// is shared by everyone and may be cached (no per-user or per-session data in
+	// PageData, ever). The standalone server uses /static/b/<build>/, deliberately
+	// distinct from the Cloud Hub's /static/v/<hash>/, so the two never collide.
+	StaticBase string
 }
 
 // IndexTemplateFiles lists the template files that make up the app shell.

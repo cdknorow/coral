@@ -25,9 +25,9 @@ const base=require('./test_base').BASE;
  await c.Page.navigate({url:'about:blank'});await c.Page.loadEventFired();
  await c.Page.navigate({url:base});await c.Page.loadEventFired();
  await ev(`(async()=>{
- const {state}=await import('/static/state.js');const f=await import('/static/changed_files.js');window.s=state;window.f=f;
+ const {state}=await import((window.__coralStatic||'/static/')+'state.js');const f=await import((window.__coralStatic||'/static/')+'changed_files.js');window.s=state;window.f=f;
  s.currentSession={type:'live',name:'UI',session_id:'a',board_project:'team',working_directory:'/repo-a/subdir'};
- const {showView}=await import('/static/utils.js');showView('live-session-view');const side=document.getElementById('agentic-state');side.classList.remove('collapsed');side.style.width='680px';
+ const {showView}=await import((window.__coralStatic||'/static/')+'utils.js');showView('live-session-view');const side=document.getElementById('agentic-state');side.classList.remove('collapsed');side.style.width='680px';
  window.calls=[];window.pending=[];window.defer=false;window.locked=true;
  window.fetch=async url=>{
  const u=new URL(url,location.origin);calls.push(u.pathname+u.search);

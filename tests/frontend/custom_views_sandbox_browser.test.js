@@ -25,7 +25,7 @@ const base = require('./test_base').BASE;
         assert.deepEqual(listed.map(v => v.name), ['dashboard view'], 'the refused write created nothing');
         await ev(`fetch('/api/views/' + ${real.body.id}, { method: 'DELETE' }).then(r => r.status)`);
         await ev(`(async () => {
-            window.cv = await import('/static/custom_views.js');
+            window.cv = await import((window.__coralStatic||'/static/')+'custom_views.js');
             window.probes = {}; window.apiCalls = [];
             window.addEventListener('message', e => { if (e.data && e.data.type === 'probe') window.probes[e.data.name] = e.data.value; });
             const probe = "(function(){ function say(n,v){ coral.get('/api/tags?'+n+'='+v).catch(function(){}); }" +

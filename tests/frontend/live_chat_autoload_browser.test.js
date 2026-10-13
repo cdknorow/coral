@@ -39,9 +39,9 @@ const MAX_FIRST_PAGE = 200;
         await Page.loadEventFired();
 
         await ev(`(async () => {
-            const { state } = await import('/static/state.js');
-            const liveChat = await import('/static/live_chat.js');
-            const sessions = await import('/static/sessions.js');
+            const { state } = await import((window.__coralStatic||'/static/')+'state.js');
+            const liveChat = await import((window.__coralStatic||'/static/')+'live_chat.js');
+            const sessions = await import((window.__coralStatic||'/static/')+'sessions.js');
             window.T = { state, liveChat, sessions };
 
             // A visible, fixed-size scroller, so scroll events and the

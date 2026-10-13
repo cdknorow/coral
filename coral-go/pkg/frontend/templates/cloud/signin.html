@@ -1,15 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    {{- $base := or .StaticBase "/static/" }}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <title>Sign in to Coral Hub</title>
-    <link rel="icon" type="image/png" href="/static/favicon.png">
-    <link rel="stylesheet" href="/static/css/fonts.css">
-    <link rel="stylesheet" href="/static/css/variables.css">
-    <link rel="stylesheet" href="/static/css/cloud.css">
-    <script src="/static/theme_init.js"></script>
+    <link rel="icon" type="image/png" href="{{ $base }}favicon.png">
+    <link rel="stylesheet" href="{{ $base }}css/fonts.css">
+    <link rel="stylesheet" href="{{ $base }}css/variables.css">
+    <link rel="stylesheet" href="{{ $base }}css/cloud.css">
+    <script src="{{ $base }}theme_init.js"></script>
 </head>
 <body class="cloud-page">
     <main class="cloud-card">
@@ -24,6 +25,6 @@
         <a id="github" class="cloud-btn" href="/auth/github/login">Sign in with GitHub</a>
         <div id="status" class="cloud-status" role="status" aria-live="polite"></div>
     </main>
-    <script type="module" src="/static/cloud/signin.js"></script>
+    <script type="module" src="{{ $base }}cloud/signin.js"></script>
 </body>
 </html>

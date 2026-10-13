@@ -18,8 +18,8 @@ const BASE = require('./test_base').BASE;
         await Page.loadEventFired();
         await evaluate(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`);
         const r = await evaluate(`(async () => {
-            const m = await import('/static/websocket.js');
-            const { state } = await import('/static/state.js');
+            const m = await import((window.__coralStatic||'/static/')+'websocket.js');
+            const { state } = await import((window.__coralStatic||'/static/')+'state.js');
             // Silence the page's own feed and let its start-up renders finish, so only the messages below move the sidebar.
             if (state.coralWs) { state.coralWs.onmessage = null; state.coralWs.onclose = null; state.coralWs.close(); }
             await new Promise(r => setTimeout(r, 2500));

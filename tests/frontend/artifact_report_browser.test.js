@@ -26,11 +26,11 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
         await client.Emulation.setDeviceMetricsOverride({width:1200,height:950,deviceScaleFactor:1,mobile:false});
         await Page.navigate({url:BASE});await Page.loadEventFired();
         await ev(`(async()=>{
-            const {state}=await import('/static/state.js');const files=await import('/static/changed_files.js');
+            const {state}=await import((window.__coralStatic||'/static/')+'state.js');const files=await import((window.__coralStatic||'/static/')+'changed_files.js');
             window.__files=files;window.__state=state;
             state.currentSession={type:'live',name:'UI',session_id:'report-test',board_project:'report-team'};
             // Show the real live view: team artifacts list in the sidebar, previews in the bottom preview pane.
-            const {showView}=await import('/static/utils.js');showView('live-session-view');
+            const {showView}=await import((window.__coralStatic||'/static/')+'utils.js');showView('live-session-view');
             const side=document.getElementById('agentic-state');side.classList.remove('collapsed');side.style.width='720px';
             window.__content=${JSON.stringify(sample)};window.__inline=true;window.__reads=0;
             window.fetch=async(url)=>{
@@ -64,7 +64,7 @@ const sample = fs.readFileSync(path.join(__dirname,'fixtures/verification_report
         assert.equal(await ev(`document.querySelector('.artifact-report-title').textContent`),'Task #2254');
         // Module-level adversarial and fallback checks run in the real browser.
         const probe=await ev(`(async()=>{
-            const {renderJSONReport}=await import('/static/artifact_report.js');const c=document.createElement('div');
+            const {renderJSONReport}=await import((window.__coralStatic||'/static/')+'artifact_report.js');const c=document.createElement('div');
             const unusual={summary:'PASS in prose does not create an outcome',extra_fields:{'<img src=x onerror=alert(1)>':[0,false,null,'',[],{},'<script>window.reportExecuted=true<\\/script>'],long_path:'nested/'.repeat(60),camelCase:'kept'},emptyKey:{'':'kept too'}};
             const raw=JSON.stringify(unusual,null,3)+'\\n';const recognized=renderJSONReport(c,raw,'verification_report');
             const safe={recognized,text:c.textContent,scriptCount:c.querySelectorAll('script,img').length,outcome:c.querySelector('.artifact-report-outcome')?.textContent||'',raw:c.querySelector('.artifact-report-raw').textContent};

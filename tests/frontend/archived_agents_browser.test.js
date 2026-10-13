@@ -268,7 +268,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             m.add('m-awake', 'N', 50, { sleeping: false, board_project: 'team-one' });
             T.render.renderLiveSessions(T.state.liveSessions);
         })()`);
-        await ev(`(async () => { const mob = await import('/static/mobile.js'); mob.syncMobileAgentList(); })()`);
+        await ev(`(async () => { const mob = await import((window.__coralStatic||'/static/')+'mobile.js'); mob.syncMobileAgentList(); })()`);
         await waitFor(`!!document.querySelector('#mobile-session-list .archived-summary-row')`, 'mobile Archived row', 3000);
         let mb = await sidebar('#mobile-session-list');
         assert.match(mb.summary || '', /^Archived \(1\)$/);

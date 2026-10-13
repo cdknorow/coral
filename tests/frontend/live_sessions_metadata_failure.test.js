@@ -43,9 +43,9 @@ const html = '<!doctype html><html><body><section data-section="live-sessions"><
                 }
                 return new Response('{}',{headers:{'Content-Type':'application/json'}});
             };
-            window.s=(await import('/static/state.js')).state;
+            window.s=(await import((window.__coralStatic||'/static/')+'state.js')).state;
             s.liveSessions=[];s.killedSessions={};
-            window.api=await import('/static/api.js');
+            window.api=await import((window.__coralStatic||'/static/')+'api.js');
             window.load=()=>api.loadLiveSessions(reason=>failures.push(reason));
             window.inspect=()=>({
                 state:s.liveSessions.map(x=>({id:x.session_id,name:x.display_name,team:x.board_project})),

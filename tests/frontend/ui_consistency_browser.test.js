@@ -12,6 +12,7 @@ function template(name) {
     const old = baseline && path.join(baseline, 'templates', name);
     return fs.readFileSync(old && fs.existsSync(old) ? old : path.join(root, 'templates', name), 'utf8')
         .replace(/{{\s*template "([^"]+)" \.\s*}}/g, (_, file) => template(file))
+        .replace(/{{\s*\$base\s*}}/g, '/static/')
         .replace(/{{[^}]+}}/g, '');
 }
 let html = template('index.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -19,9 +20,9 @@ let html = template('index.html').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,
 html = html.replace('</head>', (process.env.CORAL_FIXTURE_FONTS ? fs.readFileSync(process.env.CORAL_FIXTURE_FONTS, 'utf8') : '') + '<script src="/static/vendor/marked.min.js"></script><script src="/static/vendor/purify.min.js"></script></head>');
 const fixtures = async () => {
     localStorage.clear();
-    window.s = (await import('/static/state.js')).state;
+    window.s = (await import((window.__coralStatic||'/static/')+'state.js')).state;
     window.mods = {};
-    for (const name of ['render','controls','live_chat','tasks','workflows','scheduler','docs','cost_dashboard','agent_ui','modals','agentic_state','sidebar','utils','team_working_mode','message_board']) mods[name] = await import('/static/' + name + '.js');
+    for (const name of ['render','controls','live_chat','tasks','workflows','scheduler','docs','cost_dashboard','agent_ui','modals','agentic_state','sidebar','utils','team_working_mode','message_board']) mods[name] = await import((window.__coralStatic||'/static/')+'' + name + '.js');
     Object.assign(window, mods.tasks, mods.workflows, mods.scheduler, mods.docs, mods.modals);
     window.switchAgenticTab = mods.agentic_state.switchAgenticTab;
     window.toggleAgenticPanel = mods.sidebar.toggleAgenticPanel;

@@ -15,8 +15,8 @@ if (!base || !/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base) || /:8420\
         await c.Page.navigate({url:'about:blank'}); await c.Page.loadEventFired();
         await c.Page.navigate({url:base}); await c.Page.loadEventFired();
         await ev(`(async()=>{
-            window.s=(await import('/static/state.js')).state;
-            window.t=await import('/static/tasks.js');
+            window.s=(await import((window.__coralStatic||'/static/')+'state.js')).state;
+            window.t=await import((window.__coralStatic||'/static/')+'tasks.js');
             s.currentSession={name:'fixture',board_project:'fixture',type:'live'};
             s.currentBoardTasks=[{id:1,title:'Assigned task',body:'',priority:'medium',status:'pending',assigned_to:'Orchestrator'},
                 {id:2,title:'Second task',body:'',priority:'medium',status:'pending',assigned_to:'UI'}];

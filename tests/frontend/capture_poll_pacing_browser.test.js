@@ -19,9 +19,9 @@ const BASE = require('./test_base').BASE;
         await Page.loadEventFired();
         await evaluate(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`);
         const r = await evaluate(`(async () => {
-            const { state } = await import('/static/state.js');
-            const cap = await import('/static/capture.js');
-            const xt = await import('/static/xterm_renderer.js');
+            const { state } = await import((window.__coralStatic||'/static/')+'state.js');
+            const cap = await import((window.__coralStatic||'/static/')+'capture.js');
+            const xt = await import((window.__coralStatic||'/static/')+'xterm_renderer.js');
             const RealWS = window.WebSocket, realFetch = window.fetch;
             // A terminal socket that is open until told otherwise.
             let sock;

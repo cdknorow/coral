@@ -41,7 +41,7 @@ const base=require('./test_base').BASE;
   await ev(`window.__startup=true`);await wait(2100);assert.deepEqual(await events(),[],'startup alone is insufficient');
   await ev(`window.__mode='normal';__release.splice(0).forEach(r=>r())`);await wait(150);
   const readyEvent=(await events())[0];assert.equal(readyEvent.event,'dashboard_ready');assert.match(readyEvent.props.page_id,/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);assert.deepEqual(Object.keys(readyEvent.props),['page_id']);assert.deepEqual((await events())[1],{event:'dashboard_active_day',props:{}});
-  await ev(`(async()=>{const a=await import('/static/dashboard_analytics.js');a.dashboardInitialized();a.dashboardSessionsLoaded(true);a.dashboardStartupComplete();document.dispatchEvent(new Event('visibilitychange'));const chat=await import('/static/live_chat.js');chat.renderTranscript([{type:'user',content:'SECRET_PROMPT'},{type:'assistant',text:'SECRET_RESPONSE'}],document.createElement('div'));})()`);
+  await ev(`(async()=>{const a=await import((window.__coralStatic||'/static/')+'dashboard_analytics.js');a.dashboardInitialized();a.dashboardSessionsLoaded(true);a.dashboardStartupComplete();document.dispatchEvent(new Event('visibilitychange'));const chat=await import((window.__coralStatic||'/static/')+'live_chat.js');chat.renderTranscript([{type:'user',content:'SECRET_PROMPT'},{type:'assistant',text:'SECRET_RESPONSE'}],document.createElement('div'));})()`);
   assert.equal((await events()).filter(x=>x.event==='dashboard_ready').length,1,'repeated initialization adds no ready event');assert.ok((await events()).every(x=>['dashboard_ready','dashboard_active_day'].includes(x.event)),'historical transcripts add no prompt/response events');
   // UTC midnight while the same dashboard stays open (no date property leaves the page).
   await ev(`(()=>{const RealDate=Date;window.Date=class extends RealDate {constructor(...a){super(...(a.length?a:[RealDate.now()+86400000]))}static now(){return RealDate.now()+86400000}};document.dispatchEvent(new Event('visibilitychange'));document.dispatchEvent(new Event('visibilitychange'));})()`);
@@ -49,7 +49,7 @@ const base=require('./test_base').BASE;
   await ev(`window.__rejectTracking=true;document.dispatchEvent(new Event('visibilitychange'))`);const rejectedDayCount=(await events()).length;await ev(`window.__rejectTracking=false`);await wait(50);assert.equal((await events()).length,rejectedDayCount,'no automatic replay on consent/delivery change');await ev(`document.dispatchEvent(new Event('visibilitychange'))`);assert.equal((await events()).length,rejectedDayCount+1,'new visibility retries current active day after rejected tracking');
   for(const [mode,code] of [['sessions_http','sessions_fetch_http'],['sessions_network','sessions_fetch_network'],['sessions_invalid','sessions_fetch_invalid'],['status_http','status_fetch_http'],['status_network','status_fetch_network'],['status_invalid','status_fetch_invalid']]){
    await page(mode);assert.deepEqual(await events(),[{event:'dashboard_failed',props:{code}}],mode);
-   await ev(`(async()=>{const a=await import('/static/dashboard_analytics.js');a.dashboardFailed(${JSON.stringify(code)});a.dashboardFailed('SECRET_RAW_ERROR');})()`);
+   await ev(`(async()=>{const a=await import((window.__coralStatic||'/static/')+'dashboard_analytics.js');a.dashboardFailed(${JSON.stringify(code)});a.dashboardFailed('SECRET_RAW_ERROR');})()`);
    assert.equal((await events()).length,1,'bounded fixed-code failures');
   }
   // Recovery is observable: failures do not permanently suppress readiness.
@@ -60,16 +60,16 @@ const base=require('./test_base').BASE;
   await page('normal',true);await ev(`window.__startup=true`);await wait(2100);assert.deepEqual(await events(),[],'agent popout is not a dashboard load');
   for(const transport of ['ws','http','send_failure']){
    await page(transport);
-   await ev(`(async()=>{const {state}=await import('/static/state.js');state.currentSession={type:'live',name:'test-agent',agent_type:'claude',session_id:'analytics-fixture'};window.controls=await import('/static/controls.js');document.getElementById('command-input').value='';await controls.sendCommand();})()`);
+   await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',name:'test-agent',agent_type:'claude',session_id:'analytics-fixture'};window.controls=await import((window.__coralStatic||'/static/')+'controls.js');document.getElementById('command-input').value='';await controls.sendCommand();})()`);
    assert.deepEqual(await events(),[],'empty composer has no intent');
-   await ev(`(async()=>{if(${JSON.stringify(transport)}==='ws'){window.__socketOpen=true;(await import('/static/xterm_renderer.js')).connectTerminalWs('test-agent','claude','analytics-fixture')}window.__rejectTracking=true;document.getElementById('command-input').value='SECRET_PROMPT';await controls.sendCommand();})()`);
+   await ev(`(async()=>{if(${JSON.stringify(transport)}==='ws'){window.__socketOpen=true;(await import((window.__coralStatic||'/static/')+'xterm_renderer.js')).connectTerminalWs('test-agent','claude','analytics-fixture')}window.__rejectTracking=true;document.getElementById('command-input').value='SECRET_PROMPT';await controls.sendCommand();})()`);
    assert.deepEqual(await events(),[{event:'prompt_submit_requested',props:{source:'dashboard_composer'}}]);
    const order=await ev('window.__order');assert.ok(order.indexOf('event:prompt_submit_requested')<order.indexOf(transport==='ws'?'ws':'http'),'intent precedes transport');
    await ev(`window.__rejectTracking=false`);await wait(50);assert.equal((await events()).length,1,'no automatic intent replay after opt-in');
    await ev(`document.getElementById('command-input').value='SECOND_SECRET';window.controls.sendCommand()`);await wait(50);assert.equal((await events()).length,2,'each explicit intent reaches server-owned once/install dedupe');
   }
   // Observability failure cannot throw into application initialization.
-  await ev(`(async()=>{const a=await import('/static/dashboard_analytics.js?failure-test');document.body.dataset.entryMode='dashboard';a.beginDashboardAnalytics();window.fetch=()=>{throw Error('tracking unavailable')};a.dashboardFailed('init_failed');a.dashboardInitialized();a.dashboardSessionsLoaded(true);a.dashboardStartupComplete()})()`);
+  await ev(`(async()=>{const a=await import((window.__coralStatic||'/static/')+'dashboard_analytics.js?failure-test');document.body.dataset.entryMode='dashboard';a.beginDashboardAnalytics();window.fetch=()=>{throw Error('tracking unavailable')};a.dashboardFailed('init_failed');a.dashboardInitialized();a.dashboardSessionsLoaded(true);a.dashboardStartupComplete()})()`);
   console.log('PASS dashboard analytics: real initialization gates, once/load, visible UTC-day rollover, HTTP/network/invalid failure codes, recovery, popout exclusion, historical transcript exclusion, real composer WS/HTTP/failed-send intent, no raw payload, nonblocking delivery');
  }finally{await c.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

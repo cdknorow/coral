@@ -19,7 +19,7 @@ const BASE = require('./test_base').BASE;
     console.log('Testing team workflow presets, overrides, and prompt inspection end to end...');
 
     // Load team settings dialog module
-    await ev(`import('/static/team_working_mode.js').then(m => { window.showTeamWorkingMode = m.showTeamWorkingMode; })`);
+    await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m => { window.showTeamWorkingMode = m.showTeamWorkingMode; })`);
 
     // 1. Initial load for team-alpha
     await ev(`window.showTeamWorkingMode('team-alpha')`);

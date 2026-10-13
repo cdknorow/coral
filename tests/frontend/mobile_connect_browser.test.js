@@ -34,8 +34,8 @@ const BASE = require('./test_base').BASE;
         await client.Emulation.setDeviceMetricsOverride({width:1200,height:900,deviceScaleFactor:1,mobile:false});
         await Page.navigate({url:BASE}); await Page.loadEventFired();
         await ev(`(async()=>{
-            await import('/static/modals.js');
-            const {state}=await import('/static/state.js');window.__state=state;
+            await import((window.__coralStatic||'/static/')+'modals.js');
+            const {state}=await import((window.__coralStatic||'/static/')+'state.js');window.__state=state;
             window.__calls=[];window.__saved=false;window.__effective=false;window.__mode='normal';window.__putStatus=200;
             const real=window.fetch;
             window.fetch=async(url,opts={})=>{
@@ -110,7 +110,7 @@ const BASE = require('./test_base').BASE;
         await ev('window.__resolvePrivacy()');await tick();
         assert.equal(await ev(`document.getElementById('mobile-connect-modal').style.display`),'none');await noQR();
         // Missing settings default off, including the settings status label.
-        await ev(`window.__mode='normal';window.__saved=false;window.__effective=false;window.__state.settings={};window.__state.privacyStatus=null;window.fetch=async u=>String(u).includes('/api/system/privacy')?new Response('{}',{status:503}):new Response('{}');import('/static/modals.js').then(m=>m.showSettingsModal())`);
+        await ev(`window.__mode='normal';window.__saved=false;window.__effective=false;window.__state.settings={};window.__state.privacyStatus=null;window.fetch=async u=>String(u).includes('/api/system/privacy')?new Response('{}',{status:503}):new Response('{}');import((window.__coralStatic||'/static/')+'modals.js').then(m=>m.showSettingsModal())`);
         assert.equal(await ev(`document.getElementById('settings-remote-access-enabled').checked`),false);
         console.log('PASS mobile QR: default off, no-write open/cancel, explicit single enable, pending enable/disable, effective-only QR, errors/retry, stale close, keyboard/focus and settings fallback');
     } finally {await client.close();}

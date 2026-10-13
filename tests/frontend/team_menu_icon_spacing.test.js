@@ -12,7 +12,7 @@ const BASE = require('./test_base').BASE;
   };
   try {
     await Page.enable(); await Page.navigate({ url: BASE }); for (let i = 0; i < 50; i++) { if (await ev(`!!document.getElementById('live-sessions-list')`)) break; await new Promise(r => setTimeout(r, 100)); }
-    await ev(`import('/static/render.js').then(m => window.renderLiveSessions = m.renderLiveSessions)`);
+    await ev(`import((window.__coralStatic||'/static/')+'render.js').then(m => window.renderLiveSessions = m.renderLiveSessions)`);
     const metrics = await ev(`(() => {
       window.closeSidebarKebabs = () => {}; window.switchNavTab?.('agents');
       if (!document.getElementById('live-sessions-list')) throw new Error('live sessions list missing');

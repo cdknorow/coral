@@ -10,7 +10,7 @@ const BASE = require('./test_base').BASE;
   const response=await ev(`fetch('/api/board/empty-availability-test/status').then(async r=>({status:r.status,body:await r.json()}))`);
   assert.equal(response.status,200);assert.deepEqual(response.body.agents,[]);
   await ev(`(async()=>{
-   const module=await import('/static/team_availability.js');window.openAvailability=module.showTeamAvailability;
+   const module=await import((window.__coralStatic||'/static/')+'team_availability.js');window.openAvailability=module.showTeamAvailability;
    window.originalFetch=window.fetch;
    window.fetch=async()=>({ok:true,json:async()=>({summary:{available:1,busy:1},observed_at:new Date().toISOString(),agents:[{name:'<img src=x onerror="window.availabilityXSS=true">',agent_type:'codex',role:'Developer',availability:'available',available:true,reason:'Idle',tasks:[]},{name:'QA',availability:'busy',reason:'Has active work',tasks:[{scope:'board',id:12,status:'in_progress',title:'Test candidate'}]}],unassigned_tasks:[{scope:'board',id:13,status:'pending',title:'Release'}]})});
    openAvailability('Routing team');

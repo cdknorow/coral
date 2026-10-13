@@ -70,8 +70,8 @@ async function load(policy, { strict }) {
       assert.equal(inline.result.value, 0, 'no executable inline <script> in the page');
       // Exercise a few screens that build markup with handlers and styles.
       for (const expr of [
-        `import('/static/modals.js').then(m => m.showSettingsModal && m.showSettingsModal())`,
-        `import('/static/utils.js').then(() => 1)`,
+        `import((window.__coralStatic||'/static/')+'modals.js').then(m => m.showSettingsModal && m.showSettingsModal())`,
+        `import((window.__coralStatic||'/static/')+'utils.js').then(() => 1)`,
       ]) { await Runtime.evaluate({ expression: expr, awaitPromise: true, returnByValue: true }); await new Promise(r => setTimeout(r, 800)); }
     }
     return { violations, exceptions, blocked };

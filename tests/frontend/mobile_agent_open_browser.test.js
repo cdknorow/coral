@@ -45,7 +45,7 @@ const DEVICES = [
                 window.__seedRows = () => {
                     const list = document.getElementById('live-sessions-list');
                     list.innerHTML = ['alpha', 'beta'].map(n => '<li class="session-group-item" data-session-id="sid-' + n + '" onclick="selectLiveSession(\\'' + n + '\\', \\'terminal\\', \\'sid-' + n + '\\', \\'local\\')"><span class="session-label">' + n + '</span></li>').join('');
-                    return import('/static/mobile.js').then(m => m.syncMobileAgentList());
+                    return import((window.__coralStatic||'/static/')+'mobile.js').then(m => m.syncMobileAgentList());
                 };
                 return window.__seedRows();
             })()`);
@@ -84,7 +84,7 @@ const DEVICES = [
             assert.deepEqual(strip.overlap, [], `${d.name}: no tab is hidden behind the close button at rest`);
             assert.ok(strip.reach, `${d.name}: the last of ${strip.n} tabs scrolls into view`);
             // The command box placeholder is short enough to read whole on a phone.
-            const ph = await evaluate(`import('/static/render.js').then(m => m.commandPlaceholder('a-long-agent-name', 'claude', 'a-board'))`);
+            const ph = await evaluate(`import((window.__coralStatic||'/static/')+'render.js').then(m => m.commandPlaceholder('a-long-agent-name', 'claude', 'a-board'))`);
             assert.ok(ph.length <= 40 && !/type a command/.test(ph), `${d.name}: short placeholder on a phone (${ph})`);
             console.log(`PASS ${d.name} ${d.width}x${d.height}: tap opens the agent, no eval, menu over the panel`);
         }
@@ -93,7 +93,7 @@ const DEVICES = [
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
-        const desk = await evaluate(`import('/static/render.js').then(m => ({ ph: m.commandPlaceholder('n', 'claude', 'b'), closeShown: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).display !== 'none', order: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).order }))`);
+        const desk = await evaluate(`import((window.__coralStatic||'/static/')+'render.js').then(m => ({ ph: m.commandPlaceholder('n', 'claude', 'b'), closeShown: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).display !== 'none', order: getComputedStyle(document.getElementById('agentic-mobile-close-btn')).order }))`);
         assert.equal(desk.ph, 'Sending to: n (claude) on b \u2014 type a command or paste an image...', 'desktop keeps the full placeholder');
         assert.equal(desk.closeShown, false, 'desktop does not show the panel close button');
         assert.equal(desk.order, '0', 'desktop strip order is untouched');

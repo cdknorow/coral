@@ -19,8 +19,8 @@ const BASE = require('./test_base').BASE;
         await Page.loadEventFired();
         await evaluate(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`);
         const gaps = await evaluate(`(async () => {
-            const m = await import('/static/websocket.js');
-            const { state } = await import('/static/state.js');
+            const m = await import((window.__coralStatic||'/static/')+'websocket.js');
+            const { state } = await import((window.__coralStatic||'/static/')+'state.js');
             // The page's own feed must not deliver (a delivered message resets the failure count) or reconnect.
             if (state.coralWs) { state.coralWs.onmessage = null; state.coralWs.onclose = null; state.coralWs.close(); }
             const RealWS = window.WebSocket;

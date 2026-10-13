@@ -70,7 +70,7 @@ async function run() {
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
   for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
   // The 10 s board/subagent poll runs every second here (tasks.js boardTaskPollHooks): same timer, shorter period.
-  await ev(`import('/static/tasks.js').then(m => { m.boardTaskPollHooks.intervalMs = 1000; return true; })`);
+  await ev(`import((window.__coralStatic||'/static/')+'tasks.js').then(m => { m.boardTaskPollHooks.intervalMs = 1000; return true; })`);
   await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
 
   const open = async (sid) => { await ev(`window.__currentIsA = ${JSON.stringify(sid)} === ${JSON.stringify(A)}; true`); await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(sid)})).then(() => { window.switchAgenticTab('tasks', 'top'); return true; })`); await sleep(700); };
@@ -215,7 +215,7 @@ async function run() {
   check('open modal fetches the result once the subagent finishes', (await ev(`window.__detailFetches`)).includes('b7running00000000') && /The design is done\./.test(m.sections['Result']), m.sections['Result']);
 
   // ── The overlay is shared with board tasks ──
-  await ev(`(async () => { const {state} = await import('/static/state.js'); state.currentBoardTasks = JSON.parse(JSON.stringify(window.__boardTasks)); window.showTaskDetailModal(77); return true; })()`); await sleep(200);
+  await ev(`(async () => { const {state} = await import((window.__coralStatic||'/static/')+'state.js'); state.currentBoardTasks = JSON.parse(JSON.stringify(window.__boardTasks)); window.showTaskDetailModal(77); return true; })()`); await sleep(200);
   m = await modal();
   check('board task modal still works', m.open && m.header === 'Task #77' && m.title === '#77 · A board task', m.header + ' / ' + m.title);
   await ev(`window.__subagents[${JSON.stringify(A)}][0] = { ...window.__subagents[${JSON.stringify(A)}][0], cost_usd: 9.99 }; true`);

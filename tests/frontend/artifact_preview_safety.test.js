@@ -15,9 +15,9 @@ const BASE = require('./test_base').BASE;
     await Page.enable();
     await Page.navigate({ url: BASE });
     await Page.loadEventFired();
-    await ev(`(async()=>{const {state}=await import('/static/state.js');state.currentSession={type:'live',session_id:'artifact-preview-test'};await import('/static/changed_files.js');})()`);
+    await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',session_id:'artifact-preview-test'};await import((window.__coralStatic||'/static/')+'changed_files.js');})()`);
     // The preview is a tabbed pane (#preview-body); closing every tab is its reset.
-    await ev(`(async()=>{const m=await import('/static/preview_pane.js');window.__closePreview=()=>m.closeAllTabs();})()`);
+    await ev(`(async()=>{const m=await import((window.__coralStatic||'/static/')+'preview_pane.js');window.__closePreview=()=>m.closeAllTabs();})()`);
     const uri = 'coral://artifacts/a7cfde2b2f1a96d3a9086c715ff5c04afbcb3823daa611dd642fb377e2b23f44';
     const result = await ev(`(async()=>{
       const real=window.fetch; window.__artifactReads=0;
@@ -154,7 +154,7 @@ const BASE = require('./test_base').BASE;
         pwn:window.__pwnMd===undefined&&window.__pwnMd2===undefined};
       // 4) A REPOSITORY .html file (not an artifact) takes a different code path in the preview pane: same guarantees
       window.__closePreview();
-      const st=(await import('/static/state.js')).state; st.currentSession={type:'live',name:'fixture',session_id:'repo-html',working_directory:'/fixture'};
+      const st=(await import((window.__coralStatic||'/static/')+'state.js')).state; st.currentSession={type:'live',name:'fixture',session_id:'repo-html',working_directory:'/fixture'};
       window.fetch=async()=>new Response(JSON.stringify({content:'<h1>Repo page</h1><script>window.top.__pwnRepo=1<\\/script><img src=x onerror="window.top.__pwnRepo2=1">',filepath:'x.html',working_directory:'/fixture'}),{status:200});
       // .htm and any letter case take the same rendered, sandboxed path (retired repository_html_preview suite's case check)
       const caseFrames={};

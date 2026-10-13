@@ -518,7 +518,7 @@ function _cmHost(body) {
     const root = host.attachShadow({ mode: 'open' });
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/static/css/cm_shadow.css';
+    link.href = new URL('./css/cm_shadow.css', import.meta.url).href; // inherits a versioned static prefix
     const mount = document.createElement('div');
     mount.className = 'cm-shadow-mount';
     root.append(link, mount);

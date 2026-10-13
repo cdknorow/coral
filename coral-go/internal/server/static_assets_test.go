@@ -25,7 +25,7 @@ func staticTestServer(t *testing.T) (*httptest.Server, fs.FS) {
 		w.Header().Set("X-Fallback", "1")
 		http.FileServer(http.FS(sub)).ServeHTTP(w, r)
 	})
-	srv := httptest.NewServer(http.StripPrefix("/static/", staticAssetHandler(sub, fallback)))
+	srv := httptest.NewServer(http.StripPrefix("/static/", staticAssetHandler(sub, fallback, cacheRevalidate)))
 	t.Cleanup(srv.Close)
 	return srv, sub
 }
@@ -176,11 +176,70 @@ func TestIndexDefersVendorScripts(t *testing.T) {
 	head := string(page)[:strings.Index(string(page), "</head>")]
 	n := 0
 	for _, line := range strings.Split(head, "\n") {
-		if strings.Contains(line, "<script") && strings.Contains(line, "/static/vendor/") {
+		if strings.Contains(line, "<script") && strings.Contains(line, "vendor/") {
 			n++
 			assert.Contains(t, line, " defer ", "parser-blocking vendor script in <head>: %s", strings.TrimSpace(line))
 		}
 	}
 	assert.GreaterOrEqual(t, n, 7, "codemirror, highlight.js, xterm and its addons")
-	assert.Contains(t, string(page), `<script type="module" src="/static/app.js"></script>`)
+	assert.Contains(t, string(page), `<script type="module" src="{{ $base }}app.js"></script>`)
+}
+
+// /static/b/<build>/ serves the same files as /static/, immutable for the
+// current build. Another build's prefix (a page from before an upgrade) still
+// gets the current files, but revalidating, so a stale name is never pinned.
+func TestVersionedStaticPaths(t *testing.T) {
+	sub, err := fs.Sub(frontend.Static, "static")
+	require.NoError(t, err)
+	ver, err := staticBuildVersion(sub)
+	require.NoError(t, err)
+	require.Regexp(t, `^[0-9a-f]{12}$`, ver)
+	again, err := staticBuildVersion(sub)
+	require.NoError(t, err)
+	require.Equal(t, ver, again, "the build version is deterministic")
+
+	srv := httptest.NewServer(versionedStaticHandler(sub, ver))
+	t.Cleanup(srv.Close)
+	want, err := fs.ReadFile(sub, "app.js")
+	require.NoError(t, err)
+
+	cur, body := get(t, http.MethodGet, srv.URL+"/static/b/"+ver+"/app.js", map[string]string{"Accept-Encoding": "gzip"})
+	require.Equal(t, http.StatusOK, cur.StatusCode)
+	assert.Equal(t, "public, max-age=31536000, immutable", cur.Header.Get("Cache-Control"))
+	assert.Equal(t, "gzip", cur.Header.Get("Content-Encoding"))
+	assert.Equal(t, want, gunzip(t, body))
+	nested, _ := get(t, http.MethodGet, srv.URL+"/static/b/"+ver+"/css/touch.css", nil)
+	assert.Equal(t, http.StatusOK, nested.StatusCode, "nested paths resolve")
+
+	old, oldBody := get(t, http.MethodGet, srv.URL+"/static/b/000000000000/app.js", nil)
+	require.Equal(t, http.StatusOK, old.StatusCode)
+	assert.Equal(t, "no-cache", old.Header.Get("Cache-Control"), "another build's name is never cached for good")
+	assert.Equal(t, want, oldBody)
+
+	for _, bad := range []string{"/static/b/", "/static/b/" + ver, "/static/b/" + ver + "/", "/static/b/" + ver + "/no-such.js"} {
+		resp, _ := get(t, http.MethodGet, srv.URL+bad, nil)
+		assert.Equal(t, http.StatusNotFound, resp.StatusCode, bad)
+	}
+}
+
+// Every static URL in the shell carries the versioned prefix, so relative module
+// imports, CSS url()s and import.meta.url-based URLs inherit it. A renderer that
+// sets no StaticBase (an older Cloud Hub) gets the plain /static/ paths.
+func TestIndexUsesVersionedStaticBase(t *testing.T) {
+	tmpl, err := frontend.ParseIndex()
+	require.NoError(t, err)
+	s := &Server{cfg: &config.Config{CoralRoot: "/srv/coral"}, indexTmpl: tmpl, staticVersion: "abcdef012345"}
+	rr := httptest.NewRecorder()
+	s.serveIndex(rr, httptest.NewRequest(http.MethodGet, "/", nil))
+	page := rr.Body.String()
+	assert.Contains(t, page, `<script type="module" src="/static/b/abcdef012345/app.js"></script>`)
+	assert.Contains(t, page, `href="/static/b/abcdef012345/css/base.css"`)
+	assert.Contains(t, page, `src="/static/b/abcdef012345/vendor/xterm/xterm.min.js"`)
+	assert.Contains(t, page, `href="/static/b/abcdef012345/manifest.json"`)
+	assert.Equal(t, strings.Count(page, `"/static/`), strings.Count(page, `"/static/b/abcdef012345/`), "every static URL is versioned")
+
+	var plain bytes.Buffer
+	require.NoError(t, tmpl.Execute(&plain, frontend.PageData{CoralRoot: "/srv/coral"}))
+	assert.Contains(t, plain.String(), `<script type="module" src="/static/app.js"></script>`)
+	assert.NotContains(t, plain.String(), "/static/b/")
 }

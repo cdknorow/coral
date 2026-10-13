@@ -108,7 +108,7 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
             window.fetch = (u, o) => String(u).startsWith('/api/servers')
                 ? Promise.resolve(new Response(JSON.stringify({ servers: ${JSON.stringify(SERVERS.map(({ id, label, status }) => ({ id, label, online: status === 'online', last_seen: '2026-10-13T00:00:00Z', access_mode: 'view' })))} }), { status: 200, headers: { 'content-type': 'application/json' } }))
                 : real(u, o);
-            const cs = await import('/static/cloud_servers.js');
+            const cs = await import((window.__coralStatic||'/static/')+'cloud_servers.js');
             // The Cloud Hub's server list, as the Servers tab renders it (#3070).
             await cs.renderCloudServersInto(document.getElementById('servers-tab-body'));
             await new Promise(r => setTimeout(r, 200));
@@ -145,7 +145,7 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         await Page.loadEventFired();
         await install();
         await setup();
-        await ev(`(async () => { const mob = await import('/static/mobile.js'); mob.syncMobileAgentList(); return true; })()`);
+        await ev(`(async () => { const mob = await import((window.__coralStatic||'/static/')+'mobile.js'); mob.syncMobileAgentList(); return true; })()`);
         await waitFor(`!!document.querySelector('#mobile-session-list .server-strip-item')`, 'mobile strip', 3000);
         await checkStrip('phone', '#mobile-session-list');
         const fits = await ev(`[...document.querySelectorAll('#mobile-session-list a.server-update-badge')].every(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth + 1; })`);

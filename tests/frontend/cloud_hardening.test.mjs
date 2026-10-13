@@ -37,7 +37,7 @@ for (const f of fs.readdirSync(STATIC).filter(x => x.endsWith('.js'))) {
     assert.ok(!/DOMPurify\s*!==?\s*'undefined'\s*\?[^:]*:\s*(html|marked\.parse)/.test(src), `${f}: falls back to raw HTML when DOMPurify is missing`);
 }
 const indexHtml = fs.readFileSync(path.join(FRONTEND, 'templates/index.html'), 'utf8');
-assert.ok(indexHtml.includes('/static/vendor/purify.min.js') && indexHtml.includes('/static/vendor/marked.min.js'), 'index.html loads marked and DOMPurify');
+assert.ok(indexHtml.includes('{{ $base }}vendor/purify.min.js') && indexHtml.includes('{{ $base }}vendor/marked.min.js'), 'index.html loads marked and DOMPurify');
 
 // ── 5. ?next= (safeNext) ──────────────────────────────────────────────
 const { safeNext } = await import(STATIC + 'cloud/common.js');

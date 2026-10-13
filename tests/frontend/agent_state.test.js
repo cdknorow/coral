@@ -88,7 +88,7 @@ async function run() {
         for (let i = 0; i < 60; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function'`)) break; await sleep(100); }
         // Sleeping agents sit behind an "N sleeping" row; this suite inspects their rows, so expand every group.
         // Agent summaries are off by default (a server-side setting); the 40px/36px row checks need the goal line.
-        await ev(`(async () => { await window.__origFetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show_session_summary: true }) }); await (await import('/static/modals.js')).loadSettings(); return true; })()`);
+        await ev(`(async () => { await window.__origFetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show_session_summary: true }) }); await (await import((window.__coralStatic||'/static/')+'modals.js')).loadSettings(); return true; })()`);
         await ev(`['coral-go','other-proj','ui-team','team-a','team-b'].forEach(g => localStorage.setItem('coral-sleeping-expanded:' + g, 'true')); true`);
         await ev(`localStorage.setItem('coral-group-by-team','${grouped ? 'true' : 'false'}'); window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`);
         await sleep(300);

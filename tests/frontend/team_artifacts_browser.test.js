@@ -39,12 +39,12 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await ev(`(async () => {
-            const {state} = await import('/static/state.js');
-            const files = await import('/static/changed_files.js');
+            const {state} = await import((window.__coralStatic||'/static/')+'state.js');
+            const files = await import((window.__coralStatic||'/static/')+'changed_files.js');
             window.__files = files; window.__state = state;
             state.currentSession = { type:'live', name:'test-ui', session_id:'ui-a', board_project:'design-team' };
             // Real live view: the artifact list is a sidebar tab, previews open in the preview pane.
-            const {showView} = await import('/static/utils.js'); showView('live-session-view');
+            const {showView} = await import((window.__coralStatic||'/static/')+'utils.js'); showView('live-session-view');
             const side = document.getElementById('agentic-state'); side.classList.remove('collapsed'); side.style.width = '680px';
             window.__calls = []; window.__mode = 'normal'; window.__pending = []; window.__frameMessages=0;
             window.addEventListener('message',e=>{if(e.data==='artifact-script-ran')window.__frameMessages++});

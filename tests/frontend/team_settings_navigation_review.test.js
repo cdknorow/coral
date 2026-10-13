@@ -16,7 +16,7 @@ const watchdog=setTimeout(()=>{console.error('Review timeout');process.exit(1)},
  })()`);
  try {
   await Page.enable();const ready=Page.domContentEventFired();await Page.navigate({url:BASE});await ready;console.log("DOM ready");
-  await ev(`import('/static/team_working_mode.js').then(m=>window.openSettings=m.showTeamWorkingMode)`);
+  await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m=>window.openSettings=m.showTeamWorkingMode)`);
   for(const [name,width,height] of [['desktop',1280,800],['mobile',390,844]]) {
    await Emulation.setDeviceMetricsOverride({width,height,deviceScaleFactor:1,mobile:false});
    console.log(name,'opening');await ev(`window.openSettings('navigation-review')`);

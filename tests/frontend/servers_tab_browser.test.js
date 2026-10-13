@@ -210,11 +210,11 @@ const contrast = (a, b) => {
         t = await tabState();
         assert.equal(t.tabShown, false, 'a local Coral with no remotes has no Servers tab');
         assert.equal(t.viewShown, false, '#servers is a no-op there');
-        await ev(`(async () => { T.state.hub = true; T.state.servers = [{ id: 'r1', label: 'Remote', status: 'online' }]; (await import('/static/servers_tab.js')).updateServersTabVisibility(); return true; })()`);
+        await ev(`(async () => { T.state.hub = true; T.state.servers = [{ id: 'r1', label: 'Remote', status: 'online' }]; (await import((window.__coralStatic||'/static/')+'servers_tab.js')).updateServersTabVisibility(); return true; })()`);
         assert.ok((await tabState()).tabShown, 'a hub with a remote shows the tab');
         await ev(`window.switchNavTab('servers'); true`);
         await waitFor(`document.getElementById('nav-tab-servers').getAttribute('aria-selected') === 'true'`, 'tab selected', 3000);
-        await ev(`(async () => { T.state.servers = []; (await import('/static/servers_tab.js')).updateServersTabVisibility(); return true; })()`);
+        await ev(`(async () => { T.state.servers = []; (await import((window.__coralStatic||'/static/')+'servers_tab.js')).updateServersTabVisibility(); return true; })()`);
         t = await tabState();
         assert.equal(t.tabShown, false, 'the last remote gone: tab hidden');
         assert.equal(t.viewShown, false, 'and the active tab falls back to Agents');

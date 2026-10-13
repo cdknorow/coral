@@ -17,10 +17,10 @@ const BASE = require('./test_base').BASE;
     // Wait for the document itself (a fixed sleep raced page load on a busy machine).
     await ev(`new Promise(resolve => { const done = () => document.body ? resolve(true) : setTimeout(done, 50); if (document.readyState === 'complete') done(); else window.addEventListener('load', done); })`);
     await new Promise(resolve => setTimeout(resolve, 300));
-    await ev(`import('/static/agentic_state.js').then(m => window.switchAgenticTab = m.switchAgenticTab)`);
-    await ev(`import('/static/team_availability.js').then(m => window.showTeamAvailabilityWorkspace = m.showTeamAvailabilityWorkspace)`);
-    await ev(`import('/static/team_working_mode.js').then(m => window.showTeamWorkingModeWorkspace = m.showTeamWorkingModeWorkspace)`);
-    await ev(`import('/static/render.js').then(m => window.renderLiveSessions = m.renderLiveSessions)`);
+    await ev(`import((window.__coralStatic||'/static/')+'agentic_state.js').then(m => window.switchAgenticTab = m.switchAgenticTab)`);
+    await ev(`import((window.__coralStatic||'/static/')+'team_availability.js').then(m => window.showTeamAvailabilityWorkspace = m.showTeamAvailabilityWorkspace)`);
+    await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m => window.showTeamWorkingModeWorkspace = m.showTeamWorkingModeWorkspace)`);
+    await ev(`import((window.__coralStatic||'/static/')+'render.js').then(m => window.renderLiveSessions = m.renderLiveSessions)`);
     await ev(`(() => {
       document.body.innerHTML = '<section id="team-center-view" hidden></section><main id="agentic-state" class="agentic-state"><div id="agentic-block-top" class="agentic-block" style="display:flex"><div class="agentic-tab" id="agentic-tab-board">Board</div><div class="agentic-tab active" id="agentic-tab-files" data-scope="agent">Files</div><div class="agentic-tab" id="agentic-tab-team-view" data-scope="team">Team view</div><div class="agentic-tab" id="agentic-tab-team-settings" data-scope="team">Team settings</div><div id="agentic-panel-board" class="agentic-panel">board</div><div id="agentic-panel-files" class="agentic-panel active">files</div><div id="agentic-panel-team-view" class="agentic-panel"></div><div id="agentic-panel-team-settings" class="agentic-panel"></div></div><ul id="live-sessions-list"></ul></main>';
       document.getElementById('agentic-state').style.cssText = 'display:flex !important;position:fixed;inset:0;z-index:100;width:100vw;height:90vh;background:#222';

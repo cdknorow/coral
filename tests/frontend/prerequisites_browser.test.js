@@ -18,7 +18,7 @@ const base=require('./test_base').BASE;
  if(u.pathname==='/api/settings'||u.pathname==='/api/agent-models')return json({});return json([]);
  };`});
  await c.Page.navigate({url:base});await c.Page.loadEventFired();await settle();
- await ev(`(async()=>{window.checks=await import('/static/prerequisites.js');const p=document.createElement('div');p.id='fixture';p.className='modal-content';p.style.cssText='position:fixed;top:140px;left:20px;width:560px;height:700px;overflow:auto;z-index:99999;background:var(--bg-primary);padding:16px';document.body.append(p);window.renderAgentConfigForm('fixture',{showPreset:false,showName:false,value:{agentType:'claude'}})})()`);await settle();
+ await ev(`(async()=>{window.checks=await import((window.__coralStatic||'/static/')+'prerequisites.js');const p=document.createElement('div');p.id='fixture';p.className='modal-content';p.style.cssText='position:fixed;top:140px;left:20px;width:560px;height:700px;overflow:auto;z-index:99999;background:var(--bg-primary);padding:16px';document.body.append(p);window.renderAgentConfigForm('fixture',{showPreset:false,showName:false,value:{agentType:'claude'}})})()`);await settle();
  assert.match(await text(),/claude CLI was not found/);assert.match(await text(),/Install in your terminal/);await shot('prerequisites-missing');
  await ev(`window.cli.claude={found:true,status:'available',agent_type:'claude'}`);await click('#fixture .acf-cli-warning button');
  assert.equal(await ev(`document.querySelector('#fixture .acf-cli-warning').style.display`),'none');

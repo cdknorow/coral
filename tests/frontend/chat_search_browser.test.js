@@ -18,7 +18,7 @@ const BASE = require('./test_base').BASE;
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         // Also run in the static-template fixture, where app.js is intentionally absent.
-        await ev(`(async()=>{window.selectHistorySession=(await import('/static/sessions.js')).selectHistorySession;window.selectBoardProject=(await import('/static/message_board.js')).selectBoardProject;})()`);
+        await ev(`(async()=>{window.selectHistorySession=(await import((window.__coralStatic||'/static/')+'sessions.js')).selectHistorySession;window.selectBoardProject=(await import((window.__coralStatic||'/static/')+'message_board.js')).selectBoardProject;})()`);
 
         console.log('Testing repaired chat search UI in real browser session via CDP...');
 
@@ -33,7 +33,7 @@ const BASE = require('./test_base').BASE;
 
         // 2. Exercise searchChats with backend response status: "complete"
         const searchCompleteResult = await ev(`(async () => {
-            const { searchChats } = await import('/static/chat_search.js');
+            const { searchChats } = await import((window.__coralStatic||'/static/')+'chat_search.js');
             const origFetch = window.fetch;
             window.fetch = async (url) => {
                 if (url.includes('/api/sessions/history/search')) {
@@ -81,7 +81,7 @@ const BASE = require('./test_base').BASE;
 
         // 3. Exercise searchChats with status: "partial"
         const searchPartialResult = await ev(`(async () => {
-            const { searchChats } = await import('/static/chat_search.js');
+            const { searchChats } = await import((window.__coralStatic||'/static/')+'chat_search.js');
             const origFetch = window.fetch;
             window.fetch = async (url) => {
                 if (url.includes('/api/sessions/history/search')) {
@@ -122,7 +122,7 @@ const BASE = require('./test_base').BASE;
 
         // 4. Exercise searchChats with status: "unavailable"
         const searchUnavailableResult = await ev(`(async () => {
-            const { searchChats } = await import('/static/chat_search.js');
+            const { searchChats } = await import((window.__coralStatic||'/static/')+'chat_search.js');
             const origFetch = window.fetch;
             window.fetch = async (url) => {
                 if (url.includes('/api/sessions/history/search')) {
@@ -152,7 +152,7 @@ const BASE = require('./test_base').BASE;
         // and adds .chat-search-target + focuses the element.
         console.log('Testing real selectHistorySession navigation with repeated text...');
         const agentLandingResult = await ev(`(async () => {
-            const { searchChats } = await import('/static/chat_search.js');
+            const { searchChats } = await import((window.__coralStatic||'/static/')+'chat_search.js');
 
             // Generate 100 turns
             const transcript = [];
@@ -257,7 +257,7 @@ const BASE = require('./test_base').BASE;
         // and scrolls message 105 into view.
         console.log('Testing real selectBoardProject navigation with older page loading...');
         const boardLandingResult = await ev(`(async () => {
-            const { searchChats } = await import('/static/chat_search.js');
+            const { searchChats } = await import((window.__coralStatic||'/static/')+'chat_search.js');
 
             // 70 board messages (IDs 101 to 170)
             const allBoardMsgs = [];

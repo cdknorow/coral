@@ -34,7 +34,7 @@ const BASE = require('./test_base').BASE;
         }
       ];
       // Import render module
-      return import('/static/render.js').then(m => {
+      return import((window.__coralStatic||'/static/')+'render.js').then(m => {
         document.body.classList.remove('popout-mode');
         localStorage.setItem('coral-group-by-team', 'true');
         document.getElementById('live-sessions-list')?.remove();
@@ -54,7 +54,7 @@ const BASE = require('./test_base').BASE;
     console.log('✓ Kebab menu labels verified (Team view, Team settings)');
 
     await ev(`(async () => {
-      const { state } = await import('/static/state.js');
+      const { state } = await import((window.__coralStatic||'/static/')+'state.js');
       state.liveSessions = [
         {
           name: 'worker-1',
@@ -66,7 +66,7 @@ const BASE = require('./test_base').BASE;
           role: 'Developer'
         }
       ];
-      const availModule = await import('/static/team_availability.js');
+      const availModule = await import((window.__coralStatic||'/static/')+'team_availability.js');
       window.originalFetch = window.fetch;
       window.fetch = async (url, opts) => {
         if (typeof url === 'string' && url.includes('/api/sessions/live')) {
@@ -153,7 +153,7 @@ const BASE = require('./test_base').BASE;
 
     // 5. Open Team settings (showTeamWorkingMode) and verify settings + health monitor
     await ev(`(async () => {
-      const modeModule = await import('/static/team_working_mode.js');
+      const modeModule = await import((window.__coralStatic||'/static/')+'team_working_mode.js');
       modeModule.showTeamWorkingMode('test-team');
     })()`);
     await ev(`new Promise(r => setTimeout(r, 100))`);

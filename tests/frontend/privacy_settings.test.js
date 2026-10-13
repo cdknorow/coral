@@ -17,14 +17,14 @@ const BASE = require('./test_base').BASE;
       document.body.innerHTML=ids.map(id=>id.includes('enabled')||id.includes('check')||id.includes('scrollbars')||id.includes('proxy')||id.includes('fit')||id.includes('notify')?'<input type="checkbox" id="'+id+'">':'<input id="'+id+'">').join('')+'<div id="settings-remote-access-status"></div><div id="settings-modal"></div>';
       window.__settingsPut=[]; window.__settingsStatus=200; window.fetch=async (url,opts={})=>{const u=String(url);if(u.endsWith('/api/settings')&&opts.method==='PUT'){if(window.__settingsStatus===200)window.__settingsPut.push(JSON.parse(opts.body));return new Response('{}',{status:window.__settingsStatus});}if(u.endsWith('/api/settings'))return new Response(JSON.stringify({settings:{telemetry_enabled:false,remote_access_enabled:false}}));if(u.includes('/api/system/privacy'))return new Response(JSON.stringify({telemetry_enabled:false,remote_access_enabled:false,remote_access_effective:true,remote_access_restart_required:true}));if(u.includes('/api/themes/'))return new Response(JSON.stringify({theme:{base:'dark',variables:{}}}));return new Response('{}');};
     })()`);
-    await ev(`import('/static/modals.js').then(m=>m.loadSettings())`);
+    await ev(`import((window.__coralStatic||'/static/')+'modals.js').then(m=>m.loadSettings())`);
     assert.deepEqual(await ev(`({telemetry:document.getElementById('settings-telemetry-enabled').checked,remote:document.getElementById('settings-remote-access-enabled').checked,status:document.getElementById('settings-remote-access-status').textContent})`), { telemetry:false, remote:false, status:'Saved: disabled. Running now: remote access enabled; restart required to apply the saved value.' });
-    await ev(`(async()=>{document.getElementById('settings-telemetry-enabled').checked=true;document.getElementById('settings-remote-access-enabled').checked=true;await import('/static/modals.js').then(m=>m.applySettings())})()`);
+    await ev(`(async()=>{document.getElementById('settings-telemetry-enabled').checked=true;document.getElementById('settings-remote-access-enabled').checked=true;await import((window.__coralStatic||'/static/')+'modals.js').then(m=>m.applySettings())})()`);
     const payload = await ev(`window.__settingsPut[0]`);
     assert.equal(payload.telemetry_enabled, true); assert.equal(payload.remote_access_enabled, true);
     await ev(`window.__settingsStatus=403`);
     await ev(`document.getElementById('settings-modal').style.display='flex'`);
-    await ev(`import('/static/modals.js').then(m=>m.applySettings())`);
+    await ev(`import((window.__coralStatic||'/static/')+'modals.js').then(m=>m.applySettings())`);
     assert.equal(await ev(`document.getElementById('settings-modal').style.display`), 'flex');
     console.log('PASS privacy settings load, save, effective-state notice');
   } finally { await client.close(); }

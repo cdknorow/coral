@@ -90,7 +90,7 @@ const UNDERSIZED = `(() => {
         // F2: the expanded Agent UI panel, on a touch tablet where the side panel is on screen.
         await coarse(true);
         await open(820, 1180, false);
-        await ev(`(async () => { const ui = await import('/static/agent_ui.js'); await ui.refreshAgentUI(); window.switchAgenticTab('agent-ui', 'top'); })()`);
+        await ev(`(async () => { const ui = await import((window.__coralStatic||'/static/')+'agent_ui.js'); await ui.refreshAgentUI(); window.switchAgenticTab('agent-ui', 'top'); })()`);
         await sleep(600);
         // The panel list (home rows) is on screen before a panel is opened.
         assert.ok(await ev(`!!document.querySelector('.agent-ui-home-row') && document.querySelector('.agent-ui-home-row').getBoundingClientRect().height > 0`), 'the Agent UI panel list is shown');

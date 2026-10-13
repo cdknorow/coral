@@ -34,9 +34,9 @@ const BASE = require('./test_base').BASE;
 
         // Initialize test environment on the page
         await ev(`(async () => {
-            const { state } = await import('/static/state.js');
-            const modals = await import('/static/modals.js');
-            const sessions = await import('/static/sessions.js');
+            const { state } = await import((window.__coralStatic||'/static/')+'state.js');
+            const modals = await import((window.__coralStatic||'/static/')+'modals.js');
+            const sessions = await import((window.__coralStatic||'/static/')+'sessions.js');
             window.testState = state;
             window.testModals = modals;
             window.testSessions = sessions;

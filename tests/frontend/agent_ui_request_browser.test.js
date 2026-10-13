@@ -14,7 +14,7 @@ const base=require('./test_base').BASE;
  await c.Page.addScriptToEvaluateOnNewDocument({source:"localStorage.removeItem('coral-pending-messages');sessionStorage.clear();"});await c.Page.navigate({url:base});await c.Page.loadEventFired();
  await ev(`(async()=>{
  sessionStorage.clear();localStorage.removeItem('coral-pending-messages');
- const {state}=await import('/static/state.js');window.s=state;window.ui=await import('/static/agent_ui.js');window.chat=await import('/static/live_chat.js');chat.stopLiveHistoryPoll();chat.resetLiveHistory();
+ const {state}=await import((window.__coralStatic||'/static/')+'state.js');window.s=state;window.ui=await import((window.__coralStatic||'/static/')+'agent_ui.js');window.chat=await import((window.__coralStatic||'/static/')+'live_chat.js');chat.stopLiveHistoryPoll();chat.resetLiveHistory();
  s.currentSession={type:'live',session_id:'a',name:'Agent A',agent_type:'claude',state:'idle'};s.liveSessions=[s.currentSession];
  window.posts=[];window.panels=[];window.messages=[];window.mode='success';window.pending=[];
  window.fetch=async(url,options={})=>{

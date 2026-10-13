@@ -105,3 +105,55 @@ func TestNoThirdPartyHosts(t *testing.T) {
 		}
 	}
 }
+
+// Every static URL in the shell and the cloud pages comes from StaticBase
+// (default /static/), so one prefix versions them all; nothing else hard-codes
+// /static/ (Coral Hub contract for #3079).
+func TestTemplatesTakeStaticURLsFromStaticBase(t *testing.T) {
+	files := append([]string{}, IndexTemplateFiles...)
+	files = append(files, "templates/cloud/signin.html", "templates/cloud/enroll.html")
+	for _, p := range files {
+		b, err := Templates.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := strings.Replace(string(b), `or .StaticBase "/static/"`, "", 1)
+		if strings.Contains(src, "/static/") {
+			t.Errorf("%s hard-codes /static/ instead of {{ $base }}", p)
+		}
+	}
+	for _, p := range []string{"templates/cloud/signin.html", "templates/cloud/enroll.html"} {
+		tmpl, err := template.ParseFS(Templates, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for base, want := range map[string]string{"": `href="/static/css/cloud.css"`, "/static/b/abc/": `href="/static/b/abc/css/cloud.css"`} {
+			var b bytes.Buffer
+			if err := tmpl.Execute(&b, PageData{StaticBase: base}); err != nil {
+				t.Fatalf("%s: %v", p, err)
+			}
+			if !strings.Contains(b.String(), want) {
+				t.Errorf("%s with StaticBase %q: missing %s", p, base, want)
+			}
+			if base != "" && strings.Count(b.String(), `"/static/`) != strings.Count(b.String(), `"`+base) {
+				t.Errorf("%s: a static URL is not under %s", p, base)
+			}
+		}
+	}
+	shell := render(t, PageData{StaticBase: "/static/b/abc/"})
+	if strings.Count(shell, `"/static/`) != strings.Count(shell, `"/static/b/abc/`) {
+		t.Error("index: a static URL is not under StaticBase")
+	}
+}
+
+// Asset URLs inside CSS and JS are relative, so they inherit a versioned prefix.
+func TestAssetURLsInheritThePrefix(t *testing.T) {
+	css, _ := Static.ReadFile("static/css/fonts.css")
+	if strings.Contains(string(css), "url(/static/") || !strings.Contains(string(css), "url(../vendor/fonts/") {
+		t.Error("fonts.css must load its fonts with relative url()s")
+	}
+	js, _ := Static.ReadFile("static/preview_pane.js")
+	if strings.Contains(string(js), "'/static/css/cm_shadow.css'") || !strings.Contains(string(js), "new URL('./css/cm_shadow.css', import.meta.url)") {
+		t.Error("preview_pane.js must resolve cm_shadow.css from import.meta.url")
+	}
+}

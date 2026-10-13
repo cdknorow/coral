@@ -20,6 +20,7 @@ var reviewedPageDataFields = map[string]string{
 	"TargetSessionID": "popout's agent id: a UUID taken from the URL, validated, not a credential",
 	"TargetServer":    "popout's remote server slug from the URL, validated, not a credential",
 	"BootJSON":        "{\"mode\":\"local\"|\"cloud\"}; built by the server from constants",
+	"StaticBase":      "static URL prefix for the build (/static/b/<build>/); constant, never from the request",
 }
 
 func TestPageDataFieldsAreReviewed(t *testing.T) {

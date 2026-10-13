@@ -152,13 +152,13 @@ async function run() {
         // Toggle only after the app's startup loadSettings() has landed: it replaces state.settings
         // wholesale, so a late response would switch the summary back off (seen under parallel CDP shards).
         for (let i = 0; i < 50; i++) {
-            if (await evalInPage(`(async () => (await import('/static/state.js')).state.settings.file_search_mode !== undefined)()`)) break;
+            if (await evalInPage(`(async () => (await import((window.__coralStatic||'/static/')+'state.js')).state.settings.file_search_mode !== undefined)()`)) break;
             await sleep(100);
         }
         await evalInPage(`window.toggleSessionSummary(); true`);
         await sleep(300);
         check('session summary is shown before the goal-line checks',
-            await evalInPage(`(async () => (await import('/static/render.js')).isSessionSummaryShown())()`));
+            await evalInPage(`(async () => (await import((window.__coralStatic||'/static/')+'render.js')).isSessionSummaryShown())()`));
         await setFixture(SESSIONS);
         // A startup-style reload through the real API path must keep the fixture.
         await evalInPage(`window._coralLoadLiveSessions()`);

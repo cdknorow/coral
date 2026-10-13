@@ -45,7 +45,7 @@ const BASE = require('./test_base').BASE;
 
     // 2. Open Settings modal and verify state loading against real server API
     await ev(`(async () => {
-      const modals = await import('/static/modals.js');
+      const modals = await import((window.__coralStatic||'/static/')+'modals.js');
       await modals.showSettingsModal();
     })()`);
 
@@ -70,7 +70,7 @@ const BASE = require('./test_base').BASE;
     await ev(`(async () => {
       document.getElementById('settings-telemetry-enabled').checked = false;
       document.getElementById('settings-remote-access-enabled').checked = false;
-      const modals = await import('/static/modals.js');
+      const modals = await import((window.__coralStatic||'/static/')+'modals.js');
       await modals.applySettings();
     })()`);
 
@@ -109,7 +109,7 @@ const BASE = require('./test_base').BASE;
     })()`);
 
     await ev(`(async () => {
-      const modals = await import('/static/modals.js');
+      const modals = await import((window.__coralStatic||'/static/')+'modals.js');
       await modals.applySettings();
     })()`);
 

@@ -19,10 +19,10 @@ const BASE = require('./test_base').BASE;
 
         console.log('1. Setting up test harness and mocks...');
         await ev(`(async () => {
-            const { state } = await import('/static/state.js');
-            const liveChat = await import('/static/live_chat.js');
-            const sessions = await import('/static/sessions.js');
-            const { platform } = await import('/static/platform/detect.js');
+            const { state } = await import((window.__coralStatic||'/static/')+'state.js');
+            const liveChat = await import((window.__coralStatic||'/static/')+'live_chat.js');
+            const sessions = await import((window.__coralStatic||'/static/')+'sessions.js');
+            const { platform } = await import((window.__coralStatic||'/static/')+'platform/detect.js');
 
             window.testState = state;
             window.testLiveChat = liveChat;

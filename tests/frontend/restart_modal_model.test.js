@@ -18,9 +18,9 @@ const BASE = require('./test_base').BASE;
     await Page.loadEventFired();
 
     await ev(`(async () => {
-      const { state } = await import('/static/state.js');
-      const controls = await import('/static/controls.js');
-      await import('/static/modals.js');
+      const { state } = await import((window.__coralStatic||'/static/')+'state.js');
+      const controls = await import((window.__coralStatic||'/static/')+'controls.js');
+      await import((window.__coralStatic||'/static/')+'modals.js');
       window.testState = state;
       window.testControls = controls;
       window.__restartRequests = [];

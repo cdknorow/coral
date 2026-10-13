@@ -15,7 +15,7 @@ const BASE = require('./test_base').BASE;
     // Wait for the document itself (a fixed sleep raced page load on a busy machine).
     await ev(`new Promise(resolve => { const done = () => document.body ? resolve(true) : setTimeout(done, 50); if (document.readyState === 'complete') done(); else window.addEventListener('load', done); })`);
     await new Promise(r => setTimeout(r, 300));
-    await ev(`import('/static/team_availability.js').then(m => window.showTeamViewPanel = team => m.showTeamAvailability(team, { workspace: true }))`);
+    await ev(`import((window.__coralStatic||'/static/')+'team_availability.js').then(m => window.showTeamViewPanel = team => m.showTeamAvailability(team, { workspace: true }))`);
     await ev(`(() => {
       document.body.innerHTML = '<main id="agentic-state" class="agentic-state"><div class="agentic-block"></div><div id="agentic-panel-team-view" class="agentic-panel active" style="display:flex;flex:1;min-height:0"></div></main>';
       const s=document.getElementById('agentic-state'); s.style.cssText='display:flex!important;position:fixed;left:0;top:0;height:100vh;background:#222';

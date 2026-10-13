@@ -67,10 +67,67 @@ func newStaticAsset(name string, data []byte) *staticAsset {
 	return a
 }
 
+// Cache policies for static files: plain /static/ paths revalidate; the
+// build-versioned /static/b/<build>/ paths never change, so browsers keep them.
+const (
+	cacheRevalidate = "no-cache"
+	cacheImmutable  = "public, max-age=31536000, immutable"
+)
+
+// staticBuildVersion is a short content hash of the whole static tree: it
+// changes whenever any file changes, so a versioned URL always names one exact
+// set of files. It is computed once at startup (the tree is embedded).
+func staticBuildVersion(fsys fs.FS) (string, error) {
+	h := sha256.New()
+	err := fs.WalkDir(fsys, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := fs.ReadFile(fsys, name)
+		if err != nil {
+			return err
+		}
+		io.WriteString(h, name)
+		h.Write([]byte{0})
+		h.Write(data)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)[:6]), nil
+}
+
+// versionedStaticHandler serves /static/b/{ver}/* from fsys. The current
+// build is immutable; any other version (a page loaded before an upgrade)
+// still gets the current files, but only with revalidation, so a stale name
+// can never be cached forever with the wrong bytes.
+func versionedStaticHandler(fsys fs.FS, current string) http.Handler {
+	immutable := staticAssetHandler(fsys, http.NotFoundHandler(), cacheImmutable)
+	revalidate := staticAssetHandler(fsys, http.NotFoundHandler(), cacheRevalidate)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest := strings.TrimPrefix(r.URL.Path, "/static/b/")
+		ver, file, ok := strings.Cut(rest, "/")
+		if !ok || ver == "" || file == "" {
+			http.NotFound(w, r)
+			return
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path = file
+		r2.URL.RawPath = ""
+		if ver == current {
+			immutable.ServeHTTP(w, r2)
+		} else {
+			revalidate.ServeHTTP(w, r2)
+		}
+	})
+}
+
 // staticAssetHandler serves files from fsys (the embedded static tree, already
-// stripped of its /static/ prefix). Directories and missing files fall through
-// to next, which keeps http.FileServer's behaviour for them.
-func staticAssetHandler(fsys fs.FS, next http.Handler) http.Handler {
+// stripped of its /static/ prefix) with the given Cache-Control. Directories
+// and missing files fall through to next, which keeps http.FileServer's
+// behaviour for them.
+func staticAssetHandler(fsys fs.FS, next http.Handler, cacheControl string) http.Handler {
 	var cache sync.Map // clean path -> *staticAsset
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -92,17 +149,17 @@ func staticAssetHandler(fsys fs.FS, next http.Handler) http.Handler {
 			}
 			v, _ = cache.LoadOrStore(name, newStaticAsset(name, data))
 		}
-		serveCachedAsset(w, r, v.(*staticAsset))
+		serveCachedAsset(w, r, v.(*staticAsset), cacheControl)
 	})
 }
 
 // serveCachedAsset writes a, gzipped when the client accepts it and asked for
 // the whole file. http.ServeContent answers If-None-Match with 304 against the
 // ETag of the representation being sent, and serves ranges and HEAD.
-func serveCachedAsset(w http.ResponseWriter, r *http.Request, a *staticAsset) {
+func serveCachedAsset(w http.ResponseWriter, r *http.Request, a *staticAsset, cacheControl string) {
 	h := w.Header()
 	h.Set("Content-Type", a.contentType)
-	h.Set("Cache-Control", "no-cache")
+	h.Set("Cache-Control", cacheControl)
 	body, etag := a.plain, a.etag
 	if a.gz != nil {
 		h.Add("Vary", "Accept-Encoding")
@@ -141,6 +198,6 @@ func (p *renderedPage) serve(w http.ResponseWriter, r *http.Request, key string,
 		p.key, p.page = key, page
 	}
 	p.mu.Unlock()
-	serveCachedAsset(w, r, page)
+	serveCachedAsset(w, r, page, cacheRevalidate)
 	return nil
 }

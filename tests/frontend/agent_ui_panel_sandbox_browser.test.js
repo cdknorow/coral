@@ -70,7 +70,7 @@ const base = require('./test_base').BASE;
     await c.Page.enable();
     await c.Page.navigate({ url: base }); await c.Page.loadEventFired();
     await ev(`(async () => {
-        const m = await import('/static/panel_sandbox.js');
+        const m = await import((window.__coralStatic||'/static/')+'panel_sandbox.js');
         window.ps = m;
         window.accepted = []; window.navigated = []; window.hostFrames = [];
         window.addEventListener('message', e => {

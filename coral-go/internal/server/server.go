@@ -61,6 +61,7 @@ type Server struct {
 	router          chi.Router
 	indexTmpl       *template.Template
 	indexPage       renderedPage // the dashboard page, rendered and compressed once per data
+	staticVersion   string       // build version of the static tree: /static/b/<staticVersion>/
 	tasksHandler    *routes.TasksHandler
 	boardHandler    *routes.BoardHandler
 	historyHandler  *routes.HistoryHandler
@@ -746,6 +747,11 @@ func (s *Server) buildRouter() chi.Router {
 	if err != nil {
 		log.Fatalf("Failed to embed static files: %v", err)
 	}
+	if v, err := staticBuildVersion(staticSub); err == nil {
+		s.staticVersion = v
+	} else {
+		log.Printf("static build version unavailable, serving plain /static paths: %v", err)
+	}
 	// Service worker needs wider scope header
 	r.Get("/static/sw.js", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Service-Worker-Allowed", "/")
@@ -754,7 +760,12 @@ func (s *Server) buildRouter() chi.Router {
 	})
 	// Files: ETag + no-cache revalidation, gzip for text (static_assets.go). Directories
 	// and misses keep the old no-store FileServer behaviour.
-	r.Handle("/static/*", http.StripPrefix("/static/", staticAssetHandler(staticSub, noCacheHandler(http.FileServer(http.FS(staticSub))))))
+	r.Handle("/static/*", http.StripPrefix("/static/", staticAssetHandler(staticSub, noCacheHandler(http.FileServer(http.FS(staticSub))), cacheRevalidate)))
+	// The shell's static URLs load from /static/b/<build>/ (immutable); relative
+	// module imports, CSS url()s and import.meta.url-based URLs inherit the
+	// prefix. Plain /static/ paths above keep working (service worker,
+	// panel_host.html, links, older pages).
+	r.Handle("/static/b/*", versionedStaticHandler(staticSub, s.staticVersion))
 
 	// API spec for custom views
 	r.Get("/api/spec.json", func(w http.ResponseWriter, r *http.Request) {
@@ -798,6 +809,16 @@ func noCacheHandler(h http.Handler) http.Handler {
 	})
 }
 
+// staticBase is the versioned prefix, with its trailing slash, that the shell
+// templates put in front of every static URL ("" before the version is known,
+// which the templates render as /static/).
+func (s *Server) staticBase() string {
+	if s.staticVersion == "" {
+		return ""
+	}
+	return "/static/b/" + s.staticVersion + "/"
+}
+
 func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
@@ -810,9 +831,9 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
 		return
 	}
-	data := templateData{CoralRoot: s.cfg.CoralRoot}
+	data := templateData{CoralRoot: s.cfg.CoralRoot, StaticBase: s.staticBase()}
 	render := func(out io.Writer) error { return s.indexTmpl.Execute(out, data) }
-	if err := s.indexPage.serve(w, r, data.CoralRoot, render); err != nil {
+	if err := s.indexPage.serve(w, r, data.CoralRoot+"\x00"+data.StaticBase, render); err != nil {
 		log.Printf("Error rendering index template: %v", err)
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 	}
@@ -848,6 +869,7 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 		EntryMode:       "agent",
 		TargetSessionID: sessionID,
 		TargetServer:    server,
+		StaticBase:      s.staticBase(),
 	}
 	// Rendered per request (the data names the session); served with the same
 	// revalidation and compression as the dashboard page.

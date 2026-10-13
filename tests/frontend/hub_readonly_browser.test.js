@@ -85,7 +85,7 @@ const CLOUD_PRELOAD = `(() => {
         await window.sendCommandWithTeam?.(); await settle();
         await window.resendInputPrompt?.(); await settle();
         // Keystrokes typed into the terminal.
-        const { getTerminal } = await import('/static/xterm_renderer.js');
+        const { getTerminal } = await import((window.__coralStatic||'/static/')+'xterm_renderer.js');
         const term = getTerminal();
         if (term && term.input) term.input('typed-in-terminal');
         await settle();
@@ -209,7 +209,7 @@ const CLOUD_PRELOAD = `(() => {
         s = await sends();
         assert.equal(s.posts + s.frames.length, 0, 'frame: nothing sent although the list now says Interact (sticky until reselect)');
         assert.equal(await draft(), 'after frame');
-        const termText = await ev(`(async () => { const t = (await import('/static/xterm_renderer.js')).getTerminal(); if (!t) return ''; const b = t.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return s; })()`);
+        const termText = await ev(`(async () => { const t = (await import((window.__coralStatic||'/static/')+'xterm_renderer.js')).getTerminal(); if (!t) return ''; const b = t.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return s; })()`);
         assert.ok(!/hub_read_only|some_future_thing|not json/.test(termText), 'control frames are never written to the terminal');
         await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'sudo-everything', hub_mode: '<b>root</b>' })); true`);
         await clearToasts(); await pressEnter(); await sleep(300);
