@@ -60,6 +60,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         ] });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         await waitFor(`typeof window.switchNavTab === 'function'`, 'the dashboard');
+        // The first live list must be in before Servers opens: its load re-applies
+        // a #servers hash (restoreChatFromHash) and would open the tab a second
+        // time, an automatic retry in the middle of step 1.
+        await require('./helpers/wait').bind(ev).coralReady('startup', 'liveList');
         assert.equal(await ev(`JSON.parse(document.getElementById('coral-boot').textContent).mode`), 'cloud', 'the page runs in cloud mode');
         // Nothing has loaded the server list yet (it is not part of the startup graph).
         assert.deepEqual(seen, [], 'cloud_servers.js is not loaded at startup');
