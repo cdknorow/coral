@@ -36,6 +36,10 @@ const PAGE_PRELOAD = `(() => {
 
     // Every vendor request the page makes, and a per-file plan: 'fail' (once each), 'hold', or pass.
     const seen = [];
+    // Condition waits (#3118). quietSeen(): no new intercepted request for 300 ms.
+    const { waitStable, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
+    const quietSeen = async (ms = 300) => { let n = seen.length, since = Date.now(); const end = since + 8000;
+        while (Date.now() - since < ms && Date.now() < end) { await sleep(20); if (seen.length !== n) { n = seen.length; since = Date.now(); } } };
     let plan = {};
     const held = [];
     Network.requestWillBeSent(e => { if (/\/vendor\//.test(e.request.url)) seen.push(e.request.url.replace(/^.*\/vendor\//, '')); });
@@ -73,7 +77,7 @@ const PAGE_PRELOAD = `(() => {
 
         console.log('1. A cold dashboard loads neither the editor nor the terminal');
         await fresh();
-        await sleep(1500);
+        await coralReady(); await quietSeen(); // startup done and no vendor request follows
         assert.deepEqual(seen.filter(x => /^(xterm|codemirror)\//.test(x)), [], `no xterm/codemirror request on a cold load (${JSON.stringify(seen)})`);
         assert.equal(await ev(`typeof window.Terminal === 'undefined' && !window.CoralCM`), true, 'neither global exists');
         assert.equal(await ev(`[...document.querySelectorAll('script[src], link[href]')].some(e => /vendor\\/(xterm|codemirror)\\//.test(e.src || e.href))`), false, 'no tag for them in the page');
@@ -86,7 +90,7 @@ const PAGE_PRELOAD = `(() => {
         for (const rel of XTERM) assert.equal(count(rel), 1, `${rel} fetched once`);
         assert.equal(await ev(`[...document.querySelectorAll('script[src*="vendor/xterm/xterm.min.js"]')].length`), 1, 'one script tag');
         assert.ok(await ev(`getComputedStyle(document.querySelector('.xterm')).position !== 'static' || !!document.querySelector('.xterm-screen')`), 'xterm css applied');
-        await select('t-b'); await sleep(400); await select('t-a'); await sleep(400);
+        await select('t-b'); await quietSeen(); await select('t-a'); await quietSeen();
         for (const rel of XTERM) assert.equal(count(rel), 1, `${rel} still fetched once after switching`);
         console.log('   ✓ 6 xterm files, 1 request each; mounted; no refetch on switch');
 
@@ -97,11 +101,11 @@ const PAGE_PRELOAD = `(() => {
         await waitFor(`!!document.querySelector('.vendor-load-notice')`, "'Loading the terminal…' notice", 3000);
         assert.match((await pane()).notice.text, /Loading the terminal/i);
         await select('t-b');
-        await sleep(200);
+        await nextFrame();
         delete plan['xterm/xterm.min.js'];
         await release();
         await waitFor(`!!document.querySelector('.xterm')`, 'xterm mounted after release', 8000);
-        await sleep(400);
+        await waitStable(`(window.__termSockets || []).length`, 'the terminal sockets', 300).catch(() => {}); await quietSeen();
         const sockets = (await pane()).sockets;
         assert.ok(sockets.length >= 1 && sockets.every(u => /t-b/.test(u)), `only t-b's terminal socket opened (${JSON.stringify(sockets)})`);
         assert.equal(count('xterm/xterm.min.js'), 1, 'still one xterm request for both selections');
@@ -134,7 +138,7 @@ const PAGE_PRELOAD = `(() => {
             assert.equal(await ev(`!!document.querySelector('.xterm')`), false, `${rel}: nothing mounted while it is missing`);
             await ev(`document.querySelector('.vendor-load-error button').click(); true`);
             await waitFor(`!!document.querySelector('.xterm') || !!document.querySelector('.vendor-load-error')`, `mounted or error after Retry (${rel})`, 8000);
-            await sleep(300);
+            await waitStable(`!!document.querySelector('.xterm') + ':' + !!document.querySelector('.vendor-load-error')`, 'the retry outcome', 300).catch(() => {});
             const st = await ev(`({ global: ${global ? `typeof window.${global} !== 'undefined'` : 'true'}, xterm: !!document.querySelector('.xterm'), error: !!document.querySelector('.vendor-load-error'),
                 css: [...document.styleSheets].some(sh => (sh.href || '').includes('vendor/xterm/xterm.min.css')) })`);
             assert.equal(count(rel), 2, `${rel}: Retry fetched it again (${count(rel)})`);
@@ -147,14 +151,14 @@ const PAGE_PRELOAD = `(() => {
         await fresh();
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); true`);
         await select('t-a');
-        await sleep(300);
+        await quietSeen();
         const n3 = await ev(`(async () => { const v = await import((window.__coralStatic || '/static/') + 'vendor_loader.js'); const r = await Promise.all([v.loadCodeMirror(), v.loadCodeMirror(), v.loadCodeMirror()]); return r.every(x => x === window.CoralCM); })()`);
         assert.ok(n3, 'three concurrent loads resolve to the same CodeMirror');
         assert.equal(count('codemirror/codemirror-bundle.js'), 1, 'one request for three concurrent loads');
         await fresh();
         await ev(`localStorage.setItem('coral-live-view-mode', 'chat'); true`);
         await select('t-a');
-        await sleep(300);
+        await quietSeen();
         plan['codemirror/codemirror-bundle.js'] = 'fail';
         await ev(`(async () => { const pp = await import((window.__coralStatic || '/static/') + 'preview_pane.js'); pp.openPreviewTab('src/main.go', 1, { mode: 'edit' }); return true; })()`);
         await waitFor(`!!document.querySelector('#preview-pane .vendor-load-error')`, 'editor load error in the preview pane', 8000);
@@ -177,7 +181,7 @@ const PAGE_PRELOAD = `(() => {
             return out;
         })()`);
         for (const [rel, msg] of Object.entries(refused)) assert.match(msg, /^Not a vendor file/, `refused: ${JSON.stringify(rel)} (${msg})`);
-        await sleep(300);
+        await quietSeen(); // a request for a refused path would have started by now
         assert.equal(seen.length, before, 'no request made for a refused path');
         console.log(`   ✓ ${Object.keys(refused).length} non-listed paths refused, no requests`);
 

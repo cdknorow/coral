@@ -18,6 +18,10 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
 (async () => {
     const { client, Page, Runtime, Emulation, ev, waitFor, sleep, PRELOAD, install, select, view, reqs, clearReqs,
         expectRange, firstPage, SCROLL_DIAG, scrollToTop, settled } = await connect();
+    // Condition waits (#3118). quiet(): no new mocked request for 300 ms (a follow-up request, such as a second
+    // re-select or a duplicate send, would have started by then), then everything in flight has settled.
+    const { waitStable, nextFrame } = require('./helpers/wait').bind(ev);
+    const quiet = async () => { await waitStable(`window.__m.requests.length`, 'the mocked requests to stop', 300).catch(() => {}); await settled(); };
 
     // The sleeping-agent checks shared by the local and hub-remote agents (A1–A4, B).
     async function sleepingAgentBasics(label, name, prefix, server) {
@@ -68,7 +72,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             window.sendQuickCommand?.('/compact');
             await window.sendRawKeys?.(['Enter'], { silent: true });
         })()`);
-        await sleep(200);
+        await quiet();
         r = await reqs();
         const sent = r.filter(x => x.kind === 'send' || x.kind === 'keys');
         assert.equal(sent.length, 0, `${label}: nothing is sent to a sleeping agent (got ${JSON.stringify(sent.map(x => x.kind + ' ' + x.body))})`);
@@ -97,7 +101,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         assert.equal(await ev(`document.getElementById('sleeping-wake-btn').disabled`), true, 'Wake is disabled while waking');
         await ev(`document.getElementById('sleeping-wake-btn').click()`);
         await waitFor(`!document.getElementById('command-input').disabled`, 'input re-enabled after wake', 5000);
-        await sleep(400);
+        await quiet();
         await settled();
         let r = await reqs();
         assert.equal(r.filter(x => x.kind === 'wake').length, 1, 'one POST /wake for three clicks');
@@ -124,7 +128,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             await clearReqs();
             await ev(`document.getElementById('sleeping-wake-btn').click()`);
             await waitFor(`window.__m.requests.some(r => r.kind === 'wake' && r.settled)`, 'wake attempt');
-            await sleep(200);
+            await quiet(); await nextFrame();
             v = await view();
             assert.ok(v.composer && v.inputDisabled, `${mode}: still sleeping after a failed wake`);
             assert.equal(v.wakeText, 'Wake', `${mode}: Wake button restored`);
@@ -174,11 +178,11 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await waitFor(`window.__view().composer && window.__view().inputDisabled`, 'composer after a sleep from elsewhere', 3000);
         await ev(`window.__feed('qa-awake-b-id', { sleeping: false })`);
         await waitFor(`!window.__view().composer && !window.__view().inputDisabled`, 'awake after a wake from elsewhere', 3000);
-        await sleep(300);
+        await quiet();
         // Wake clicked and the feed's flip arriving together: still one re-select.
         await ev(`window.__feed('qa-awake-b-id', { sleeping: true })`);
         await waitFor(`window.__view().composer`, 'sleeping again', 3000);
-        await sleep(200);
+        await quiet();
         await settled();
         await clearReqs();
         await ev(`window.__m.wakeDelay = 150`);
@@ -187,7 +191,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             setTimeout(() => window.__feed('qa-awake-b-id', { sleeping: false }), 50);
         })()`);
         await waitFor(`!window.__view().inputDisabled`, 'awake after wake + feed', 3000);
-        await sleep(500);
+        await quiet();
         await settled();
         r = await reqs();
         assert.equal(await ev('window.__selCalls'), 1, `wake + feed flip together: one re-select (got ${await ev('window.__selCalls')})`);
@@ -209,7 +213,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             await clearReqs();
             await select(`qa-read-y${i}`);
             await firstPage();
-            await sleep(150);
+            await waitStable(`(c => c.scrollTop + ':' + c.scrollHeight)(document.getElementById('live-history-messages'))`, 'the history scroll position', 200).catch(() => {});
             const at = await ev(`(() => { const c = document.getElementById('live-history-messages'); return { bottomGap: Math.round(c.scrollHeight - c.scrollTop - c.clientHeight), autoScroll: T.state.autoScroll }; })()`);
             const older = (await reqs()).filter(x => x.older);
             assert.ok(at.bottomGap < 60, `switch ${i}: the next agent opens at the bottom (gap ${at.bottomGap}px, autoScroll ${at.autoScroll})`);
@@ -223,7 +227,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await clearReqs();
         await ev(`document.getElementById('sleeping-wake-btn').click()`);
         await waitFor(`!document.getElementById('command-input').disabled`, 'remote wake', 5000);
-        await sleep(300);
+        await quiet();
         r = await reqs();
         const wakes = r.filter(x => x.kind === 'wake');
         assert.equal(wakes.length, 1, 'one remote POST /wake');
@@ -240,7 +244,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await ev(`window.__m.add('qa-sleep-m', 'M', 300, { sleeping: true })`);
         await select('qa-sleep-m');
         await firstPage();
-        await sleep(300);
+        await waitStable(`JSON.stringify(window.__view())`, 'the phone view', 200).catch(() => {});
         v = await view();
         assert.ok(v.chatVisible, 'phone: history visible');
         assert.ok(v.chatUncovered, `phone: nothing covers the history (hit ${v.hitDesc})`);

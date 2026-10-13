@@ -28,7 +28,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
  const { waitFor, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
  const untilEvent = async (pred, what, ms = 5000) => { const end = Date.now() + ms; let e = [];
   while (Date.now() < end) { e = cli(['events','--id','demo']); if (e.some(pred)) return e; await sleep(50); }
-  return e; };
+  throw new Error(`timed out after ${ms}ms waiting for ${what} (events: ${JSON.stringify(e.map(x => x.action))})`); };
  try {
   const file = path.join(dir,'panel.html');
   fs.writeFileSync(file,`<style>body{margin:0;color:white;background:#222}button{padding:16px}</style><button id="choose" onclick="coralUI.emit('choose',{option:'A'})">Choose A</button><script>

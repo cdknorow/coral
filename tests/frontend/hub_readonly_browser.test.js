@@ -65,7 +65,9 @@ const CLOUD_PRELOAD = `(() => {
     // The access lookup is cached per tab for 15 s, so each case uses its own server id.
     const select = async (name, server) => {
         await ev(`(async () => { await window.selectLiveSession(${JSON.stringify(name)}, 'claude', ${JSON.stringify(name + '-id')}, ${JSON.stringify(server)}); return true; })()`);
-        await sleep(250); // the terminal socket opens and the access lookup lands
+        // The agent's terminal socket opens and the access lookup lands (the chip holds still).
+        await waitFor(`!!window.__wsTerm && window.__wsTerm.url.includes(${JSON.stringify(name + '-id')}) && window.__wsTerm.readyState === 1`, 'the terminal socket', 3000).catch(() => {});
+        await w.waitStable(`JSON.stringify((c => c ? [c.hidden, c.textContent] : null)(document.getElementById('hub-readonly-chip')))`, 'the access chip', 200).catch(() => {});
     };
     const chip = () => ev(`(() => { const c = document.getElementById('hub-readonly-chip'); return c ? { shown: !c.hidden && getComputedStyle(c).display !== 'none', text: c.textContent, title: c.title, role: c.getAttribute('role') } : null; })()`);
     const toasts = () => ev(`[...document.querySelectorAll('.toast, .notification-toast')].map(t => ({ text: (t.querySelector('.toast-message') || t).textContent.trim(), role: t.getAttribute('role'), action: t.querySelector('.toast-action')?.textContent.trim() || null }))`);
@@ -77,12 +79,20 @@ const CLOUD_PRELOAD = `(() => {
     };
     const clearSends = async () => { await clearReqs(); await ev(`window.__wsSent.length = 0; true`); };
     const typeDraft = text => ev(`(() => { const i = document.getElementById('command-input'); i.value = ${JSON.stringify(text)}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+    // After Enter: a refusal toast or a send happens, then nothing more is sent for 300 ms (a send that should not
+    // happen would have started by then). Condition waits (#3118).
+    const w = require('./helpers/wait').bind(ev);
+    const afterEnter = async () => {
+        await waitFor(`document.querySelectorAll('.toast, .notification-toast').length > 0 || window.__wsSent.length > 0`, 'a refusal or a send', 3000).catch(() => {});
+        let last = JSON.stringify(await sends()), since = Date.now();
+        while (Date.now() - since < 300) { await sleep(25); const now = JSON.stringify(await sends()); if (now !== last) { last = now; since = Date.now(); } }
+    };
     const pressEnter = () => ev(`document.getElementById('command-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); true`);
     const draft = () => ev(`document.getElementById('command-input').value`);
 
     // Every terminal write path, run against the selected agent.
     const allPaths = () => ev(`(async () => {
-        const settle = () => new Promise(r => setTimeout(r, 120));
+        const settle = () => new Promise(r => setTimeout(r, 120)); // sleep-ok: some paths aren't awaited; let each one's async guard finish
         await window.sendCommand(); await settle();
         window.sendQuickCommand('/compact'); await settle();
         window.executeMacro('/status'); await settle();
@@ -140,7 +150,7 @@ const CLOUD_PRELOAD = `(() => {
         await clearSends(); await clearToasts();
         await typeDraft('hello there');
         await pressEnter();
-        await sleep(400);
+        await afterEnter();
         let s = await sends();
         assert.equal(s.posts, 0, 'Enter: no /send or /keys');
         assert.deepEqual(s.frames, [], 'Enter: nothing written to the terminal socket');
@@ -171,7 +181,7 @@ const CLOUD_PRELOAD = `(() => {
         c = await chip();
         assert.equal(c.text, 'Read-only: This machine: View');
         await clearSends(); await clearToasts();
-        await typeDraft('machine draft'); await pressEnter(); await sleep(400);
+        await typeDraft('machine draft'); await pressEnter(); await afterEnter();
         s = await sends();
         assert.equal(s.posts + s.frames.length, 0, 'machine-limited: nothing sent');
         t = await toasts();
@@ -186,7 +196,7 @@ const CLOUD_PRELOAD = `(() => {
         c = await chip();
         assert.ok(!c.shown, 'no chip on an Interact server');
         await clearSends(); await clearToasts();
-        await typeDraft('go ahead'); await pressEnter(); await sleep(600);
+        await typeDraft('go ahead'); await pressEnter(); await afterEnter();
         s = await sends();
         assert.ok(s.posts === 1 || s.frames.some(f => f.includes('go ahead')), `sent through the socket or /send (posts ${s.posts}, frames ${JSON.stringify(s.frames)})`);
         assert.equal(await draft(), '', 'draft cleared after a real send');
@@ -196,7 +206,7 @@ const CLOUD_PRELOAD = `(() => {
         console.log('4. Unknown server and failed lookup never block');
         await select('unknown', 'm9');
         assert.ok(!(await chip()).shown, 'unknown server: no chip');
-        await clearSends(); await typeDraft('to unknown'); await pressEnter(); await sleep(600);
+        await clearSends(); await typeDraft('to unknown'); await pressEnter(); await afterEnter();
         s = await sends();
         assert.ok(s.posts === 1 || s.frames.some(f => f.includes('to unknown')), 'unknown server: sent (the hub still enforces)');
         console.log('   ✓ unknown server sends');
@@ -213,14 +223,14 @@ const CLOUD_PRELOAD = `(() => {
         c = await chip();
         assert.ok(c.shown && c.text === 'Read-only: Hub: View', `frame: chip (${JSON.stringify(c)})`);
         await clearSends(); await clearToasts();
-        await typeDraft('after frame'); await pressEnter(); await sleep(400);
+        await typeDraft('after frame'); await pressEnter(); await afterEnter();
         s = await sends();
         assert.equal(s.posts + s.frames.length, 0, 'frame: nothing sent although the list now says Interact (sticky until reselect)');
         assert.equal(await draft(), 'after frame');
         const termText = await ev(`(async () => { const t = (await import((window.__coralStatic||'/static/')+'xterm_renderer.js')).getTerminal(); if (!t) return ''; const b = t.buffer.active; let s = ''; for (let i = 0; i < b.length; i++) s += b.getLine(i).translateToString(true) + '\\n'; return s; })()`);
         assert.ok(!/hub_read_only|some_future_thing|not json/.test(termText), 'control frames are never written to the terminal');
         await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'sudo-everything', hub_mode: '<b>root</b>' })); true`);
-        await clearToasts(); await pressEnter(); await sleep(300);
+        await clearToasts(); await pressEnter(); await afterEnter();
         t = await toasts();
         assert.ok(t.some(x => x.text === 'Blocked: Box M4 is read-only through the Cloud Hub. Raise it in Servers.'), `unknown enum: generic text, nothing echoed (${JSON.stringify(t)})`);
         assert.ok(!t.some(x => /sudo-everything|root/.test(x.text)), 'no server-sent value echoed');

@@ -14,9 +14,15 @@ const BASE = require('./test_base').BASE;
   try {
     await Page.enable();
     await Page.navigate({ url: BASE });
-    // Wait for the document itself (a fixed sleep raced page load on a busy machine).
+    // Condition waits (#3118): the team workspace for `team` is up (route + header) and has stopped changing.
+  const w = require('./helpers/wait').bind(ev);
+  const teamShown = async team => {
+    await w.waitFor(`location.hash === '#team-view=${team}' && document.querySelector('#team-availability-workspace header p')?.textContent === '${team}'`, 'the ' + team + ' workspace', { soft: true });
+    await w.waitStable(`(document.getElementById('team-availability-workspace') || {}).innerHTML || ''`, 'the workspace', 200).catch(() => {});
+  };
+  // Wait for the document itself (a fixed sleep raced page load on a busy machine).
     await ev(`new Promise(resolve => { const done = () => document.body ? resolve(true) : setTimeout(done, 50); if (document.readyState === 'complete') done(); else window.addEventListener('load', done); })`);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await w.coralReady();
     await ev(`import((window.__coralStatic||'/static/')+'agentic_state.js').then(m => window.switchAgenticTab = m.switchAgenticTab)`);
     await ev(`import((window.__coralStatic||'/static/')+'team_availability.js').then(m => window.showTeamAvailabilityWorkspace = m.showTeamAvailabilityWorkspace)`);
     await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m => window.showTeamWorkingModeWorkspace = m.showTeamWorkingModeWorkspace)`);
@@ -27,7 +33,7 @@ const BASE = require('./test_base').BASE;
       window.__calls = []; window.__delayedAlpha = false;
       window.fetch = async url => {
         const request = String(url); window.__calls.push(request);
-        if (request.includes('/api/board/alpha/status')) { const response = new Response(JSON.stringify({summary:{available:1},observed_at:new Date().toISOString(),agents:[{name:'Alpha agent',agent_type:'codex',role:'Developer',availability:'available',available:true,reason:'Idle',tasks:[]}],unassigned_tasks:[],health_report:[]})); return window.__delayedAlpha ? new Promise(resolve => setTimeout(() => resolve(response), 350)) : response; }
+        if (request.includes('/api/board/alpha/status')) { const response = new Response(JSON.stringify({summary:{available:1},observed_at:new Date().toISOString(),agents:[{name:'Alpha agent',agent_type:'codex',role:'Developer',availability:'available',available:true,reason:'Idle',tasks:[]}],unassigned_tasks:[],health_report:[]})); return window.__delayedAlpha ? new Promise(resolve => setTimeout(() => { window.__delayedAlphaDelivered = true; resolve(response); }, 350)) : response; }
         if (String(url).includes('/api/board/beta/status')) return new Response(JSON.stringify({summary:{busy:1},observed_at:new Date().toISOString(),agents:[{name:'Beta agent',agent_type:'codex',role:'QA',availability:'busy',available:false,reason:'Working',tasks:[{scope:'board',id:2,status:'in_progress',title:'Beta task'}]}],unassigned_tasks:[],health_report:[]}));
         if (String(url).includes('/working-mode/presets')) return new Response(JSON.stringify({presets:[{id:'none',name:'None',builtin:true,instructions:''}]}));
         if (String(url).includes('/working-mode')) return new Response(JSON.stringify({mode:'none',dependency_guidance:false,custom_instructions:''}));
@@ -40,8 +46,8 @@ const BASE = require('./test_base').BASE;
     })()`);
 
     // No agent is selected, and another pane starts active. Opening Team view selects the team: Team View tab active, group chat in the center.
-    await ev(`window.switchAgenticTab('files','top'); window.renderLiveSessions([{session_id:'alpha-1',name:'Alpha agent',agent_type:'codex',board_project:'alpha',working_directory:'/tmp/alpha'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); new Promise(r => setTimeout(r, 120))`);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await ev(`window.switchAgenticTab('files','top'); window.renderLiveSessions([{session_id:'alpha-1',name:'Alpha agent',agent_type:'codex',board_project:'alpha',working_directory:'/tmp/alpha'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); true`);
+    await teamShown('alpha');
     fs.writeFileSync('/tmp/coral-1314-team-alpha.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     const alpha = await ev(`(() => ({route:location.hash,title:document.querySelector('#team-availability-workspace h2')?.textContent,team:document.querySelector('#team-availability-workspace header p')?.textContent,active:document.querySelector('#agentic-tab-team-view')?.classList.contains('active'),boardVisible:document.querySelector('#agentic-panel-team-view')?.classList.contains('active'),teamContext:document.getElementById('agentic-state').classList.contains('team-context'),chatInCenter:document.getElementById('agentic-panel-board')?.parentElement?.id,agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent)}))()`);
     assert.equal(alpha.route, '#team-view=alpha');
@@ -55,8 +61,8 @@ const BASE = require('./test_base').BASE;
     assert.deepEqual(alpha.agents, ['Alpha agent']);
 
     // Selecting another team replaces both route and rendered content.
-    await ev(`window.renderLiveSessions([{session_id:'beta-1',name:'Beta agent',agent_type:'codex',board_project:'beta',working_directory:'/tmp/beta'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); new Promise(r => setTimeout(r, 120))`);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await ev(`window.renderLiveSessions([{session_id:'beta-1',name:'Beta agent',agent_type:'codex',board_project:'beta',working_directory:'/tmp/beta'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); true`);
+    await teamShown('beta');
     fs.writeFileSync('/tmp/coral-1314-team-beta.png', Buffer.from((await Page.captureScreenshot()).data, 'base64'));
     const beta = await ev(`(() => ({route:location.hash,team:document.querySelector('#team-availability-workspace header p')?.textContent,agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent),task:document.querySelector('#team-availability-workspace')?.textContent.includes('Beta task')}))()`);
     assert.equal(beta.route, '#team-view=beta');
@@ -64,7 +70,9 @@ const BASE = require('./test_base').BASE;
     assert.deepEqual(beta.agents, ['Beta agent']);
     assert.equal(beta.task, true);
     // A late response for the previous team must not overwrite the active beta workspace.
-    await ev(`window.__delayedAlpha = true; window.renderLiveSessions([{session_id:'alpha-2',name:'Alpha agent',agent_type:'codex',board_project:'alpha',working_directory:'/tmp/alpha'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); window.renderLiveSessions([{session_id:'beta-2',name:'Beta agent',agent_type:'codex',board_project:'beta',working_directory:'/tmp/beta'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); new Promise(r => setTimeout(r, 500))`);
+    await ev(`window.__delayedAlpha = true; window.__delayedAlphaDelivered = false; window.renderLiveSessions([{session_id:'alpha-2',name:'Alpha agent',agent_type:'codex',board_project:'alpha',working_directory:'/tmp/alpha'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); window.renderLiveSessions([{session_id:'beta-2',name:'Beta agent',agent_type:'codex',board_project:'beta',working_directory:'/tmp/beta'}]); document.querySelector('.group-kebab-btn').click(); [...document.querySelectorAll('.group-kebab .overflow-menu-item')].find(x => x.textContent.includes('Team view')).click(); true`);
+    // The late alpha response has really been delivered (and handled) before checking it changed nothing.
+    await w.waitFor(`window.__delayedAlphaDelivered === true`, 'the late alpha response', { soft: true }); await w.nextFrame(); await teamShown('beta');
     const stale = await ev(`(() => ({route:location.hash,team:document.querySelector('#team-availability-workspace header p')?.textContent,agents:[...document.querySelectorAll('#team-availability-workspace .availability-agent strong')].map(x=>x.textContent),alphaRequests:window.__calls.filter(x=>x.includes('/alpha/status')).length,betaRequests:window.__calls.filter(x=>x.includes('/beta/status')).length}))()`);
     assert.equal(stale.route, '#team-view=beta');
     assert.equal(stale.team, 'beta');
@@ -72,12 +80,14 @@ const BASE = require('./test_base').BASE;
     assert.ok(stale.alphaRequests >= 2); assert.ok(stale.betaRequests >= 2);
 
     // Team settings must not silently apply edits to the wrong team.
-    await ev(`window.showTeamWorkingModeWorkspace('alpha'); new Promise(r => setTimeout(r, 150))`);
+    await ev(`window.showTeamWorkingModeWorkspace('alpha'); true`);
+    await w.waitFor(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent === 'alpha' && document.querySelector('#team-settings-workspace .working-mode-form')?.dataset.initialState !== undefined`, 'alpha settings to load', { soft: true });
     await ev(`document.querySelector('#team-settings-workspace textarea[name="custom_instructions"]').value = 'alpha-only draft'`);
     await ev(`window.showTeamWorkingModeWorkspace('beta'); new Promise(r => setTimeout(r, 80))`);
     assert.equal(await ev(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent`), 'alpha');
     assert.equal(await ev(`location.hash`), '#team-settings=alpha');
-    await ev(`window.confirm = () => true; window.showTeamWorkingModeWorkspace('beta'); new Promise(r => setTimeout(r, 150))`);
+    await ev(`window.confirm = () => true; window.showTeamWorkingModeWorkspace('beta'); true`);
+    await w.waitFor(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent === 'beta' && document.querySelector('#team-settings-workspace .working-mode-form')?.dataset.initialState !== undefined`, 'beta settings to load', { soft: true });
     assert.equal(await ev(`document.querySelector('#team-settings-workspace .working-mode-team')?.textContent`), 'beta');
     assert.equal(await ev(`location.hash`), '#team-settings=beta');
     await ev(`window.fetch = window.__reviewFetch; window.confirm = () => false; true`);

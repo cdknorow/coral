@@ -19,6 +19,11 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
     const { Network, Fetch } = client;
 
     const seen = [];
+    // Condition waits (#3118). quietSeen(): no new intercepted request for 300 ms; waitForSeen(): until one matches.
+    const { nextFrame, coralReady } = require('./helpers/wait').bind(ev);
+    const quietSeen = async (ms = 300) => { let n = seen.length, since = Date.now(); const end = since + 8000;
+        while (Date.now() - since < ms && Date.now() < end) { await sleep(20); if (seen.length !== n) { n = seen.length; since = Date.now(); } } };
+    const waitForSeen = async (pred, what, ms = 8000) => { const end = Date.now() + ms; while (Date.now() < end && !seen.some(pred)) await sleep(20); };
     let plan = {};
     const held = [];
     const modOf = url => { const m = url.match(/\/static\/(?:b\/[^/]+\/)?([a-z_]+\.js)(\?[^#]*)?$/); return m ? m[1] + (m[2] || '') : null; };
@@ -38,7 +43,7 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await install();
-        await sleep(300);
+        await coralReady();
     };
     const visible = id => ev(`(() => { const v = document.getElementById(${JSON.stringify(id)}); return !!v && getComputedStyle(v).display !== 'none'; })()`);
     const toasts = () => ev(`[...document.querySelectorAll('.toast')].map(t => (t.querySelector('.toast-message') || t).textContent.trim())`);
@@ -52,7 +57,7 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
 
         console.log('1. A cold dashboard loads none of the six panels; their window functions are stubs');
         await fresh();
-        await sleep(1200);
+        await quietSeen(); // startup is done (fresh); no panel request follows
         for (const m of MODULES) assert.equal(count(m), 0, `${m} not requested on a cold load (${JSON.stringify(seen.filter(x => !x.startsWith('API')).slice(0, 80))})`);
         const stubs = await ev(`['showWorkflowsTab','selectWorkflow','selectWorkflowRun','showCostDashboard','showDocsTab','showThemeConfigurator','showTemplateBrowser','searchChats'].filter(n => typeof window[n] !== 'function')`);
         assert.deepEqual(stubs, [], 'every lazy window function exists (as a stub) for inline handlers');
@@ -66,11 +71,11 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
             assert.equal(count(mod), 1, `${mod} fetched once`);
             const after = await ev(`String(window[${JSON.stringify({ workflows: 'showWorkflowsTab', docs: 'showDocsTab', tokens: 'showCostDashboard' }[tab])}])`);
             assert.notEqual(after, stubBefore, `${tab}: the window function is now the module's own`);
-            await ev(`window.switchNavTab('agents'); true`); await sleep(150);
+            await ev(`window.switchNavTab('agents'); true`); await waitFor(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-agents'`, 'the Agents tab', 3000);
             await ev(`window.switchNavTab(${JSON.stringify(tab)}); true`);
             assert.ok(await visible(view), `${tab}: shows at once the second time`);
             assert.equal(count(mod), 1, `${mod} not fetched again`);
-            await ev(`window.switchNavTab('agents'); true`); await sleep(150);
+            await ev(`window.switchNavTab('agents'); true`); await waitFor(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-agents'`, 'the Agents tab', 3000);
         }
         await ev(`window.showThemeConfigurator(); true`);
         await waitFor(`(() => { const m = document.getElementById('theme-configurator-modal'); return !!m && getComputedStyle(m).display !== 'none'; })()`, 'theme configurator', 8000);
@@ -78,7 +83,7 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
         await ev(`window.showTemplateBrowser(); true`);
         await waitFor(`(() => { const m = document.getElementById('template-browser-modal'); return !!m && getComputedStyle(m).display !== 'none'; })()`, 'template browser', 8000);
         await ev(`(() => { const m = document.getElementById('template-browser-modal'); if (m) m.style.display = 'none'; return true; })()`);
-        await ev(`window.switchNavTab('history'); true`); await sleep(300);
+        await ev(`window.switchNavTab('history'); true`); await waitFor(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-history'`, 'the History tab', 3000); await quietSeen();
         await ev(`window.searchChats('needle', 1); true`);
         await waitFor(`(() => { const c = document.getElementById('chat-search-results'); return !!c && !c.hidden; })()`, 'chat search results', 8000);
         for (const m of ['theme_config.js', 'template_browser.js', 'chat_search.js']) assert.equal(count(m), 1, `${m} fetched once`);
@@ -96,7 +101,7 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
         delete plan['workflows.js'];
         await release();
         await waitFor(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'lazy_panels.js'); return !!m.loadWorkflows.module; })()`, 'workflows module loaded', 8000);
-        await sleep(200);
+        await nextFrame(); await quietSeen(); // the view would have switched by now
         assert.equal(await visible('workflows-view'), false, 'the workflows view did not take over');
         assert.equal(await ev(`document.querySelector('.top-nav-tab.active, [data-tab].active')?.textContent?.trim() || ''`).then(t => /workflow/i.test(t)), false, 'the Workflows tab is not marked active');
         console.log('   ✓ held import, switched to Agents, released: Workflows did not take over');
@@ -132,11 +137,11 @@ const MODULES = ['workflows.js', 'cost_dashboard.js', 'docs.js', 'theme_config.j
         })()`);
         await ev(`document.getElementById('qa-wf').click(); true`);
         await waitFor(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'lazy_panels.js'); return !!m.loadWorkflows.module; })()`, 'workflows loaded by an inline handler', 8000);
-        await sleep(400);
+        await waitForSeen(x => /^API \/api\/workflows\/7\b/.test(x), 'selectWorkflow(7) after loading'); await quietSeen();
         assert.equal(count('workflows.js'), 1, 'one import for the inline handler');
         assert.ok(seen.some(x => /^API \/api\/workflows\/7\b/.test(x)), `selectWorkflow(7) ran after loading (${JSON.stringify(seen.filter(x => x.startsWith('API')))})`);
         await ev(`document.getElementById('qa-run').click(); true`);
-        await sleep(400);
+        await waitForSeen(x => /^API \/api\/workflows\/runs\/9\b/.test(x), 'selectWorkflowRun(9)');
         assert.ok(seen.some(x => /^API \/api\/workflows\/runs\/9\b/.test(x)), `selectWorkflowRun(9) ran (${JSON.stringify(seen.filter(x => x.startsWith('API')))})`);
         assert.equal(count('workflows.js'), 1, 'still one import');
         await ev(`document.getElementById('qa-inline').remove(); true`);
