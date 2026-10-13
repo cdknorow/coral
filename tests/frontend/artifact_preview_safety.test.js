@@ -51,7 +51,8 @@ const BASE = require('./test_base').BASE;
       window.__manifestFetches=0;
       window.fetch=async (url)=>{
         const u=String(url);
-        window.__manifestFetches++;
+        // Count artifact reads only: a background poll landing here must not move the count.
+        if(u.includes('/api/artifacts/')) window.__manifestFetches++;
         if(u.includes(manifestUri.slice(-64))) return new Response(payload,{status:200,headers:{'Content-Type':'application/json','Content-Disposition':'inline; filename="qa-manifest.json"'}});
         if(u.includes(childMd.slice(-64))) return new Response('# Child report',{status:200,headers:{'Content-Type':'text/markdown','Content-Disposition':'inline; filename="child.md"'}});
         return new Response('missing',{status:404});
