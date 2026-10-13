@@ -1,6 +1,6 @@
-/* On-demand vendor libraries (#3083). The editor (CodeMirror, ~1 MB) and the
- * terminal (xterm.js and its addons, ~430 KB) are no longer loaded by the page
- * <head>: most visits never open a file editor, and chat is the default view,
+/* On-demand vendor libraries (#3083, #3117). The editor (CodeMirror, ~1 MB),
+ * the terminal (xterm.js and its addons, ~430 KB) and the code highlighter
+ * (highlight.js, ~120 KB) are no longer loaded by the page <head>: most visits never open a file editor, and chat is the default view,
  * so they load the first time they are needed. Each URL loads once and every
  * caller shares the same promise. URLs are relative to this module, so they
  * follow a versioned static prefix (/static/b/<build>/). Same-origin script
@@ -18,6 +18,8 @@ const VENDOR_FILES = new Set([
     'xterm/addon-web-links.min.js',
     'xterm/addon-unicode-graphemes.min.js',
     'xterm/addon-canvas.min.js',
+    'hljs/highlight.min.js',
+    'hljs/github-dark.min.css',
 ]);
 
 const _loads = new Map();
@@ -76,6 +78,13 @@ export async function loadCodeMirror() {
     await loadScriptOnce('codemirror/codemirror-bundle.js');
     if (!window.CoralCM) { forget('codemirror/codemirror-bundle.js'); throw new Error('CodeMirror did not initialise'); }
     return window.CoralCM;
+}
+
+/** highlight.js and its theme (window.hljs). Resolves to hljs. */
+export async function loadHighlight() {
+    await Promise.all([loadStyleOnce('hljs/github-dark.min.css'), loadScriptOnce('hljs/highlight.min.js')]);
+    if (!window.hljs) { forget('hljs/highlight.min.js'); throw new Error('highlight.js did not initialise'); }
+    return window.hljs;
 }
 
 // Each addon file and the global it defines (xterm_renderer.js uses all four).

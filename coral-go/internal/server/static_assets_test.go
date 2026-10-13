@@ -183,8 +183,10 @@ func TestIndexDefersVendorScripts(t *testing.T) {
 			assert.Contains(t, line, " defer ", "parser-blocking vendor script in <head>: %s", strings.TrimSpace(line))
 		}
 	}
-	// highlight.js; CodeMirror and xterm load on first use (vendor_loader.js, #3083).
-	assert.GreaterOrEqual(t, n, 1, "highlight.js")
+	// CodeMirror, xterm (#3083) and highlight.js (#3117) load on first use
+	// (vendor_loader.js): the head loads no vendor script at all.
+	assert.Zero(t, n, "vendor scripts in <head>")
+	assert.NotContains(t, head, "vendor/hljs/", "highlight.js and its theme load on first use")
 	assert.Contains(t, string(page), `<script type="module" src="{{ $base }}app.js"></script>`)
 }
 
@@ -237,7 +239,7 @@ func TestIndexUsesVersionedStaticBase(t *testing.T) {
 	page := rr.Body.String()
 	assert.Contains(t, page, `<script type="module" src="/static/b/abcdef012345/app.js"></script>`)
 	assert.Contains(t, page, `href="/static/b/abcdef012345/css/base.css"`)
-	assert.Contains(t, page, `src="/static/b/abcdef012345/vendor/hljs/highlight.min.js"`)
+	assert.Contains(t, page, `src="/static/b/abcdef012345/vendor/marked.min.js"`)
 	// The editor and terminal libraries load on first use (vendor_loader.js, #3083).
 	assert.NotContains(t, page, "vendor/xterm/")
 	assert.NotContains(t, page, "vendor/codemirror/")

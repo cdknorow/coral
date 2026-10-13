@@ -2,6 +2,7 @@
 
 import { escapeHtml as esc, showView, jsStr } from './utils.js';
 import { apiFetch } from './api.js';
+import { loadHighlight } from './vendor_loader.js';
 
 let docsList = [];
 let selectedDoc = null;
@@ -76,10 +77,10 @@ export async function selectDoc(name) {
         content.innerHTML = '<pre style="white-space:pre-wrap">' + esc(doc.content) + '</pre>';
     }
 
-    // Highlight code blocks if hljs is available
-    content.querySelectorAll('pre code').forEach(block => {
-        if (window.hljs) window.hljs.highlightElement(block);
-    });
+    // Highlight code blocks once highlight.js has loaded (they show plain until
+    // then, and stay plain if it cannot load).
+    const blocks = content.querySelectorAll('pre code');
+    if (blocks.length) loadHighlight().then(h => blocks.forEach(b => { if (b.isConnected) h.highlightElement(b); }), () => {});
 
     // Intercept internal doc links (e.g. "auth.md" → selectDoc("auth"))
     content.querySelectorAll('a').forEach(a => {

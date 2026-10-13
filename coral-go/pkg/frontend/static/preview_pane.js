@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, isImagePath, isMediaPath, renderImagePanes, renderMediaPanes, DOMPURIFY_CONFIG, sanitizeHtml } from './utils.js';
 import { getCm, getLangExtension, getLangFromPath, DIFF_CONFIG } from './cm_util.js';
-import { loadCodeMirror, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
+import { loadCodeMirror, loadHighlight, showVendorLoading, showVendorLoadError } from './vendor_loader.js';
 import { makeDraggable } from './draggable.js';
 import { toggleStarFile, isFileStarred } from './changed_files.js';
 import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
@@ -639,10 +639,9 @@ function _renderContentView(body, content, filepath, line, interpretHtml) {
     }
 
     body.innerHTML = `<pre class="preview-pane-code"><code class="language-${lang}">${escapeHtml(content)}</code></pre>`;
-    if (window.hljs) {
-        const block = body.querySelector('pre code');
-        if (block) window.hljs.highlightElement(block);
-    }
+    // Plain first; coloured once highlight.js has loaded (plain if it cannot).
+    const block = body.querySelector('pre code');
+    if (block) loadHighlight().then(h => { if (block.isConnected) h.highlightElement(block); }, () => {});
     if (line > 0) _scrollToLine(body, content, line);
 }
 

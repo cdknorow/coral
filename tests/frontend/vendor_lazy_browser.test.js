@@ -77,7 +77,7 @@ const PAGE_PRELOAD = `(() => {
         assert.deepEqual(seen.filter(x => /^(xterm|codemirror)\//.test(x)), [], `no xterm/codemirror request on a cold load (${JSON.stringify(seen)})`);
         assert.equal(await ev(`typeof window.Terminal === 'undefined' && !window.CoralCM`), true, 'neither global exists');
         assert.equal(await ev(`[...document.querySelectorAll('script[src], link[href]')].some(e => /vendor\\/(xterm|codemirror)\\//.test(e.src || e.href))`), false, 'no tag for them in the page');
-        assert.ok(seen.includes('hljs/highlight.min.js'), 'highlight.js is still loaded up front');
+        assert.ok(!seen.some(x => x.startsWith('hljs/')), 'highlight.js is not loaded up front either (#3117)');
         console.log(`   ✓ 0 xterm/codemirror requests (${seen.length} vendor requests: ${[...new Set(seen)].join(', ')})`);
 
         console.log('2. The first terminal view loads xterm once; switching does not load it again');

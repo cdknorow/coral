@@ -1,4 +1,5 @@
 import { importOnce } from './import_once.js';
+import { loadHighlight } from './vendor_loader.js';
 /* Utility functions: HTML escaping and toast notifications */
 
 // Debug logging — enabled via ?debug=1 URL param or localStorage coral-debug=1
@@ -263,7 +264,11 @@ export function renderMarkdown(content, options) {
             // marked v5+ dropped the `highlight` option, so highlight fenced
             // code through a renderer. Only blocks with a known language are
             // colored; guessing (highlightAuto) is slow and often wrong.
-            if (typeof hljs !== 'undefined' && !marked._hljsConfigured) {
+            if (typeof hljs === 'undefined') {
+                // highlight.js loads on the first fenced block with a language;
+                // until then the block renders as plain code.
+                if (FENCED_WITH_LANG.test(content)) requestHighlight();
+            } else if (!marked._hljsConfigured) {
                 marked.use({
                     renderer: {
                         code({ text, lang }) {
@@ -281,6 +286,38 @@ export function renderMarkdown(content, options) {
         } catch { /* fall through */ }
     }
     return escapeHtml(content);
+}
+
+// A fenced code block that names a language (```js, ~~~ python).
+const FENCED_WITH_LANG = /^ {0,3}(?:```|~~~)[ \t]*[^\s`~]/m;
+let _highlightLoad = null;
+let _highlightRetryAt = 0;
+
+/** Load highlight.js (once), then colour the plain blocks already on the page.
+ *  A failed load leaves the code plain; a later render tries again after 30s. */
+function requestHighlight() {
+    if (_highlightLoad || Date.now() < _highlightRetryAt) return;
+    _highlightLoad = loadHighlight().then(() => {
+        highlightCodeIn(document);
+        // Blocks rendered before the load and inserted just after it.
+        requestAnimationFrame(() => highlightCodeIn(document));
+    }, () => {
+        _highlightLoad = null;
+        _highlightRetryAt = Date.now() + 30000;
+    });
+}
+
+/** Colour the not-yet-highlighted `pre > code.language-*` blocks under root, as
+ *  renderMarkdown's renderer would have: known languages only, and the output
+ *  goes through the same sanitizer. A no-op until highlight.js has loaded. */
+export function highlightCodeIn(root) {
+    if (typeof hljs === 'undefined') return;
+    for (const code of root.querySelectorAll('pre > code[class*="language-"]:not(.hljs)')) {
+        const language = (/language-([\w+#.-]+)/.exec(code.className) || [])[1];
+        if (!language || !hljs.getLanguage(language)) continue;
+        code.innerHTML = sanitizeHtml(hljs.highlight(code.textContent, { language, ignoreIllegals: true }).value, DOMPURIFY_CONFIG);
+        code.classList.add('hljs');
+    }
 }
 
 /** Label fenced code blocks with their language (shown by .chat-prose CSS). */
