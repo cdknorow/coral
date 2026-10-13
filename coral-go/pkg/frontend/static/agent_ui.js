@@ -210,14 +210,28 @@ export async function refreshAgentUI() {
             }
             expand.onclick = () => {
                 const dialog = document.createElement('dialog'); dialog.id = 'agent-ui-expanded';
+                // A named dialog with a visible Close button: a backdrop tap is not the only way out (touch, keyboard).
+                dialog.setAttribute('role', 'dialog');
+                dialog.setAttribute('aria-labelledby', 'agent-ui-expanded-title');
+                const bar = document.createElement('div'); bar.className = 'agent-ui-expanded-bar';
+                const heading = document.createElement('h2'); heading.id = 'agent-ui-expanded-title'; heading.textContent = panel.title;
+                const close = document.createElement('button'); close.type = 'button'; close.className = 'agent-ui-expanded-close';
+                close.innerHTML = '<span class="material-icons" aria-hidden="true">close</span>';
+                close.title = 'Close'; close.setAttribute('aria-label', `Close ${panel.title}`);
+                bar.append(heading, close);
                 // Moving an iframe reloads it in browsers. Expanded view reloads the same revision.
                 const onEscape = event => { if (event.key === 'Escape') item.close(); };
-                item.close = () => { document.removeEventListener('keydown', onEscape, true); card.append(frame, status); dialog.remove(); item.close = null; };
+                item.close = () => {
+                    document.removeEventListener('keydown', onEscape, true); card.append(frame, status); dialog.remove(); item.close = null;
+                    if (expand.isConnected) expand.focus(); // back to where the user opened it
+                };
+                close.addEventListener('click', () => item.close());
                 document.addEventListener('keydown', onEscape, true);
                 dialog.addEventListener('keydown', onEscape);
                 dialog.addEventListener('cancel', e => { e.preventDefault(); item.close(); });
                 dialog.addEventListener('click', e => { if (e.target === dialog) item.close(); });
-                dialog.append(frame, status); document.body.append(dialog); dialog.showModal();
+                dialog.append(bar, frame, status); document.body.append(dialog); dialog.showModal();
+                close.focus();
             };
             mounted.set(panel.id, item);
         }

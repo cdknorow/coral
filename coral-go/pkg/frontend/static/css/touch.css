@@ -1,0 +1,41 @@
+/* Touch hit areas (WCAG 2.5.5): on a coarse pointer every control is at least
+   44x44 CSS px (--control-touch-height). Loaded last so it wins over the
+   smaller touch sizes in mobile.css and popout.css. Fine pointers (mouse,
+   trackpad) keep the desktop layout: nothing here applies to them. */
+@media (pointer: coarse) {
+    /* Square icon buttons: top bar, side-panel and sidebar toggles, Send,
+       Open Agent Tab, refresh, Agent UI panel actions, Copy path, row kebabs. */
+    .top-bar-btn,
+    #panel-toggle-btn,
+    .tablet-sidebar-toggle,
+    #popout-panel-toggle-btn,
+    #terminal-open-window-link,
+    .mobile-send-btn,
+    .refresh-files-btn,
+    .agent-ui-card button,
+    .agent-ui-actions .agent-ui-dismiss,
+    .file-action-btn,
+    .folder-copy-btn,
+    .sidebar-kebab-btn {
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+
+    /* The Open Agent Tab link is an anchor; centre its icon in the larger box. */
+    #terminal-open-window-link:not([hidden]) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Tabs and inline selects keep their width; only short ones grow wider. */
+    .top-nav-tab,
+    .agentic-tab {
+        min-width: var(--control-touch-height);
+        min-height: var(--control-touch-height);
+    }
+
+    .diff-mode-select {
+        min-height: var(--control-touch-height);
+    }
+}
