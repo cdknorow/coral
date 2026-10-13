@@ -279,3 +279,31 @@ func TestShellRiskV23(t *testing.T) {
 		assert.Empty(t, shellRisk(cmd, wd), cmd)
 	}
 }
+
+// env -S / --split-string carries a whole command line, spaced or attached (#3182): the command
+// inside is what gets checked.
+func TestShellRiskEnvSplitString(t *testing.T) {
+	wd := t.TempDir()
+	risky := map[string]string{
+		`env -S "rm -rf /etc"`:                  "deletes recursively",
+		`env --split-string "git push --force"`: "force-pushes",
+		`env -u X -S "rm -rf /etc"`:             "deletes recursively",
+		`env -i -S "sudo ls"`:                   "sudo",
+		`env -S'rm -rf /etc'`:                   "deletes recursively",
+		`env -S"rm -rf /etc"`:                   "deletes recursively",
+		`env --split-string="rm -rf /etc"`:      "deletes recursively",
+		`env -u X -S"git reset --hard"`:         "git reset --hard",
+	}
+	for cmd, want := range risky {
+		assert.Contains(t, shellRisk(cmd, wd), want, cmd)
+	}
+	for _, cmd := range []string{
+		`env -S "go test ./..."`,
+		`env -S'rm -rf build'`,
+		`env --split-string="npm test"`,
+		`env FOO=1 go test ./...`,
+		`env -i PATH=/usr/bin make`,
+	} {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+}

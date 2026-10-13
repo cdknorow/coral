@@ -276,9 +276,14 @@ func unwrapCommand(words []string) []string {
 		}
 		var takesArg map[string]bool // options of the wrapper that take a value
 		positional := 0              // leading values after the options (timeout's duration)
+		isEnv := false
 		switch filepath.Base(bareCommand(w)) {
 		case "env":
-			takesArg = map[string]bool{"-u": true, "--unset": true, "-C": true, "--chdir": true, "-S": true, "--split-string": true}
+			// -S / --split-string takes no value here: its value IS the command line (env -S
+			// "rm -rf /etc"), already split into words, so -S is skipped like a plain flag and the
+			// command follows. An attached value is handled in the option loop below.
+			takesArg = map[string]bool{"-u": true, "--unset": true, "-C": true, "--chdir": true}
+			isEnv = true
 		case "nice":
 			takesArg = map[string]bool{"-n": true, "--adjustment": true}
 		case "nohup", "command", "builtin":
@@ -300,6 +305,15 @@ func unwrapCommand(words []string) []string {
 		for len(words) > 0 {
 			a := words[0]
 			switch {
+			case isEnv && (strings.HasPrefix(a, "--split-string=") || (strings.HasPrefix(a, "-S") && !strings.HasPrefix(a, "--"))):
+				// An attached value (-S'rm -rf /etc', --split-string=rm …) starts the command.
+				v := strings.Trim(strings.TrimPrefix(strings.TrimPrefix(a, "--split-string="), "-S"), `'"`)
+				if v == "" {
+					words = words[1:]
+				} else {
+					words = append([]string{v}, words[1:]...)
+				}
+				break opts
 			case takesArg[a]:
 				words = words[min(2, len(words)):]
 			case strings.HasPrefix(a, "-") && a != "-":
