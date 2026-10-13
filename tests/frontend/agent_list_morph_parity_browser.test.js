@@ -7,7 +7,9 @@
 // Move Down, drag one row below another, feed ticks (with <b>&"' in summaries), group by team off and on, a
 // removal and an addition. After every step:
 //   - the live list equals a fresh parse of the markup that render wrote (lastLiveListHtml), and
-//   - the visible rows (in order), the active row and the phone list are the same in both runs.
+//   - the visible rows (in order) and the active row are the same in both runs.
+// Then the same page at phone width (390 px, where #mobile-session-list is filled from the sidebar list): a few
+// feed ticks, and the phone list must be non-empty and the same in both runs.
 //
 // Drives Chrome over CDP (chrome-remote-interface); run_cdp_suites.mjs finds CDP suites by that name.
 const assert = require('node:assert/strict');
@@ -40,7 +42,7 @@ const STUB = `
 
 async function session(noMorph) {
     const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
-    const { Page, Runtime } = client;
+    const { Page, Runtime, Emulation } = client;
     const ev = async x => {
         const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true });
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 400));
@@ -73,7 +75,8 @@ async function session(noMorph) {
                     equalsFresh: list.innerHTML === fresh.innerHTML,
                     visible: [...list.querySelectorAll('.session-group-item')].filter(e => e.offsetParent).map(e => e.dataset.sessionId),
                     active: list.querySelector('.session-group-item.active')?.dataset.sessionId || null,
-                    phone: [...document.querySelectorAll('#mobile-session-list .session-group-item')].map(e => e.dataset.sessionId).join(),
+                    // Filled only at phone width (syncMobileAgentList); compared in the phone steps below.
+                    phone: [...document.querySelectorAll('#mobile-session-list .session-group-item')].map(e => e.dataset.sessionId),
                 };
             })()`)) });
         };
@@ -104,8 +107,15 @@ async function session(noMorph) {
         await step('group by team on', `window.toggleGroupByTeam(); true`);
         await step('sid-5 removed', `window._coralHandleWsMessage({ type: 'coral_diff', changed: [], removed: ['sid-5'] }); true`);
         await step('sid-40 added', `window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify(agent(40, { board_project: 'team-a', name: 'team-a' }))}], removed: [] }); true`);
+        // Phone width: the agent list is the phone list, cloned from the sidebar list on each render.
+        await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+        await ev(`window.dispatchEvent(new Event('resize')); window.switchMobileTab?.('agents'); true`);
+        await step('phone: first render', tick('sid-0', { summary: 'on a phone' }));
+        for (let k = 1; k < 4; k++) await step('phone: feed tick ' + k, tick('sid-' + k, { summary: `phone tick ${k} <b>&"'`, working: k % 2 === 1 }));
+        await step('phone: sid-2 removed', `window._coralHandleWsMessage({ type: 'coral_diff', changed: [], removed: ['sid-2'] }); true`);
         return steps;
     } finally {
+        await Emulation.clearDeviceMetricsOverride().catch(() => {});
         await resetOrder().catch(() => {});
         await client.close();
     }
@@ -125,14 +135,18 @@ async function session(noMorph) {
     const pos = (s, id) => s.visible.indexOf(id);
     const before = at('feed tick 5'), dragged = at('drag sid-1 below sid-6');
     assert.ok(pos(before, 'sid-1') < pos(before, 'sid-6') && pos(dragged, 'sid-1') > pos(dragged, 'sid-6'), `the drag moved sid-1 below sid-6 (${dragged.visible.join()})`);
+    const phoneSteps = morph.filter(s => s.label.startsWith('phone:'));
+    assert.ok(phoneSteps.length >= 4 && phoneSteps.every(s => s.phone.length > 0), `the phone list is filled at phone width (${JSON.stringify(phoneSteps.map(s => s.phone.length))})`);
+    assert.ok(!at('phone: sid-2 removed').phone.includes('sid-2') && at('phone: feed tick 3').phone.includes('sid-2'), 'a removal reaches the phone list');
     for (let i = 0; i < morph.length; i++) {
         const m = morph[i], p = plain[i];
         assert.ok(m.equalsFresh, `${m.label}: morphed list equals a fresh parse of its markup`);
         assert.ok(p.equalsFresh, `${p.label}: plain list equals a fresh parse of its markup`);
+        assert.deepEqual(m.phone, p.phone, `${m.label}: same phone list`);
+        if (m.label.startsWith('phone:')) continue; // the sidebar is off screen at phone width
         assert.deepEqual(m.visible, p.visible, `${m.label}: same visible rows, in order, with and without the morph`);
         assert.equal(m.active, p.active, `${m.label}: same active row`);
-        assert.equal(m.phone, p.phone, `${m.label}: same phone list`);
     }
-    console.log(`   ✓ ${morph.length} steps: morph == fresh parse, and visible rows, active row and phone list match the kill-switch run`);
+    console.log(`   ✓ ${morph.length} steps: morph == fresh parse, and visible rows, active row and (at 390 px, ${phoneSteps.length} steps) the phone list match the kill-switch run`);
     console.log('\nAll agent list morph parity checks passed');
 })().catch(err => { console.error(err); process.exit(1); });

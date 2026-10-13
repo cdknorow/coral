@@ -64,14 +64,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         // Nothing has loaded the server list yet (it is not part of the startup graph).
         assert.deepEqual(seen, [], 'cloud_servers.js is not loaded at startup');
 
-        // 1. The first load fails: a toast says so and the tab shows no list.
+        // 1. The first load fails: a toast says so and the tab shows no list. 'No list' is read at the moment the
+        // toast appears (a MutationObserver runs right after the toast is inserted): later, a background caller's
+        // ?retry=N may already have loaded the module and rendered the list, which is fine.
+        await ev(`(() => { window.__qaAtToast = null; new MutationObserver((_, o) => {
+            if (![...document.querySelectorAll('.toast')].some(t => /Could not load the server list/.test(t.textContent))) return;
+            window.__qaAtToast = { list: !!document.querySelector('#servers-tab-body .cs-row') }; o.disconnect();
+        }).observe(document.body, { childList: true, subtree: true, characterData: true }); return true; })()`);
         await openServers();
         await waitFor(`[...document.querySelectorAll('.toast')].some(t => /Could not load the server list/.test(t.textContent))`, 'the failure toast');
         // The plain URL was requested once and failed. A background caller (the access lookup) may already have
         // retried by now under load; a retry is always a new ?retry=N URL, never the cached failed one (#3118).
         assert.equal(seen[0], 'cloud_servers.js', 'the first request is the plain URL, and it failed');
         assert.ok(seen.slice(1).every(u => /\?retry=\d+$/.test(u)), 'nothing re-requests the failed URL: ' + JSON.stringify(seen));
-        assert.ok(!(await ev(`!!document.querySelector('#servers-tab-body .cs-row')`)), 'no list after the failure');
+        await waitFor(`window.__qaAtToast !== null`, 'the toast snapshot');
+        assert.equal((await ev(`window.__qaAtToast`)).list, false, 'no list when the failure is reported');
         console.log('PASS a failed load shows "Could not load the server list"');
 
         // 2. The next action loads it, under a new URL the failure is not cached for.
