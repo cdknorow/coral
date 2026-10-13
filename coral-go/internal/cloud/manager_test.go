@@ -218,7 +218,7 @@ func TestEnrollConnectAndServeAllowedRoutes(t *testing.T) {
 	e.local.mu.Lock()
 	h := e.local.seen[0]
 	e.local.mu.Unlock()
-	require.Equal(t, "1", h.Get(tunnel.ViaHeader), "forwarded requests carry the tunnel stamp")
+	require.Equal(t, ViaSecret(), h.Get(tunnel.ViaHeader), "forwarded requests carry the per-process tunnel stamp")
 	require.Empty(t, h.Get("Authorization"))
 
 	// Never-routes and routes above the mode never reach the local API (default mode: view).
@@ -370,4 +370,30 @@ func TestHubLearnsTheLocalModeAndSeesItChange(t *testing.T) {
 	second := e.hub.session(t)          // the connector reconnected to report it
 	require.Equal(t, tunnel.TierInteract, second.LocalMode())
 	waitState(t, m, StateConnected)
+}
+
+// Whatever the hub turned on ends when the link does (#3182): OnLinkLost runs
+// when the user disconnects and when the hub revokes this server.
+func TestLinkLostRunsOnDisconnectAndRevoke(t *testing.T) {
+	for _, how := range []string{"disconnect", "revoke"} {
+		t.Run(how, func(t *testing.T) {
+			e := newEnv(t)
+			m := e.manager(e.hub.srv.URL)
+			var lost atomic.Int32
+			m.o.OnLinkLost = func(context.Context) { lost.Add(1) }
+			start(t, m)
+			require.NoError(t, m.Connect(context.Background()))
+			waitState(t, m, StateConnected)
+			s := e.hub.session(t)
+			require.Zero(t, lost.Load())
+			if how == "disconnect" {
+				require.NoError(t, m.Disconnect(context.Background()))
+			} else {
+				e.hub.revoked.Store(true)
+				s.Close()
+				waitState(t, m, StateRevoked)
+			}
+			require.Eventually(t, func() bool { return lost.Load() == 1 }, 5*time.Second, 10*time.Millisecond)
+		})
+	}
 }

@@ -206,6 +206,13 @@ var columnMigrations = []struct {
 	// Archived: put away by the operator. Always set together with is_sleeping=1 (so every "running" check already
 	// excludes it); unlike plain sleeping it is left out of Wake All, team wake and orphan cleanup.
 	{"live_sessions", "is_archived", "INTEGER NOT NULL DEFAULT 0"},
+	// Auto-accept (#3182): answer this agent's approve-once permission prompts. A new row (launch, restart, resume)
+	// starts off, and sleep/wake/archive clear it, so it is never on for a new agent run. The paused code is set when
+	// Coral turns it off (loop guard, expiry, hub access withdrawn, Stop all); enabling again clears it.
+	{"live_sessions", "auto_accept", "INTEGER NOT NULL DEFAULT 0"},
+	{"live_sessions", "auto_accept_until", "INTEGER"},    // unix seconds; NULL = no time limit
+	{"live_sessions", "auto_accept_source", "TEXT"},      // 'local' (dashboard) or 'hub' (Cloud Hub)
+	{"live_sessions", "auto_accept_paused_code", "TEXT"}, // why Coral turned it off (see store/auto_accept.go)
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},

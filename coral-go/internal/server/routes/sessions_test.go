@@ -79,6 +79,7 @@ type mockSessionTerminal struct {
 	raw              map[string][]string // keys sent with SendRawInput
 	killSessionCalls []string
 	sendErr          error
+	onCapture        func(name string) // called (unlocked) after each capture, e.g. to change the screen
 }
 
 func newMockTerminal() *mockSessionTerminal {
@@ -123,9 +124,14 @@ func (m *mockSessionTerminal) FindSession(_ context.Context, name, _, _ string) 
 
 func (m *mockSessionTerminal) CaptureOutput(_ context.Context, name string, _ int, _, _ string) (string, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	m.captures = append(m.captures, name)
-	if out, ok := m.outputs[name]; ok {
+	out, ok := m.outputs[name]
+	hook := m.onCapture
+	m.mu.Unlock()
+	if hook != nil {
+		hook(name)
+	}
+	if ok {
 		return out, nil
 	}
 	return "", fmt.Errorf("session %q not found", name)
@@ -2313,6 +2319,9 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Post("/api/sessions/live/{name}/events", handler.CreateEvent)
 	r.Get("/api/sessions/live/{name}/prompt-options", handler.PromptOptions)
 	r.Post("/api/sessions/live/{name}/answer-prompt", handler.AnswerPrompt)
+	r.Post("/api/sessions/live/{name}/auto-accept/enable", handler.EnableAutoAccept)
+	r.Post("/api/sessions/live/{name}/auto-accept/disable", handler.DisableAutoAccept)
+	r.Post("/api/auto-accept/disable-all", handler.DisableAllAutoAccept)
 	r.Post("/api/sessions/launch", handler.Launch)
 	r.Post("/api/sessions/launch-team", handler.LaunchTeam)
 

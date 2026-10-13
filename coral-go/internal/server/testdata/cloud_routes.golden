@@ -182,6 +182,7 @@ POST /api/agent/tasks/{taskID}/complete never
 POST /api/agent/tasks/{taskID}/publish never
 POST /api/agent/ui-request interact
 POST /api/agent/ui/{id}/events interact
+POST /api/auto-accept/disable-all interact
 POST /api/board/remotes never
 POST /api/board/{project}/external-messages interact
 POST /api/board/{project}/groups/{groupID}/members interact
@@ -230,6 +231,8 @@ POST /api/sessions/live/team/{boardName}/wake launch
 POST /api/sessions/live/wake-all launch
 POST /api/sessions/live/{name}/answer-prompt interact
 POST /api/sessions/live/{name}/attach launch
+POST /api/sessions/live/{name}/auto-accept/disable interact
+POST /api/sessions/live/{name}/auto-accept/enable launch
 POST /api/sessions/live/{name}/context-window never
 POST /api/sessions/live/{name}/events never
 POST /api/sessions/live/{name}/files/refresh interact
@@ -274,6 +277,7 @@ PUT /api/agent/ui/{id} never
 PUT /api/board/{project}/settings interact
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} interact
+PUT /api/cloud/allow-auto-accept never
 PUT /api/cloud/max-mode never
 PUT /api/scheduled/jobs/{jobID} never
 PUT /api/sessions/history/{sessionID}/notes never

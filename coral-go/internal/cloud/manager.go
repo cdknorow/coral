@@ -49,6 +49,10 @@ type Options struct {
 	Now          func() time.Time
 	// PollInterval overrides the hub's suggested enrollment poll interval (tests).
 	PollInterval time.Duration
+	// OnLinkLost runs when this server stops being linked to the hub: the user
+	// disconnects it, or the hub revokes it. Whatever the hub turned on is turned
+	// off (auto-accept, #3182).
+	OnLinkLost func(ctx context.Context)
 }
 
 // Status is the safe, secret-free view for the UI.
@@ -280,6 +284,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		BaseURL:      m.o.LocalBaseURL,
 		AllowRequest: tunnel.AllowRequest(m.o.MaxMode), // read on every request: a change applies at once
 		MaxMode:      m.currentMode,                    // gates WebSocket input frame by frame
+		ViaValue:     ViaSecret(),                      // lets the server tell the connector from a forged stamp
 	}
 	err = tunnel.Run(ctx, TunnelURL(m.o.HubURL), token, tunnel.ClientOptions{
 		Handler:       local,
@@ -309,6 +314,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		// Revoked (or token invalid): persist, stop retrying, say so.
 		_ = m.o.Store.SetState(context.Background(), store.CloudStateRevoked, "revoked by the hub")
 		set(StateRevoked, "the hub revoked this server; disconnect and enroll again to reconnect")
+		m.linkLost(context.Background())
 	case errors.Is(err, tunnel.ErrUnsupportedVersion):
 		set(StateUpgrade, "this Coral version is too old for the hub; update Coral")
 	}
@@ -325,7 +331,14 @@ func (m *Manager) Disconnect(ctx context.Context) error {
 	m.stopLocked()
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle}
 	m.mu.Unlock()
+	m.linkLost(ctx)
 	return m.o.Store.Delete(ctx)
+}
+
+func (m *Manager) linkLost(ctx context.Context) {
+	if m.o.OnLinkLost != nil {
+		m.o.OnLinkLost(ctx)
+	}
 }
 
 func (m *Manager) currentMode() tunnel.Mode {

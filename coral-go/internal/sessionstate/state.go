@@ -45,7 +45,7 @@ type State struct {
 // or approval prompt, or an input dialog) and is blocked on the answer. It is
 // raised only by such a notification and is cleared by anything that proves
 // the request is no longer pending: a prompt, a tool event, a session reset,
-// or a stop. A prompt blocks the turn, so a stop can only be recorded after
+// or a stop, or Coral auto-accepting it. A prompt blocks the turn, so a stop can only be recorded after
 // the request was answered. That matters when the answer was a denial or the
 // approved tool failed, because neither produces a tool event, and the agent
 // would otherwise keep showing NeedsInput while sitting idle.
@@ -65,6 +65,12 @@ func Derive(in Input) State {
 		switch event.Type {
 		case "session_reset", "prompt_submit", "tool_use":
 			latestType = event.Type
+			clearRequest()
+			state.AwaitingUser = false
+		case "auto_accept":
+			// Coral answered the prompt (auto-accept): the agent is now
+			// running the approved tool.
+			latestType = "tool_use"
 			clearRequest()
 			state.AwaitingUser = false
 		case "stop":

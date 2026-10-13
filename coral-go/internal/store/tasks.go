@@ -576,7 +576,7 @@ func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string
 // in-memory latch. Events are returned oldest first for each session.
 //
 // Only the suffix that decides the state is returned: the newest turn boundary
-// (stop, prompt_submit, tool_use or session_reset) and the notifications after
+// (stop, prompt_submit, tool_use, session_reset or auto_accept) and the notifications after
 // it. sessionstate.Derive resets on every boundary, so earlier events cannot
 // change its result, and the suffix keeps the newest timestamp the transcript
 // merge compares against. detail_json is not read; no consumer uses it.
@@ -594,14 +594,14 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 		   SELECT s.value AS sid,
 		          (SELECT x.id FROM agent_events x
 		           WHERE x.session_id = s.value
-		             AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset')
+		             AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept')
 		           ORDER BY x.created_at DESC, x.id DESC LIMIT 1) AS bid
 		   FROM json_each(?) s)
 		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.created_at
 		 FROM boundary
 		 JOIN agent_events b ON b.id = boundary.bid
 		 JOIN agent_events e ON e.session_id = boundary.sid
-		 WHERE e.event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset')
+		 WHERE e.event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept')
 		   AND (e.created_at, e.id) >= (b.created_at, b.id)
 		 UNION ALL
 		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.created_at

@@ -1,0 +1,764 @@
+package routes
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"log/slog"
+	"net/http"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/store"
+)
+
+// Auto-accept (#3182): when the operator turns it on for an agent, Coral
+// answers that agent's approve-once permission prompts itself, server-side, so
+// it works with the dashboard closed and through hubs.
+//
+// Only a prompt the agent type's table recognises as a tool approval is
+// answered, and only with its approve-once option. Never chosen: "always
+// allow", "don't ask again", "switch to auto mode"/"accept edits" (they change
+// settings), or a text/chat option. Questions (AskUserQuestion, request_user_input),
+// plan approval, high-risk actions (auto_accept_risk.go) and any unknown prompt
+// shape wait for the user, recorded once as auto_accept_skipped.
+//
+// The digit is sent only after re-reading the screen and finding the same
+// prompt (as AnswerPrompt does). A prompt is answered once (fingerprint
+// debounce), and a loop guard turns auto-accept off when the same prompt keeps
+// coming back or approvals run away.
+
+// The approval tables, verified against real CLIs in a tmux pane:
+//
+//	Claude Code 2.1.296: "Do you want to proceed?" (Bash), "Do you want to create
+//	notes.txt?" (Write), "Do you want to make this edit to notes.txt?" (Edit),
+//	each with "1. Yes", "Yes, and ..." options and "No".
+//	Codex 0.155.1: "Would you like to run the following command?" and "Would you
+//	like to make the following edits?", with "1. Yes, proceed (y)", "Yes, and
+//	don't ask again ..." and "No, and tell Codex what to do differently (esc)".
+//	The digit answers it ("You approved codex to run ... this time").
+//
+// Gemini and Antigravity are not verified yet, so the switch is disabled for
+// them (and for pi and plain terminals).
+var autoAcceptSupported = map[string]bool{at.Claude: true, at.Codex: true}
+
+// autoAcceptUnsupported is the feed code for an agent type without a verified
+// approval table (the UI words it).
+const autoAcceptUnsupported = "agent_type_unsupported"
+
+// AutoAcceptSupported reports whether auto-accept is available for an agent type.
+func AutoAcceptSupported(agentType string) bool { return autoAcceptSupported[agentType] }
+
+// Tools whose prompt is a question or a plan for the user, never an approval.
+var autoAcceptBlockingTools = map[string]string{
+	"AskUserQuestion":    "a question waits for your answer",
+	"ExitPlanMode":       "plan approval waits for you",
+	"ask_question":       "a question waits for your answer",
+	"request_user_input": "a question waits for your answer",
+}
+
+const (
+	autoAcceptInterval    = 2 * time.Second
+	autoAcceptDebounce    = 3 * time.Second
+	autoAcceptLoopWindow  = time.Minute
+	autoAcceptSameLimit   = 5   // the same prompt approved this often in a minute pauses it
+	autoAcceptTotalLimit  = 30  // more approvals than this in a minute pauses it
+	autoAcceptInputMaxLen = 200 // the command/input an event carries to the browser
+	// A prompt left for the user is recorded once (per fingerprint, remembered
+	// for autoAcceptSkipMemory), and at most one skipped event per session per
+	// autoAcceptSkipEvery, so a screen that flaps between prompts cannot flood
+	// the activity log.
+	autoAcceptSkipMemory = 10 * time.Minute
+	autoAcceptSkipEvery  = time.Minute
+	// Enable time limits: a Cloud Hub enable defaults to an hour; nothing may
+	// ask for more than 8 hours.
+	autoAcceptHubDefault = time.Hour
+	autoAcceptMaxLimit   = 8 * time.Hour
+)
+
+var (
+	claudeApprovalQuestionRe = regexp.MustCompile(`(?i)^do you want to\b`)
+	codexApprovalHeaderRe    = regexp.MustCompile(`^\s*Would you like to (run the following command|make the following edits)\?\s*$`)
+	claudeToolLineRe         = regexp.MustCompile(`^\s*⏺\s*([A-Za-z_][\w.-]*)\((.*)\)\s*$`)
+	ruleLineRe               = regexp.MustCompile(`^\s*─{8,}\s*$`)
+)
+
+// approvalDecision is what the table makes of a terminal screen.
+type approvalDecision struct {
+	Prompt  bool   // an option prompt is open
+	Approve bool   // it is a recognised tool approval
+	N       int    // the approve-once option's digit
+	Label   string // its label
+	Kind    string // codex: "command" or "edit"
+	Context []string
+	FP      string // fingerprint of the prompt (type, text, options)
+}
+
+func normalizedLabel(s string) string { return normalizeLabel(s) }
+
+// classifyApproval reads the prompt at the bottom of a capture and decides
+// whether it is an approve-once tool approval for the agent type.
+func classifyApproval(agentType, capture string) approvalDecision {
+	screen, ok := parsePromptScreen(capture)
+	if !ok {
+		return approvalDecision{}
+	}
+	lines := strings.Split(strings.ReplaceAll(capture, "\r", ""), "\n")
+	firstOpt := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if m := promptOptionRe.FindStringSubmatch(lines[i]); m != nil && m[2] == "1" && indentOf(lines[i]) < 5 {
+			firstOpt = i
+			break
+		}
+	}
+	d := approvalDecision{Prompt: true}
+	var opts []string
+	for _, o := range screen.Options {
+		opts = append(opts, o.Label)
+	}
+	block := promptBlock(lines, firstOpt)
+	d.Context = block
+	d.FP = fingerprint(agentType, block, opts)
+
+	pick := func(match func(string) bool) bool {
+		hasNo := false
+		for _, o := range screen.Options {
+			if strings.HasPrefix(normalizedLabel(o.Label), "no") {
+				hasNo = true
+			}
+		}
+		if !hasNo {
+			return false
+		}
+		for _, o := range screen.Options {
+			if o.Action == "select" && match(normalizedLabel(o.Label)) {
+				d.N, d.Label, d.Approve = o.N, o.Label, true
+				return true
+			}
+		}
+		return false
+	}
+	switch agentType {
+	case at.Claude:
+		if !claudeApprovalQuestionRe.MatchString(screen.Question) {
+			return d
+		}
+		pick(func(l string) bool { return l == "yes" })
+	case at.Codex:
+		header := -1
+		for i := firstOpt - 1; i >= 0 && i >= firstOpt-40; i-- {
+			if m := codexApprovalHeaderRe.FindStringSubmatch(lines[i]); m != nil {
+				header = i
+				d.Kind = "command"
+				if strings.HasPrefix(m[1], "make") {
+					d.Kind = "edit"
+				}
+				break
+			}
+		}
+		if header < 0 {
+			return d
+		}
+		pick(func(l string) bool { return l == "yes, proceed" || strings.HasPrefix(l, "yes, proceed (") })
+	}
+	return d
+}
+
+// promptBlock is the prompt's own text above its options: from the rule that
+// opens Claude's prompt panel (or Codex's header line) down to the first option,
+// without blank lines. It is what the fingerprint covers, so a different
+// command or file is a different prompt.
+func promptBlock(lines []string, firstOpt int) []string {
+	if firstOpt < 0 {
+		return nil
+	}
+	start := firstOpt - 40
+	if start < 0 {
+		start = 0
+	}
+	for i := firstOpt - 1; i >= start; i-- {
+		if ruleLineRe.MatchString(lines[i]) || codexApprovalHeaderRe.MatchString(lines[i]) {
+			start = i
+			if ruleLineRe.MatchString(lines[i]) {
+				start = i + 1
+			}
+			break
+		}
+	}
+	var out []string
+	for _, l := range lines[start:firstOpt] {
+		if t := strings.TrimSpace(l); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func fingerprint(agentType string, block, opts []string) string {
+	h := sha256.New()
+	h.Write([]byte(agentType))
+	for _, l := range block {
+		h.Write([]byte{0})
+		h.Write([]byte(strings.Join(strings.Fields(l), " ")))
+	}
+	for _, o := range opts {
+		h.Write([]byte{1})
+		h.Write([]byte(normalizeLabel(o)))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// ── Engine ─────────────────────────────────────────────────────────────────
+
+// AutoAcceptor answers approval prompts for sessions with auto-accept on. One
+// goroutine handles every session, so a session is never answered twice at
+// once. Claude sessions are checked when their permission notification
+// arrives (Kick) and on every sweep while they still need input; Codex has no
+// permission hook, so its screen is read on each sweep. Each sweep also ends
+// enables whose time limit ran out.
+type AutoAcceptor struct {
+	h    *SessionsHandler
+	kick chan struct{}
+	now  func() time.Time
+
+	mu       sync.Mutex
+	answered map[string]autoAcceptAnswer   // session -> last answer (debounce)
+	history  map[string][]autoAcceptAnswer // session -> answers in the loop window
+	skipped  map[string]map[string]time.Time
+	lastSkip map[string]time.Time // session -> last skipped event
+}
+
+type autoAcceptAnswer struct {
+	fp string
+	at time.Time
+}
+
+// NewAutoAcceptor creates the auto-accept engine for a sessions handler.
+func NewAutoAcceptor(h *SessionsHandler) *AutoAcceptor {
+	a := &AutoAcceptor{
+		h:        h,
+		kick:     make(chan struct{}, 1),
+		now:      time.Now,
+		answered: map[string]autoAcceptAnswer{},
+		history:  map[string][]autoAcceptAnswer{},
+		skipped:  map[string]map[string]time.Time{},
+		lastSkip: map[string]time.Time{},
+	}
+	h.autoAccept = a
+	return a
+}
+
+// Kick asks for a check now (a permission notification arrived).
+func (a *AutoAcceptor) Kick() {
+	if a == nil {
+		return
+	}
+	select {
+	case a.kick <- struct{}{}:
+	default:
+	}
+}
+
+// Run checks auto-accept sessions every 2 s and on each kick until ctx ends.
+// Call Start first.
+func (a *AutoAcceptor) Run(ctx context.Context) {
+	t := time.NewTicker(autoAcceptInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		case <-a.kick:
+		}
+		a.RunOnce(ctx)
+	}
+}
+
+// Start runs once when Coral starts, before Run: it ends the Cloud Hub's
+// enables left from before this process (they never outlive a restart).
+func (a *AutoAcceptor) Start(ctx context.Context) {
+	if n, err := a.h.ss.ClearHubAutoAccept(ctx, store.AutoAcceptCoralRestarted); err != nil {
+		slog.Warn("auto-accept: ending Cloud Hub enables after a restart failed", "error", err)
+	} else if n > 0 {
+		slog.Info("auto-accept: Coral restarted; turned off Cloud Hub enables", "agents", n)
+	}
+}
+
+// RunOnce ends expired enables, then checks every session with auto-accept on once.
+func (a *AutoAcceptor) RunOnce(ctx context.Context) {
+	if n, err := a.h.ss.ExpireAutoAccept(ctx, a.now()); err != nil {
+		slog.Warn("auto-accept: expiring failed", "error", err)
+	} else if n > 0 {
+		a.h.kickWS()
+	}
+	sessions, err := a.h.ss.ListAutoAcceptSessions(ctx)
+	if err != nil {
+		slog.Warn("auto-accept: listing sessions failed", "error", err)
+		return
+	}
+	for _, s := range sessions {
+		if ctx.Err() != nil {
+			return
+		}
+		a.check(ctx, s)
+	}
+}
+
+func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
+	if !AutoAcceptSupported(s.AgentType) {
+		return
+	}
+	var pending *pendingTool
+	if t, ok := a.h.pending.get(s.SessionID, a.now()); ok {
+		pending = &t
+	}
+	if s.AgentType == at.Claude {
+		// Claude reports its permission prompts; without that request nothing
+		// on screen is answered.
+		if !a.h.deriveSingleSessionState(ctx, s.SessionID, 0).NeedsInput {
+			return
+		}
+	}
+	capture := a.capture(ctx, s)
+	d := classifyApproval(s.AgentType, capture)
+	if !d.Prompt {
+		return
+	}
+	if pending != nil {
+		if why, ok := autoAcceptBlockingTools[pending.ToolName]; ok {
+			a.skip(ctx, s, d.FP, "Not auto-accepted: "+why, pending)
+			return
+		}
+	}
+	if !d.Approve {
+		a.skip(ctx, s, d.FP, "Not auto-accepted: unrecognised prompt", pending)
+		return
+	}
+	if why := autoAcceptRisk(s.AgentType, s.WorkingDir, pending, d, capture); why != "" {
+		a.skip(ctx, s, d.FP, "Not auto-accepted (high-risk): "+why, pending)
+		return
+	}
+
+	now := a.now()
+	a.mu.Lock()
+	last := a.answered[s.SessionID]
+	if last.fp == d.FP && now.Sub(last.at) < autoAcceptDebounce {
+		a.mu.Unlock()
+		return // answered moments ago; the screen has not caught up yet
+	}
+	recent := a.history[s.SessionID][:0]
+	same := 0
+	for _, x := range a.history[s.SessionID] {
+		if now.Sub(x.at) < autoAcceptLoopWindow {
+			recent = append(recent, x)
+			if x.fp == d.FP {
+				same++
+			}
+		}
+	}
+	a.history[s.SessionID] = recent
+	a.mu.Unlock()
+	switch {
+	case same >= autoAcceptSameLimit:
+		a.pause(ctx, s, store.AutoAcceptRepeatLoop, "Auto-accept paused: the same prompt repeated 5 times in a minute")
+		return
+	case len(recent) >= autoAcceptTotalLimit:
+		a.pause(ctx, s, store.AutoAcceptRateCap, "Auto-accept paused: more than 30 approvals in a minute")
+		return
+	}
+
+	// Re-read the screen: answer only if the same prompt is still open.
+	again := classifyApproval(s.AgentType, a.capture(ctx, s))
+	if !again.Approve || again.FP != d.FP || again.N != d.N {
+		return
+	}
+	if !a.ownPane(ctx, s) {
+		return
+	}
+	if err := a.h.terminal.SendRawInput(ctx, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID); err != nil {
+		slog.Warn("auto-accept: sending the answer failed", "session", s.SessionID, "error", err)
+		return
+	}
+	a.mu.Lock()
+	a.answered[s.SessionID] = autoAcceptAnswer{fp: d.FP, at: now}
+	a.history[s.SessionID] = append(a.history[s.SessionID], autoAcceptAnswer{fp: d.FP, at: now})
+	a.mu.Unlock()
+
+	tool, input := approvedWhat(s.AgentType, d, pending, capture)
+	summary := "Auto-approved " + tool
+	if input != "" {
+		summary += ": " + input
+	}
+	a.record(ctx, s, "auto_accept", summary, tool, map[string]any{
+		"agent_type": s.AgentType, "option": d.Label, "tool": tool, "input": input,
+	})
+	a.h.kickWS()
+}
+
+// paneName is the session's own terminal (named after its session id). The
+// terminal falls back to a fuzzy agent-name match when that pane is gone, so
+// every read and keystroke first checks the pane it resolves to is this
+// session's: a digit must never reach another agent.
+func paneName(s store.AutoAcceptState) string { return naming.SessionName(s.AgentType, s.SessionID) }
+
+func (a *AutoAcceptor) ownPane(ctx context.Context, s store.AutoAcceptState) bool {
+	pane, err := a.h.terminal.FindSession(ctx, paneName(s), s.AgentType, s.SessionID)
+	return err == nil && pane != nil && strings.Contains(strings.ToLower(pane.SessionName), strings.ToLower(s.SessionID))
+}
+
+func (a *AutoAcceptor) capture(ctx context.Context, s store.AutoAcceptState) string {
+	if !a.ownPane(ctx, s) {
+		return ""
+	}
+	text, err := a.h.terminal.CaptureOutput(ctx, paneName(s), 80, s.AgentType, s.SessionID)
+	if err != nil {
+		return ""
+	}
+	return text
+}
+
+// skip records that auto-accept left a prompt for the user: once per prompt,
+// and at most one such event per session per minute.
+func (a *AutoAcceptor) skip(ctx context.Context, s store.AutoAcceptState, fp, summary string, pending *pendingTool) {
+	now := a.now()
+	a.mu.Lock()
+	seen := a.skipped[s.SessionID]
+	if seen == nil {
+		seen = map[string]time.Time{}
+		a.skipped[s.SessionID] = seen
+	}
+	for k, t := range seen {
+		if now.Sub(t) >= autoAcceptSkipMemory {
+			delete(seen, k)
+		}
+	}
+	_, dup := seen[fp]
+	last, hadSkip := a.lastSkip[s.SessionID]
+	throttled := hadSkip && now.Sub(last) < autoAcceptSkipEvery
+	if !dup && !throttled {
+		seen[fp] = now
+		a.lastSkip[s.SessionID] = now
+	}
+	a.mu.Unlock()
+	if dup || throttled {
+		return // a throttled prompt is recorded on a later sweep if it is still open
+	}
+	tool := ""
+	if pending != nil {
+		tool = pending.ToolName
+	}
+	a.record(ctx, s, "auto_accept_skipped", truncateUTF8(summary, autoAcceptInputMaxLen+60), tool, map[string]any{"agent_type": s.AgentType, "tool": tool})
+}
+
+// pause turns auto-accept off with a paused code, records it and tells open dashboards.
+func (a *AutoAcceptor) pause(ctx context.Context, s store.AutoAcceptState, code, summary string) {
+	if err := a.h.ss.PauseAutoAccept(ctx, s.SessionID, code); err != nil {
+		slog.Warn("auto-accept: pausing failed", "session", s.SessionID, "error", err)
+		return
+	}
+	a.forget(s.SessionID)
+	a.record(ctx, s, "auto_accept_paused", summary, "", map[string]any{"agent_type": s.AgentType, "code": code})
+	if a.h.notifications != nil {
+		a.h.notifications.Push(Notification{Title: "Auto-accept paused for " + s.AgentName, Message: summary, Level: "warning"})
+	}
+	a.h.kickWS()
+}
+
+func (a *AutoAcceptor) record(ctx context.Context, s store.AutoAcceptState, eventType, summary, tool string, detail map[string]any) {
+	recordAutoAcceptEvent(ctx, a.h.ts, s.AgentName, s.SessionID, eventType, summary, tool, detail)
+}
+
+func recordAutoAcceptEvent(ctx context.Context, ts *store.TaskStore, agentName, sessionID, eventType, summary, tool string, detail map[string]any) {
+	ev := &store.AgentEvent{AgentName: agentName, EventType: eventType, Summary: summary}
+	ev.SessionID = &sessionID
+	if tool != "" {
+		ev.ToolName = &tool
+	}
+	if b, err := json.Marshal(detail); err == nil {
+		dj := string(b)
+		ev.DetailJSON = &dj
+	}
+	if _, err := ts.InsertAgentEvent(ctx, ev); err != nil {
+		slog.Warn("auto-accept: recording event failed", "session", sessionID, "type", eventType, "error", err)
+	}
+}
+
+// forget drops a session's debounce, loop-guard and skip history.
+func (a *AutoAcceptor) forget(sessionID string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.answered, sessionID)
+	delete(a.history, sessionID)
+	delete(a.skipped, sessionID)
+	delete(a.lastSkip, sessionID)
+}
+
+// approvedWhat names the approved tool and its input for the activity log:
+// from the pending tool (PreToolUse hook) when there is one, else the screen.
+// The input is capped (it reaches the browser in the event).
+func approvedWhat(agentType string, d approvalDecision, pending *pendingTool, capture string) (string, string) {
+	if pending != nil {
+		for _, k := range []string{"command", "file_path", "notebook_path", "path", "url", "query", "pattern"} {
+			if v, ok := pending.Input[k].(string); ok && strings.TrimSpace(v) != "" {
+				return pending.ToolName, trimInput(v)
+			}
+		}
+		return pending.ToolName, ""
+	}
+	tool, input := screenAction(agentType, d, capture)
+	if tool == "" {
+		tool = "tool"
+	}
+	return tool, trimInput(strings.ReplaceAll(input, "\x00", " "))
+}
+
+func trimInput(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	return truncateUTF8(s, autoAcceptInputMaxLen)
+}
+
+// ── API ────────────────────────────────────────────────────────────────────
+
+// autoAcceptFields are the auto-accept fields of a live session payload:
+// always all six, false/null included, and codes only (no prompt text).
+func autoAcceptFields(agentType string, st store.AutoAcceptState) map[string]any {
+	var until, source, unsupported, paused any
+	if st.Enabled && st.Until.Valid {
+		until = st.Until.Int64
+	}
+	if st.Enabled && st.Source.Valid {
+		source = st.Source.String
+	}
+	supported := AutoAcceptSupported(agentType)
+	if !supported {
+		unsupported = autoAcceptUnsupported
+	}
+	if st.PausedCode.Valid {
+		paused = st.PausedCode.String
+	}
+	return map[string]any{
+		"auto_accept":                  st.Enabled,
+		"auto_accept_until":            until,
+		"auto_accept_source":           source,
+		"auto_accept_supported":        supported,
+		"auto_accept_unsupported_code": unsupported,
+		"auto_accept_paused_code":      paused,
+	}
+}
+
+// autoAcceptPayload is autoAcceptFields for one session read from the store.
+func (h *SessionsHandler) autoAcceptPayload(ctx context.Context, sessionID string) map[string]any {
+	st, _ := h.ss.GetAutoAcceptState(ctx, sessionID)
+	agentType := st.AgentType
+	if agentType == "" {
+		if ls, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && ls != nil {
+			agentType = ls.AgentType
+		}
+	}
+	return autoAcceptFields(agentType, st)
+}
+
+// Headers that identify an agent's own tooling (coral-agent, coral-board and
+// hooks may send them). A request carrying any of them never enables auto-accept.
+var agentIdentityHeaders = []string{"X-Coral-Agent", "X-Coral-Subscriber-ID", "X-Coral-Session", "X-Coral-Session-ID"}
+
+func refuseAutoAccept(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
+}
+
+// autoAcceptTarget finds the session a request names: session_id in the body,
+// with the path segment its agent name or its session id.
+func (h *SessionsHandler) autoAcceptTarget(w http.ResponseWriter, r *http.Request, sessionID string) *store.LiveSession {
+	name := chi.URLParam(r, "name")
+	if sessionID == "" {
+		errBadRequest(w, "session_id is required")
+		return nil
+	}
+	ls, err := h.ss.GetLiveSession(r.Context(), sessionID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return nil
+	}
+	if ls == nil || (ls.AgentName != name && ls.SessionID != name) {
+		errNotFound(w, "session not found")
+		return nil
+	}
+	return ls
+}
+
+// EnableAutoAccept turns auto-accept on for one agent.
+// POST /api/sessions/live/{name}/auto-accept/enable {"session_id","acknowledged":true,"duration_s"?}
+//
+// Who may: the local dashboard (a same-origin browser fetch from this computer,
+// see localDashboard) or the Cloud Hub through this process's connector (the
+// stamp must match the per-process secret: cloud.TunneledAuthentic), never a
+// request carrying an agent's identity. acknowledged:true is sent by the
+// dashboard only after the operator confirmed the warning.
+//
+// Limit (documented): a local process can forge Sec-Fetch-Site as easily as a
+// browser sends it, and an agent can type into its own pane anyway. These checks
+// keep every Coral agent API path and honest client from turning it on; they do
+// not stand against a hostile process on the same computer. The stamp, being a
+// secret, cannot be forged by one.
+func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SessionID    string `json:"session_id"`
+		Acknowledged bool   `json:"acknowledged"`
+		DurationS    *int64 `json:"duration_s"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	if !body.Acknowledged {
+		errBadRequest(w, "acknowledged:true is required to enable auto-accept (the warning must be confirmed)")
+		return
+	}
+	if body.DurationS != nil && (*body.DurationS < 1 || time.Duration(*body.DurationS)*time.Second > autoAcceptMaxLimit) {
+		errBadRequest(w, "duration_s must be between 1 and 28800 (8 hours)")
+		return
+	}
+	for _, hd := range agentIdentityHeaders {
+		if r.Header.Get(hd) != "" {
+			refuseAutoAccept(w, http.StatusForbidden, "agent_identity", "Auto-accept is turned on by the user in the dashboard, not by an agent")
+			return
+		}
+	}
+	hub := cloud.TunneledAuthentic(r)
+	if !hub && !localDashboard(r) {
+		refuseAutoAccept(w, http.StatusForbidden, "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Cloud Hub")
+		return
+	}
+	if hub {
+		settings, err := h.ss.GetSettings(r.Context())
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if !HubAutoAcceptAllowed(settings) {
+			refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", "Cloud Hub auto-accept is turned off on this computer")
+			return
+		}
+	}
+	ls := h.autoAcceptTarget(w, r, body.SessionID)
+	if ls == nil {
+		return
+	}
+	if !AutoAcceptSupported(ls.AgentType) {
+		refuseAutoAccept(w, http.StatusConflict, autoAcceptUnsupported, "Auto-accept is not available for this agent type yet")
+		return
+	}
+	if ls.IsSleeping == 1 {
+		refuseAutoAccept(w, http.StatusConflict, "asleep", "The agent is asleep; wake it first")
+		return
+	}
+	source, origin := store.AutoAcceptSourceLocal, "the dashboard"
+	var limit time.Duration
+	if body.DurationS != nil {
+		limit = time.Duration(*body.DurationS) * time.Second
+	}
+	if hub {
+		source, origin = store.AutoAcceptSourceHub, "the Cloud Hub"
+		if limit == 0 {
+			limit = autoAcceptHubDefault
+		}
+	}
+	var until int64
+	if limit > 0 {
+		until = h.autoAcceptNow().Add(limit).Unix()
+	}
+	found, err := h.ss.EnableAutoAccept(r.Context(), ls.SessionID, source, until)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if !found {
+		errNotFound(w, "session not found")
+		return
+	}
+	h.autoAccept.forget(ls.SessionID)
+	detail := map[string]any{"source": source, "until": nil}
+	if until > 0 {
+		detail["until"] = until
+	}
+	recordAutoAcceptEvent(r.Context(), h.ts, ls.AgentName, ls.SessionID, "auto_accept_enabled", "Auto-accept turned on from "+origin, "", detail)
+	h.autoAccept.Kick() // a prompt already open is answered now
+	defer h.kickWS()
+	writeJSON(w, http.StatusOK, h.autoAcceptPayload(r.Context(), ls.SessionID))
+}
+
+func (h *SessionsHandler) autoAcceptNow() time.Time {
+	if h.autoAccept != nil {
+		return h.autoAccept.now()
+	}
+	return time.Now()
+}
+
+// DisableAutoAccept turns auto-accept off for one agent. Always allowed.
+// POST /api/sessions/live/{name}/auto-accept/disable {"session_id"}
+func (h *SessionsHandler) DisableAutoAccept(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errBadRequest(w, "invalid JSON")
+		return
+	}
+	ls := h.autoAcceptTarget(w, r, body.SessionID)
+	if ls == nil {
+		return
+	}
+	before, err := h.ss.GetAutoAcceptState(r.Context(), ls.SessionID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if _, err := h.ss.DisableAutoAccept(r.Context(), ls.SessionID); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	h.autoAccept.forget(ls.SessionID)
+	if before.Enabled {
+		origin := "the dashboard"
+		if cloud.TunneledAuthentic(r) {
+			origin = "the Cloud Hub"
+		} else if !localDashboard(r) {
+			origin = "a local client"
+		}
+		recordAutoAcceptEvent(r.Context(), h.ts, ls.AgentName, ls.SessionID, "auto_accept_disabled", "Auto-accept turned off from "+origin, "", map[string]any{})
+	}
+	defer h.kickWS()
+	writeJSON(w, http.StatusOK, h.autoAcceptPayload(r.Context(), ls.SessionID))
+}
+
+// DisableAllAutoAccept turns auto-accept off for every agent ("Stop all
+// auto-accept"; also `coral auto-accept off --all`). Always allowed.
+// POST /api/auto-accept/disable-all -> {"stopped": N}
+func (h *SessionsHandler) DisableAllAutoAccept(w http.ResponseWriter, r *http.Request) {
+	n, err := h.ss.ClearAllAutoAccept(r.Context())
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if h.autoAccept != nil {
+		h.autoAccept.mu.Lock()
+		h.autoAccept.answered = map[string]autoAcceptAnswer{}
+		h.autoAccept.history = map[string][]autoAcceptAnswer{}
+		h.autoAccept.mu.Unlock()
+	}
+	defer h.kickWS()
+	writeJSON(w, http.StatusOK, map[string]int{"stopped": n})
+}

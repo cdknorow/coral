@@ -824,6 +824,13 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		MaxMode:      routes.MaxModeFromSettings(ss),
 		CoralVersion: config.ReportedVersion(),
 		Logger:       slog.Default(),
+		OnLinkLost: func(ctx context.Context) {
+			if n, err := ss.ClearHubAutoAccept(ctx, store.AutoAcceptLinkRemoved); err != nil {
+				log.Printf("[CLOUD] turning off Cloud Hub auto-accept: %v", err)
+			} else if n > 0 {
+				log.Printf("[CLOUD] link removed: turned off auto-accept the Cloud Hub enabled for %d agent(s)", n)
+			}
+		},
 	})
 	srv.SetCloud(mgr)
 	if hubURL == "" {

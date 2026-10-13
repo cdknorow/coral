@@ -62,6 +62,9 @@ func TestDerive(t *testing.T) {
 		{"a new request after a new prompt is pending again", []Event{note(permission), stop, prompt, note(permission)}, true, false, false},
 		{"work then stop again is your turn", []Event{stop, prompt, tool, stop}, false, true, false},
 		{"sleep loop is working", []Event{{Type: "tool_use", Summary: "Ran: sleep 1"}}, false, false, true},
+		// Coral auto-accepted the prompt (#3182): the request is answered and the tool runs.
+		{"auto-accept clears the request", []Event{note(permission), {Type: "auto_accept", Summary: "Auto-approved Bash: ls"}}, false, false, true},
+		{"a new request after an auto-accept is pending again", []Event{note(permission), {Type: "auto_accept", Summary: "Auto-approved Bash: ls"}, note(permission)}, true, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

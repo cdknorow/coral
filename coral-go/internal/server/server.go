@@ -401,6 +401,9 @@ func (s *Server) buildRouter() chi.Router {
 	r.Put("/api/sessions/live/{name}/file-content", sessHandler.SaveFileContent)
 	r.Put("/api/sessions/live/{name}/icon", sessHandler.SetIcon)
 	r.Put("/api/sessions/live/{name}/name-color", sessHandler.SetNameColor)
+	r.Post("/api/sessions/live/{name}/auto-accept/enable", sessHandler.EnableAutoAccept)
+	r.Post("/api/sessions/live/{name}/auto-accept/disable", sessHandler.DisableAutoAccept)
+	r.Post("/api/auto-accept/disable-all", sessHandler.DisableAllAutoAccept)
 	r.Post("/api/sessions/live/{name}/context-window", sessHandler.UpdateContextWindow)
 	r.Post("/api/sessions/launch", sessHandler.Launch)
 	r.Post("/api/sessions/launch-team", sessHandler.LaunchTeam)
@@ -476,6 +479,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
+	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 
 	// System / settings
 	r.Get("/api/settings", sysHandler.GetSettings)
@@ -668,6 +672,9 @@ func (s *Server) buildRouter() chi.Router {
 	sessHandler.SetTokenStore(store.NewTokenUsageStore(s.db))
 	notifStore := routes.NewNotificationStore()
 	sessHandler.SetNotificationStore(notifStore)
+	autoAccept := routes.NewAutoAcceptor(sessHandler)
+	autoAccept.Start(context.Background())
+	go autoAccept.Run(context.Background())
 	go sessHandler.RecoverPersonalTaskNotifications(context.Background())
 	notifHandler := routes.NewNotificationHandler(notifStore)
 	r.Post("/api/notifications", notifHandler.Create)

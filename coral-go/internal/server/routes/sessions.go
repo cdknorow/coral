@@ -42,6 +42,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
+	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -71,6 +72,8 @@ type SessionsHandler struct {
 	goals GoalRequester // nil until the goal generator starts
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
+
+	autoAccept *AutoAcceptor // answers approval prompts for auto-accept sessions (auto_accept.go)
 
 	wsList wsTickCache // one /ws/coral build shared by all clients (ws_shared_list.go)
 	wsKick wsKicker    // prompt /ws/coral rebuilds after state changes (ws_kick.go)
@@ -614,6 +617,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	liveSleeping := make(map[string]bool)
 	liveArchived := make(map[string]bool)
+	autoAcceptStates, err := h.ss.GetAutoAcceptStates(ctx)
+	if err != nil {
+		slog.Warn("failed to read auto-accept states", "error", err)
+	}
 	for _, session := range allLive {
 		liveSleeping[session.SessionID] = session.IsSleeping == 1
 		liveArchived[session.SessionID] = session.IsArchived == 1
@@ -870,6 +877,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"first_prompt":          firstPrompt,
 			"enrichment_pending":    skipExpensive && !sleeping,
 		}
+		// Always present (false/""/null too): the dashboard merges entries, so
+		// an omitted false would leave the AUTO chip on after it was turned off.
+		for k, v := range autoAcceptFields(agent.AgentType, autoAcceptStates[sid]) {
+			entry[k] = v
+		}
 		// Include prompt, model, and capabilities from live_sessions DB
 		if extra, ok := liveExtras[sid]; ok {
 			if extra.Prompt != nil {
@@ -959,6 +971,9 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			entry["model"] = *ls.Model
 		}
 		addCapabilities(entry, ls.Capabilities)
+		for k, v := range autoAcceptFields(ls.AgentType, store.AutoAcceptState{}) {
+			entry[k] = v // asleep: always off
+		}
 	}
 
 	sessions = archivedLast(sessions)
@@ -1061,7 +1076,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		staleness, _ := logInfo["staleness_seconds"].(float64)
 		liveState = h.deriveSingleSessionState(r.Context(), sessionID, staleness)
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"session_id":        ls.SessionID,
 		"state":             state,
 		"active":            active,
@@ -1088,7 +1103,11 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"done":              false,
 		"stuck":             false,
 		"not_started":       false,
-	})
+	}
+	for k, v := range h.autoAcceptPayload(r.Context(), ls.SessionID) {
+		out[k] = v
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // validateExactLiveTarget prevents name-based terminal APIs from selecting a
@@ -1177,7 +1196,7 @@ func (h *SessionsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 
 	paneText, _ := h.terminal.CaptureOutput(r.Context(), name, 200, agentType, sessionID)
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"name":              name,
 		"session_id":        sessionID,
 		"status":            logInfo["status"],
@@ -1185,7 +1204,13 @@ func (h *SessionsHandler) Detail(w http.ResponseWriter, r *http.Request) {
 		"recent_lines":      logInfo["recent_lines"],
 		"staleness_seconds": logInfo["staleness_seconds"],
 		"pane_capture":      paneText,
-	})
+	}
+	if sessionID != "" {
+		for k, v := range h.autoAcceptPayload(r.Context(), sessionID) {
+			out[k] = v
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // Capture returns a tmux pane capture for a session.
@@ -4091,6 +4116,9 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.notePendingToolEvent(body.SessionID, body.EventType, body.ToolUseID)
+	if sessionstate.Classify(body.Summary) == sessionstate.NotificationNeedsInput {
+		h.autoAccept.Kick() // an auto-accept session's permission prompt is answered now, not on the next sweep
+	}
 	writeJSON(w, http.StatusOK, created)
 }
 

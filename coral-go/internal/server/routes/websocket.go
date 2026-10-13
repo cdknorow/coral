@@ -425,6 +425,10 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	createdAtMap := make(map[string]string, len(allLive))
 	sleepingMap := make(map[string]bool, len(allLive))
 	archivedMap := make(map[string]bool, len(allLive))
+	autoAcceptStates, err := h.ss.GetAutoAcceptStates(ctx)
+	if err != nil {
+		slog.Warn("failed to read auto-accept states", "error", err)
+	}
 	for _, ls := range allLive {
 		ctxModelMap[ls.SessionID] = ls.Model
 		createdAtMap[ls.SessionID] = ls.CreatedAt
@@ -498,6 +502,11 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"archived":              archivedMap[sid], // set when an archived agent's pane outlived the archive
 			"first_prompt":          h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
+		// Always present (false/""/null too): clients merge diffs, so an
+		// omitted false would leave the AUTO chip on after it was turned off.
+		for k, v := range autoAcceptFields(agent.AgentType, autoAcceptStates[sid]) {
+			entry[k] = v
+		}
 		if usage, ok := tokenUsageMap[sid]; ok {
 			entry["token_input"] = usage.InputTokens
 			entry["token_output"] = usage.OutputTokens
@@ -556,6 +565,9 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		})
 		addContextUsage(sessions[len(sessions)-1], nil, 0)
 		addCapabilities(sessions[len(sessions)-1], ls.Capabilities)
+		for k, v := range autoAcceptFields(ls.AgentType, store.AutoAcceptState{}) {
+			sessions[len(sessions)-1][k] = v // asleep: always off
+		}
 	}
 
 	return archivedLast(sessions), nil

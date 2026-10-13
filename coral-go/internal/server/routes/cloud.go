@@ -17,6 +17,17 @@ import (
 // routes are not in the tunnel route table).
 const MaxModeSetting = "cloud_max_mode"
 
+// AllowHubAutoAcceptSetting is the local owner switch "Cloud Hub can turn on
+// auto-accept" (#3182). It is on unless set to "false": the Launch access cap is
+// already an explicit local opt-in, and this is the kill switch. Local only, like
+// the mode cap; turning it off ends every enable that came from the hub.
+const AllowHubAutoAcceptSetting = "cloud_allow_hub_auto_accept"
+
+// HubAutoAcceptAllowed reads the switch (default on).
+func HubAutoAcceptAllowed(settings map[string]string) bool {
+	return settings[AllowHubAutoAcceptSetting] != "false"
+}
+
 // MaxModeFromSettings reads the local maximum mode. Anything missing or unrecognised is view.
 func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
 	return func() tunnel.Mode {
@@ -56,11 +67,22 @@ func (h *CloudHandler) manager() *cloud.Manager {
 	return h.mgr
 }
 
-func (h *CloudHandler) status() cloud.Status {
+// cloudStatus is the connector status plus the local auto-accept switch.
+type cloudStatus struct {
+	cloud.Status
+	AllowHubAutoAccept bool `json:"allow_hub_auto_accept"`
+}
+
+func (h *CloudHandler) status() cloudStatus {
+	st := cloud.Status{State: cloud.StateOff}
 	if m := h.manager(); m != nil {
-		return m.Status()
+		st = m.Status()
 	}
-	return cloud.Status{State: cloud.StateOff}
+	allow := true
+	if s, err := h.ss.GetSettings(context.Background()); err == nil {
+		allow = HubAutoAcceptAllowed(s)
+	}
+	return cloudStatus{Status: st, AllowHubAutoAccept: allow}
 }
 
 // refuseTunneled admits only the positively identified local dashboard (loopback peer,
@@ -152,8 +174,46 @@ func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "Could not save the setting")
 		return
 	}
+	if mode < tunnel.TierLaunch {
+		// Enabling auto-accept from the hub needs Launch: what it enabled ends.
+		if _, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptModeLowered); err != nil {
+			errInternalServer(w, "Could not turn off Cloud Hub auto-accept")
+			return
+		}
+	}
 	if m := h.manager(); m != nil {
 		m.ModeChanged(r.Context())
+	}
+	writeJSON(w, http.StatusOK, h.status())
+}
+
+// SetAllowHubAutoAccept: PUT /api/cloud/allow-auto-accept {"allow": bool}. Local
+// dashboard only (never through the tunnel). Off turns off every agent's
+// auto-accept that the Cloud Hub enabled.
+func (h *CloudHandler) SetAllowHubAutoAccept(w http.ResponseWriter, r *http.Request) {
+	if refuseTunneled(w, r) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Allow *bool `json:"allow"`
+	}
+	if err := decodeJSON(r, &body); err != nil || body.Allow == nil {
+		errBadRequest(w, "allow is required")
+		return
+	}
+	v := "true"
+	if !*body.Allow {
+		v = "false"
+	}
+	if err := h.ss.SetSetting(r.Context(), AllowHubAutoAcceptSetting, v); err != nil {
+		errInternalServer(w, "Could not save the setting")
+		return
+	}
+	if !*body.Allow {
+		if _, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptHubAllowOff); err != nil {
+			errInternalServer(w, "Could not turn off Cloud Hub auto-accept")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, h.status())
 }

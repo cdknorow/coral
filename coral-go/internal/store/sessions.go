@@ -887,10 +887,15 @@ func (s *SessionStore) RegisterLiveSession(ctx context.Context, ls *LiveSession)
 
 // UnregisterLiveSession marks a live session as inactive (preserves the record for history).
 func (s *SessionStore) UnregisterLiveSession(ctx context.Context, sessionID string) error {
-	_, err := s.db.ExecContext(ctx,
-		"UPDATE live_sessions SET status = 'inactive', stopped_at = ? WHERE session_id = ?",
-		nowUTC(), sessionID)
-	return err
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		if err := clearAutoAcceptTx(ctx, tx, sessionID, AutoAcceptRunEnded, false); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx,
+			"UPDATE live_sessions SET status = 'inactive', stopped_at = ? WHERE session_id = ?",
+			nowUTC(), sessionID)
+		return err
+	})
 }
 
 // GetStoppedSessions returns, for the given session IDs, the ones whose
@@ -1090,6 +1095,10 @@ func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID stri
 			}
 		}
 
+		// The new row starts without auto-accept (a new agent run).
+		if err := clearAutoAcceptTx(ctx, tx, oldSessionID, AutoAcceptAgentRestarted, false); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, "UPDATE live_sessions SET status = 'inactive', stopped_at = ? WHERE session_id = ?", nowUTC(), oldSessionID); err != nil {
 			return err
 		}
@@ -1230,23 +1239,37 @@ func (s *SessionStore) SetBoardSleeping(ctx context.Context, boardName string, s
 // is_archived: an archived session is always a sleeping one.
 func (s *SessionStore) SetSessionSleeping(ctx context.Context, sessionID string, sleeping bool) error {
 	query := "UPDATE live_sessions SET is_sleeping = 1 WHERE session_id = ?"
+	code := AutoAcceptAgentSlept
 	if !sleeping {
 		query = "UPDATE live_sessions SET is_sleeping = 0, is_archived = 0 WHERE session_id = ?"
+		code = AutoAcceptAgentWoken
 	}
-	_, err := s.db.ExecContext(ctx, query, sessionID)
-	return err
+	// Sleeping stops the agent process and waking starts a new one: either way
+	// auto-accept is cleared, so it is never on for a run that did not enable it.
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		if err := clearAutoAcceptTx(ctx, tx, sessionID, code, false); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, query, sessionID)
+		return err
+	})
 }
 
 // SetSessionArchived archives a session (archived implies sleeping) or
 // unarchives it, which leaves it sleeping. It does not stop a running agent;
 // the caller does that first.
 func (s *SessionStore) SetSessionArchived(ctx context.Context, sessionID string, archived bool) error {
-	query := "UPDATE live_sessions SET is_sleeping = 1, is_archived = 1 WHERE session_id = ?"
 	if !archived {
-		query = "UPDATE live_sessions SET is_archived = 0 WHERE session_id = ?"
+		_, err := s.db.ExecContext(ctx, "UPDATE live_sessions SET is_archived = 0 WHERE session_id = ?", sessionID)
+		return err
 	}
-	_, err := s.db.ExecContext(ctx, query, sessionID)
-	return err
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		if err := clearAutoAcceptTx(ctx, tx, sessionID, AutoAcceptAgentArchived, false); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, "UPDATE live_sessions SET is_sleeping = 1, is_archived = 1 WHERE session_id = ?", sessionID)
+		return err
+	})
 }
 
 // IsSessionArchived reports whether an active live session is archived.

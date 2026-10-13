@@ -260,6 +260,11 @@ type LocalHandler struct {
 	MaxRequestBody int64
 	// WSReadLimit caps one WebSocket message, default DefaultWSReadLimit.
 	WSReadLimit int64
+	// ViaValue is the value stamped in ViaHeader, default "1". Coral sets a
+	// per-process secret so the local server can tell the connector's requests
+	// from a local process that forges the header (any value still makes
+	// tunnel-only rules apply, so a forged stamp can only make things stricter).
+	ViaValue string
 
 	once   sync.Once
 	client *http.Client
@@ -298,6 +303,14 @@ func scrub(h http.Header) http.Header {
 	// Coral's file endpoints use it to apply the strict, tunnel-only path bounds.
 	out.Set(ViaHeader, "1")
 	return out
+}
+
+// stamp replaces the default ViaHeader value with ViaValue when one is set.
+func (l *LocalHandler) stamp(h http.Header) http.Header {
+	if l.ViaValue != "" {
+		h.Set(ViaHeader, l.ViaValue)
+	}
+	return h
 }
 
 func (l *LocalHandler) checkRequest(h Header) (decoded string, ok bool) {
@@ -417,7 +430,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		s.Reject(CodeBadRequest, "bad request", 0)
 		return
 	}
-	req.Header = scrub(h.Headers)
+	req.Header = l.stamp(scrub(h.Headers))
 	if h.ContentLength > 0 {
 		req.ContentLength = h.ContentLength
 	}
@@ -532,7 +545,7 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		l.reject(s)
 		return
 	}
-	hdr := scrub(h.Headers)
+	hdr := l.stamp(scrub(h.Headers))
 	if l.Authorize != nil {
 		l.Authorize(hdr)
 	}

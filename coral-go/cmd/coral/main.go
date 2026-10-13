@@ -46,6 +46,9 @@ func setupCrashLogging(coralDir string) {
 }
 
 func main() {
+	if code, ok := subcommand(os.Args[1:]); ok {
+		os.Exit(code)
+	}
 
 	// Global panic recovery — log the full stack trace before exiting
 	defer func() {

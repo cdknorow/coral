@@ -1,10 +1,39 @@
 package cloud
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"net/http"
 
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
+
+// viaSecret is the value the connector stamps in tunnel.ViaHeader: random per
+// process, held only in memory, never written or logged. Local processes reach the
+// API over loopback too and can send the header themselves, so a request is
+// authentically from the connector only when it carries this value
+// (TunneledAuthentic). Tunneled stays true for ANY value: everything that only
+// tightens for hub requests keeps doing so for a forged stamp.
+var viaSecret = func() string {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("cloud: no randomness for the connector stamp: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}()
+
+// ViaSecret is the connector stamp for this process (set on LocalHandler.ViaValue).
+func ViaSecret() string { return viaSecret }
+
+// TunneledAuthentic reports whether the request really came from this process's
+// connector: its stamp matches the per-process secret (constant-time compare).
+// Use it where the hub path GRANTS something (auto-accept enable); a present but
+// wrong stamp is a forgery.
+func TunneledAuthentic(r *http.Request) bool {
+	v := r.Header.Get(tunnel.ViaHeader)
+	return v != "" && subtle.ConstantTimeCompare([]byte(v), []byte(viaSecret)) == 1
+}
 
 // Tunneled reports whether the request was executed by the connector for the Cloud
 // Hub. LocalHandler stamps tunnel.ViaHeader on every request it forwards, after

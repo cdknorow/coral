@@ -223,6 +223,9 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/keys",
 		"/api/sessions/live/{name}/resize",
 		"/api/sessions/live/{name}/answer-prompt",
+		// Turning auto-accept off is always safe (#3182); turning it on is Launch, below.
+		"/api/sessions/live/{name}/auto-accept/disable",
+		"/api/auto-accept/disable-all",
 		"/api/sessions/live/{name}/goal",
 		"/api/sessions/live/{name}/files/refresh",
 		"/api/sessions/live/{name}/kill",
@@ -291,6 +294,10 @@ var routeTable = cat(
 
 	// ── launch: starts or wakes processes, browses folders, opens editors ─
 	rules(http.MethodPost, TierLaunch,
+		// Auto-accept lets the agent run tools without asking, as much as launching one
+		// with permissions bypassed (#3182, Coral Hub review). The owner's local switch
+		// /api/cloud/allow-auto-accept is never in this table.
+		"/api/sessions/live/{name}/auto-accept/enable",
 		"/api/sessions/launch",
 		"/api/sessions/launch-team",
 		"/api/sessions/live/{name}/resume",

@@ -797,3 +797,22 @@ func TestHubCannotForgeBrowserEvidence(t *testing.T) {
 	}
 	assert.Equal(t, "1", got.Get(ViaHeader))
 }
+
+// Coral sets ViaValue to a per-process secret: the stamp carries it, and the
+// hub can still neither forge nor clear it (#3182).
+func TestConnectorStampsItsViaValue(t *testing.T) {
+	hub := newHub(t, fastCfg())
+	var got string
+	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Get(ViaHeader)
+	}), func(l *LocalHandler) {
+		l.AllowPath = func(string, string) bool { return true }
+		l.ViaValue = "s3cret"
+	})
+	req, _ := http.NewRequest("GET", "http://x/api/ping", nil)
+	req.Header.Set(ViaHeader, "hub-chosen")
+	resp, err := sess.RoundTrip(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, "s3cret", got)
+}
