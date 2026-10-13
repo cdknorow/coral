@@ -57,7 +57,18 @@ func createTestSession(t *testing.T, c *Client, name, workDir string) {
 	ctx := context.Background()
 	err := c.NewSession(ctx, name, workDir)
 	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
+	// tmux reads pane_current_path from the pane's foreground process, which can be
+	// briefly unreadable while the shell starts on a loaded machine. Wait for the pane
+	// to report it rather than a fixed delay.
+	require.Eventually(t, func() bool {
+		panes, _ := c.ListPanes(ctx)
+		for _, p := range panes {
+			if p.SessionName == name && p.CurrentPath != "" {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 25*time.Millisecond, "pane %q never reported its path", name)
 }
 
 // ── Unit Tests ─────────────────────────────────────────────────────────

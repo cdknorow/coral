@@ -196,7 +196,10 @@ func TestSendPromptCancelledAfterPasteStillSubmits(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		for i := 0; i < 400; i++ {
+		// A deadline, not an iteration count: on a loaded machine the fake tmux execs before
+		// the paste can take longer than a fixed number of 5 ms polls, and a watcher that gave
+		// up early never cancels.
+		for end := time.Now().Add(15 * time.Second); time.Now().Before(end); {
 			if _, err := os.Stat(filepath.Join(dir, "pasted")); err == nil {
 				cancel()
 				return
