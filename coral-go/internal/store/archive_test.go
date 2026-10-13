@@ -124,3 +124,22 @@ func TestArchive_WakeTeamMembersSkipsArchived(t *testing.T) {
 	}
 	assert.Equal(t, map[string]string{"sess-lead": "active", "sess-fe": "active", "sess-qa": "sleeping", "no-session": "active"}, status)
 }
+
+// A Coral that predates is_archived wakes an archived agent by clearing only
+// is_sleeping. Opening the database again restores "archived implies sleeping".
+func TestArchive_OpenClearsArchivedOnAwakeRows(t *testing.T) {
+	db := openTestDB(t)
+	ss := NewSessionStore(db)
+	ctx := context.Background()
+	registerTeam(t, ss, ctx, "b")
+	require.NoError(t, ss.SetSessionArchived(ctx, "sess-lead", true))
+	require.NoError(t, ss.SetSessionArchived(ctx, "sess-fe", true))
+	// What an older Coral's wake does: is_sleeping only.
+	_, err := db.ExecContext(ctx, "UPDATE live_sessions SET is_sleeping = 0 WHERE session_id = 'sess-lead'")
+	require.NoError(t, err)
+
+	require.NoError(t, db.ensureSchema(ctx))
+	live := liveByID(t, ss, ctx)
+	assert.Equal(t, [2]int{0, 0}, [2]int{live["sess-lead"].IsSleeping, live["sess-lead"].IsArchived}, "awake row is no longer archived")
+	assert.Equal(t, [2]int{1, 1}, [2]int{live["sess-fe"].IsSleeping, live["sess-fe"].IsArchived}, "a properly archived row is kept")
+}
