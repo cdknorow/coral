@@ -315,6 +315,17 @@ Returns recent runs across all scheduled jobs.
 
 ---
 
+## When a job fires
+
+The scheduler checks enabled jobs every 30 seconds. A job is due when a slot of its cron expression has passed since the later of:
+
+- its last run (for a job that has never run: 24 hours ago), and
+- its last change: creation, an edit, or pausing/resuming it.
+
+So a slot missed while Coral was not running is caught up once, on the next check, but a job never fires a slot from before it existed or from while it was paused. A "weekdays at 9:00" job created at 10:00 first runs the next weekday at 9:00, not at once.
+
+---
+
 ## Validate a cron expression
 
 ```

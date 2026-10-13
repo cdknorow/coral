@@ -39,6 +39,30 @@ func parseTimestamp(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
+// lookbackStart is the time after which a job's next slot counts as due. It
+// starts from the last run (or 24h ago for a job that never ran), so a slot
+// missed while Coral was down is caught up once. It never reaches back past
+// the job's last change (updated_at: creation, an edit, or pause/resume): a
+// job created at 10:00 for "weekdays 9:00" waits for tomorrow's 9:00 instead
+// of firing at once, and a resumed job does not fire the slots it missed
+// while paused (#3136).
+func lookbackStart(job store.ScheduledJob, lastRun *store.ScheduledRun, now time.Time) time.Time {
+	after := now.Add(-24 * time.Hour)
+	if lastRun != nil {
+		if t, err := parseTimestamp(lastRun.ScheduledAt); err == nil {
+			after = t
+		}
+	}
+	changed := job.UpdatedAt
+	if changed == "" {
+		changed = job.CreatedAt
+	}
+	if t, err := parseTimestamp(changed); err == nil && t.After(after) {
+		after = t
+	}
+	return after
+}
+
 // ConcurrencyLimitError is returned when the max concurrent run limit is reached.
 type ConcurrencyLimitError struct {
 	Limit int
@@ -227,12 +251,7 @@ func (s *JobScheduler) evaluateJob(ctx context.Context, job store.ScheduledJob, 
 	}
 
 	// Calculate next fire time
-	var afterTime time.Time
-	if lastRun != nil {
-		afterTime, _ = parseTimestamp(lastRun.ScheduledAt)
-	} else {
-		afterTime = now.Add(-24 * time.Hour) // Look back 24h for first run
-	}
+	afterTime := lookbackStart(job, lastRun, now)
 
 	nextFire, err := s.nextFireTimeFn(job.CronExpr, job.Timezone, afterTime)
 	if err != nil {
