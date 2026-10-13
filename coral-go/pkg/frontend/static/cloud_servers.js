@@ -70,7 +70,7 @@ async function call(id, method, body) {
             method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined,
         });
         if (!r.ok) loadError = r.status === 404 ? 'That server no longer exists.' : 'The change was not saved.';
-        else loadError = '';
+        else { loadError = ''; invalidateServerAccess(); }
     } catch { loadError = 'Could not reach the hub.'; }
     busy.delete(id);
     await load();
@@ -155,6 +155,10 @@ export function launchNote(s) {
 }
 
 let _modeCache = { at: 0, byId: null, pending: null };
+
+/** Forget the cached Servers list, so the next access lookup asks the hub (after
+ *  a mode change, so it applies at once rather than within 15 s). */
+export function invalidateServerAccess() { _modeCache = { at: 0, byId: null, pending: null }; }
 
 async function _serverRow(serverId) {
     const now = Date.now();

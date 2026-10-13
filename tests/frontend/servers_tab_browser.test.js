@@ -264,12 +264,16 @@ const contrast = (a, b) => {
         assert.deepEqual(xss.calls, ['no'], 'Cancel then close(): exactly one callback');
         console.log('   ✓ Launch confirmation: modal, labelled, Cancel focused; Cancel/Escape/close send nothing and focus returns to Raise/the select; one dialog and one PATCH on double clicks; select Interact and lowering never ask; select Launch asks and Cancel restores it; label is text');
 
+        // Warm the 15 s access cache with m1 at View, so the check after the Raise shows the cache was dropped (#3125).
+        const accessOf = id => ev(`import((window.__coralStatic || '/static/') + 'cloud_servers.js').then(cs => cs.serverAccess(${JSON.stringify(id)})).then(a => a && { effective: a.effective, mayInteract: a.mayInteract })`);
+        assert.deepEqual(await accessOf('m1'), { effective: 'view', mayInteract: false }, 'before the Raise, m1 is View');
         await ev(`document.querySelector('#server-row-m1 .cs-raise').click(); true`);
         // Raising to Launch asks first (#3115); confirm it.
         await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation', 3000);
         await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
         await waitFor(`window.__patches.length > 0`, 'the PATCH', 3000);
         assert.deepEqual(await ev('window.__patches'), [{ id: 'm1', body: { access_mode: 'launch' } }], 'Raise sends PATCH /api/servers/m1 {access_mode: launch}');
+        assert.deepEqual(await accessOf('m1'), { effective: 'launch', mayInteract: true }, 'after the Raise the next access check sees Launch at once, not up to 15 s later (#3125)');
         await waitFor(`!document.querySelector('#server-row-m1 .cs-raise')`, 'Raise gone once the hub allows Launch', 6000);
         console.log('   ✓ Hub/Machine/Effective per row, Raise only for m1, PATCH {access_mode:"launch"}, then gone');
 

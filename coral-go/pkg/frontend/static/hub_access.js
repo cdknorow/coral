@@ -61,6 +61,10 @@ export async function refreshHubAccess(session) {
     if (!server || server === 'local') { setHubReadOnly(session, null); return; }
     const { serverAccess } = await import('./cloud_servers.js');
     const a = await serverAccess(server);
+    // A hub_read_only frame on the terminal socket is authoritative until the agent
+    // is reselected: a lookup that resolves after it (a slow or cached Servers list)
+    // never clears it (#3125).
+    if (session.hubReadOnly && session.hubReadOnly.fromFrame) return;
     setHubReadOnly(session, a && !a.mayInteract ? a : null);
 }
 

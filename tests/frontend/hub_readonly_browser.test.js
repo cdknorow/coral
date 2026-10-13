@@ -17,14 +17,14 @@ const BASE = require('./test_base').BASE;
 
 // Installed after the harness PRELOAD: /api/servers from window.__qaServers, and a fake terminal socket.
 const CLOUD_PRELOAD = `(() => {
-    window.__qaServers = { rows: [], delay: 0, fail: false };
+    window.__qaServers = { rows: [], delay: 0, fail: false, resolved: [] };
     window.__wsSent = []; window.__wsTerm = null;
     const inner = window.fetch;
     window.fetch = (url, opts) => {
         if (new URL(String(url), location.origin).pathname === '/api/servers') {
             const q = window.__qaServers;
             const body = q.fail ? new Response('{}', { status: 503 }) : new Response(JSON.stringify({ servers: q.rows }), { status: 200, headers: { 'content-type': 'application/json' } });
-            return new Promise(r => setTimeout(() => r(body), q.delay));
+            return new Promise(r => setTimeout(() => { q.resolved.push(performance.now()); r(body); }, q.delay));
         }
         return inner(url, opts);
     };
@@ -223,11 +223,17 @@ const CLOUD_PRELOAD = `(() => {
 
         console.log('6. A frame that arrives before the access lookup returns is not undone by it');
         await setServers([row('m1', 'view', 'launch'), row('m2', 'interact', 'view'), row('m3', 'interact', 'launch'), row('m5', 'interact', 'launch')], { delay: 600 });
+        // A fresh cache answers an unknown server at once (null), which would clear the state BEFORE the
+        // frame and never race it. Expire it so the selection's lookup is a real, slow request (#3125).
+        await ev(`(async () => { (await import((window.__coralStatic||'/static/')+'cloud_servers.js')).invalidateServerAccess(); return true; })()`);
         await ev(`window.__m.add('race', 'R', 5, { sleeping: false, server: 'm5' }); true`);
         await ev(`window.selectLiveSession('race', 'claude', 'race-id', 'm5'); true`);
         await waitFor(`window.__wsTerm && window.__wsTerm.url.includes('race-id') && window.__wsTerm.readyState === 1`, 'race socket', 3000);
-        await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); true`);
-        await sleep(900); // the slow lookup (Interact) resolves after the frame
+        const frameAt = await ev(`(() => { window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'interact', hub_mode: 'view' })); return performance.now(); })()`);
+        assert.ok(await ev(`window.__qaServers.resolved.every(t => t < ${frameAt}) && document.getElementById('hub-readonly-chip') && !document.getElementById('hub-readonly-chip').hidden`), 'the frame lands while the lookup is still pending');
+        // The slow lookup (Interact) resolves after the frame; then give its continuation a moment to run.
+        await waitFor(`window.__qaServers.resolved.some(t => t > ${frameAt})`, 'the Servers lookup resolving after the frame', 5000);
+        await sleep(100); // sleep-ok: let the lookup's continuation run before checking it changed nothing
         c = await chip();
         assert.ok(c.shown, `the hub's frame still holds after the slower Servers lookup resolves (${JSON.stringify(c)})`);
         console.log('   ✓ frame state survives a late Interact lookup');
