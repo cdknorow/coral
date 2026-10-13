@@ -18,7 +18,7 @@ import { fitTerminal } from './xterm_renderer.js';
 import { showView } from './utils.js';
 import { normServer, serverFetch, sessionServer, agentPath, parseAgentPath, isLocalServer } from './server_base.js';
 import { isInteractiveOwner, claimOwnership, releaseOwnership } from './ownership.js';
-import { applySleepingView, SLEEPING_PLACEHOLDER } from './sleeping_view.js';
+import { applySleepingView, sleepingPlaceholder } from './sleeping_view.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RESOLVE_RETRIES = 3;      // index lag: valid id not yet in the live list
@@ -376,11 +376,12 @@ function _applyLiveState(s) {
 
 function _syncSleeping(sleeping) {
     // The composer's Wake calls popoutWake; the input follows _state here.
-    applySleepingView(sleeping, { manageInput: false });
+    const archived = !!(_lastSession && _lastSession.archived);
+    applySleepingView(sleeping, { manageInput: false, archived });
     if (sleeping) {
         _attached = false;
         const input = document.getElementById('command-input');
-        if (input) { input.disabled = true; input.placeholder = SLEEPING_PLACEHOLDER; }
+        if (input) { input.disabled = true; input.placeholder = sleepingPlaceholder(archived); }
     }
 }
 

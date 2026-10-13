@@ -71,9 +71,11 @@ export function serverHoverText(id) {
     const e = serverEntry(id);
     const m = statusMeta(e.status);
     const local = normServer(e.id) === LOCAL_SERVER;
+    // Archived agents are not counted (#3030); the hub's own count leaves them out too.
+    const countOn = srv => (state.liveSessions || []).filter(x => x && !x.archived && normServer(x.server) === srv).length;
     const count = local
-        ? (state.liveSessions || []).filter(x => normServer(x && x.server) === LOCAL_SERVER).length
-        : (typeof e.agents === 'number' ? e.agents : (state.liveSessions || []).filter(x => normServer(x && x.server) === normServer(e.id)).length);
+        ? countOn(LOCAL_SERVER)
+        : (typeof e.agents === 'number' ? e.agents : countOn(normServer(e.id)));
     const lines = [`${e.label || e.id}: ${m.label}`];
     lines.push(local ? 'This server (the hub)' : (e.url || e.id));
     lines.push(`${count} agent${count === 1 ? '' : 's'}`);

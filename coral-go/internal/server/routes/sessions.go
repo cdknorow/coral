@@ -612,8 +612,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	liveSleeping := make(map[string]bool)
+	liveArchived := make(map[string]bool)
 	for _, session := range allLive {
 		liveSleeping[session.SessionID] = session.IsSleeping == 1
+		liveArchived[session.SessionID] = session.IsArchived == 1
 	}
 	// A sleeping row can briefly outlive its terminal during shutdown. Use
 	// the stored placeholder below instead of scanning that terminal's files.
@@ -799,7 +801,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		staleF, _ := staleness.(float64)
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
-		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid]}
+		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid], Archived: liveArchived[sid]}
 		for _, ev := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
@@ -863,6 +865,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_is_orchestrator": boardSubscriberFlag(boardSub),
 			"log_path":              agent.LogPath,
 			"sleeping":              liveSleeping[sid],
+			"archived":              liveArchived[sid],
 			"first_prompt":          firstPrompt,
 			"enrichment_pending":    skipExpensive && !sleeping,
 		}
@@ -942,6 +945,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_is_orchestrator": nil,
 			"log_path":              "",
 			"sleeping":              true,
+			"archived":              ls.IsArchived == 1,
 			"first_prompt":          h.sleepingFirstPrompt(ls),
 		})
 		// Include prompt, model, and capabilities for sleeping sessions too
@@ -956,9 +960,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		addCapabilities(entry, ls.Capabilities)
 	}
 
+	sessions = archivedLast(sessions)
 	if snap := h.remoteSnapshot(); snap.Configured() {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"sessions": mergeRemote(sessions, snap),
+			"sessions": mergeRemote(sessions, snap), // each remote sorts its own rows
 			"servers":  snap.Servers,
 		})
 		return
@@ -1060,6 +1065,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"state":             state,
 		"active":            active,
 		"sleeping":          sleeping,
+		"archived":          sleeping && ls.IsArchived == 1,
 		"agent_type":        ls.AgentType,
 		"name":              ls.AgentName,
 		"tmux_session":      tmuxSession,
@@ -1089,7 +1095,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 // supplied session ID; agentType is a consistency assertion, never a lookup key.
 func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, agentType, sessionID string, terminalRoute bool) (*store.LiveSession, int, string) {
 	if sessionID == "" || agentType == "" {
-		return nil, http.StatusBadRequest, "session_id and agent_type are required"
+		return nil, http.StatusBadRequest, errSessionIDRequired
 	}
 	parsed, err := uuid.Parse(sessionID)
 	if err != nil || parsed.String() != sessionID {
@@ -1112,6 +1118,9 @@ func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, age
 	if status != "active" {
 		return nil, http.StatusNotFound, "live session not found"
 	}
+	if ls.IsArchived == 1 {
+		return nil, http.StatusConflict, "session is archived"
+	}
 	if ls.IsSleeping == 1 {
 		return nil, http.StatusConflict, "session is sleeping"
 	}
@@ -1132,8 +1141,17 @@ func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, age
 	return ls, 0, ""
 }
 
+// errSessionIDRequired is the message for a request that does not name its exact
+// target. It answers 400 with code session_id_required, never 404: through the
+// hub a 404 reads as a route refusal.
+const errSessionIDRequired = "session_id and agent_type are required"
+
 func writeExactTargetError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
+	body := map[string]string{"error": message}
+	if message == errSessionIDRequired {
+		body["code"] = "session_id_required"
+	}
+	writeJSON(w, status, body)
 }
 
 func shouldValidateExactTarget(agentType, sessionID string) bool {
@@ -2429,15 +2447,15 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "No command provided")
 		return
 	}
-	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
-		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
-			if status == http.StatusServiceUnavailable {
-				writeJSON(w, status, map[string]any{"error": message + " No input was sent.", "code": "agent_metadata_unavailable", "not_sent": true})
-			} else {
-				writeExactTargetError(w, status, message)
-			}
-			return
+	// Input always names its exact target (session_id + agent_type). A bare name
+	// would reach whatever tmux pane has it, sleeping or archived agents included.
+	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+		if status == http.StatusServiceUnavailable {
+			writeJSON(w, status, map[string]any{"error": message + " No input was sent.", "code": "agent_metadata_unavailable", "not_sent": true})
+		} else {
+			writeExactTargetError(w, status, message)
 		}
+		return
 	}
 
 	if err := h.terminal.SendInput(r.Context(), name, body.Command, body.AgentType, body.SessionID); err != nil {
@@ -2463,11 +2481,10 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "keys must be a non-empty list")
 		return
 	}
-	if shouldValidateExactTarget(body.AgentType, body.SessionID) {
-		if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
-			writeExactTargetError(w, status, message)
-			return
-		}
+	// As for Send: keys always name their exact target.
+	if _, status, message := h.validateExactLiveTarget(r.Context(), name, body.AgentType, body.SessionID, false); status != 0 {
+		writeExactTargetError(w, status, message)
+		return
 	}
 
 	if err := h.terminal.SendRawInput(r.Context(), name, body.Keys, body.AgentType, body.SessionID); err != nil {
@@ -5565,8 +5582,8 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 
 	relaunched := 0
 	for _, ls := range allLive {
-		if ls.IsSleeping != 1 || ls.BoardName == nil || *ls.BoardName != boardName {
-			continue
+		if ls.IsSleeping != 1 || ls.IsArchived == 1 || ls.BoardName == nil || *ls.BoardName != boardName {
+			continue // archived agents stay asleep on team wake; they wake only one at a time
 		}
 
 		// Edition limits: stop waking if we'd exceed max live agents
@@ -5592,7 +5609,7 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	// Update team status to running
 	if relaunched > 0 && h.teamStore != nil {
 		if team, err := h.teamStore.GetTeam(ctx, boardName); err == nil && team != nil && team.Status == "sleeping" {
-			h.teamStore.SetAllMembersStatus(ctx, team.ID, "sleeping", "active")
+			h.teamStore.WakeTeamMembers(ctx, team.ID)
 			h.teamStore.UpdateTeamStatus(ctx, team.ID, "running")
 		}
 	}
@@ -5764,7 +5781,8 @@ func (h *SessionsHandler) SleepSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sleeping": true})
 }
 
-// WakeSession wakes a single sleeping agent.
+// WakeSession wakes a single sleeping agent. Waking an archived agent also
+// unarchives it: it is an explicit request for that one agent.
 // POST /api/sessions/live/{sessionID}/wake
 func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := chi.URLParam(r, "sessionID")
@@ -5804,6 +5822,54 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sleeping": false})
+}
+
+// ArchiveSession archives an agent: a running agent is put to sleep first
+// (its terminal is killed), then marked archived. Archived agents are left out
+// of Wake All, team wake and task assignment until unarchived or woken.
+// POST /api/sessions/live/{sessionID}/archive
+func (h *SessionsHandler) ArchiveSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	ctx := r.Context()
+
+	sess, err := h.ss.GetLiveSession(ctx, sessionID)
+	if err != nil || sess == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Session not found"})
+		return
+	}
+	if sess.IsSleeping != 1 {
+		if err := h.ss.SetSessionSleeping(ctx, sessionID, true); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		if err := h.terminal.KillSessionOnly(ctx, sess.AgentName, sess.AgentType, sessionID); err != nil {
+			log.Printf("Failed to kill tmux for session %s during archive: %v", sessionID[:min(8, len(sessionID))], err)
+		}
+	}
+	if err := h.ss.SetSessionArchived(ctx, sessionID, true); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sleeping": true, "archived": true})
+}
+
+// UnarchiveSession returns an archived agent to plain sleeping. It does not
+// start the agent; wake does that.
+// POST /api/sessions/live/{sessionID}/unarchive
+func (h *SessionsHandler) UnarchiveSession(w http.ResponseWriter, r *http.Request) {
+	sessionID := chi.URLParam(r, "sessionID")
+	ctx := r.Context()
+
+	sess, err := h.ss.GetLiveSession(ctx, sessionID)
+	if err != nil || sess == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Session not found"})
+		return
+	}
+	if err := h.ss.SetSessionArchived(ctx, sessionID, false); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "sleeping": sess.IsSleeping == 1, "archived": false})
 }
 
 // ── Bulk Sleep/Wake All ─────────────────────────────────────────────────
@@ -5854,7 +5920,7 @@ func (h *SessionsHandler) SleepAll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// WakeAll wakes all sleeping agents.
+// WakeAll wakes all sleeping agents except archived ones.
 // POST /api/sessions/live/wake-all
 func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -5862,7 +5928,7 @@ func (h *SessionsHandler) WakeAll(w http.ResponseWriter, r *http.Request) {
 
 	var sleeping []store.LiveSession
 	for _, ls := range allLive {
-		if ls.IsSleeping == 1 {
+		if ls.IsSleeping == 1 && ls.IsArchived == 0 { // archived agents are left asleep
 			sleeping = append(sleeping, ls)
 		}
 	}

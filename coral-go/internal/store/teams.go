@@ -8,15 +8,15 @@ import (
 
 // Team represents a persistent agent team.
 type Team struct {
-	ID          int64   `db:"id" json:"id"`
-	Name        string  `db:"name" json:"name"`
-	ConfigJSON  string  `db:"config_json" json:"-"`
-	Status      string  `db:"status" json:"status"`
-	WorkingDir  string  `db:"working_dir" json:"working_dir"`
-	IsWorktree  int     `db:"is_worktree" json:"is_worktree"`
-	CreatedAt   string  `db:"created_at" json:"created_at"`
-	UpdatedAt   string  `db:"updated_at" json:"updated_at"`
-	StoppedAt   *string `db:"stopped_at" json:"stopped_at,omitempty"`
+	ID         int64   `db:"id" json:"id"`
+	Name       string  `db:"name" json:"name"`
+	ConfigJSON string  `db:"config_json" json:"-"`
+	Status     string  `db:"status" json:"status"`
+	WorkingDir string  `db:"working_dir" json:"working_dir"`
+	IsWorktree int     `db:"is_worktree" json:"is_worktree"`
+	CreatedAt  string  `db:"created_at" json:"created_at"`
+	UpdatedAt  string  `db:"updated_at" json:"updated_at"`
+	StoppedAt  *string `db:"stopped_at" json:"stopped_at,omitempty"`
 
 	// Computed fields
 	Config  json.RawMessage `db:"-" json:"config,omitempty"`
@@ -267,6 +267,17 @@ func (s *TeamStore) SetAllMembersStatus(ctx context.Context, teamID int64, fromS
 	_, err := s.db.ExecContext(ctx,
 		"UPDATE team_members SET status = ?, stopped_at = NULL WHERE team_id = ? AND status = ?",
 		toStatus, teamID, fromStatus)
+	return err
+}
+
+// WakeTeamMembers marks a team's sleeping members active, except members whose
+// live session is archived: team wake leaves those asleep.
+func (s *TeamStore) WakeTeamMembers(ctx context.Context, teamID int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE team_members SET status = 'active', stopped_at = NULL
+		 WHERE team_id = ? AND status = 'sleeping'
+		 AND (session_id IS NULL OR session_id NOT IN (SELECT session_id FROM live_sessions WHERE is_archived = 1 AND status = 'active'))`,
+		teamID)
 	return err
 }
 

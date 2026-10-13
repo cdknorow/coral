@@ -130,6 +130,10 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 		d.ExecContext(ctx, sql) // Ignore error — column may already exist
 	}
 
+	// Archived implies sleeping. A Coral older than is_archived can wake an
+	// archived agent without clearing the flag; restore the invariant on open.
+	d.ExecContext(ctx, `UPDATE live_sessions SET is_archived = 0 WHERE is_archived = 1 AND is_sleeping = 0`)
+
 	// Indexes on migrated columns cannot live in schemaSQL: on an older
 	// database the column does not exist yet when schemaSQL runs.
 	d.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_agent_events_ref
@@ -199,6 +203,9 @@ var columnMigrations = []struct {
 	{"live_sessions", "stopped_at", "TEXT"},
 	// User-chosen colour for the agent's name in the sidebar (#rrggbb); NULL = palette default.
 	{"live_sessions", "name_color", "TEXT"},
+	// Archived: put away by the operator. Always set together with is_sleeping=1 (so every "running" check already
+	// excludes it); unlike plain sleeping it is left out of Wake All, team wake and orphan cleanup.
+	{"live_sessions", "is_archived", "INTEGER NOT NULL DEFAULT 0"},
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},
 	{"token_usage", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},

@@ -115,8 +115,9 @@
                         <div class="command-pane" id="command-pane">
                             <!-- Sleeping agent: replaces the toolbar and send controls (sleeping_view.js) -->
                             <div id="sleeping-composer" class="sleeping-composer" role="status" hidden>
-                                <span class="sleeping-composer-label"><span aria-hidden="true">🌙</span> This agent is sleeping</span>
+                                <span class="sleeping-composer-label"><span aria-hidden="true" id="sleeping-composer-icon">🌙</span> <span id="sleeping-composer-text">This agent is sleeping</span></span>
                                 <span class="sleeping-composer-actions">
+                                    <button class="btn btn-primary btn-small" id="sleeping-unarchive-btn" type="button" data-action="unarchive" hidden>Unarchive</button>
                                     <button class="btn btn-primary btn-small" id="sleeping-wake-btn" type="button" data-action="wake">Wake</button>
                                     <button class="btn btn-secondary btn-small" id="sleeping-restart-btn" type="button" data-action="restart" title="Start a fresh session with new settings instead of resuming">Restart…</button>
                                 </span>

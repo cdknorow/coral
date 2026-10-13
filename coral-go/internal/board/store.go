@@ -1830,19 +1830,26 @@ func (s *Store) HasActiveTaskForAssignee(ctx context.Context, project, assignee 
 }
 
 // FindIdleSubscriber returns a random active subscriber with no in-progress tasks, or nil.
-func (s *Store) FindIdleSubscriber(ctx context.Context, project string) *Subscriber {
-	var sub Subscriber
-	err := s.db.GetContext(ctx, &sub,
+// skip, when set, excludes subscribers the board cannot judge on its own (for
+// example archived agents, which the session store knows about).
+func (s *Store) FindIdleSubscriber(ctx context.Context, project string, skip func(*Subscriber) bool) *Subscriber {
+	var subs []Subscriber
+	err := s.db.SelectContext(ctx, &subs,
 		`SELECT * FROM board_subscribers
 		 WHERE project = ? AND is_active = 1 AND session_name != ''
 		 AND subscriber_id NOT IN (
 		     SELECT assigned_to FROM board_tasks WHERE board_id = ? AND status = 'in_progress' AND assigned_to IS NOT NULL
 		 )
-		 ORDER BY RANDOM() LIMIT 1`, project, project)
+		 ORDER BY RANDOM()`, project, project)
 	if err != nil {
 		return nil
 	}
-	return &sub
+	for i := range subs {
+		if skip == nil || !skip(&subs[i]) {
+			return &subs[i]
+		}
+	}
+	return nil
 }
 
 // ActiveTaskForSubscriber returns the subscriber's current in-progress task, or nil.

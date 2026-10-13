@@ -233,6 +233,9 @@ var routeTable = cat(
 		"/api/sessions/live/team/{board}/sleep",
 		"/api/sessions/live/sleep-all",
 		"/api/sessions/live/{id}/sleep",
+		// Archive stops a running agent like sleep; unarchive starts nothing (it stays asleep).
+		"/api/sessions/live/{id}/archive",
+		"/api/sessions/live/{id}/unarchive",
 		"/api/tasks/runs/{id}/kill",
 		"/api/workflows/runs/{id}/kill",
 		"/api/board/{project}/messages",

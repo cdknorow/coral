@@ -53,6 +53,41 @@ type BoardHandler struct {
 	deleteSubscriberReminder func(ctx context.Context, project, subscriber string) error
 	// crossTeam rate-limits cross-team messages per sender and target.
 	crossTeam crossTeamLimiter
+	// isArchivedSession reports whether a board session (agentType-sessionID) is
+	// an archived agent. Nil means no agent is ever treated as archived.
+	isArchivedSession func(ctx context.Context, sessionName string) bool
+}
+
+// SetArchivedSessionLookup tells the board which sessions are archived agents:
+// tasks are never assigned to them and task nudges skip them.
+func (h *BoardHandler) SetArchivedSessionLookup(fn func(ctx context.Context, sessionName string) bool) {
+	h.isArchivedSession = fn
+}
+
+// subscriberArchived reports whether subscriberID's session on project is an
+// archived agent.
+func (h *BoardHandler) subscriberArchived(ctx context.Context, project, subscriberID string) bool {
+	if h.isArchivedSession == nil || subscriberID == "" {
+		return false
+	}
+	sub, err := h.bs.GetProjectSubscription(ctx, project, subscriberID)
+	if err != nil || sub == nil || sub.SessionName == "" {
+		return false
+	}
+	return h.isArchivedSession(ctx, sub.SessionName)
+}
+
+// refuseArchivedAssignee answers 409 when assignee is an archived agent and
+// reports whether it did.
+func (h *BoardHandler) refuseArchivedAssignee(w http.ResponseWriter, ctx context.Context, project, assignee string) bool {
+	if !h.subscriberArchived(ctx, project, assignee) {
+		return false
+	}
+	writeJSON(w, http.StatusConflict, map[string]string{
+		"error": fmt.Sprintf("%s is archived; unarchive it before assigning it work", assignee),
+		"code":  "assignee_archived",
+	})
+	return true
 }
 
 // SetTaskArtifactWriter configures persistence of task patches under .coral.
@@ -468,6 +503,9 @@ func (h *BoardHandler) sendTaskNudge(ctx context.Context, project, subscriberID,
 	}
 	if sub == nil || sub.SessionName == "" {
 		return fmt.Errorf("%s has no running session on this board", subscriberID)
+	}
+	if h.isArchivedSession != nil && h.isArchivedSession(ctx, sub.SessionName) {
+		return fmt.Errorf("%s is archived", subscriberID)
 	}
 	if err := h.terminal.SendInput(ctx, sub.SessionName, text, "", ""); err != nil {
 		slog.Warn("failed to nudge agent", "subscriber", subscriberID, "project", project, "session", sub.SessionName, "error", err)
@@ -1270,6 +1308,9 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		opts.BlockedBy, opts.MaxDepth = deps, 32
 	}
 
+	if h.refuseArchivedAssignee(w, r.Context(), project, body.AssignedTo) {
+		return
+	}
 	task, err := h.bs.CreateTaskWithOpts(r.Context(), project, body.Title, body.Body, body.Priority, createdBy, opts, body.AssignedTo)
 	if err != nil {
 		errBadRequest(w, err.Error())
@@ -1306,7 +1347,9 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 						h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
 					}
 				} else {
-					idle := h.bs.FindIdleSubscriber(ctx, project)
+					idle := h.bs.FindIdleSubscriber(ctx, project, func(sub *board.Subscriber) bool {
+						return h.isArchivedSession != nil && h.isArchivedSession(ctx, sub.SessionName)
+					})
 					if idle != nil && idle.SessionName != "" {
 						if err := h.terminal.SendInput(ctx, idle.SessionName, taskNudge, "", ""); err != nil {
 							slog.Warn("failed to nudge agent", "subscriber", idle.SubscriberID, "session", idle.SessionName, "error", err)
@@ -1680,6 +1723,9 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	if (raw.AssignedTo != nil || removingBlockers) && !h.requireTaskPlanner(w, r, project, raw.SubscriberID) {
 		return
 	}
+	if raw.AssignedTo != nil && h.refuseArchivedAssignee(w, r.Context(), project, *raw.AssignedTo) {
+		return
+	}
 	update := board.TaskUpdate{
 		Title:      raw.Title,
 		Body:       raw.Body,
@@ -1823,6 +1869,9 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !h.requireTaskPlanner(w, r, project, body.SubscriberID) {
+		return
+	}
+	if h.refuseArchivedAssignee(w, r.Context(), project, body.Assignee) {
 		return
 	}
 	task, err := h.bs.ReassignTask(r.Context(), project, taskID, body.Assignee)

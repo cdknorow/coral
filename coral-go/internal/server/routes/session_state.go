@@ -35,6 +35,7 @@ func (h *SessionsHandler) deriveSingleSessionState(ctx context.Context, sessionI
 			in.Events = append(in.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
 		if session, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && session != nil {
+			in.Archived = session.IsArchived == 1
 			h.applyTranscriptState(&in, events[sessionID], session.AgentType, sessionID, session.WorkingDir)
 		}
 	}

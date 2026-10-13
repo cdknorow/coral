@@ -411,6 +411,8 @@ func (s *Server) buildRouter() chi.Router {
 	// Individual session sleep/wake
 	r.Post("/api/sessions/live/{sessionID}/sleep", sessHandler.SleepSession)
 	r.Post("/api/sessions/live/{sessionID}/wake", sessHandler.WakeSession)
+	r.Post("/api/sessions/live/{sessionID}/archive", sessHandler.ArchiveSession)
+	r.Post("/api/sessions/live/{sessionID}/unarchive", sessHandler.UnarchiveSession)
 
 	// Agent tasks
 	sessHandler.RegisterAgentArtifacts(r)
@@ -642,6 +644,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Message board
 	boardHandler := routes.NewBoardHandler(s.boardStore)
 	boardHandler.SetTerminal(s.terminal)
+	boardHandler.SetArchivedSessionLookup(routes.ArchivedSessionLookup(store.NewSessionStore(s.db)))
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	go boardHandler.RecoverTaskNotifications(context.Background())
 	go func() {

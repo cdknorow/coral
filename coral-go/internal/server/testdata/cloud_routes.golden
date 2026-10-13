@@ -246,7 +246,9 @@ POST /api/sessions/live/{name}/send interact
 POST /api/sessions/live/{name}/tasks interact
 POST /api/sessions/live/{name}/tasks/reorder interact
 POST /api/sessions/live/{name}/token-usage never
+POST /api/sessions/live/{sessionID}/archive interact
 POST /api/sessions/live/{sessionID}/sleep interact
+POST /api/sessions/live/{sessionID}/unarchive interact
 POST /api/sessions/live/{sessionID}/wake launch
 POST /api/system/api-key/regenerate never
 POST /api/system/telemetry/acknowledge never

@@ -226,7 +226,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		}
 		return agents[i].Name < agents[j].Name
 	})
-	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "offline": 0, "unknown": 0, "unavailable": 0, "waiting": 0}
+	summary := map[string]int{"total": len(agents), "available": 0, "busy": 0, "task_idle": 0, "queued": 0, "needs_input": 0, "sleeping": 0, "archived": 0, "offline": 0, "unknown": 0, "unavailable": 0, "waiting": 0}
 	for _, a := range agents {
 		summary[a.Availability]++
 	}
@@ -331,6 +331,10 @@ func classifyAvailability(a *availableAgent, s store.LiveSession, online, subscr
 		wait = activeWait[0]
 	}
 	switch {
+	case s.IsArchived != 0:
+		// Never a candidate for work: tasks cannot be assigned to an archived agent.
+		a.Availability = "archived"
+		a.Reason = "Agent is archived; unarchive it before assigning work"
 	case s.IsSleeping != 0:
 		a.Availability = "sleeping"
 		a.Reason = "Agent is sleeping"

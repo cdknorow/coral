@@ -7,20 +7,49 @@
 import { state } from './state.js';
 
 const PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
+const ARCHIVED_PLACEHOLDER = 'Agent is archived — unarchive or wake it to send commands';
 let waking = false;
 
 /**
  * Show or hide the sleeping composer for the current session.
  * manageInput: false leaves the text input to the caller (the popout drives
  * its input from its own lifecycle state).
+ * archived: an archived agent (#3030) offers Unarchive and Wake, no Restart.
+ * Omitted, it is read from the current session's live row.
  */
-export function applySleepingView(sleeping, { manageInput = true } = {}) {
+export function applySleepingView(sleeping, { manageInput = true, archived } = {}) {
     sleeping = !!sleeping;
-    if (state.currentSession) state.currentSession.sleeping = sleeping;
+    if (archived === undefined) {
+        const cur = state.currentSession;
+        const row = cur && (state.liveSessions || []).find(s => s.session_id === cur.session_id);
+        archived = !!(row && row.archived);
+    }
+    archived = sleeping && !!archived;
+    if (state.currentSession) {
+        state.currentSession.sleeping = sleeping;
+        state.currentSession.archived = archived;
+    }
     const pane = document.getElementById('command-pane');
-    if (pane) pane.classList.toggle('agent-sleeping', sleeping);
+    if (pane) {
+        pane.classList.toggle('agent-sleeping', sleeping);
+        pane.classList.toggle('agent-archived', archived);
+    }
     const bar = document.getElementById('sleeping-composer');
     if (bar) bar.hidden = !sleeping;
+    const text = document.getElementById('sleeping-composer-text');
+    if (text) text.textContent = archived ? 'This agent is archived' : 'This agent is sleeping';
+    const icon = document.getElementById('sleeping-composer-icon');
+    if (icon) icon.textContent = archived ? '🗄️' : '🌙';
+    const unarchive = document.getElementById('sleeping-unarchive-btn');
+    if (unarchive) unarchive.hidden = !archived;
+    const wake = document.getElementById('sleeping-wake-btn');
+    if (wake) {
+        // Archived: Unarchive is the primary action, Wake the second.
+        wake.classList.toggle('btn-primary', !archived);
+        wake.classList.toggle('btn-secondary', archived);
+    }
+    const restart = document.getElementById('sleeping-restart-btn');
+    if (restart) restart.hidden = archived;
     if (!manageInput) return;
     const input = document.getElementById('command-input');
     if (!input) return;
@@ -29,9 +58,9 @@ export function applySleepingView(sleeping, { manageInput = true } = {}) {
         if (!input.dataset.sleepDisabled && input.disabled) return;
         input.dataset.sleepDisabled = '1';
         // The awake placeholder for this agent, kept for waking up.
-        if (input.placeholder !== PLACEHOLDER) input.dataset.awakePlaceholder = input.placeholder;
+        if (input.placeholder !== PLACEHOLDER && input.placeholder !== ARCHIVED_PLACEHOLDER) input.dataset.awakePlaceholder = input.placeholder;
         input.disabled = true;
-        input.placeholder = PLACEHOLDER;
+        input.placeholder = archived ? ARCHIVED_PLACEHOLDER : PLACEHOLDER;
     } else if (input.dataset.sleepDisabled) {
         // Only undo what this view did: other states may disable the input too.
         input.disabled = false;
@@ -42,7 +71,9 @@ export function applySleepingView(sleeping, { manageInput = true } = {}) {
 }
 
 /** The placeholder a sleeping composer shows (the popout sets it itself). */
-export const SLEEPING_PLACEHOLDER = PLACEHOLDER;
+export function sleepingPlaceholder(archived) {
+    return archived ? ARCHIVED_PLACEHOLDER : PLACEHOLDER;
+}
 
 async function wakeCurrent(btn) {
     const s = state.currentSession;
@@ -71,9 +102,22 @@ async function wakeCurrent(btn) {
     }
 }
 
+async function unarchiveCurrent(btn) {
+    const s = state.currentSession;
+    if (!s || s.type !== 'live' || btn.disabled) return;
+    btn.disabled = true;
+    try {
+        // toggleAgentArchive updates the view of the agent on screen.
+        await window.toggleAgentArchive(s.name, s.agent_type, s.session_id, 'unarchive');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 document.addEventListener('click', (e) => {
     const btn = e.target.closest && e.target.closest('#sleeping-composer button[data-action]');
     if (!btn) return;
     if (btn.dataset.action === 'wake') wakeCurrent(btn);
+    else if (btn.dataset.action === 'unarchive') unarchiveCurrent(btn);
     else if (btn.dataset.action === 'restart') window.restartSession();
 });

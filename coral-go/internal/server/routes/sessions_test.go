@@ -941,16 +941,20 @@ func TestSessionsSend_NotFound(t *testing.T) {
 }
 
 func TestSessionsSend_Success(t *testing.T) {
-	server, _, terminal, _ := setupSessionsTestServer(t)
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-000000000004"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-"+sid, "/tmp/test")
 
-	terminal.addSession("claude-00000000-0000-0000-0000-000000000004", "/tmp/test")
-
-	body := bytes.NewBufferString(`{"command": "echo hello"}`)
-	resp, err := http.Post(server.URL+"/api/sessions/live/claude-00000000-0000-0000-0000-000000000004/send", "application/json", body)
+	body := bytes.NewBufferString(`{"command": "echo hello", "agent_type": "claude", "session_id": "` + sid + `"}`)
+	resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/send", "application/json", body)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	assert.Equal(t, []string{"echo hello"}, terminal.sent["claude-"+sid])
 }
 
 func TestSessionsResize(t *testing.T) {
@@ -2138,16 +2142,81 @@ func TestSessionsEvents_CreateAndList(t *testing.T) {
 }
 
 func TestSessionsKeys(t *testing.T) {
-	server, _, terminal, _ := setupSessionsTestServer(t)
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	const sid = "00000000-0000-0000-0000-00000000000b"
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+	terminal.addSession("claude-"+sid, "/tmp/test")
 
-	terminal.addSession("claude-test-keys", "/tmp/test")
-
-	body := bytes.NewBufferString(`{"keys": ["Enter"]}`)
-	resp, err := http.Post(server.URL+"/api/sessions/live/claude-test-keys/keys", "application/json", body)
+	body := bytes.NewBufferString(`{"keys": ["Enter"], "agent_type": "claude", "session_id": "` + sid + `"}`)
+	resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/keys", "application/json", body)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	assert.Equal(t, []string{"Enter"}, terminal.raw["claude-"+sid])
+}
+
+// /send and /keys always name their exact target. A bare name used to reach
+// whatever tmux pane carried it, so input landed in a sleeping or archived
+// agent whose pane was still around. Now it is refused, and nothing is typed.
+func TestSessionsSendKeys_RequireExactLiveTarget(t *testing.T) {
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	const awake, sleeping, archived = "00000000-0000-4000-8000-0000000000a1", "00000000-0000-4000-8000-0000000000a2", "00000000-0000-4000-8000-0000000000a3"
+	for _, sid := range []string{awake, sleeping, archived} {
+		require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "repo", WorkingDir: "/tmp/test"}))
+		terminal.addSession("claude-"+sid, "/tmp/test") // the pane exists in every case
+	}
+	require.NoError(t, ss.SetSessionSleeping(ctx, sleeping, true))
+	require.NoError(t, ss.SetSessionArchived(ctx, archived, true))
+
+	var lastCode string
+	post := func(sid, route, body string) (int, string) {
+		t.Helper()
+		resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/"+route, "application/json", bytes.NewBufferString(body))
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		msg, _ := out["error"].(string)
+		lastCode, _ = out["code"].(string)
+		return resp.StatusCode, msg
+	}
+	exact := func(sid string) string { return `"agent_type": "claude", "session_id": "` + sid + `"` }
+	for _, route := range []string{"send", "keys"} {
+		payload := `"command": "echo hi"`
+		if route == "keys" {
+			payload = `"keys": ["Enter"]`
+		}
+		for _, sid := range []string{awake, sleeping, archived} {
+			code, msg := post(sid, route, `{`+payload+`}`)
+			assert.Equal(t, http.StatusBadRequest, code, "%s bare name %s", route, sid)
+			assert.Contains(t, msg, "session_id and agent_type are required", route)
+			assert.Equal(t, "session_id_required", lastCode, "a bare name is a 400 with a code, never a 404")
+			code, _ = post(sid, route, `{`+payload+`, "agent_type": "claude"}`)
+			assert.Equal(t, http.StatusBadRequest, code, "%s without session_id", route)
+			assert.Equal(t, "session_id_required", lastCode)
+		}
+		code, msg := post(sleeping, route, `{`+payload+`, `+exact(sleeping)+`}`)
+		assert.Equal(t, http.StatusConflict, code, route)
+		assert.Equal(t, "session is sleeping", msg, route)
+		code, msg = post(archived, route, `{`+payload+`, `+exact(archived)+`}`)
+		assert.Equal(t, http.StatusConflict, code, route)
+		assert.Equal(t, "session is archived", msg, route)
+		code, _ = post(awake, route, `{`+payload+`, `+exact(awake)+`}`)
+		assert.Equal(t, http.StatusOK, code, route)
+	}
+
+	terminal.mu.Lock()
+	defer terminal.mu.Unlock()
+	assert.Equal(t, []string{"echo hi"}, terminal.sent["claude-"+awake], "only the exact, awake target received input")
+	assert.Equal(t, []string{"Enter"}, terminal.raw["claude-"+awake])
+	for _, sid := range []string{sleeping, archived} {
+		assert.Empty(t, terminal.sent["claude-"+sid], sid)
+		assert.Empty(t, terminal.raw["claude-"+sid], sid)
+	}
 }
 
 // setupSessionsTestServerWithConfig creates a test server with custom config and all session routes.
