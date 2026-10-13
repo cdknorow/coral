@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.9 — View-only servers stay view-only, and raising a server to Launch asks first
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release fixes a race that could make a Cloud Hub View-only agent look writable again, and asks for confirmation before a server is allowed to launch agents from the Cloud Hub.
+
+### Fixes
+
+- **A View-only agent stays read-only.** When the Cloud Hub tells the dashboard that an agent's terminal is read-only, the dashboard locks the message box and shows the read-only chip. If the server's access lookup finished just after that message, it could undo it: the chip disappeared and the agent looked writable again, while the hub still dropped anything you sent (the "Sent" problem fixed in v1.4.5). The hub's read-only message now holds until you select the agent again, however long the lookup takes.
+- **Access changes apply at once.** After you raise or lower a server's hub mode in the Servers tab, the next message you send uses the new mode straight away, instead of up to 15 seconds later.
+
+### New
+
+- **Confirm before allowing Launch.** Raising a server's hub mode to Launch, from **Raise hub mode** or the Access menu, now asks "Allow <server> to launch agents from the Cloud Hub?" first, because Launch lets the hub start processes on that machine. Cancel is the default. If you cancel, nothing changes and focus returns to the control you used. Lower modes change at once, as before.
+
+### For contributors
+
+- The browser test runner (`tests/frontend/run_cdp_suites.mjs`) is sturdier. A suite that hangs is killed after its time limit and its server and Chrome are replaced. A failed suite is retried once on a fresh server and Chrome; if it passes only then, it's reported as FLAKY rather than passed (exit status 3; `--allow-flaky` treats that as success). `results.json` keeps every attempt's complete output.
+- `npm run test:cdp:stress` (`--stress`) runs the suites three times on three shards with every page's CPU slowed 4×, and prints how often each unstable suite passed. Its first run found the read-only race fixed above.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.8.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+
 ## v1.4.8 — A first load about 37% smaller, and Resume that never guesses the agent
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release makes the dashboard's first load much lighter by loading the code editor, the terminal and rarely used panels only when you open them. It also stops Resume from guessing an agent's type, and enlarges more touch targets.
