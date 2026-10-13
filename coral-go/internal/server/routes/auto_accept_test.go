@@ -298,6 +298,7 @@ func TestAutoAcceptNeverAnswersQuestionsPlansOrRisks(t *testing.T) {
 		// The approval screen itself is never answered for a question tool.
 		{"question tool with a yes-no screen", "AskUserQuestion", autoAcceptScreen(t, "claude_bash"), "Not auto-accepted: a question waits for your answer", nil},
 		{"unknown prompt", "Bash", "Pick a mode\n❯ 1. Fast\n  2. Careful\n", "Not auto-accepted: unrecognised prompt", nil},
+		{"shell write outside", "Bash", autoAcceptScreen(t, "claude_bash"), "Not auto-accepted (high-risk): it writes outside the working directory (~/.zshrc)", map[string]any{"command": "echo x >> ~/.zshrc"}},
 		{"force push", "Bash", autoAcceptScreen(t, "claude_bash"), "Not auto-accepted (high-risk): it force-pushes", map[string]any{"command": "git push --force origin main"}},
 		{"write outside", "Write", autoAcceptScreen(t, "claude_write"), "Not auto-accepted (high-risk): it writes a file outside the working directory (/etc/hosts)", map[string]any{"file_path": "/etc/hosts"}},
 	} {

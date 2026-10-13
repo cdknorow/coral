@@ -3,6 +3,9 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -158,4 +161,84 @@ func TestAutoAcceptHubAllowSwitchAndModeDrop(t *testing.T) {
 	assert.False(t, state("hub").Enabled)
 	assert.Equal(t, "mode_lowered", state("hub").PausedCode.String)
 	assert.True(t, state("local").Enabled)
+}
+
+// A remote dashboard (the LAN address, or the phone via the QR link) that
+// logged in has a session cookie: it may turn auto-accept on like the local
+// one. An API key (scripts, a hub's Bearer proxy) and a cross-site page may not.
+func TestAutoAcceptEnableFromALoggedInRemoteDashboard(t *testing.T) {
+	r := newE2ERemote(t, "autoaccept-lan", nil)
+	h := r.srv.Router()
+	ctx := context.Background()
+	ss := store.NewSessionStore(r.db)
+	sid := "11111111-2222-3333-4444-555555555555"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "dev", WorkingDir: r.work}))
+	body := `{"session_id":"` + sid + `","acknowledged":true}`
+	lan := func(target string, hdr map[string]string, cookie string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", target, strings.NewReader(body))
+		req.RemoteAddr = "192.168.1.20:51000"
+		req.Host = "192.168.1.5:8420"
+		req.Header.Set("Content-Type", "application/json")
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		if cookie != "" {
+			req.AddCookie(&http.Cookie{Name: "coral_session", Value: cookie})
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	enable := "/api/sessions/live/dev/auto-accept/enable"
+	same := map[string]string{"Sec-Fetch-Site": "same-origin"}
+	codeOf := func(rec *httptest.ResponseRecorder) string {
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		c, _ := out["code"].(string)
+		return c
+	}
+
+	// Not logged in: the auth middleware refuses.
+	require.Equal(t, 401, lan(enable, same, "").Code)
+	// The API key, as a script or a hub's proxy sends it: authenticated, but not a dashboard.
+	rec := lan(enable, mergeHdr(same, map[string]string{"Authorization": "Bearer " + r.key()}), "")
+	require.Equal(t, 403, rec.Code, rec.Body.String())
+	assert.Equal(t, "no_dashboard_provenance", codeOf(rec))
+	rec = lan(enable+"?api_key="+r.key(), same, "")
+	require.Equal(t, 403, rec.Code, rec.Body.String())
+
+	token, err := r.srv.keyStore.CreateSession("192.168.1.20", "test")
+	require.NoError(t, err)
+	// Logged in, but another site's page: refused.
+	rec = lan(enable, map[string]string{"Sec-Fetch-Site": "cross-site"}, token)
+	require.Equal(t, 403, rec.Code)
+	assert.Equal(t, "no_dashboard_provenance", codeOf(rec))
+	rec = lan(enable, map[string]string{"Origin": "http://evil.example"}, token)
+	require.Equal(t, 403, rec.Code)
+	// A session plus a Bearer key is a proxy, not a browser.
+	rec = lan(enable, mergeHdr(same, map[string]string{"Authorization": "Bearer " + r.key()}), token)
+	require.Equal(t, 403, rec.Code)
+	// The logged-in dashboard: allowed (fetch metadata, or the Origin fallback).
+	rec = lan(enable, same, token)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+	assert.Contains(t, rec.Body.String(), `"auto_accept_source":"local"`)
+	rec = lan(enable, map[string]string{"Origin": "http://192.168.1.5:8420"}, token)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
+
+	// The phone: the QR link carries ?api_key= once, which sets the session
+	// cookie; the dashboard's later fetches use the cookie.
+	req := httptest.NewRequest("GET", "/?api_key="+r.key(), nil)
+	req.RemoteAddr = "192.168.1.30:52000"
+	req.Host = "192.168.1.5:8420"
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	var phone string
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "coral_session" {
+			phone = c.Value
+		}
+	}
+	require.NotEmpty(t, phone, "the QR link logs the phone in")
+	rec = lan(enable, same, phone)
+	require.Equal(t, 200, rec.Code, rec.Body.String())
 }

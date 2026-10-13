@@ -44,6 +44,11 @@ func localDashboard(r *http.Request) bool {
 	if !localHostOK(r.Host) {
 		return false
 	}
+	return sameOriginFetch(r)
+}
+
+// sameOriginFetch reports whether r is a browser fetch from this server's own page.
+func sameOriginFetch(r *http.Request) bool {
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
 		return site == "same-origin"
 	}

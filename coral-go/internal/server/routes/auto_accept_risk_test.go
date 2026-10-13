@@ -106,3 +106,65 @@ func TestPathInsideResolvesSymlinkedPrefixes(t *testing.T) {
 	assert.False(t, pathInside(filepath.Dir(wd), wd))
 	assert.False(t, pathInside("x", ""), "no working dir: nothing is inside")
 }
+
+// Shell writes outside the working directory wait too: redirection targets,
+// tee, cp/install/ln destinations, mv paths and dd of= (Orchestrator, #3182).
+// Writes inside the repo and to /dev/null stay auto-approved.
+func TestShellWriteRisk(t *testing.T) {
+	wd := t.TempDir()
+	outside := t.TempDir()
+	require.NoError(t, os.Symlink(outside, filepath.Join(wd, "escape")))
+	risky := []string{
+		"echo x >> ~/.zshrc",
+		"echo x > /etc/hosts",
+		"echo x >/etc/hosts",
+		"printf y 1>>/tmp/elsewhere-zz/log",
+		"cmd &> /var/log/x",
+		"cmd >| /etc/motd",
+		"echo $X > $HOME/.profile",
+		"make 2>&1 > ../build.log",
+		"echo hi | tee -a ~/.bashrc",
+		"tee /etc/sudoers.d/x < f",
+		"cp id_rsa.pub ~/.ssh/authorized_keys",
+		"cp -r out/ /usr/local/share/app",
+		"cp -t /opt/bin a b",
+		"install -m 755 tool /usr/local/bin/tool",
+		"install -d /opt/thing",
+		"ln -sf $(pwd)/bin/tool /usr/local/bin/tool",
+		"mv build /tmp/elsewhere-zz",
+		"mv ~/notes.txt .",
+		"dd if=img of=/dev/disk2",
+		"echo ok && echo x >> " + filepath.Join(outside, "f"),
+		"echo x > escape/f", // a symlink inside the repo that points out of it
+		"bash -c 'echo x >> ~/.zshrc'",
+		"tee /dev/null ~/.bashrc", // a device first does not hide the file after it
+		"cmd 2>/dev/null >> /etc/x",
+	}
+	for _, cmd := range risky {
+		assert.Contains(t, shellRisk(cmd, wd), "writes outside the working directory", cmd)
+	}
+	safe := []string{
+		"echo x > out.txt",
+		"echo x >> logs/run.log",
+		"go test ./... > " + filepath.Join(wd, "test.log") + " 2>&1",
+		"make 2>/dev/null",
+		"make >/dev/null 2>&1",
+		"cmd 2>&1 | tee build.log",
+		"echo hi >&2",
+		"diff <(sort a) <(sort b)",
+		"cp a.txt b.txt",
+		"cp -r src/ backup/",
+		"mv old.go new.go",
+		"ln -s ../shared/x x",    // the link is created inside; its target may point anywhere
+		"ln -s /usr/bin/python3", // a link in the current dir
+		"install -m 644 a dist/a",
+		"dd if=/dev/zero of=disk.img bs=1M count=1",
+		"cat /etc/hosts", // reading with cat is not a write
+		"tee < in.txt",
+		"echo a>>b.log",
+		"cmd >>/dev/null 2>>err.log",
+	}
+	for _, cmd := range safe {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+}

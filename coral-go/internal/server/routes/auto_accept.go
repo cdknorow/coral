@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
@@ -571,6 +572,23 @@ func (h *SessionsHandler) autoAcceptPayload(ctx context.Context, sessionID strin
 	return autoAcceptFields(agentType, st)
 }
 
+// dashboardBrowser reports whether r is a dashboard in a browser: the local
+// dashboard (localDashboard), or a remote one (the LAN address, or the phone via
+// the QR link) that logged in with a session cookie, as a same-origin fetch. An
+// API key (a script, the self-hosted hub's Bearer proxy) and a tunnel stamp
+// never qualify. A remote browser with a session already has full control of
+// the agents (keys, answer-prompt), so this widens nothing.
+func dashboardBrowser(r *http.Request) bool {
+	if viaTunnel(r) || r.URL.Query().Get("api_key") != "" ||
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Authorization"))), "bearer ") {
+		return false
+	}
+	if auth.MethodFrom(r.Context()) == auth.MethodSession {
+		return sameOriginFetch(r)
+	}
+	return localDashboard(r)
+}
+
 // Headers that identify an agent's own tooling (coral-agent, coral-board and
 // hooks may send them). A request carrying any of them never enables auto-accept.
 var agentIdentityHeaders = []string{"X-Coral-Agent", "X-Coral-Subscriber-ID", "X-Coral-Session", "X-Coral-Session-ID"}
@@ -602,8 +620,8 @@ func (h *SessionsHandler) autoAcceptTarget(w http.ResponseWriter, r *http.Reques
 // EnableAutoAccept turns auto-accept on for one agent.
 // POST /api/sessions/live/{name}/auto-accept/enable {"session_id","acknowledged":true,"duration_s"?}
 //
-// Who may: the local dashboard (a same-origin browser fetch from this computer,
-// see localDashboard) or the Cloud Hub through this process's connector (the
+// Who may: a dashboard in a browser (a same-origin fetch from this computer, or
+// from a browser logged in with a session cookie; see dashboardBrowser) or the Cloud Hub through this process's connector (the
 // stamp must match the per-process secret: cloud.TunneledAuthentic), never a
 // request carrying an agent's identity. acknowledged:true is sent by the
 // dashboard only after the operator confirmed the warning.
@@ -638,7 +656,7 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 		}
 	}
 	hub := cloud.TunneledAuthentic(r)
-	if !hub && !localDashboard(r) {
+	if !hub && !dashboardBrowser(r) {
 		refuseAutoAccept(w, http.StatusForbidden, "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Cloud Hub")
 		return
 	}

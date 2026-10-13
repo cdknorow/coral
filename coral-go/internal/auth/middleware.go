@@ -1,12 +1,37 @@
 package auth
 
 import (
+	"context"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 )
+
+// Method is how the middleware let a request in. Handlers that must tell a
+// logged-in browser from a script read it with MethodFrom (#3182: only a
+// dashboard turns auto-accept on).
+type Method int
+
+const (
+	MethodNone     Method = iota // not set: no auth middleware in front (tests, embedders)
+	MethodLoopback               // a localhost peer (no credentials checked)
+	MethodAPIKey                 // the API key, in a header or the query string
+	MethodSession                // a session cookie from the /auth login (or the QR link)
+)
+
+type methodKey struct{}
+
+// MethodFrom returns how the request was authenticated.
+func MethodFrom(ctx context.Context) Method {
+	m, _ := ctx.Value(methodKey{}).(Method)
+	return m
+}
+
+func withMethod(r *http.Request, m Method) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), methodKey{}, m))
+}
 
 // Middleware returns an HTTP middleware that enforces API key authentication.
 // Localhost requests bypass auth entirely. Static assets and the /auth page
@@ -21,7 +46,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				// (e.g. "chatgpt.com:443"), not the proxy host. Skip DNS rebinding
 				// check for CONNECT since the client is verified as localhost by IP.
 				if r.Method == http.MethodConnect || isValidLocalhostHost(r.Host) {
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, withMethod(r, MethodLoopback))
 					return
 				}
 				// DNS rebinding attempt: localhost IP but external domain Host
@@ -57,7 +82,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 							setSessionCookie(w, r, token)
 						}
 					}
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, withMethod(r, MethodAPIKey))
 					return
 				}
 				ks.RecordFailure(clientIP(r))
@@ -67,7 +92,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			// Check session cookie
 			if token := extractSessionCookie(r); token != "" {
 				if ks.ValidateSession(token) {
-					next.ServeHTTP(w, r)
+					next.ServeHTTP(w, withMethod(r, MethodSession))
 					return
 				}
 			}

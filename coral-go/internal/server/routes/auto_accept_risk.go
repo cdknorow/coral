@@ -18,13 +18,20 @@ import (
 //   - sudo
 //   - chmod -R / chown -R of anything outside the working directory
 //   - curl or wget piped into a shell (curl … | sh, bash <(curl …))
+//   - a shell write outside the working directory: a > or >> redirection
+//     target, tee's files, the destination of cp, install or ln, any path of
+//     mv (its sources go away too), dd of= (/dev/null, /dev/stdout,
+//     /dev/stderr and /dev/tty are fine)
 //   - a file read or write by a tool (Write, Edit, MultiEdit, NotebookEdit,
 //     Read, Codex edits) outside the working directory
 //
 // The command and path come from the PreToolUse hook's tool input when there
-// is one, otherwise from the prompt on screen. Shell commands are matched by
-// these patterns only: a shell command that writes a file elsewhere (touch,
-// cp, redirection) is not inspected for paths.
+// is one, otherwise from the prompt on screen. Paths have symlinks resolved;
+// one that cannot be read literally ($VAR, ~, $(…)) counts as outside. The
+// patterns are read without a full shell parser, so they err on the side of
+// asking: a ">" inside a quoted string can hold a prompt for the user. Other
+// shell commands that write elsewhere (touch, mkdir, a script) are not
+// inspected for paths.
 
 var (
 	shellSplitRe   = regexp.MustCompile(`&&|\|\||[;|\n]`)
@@ -49,7 +56,12 @@ func shellRisk(command, workDir string) string {
 	if curlPipeRe.MatchString(command) || curlSubstRe.MatchString(command) {
 		return "it pipes a download into a shell"
 	}
-	for _, seg := range shellSplitRe.Split(command, -1) {
+	// ">|" (overwrite despite noclobber) is a redirection, not a pipe.
+	for _, seg := range shellSplitRe.Split(strings.ReplaceAll(command, ">|", "> "), -1) {
+		seg, targets := redirections(seg)
+		if o := outsideTarget(notDevices(targets), workDir); o != "" {
+			return "it writes outside the working directory (" + o + ")"
+		}
 		words := shellWords(seg)
 		// Skip env assignments and shell wrappers (bash -lc '…' is split by the caller).
 		for len(words) > 0 && envAssignRe.MatchString(words[0]) {
@@ -71,6 +83,10 @@ func shellRisk(command, workDir string) string {
 				if t := outsideTarget(args, workDir); t != "" {
 					return "it deletes recursively outside the working directory (" + t + ")"
 				}
+			}
+		case "tee", "cp", "mv", "install", "ln", "dd":
+			if t := outsideTarget(notDevices(writeTargets(cmd, args)), workDir); t != "" {
+				return "it writes outside the working directory (" + t + ")"
 			}
 		case "chmod", "chown":
 			if hasFlag(args, "R", "", "--recursive") {
@@ -111,6 +127,87 @@ func shellRisk(command, workDir string) string {
 		}
 	}
 	return ""
+}
+
+// Devices a shell write may target without risk.
+var harmlessDevice = map[string]bool{"/dev/null": true, "/dev/stdout": true, "/dev/stderr": true, "/dev/tty": true}
+
+// notDevices drops the harmless devices from a list of written paths.
+func notDevices(paths []string) []string {
+	var out []string
+	for _, p := range paths {
+		if !harmlessDevice[p] {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// redirections removes output redirections (>, >>, >|, &>, 2> …) from a
+// command segment and returns their targets. Descriptor duplications (2>&1,
+// >&2) and process substitutions (>(…)) are not files.
+func redirections(seg string) (string, []string) {
+	var targets []string
+	b := []byte(seg)
+	for i := 0; i < len(b); i++ {
+		if b[i] != '>' {
+			continue
+		}
+		// For ">>", the first ">" has no target and the second is read next.
+		// "2>&1" and ">&2" duplicate descriptors: "&" ends the target at once.
+		j := i + 1
+		for j < len(b) && (b[j] == ' ' || b[j] == '\t') {
+			j++
+		}
+		k := j
+		for k < len(b) && !strings.ContainsRune(" \t;&|<>", rune(b[k])) {
+			k++
+		}
+		if t := strings.Trim(string(b[j:k]), `'"`); t != "" {
+			targets = append(targets, t)
+		}
+		for x := i; x < k; x++ {
+			b[x] = ' '
+		}
+		i = k - 1
+	}
+	return string(b), targets
+}
+
+// writeTargets returns the paths a file-writing command writes (or, for mv,
+// also removes).
+func writeTargets(cmd string, args []string) []string {
+	var paths []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case cmd == "dd":
+			if strings.HasPrefix(a, "of=") {
+				paths = append(paths, strings.TrimPrefix(a, "of="))
+			}
+		case a == "-t" || a == "--target-directory":
+			if i+1 < len(args) {
+				return []string{args[i+1]}
+			}
+		case strings.HasPrefix(a, "--target-directory="):
+			return []string{strings.TrimPrefix(a, "--target-directory=")}
+		case strings.HasPrefix(a, "-"):
+		default:
+			paths = append(paths, a)
+		}
+	}
+	switch cmd {
+	case "tee", "mv", "dd":
+		return paths
+	case "install":
+		if hasFlag(args, "d", "", "--directory") {
+			return paths
+		}
+	}
+	if len(paths) < 2 {
+		return nil // ln -s target (a link in the current dir); cp/install need a destination
+	}
+	return paths[len(paths)-1:]
 }
 
 // shellWords splits a command segment into words, dropping quotes.
