@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.1 — Faster agent switching through the hub, chat history that loads as you scroll, and steadier hub connections
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release makes switching between agents fast on a hub, even over a slow link, and stops the hub from calling a busy machine unreachable.
+
+### Faster
+
+- **Switching agents.** Opening an agent's chat loads its last 100 messages instead of 400, and large chat responses are gzip-compressed when the browser accepts it. Through a self-hosted hub on a slow link (80 ms round trip, 20 Mbit/s) the first chat paint went from 271 ms to 116 ms, and the first response from 386 KB to 34 KB.
+- **Older history loads as you scroll up**, 200 messages at a time, keeping your place, with no "Load more" click (the button stays for find-in-chat and retries). Messages that arrive while you read are not duplicated, and switching agents mid-load never shows the previous agent's messages.
+- A self-hosted hub keeps idle connections to each machine for 5 minutes instead of 60 seconds, so switching agents reuses a warm connection.
+
+### Hub (self-hosted `--hub` and Cloud Hub)
+
+- **Older history works through the hub and the Cloud Hub tunnel**, including with machines that have not been upgraded: if a machine does not support the new paging, the dashboard falls back to the old paging for that server after one retry.
+- **A busy or refused machine is no longer marked unreachable.** A machine at its concurrent-request limit answers 503 with `Retry-After: 1`. A request the machine's connector rejects answers 400, and a path or query its route table does not allow answers 403. All three carry `{error, code}` (`too_many_streams`, `bad_request`, `path_not_allowed`), and the machine keeps its status. Previously the first two were a 502 that marked the machine unreachable. A real outage is still a 502 that marks it.
+- **The Cloud Hub tunnel never relays compressed responses.** The connector does not forward `Accept-Encoding` to the local Coral, and a gzip response from it is decoded before relaying, with the size limit applied to the decoded bytes. Any other encoding is refused with a 502 JSON error. This is hardening: Coral's own handlers do not compress unless asked, and this ensures they never do so through the tunnel.
+
+### Fixes
+
+- **Fixed duplicated messages** when an agent posted while you were loading older history.
+- **Clearer Interact access.** In the hub's server list and the machine's Cloud panel, the Interact access description now says it also allows changing board settings, including turning on cross-team messaging.
+
+### For contributors
+
+- Frontend suites take their server from `CORAL_TEST_URL` through `tests/frontend/test_base.js`. They never read `CORAL_URL` and refuse port 8420 with no override (`CORAL_TEST_ALLOW_PROD` is gone). `run.sh` and `run_cdp_suites.mjs` set it for you.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.0.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- Mixed versions work. A v1.4.1 dashboard or hub pages older machines by offset, and an older dashboard keeps paging a v1.4.1 machine by offset.
+- API users: `GET /api/sessions/live/{name}/chat` accepts `before=<index>` (an absolute message index, exclusive; it wins over `offset`) and returns `start`, the first message's absolute index. Pass it as the next `before` to get the page above. History pages (`after=0`) over 8 KB are gzip-compressed when the request sends `Accept-Encoding: gzip`; polls are not. `offset` paging and polling with `after` are unchanged.
+- Cloud Hub: connector refusals now arrive as 503 `too_many_streams` (with `Retry-After`), 400 `bad_request` and 403 `path_not_allowed` instead of 502, and none of them marks the machine unreachable.
+
 ## v1.4.0 — Built for big teams: a lighter live feed and board, every notification on every dashboard, and cross-team messaging
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release is about scale: a Coral server running many agents, and a hub watching many machines, do far less work per tick. Every open dashboard now gets every notification, and Orchestrators can (optionally) message each other across teams.
