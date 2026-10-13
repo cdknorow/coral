@@ -1,5 +1,32 @@
 # Release Notes
 
+## v1.4.4 — Coral Hub tells you when a machine needs an update, and history links always offer Resume
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release shows Coral Hub's update notice for machines running an older Coral, and fixes the Resume button missing when a past session is opened from a link.
+
+### New
+
+- **Update notices from Coral Hub.** When the Cloud Hub reports that a machine's Coral is out of date, the server row shows an **Update** badge, or **Update required** in the warning colour, when the Cloud Hub needs a newer Coral for some of its features. The badge appears in the sidebar and phone server list, the row's tooltip, and the Cloud Servers dialog. The notice names the version to update to and links to the latest release on GitHub. Nothing is disabled, and machines that are current (or whose status is unknown) show nothing.
+
+### Fixes
+
+- **A session opened from a link shows Resume** even before the history list has loaded it. This covers `#session/<id>` links, the popout's history link, and sessions beyond the loaded page. Previously the transcript opened without its Resume button.
+
+### For contributors
+
+- `troubleshooting.md`: a plain `go build` reports `0.0.0-dev`, which a hub treats as an old version (it gets the plain feed, which takes that machine's dashboard notifications); use `make build` or `make dev`.
+- The `history_resume_ui` browser suite no longer flakes; it waits for the page's own history load before injecting its fixtures.
+- `tests/stress/run.sh --kill-all` waits for its own server to report it bound the port before trusting `/api/health`.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.3.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- Cloud Hub: the dashboard reads the optional `coral_version`, `latest_coral` and `update` (`current`, `available`, `required` or `unknown`) fields on a `servers` entry. It shows a notice only for `available` and `required`; any other or missing value shows nothing. Older dashboards ignore these fields.
+
 ## v1.4.3 — Kill all no longer kills team agents, a live feed that keeps up, and team artifacts that fit any panel
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release fixes a folder group's **Kill all** killing agents the group doesn't show, makes the dashboard react to agent changes at once, lists uploaded files with a team's task results, reworks the team artifacts panel for narrow windows, and brings the agent docs up to date with v1.4.x.
