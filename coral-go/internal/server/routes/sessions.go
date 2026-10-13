@@ -2925,6 +2925,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		ProtocolPath:    h.protocolPath(),
 		Flags:           allFlags,
 		WorkingDir:      workdir,
+		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
 		BoardName:       storedBoard,
 		Role:            role,
 		Prompt:          storedPrompt,
@@ -3124,6 +3125,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		ProtocolPath:    h.protocolPath(),
 		ResumeSessionID: body.SessionID,
 		WorkingDir:      pane.CurrentPath,
+		CLIPath:         agent.ResolveCLIPath(userSettings, agentType), // Settings > CLI Paths (#3205)
 		BoardName:       storedBoard,
 		Role:            role,
 		Prompt:          storedPrompt,

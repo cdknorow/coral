@@ -2317,6 +2317,7 @@ func setupSessionsTestServerWithConfig(t *testing.T, cfg *config.Config) (*httpt
 	r.Get("/api/sessions/live/{name}/resolve-path", handler.ResolvePath)
 	r.Post("/api/sessions/live/{name}/open-in-editor", handler.OpenInEditor)
 	r.Post("/api/sessions/live/{name}/restart", handler.Restart)
+	r.Post("/api/sessions/live/{name}/resume", handler.Resume)
 	r.Get("/api/sessions/live/{name}/file-content", handler.GetFileContent)
 	r.Get("/api/sessions/live/{name}/file-original", handler.GetFileOriginal)
 	r.Get("/api/system/editors", handler.ListEditors)

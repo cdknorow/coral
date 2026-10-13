@@ -82,12 +82,23 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	var launchCmd string
 	if !isTerminal {
 		protocolPath := findProtocolMD()
+		// Settings > CLI Paths applies to job and scheduled runs like a dashboard
+		// launch: the macOS app started from Finder has no Homebrew PATH (#3205).
+		var settings map[string]string
+		if l.sessDB != nil {
+			if st, err := l.sessDB.GetSettings(ctx); err == nil {
+				settings = st
+			} else {
+				slog.Warn("reading settings for the agent CLI path failed", "error", err)
+			}
+		}
 		launchCmd = ag.BuildLaunchCommand(agent.LaunchParams{
 			SessionID:       sessionID,
 			ProtocolPath:    protocolPath,
 			ResumeSessionID: resumeSessionID,
 			Flags:           flags,
 			WorkingDir:      workingDir,
+			CLIPath:         agent.ResolveCLIPath(settings, agentType),
 		})
 		// Ensure coral-hook-* binaries are reachable from app bundles
 		launchCmd = agent.WrapWithBundlePath(launchCmd)
