@@ -8,7 +8,7 @@ import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
-import { serverBadgeHtml, serverStripHtml, localFirst, isStaleSession, staleReason, showServerLabels, serverLabel } from './server_status.js';
+import { localFirst, isStaleSession, staleReason, showServerLabels, serverLabel, serversShown, serverSwitcherHtml, serverGroupHeaderHtml, statusMeta } from './server_status.js';
 import { syncMobileAgentList } from './mobile.js';
 import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './team_availability.js';
 
@@ -1586,6 +1586,58 @@ export function toggleAgentArchive(name, agentType, sessionId, action) {
     return doIt();
 }
 
+// ── Servers UI in the agent list (#3085) ─────────────────────────────────
+// Which disclosures are open survives the frequent list re-renders.
+let _switcherOpen = false;
+const _openServerDetails = new Set();
+
+function _isServerCollapsed(id) {
+    try { return localStorage.getItem(`coral-server-collapsed:${id}`) === 'true'; } catch { return false; }
+}
+
+/** Render the search-row server button (and its phone copy). */
+export function renderServerSwitcher() {
+    const html = serverSwitcherHtml(_switcherOpen);
+    for (const el of document.querySelectorAll('[data-server-switcher-host]')) {
+        if (el.dataset.html === html) continue; // unchanged: keep focus and scroll
+        el.dataset.html = html;
+        el.innerHTML = html;
+        el.hidden = !html;
+    }
+}
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest && e.target.closest('[data-server-toggle]');
+        if (!t) return;
+        e.preventDefault();
+        const id = t.dataset.serverToggle;
+        try { localStorage.setItem(`coral-server-collapsed:${id}`, _isServerCollapsed(id) ? 'false' : 'true'); } catch { /* per-viewer only */ }
+        _openServerDetails.delete(id);
+        renderLiveSessions(state.liveSessions);
+        const again = document.querySelector(`#live-sessions-list .server-group-toggle[data-server-toggle="${CSS.escape(id)}"]`);
+        if (again) again.focus();
+    });
+    // <details> toggle does not bubble: listen in the capture phase.
+    document.addEventListener('toggle', (e) => {
+        const d = e.target;
+        if (!(d instanceof HTMLElement)) return;
+        if (d.matches('[data-server-switcher]')) _switcherOpen = d.open;
+        else if (d.matches('[data-server-details]')) {
+            if (d.open) _openServerDetails.add(d.dataset.serverDetails); else _openServerDetails.delete(d.dataset.serverDetails);
+        }
+    }, true);
+    // Escape closes an open server disclosure and returns focus to its button.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        const d = e.target.closest && e.target.closest('details[data-server-switcher][open], details[data-server-details][open]');
+        if (!d) return;
+        d.open = false;
+        const sum = d.querySelector('summary');
+        if (sum) sum.focus();
+    });
+}
+
 // ── Archived section (#3030) ─────────────────────────────────────────────
 // One global collapsed section at the bottom of the list. The grouping is all
 // in here so it can become per-team later.
@@ -1885,7 +1937,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
                 <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>
                 <span class="session-name-spacer"></span>
-                ${stale ? serverBadgeHtml(s.server, 'server-badge-inline') : waitingBadge + ctxPill}
+                ${stale ? '' : waitingBadge + ctxPill}
                 ${goalBtn}
                 ${stale ? '' : kebabMenu}
             </div>
@@ -1942,9 +1994,72 @@ export function isSessionSummaryShown() {
 export function applySessionSummaryPref() {
     const shown = isSessionSummaryShown();
     document.querySelector('.sidebar')?.classList.toggle('summary-hidden', !shown);
-    document.getElementById('sidebar-summary-btn')?.classList.toggle('active', shown);
     const check = document.getElementById('settings-show-summary');
     if (check) check.checked = shown;
+    syncDisplayMenu();
+}
+
+// ── Server info in the agent list (#3085) ────────────────────────────────
+
+/** 'Show server' (setting show_session_server): unset = on with 2+ servers, off with one. */
+export function isServerShownOnRows() {
+    const v = String(state.settings?.show_session_server ?? '').toLowerCase();
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+    return serversShown().length >= 2;
+}
+
+/** 'Group by server' (per viewer, off unless chosen); only with 2+ servers. */
+export function isGroupedByServer() {
+    if (serversShown().length < 2) return false;
+    try { return localStorage.getItem('coral-group-by-server') === 'true'; } catch { return false; }
+}
+
+/** Sync the ≡ display menu's checkboxes and which options it offers. */
+export function syncDisplayMenu() {
+    const n = serversShown().length;
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.checked = v; };
+    const show = (id, v) => { const el = document.getElementById(id); if (el) el.hidden = !v; };
+    set('display-show-summary', isSessionSummaryShown());
+    show('display-show-server-row', n >= 1);
+    set('display-show-server', isServerShownOnRows());
+    show('display-group-by-server-row', n >= 2);
+    set('display-group-by-server', isGroupedByServer());
+    document.getElementById('sidebar-summary-btn')?.classList.toggle('active', isSessionSummaryShown() || (n >= 1 && isServerShownOnRows()));
+}
+
+export async function toggleShowServer() {
+    const previous = state.settings?.show_session_server;
+    const next = !isServerShownOnRows();
+    state.settings = { ...state.settings, show_session_server: next ? 'True' : 'False' };
+    renderLiveSessions(state.liveSessions);
+    try {
+        const resp = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ show_session_server: next }),
+        });
+        if (!resp.ok) throw new Error(`settings ${resp.status}`);
+    } catch (e) {
+        console.error('Failed to save server display setting:', e);
+        state.settings = { ...state.settings, show_session_server: previous };
+        renderLiveSessions(state.liveSessions);
+    }
+}
+
+export function toggleGroupByServer() {
+    try { localStorage.setItem('coral-group-by-server', isGroupedByServer() ? 'false' : 'true'); } catch { /* per-viewer only */ }
+    renderLiveSessions(state.liveSessions);
+}
+
+/** The short server name on a team/folder header, when 'Show server' is on and not grouped. */
+function _rowServerChip(key) {
+    if (!isServerShownOnRows() || isGroupedByServer() || !serversShown().length) return '';
+    const id = splitKey(key).server;
+    const e = serversShown().find(x => x.id === id) || { id, label: serverLabel(id), status: 'unknown' };
+    const name = serverLabel(id);
+    const st = statusMeta(e.status);
+    return ` <span class="row-server-chip server-${st.cls}" title="${escapeAttr(`${e.label || e.id}: ${st.label}`)}"><span class="server-dot" aria-hidden="true"></span>${escapeHtml(name)}<span class="sr-only"> (${escapeHtml(st.label)})</span></span>`;
 }
 
 export async function toggleSessionSummary() {
@@ -2180,7 +2295,8 @@ export function renderLiveSessions(sessions) {
     updateSectionVisibility('live-sessions', unfilteredCount);
 
     if (!sessions.length && !archived.length) {
-        list.innerHTML = serverStripHtml() + `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
+        renderServerSwitcher();
+        list.innerHTML = `<li class="empty-state">${unfilteredCount ? 'No matching agents' : 'No live sessions'}</li>`;
         return;
     }
 
@@ -2201,7 +2317,11 @@ export function renderLiveSessions(sessions) {
         return `hsl(${hue}, 60%, 55%)`;
     }
 
-    let html = serverStripHtml();   // hub only; '' unless remotes are registered
+    // The servers UI (#3085): a compact button in the search row; with two or
+    // more servers the groups below are wrapped in collapsible server headers.
+    renderServerSwitcher();
+    const renderGroups = (sessions) => {
+    let html = '';
 
     if (groupByTeam) {
     // ── Team-first mode: teams at top level, standalone by folder below ──
@@ -2320,7 +2440,7 @@ export function renderLiveSessions(sessions) {
         const sleepingClass = boardIsSleeping ? ' team-sleeping' : '';
         html += `<li class="session-board-card session-team-group session-board-card-toplevel${sleepingClass}" style="--team-accent: ${accentColor}">
             <div class="session-group-header board-card-header" data-group-name="${escapeAttr(boardName)}" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
-                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${_rowServerChip(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
             </div>
             <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
 
@@ -2421,7 +2541,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${_rowServerChip(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (!collapsed) {
             html += _renderAgentListWithSubgroups(sorted, groupWorkDir, false, groupName);
@@ -2490,7 +2610,7 @@ export function renderLiveSessions(sessions) {
         const groupDirLine = groupWorkDir ? `<div class="board-card-dir" title="${escapeAttr(groupWorkDir)}"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3H3a1 1 0 0 0-1 1z"/></svg> ${escapeHtml(_shortPath(groupWorkDir, 3))}</div>` : '';
         const copyBtn = `<button class="folder-copy-btn" onclick="event.stopPropagation(); copyFolderPath('${jsStr(groupWorkDir)}')" title="Copy path"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M5.5 10.5h-1a1.5 1.5 0 0 1-1.5-1.5v-5a1.5 1.5 0 0 1 1.5-1.5h5a1.5 1.5 0 0 1 1.5 1.5v1"/></svg></button>`;
         html += `<li class="session-group-header" data-group-name="${escapeAttr(groupName)}" onclick="toggleGroupCollapse('${jsStr(groupName)}')">
-            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${serverBadgeHtml(splitKey(groupName).server)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
+            <div class="group-header-text"><div class="group-name-line">${escapeHtml(keyLabel(groupName))}${_rowServerChip(groupName)}${countBadge}</div></div>${tagDots}<span class="session-name-spacer"></span>${copyBtn}${groupKebab}</li>`;
 
         if (collapsed) {
             // Skip rendering items when collapsed
@@ -2576,7 +2696,7 @@ export function renderLiveSessions(sessions) {
                 const teamSubline = `<div class="board-card-subline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><circle cx="17" cy="7" r="3"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/><path d="M17 11a4 4 0 0 1 4 4v2"/></svg> ${boardSessions.length} agents</div>`;
                 html += `<li class="session-board-card session-team-group" style="--team-accent: ${accentColor}">
                     <div class="session-group-header board-card-header" onclick="toggleGroupCollapse('${jsStr(boardName)}')">
-                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${serverBadgeHtml(splitKey(boardName).server)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
+                        <div class="group-header-text"><div class="group-name-line"><svg class="team-group-icon" aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg>${escapeHtml(keyLabel(boardName))}${_rowServerChip(boardName)}${boardSleepIcon} <span class="session-group-count">${boardSessions.length}</span></div></div><span class="session-name-spacer"></span>${boardLink}<button type="button" class="folder-copy-btn team-open-btn${state.selectedTeam === boardName ? ' is-selected' : ''}" onclick="event.stopPropagation(); enterTeamContext('${jsStr(boardName)}')" title="Open team view" aria-label="Open team view for ${escapeAttr(boardName)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6M21 21v-2a6 6 0 0 0-4-5.65"/></svg></button>${bKebab}
                     </div>
                     <ul class="board-card-agents${boardCollapsed ? ' board-card-collapsed' : ''}">`;
                 const orderedBoardNested = _sortByOrder(boardSessions);
@@ -2597,6 +2717,21 @@ export function renderLiveSessions(sessions) {
     }
 
     } // end if/else groupByTeam
+    return html;
+    };
+
+    let html = '';
+    const shownServers = serversShown();
+    if (isGroupedByServer()) {
+        for (const e of shownServers) {
+            const own = sessions.filter(x => sessionServer(x) === e.id);
+            const collapsed = _isServerCollapsed(e.id);
+            html += serverGroupHeaderHtml(e, own.length, collapsed, _openServerDetails.has(e.id));
+            if (!collapsed) html += renderGroups(own);
+        }
+    } else {
+        html += renderGroups(sessions);
+    }
 
     html += _renderArchivedSection(archived);
     list.innerHTML = html;

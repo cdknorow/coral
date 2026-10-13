@@ -137,9 +137,12 @@ export function syncMobileAgentList() {
         header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:12px 16px;';
         header.innerHTML = `
             <h2 class="mobile-list-title">Live Sessions</h2>
+            <div class="server-switcher-host" data-server-switcher-host hidden></div>
             <button class="btn btn-small btn-primary" onclick="showLaunchModal()">+ New</button>
         `;
         agentList.appendChild(header);
+        // The servers button (#3085) lives in the sidebar's search row on wider screens.
+        if (window.renderServerSwitcher) window.renderServerSwitcher();
 
         const clone = sidebarList.cloneNode(true);
         clone.id = 'mobile-session-list';

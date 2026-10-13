@@ -7,7 +7,7 @@
 /** The keys the hub stores per user (keep in step with internal/usersettings allowedSettings). */
 export const HUB_SETTING_KEYS = new Set([
     'theme', 'custom_theme', 'default_agent_type', 'default_permission_mode', 'default_renderer', 'git_diff_mode',
-    'show_session_summary', 'fit_pane_width', 'refresh_files_on_switch', 'notify_needs_input', 'file_search_limit',
+    'show_session_summary', 'show_session_server', 'fit_pane_width', 'refresh_files_on_switch', 'notify_needs_input', 'file_search_limit',
     'session_order', 'group_order', 'saved_personas', 'saved_team_templates', 'macros',
     'default_prompt_worker', 'default_prompt_orchestrator',
 ]);

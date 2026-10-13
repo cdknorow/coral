@@ -176,11 +176,14 @@ const contrast = (a, b) => {
         await open('#servers');
         await waitFor(`document.activeElement && document.activeElement.id === 'servers-tab-title'`, '#servers focuses the heading', 6000);
         await ev(`window.switchNavTab('agents'); window.__m.add('chip-agent', 'C', 3, { sleeping: false, server: 'm3' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
-        const chip = await ev(`(() => { const b = document.querySelector('#live-sessions-list button.server-strip-btn[data-server-open="m3"]'); return b ? { tag: b.tagName, focusable: b.tabIndex >= 0, name: b.textContent.trim() || b.getAttribute('aria-label') } : null; })()`);
-        assert.ok(chip && chip.tag === 'BUTTON' && chip.focusable, `the server chip is a keyboard-reachable button (${JSON.stringify(chip)})`);
-        await ev(`document.querySelector('#live-sessions-list button.server-strip-btn[data-server-open="m3"]').click(); true`);
-        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m3'`, 'the chip opens the tab at m3', 6000);
-        console.log('   ✓ #servers/m2 → row focused + highlighted; #servers → heading; chip button → row m3');
+        // #3085: the search-row server button's panel lists every server as a button that opens its row.
+        await ev(`document.querySelector('[data-server-switcher-host] details[data-server-switcher]').open = true; true`);
+        const item = await ev(`(() => { const b = document.querySelector('[data-server-switcher-host] button.server-switcher-item[data-server-open="m3"]'); return b ? { tag: b.tagName, focusable: b.tabIndex >= 0, aria: b.getAttribute('aria-label') } : null; })()`);
+        assert.ok(item && item.tag === 'BUTTON' && item.focusable, `the server list item is a keyboard-reachable button (${JSON.stringify(item)})`);
+        assert.match(item.aria, /^Box Three: .+ agents?\. Open in Servers$/, 'its accessible name says what it opens');
+        await ev(`document.querySelector('[data-server-switcher-host] button.server-switcher-item[data-server-open="m3"]').click(); true`);
+        await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m3'`, 'the server button item opens the tab at m3', 6000);
+        console.log('   ✓ #servers/m2 → row focused + highlighted; #servers → heading; server button item → row m3');
 
         console.log('5. Phone 375 px: no overflow, actions stacked under the details');
         await Emulation.setDeviceMetricsOverride({ width: 375, height: 812, deviceScaleFactor: 2, mobile: true });

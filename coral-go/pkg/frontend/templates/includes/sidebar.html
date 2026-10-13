@@ -22,9 +22,19 @@
                     <svg class="sidebar-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
                     <input type="search" id="agent-search-input" class="sidebar-search-input" placeholder="Search agents..." autocomplete="off" aria-label="Search agents" oninput="filterLiveAgents(this.value)" onkeydown="agentSearchKey(event)">
                 </div>
-                <button class="sidebar-collapse-btn" id="sidebar-summary-btn" type="button" onclick="toggleSessionSummary()" title="Show or hide agent summaries" aria-label="Toggle agent summaries">
-                    <span class="material-icons" style="font-size:18px">notes</span>
-                </button>
+                <!-- Servers (#3085): '● name ▾' or '● N servers ▾', rendered by render.js -->
+                <div class="server-switcher-host" id="server-switcher" data-server-switcher-host hidden></div>
+                <!-- List display options (#3085): summaries, server name, grouping by server -->
+                <details class="list-display-menu" id="list-display-menu" data-list-display-menu>
+                    <summary class="sidebar-collapse-btn" id="sidebar-summary-btn" title="Display options" aria-label="Display options">
+                        <span class="material-icons" style="font-size:18px" aria-hidden="true">notes</span>
+                    </summary>
+                    <div class="list-display-panel" role="group" aria-label="Display options">
+                        <label class="list-display-option"><input type="checkbox" id="display-show-summary" onchange="toggleSessionSummary()"> Show summaries</label>
+                        <label class="list-display-option" id="display-show-server-row" hidden><input type="checkbox" id="display-show-server" onchange="toggleShowServer()"> Show server</label>
+                        <label class="list-display-option" id="display-group-by-server-row" hidden><input type="checkbox" id="display-group-by-server" onchange="toggleGroupByServer()"> Group by server</label>
+                    </div>
+                </details>
             </div>
             <section class="sidebar-section" data-section="live-sessions">
                 <div class="sidebar-section-body">

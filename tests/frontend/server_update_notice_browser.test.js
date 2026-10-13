@@ -44,45 +44,59 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         T.render.renderLiveSessions(T.state.liveSessions);
         return true;
     })()`);
-    // What the strip shows for each server row.
-    const strip = (listSel = '#live-sessions-list') => ev(`(() => {
-        const out = {};
-        for (const li of document.querySelectorAll('${listSel} .server-strip-item')) {
-            const badges = [...li.querySelectorAll('a.server-update-badge')];
-            out[li.dataset.server] = {
-                title: li.getAttribute('title'),
-                badges: badges.map(a => ({ cls: a.className, text: a.textContent, title: a.getAttribute('title'), aria: a.getAttribute('aria-label'),
-                    href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
-                links: [...li.querySelectorAll('a[href]')].map(a => a.getAttribute('href')),
-                foreign: li.querySelectorAll('img, script, iframe').length,
+    // Where a notice shows in the agent list (#3085): the search-row server button's marker, and with
+    // Group by server on, each server header's marker and its ⋮ details panel (text + the constant link).
+    const notices = (scope = '#live-sessions-list, .sidebar-header') => ev(`(() => {
+        const sw = document.querySelector('[data-server-switcher-host] details[data-server-switcher]');
+        const out = { button: sw ? { marker: sw.querySelector('summary .server-update-marker')?.className || null, markerText: sw.querySelector('summary .server-update-marker')?.textContent || null, aria: sw.querySelector('summary').getAttribute('aria-label') } : null, groups: {} };
+        for (const h of document.querySelectorAll('li.server-group-header[data-server-group]')) {
+            const panel = h.querySelector('details[data-server-details] .server-switcher-panel');
+            const upd = panel && panel.querySelector('.server-details-update');
+            const badge = upd && upd.querySelector('a.server-update-badge');
+            out.groups[h.dataset.serverGroup] = {
+                marker: h.querySelector('.server-group-toggle .server-update-marker')?.className || null,
+                markerText: h.querySelector('.server-group-toggle .server-update-marker')?.textContent || null,
+                updText: upd ? upd.childNodes[0].textContent.trim() : null,
+                badge: badge ? { cls: badge.className, text: badge.textContent, title: badge.getAttribute('title'), aria: badge.getAttribute('aria-label'), href: badge.getAttribute('href'), target: badge.getAttribute('target'), rel: badge.getAttribute('rel') } : null,
+                links: panel ? [...panel.querySelectorAll('a[href]')].map(a => a.getAttribute('href')) : [],
+                hover: h.querySelector('summary.server-group-more-btn')?.getAttribute('title') || '',
+                foreign: h.querySelectorAll('img, script, iframe').length,
             };
         }
         return out;
     })()`);
+    const grouped = on => ev(`(() => { localStorage.setItem('coral-group-by-server', ${on ? "'true'" : "'false'"}); T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
 
-    const checkStrip = async (where, listSel) => {
-        const s = await strip(listSel);
-        for (const sv of SERVERS) assert.ok(s[sv.id], `${where}: ${sv.id} has a strip row`);
+    const checkNotices = async where => {
+        let n = await notices();
+        assert.ok(n.button, `${where}: the server button is shown`);
+        assert.equal(n.button.marker, 'server-update-marker server-update-required', `${where}: the button carries the most urgent level`);
+        assert.equal(n.button.markerText, 'Update required');
+        assert.match(n.button.aria, /Update required$/, `${where}: the button's accessible name says so`);
+        await grouped(true);
+        n = await notices();
+        for (const sv of SERVERS) assert.ok(n.groups[sv.id], `${where}: ${sv.id} has a server header`);
         for (const [id, want] of Object.entries(EXPECT)) {
-            const row = s[id];
-            assert.equal(row.badges.length, 1, `${where}: ${id} has one update badge`);
-            const b = row.badges[0];
-            assert.equal(b.cls, `server-update-badge server-update-${want.level}`, `${where}: ${id} badge class`);
-            assert.equal(b.text, want.label, `${where}: ${id} badge text`);
-            assert.equal(b.title, want.text, `${where}: ${id} badge title is the exact notice`);
-            assert.equal(b.aria, want.text, `${where}: ${id} badge aria-label`);
-            assert.equal(b.href, RELEASES, `${where}: ${id} links to the releases page`);
-            assert.equal(b.target, '_blank'); assert.equal(b.rel, 'noopener noreferrer');
-            assert.ok(row.title.split('\n').includes(want.text), `${where}: ${id} tooltip has the notice line`);
-            assert.deepEqual(row.links, [RELEASES], `${where}: ${id} has exactly one link, the constant one`);
+            const g = n.groups[id];
+            assert.equal(g.marker, `server-update-marker server-update-${want.level}`, `${where}: ${id} header marker`);
+            assert.equal(g.markerText, want.label, `${where}: ${id} header marker text`);
+            assert.equal(g.updText, want.text, `${where}: ${id} details show the exact notice`);
+            assert.ok(g.badge, `${where}: ${id} details carry the release link`);
+            assert.equal(g.badge.cls, `server-update-badge server-update-${want.level}`);
+            assert.equal(g.badge.title, want.text); assert.equal(g.badge.aria, want.text);
+            assert.equal(g.badge.href, RELEASES, `${where}: ${id} links to the releases page`);
+            assert.equal(g.badge.target, '_blank'); assert.equal(g.badge.rel, 'noopener noreferrer');
+            assert.deepEqual(g.links, [RELEASES], `${where}: ${id} panel has exactly one link, the constant one`);
+            assert.ok(g.hover.split('\n').includes(want.text), `${where}: ${id} ⋮ tooltip has the notice line`);
         }
         for (const id of NONE) {
-            assert.equal(s[id].badges.length, 0, `${where}: no badge for ${id}`);
-            assert.ok(!/Update (available|required)/.test(s[id].title), `${where}: no notice in ${id}'s tooltip`);
+            assert.equal(n.groups[id].marker, null, `${where}: no marker for ${id}`);
+            assert.equal(n.groups[id].updText, null, `${where}: no notice in ${id}'s details`);
         }
-        assert.ok(Object.values(s).every(r => r.foreign === 0), `${where}: server-sent text creates no elements`);
-        assert.equal(s.local && s.local.badges.length, 0, `${where}: the local (hub) row never has a badge`);
+        assert.ok(!n.groups.local || n.groups.local.marker === null, `${where}: the local (hub) header never has a marker`);
+        assert.ok(Object.values(n.groups).every(g => g.foreign === 0), `${where}: server-sent text creates no elements`);
         assert.equal(await ev('window.__pwned'), undefined, `${where}: hostile version strings did not run`);
+        await grouped(false);
     };
 
     try {
@@ -93,14 +107,10 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         await install();
         await ev(`localStorage.clear(); true`);
 
-        console.log('1. Server strip and tooltip');
+        console.log('1. Agent list: server button marker, server headers and their details');
         await setup();
-        await checkStrip('desktop', '#live-sessions-list');
-        // Server badges on agent rows use the same hover text.
-        await ev(`(() => { window.__m.add('remote-agent', 'R', 3, { sleeping: false, server: 'srv-req' }); T.render.renderLiveSessions(T.state.liveSessions); return true; })()`);
-        const badgeTitle = await ev(`document.querySelector('#live-sessions-list .server-badge[data-server="srv-req"]')?.getAttribute('title') || ''`);
-        assert.ok(badgeTitle.split('\n').includes(EXPECT['srv-req'].text), `a remote agent's server badge tooltip carries the notice (${JSON.stringify(badgeTitle)})`);
-        console.log('   ✓ badges only for available/required, exact texts, constant link, tooltips, hostile text inert');
+        await checkNotices('desktop');
+        console.log('   ✓ button marker (required), header markers and details only for available/required, exact texts, constant link, tooltips, hostile text inert');
 
         console.log('2. Cloud Hub server list (Servers tab)');
         const dialog = await ev(`(async () => {
@@ -139,19 +149,19 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         assert.equal(await ev('window.__pwned'), undefined, 'dialog: hostile strings did not run');
         console.log('   ✓ server list notes and link for available/required only, nothing disabled');
 
-        console.log('3. Phone width: the agent list clone shows the same badges');
+        console.log('3. Phone width: the phone list header has the server button with the marker');
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await install();
         await setup();
         await ev(`(async () => { const mob = await import((window.__coralStatic||'/static/')+'mobile.js'); mob.syncMobileAgentList(); return true; })()`);
-        await waitFor(`!!document.querySelector('#mobile-session-list .server-strip-item')`, 'mobile strip', 3000);
-        await checkStrip('phone', '#mobile-session-list');
-        const fits = await ev(`[...document.querySelectorAll('#mobile-session-list a.server-update-badge')].every(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth + 1; })`);
-        assert.ok(fits, 'phone: badges are visible and inside the viewport');
+        await waitFor(`!!document.querySelector('#mobile-agent-list [data-server-switcher-host] details[data-server-switcher]')`, 'phone server button', 3000);
+        const ph = await ev(`(() => { const s = document.querySelector('#mobile-agent-list [data-server-switcher-host] summary'); const m = s.querySelector('.server-update-marker'); const r = s.getBoundingClientRect(); return { marker: m && m.textContent, inside: r.width > 0 && r.right <= innerWidth + 1 }; })()`);
+        assert.equal(ph.marker, 'Update required', 'phone: the server button carries the marker');
+        assert.ok(ph.inside, 'phone: the server button is inside the viewport');
         await Emulation.clearDeviceMetricsOverride();
-        console.log('   ✓ phone list shows the same badges, inside the viewport');
+        console.log('   ✓ phone server button with the marker, inside the viewport');
 
         console.log('\nAll server update notice checks passed');
     } finally {

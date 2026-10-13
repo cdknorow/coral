@@ -48,7 +48,7 @@ export function serverEntry(id) {
 
 export function serverLabel(id) {
     const e = serverEntry(id);
-    return e.label || e.id;
+    return shortServerName(e) || e.id;
 }
 
 export function serverStatus(id) {
@@ -129,7 +129,130 @@ export function serverBadgeHtml(id, extraClass) {
         + `<span class="sr-only"> (${escHtml(m.label)})</span></span>`;
 }
 
-/** Strip listing every server (local first) with its status. '' without remotes. */
+// ── Agent list servers UI (#3085): short names, the search-row server button
+// and, with two or more servers, collapsible server group headers. Details
+// (status, version, last contact, agents, update) are in a <details>
+// disclosure, so touch and keyboard users reach them, not only a hover title.
+
+/** The servers the agent list is about: the remotes, plus this server unless on the Cloud Hub. */
+export function serversShown() {
+    if (!showServerLabels()) return [];
+    return [...(state.cloud === true ? [] : [serverEntry(LOCAL_SERVER)]), ...remoteServers()];
+}
+
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+const HOSTNAME = /^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/;
+
+function baseShortName(e) {
+    const raw = String((e && (e.label || e.id)) || '').trim();
+    if (!raw) return '';
+    if (IPV4.test(raw) || raw.includes(':')) return raw;
+    if (HOSTNAME.test(raw)) return raw.split('.')[0];
+    return raw;
+}
+
+/** A short display name: the label (or id); a hostname-like label loses its domain
+ *  (.local, .lan, .home or any other), an IP address or a renamed label stays.
+ *  When two shown servers would get the same short name ('box.lan', 'box.home'),
+ *  both keep their full labels so they can be told apart. */
+export function shortServerName(e) {
+    const short = baseShortName(e);
+    if (!short || !e) return short;
+    const clash = serversShown().some(x => x.id !== e.id && baseShortName(x) === short);
+    return clash ? String(e.label || e.id) : short;
+}
+
+function serverAgentCount(e) {
+    const local = normServer(e.id) === LOCAL_SERVER;
+    const own = (state.liveSessions || []).filter(x => x && !x.archived && normServer(x.server) === normServer(e.id)).length;
+    return local || typeof e.agents !== 'number' ? own : e.agents;
+}
+
+/** The details panel shared by the server button and the group headers. */
+export function serverDetailsHtml(e) {
+    const m = statusMeta(e.status);
+    const local = normServer(e.id) === LOCAL_SERVER;
+    const count = serverAgentCount(e);
+    const rows = [
+        ['Status', m.label],
+        ['Name', e.label || e.id],
+        local ? ['Server', 'This server (the hub)'] : (e.url ? ['Address', e.url] : null),
+        ['Agents', String(count)],
+        !local && e.version ? ['Version', e.version] : null,
+        !local ? [e.status === 'online' ? 'Last contact' : 'Last seen', formatLastSeen(e.last_seen)] : null,
+        !local && e.status !== 'online' && e.last_error ? ['Error', e.last_error] : null,
+    ].filter(Boolean);
+    const notice = local ? null : updateNotice(e);
+    return `<dl class="server-details-list">${rows.map(([k, v]) => `<dt>${escHtml(k)}</dt><dd>${escHtml(v)}</dd>`).join('')}</dl>`
+        + (notice ? `<p class="server-details-update">${escHtml(notice.text)} ${updateBadgeHtml(e)}</p>` : '')
+        + (!local && e.status !== 'online' ? `<p class="server-details-hint">${escHtml(m.hint)}</p>` : '');
+}
+
+/** Aggregate status for several servers: online only when every one is. */
+function aggregateStatus(list) {
+    if (list.every(e => e.status === 'online')) return 'online';
+    return list.some(e => e.status === 'unauthorized' || e.status === 'key_unreadable') ? 'unauthorized' : 'unreachable';
+}
+
+/** The search-row server button ('● MacBook-Pro ▾' or '● 3 servers ▾'), '' without servers.
+ *  `open` keeps the disclosure open across list re-renders. */
+export function serverSwitcherHtml(open = false) {
+    const list = serversShown();
+    if (!list.length) return '';
+    const single = list.length === 1;
+    const e = single ? list[0] : null;
+    const status = single ? e.status : aggregateStatus(list);
+    const m = statusMeta(status);
+    const label = single ? shortServerName(e) : `${list.length} servers`;
+    const down = list.filter(x => x.status !== 'online').length;
+    const aria = single ? `Server ${e.label || e.id}: ${m.label}` : `${list.length} servers${down ? `, ${down} not online` : ''}`;
+    const body = single
+        ? serverDetailsHtml(e) + `<button type="button" class="btn btn-small server-open-btn" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
+        : `<ul class="server-switcher-list">${list.map(x => {
+            const xm = statusMeta(x.status);
+            // Which server needs the update (#3059): a marker and the accessible name say so.
+            const xn = normServer(x.id) === LOCAL_SERVER ? null : updateNotice(x);
+            const upd = xn ? (xn.level === 'required' ? 'Update required' : 'Update available') : '';
+            return `<li><button type="button" class="server-switcher-item server-${xm.cls}" data-server-open="${escHtml(x.id)}" aria-label="${escHtml(`${x.label || x.id}: ${xm.label}, ${serverAgentCount(x)} agents. Open in Servers${upd ? `. ${upd}` : ''}`)}">`
+                + `<span class="server-dot" aria-hidden="true"></span><span class="server-switcher-name">${escHtml(shortServerName(x))}</span>`
+                + (xn ? `<span class="server-update-marker server-update-${xn.level}">${xn.level === 'required' ? 'Update required' : 'Update'}</span>` : '')
+                + `<span class="server-switcher-meta">${escHtml(xm.label)} · ${serverAgentCount(x)}</span></button></li>`;
+        }).join('')}</ul>`
+            + `<button type="button" class="btn btn-small server-open-btn" data-server-open="">Open Servers</button>`;
+    // #3059: an update notice stays visible on the button; the link is in the panel.
+    const notices = list.filter(x => normServer(x.id) !== LOCAL_SERVER).map(updateNotice).filter(Boolean);
+    const level = notices.some(n => n.level === 'required') ? 'required' : (notices.length ? 'available' : '');
+    const marker = level ? `<span class="server-update-marker server-update-${level}">${level === 'required' ? 'Update required' : 'Update'}</span>` : '';
+    return `<details class="server-switcher server-${m.cls}" data-server-switcher${open ? ' open' : ''}>`
+        + `<summary class="server-switcher-btn" aria-label="${escHtml(aria + (level ? `. ${level === 'required' ? 'Update required' : 'Update available'}` : ''))}" title="${escHtml(single ? serverHoverText(e.id) : aria)}">`
+        + `<span class="server-dot" aria-hidden="true"></span><span class="server-switcher-label">${escHtml(label)}</span>`
+        + marker + `<span class="server-switcher-caret" aria-hidden="true">▾</span></summary>`
+        + `<div class="server-switcher-panel">${body}</div></details>`;
+}
+
+/** A collapsible server group header for the agent list (2+ servers). */
+export function serverGroupHeaderHtml(e, count, collapsed, detailsOpen = false) {
+    const m = statusMeta(e.status);
+    const name = shortServerName(e);
+    const off = e.status !== 'online' && normServer(e.id) !== LOCAL_SERVER;
+    return `<li class="server-group-header server-${m.cls}" data-server-group="${escHtml(e.id)}">`
+        + `<button type="button" class="server-group-toggle" data-server-toggle="${escHtml(e.id)}" aria-expanded="${collapsed ? 'false' : 'true'}"`
+        + ` aria-label="${escHtml(`${e.label || e.id}: ${m.label}, ${count} agents. ${collapsed ? 'Expand' : 'Collapse'}`)}">`
+        + `<span class="server-group-chevron" aria-hidden="true">${collapsed ? '▸' : '▾'}</span>`
+        + `<span class="server-dot" aria-hidden="true"></span><span class="server-group-name">${escHtml(name)}</span>`
+        + (off ? `<span class="server-group-state">(${escHtml(m.label.toLowerCase())})</span>` : '')
+        + ((n => n ? `<span class="server-update-marker server-update-${n.level}">${n.level === 'required' ? 'Update required' : 'Update'}</span>` : '')(normServer(e.id) === LOCAL_SERVER ? null : updateNotice(e)))
+        + `<span class="session-group-count">${count}</span></button>`
+        + `<details class="server-group-more" data-server-details="${escHtml(e.id)}"${detailsOpen ? ' open' : ''}>`
+        + `<summary class="server-group-more-btn" aria-label="${escHtml(`Details for ${e.label || e.id}`)}" title="${escHtml(serverHoverText(e.id))}">⋮</summary>`
+        + `<div class="server-switcher-panel">${serverDetailsHtml(e)}`
+        + `<button type="button" class="btn btn-small server-open-btn" data-server-open="${escHtml(e.id)}">Open in Servers</button>`
+        + `<button type="button" class="btn btn-small" data-server-toggle="${escHtml(e.id)}">${collapsed ? 'Expand' : 'Collapse'}</button></div></details>`
+        + `</li>`;
+}
+
+/** Strip listing every server (local first) with its status. '' without remotes.
+ *  (Replaced in the agent list by serverSwitcherHtml + group headers, #3085.) */
 export function serverStripHtml() {
     if (!showServerLabels()) return '';
     const rows = [...(state.cloud === true ? [] : [serverEntry(LOCAL_SERVER)]), ...remoteServers()].map(e => {

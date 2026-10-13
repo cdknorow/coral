@@ -2137,3 +2137,84 @@
     white-space: nowrap;
 }
 .hub-readonly-chip[hidden] { display: none; }
+
+/* ── Servers in the agent list (#3085) ─────────────────────────────── */
+.server-switcher-host { position: relative; flex: 0 0 auto; }
+.server-switcher-host[hidden] { display: none; }
+.server-switcher, .list-display-menu, .server-group-more { position: relative; }
+.server-switcher > summary, .list-display-menu > summary, .server-group-more > summary { list-style: none; cursor: pointer; }
+.server-switcher > summary::-webkit-details-marker, .list-display-menu > summary::-webkit-details-marker, .server-group-more > summary::-webkit-details-marker { display: none; }
+.server-switcher-btn {
+    display: inline-flex; align-items: center; gap: var(--space-xs);
+    max-width: 8em; padding: 4px var(--space-sm);
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    font-size: var(--fs-base); color: var(--text-secondary); white-space: nowrap;
+}
+.server-switcher-label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.server-switcher-caret { opacity: .6; }
+.server-switcher-btn:focus-visible, .server-group-toggle:focus-visible, .server-group-more-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.server-switcher-panel, .list-display-panel {
+    position: absolute; right: 0; top: calc(100% + 4px); z-index: 50;
+    min-width: 16em; max-width: min(22em, calc(100vw - 32px));
+    padding: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius-md);
+    background: var(--bg-secondary); box-shadow: 0 6px 20px rgba(0,0,0,.35);
+    font-size: var(--fs-base); color: var(--text-primary);
+}
+.server-details-list { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px var(--space-md); margin: 0 0 var(--space-md); }
+.server-details-list dt { color: var(--text-secondary); }
+.server-details-list dd { margin: 0; overflow-wrap: anywhere; }
+.server-details-update, .server-details-hint { margin: 0 0 var(--space-md); color: var(--text-secondary); }
+.server-switcher-panel .btn + .btn { margin-left: var(--space-xs); }
+.server-switcher-list { list-style: none; margin: 0 0 var(--space-md); padding: 0; }
+.server-switcher-item {
+    display: flex; width: 100%; align-items: center; gap: var(--space-sm);
+    padding: 6px var(--space-sm); border: 0; border-radius: var(--radius-sm, 4px);
+    background: none; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.server-switcher-item:hover, .server-switcher-item:focus-visible { background: var(--bg-hover); }
+.server-switcher-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.server-switcher-meta { color: var(--text-secondary); white-space: nowrap; }
+.list-display-panel { display: flex; flex-direction: column; gap: var(--space-xs); min-width: 12em; }
+.list-display-option { display: flex; align-items: center; gap: var(--space-sm); cursor: pointer; padding: 4px 0; }
+.list-display-option[hidden] { display: none; }
+/* Group headers (Group by server). */
+.session-list .server-group-header {
+    display: flex; align-items: center; gap: var(--space-xs);
+    margin: var(--space-md) 6px 2px; list-style: none;
+}
+.server-group-toggle {
+    display: inline-flex; align-items: center; gap: var(--space-xs); flex: 1; min-width: 0;
+    padding: 4px 6px; border: 0; border-radius: var(--radius-md);
+    background: none; color: var(--text-primary); font: inherit; font-weight: 600; cursor: pointer; text-align: left;
+}
+.server-group-toggle:hover { background: var(--bg-hover); }
+.server-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.server-group-state { color: var(--warning); font-weight: 400; white-space: nowrap; }
+.server-group-chevron { width: 1em; color: var(--text-secondary); }
+.server-group-more-btn { padding: 2px 8px; border-radius: var(--radius-md); color: var(--text-secondary); }
+/* 'Show server' chip on team/folder headers. */
+.row-server-chip {
+    display: inline-flex; align-items: center; gap: 4px; margin-left: var(--space-xs);
+    max-width: 7.5em; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius-sm, 4px);
+    font-size: var(--fs-sm, 11px); font-weight: 500; color: var(--text-secondary);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+@media (pointer: coarse) {
+    .server-switcher-btn, .server-group-toggle, .server-group-more-btn, .server-switcher-item, .list-display-option {
+        min-height: var(--control-touch-height, 44px);
+    }
+    .server-group-more-btn { min-width: var(--control-touch-height, 44px); display: inline-flex; align-items: center; justify-content: center; }
+}
+/* Keep the search box usable next to the server button (#3085). */
+.sidebar-header .sidebar-search { min-width: 6.5em; }
+/* Status text for screen readers only (the dot carries it visually). */
+.row-server-chip .sr-only, .server-switcher .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* Update notice marker on the server button / group header (#3059 via #3085). */
+.server-update-marker {
+    padding: 0 4px; border: 1px solid currentColor; border-radius: var(--radius-sm, 4px);
+    font-size: var(--fs-sm, 11px); font-weight: 600; color: var(--accent); white-space: nowrap;
+}
+.server-update-marker.server-update-required { color: var(--warning); }
