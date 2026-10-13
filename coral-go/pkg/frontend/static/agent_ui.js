@@ -198,6 +198,7 @@ export async function refreshAgentUI() {
             const item = { throttle: createEventThrottle(), card, frame, status, metric, eventCount: Number(panel.event_count || 0), revision: panel.revision, sid, id: panel.id };
             dismiss.onclick = () => {
                 if (activePanel === panel.id) activePanel = 'home';
+                showActivePanel(); // at once, like a row click: no need to wait for a request in flight
                 refreshAgentUI();
             };
             remove.onclick = async () => {
@@ -210,8 +211,12 @@ export async function refreshAgentUI() {
                         throw new Error(result.error || `Delete failed (${response.status})`);
                     }
                     item.close?.();
+                    // Take the card off the page too: a refresh only removes cards it still finds in mounted,
+                    // so a deleted panel's card used to stay on screen.
+                    item.panel?.detach(); card.remove();
                     mounted.delete(panel.id);
                     activePanel = 'home';
+                    showActivePanel();
                     await refreshAgentUI();
                 } catch (error) {
                     remove.disabled = false;

@@ -121,6 +121,31 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(cli(['publish','--id','demo','--file',file]).revision,3);
   await ev(`import((window.__coralStatic||'/static/')+'agent_ui.js').then(m=>m.refreshAgentUI())`);
   assert.equal(await ev(`document.querySelectorAll('.agent-ui-card').length`),1,'a new revision resurfaces the panel');
+  // Close (X) is instant too, even with a refresh in flight; Delete takes the card off the page (it used to stay).
+  await ev(`(()=>{const c=document.querySelector('.agent-ui-card'); if (c.hidden) document.querySelector('.agent-ui-home-row').click(); return true;})()`);
+  await waitFor(`!!document.querySelector('.agent-ui-card') && !document.querySelector('.agent-ui-card').hidden`, 'the card shown before closing');
+  const closedAtOnce = await ev(`(async()=>{
+    const ui = await import((window.__coralStatic||'/static/')+'agent_ui.js');
+    const real = window.fetch;
+    window.fetch = async (url, opts) => { if (String(url).includes('/api/agent/ui?')) await new Promise(r => setTimeout(r, 400)); /* sleep-ok: simulated network latency, not a wait */ return real(url, opts); };
+    try {
+      const busy = ui.refreshAgentUI();
+      document.querySelector('.agent-ui-card .agent-ui-dismiss').click();
+      const atOnce = document.querySelector('.agent-ui-card').hidden && !document.querySelector('.agent-ui-home').hidden;
+      await busy;
+      return atOnce;
+    } finally { window.fetch = real; }
+  })()`);
+  assert.equal(closedAtOnce, true, 'Close shows the home list at once, even with a refresh in flight');
+  await ev(`(()=>{ document.querySelector('.agent-ui-home-row').click(); return true; })()`);
+  await waitFor(`!!document.querySelector('.agent-ui-card') && !document.querySelector('.agent-ui-card').hidden`, 'the card shown before deleting');
+  await ev(`(()=>{ window.__confirm = window.confirm; window.confirm = () => true; document.querySelector('.agent-ui-card .agent-ui-delete').click(); return true; })()`);
+  await waitFor(`document.querySelectorAll('.agent-ui-card').length === 0 && !document.querySelector('.agent-ui-home-row')`, 'the deleted panel gone from the page');
+  await ev(`(()=>{ window.confirm = window.__confirm; return true; })()`);
+  assert.equal(await ev(`!document.querySelector('.agent-ui-home').hidden`), true, 'back on the home list after Delete');
+  assert.deepEqual(cli(['list']), [], 'Delete removed the panel on the server');
+  assert.equal(cli(['publish','--id','demo','--file',file]).revision >= 1, true, 'republished for the steps below');
+  await ev(`import((window.__coralStatic||'/static/')+'agent_ui.js').then(m=>m.refreshAgentUI())`);
 
   await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession=null;await (await import((window.__coralStatic||'/static/')+'agent_ui.js')).refreshAgentUI()})()`);
   assert.equal(await ev(`document.querySelectorAll('#agentic-panel-agent-ui iframe').length`),0);
