@@ -82,6 +82,10 @@ flag provided but not defined: -version
 
 The version is in the startup log, or in the `version` field of `/api/system/status`.
 
+### Version shows `0.0.0-dev+<commit>`
+
+You built with plain `go build`. Build with `make dev` or `make build` to report the next release base (e.g. `1.4.2-dev+<commit>`). Hubs treat `0.0.0-dev` as a very old version.
+
 ## Agents
 
 ### Agents launch but never post to the message board
