@@ -29,7 +29,6 @@ var (
 
 const defaultMaxAutoAccepts = 10
 
-
 // parseTimestamp parses a timestamp string, trying store.ISOFormat (with microseconds) first,
 // then falling back to time.RFC3339 for backwards compatibility.
 func parseTimestamp(s string) (time.Time, error) {
@@ -83,11 +82,11 @@ type JobScheduler struct {
 	parentCtx      context.Context // set by Run(); used by launchAndWatch for shutdown
 	runningMu      sync.Mutex
 	running        map[int64]context.CancelFunc // run_id -> cancel func for watchdog
-	launchFn        func(ctx context.Context, job store.ScheduledJob, runID int64) error
-	nextFireTimeFn  func(cronExpr, tz string, after time.Time) (time.Time, error)
-	webhookSem      chan struct{} // limits concurrent webhook dispatch goroutines
-	workflowRunner  *WorkflowRunner
-	workflowStore   *store.WorkflowStore
+	launchFn       func(ctx context.Context, job store.ScheduledJob, runID int64) error
+	nextFireTimeFn func(cronExpr, tz string, after time.Time) (time.Time, error)
+	webhookSem     chan struct{} // limits concurrent webhook dispatch goroutines
+	workflowRunner *WorkflowRunner
+	workflowStore  *store.WorkflowStore
 }
 
 // NewJobScheduler creates a new JobScheduler.
@@ -378,7 +377,7 @@ func (s *JobScheduler) triggerWorkflowForJob(runID int64, job store.ScheduledJob
 			switch run.Status {
 			case "completed":
 				s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
-					"status": "completed",
+					"status":      "completed",
 					"finished_at": time.Now().UTC().Format(store.ISOFormat),
 				})
 				return
