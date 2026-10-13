@@ -34,9 +34,9 @@ func dependencyStatus(status string, w TaskWorkflow, condition string, required 
 	}
 	var reasons []string
 	if status != "completed" && status != "skipped" {
-		reasons = append(reasons, fmt.Sprintf("upstream is %s; requires %s", status, condition))
+		reasons = append(reasons, fmt.Sprintf("not finished yet (%s); this task starts when it %s", plainTaskStatus(status), plainCondition(condition)))
 	} else if (condition == "success" && outcome != "success") || (condition == "failure" && outcome != "failed") {
-		reasons = append(reasons, fmt.Sprintf("upstream outcome is %s; requires %s", outcome, condition))
+		reasons = append(reasons, fmt.Sprintf("it %s, but this task needs it to %s", plainOutcome(outcome), plainConditionVerb(condition)))
 	}
 	if len(missing) > 0 {
 		reasons = append(reasons, "missing required artifacts: "+strings.Join(missing, ", "))
@@ -80,4 +80,56 @@ func (s *Store) BlockedTasksForSubscriber(ctx context.Context, project, subscrib
 		result = append(result, DescribeTaskBlockage(t.ID, t.Title, deps))
 	}
 	return result, nil
+}
+
+// plainTaskStatus names a task status the way a person would say it.
+func plainTaskStatus(status string) string {
+	switch status {
+	case "pending":
+		return "not started"
+	case "in_progress":
+		return "in progress"
+	case "review_pending":
+		return "in review"
+	case "blocked":
+		return "itself blocked"
+	case "":
+		return "unknown"
+	}
+	return strings.ReplaceAll(status, "_", " ")
+}
+
+// plainCondition is what a dependency waits for, as a verb: "succeeds", "fails", "finishes".
+func plainCondition(condition string) string {
+	switch condition {
+	case "failure":
+		return "fails"
+	case "termination":
+		return "finishes"
+	}
+	return "succeeds"
+}
+
+// plainConditionVerb is plainCondition's infinitive: "succeed", "fail", "finish".
+func plainConditionVerb(condition string) string {
+	switch condition {
+	case "failure":
+		return "fail"
+	case "termination":
+		return "finish"
+	}
+	return "succeed"
+}
+
+// plainOutcome describes how a finished upstream task ended.
+func plainOutcome(outcome string) string {
+	switch outcome {
+	case "success":
+		return "succeeded"
+	case "failed":
+		return "failed"
+	case "cancelled":
+		return "was cancelled"
+	}
+	return "ended (" + strings.ReplaceAll(outcome, "_", " ") + ")"
 }

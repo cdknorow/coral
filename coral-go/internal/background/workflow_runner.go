@@ -48,12 +48,15 @@ type AgentStepConfig struct {
 
 // StepResult tracks the outcome of a single step execution.
 type StepResult struct {
-	Index       int      `json:"index"`
-	Name        string   `json:"name"`
-	Type        string   `json:"type"`
-	Status      string   `json:"status"` // pending, running, completed, failed, skipped
-	ExitCode    *int     `json:"exit_code,omitempty"`
-	OutputTail  string   `json:"output_tail,omitempty"`
+	Index      int    `json:"index"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Status     string `json:"status"` // pending, running, completed, failed, skipped
+	ExitCode   *int   `json:"exit_code,omitempty"`
+	OutputTail string `json:"output_tail,omitempty"`
+	// ErrorTail is the end of a failed step's stderr, so the run view can show why it failed
+	// without opening stderr.txt.
+	ErrorTail   string   `json:"error_tail,omitempty"`
 	SessionID   string   `json:"session_id,omitempty"`
 	SessionName string   `json:"session_name,omitempty"`
 	Files       []string `json:"files"`
@@ -387,6 +390,9 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 
 	// Capture output tail for the result
 	result.OutputTail = readTail(filepath.Join(stepDir, "stdout.txt"), 100)
+	if exitCode != 0 {
+		result.ErrorTail = readTail(filepath.Join(stepDir, "stderr.txt"), 40)
+	}
 
 	// If output_artifact is set, copy stdout to the specified artifact path
 	if step.OutputArtifact != "" {
@@ -567,6 +573,9 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	result.ExitCode = &exitCode
 	os.WriteFile(filepath.Join(stepDir, "exit_code"), []byte(strconv.Itoa(exitCode)), 0644)
 	result.OutputTail = readTail(filepath.Join(stepDir, "stdout.txt"), 100)
+	if exitCode != 0 {
+		result.ErrorTail = readTail(filepath.Join(stepDir, "stderr.txt"), 40)
+	}
 
 	// If output_artifact is set, copy stdout to the specified artifact path
 	if step.OutputArtifact != "" {

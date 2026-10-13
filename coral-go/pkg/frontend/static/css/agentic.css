@@ -1051,6 +1051,31 @@ body.panel-dragging .agentic-state {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    container-type: inline-size;
+}
+
+/* The task id opens the task: a real button so the rows are reachable by keyboard. */
+.board-task-open {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.board-task-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* A narrow panel (the sidebar) cannot fit every column, and the title used to be pushed
+   off-screen behind a sideways scroll. There each row wraps: status, id, priority and agent
+   on the first line, the full title on its own line below; Type, Cost and Created are hidden. */
+@container (max-width: 640px) {
+    .board-task-list .board-task-item { min-width: 0; flex-wrap: wrap; row-gap: 2px; }
+    .board-task-list .board-task-item .board-task-type,
+    .board-task-list .board-task-item .board-task-cost,
+    .board-task-list .board-task-item .board-task-time { display: none; }
+    .board-task-list .board-task-item .board-task-desc { order: 10; flex: 1 0 100%; min-width: 0; padding-left: 106px; box-sizing: border-box; }
+    .board-task-list .board-task-header .board-task-desc { display: none; }
 }
 
 .board-task-item {
@@ -2776,8 +2801,11 @@ button.team-artifact-name { cursor: pointer; }
 
 
 /* The open-team button sits beside the group kebab (same look as the folder copy button).
-   It appears on hover, and stays visible while that team is selected. */
-.team-open-btn.is-selected { display: inline-flex; align-items: center; color: var(--accent); }
+   It is the way into a team's views, so it is always shown (muted) and reachable by keyboard,
+   not revealed on hover; it turns accent while that team is selected. */
+.team-open-btn { display: inline-flex; align-items: center; }
+.team-open-btn.is-selected { color: var(--accent); }
+.team-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; color: var(--text-primary); }
 .team-artifacts-help .material-icons { font-size: 18px; }
 
 /* A custom view written by an automated caller waits for the user's click (custom_views.js). */

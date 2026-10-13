@@ -229,6 +229,10 @@
     font-size: var(--fs-lg);
     color: var(--mb-text);
     line-height: 1.6;
+    /* A long unbroken token (a hash, a URL, a path) wraps instead of widening the whole feed;
+       fenced code keeps its own horizontal scroll (pre below). */
+    overflow-wrap: anywhere;
+    min-width: 0;
 }
 
 /* Message board delete button */
@@ -340,6 +344,8 @@
     padding: 8px 10px;
     border-radius: 6px;
     overflow-x: auto;
+    overflow-wrap: normal;
+    max-width: 100%;
     margin: 6px 0;
 }
 

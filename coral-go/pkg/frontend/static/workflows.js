@@ -388,6 +388,10 @@ function renderRunDetail(run) {
             <span class="wf-progress-text">${completedCount}/${totalSteps} steps</span>
         </div>` : '';
 
+    // The failing step's last stderr line, quoted after the run's error in the header.
+    const failedStep = steps.find(s => (s.status === 'failed' || s.status === 'killed') && s.error_tail && s.error_tail.trim());
+    const errorExcerpt = failedStep ? failedStep.error_tail.trim().split('\n').pop().trim().slice(0, 200) : '';
+
     // Step timeline
     const stepsHtml = steps.map((s, i) => {
         const icon = statusIconChar(s.status);
@@ -418,11 +422,17 @@ function renderRunDetail(run) {
             const outputId = `wf-step-output-${run.id}-${i}`;
             const autoExpand = isFailed ? ' wf-expanded' : '';
             outputHtml = `
-                <div class="wf-run-step-output-toggle" onclick="document.getElementById('${jsStr(outputId)}').classList.toggle('wf-expanded')">
-                    <span class="material-icons" style="font-size:14px">terminal</span> Output
-                    <span class="material-icons wf-toggle-arrow" style="font-size:14px">expand_more</span>
-                </div>
+                <button type="button" class="wf-run-step-output-toggle" aria-expanded="${isFailed}" aria-controls="${escAttr(outputId)}" onclick="this.setAttribute('aria-expanded', document.getElementById('${jsStr(outputId)}').classList.toggle('wf-expanded'))">
+                    <span class="material-icons" style="font-size:14px" aria-hidden="true">terminal</span> Output
+                    <span class="material-icons wf-toggle-arrow" style="font-size:14px" aria-hidden="true">expand_more</span>
+                </button>
                 <div id="${escAttr(outputId)}" class="wf-run-step-output${autoExpand}">${esc(s.output_tail)}</div>`;
+        }
+        // Why a step failed: the end of its stderr, always shown (stderr.txt is still in the file list).
+        if (isFailed && s.error_tail && s.error_tail.trim()) {
+            outputHtml += `
+                <div class="wf-run-step-error-label"><span class="material-icons" style="font-size:14px" aria-hidden="true">error_outline</span> Error output</div>
+                <div class="wf-run-step-output wf-expanded wf-run-step-error">${esc(s.error_tail.replace(/\s+$/, ''))}</div>`;
         }
 
         // File list for steps with artifacts
@@ -484,7 +494,7 @@ function renderRunDetail(run) {
             ${run.started_at ? `<span><span class="material-icons">schedule</span> ${formatTime(run.started_at)}</span>` : ''}
             ${durationHtml}
             ${run.finished_at ? `<span><span class="material-icons">check_circle</span> ${formatTime(run.finished_at)}</span>` : ''}
-            ${run.error_msg ? `<span style="color:var(--error)"><span class="material-icons">error</span> ${esc(run.error_msg)}</span>` : ''}
+            ${run.error_msg ? `<span class="wf-run-error" style="color:var(--error)"><span class="material-icons">error</span> ${esc(run.error_msg)}${errorExcerpt ? `<span class="wf-run-error-excerpt">: ${esc(errorExcerpt)}</span>` : ''}</span>` : ''}
         </div>
         ${progressBarHtml}
         <div class="wf-run-steps wf-timeline">${stepsHtml}</div>

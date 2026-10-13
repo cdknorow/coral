@@ -57,6 +57,14 @@ function mountGroupChat(team) {
     }
 }
 
+/** Show the newest message: moving the panel resets its scroll, and a chat with nothing new does not re-render. */
+function scrollGroupChatToNewest() {
+    requestAnimationFrame(() => {
+        const msgs = document.getElementById('board-panel-msgs');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    });
+}
+
 /** Put the board chat panel back in the sidebar and restore the selected agent's board. */
 function unmountGroupChat() {
     const host = document.getElementById('team-center-view');
@@ -64,6 +72,9 @@ function unmountGroupChat() {
     host?.querySelector('.team-center-close')?.remove();
     if (panel && host && panel.parentElement === host) document.getElementById('agentic-block-top')?.appendChild(panel);
     _boardTeam = null;
+    // In the center the panel is shown whatever its class, and the sidebar's tab switches never
+    // reach it, so it can come back marked active beside another tab (Tasks): match the sidebar.
+    if (panel) panel.classList.toggle('active', activeTabName() === 'board');
     const board = state.currentSession?.type === 'live' ? sessionTeamKey(state.currentSession) : null;
     if (board && getActiveBoardChat() === board) return; // same board: keep what is already loaded
     if (board) showBoardChatTab(board);
@@ -114,6 +125,7 @@ export async function enterTeamContext(team, opts = {}) {
     showTeamAvailability(team, { workspace: true });
     mountGroupChat(team);
     document.getElementById('team-center-view')?.removeAttribute('hidden');
+    scrollGroupChatToNewest();
     syncFilesSourceTeam();
     window.switchAgenticTab?.(tab, 'top');
     refreshSessionList();

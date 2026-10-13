@@ -77,7 +77,7 @@ func TestCompletionReviewRecovery(t *testing.T) {
 	dependent, err := s.GetTask(ctx, "team", child.ID)
 	require.NoError(t, err)
 	require.Equal(t, "blocked", dependent.Status)
-	require.Contains(t, dependent.BlockedBy[0].BlockedReason, "review_pending")
+	require.Contains(t, dependent.BlockedBy[0].BlockedReason, "not finished yet (in review)", "the reason names the review state in plain words")
 	require.False(t, dependent.BlockedBy[0].Satisfied)
 	_, err = s.ClaimTask(ctx, "team", "worker", child.ID)
 	require.Error(t, err)

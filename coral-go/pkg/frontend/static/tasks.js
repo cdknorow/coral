@@ -524,6 +524,8 @@ window._toggleHideCompleted = _toggleHideCompleted;
 
 const _priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
 const _priorityRank = { critical: 1, high: 2, medium: 3, low: 4 };
+// Priority as the words people choose it by (the create dialog and the CLI), not its sort rank.
+const _priorityLabel = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' };
 
 function _formatCost(usd, precise) {
     if (usd == null) return '$0.00';
@@ -685,7 +687,7 @@ export function renderBoardTaskList() {
             : t.status === 'skipped'
             ? statusWrap('cancelled', 'Cancelled', '<span class="material-icons board-task-status-icon cancelled" aria-hidden="true">cancel</span>', 'Cancelled')
             : t.status === 'blocked'
-            ? statusWrap('blocked', 'Open · Blocked: waiting for prerequisites', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">hourglass_empty</span>', 'Open')
+            ? statusWrap('blocked', 'Blocked: waiting for prerequisites', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">hourglass_empty</span>', 'Blocked')
             : t.status === 'draft'
             ? statusWrap('pending', 'Open · Draft', '<span class="material-icons board-task-status-icon draft" aria-hidden="true">edit_note</span>', 'Open <b>· Draft</b>')
             : statusWrap('pending', 'Open', '<span class="material-icons board-task-status-icon pending" aria-hidden="true">radio_button_unchecked</span>', 'Open');
@@ -730,8 +732,8 @@ export function renderBoardTaskList() {
         return `
         <div class="board-task-item ${statusClass}${isSubagent ? ' board-task-subagent' : ''}"${clickHandler}${isSubagent ? ` data-subagent-id="${escapeAttr(t.subagent_id || '')}"` : ''}>
             ${statusIcon}
-            <span class="board-task-id" title="Task ID">${taskIdLabel}</span>
-            <span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(t.priority || 'none')}">${t.priority ? (_priorityRank[t.priority] || '\u2014') : '\u2014'}</span>
+            <button type="button" class="board-task-id board-task-open" title="Task ID" aria-label="Open task ${escapeAttr(taskIdLabel)}: ${escapeAttr(t.title || t.description || '')}">${taskIdLabel}</button>
+            <span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(t.priority || 'none')}">${t.priority ? (_priorityLabel[t.priority] || escapeHtml(t.priority)) : '\u2014'}</span>
             ${typeCell}
             <span class="board-task-assignee">${escapeHtml(assignee)}</span>
             <span class="board-task-desc"${tooltip}>${subagentBadge}${claimedBadge}${blockedBadge}${title}</span>
@@ -1097,7 +1099,7 @@ function _taskDetailHtml(task, liveCost) {
         : task.workflow?.completion_review && task.status === 'in_progress' ? 'Open · Completion review requested (slot occupied)'
         : task.status === 'in_progress' ? 'Open · In Progress'
         : task.status === 'skipped' ? 'Cancelled'
-        : task.status === 'blocked' ? 'Open · Blocked'
+        : task.status === 'blocked' ? 'Blocked'
         : task.status === 'draft' ? 'Open · Draft'
         : 'Open';
     const statusClass = task.status === 'completed' ? 'task-detail-status-completed'
@@ -1119,7 +1121,7 @@ function _taskDetailHtml(task, liveCost) {
         <div class="task-detail-title">#${Number(task.id)} · ${escapeHtml(task.title)}</div>
         <div class="task-detail-meta">
             <span class="task-detail-meta-item"><span class="task-detail-meta-label">Lifecycle</span><span class="task-detail-status ${statusClass}">${statusLabel}</span></span>
-            <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${_priorityRank[task.priority] || '\u2014'}</span></span>
+            <span class="task-detail-meta-item"><span class="task-detail-meta-label">Priority</span><span class="board-task-priority ${priorityClass}" title="Claim priority: ${escapeAttr(task.priority || 'none')}">${task.priority ? (_priorityLabel[task.priority] || escapeHtml(task.priority)) : '\u2014'}</span></span>
             ${task.workflow?.outcome === 'failed' ? '<span class="task-detail-meta-item"><span class="task-detail-meta-label">Result</span><span class="task-detail-outcome-failed">Failed</span></span>' : ''}
         </div>`;
 
@@ -1129,7 +1131,8 @@ function _taskDetailHtml(task, liveCost) {
         const text = String(value || '').replace(/\s+/g, ' ').trim();
         return text.length > 180 ? `${text.slice(0, 177)}…` : text || '(empty)';
     };
-    html += `<div class="task-detail-section task-detail-revision" data-task-revision="${Number(revision)}">
+    // Revisions only matter once the instructions have changed; a new task has nothing to show.
+    if (revision > 1 || amendments.length) html += `<div class="task-detail-section task-detail-revision" data-task-revision="${Number(revision)}">
         <div class="task-detail-label">Instruction revision</div>
         <div class="task-detail-body">Current revision <strong>${revision}</strong>${amendments.length ? ` · ${amendments.length} amendment${amendments.length === 1 ? '' : 's'}` : ''}</div>
         ${amendments.length ? `<details class="task-amendment-history"><summary>Changed since task creation</summary>${amendments.map(amendment => {

@@ -830,7 +830,9 @@
     align-self: center;
 }
 
-.session-group-header:hover .group-kebab .sidebar-kebab-btn {
+.session-group-header:hover .group-kebab .sidebar-kebab-btn,
+.session-group-header:focus-within .group-kebab .sidebar-kebab-btn,
+.group-kebab .sidebar-kebab-btn:focus-visible {
     opacity: 1;
 }
 

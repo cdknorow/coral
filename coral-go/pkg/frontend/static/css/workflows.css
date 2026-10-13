@@ -483,6 +483,10 @@
     cursor: pointer;
     margin-top: 6px;
     user-select: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: inherit;
 }
 
 .wf-run-step-output-toggle:hover {
@@ -501,12 +505,31 @@
     overflow: hidden;
     color: var(--text-secondary);
     margin-top: 4px;
-    transition: max-height 0.3s ease;
+    /* Collapsed shows nothing: without this the padding left a clipped strip of the first line. */
+    padding-top: 0;
+    padding-bottom: 0;
+    transition: max-height 0.3s ease, padding 0.3s ease;
 }
 
 .wf-run-step-output.wf-expanded {
     max-height: 300px;
     overflow-y: auto;
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+.wf-run-step-error-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--fs-md);
+    color: var(--error);
+    margin-top: 6px;
+}
+
+.wf-run-step-output.wf-run-step-error {
+    color: var(--text-primary);
+    border-left: 2px solid var(--error);
 }
 
 .wf-toggle-arrow {
