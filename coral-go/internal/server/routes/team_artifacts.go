@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/go-chi/chi/v5"
@@ -108,7 +110,9 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 	}
 	items := collectTeamArtifacts(project, tasks, subscribers, sessionFilter)
 	if sessionFilter != "" {
-		items = mergeSessionUploads(items, h.coralDir, sessionFilter)
+		items = h.uploads.merge(items, h.coralDir, map[string]string{sessionFilter: ""})
+	} else {
+		items = h.uploads.merge(items, h.coralDir, teamUploadSessions(tasks, subscribers))
 	}
 	end := offset + limit
 	hasMore := end < len(items)
@@ -123,7 +127,11 @@ func (h *BoardHandler) ListTeamArtifacts(w http.ResponseWriter, r *http.Request)
 	for i := range page {
 		enrichTeamArtifact(&page[i], dir)
 		if digestLikeName.MatchString(page[i].Name) || strings.TrimSpace(page[i].Name) == "" {
-			page[i].Name = fmt.Sprintf("Task #%d artifact", page[i].TaskID)
+			if page[i].TaskID == 0 {
+				page[i].Name = "Uploaded artifact"
+			} else {
+				page[i].Name = fmt.Sprintf("Task #%d artifact", page[i].TaskID)
+			}
 		}
 	}
 	if page == nil {
@@ -309,25 +317,78 @@ func (h *BoardHandler) TeamArtifactContent(w http.ResponseWriter, r *http.Reques
 	_, _ = w.Write([]byte(refs[index].Content))
 }
 
-// mergeSessionUploads adds the session's uploaded objects that no task result
-// references yet, so an upload shows in the agent's Artifacts tab right away.
-// Items already attached to a task keep their task attribution.
-func mergeSessionUploads(items []teamArtifact, coralDir, sessionID string) []teamArtifact {
+// teamUploadSessions maps each Coral session that belongs to the team to the
+// subscriber it belongs to: every subscriber's stored session, and the session
+// recorded when a team task was claimed (an agent that has since left or been
+// replaced). Only these sessions' uploads appear in the team view.
+func teamUploadSessions(tasks []board.TeamArtifactTask, subscribers map[string]string) map[string]string {
+	out := make(map[string]string, len(subscribers))
+	for _, t := range tasks {
+		if t.SessionID != "" && t.AssignedTo != "" {
+			out[t.SessionID] = t.AssignedTo
+		}
+	}
+	for sub, sid := range subscribers {
+		if sid != "" {
+			out[sid] = sub // a subscriber's own record wins over a past claim
+		}
+	}
+	return out
+}
+
+// sessionUpload is one parsed per-session upload record.
+type sessionUpload struct {
+	id  string
+	rec agentUploadRecord
+}
+
+// uploadDirCache keeps each session's parsed upload records, keyed by the
+// directory's modification time, so a team view over many agents stats each
+// directory instead of re-reading every record on every request. A directory
+// modified in the last uploadDirSettle is always re-read, so a coarse mtime
+// cannot hide an upload made within the same tick. The zero value is ready.
+type uploadDirCache struct {
+	mu   sync.Mutex
+	dirs map[string]uploadDirEntry
+}
+
+type uploadDirEntry struct {
+	mod     time.Time
+	uploads []sessionUpload
+}
+
+var uploadDirSettle = 2 * time.Second
+
+// list returns the session's upload records (nil when it has none).
+func (c *uploadDirCache) list(coralDir, sessionID string) []sessionUpload {
 	dir := uploadsDir(coralDir, sessionID)
 	if dir == "" {
-		return items
+		return nil
 	}
+	st, err := os.Stat(dir)
+	if err != nil || !st.IsDir() {
+		c.mu.Lock()
+		delete(c.dirs, dir)
+		c.mu.Unlock()
+		return nil
+	}
+	mod := st.ModTime()
+	settled := time.Since(mod) >= uploadDirSettle
+	c.mu.Lock()
+	if e, ok := c.dirs[dir]; ok && settled && e.mod.Equal(mod) {
+		c.mu.Unlock()
+		return e.uploads
+	}
+	c.mu.Unlock()
+
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return items
+		return nil
 	}
-	have := make(map[string]bool, len(items))
-	for _, it := range items {
-		have[it.ID] = true
-	}
+	var uploads []sessionUpload
 	for _, e := range entries {
 		id := strings.TrimSuffix(e.Name(), ".json")
-		if e.IsDir() || id == e.Name() || len(id) != 64 || have[id] {
+		if e.IsDir() || id == e.Name() || len(id) != 64 {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
@@ -338,14 +399,62 @@ func mergeSessionUploads(items []teamArtifact, coralDir, sessionID string) []tea
 		if json.Unmarshal(data, &rec) != nil {
 			continue
 		}
-		sid := sessionID
-		items = append(items, teamArtifact{
-			ID: id, Name: rec.Name, MediaType: rec.MediaType, CreatedAt: rec.CreatedAt,
-			Source: "upload", URI: "coral://artifacts/" + id, Digest: rec.Digest,
-			ReferenceCount: 1, SessionID: &sid, managed: strings.ToLower(id),
+		uploads = append(uploads, sessionUpload{id: strings.ToLower(id), rec: rec})
+	}
+	if settled {
+		c.mu.Lock()
+		if c.dirs == nil {
+			c.dirs = make(map[string]uploadDirEntry)
+		}
+		c.dirs[dir] = uploadDirEntry{mod: mod, uploads: uploads}
+		c.mu.Unlock()
+	}
+	return uploads
+}
+
+// merge adds the listed sessions' uploaded objects that no task result in items
+// references, so an upload shows right away, before (or without) any task.
+// sessions maps a session id to the subscriber shown as its producer ("" for
+// none). Items already attached to a task keep their task attribution; the
+// same object uploaded by two sessions is one row.
+func (c *uploadDirCache) merge(items []teamArtifact, coralDir string, sessions map[string]string) []teamArtifact {
+	if len(sessions) == 0 {
+		return items
+	}
+	have := make(map[string]bool, len(items))
+	for _, it := range items {
+		have[it.ID] = true
+	}
+	added := false
+	for sessionID, producer := range sessions {
+		for _, u := range c.list(coralDir, sessionID) {
+			if have[u.id] {
+				continue
+			}
+			have[u.id] = true
+			sid := sessionID
+			item := teamArtifact{
+				ID: u.id, Name: u.rec.Name, MediaType: u.rec.MediaType, CreatedAt: u.rec.CreatedAt,
+				Source: "upload", URI: "coral://artifacts/" + u.id, Digest: u.rec.Digest,
+				ReferenceCount: 1, SessionID: &sid, managed: u.id,
+			}
+			if producer != "" {
+				p := producer
+				item.ProducedBy = &p
+			}
+			items = append(items, item)
+			added = true
+		}
+	}
+	if added {
+		// Newest first; ties keep a stable order (by id) whatever the map order.
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].CreatedAt != items[j].CreatedAt {
+				return items[i].CreatedAt > items[j].CreatedAt
+			}
+			return items[i].TaskID == 0 && items[j].TaskID == 0 && items[i].ID < items[j].ID
 		})
 	}
-	sort.SliceStable(items, func(i, j int) bool { return items[i].CreatedAt > items[j].CreatedAt })
 	return items
 }
 
@@ -365,7 +474,7 @@ func (h *BoardHandler) ListSessionArtifacts(w http.ResponseWriter, r *http.Reque
 		errBadRequest(w, "invalid limit or offset")
 		return
 	}
-	items := mergeSessionUploads(nil, h.coralDir, sessionID)
+	items := h.uploads.merge(nil, h.coralDir, map[string]string{sessionID: ""})
 	end := offset + limit
 	hasMore := end < len(items)
 	if offset > len(items) {

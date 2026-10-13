@@ -56,6 +56,8 @@ type BoardHandler struct {
 	// isArchivedSession reports whether a board session (agentType-sessionID) is
 	// an archived agent. Nil means no agent is ever treated as archived.
 	isArchivedSession func(ctx context.Context, sessionName string) bool
+	// uploads caches per-session upload records for the artifact views.
+	uploads uploadDirCache
 }
 
 // SetArchivedSessionLookup tells the board which sessions are archived agents:

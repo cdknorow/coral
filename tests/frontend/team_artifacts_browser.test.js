@@ -95,7 +95,7 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.equal(await ev(`document.querySelector('.team-artifact-row a').getAttribute('download')`), 'Design review.md');
         assert.equal(linkedRequests,0,'no external request before Preview');
         assert.equal(await ev(`document.querySelectorAll('.team-artifact-preview').length`),4);
-        assert.deepEqual(await ev(`Array.from(document.querySelectorAll('.team-artifacts-list th'),n=>[n.textContent,n.scope])`), ['Name','Type','Size','Task','Created','Actions'].map(label=>[label,'col']));
+        assert.deepEqual(await ev(`Array.from(document.querySelectorAll('.team-artifacts-list th'),n=>[n.textContent,n.scope])`), ['Name','Type','Created','Actions'].map(label=>[label,'col']), 'Size and Task live in Details (#3044)');
         assert.equal(await ev(`document.querySelector('.team-artifact-col-type:is(td)').textContent`),'Markdown');
         await click('.team-artifact-details summary');
         assert.equal(await ev(`document.querySelector('.team-artifact-details').open`),true);
@@ -103,22 +103,10 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.match(await ev(`document.querySelector('.team-artifact-details dl').textContent`),/Task titleTeam artifact browser/);
         await click('.team-artifact-details summary');
         // Wide and narrow tables keep proper headers and readable secondary fields.
-        await ev(`document.getElementById('agentic-state').style.width='1000px'`);
+        // Wide: Name, Type, Created and Actions as columns, no horizontal scroll (#3044).
+        await ev(`document.getElementById('agentic-state').style.width='1000px'`); await settle();
         assert.notEqual(await ev(`getComputedStyle(document.querySelector('th.team-artifact-col-created')).display`),'none');
-        await ev(`document.getElementById('agentic-state').style.width='350px'`);
-        assert.notEqual(await ev(`getComputedStyle(document.querySelector('th.team-artifact-col-created')).display`),'none');
-        assert.ok(await ev(`document.querySelector('.team-artifacts-scroll').getBoundingClientRect().width<=document.getElementById('agentic-state').getBoundingClientRect().width`));
-        await ev(`document.querySelector('.team-artifacts-scroll').scrollLeft=1000`);
-        assert.ok(await ev(`document.querySelector('.team-artifacts-scroll').scrollLeft>0`),'secondary columns are reachable');
-        assert.ok(await ev(`{const action=document.querySelector('td.team-artifact-col-actions').getBoundingClientRect();const table=document.querySelector('.team-artifacts-scroll').getBoundingClientRect();action.left>=table.left && action.right<=table.right+1}`),'actions stay visible while table scrolls');
-        await ev(`document.querySelector('.team-artifacts-scroll').scrollLeft=0;document.querySelector('.team-artifacts-scroll').focus()`);
-        await Input.dispatchKeyEvent({type:'keyDown',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});
-        await Input.dispatchKeyEvent({type:'keyUp',key:'ArrowRight',code:'ArrowRight',windowsVirtualKeyCode:39});await settle();
-        assert.ok(await ev(`document.querySelector('.team-artifacts-scroll').scrollLeft>0`),'table supports keyboard scrolling');
-        await ev(`document.getElementById('agentic-state').style.zoom='2';document.querySelector('.team-artifacts-scroll').scrollLeft=0`);
-        assert.equal(await ev(`document.querySelectorAll('.team-artifacts-list th').length`),6,'200% zoom retains all columns');
-        assert.ok(await ev(`document.querySelector('.team-artifacts-scroll').scrollWidth>document.querySelector('.team-artifacts-scroll').clientWidth`));
-        await ev(`document.getElementById('agentic-state').style.zoom=''`);
+        assert.ok(await ev(`(s => s.scrollWidth <= s.clientWidth + 1)(document.querySelector('.team-artifacts-scroll'))`), 'wide: no horizontal scroll');
         await ev(`document.getElementById('agentic-state').style.width='680px'`);
         await shot('team-artifacts-list');
         await click('.team-artifact-preview'); await settle();
@@ -286,6 +274,104 @@ const SHOTS = process.env.CORAL_SCREENSHOT_DIR;
         assert.equal(await ev(`document.querySelector('#preview-pane iframe').getAttribute('sandbox')`),'');
         await ev('window.closeAllPreviewTabs()'); await settle();
         assert.equal(await ev(`document.getElementById('preview-pane').style.display`),'none');
+        // Narrow layout (#3044): every width fits without horizontal scroll, Actions stay on one row inside
+        // the panel, long names clamp inside the Name cell with the full name kept, and Size/Task are in Details.
+        const long = 'x'.repeat(64);
+        await ev(`window.__mode='normal'; window.__items=[
+            {id:'c'.repeat(64),name:${JSON.stringify(long)},media_type:'text/markdown',size:1800,task_id:2176,task_title:'Narrow layout',created_at:'2026-10-02T15:00:00Z',uri:'coral://artifacts/'+'c'.repeat(64),available:true},
+            {id:'d'.repeat(64),name:'設計レビューの最終版ドキュメント設計レビューの最終版ドキュメント設計レビュー.md',media_type:'text/markdown',size:125000,task_id:2177,created_at:'2026-10-02T15:01:00Z',uri:'coral://artifacts/'+'d'.repeat(64),available:true},
+            {id:'e'.repeat(64),name:'Supercalifragilisticexpialidocious-acceptance-criteria-and-screenshots-for-review.png',media_type:'image/png',size:42,created_at:'2026-10-02T15:02:00Z',uri:'coral://artifacts/'+'e'.repeat(64),available:true},
+            {id:'n4',name:'Short.txt',media_type:'text/plain',size:150,task_id:2178,created_at:'2026-10-02T15:03:00Z',uri:'https://example.com/short',available:true},
+        ]; window.__state.currentSession={...window.__state.currentSession,session_id:'ui-narrow',board_project:'narrow-team'}; window.__files.syncFilesViewerSession()`); await settle();
+        await ev(`document.getElementById('agentic-tab-team-artifacts').click()`); await settle();
+        const LAYOUT = `(() => {
+            const panel = document.getElementById('agentic-state').getBoundingClientRect();
+            const scroll = document.querySelector('.team-artifacts-scroll');
+            const view = document.getElementById('agentic-panel-team-artifacts-view');
+            const shown = c => { const th = document.querySelector('th.team-artifact-col-' + c); return !!th && getComputedStyle(th).display !== 'none'; };
+            const rows = [...document.querySelectorAll('.team-artifact-row')];
+            return {
+                rows: rows.length,
+                cols: ['name','type','created','actions'].filter(shown),
+                overflow: Math.max(scroll.scrollWidth - scroll.clientWidth, view.scrollWidth - view.clientWidth, 0),
+                actionsInside: rows.every(r => { const a = r.querySelector('td.team-artifact-col-actions').getBoundingClientRect(); return a.left >= panel.left - 1 && a.right <= panel.right + 1; }),
+                actionsOneRow: rows.every(r => { const bs = [...r.querySelectorAll('td.team-artifact-col-actions a, td.team-artifact-col-actions button')].filter(b => b.getBoundingClientRect().width > 0); return bs.length > 0 && new Set(bs.map(b => Math.round(b.getBoundingClientRect().top))).size === 1; }),
+                namesInside: rows.every(r => { const n = r.querySelector('.team-artifact-name').getBoundingClientRect(); const c = r.querySelector('td.team-artifact-col-name').getBoundingClientRect(); return n.right <= c.right + 1 && n.left >= c.left - 1; }),
+                nameLines: Math.max(...rows.map(r => { const n = r.querySelector('.team-artifact-name'); return Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)); })),
+            };
+        })()`;
+        for (const width of [680, 520, 420, 350, 320, 260]) {
+            await ev(`document.getElementById('agentic-state').style.width='${width}px'`); await settle();
+            const l = await ev(LAYOUT);
+            assert.equal(l.rows, 4, `${width}px: all rows rendered`);
+            assert.equal(l.overflow, 0, `${width}px: no horizontal scroll (overflow ${l.overflow}px)`);
+            assert.ok(l.actionsInside, `${width}px: every row's Actions inside the panel`);
+            assert.ok(l.actionsOneRow, `${width}px: Actions on one row`);
+            assert.ok(l.namesInside, `${width}px: long names stay inside the Name cell`);
+            assert.ok(l.nameLines <= 2, `${width}px: names clamp to two lines (got ${l.nameLines})`);
+            assert.ok(l.cols.includes('name') && l.cols.includes('actions'), `${width}px: Name and Actions always shown (${l.cols})`);
+            if (width <= 420) assert.deepEqual(l.cols, ['name', 'actions'], `${width}px: narrow shows Name + Actions only`);
+            if (width >= 680) assert.deepEqual(l.cols, ['name', 'type', 'created', 'actions'], `${width}px: wide shows all four columns`);
+        }
+        await ev(`document.getElementById('agentic-state').style.width='320px'; document.getElementById('agentic-state').style.zoom='2'`); await settle();
+        let z = await ev(LAYOUT);
+        assert.equal(z.overflow, 0, `200% zoom at 320px: no horizontal scroll (overflow ${z.overflow}px)`);
+        assert.ok(z.actionsInside && z.namesInside, '200% zoom: Actions and names inside the panel');
+        await ev(`document.getElementById('agentic-state').style.zoom=''`); await settle();
+        // Full names are kept for the clamped ones.
+        assert.ok(await ev(`[...document.querySelectorAll('.team-artifact-name')].some(n => n.getAttribute('title') === ${JSON.stringify(long)})`), 'a clamped name keeps its full text in title');
+        // Name text is smaller than before (600 / --fs-lg) but readable.
+        const font = await ev(`(() => {
+            const n = getComputedStyle(document.querySelector('.team-artifact-name'));
+            const probe = document.createElement('span'); probe.style.fontSize = 'var(--fs-lg)'; document.body.appendChild(probe);
+            const lg = parseFloat(getComputedStyle(probe).fontSize); probe.remove();
+            return { size: parseFloat(n.fontSize), weight: Number(n.fontWeight), lg };
+        })()`);
+        assert.ok(font.size < font.lg && font.size >= 11, `Name font ${font.size}px: smaller than --fs-lg (${font.lg}px) and at least 11px`);
+        assert.ok(font.weight < 600, `Name weight ${font.weight} lighter than 600`);
+        // Size and Task (or 'No task') in each row's Details, reachable by keyboard at the narrowest width.
+        await ev(`document.getElementById('agentic-state').style.width='260px'`); await settle();
+        const details = await ev(`[...document.querySelectorAll('.team-artifact-row')].map(r => {
+            const d = r.querySelector('.team-artifact-details'); const s = d.querySelector('summary');
+            s.focus(); const focusable = document.activeElement === s;
+            d.open = true; const text = d.querySelector('dl').textContent; d.open = false;
+            return { focusable, text };
+        })`);
+        assert.ok(details.every(d => d.focusable), 'Details summaries are keyboard-focusable');
+        assert.ok(details.every(d => /Size\s*\S/.test(d.text) && /Task\s*(#\d+|No task)/.test(d.text)), `Size and Task in every row's Details (${JSON.stringify(details.map(d => d.text.slice(0, 80)))})`);
+        assert.ok(details.some(d => /Task\s*No task/.test(d.text)), "an artifact without a task shows 'No task'");
+        assert.ok(details.every(d => /Created/.test(d.text) && /Type/.test(d.text)), 'Type and Created (hidden as columns when narrow) are in Details');
+        if (SHOTS) { const {data} = await Page.captureScreenshot({format:'png'}); fs.writeFileSync(path.join(SHOTS,'team-artifacts-260.png'), Buffer.from(data,'base64')); }
+        // Untasked uploads by team members (#3045): source 'upload', task_id 0, attributed by produced_by.
+        await ev(`document.getElementById('agentic-state').style.width='680px'`);
+        const up = 'f'.repeat(64), up2 = '9'.repeat(64);
+        await ev(`window.__mode='normal'; window.__calls=[]; window.__items=[
+            {id:${JSON.stringify(up)},name:'wireframes.png',media_type:'image/png',size:2048,task_id:0,task_title:'',source:'upload',produced_by:'Frontend Dev',session_id:'s-fe',created_at:'2026-10-02T16:00:00Z',uri:'coral://artifacts/${up}',preview_url:'/api/artifacts/${up}',download_url:'/api/artifacts/${up}',available:true},
+            {id:'a'.repeat(64),name:'Design review.md',media_type:'text/markdown',size:1800,task_id:2176,task_title:'Team artifact browser',source:'completion',produced_by:'Lead Developer',created_at:'2026-10-02T15:00:00Z',uri:'coral://artifacts/'+'a'.repeat(64),available:true},
+            {id:${JSON.stringify(up2)},name:${JSON.stringify(up2)},media_type:'application/octet-stream',size:10,task_id:0,task_title:'',source:'upload',produced_by:null,created_at:'2026-10-02T14:00:00Z',uri:'coral://artifacts/${up2}',available:true},
+        ]; window.__state.currentSession={...window.__state.currentSession,session_id:'ui-uploads',board_project:'upload-team'}; window.__files.syncFilesViewerSession()`); await settle();
+        await ev(`document.getElementById('agentic-tab-team-artifacts').click()`); await settle();
+        const ups = await ev(`[...document.querySelectorAll('.team-artifact-row')].map(r => {
+            const d = r.querySelector('.team-artifact-details'); d.open = true;
+            const dl = Object.fromEntries([...d.querySelectorAll('dt')].map(dt => [dt.textContent.trim(), (dt.nextElementSibling?.textContent || '').trim()]));
+            d.open = false;
+            return { name: r.querySelector('.team-artifact-name').textContent.trim(), dl, actions: r.querySelectorAll('td.team-artifact-col-actions a, td.team-artifact-col-actions button').length };
+        })`);
+        assert.equal(ups.length, 3, 'task results and untasked uploads listed together');
+        assert.equal(ups[0].name, 'wireframes.png', 'newest first, in server order');
+        assert.equal(ups[0].dl.Task, 'No task', 'an upload has no task');
+        assert.equal(ups[0].dl.Source, 'upload');
+        assert.ok(!('Task title' in ups[0].dl) || ups[0].dl['Task title'] === '', 'no task title for an upload');
+        assert.equal(ups[0].dl.Producer, 'Frontend Dev', `the uploader is shown as Producer (got ${JSON.stringify(ups[0].dl.Producer)})`);
+        assert.equal(ups[1].dl.Producer, 'Lead Developer', 'task results show their producer too');
+        assert.equal(ups[1].dl.Task, '#2176');
+        assert.ok(ups[0].actions > 0, 'an upload has Preview / Download actions');
+        assert.doesNotMatch(await text(), /Task #0/, "no 'Task #0' anywhere (digest-named upload included)");
+        assert.equal(ups[2].name === up2, false, 'a digest-only name is not shown raw');
+        // Preview of an upload goes to the managed object.
+        await ev(`document.querySelector('.team-artifact-row .team-artifact-preview').click()`); await settle();
+        assert.ok((await ev('window.__calls')).some(u => u.includes('/api/artifacts/' + up)), 'upload preview fetches /api/artifacts/<id>');
+        await ev('window.closeAllPreviewTabs()'); await settle();
         console.log('PASS: semantic artifact table/responsive details, preview tabs/late abort/narrow sidebar, explicit managed/inline/linked Preview, retained actions, sandbox isolation, extensionless HTML/CSP and Markdown/plain text, lazy loading, back/team/mobile, errors/pagination/stale responses');
     } finally { await client.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

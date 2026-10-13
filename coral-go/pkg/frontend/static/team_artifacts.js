@@ -33,7 +33,8 @@ function el(tag, className, text) {
 function readableName(item) {
     const name = String(item.name || '').trim();
     if (name && !/^(?:coral:\/\/artifacts\/)?[a-f0-9]{64}(?:\.[a-z0-9]+)?$/i.test(name)) return name;
-    return item.task_title ? `${item.task_title} — artifact` : `Task #${item.task_id} artifact`;
+    if (item.task_title) return `${item.task_title} — artifact`;
+    return item.task_id ? `Task #${item.task_id} artifact` : 'Uploaded artifact';
 }
 
 function artifactLink(item) {
@@ -135,18 +136,15 @@ function render() {
         retry.type = 'button'; retry.addEventListener('click', () => load(items.length > 0));
         root.append(retry);
     }
+    // The table fits its panel at any width: Size and Task live in each row's
+    // Details, and a narrow panel drops Type and Created (also in Details).
     const scroll = el('div', 'team-artifacts-scroll');
-    scroll.tabIndex = 0;
-    scroll.setAttribute('role', 'region');
-    scroll.setAttribute('aria-label', 'Artifact table, scroll horizontally for all columns');
-    const hint = el('p', 'team-artifacts-scroll-hint', 'Scroll to view all columns.');
-    root.append(hint);
     const list = el('table', 'team-artifacts-list');
     const caption = el('caption', 'team-artifacts-caption', personal ? 'Agent artifacts' : 'Team artifacts');
     list.append(caption);
     const head = el('thead');
     const headers = el('tr');
-    for (const label of ['Name', 'Type', 'Size', 'Task', 'Created', 'Actions']) {
+    for (const label of ['Name', 'Type', 'Created', 'Actions']) {
         const cell = el('th', `team-artifact-col-${label.toLowerCase()}`, label);
         cell.scope = 'col';headers.append(cell);
     }
@@ -175,7 +173,8 @@ function render() {
         info.append(title);
         const date = item.created_at ? new Date(item.created_at) : null;
         const created = date && !Number.isNaN(date.getTime()) ? date.toLocaleString() : '—';
-        const task = item.task_id ? `#${item.task_id}` : '—';
+        // An artifact uploaded outside a task says so (#3045).
+        const task = item.task_id ? `#${item.task_id}` : 'No task';
         const type = artifactType(item);
         const size = sizeLabel(item.size) || '—';
         const details = el('details', 'team-artifact-details');
@@ -185,19 +184,14 @@ function render() {
         for (const [label, value] of [
             ['Name', name], ['Type', type], ['MIME', item.media_type || 'Unknown'],
             ['Size', size], ['Task', task], ['Task title', item.task_title],
-            ['Created', created], ['Producer', item.subscriber_id],
+            // The team list says produced_by; older payloads used subscriber_id.
+            ['Created', created], ['Producer', item.produced_by ?? item.subscriber_id],
             ['Source', item.source], ['References', item.reference_count],
         ]) {
             if (value != null && value !== '') fields.append(el('dt', '', label), el('dd', '', String(value)));
         }
         details.append(summary, fields);info.append(details);row.append(info);
-        row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-size', size));
-        const taskCell = el('td', 'team-artifact-col-task', task);
-        if (item.task_title) {
-            const taskTitle = el('div', 'team-artifact-task-title', item.task_title);
-            taskTitle.title = item.task_title;taskCell.append(taskTitle);
-        }
-        row.append(taskCell, el('td', 'team-artifact-col-created', created));
+        row.append(el('td', 'team-artifact-col-type', type), el('td', 'team-artifact-col-created', created));
         const actionCell = el('td', 'team-artifact-col-actions');row.append(actionCell);
         if (link) {
             const actions = el('div', 'team-artifact-actions');

@@ -12,8 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/store/storetest"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 )
@@ -412,4 +415,193 @@ func TestSessionArtifactsForStandaloneAgent(t *testing.T) {
 	require.True(t, resp.Artifacts[0].Available)
 	require.Empty(t, getTeamArtifacts(t, srv, "/api/session-artifacts?session_id=solo-2", http.StatusOK).Artifacts)
 	getTeamArtifacts(t, srv, "/api/session-artifacts", http.StatusBadRequest)
+}
+
+// writeUpload records sessionID's upload of a managed object, as the upload API does.
+func writeUpload(t *testing.T, coralDir, sessionID, content, name, createdAt string) string {
+	t.Helper()
+	id := storeManagedArtifact(t, coralDir, content, true, true)
+	dir := uploadsDir(coralDir, sessionID)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: name, MediaType: "text/markdown", Size: int64(len(content)), Digest: "sha256:" + id}, createdAt})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
+	return id
+}
+
+// The team view lists what the team's agents uploaded even when no task
+// references it: produced_by and session_id say who, task_id is 0 ('No task').
+// An upload a task also references is one row that keeps the task link, the
+// same object uploaded by two members is one row, and uploads by agents of
+// another team, or by no team at all, never appear.
+func TestTeamArtifactsListsUntaskedUploadsOfTeamMembers(t *testing.T) {
+	srv, h, coralDir := teamArtifactServer(t)
+	subscribeSession(t, h, "alpha", "Alice", sessAlice)
+	subscribeSession(t, h, "alpha", "Bob", sessBob)
+	const sessEve = "55555555-eeee-0000-0000-000000000005"
+	subscribeSession(t, h, "beta", "Eve", sessEve)
+
+	draft := writeUpload(t, coralDir, sessAlice, "# draft\n", "draft.md", "2026-10-09T10:00:00Z")
+	notes := writeUpload(t, coralDir, sessBob, "# notes\n", "notes.md", "2026-10-09T11:00:00Z")
+	attached := writeUpload(t, coralDir, sessBob, "# final\n", "final.md", "2026-10-09T09:00:00Z")
+	completeWithArtifactsAs(t, h, "alpha", "Bob", "ship it", []board.TaskArtifact{{Name: "final.md", URI: "coral://artifacts/" + attached}})
+	shared := writeUpload(t, coralDir, sessAlice, "# shared\n", "shared.md", "2026-10-09T08:00:00Z")
+	writeUpload(t, coralDir, sessBob, "# shared\n", "shared.md", "2026-10-09T08:00:00Z")
+	writeUpload(t, coralDir, sessEve, "# beta\n", "beta.md", "2026-10-09T12:00:00Z")
+	writeUpload(t, coralDir, "66666666-solo-0000-0000-000000000006", "# solo\n", "solo.md", "2026-10-09T13:00:00Z")
+
+	all := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK)
+	// final.md's row is the task's completion (today), so it is the newest.
+	require.Equal(t, []string{"final.md", "notes.md", "draft.md", "shared.md"}, artifactNames(all.Artifacts), "newest first; other teams' and teamless uploads excluded")
+	byID := map[string]teamArtifact{}
+	for _, a := range all.Artifacts {
+		byID[a.ID] = a
+	}
+	for id, who := range map[string]string{draft: "Alice", notes: "Bob"} {
+		a := byID[id]
+		require.Equal(t, "upload", a.Source, who)
+		require.Zero(t, a.TaskID, "untasked")
+		require.Empty(t, a.TaskTitle)
+		require.NotNil(t, a.ProducedBy)
+		require.Equal(t, who, *a.ProducedBy)
+		require.NotNil(t, a.SessionID)
+		require.True(t, a.Available)
+		require.Equal(t, "text/markdown", a.MediaType)
+		require.NotNil(t, a.Size)
+		require.NotEmpty(t, a.CreatedAt)
+		require.Equal(t, "/api/artifacts/"+id, a.PreviewURL)
+	}
+	require.Equal(t, sessAlice, *byID[draft].SessionID)
+	require.Equal(t, "completion", byID[attached].Source, "an upload a task references keeps its task link")
+	require.NotZero(t, byID[attached].TaskID)
+	require.Equal(t, "upload", byID[shared].Source, "the same object uploaded by two members is one row")
+
+	// Paging covers uploads too.
+	p := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?limit=2&offset=2", http.StatusOK)
+	require.Equal(t, []string{"draft.md", "shared.md"}, artifactNames(p.Artifacts))
+	require.False(t, p.HasMore)
+
+	beta := getSessionArtifacts(t, srv, "/api/board/beta/artifacts", http.StatusOK)
+	require.Equal(t, []string{"beta.md"}, artifactNames(beta.Artifacts))
+
+	// The session filter still shows only that agent's own uploads.
+	alice := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts?session_id="+sessAlice, http.StatusOK)
+	require.ElementsMatch(t, []string{"draft.md", "shared.md"}, artifactNames(alice.Artifacts))
+}
+
+// An agent replaced on the team (re-subscribed with a new session) still has
+// its earlier session's uploads listed, through the session recorded on the
+// task it claimed.
+func TestTeamArtifactsIncludesUploadsOfAMembersEarlierSession(t *testing.T) {
+	srv, h, coralDir := teamArtifactServer(t)
+	ctx := context.Background()
+	const sessOld, sessNew = "77777777-0001-0000-0000-000000000007", "77777777-0002-0000-0000-000000000007"
+	// A claim records the claimant's session when it is a live session, as in production.
+	sessDB, err := storetest.Open(t, t.TempDir()+"/sessions.db")
+	require.NoError(t, err)
+	t.Cleanup(func() { sessDB.Close() })
+	require.NoError(t, store.NewSessionStore(sessDB).RegisterLiveSession(ctx, &store.LiveSession{SessionID: sessOld, AgentType: "claude", AgentName: "carol", WorkingDir: "/tmp"}))
+	h.bs.SetSessionsDB(sessDB.DB)
+	subscribeSession(t, h, "alpha", "Carol", sessOld)
+	task, err := h.bs.CreateTask(ctx, "alpha", "carol task", "", "medium", "lead", "Carol")
+	require.NoError(t, err)
+	_, err = h.bs.ClaimTask(ctx, "alpha", "Carol", task.ID)
+	require.NoError(t, err)
+	claimed, err := h.bs.GetTask(ctx, "alpha", task.ID)
+	require.NoError(t, err)
+	require.NotNil(t, claimed.SessionID, "the claim recorded Carol's session")
+	_, err = h.bs.CompleteTaskWithArtifacts(ctx, "alpha", task.ID, "Carol", nil, "success", []board.TaskArtifact{{Name: "result", Content: "r"}})
+	require.NoError(t, err)
+	writeUpload(t, coralDir, sessOld, "# old\n", "old-session.md", "2026-10-09T10:00:00Z")
+	subscribeSession(t, h, "alpha", "Carol", sessNew) // Carol now runs in a new session
+	writeUpload(t, coralDir, sessNew, "# new\n", "new-session.md", "2026-10-09T11:00:00Z")
+
+	all := getSessionArtifacts(t, srv, "/api/board/alpha/artifacts", http.StatusOK)
+	require.ElementsMatch(t, []string{"result", "old-session.md", "new-session.md"}, artifactNames(all.Artifacts))
+}
+
+// Upload records are re-read only when a session's directory changes.
+func TestUploadDirCacheReusesUnchangedDirectories(t *testing.T) {
+	settle := uploadDirSettle
+	uploadDirSettle = 0 // trust the cache at once; the test moves mtimes itself
+	t.Cleanup(func() { uploadDirSettle = settle })
+	coralDir := t.TempDir()
+	var c uploadDirCache
+	id := writeUpload(t, coralDir, sessAlice, "# a\n", "first-name.md", "2026-10-09T10:00:00Z")
+	dir := uploadsDir(coralDir, sessAlice)
+	past := time.Now().Add(-time.Hour)
+	require.NoError(t, os.Chtimes(dir, past, past))
+
+	names := func() []string {
+		var out []string
+		for _, u := range c.list(coralDir, sessAlice) {
+			out = append(out, u.rec.Name)
+		}
+		return out
+	}
+	require.Equal(t, []string{"first-name.md"}, names())
+
+	// Rewriting a record in place does not touch the directory: the cache answers.
+	rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: "renamed.md"}, "2026-10-09T10:00:00Z"})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644))
+	require.NoError(t, os.Chtimes(dir, past, past))
+	require.Equal(t, []string{"first-name.md"}, names(), "an unchanged directory is not re-read")
+
+	// A new upload changes the directory: it is re-read.
+	writeUpload(t, coralDir, sessAlice, "# b\n", "second.md", "2026-10-09T11:00:00Z")
+	later := past.Add(time.Minute)
+	require.NoError(t, os.Chtimes(dir, later, later))
+	require.ElementsMatch(t, []string{"renamed.md", "second.md"}, names())
+
+	// A directory modified within uploadDirSettle is never trusted from the cache.
+	uploadDirSettle = time.Hour
+	require.NoError(t, os.WriteFile(filepath.Join(dir, id+".json"), []byte(`{"name":"fresh.md","created_at":"x"}`), 0o644))
+	require.NoError(t, os.Chtimes(dir, later, later))
+	require.ElementsMatch(t, []string{"fresh.md", "second.md"}, names())
+
+	require.NoError(t, os.RemoveAll(dir))
+	require.Empty(t, names(), "a removed directory lists nothing")
+}
+
+// BenchmarkTeamArtifactUploads: a team view over 50 agents with 20 uploads each.
+// "cold" re-reads every record (a new cache per request, as without caching);
+// "warm" is the steady state, one stat per session directory.
+func BenchmarkTeamArtifactUploads(b *testing.B) {
+	coralDir := b.TempDir()
+	sessions := map[string]string{}
+	for a := range 50 {
+		sid := fmt.Sprintf("%08d-bench-0000-0000-000000000000", a)
+		sessions[sid] = fmt.Sprintf("Agent %d", a)
+		dir := uploadsDir(coralDir, sid)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			b.Fatal(err)
+		}
+		for u := range 20 {
+			sum := sha256.Sum256([]byte(fmt.Sprintf("%s-%d", sid, u)))
+			id := hex.EncodeToString(sum[:])
+			rec, _ := json.Marshal(agentUploadRecord{agentArtifactMeta{Name: fmt.Sprintf("file-%d.md", u), MediaType: "text/markdown", Size: 10, Digest: "sha256:" + id}, fmt.Sprintf("2026-10-09T10:%02d:00Z", u)})
+			if err := os.WriteFile(filepath.Join(dir, id+".json"), rec, 0o644); err != nil {
+				b.Fatal(err)
+			}
+		}
+		past := time.Now().Add(-time.Hour)
+		_ = os.Chtimes(dir, past, past)
+	}
+	b.Run("cold", func(b *testing.B) {
+		for range b.N {
+			var c uploadDirCache
+			if n := len(c.merge(nil, coralDir, sessions)); n != 1000 {
+				b.Fatalf("got %d rows", n)
+			}
+		}
+	})
+	b.Run("warm", func(b *testing.B) {
+		var c uploadDirCache
+		c.merge(nil, coralDir, sessions)
+		b.ResetTimer()
+		for range b.N {
+			if n := len(c.merge(nil, coralDir, sessions)); n != 1000 {
+				b.Fatalf("got %d rows", n)
+			}
+		}
+	})
 }

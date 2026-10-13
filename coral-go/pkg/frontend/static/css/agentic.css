@@ -2625,38 +2625,34 @@ body.panel-dragging .agentic-state {
 .team-artifacts-view { overflow-y: auto; container-type: inline-size; }
 .team-artifacts-heading, .explorer-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; font-size: 12px; overflow-wrap: anywhere; }
 .team-artifacts-status { padding: 8px 12px; font-size: 12px; color: var(--text-secondary); }
-.team-artifacts-scroll { overflow-x: auto; flex-shrink: 0; max-width: 100%; }
-.team-artifacts-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.team-artifacts-scroll-hint { display: none; margin: 0; padding: 0 var(--space-lg) var(--space-md); color: var(--text-secondary); font-size: var(--fs-base); }
-.team-artifacts-list { width: 100%; min-width: 940px; table-layout: fixed; border-collapse: collapse; color: var(--text-primary); font-size: var(--fs-base); line-height: 1.5; }
+.team-artifacts-scroll { flex-shrink: 0; max-width: 100%; }
+/* Fits its panel: Size and Task are in each row's Details (#3044). */
+.team-artifacts-list { width: 100%; table-layout: fixed; border-collapse: collapse; color: var(--text-primary); font-size: var(--fs-base); line-height: 1.5; }
 .team-artifacts-caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.team-artifacts-list :is(th, td) { padding: var(--space-lg); vertical-align: top; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.team-artifacts-list :is(th, td) { padding: var(--space-md) var(--space-lg); vertical-align: top; text-align: left; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .team-artifacts-list th { color: var(--text-secondary); font-weight: 500; }
-.team-artifact-col-name { width: 36%; }
-.team-artifact-col-type { width: 9%; }
-.team-artifact-col-size { width: 9%; }
-.team-artifact-col-task { width: 20%; }
-.team-artifact-col-created { width: 16%; }
-.team-artifact-col-actions { width: 10%; position: sticky; right: 0; background: var(--bg-secondary); box-shadow: -1px 0 var(--border); }
-.team-artifact-name { display: block; padding: 0; background: none; border: 0; color: var(--text-primary); font: 600 var(--fs-lg)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
+.team-artifact-col-type { width: 88px; }
+.team-artifact-col-created { width: 170px; }
+.team-artifact-col-actions { width: 124px; }
+/* Long names wrap to two lines, then ellipsize; the full name is the tooltip. */
+.team-artifact-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; padding: 0; background: none; border: 0; color: var(--text-primary); font: 500 var(--fs-md)/1.4 var(--font-sans); text-align: left; overflow-wrap: anywhere; }
 button.team-artifact-name { cursor: pointer; }
-.team-artifact-task-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; color: var(--text-secondary); margin-top: var(--space-xs); }
 .team-artifact-missing { font-size: var(--fs-base); color: var(--text-secondary); }
 .team-artifact-details { margin-top: var(--space-xs); color: var(--text-secondary); font-size: var(--fs-base); }
 .team-artifact-details summary { width: fit-content; padding: var(--space-xs) 0; cursor: pointer; }
 .team-artifact-details dl { margin: var(--space-md) 0 0; }
 .team-artifact-details dt { font-weight: 600; margin-top: var(--space-md); }
 .team-artifact-details dd { margin: 0; overflow-wrap: anywhere; }
-/* All six columns remain reachable in the existing narrow Files pane. */
-@container (max-width: 800px) {
-    .team-artifacts-scroll-hint { display: block; }
-    .team-artifacts-list .team-artifact-col-actions { width: 80px; }
-    .team-artifact-actions { flex-direction: column; align-items: stretch; }
+/* A narrow panel shows Name and Actions; Type and Created are in Details. */
+@container (max-width: 520px) {
+    .team-artifacts-list :is(.team-artifact-col-type, .team-artifact-col-created) { display: none; }
+    .team-artifacts-list :is(th, td) { padding-left: var(--space-md); padding-right: var(--space-md); }
 }
 .team-artifacts-more { align-self: center; margin: 12px; }
 .team-artifacts-action:disabled { opacity: 0.6; cursor: default; }
 
-.team-artifact-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
+/* The icons sit in one row so rows stay short. */
+.team-artifact-actions { display: flex; flex-wrap: nowrap; justify-content: flex-end; gap: var(--space-xs); flex-shrink: 0; }
 .team-artifact-icon-btn { padding: var(--space-xs); min-width: 32px; min-height: 32px; border-radius: var(--radius-md); }
 .team-artifact-row-expanded { background: var(--bg-tertiary); }
 .team-artifact-preview-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
@@ -2671,7 +2667,6 @@ button.team-artifact-name { cursor: pointer; }
 .artifact-linked-notice { border-bottom: 1px solid var(--border); }
 .artifact-linked-preview iframe { flex: 1; min-height: 240px; width: 100%; border: 0; background: #fff; }
 @media (max-width: 767px) {
-    .team-artifact-actions { flex-direction: column; align-items: stretch; }
     .team-artifacts-action,     .team-artifact-details summary { box-sizing: border-box; padding-top: var(--space-lg); }
 }
 
