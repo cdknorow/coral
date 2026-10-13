@@ -1,17 +1,47 @@
 #!/usr/bin/env node
 // Runs the CDP/Chrome frontend suites against an ISOLATED Coral dev server and a headless Chrome.
 //
-//   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome] [--shards N]
+//   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
+//                           [--shards N] [--retries N] [--allow-flaky] [--stress [--runs N] [--cpu-throttle X]]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
 // a debugging port, runs every test that talks CDP (they import chrome-remote-interface) one at a time
-// with a timeout, and prints pass/fail per suite. Exit status 1 if any suite failed.
+// with a timeout, and prints pass/fail per suite.
 //
 // --shards N (default 1) starts N such server+Chrome pairs, each with its own data dir, ports and profile,
 // and runs N suites at once: each shard takes the next suite from one shared queue, so within a shard
 // suites still run one at a time. Output is printed per suite as it finishes.
+//
+// --timeout S (default 120) is a hard wall-clock limit per suite attempt. When it fires (typically a hung
+// CDP socket), the suite's whole process group is killed, which closes its CDP client, and that shard's
+// Chrome and Coral server are replaced with fresh ones before its next suite, so a wedged browser can't
+// fail the suites after it. The attempt is reported as TIMEOUT. A shard whose Chrome or server died
+// between suites is replaced the same way.
+//
+// --retries N (default 1): a failed or timed-out suite is run again, up to N more times, each time on a
+// fresh Coral server and Chrome (its shard is replaced first). A suite that
+// passes only on a retry is FLAKY: it is listed separately in the summary and is NOT counted as passed.
+// --retries 0 disables retries.
+//
+// Exit status: 0 when every suite passed on its first attempt, 1 when any suite failed every attempt,
+// 3 when the only problems are FLAKY suites (--allow-flaky turns that 3 into 0), 2 on a setup error.
+//
+// --stress runs the selected suites --runs N times (default 3) on --shards shards (default 3 in this
+// mode) with every page's CPU throttled --cpu-throttle X times (default 4) through CDP
+// Emulation.setCPUThrottlingRate, without retries, and prints each suite's pass count (e.g. 2/3) so the
+// flaky list is measurable. Exit status 1 unless every suite passed every run.
+//
+// results.json (path printed at the end) has every suite with its status and every attempt (with the
+// log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
+//
+// Leftovers: suites, Coral servers and Chromes run in their own process groups, killed on exit, Ctrl-C
+// and SIGTERM. A runner killed with SIGKILL can't clean up, so each runner records its groups in
+// <tmpdir>/coral-cdp-runner-<runner pid>.json. At start, a runner kills the groups listed by any runner
+// that is no longer alive (runners running at the same time are left alone), and only groups whose
+// command line still names that run's temp directory, so a reused pid is never hit.
 import { spawn, spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -20,30 +50,83 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const goDir = path.resolve(here, '../../coral-go');
-const arg = (name, def) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : def; };
+const CDP = createRequire(import.meta.url)('chrome-remote-interface');
+const argv = process.argv.slice(2);
+const flag = name => argv.includes(name);
+const arg = (name, def) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : def; };
+const intArg = (name, def, min) => {
+  const v = Number(arg(name, String(def)));
+  if (!Number.isInteger(v) || v < min) { console.error(`${name} must be an integer >= ${min}`); process.exit(2); }
+  return v;
+};
+const stress = flag('--stress');
 const only = arg('--only', '');
-const timeoutS = Number(arg('--timeout', '120'));
-const shards = Number(arg('--shards', '1'));
-if (!Number.isInteger(shards) || shards < 1) { console.error('--shards must be a positive integer'); process.exit(2); }
+const timeoutS = intArg('--timeout', 120, 1);
+const shards = intArg('--shards', stress ? 3 : 1, 1);
+const retries = stress ? 0 : intArg('--retries', 1, 0);
+const runs = stress ? intArg('--runs', 3, 1) : 1;
+const throttle = stress ? Number(arg('--cpu-throttle', '4')) : 1;
+if (!(throttle >= 1)) { console.error('--cpu-throttle must be a number >= 1'); process.exit(2); }
+const allowFlaky = flag('--allow-flaky');
+const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
 ].find(p => fs.existsSync(p)));
 if (!chromePath) { console.error('no Chrome found; pass --chrome or set CHROME'); process.exit(2); }
 
-const freePort = () => new Promise((res, rej) => {
-  const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => res(p)); }); s.on('error', rej);
-});
+const freePort = async () => {
+  for (;;) {
+    const p = await new Promise((res, rej) => {
+      const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const q = s.address().port; s.close(() => res(q)); }); s.on('error', rej);
+    });
+    if (p !== PROD_PORT) return p; // never the production Coral port, even by chance
+  }
+};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function waitHttp(url, ms = 30000) {
   const end = Date.now() + ms;
   while (Date.now() < end) { try { const r = await fetch(url); if (r.status < 500) return; } catch { /* retry */ } await sleep(200); }
   throw new Error('timeout waiting for ' + url);
 }
+const alive = p => p && p.exitCode === null && p.signalCode === null;
+const killTree = (p, sig = 'SIGKILL') => {
+  if (!p || !p.pid) return;
+  try { process.kill(-p.pid, sig); } catch { try { p.kill(sig); } catch { /* gone */ } }
+};
+
+// Kill what a previous runner that was SIGKILLed left behind (see "Leftovers" above).
+const pidDir = os.tmpdir();
+const pidFile = path.join(pidDir, `coral-cdp-runner-${process.pid}.json`);
+const isAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+function sweepLeftovers() {
+  let n = 0;
+  for (const f of fs.readdirSync(pidDir)) {
+    const m = /^coral-cdp-runner-(\d+)\.json$/.exec(f);
+    if (!m || Number(m[1]) === process.pid || isAlive(Number(m[1]))) continue; // ours, or a runner still running
+    let groups = [];
+    try { groups = JSON.parse(fs.readFileSync(path.join(pidDir, f), 'utf8')); } catch { /* unreadable: just remove it */ }
+    for (const { pid, tmp: t } of groups) {
+      const r = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+      if (r.status !== 0 || !t || !r.stdout.includes(t)) continue; // gone, or the pid now belongs to something else
+      try { process.kill(-pid, 'SIGKILL'); n++; } catch { /* already gone */ }
+    }
+    try { fs.rmSync(path.join(pidDir, f)); } catch { /* fine */ }
+  }
+  if (n) console.log(`killed ${n} leftover process group(s) from an earlier run that did not exit cleanly`);
+}
+sweepLeftovers();
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-cdp-'));
-const procs = [];
-const cleanup = () => { for (const p of procs) { try { p.kill('SIGTERM'); } catch { /* gone */ } } };
-process.on('exit', cleanup); process.on('SIGINT', () => process.exit(130));
+const procs = new Set(); // every process group we started, killed on exit
+const recordPids = () => {
+  try { fs.writeFileSync(pidFile, JSON.stringify([...procs].filter(p => p.pid).map(p => ({ pid: p.pid, tmp })))); } catch { /* best effort */ }
+};
+const track = p => { procs.add(p); recordPids(); return p; };
+const untrack = p => { procs.delete(p); recordPids(); };
+const cleanup = () => { for (const p of procs) killTree(p); try { fs.rmSync(pidFile); } catch { /* fine */ } };
+process.on('exit', cleanup);
+process.on('SIGINT', () => process.exit(130));
+process.on('SIGTERM', () => process.exit(143));
 
 console.log('building coral (dev) ...');
 const bin = path.join(tmp, 'coral');
@@ -53,10 +136,31 @@ if (b.status !== 0) process.exit(2);
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_HOST', 'CORAL_DATA_DIR', 'CORAL_DIR', 'CORAL_TEST_URL', 'TMUX', 'TMUX_PANE'].includes(k)));
 
+// throttlePages keeps a browser-level CDP session that applies Emulation.setCPUThrottlingRate to every
+// page target, the ones already open and every one created later, until the shard is stopped.
+async function throttlePages(cdpPort, rate) {
+  const version = await (await fetch(`http://127.0.0.1:${cdpPort}/json/version`)).json();
+  const client = await CDP({ target: version.webSocketDebuggerUrl, local: true });
+  const done = new Set();
+  const apply = async info => {
+    if (info.type !== 'page' || done.has(info.targetId)) return;
+    done.add(info.targetId);
+    const { sessionId } = await client.send('Target.attachToTarget', { targetId: info.targetId, flatten: true });
+    await client.send('Emulation.setCPUThrottlingRate', { rate }, sessionId);
+  };
+  client.on('Target.targetCreated', ({ targetInfo }) => { apply(targetInfo).catch(() => { /* target already gone */ }); });
+  await client.send('Target.setDiscoverTargets', { discover: true });
+  for (const info of (await client.send('Target.getTargets')).targetInfos) await apply(info).catch(() => {});
+  return client;
+}
+
+const allLogs = []; // every shard's Coral log, including shards that were replaced
+
 // startShard starts one isolated Coral server and one headless Chrome. Each shard has its own data dir,
-// Codex home, ports and Chrome profile, so shards share nothing but the built binary.
-async function startShard(n) {
-  const dir = shards > 1 ? path.join(tmp, `shard${n}`) : tmp;
+// Codex home, ports and Chrome profile, so shards share nothing but the built binary. gen counts the
+// replacements of shard n (after a timeout or a dead process), so each start gets fresh directories.
+async function startShard(n, gen = 0) {
+  const dir = path.join(tmp, `shard${n}${gen ? `-${gen}` : ''}`);
   fs.mkdirSync(dir, { recursive: true });
   const port = await freePort();
   const data = path.join(dir, 'data'); fs.mkdirSync(data);
@@ -64,17 +168,18 @@ async function startShard(n) {
   const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1' };
   const log = path.join(dir, 'coral.log');
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
-    { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')] });
+    { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
+  track(coral);
+  allLogs.push(log);
   let coralExit = null;
   coral.on('exit', (code, sig) => { coralExit = `exit code ${code} signal ${sig}`; });
-  procs.push(coral);
   // A port that answers is not proof that this shard owns it, so wait for coral's own log to say it
   // bound the port (it prints the dashboard line only after net.Listen succeeds), or for it to exit.
   const bound = `Coral dashboard: http://localhost:${port}\n`;
   for (const end = Date.now() + 30000; !coralExit && !fs.readFileSync(log, 'utf8').includes(bound); await sleep(100)) {
-    if (Date.now() > end) { console.error(`coral did not bind :${port} within 30s; see ${log}`); process.exit(2); }
+    if (Date.now() > end) throw new Error(`coral did not bind :${port} within 30s; see ${log}`);
   }
-  if (coralExit) { console.error(`coral exited during startup (${coralExit}); see ${log}`); process.exit(2); }
+  if (coralExit) throw new Error(`coral exited during startup (${coralExit}); see ${log}`);
   await waitHttp(`http://127.0.0.1:${port}/api/health`);
   // On CI runners (Ubuntu 24.04) unprivileged user namespaces are restricted, so Chrome's sandbox cannot start; the runner is a
   // throwaway VM running only our own test pages, so the sandbox is switched off there and only there.
@@ -84,12 +189,12 @@ async function startShard(n) {
   const chromeArgs = ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1400,900',
     ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []), 'about:blank'];
-  const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+  const chrome = spawn(chromePath, chromeArgs, { stdio: ['ignore', 'ignore', 'pipe'], detached: true });
+  track(chrome);
   let chromeErr = '';
   chrome.stderr.on('data', d => { chromeErr = (chromeErr + d).slice(-8000); });
   let chromeExit = null;
   chrome.on('exit', (code, sig) => { chromeExit = `exit code ${code} signal ${sig}`; });
-  procs.push(chrome);
   let cdp = 0;
   try {
     const portFile = path.join(profile, 'DevToolsActivePort');
@@ -100,48 +205,148 @@ async function startShard(n) {
     await waitHttp(`http://127.0.0.1:${cdp}/json/version`, 60000);
   } catch (e) {
     // The DevTools port never opened: say why (this used to be invisible, stdio was swallowed).
-    console.error(`Chrome did not open its DevTools port: ${e.message}\n  chrome: ${chromePath}\n  state: ${chromeExit || 'still running'}\n  args: ${chromeArgs.join(' ')}\n  stderr (last 8 KB):\n${chromeErr}`);
-    process.exit(2);
+    throw new Error(`Chrome did not open its DevTools port: ${e.message}\n  chrome: ${chromePath}\n  state: ${chromeExit || 'still running'}\n  args: ${chromeArgs.join(' ')}\n  stderr (last 8 KB):\n${chromeErr}`);
   }
-  console.log(`${shards > 1 ? `shard ${n}: ` : ''}coral http://127.0.0.1:${port}  chrome cdp :${cdp}  tmp ${dir}`);
-  return { n, log, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } };
+  const throttler = throttle > 1 ? await throttlePages(cdp, throttle) : null;
+  console.log(`${shards > 1 ? `shard ${n}${gen ? ` (restart ${gen})` : ''}: ` : ''}coral http://127.0.0.1:${port}  chrome cdp :${cdp}${throttle > 1 ? `  cpu x${throttle}` : ''}  tmp ${dir}`);
+  return { n, gen, log, coral, chrome, throttler, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } };
 }
+
+async function stopShard(shard) {
+  try { if (shard.throttler) await shard.throttler.close(); } catch { /* already closed */ }
+  for (const p of [shard.chrome, shard.coral]) { killTree(p); untrack(p); }
+}
+
 // Shards start one after another: freePort() releases the port before coral binds it, so two shards
 // starting at once could be handed the same port. Each shard also waits for coral's own "bound" log line.
 const shardsUp = [];
-for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i));
+try {
+  for (let i = 1; i <= shards; i++) shardsUp.push(await startShard(i));
+} catch (e) { console.error(e.message); process.exit(2); }
 console.log('');
 
 const tests = fs.readdirSync(here).filter(f => /\.test\.(js|mjs)$/.test(f))
   .filter(f => fs.readFileSync(path.join(here, f), 'utf8').includes('chrome-remote-interface'))
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
-const results = [];
-const runStarted = Date.now();
-let next = 0;
-async function runQueue(shard) {
-  while (next < tests.length) {
-    const t = tests[next++];
-    const started = Date.now();
-    const r = await new Promise(resolve => {
-      const p = spawn('node', [t], { cwd: here, env: shard.env });
-      let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
-      const timer = setTimeout(() => { p.kill('SIGKILL'); resolve({ code: 'timeout', out }); }, timeoutS * 1000);
-      p.on('exit', code => { clearTimeout(timer); resolve({ code, out }); });
+if (!tests.length) { console.error('no CDP suites matched'); process.exit(2); }
+
+// runAttempt runs one suite once in its own process group, with the hard per-attempt timeout.
+function runAttempt(t, shard) {
+  const started = Date.now();
+  return new Promise(resolve => {
+    const p = spawn('node', [t], { cwd: here, env: shard.env, detached: true });
+    track(p);
+    let out = ''; p.stdout.on('data', d => out += d); p.stderr.on('data', d => out += d);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; killTree(p); }, timeoutS * 1000);
+    let closed = false;
+    p.on('close', () => { closed = true; });
+    p.on('exit', async code => {
+      clearTimeout(timer);
+      const secs = ((Date.now() - started) / 1000).toFixed(1);
+      // Anything the suite left running in its process group (a helper it spawned) goes with it; then give
+      // the output pipes a moment to drain, without waiting on a straggler that kept stdout open.
+      killTree(p); untrack(p);
+      for (const end = Date.now() + 2000; !closed && Date.now() < end; await sleep(50)) { /* drain */ }
+      const status = timedOut ? 'timeout' : code === 0 ? 'pass' : 'fail';
+      resolve({ status, code: timedOut ? 'timeout' : code, secs, shard: shard.n, log: shard.log, out: timedOut ? `${out}\n[runner] TIMEOUT: killed after ${timeoutS}s` : out });
     });
-    const ok = r.code === 0;
-    const res = { test: t, ok, code: r.code, secs: ((Date.now() - started) / 1000).toFixed(1), tail: r.out.trim().split('\n').slice(-6).join('\n') };
-    if (shards > 1) res.shard = shard.n;
-    if (!ok) res.output = r.out; // a failing suite's whole output: the tail can cut off the failing assertion
-    results.push(res);
-    console.log(`${ok ? 'PASS' : 'FAIL'}  ${t}  (${res.secs}s)${shards > 1 ? `  [shard ${shard.n}]` : ''}${ok ? '' : '  exit=' + r.code}`);
-    // CDP_FULL=1 prints a failing suite's whole output (the default shows only the last 30 lines, which can hide the failing check).
-    if (!ok) console.log(r.out.trim().split('\n').slice(process.env.CDP_FULL ? 0 : -30).map(l => '      ' + l).join('\n'));
-  }
+  });
 }
-await Promise.all(shardsUp.map(runQueue));
-results.sort((a, b) => a.test.localeCompare(b.test));
-const failed = results.filter(r => !r.ok);
-console.log(`\n${results.length - failed.length}/${results.length} suites passed in ${((Date.now() - runStarted) / 1000).toFixed(1)}s${shards > 1 ? ` on ${shards} shards` : ''}`);
+
+// healthy asks the shard's Chrome and Coral themselves, not just whether the processes exist: a Chrome that
+// a suite closed (Browser.close) can still be shutting down when the next suite starts.
+async function healthy(sh) {
+  const ok = async url => { try { return (await fetch(url, { signal: AbortSignal.timeout(3000) })).status < 500; } catch { return false; } };
+  const chromeOk = alive(sh.chrome) && await ok(`http://127.0.0.1:${sh.env.CDP_PORT}/json/version`);
+  const coralOk = alive(sh.coral) && await ok(`${sh.env.CORAL_TEST_URL}/api/health`);
+  return chromeOk && coralOk ? '' : !chromeOk ? 'its Chrome is gone' : 'its Coral server is gone';
+}
+
+// ensureShard replaces a shard whose Chrome or server is gone, or always when given a reason (force):
+// after a timeout, or before a retry.
+async function ensureShard(i, force) {
+  const sh = shardsUp[i];
+  const problem = force || await healthy(sh);
+  if (!problem) return sh;
+  const why = problem;
+  await stopShard(sh);
+  console.log(`  [runner] replacing shard ${sh.n} (${why})`);
+  shardsUp[i] = await startShard(sh.n, sh.gen + 1);
+  return shardsUp[i];
+}
+
+const lastLines = (s, n) => s.trim().split('\n').slice(-n).join('\n');
+const results = []; // one entry per suite per run
+async function runOnce(run) {
+  let next = 0;
+  const label = runs > 1 ? `  [run ${run}/${runs}]` : '';
+  await Promise.all(shardsUp.map(async (_, i) => {
+    while (next < tests.length) {
+      const t = tests[next++];
+      const attempts = [];
+      let shard = await ensureShard(i, false);
+      for (let a = 0; a <= retries; a++) {
+        const r = await runAttempt(t, shard);
+        attempts.push(r);
+        if (r.status === 'pass') break;
+        if (a < retries) {
+          console.log(`RETRY ${t}  (${r.status === 'timeout' ? `TIMEOUT after ${r.secs}s` : `exit=${r.code} after ${r.secs}s`})${shards > 1 ? `  [shard ${r.shard}]` : ''}${label}`);
+          // A retry gets a fresh Coral and Chrome: retrying on the same server and browser would repeat a
+          // failure caused by their state rather than by the suite.
+          shard = await ensureShard(i, r.status === 'timeout' ? 'after a TIMEOUT' : 'before a retry');
+        } else if (r.status === 'timeout') {
+          shard = await ensureShard(i, 'after a TIMEOUT');
+        }
+      }
+      const final = attempts[attempts.length - 1];
+      const status = final.status === 'pass' ? (attempts.length > 1 ? 'flaky' : 'pass') : final.status;
+      const res = {
+        test: t, run, status, ok: status === 'pass', code: final.code, secs: final.secs, tail: lastLines(final.out, 6),
+        attempts: attempts.map(x => ({ status: x.status, code: x.code, secs: x.secs, shard: x.shard, coralLog: x.log, ...(x.status !== 'pass' ? { output: x.out } : {}) })),
+      };
+      if (shards > 1) res.shard = final.shard;
+      if (status !== 'pass') res.output = attempts.filter(x => x.status !== 'pass').map(x => x.out).join('\n\n----- next attempt -----\n\n');
+      results.push(res);
+      const word = { pass: 'PASS', flaky: 'FLAKY', fail: 'FAIL', timeout: 'TIMEOUT' }[status];
+      console.log(`${word.padEnd(7)} ${t}  (${final.secs}s${attempts.length > 1 ? `, ${attempts.length} attempts` : ''})${shards > 1 ? `  [shard ${final.shard}]` : ''}${label}${status === 'fail' ? `  exit=${final.code}` : ''}`);
+      // CDP_FULL=1 prints a failing attempt's whole output (the default shows its last 30 lines, which can hide
+      // the failing check); results.json always has it in full.
+      for (const x of attempts.filter(x => x.status !== 'pass')) {
+        console.log(x.out.trim().split('\n').slice(process.env.CDP_FULL ? 0 : -30).map(l => '      ' + l).join('\n'));
+      }
+    }
+  }));
+}
+
+const runStarted = Date.now();
+try {
+  for (let run = 1; run <= runs; run++) await runOnce(run);
+} catch (e) { console.error(`runner error (a shard could not be replaced?): ${e.message}`); process.exit(2); }
+const elapsed = ((Date.now() - runStarted) / 1000).toFixed(1);
+results.sort((a, b) => a.test.localeCompare(b.test) || a.run - b.run);
 fs.writeFileSync(path.join(tmp, 'results.json'), JSON.stringify(results, null, 1));
-console.log('results:', path.join(tmp, 'results.json'), ' coral log:', shardsUp.map(sh => sh.log).join(' '));
-process.exit(failed.length ? 1 : 0);
+const where = `results: ${path.join(tmp, 'results.json')}  coral logs: ${allLogs.join(' ')}`;
+
+let exitCode;
+if (stress) {
+  const counts = new Map(tests.map(t => [t, 0]));
+  for (const r of results) if (r.status === 'pass') counts.set(r.test, counts.get(r.test) + 1);
+  const unstable = [...counts].filter(([, c]) => c < runs).sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
+  console.log(`\nSTRESS: ${tests.length} suites x ${runs} runs on ${shards} shard(s), CPU x${throttle}, no retries, in ${elapsed}s`);
+  console.log(`${tests.length - unstable.length}/${tests.length} suites passed every run`);
+  if (unstable.length) {
+    console.log('pass count per unstable suite (failing every run first):');
+    for (const [t, c] of unstable) console.log(`  ${c}/${runs}  ${t}${c === 0 ? '  (failing)' : '  (flaky)'}`);
+  }
+  exitCode = unstable.length ? 1 : 0;
+} else {
+  const by = s => results.filter(r => r.status === s).map(r => r.test);
+  const flaky = by('flaky'), failed = [...by('fail'), ...by('timeout')];
+  console.log(`\n${results.length - flaky.length - failed.length}/${results.length} suites passed in ${elapsed}s${shards > 1 ? ` on ${shards} shards` : ''}${flaky.length ? `, ${flaky.length} FLAKY (passed only on a retry; not counted as passed)` : ''}${failed.length ? `, ${failed.length} FAILED` : ''}`);
+  if (flaky.length) console.log(`FLAKY: ${flaky.join(', ')}`);
+  if (failed.length) console.log(`FAILED: ${failed.join(', ')}`);
+  exitCode = failed.length ? 1 : flaky.length ? (allowFlaky ? 0 : 3) : 0;
+}
+console.log(where);
+process.exit(exitCode);
