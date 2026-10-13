@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.4.11 — Unreachable servers explained, access changes that apply at once, and lighter startup
+
+**No security fixes in this release.** v1.3.43 remains the current security release. This release explains an agent whose server can't be reached instead of failing quietly, recovers it without a reload when the server returns, unlocks an agent as soon as you raise its server's access in the Cloud Hub, and trims what the dashboard loads before it starts.
+
+### Fixes
+
+- **An agent on an unreachable server says so.** On a hub, when an agent's server stops answering, a banner above the agent says which server is unreachable and that the agent shows its last known state. Sending is refused with that explanation (your draft is kept, nothing is sent), and the dashboard stops polling that agent. When the server is back, the banner clears and polling resumes within about a second, without reloading the page.
+- **Hub errors in plain words.** Errors from a remote server (unreachable, unavailable, rejected key, address not allowed, too busy and so on) show as a sentence naming the server, never as raw JSON.
+- **A recovered server's agents look normal again.** After a remote server came back, its agents could keep the "stale" styling until the page was reloaded.
+- **Raising access unlocks the open agent right away.** When a Cloud Hub agent is read-only and you raise its server's access in the Servers tab, the agent you have open is unlocked as soon as the change is saved, with no need to select it again. It's unlocked only if the server's effective access now allows sending. If the machine's own setting still limits it, the agent stays read-only and the message explains why, for example "Read-only: This machine: View" with "Change it in Coral on that machine".
+
+### Faster
+
+- **Remote agents update promptly on a busy hub.** Activity on the hub's own machine could delay remote agents' updates in the dashboard by up to a second; they now go out with the next update. A hub also writes a remote server's unchanged status to its database at most once a minute instead of every 30 seconds.
+- **Dialogs load when you first open them.** The code for the launch, settings, team and other dialogs no longer loads at startup; it loads the first time you open one. If that load fails, Coral says so ("Could not load this dialog") and tries again on the next click. Keyboard handling (Escape and Tab) and your theme and settings still work from the first moment. On a throttled phone connecting directly to Coral, the first load finished 6% sooner (5.17 s → 4.84 s), with 12% less JavaScript to run.
+
+### For contributors
+
+- Test servers get their own home directory, so they never index this machine's real Claude, Codex, Gemini or Pi chat history. The Kill all stress test works again: it had broken when static files became build-versioned.
+- More browser suites wait on the app's state instead of fixed sleeps (`agent_ui`, `subagent_tasks`): the sleep ratchet is down to 124.
+- The `agent_popout` browser suite waits on the popout's state instead of 31 fixed sleeps, and runs in 21 s instead of 31 s. 
+- The agent-list parity suite now also compares the phone list at phone width, and `import_once` checks for the list at the moment the failure is reported, which removes a flake in full sharded runs.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.10.
+
+### Upgrade notes
+
+- Nothing to migrate; there are no database changes.
+- On a hub, the Servers tab's last-seen time for an online server is now accurate to about a minute (status changes are still recorded at once).
+
 ## v1.4.10 — A much faster agent list, and scheduled jobs that don't fire the moment you create them
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release makes the agent list update far more cheaply on busy servers, stops new scheduled jobs from running immediately, and makes the dashboard more resilient to a flaky connection.
