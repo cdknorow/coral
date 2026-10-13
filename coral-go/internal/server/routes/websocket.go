@@ -398,10 +398,12 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 	ctxModelMap := make(map[string]*string, len(allLive))
 	createdAtMap := make(map[string]string, len(allLive))
 	sleepingMap := make(map[string]bool, len(allLive))
+	archivedMap := make(map[string]bool, len(allLive))
 	for _, ls := range allLive {
 		ctxModelMap[ls.SessionID] = ls.Model
 		createdAtMap[ls.SessionID] = ls.CreatedAt
 		sleepingMap[ls.SessionID] = ls.IsSleeping == 1
+		archivedMap[ls.SessionID] = ls.IsArchived == 1
 	}
 
 	var sessions []map[string]any
@@ -415,7 +417,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		latestEv := ev[0]
 		staleF, _ := logInfo["staleness_seconds"].(float64)
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
-		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: sleepingMap[sid]}
+		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: sleepingMap[sid], Archived: archivedMap[sid]}
 		for _, event := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, StateEvent{Type: event.EventType, Summary: event.Summary})
 		}
@@ -467,7 +469,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"board_is_orchestrator": boardSubscriberFlag(boardSubs[tmuxName]),
 			"log_path":              agent.LogPath,
 			"sleeping":              state.Sleeping,
-			"archived":              false, // archived agents are always sleeping placeholders below
+			"archived":              archivedMap[sid], // set when an archived agent's pane outlived the archive
 			"first_prompt":          h.jsonl.FirstUserPrompt(sid, agent.WorkingDir, agent.AgentType),
 		}
 		if usage, ok := tokenUsageMap[sid]; ok {
@@ -530,7 +532,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		addCapabilities(sessions[len(sessions)-1], ls.Capabilities)
 	}
 
-	return sessions, nil
+	return archivedLast(sessions), nil
 }
 
 // getActiveRuns fetches active job runs for the Jobs sidebar.

@@ -307,7 +307,7 @@ Git snapshot for the agent's working directory.
 
 ### POST `/api/sessions/live/{name}/send`
 
-Send a text command to the agent's terminal. `agent_type` and `session_id` are required and must match the live session named in the path (its name or its terminal name); otherwise the request is refused (400 when missing or mismatched, 404 for an unknown session) and nothing is sent. A sleeping agent answers 409 `session is sleeping`, an archived one 409 `session is archived`.
+Send a text command to the agent's terminal. `agent_type` and `session_id` are required and must match the live session named in the path (its name or its terminal name); otherwise the request is refused and nothing is sent: 400 with code `session_id_required` when either is missing, 400 on a mismatch, 404 for an unknown session. A sleeping agent answers 409 `session is sleeping`, an archived one 409 `session is archived`.
 
 **Request Body:**
 ```json

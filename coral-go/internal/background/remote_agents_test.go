@@ -574,3 +574,17 @@ func TestHub_FeedDialsAsHubFeed(t *testing.T) {
 	defer a.mu.Unlock()
 	assert.Equal(t, "feed=hub", a.feedQuery)
 }
+
+// A remote's agent count leaves out its archived agents (#3030).
+func TestHub_AgentCountExcludesArchived(t *testing.T) {
+	archived := sess("old", "a-2")
+	archived["sleeping"], archived["archived"] = true, true
+	a := newFakeRemote(t, sess("worker", "a-1"), archived)
+	a.noFeed = true
+	reg := newFakeRegistry()
+	reg.put("a", a.URL)
+	h := fastHub(reg)
+	startHub(t, h)
+	require.Eventually(t, func() bool { return len(h.Snapshot().Sessions) == 2 }, 3*time.Second, 20*time.Millisecond)
+	assert.Equal(t, 1, h.Snapshot().Servers[0].Agents, "the archived agent is still listed but not counted")
+}

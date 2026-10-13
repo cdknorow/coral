@@ -1708,6 +1708,14 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     void unreadCount;
     const unreadChip = '';
     void _renderAvatar; // avatars left the list (AGENT_LIST_COMPACT D-A); kept for other callers
+    // Archive needs a server that knows the state: one that sends 'archived'
+    // on its rows (#3030). Older servers (e.g. a hub remote) do not.
+    const _archiveItem = ('archived' in s) ? `
+            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentArchive('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'archive')">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
+                Archive
+            </button>
+` : '';
     const _sleepingMenu = `
             <a class="overflow-menu-item overflow-menu-open-window" href="/agent/${escapeAttr(sid)}" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" onclick="event.stopPropagation(); closeSidebarKebabs();">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>
@@ -1717,11 +1725,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                 Wake
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentArchive('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'archive')">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
-                Archive
-            </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
+${_archiveItem}            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); restartDirect('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 2v4h4"/><path d="M3.5 6A5.5 5.5 0 1 1 2.5 8"/></svg>
                 Restart
             </button>
@@ -1780,11 +1784,7 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 1 0 0 10 5 5 0 0 1 0-10z"/></svg>
                 Sleep
             </button>
-            <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); toggleAgentArchive('${jsStr(s.name)}', '${jsStr(s.agent_type)}', '${jsStr(sid)}', 'archive')">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="3" rx="0.5"/><path d="M3 6v7h10V6"/><path d="M6.5 9h3"/></svg>
-                Archive
-            </button>
-            <hr class="overflow-menu-divider">
+${_archiveItem}            <hr class="overflow-menu-divider">
             <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); moveSessionUp('${jsStr(sid)}')">
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v10M4 7l4-4 4 4"/></svg>
                 Move Up

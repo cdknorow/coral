@@ -8,15 +8,15 @@ import (
 
 // Team represents a persistent agent team.
 type Team struct {
-	ID          int64   `db:"id" json:"id"`
-	Name        string  `db:"name" json:"name"`
-	ConfigJSON  string  `db:"config_json" json:"-"`
-	Status      string  `db:"status" json:"status"`
-	WorkingDir  string  `db:"working_dir" json:"working_dir"`
-	IsWorktree  int     `db:"is_worktree" json:"is_worktree"`
-	CreatedAt   string  `db:"created_at" json:"created_at"`
-	UpdatedAt   string  `db:"updated_at" json:"updated_at"`
-	StoppedAt   *string `db:"stopped_at" json:"stopped_at,omitempty"`
+	ID         int64   `db:"id" json:"id"`
+	Name       string  `db:"name" json:"name"`
+	ConfigJSON string  `db:"config_json" json:"-"`
+	Status     string  `db:"status" json:"status"`
+	WorkingDir string  `db:"working_dir" json:"working_dir"`
+	IsWorktree int     `db:"is_worktree" json:"is_worktree"`
+	CreatedAt  string  `db:"created_at" json:"created_at"`
+	UpdatedAt  string  `db:"updated_at" json:"updated_at"`
+	StoppedAt  *string `db:"stopped_at" json:"stopped_at,omitempty"`
 
 	// Computed fields
 	Config  json.RawMessage `db:"-" json:"config,omitempty"`

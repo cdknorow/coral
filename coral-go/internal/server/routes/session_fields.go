@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/store"
@@ -67,4 +68,21 @@ func listTextFields(logInfo map[string]any, summary string, displayNames, icons 
 		icon = ic
 	}
 	return status, summ, displayName, icon
+}
+
+// archivedLast moves archived agents' rows to the end and keeps the order
+// otherwise, so a reader that caps the list keeps live rows first (#3030).
+func archivedLast(rows []map[string]any) []map[string]any {
+	slices.SortStableFunc(rows, func(a, b map[string]any) int {
+		aa, ba := a["archived"] == true, b["archived"] == true
+		switch {
+		case aa == ba:
+			return 0
+		case aa:
+			return 1
+		default:
+			return -1
+		}
+	})
+	return rows
 }

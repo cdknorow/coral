@@ -88,6 +88,7 @@ async function connect() {
             }
             // The live list (reloaded on select and on a timer) comes from the mocked agents.
             if (/^\\/api\\/sessions\\/live(\\?.*)?$/.test(u) && (opts.method || 'GET').toUpperCase() === 'GET') {
+                window.__liveListServed = (window.__liveListServed || 0) + 1;
                 return Promise.resolve(new Response(JSON.stringify(Object.values(mock.agents).map(a => mock.entry(a))), { status: 200, headers: { 'content-type': 'application/json' } }));
             }
             // Bulk wakes skip archived agents, as the server does (#3030).
@@ -154,7 +155,15 @@ async function connect() {
         const { state } = await import('/static/state.js');
         const liveChat = await import('/static/live_chat.js');
         const ws = await import('/static/websocket.js');
-        window.T = { state, liveChat, ws };
+        // Let the page's own first live-list load finish (and the deep-link restore that follows it)
+        // before a test selects anything: a late restore would re-select whatever #chat/<id> the hash
+        // holds by then. Popout pages restore through their resolver instead.
+        if (!location.pathname.startsWith('/agent/')) {
+            for (let i = 0; i < 500 && !window.__liveListServed; i++) await new Promise(r => setTimeout(r, 10));
+            await new Promise(r => setTimeout(r, 100));
+        }
+        const render = await import('/static/render.js');
+        window.T = { state, liveChat, ws, render };
         window.__qaState = state;
         // Count re-selects from every caller (Wake, the feed, the test itself).
         { const orig = window.selectLiveSession; window.__selCalls = 0; window.selectLiveSession = (...a) => { window.__selCalls++; return orig(...a); }; }

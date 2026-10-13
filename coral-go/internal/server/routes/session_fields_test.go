@@ -170,11 +170,14 @@ func TestSessionFields_WSMatchesListWithGoalAndName(t *testing.T) {
 
 // An archived agent is a sleeping placeholder row with archived=true on both
 // /api/sessions/live and /ws/coral; an awake or plain sleeping one says false.
+// Archived rows come last (a capped reader keeps live rows) and never report
+// waiting_for_input.
 func TestSessionFields_ArchivedOnListAndWS(t *testing.T) {
 	h, awake := sessionFieldsFixture(t)
 	ctx := context.Background()
 	asleep, archived := "22222222-2222-3333-4444-555555555555", "33333333-2222-3333-4444-555555555555"
-	for _, sid := range []string{asleep, archived} {
+	// The archived agent is registered first: only the ordering puts it last.
+	for _, sid := range []string{archived, asleep} {
 		require.NoError(t, h.ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "proj-" + sid[:4], WorkingDir: "/tmp/proj"}))
 	}
 	require.NoError(t, h.ss.SetSessionSleeping(ctx, asleep, true))
@@ -197,8 +200,12 @@ func TestSessionFields_ArchivedOnListAndWS(t *testing.T) {
 		got := map[string][2]any{}
 		for _, e := range entries {
 			got[e["session_id"].(string)] = [2]any{e["sleeping"], e["archived"]}
+			if e["archived"] == true {
+				require.Equal(t, false, e["waiting_for_input"], "%s: an archived agent is never waiting for input", name)
+			}
 		}
 		require.Equal(t, want, got, name)
+		require.Equal(t, archived, entries[len(entries)-1]["session_id"], "%s: archived rows come last", name)
 	}
 }
 
@@ -274,4 +281,40 @@ func TestWSCoral_HubFeedCarriesArchivedFlips(t *testing.T) {
 	require.NoError(t, ss.SetSessionArchived(ctx, sid, false))
 	awaitDiff(false)
 	require.Equal(t, false, listArchived(), "the list agrees with the hub feed")
+}
+
+// An archived agent whose terminal outlived the archive (a failed kill, or a
+// tmux pane that survived a restart) is still archived on the list and the
+// feed, and a pending permission request does not make it waiting_for_input.
+func TestSessionFields_ArchivedWithLivePaneNeverWaits(t *testing.T) {
+	h, sid := sessionFieldsFixture(t) // a running agent with a live pane
+	ctx := context.Background()
+	_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "proj", SessionID: &sid, EventType: "notification", Summary: permissionNote})
+	require.NoError(t, err)
+	// Archive it in the store only: the pane is left running.
+	require.NoError(t, h.ss.SetSessionArchived(ctx, sid, true))
+
+	w := httptest.NewRecorder()
+	h.List(w, httptest.NewRequest("GET", "/api/sessions/live", nil))
+	require.Equal(t, 200, w.Code)
+	var list []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &list))
+	ws, err := h.buildSessionListForWS(httptest.NewRequest("GET", "/ws/coral", nil))
+	require.NoError(t, err)
+	b, err := json.Marshal(ws)
+	require.NoError(t, err)
+	var wsDecoded []map[string]any
+	require.NoError(t, json.Unmarshal(b, &wsDecoded))
+
+	for name, entries := range map[string][]map[string]any{"list": list, "ws": wsDecoded} {
+		var row map[string]any
+		for _, e := range entries {
+			if e["session_id"] == sid {
+				row = e
+			}
+		}
+		require.NotNil(t, row, name)
+		require.Equal(t, true, row["archived"], name)
+		require.Equal(t, false, row["waiting_for_input"], "%s: archived never waits", name)
+	}
 }

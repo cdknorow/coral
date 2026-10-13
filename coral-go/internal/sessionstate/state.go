@@ -19,6 +19,9 @@ type Input struct {
 	StalenessSeconds float64
 	NotStarted       bool
 	Sleeping         bool
+	// Archived agents never report a pending request: nobody is meant to answer
+	// it until the agent is unarchived, even if its terminal outlived the archive.
+	Archived bool
 }
 
 // State is the authoritative live-state contract. Done is retained as a
@@ -90,6 +93,11 @@ func Derive(in Input) State {
 	// field explicit and false rather than inventing a timeout heuristic.
 	state.Stuck = false
 	state.Done = false
+	if in.Archived {
+		clearRequest()
+		state.AwaitingUser = false
+		state.Working = false
+	}
 	return state
 }
 

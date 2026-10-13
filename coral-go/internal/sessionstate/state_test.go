@@ -164,3 +164,21 @@ func TestNoConsumerReimplementsTheNotificationRule(t *testing.T) {
 		t.Fatalf("guard scanned only %d files; the source root moved", scanned)
 	}
 }
+
+// An archived agent never reports a pending request, an idle "your move" or
+// work in progress, whatever its last events say; the same events on an agent
+// that is only sleeping are unchanged.
+func TestDeriveArchivedNeverWaits(t *testing.T) {
+	for _, events := range [][]Event{{note(permission)}, {note(approval)}, {note(elicitation)}, {stop, note(idle)}, {prompt}, {tool}} {
+		got := Derive(Input{Events: events, Sleeping: true, Archived: true})
+		if got.NeedsInput || got.AwaitingUser || got.Working || got.WaitingReason != "" || got.WaitingSummary != "" {
+			t.Fatalf("archived agent reports activity for %v: %+v", events, got)
+		}
+		if !got.Sleeping {
+			t.Fatalf("archived agent is still sleeping: %+v", got)
+		}
+	}
+	if sleeping := Derive(Input{Events: []Event{note(permission)}, Sleeping: true}); !sleeping.NeedsInput {
+		t.Fatalf("a sleeping (not archived) agent keeps its pending request: %+v", sleeping)
+	}
+}

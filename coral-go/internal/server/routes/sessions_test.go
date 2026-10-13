@@ -2172,6 +2172,7 @@ func TestSessionsSendKeys_RequireExactLiveTarget(t *testing.T) {
 	require.NoError(t, ss.SetSessionSleeping(ctx, sleeping, true))
 	require.NoError(t, ss.SetSessionArchived(ctx, archived, true))
 
+	var lastCode string
 	post := func(sid, route, body string) (int, string) {
 		t.Helper()
 		resp, err := http.Post(server.URL+"/api/sessions/live/claude-"+sid+"/"+route, "application/json", bytes.NewBufferString(body))
@@ -2180,6 +2181,7 @@ func TestSessionsSendKeys_RequireExactLiveTarget(t *testing.T) {
 		var out map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&out)
 		msg, _ := out["error"].(string)
+		lastCode, _ = out["code"].(string)
 		return resp.StatusCode, msg
 	}
 	exact := func(sid string) string { return `"agent_type": "claude", "session_id": "` + sid + `"` }
@@ -2192,8 +2194,10 @@ func TestSessionsSendKeys_RequireExactLiveTarget(t *testing.T) {
 			code, msg := post(sid, route, `{`+payload+`}`)
 			assert.Equal(t, http.StatusBadRequest, code, "%s bare name %s", route, sid)
 			assert.Contains(t, msg, "session_id and agent_type are required", route)
+			assert.Equal(t, "session_id_required", lastCode, "a bare name is a 400 with a code, never a 404")
 			code, _ = post(sid, route, `{`+payload+`, "agent_type": "claude"}`)
 			assert.Equal(t, http.StatusBadRequest, code, "%s without session_id", route)
+			assert.Equal(t, "session_id_required", lastCode)
 		}
 		code, msg := post(sleeping, route, `{`+payload+`, `+exact(sleeping)+`}`)
 		assert.Equal(t, http.StatusConflict, code, route)

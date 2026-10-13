@@ -612,8 +612,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	liveSleeping := make(map[string]bool)
+	liveArchived := make(map[string]bool)
 	for _, session := range allLive {
 		liveSleeping[session.SessionID] = session.IsSleeping == 1
+		liveArchived[session.SessionID] = session.IsArchived == 1
 	}
 	// A sleeping row can briefly outlive its terminal during shutdown. Use
 	// the stored placeholder below instead of scanning that terminal's files.
@@ -799,7 +801,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		staleF, _ := staleness.(float64)
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
-		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid]}
+		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid], Archived: liveArchived[sid]}
 		for _, ev := range stateEvents[sid] {
 			stateInput.Events = append(stateInput.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
 		}
@@ -863,7 +865,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"board_is_orchestrator": boardSubscriberFlag(boardSub),
 			"log_path":              agent.LogPath,
 			"sleeping":              liveSleeping[sid],
-			"archived":              false, // archived agents are always sleeping placeholders below
+			"archived":              liveArchived[sid],
 			"first_prompt":          firstPrompt,
 			"enrichment_pending":    skipExpensive && !sleeping,
 		}
@@ -958,9 +960,10 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		addCapabilities(entry, ls.Capabilities)
 	}
 
+	sessions = archivedLast(sessions)
 	if snap := h.remoteSnapshot(); snap.Configured() {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"sessions": mergeRemote(sessions, snap),
+			"sessions": mergeRemote(sessions, snap), // each remote sorts its own rows
 			"servers":  snap.Servers,
 		})
 		return
@@ -1092,7 +1095,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 // supplied session ID; agentType is a consistency assertion, never a lookup key.
 func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, agentType, sessionID string, terminalRoute bool) (*store.LiveSession, int, string) {
 	if sessionID == "" || agentType == "" {
-		return nil, http.StatusBadRequest, "session_id and agent_type are required"
+		return nil, http.StatusBadRequest, errSessionIDRequired
 	}
 	parsed, err := uuid.Parse(sessionID)
 	if err != nil || parsed.String() != sessionID {
@@ -1138,8 +1141,17 @@ func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, age
 	return ls, 0, ""
 }
 
+// errSessionIDRequired is the message for a request that does not name its exact
+// target. It answers 400 with code session_id_required, never 404: through the
+// hub a 404 reads as a route refusal.
+const errSessionIDRequired = "session_id and agent_type are required"
+
 func writeExactTargetError(w http.ResponseWriter, status int, message string) {
-	writeJSON(w, status, map[string]string{"error": message})
+	body := map[string]string{"error": message}
+	if message == errSessionIDRequired {
+		body["code"] = "session_id_required"
+	}
+	writeJSON(w, status, body)
 }
 
 func shouldValidateExactTarget(agentType, sessionID string) bool {

@@ -299,7 +299,7 @@ func (h *RemoteAgentHub) Snapshot() RemoteSnapshot {
 		if label == "" {
 			label = id
 		}
-		entry := RemoteServerStatus{ID: id, Label: label, Status: status, URL: st.srv.URL, Agents: len(st.sessions), Version: st.version}
+		entry := RemoteServerStatus{ID: id, Label: label, Status: status, URL: st.srv.URL, Agents: countUnarchived(st.sessions), Version: st.version}
 		if st.srv.LastSeen != nil {
 			entry.LastSeen = *st.srv.LastSeen
 		}
@@ -849,4 +849,16 @@ func (h *RemoteAgentHub) pingFeed(ctx context.Context, conn proxy.WSConn, p feed
 // the hub's, it caches its encoded sessions and must be treated as read-only.
 func NewRemoteSnapshot(servers []RemoteServerStatus, sessions []map[string]any) RemoteSnapshot {
 	return RemoteSnapshot{Servers: servers, Sessions: sessions, enc: &snapshotEncoding{}}
+}
+
+// countUnarchived is the server's agent count: archived agents are kept out of
+// it, as they are out of the agent list (#3030).
+func countUnarchived(sessions []map[string]any) int {
+	n := 0
+	for _, s := range sessions {
+		if s["archived"] != true {
+			n++
+		}
+	}
+	return n
 }

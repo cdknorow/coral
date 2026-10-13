@@ -41,7 +41,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         };
     })`;
     const sidebar = (sel) => ev(`${SIDEBAR}(${sel ? JSON.stringify(sel) : ''})`);
-    const render = () => ev(`window.renderLiveSessions(T.state.liveSessions)`);
+    const render = () => ev(`T.render.renderLiveSessions(T.state.liveSessions)`);
     const menuItems = sid => ev(`(() => {
         const li = document.querySelector('#live-sessions-list li[data-session-id="${sid}"]');
         return li ? [...li.querySelectorAll('.sidebar-kebab-menu .overflow-menu-item')].map(b => b.textContent.replace(/\\s+/g, ' ').trim()) : null;
@@ -50,11 +50,14 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
     const agentRow = sid => ev(`(() => { const a = T.state.liveSessions.find(s => s.session_id === '${sid}'); return a && { sleeping: !!a.sleeping, archived: !!a.archived }; })()`);
 
     try {
+        await Page.enable();
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await install();
-        await ev(`localStorage.removeItem('coral-archived-expanded'); localStorage.setItem('coral-live-view-mode', 'chat')`);
+        // Start from default sidebar preferences: suites share the browser profile in a shard, and an earlier
+        // one may have switched grouping (coral-group-by-team) or expanded groups.
+        await ev(`localStorage.clear(); localStorage.setItem('coral-live-view-mode', 'chat')`);
 
         // team-one: awake lead, sleeping worker, two archived; team-two: one archived; no team: one archived,
         // one awake; a hub-remote archived agent in team-one.
@@ -68,7 +71,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             m.add('solo-arch', 'D', 120, { archived: true });
             m.add('solo-awake', 'E', 120, { sleeping: false });
             m.add('remote-arch', 'R', 300, { archived: true, board_project: 'team-one', server: 'qa-remote-1' });
-            window.renderLiveSessions(T.state.liveSessions);
+            T.render.renderLiveSessions(T.state.liveSessions);
         })()`);
 
         console.log('1. Sidebar: archived agents leave the main list and counts, one collapsed section');
@@ -120,7 +123,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
 
         console.log('3. Archive asks first; Cancel settles false and sends nothing');
         await clearReqs();
-        await ev(`window.__archP = window.toggleAgentArchive('solo-awake', 'claude', 'solo-awake-id', 'archive').then(v => { window.__archR = v; })`);
+        await ev(`(() => { window.__archR = undefined; window.toggleAgentArchive('solo-awake', 'claude', 'solo-awake-id', 'archive').then(v => { window.__archR = v; }); return true; })()`);
         await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'confirm modal');
         assert.match(await ev(`document.getElementById('confirm-modal-message').textContent`), /stopped/i, 'archiving an awake agent says it will be stopped');
         await ev(`[...document.querySelectorAll('#confirm-modal button')].find(b => /cancel/i.test(b.textContent)).click()`);
@@ -133,7 +136,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         await firstPage();
         assert.equal((await view()).inputDisabled, false, 'awake agent: input enabled');
         await clearReqs();
-        await ev(`window.__archR = undefined; window.toggleAgentArchive('solo-awake', 'claude', 'solo-awake-id', 'archive').then(v => { window.__archR = v; })`);
+        await ev(`(() => { window.__archR = undefined; window.toggleAgentArchive('solo-awake', 'claude', 'solo-awake-id', 'archive').then(v => { window.__archR = v; }); return true; })()`);
         await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'confirm modal');
         await ev(`document.getElementById('confirm-modal-yes').click()`);
         await waitFor(`window.__archR === true`, 'archive to succeed', 3000);
@@ -202,8 +205,8 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
 
         console.log('7. Wake All and team wake leave archived agents archived');
         for (const how of ['wake-all', 'team']) {
-            await ev(`for (const s of T.state.liveSessions) if (!s.archived) s.sleeping = true; for (const a of Object.values(window.__m.agents)) if (!a.archived) a.sleeping = true; window.renderLiveSessions(T.state.liveSessions)`);
-            if (how === 'wake-all') await ev(`window.wakeAllAgents()`); else await ev(`window.toggleTeamSleep('team-one', 'wake')`);
+            await ev(`for (const s of T.state.liveSessions) if (!s.archived) s.sleeping = true; for (const a of Object.values(window.__m.agents)) if (!a.archived) a.sleeping = true; T.render.renderLiveSessions(T.state.liveSessions)`);
+            if (how === 'wake-all') await ev(`(() => { window.wakeAllAgents(); return true; })()`); else await ev(`(() => { window.toggleTeamSleep('team-one', 'wake'); return true; })()`);
             if (await modalOpen()) await ev(`document.getElementById('confirm-modal-yes').click()`);
             await waitFor(`window.__m.requests.some(r => r.kind === '${how === 'wake-all' ? 'wake-all' : 'team-wake'}')`, `${how} request`, 3000);
             await sleep(300);
@@ -222,6 +225,8 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         console.log('   ✓ Wake All and team wake: archived agents untouched');
 
         console.log('8. Archived flag from the feed updates the view in place');
+        // Section 7's team wake woke t1-sleeper (team-one, not archived): put it back to sleep first.
+        await ev(`(() => { window.__m.agents['t1-sleeper-id'].sleeping = true; const r = T.state.liveSessions.find(s => s.session_id === 't1-sleeper-id'); r.sleeping = true; return true; })()`);
         await select('t1-sleeper');
         await firstPage();
         await clearReqs();
@@ -242,7 +247,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
         const un = r.filter(x => x.kind === 'unarchive');
         assert.equal(un.length, 1); assert.equal(un[0].remote, 'qa-remote-1', 'unarchive goes through /api/remote/<id>');
         await clearReqs();
-        await ev(`window.toggleAgentArchive('remote-arch', 'claude', 'remote-arch-id', 'archive')`);
+        await ev(`(() => { window.toggleAgentArchive('remote-arch', 'claude', 'remote-arch-id', 'archive'); return true; })()`);
         await waitFor(`getComputedStyle(document.getElementById('confirm-modal')).display !== 'none'`, 'confirm');
         assert.doesNotMatch(await ev(`document.getElementById('confirm-modal-message').textContent`), /stopped/i, 'a sleeping agent is not "stopped"');
         await ev(`document.getElementById('confirm-modal-yes').click()`);
@@ -261,7 +266,7 @@ const SLEEPING_PLACEHOLDER = 'Agent is sleeping — wake it to send commands';
             const m = window.__m;
             m.add('m-arch', 'M', 50, { archived: true, board_project: 'team-one' });
             m.add('m-awake', 'N', 50, { sleeping: false, board_project: 'team-one' });
-            window.renderLiveSessions(T.state.liveSessions);
+            T.render.renderLiveSessions(T.state.liveSessions);
         })()`);
         await ev(`(async () => { const mob = await import('/static/mobile.js'); mob.syncMobileAgentList(); })()`);
         await waitFor(`!!document.querySelector('#mobile-session-list .archived-summary-row')`, 'mobile Archived row', 3000);
