@@ -13,10 +13,15 @@ const BASE = require('./test_base').BASE;
     return result.result.value;
   };
 
+  const resetPrivacy = () => ev(`fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ telemetry_enabled: true, remote_access_enabled: false }) }).then(r => r.ok)`);
   try {
     await Page.enable();
     await Page.navigate({ url: BASE });
     await Page.loadEventFired();
+    // This suite saves telemetry off; a server reused across runs (a --stress shard) would start the next run from
+    // that. Put the defaults back (telemetry on, remote access off), then reload so the page reads them (#3118).
+    assert.ok(await resetPrivacy(), 'privacy settings reset to the defaults');
+    await Page.reload(); await Page.loadEventFired();
 
     // 1. Accessibility and element presence verification on real rendered template
     const elementsExist = await ev(`(() => {
@@ -118,6 +123,7 @@ const BASE = require('./test_base').BASE;
 
     console.log('PASS end-to-end privacy UI verification on live dashboard DOM');
   } finally {
+    await resetPrivacy().catch(() => {});
     await client.close();
   }
 })().catch(error => {

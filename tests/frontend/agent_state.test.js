@@ -81,17 +81,23 @@ async function run() {
     const exceptions = [];
     Runtime.exceptionThrown(e => exceptions.push((((e.exceptionDetails || {}).exception || {}).description || 'exception').slice(0, 200)));
     const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 300)); return r.result.value; };
+    // Condition waits (#3118). Soft: on timeout they return and the next check() reports what is wrong.
+    const { waitFor, waitStable, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
+    const until = (expression, what, timeout = 5000) => waitFor(expression, what, { soft: true, timeout });
+    // Selected and its view settled (chat page rendered or terminal attached), so nothing moves focus afterwards.
+    const selected = sid => coralReady('agentSelected', sid);
     const diff = (obj) => ev(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [${JSON.stringify(obj)}] }); true`);
     const boot = async (w, h, mobile, grouped) => {
         await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        for (let i = 0; i < 60; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function'`)) break; await sleep(100); }
+        await until(`typeof window._coralSetLiveSessions === 'function'`, 'the app hooks', 10000);
         // Sleeping agents sit behind an "N sleeping" row; this suite inspects their rows, so expand every group.
         // Agent summaries are off by default (a server-side setting); the 40px/36px row checks need the goal line.
         await ev(`(async () => { await window.__origFetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ show_session_summary: true }) }); await (await import((window.__coralStatic||'/static/')+'modals.js')).loadSettings(); return true; })()`);
         await ev(`['coral-go','other-proj','ui-team','team-a','team-b'].forEach(g => localStorage.setItem('coral-sleeping-expanded:' + g, 'true')); true`);
         await ev(`localStorage.setItem('coral-group-by-team','${grouped ? 'true' : 'false'}'); window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__fixture))); true`);
-        await sleep(300);
+        // A late startup load can re-render the list: go on once the rendered rows hold still.
+        await waitStable(`[...document.querySelectorAll('#live-sessions-list .session-group-item, #mobile-session-list .session-group-item')].map(li => li.dataset.sessionId + ':' + li.getAttribute('data-state')).join()`, 'the fixture rows', 300).catch(() => {});
     };
     const ROWS = (listId) => `(() => Object.fromEntries(Array.from(document.querySelectorAll('#${listId} .session-group-item')).map(li => {
         const q = s => li.querySelector(s); const dot = q('.session-dot'); const dcs = dot ? getComputedStyle(dot) : null; const name = q('.session-label');
@@ -131,10 +137,10 @@ async function run() {
 
         // ── G: context collisions ──
         check('G high context + Needs input: attention pill only, ring kept, aria carries the context suffix', rows[ID.needs].ctxPill === null && /ctx-high/.test(rows[ID.needs].dotCls) && /, context 87%/.test(rows[ID.needs].aria), JSON.stringify({ ctx: rows[ID.needs].ctxPill, dot: rows[ID.needs].dotCls, aria: rows[ID.needs].aria }));
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.idle, context_pct: 91, context_window: 1000000 }); await sleep(150);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.idle, context_pct: 91, context_window: 1000000 }); await nextFrame();
         rows = await ev(ROWS('live-sessions-list'));
         check('G idle + high context: ring survives on the otherwise hidden slot and the ctx pill shows', rows[ID.idle].dotHidden === false && /ctx-high/.test(rows[ID.idle].dotCls) && rows[ID.idle].ctxPill === 'ctx 91%', JSON.stringify({ hidden: rows[ID.idle].dotHidden, ctx: rows[ID.idle].ctxPill }));
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.idle, context_pct: null, context_window: null }); await sleep(150);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.idle, context_pct: null, context_window: null }); await nextFrame();
         rows = await ev(ROWS('live-sessions-list'));
         check('G explicit null context clears ring, pill and aria suffix', rows[ID.idle].ctxPill === null && !/ctx-high/.test(rows[ID.idle].dotCls) && !/context/.test(rows[ID.idle].aria), JSON.stringify({ dot: rows[ID.idle].dotCls, aria: rows[ID.idle].aria }));
 
@@ -143,11 +149,11 @@ async function run() {
         check('H unread count is in the aria-label, no chip on the row', !rows[ID.turnMember].unread && /, 3 unread$/.test(rows[ID.turnMember].aria) && !rows[ID.working].unread, JSON.stringify({ chip: rows[ID.turnMember].unread, aria: rows[ID.turnMember].aria }));
         // No attention counts anywhere: the Agents nav badge and the team/folder header chips were removed.
         check('H no Agents nav badge', (await ev(`document.getElementById('nav-tab-agents-badge')`)) == null);
-        await diff({ name: 'team-dir', agent_type: 'claude', session_id: ID.turnMember, board_unread: 9 }); await sleep(150);
+        await diff({ name: 'team-dir', agent_type: 'claude', session_id: ID.turnMember, board_unread: 9 }); await nextFrame();
         check('H more unread on an ordinary member updates the aria-label', /, 9 unread$/.test((await ev(ROWS('live-sessions-list')))[ID.turnMember].aria));
-        await ev(`localStorage.setItem('coral-group-by-team','true'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(250);
+        await ev(`localStorage.setItem('coral-group-by-team','true'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await nextFrame();
         check('H no attention count on team/folder headers', (await ev(`document.querySelectorAll('#live-sessions-list .group-attention-count').length`)) === 0);
-        await ev(`localStorage.setItem('coral-group-by-team','false'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await sleep(200);
+        await ev(`localStorage.setItem('coral-group-by-team','false'); window._coralSetLiveSessions(window._coralGetLiveSessions()); true`); await nextFrame();
 
         // ── D: priority pairs on one row (Idler) ──
         const P = { name: 'coral-go', agent_type: 'claude', session_id: ID.idle };
@@ -157,16 +163,16 @@ async function run() {
             [{ waiting_for_input: true }, 'needs_input'], [{ stuck: true }, 'stuck'], [{ sleeping: true }, 'sleeping'],
         ];
         const seen = [];
-        for (const [patch, want] of steps) { await diff(Object.assign({}, P, patch)); await sleep(120); seen.push([want, (await stateOf()).state]); }
+        for (const [patch, want] of steps) { await diff(Object.assign({}, P, patch)); await nextFrame(); seen.push([want, (await stateOf()).state]); }
         check('D priority: each higher state wins while lower flags stay set (working < your_turn < check_terminal < needs_input < stuck < sleeping)', seen.every(([w, g]) => w === g), JSON.stringify(seen));
-        await diff(Object.assign({}, P, { sleeping: false, stuck: false, waiting_for_input: false, not_started: false, awaiting_user: false, done: false, working: false })); await sleep(150);
+        await diff(Object.assign({}, P, { sleeping: false, stuck: false, waiting_for_input: false, not_started: false, awaiting_user: false, done: false, working: false })); await nextFrame();
         check('C explicit false on every flag returns the row to Idle', (await stateOf()).state === 'idle', (await stateOf()).state);
 
         // ── F: tick sequence with layout, order and focus stability ──
         await ev(`document.querySelector('#live-sessions-list [data-session-id="${ID.idle}"]').focus(); true`);
         const x0 = (await stateOf()).nameX; const seq = [];
         for (const [patch, want] of [[{ working: true }, 'working'], [{ working: false, awaiting_user: true, done: true }, 'your_turn'], [{ waiting_for_input: true }, 'needs_input'], [{ waiting_for_input: false, awaiting_user: false, done: false, working: true }, 'working']]) {
-            await diff(Object.assign({}, P, patch)); await sleep(150); const r = await stateOf();
+            await diff(Object.assign({}, P, patch)); await nextFrame(); const r = await stateOf();
             seq.push({ want, got: r.state, dx: Math.abs(r.nameX - x0), h: r.h, focus: await ev(`(document.activeElement.dataset || {}).sessionId === '${ID.idle}'`), order: (await ev(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(l => l.dataset.sessionId).join(',')`)) === EXPECTED_ORDER });
         }
         check('F Idle -> Working -> Ready for input -> Needs input -> Working: state, name x ±0.5px, 40px, focus kept, order kept', seq.every(s => s.want === s.got && s.dx <= 0.5 && Math.abs(s.h - 40) <= 1 && s.focus && s.order), JSON.stringify(seq));
@@ -175,34 +181,38 @@ async function run() {
         // Fresh page: the first full update already contains Needs input rows.
         await boot(1440, 900, false, false);
         await ev(`document.querySelectorAll('.notification-toast').forEach(t => t.remove()); true`);
-        await ev(`window._coralHandleWsMessage({ type: 'coral_update', sessions: JSON.parse(JSON.stringify(window.__fixture)) }); true`); await sleep(300);
+        await ev(`window._coralHandleWsMessage({ type: 'coral_update', sessions: JSON.parse(JSON.stringify(window.__fixture)) }); true`); await nextFrame();
         const initialToasts = await ev(TOASTS);
         check('I no toasts for rows that already need input in the first full update (rising edge only)', initialToasts === 0, String(initialToasts));
         await ev(`document.querySelectorAll('.notification-toast').forEach(t => t.remove()); true`);
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, working: false, waiting_for_input: true, waiting_summary: 'permission?' }); await sleep(300);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, working: false, waiting_for_input: true, waiting_summary: 'permission?' }); await until(`${TOASTS} >= 1`, 'the needs-input toast');
         check('I rising edge to Needs input raises exactly one toast', (await ev(TOASTS)) === 1, String(await ev(TOASTS)));
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, waiting_for_input: true }); await sleep(200);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.working, waiting_for_input: true }); await nextFrame();
         check('I a repeated tick in the same state raises no further toast', (await ev(TOASTS)) === 1, String(await ev(TOASTS)));
 
         // ── selected attention visibility + workspace header vocabulary ──
-        await ev(`window.selectLiveSession('coral-go', 'claude', '${ID.needs}'); true`); await sleep(400);
+        await ev(`window.selectLiveSession('coral-go', 'claude', '${ID.needs}'); true`); await selected(ID.needs);
         rows = await ev(ROWS('live-sessions-list'));
         const hdr = await ev(`(() => { const d = document.getElementById('terminal-status-dot'); return { cls: d ? d.className : null }; })()`);
         check('selected attention row keeps pill + dot; workspace header dot uses the same state class', rows[ID.needs].pills.length === 1 && rows[ID.needs].pills[0].text === 'Needs input' && rows[ID.needs].dotHidden === false && /waiting/.test(hdr.cls || ''), JSON.stringify({ pills: rows[ID.needs].pills.map(p => p.text), hdr: hdr.cls }));
 
         // toast suppression while the operator is typing into the selected session
-        await ev(`window.selectLiveSession('coral-go', 'claude', '${ID.idle}'); true`); await sleep(400);
+        await ev(`window.selectLiveSession('coral-go', 'claude', '${ID.idle}'); true`); await selected(ID.idle);
         await ev(`document.querySelectorAll('.notification-toast').forEach(t => t.remove()); const i = document.getElementById('command-input'); if (i) i.focus(); true`);
+        // The operator is typing: the command input holds focus (the terminal view can take focus a moment after it
+        // attaches, so put it back until it stays) before the feed tick arrives.
+        await waitStable(`(() => { const i = document.getElementById('command-input'); if (document.activeElement !== i && i) i.focus(); return document.activeElement === i; })()`,
+            'the command input to keep focus', 200, { accept: v => v === true }).catch(() => {});
         const typingFocus = await ev(`(document.activeElement || {}).id === 'command-input'`);
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.idle, waiting_for_input: true }); await sleep(300);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.idle, waiting_for_input: true }); await nextFrame();
         const typedToasts = await ev(TOASTS);
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.turnSolo, waiting_for_input: true }); await sleep(300);
-        check('I no toast for the selected session while typing in its command input; another session still toasts', typingFocus && typedToasts === 0 && (await ev(TOASTS)) === 1, JSON.stringify({ typingFocus, typedToasts, after: await ev(TOASTS) }));
-        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.turnSolo, waiting_for_input: false }); await sleep(150);
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.turnSolo, waiting_for_input: true }); await until(`${TOASTS} >= 1`, "the other session's toast");
+        check('I no toast for the selected session while typing in its command input; another session still toasts', typingFocus && typedToasts === 0 && (await ev(TOASTS)) === 1, JSON.stringify({ typingFocus, typedToasts, after: await ev(TOASTS), input: await ev(`(() => { const i = document.getElementById('command-input'); const a = document.activeElement; return i ? { disabled: i.disabled, readOnly: i.readOnly, visible: i.checkVisibility(), inert: !!i.closest('[inert]'), active: a ? a.tagName + '#' + a.id : null, pageFocus: document.hasFocus(), cur: document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId === ${JSON.stringify(ID.idle)} } : 'missing'; })()`) }));
+        await diff({ name: 'coral-go', agent_type: 'claude', session_id: ID.turnSolo, waiting_for_input: false }); await nextFrame();
 
         // ── K: Ended only for killed rows ──
-        await ev(`window.killSessionDirect('coral-go', 'claude', '${ID.kill}'); true`); await sleep(200);
-        await ev(`document.getElementById('confirm-modal-yes').click(); true`); await sleep(500);
+        await ev(`window.killSessionDirect('coral-go', 'claude', '${ID.kill}'); true`); await until(`!!document.getElementById('confirm-modal-yes') && document.getElementById('confirm-modal-yes').offsetParent !== null`, 'the kill confirmation');
+        await ev(`document.getElementById('confirm-modal-yes').click(); true`); await until(`document.querySelector('#live-sessions-list [data-session-id="${ID.kill}"]')?.getAttribute('data-state') === 'ended'`, 'the killed row');
         rows = await ev(ROWS('live-sessions-list'));
         const k = rows[ID.kill];
         check('K killed row is Ended: data-state ended, struck-through name, glyph dot, 36px, no pill, not counted', !!k && k.state === 'ended' && /line-through/.test(k.labelDecoration) && /ended/.test(k.dotCls) && Math.abs(k.h - 36) <= 1 && k.pills.length === 0 && /, Ended$/.test(k.aria), JSON.stringify(k && { state: k.state, deco: k.labelDecoration, dot: k.dotCls, h: k.h, aria: k.aria }));

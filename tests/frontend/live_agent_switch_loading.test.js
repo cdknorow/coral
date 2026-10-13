@@ -16,6 +16,8 @@ const BASE = require('./test_base').BASE;
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
+        // Startup done (#3118): the app's own first live-list load can no longer replace the mocked sessions below.
+        await require('./helpers/wait').coralReady(ev);
 
         console.log('1. Setting up test harness and mocks...');
         await ev(`(async () => {
@@ -28,6 +30,20 @@ const BASE = require('./test_base').BASE;
             window.testLiveChat = liveChat;
             window.testSessions = sessions;
             window.testPlatform = platform;
+            // Condition waits (#3118) instead of fixed sleeps: __qaTrack() counts the requests the current fetch mock
+            // has in flight; __qaSettle() waits until every one has resolved or been aborted (so a stale response has
+            // had its chance to land) and the result is on screen.
+            window.__qaTrack = () => {
+                const mock = window.fetch; window.__pend = 0;
+                window.fetch = (u, o) => { window.__pend++; return Promise.resolve(mock(u, o)).finally(() => { window.__pend--; }); };
+                return mock;
+            };
+            window.__qaSettle = () => new Promise((resolve, reject) => {
+                const end = Date.now() + 5000;
+                const check = () => window.__pend === 0 ? requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+                    : Date.now() > end ? reject(new Error('mocked requests still pending: ' + window.__pend)) : setTimeout(check, 10);
+                check();
+            });
 
             // Mock live sessions in state
             state.liveSessions = [
@@ -251,6 +267,7 @@ const BASE = require('./test_base').BASE;
             };
 
             // Rapidly select Alpha -> Beta -> Gamma
+            window.__qaTrack();
             window.testSessions.selectLiveSession('agent-alpha', 'codex', 'agent-alpha-id');
             // Immediate rapid switch to Beta after 10ms
             await new Promise(r => setTimeout(r, 10));
@@ -259,8 +276,7 @@ const BASE = require('./test_base').BASE;
             await new Promise(r => setTimeout(r, 10));
             window.testSessions.selectLiveSession('agent-gamma', 'claude', 'agent-gamma-id');
 
-            // Wait for all promises/timers to settle
-            await new Promise(r => setTimeout(r, 500));
+            await window.__qaSettle();
             window.fetch = origFetch;
         })()`);
 
@@ -321,6 +337,7 @@ const BASE = require('./test_base').BASE;
             };
 
             // First call fails
+            window.__qaTrack();
             await window.testLiveChat.refreshLiveHistory();
             const errorRendered = !!container.querySelector('.chat-load-error');
             const retryBtn = container.querySelector('.chat-retry-btn');
@@ -332,7 +349,7 @@ const BASE = require('./test_base').BASE;
 
             // Click retry button to trigger recovery
             retryBtn.click();
-            await new Promise(r => setTimeout(r, 100));
+            await window.__qaSettle();
 
             window.fetch = origFetch;
         })()`);
@@ -413,14 +430,14 @@ const BASE = require('./test_base').BASE;
             };
 
             // Switch Alpha -> Beta -> Alpha rapidly
+            window.__qaTrack();
             window.testSessions.selectLiveSession('agent-alpha', 'codex', 'agent-alpha-id');
             await new Promise(r => setTimeout(r, 10));
             window.testSessions.selectLiveSession('agent-beta', 'agy', 'agent-beta-id');
             await new Promise(r => setTimeout(r, 10));
             window.testSessions.selectLiveSession('agent-alpha', 'codex', 'agent-alpha-id');
 
-            // Wait 400ms for all delayed promises to settle
-            await new Promise(r => setTimeout(r, 400));
+            await window.__qaSettle();
             window.fetch = origFetch;
         })()`);
 
@@ -503,8 +520,12 @@ const BASE = require('./test_base').BASE;
             };
 
             // 1. Load Alpha
+            window.__qaTrack();
             window.testSessions.selectLiveSession('agent-alpha', 'codex', 'agent-alpha-id');
-            await new Promise(r => setTimeout(r, 50));
+            // Only Alpha's first page: settling every request here would also let the app's own autoload of
+            // older history finish, leaving no load-more in flight for the switch to abort.
+            await new Promise((resolve, reject) => { const end = Date.now() + 5000; (function f() {
+                container.innerText.includes('ALPHA RECENT MESSAGE') ? resolve() : Date.now() > end ? reject(new Error('Alpha first page not rendered')) : setTimeout(f, 10); })(); });
 
             // 2. Trigger load-more (which takes 300ms)
             window.testLiveChat.loadMoreHistory();
@@ -512,7 +533,7 @@ const BASE = require('./test_base').BASE;
 
             // 3. Switch to Beta while load-more is in flight
             window.testSessions.selectLiveSession('agent-beta', 'agy', 'agent-beta-id');
-            await new Promise(r => setTimeout(r, 400));
+            await window.__qaSettle();
 
             window.fetch = origFetch;
         })()`);

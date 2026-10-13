@@ -51,7 +51,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
         // 1. Cold load: nothing of highlight.js.
         await fresh();
-        await sleep(800);
+        // Startup finished (#3118): whatever the page loads up front has been requested by now.
+        await require('./helpers/wait').coralReady(ev);
+        await require('./helpers/wait').nextFrame(ev);
         assert.deepEqual(seen, [], 'no highlight.js request on a cold load');
         assert.equal(await ev(`typeof window.hljs`), 'undefined', 'window.hljs is not defined');
         assert.equal(await ev(`[...document.querySelectorAll('script[src], link[href]')].some(e => /vendor\\/hljs\\//.test(e.src || e.href))`), false, 'no tag for it in the page');
@@ -59,7 +61,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
         // 2. A block without a language never loads it.
         const plainOnly = await show('```\nno language here\n```', 'md-plain');
-        await sleep(600);
+        await sleep(600); // sleep-ok: proves a negative, no request follows within this window
         assert.deepEqual(seen, [], 'a block without a language does not load highlight.js');
         assert.equal(plainOnly.text, 'no language here\n');
         console.log('PASS a block without a language: still nothing loaded');
@@ -86,7 +88,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         const failed = await show(JS, 'md-fail');
         for (let i = 0; i < 40 && !seen.includes('highlight.min.js'); i++) await sleep(100);
         assert.ok(seen.includes('highlight.min.js'), 'the block asked for highlight.js');
-        await sleep(800);
+        await sleep(800); // sleep-ok: proves a negative, the block stays plain after the failed load
         const stillPlain = await ev(`(() => { const c = document.querySelector('#md-fail pre code'); return { spans: c.querySelectorAll('span').length, text: c.textContent, hljs: typeof window.hljs }; })()`);
         assert.equal(stillPlain.hljs, 'undefined', 'highlight.js did not load');
         assert.equal(stillPlain.spans, 0, 'the block stays plain');

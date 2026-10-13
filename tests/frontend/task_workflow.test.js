@@ -45,7 +45,8 @@ const BASE = require('./test_base').BASE;
             const r=await fetch('/api/board/workflow-browser/tasks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'Missing candidate consumer',created_by:'Operator',blocked_by:[{task_id:testTaskID,required_artifacts:['candidate']}]})});
             const error=await r.json(); window.invalidDependencyError=error.error || '';
         })()`);
-        assert.equal(await ev(`window.invalidDependencyError`), 'dependency #1 cannot require artifact "candidate": upstream declares outputs [build]');
+        // #N is the upstream task's id, which depends on what else this server has stored (#3118).
+        assert.equal(await ev(`window.invalidDependencyError`), `dependency #${await ev('window.testTaskID')} cannot require artifact "candidate": upstream declares outputs [build]`);
 
         await ev(`(async () => {
             const {state} = await import((window.__coralStatic||'/static/')+'state.js');

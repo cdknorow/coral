@@ -17,7 +17,9 @@ const BASE = require('./test_base').BASE;
     await Page.loadEventFired();
     await ev(`(async()=>{const {state}=await import((window.__coralStatic||'/static/')+'state.js');state.currentSession={type:'live',session_id:'artifact-preview-test'};await import((window.__coralStatic||'/static/')+'changed_files.js');})()`);
     // The preview is a tabbed pane (#preview-body); closing every tab is its reset.
-    await ev(`(async()=>{const m=await import((window.__coralStatic||'/static/')+'preview_pane.js');window.__closePreview=()=>m.closeAllTabs();})()`);
+    await ev(`(async()=>{const m=await import((window.__coralStatic||'/static/')+'preview_pane.js');window.__closePreview=()=>m.closeAllTabs();
+      // Condition waits (#3118): resolve once cond() holds (or after 3 s, and the assertion that follows reports it).
+      window.__until=(cond,ms=3000)=>new Promise(res=>{const end=Date.now()+ms;(function f(){let ok=false;try{ok=!!cond()}catch{}ok||Date.now()>end?res(ok):setTimeout(f,10)})()});})()`);
     const uri = 'coral://artifacts/a7cfde2b2f1a96d3a9086c715ff5c04afbcb3823daa611dd642fb377e2b23f44';
     const result = await ev(`(async()=>{
       const real=window.fetch; window.__artifactReads=0;
@@ -25,7 +27,7 @@ const BASE = require('./test_base').BASE;
         if(!String(url).includes('/api/artifacts/')) return real(url,opts);
         return new Response(new ReadableStream({start(){window.__artifactReads++}}),{status:200,headers:{'Content-Type':'application/zip','Content-Length':'6096917','Content-Disposition':'inline; filename="final-ember-accord-acceptance.zip"'}});
       };
-      window.openFilePreview(${JSON.stringify(uri)}); await new Promise(r=>setTimeout(r,80));
+      window.openFilePreview(${JSON.stringify(uri)}); await window.__until(()=>/binary artifact/.test(document.querySelector('#preview-body')?.textContent||''));
       return {text:document.querySelector('#preview-body')?.textContent||'',link:document.querySelector('#preview-body a')?.getAttribute('download')||'',reads:window.__artifactReads};
     })()`);
     assert.match(result.text, /binary artifact is not rendered inline/);
@@ -34,7 +36,7 @@ const BASE = require('./test_base').BASE;
     await ev(`window.__closePreview()`);
     const markdown = await ev(`(async()=>{
       window.fetch=async()=>new Response('# Safe preview\\n\\nThis is markdown.',{status:200,headers:{'Content-Type':'text/markdown','Content-Length':'25','Content-Disposition':'inline; filename="report.md"'}});
-      window.openFilePreview(${JSON.stringify(uri)}); await new Promise(r=>setTimeout(r,80));
+      window.openFilePreview(${JSON.stringify(uri)}); await window.__until(()=>document.querySelector('#preview-body h1'));
       return {heading:document.querySelector('#preview-body h1')?.textContent||'',raw:document.querySelector('#preview-body')?.textContent||''};
     })()`);
     assert.equal(markdown.heading, 'Safe preview');
@@ -54,22 +56,22 @@ const BASE = require('./test_base').BASE;
         if(u.includes(childMd.slice(-64))) return new Response('# Child report',{status:200,headers:{'Content-Type':'text/markdown','Content-Disposition':'inline; filename="child.md"'}});
         return new Response('missing',{status:404});
       };
-      window.openFilePreview(manifestUri); await new Promise(r=>setTimeout(r,80));
+      window.openFilePreview(manifestUri); await window.__until(()=>document.querySelectorAll('.artifact-manifest-download').length===3);
       const links=[...document.querySelectorAll('.artifact-manifest-download')];
       links.forEach(a=>a.addEventListener('click',e=>e.preventDefault(),{once:true}));
       links[0].click(); links[2].click();
       const list={names:[...document.querySelectorAll('.artifact-manifest-name')].map(e=>e.textContent),hasUnsafeMarkup:!!document.querySelector('.artifact-manifest-list img'),rawButton:!!document.querySelector('.artifact-manifest-raw'),downloadNames:links.map(e=>e.download),downloadHrefs:links.map(e=>e.getAttribute('href')),fetchesAfterDownloads:window.__manifestFetches};
       // A tab opened by single click is a replaceable 'preview' tab; pin the collection (double-click) so the entry opens beside it.
       document.querySelector('.preview-tab').dispatchEvent(new MouseEvent('dblclick',{bubbles:true})); await new Promise(r=>setTimeout(r,40));
-      document.querySelector('.artifact-manifest-open').click(); await new Promise(r=>setTimeout(r,80));
+      document.querySelector('.artifact-manifest-open').click(); await window.__until(()=>document.querySelectorAll('.preview-tab').length>=2&&document.querySelector('#preview-body h1'));
       const tabsAfterOpen=document.querySelectorAll('.preview-tab').length;
       const child={heading:document.querySelector('#preview-body h1')?.textContent||'',backButton:'Back'};
-      document.querySelector('.preview-tab').click(); await new Promise(r=>setTimeout(r,300));
+      document.querySelector('.preview-tab').click(); await window.__until(()=>document.querySelector('.artifact-manifest-list'));
       const returnedToManifest=!!document.querySelector('.artifact-manifest-list');
-      document.querySelector('.artifact-manifest-raw').click(); await new Promise(r=>setTimeout(r,40));
+      document.querySelector('.artifact-manifest-raw').click(); await window.__until(()=>document.querySelector('#preview-body pre'));
       const rawView={hasRaw:document.querySelector('#preview-body pre')?.textContent.includes('missing.txt')||false,returnButton:!!document.querySelector('.artifact-manifest-back')};
       document.querySelector('.artifact-manifest-back').click(); await new Promise(r=>setTimeout(r,20));
-      window.__closePreview(); window.openFilePreview(missing); await new Promise(r=>setTimeout(r,80));
+      window.__closePreview(); window.openFilePreview(missing); await window.__until(()=>/Artifact unavailable/.test(document.querySelector('#preview-body')?.textContent||''));
       return {list,child,tabsAfterOpen,returnedToManifest,rawView,error:document.querySelector('#preview-body')?.textContent||''};
     })()`);
     assert.deepEqual(manifest.list.names,['<unsafe>.md','missing.txt','journey.png']);
@@ -87,7 +89,7 @@ const BASE = require('./test_base').BASE;
     await ev(`window.__closePreview()`);
     const malformed = await ev(`(async()=>{
       window.fetch=async()=>new Response('[{"name":"bad","uri":"file:///tmp/nope"}]',{status:200,headers:{'Content-Type':'application/json','Content-Disposition':'inline; filename="unrelated.json"'}});
-      window.openFilePreview(${JSON.stringify(uri)}); await new Promise(r=>setTimeout(r,80));
+      window.openFilePreview(${JSON.stringify(uri)}); await window.__until(()=>document.querySelector('.artifact-manifest-list, #preview-body pre'));
       return {manifest:!!document.querySelector('.artifact-manifest-list'),raw:document.querySelector('#preview-body pre')?.textContent||''};
     })()`);
     assert.equal(malformed.manifest,false);
@@ -105,7 +107,7 @@ const BASE = require('./test_base').BASE;
       iso = await ev(`(async()=>{
         const wait=ms=>new Promise(r=>setTimeout(r,ms)); const sink=${JSON.stringify(sinkUrl)};
         // Positive control: the counting server really does see a request the page itself makes.
-        new Image().src=sink+'/control'; await wait(300);
+        await new Promise(res=>{const i=new Image();i.onload=i.onerror=res;i.src=sink+'/control';});
         window.__closePreview(); window.__messages=0; window.__canary='intact';
         window.addEventListener('message',()=>{window.__messages++});
         const hostileHtml='<h1>probe</h1>'
@@ -114,11 +116,11 @@ const BASE = require('./test_base').BASE;
           +'<form id=f action="'+sink+'/form" method="post"><input name=a value=b></form>'
           +'<script>fetch("'+sink+'/fetch");new Image().src="'+sink+'/imgjs";parent.postMessage("hostile","*");top.postMessage("hostile","*");parent.__canary="pwned";top.__canary="pwned";document.getElementById("f").submit();<\\/script>';
         window.fetch=async()=>new Response(hostileHtml,{status:200,headers:{'Content-Type':'text/html','Content-Disposition':'inline; filename="probe.html"'}});
-        window.openFilePreview(${JSON.stringify(uri)}); await wait(1500);
+        window.openFilePreview(${JSON.stringify(uri)}); await wait(1500); // sleep-ok: proves a negative, hostile content gets this long to reach out
         const frame=document.querySelector('#preview-body iframe');
         return {hasFrame:!!frame,referrer:frame?frame.referrerPolicy:null,messages:window.__messages,canary:window.__canary};
       })()`);
-      await new Promise(r => setTimeout(r, 500)); // late loads
+      await new Promise(r => setTimeout(r, 500)); // sleep-ok: late loads (proves a negative)
     } finally { await new Promise(r => sink.close(r)); }
     await ev(`window.__closePreview()`);
     // Collected and reported together so each property shows up on its own when it is the one that breaks.

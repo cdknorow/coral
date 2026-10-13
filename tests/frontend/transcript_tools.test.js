@@ -38,9 +38,11 @@ const STUB = `
     if (m==='POST' && /\\/answer-prompt$/.test(path)) { window.__answers = (window.__answers||[]).concat([JSON.parse(opts.body)]);
       return window.__answerFail ? Promise.resolve(new Response(JSON.stringify({ error: 'The prompt changed. Answer it in the terminal.' }), { status: 409, headers: { 'Content-Type': 'application/json' } })) : json({ ok: true }); }
     if (path === '/api/upload') {
-      if (window.__failUpload) return Promise.resolve(new Response(JSON.stringify({ error: 'Upload failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } }));
+      const up = window.__uploads = window.__uploads || { started: 0, settled: 0 }; up.started++;
+      const done = p => p.finally(() => { up.settled++; });
+      if (window.__failUpload) return done(Promise.resolve(new Response(JSON.stringify({ error: 'Upload failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } })));
       const delay = window.__uploadDelay || 50;
-      return new Promise(r => setTimeout(r, delay)).then(() => json({ path: '/Users/test/.coral/uploads/shot.png', filename: 'shot.png' }));
+      return done(new Promise(r => setTimeout(r, delay)).then(() => json({ path: '/Users/test/.coral/uploads/shot.png', filename: 'shot.png' })));
     }
     if (m!=='GET') { const b = opts && opts.body && typeof opts.body === 'string' ? JSON.parse(opts.body) : null; window.__posts = (window.__posts||[]).concat([[m, path, b]]);
       if (m==='POST' && /\\/tasks$/.test(path) && b && b.notify) return json({ id: 7, title: b.title, completed: 0, notified: 'You have a new task in Coral (#7: ' + b.title + '). Claim it with coral-agent task claim to see the details, then run coral-agent task complete 7 when it is done.' });
@@ -60,22 +62,33 @@ async function run() {
   await Promise.all([Page.enable(), Runtime.enable()]);
   await Page.addScriptToEvaluateOnNewDocument({ source: STUB });
   const ev = async (x) => { const r = await Runtime.evaluate({ expression: x, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error('page eval: ' + JSON.stringify(r.exceptionDetails).slice(0, 400)); return r.result.value; };
+  // Condition waits (#3118). Soft: on timeout they return and the next check() reports what is wrong.
+  const { waitFor, waitStable, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
+  const until = (expression, what, timeout = 5000) => waitFor(expression, what, { soft: true, timeout });
+  // Every upload the stub has started has finished (or failed), and then the sends it could trigger have stopped
+  // changing for 300 ms (the send awaits the upload, then the hub check), so a send that should not happen had its chance.
+  const uploadsDone = async () => {
+    await until(`!window.__uploads || window.__uploads.settled === window.__uploads.started`, 'uploads to finish');
+    await waitStable(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1])).length`, 'the sends after the upload', 300).catch(() => {});
+  };
   // Run n history-poll cycles now (the same refreshLiveHistory the 1 s timer calls, which keeps running as in
   // production) instead of sleeping until the timer has done them, then let the async parts render.
   // A refresh that overlaps the timer's can be cut short, so count COMPLETED refreshes (each one ends by fetching
   // /pending-tool) and keep refreshing until n have completed.
   const refreshOnce = () => ev(`import((window.__coralStatic||'/static/')+'live_chat.js').then(m => m.refreshLiveHistory()).then(() => true)`);
-  const cycles = async (n) => { const start = await ev(`window.__pendingFetches || 0`); for (let i = 0; i < n * 10 && (await ev(`window.__pendingFetches || 0`)) < start + n; i++) { await refreshOnce(); await sleep(30); } await sleep(60); };
+  const cycles = async (n) => { const start = await ev(`window.__pendingFetches || 0`); for (let i = 0; i < n * 10 && (await ev(`window.__pendingFetches || 0`)) < start + n; i++) { await refreshOnce(); await sleep(30); } await nextFrame(); };
   // For a state the poll converges to: refresh until cond holds (up to 40 cycles), so a loaded machine only waits longer.
   // The card re-renders when a poll lands; wait for the element a step is about to use (up to 3 s).
   const waitEl = async (sel) => { for (let i = 0; i < 60 && !(await ev(`!!document.querySelector(${JSON.stringify(sel)})`)); i++) await sleep(50); };
   const settleUntil = async (cond) => { for (let i = 0; i < 40 && !(await ev(cond)); i++) { await refreshOnce(); await sleep(50); } };
   await Emulation.setDeviceMetricsOverride({ width: 1500, height: 950, deviceScaleFactor: 1, mobile: false });
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-  for (let i = 0; i < 50; i++) { if (await ev(`typeof window._coralSetLiveSessions === 'function' && typeof window.selectLiveSession === 'function'`)) break; await sleep(100); }
+  // Startup done, except the feed: this suite stubs /ws/coral, so it never connects.
+  await coralReady('startup', 'liveList', 'history', 'settings');
   await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
   await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)})).then(() => { window.setLiveViewMode('chat'); return true; })`);
-  for (let i = 0; i < 30; i++) { if (await ev(`document.querySelectorAll('#live-history-messages .tool-call').length > 0`)) break; await sleep(100); }
+  await coralReady('agentSelected', 'coral-go');
+  await until(`document.querySelectorAll('#live-history-messages .tool-call').length > 0`, 'the first history page');
 
   const C = `document.getElementById('live-history-messages')`;
   const top = () => ev(`Array.from(${C}.children).map(el => el.classList.contains('work-group')
@@ -95,7 +108,7 @@ async function run() {
   await ev(`window.__chatDelay = 80; true`); // the initial-load overlap is checked; later polls need no slow answer
 
   await ev(`${C}.querySelectorAll('.work-group > summary')[1].click(); true`);
-  await sleep(100);
+  await nextFrame();
   const calls = await ev(`Array.from(${C}.querySelectorAll('.work-group')[1].querySelectorAll('.tool-call')).map(d => ({ id: d.dataset.toolUseId, open: d.open, err: d.classList.contains('tool-call-error'),
       label: d.querySelector('.tool-call-label').textContent, bodyVisible: d.querySelector('.tool-call-body').checkVisibility(), h: d.getBoundingClientRect().height }))`);
   const byId = (id) => calls.find(c => c.id === id);
@@ -106,7 +119,7 @@ async function run() {
   check('errored tool row is marked', byId('t2').err && !byId('t1').err);
 
   await ev(`${C}.querySelector('.tool-call[data-tool-use-id="t1"] > summary').click(); true`);
-  await sleep(100);
+  await nextFrame();
   const opened = await ev(`(() => { const d = ${C}.querySelector('.tool-call[data-tool-use-id="t1"]'); return { open: d.open, text: d.querySelector('.tool-call-body').innerText }; })()`);
   check('clicking a tool row reveals its command and full output', opened.open && opened.text.includes('git diff --stat') && opened.text.includes('line 39'));
 
@@ -127,15 +140,14 @@ async function run() {
   // Links and file references
   const REF_TEXT = 'See `coral-go/static/render.js:1558` and `CLAUDE.md`, not `window.fetch` or `v1.1.5`. Docs: [site](https://example.com/x) and [local](static/app.js).';
   await ev(`window.__opened = []; window.openFilePreview = (p) => window.__opened.push(p); window.__msgs.push({ type: 'assistant', text: ${JSON.stringify(REF_TEXT)} }); true`);
-  for (let i = 0; i < 30; i++) { if (await ev(`!!${C}.querySelector('.chat-file-ref')`)) break; await sleep(100); }
+  await until(`!!${C}.querySelector('.chat-file-ref')`, 'the file refs');
   const refs = await ev(`(() => { const last = Array.from(${C}.querySelectorAll('.chat-bubble.assistant')).pop();
     return { refs: Array.from(last.querySelectorAll('[data-file-ref]')).map(e => e.dataset.fileRef),
       ext: (a => a && { target: a.target, rel: a.rel })(last.querySelector('a[href^="https://"]')) }; })()`);
   check('path-looking inline code and relative links become file refs; identifiers and versions do not', JSON.stringify(refs.refs) === JSON.stringify(['coral-go/static/render.js:1558', 'CLAUDE.md', 'static/app.js']), JSON.stringify(refs.refs));
   check('web links open in a new tab without opener access', refs.ext && refs.ext.target === '_blank' && /noopener/.test(refs.ext.rel), JSON.stringify(refs.ext));
   await ev(`Array.from(${C}.querySelectorAll('[data-file-ref]')).find(e => e.dataset.fileRef.startsWith('coral-go')).click(); true`);
-  await sleep(300);
-  for (let i = 0; i < 30; i++) { if (await ev(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`)) break; await sleep(100); }
+  await until(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`, 'the file menu');
   check('clicking a file ref opens its action menu', await ev(`!!document.querySelector('.chat-file-menu [data-action="preview"]')`));
   await ev(`document.querySelector('.chat-file-menu [data-action="preview"]').click(); true`);
   const refClick = await ev(`({ resolves: window.__resolves, opened: window.__opened, url: location.pathname })`);
@@ -167,7 +179,7 @@ async function run() {
 
   // A sent message shows as Queued until the transcript records it
   await ev(`document.getElementById('command-input').value = 'Please also fix the header'; window.sendCommand(); true`);
-  await sleep(300);
+  await until(`!!${C}.querySelector('.chat-bubble.human.pending')`, 'the pending bubble');
   const pend = await ev(`(() => { const p = ${C}.querySelector('.chat-bubble.human.pending'); const kids = Array.from(${C}.children); return { shown: !!p, label: p && p.querySelector('.pending-label').textContent, tail: kids.slice(-2).map(e => e.className), text: p && p.querySelector('.message-text').textContent.trim() }; })()`);
   check('a message sent to an idle agent appears at once as Sent, with Working below it', pend.shown && pend.label === 'Sent' && pend.text === 'Please also fix the header' && JSON.stringify(pend.tail) === '["pending-messages pending-sent","chat-working"]', JSON.stringify(pend));
   await ev(`window.__msgs.push({ type: 'assistant', text: 'Still working on the modal.' }); true`);
@@ -180,8 +192,8 @@ async function run() {
   check('once the transcript records it, the queued bubble is replaced by the real one', settled.pending === 0 && settled.real === 1, JSON.stringify(settled));
 
   // Messages queued while the agent is busy can land merged into one entry (interrupt)
-  for (let i = 0; i < 3; i++) { await ev(`document.getElementById('command-input').value = 'test'; window.sendCommand(); true`); await sleep(100); }
-  await sleep(200);
+  for (let i = 0; i < 3; i++) { await ev(`document.getElementById('command-input').value = 'test'; window.sendCommand(); true`); await nextFrame(); }
+  await until(`${C}.querySelectorAll('.chat-bubble.human.pending').length >= 3`, 'three queued bubbles');
   check('three sends show three queued bubbles', (await ev(`${C}.querySelectorAll('.chat-bubble.human.pending').length`)) === 3);
   await ev(`window.__msgs.push({ type: 'user', content: 'test\\ntest', timestamp: new Date().toISOString() }); true`);
   await settleUntil(`${C}.querySelectorAll('.chat-bubble.human.pending').length <= 1`);
@@ -217,7 +229,7 @@ async function run() {
   // Sent while busy: Queued, below the Working row
   await ev(`import((window.__coralStatic||'/static/')+'state.js').then(st => { const r = st.state.liveSessions.find(s => s.session_id === ${JSON.stringify(SID)}); r.working = true; r.awaiting_user = false; return true; })`);
   await ev(`document.getElementById('command-input').value = 'Then update the docs'; window.sendCommand(); true`);
-  await sleep(300);
+  await until(`!!${C}.querySelector('.pending-queued .chat-bubble.pending')`, 'the queued bubble');
   const busy = await ev(`(() => { const q = ${C}.querySelector('.pending-queued .chat-bubble.pending'); const w = ${C}.querySelector(':scope > .chat-working'); return { label: q && q.querySelector('.pending-label').textContent, rowAbove: !!w && w.nextElementSibling === q.parentElement }; })()`);
   check('a message sent while the agent is working is Queued, below the Working row', busy.label === 'Queued' && busy.rowAbove, JSON.stringify(busy));
 
@@ -259,13 +271,13 @@ async function run() {
   // A typed answer is sent with the Type something option's number
   await waitEl('#live-history-messages .cni-text-form[data-n="3"]');
   await ev(`(() => { window.__answers = []; const f = ${C}.querySelector('.cni-text-form[data-n="3"]'); f.querySelector('input').value = 'Something in between'; f.requestSubmit(); return true; })()`);
-  await sleep(300);
+  await until(`(window.__answers || []).length > 0`, 'the typed answer');
   const typed = await ev(`window.__answers`);
   check('a typed answer is sent with the Type something option', JSON.stringify(typed) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 3, label: 'Type something.', text: 'Something in between' }]), JSON.stringify(typed));
   // Chat about this: its number, then the command box is ready for the reply
   await waitEl('#live-history-messages .cni-answer[data-n="4"]');
   await ev(`window.__answers = []; ${C}.querySelectorAll('.cni-answer, .cni-text-form input, .cni-text-form button').forEach(b => b.disabled = false); ${C}.querySelector('.cni-answer[data-n="4"]').click(); true`);
-  await sleep(300);
+  await until(`(window.__answers || []).length > 0 && document.activeElement && document.activeElement.id === 'command-input'`, 'the Chat about this answer');
   const chat = await ev(`({ answers: window.__answers, focused: document.activeElement && document.activeElement.id })`);
   check('Chat about this sends its number and focuses the command box', chat.answers.length === 1 && chat.answers[0].n === 4 && chat.focused === 'command-input', JSON.stringify(chat));
   // Short options without descriptions are compact chips
@@ -291,11 +303,11 @@ async function run() {
   await ev(`window.__promptScreen = { question: 'Which layout?', options: [{ n: 1, label: 'Compact', selected: true, action: 'select' }, { n: 2, label: 'Roomy', action: 'select' }] }; true`);
   await cycles(4);
   await ev(`window.__answers = []; window.__answerFail = true; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
-  await sleep(500);
+  await until(`(window.__answers || []).length > 0 && !Array.from(${C}.querySelectorAll('.cni-answer')).some(b => b.disabled)`, 'the refused answer to re-enable the buttons');
   const refused = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).some(b => b.disabled) })`);
   check('a refused answer re-enables the buttons', refused.answers.length === 1 && !refused.disabled, JSON.stringify(refused));
   await ev(`window.__answerFail = false; window.__answers = []; ${C}.querySelector('.cni-answer[data-n="2"]').click(); true`);
-  await sleep(300);
+  await until(`(window.__answers || []).length > 0`, 'the answer');
   const sent = await ev(`({ answers: window.__answers, disabled: Array.from(${C}.querySelectorAll('.cni-answer')).every(b => b.disabled) })`);
   check('clicking an option sends its number and label, and locks the buttons', JSON.stringify(sent.answers) === JSON.stringify([{ session_id: SID, agent_type: 'claude', n: 2, label: 'Roomy', text: '' }]) && sent.disabled, JSON.stringify(sent));
   await ev(`window.__promptScreen = null; true`);
@@ -340,12 +352,13 @@ async function run() {
     return { shown: getComputedStyle(sec).display !== 'none', addBtn: !!sec.querySelector('.btn-create-task'), empty: (document.querySelector('#board-task-list .board-task-empty') || {}).textContent || '' }; })`);
   check('a solo agent\'s Tasks tab shows + Task and an empty state', tasksTab.shown && tasksTab.addBtn && /No tasks yet/.test(tasksTab.empty), JSON.stringify(tasksTab));
   await ev(`document.querySelector('#board-tasks-section .btn-create-task').click(); true`);
-  await sleep(300);
+  await until(`!!document.getElementById('create-task-heading') && document.getElementById('create-task-heading').textContent.trim() !== '' && document.getElementById('create-task-modal').style.display !== 'none'`, 'the Create Task dialog');
   const dlg = await ev(`(() => { const vis = (id) => { const e = document.getElementById(id); return !!e && !e.hidden && getComputedStyle(e).display !== 'none'; };
     return { heading: document.getElementById('create-task-heading').textContent, boardFields: vis('create-task-board-fields'), sendRow: vis('create-task-send-row'), sendChecked: document.getElementById('create-task-send').checked }; })()`);
   check('the Create Task dialog for a solo agent hides board fields and offers sending it to the agent', dlg.heading === 'New task for Lead Dev' && !dlg.boardFields && dlg.sendRow && dlg.sendChecked, JSON.stringify(dlg));
   await ev(`window.__posts = []; document.getElementById('create-task-title').value = 'Add a battle log'; document.getElementById('create-task-body').value = 'Log each round.'; window.submitCreateTask(); true`);
-  await sleep(600);
+  await until(`(window.__posts || []).some(p => /\\/tasks$/.test(p[1])) && document.getElementById('create-task-modal').style.display === 'none'`, 'the task POST and the dialog to close');
+  await nextFrame();
   const made = await ev(`({ posts: window.__posts, modalOpen: document.getElementById('create-task-modal').style.display !== 'none', pending: Array.from(${C}.querySelectorAll('.chat-bubble.pending .message-text')).map(e => e.textContent.trim()).pop() || '' })`);
   const taskPost = (made.posts || []).find(p => /\/tasks$/.test(p[1]));
   const sendPost = (made.posts || []).find(p => /\/send$/.test(p[1]));
@@ -422,7 +435,7 @@ async function run() {
       return c.sendCommand();
     });
   `);
-  await sleep(600);
+  await uploadsDone();
   const failPost = await ev(`(window.__posts || []).find(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   const keptInput = await ev(`document.getElementById('command-input').value`);
   check('upload failure aborts send without dispatching lone caption', !failPost && keptInput === 'Do not send without image', JSON.stringify({ failPost, keptInput }));
@@ -437,7 +450,8 @@ async function run() {
       c.sendCommand();
     });
   `);
-  for (let i = 0; i < 150 && !(await ev(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`)); i++) await sleep(20); await sleep(700); // first send, then a window longer than the 500 ms upload for any duplicate
+  for (let i = 0; i < 150 && !(await ev(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`)); i++) await sleep(20);
+  await uploadsDone(); // a duplicate would follow the upload's completion
   const repeatSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('repeat send while awaiting upload fires only once', repeatSends.length === 1 && repeatSends[0][2].command.includes('Repeat send check'), JSON.stringify(repeatSends));
 
@@ -454,7 +468,7 @@ async function run() {
       s.state.currentSession = { session_id: 'switched-session-id', name: 'other-session', type: 'live', agent_type: 'codex' };
     });
   `);
-  await sleep(1000); // proves a negative: no send may happen once the 500 ms upload has finished
+  await uploadsDone(); // proves a negative: no send once the upload has finished
   const switchedSends = await ev(`(window.__posts || []).filter(p => p[0] === 'POST' && /\\/send$/.test(p[1]))`);
   check('session switch while awaiting upload cancels send without dispatching to switched session', switchedSends.length === 0, JSON.stringify(switchedSends));
   // Restore currentSession
@@ -474,19 +488,20 @@ async function run() {
     });
   `);
   // Wait for upload to finish while in session 2
-  await sleep(800);
+  await uploadsDone();
   // Send from session 2
   await ev(`import((window.__coralStatic||'/static/')+'controls.js').then(c => {
     document.getElementById('command-input').value = 'Message in session two';
     return c.sendCommand();
   })`);
-  await sleep(600);
+  await until(`(window.__posts || []).some(p => p[0] === 'POST' && /\\/send$/.test(p[1]) && p[2] && p[2].session_id === 'sid-two')`, 'the session-two send');
   const s2Send = await ev(`(window.__posts || []).find(p => p[0] === 'POST' && /\\/send$/.test(p[1]) && p[2] && p[2].session_id === 'sid-two')`);
   check('upload started in session 1 does not leak attachment into session 2 send', !!s2Send && s2Send[2].command === 'Message in session two' && !s2Send[2].command.includes('shot4.png'), JSON.stringify(s2Send));
 
   // Switch back to session 1; verify attachment is retained and sent to session 1
   await ev(`import((window.__coralStatic||'/static/')+'sessions.js').then(sm => sm.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)}))`);
-  await sleep(400);
+  await coralReady('agentSelected', 'coral-go');
+  await until(`import((window.__coralStatic||'/static/')+'controls.js').then(c => c.getPendingAttachments().length > 0)`, 'session 1 attachment restored');
   const s1Attachments = await ev(`import((window.__coralStatic||'/static/')+'controls.js').then(c => c.getPendingAttachments().length)`);
   check('session 1 retains its uploaded attachment after returning', s1Attachments >= 1, String(s1Attachments));
 

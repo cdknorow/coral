@@ -19,13 +19,13 @@ const DEVICES = [
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails));
         return r.result.value;
     };
-    const pause = ms => new Promise(r => setTimeout(r, ms));
+    // Condition waits (#3118): the app says when startup is done; the suite waits for what it checks next.
+    const { waitFor, coralReady } = require('./helpers/wait').bind(evaluate);
     const tap = async selector => {
         const p = await evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) return null; e.scrollIntoView({block:'center'}); const b = e.getBoundingClientRect(); return {x: b.x + b.width/2, y: b.y + b.height/2}; })()`);
         assert.ok(p, `${selector} exists`);
         await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [p] });
         await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] });
-        await pause(250);
     };
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
@@ -35,7 +35,9 @@ const DEVICES = [
             if (d.ua) await Emulation.setUserAgentOverride({ userAgent: d.ua });
             await Page.navigate({ url: BASE });
             await Page.loadEventFired();
-            await evaluate(`new Promise(resolve => { const wait = () => typeof window.selectLiveSession === 'function' && document.getElementById('live-sessions-list') ? resolve() : setTimeout(wait, 50); wait(); })`);
+            // Startup done: the first live list rendered, the feed connected, history and settings loaded. Seeding before
+            // this raced the app's own first render (the 1-in-3 failure under --shards 3).
+            await coralReady();
             // Two sidebar rows, shaped like render.js writes them, and a recorder in front of the real selectLiveSession.
             await evaluate(`(() => {
                 window.__eval = 0; window.__picked = [];
@@ -68,6 +70,7 @@ const DEVICES = [
             assert.equal(await evaluate(`(() => { const t = document.querySelector('#mobile-agent-list .mobile-list-title'); return !!t && !t.hasAttribute('style') && getComputedStyle(t).fontWeight === '600'; })()`), true, `${d.name}: the list title is styled by a class, not a style attribute the hub's style-src refuses`);
 
             await tap('#mobile-session-list .session-group-item[data-session-id="sid-beta"]');
+            await waitFor(`window.__picked.length > 0 && getComputedStyle(document.getElementById('mobile-agent-list')).display === 'none'`, 'the tapped agent to open', { soft: true });
             assert.deepEqual(await evaluate(`window.__picked`), ['beta'], `${d.name}: a tap selects the agent that was tapped`);
             assert.equal(await evaluate(`getComputedStyle(document.getElementById('mobile-agent-list')).display`), 'none', `${d.name}: the list gives way to the agent`);
             assert.equal(await evaluate(`window.__eval`), 0, `${d.name}: nothing went through eval(): ${await evaluate('window.__evalAt')}`);
@@ -76,6 +79,7 @@ const DEVICES = [
             // The settings menu must open above the side panel, not behind it.
             await evaluate(`window.toggleAgenticPanel(true)`);
             await tap('.top-bar-settings-wrapper button, #top-bar-settings-btn');
+            await waitFor(`!!document.querySelector('.top-bar-settings-menu')`, 'the settings menu', { soft: true });
             const over = await evaluate(`(() => { const m = document.querySelector('.top-bar-settings-menu'); if (!m) return 'no menu'; const b = m.getBoundingClientRect(); const top = document.elementFromPoint(b.x + b.width/2, b.y + 12); return m.contains(top) ? 'ok' : 'covered by ' + (top && (top.id || top.className)); })()`);
             assert.equal(over, 'ok', `${d.name}: settings menu is on top of the open panel`);
             // Panel tab strip: the close button leads it and covers no tab at rest; every tab is reachable by scrolling.

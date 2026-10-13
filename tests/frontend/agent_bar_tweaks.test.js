@@ -131,6 +131,10 @@ async function run() {
         return r.result.value;
     }
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    // Condition waits (#3118). Soft: on timeout they return and the next check() reports what is wrong.
+    const { waitFor, waitStable, nextFrame } = require('./helpers/wait').bind(evalInPage);
+    const until = (expression, what, timeout = 5000) => waitFor(expression, what, { soft: true, timeout });
+    const selected = sid => until(`document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId === ${JSON.stringify(sid)} && /^Sending to:/.test(document.getElementById('command-input').placeholder)`, `${sid} selected`);
     // Keep the HTTP stub and the rendered list in lockstep.
     const setFixture = (sessions) => evalInPage(`window.__fixture = ${JSON.stringify(sessions)}; window._coralSetLiveSessions(window.__fixture); true`);
 
@@ -138,10 +142,11 @@ async function run() {
         await Page.navigate({ url: BASE + '/' });
         await Page.loadEventFired();
         // Wait for the app module to expose its globals.
-        for (let i = 0; i < 50; i++) {
-            if (await evalInPage(`typeof window._coralSetLiveSessions === 'function'`)) break;
-            await sleep(100);
-        }
+        await until(`typeof window._coralSetLiveSessions === 'function'`, 'the app hooks', 10000);
+        // Another suite in this Chrome can leave the sleeping group expanded (agent_state, agent_list_compact); this
+        // suite expects the default, so start from clean storage and reload (#3118).
+        await evalInPage(`localStorage.clear(); true`); await Page.reload(); await Page.loadEventFired();
+        await until(`typeof window._coralSetLiveSessions === 'function'`, 'the app hooks after the reload', 10000);
         check('app exposes _coralSetLiveSessions hook',
             await evalInPage(`typeof window._coralSetLiveSessions === 'function'`));
 
@@ -151,18 +156,16 @@ async function run() {
         // Agent summaries are off by default (server-side setting); these checks are about the goal line.
         // Toggle only after the app's startup loadSettings() has landed: it replaces state.settings
         // wholesale, so a late response would switch the summary back off (seen under parallel CDP shards).
-        for (let i = 0; i < 50; i++) {
-            if (await evalInPage(`(async () => (await import((window.__coralStatic||'/static/')+'state.js')).state.settings.file_search_mode !== undefined)()`)) break;
-            await sleep(100);
-        }
-        await evalInPage(`window.toggleSessionSummary(); true`);
-        await sleep(300);
+        await until(`(async () => (await import((window.__coralStatic||'/static/')+'state.js')).state.settings.file_search_mode !== undefined)()`, 'the startup settings', 10000);
+        // Even after that, a second startup load can land and switch it back off: turn it on until it stays on.
+        await waitStable(`(async () => { const r = await import((window.__coralStatic||'/static/')+'render.js'); if (!r.isSessionSummaryShown()) window.toggleSessionSummary(); return r.isSessionSummaryShown(); })()`,
+            'the session summary', 500, { timeout: 5000, accept: v => v === true }).catch(() => {});
         check('session summary is shown before the goal-line checks',
             await evalInPage(`(async () => (await import((window.__coralStatic||'/static/')+'render.js')).isSessionSummaryShown())()`));
         await setFixture(SESSIONS);
         // A startup-style reload through the real API path must keep the fixture.
         await evalInPage(`window._coralLoadLiveSessions()`);
-        await sleep(150);
+        await waitStable(`document.querySelectorAll('#live-sessions-list .session-group-item').length`, 'the reloaded list', 300).catch(() => {});
         check('startup /api/sessions/live load cannot overwrite fixture',
             await evalInPage(`document.querySelectorAll('#live-sessions-list .session-group-item').length`) === SESSIONS.length);
 
@@ -174,7 +177,7 @@ async function run() {
         check('WebSocket constants preserved for app code', await evalInPage(`WebSocket.OPEN === 1 && WebSocket.CLOSED === 3`));
         // Fixture stability: nothing can tick in from the server over time.
         const before = await evalInPage(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(li => li.dataset.sessionId).join(',')`);
-        await sleep(1500);
+        await sleep(1500); // sleep-ok: the fixture must hold over time with no live socket
         const after = await evalInPage(`Array.from(document.querySelectorAll('#live-sessions-list .session-group-item')).map(li => li.dataset.sessionId).join(',')`);
         check('fixture stable over time with no live socket', before === after && after === ORDER, after);
         check('still zero real /ws/coral sockets after settling', !wsCreated.some(u => /\/ws\/coral/.test(u)), JSON.stringify(wsCreated));
@@ -297,7 +300,7 @@ async function run() {
         // D1 header + placeholder + D4 mode label via selectLiveSession on the
         // unnamed first_prompt row.
         await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-b'); true`);
-        await sleep(300);
+        await selected('sid-b');
         const header = await evalInPage(`(() => ({
             name: document.getElementById('session-name').textContent,
             term: (document.getElementById('terminal-header-label') || {}).textContent || '',
@@ -340,7 +343,7 @@ async function run() {
               status: 'Sleeping', sleeping: true, not_started: false,
               context_pct: null, context_window: null }
         ], removed: [] }); true`);
-        await sleep(100);
+        await nextFrame();
         const clearedContext = await evalInPage(`(() => {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-c"]');
             const session = window._coralGetLiveSessions().find(s => s.session_id === 'sid-c');
@@ -361,7 +364,7 @@ async function run() {
             { name: 'coral-go', display_name: '', agent_type: 'claude', session_id: 'sid-b', summary: '',
               context_pct: 45, waiting_for_input: true, working: false, working_directory: '/repo/coral-go' }
         ], removed: [] }); true`);
-        await sleep(100);
+        await nextFrame();
         const afterDiff = await evalInPage(`(() => {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-b"]');
             return {
@@ -390,7 +393,7 @@ async function run() {
             { name: 'coral-go', display_name: 'Renamed Bot', agent_type: 'claude', session_id: 'sid-b', summary: 'Now writing tests',
               context_pct: 45, waiting_for_input: true, working_directory: '/repo/coral-go' }
         ] }); true`);
-        await sleep(100);
+        await nextFrame();
         const afterRename = await evalInPage(`(() => {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-b"]');
             return { label: li.querySelector('.session-label').textContent.trim(), goal: li.querySelector('.session-goal').textContent.trim(),
@@ -407,19 +410,19 @@ async function run() {
         // With sid-a active, clicking "No goal yet" on sid-c must select sid-c
         // and issue no /send and no requestGoal.
         await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-a'); true`);
-        await sleep(200);
+        await selected('sid-a');
         await evalInPage(`window.__goalCalls = 0; const _rg = window.requestGoal; window.__origRequestGoal = _rg; window.requestGoal = (...a) => { window.__goalCalls++; return _rg(...a); }; window.__sendCalls = []; true`);
         await evalInPage(`document.querySelector('#live-sessions-list [data-session-id="sid-c"] .session-goal-empty-label').click(); true`);
-        await sleep(250);
+        await selected('sid-c');
         const afterLabel = await evalInPage(`({ active: document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId, sends: window.__sendCalls.length, goals: window.__goalCalls, header: document.getElementById('session-name').textContent })`);
         check('passive label click selects the row', afterLabel.active === 'sid-c' && afterLabel.header === 'Agent', JSON.stringify(afterLabel));
         check('passive label click sends zero requests', afterLabel.sends === 0, `${afterLabel.sends}`);
         check('passive label click does not request a goal', afterLabel.goals === 0, `${afterLabel.goals}`);
         // Sparkle is the sole trigger, and it does not change the selection.
         await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-a'); true`);
-        await sleep(200);
+        await selected('sid-a');
         await evalInPage(`window.__sendCalls = []; document.querySelector('#live-sessions-list [data-session-id="sid-c"] .sidebar-goal-btn-inline').click(); true`);
-        await sleep(250);
+        await until(`window.__goalCalls >= 1`, 'the sparkle goal request');
         const afterSparkle = await evalInPage(`({ active: document.querySelector('#live-sessions-list .session-group-item.active')?.dataset.sessionId, goals: window.__goalCalls, sends: window.__sendCalls.map(c => c.url) })`);
         check('sparkle is the sole goal trigger', afterSparkle.goals === 1, `${afterSparkle.goals}`);
         check('sparkle click does not change the active session', afterSparkle.active === 'sid-a', afterSparkle.active);
@@ -433,7 +436,7 @@ async function run() {
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
             { name: 'other-proj', agent_type: 'claude', session_id: 'sid-f', auto_name: 'Store Refactorer' }
         ] }); true`);
-        await sleep(100);
+        await nextFrame();
         const rowF = () => evalInPage(`(() => {
             const li = document.querySelector('#live-sessions-list [data-session-id="sid-f"]');
             const g = li.querySelector('.session-goal');
@@ -455,7 +458,7 @@ async function run() {
 
         // Header / terminal label / placeholder follow auto_name.
         await evalInPage(`window.selectLiveSession('other-proj', 'claude', 'sid-f'); true`);
-        await sleep(250);
+        await selected('sid-f');
         const hdrF = await evalInPage(`({ name: document.getElementById('session-name').textContent, term: (document.getElementById('terminal-header-label') || {}).textContent || '', ph: document.getElementById('command-input').placeholder })`);
         check('header uses auto_name', hdrF.name === 'Store Refactorer', hdrF.name);
         check('terminal label uses auto_name', hdrF.term === 'Store Refactorer', hdrF.term);
@@ -465,7 +468,7 @@ async function run() {
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
             { name: 'other-proj', agent_type: 'claude', session_id: 'sid-f', summary: 'Now profiling startup' }
         ] }); true`);
-        await sleep(100);
+        await nextFrame();
         f = await rowF();
         const hdrF2 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
         check('summary-only diff updates the goal line', f.goal === 'Now profiling startup', f.goal);
@@ -476,7 +479,7 @@ async function run() {
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
             { name: 'other-proj', agent_type: 'claude', session_id: 'sid-f', auto_name: null, summary: '', context_pct: 71 }
         ] }); true`);
-        await sleep(100);
+        await nextFrame();
         f = await rowF();
         const hdrF3 = await evalInPage(`({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder })`);
         check('explicit null auto_name falls back to Agent', f.label === 'Agent' && hdrF3.name === 'Agent' && /^Sending to: Agent/.test(hdrF3.ph), JSON.stringify({ f, hdrF3 }));
@@ -488,14 +491,14 @@ async function run() {
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [
             { name: 'other-proj', agent_type: 'claude', session_id: 'sid-e', auto_name: 'Somebody Else' }
         ] }); true`);
-        await sleep(100);
+        await nextFrame();
         const rowE = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-e"]'); return { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label') }; })()`);
         check('display_name beats auto_name', rowE.label === 'Zed' && /^Zed, /.test(rowE.aria || ''), JSON.stringify(rowE));
 
         // New session arriving via diff is taken intact (no merge partner).
         await evalInPage(`window.__newSessionPayload = { name: 'coral-go', agent_type: 'claude', session_id: 'sid-new', display_name: '', summary: '', first_prompt: '/repo/coral-go/.github/workflows/release.yml audit this', context_pct: 5, working_directory: '/repo/coral-go' };
             window._coralHandleWsMessage({ type: 'coral_diff', changed: [window.__newSessionPayload] }); true`);
-        await sleep(100);
+        await nextFrame();
         const rowNew = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-new"]'); return li ? { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'), count: window._coralGetLiveSessions().length } : null; })()`);
         check('new session via diff renders intact (path prompt -> Agent identity)', rowNew && rowNew.label === 'Agent' && /^Agent, /.test(rowNew.aria || '') && rowNew.count === SESSIONS.length + 1, JSON.stringify(rowNew));
         check('new session merge does not alias incoming payload', await evalInPage(`window._coralGetLiveSessions().find(s => s.session_id === 'sid-new') !== window.__newSessionPayload`));
@@ -513,7 +516,7 @@ async function run() {
 
         // board_job_title identity agrees across header / terminal label / placeholder.
         await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-g'); true`);
-        await sleep(250);
+        await selected('sid-g');
         const hdrG = await evalInPage(`({ name: document.getElementById('session-name').textContent, term: (document.getElementById('terminal-header-label') || {}).textContent || '', ph: document.getElementById('command-input').placeholder })`);
         check('header uses board_job_title, not the path prompt', hdrG.name === 'Release Wrangler', hdrG.name);
         check('terminal label uses board_job_title', hdrG.term === 'Release Wrangler', hdrG.term);
@@ -522,7 +525,7 @@ async function run() {
         // agent-type badge (removed to declutter it); the branch stays in the
         // session details and the row tooltip.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', repo_name: 'cdknorow/coral', branch: 'feature/agent-list-compact' } ] }); true`);
-        await sleep(150);
+        await nextFrame();
         const hdrLeak = await evalInPage(`(() => {
             const hdr = document.querySelector('#live-session-view .terminal-header');
             const leaks = [];
@@ -544,33 +547,33 @@ async function run() {
         // A long identity at 1024px: it keeps its room and nothing overflows.
         await Emulation.setDeviceMetricsOverride({ width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', display_name: 'Release Wrangler With A Long Name', repo_name: 'cdknorow/coral', branch: 'feature/agent-list-compact-with-a-really-long-branch-name-for-narrow-headers' } ] }); true`);
-        await sleep(300);
+        await nextFrame();
         const narrow = await evalInPage(`(() => { const hdr = document.querySelector('#live-session-view .terminal-header'); const label = document.getElementById('terminal-header-label'); const actions = hdr.querySelector('.terminal-header-actions'); const hr = hdr.getBoundingClientRect(), ar = actions.getBoundingClientRect();
             const w = sel => { const e = hdr.querySelector(sel); return e ? Math.round(e.getBoundingClientRect().width) : null; };
             return { hdrW: hr.width, labelW: label.getBoundingClientRect().width, parts: { toggle: w('.live-view-toggle'), left: w('.terminal-header-left'), actions: w('.terminal-header-actions'), folder: w('.terminal-folder'), branch: w('.terminal-branch') }, overflow: hdr.scrollWidth - hdr.clientWidth, actionsInside: ar.right <= hr.right + 1 && ar.left >= hr.left - 1 }; })()`);
         check('1024px: identity keeps >= 120px (or its full width) and the header/actions do not overflow', (narrow.labelW >= 120 || narrow.labelW >= narrow.hdrW * 0.4) && narrow.overflow <= 1 && narrow.actionsInside, JSON.stringify(narrow));
         await Emulation.setDeviceMetricsOverride({ width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-        await sleep(200);
+        await until(`innerWidth === 1440`, 'the desktop viewport');
         // restore the fixture: the 1024px probe renamed sid-g, which must not leak into later identity checks
         await setFixture(SESSIONS);
-        await sleep(150);
+        await nextFrame();
         check('placeholder uses board_job_title', /^Sending to: Release Wrangler \(claude\)/.test(hdrG.ph), hdrG.ph);
         // auto_name outranks board_job_title.
         await evalInPage(`window._coralHandleWsMessage({ type: 'coral_diff', changed: [ { name: 'coral-go', agent_type: 'claude', session_id: 'sid-g', auto_name: 'Ship Bot' } ] }); true`);
-        await sleep(100);
+        await nextFrame();
         const rowG = await evalInPage(`(() => { const li = document.querySelector('#live-sessions-list [data-session-id="sid-g"]'); return { label: li.querySelector('.session-label').textContent.trim(), aria: li.getAttribute('aria-label'), header: document.getElementById('session-name').textContent }; })()`);
         check('auto_name beats board_job_title', rowG.label === 'Ship Bot' && /^Ship Bot, /.test(rowG.aria || '') && rowG.header === 'Ship Bot', JSON.stringify(rowG));
         await setFixture(SESSIONS);
 
         // Header follows a named session too.
         await evalInPage(`window.selectLiveSession('other-proj', 'claude', 'sid-e'); true`);
-        await sleep(200);
+        await selected('sid-e');
         check('header uses display_name when present',
             await evalInPage(`document.getElementById('session-name').textContent`) === 'Zed');
 
         // Row with no identity at all resolves to "Agent" in the header.
         await evalInPage(`window.selectLiveSession('coral-go', 'claude', 'sid-c'); true`);
-        await sleep(200);
+        await selected('sid-c');
         const bare = await evalInPage(`(() => ({ name: document.getElementById('session-name').textContent, ph: document.getElementById('command-input').placeholder }))()`);
         check('header falls back to "Agent" with no identity', bare.name === 'Agent', bare.name);
         check('placeholder falls back to "Agent"', /^Sending to: Agent \(claude\)/.test(bare.ph), bare.ph);
@@ -580,7 +583,7 @@ async function run() {
         // click, which selects that session like any other click on the row.)
         await evalInPage(`window.__sendCalls = []; true`);
         await evalInPage(`document.querySelector('#live-sessions-list [data-session-id="sid-a"] .session-ctx-pill').click(); true`);
-        await sleep(200);
+        await sleep(200); // sleep-ok: nothing may be sent within this window
         const calls = await evalInPage(`window.__sendCalls`);
         await evalInPage(`window.__sendCalls = null; true`);
         check('clicking the ctx pill sends no /send request', calls.length === 0, JSON.stringify(calls));
@@ -598,7 +601,7 @@ async function run() {
         check('no top-nav tab is still labelled "Tokens"', navBefore.tokensLabels === 0, `${navBefore.tokensLabels}`);
         check('Analytics tab keeps its id, handler and a descriptive title', navBefore.onclick === "switchNavTab('tokens')" && /^Analytics/.test(navBefore.title || ''), JSON.stringify(navBefore));
         await evalInPage(`document.getElementById('nav-tab-tokens').click(); true`);
-        await sleep(300);
+        await until(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-tokens' && getComputedStyle(document.getElementById('cost-dashboard-view')).display !== 'none' && !!document.querySelector('#cost-dashboard-view h2')`, 'the Analytics view');
         const navAfter = await evalInPage(`(() => ({
             active: document.querySelector('.top-nav-tab.active')?.id,
             viewShown: getComputedStyle(document.getElementById('cost-dashboard-view')).display !== 'none',
@@ -608,16 +611,17 @@ async function run() {
         check('clicking Analytics activates the same tab id', navAfter.active === 'nav-tab-tokens', navAfter.active);
         check('clicking Analytics opens the same token-usage view', navAfter.viewShown && navAfter.heading === 'Token Usage' && navAfter.fullWidth, JSON.stringify(navAfter));
         await evalInPage(`window.switchNavTab('agents'); true`);
-        await sleep(200);
+        await until(`document.querySelector('.top-nav-tab.active')?.id === 'nav-tab-agents'`, 'the Agents tab');
         check('switching back restores the Agents tab', await evalInPage(`document.querySelector('.top-nav-tab.active')?.id`) === 'nav-tab-agents');
 
         // ── 390px mobile: empty-goal affordance stays one line; banner/meta visible ──
         await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 2, mobile: false });
         await evalInPage(`window.dispatchEvent(new Event('resize')); true`);
-        await sleep(150);
+        await until(`innerWidth === 390`, 'the 390px viewport');
+        await nextFrame();
         await setFixture(SESSIONS); // re-render -> syncMobileAgentList() clones into #mobile-session-list
         await evalInPage(`const al = document.getElementById('mobile-agent-list'); if (al) al.style.display = 'flex'; true`);
-        await sleep(150);
+        await until(`!!document.querySelector('#mobile-session-list [data-session-id="sid-c"]')`, 'the mobile clone list');
         const mobile = await evalInPage(`(() => {
             const list = document.getElementById('mobile-session-list');
             if (!list) return { list: false };

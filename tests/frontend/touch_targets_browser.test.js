@@ -57,13 +57,18 @@ const UNDERSIZED = `(() => {
         if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails));
         return r.result.value;
     };
+    // Condition waits (#3118).
+    const { waitFor, waitStable, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
     const open = async (width, height, mobile) => {
         await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: 1, mobile });
         await Page.navigate({ url: BASE }); await Page.loadEventFired();
         await ev(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`);
         await ev(`new Promise(r => { const t = Date.now(); const w = () => (window._coralGetLiveSessions?.() || []).some(s => s.session_id === ${JSON.stringify(sid)}) || Date.now() - t > 8000 ? r() : setTimeout(w, 100); w(); })`);
+        await coralReady();
         await ev(`window.selectLiveSession(${JSON.stringify(sname)}, 'terminal', ${JSON.stringify(sid)})`);
-        await sleep(800);
+        await coralReady('agentSelected', sname);
+        // The sweep measures every control: go on once the layout holds still.
+        await waitStable(`document.body.getBoundingClientRect().height + ':' + document.querySelectorAll('button, a[href], input, select').length`, 'the layout', 200).catch(() => {});
     };
     const coarse = async on => {
         await Emulation.setEmulatedMedia({ features: on ? [{ name: 'pointer', value: 'coarse' }, { name: 'hover', value: 'none' }] : [{ name: 'pointer', value: 'fine' }, { name: 'hover', value: 'hover' }] });
@@ -82,7 +87,8 @@ const UNDERSIZED = `(() => {
 
         // Round 3 (#3131): the top-bar settings dropdown's rows.
         const menuRows = sel => ev(`[...document.querySelectorAll(${JSON.stringify(sel)})].map(e => e.getBoundingClientRect()).filter(r => r.width && r.height).map(r => [Math.round(r.width), Math.round(r.height)])`);
-        await ev(`toggleTopBarSettings()`); await sleep(200);
+        await ev(`toggleTopBarSettings()`);
+        await waitFor(`[...document.querySelectorAll('#top-bar-settings-menu .overflow-menu-item')].filter(e => e.getBoundingClientRect().height).length >= 2`, 'the settings dropdown', { soft: true });
         const settingsRows = await menuRows('#top-bar-settings-menu .overflow-menu-item');
         assert.ok(settingsRows.length >= 2, 'the settings dropdown is open with its rows: ' + JSON.stringify(settingsRows));
         for (const [w, h] of settingsRows) assert.ok(w >= 44 && h >= 44, `settings dropdown row ${w}x${h} under 44px`);
@@ -93,7 +99,9 @@ const UNDERSIZED = `(() => {
 
         // Round 2 (#3098, Coral Hub v1.4.6 re-check): the side panel's tabs, the
         // Files list (favourite stars) and Browse (row icons) on the phone overlay.
-        await ev(`toggleAgenticPanel(true)`); await sleep(300);
+        await ev(`toggleAgenticPanel(true)`);
+        await waitFor(`(() => { const p = document.getElementById('agentic-state'); return p && !p.classList.contains('collapsed') && p.getBoundingClientRect().width > 0; })()`, 'the side panel', { timeout: 3000 });
+        await waitStable(`JSON.stringify(document.getElementById('agentic-state').getBoundingClientRect())`, 'the side panel to finish opening', 150).catch(() => {});
         await ev(`switchAgenticTab('files', 'top')`);
         await ev(`new Promise(r => { const t = Date.now(); const w = () => document.querySelector('#agentic-state .file-star-btn') || Date.now() - t > 15000 ? r() : setTimeout(w, 200); w(); })`);
         assert.ok(await ev(`!!document.querySelector('#agentic-state .file-star-btn')`), 'the Files tab lists the changed file with its star');
@@ -118,7 +126,7 @@ const UNDERSIZED = `(() => {
             const body = document.getElementById('servers-tab-body');
             showView(body.closest('.view, [id$=-view]')?.id || 'servers-view');
             await cs.renderCloudServersInto(body);
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
             const hasSelect = !!body.querySelector('.cs-row select');
             const small = ${UNDERSIZED};
             cs.hideCloudServers();
@@ -138,7 +146,9 @@ const UNDERSIZED = `(() => {
             assert.ok(!/\{\{/.test(tpl), page + ': template fully mapped');
             const { frameTree } = await Page.getFrameTree();
             await Page.setDocumentContent({ frameId: frameTree.frame.id, html: tpl });
-            await ev(`Promise.all(Array.from(document.styleSheets).map(() => true)).then(() => new Promise(r => setTimeout(r, 300)))`);
+            // Every stylesheet loaded (or failed) and the fonts in, then one laid-out frame.
+            await ev(`Promise.all(Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.sheet ? true : new Promise(r => { l.addEventListener('load', r, { once: true }); l.addEventListener('error', r, { once: true }); })))
+                .then(() => document.fonts.ready).then(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))).then(() => true)`);
             // Show every step; a link inside a sentence is exempt (WCAG 2.5.8 inline
             // exception), so it is taken out of the sweep.
             const small = await ev(`(() => {
@@ -168,10 +178,11 @@ const UNDERSIZED = `(() => {
         await Fetch.enable({ patterns: [{ urlPattern: `${BASE}/`, resourceType: 'Document', requestStage: 'Response' }, { urlPattern: '*/auth/session*', requestStage: 'Request' }] });
         try {
             await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-            for (let i = 0; i < 80 && !(await ev(`!!document.querySelector('.cloud-account-btn')`)); i++) await sleep(100);
+            await waitFor(`!!document.querySelector('.cloud-account-btn')`, 'the hub account button', { soft: true, timeout: 8000 });
             const where = await ev(`({ path: location.pathname, mode: (document.getElementById('coral-boot') || {}).textContent, cloud: document.body.classList.contains('cloud-mode'), btn: !!document.querySelector('.cloud-account-btn') })`);
             assert.ok(where.btn, 'the hub account button is shown: ' + JSON.stringify(where));
-            await ev(`document.querySelector('.cloud-account-btn').click()`); await sleep(200);
+            await ev(`document.querySelector('.cloud-account-btn').click()`);
+            await waitFor(`[...document.querySelectorAll('#cloud-account-menu .overflow-menu-item')].filter(e => e.getBoundingClientRect().height).length >= 2`, 'the account dropdown', { soft: true });
             const accountRows = await menuRows('#cloud-account-menu .overflow-menu-item');
             assert.equal(accountRows.length, 2, 'the account dropdown shows Servers and Sign out: ' + JSON.stringify(accountRows));
             for (const [w, h] of accountRows) assert.ok(w >= 44 && h >= 44, `account dropdown row ${w}x${h} under 44px`);
@@ -185,7 +196,10 @@ const UNDERSIZED = `(() => {
 
         await open(820, 1180, false);
         assert.deepEqual(await ev(UNDERSIZED), [], 'iPad 820: every control is at least 44x44');
-        await ev(`document.querySelector('.tablet-sidebar-toggle')?.click()`); await sleep(400);
+        await ev(`document.querySelector('.tablet-sidebar-toggle')?.click()`);
+        // The sidebar slides in: wait until its row controls are on screen and have stopped moving.
+        await waitStable(`JSON.stringify(Array.from(document.querySelectorAll('.sidebar-kebab-btn, .folder-copy-btn')).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height).map(r => [Math.round(r.x), Math.round(r.width), Math.round(r.height)]))`,
+            'the sidebar row controls', 150, { accept: v => JSON.parse(v).length >= 2 }).catch(() => {});
         const rows = await ev(`Array.from(document.querySelectorAll('.sidebar-kebab-btn, .folder-copy-btn')).map(e => e.getBoundingClientRect()).filter(r => r.width && r.height).map(r => [Math.round(r.width), Math.round(r.height)])`);
         assert.ok(rows.length >= 2, 'the sidebar shows row kebabs: ' + JSON.stringify(rows));
         for (const [w, h] of rows) assert.ok(w >= 44 && h >= 44, `sidebar row control ${w}x${h} under 44px`);
@@ -195,15 +209,18 @@ const UNDERSIZED = `(() => {
         // sidebar (Display options, Collapse, Search agents, agent rows) and the
         // home view's links.
         await open(768, 1024, false);
-        await ev(`document.querySelector('.tablet-sidebar-toggle:not([hidden])')?.offsetParent && document.querySelector('.tablet-sidebar-toggle').click()`); await sleep(400);
+        await ev(`document.querySelector('.tablet-sidebar-toggle:not([hidden])')?.offsetParent && document.querySelector('.tablet-sidebar-toggle').click()`);
+        await waitStable(`JSON.stringify([...document.querySelectorAll('.sidebar-collapse-btn, #agent-search-input, .session-group-item')].map(e => e.getBoundingClientRect()).map(r => [Math.round(r.x), Math.round(r.width), Math.round(r.height)]))`, 'the docked sidebar to settle', 150).catch(() => {});
         const ipadSmall = await ev(UNDERSIZED);
         assert.deepEqual(ipadSmall, [], 'iPad 768 with an agent selected: every control is at least 44x44: ' + JSON.stringify(ipadSmall));
         const agentRows = await menuRows('.session-group-item');
         assert.ok(agentRows.length >= 1, 'the sidebar lists the agent');
         for (const [w, h] of agentRows) assert.ok(h >= 44, `agent row ${w}x${h} under 44px tall`);
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await ev(`new Promise(r => { const w = () => typeof window.selectLiveSession === 'function' ? r() : setTimeout(w, 50); w(); })`); await sleep(800);
-        await ev(`document.querySelector('.tablet-sidebar-toggle:not([hidden])')?.offsetParent && document.querySelector('.tablet-sidebar-toggle').click()`); await sleep(400);
+        await coralReady();
+        await waitStable(`document.body.getBoundingClientRect().height + ':' + document.querySelectorAll('button, a[href], input, select').length`, 'the home view', 200).catch(() => {});
+        await ev(`document.querySelector('.tablet-sidebar-toggle:not([hidden])')?.offsetParent && document.querySelector('.tablet-sidebar-toggle').click()`);
+        await waitStable(`JSON.stringify([...document.querySelectorAll('.sidebar-collapse-btn, #agent-search-input, .session-group-item')].map(e => e.getBoundingClientRect()).map(r => [Math.round(r.x), Math.round(r.width), Math.round(r.height)]))`, 'the docked sidebar to settle', 150).catch(() => {});
         const ipadHomeSmall = await ev(UNDERSIZED);
         assert.deepEqual(ipadHomeSmall, [], 'iPad 768 home view: every control is at least 44x44: ' + JSON.stringify(ipadHomeSmall));
         console.log(`PASS iPad 768 coarse: sidebar controls, ${agentRows.length} agent row(s) and the home links at least 44px`);
@@ -221,18 +238,22 @@ const UNDERSIZED = `(() => {
         await coarse(true);
         await open(820, 1180, false);
         await ev(`(async () => { const ui = await import((window.__coralStatic||'/static/')+'agent_ui.js'); await ui.refreshAgentUI(); window.switchAgenticTab('agent-ui', 'top'); })()`);
-        await sleep(600);
+        await waitFor(`!!document.querySelector('.agent-ui-home-row') && document.querySelector('.agent-ui-home-row').getBoundingClientRect().height > 0`, 'the Agent UI panel list', { soft: true });
+        await nextFrame();
         // The panel list (home rows) is on screen before a panel is opened.
         assert.ok(await ev(`!!document.querySelector('.agent-ui-home-row') && document.querySelector('.agent-ui-home-row').getBoundingClientRect().height > 0`), 'the Agent UI panel list is shown');
         const homeSmall = await ev(UNDERSIZED);
         assert.deepEqual(homeSmall, [], 'iPad 820 with the Agent UI panel list shown: every control is at least 44x44: ' + JSON.stringify(homeSmall));
-        await ev(`document.querySelector('.agent-ui-home-row').click()`); await sleep(300);
+        await ev(`document.querySelector('.agent-ui-home-row').click()`);
+        await waitFor(`Array.from(document.querySelectorAll('.agent-ui-card:not([hidden]) button')).some(x => x.getAttribute('aria-label') === 'Expand panel' && x.getBoundingClientRect().width > 0)`, 'the opened panel', { soft: true });
+        await nextFrame();
         const panelSmall = await ev(UNDERSIZED);
         assert.deepEqual(panelSmall, [], 'iPad 820 with the Agent UI panel open: every control is at least 44x44: ' + JSON.stringify(panelSmall));
         const expandOpen = `(() => { const b = Array.from(document.querySelectorAll('.agent-ui-card:not([hidden]) button')).find(x => x.getAttribute('aria-label') === 'Expand panel'); b.focus(); b.click(); })()`;
         const expandSize = await ev(`(() => { const b = Array.from(document.querySelectorAll('.agent-ui-card:not([hidden]) button')).find(x => x.getAttribute('aria-label') === 'Expand panel'); const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })()`);
         assert.ok(expandSize[0] >= 44 && expandSize[1] >= 44, 'Expand is visible and at least 44x44: ' + expandSize);
-        await ev(expandOpen); await sleep(200);
+        await ev(expandOpen);
+        await waitFor(`!!document.getElementById('agent-ui-expanded')?.open`, 'the expanded panel', { soft: true });
         const d = await ev(`(() => {
             const dlg = document.getElementById('agent-ui-expanded'); if (!dlg) return null;
             const label = document.getElementById(dlg.getAttribute('aria-labelledby'));
@@ -248,13 +269,15 @@ const UNDERSIZED = `(() => {
         assert.ok(d.focused, 'focus moves to Close');
         assert.ok(d.frame, 'the panel frame is in the dialog');
         const afterClose = `({ gone: !document.getElementById('agent-ui-expanded'), back: document.activeElement && document.activeElement.getAttribute('aria-label') === 'Expand panel', frameInCard: !!document.querySelector('.agent-ui-card:not([hidden]) iframe') })`;
-        await ev(`document.querySelector('#agent-ui-expanded .agent-ui-expanded-close').click()`); await sleep(100);
+        await ev(`document.querySelector('#agent-ui-expanded .agent-ui-expanded-close').click()`);
+        await waitFor(`!document.getElementById('agent-ui-expanded')`, 'the expanded panel to close', { soft: true });
         assert.deepEqual(await ev(afterClose), { gone: true, back: true, frameInCard: true }, 'Close closes and returns focus to Expand');
 
-        await ev(expandOpen); await sleep(200);
+        await ev(expandOpen);
+        await waitFor(`!!document.getElementById('agent-ui-expanded')?.open`, 'the expanded panel', { soft: true });
         await Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
         await Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-        await sleep(100);
+        await waitFor(`!document.getElementById('agent-ui-expanded')`, 'the expanded panel to close', { soft: true });
         assert.deepEqual(await ev(afterClose), { gone: true, back: true, frameInCard: true }, 'Escape closes and returns focus to Expand');
         console.log('PASS F2 expanded panel: named dialog, 44px Close, Close/Escape return focus');
     } finally {

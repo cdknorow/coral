@@ -43,7 +43,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     });
     const toasts = () => ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent.trim())`);
     const openServers = async () => {
-        await ev(`switchNavTab('home')`); await sleep(200);
+        await ev(`switchNavTab('home')`);
+        await waitFor(`document.querySelector('.top-nav-tab.active')?.id !== 'nav-tab-servers'`, 'leaving the Servers tab', 3000);
         await ev(`switchNavTab('servers')`);
     };
     try {
@@ -66,7 +67,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         // 1. The first load fails: a toast says so and the tab shows no list.
         await openServers();
         await waitFor(`[...document.querySelectorAll('.toast')].some(t => /Could not load the server list/.test(t.textContent))`, 'the failure toast');
-        assert.deepEqual(seen, ['cloud_servers.js'], 'one request, failed');
+        // The plain URL was requested once and failed. A background caller (the access lookup) may already have
+        // retried by now under load; a retry is always a new ?retry=N URL, never the cached failed one (#3118).
+        assert.equal(seen[0], 'cloud_servers.js', 'the first request is the plain URL, and it failed');
+        assert.ok(seen.slice(1).every(u => /\?retry=\d+$/.test(u)), 'nothing re-requests the failed URL: ' + JSON.stringify(seen));
         assert.ok(!(await ev(`!!document.querySelector('#servers-tab-body .cs-row')`)), 'no list after the failure');
         console.log('PASS a failed load shows "Could not load the server list"');
 
@@ -98,7 +102,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
             try { await importOnce('./no_such_module_3116.js'); return 'resolved'; } catch { return 'rejected'; }
         })()`);
         assert.equal(quiet, 'rejected');
-        await sleep(400);
+        await sleep(400); // sleep-ok: proves a negative, a background failure raises no toast within this window
         assert.ok(!(await toasts()).some(t => /no_such_module/.test(t)), 'a background failure shows no toast');
         assert.ok((await toasts()).length <= before, 'no new toast for a background failure');
         console.log('PASS a background failure is quiet');

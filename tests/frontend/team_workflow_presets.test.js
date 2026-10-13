@@ -1,6 +1,10 @@
 const assert = require('node:assert/strict');
 const CDP = require('chrome-remote-interface');
 const BASE = require('./test_base').BASE;
+// Team names unique to this run: a server reused across runs (a --stress shard) keeps each team's saved working
+// mode and presets, so fixed names would start from the last run's state instead of a new team's (#3118).
+const RUN = Date.now().toString(36);
+const TEAM_A = 'team-alpha-' + RUN, TEAM_B = 'team-beta-' + RUN;
 
 (async () => {
   const client = await CDP({ port: Number(process.env.CDP_PORT || 9222) });
@@ -11,6 +15,13 @@ const BASE = require('./test_base').BASE;
     return r.result.value;
   };
 
+  // Condition waits (#3118): the dialog's form is up; the status line has its next message (cleared before
+  // each action, so an earlier 'saved' can't satisfy it); the dialog is gone.
+  const { waitFor } = require('./helpers/wait').bind(ev);
+  // load() sets data-initial-state once the team's mode, presets and settings are in the form.
+  const formOpen = () => waitFor(`document.querySelector('.working-mode-form')?.dataset.initialState !== undefined`, 'the working-mode form to load');
+  const statusSet = () => waitFor(`(t => t && !/saving|resetting|loading/i.test(t))(document.querySelector('.working-mode-status')?.textContent.trim())`, 'the status message');
+  const dialogGone = () => waitFor(`!document.getElementById('team-working-mode-dialog')`, 'the dialog to close');
   try {
     await Page.enable();
     await Page.navigate({ url: BASE });
@@ -22,8 +33,8 @@ const BASE = require('./test_base').BASE;
     await ev(`import((window.__coralStatic||'/static/')+'team_working_mode.js').then(m => { window.showTeamWorkingMode = m.showTeamWorkingMode; })`);
 
     // 1. Initial load for team-alpha
-    await ev(`window.showTeamWorkingMode('team-alpha')`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await ev(`window.showTeamWorkingMode('${TEAM_A}')`);
+    await formOpen();
 
     // Verify initial working mode is none
     const initialMode = await ev(`document.querySelector('.working-mode-form').elements.mode.value`);
@@ -58,7 +69,7 @@ const BASE = require('./test_base').BASE;
 
     // Check effective system prompt contains team-alpha
     const effectiveSystem = await ev(`document.querySelectorAll('.prompt-inspection-card')[0].innerText`);
-    assert.ok(effectiveSystem.includes('team-alpha'), 'Effective system prompt should include project name');
+    assert.ok(effectiveSystem.includes(TEAM_A), 'Effective system prompt should include project name');
 
     console.log('✓ Initial team settings and prompt inspection verified');
 
@@ -71,9 +82,9 @@ const BASE = require('./test_base').BASE;
       const form = document.querySelector('.working-mode-form');
       form.elements.preset_name.value = 'Sprint Workflow';
       form.elements.preset_instructions.value = 'All PRs must include unit tests and pass lint.';
-      document.querySelector('.preset-save').click();
+      document.querySelector('.working-mode-status').textContent = ''; document.querySelector('.preset-save').click();
     })()`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await statusSet();
 
     const saveStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
     assert.ok(saveStatus.includes('Workflow preset saved'), `Status should indicate saved: ${saveStatus}`);
@@ -88,9 +99,9 @@ const BASE = require('./test_base').BASE;
     await ev(`(() => {
       const form = document.querySelector('.working-mode-form');
       form.elements.preset_instructions.value = 'All PRs must include unit tests, pass lint, and have approval.';
-      document.querySelector('.preset-save').click();
+      document.querySelector('.working-mode-status').textContent = ''; document.querySelector('.preset-save').click();
     })()`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await statusSet();
 
     const editStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
     assert.ok(editStatus.includes('Workflow preset saved'), `Re-save should succeed without 409 conflict: ${editStatus}`);
@@ -102,10 +113,10 @@ const BASE = require('./test_base').BASE;
       const form = document.querySelector('.working-mode-form');
       form.elements.mode.value = '${customPresetId}';
       form.elements.dependency_guidance.checked = true;
-      form.elements.custom_instructions.value = 'Follow team-alpha conventions.';
-      form.querySelector('button[type=submit]').click();
+      form.elements.custom_instructions.value = 'Follow ${TEAM_A} conventions.';
+      document.querySelector('.working-mode-status').textContent = ''; form.querySelector('button[type=submit]').click();
     })()`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await statusSet();
 
     const teamSaveStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
     assert.ok(teamSaveStatus.includes('Saved. Working mode applies on first claim'), `Team settings saved: ${teamSaveStatus}`);
@@ -114,11 +125,11 @@ const BASE = require('./test_base').BASE;
 
     // 5. Close dialog and reopen: verify persistence across reopen
     await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
-    await ev(`new Promise(r => setTimeout(r, 200))`);
+    await dialogGone();
     assert.equal(await ev(`document.getElementById('team-working-mode-dialog')`), null, 'Dialog should be closed');
 
-    await ev(`window.showTeamWorkingMode('team-alpha')`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await ev(`window.showTeamWorkingMode('${TEAM_A}')`);
+    await formOpen();
 
     const reopenedMode = await ev(`document.querySelector('.working-mode-form').elements.mode.value`);
     assert.equal(reopenedMode, customPresetId, 'Reopened mode should match saved custom preset');
@@ -148,9 +159,9 @@ const BASE = require('./test_base').BASE;
     await ev(`(() => {
       const form = document.querySelector('.working-mode-form');
       form.elements.preset_instructions.value = '';
-      document.querySelector('.preset-save').click();
+      document.querySelector('.working-mode-status').textContent = ''; document.querySelector('.preset-save').click();
     })()`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await statusSet();
 
     const emptyOverrideStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
     assert.ok(emptyOverrideStatus.includes('Workflow preset saved'), `Empty override should be accepted: ${emptyOverrideStatus}`);
@@ -163,8 +174,8 @@ const BASE = require('./test_base').BASE;
     assert.equal(isResetVisibleNow, false, 'Reset button should be visible after override');
 
     // Reset the built-in preset
-    await ev(`document.querySelector('.preset-reset').click()`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await ev(`document.querySelector('.working-mode-status').textContent = ''; document.querySelector('.preset-reset').click()`);
+    await statusSet();
 
     const resetStatus = await ev(`document.querySelector('.working-mode-status').textContent`);
     assert.ok(resetStatus.includes('Built-in preset reset'), `Status should indicate reset: ${resetStatus}`);
@@ -183,7 +194,7 @@ const BASE = require('./test_base').BASE;
       const form = document.querySelector('.working-mode-form');
       form.elements.preset_name.value = '';
       form.elements.preset_instructions.value = 'Valuable text that must not be cleared.';
-      document.querySelector('.preset-save').click();
+      document.querySelector('.working-mode-status').textContent = ''; document.querySelector('.preset-save').click();
     })()`);
 
     const valError = await ev(`document.querySelector('.working-mode-status').textContent`);
@@ -196,11 +207,11 @@ const BASE = require('./test_base').BASE;
 
     // Close dialog
     await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
-    await ev(`new Promise(r => setTimeout(r, 200))`);
+    await dialogGone();
 
     // 8. Team isolation: team-beta should NOT have team-alpha's custom preset
-    await ev(`window.showTeamWorkingMode('team-beta')`);
-    await ev(`new Promise(r => setTimeout(r, 300))`);
+    await ev(`window.showTeamWorkingMode('${TEAM_B}')`);
+    await formOpen();
 
     const betaPresets = await ev(`Array.from(document.querySelector('.working-mode-form').elements.preset.options).map(o => o.value)`);
     assert.ok(!betaPresets.includes(customPresetId), 'team-beta should not have team-alpha custom preset');
@@ -209,7 +220,7 @@ const BASE = require('./test_base').BASE;
     assert.equal(betaMode, 'none', 'team-beta mode should be isolated');
 
     await ev(`document.querySelector('#team-working-mode-dialog header button').click()`);
-    await ev(`new Promise(r => setTimeout(r, 200))`);
+    await dialogGone();
 
     console.log('✓ Team isolation verified');
 
@@ -217,7 +228,7 @@ const BASE = require('./test_base').BASE;
     // Task claimed under team-alpha's custom mode captures the workflow instructions
     const claimResult = await ev(`(async () => {
       const post = async (path, body) => {
-        const r = await fetch('/api/board/team-alpha' + path, {
+        const r = await fetch('/api/board/${TEAM_A}' + path, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
@@ -232,12 +243,12 @@ const BASE = require('./test_base').BASE;
 
     assert.ok(claimResult.claimedInstructions.includes('All PRs must include unit tests, pass lint, and have approval.'),
       'Claimed task captured custom preset instructions');
-    assert.ok(claimResult.claimedInstructions.includes('Follow team-alpha conventions.'),
+    assert.ok(claimResult.claimedInstructions.includes(`Follow ${TEAM_A} conventions.`),
       'Claimed task captured custom instructions');
 
     // Now change team-alpha's working mode via API to worktrees
     await ev(`(async () => {
-      const r = await fetch('/api/board/team-alpha/working-mode', {
+      const r = await fetch('/api/board/${TEAM_A}/working-mode', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'worktrees', custom_instructions: 'Different mode entirely' })
@@ -246,7 +257,7 @@ const BASE = require('./test_base').BASE;
     })()`);
 
     // Fetch the previously claimed task: instructions must NOT have changed
-    const fetchedTask = await ev(`fetch('/api/board/team-alpha/tasks/' + ${claimResult.taskId}).then(r => r.json())`);
+    const fetchedTask = await ev(`fetch('/api/board/${TEAM_A}/tasks/' + ${claimResult.taskId}).then(r => r.json())`);
     assert.equal(fetchedTask.workflow.instructions, claimResult.claimedInstructions,
       'Claimed task instructions must remain immutable after working mode change');
 
@@ -254,7 +265,7 @@ const BASE = require('./test_base').BASE;
 
     // 10. Operator / Orchestrator only permissions for task creation and reassignment
     const nonOrchestratorCreate = await ev(`(async () => {
-      const r = await fetch('/api/board/team-alpha/tasks', {
+      const r = await fetch('/api/board/${TEAM_A}/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Unauthorized task', created_by: 'worker-1' })
@@ -264,7 +275,7 @@ const BASE = require('./test_base').BASE;
     assert.equal(nonOrchestratorCreate.status, 403, 'Non-orchestrator agent cannot create tasks');
 
     const nonOrchestratorReassign = await ev(`(async () => {
-      const r = await fetch('/api/board/team-alpha/tasks/${claimResult.taskId}/reassign', {
+      const r = await fetch('/api/board/${TEAM_A}/tasks/${claimResult.taskId}/reassign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subscriber_id: 'worker-1', assignee: 'worker-2' })
