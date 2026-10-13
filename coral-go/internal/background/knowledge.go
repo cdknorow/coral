@@ -10,19 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cdknorow/coral/internal/executil"
-	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/store"
 )
 
 // KnowledgeBundle holds the OKF output for a team.
 type KnowledgeBundle struct {
-	TeamName  string                    `json:"team_name"`
-	CreatedAt string                    `json:"created_at"`
-	Agents    map[string]*AgentConcept  `json:"agents"`
-	Links     []KnowledgeLink           `json:"links"`
-	IndexMD   string                    `json:"index_md"`
+	TeamName  string                   `json:"team_name"`
+	CreatedAt string                   `json:"created_at"`
+	Agents    map[string]*AgentConcept `json:"agents"`
+	Links     []KnowledgeLink          `json:"links"`
+	IndexMD   string                   `json:"index_md"`
 }
 
 // AgentConcept is a single OKF concept file for an agent.
