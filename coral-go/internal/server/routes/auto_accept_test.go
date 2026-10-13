@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -797,4 +798,127 @@ func TestAutoAcceptClaudeNeedsAnApprovalRequestAndAPendingTool(t *testing.T) {
 	r.notify("q", q, "Notification: Claude needs your permission to use AskUserQuestion")
 	after.RunOnce(context.Background())
 	assert.Empty(t, r.keys(at.Claude, q), "never answered after a restart either")
+}
+
+// QA's F3 (#3182): the agent acts on the key and raises its NEXT prompt before Coral has
+// written its approval. The approval must not end that newer request: it is stamped with
+// the moment the key was sent, so the next prompt is answered too, back to back, and a newer
+// prompt Coral does not answer keeps the session waiting for the user.
+func TestAutoAcceptApprovalNeverClearsANewerPrompt(t *testing.T) {
+	bash := autoAcceptScreen(t, "claude_bash")
+	second := strings.Replace(bash, "\n touch probe.txt\n", "\n ls -la\n", 1)
+	require.NotEqual(t, classifyApproval(at.Claude, bash).FP, classifyApproval(at.Claude, second).FP, "two different prompts")
+
+	for _, when := range []string{"during the key (0 ms)", "after the approval is recorded"} {
+		t.Run(when, func(t *testing.T) {
+			r := newAutoAcceptRig(t)
+			sid := r.agent(at.Claude, "dev", bash)
+			r.enable("dev", sid)
+			r.h.pending.set(sid, pendingTool{ToolName: "Bash", Input: map[string]any{"command": "touch probe.txt"}, At: r.now})
+			r.notify("dev", sid, "Notification: Claude needs your permission to use Bash")
+			nextPrompt := func() {
+				r.screen(at.Claude, sid, second)
+				r.h.pending.set(sid, pendingTool{ToolName: "Bash", Input: map[string]any{"command": "ls -la"}, At: r.now})
+				r.notify("dev", sid, "Notification: Claude needs your permission to use Bash")
+			}
+			if when == "during the key (0 ms)" {
+				var once sync.Once
+				r.term.onRaw = func(string) { once.Do(nextPrompt) }
+			}
+			r.run()
+			require.Equal(t, []string{"1"}, r.keys(at.Claude, sid), "the first prompt")
+			if when != "during the key (0 ms)" {
+				nextPrompt()
+			}
+			assert.True(t, r.h.deriveSingleSessionState(context.Background(), sid, 0).NeedsInput, "the newer prompt is still open")
+			r.now = r.now.Add(5 * time.Second)
+			r.run()
+			assert.Equal(t, []string{"1", "1"}, r.keys(at.Claude, sid), "the newer prompt is answered too")
+		})
+	}
+
+	// A newer prompt Coral does not answer (a question) stays open for the user.
+	r := newAutoAcceptRig(t)
+	sid := r.agent(at.Claude, "dev", bash)
+	r.enable("dev", sid)
+	r.h.pending.set(sid, pendingTool{ToolName: "Bash", Input: map[string]any{"command": "touch probe.txt"}, At: r.now})
+	r.notify("dev", sid, "Notification: Claude needs your permission to use Bash")
+	var once sync.Once
+	r.term.onRaw = func(string) {
+		once.Do(func() {
+			r.screen(at.Claude, sid, autoAcceptScreen(t, "claude_question"))
+			r.h.pending.set(sid, pendingTool{ToolName: "AskUserQuestion", At: r.now})
+			r.notify("dev", sid, "Notification: Claude needs your input")
+		})
+	}
+	r.run()
+	require.Equal(t, []string{"1"}, r.keys(at.Claude, sid))
+	st := r.h.deriveSingleSessionState(context.Background(), sid, 0)
+	assert.True(t, st.NeedsInput, "the question still waits for the user")
+	assert.Equal(t, "Notification: Claude needs your input", st.WaitingSummary)
+	r.now = r.now.Add(5 * time.Second)
+	r.run()
+	assert.Equal(t, []string{"1"}, r.keys(at.Claude, sid), "and Coral does not answer it")
+}
+
+// QA's nit (#3182 v2.3): Sec-Fetch-Site same-origin is not enough when the browser also names a
+// different page: a foreign (or opaque) Origin, or a foreign Referer, is refused. The request's
+// own host passes, also as https (a dashboard behind a TLS-terminating proxy).
+func TestAutoAcceptEnableRefusesAForeignOrigin(t *testing.T) {
+	r := newAutoAcceptRig(t)
+	sid := r.agent(at.Claude, "dev", autoAcceptScreen(t, "claude_bash"))
+	host := strings.TrimPrefix(r.server.URL, "http://")
+	for name, hdr := range map[string]map[string]string{
+		"foreign Origin":  {"Sec-Fetch-Site": "same-origin", "Origin": "http://evil.example"},
+		"opaque Origin":   {"Sec-Fetch-Site": "same-origin", "Origin": "null"},
+		"foreign Referer": {"Sec-Fetch-Site": "same-origin", "Referer": "http://evil.example/page"},
+		"lookalike host":  {"Sec-Fetch-Site": "same-origin", "Origin": "http://" + host + ".evil.example"},
+	} {
+		code, body := r.enableAs("dev", sid, hdr, nil)
+		assert.Equal(t, http.StatusForbidden, code, "%s: %v", name, body)
+		assert.Equal(t, "no_dashboard_provenance", body["code"], name)
+	}
+	for name, hdr := range map[string]map[string]string{
+		"own Origin":           {"Sec-Fetch-Site": "same-origin", "Origin": "http://" + host},
+		"own Origin via https": {"Sec-Fetch-Site": "same-origin", "Origin": "https://" + host},
+		"own Referer":          {"Sec-Fetch-Site": "same-origin", "Referer": "http://" + host + "/#chat"},
+		"no Origin at all":     {"Sec-Fetch-Site": "same-origin"},
+	} {
+		code, body := r.enableAs("dev", sid, hdr, nil)
+		assert.Equal(t, http.StatusOK, code, "%s: %v", name, body)
+	}
+}
+
+// The Orchestrator's tie case (#3182 v2.3): the newer prompt's notification carries exactly the
+// instant Coral read before sending the key. Events sort by (created_at, id) and the approval is
+// written later (a higher id), so a tie would put it after the notification and end it; the
+// approval is stamped a microsecond earlier, so it never ties.
+func TestAutoAcceptApprovalNeverTiesWithANewerPrompt(t *testing.T) {
+	bash := autoAcceptScreen(t, "claude_bash")
+	second := strings.Replace(bash, "\n touch probe.txt\n", "\n ls -la\n", 1)
+	r := newAutoAcceptRig(t)
+	instant := time.Date(2030, 1, 2, 3, 4, 5, 678901000, time.UTC)
+	r.a.wallNow = func() time.Time { return instant }
+	sid := r.agent(at.Claude, "dev", bash)
+	r.enable("dev", sid)
+	r.h.pending.set(sid, pendingTool{ToolName: "Bash", Input: map[string]any{"command": "touch probe.txt"}, At: r.now})
+	_, err := r.h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{AgentName: "dev", SessionID: &sid, EventType: "notification",
+		Summary: "Notification: Claude needs your permission to use Bash", CreatedAt: instant.Add(-time.Second).Format(store.ISOFormat)})
+	require.NoError(t, err)
+	var once sync.Once
+	r.term.onRaw = func(string) {
+		once.Do(func() {
+			r.screen(at.Claude, sid, second)
+			r.h.pending.set(sid, pendingTool{ToolName: "Bash", Input: map[string]any{"command": "ls -la"}, At: r.now})
+			_, err := r.h.ts.InsertAgentEvent(context.Background(), &store.AgentEvent{AgentName: "dev", SessionID: &sid, EventType: "notification",
+				Summary: "Notification: Claude needs your permission to use Bash", CreatedAt: instant.Format(store.ISOFormat)})
+			require.NoError(t, err)
+		})
+	}
+	r.run()
+	require.Equal(t, []string{"1"}, r.keys(at.Claude, sid))
+	approvals := r.events(sid, "auto_accept")
+	require.Len(t, approvals, 1)
+	assert.Less(t, approvals[0].CreatedAt, instant.Format(store.ISOFormat), "stamped before the instant it read")
+	assert.True(t, r.h.deriveSingleSessionState(context.Background(), sid, 0).NeedsInput, "a notification at the very same instant is still open")
 }

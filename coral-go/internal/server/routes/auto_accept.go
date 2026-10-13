@@ -231,6 +231,8 @@ type AutoAcceptor struct {
 	h    *SessionsHandler
 	kick chan struct{}
 	now  func() time.Time
+	// wallNow stamps approvals (real time: events sort by it); tests pin it to force a tie.
+	wallNow func() time.Time
 
 	mu       sync.Mutex
 	answered map[string]autoAcceptAnswer   // session -> last answer (debounce)
@@ -250,6 +252,7 @@ func NewAutoAcceptor(h *SessionsHandler) *AutoAcceptor {
 		h:        h,
 		kick:     make(chan struct{}, 1),
 		now:      time.Now,
+		wallNow:  time.Now,
 		answered: map[string]autoAcceptAnswer{},
 		history:  map[string][]autoAcceptAnswer{},
 		skipped:  map[string]map[string]time.Time{},
@@ -398,6 +401,13 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	if !a.ownPane(ctx, s) {
 		return
 	}
+	// The approval is stamped with the moment the key is sent, not when it is recorded: the
+	// agent can act on the key and raise its NEXT prompt before the event is written, and an
+	// approval that sorted after that prompt's notification would end it as "answered" too
+	// (session state orders events by created_at, then id). Wall-clock time, like every other
+	// event, one microsecond (the stamps' precision) before the key: a notification created at
+	// the same instant as the read can then never tie with the approval and lose on id.
+	sentAt := a.wallNow().Add(-time.Microsecond).UTC().Format(store.ISOFormat)
 	if err := a.h.terminal.SendRawInput(ctx, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID); err != nil {
 		slog.Warn("auto-accept: sending the answer failed", "session", s.SessionID, "error", err)
 		return
@@ -412,9 +422,9 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	if input != "" {
 		summary += ": " + input
 	}
-	a.record(ctx, s, "auto_accept", summary, tool, map[string]any{
+	recordAutoAcceptEventAt(ctx, a.h.ts, s.AgentName, s.SessionID, "auto_accept", summary, tool, map[string]any{
 		"agent_type": s.AgentType, "option": d.Label, "tool": tool, "input": input,
-	})
+	}, sentAt)
 	a.h.kickWS()
 }
 
@@ -492,7 +502,12 @@ func (a *AutoAcceptor) record(ctx context.Context, s store.AutoAcceptState, even
 }
 
 func recordAutoAcceptEvent(ctx context.Context, ts *store.TaskStore, agentName, sessionID, eventType, summary, tool string, detail map[string]any) {
-	ev := &store.AgentEvent{AgentName: agentName, EventType: eventType, Summary: summary}
+	recordAutoAcceptEventAt(ctx, ts, agentName, sessionID, eventType, summary, tool, detail, "")
+}
+
+// recordAutoAcceptEventAt records an event created at createdAt (store.ISOFormat), or now when it is empty.
+func recordAutoAcceptEventAt(ctx context.Context, ts *store.TaskStore, agentName, sessionID, eventType, summary, tool string, detail map[string]any, createdAt string) {
+	ev := &store.AgentEvent{AgentName: agentName, EventType: eventType, Summary: summary, CreatedAt: createdAt}
 	ev.SessionID = &sessionID
 	if tool != "" {
 		ev.ToolName = &tool

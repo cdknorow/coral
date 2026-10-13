@@ -168,3 +168,78 @@ func TestShellWriteRisk(t *testing.T) {
 		assert.Empty(t, shellRisk(cmd, wd), cmd)
 	}
 }
+
+// QA's F2 (#3182 v2.3): the cases the first deny list let through, and the Orchestrator's
+// additions; each still waits. Ordinary work inside the repository is not over-blocked.
+func TestShellRiskV23(t *testing.T) {
+	wd := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(wd, "build"), 0o755))
+	risky := map[string]string{
+		// a cd out of the working directory moves every later path
+		"cd .. && rm -rf x":                 "deletes recursively",
+		"cd /tmp; echo x > f":               "writes outside",
+		"cd ~ && cp a b":                    "writes outside",
+		"cd $HOME; tee notes.txt":           "writes outside",
+		"cd; echo x >> .zshrc":              "writes outside",
+		"cd build/../.. && rm -rf x":        "deletes recursively",
+		"pushd /etc && sed -i s/a/b/ hosts": "edits a file outside",
+		"cd /tmp && bash -c 'rm -rf x'":     "deletes recursively",
+		// find that deletes
+		"find .. -name '*.tmp' -delete":     "deletes files outside",
+		"find / -name x -delete":            "deletes files outside",
+		"find /tmp -type f -exec rm {} \\;": "deletes files outside",
+		"find ~/cache -execdir rm -f {} +":  "deletes files outside",
+		// sed in place
+		"sed -i 's/a/b/' /etc/hosts":            "edits a file outside",
+		"sed -i '' -e 's/a/b/' ../other/x.conf": "edits a file outside",
+		"sed --in-place=.bak s/x/y/ ~/x":        "edits a file outside",
+		"sed -ie 's/a/b/' /etc/x":               "edits a file outside",
+		// force-like pushes and work-destroying git
+		"git push --mirror":             "force-pushes",
+		"git push --mirror origin":      "force-pushes",
+		"git clean -fdx":                "git clean",
+		"git clean -f":                  "git clean",
+		"git clean --force -d":          "git clean",
+		"git checkout -- .":             "discards uncommitted changes",
+		"git checkout .":                "discards uncommitted changes",
+		"git checkout -f main":          "discards uncommitted changes",
+		"git checkout HEAD -- src/a.go": "discards uncommitted changes",
+		"git restore .":                 "discards uncommitted changes",
+		"git restore --worktree src":    "discards uncommitted changes",
+		"git restore -SW src":           "discards uncommitted changes",
+		// sudo however it is spelled
+		"\\sudo ls":        "sudo",
+		"(sudo ls)":        "sudo",
+		"echo $(sudo ls)":  "sudo",
+		"echo `sudo ls`":   "sudo",
+		"/usr/bin/sudo ls": "sudo",
+		"{ sudo ls; }":     "sudo",
+		"command doas ls":  "sudo",
+	}
+	for cmd, want := range risky {
+		assert.Contains(t, shellRisk(cmd, wd), want, cmd)
+	}
+	safe := []string{
+		"cd build && rm -rf out",
+		"cd build && echo x > log.txt",
+		"cd build/.. && rm -rf build",
+		"find . -name '*.tmp' -delete",
+		"find build -type f -exec rm {} \\;",
+		"find /tmp -name x -print", // no delete
+		"find .. -name '*.go'",     // read only
+		"sed -i 's/a/b/' src/a.go",
+		"sed 's/a/b/' /etc/hosts", // not in place
+		"sed -n '1,5p' /etc/hosts",
+		"git push origin main",
+		"git clean -n",
+		"git clean -fdn",
+		"git checkout main",
+		"git checkout -b feature",
+		"git restore --staged src/a.go",
+		"echo sudoku",
+		"npm test",
+	}
+	for _, cmd := range safe {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+}

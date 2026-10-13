@@ -14,8 +14,14 @@ import (
 //     working directory, or of a target that cannot be read literally
 //     ($VAR, ~, $(…), globs at the root)
 //   - git push --force / -f / --force-with-lease / a +refspec
-//   - git reset --hard
-//   - sudo
+//   - git reset --hard, git clean (not a dry run), git checkout -- …/./-f and
+//     git restore (except --staged only): they destroy uncommitted work
+//   - git push --mirror (it overwrites the remote's refs, like a force push)
+//   - sudo / doas, also as \sudo, (sudo …), $(sudo …), `sudo …`, /usr/bin/sudo
+//   - find … -delete / -exec rm … with a search path outside the working
+//     directory, and sed -i on a file outside it
+//   - any of the above after a cd out of the working directory in the same
+//     command (cd .., cd /tmp, cd ~, cd $X): later paths count from there
 //   - chmod -R / chown -R of anything outside the working directory
 //   - curl or wget piped into a shell (curl … | sh, bash <(curl …))
 //   - a shell write outside the working directory: a > or >> redirection
@@ -52,14 +58,21 @@ var autoAcceptFileTools = map[string]string{
 }
 
 // shellRisk returns why a shell command is high-risk, or "".
-func shellRisk(command, workDir string) string {
+func shellRisk(command, workDir string) string { return shellRiskFrom(command, workDir, workDir) }
+
+// shellRiskFrom is shellRisk for a command that starts in dir (a bash -c after a cd).
+func shellRiskFrom(command, workDir, dir string) string {
 	if curlPipeRe.MatchString(command) || curlSubstRe.MatchString(command) {
 		return "it pipes a download into a shell"
 	}
+	// The directory later commands run in: a cd out of the working directory moves it
+	// ("" = somewhere that cannot be read literally, e.g. cd ~ or cd $X).
+	cwd := dir
+	at := func(args []string) []string { return fromDir(args, cwd) }
 	// ">|" (overwrite despite noclobber) is a redirection, not a pipe.
 	for _, seg := range shellSplitRe.Split(strings.ReplaceAll(command, ">|", "> "), -1) {
 		seg, targets := redirections(seg)
-		if o := outsideTarget(notDevices(targets), workDir); o != "" {
+		if o := outsideTarget(at(notDevices(targets)), workDir); o != "" {
 			return "it writes outside the working directory (" + o + ")"
 		}
 		words := shellWords(seg)
@@ -71,26 +84,40 @@ func shellRisk(command, workDir string) string {
 			continue
 		}
 		for _, w := range words {
-			if w == "sudo" || w == "doas" {
+			if b := filepath.Base(bareCommand(w)); b == "sudo" || b == "doas" {
 				return "it uses sudo"
 			}
 		}
-		cmd := filepath.Base(words[0])
+		cmd := filepath.Base(bareCommand(words[0]))
 		args := words[1:]
 		switch cmd {
+		case "cd", "pushd":
+			cwd = changeDir(cwd, args)
 		case "rm":
 			if hasFlag(args, "r", "R", "--recursive") {
-				if t := outsideTarget(args, workDir); t != "" {
+				if t := outsideTarget(at(args), workDir); t != "" {
 					return "it deletes recursively outside the working directory (" + t + ")"
 				}
 			}
 		case "tee", "cp", "mv", "install", "ln", "dd":
-			if t := outsideTarget(notDevices(writeTargets(cmd, args)), workDir); t != "" {
+			if t := outsideTarget(at(notDevices(writeTargets(cmd, args))), workDir); t != "" {
 				return "it writes outside the working directory (" + t + ")"
+			}
+		case "find":
+			if roots, deletes := findDeletes(args); deletes {
+				if t := outsideTarget(at(roots), workDir); t != "" {
+					return "it deletes files outside the working directory (" + t + ")"
+				}
+			}
+		case "sed":
+			if files, inPlace := sedInPlaceFiles(args); inPlace {
+				if t := outsideTarget(at(files), workDir); t != "" {
+					return "it edits a file outside the working directory (" + t + ")"
+				}
 			}
 		case "chmod", "chown":
 			if hasFlag(args, "R", "", "--recursive") {
-				if t := outsideTarget(args, workDir); t != "" {
+				if t := outsideTarget(at(args), workDir); t != "" {
 					return "it changes ownership or permissions recursively outside the working directory (" + t + ")"
 				}
 			}
@@ -99,7 +126,7 @@ func shellRisk(command, workDir string) string {
 			switch sub {
 			case "push":
 				for _, a := range rest {
-					if a == "-f" || a == "--force" || strings.HasPrefix(a, "--force-with-lease") || strings.HasPrefix(a, "--force-if-includes") ||
+					if a == "-f" || a == "--force" || a == "--mirror" || strings.HasPrefix(a, "--force-with-lease") || strings.HasPrefix(a, "--force-if-includes") ||
 						(strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "f")) ||
 						(strings.HasPrefix(a, "+") && len(a) > 1) {
 						return "it force-pushes"
@@ -111,13 +138,40 @@ func shellRisk(command, workDir string) string {
 						return "it runs git reset --hard"
 					}
 				}
+			case "clean":
+				if !hasFlag(rest, "n", "", "--dry-run") {
+					return "it runs git clean (deletes untracked files)"
+				}
+			case "checkout":
+				for i, a := range rest {
+					if a == "." || a == "-f" || a == "--force" || (a == "--" && i+1 < len(rest)) {
+						return "it discards uncommitted changes (git checkout " + strings.Join(rest, " ") + ")"
+					}
+				}
+			case "restore":
+				staged, worktree := false, false
+				for _, a := range rest {
+					switch {
+					case a == "--staged" || a == "-S":
+						staged = true
+					case a == "--worktree" || a == "-W":
+						worktree = true
+					case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "W"):
+						worktree = true
+					case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "S"):
+						staged = true
+					}
+				}
+				if !staged || worktree {
+					return "it discards uncommitted changes (git restore)"
+				}
 			}
 		default:
 			// bash -c '…' / zsh -lc '…': inspect the inner command.
 			if shellWrapperRe.MatchString(words[0]) {
 				for i, a := range args {
 					if strings.HasPrefix(a, "-") && strings.Contains(a, "c") && i+1 < len(args) {
-						if why := shellRisk(strings.Join(args[i+1:], " "), workDir); why != "" {
+						if why := shellRiskFrom(strings.Join(args[i+1:], " "), workDir, cwd); why != "" {
 							return why
 						}
 						break
@@ -208,6 +262,120 @@ func writeTargets(cmd string, args []string) []string {
 		return nil // ln -s target (a link in the current dir); cp/install need a destination
 	}
 	return paths[len(paths)-1:]
+}
+
+// bareCommand strips what can hide a command name: a leading backslash (\sudo), a
+// subshell or substitution opener ((sudo, $(sudo, `sudo, {), a closing ) or `.
+func bareCommand(w string) string {
+	for {
+		t := strings.TrimLeft(w, `\({`+"`")
+		t = strings.TrimPrefix(t, "$(")
+		if t == w {
+			break
+		}
+		w = t
+	}
+	return strings.TrimRight(w, ")`}")
+}
+
+// fromDir makes relative paths absolute from dir (the directory after any cd). From a
+// directory that cannot be read literally (dir == ""), a relative path is outside.
+func fromDir(args []string, dir string) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") && !filepath.IsAbs(a) && !strings.ContainsAny(a, "$`~") {
+			if dir == "" {
+				a = "$CWD/" + a // unknown directory: never a literal path inside
+			} else {
+				a = filepath.Join(dir, a)
+			}
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// changeDir is the directory after cd/pushd args from dir; "" when it cannot be read
+// literally (no argument = home, ~, -, $VAR, $(…)).
+func changeDir(dir string, args []string) string {
+	var target string
+	for _, a := range args {
+		if a == "-L" || a == "-P" || a == "-e" || a == "-@" {
+			continue
+		}
+		target = a
+		break
+	}
+	if target == "" || target == "-" || dir == "" || strings.ContainsAny(target, "$`~") {
+		return ""
+	}
+	if filepath.IsAbs(target) {
+		return filepath.Clean(target)
+	}
+	return filepath.Join(dir, target)
+}
+
+// findDeletes returns find's search roots and whether it deletes what it finds
+// (-delete, or -exec/-execdir/-ok running rm, unlink, shred or rmdir).
+func findDeletes(args []string) ([]string, bool) {
+	var roots []string
+	i := 0
+	for ; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") || a == "(" || a == "!" {
+			break
+		}
+		roots = append(roots, a)
+	}
+	if len(roots) == 0 {
+		roots = []string{"."}
+	}
+	for j := i; j < len(args); j++ {
+		switch args[j] {
+		case "-delete":
+			return roots, true
+		case "-exec", "-execdir", "-ok", "-okdir":
+			if j+1 < len(args) {
+				switch filepath.Base(bareCommand(args[j+1])) {
+				case "rm", "unlink", "shred", "rmdir":
+					return roots, true
+				}
+			}
+		}
+	}
+	return roots, false
+}
+
+// sedInPlaceFiles returns the files sed -i would edit, and whether it edits in place.
+func sedInPlaceFiles(args []string) ([]string, bool) {
+	inPlace, script := false, false
+	var operands []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-e" || a == "-f" || a == "--expression" || a == "--file":
+			script = true
+			i++
+		case strings.HasPrefix(a, "--expression=") || strings.HasPrefix(a, "--file="):
+			script = true
+		case a == "--in-place" || strings.HasPrefix(a, "--in-place="):
+			inPlace = true
+		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && len(a) > 1:
+			if strings.Contains(a, "i") {
+				inPlace = true
+			}
+			if strings.ContainsAny(a, "ef") {
+				script = true
+				i++
+			}
+		default:
+			operands = append(operands, a)
+		}
+	}
+	if !script && len(operands) > 0 {
+		operands = operands[1:] // the first operand is the script
+	}
+	return operands, inPlace
 }
 
 // shellWords splits a command segment into words, dropping quotes.

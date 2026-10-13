@@ -80,6 +80,7 @@ type mockSessionTerminal struct {
 	killSessionCalls []string
 	sendErr          error
 	onCapture        func(name string) // called (unlocked) after each capture, e.g. to change the screen
+	onRaw            func(name string) // called (unlocked) after each SendRawInput, e.g. the agent's next prompt
 }
 
 func newMockTerminal() *mockSessionTerminal {
@@ -157,6 +158,11 @@ func (m *mockSessionTerminal) SendRawInput(_ context.Context, name string, keys 
 		m.raw = map[string][]string{}
 	}
 	m.raw[name] = append(m.raw[name], keys...)
+	if hook := m.onRaw; hook != nil {
+		m.mu.Unlock()
+		hook(name)
+		m.mu.Lock()
+	}
 	return nil
 }
 

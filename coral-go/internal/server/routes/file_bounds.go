@@ -49,23 +49,32 @@ func localDashboard(r *http.Request) bool {
 
 // sameOriginFetch reports whether r is a browser fetch from this server's own page.
 func sameOriginFetch(r *http.Request) bool {
+	// Origin, and failing that Referer, must name this very host whenever the browser
+	// sends one, even with Sec-Fetch-Site: same-origin: a mismatch is never this page
+	// (QA #3182). The host is compared, not the scheme, so a dashboard behind a
+	// TLS-terminating proxy (r.TLS nil, Origin https://…) still counts.
+	ownHost := func(raw string) bool {
+		u, err := url.Parse(raw)
+		return err == nil && u.Host != "" && strings.EqualFold(u.Host, r.Host)
+	}
+	origin, referer := r.Header.Get("Origin"), r.Header.Get("Referer")
+	switch {
+	case origin != "" && origin != "null":
+		if !ownHost(origin) {
+			return false
+		}
+	case origin == "null":
+		return false
+	case referer != "":
+		if !ownHost(referer) {
+			return false
+		}
+	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" {
 		return site == "same-origin"
 	}
-	// Engines without fetch metadata: Origin (or Referer) must be this very origin.
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	own := scheme + "://" + r.Host
-	if o := r.Header.Get("Origin"); o != "" {
-		return o == own
-	}
-	if ref := r.Header.Get("Referer"); ref != "" {
-		u, err := url.Parse(ref)
-		return err == nil && u.Scheme+"://"+u.Host == own
-	}
-	return false
+	// Engines without fetch metadata: an Origin or Referer naming this host (checked above).
+	return origin != "" || referer != ""
 }
 
 // strictBounds is the default; only localDashboard relaxes it.
