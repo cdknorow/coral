@@ -67,7 +67,10 @@ log "Building coral (dev) and mock-agent from $CORAL_SRC ..."
 (cd "$CORAL_SRC" && go build -tags "dev fts5" -o "$TMP/coral" ./cmd/coral/ && go build -o "$TMP/mock-agent" ./cmd/mock-agent/)
 
 log "Starting coral on $BASE_URL (data $CORAL_DATA_DIR) ..."
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u TMUX -u TMUX_PANE \
+# The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
+# ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
+mkdir -p "$TMP/host-home"
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u TMUX -u TMUX_PANE -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMP/host-home" \
     "$TMP/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 # Ready only when OUR server says it bound the port (its own log line), not when anything answers.

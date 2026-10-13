@@ -140,6 +140,10 @@ if (b.status !== 0) process.exit(2);
 
 // Same isolation as run.sh: no inherited production pointers, isolated Codex home, no telemetry.
 const cleanEnv = Object.fromEntries(Object.entries(process.env).filter(([k]) => !['CORAL_PORT', 'CORAL_URL', 'CORAL_HOST', 'CORAL_DATA_DIR', 'CORAL_DIR', 'CORAL_TEST_URL', 'TMUX', 'TMUX_PANE'].includes(k)));
+// Host-data locations the server would otherwise read from this machine (agent transcripts, settings).
+// They are stripped from what the server inherits and its HOME points into the shard, so a test server
+// never indexes the real ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi.
+const HOST_DATA_VARS = ['CLAUDE_PROJECTS_DIR', 'GEMINI_TMP_DIR', 'ANTIGRAVITY_DATA_DIR', 'PI_CODING_AGENT_DIR'];
 
 // throttlePages keeps a browser-level CDP session that applies Emulation.setCPUThrottlingRate to every
 // page target, the ones already open and every one created later, until the shard is stopped.
@@ -174,8 +178,11 @@ async function startShard(n, gen = 0) {
   // on top of whichever suite is on screen ~30 s after startup.
   const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1', CORAL_NO_DEMO_SEED: '1' };
   const log = path.join(dir, 'coral.log');
+  const hostHome = path.join(dir, 'home'); fs.mkdirSync(hostHome);
+  const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome };
+  for (const k of HOST_DATA_VARS) delete serverEnv[k];
   const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
-    { env: { ...testEnv, CORAL_DATA_DIR: data }, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
+    { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
   track(coral);
   allLogs.push(log);
   let coralExit = null;

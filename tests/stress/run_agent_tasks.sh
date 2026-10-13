@@ -135,7 +135,10 @@ go build -p 1 -o "$TMPDIR_AT/coral-agent" ./cmd/coral-agent/
 go build -p 1 -o "$TMPDIR_AT/coral-board" ./cmd/coral-board/
 
 log "Starting coral server on port $PORT..."
-env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
+# The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
+# ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
+mkdir -p "$TMPDIR_AT/host-home"
+env -u CORAL_PORT -u CORAL_URL -u CORAL_SESSION_NAME -u CORAL_SUBSCRIBER_ID -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_AT/host-home" "$TMPDIR_AT/coral" --home "$CORAL_DATA_DIR" --no-browser --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_AT/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 

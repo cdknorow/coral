@@ -73,7 +73,10 @@ cd "$CORAL_DIR"
 go build -tags "dev fts5" -o "$TMPDIR_JOBS/coral" ./cmd/coral/
 
 log "Starting coral server on port $PORT..."
-"$TMPDIR_JOBS/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_JOBS/server.log" 2>&1 &
+# The server gets its own HOME and no host-data dirs, so it never indexes this machine's real
+# ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
+mkdir -p "$TMPDIR_JOBS/host-home"
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_JOBS/host-home" "$TMPDIR_JOBS/coral" --host "$HOST" --port "$PORT" --backend tmux >"$TMPDIR_JOBS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 
