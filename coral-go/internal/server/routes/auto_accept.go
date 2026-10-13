@@ -91,7 +91,9 @@ var (
 	claudeApprovalQuestionRe = regexp.MustCompile(`(?i)^do you want to\b`)
 	codexApprovalHeaderRe    = regexp.MustCompile(`^\s*Would you like to (run the following command|make the following edits)\?\s*$`)
 	claudeToolLineRe         = regexp.MustCompile(`^\s*⏺\s*([A-Za-z_][\w.-]*)\((.*)\)\s*$`)
-	ruleLineRe               = regexp.MustCompile(`^\s*─{8,}\s*$`)
+	// The start of a tool line, whose arguments may wrap onto the following lines.
+	claudeToolStartRe = regexp.MustCompile(`^\s*⏺\s*([A-Za-z_][\w.-]*)\((.*)$`)
+	ruleLineRe        = regexp.MustCompile(`^\s*─{8,}\s*$`)
 )
 
 // approvalDecision is what the table makes of a terminal screen.

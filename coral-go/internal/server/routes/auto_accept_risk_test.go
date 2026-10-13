@@ -3,6 +3,7 @@ package routes
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -303,6 +304,111 @@ func TestShellRiskEnvSplitString(t *testing.T) {
 		`env --split-string="npm test"`,
 		`env FOO=1 go test ./...`,
 		`env -i PATH=/usr/bin make`,
+	} {
+		assert.Empty(t, shellRisk(cmd, wd), cmd)
+	}
+}
+
+// QA #3207: the newest tool call is the one judged, also when its line wraps. Matching only
+// one-line calls fell through a wrapped Read to an older refused write in the scrollback.
+func TestScreenActionReadsAWrappedToolLine(t *testing.T) {
+	wd := t.TempDir()
+	long := filepath.Join(wd, "src", strings.Repeat("deeply-nested-directory/", 4), "a.js")
+	cut := len(long) / 2
+	dialog := "\n────────────────────────────────\n Read file\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n"
+	screen := "⏺ Bash(echo x >> ~/.zshrc)\n  ⎿  Interrupted\n\n⏺ Read(" + long[:cut] + "\n  " + long[cut:] + ")\n  ⎿  Waiting…\n" + dialog
+	d := approvalDecision{Prompt: true, Approve: true, N: 1, Label: "Yes"}
+
+	tool, input := screenAction("claude", d, screen)
+	assert.Equal(t, "Read", tool, "the newest call, not the older Bash")
+	assert.Equal(t, long, strings.ReplaceAll(input, "\x00", ""))
+	assert.Empty(t, autoAcceptRisk("claude", wd, nil, d, screen), "a Read inside the repo is not refused with the old reason")
+	pending := &pendingTool{ToolName: "Read", Input: map[string]any{"file_path": long}}
+	assert.Empty(t, autoAcceptRisk("claude", wd, pending, d, screen), "QA's repro: the PreToolUse input is inside too")
+
+	// A wrapped call that really is outside is still caught.
+	outside := "/etc/" + strings.Repeat("x", 60) + "/hosts"
+	screen2 := "⏺ Read(" + outside[:30] + "\n  " + outside[30:] + ")\n" + dialog
+	assert.Contains(t, autoAcceptRisk("claude", wd, nil, d, screen2), "outside", "a wrapped path outside the working dir")
+	// Wrapped right after "..": joined with a space it would read as a folder inside; a
+	// path is joined with nothing, so it escapes and is caught.
+	screen3 := "⏺ Read(..\n  /sibling-project/secrets.env)\n" + dialog
+	assert.Contains(t, autoAcceptRisk("claude", wd, nil, d, screen3), "outside", "a wrap that only escapes when joined without a space")
+	// A one-line call still works as before.
+	tool, input = screenAction("claude", d, "⏺ Bash(touch probe.txt)\n"+dialog)
+	assert.Equal(t, []string{"Bash", "touch probe.txt"}, []string{tool, input})
+}
+
+// QA #3207 v2: a long in-repo path the terminal wraps MID-WORD (inside the working
+// directory's own name) is answered on a fresh agent, with the PreToolUse input and from
+// the screen alone. Joined with a space it was a bogus path outside the repository, so
+// every long in-repo path was refused.
+func TestLongInRepoPathWrappedMidWordIsAnswered(t *testing.T) {
+	wd := t.TempDir()
+	long := filepath.Join(wd, "src", strings.Repeat("deeply-nested-directory/", 3), "component.tsx")
+	dialog := "\n────────────────────────────────\n Read file\n Do you want to proceed?\n ❯ 1. Yes\n   2. No\n"
+	d := approvalDecision{Prompt: true, Approve: true, N: 1, Label: "Yes"}
+	for _, cut := range []int{len(wd) - 4, len(wd) - 1, len(wd) + 5, len(long) - 3} {
+		screen := "⏺ Read(" + long[:cut] + "\n  " + long[cut:] + ")\n  ⎿  Waiting…\n" + dialog
+		assert.Empty(t, autoAcceptRisk("claude", wd, nil, d, screen), "screen only, cut at %d", cut)
+		for _, tool := range []string{"Read", "Edit", "Write"} {
+			pending := &pendingTool{ToolName: tool, Input: map[string]any{"file_path": long}}
+			assert.Empty(t, autoAcceptRisk("claude", wd, pending, d, strings.Replace(screen, "Read(", tool+"(", 1)), "%s with PreToolUse, cut at %d", tool, cut)
+		}
+	}
+	// The PreToolUse path decides: an in-repo path there is answered even when the screen's
+	// tool line (an older call in the scrollback) names an outside file, and an outside
+	// path there is refused whatever the screen shows.
+	inRepo := &pendingTool{ToolName: "Read", Input: map[string]any{"file_path": long}}
+	assert.Empty(t, autoAcceptRisk("claude", wd, inRepo, d, "⏺ Read(/etc/passwd)\n"+dialog))
+	pending := &pendingTool{ToolName: "Write", Input: map[string]any{"file_path": "/etc/hosts"}}
+	assert.Contains(t, autoAcceptRisk("claude", wd, pending, d, "⏺ Write(notes.txt)\n"+dialog), "outside")
+}
+
+// QA #3207 deny-list additions: deleting a remote branch, su, perl -i outside the working
+// directory, and a backslash escape inside a word. Ordinary work is not over-blocked.
+func TestShellRisk3207(t *testing.T) {
+	wd := t.TempDir()
+	risky := map[string]string{
+		"git push origin :main":                    "deletes a remote branch",
+		"git push origin --delete feature":         "deletes a remote branch",
+		"git push -d origin feature":               "deletes a remote branch",
+		"git -C . push origin :refs/heads/x":       "deletes a remote branch",
+		"su -c 'make install'":                     "switches user",
+		"su root":                                  "switches user",
+		"echo $(su -c id)":                         "switches user",
+		"perl -pi -e 's/a/b/' /etc/hosts":          "edits a file outside",
+		"perl -i.bak -pe 's/a/b/' ../other/x.conf": "edits a file outside",
+		"perl -pie 's/a/b/' ~/x":                   "edits a file outside",
+		"perl -i -- script.pl /etc/x":              "edits a file outside",
+		// An attached program (-e's/a/b/) is not followed by it: the next word is the file.
+		"perl -pi -e's/a/b/' /etc/hosts":        "edits a file outside",
+		"perl -i -es/a/b/ /etc/hosts":           "edits a file outside",
+		"perl -pi -E's/a/b/' /etc/hosts":        "edits a file outside",
+		"perl -0777 -pi -e 's/a/b/' /etc/hosts": "edits a file outside",
+		"perl -0777pi -e 's/a/b/' /etc/hosts":   "edits a file outside",
+		"s\\udo ls":                             "sudo",
+		"r\\m -rf /etc":                         "deletes recursively",
+		"git pu\\sh --force":                    "force-pushes",
+	}
+	for cmd, want := range risky {
+		assert.Contains(t, shellRisk(cmd, wd), want, cmd)
+	}
+	for _, cmd := range []string{
+		"git push origin main",
+		"git push -u origin feature",
+		"git push origin main:main",
+		"perl -pi -e 's/a/b/' src/a.go",
+		"perl -ne 'print' /etc/hosts",       // not in place
+		"perl -Ilib -ne 'print' /etc/hosts", // -I's value, not -i
+		"perl -Mstrict -e 1 /etc/hosts",     // -M's value
+		"perl -pi -e's/a/b/' src/a.go",      // attached program, file in the repo
+		"perl -0x1F -ne 'print' /etc/hosts", // a record separator
+		"perl script.pl",
+		"find . -name x -exec rm {} \\;",
+		"echo summary",
+		`git commit -m "fix su handling"`,
+		"echo su",
 	} {
 		assert.Empty(t, shellRisk(cmd, wd), cmd)
 	}

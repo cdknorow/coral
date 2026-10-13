@@ -802,10 +802,10 @@ Per agent, the user can let Coral answer that agent's **permission prompts** for
 - **What is answered:** only a prompt asking to approve a tool call. Coral picks the agent type's *approve once* option ("Yes", "Yes, proceed", "Allow once"); never "always", "don't ask again" or an option that changes settings.
 - **What always waits for the user:** questions (AskUserQuestion and the like), plan approvals, free-text prompts, anything Coral does not recognise, and **high-risk actions**:
   - a recursive delete (`rm -r`, `-R`, `-rf`, `--recursive`) of anything outside the agent's working directory, or aimed at `/` or `~`;
-  - `git push --force` / `-f` / `--force-with-lease` / `--mirror` / a `+ref` push;
+  - `git push --force` / `-f` / `--force-with-lease` / `--mirror` / a `+ref` push, and a push that deletes a remote branch (`--delete`, `-d`, `origin :branch`);
   - git commands that destroy uncommitted work: `git reset --hard`, `git clean` (unless a dry run, `-n`), `git checkout -- …` / `git checkout .` / `git checkout -f`, and `git restore` (except `--staged` only);
-  - `sudo` or `doas`, however written (`\sudo`, `(sudo …)`, `$(sudo …)`, `` `sudo …` ``, `/usr/bin/sudo`);
-  - `find … -delete` or `find … -exec rm …` with a search path outside the working directory, and `sed -i` on a file outside it;
+  - `su`, `sudo` or `doas`, however written: `\sudo`, `s\udo` (a backslash inside a word), `(sudo …)`, `$(sudo …)`, `` `sudo …` ``, `/usr/bin/sudo`;
+  - `find … -delete` or `find … -exec rm …` with a search path outside the working directory, and `sed -i` or `perl -i` (`-pi`, `-i.bak`) on a file outside it;
   - recursive `chmod` / `chown` on a path outside the working directory;
   - a download run by a shell (`curl` or `wget` piped into `sh`, `bash` or `zsh`, or `bash <(curl …)`);
   - reading or writing a file outside the working directory (Write, Edit, MultiEdit, NotebookEdit, Read; a Codex edit's destination), with symbolic links resolved, so a link inside the repository that points out of it counts as outside;

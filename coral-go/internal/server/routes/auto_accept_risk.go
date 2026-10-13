@@ -17,7 +17,9 @@ import (
 //   - git reset --hard, git clean (not a dry run), git checkout -- …/./-f and
 //     git restore (except --staged only): they destroy uncommitted work
 //   - git push --mirror (it overwrites the remote's refs, like a force push)
-//   - sudo / doas, also as \sudo, (sudo …), $(sudo …), `sudo …`, /usr/bin/sudo
+//   - git push --delete / -d / :branch (deletes a remote branch)
+//   - su, and perl -i on a file outside the working directory
+//   - sudo / doas (backslash escapes inside a word are undone: s\udo is sudo), also as \sudo, (sudo …), $(sudo …), `sudo …`, /usr/bin/sudo
 //   - find … -delete / -exec rm … with a search path outside the working
 //     directory, and sed -i on a file outside it
 //   - any of the above after a cd out of the working directory in the same
@@ -84,6 +86,8 @@ func shellRiskFrom(command, workDir, dir string) string {
 		for _, w := range words {
 			if b := filepath.Base(bareCommand(w)); b == "sudo" || b == "doas" {
 				return "it uses sudo"
+			} else if b == "su" && bareCommand(w) != w {
+				return "it switches user (su)" // $(su …), (su …), `su …`: a command, not the word "su"
 			}
 		}
 		cmd := filepath.Base(bareCommand(words[0]))
@@ -107,6 +111,14 @@ func shellRiskFrom(command, workDir, dir string) string {
 					return "it deletes files outside the working directory (" + t + ")"
 				}
 			}
+		case "su":
+			return "it switches user (su)"
+		case "perl":
+			if files, inPlace := perlInPlaceFiles(args); inPlace {
+				if t := outsideTarget(at(files), workDir); t != "" {
+					return "it edits a file outside the working directory (" + t + ")"
+				}
+			}
 		case "sed":
 			if files, inPlace := sedInPlaceFiles(args); inPlace {
 				if t := outsideTarget(at(files), workDir); t != "" {
@@ -128,6 +140,9 @@ func shellRiskFrom(command, workDir, dir string) string {
 						(strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.Contains(a, "f")) ||
 						(strings.HasPrefix(a, "+") && len(a) > 1) {
 						return "it force-pushes"
+					}
+					if a == "--delete" || a == "-d" || (strings.HasPrefix(a, ":") && len(a) > 1) {
+						return "it deletes a remote branch"
 					}
 				}
 			case "reset":
@@ -423,6 +438,47 @@ func findDeletes(args []string) ([]string, bool) {
 	return roots, false
 }
 
+// perlInPlaceFiles returns the files perl -i (-pi, -i.bak, -pie …) would edit, and whether
+// it edits in place. The script is -e's value, or else the first operand.
+func perlInPlaceFiles(args []string) ([]string, bool) {
+	inPlace, script := false, false
+	var operands []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			operands = append(operands, args[i+1:]...)
+			i = len(args)
+		case strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && len(a) > 1:
+			// Walk the cluster left to right: a letter that takes a value takes the rest
+			// of the cluster, or the next word when it is the cluster's last letter.
+			// (-0777's octal digits match nothing: a record separator, not flags.)
+		cluster:
+			for k := 1; k < len(a); k++ {
+				switch c := a[k]; {
+				case c == 'i':
+					inPlace = true
+					break cluster // the rest is -i's backup suffix
+				case c == 'e' || c == 'E':
+					script = true
+					if k == len(a)-1 {
+						i++ // the program is the next word (-e 's/a/b/')
+					}
+					break cluster // else it is attached (-e's/a/b/)
+				case strings.IndexByte("IMmlxCdD", c) >= 0:
+					break cluster // -Ilib, -Mstrict, -l, -x… (and -0x1F's x): the rest is the value
+				}
+			}
+		default:
+			operands = append(operands, a)
+		}
+	}
+	if !script && len(operands) > 0 {
+		operands = operands[1:] // the first operand is the script file
+	}
+	return operands, inPlace
+}
+
 // sedInPlaceFiles returns the files sed -i would edit, and whether it edits in place.
 func sedInPlaceFiles(args []string) ([]string, bool) {
 	inPlace, script := false, false
@@ -455,11 +511,26 @@ func sedInPlaceFiles(args []string) ([]string, bool) {
 	return operands, inPlace
 }
 
+// unescapeWord drops shell backslash escapes inside a word (s\udo is sudo, \; is ;).
+func unescapeWord(w string) string {
+	if !strings.Contains(w, `\`) {
+		return w
+	}
+	var b strings.Builder
+	for i := 0; i < len(w); i++ {
+		if w[i] == '\\' && i+1 < len(w) {
+			i++
+		}
+		b.WriteByte(w[i])
+	}
+	return b.String()
+}
+
 // shellWords splits a command segment into words, dropping quotes.
 func shellWords(seg string) []string {
 	var out []string
 	for _, f := range strings.Fields(seg) {
-		f = strings.Trim(f, `'"`)
+		f = unescapeWord(strings.Trim(f, `'"`))
 		if f != "" {
 			out = append(out, f)
 		}
@@ -558,6 +629,7 @@ func fileRisk(tool, path, workDir string) string {
 // (so it waits for the user), or "". It checks the PreToolUse input and what
 // the prompt shows; either one being high-risk is enough.
 func autoAcceptRisk(agentType, workDir string, pending *pendingTool, d approvalDecision, capture string) string {
+	pendingPath := false // the PreToolUse input names the file: it is the path, the screen only shows it
 	if pending != nil {
 		if cmd, ok := pending.Input["command"].(string); ok {
 			if why := shellRisk(cmd, workDir); why != "" {
@@ -565,7 +637,8 @@ func autoAcceptRisk(agentType, workDir string, pending *pendingTool, d approvalD
 			}
 		}
 		for _, k := range []string{"file_path", "notebook_path", "path"} {
-			if p, ok := pending.Input[k].(string); ok {
+			if p, ok := pending.Input[k].(string); ok && strings.TrimSpace(p) != "" {
+				pendingPath = true
 				if why := fileRisk(pending.ToolName, p, workDir); why != "" {
 					return why
 				}
@@ -586,16 +659,22 @@ func autoAcceptRisk(agentType, workDir string, pending *pendingTool, d approvalD
 			return why
 		}
 	default:
-		if why := fileRisk(tool, input, workDir); why != "" {
-			return why
+		// A path the screen wrapped is joined without a space: the terminal breaks a
+		// long path mid-word, so a space there would make a different, bogus path
+		// (outside the repository, refusing every long in-repo path, #3207 QA). When
+		// the PreToolUse input named the path, that is authoritative and was checked.
+		if !pendingPath {
+			if why := fileRisk(tool, strings.ReplaceAll(input, "\x00", ""), workDir); why != "" {
+				return why
+			}
 		}
 	}
 	return ""
 }
 
 // screenAction reads the tool and its input from the prompt on screen. Lines
-// a long command or path wrapped over are joined with \x00, so the caller can
-// try both a space and nothing in between.
+// a long command or path wrapped over are joined with \x00: a command is tried
+// with a space and with nothing in between, a path with nothing.
 func screenAction(agentType string, d approvalDecision, capture string) (string, string) {
 	if agentType == "codex" {
 		var parts []string
@@ -619,11 +698,27 @@ func screenAction(agentType string, d approvalDecision, capture string) (string,
 		}
 		return "command", strings.Join(parts, "\x00")
 	}
+	// Claude: the newest tool line above the prompt. A long call wraps over several screen
+	// lines, so the newest line that STARTS a call is taken and its continuation lines are
+	// joined (with \x00) up to the closing parenthesis. Matching only complete one-line calls
+	// fell through a wrapped one to an older call in the scrollback (QA #3207).
 	lines := strings.Split(capture, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {
-		if m := claudeToolLineRe.FindStringSubmatch(lines[i]); m != nil {
-			return m[1], m[2]
+		m := claudeToolStartRe.FindStringSubmatch(lines[i])
+		if m == nil {
+			continue
 		}
+		parts := []string{strings.TrimRight(m[2], " ")}
+		for j := i + 1; !strings.HasSuffix(parts[len(parts)-1], ")") && j < len(lines); j++ {
+			next := strings.TrimSpace(lines[j])
+			if next == "" || ruleLineRe.MatchString(lines[j]) || strings.HasPrefix(next, "⎿") || strings.HasPrefix(next, "⏺") {
+				break
+			}
+			parts = append(parts, next)
+		}
+		last := len(parts) - 1
+		parts[last] = strings.TrimSuffix(parts[last], ")")
+		return m[1], strings.Join(parts, "\x00")
 	}
 	return "", ""
 }
