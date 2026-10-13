@@ -1,5 +1,31 @@
 # Release Notes
 
+## v1.4.12 — Security fix: artifact links could run script on the dashboard
+
+**Security fix — please upgrade.** This release fixes a way for a file an agent uploaded to run script with the dashboard's access.
+
+### Security
+
+- **Artifact links could run script on the dashboard.** Before 1.4.12, an HTML or SVG file that an agent uploaded as an artifact opened inline from Coral's own address when you followed its link (**Copy link**, or the `/api/artifacts/<id>` URL), so a script in it ran with the dashboard's access. The same applied to an HTML file a workflow step wrote into its run's files.
+  - **Affected:** anyone who opened such a link on an earlier version, in a dashboard connected to Coral directly (on the same machine or over the network) rather than through the Cloud Hub. Artifact links opened through the Cloud Hub were not affected (the hub already served them sandboxed); previews inside Coral were already sandboxed.
+  - **Fixed:** artifact and workflow-file responses are now sandboxed (`Content-Security-Policy: sandbox`, `nosniff`), and HTML, SVG, XML, JavaScript, PDF, Markdown and unknown types download instead of opening. Plain text, JSON, images, audio and video still open in the browser. Preview inside Coral works as before.
+  - **Cached copies:** Coral clears the browser's cached copies once, the next time you open the dashboard over https or on the same machine. New artifact links have a fresh form (`/api/artifacts/<id>?v=2`) so they never match an old cached copy; older links keep working with the same protection.
+  - **If you use Coral over plain http on a LAN address** (for example `http://192.168.x.x:8420`), clear your browser's cache for that site once after upgrading.
+
+### Upgrade notes
+
+- **Opening an artifact link for HTML, SVG, Markdown or PDF now downloads the file** instead of displaying it. Use **Preview** in Coral to view it.
+- API users: the artifact `url` returned by uploads and the team artifacts `preview_url` now end in `?v=2`. `coral-agent artifact download` accepts both forms.
+- Nothing to migrate; there are no database changes.
+
+### For contributors
+
+- Five more browser suites wait on the app's state instead of fixed sleeps (`sleeping_agent_view`, `vendor_lazy`, `hub_readonly`, `lazy_panels`, `team_workspace_activation`); the sleep ratchet is down to 82.
+
+### Release process
+
+- **Windows build is unsigned (beta); verify with SHA256SUMS.txt.** Same as v1.4.11.
+
 ## v1.4.11 — Unreachable servers explained, access changes that apply at once, and lighter startup
 
 **No security fixes in this release.** v1.3.43 remains the current security release. This release explains an agent whose server can't be reached instead of failing quietly, recovers it without a reload when the server returns, unlocks an agent as soon as you raise its server's access in the Cloud Hub, and trims what the dashboard loads before it starts.
