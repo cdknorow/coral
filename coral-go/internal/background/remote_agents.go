@@ -313,11 +313,10 @@ func (h *RemoteAgentHub) Snapshot() RemoteSnapshot {
 				c[k] = v
 			}
 			c["server"] = id
-			if status != store.RemoteStatusOnline {
-				c["stale"] = true
-			} else {
-				delete(c, "stale")
-			}
+			// Always explicit: a dashboard merges each diff into the session it
+			// has and keeps keys a diff omits, so a deleted "stale" would leave a
+			// recovered agent stale until a reload (#3159).
+			c["stale"] = status != store.RemoteStatusOnline
 			snap.Sessions = append(snap.Sessions, c)
 		}
 	}

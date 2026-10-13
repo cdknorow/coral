@@ -1056,6 +1056,11 @@ func TestHubE2E_OfflineMarksStaleAndRecovers(t *testing.T) {
 		y, okB := v.find("b", "beta")
 		return okA && okB && !x.Stale && !y.Stale
 	})
+	// A dashboard on the hub's feed, merging each diff into the sessions it has
+	// the way websocket.js does ({...prev, ...next}: an omitted key keeps its
+	// old value), so a recovery that drops "stale" instead of sending false
+	// would leave the agent stale here (#3159).
+	feed := dialMergingFeed(t, hub)
 
 	a.stop()
 	hub.eventually("a offline: unreachable and its agent stale", func() bool {
@@ -1077,6 +1082,10 @@ func TestHubE2E_OfflineMarksStaleAndRecovers(t *testing.T) {
 	}
 	assert.Equal(t, 1, locals, "local agents unaffected")
 	assert.Equal(t, "unreachable", hub.serverStatus("a"))
+	hub.eventually("the dashboard's feed shows alpha stale", func() bool {
+		s, ok := feed.session("a", "a-alpha-1")
+		return ok && s["stale"] == true
+	})
 	code, body := hub.do("GET", "/api/remote/a/api/sessions/live", nil)
 	assert.Equal(t, 502, code)
 	assert.Contains(t, string(body), "remote unreachable")
@@ -1092,6 +1101,85 @@ func TestHubE2E_OfflineMarksStaleAndRecovers(t *testing.T) {
 	})
 	code, _ = hub.do("GET", "/api/remote/a/api/sessions/live", nil)
 	assert.Equal(t, 200, code)
+
+	// The dashboard saw alpha go stale, then come back with an explicit
+	// stale:false that its merge applies, with no reload.
+	hub.eventually("the dashboard's merged alpha is fresh again", func() bool {
+		s, ok := feed.session("a", "a-alpha-1")
+		return ok && s["stale"] == false
+	})
+	assert.True(t, feed.diffCarriedStaleFalse("a", "a-alpha-1"), "the recovery diff names stale:false explicitly")
+}
+
+// mergingFeed is a /ws/coral client that keeps sessions the way the dashboard
+// does: coral_update replaces the list, coral_diff merges each changed session
+// into the one it has ({...prev, ...next}) and drops removed ones.
+type mergingFeed struct {
+	mu         sync.Mutex
+	sessions   map[string]map[string]any // server|session_id -> merged session
+	staleFalse map[string]bool           // a coral_diff carried "stale": false
+}
+
+func dialMergingFeed(t *testing.T, hub *e2eHub) *mergingFeed {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	c, _, err := websocket.Dial(ctx, wsURLFor(hub.ts, "/ws/coral"), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { c.CloseNow() })
+	c.SetReadLimit(8 << 20)
+	f := &mergingFeed{sessions: map[string]map[string]any{}, staleFalse: map[string]bool{}}
+	key := func(s map[string]any) string { return fmt.Sprint(s["server"]) + "|" + fmt.Sprint(s["session_id"]) }
+	go func() {
+		for {
+			var msg struct {
+				Type     string           `json:"type"`
+				Sessions []map[string]any `json:"sessions"`
+				Changed  []map[string]any `json:"changed"`
+			}
+			if wsjson.Read(ctx, c, &msg) != nil {
+				return
+			}
+			f.mu.Lock()
+			switch msg.Type {
+			case "coral_update":
+				f.sessions = map[string]map[string]any{}
+				for _, s := range msg.Sessions {
+					f.sessions[key(s)] = s
+				}
+			case "coral_diff":
+				for _, s := range msg.Changed {
+					k := key(s)
+					merged := map[string]any{}
+					for kk, v := range f.sessions[k] {
+						merged[kk] = v
+					}
+					for kk, v := range s {
+						merged[kk] = v
+					}
+					f.sessions[k] = merged
+					if v, ok := s["stale"]; ok && v == false {
+						f.staleFalse[k] = true
+					}
+				}
+			}
+			f.mu.Unlock()
+		}
+	}()
+	return f
+}
+
+func (f *mergingFeed) session(server, sid string) (map[string]any, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	s, ok := f.sessions[server+"|"+sid]
+	return s, ok
+}
+
+func (f *mergingFeed) diffCarriedStaleFalse(server, sid string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.staleFalse[server+"|"+sid]
 }
 
 // ── 9. proxy refusals ───────────────────────────────────────────────

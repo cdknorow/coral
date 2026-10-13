@@ -223,8 +223,7 @@ func TestHub_MergeCollisionAndStatus(t *testing.T) {
 	servers := map[string]bool{}
 	for _, s := range snap.Sessions {
 		assert.Equal(t, "worker", s["name"])
-		_, stale := s["stale"]
-		assert.False(t, stale)
+		assert.Equal(t, false, s["stale"], "an online remote's sessions carry stale:false explicitly (#3159)")
 		servers[s["server"].(string)] = true
 	}
 	assert.Equal(t, map[string]bool{"a": true, "b": true}, servers)
@@ -270,7 +269,7 @@ func TestHub_OfflineStaleThenRecovery(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		s := h.Snapshot()
-		return statusMap(s)["a"] == "online" && len(s.Sessions) == 1 && s.Sessions[0]["name"] == "two" && s.Sessions[0]["stale"] == nil
+		return statusMap(s)["a"] == "online" && len(s.Sessions) == 1 && s.Sessions[0]["name"] == "two" && s.Sessions[0]["stale"] == false
 	}, 5*time.Second, 20*time.Millisecond)
 }
 
