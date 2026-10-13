@@ -1,0 +1,107 @@
+name: Cloud Hub impact
+
+# Flags pull requests that touch code the Cloud Hub (github.com/subgentic/coral-hub) depends on: adds the
+# 'cloud-hub-impact' label and keeps ONE comment listing the watched files, so the Cloud Hub team can review them.
+#
+# Security: pull_request (not pull_request_target), no checkout and no PR code is ever run, GITHUB_TOKEN only,
+# with the two permissions below. On a fork PR the token is read-only, so the job skips itself.
+# Nothing from the PR (file names) reaches a shell except through env. No third-party actions are used (the gh CLI
+# on the runner does the work), so there is nothing to pin.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: hub-impact-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  flag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Label and comment when watched paths change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          # THE list of watched paths, the only place to change it. A path ending in "/" matches everything below it;
+          # any other entry is one exact file. Plain path matching, no heuristics. Lines starting with # are comments.
+          WATCHED: |
+            # The tunnel protocol the connector speaks to the hub: frames, handshake, limits. A change here can break
+            # every connected machine or the hub's side of the tunnel.
+            coral-go/pkg/tunnel/
+            # The reverse proxy the hub embeds to serve a machine's UI and API (headers, filtering, streams, caching).
+            # The hub is built against this package.
+            coral-go/pkg/hubproxy/
+            # Generates the route allow-list the hub proxy enforces; a new or changed route changes what the hub can
+            # expose.
+            tools/gen_route_queries.py
+            # Starts and runs the outbound connector (remote agents) that holds the tunnel to the hub open.
+            coral-go/internal/background/remote_agents.go
+            # The /ws/coral feed: the hub dials this with ?feed=hub and relies on its message shapes.
+            coral-go/internal/server/routes/websocket.go
+            # The session list the hub's feed reconciles against; its fields must stay in step with the feed's.
+            coral-go/internal/server/routes/ws_shared_list.go
+        run: |
+          set -euo pipefail
+          marker='<!-- cloud-hub-impact -->'
+          label='cloud-hub-impact'
+
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::notice::Fork pull request: the token is read-only here, so no label or comment is added."
+            exit 0
+          fi
+
+          # Every file the PR touches (a rename counts under both names).
+          files="$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' | sort -u)"
+
+          hits=""
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            while IFS= read -r p; do
+              p="${p#"${p%%[![:space:]]*}"}"
+              case "$p" in ''|'#'*) continue ;; esac
+              case "$p" in
+                */) [[ "$f" == "$p"* ]] && { hits+="$f"$'\n'; break; } ;;
+                *)  [[ "$f" == "$p" ]] && { hits+="$f"$'\n'; break; } ;;
+              esac
+            done <<< "$WATCHED"
+          done <<< "$files"
+
+          comment_id="$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id" | sed -n 1p)"
+
+          if [ -z "$hits" ]; then
+            gh api -X DELETE "repos/$REPO/issues/$PR/labels/$label" >/dev/null 2>&1 || true
+            if [ -n "$comment_id" ]; then
+              gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" \
+                -f body="$marker"$'\n'"This pull request no longer touches files the Cloud Hub depends on." >/dev/null
+            fi
+            echo "No watched paths changed."
+            exit 0
+          fi
+
+          gh label create "$label" --repo "$REPO" --color d93f0b \
+            --description "Touches code the Cloud Hub depends on" >/dev/null 2>&1 || true
+          gh api -X POST "repos/$REPO/issues/$PR/labels" -f "labels[]=$label" >/dev/null
+
+          # File names are untrusted: keep only ordinary path characters, and cap the list.
+          bt=$'\x60'
+          list="$(printf '%s' "$hits" | LC_ALL=C tr -c 'A-Za-z0-9._/+@\n-' '?' | sed -n '1,100p' | sed "s/^/- $bt/; s/\$/$bt/")"
+          count="$(printf '%s' "$hits" | grep -c .)"
+          body="$marker"$'\n'"**Cloud Hub review needed.** This pull request changes $count file(s) the Cloud Hub depends on:"$'\n\n'"$list"
+          if [ "$count" -gt 100 ]; then body+=$'\n\n'"(first 100 of $count shown)"; fi
+
+          if [ -n "$comment_id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$comment_id" -f body="$body" >/dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$body" >/dev/null
+          fi
+          echo "Labelled and commented: $count watched file(s)."
