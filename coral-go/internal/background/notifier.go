@@ -234,6 +234,9 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 		if health {
 			nudge = fmt.Sprintf("[Coral health check] Team health check for %s: %d unread message%s include a health-monitor summary. Review team status, assignments, progress, and blockers, then run 'coral-board read' to see the authoritative full content.", sub.Project, unread, plural)
 		}
+		if skipIfAgentExited(ctx, n.runtime, n.logger, sessName, "board nudge") {
+			continue
+		}
 		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread)
 		err = n.runtime.SendInput(ctx, sessName, nudge)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -34,7 +35,14 @@ type SessionReconciler struct {
 	interval     time.Duration
 	logger       *slog.Logger
 	misses       map[string]int // session_id -> consecutive passes not found
+	exited       map[string]int // session_id -> consecutive passes its terminal showed a plain shell
+	now          func() time.Time
 }
+
+// exitedLaunchGrace is how long after launch a pane showing a shell is not yet
+// taken as an exited agent: the CLI is typed into that shell and needs a moment
+// to start.
+const exitedLaunchGrace = time.Minute
 
 // NewSessionReconciler creates a new SessionReconciler.
 func NewSessionReconciler(ss *store.SessionStore, rt AgentRuntime, interval time.Duration) *SessionReconciler {
@@ -44,6 +52,8 @@ func NewSessionReconciler(ss *store.SessionStore, rt AgentRuntime, interval time
 		interval:     interval,
 		logger:       slog.Default().With("service", "session_reconciler"),
 		misses:       make(map[string]int),
+		exited:       make(map[string]int),
+		now:          time.Now,
 	}
 }
 
@@ -87,6 +97,7 @@ func (r *SessionReconciler) reconcileOnce(ctx context.Context) {
 		seen[ls.SessionID] = true
 		if alive[strings.ToLower(ls.SessionID)] {
 			delete(r.misses, ls.SessionID)
+			r.checkExited(ctx, ls)
 			continue
 		}
 
@@ -96,6 +107,7 @@ func (r *SessionReconciler) reconcileOnce(ctx context.Context) {
 		name := FormatSessionName(ls.AgentType, ls.SessionID)
 		if r.runtime.IsAlive(ctx, name) {
 			delete(r.misses, ls.SessionID)
+			r.checkExited(ctx, ls)
 			r.logger.Debug("agent missing from runtime listing but liveness probe succeeded",
 				"session_id", ls.SessionID, "session_name", name)
 			continue
@@ -123,6 +135,11 @@ func (r *SessionReconciler) reconcileOnce(ctx context.Context) {
 	for sid := range r.misses {
 		if !seen[sid] {
 			delete(r.misses, sid)
+		}
+	}
+	for sid := range r.exited {
+		if !seen[sid] {
+			delete(r.exited, sid)
 		}
 	}
 
@@ -168,4 +185,32 @@ func (r *SessionReconciler) killOrphans(ctx context.Context, agents []AgentInfo)
 		r.logger.Warn("killed orphaned runtime session (marked stopped in DB but still running)",
 			"session_name", name, "stopped_at", stoppedAt)
 	}
+}
+
+// checkExited marks an agent sleeping once its CLI has exited and left its pane at a
+// plain shell prompt (#3219): reconcileMissThreshold consecutive passes, and not in
+// the first minute after launch. The shell is left as it is; Wake (or Resume) types
+// the resume command into it. A 'terminal' agent, whose shell is the agent, is never
+// marked.
+func (r *SessionReconciler) checkExited(ctx context.Context, ls store.LiveSession) {
+	name := FormatSessionName(ls.AgentType, ls.SessionID)
+	exited, fg := ptymanager.AgentExited(ctx, r.runtime, name, ls.AgentType, ls.SessionID)
+	if !exited {
+		delete(r.exited, ls.SessionID)
+		return
+	}
+	if created, err := time.Parse(store.ISOFormat, ls.CreatedAt); err == nil && r.now().Sub(created) < exitedLaunchGrace {
+		return
+	}
+	r.exited[ls.SessionID]++
+	if r.exited[ls.SessionID] < reconcileMissThreshold {
+		return
+	}
+	delete(r.exited, ls.SessionID)
+	if err := r.sessionStore.SetSessionSleeping(ctx, ls.SessionID, true); err != nil {
+		r.logger.Error("failed to mark exited agent as sleeping", "session_id", ls.SessionID, "error", err)
+		return
+	}
+	r.logger.Warn("agent CLI has exited, marking as sleeping (Wake resumes it)",
+		"session_id", ls.SessionID, "agent_name", ls.AgentName, "foreground", fg)
 }

@@ -307,6 +307,25 @@ port 8420 is already in use
 Coral binds the port before opening the database. Use `--port`, and pair it with `--home`
 so the two instances do not share state.
 
+### Stopping a test server: never kill by port
+
+Stop a server you started by its PID (`$!` right after starting it in the background), or with
+Ctrl-C. Never stop it with `lsof -ti:PORT | xargs kill`:
+
+- `lsof -ti:PORT` matches ANY process with that port on EITHER end of a connection, including
+  another program's outbound HTTPS socket that happens to use it as its local port. On a busy
+  machine that can be an agent's own CLI, which then exits.
+- Ports 49152-65535 (macOS's ephemeral range; Linux's starts at 32768) are handed out for
+  outbound connections all the time, so never pick a test port there. Use something like 8450-8499.
+
+If you must find a server by port, match only the listening socket and check what it is before
+killing it:
+
+```bash
+lsof -nP -iTCP:PORT -sTCP:LISTEN     # who LISTENS on PORT (not who connects from it)
+lsof -ti tcp:PORT -sTCP:LISTEN       # just the PID(s), for a script
+```
+
 ## Performance
 
 ### Profiling a slow server

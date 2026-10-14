@@ -838,6 +838,8 @@ The live session always carries `auto_accept` (bool), `auto_accept_until` (unix 
 
 Sleep suspends agent sessions (kills the process, preserves state). Wake relaunches them.
 
+**An agent whose CLI exited** (it quit, crashed or was killed, leaving its terminal at a plain shell prompt) is marked sleeping after about a minute. From the moment its terminal shows a shell, Coral types nothing automated into it: no board nudges or notifications, task or UI notifications, scheduled prompts or auto-accept answers, because a shell would run that text as commands. Wake resumes the agent in the same terminal. A `terminal` session is a shell by design and is never marked. What you type yourself in the dashboard is always sent.
+
 **Archived** is a sleeping agent put away on purpose (stored as `live_sessions.is_archived`; archived always implies sleeping). It stays asleep through Wake All and team Wake, does not count against the live-agent limit, is never assigned tasks (task create/edit/reassign naming it answers 409 `{error, code: "assignee_archived"}`; board status reports `availability: "archived"`) and is never nudged by the task queue. Waking it individually unarchives it; Unarchive returns it to plain sleeping without starting it.
 
 Sleep, wake, archive and unarchive (like launch, restart and kill) push the change to `/ws/coral` at once instead of on the next tick.

@@ -436,7 +436,7 @@ func (h *BoardHandler) notifyOrchestratorsTaskCompleted(ctx context.Context, pro
 		if sub.SubscriberID == subscriberID || sub.SessionName == "" || !isOrchestratorSubscriber(sub, sub.SubscriberID) {
 			continue
 		}
-		if err := h.terminal.SendInput(ctx, sub.SessionName, notification, "", ""); err != nil {
+		if err := h.sendAutomated(ctx, sub.SessionName, notification); err != nil {
 			slog.Warn("failed to notify orchestrator of completed task", "orchestrator", sub.SubscriberID, "session", sub.SessionName, "task_id", task.ID, "error", err)
 		}
 	}
@@ -486,7 +486,7 @@ func (h *BoardHandler) notifyOrchestratorOfCancelledDependency(ctx context.Conte
 			if sub.SubscriberID == subscriberID || sub.SessionName == "" || !isOrchestratorSubscriber(sub, sub.SubscriberID) {
 				continue
 			}
-			if err := h.terminal.SendInput(ctx, sub.SessionName, msg, "", ""); err != nil {
+			if err := h.sendAutomated(ctx, sub.SessionName, msg); err != nil {
 				slog.Warn("failed to notify orchestrator of stalled task", "orchestrator", sub.SubscriberID, "session", sub.SessionName, "task_id", task.ID, "error", err)
 			}
 		}
@@ -509,7 +509,7 @@ func (h *BoardHandler) sendTaskNudge(ctx context.Context, project, subscriberID,
 	if h.isArchivedSession != nil && h.isArchivedSession(ctx, sub.SessionName) {
 		return fmt.Errorf("%s is archived", subscriberID)
 	}
-	if err := h.terminal.SendInput(ctx, sub.SessionName, text, "", ""); err != nil {
+	if err := h.sendAutomated(ctx, sub.SessionName, text); err != nil {
 		slog.Warn("failed to nudge agent", "subscriber", subscriberID, "project", project, "session", sub.SessionName, "error", err)
 		return err
 	}
@@ -1353,7 +1353,7 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 						return h.isArchivedSession != nil && h.isArchivedSession(ctx, sub.SessionName)
 					})
 					if idle != nil && idle.SessionName != "" {
-						if err := h.terminal.SendInput(ctx, idle.SessionName, taskNudge, "", ""); err != nil {
+						if err := h.sendAutomated(ctx, idle.SessionName, taskNudge); err != nil {
 							slog.Warn("failed to nudge agent", "subscriber", idle.SubscriberID, "session", idle.SessionName, "error", err)
 						}
 					}
@@ -2175,7 +2175,7 @@ func (h *BoardHandler) resolveMessageWaits(project, senderID, content string) {
 		}
 		if h.terminal != nil && sessionName != "" {
 			nudge := fmt.Sprintf("[Wait resolved] %s posted on '%s': %q. Run 'coral-board read' to see the message.", senderID, project, preview)
-			if err := h.terminal.SendInput(ctx, sessionName, nudge, "", ""); err != nil {
+			if err := h.sendAutomated(ctx, sessionName, nudge); err != nil {
 				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
 			}
 		}
@@ -2195,7 +2195,7 @@ func (h *BoardHandler) resolveTaskWaits(project string, taskID int64, taskTitle,
 		}
 		if h.terminal != nil && sessionName != "" {
 			nudge := fmt.Sprintf("[Wait resolved] Task #%d (%s) is now %s. Run 'coral-board task detail %d' to review.", taskID, taskTitle, event, taskID)
-			if err := h.terminal.SendInput(ctx, sessionName, nudge, "", ""); err != nil {
+			if err := h.sendAutomated(ctx, sessionName, nudge); err != nil {
 				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
 			}
 		}
@@ -2214,7 +2214,7 @@ func (h *BoardHandler) ResolveCommitWaits(ctx context.Context, project, commitHa
 		}
 		if h.terminal != nil && sessionName != "" {
 			nudge := fmt.Sprintf("[Wait resolved] Commit %s landed on '%s'.", commitHash, project)
-			if err := h.terminal.SendInput(ctx, sessionName, nudge, "", ""); err != nil {
+			if err := h.sendAutomated(ctx, sessionName, nudge); err != nil {
 				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
 			}
 		}

@@ -276,3 +276,30 @@ func (m *PTYBackend) Close() error {
 	}
 	return nil
 }
+
+// shellPIDReporter is implemented by pseudo-terminals that can name the process
+// they started (Unix). ConPTY sessions don't, so on Windows nothing is reported.
+type shellPIDReporter interface {
+	ShellPID() int
+}
+
+// ShellIdle reports whether a session's own shell is idle, with nothing running
+// in it: the agent CLI has exited (#3219). ok is false when the session is gone
+// or the platform cannot tell.
+func (m *PTYBackend) ShellIdle(name string) (idle bool, shell string, ok bool) {
+	m.mu.RLock()
+	s, found := m.sessions[name]
+	m.mu.RUnlock()
+	if !found || !s.isRunning() {
+		return false, "", false
+	}
+	sp, can := s.proc.(shellPIDReporter)
+	if !can {
+		return false, "", false
+	}
+	idle, shell, err := tmux.ShellIdle(sp.ShellPID())
+	if err != nil {
+		return false, "", false
+	}
+	return idle, shell, true
+}

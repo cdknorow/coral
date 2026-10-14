@@ -443,6 +443,9 @@ func (h *SessionsHandler) notifyTaskCreated(ctx context.Context, name, sessionID
 		}
 	}
 	prompt := claimPrompt(t)
+	if automatedInputBlocked(ctx, h.terminal, name, agentType, sessionID, "task notification") {
+		return "", errAgentExited.Error()
+	}
 	if err := h.terminal.SendInput(ctx, name, prompt, agentType, sessionID); err != nil {
 		return "", err.Error()
 	}

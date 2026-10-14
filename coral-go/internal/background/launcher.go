@@ -15,6 +15,7 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/google/uuid"
 )
@@ -164,13 +165,34 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	}, nil
 }
 
+// promptStartWait bounds how long SendPrompt waits for the agent CLI to take the
+// foreground of its terminal after the initial delay.
+var promptStartWait = 30 * time.Second
+
 // SendPrompt sends a prompt to an agent session after a delay for initialization.
+// The CLI is typed into a shell at launch, so the prompt is sent only once the CLI
+// is in the foreground: typed into the shell, it would run as a command (#3219).
 func (l *AgentLauncher) SendPrompt(ctx context.Context, sessionID, sessionName, agentType, prompt string) error {
 	// Wait for agent to initialize
 	select {
 	case <-time.After(3 * time.Second):
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+	for deadline := time.Now().Add(promptStartWait); ; {
+		exited, _ := ptymanager.AgentExited(ctx, l.runtime, sessionName, agentType, sessionID)
+		if !exited {
+			break
+		}
+		if time.Now().After(deadline) {
+			l.logger.Warn("agent CLI is not running in its terminal; prompt not sent", "session", sessionID[:8])
+			return nil
+		}
+		select {
+		case <-time.After(250 * time.Millisecond):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	}
 
 	if err := l.runtime.SendInput(ctx, sessionName, prompt); err != nil {

@@ -210,7 +210,12 @@ func (h *SessionsHandler) agentUIRequest(w http.ResponseWriter, r *http.Request)
 	if enabled, known := bracketedPasteFromLog(h.cfg, ls.AgentType, ls.SessionID); known {
 		sendCtx = ptymanager.WithBracketedPasteHint(sendCtx, enabled)
 	}
-	sendErr := sender.SendPrompt(sendCtx, terminalName, notification, ls.AgentType, ls.SessionID)
+	var sendErr error
+	if automatedInputBlocked(r.Context(), h.terminal, terminalName, ls.AgentType, ls.SessionID, "agent UI request notification") {
+		sendErr = errAgentExited // nothing typed: the agent's CLI has exited (#3219)
+	} else {
+		sendErr = sender.SendPrompt(sendCtx, terminalName, notification, ls.AgentType, ls.SessionID)
+	}
 	// Record the result even if the client went away mid-request.
 	finish := h.db.FinishUIRequest
 	if uiRequestFinishOverride != nil {

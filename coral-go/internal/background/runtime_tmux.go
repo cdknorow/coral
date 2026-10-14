@@ -128,3 +128,16 @@ func DiscoverAgentsFromTmux(ctx context.Context, tmuxClient *tmux.Client) ([]Age
 	}
 	return agents, nil
 }
+
+// AgentShellIdle reports whether an agent's pane is back at its idle shell, for
+// ptymanager.AgentExited (#3219).
+func (r *TmuxRuntime) AgentShellIdle(ctx context.Context, name, agentType, sessionID string) (bool, string, bool) {
+	if agentType == "" && sessionID == "" {
+		agentType, sessionID = parseSessionName(name)
+	}
+	idle, shell, err := r.client.AgentShellIdle(ctx, name, agentType, sessionID)
+	if err != nil {
+		return false, "", false
+	}
+	return idle, shell, true
+}

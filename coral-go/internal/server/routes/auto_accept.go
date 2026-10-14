@@ -404,6 +404,10 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	if !a.ownPane(ctx, s) {
 		return
 	}
+	// A digit typed into a bare shell after the CLI exited would run as a command (#3219).
+	if automatedInputBlocked(ctx, a.h.terminal, paneName(s), s.AgentType, s.SessionID, "auto-accept answer") {
+		return
+	}
 	// The approval is stamped with the moment the key is sent, not when it is recorded: the
 	// agent can act on the key and raise its NEXT prompt before the event is written, and an
 	// approval that sorted after that prompt's notification would end it as "answered" too

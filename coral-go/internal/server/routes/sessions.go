@@ -5842,6 +5842,21 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	if alreadyRunning {
 		log.Printf("[wake] session=%s is still running — skipping relaunch, clearing sleeping flag only", sessionName)
 	}
+	// The terminal is there but the agent CLI exited from it, leaving a plain shell (#3219):
+	// resume the agent in that shell, as launch does, instead of only clearing the flag.
+	if alreadyRunning && ls.AgentType != at.Terminal && h.terminal != nil {
+		if exited, fg := ptymanager.AgentExited(ctx, h.terminal, sessionName, ls.AgentType, ls.SessionID); exited {
+			cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))
+			target := sessionName + ".0"
+			if backend == "pty" {
+				target = sessionName
+			}
+			log.Printf("[wake] session=%s: the agent CLI had exited (%s in the foreground); resuming it in the same terminal", sessionName, fg)
+			if err := sendLaunchCommand(ctx, h.terminal, target, cmd); err != nil {
+				return err
+			}
+		}
+	}
 
 	if !alreadyRunning && ls.AgentType != at.Terminal {
 		cmd := agent.WrapWithBundlePath(agentImpl.BuildLaunchCommand(launchParams))

@@ -66,3 +66,9 @@ var _ AgentRuntime = (*TmuxRuntime)(nil)
 func FormatSessionName(agentType, sessionID string) string {
 	return naming.SessionName(agentType, sessionID)
 }
+
+// AgentShellIdle reports whether an agent's terminal is back at its idle shell,
+// for ptymanager.AgentExited (#3219).
+func (r *PTYRuntime) AgentShellIdle(_ context.Context, name, _, _ string) (bool, string, bool) {
+	return r.backend.ShellIdle(name)
+}
