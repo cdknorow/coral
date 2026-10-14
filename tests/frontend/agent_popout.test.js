@@ -127,6 +127,26 @@ async function browserClient() {
     const info = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json();
     return CDP({ target: info.webSocketDebuggerUrl });
 }
+// The page's own record of /api/ requests and WebSockets (absolute URLs, like CDP reports them).
+const PAGE_CAPTURE = `(() => {
+    const cap = window.__popCap = { req: [], ws: [] };
+    const abs = u => { try { return new URL(String(u), location.href).href; } catch { return String(u); } };
+    const realFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+        try {
+            const url = abs(typeof input === 'string' || input instanceof URL ? input : input.url);
+            const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+            const body = init && typeof init.body === 'string' ? init.body : '';
+            if (url.includes('/api/')) cap.req.push({ url, method, postData: body });
+        } catch {}
+        return realFetch(input, init);
+    };
+    const RealWS = window.WebSocket;
+    function W(u, p) { try { cap.ws.push(abs(u)); } catch {} return p === undefined ? new RealWS(u) : new RealWS(u, p); }
+    W.prototype = RealWS.prototype; W.CONNECTING = 0; W.OPEN = 1; W.CLOSING = 2; W.CLOSED = 3;
+    window.WebSocket = W;
+})();`;
+
 async function openTab(url, { contextId, stub, width = 1280, height = 800, mobile = false } = {}) {
     const browser = await browserClient();
     const { Target } = browser;
@@ -134,10 +154,14 @@ async function openTab(url, { contextId, stub, width = 1280, height = 800, mobil
     await browser.close();
     const client = await CDP({ port: CDP_PORT, target: targetId });
     const { Page, Runtime, Network, Emulation } = client;
-    await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
+    // Listeners first, then enable: an event in between is never missed.
     const exceptions = []; Runtime.exceptionThrown(e => { const d = e.exceptionDetails || {}; const ex = d.exception || {}; exceptions.push(`${d.text || ''} ${ex.description || ex.value || ''} @${(d.url || '').split('/').pop()}:${d.lineNumber}`.trim().slice(0, 220)); });
     const wsCreated = []; Network.webSocketCreated(({ url: u }) => wsCreated.push(u));
     const requests = []; Network.requestWillBeSent(({ request }) => { if (/\/api\/sessions\//.test(request.url)) requests.push({ url: request.url, method: request.method, postData: request.postData || '' }); });
+    await Promise.all([Page.enable(), Runtime.enable(), Network.enable()]);
+    // The page records the same requests itself (fetch and WebSocket), so a CDP event lost under load can't
+    // empty a check: sync() merges in whatever the page saw that CDP did not report.
+    await Page.addScriptToEvaluateOnNewDocument({ source: PAGE_CAPTURE });
     if (stub) await Page.addScriptToEvaluateOnNewDocument({ source: stub });
     await Emulation.setDeviceMetricsOverride({ width, height, deviceScaleFactor: 1, mobile });
     const ev = async (expr) => {
@@ -154,7 +178,19 @@ async function openTab(url, { contextId, stub, width = 1280, height = 800, mobil
     const settled = () => w.waitStable(SHELL_PROBE, 'the popout to settle', 300, { timeout: 8000 }).catch(() => {});
     const close = async () => { try { await client.close(); } catch {} try { const b = await browserClient(); await b.Target.closeTarget({ targetId }); await b.close(); } catch {} };
     await goto(url);
-    return { client, Page, Runtime, Network, Emulation, targetId, ev, waitFor, goto, close, exceptions, wsCreated, requests, nextFrame, settled };
+    const sync = async () => {
+        let cap = null;
+        try { cap = await ev(`window.__popCap ? { req: window.__popCap.req.slice(), ws: window.__popCap.ws.slice() } : null`); } catch { return; }
+        if (!cap) return;
+        const seen = new Set(requests.map(r => r.method + ' ' + r.url + ' ' + r.postData));
+        for (const r of cap.req) {
+            if (!/\/api\/sessions\//.test(r.url)) continue;
+            const k = r.method + ' ' + r.url + ' ' + r.postData;
+            if (!seen.has(k)) { seen.add(k); requests.push(r); }
+        }
+        for (const u of cap.ws) if (!wsCreated.includes(u)) wsCreated.push(u);
+    };
+    return { client, Page, Runtime, Network, Emulation, targetId, ev, waitFor, goto, close, exceptions, wsCreated, requests, nextFrame, settled, sync };
 }
 // Every /api/sessions/live/{name}/... call made by the popout must carry BOTH
 // routing fields from the resolver and use the resolver's name (agent name).
@@ -302,6 +338,7 @@ async function run() {
     check('37 a gone terminal offers no Restart in the popout', goneUI.shown && !goneUI.restart, JSON.stringify(goneUI));
     check('32 identity region is aria-live=polite', s1.identityLive === 'polite', String(s1.identityLive));
     check('B no page exceptions during popout boot', t1.exceptions.length === 0, JSON.stringify(t1.exceptions.slice(0, 3)));
+    await t1.sync();
     const audit0 = auditRouting(t1.requests, { agent_type: 'terminal', session_id: sid, name: aname, tmux_session: `terminal-${sid}` });
     check('4 every popout REST call at boot carries both routing fields from the resolver', t1.requests.filter(r => /\/api\/sessions\/live\//.test(r.url)).length > 0 && audit0.length === 0, JSON.stringify(audit0.slice(0, 3)));
     const wsTerm = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u));
@@ -330,6 +367,7 @@ async function run() {
     await t1.ev(`window.sendCommand(); true`);
     let cap1 = await waitCapture('POPOUT-QA-MARKER-1');
     check('26 command typed in the popout reaches exactly this session\'s pane', /POPOUT-QA-MARKER-1/.test((cap1.data && cap1.data.capture) || ''));
+    await t1.sync();
     const sendReqs = t1.requests.filter(r => /\/send(\?|$)/.test(r.url) && r.method === 'POST');
     const audit1 = auditRouting(t1.requests, { agent_type: 'terminal', session_id: sid, name: aname, tmux_session: `terminal-${sid}` });
     const wsTuple = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u)).every(u => u.includes(`/ws/terminal/terminal-${sid}`) && u.includes(`session_id=${sid}`) && u.includes('agent_type=terminal'));
@@ -372,6 +410,7 @@ async function run() {
     await t3.waitFor(`window._coralPopout && window._coralPopout.getState && window._coralPopout.getState() !== 'loading'`, 10000); await t3.settled();
     const s3 = await t3.ev(SHELL_PROBE);
     check('30 cross-profile viewer renders the same exact session with no exceptions', s3.target === sid && /Popout QA/.test(s3.identity) && t3.exceptions.length === 0, JSON.stringify({ target: s3.target, identity: s3.identity.trim(), exc: t3.exceptions.slice(0, 2) }));
+    await t3.sync();
     const ws3 = t3.wsCreated.filter(u => /\/ws\/terminal\//.test(u));
     check('30 cross-profile viewer attaches only to the exact tmux tuple (no cross-session targeting)', ws3.length >= 1 && ws3.every(u => u.includes(`/ws/terminal/terminal-${sid}`) && u.includes(`session_id=${sid}`)), JSON.stringify(ws3));
     await t3.ev(`document.getElementById('command-input').value = 'echo POPOUT-QA-MARKER-3'; window.sendCommand(); true`);
@@ -405,6 +444,7 @@ async function run() {
     check('33 real server: status endpoint is not waiting_for_input for an idle agent', idleStatus.waiting_for_input === false && idleStatus.awaiting_user === true && idleStatus.state !== 'waiting_for_input', JSON.stringify({ state: idleStatus.state, ...stateOf(idleStatus) }));
 
     // 21: ended on kill; 24: no reconnect loop
+    await t1.sync();
     const wsBefore = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u)).length;
     const kill = await httpJson('POST', `/api/sessions/live/${encodeURIComponent(aname)}/kill`, { agent_type: 'terminal', session_id: sid });
     check('B kill request accepted', kill.status === 200 && kill.data && kill.data.ok === true, `status=${kill.status}`);
@@ -416,6 +456,7 @@ async function run() {
     const leakEnded = await t1.ev(LEAK_PROBE(sid));
     check('9 ended state: id only in boot attr and allowed hrefs', leakEnded.text.length === 0 && !leakEnded.title && leakEnded.attrs.length === 0, JSON.stringify(leakEnded));
     await sleep(3500); // sleep-ok: proves a negative, no reconnect attempt after the session ended
+    await t1.sync();
     const wsAfter = t1.wsCreated.filter(u => /\/ws\/terminal\//.test(u)).length;
     check('24 no terminal reconnect attempts after terminal_closed', wsAfter === wsBefore, `${wsBefore} -> ${wsAfter}`);
     const dEnded = (await t1.ev(SHELL_PROBE)).destructive; check('37 still no destructive controls after ending', dEnded.length === 0, JSON.stringify(dEnded));
