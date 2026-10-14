@@ -1195,7 +1195,12 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 		lines = 500
 	}
 
-	if callerID == "" || target == "" {
+	// Through Coral Hub (SEC-TUN-02, #3410) the caller's identity is never taken from the
+	// query: a Hub user at View may read every agent's output (operator decision), but not
+	// by claiming to be an orchestrator, so subscriber_id is ignored, and peeking never
+	// touches task state.
+	tunneled := cloud.Tunneled(r)
+	if target == "" || (callerID == "" && !tunneled) {
 		errBadRequest(w, "subscriber_id and target are required")
 		return
 	}
@@ -1208,21 +1213,23 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find caller in this board's subscribers
-	var caller *board.Subscriber
-	for i, s := range allSubs {
-		if s.SubscriberID == callerID {
-			caller = &allSubs[i]
-			break
+	if !tunneled {
+		// Find caller in this board's subscribers
+		var caller *board.Subscriber
+		for i, s := range allSubs {
+			if s.SubscriberID == callerID {
+				caller = &allSubs[i]
+				break
+			}
 		}
-	}
-	if caller == nil {
-		errForbidden(w, "not subscribed to this board")
-		return
-	}
-	if caller.CanPeek == 0 {
-		errForbidden(w, "peek permission not granted for this subscriber")
-		return
+		if caller == nil {
+			errForbidden(w, "not subscribed to this board")
+			return
+		}
+		if caller.CanPeek == 0 {
+			errForbidden(w, "peek permission not granted for this subscriber")
+			return
+		}
 	}
 
 	// Find target in same board's subscribers
@@ -1237,7 +1244,9 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "target subscriber not found on this board")
 		return
 	}
-	_ = h.bs.TouchActiveTask(r.Context(), project, targetSub.SubscriberID)
+	if !tunneled {
+		_ = h.bs.TouchActiveTask(r.Context(), project, targetSub.SubscriberID)
+	}
 
 	if h.terminal == nil {
 		errInternalServer(w, "terminal backend not available")

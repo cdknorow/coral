@@ -285,6 +285,10 @@ func (s *Session) readResponse(hs *HubStream) (ResponseHeader, error) {
 	if err := validHeaders(rh.Headers, s.cfg.Limits); err != nil {
 		return rh, err
 	}
+	// The connector is not trusted: its header names arrive as written. Canonical keys
+	// let the hub's filters (h.Del, h.Get) see every header; a lowercase "set-cookie"
+	// would otherwise pass them and be written as Set-Cookie by the reverse proxy (#3410).
+	rh.Headers = CanonicalHeader(rh.Headers)
 	if rh.Error != "" {
 		return rh, &StreamError{Code: rh.ErrorCode, Message: rh.Error, Status: rh.Status}
 	}

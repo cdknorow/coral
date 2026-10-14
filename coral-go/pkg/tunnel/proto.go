@@ -226,6 +226,20 @@ func (h *Header) validate(l Limits) error {
 	return validHeaders(h.Headers, l)
 }
 
+// CanonicalHeader returns h with every name in canonical form, the values of names
+// that differ only in case merged (in map order). Nil stays nil.
+func CanonicalHeader(h http.Header) http.Header {
+	if h == nil {
+		return nil
+	}
+	out := make(http.Header, len(h))
+	for k, vs := range h {
+		c := http.CanonicalHeaderKey(k)
+		out[c] = append(out[c], vs...)
+	}
+	return out
+}
+
 func validHeaders(hd http.Header, l Limits) error {
 	if len(hd) > l.MaxHeaders {
 		return fmt.Errorf("%w: too many headers", ErrBadHeader)

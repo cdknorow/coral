@@ -102,14 +102,21 @@ var stripResponseHeaders = []string{
 //   - headers that set cookies, policy, service workers or reporting on the hub
 //     origin are removed, and so is any Location that leaves the origin.
 func StrictResponseFilter(resp *http.Response) error {
-	h := resp.Header
+	// Every check below looks headers up by their canonical name, so the names are made
+	// canonical first: a connector's lowercase "set-cookie" must not slip past (#3410).
+	// (pkg/tunnel already canonicalizes a tunnel response; this filter can be given others.)
+	h := tunnel.CanonicalHeader(resp.Header)
+	if h == nil {
+		h = http.Header{}
+	}
+	resp.Header = h
 	filename := dispositionFilename(h.Get("Content-Disposition"))
 	for _, k := range stripResponseHeaders {
 		h.Del(k)
 	}
 	for k := range h {
 		if strings.HasPrefix(http.CanonicalHeaderKey(k), "Access-Control-") {
-			h.Del(k)
+			delete(h, k) // by the key as it is (SEC-TUN-03)
 		}
 	}
 	if loc := h.Get("Location"); loc != "" {

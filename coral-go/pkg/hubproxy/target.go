@@ -171,7 +171,9 @@ func SanitizePath(escaped string) (decoded, raw string, err error) {
 func hasPrefixDir(p, dir string) bool { return strings.HasPrefix(p, dir) }
 
 func httpPathAllowed(p string) bool { return hasPrefixDir(p, "/api/") }
-func wsPathAllowed(p string) bool   { return hasPrefixDir(p, "/ws/") || hasPrefixDir(p, "/api/") }
+
+// wsPathAllowed: Coral's WebSocket routes are all under /ws/ (SEC-TUN-04).
+func wsPathAllowed(p string) bool { return hasPrefixDir(p, "/ws/") }
 
 // ── Target validation and guarded transport ─────────────────────────
 

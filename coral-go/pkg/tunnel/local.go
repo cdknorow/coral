@@ -347,6 +347,9 @@ func (l *LocalHandler) checkRequest(h Header) (decoded string, ok bool) {
 	if h.Kind == KindHTTP && !strings.HasPrefix(h.Path, "/api/") {
 		return "", false // /ws/ is for WebSocket streams only
 	}
+	if h.Kind == KindWS && !strings.HasPrefix(h.Path, "/ws/") {
+		return "", false // and WebSocket streams only for /ws/ (SEC-TUN-04)
+	}
 	decoded, err := url.PathUnescape(h.Path)
 	if err != nil {
 		return "", false
