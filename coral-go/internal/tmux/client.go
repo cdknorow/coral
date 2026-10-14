@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
@@ -913,10 +914,32 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 	out, err := cmd.Output()
 	noteTmuxResult(err, bin, socketPath)
 	if err != nil {
-		log.Printf("[tmux] exec failed: bin=%q socket=%q args=%q err=%v", bin, socketPath, args, err)
+		log.Printf("[tmux] exec failed: bin=%q socket=%q args=%q err=%v stderr=%q", bin, socketPath, args, err, execStderr(err))
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// execStderrMax caps how much of tmux's stderr a failure log line carries.
+const execStderrMax = 300
+
+// execStderr returns what tmux wrote to stderr before failing, as one capped line,
+// so an exec failure explains itself ("server exited unexpectedly", "no server
+// running", "duplicate session"). cmd.Output keeps it in the ExitError.
+func execStderr(err error) string {
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		return ""
+	}
+	s := strings.Join(strings.Fields(string(ee.Stderr)), " ")
+	if len(s) > execStderrMax {
+		cut := execStderrMax
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut-- // never split a character
+		}
+		s = s[:cut] + "…"
+	}
+	return s
 }
 
 // sessionFromTarget extracts the session name from a tmux target (e.g. "name.0" → "name").
