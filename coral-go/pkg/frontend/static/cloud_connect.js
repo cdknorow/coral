@@ -39,6 +39,7 @@ export function describe(st) {
         case 'off':
             return OFF_TEXT;
         case 'idle':
+            if (codeExpired(st)) return EXPIRED_TEXT + HUB_ACCESS_URL;
             return st.last_error || ('Ready to connect to ' + st.hub_url + '. Nothing is sent until you connect.');
         case 'enrolling':
             return 'Waiting for you to approve…';
@@ -57,6 +58,16 @@ export function describe(st) {
         default:
             return st.state;
     }
+}
+
+// Coral Hub never says why a code went unapproved (that would leak who is in the beta), so an
+// expired code may mean the user could not sign in at all: say so, with where to ask for access.
+export const HUB_ACCESS_URL = 'https://coralai.ai/hub.html';
+export const EXPIRED_TEXT = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at ";
+
+/** An idle status after a code expired (last_error_code from #3285; older servers only say it in last_error). */
+export function codeExpired(st) {
+    return st.state === 'idle' && (st.last_error_code === 'code_expired' || /code expired/i.test(st.last_error || ''));
 }
 
 function safeHref(u) {
@@ -81,8 +92,22 @@ class CloudPanel {
         if (s) s.textContent = text;
     }
 
+    // The expired text with the access page as a link (Connect, shown when idle, is the retry).
+    sayExpired() {
+        const s = this.part('status');
+        if (!s) return;
+        const a = document.createElement('a');
+        a.href = HUB_ACCESS_URL;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = HUB_ACCESS_URL;
+        a.dataset.cloud = 'access-link';
+        s.replaceChildren(EXPIRED_TEXT, a);
+    }
+
     render(st) {
         this.say(describe(st));
+        if (codeExpired(st)) this.sayExpired();
         const enrolling = st.state === 'enrolling';
         const code = this.part('code');
         if (code) code.hidden = !enrolling;
