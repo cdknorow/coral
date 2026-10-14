@@ -39,13 +39,56 @@ export function readOnlyChipText(a) {
     return a.limitedBy === 'machine' ? `Read-only: This machine: ${m}` : `Read-only: Hub: ${m}`;
 }
 
+export const VIEW_ONLY_PLACEHOLDER = 'View only through Coral Hub';
+
 function renderChip() {
     const chip = document.getElementById('hub-readonly-chip');
-    if (!chip) return;
     const ro = state.currentSession && state.currentSession.hubReadOnly;
-    chip.hidden = !ro;
-    chip.textContent = ro ? ro.chip : '';
-    chip.title = ro ? ro.message : '';
+    if (chip) {
+        chip.hidden = !ro;
+        chip.textContent = ro ? ro.chip : '';
+        chip.title = ro ? ro.message : '';
+        // On a phone the chip is truncated: a tap (or Enter) says the whole reason (#3411).
+        chip.tabIndex = ro ? 0 : -1;
+    }
+    applyViewOnly(!!ro);
+}
+
+// A server only open for viewing looks read-only too (#3411): the composer is disabled with a
+// short note, Send is greyed out, and the terminal stops offering "Click to type". Every send
+// path still refuses on its own (hubBlocked); this is what the user sees before trying.
+function applyViewOnly(on) {
+    const pane = document.getElementById('command-pane');
+    if (pane) pane.classList.toggle('hub-view-only', on);
+    document.getElementById('xterm-container')?.classList.toggle('hub-view-only', on);
+    const input = document.getElementById('command-input');
+    if (!input) return;
+    if (on) {
+        if (input.dataset.hubDisabled) return;
+        // An input another state already disabled (asleep) stays that state's to undo.
+        if (input.disabled) return;
+        input.dataset.hubDisabled = '1';
+        input.dataset.hubPlaceholder = input.placeholder;
+        input.disabled = true;
+        input.placeholder = VIEW_ONLY_PLACEHOLDER;
+    } else if (input.dataset.hubDisabled) {
+        input.disabled = false;
+        input.placeholder = input.dataset.hubPlaceholder || input.placeholder;
+        delete input.dataset.hubDisabled;
+        delete input.dataset.hubPlaceholder;
+    }
+}
+
+if (typeof document !== 'undefined') {
+    const sayReason = e => {
+        const chip = e.target && e.target.closest && e.target.closest('#hub-readonly-chip');
+        if (!chip || chip.hidden || !chip.title) return;
+        if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.type === 'keydown') e.preventDefault();
+        toast(chip.title, true, 8000);
+    };
+    document.addEventListener('click', sayReason);
+    document.addEventListener('keydown', sayReason);
 }
 
 /** Mark `session` read-only with access record `a` (null clears it). Only the

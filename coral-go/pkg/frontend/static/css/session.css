@@ -2161,8 +2161,19 @@
     font-size: var(--fs-sm, 11px);
     font-weight: 600;
     white-space: nowrap;
+    /* On a narrow header it shrinks and ends in "…"; the full reason is its title, and a tap shows it (#3411). */
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 0 1 auto;
+    cursor: help;
 }
 .hub-readonly-chip[hidden] { display: none; }
+/* View only through Coral Hub (#3411): Send looks unavailable and the terminal doesn't offer typing. */
+.command-pane.hub-view-only [onclick^="sendCommand"],
+.command-pane.hub-view-only .mobile-send-btn { opacity: 0.4; pointer-events: none; }
+.xterm-container.hub-view-only .xterm-focus-hint { display: none; }
 
 /* ── Servers in the agent list (#3085) ─────────────────────────────── */
 .server-switcher-host { position: relative; flex: 0 0 auto; }
