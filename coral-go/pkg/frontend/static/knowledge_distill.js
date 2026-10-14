@@ -4,7 +4,7 @@
 
    The run is tracked here, per team, independent of any view: one poller per team while it
    runs, an event ('coral:distill-status', detail {team, job}) on every change, a toast when it
-   finishes wherever the user is, and a "Distilling…" chip on the team's sidebar header. The
+   finishes (or is lost to a server restart) wherever the user is, and a "Distilling…" chip on the team's sidebar header. The
    Knowledge tab renders from this state, so leaving the tab (or the team) and coming back
    shows the run still going, or its result. The first time the sidebar shows a team, its
    status is asked once, so a run started in another window (or before a reload) is found. */
@@ -64,6 +64,8 @@ function _ensurePoll(team) {
         if (was && was.status === 'running') {
             if (job.status === 'complete') showToast(`Knowledge for ${keyLabel(team)} is ready`);
             else if (job.status === 'failed') showToast(`Knowledge distillation for ${keyLabel(team)} failed${job.error ? ': ' + job.error : ''}`, true);
+            // Runs live in the server's memory: a restart mid-run loses it, and the status reads 'none'.
+            else if (job.status === 'none') showToast(`The distillation for ${keyLabel(team)} was interrupted (Coral restarted); start it again`, true);
         }
     };
     pollers.set(team, setInterval(tick, distillHooks.pollMs));

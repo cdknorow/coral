@@ -7,7 +7,8 @@
 //     and the tab shows the bundle with when it was updated;
 //   - a failure: with no knowledge yet, the error and Retry; with earlier knowledge, that
 //     knowledge with a note that the last run failed;
-//   - a run in progress is found after a reload, without opening the tab.
+//   - a run in progress is found after a reload, without opening the tab;
+//   - a run lost to a server restart (running → none) says so in a toast.
 // /api/teams/detail/alpha/distill-knowledge and /knowledge are scripted in the page.
 //
 // Expects CORAL_TEST_URL + CDP_PORT from tests/frontend/run.sh. Exit 0 / 1.
@@ -162,6 +163,16 @@ const BUNDLE = { exists: true, index: '# Team alpha\\n\\nWhat the team knows.', 
         await ev(`window.__distill = { team_name: 'alpha', status: 'complete', finished_at: '2026-10-14T06:20:00Z' }; window.__save(); true`);
         await until(`[...document.querySelectorAll('.toast .toast-message')].some(t => /Knowledge for alpha is ready/.test(t.textContent))`, 'the ready toast after the reload');
         check('and it is followed to the end (toast)', (await toasts()).some(t => /Knowledge for alpha is ready/.test(t)));
+
+        // ── The server restarts mid-run: the status goes back to 'none' ──
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); window.__distill = { team_name: 'alpha', status: 'running', progress: { phase: 'extracting', agent: 'lead', total: 4, completed: 1 } }; window.__save(); true`);
+        await ev(`(async () => { const m = await import((window.__coralStatic||'/static/')+'knowledge_distill.js'); await m.refreshDistill('alpha'); return true; })()`);
+        await until(`!!document.querySelector('.session-group-header .team-distill-chip')`, 'the chip for the new run');
+        await ev(`window.__distill = { status: 'none' }; window.__save(); true`);
+        await until(`[...document.querySelectorAll('.toast .toast-message')].some(t => /was interrupted/.test(t.textContent))`, 'the interrupted toast');
+        check('lost to a restart: a toast says it was interrupted', (await toasts()).some(t => /The distillation for alpha was interrupted \(Coral restarted\); start it again/.test(t)), JSON.stringify(await toasts()));
+        await until(`!document.querySelector('.session-group-header .team-distill-chip')`, 'the chip to go');
+        check('and the Distilling chip is gone', !(await chip()));
         check('no page exceptions', exceptions.length === 0, JSON.stringify(exceptions));
     } finally {
         await client.close();
