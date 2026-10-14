@@ -380,8 +380,10 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 		}
 		return
 	}
-	// On first launch the setting doesn't exist yet — prompt the user.
-	if _, configured := settings["remote_access_enabled"]; !configured && remotePrompt != nil {
+	// On first launch the setting doesn't exist yet — prompt the user, unless
+	// --remote already answered: nothing is saved, so a later start without the
+	// flag still asks.
+	if _, configured := settings["remote_access_enabled"]; !configured && remotePrompt != nil && !forceRemote {
 		enabled := remotePrompt()
 		value := "false"
 		if enabled {

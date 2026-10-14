@@ -96,3 +96,29 @@ func TestVerification_ApplyPrivacySettings_Telemetry_FailsClosed(t *testing.T) {
 	applyPrivacySettings(ctx, db, cfg, false, nil)
 	assert.Equal(t, "127.0.0.1", cfg.Host, "an unreadable opt-in must fail closed to a local-only bind")
 }
+
+func TestApplyPrivacySettings_ForceRemoteSkipsPrompt(t *testing.T) {
+	ctx := context.Background()
+	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "test.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	prompted := 0
+	prompt := func() bool { prompted++; return false }
+
+	// --remote on a fresh install: no prompt, the requested bind is kept, nothing is saved.
+	cfg := &config.Config{Host: "0.0.0.0", Port: 8420}
+	applyPrivacySettings(ctx, db, cfg, true, prompt)
+	assert.Zero(t, prompted, "--remote must not prompt")
+	assert.Equal(t, "0.0.0.0", cfg.Host)
+	settings, err := store.NewSessionStore(db).GetSettings(ctx)
+	require.NoError(t, err)
+	_, saved := settings["remote_access_enabled"]
+	assert.False(t, saved, "--remote must not persist an answer")
+
+	// Without the flag the first launch still prompts.
+	cfg = &config.Config{Host: "0.0.0.0", Port: 8420}
+	applyPrivacySettings(ctx, db, cfg, false, prompt)
+	assert.Equal(t, 1, prompted)
+	assert.Equal(t, "127.0.0.1", cfg.Host)
+}

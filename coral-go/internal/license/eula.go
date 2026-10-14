@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/cdknorow/coral/internal/testguard"
 	terms "github.com/cdknorow/coral/pkg/license"
 )
@@ -184,6 +186,11 @@ func CheckAndPromptEULA(showDialog func(tosText string) bool) bool {
 
 // TerminalEULADialog shows the TOS in the terminal and prompts for acceptance.
 func TerminalEULADialog(tosText string) bool {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		// Nobody can answer: a background start must not block in read(0).
+		fmt.Println("The Terms of Service have not been accepted and stdin is not a terminal. Run Coral once from a terminal to accept them.")
+		return false
+	}
 	fmt.Println(tosText)
 	fmt.Println("---")
 	fmt.Print("Type 'accept' to agree to the Terms of Service, or press Enter to decline: ")

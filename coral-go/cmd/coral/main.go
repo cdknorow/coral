@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"golang.org/x/term"
@@ -142,12 +143,20 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Without a terminal on stdin (a service, or a shell that started Coral in the
+	// background) a prompt would block startup in read(0) forever. Skip the remote
+	// access question then: remote access stays off and nothing is saved, so the
+	// next interactive start still asks.
+	var remotePrompt func() bool
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		remotePrompt = promptRemoteAccess
+	}
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType:        *backendFlag,
 		PasswordPrompt:     promptDatabasePassword,
 		UnlockSurface:      "tty",
 		RemoteAccess:       *remoteAccess,
-		RemoteAccessPrompt: promptRemoteAccess,
+		RemoteAccessPrompt: remotePrompt,
 	})
 	if err != nil {
 		log.Fatalf("Failed to start: %v", err)
@@ -281,6 +290,9 @@ func promptRemoteAccess() bool {
 }
 
 func promptDatabasePassword() (string, error) {
+	if !term.IsTerminal(int(syscall.Stdin)) {
+		return "", errors.New("the database is password-protected and stdin is not a terminal: start Coral from a terminal to unlock it")
+	}
 	fmt.Fprint(os.Stderr, "Coral database password: ")
 	password, err := term.ReadPassword(int(syscall.Stdin))
 	fmt.Fprintln(os.Stderr)
