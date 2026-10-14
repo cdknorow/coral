@@ -122,7 +122,8 @@ func (r *SessionReconciler) reconcileOnce(ctx context.Context) {
 		}
 		delete(r.misses, ls.SessionID)
 
-		if err := r.sessionStore.SetSessionSleeping(ctx, ls.SessionID, true); err != nil {
+		// Its terminal session is gone: asleep, and the dashboard says why (#3344).
+		if err := r.sessionStore.SetSessionSleepingFor(ctx, ls.SessionID, store.SleepReasonTerminalGone); err != nil {
 			r.logger.Error("failed to mark crashed agent as sleeping",
 				"session_id", ls.SessionID, "agent_name", ls.AgentName, "error", err)
 			continue

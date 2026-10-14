@@ -215,6 +215,9 @@ var columnMigrations = []struct {
 	// Archived: put away by the operator. Always set together with is_sleeping=1 (so every "running" check already
 	// excludes it); unlike plain sleeping it is left out of Wake All, team wake and orphan cleanup.
 	{"live_sessions", "is_archived", "INTEGER NOT NULL DEFAULT 0"},
+	// Why Coral put a sleeping agent to sleep, when it was not the user (#3344): 'terminal_gone'
+	// when its terminal session no longer exists. NULL for a sleep the user asked for; cleared on wake.
+	{"live_sessions", "sleep_reason", "TEXT"},
 	// Auto-accept (#3182): answer this agent's approve-once permission prompts. A new row (launch, restart, resume)
 	// starts off, and sleep/wake/archive clear it, so it is never on for a new agent run. The paused code is set when
 	// Coral turns it off (loop guard, expiry, hub access withdrawn, Stop all); enabling again clears it.

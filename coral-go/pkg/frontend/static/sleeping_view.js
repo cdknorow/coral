@@ -37,10 +37,19 @@ export function applySleepingView(sleeping, { manageInput = true, archived } = {
     }
     const bar = document.getElementById('sleeping-composer');
     if (bar) bar.hidden = !sleeping;
+    // Asleep because its terminal session is gone (#3344): say that, not "sleeping".
+    const cur = state.currentSession;
+    const row = cur && (state.liveSessions || []).find(s => s.session_id === cur.session_id);
+    const gone = sleeping && !archived && !!row && row.sleep_reason === 'terminal_gone';
     const text = document.getElementById('sleeping-composer-text');
-    if (text) text.textContent = archived ? 'This agent is archived' : 'This agent is sleeping';
+    if (text) text.textContent = archived ? 'This agent is archived' : gone ? "This agent's terminal is gone" : 'This agent is sleeping';
     const icon = document.getElementById('sleeping-composer-icon');
-    if (icon) icon.textContent = archived ? '🗄️' : '🌙';
+    if (icon) icon.textContent = archived ? '🗄️' : gone ? '⚠️' : '🌙';
+    if (bar) bar.classList.toggle('is-terminal-gone', gone);
+    // Its terminal session is gone, so there is nothing to wake (Wake answers ok and the agent
+    // falls asleep again): Restart is the way back (#3344).
+    const wakeBtn = document.getElementById('sleeping-wake-btn');
+    if (wakeBtn) wakeBtn.hidden = gone;
     const unarchive = document.getElementById('sleeping-unarchive-btn');
     if (unarchive) unarchive.hidden = !archived;
     const wake = document.getElementById('sleeping-wake-btn');

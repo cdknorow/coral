@@ -940,6 +940,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"log_path":              "",
 			"sleeping":              true,
 			"archived":              ls.IsArchived == 1,
+			"sleep_reason":          sleepReason(ls),
 			"first_prompt":          h.sleepingFirstPrompt(ls),
 		})
 		// Include prompt, model, and capabilities for sleeping sessions too
@@ -6207,4 +6208,13 @@ func launchDirError(dir string) string {
 		return fmt.Sprintf("directory not found: %s", dir)
 	}
 	return ""
+}
+
+// sleepReason is why Coral put a sleeping agent to sleep (#3344): "terminal_gone" when its
+// terminal session no longer exists, "" when the user (or a team action) did.
+func sleepReason(ls store.LiveSession) string {
+	if ls.SleepReason == nil {
+		return ""
+	}
+	return *ls.SleepReason
 }

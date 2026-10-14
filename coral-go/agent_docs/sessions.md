@@ -44,7 +44,7 @@ List all live (running) agent sessions with enriched status. Archived agents are
 ]
 ```
 
-Sleeping sessions (no active tmux) are included as placeholder entries with `"sleeping": true`, `"status": "Sleeping"` and `"staleness_seconds": null`. Every row carries `archived` (`true` only for an archived agent, which is always also `sleeping`; see [Sleep / Wake](#sleep--wake)).
+Sleeping sessions (no active tmux) are included as placeholder entries with `"sleeping": true`, `"status": "Sleeping"` and `"staleness_seconds": null`. Every row carries `archived` (`true` only for an archived agent, which is always also `sleeping`; see [Sleep / Wake](#sleep--wake)). A sleeping row also carries `sleep_reason` when Coral, not the user, put the agent to sleep: `"terminal_gone"` when its terminal session no longer exists (killed, or its tmux server died). It is `""` for a sleep the user asked for and is cleared on wake. The live feed's rows carry it too.
 
 `staleness_seconds` is rounded down to the unit the dashboard shows: whole seconds under a minute, whole minutes (a multiple of 60) under an hour, whole hours (a multiple of 3600) above. `/ws/coral` rows use the same value; detail endpoints keep the exact value.
 
@@ -844,7 +844,7 @@ Sleep suspends agent sessions (kills the process, preserves state). Wake relaunc
 
 Sleep, wake, archive and unarchive (like launch, restart and kill) push the change to `/ws/coral` at once instead of on the next tick.
 
-**Dashboard:** selecting a sleeping agent shows its chat history (scrollable, older pages load as you scroll up); the composer reads "This agent is sleeping" with **Wake** and **Restart…** (the popout offers Wake only), the input is disabled and every send path is refused. The agent menu offers **Archive** (asks to confirm; a running agent is stopped first), shown only for servers whose rows carry `archived`. Archived agents leave the main list, team groups and counts and appear in one collapsed **Archived (N)** section at the bottom of the list, captioned by team ("No team" last). Their composer reads "This agent is archived" with **Unarchive** and **Wake** (no Restart).
+**Dashboard:** selecting a sleeping agent shows its chat history (scrollable, older pages load as you scroll up); the composer reads "This agent is sleeping" with **Wake** and **Restart…** (the popout offers Wake only), the input is disabled and every send path is refused. The agent menu offers **Archive** (asks to confirm; a running agent is stopped first), shown only for servers whose rows carry `archived`. Archived agents leave the main list, team groups and counts and appear in one collapsed **Archived (N)** section at the bottom of the list, captioned by team ("No team" last). Their composer reads "This agent is archived" with **Unarchive** and **Wake** (no Restart). An agent asleep because its terminal is gone (`sleep_reason: "terminal_gone"`) reads **Terminal gone** in the list, stays in view (not folded into the sleeping row) with a **Terminal gone** chip that restarts it, and its composer reads "This agent's terminal is gone" with Restart… only (there is no terminal to wake)
 
 ### Team Sleep/Wake
 

@@ -61,6 +61,7 @@ type LiveSession struct {
 	NameColor     *string `db:"name_color" json:"name_color,omitempty"`
 	IsSleeping    int     `db:"is_sleeping" json:"is_sleeping"`
 	IsArchived    int     `db:"is_archived" json:"is_archived"`
+	SleepReason   *string `db:"sleep_reason" json:"sleep_reason,omitempty"`
 	BoardType     *string `db:"board_type" json:"board_type,omitempty"`
 	GitDiffMode   *string `db:"git_diff_mode" json:"git_diff_mode,omitempty"`
 	Capabilities  *string `db:"capabilities" json:"capabilities,omitempty"`
@@ -954,7 +955,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 	var sessions []LiveSession
 	err := s.db.SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
 	return sessions, err
 }
@@ -1042,7 +1043,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.db.GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1255,10 +1256,26 @@ func (s *SessionStore) SetBoardSleeping(ctx context.Context, boardName string, s
 // SetSessionSleeping sets is_sleeping for a single session. Waking also clears
 // is_archived: an archived session is always a sleeping one.
 func (s *SessionStore) SetSessionSleeping(ctx context.Context, sessionID string, sleeping bool) error {
-	query := "UPDATE live_sessions SET is_sleeping = 1 WHERE session_id = ?"
+	return s.setSessionSleeping(ctx, sessionID, sleeping, "")
+}
+
+// SleepReasonTerminalGone: Coral put the agent to sleep because its terminal session no
+// longer exists (killed, or its tmux server died), not because the user asked (#3344).
+const SleepReasonTerminalGone = "terminal_gone"
+
+// SetSessionSleepingFor puts an agent to sleep for a reason Coral found (#3344), shown in the
+// dashboard instead of a plain "Sleeping". Waking clears it.
+func (s *SessionStore) SetSessionSleepingFor(ctx context.Context, sessionID, reason string) error {
+	return s.setSessionSleeping(ctx, sessionID, true, reason)
+}
+
+func (s *SessionStore) setSessionSleeping(ctx context.Context, sessionID string, sleeping bool, reason string) error {
+	query := "UPDATE live_sessions SET is_sleeping = 1, sleep_reason = NULLIF(?, '') WHERE session_id = ?"
+	args := []any{reason, sessionID}
 	code := AutoAcceptAgentSlept
 	if !sleeping {
-		query = "UPDATE live_sessions SET is_sleeping = 0, is_archived = 0 WHERE session_id = ?"
+		query = "UPDATE live_sessions SET is_sleeping = 0, is_archived = 0, sleep_reason = NULL WHERE session_id = ?"
+		args = []any{sessionID}
 		code = AutoAcceptAgentWoken
 	}
 	// Sleeping stops the agent process and waking starts a new one: either way
@@ -1267,7 +1284,7 @@ func (s *SessionStore) SetSessionSleeping(ctx context.Context, sessionID string,
 		if err := clearAutoAcceptTx(ctx, tx, sessionID, code, false); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, query, sessionID)
+		_, err := tx.ExecContext(ctx, query, args...)
 		return err
 	})
 }

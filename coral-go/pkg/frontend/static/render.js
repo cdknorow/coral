@@ -7,6 +7,7 @@ import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
 import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge, hubUserBadge } from './utils.js';
 import { renderTranscript } from './live_chat.js';
+import { isGoneAsleep } from './terminal_gone.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
@@ -226,7 +227,11 @@ export function deriveSessionState(s, opts = {}) {
 
 export function sessionStateInfo(s, opts) {
     const key = deriveSessionState(s, opts);
-    return { key, ...SESSION_STATES[key] };
+    const info = { key, ...SESSION_STATES[key] };
+    // Asleep because its terminal session is gone, not because anyone asked (#3344): the
+    // same state, said plainly. The row's "Terminal gone" chip restarts it.
+    if (key === 'sleeping' && isGoneAsleep(s)) info.label = 'Terminal gone';
+    return info;
 }
 
 function getStateLabel(s) {
@@ -1976,8 +1981,10 @@ function _renderSleepingSummary(sleepingAgents, groupName, isCompact, teamDefaul
 function _renderAgentListWithSubgroups(agents, teamDefaultDir, isCompact, groupName) {
     if (!agents.length) return "";
 
-    const awake = agents.filter(s => !s.sleeping);
-    const sleeping = agents.filter(s => s.sleeping);
+    // An agent asleep because its terminal is gone stays in view with its "Terminal gone" chip
+    // (#3344), not folded into the "N sleeping agents" row: it needs a Restart, not a nap.
+    const awake = agents.filter(s => !s.sleeping || isGoneAsleep(s));
+    const sleeping = agents.filter(s => s.sleeping && !isGoneAsleep(s));
 
     // One flat list: an agent's folder is shown in the header bar, not as
     // sidebar sub-groups.

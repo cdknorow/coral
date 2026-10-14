@@ -21,7 +21,13 @@ const _gone = new Set();
 const keyOf = s => `${sessionServer(s)}|${s.session_id}`;
 
 export function isTerminalGone(s) {
-    return !!s && !!s.session_id && _gone.has(keyOf(s));
+    return !!s && !!s.session_id && (_gone.has(keyOf(s)) || isGoneAsleep(s));
+}
+
+/** Coral put this agent to sleep because its terminal session no longer exists (#3344): the
+ *  server says so (sleep_reason). An archived agent is just archived. */
+export function isGoneAsleep(s) {
+    return !!s && !!s.sleeping && !s.archived && s.sleep_reason === 'terminal_gone';
 }
 
 /** Record that this agent's terminal is gone and show it on its row and header. */

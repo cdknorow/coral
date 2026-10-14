@@ -209,3 +209,40 @@ func TestReconciler_DoesNotKillActiveOrUnknownSessions(t *testing.T) {
 		t.Fatalf("unexpected kills: %v", rt.killed)
 	}
 }
+
+// #3344: an agent whose terminal session is gone is asleep FOR THAT REASON, so the dashboard
+// can say "Terminal gone" instead of "Sleeping"; waking clears it, and a sleep the user asks
+// for has no reason.
+func TestReconciler_GoneTerminalSleepsWithItsReason(t *testing.T) {
+	ss, rt, r := newReconcilerFixture(t)
+	ctx := context.Background()
+	registerAwake(t, ss, "terminal", testUUID)
+	rt.listed = nil
+	for i := 0; i < reconcileMissThreshold; i++ {
+		r.reconcileOnce(ctx)
+	}
+	ls, err := ss.GetLiveSession(ctx, testUUID)
+	if err != nil || ls == nil {
+		t.Fatalf("get: %v", err)
+	}
+	if ls.IsSleeping != 1 || ls.SleepReason == nil || *ls.SleepReason != store.SleepReasonTerminalGone {
+		t.Fatalf("want asleep with reason terminal_gone, got sleeping=%d reason=%v", ls.IsSleeping, ls.SleepReason)
+	}
+	all, err := ss.GetAllLiveSessions(ctx)
+	if err != nil || len(all) != 1 || all[0].SleepReason == nil || *all[0].SleepReason != store.SleepReasonTerminalGone {
+		t.Fatalf("the live list carries the reason too: %+v %v", all, err)
+	}
+
+	if err := ss.SetSessionSleeping(ctx, testUUID, false); err != nil {
+		t.Fatal(err)
+	}
+	if ls, _ = ss.GetLiveSession(ctx, testUUID); ls.SleepReason != nil {
+		t.Fatalf("waking clears the reason, got %v", *ls.SleepReason)
+	}
+	if err := ss.SetSessionSleeping(ctx, testUUID, true); err != nil {
+		t.Fatal(err)
+	}
+	if ls, _ = ss.GetLiveSession(ctx, testUUID); ls.IsSleeping != 1 || ls.SleepReason != nil {
+		t.Fatalf("a sleep the user asks for has no reason, got %v", ls.SleepReason)
+	}
+}
