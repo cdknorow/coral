@@ -173,3 +173,16 @@ func TestGetJobUnknownOrDeletedAnswers404(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code, "deleted job answers 404")
 	assert.Equal(t, "job not found", deletedBody["error"])
 }
+
+// Toggling or updating an unknown job answers 404 {"error":"job not found"}, like
+// GET: the toggle used to dereference the missing job and answer 500 with no body.
+func TestToggleAndUpdateOfAnUnknownJobAnswer404(t *testing.T) {
+	srv, _ := scheduleTestServer(t)
+	code, body := sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs/999999/toggle", nil)
+	assert.Equal(t, http.StatusNotFound, code, "toggle of an unknown job")
+	assert.Equal(t, "job not found", body["error"])
+
+	code, body = sendJSON(t, http.MethodPut, srv.URL+"/api/scheduled/jobs/999999", map[string]any{"name": "x"})
+	assert.Equal(t, http.StatusNotFound, code, "update of an unknown job")
+	assert.Equal(t, "job not found", body["error"])
+}

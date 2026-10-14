@@ -244,7 +244,7 @@ func (h *ScheduleHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if updated == nil {
-		errNotFound(w, "Job not found")
+		errNotFound(w, "job not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
@@ -267,6 +267,10 @@ func (h *ScheduleHandler) ToggleJob(w http.ResponseWriter, r *http.Request) {
 	jobID, _ := strconv.ParseInt(chi.URLParam(r, "jobID"), 10, 64)
 	job, err := h.sched.GetScheduledJob(r.Context(), jobID)
 	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if job == nil {
 		errNotFound(w, "job not found")
 		return
 	}

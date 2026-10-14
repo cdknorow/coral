@@ -202,7 +202,7 @@ curl -X PUT http://localhost:8420/api/scheduled/jobs/7 \
 
 Returns the updated job object.
 
-Returns `{"error": "Job not found"}, 404` if the job ID does not exist.
+Returns `{"error": "job not found"}, 404` if the job ID does not exist.
 
 ---
 
