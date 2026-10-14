@@ -209,6 +209,13 @@ func TestAutoAcceptEnableFromALoggedInRemoteDashboard(t *testing.T) {
 
 	token, err := r.srv.keyStore.CreateSession("192.168.1.20", "test")
 	require.NoError(t, err)
+	// A logged-in browser whose URL also carries a credential is a script or a link,
+	// not the dashboard: refused for any credential-named parameter (#3279).
+	for _, q := range []string{"?token=x", "?apikey=x", "?api_key=x"} {
+		rec = lan(enable+q, same, token)
+		require.Equal(t, 403, rec.Code, q+" "+rec.Body.String())
+		assert.Equal(t, "no_dashboard_provenance", codeOf(rec), q)
+	}
 	// Logged in, but another site's page: refused.
 	rec = lan(enable, map[string]string{"Sec-Fetch-Site": "cross-site"}, token)
 	require.Equal(t, 403, rec.Code)

@@ -154,6 +154,33 @@ var debugEnabled = sync.OnceValue(func() bool {
 // being a symptom worth a log line. A variable so tests need not be slow.
 var slowRequestThreshold = time.Second
 
+// credentialQueryName reports whether a query parameter name carries a credential.
+func credentialQueryName(name string) bool {
+	switch strings.ToLower(name) {
+	case "api_key", "apikey", "key", "token", "access_token", "authorization", "secret", "password":
+		return true
+	}
+	return false
+}
+
+// hasCredentialQuery reports whether r carries a credential in its query string
+// (an API key, a token). It reads no value: handlers use it to refuse such a
+// request, so it must not register as a query parameter the route accepts
+// (pkg/tunnel/routes_query.go, #3279: through the Coral Hub tunnel a secret in a
+// URL would end up in logs, and nothing on this server needs one there).
+func hasCredentialQuery(r *http.Request) bool {
+	vals, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		return true // unparseable: treat as carrying one
+	}
+	for k := range vals {
+		if credentialQueryName(k) {
+			return true
+		}
+	}
+	return false
+}
+
 // RedactQuery masks credential-bearing query parameters (api_key and friends)
 // so a raw query string can be logged safely.
 func RedactQuery(raw string) string {
@@ -166,8 +193,7 @@ func RedactQuery(raw string) string {
 	}
 	changed := false
 	for k := range vals {
-		switch strings.ToLower(k) {
-		case "api_key", "apikey", "key", "token", "access_token", "authorization", "secret", "password":
+		if credentialQueryName(k) {
 			for i := range vals[k] {
 				vals[k][i] = "REDACTED"
 			}

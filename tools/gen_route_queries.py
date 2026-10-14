@@ -21,6 +21,11 @@ FILE_PARAMS = {'filepath', 'dir', 'path', 'working_directory', 'file', 'ref', 'c
 # against this table (coral-hub internal/e2e TestChromeUIPass records them). Add here, with the reason, never
 # loosen the table any other way.
 EXTRA = {
+    # The recorded hub UI sends session_id with the board task list (pkg/tunnel TestRealUIQueriesAreNotRefused); the list
+    # is per board, so BoardHandler.ListTasks ignores it. It was allowed before only because a same-named handler read it.
+    'GET /api/board/{}/tasks': {'session_id'},
+    # The recorded hub UI sends limit with an agent's personal task list; SessionsHandler.ListTasks returns them all.
+    'GET /api/sessions/live/{}/tasks': {'limit'},
     # file_explorer.js pages a directory listing with offset; the handler returns the first page regardless.
     'GET /api/sessions/live/{}/search-files': {'offset'},
     # The Agent UI routes are registered by SessionsHandler.RegisterAgentUI, which the registration scan above does not follow.
@@ -66,7 +71,9 @@ def params(body, seen, depth=0):
         ps.add(a or b)
     ps |= {lit for fn, lit in qre3.findall(body) if fn not in NOT_QUERY}
     if depth < 3:
-        for m in re.finditer(r'(?:\bh\.)?(\w+)\([^()]*\br\b[^()]*\)', body):
+        # Calls in the body only: the function's own signature "Name(w http.ResponseWriter, r *http.Request)" is not a
+        # call, and matching it pulled in every handler of the same name (#3279).
+        for m in re.finditer(r'(?:\bh\.)?(\w+)\([^()]*\br\b[^()]*\)', body[body.find('{') + 1:]):
             for (rt, fn), b2 in B.items():
                 if fn == m.group(1) and (rt, fn) not in seen:
                     seen.add((rt, fn))
@@ -76,13 +83,18 @@ def params(body, seen, depth=0):
 
 reg = re.compile(r'r\.(Get|Post|Put|Patch|Delete)\("([^"]+)",\s*([\w\.]+)\)')
 sv = open(ROOT + '/server.go').read()
+# The handler type behind each variable a route is registered on (boardHandler := routes.NewBoardHandler(...)),
+# so a method is matched on its own type: BoardHandler.ListTasks and SessionsHandler.ListTasks used to pool their
+# parameters (#3279).
+htype = {v: t for v, t in re.findall(r'(?:\bs\.)?(\w+)\s*:?=\s*routes\.New(\w+)\(', sv)}
 rows = {}
 for m in reg.finditer(sv):
     meth, route, h = m.groups()
     name = h.split('.')[-1]
+    want = htype.get(h.split('.')[-2]) if '.' in h else None
     ps = set()
     for (rt, fn), b in B.items():
-        if fn == name and rt:
+        if fn == name and rt and (want is None or rt == want):
             ps |= params(b, set())
     # Names that are PATH parameters of this very route are not query parameters (handlers read them through
     # helpers such as chi.URLParam or local wrappers that also take (r, "name")).

@@ -613,7 +613,7 @@ func (h *SessionsHandler) autoAcceptPayload(ctx context.Context, sessionID strin
 // never qualify. A remote browser with a session already has full control of
 // the agents (keys, answer-prompt), so this widens nothing.
 func dashboardBrowser(r *http.Request) bool {
-	if viaTunnel(r) || r.URL.Query().Get("api_key") != "" ||
+	if viaTunnel(r) || hasCredentialQuery(r) ||
 		strings.HasPrefix(strings.ToLower(strings.TrimSpace(r.Header.Get("Authorization"))), "bearer ") {
 		return false
 	}
