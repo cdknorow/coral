@@ -19,8 +19,9 @@ func FetchFromAPI(serverURL, board string) ([]Task, []Message, *BoardStatus, err
 	client := &http.Client{Timeout: 15 * time.Second}
 	cleanServer := strings.TrimRight(serverURL, "/")
 
-	// 1. Fetch tasks
-	tasksURL := fmt.Sprintf("%s/api/board/%s/tasks", cleanServer, url.PathEscape(board))
+	// 1. Fetch tasks: every task in full (the list is paged with light items since
+	// #3269; full=1 keeps the full answer, and an older server ignores it).
+	tasksURL := fmt.Sprintf("%s/api/board/%s/tasks?full=1", cleanServer, url.PathEscape(board))
 	resp, err := client.Get(tasksURL)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed to fetch tasks from %s: %w", tasksURL, err)

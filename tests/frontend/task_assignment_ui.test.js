@@ -18,8 +18,8 @@ if (!base || !/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base) || /:8420\
             window.s=(await import((window.__coralStatic||'/static/')+'state.js')).state;
             window.t=await import((window.__coralStatic||'/static/')+'tasks.js');
             s.currentSession={name:'fixture',board_project:'fixture',type:'live'};
-            s.currentBoardTasks=[{id:1,title:'Assigned task',body:'',priority:'medium',status:'pending',assigned_to:'Orchestrator'},
-                {id:2,title:'Second task',body:'',priority:'medium',status:'pending',assigned_to:'UI'}];
+            s.currentBoardTasks=[{id:1,title:'Assigned task',body:'',priority:'medium',status:'pending',assigned_to:'Orchestrator',workflow:{}},
+                {id:2,title:'Second task',body:'',priority:'medium',status:'pending',assigned_to:'UI',workflow:{}}];
             window.mode='missing';window.writes=[];window.pending=[];
             window.fetch=async (url,opts={})=>{
                 if(opts.method==='PATCH'){writes.push({url,body:JSON.parse(opts.body)});return new Response('{}');}
@@ -31,7 +31,7 @@ if (!base || !/^http:\/\/(127\.0\.0\.1|localhost):\d+\/?$/.test(base) || /:8420\
                     if(mode==='present')return new Response('[{"subscriber_id":"Orchestrator"},{"subscriber_id":"Orchestrator"},{"name":"UI"}]');
                     return new Response('[{"subscriber_id":"UI"}]');
                 }
-                if(url.endsWith('/tasks'))return new Response(JSON.stringify({tasks:s.currentBoardTasks}));
+                if(String(url).split('?')[0].endsWith('/tasks'))return new Response(JSON.stringify({tasks:s.currentBoardTasks}));
                 return new Response('{}');
             };
         })()`);

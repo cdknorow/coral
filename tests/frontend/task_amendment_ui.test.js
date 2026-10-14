@@ -29,7 +29,7 @@ const BASE = require('./test_base').BASE;
                 const body = opts.body ? JSON.parse(opts.body) : null;
                 window.__requests.push({url, method:opts.method || 'GET', body});
                 if (url.includes('/subscribers')) return new Response(JSON.stringify([{subscriber_id:'Operator'},{subscriber_id:'UI'}]), {status:200});
-                if (url.endsWith('/tasks') && (!opts.method || opts.method === 'GET')) return new Response(JSON.stringify({tasks:state.currentBoardTasks}), {status:200});
+                if (String(url).split('?')[0].endsWith('/tasks') && (!opts.method || opts.method === 'GET')) return new Response(JSON.stringify({tasks:state.currentBoardTasks}), {status:200});
                 if (url.endsWith('/amend')) {
                     if (window.__amendMode === 'forbidden') return new Response(JSON.stringify({error:'planner authorization required'}), {status:403});
                     if (window.__amendMode === 'conflict') return new Response(JSON.stringify({error:'task revision is stale'}), {status:409});

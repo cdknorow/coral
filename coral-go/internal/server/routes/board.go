@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -1402,16 +1403,44 @@ func formatBlockerList(deps []board.TaskDep) string {
 	return strings.Join(parts, ", ")
 }
 
-// ListTasks returns all tasks for a board.
-// GET /api/board/{project}/tasks
+// ListTasks returns a page of the board's task list (#3269).
+// GET /api/board/{project}/tasks?status=open|completed|all&limit=50&cursor=...
+//
+// Items carry list fields only (board.TaskListItem); the full task is at
+// GET /api/board/{project}/tasks/{taskID}. With no status: every open task plus the
+// newest done tasks, and next_cursor continues with status=completed. full=1 returns
+// every task in full, as before pagination, for callers that need it.
 func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
-	tasks, err := h.bs.ListTasks(r.Context(), project)
+	q := r.URL.Query()
+	if q.Get("full") == "1" {
+		tasks, err := h.bs.ListTasks(r.Context(), project)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"tasks": emptyIfNil(tasks)})
+		return
+	}
+	query := board.TaskListQuery{Status: q.Get("status"), Cursor: q.Get("cursor")}
+	if l := q.Get("limit"); l != "" {
+		n, err := strconv.Atoi(l)
+		if err != nil || n <= 0 {
+			errBadRequest(w, "limit must be a positive number")
+			return
+		}
+		query.Limit = n
+	}
+	page, err := h.bs.ListTaskPage(r.Context(), project, query)
+	if errors.Is(err, board.ErrBadTaskListQuery) {
+		errBadRequest(w, err.Error())
+		return
+	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tasks": emptyIfNil(tasks)})
+	writeJSON(w, http.StatusOK, page)
 }
 
 // ListAllTasks returns the most recent tasks across all boards.

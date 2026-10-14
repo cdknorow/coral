@@ -341,6 +341,10 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_board_status ON board_tasks(board_id, status);
 		CREATE INDEX IF NOT EXISTS idx_board_tasks_assigned ON board_tasks(board_id, assigned_to);
+		-- The task list pages done tasks newest first (ListTaskPage, #3269). The WHERE clause
+		-- must stay identical to doneTaskStatusSQL for SQLite to use this partial index.
+		CREATE INDEX IF NOT EXISTS idx_board_tasks_done ON board_tasks(board_id, completed_at, id)
+			WHERE status IN ('completed', 'skipped');
 		CREATE TABLE IF NOT EXISTS task_amendments (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			task_id INTEGER NOT NULL REFERENCES board_tasks(id),

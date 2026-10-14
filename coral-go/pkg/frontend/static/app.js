@@ -25,7 +25,7 @@ import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } fro
 import { loadSessionNotes, saveNotes, generateSummary, resummarize, toggleNotesEdit, cancelNotesEdit, switchHistoryTab } from './notes.js';
 import { loadSessionTags, addTagToSession, removeTagFromSession, showTagDropdown, hideTagDropdown, createTag, loadAllTags } from './tags.js';
 import { loadSessionCommits } from './commits.js';
-import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
+import { loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, loadMoreBoardTasks, renderBoardTaskList, showTaskDetailModal, hideTaskDetailModal, showCreateTaskModal, hideCreateTaskModal, submitCreateTask, enableTaskEditMode, saveTaskEdit, cancelTaskEdit, completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder } from './tasks.js';
 import { loadChangedFiles, openFilePreview, openFileEdit, refreshChangedFiles, toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles, initFileSearch, initTopBarSearch, showTopBarSearch, hideTopBarSearch } from './changed_files.js';
 import { initFileMention } from './file_mention.js';
 import { initCommandMention } from './command_mention.js';
@@ -143,7 +143,7 @@ Object.assign(window, {
     toggleGitDiffMode, setGitDiffMode, toggleStarFile, copyFilePath, searchRepoFiles, renderStarredFiles,
     // tasks
     loadAgentTasks, addAgentTask, toggleAgentTask, deleteAgentTask, editAgentTaskTitle, loadBoardTasks, renderBoardTaskList,
-    showTaskDetailModal, hideTaskDetailModal,
+    showTaskDetailModal, hideTaskDetailModal, loadMoreBoardTasks,
     showCreateTaskModal, hideCreateTaskModal, submitCreateTask,
     enableTaskEditMode, saveTaskEdit, cancelTaskEdit,
     completeBoardTask, cancelBoardTask, _doCompleteTask, _doCancelTask, _restoreTaskFooter, publishBoardTask, nudgeBoardTask, remindBoardTask, stopBoardTaskReminder,

@@ -504,25 +504,115 @@ function initTaskDragReorder() {
 // older answer for the same board) never replaces a newer one (#3262).
 let _boardTasksLoadSeq = 0;
 
+// The task list is paged (#3269): a load gets every open task and the newest done tasks,
+// as light items (no body or workflow text; the detail view fetches the full task).
+// "Load more" pages older done tasks with the cursor; a poll refreshes the first page
+// and keeps the older pages already loaded.
+export const BOARD_TASK_PAGE = 50;
+// A fetch that never answers (a hung server, a dead hub link) must not stop the poll for
+// good, since the poll never starts a tick while one runs (#3262).
+export const boardTaskFetchHooks = { timeoutMs: 20000 };
+const _emptyBoardList = board => ({ board, first: [], older: [], nextCursor: '', totalOpen: null, totalCompleted: null });
+let _boardList = _emptyBoardList(null);
+
+async function _boardTasksFetch(boardName, suffix) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), boardTaskFetchHooks.timeoutMs);
+    try {
+        const resp = await boardFetch(boardName, suffix, { signal: ctrl.signal });
+        if (!resp.ok) throw new Error(`board tasks fetch failed: ${resp.status}`);
+        return await resp.json();
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/** The list: the first page, then the older done tasks loaded with "Load more". */
+function _setBoardTasks() {
+    const first = new Set(_boardList.first.map(t => t.id));
+    _boardList.older = _boardList.older.filter(t => !first.has(t.id) && (t.status === 'completed' || t.status === 'skipped'));
+    state.currentBoardTasks = [..._boardList.first, ..._boardList.older];
+}
+
 export async function loadBoardTasks(boardName) {
     const seq = ++_boardTasksLoadSeq;
     if (!boardName) {
+        _boardList = _emptyBoardList(null);
         state.currentBoardTasks = [];
         renderBoardTaskList();
         return;
     }
-    let tasks;
+    let data = null;
     try {
-        const resp = await boardFetch(boardName, `/tasks`);
-        if (!resp.ok) throw new Error(`board tasks fetch failed: ${resp.status}`);
-        const data = await resp.json();
-        tasks = data.tasks || [];
+        data = await _boardTasksFetch(boardName, `/tasks?limit=${BOARD_TASK_PAGE}`);
     } catch (e) {
-        tasks = [];
+        data = null;
     }
     if (seq !== _boardTasksLoadSeq) return;
-    state.currentBoardTasks = tasks;
+    const sameBoard = _boardList.board === boardName;
+    if (!data) {
+        // A failed refresh keeps the board's last good list; another board's is dropped.
+        if (sameBoard) return;
+        _boardList = _emptyBoardList(boardName);
+        state.currentBoardTasks = [];
+        renderBoardTaskList();
+        return;
+    }
+    // Once "Load more" was used, the done tasks the old first page had are kept too: a task
+    // finished since pushes the oldest of them off page one, and the cursor continues after
+    // the older pages, so nothing else would bring it back.
+    const older = sameBoard && _boardList.older.length
+        ? [..._boardList.first.filter(t => t.status === 'completed' || t.status === 'skipped'), ..._boardList.older]
+        : [];
+    _boardList = {
+        board: boardName,
+        first: data.tasks || [],
+        older,
+        // Once older pages are loaded, "Load more" continues after the last of them.
+        nextCursor: older.length ? _boardList.nextCursor : (data.next_cursor || ''),
+        // A server from before pagination sends every task and no totals.
+        totalOpen: data.total_open ?? null,
+        totalCompleted: data.total_completed ?? null,
+    };
+    _setBoardTasks();
     renderBoardTaskList();
+}
+
+/** "Load more": the next page of done tasks. */
+export async function loadMoreBoardTasks() {
+    const board = _boardList.board;
+    const cursor = _boardList.nextCursor;
+    if (!board || !cursor) return;
+    const seq = _boardTasksLoadSeq;
+    let data;
+    try {
+        data = await _boardTasksFetch(board, `/tasks?status=completed&limit=${BOARD_TASK_PAGE}&cursor=${encodeURIComponent(cursor)}`);
+    } catch (e) {
+        showToast('Could not load more tasks. Try again.', true);
+        return;
+    }
+    // The user moved to another board meanwhile, or the list was reloaded from scratch.
+    if (_boardList.board !== board || _boardList.nextCursor !== cursor || seq !== _boardTasksLoadSeq) return;
+    _boardList.older = [..._boardList.older, ...(data.tasks || [])];
+    _boardList.nextCursor = data.next_cursor || '';
+    _setBoardTasks();
+    renderBoardTaskList();
+}
+
+// Full tasks fetched for the detail view, by id. A list item is light (#3269).
+const _fullBoardTasks = new Map();
+
+/** The full task when fetched and still current, else the list item. */
+function _boardTaskById(taskId) {
+    const item = (state.currentBoardTasks || []).find(t => t.id === taskId);
+    const full = _fullBoardTasks.get(taskId);
+    if (item && full && full.revision === item.revision && full.status === item.status) return full;
+    return item || null;
+}
+
+/** A list item says review_requested; a full task has workflow.completion_review. */
+function _reviewRequested(t) {
+    return !!(t && (t.review_requested || t.workflow?.completion_review));
 }
 
 // Current sort and filter state for task list
@@ -609,7 +699,12 @@ export function renderBoardTaskList() {
     const subagentTasks = (state.currentSubagents || []).map(sa => subagentToTaskRow(sa, agentDisplayName));
 
     const allTasks = [...boardTasks, ...agentTasks, ...subagentTasks];
-    const completedCount = allTasks.filter(t => t.status === 'completed' || t.status === 'skipped').length;
+    const isDone = t => t.status === 'completed' || t.status === 'skipped';
+    const otherTasks = [...agentTasks, ...subagentTasks];
+    // The board's done tasks are counted by the server: only a page of them is loaded (#3269).
+    const boardDoneLoaded = boardTasks.filter(isDone).length;
+    const boardDoneTotal = _boardList.totalCompleted ?? boardDoneLoaded;
+    const completedCount = boardDoneTotal + otherTasks.filter(isDone).length;
     const tasks = allTasks.filter(t => {
         if (_hideCompleted && (t.status === 'completed' || t.status === 'skipped')) return false;
         return true;
@@ -696,19 +791,19 @@ export function renderBoardTaskList() {
         const taskIdLabel = t.id != null ? `#${t.id}` : '\u2014';
         const title = escapeHtml(t.title || t.description || '');
         const tooltip = isSubagent ? ` title="${escapeAttr(_subagentTooltip(t))}"`
-            : t.body ? ` title="${escapeAttr(t.body)}"` : '';
+            : (t.body || t.body_preview) ? ` title="${escapeAttr(t.body || t.body_preview)}"` : '';
         const timeStr = _formatTaskTime(t.created_at);
         const statusWrap = (className, detail, icon, label) =>
             `<span class="board-task-status-wrap ${className}" title="${escapeAttr(detail)}" aria-label="${escapeAttr(detail)}" role="img" tabindex="0">${icon}<span class="board-task-status-label">${label}</span></span>`;
         const activelyClaimed = t.status === 'in_progress' && Boolean(t.claimed_at);
         const workingDetail = activelyClaimed ? 'Claimed · Working' : 'Open · Working';
-        const statusIcon = t.workflow?.outcome === 'failed'
+        const statusIcon = (t.outcome || t.workflow?.outcome) === 'failed'
             ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
             : t.status === 'completed'
             ? statusWrap('completed', 'Finished', '<span class="material-icons board-task-status-icon completed" aria-hidden="true">check_circle</span>', 'Finished')
             : t.status === 'review_pending'
             ? statusWrap('blocked', 'Open · Review pending', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', '<b>Review</b>')
-            : t.workflow?.completion_review && t.status === 'in_progress'
+            : _reviewRequested(t) && t.status === 'in_progress'
             ? statusWrap('blocked', 'Open · Review requested', '<span class="material-icons board-task-status-icon blocked" aria-hidden="true">rate_review</span>', 'Open <b>· Review requested</b>')
             : t.status === 'in_progress'
             ? statusWrap('in-progress', workingDetail, '<span class="task-spinner" aria-hidden="true"></span>', activelyClaimed ? 'Claimed' : 'Open')
@@ -770,13 +865,20 @@ export function renderBoardTaskList() {
         </div>`;
     }).join('');
 
-    container.innerHTML = header + rows;
+    // Older done tasks come a page at a time (#3269).
+    const notLoaded = Math.max(0, boardDoneTotal - boardDoneLoaded);
+    const more = _boardList.nextCursor && !_hideCompleted
+        ? `<div class="board-task-more"><button type="button" class="btn board-task-load-more" onclick="window.loadMoreBoardTasks()">Load more done tasks${notLoaded ? ` (${notLoaded} not shown)` : ''}</button></div>`
+        : '';
+    container.innerHTML = header + rows + more;
 
-    // Update task count badge
+    // Update task count badge: done / all; the board's numbers are the server's totals.
     const countEl = document.getElementById('task-bar-count');
     if (countEl) {
-        const doneCount = allTasks.filter(t => t.status === 'completed' || t.status === 'skipped').length;
-        countEl.textContent = allTasks.length > 0 ? `${doneCount}/${allTasks.length}` : '';
+        const boardTotal = _boardList.totalOpen !== null && _boardList.totalCompleted !== null
+            ? _boardList.totalOpen + _boardList.totalCompleted : boardTasks.length;
+        const total = boardTotal + otherTasks.length;
+        countEl.textContent = total > 0 ? `${completedCount}/${total}` : '';
     }
 }
 
@@ -1030,15 +1132,38 @@ function _getBoardProject() {
 
 /* ── Task Detail Modal ─────────────────────────────────── */
 
+/** The full task: fetched now unless already fetched and current. null when it cannot be read. */
+async function _ensureFullBoardTask(taskId) {
+    const have = _boardTaskById(taskId);
+    if (have && have.workflow) return have;
+    const board = _getBoardProject();
+    if (!board) return null;
+    try {
+        const task = await _boardTasksFetch(board, `/tasks/${Number(taskId)}`);
+        if (!task || task.id !== taskId) return null;
+        _fullBoardTasks.set(taskId, task);
+        return task;
+    } catch {
+        return null;
+    }
+}
+
+/** Fetch the full task for the open detail view; show it if the view still shows that task. */
+async function _fetchFullBoardTask(taskId, generation) {
+    const task = await _ensureFullBoardTask(taskId);
+    if (task && generation === _editGeneration && _boardTaskById(taskId) === task) showTaskDetailModal(taskId);
+}
+
 export function showTaskDetailModal(taskId) {
     ++_editGeneration;
     _editOriginalTask = null;
     _openSubagentId = null; // the modal is shared; it now shows a board task
     const sharedContent = document.getElementById('task-detail-content');
     if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
-    const tasks = state.currentBoardTasks || [];
-    const task = tasks.find(t => t.id === taskId);
+    const task = _boardTaskById(taskId);
     if (!task) return;
+    // A list item is light (#3269): it shows at once, and the full task once fetched.
+    if (!task.workflow) _fetchFullBoardTask(taskId, _editGeneration);
 
     const modal = document.getElementById('task-detail-modal');
     const titleEl = document.getElementById('task-detail-modal-title');
@@ -1051,7 +1176,7 @@ export function showTaskDetailModal(taskId) {
     // Update footer with action buttons for editable tasks
     const footer = document.getElementById('task-detail-modal-footer');
     if (footer) {
-        const isEditable = !task.workflow?.completion_review && (task.status === 'pending' || task.status === 'in_progress' || task.status === 'blocked' || task.status === 'draft');
+        const isEditable = !_reviewRequested(task) && (task.status === 'pending' || task.status === 'in_progress' || task.status === 'blocked' || task.status === 'draft');
         if (isEditable) {
             const canComplete = task.status !== 'blocked' && task.status !== 'draft';
             const showPublish = task.status === 'draft';
@@ -1357,9 +1482,17 @@ let _editBoardProject = null;
 let _editGeneration = 0;
 
 export async function enableTaskEditMode(taskId) {
-    const tasks = state.currentBoardTasks || [];
-    const task = tasks.find(t => t.id === taskId);
+    let task = _boardTaskById(taskId);
     if (!task) return;
+    if (!task.workflow) {
+        // Never edit a light list item: its body is only a preview, and saving it would
+        // cut the body short (#3269).
+        task = await _ensureFullBoardTask(taskId);
+        if (!task) {
+            showToast('Could not load the task to edit it. Try again.', true);
+            return;
+        }
+    }
     _editOriginalTask = task;
     const editGeneration = ++_editGeneration;
     _editBoardProject = _getBoardProject();
@@ -1539,7 +1672,7 @@ export function completeBoardTask(taskId, personal = false) {
     if (!footer || !content) return;
     const task = personal
         ? (state.currentAgentTasks || []).find(item => item.id === taskId)
-        : (state.currentBoardTasks || []).find(item => item.id === taskId);
+        : _boardTaskById(taskId);
     const requiredOutputs = _taskRequiredOutputs(task);
     const requiredLabel = requiredOutputs.length
         ? `<section class="task-completion-required" aria-label="Required outputs"><strong>Required outputs</strong><ul>${requiredOutputs.map(output => `<li>${escapeHtml(output)}</li>`).join('')}</ul><p>Provide each named output below or in the manifest before completing.</p></section>`
@@ -1591,7 +1724,7 @@ export async function _doCompleteTask(taskId, personal = false) {
         });
         const task = personal
             ? (state.currentAgentTasks || []).find(item => item.id === taskId)
-            : (state.currentBoardTasks || []).find(item => item.id === taskId);
+            : _boardTaskById(taskId);
         const requiredOutputs = _taskRequiredOutputs(task);
         const suppliedNames = new Set(artifacts.map(artifact => artifact?.name).filter(Boolean));
         const missingOutputs = requiredOutputs.filter(output => !suppliedNames.has(output));

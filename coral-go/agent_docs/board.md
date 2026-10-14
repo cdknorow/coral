@@ -542,12 +542,34 @@ Notifications are best effort and do not control claimability.
 
 ```
 GET /api/board/{project}/tasks
+GET /api/board/{project}/tasks?status=completed&limit=50&cursor=<next_cursor>
 ```
+
+A page of the board's task list. Items carry list fields only: no `body`,
+`completion_message` or `workflow`. Read one task in full with
+[Task Detail](#task-detail).
+
+| Parameter | Meaning |
+|---|---|
+| *(none)* | Every open task (pending, in progress, blocked, draft, review pending), ordered by priority then ID, followed by the newest done tasks (completed or skipped). `next_cursor` continues the done tasks. |
+| `status=completed` | Done tasks only, newest first (by `completed_at`, then ID). |
+| `status=open` | Open tasks only, oldest ID first. |
+| `status=all` | Every task, newest ID first. |
+| `limit` | Page size: default `50`, maximum `200`. With no `status`, it applies to the done tasks; every open task is always included. |
+| `cursor` | The `next_cursor` of the previous page, with the same `status`. Opaque. |
+| `full=1` | Every task in full (body, completion message, workflow), unpaged, as before pagination. For tools that need everything at once; it is slow on a large board. |
+
+An unknown `status`, a bad `limit` or a cursor from another `status` returns `400`.
+
+Paging is stable while the board changes: new tasks have higher IDs, and a task
+finished meanwhile has the newest `completed_at`, so it is on page one. Neither
+shifts the pages after a cursor.
+
+`coral-board task list` reads every page (`status=all`) and prints every task,
+as before.
 
 To list recent tasks across every board, use
 `GET /api/board/tasks?limit=100` (default `100`).
-
-Returns all tasks ordered by priority (critical > high > medium > low), then by ID.
 
 **Response:**
 ```json
@@ -555,22 +577,31 @@ Returns all tasks ordered by priority (critical > high > medium > low), then by 
   "tasks": [
     {
       "id": 1,
+      "revision": 1,
       "board_id": "my-team",
       "title": "Implement feature X",
-      "body": "...",
-      "status": "pending",
+      "body_preview": "The first 200 characters of the body...",
+      "status": "in_progress",
       "priority": "high",
       "created_by": "Orchestrator",
       "assigned_to": "Agent1",
-      "completed_by": null,
-      "completion_message": null,
       "created_at": "2024-03-31T12:00:00Z",
-      "claimed_at": null,
-      "completed_at": null
+      "claimed_at": "2024-03-31T12:05:00Z",
+      "session_id": "4c1e...",
+      "review_requested": true,
+      "blocked_by": []
     }
-  ]
+  ],
+  "next_cursor": "ZHwyMDI0LTAzLTMxVDEyOjAwOjAwWnw0Mg",
+  "total_open": 3,
+  "total_completed": 2271
 }
 ```
+
+`outcome` (for example `failed`) is set on a done task whose workflow recorded
+one; `review_requested` is true while a completion review is pending;
+`cost_usd`, `completed_by` and `completed_at` appear when known.
+`next_cursor` is `""` on the last page.
 
 ### Current Task
 

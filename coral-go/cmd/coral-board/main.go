@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -1550,31 +1551,17 @@ func cmdTaskAdd(st *boardState, args []string) {
 }
 
 func cmdTaskList(st *boardState) {
-	data, statusCode, err := apiCallRaw("GET", "/"+st.Project+"/tasks", nil)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if statusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", string(data))
-		os.Exit(1)
-	}
-
-	var result map[string]any
-	json.Unmarshal(data, &result)
-	tasks, _ := result["tasks"].([]any)
-
+	tasks := fetchAllTasks(st)
 	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return
 	}
 
 	fmt.Printf("%-4s %-12s %-9s %-15s %s\n", "ID", "Status", "Priority", "Assignee", "Title")
-	for _, t := range tasks {
-		task, _ := t.(map[string]any)
+	for _, task := range tasks {
 		id, _ := task["id"].(float64)
 		tStatus, _ := task["status"].(string)
-		if workflow, ok := task["workflow"].(map[string]any); ok && workflow["completion_review"] != nil && tStatus == "in_progress" {
+		if taskReviewRequested(task) && tStatus == "in_progress" {
 			tStatus = "review_requested"
 		}
 		tPriority, _ := task["priority"].(string)
@@ -1586,6 +1573,60 @@ func cmdTaskList(st *boardState) {
 
 		fmt.Printf("#%-3.0f %-12s %-9s %-15s %s\n", id, tStatus, tPriority, tAssignee, tTitle)
 	}
+}
+
+// fetchAllTasks reads every task of the board, a page at a time (#3269), in the order
+// the full list always had: priority, then id. A server from before pagination ignores
+// the parameters and answers with every task and no next_cursor, which ends the loop.
+func fetchAllTasks(st *boardState) []map[string]any {
+	var tasks []map[string]any
+	cursor := ""
+	for {
+		path := "/" + st.Project + "/tasks?status=all&limit=200"
+		if cursor != "" {
+			path += "&cursor=" + url.QueryEscape(cursor)
+		}
+		data, statusCode, err := apiCallRaw("GET", path, nil)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if statusCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "Error listing tasks: %s\n", string(data))
+			os.Exit(1)
+		}
+		var page struct {
+			Tasks      []map[string]any `json:"tasks"`
+			NextCursor string           `json:"next_cursor"`
+		}
+		json.Unmarshal(data, &page)
+		tasks = append(tasks, page.Tasks...)
+		if page.NextCursor == "" || page.NextCursor == cursor {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	rank := map[string]int{"critical": 0, "high": 1, "medium": 2, "low": 3}
+	sort.SliceStable(tasks, func(i, j int) bool {
+		pi, pj := rank[fmt.Sprint(tasks[i]["priority"])], rank[fmt.Sprint(tasks[j]["priority"])]
+		if pi != pj {
+			return pi < pj
+		}
+		ii, _ := tasks[i]["id"].(float64)
+		ij, _ := tasks[j]["id"].(float64)
+		return ii < ij
+	})
+	return tasks
+}
+
+// taskReviewRequested: a list item says review_requested; a full task (an older
+// server) has workflow.completion_review.
+func taskReviewRequested(task map[string]any) bool {
+	if r, ok := task["review_requested"].(bool); ok && r {
+		return true
+	}
+	workflow, ok := task["workflow"].(map[string]any)
+	return ok && workflow["completion_review"] != nil
 }
 
 func cmdTaskClaim(st *boardState, args ...string) {

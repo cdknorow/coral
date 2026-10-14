@@ -332,6 +332,7 @@ export const SHAPES = new Set([
     "id:window.hideTeamAgentModal()",
     "id:window.hideTeamWizardModal()",
     "id:window.launchTeam()",
+    "id:window.loadMoreBoardTasks()",
     "id:window.nudgeBoardTask(N)",
     "id:window.publishBoardTask(N)",
     "id:window.remindBoardTask(N)",
