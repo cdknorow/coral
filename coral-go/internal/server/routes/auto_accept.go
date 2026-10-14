@@ -21,6 +21,7 @@ import (
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/internal/tmux"
 )
 
 // Auto-accept (#3182): when the operator turns it on for an agent, Coral
@@ -438,7 +439,7 @@ func paneName(s store.AutoAcceptState) string { return naming.SessionName(s.Agen
 
 func (a *AutoAcceptor) ownPane(ctx context.Context, s store.AutoAcceptState) bool {
 	pane, err := a.h.terminal.FindSession(ctx, paneName(s), s.AgentType, s.SessionID)
-	return err == nil && pane != nil && strings.Contains(strings.ToLower(pane.SessionName), strings.ToLower(s.SessionID))
+	return err == nil && pane != nil && tmux.IsSessionNameFor(pane.SessionName, s.SessionID)
 }
 
 func (a *AutoAcceptor) capture(ctx context.Context, s store.AutoAcceptState) string {

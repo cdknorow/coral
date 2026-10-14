@@ -389,16 +389,19 @@ func (c *Client) FindPane(ctx context.Context, agentName string, agentType strin
 	// to share a folder, a name prefix or a substring (#3211: input, prompt answers and kills
 	// for one agent reached another agent's pane).
 	if sessionID != "" {
-		sidLow := strings.ToLower(sessionID)
+		// Exactly the "<type>-<sid>" session (#3214): the session id is the name's whole UUID,
+		// never a substring of it, whatever the caller's id looks like.
 		for i := range panes {
-			if strings.Contains(strings.ToLower(panes[i].SessionName), sidLow) {
+			if IsSessionNameFor(panes[i].SessionName, sessionID) {
 				return &panes[i], nil
 			}
 		}
 		return nil, nil
 	}
 
-	// Legacy callers without a session id: fuzzy match by agent_name
+	// Legacy callers without a session id: fuzzy match by agent_name. Deprecated: a bare
+	// name is shared by teammates, so the match can be another agent's pane.
+	warnBareNameLookup("tmux", agentName)
 	agentLow := strings.ToLower(agentName)
 	normName := strings.ToLower(strings.ReplaceAll(agentName, "_", "-"))
 	typeLow := strings.ToLower(agentType)
@@ -435,6 +438,32 @@ func (c *Client) FindPane(ctx context.Context, agentName string, agentType strin
 
 	return fallback, nil
 }
+
+// IsSessionNameFor reports whether a terminal session name is exactly "<type>-<sessionID>"
+// (agent types have no hyphen), case-insensitively. A session id that is only a substring
+// of the name, such as a prefix of the UUID, does not match (#3214).
+func IsSessionNameFor(sessionName, sessionID string) bool {
+	name, sid := strings.ToLower(sessionName), strings.ToLower(sessionID)
+	if sid == "" || !strings.HasSuffix(name, "-"+sid) {
+		return false
+	}
+	agentType := name[:len(name)-len(sid)-1]
+	return agentType != "" && !strings.Contains(agentType, "-")
+}
+
+// bareNameWarned keeps the deprecation warning to once per name per process.
+var bareNameWarned sync.Map
+
+// warnBareNameLookup logs that a terminal was looked up by bare name, without a session id
+// (#3214). Every route now names the session, so this marks an internal caller to fix.
+func warnBareNameLookup(backend, name string) {
+	if _, seen := bareNameWarned.LoadOrStore(backend+"\x00"+name, true); !seen {
+		log.Printf("[%s] deprecated: terminal %q looked up by bare name without a session id; pass the session id", backend, name)
+	}
+}
+
+// WarnBareNameLookup is warnBareNameLookup for the other terminal backends.
+func WarnBareNameLookup(backend, name string) { warnBareNameLookup(backend, name) }
 
 // FindPaneTarget returns the tmux target address for a given agent.
 func (c *Client) FindPaneTarget(ctx context.Context, agentName, agentType, sessionID string) (string, error) {

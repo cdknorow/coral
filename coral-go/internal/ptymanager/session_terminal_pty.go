@@ -8,6 +8,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/tmux"
 )
 
 // PTYSessionTerminal implements SessionTerminal using native PTY sessions.
@@ -90,6 +91,7 @@ func (p *PTYSessionTerminal) resolveSessionKey(name string) string {
 	if p.backend.IsRunning(name) {
 		return name
 	}
+	tmux.WarnBareNameLookup("pty", name) // deprecated (#3214): a bare name can match another agent
 	// Search through sessions for a match by display name, folder, or ID
 	for _, s := range p.backend.ListSessions() {
 		sessName := naming.SessionName(s.AgentType, s.SessionID)

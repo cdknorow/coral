@@ -1,9 +1,16 @@
 package ptymanager
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"log"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // #3211: with a session id, the PTY terminal acts only on that session. A sibling in the
@@ -62,4 +69,23 @@ func TestPTYMissingSessionNeverReachesASibling(t *testing.T) {
 	if key, err := p.keyFor("team", sibSID); err != nil || key != sibKey {
 		t.Fatalf("own key = %q, %v", key, err)
 	}
+}
+
+// #3214: a PTY lookup by bare name is deprecated and logged; an exact key is not.
+func TestPTYBareNameLookupIsLogged(t *testing.T) {
+	b, _, _ := newFakeBackend(t, "claude-sid")
+	p := NewPTYSessionTerminal(b)
+	var buf bytes.Buffer
+	old, oldFlags := log.Writer(), log.Flags()
+	log.SetOutput(&buf)
+	log.SetFlags(0)
+	t.Cleanup(func() { log.SetOutput(old); log.SetFlags(oldFlags) })
+
+	p.resolveSessionKey("claude-sid")                         // the exact key
+	bare := fmt.Sprintf("pty-bare-%d", time.Now().UnixNano()) // logged once per name per process
+	p.resolveSessionKey(bare)
+	p.resolveSessionKey(bare)
+	out := buf.String()
+	assert.Equal(t, 1, strings.Count(out, "deprecated"), out)
+	assert.Contains(t, out, `"`+bare+`" looked up by bare name`)
 }
