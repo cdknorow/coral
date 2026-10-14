@@ -38,6 +38,11 @@ const BASE = require('./test_base').BASE;
             const out = { text: el && el.textContent, title: el && el.title,
                 lookalike: u.hubUserBadge({ id: 2, subscriber_id: 'hub-user-0a1b2c3d', content: 'hi' }),
                 otherOrigin: u.hubUserBadge({ id: 3, subscriber_id: 'x', origin: 'something-else' }),
+                op: (() => { const b = document.createElement('div'); b.innerHTML = u.hubUserBadge({ id: 5, subscriber_id: 'Operator', origin: 'hub_operator', hub_user: 'hub-user-0a1b2c3d' });
+                    const e = b.querySelector('.mb-hub-user-badge'); return e ? { text: e.textContent, op: e.classList.contains('is-operator') } : null; })(),
+                opForged: u.hubUserBadge({ id: 6, subscriber_id: 'Operator', origin: 'hub_operator', hub_user: '<img src=x>' }),
+                opText: u.boardMessageDisplayText({ origin: 'hub_operator', content: '[Operator via Coral Hub, hub-user-0a1b2c3d] please review #12' }),
+                localText: u.boardMessageDisplayText({ content: '[Operator via Coral Hub, hub-user-0a1b2c3d] typed by a local agent' }),
                 unknown: (() => { const b = document.createElement('div'); b.innerHTML = u.hubUserBadge({ id: 4, subscriber_id: 'Coral Hub', origin: 'hub_user_unknown' });
                     const e = b.querySelector('.mb-hub-user-badge'); return e ? { text: e.textContent, unknown: e.classList.contains('is-unknown'), title: e.title } : null; })(),
                 escaped: u.hubUserBadge({ origin: 'hub_user', subscriber_id: '"><img src=x onerror=alert(1)>' }) };
@@ -48,6 +53,10 @@ const BASE = require('./test_base').BASE;
         assert.match(badges.title, /hub-user-0a1b2c3d/, 'the title names the Hub user');
         assert.equal(badges.lookalike, '', 'a hub-user-… name without the server-set origin gets no badge');
         assert.equal(badges.otherOrigin, '');
+        assert.deepEqual(badges.op, { text: 'Operator via Coral Hub · hub-user-0a1b2c3d', op: true }, 'the Hub acting as the Operator (#3404)');
+        assert.ok(!/<img/.test(badges.opForged) && /unknown Hub user/.test(badges.opForged), 'a malformed hub_user is never shown as one');
+        assert.equal(badges.opText, 'please review #12', 'the server prefix becomes the badge');
+        assert.match(badges.localText, /^\[Operator via Coral Hub/, 'the same text from anyone else is shown as written');
         assert.deepEqual({ text: badges.unknown.text, unknown: badges.unknown.unknown }, { text: 'Coral Hub, user not identified', unknown: true },
             'a hub that did not name its user (origin hub_user_unknown): a distinct badge');
         assert.match(badges.unknown.title, /did not say which of its users/);
@@ -62,6 +71,7 @@ const BASE = require('./test_base').BASE;
                 { id: 1, project: 'gamma', subscriber_id: 'hub-user-0a1b2c3d', job_title: 'hub-user-0a1b2c3d', origin: 'hub_user', content: 'from the hub', created_at: '2026-10-14T08:00:01Z' },
                 { id: 2, project: 'gamma', subscriber_id: 'hub-user-99999999', job_title: 'hub-user-99999999', content: 'looks like one', created_at: '2026-10-14T08:00:02Z' },
                 { id: 3, project: 'gamma', subscriber_id: 'Lead Developer', job_title: 'Lead Developer', content: 'an agent', created_at: '2026-10-14T08:00:03Z' },
+                { id: 4, project: 'gamma', subscriber_id: 'Operator', job_title: 'Operator', origin: 'hub_operator', hub_user: 'hub-user-0a1b2c3d', content: '[Operator via Coral Hub, hub-user-0a1b2c3d] ship it', created_at: '2026-10-14T08:00:04Z' },
             ];
             window.fetch = async (url, opts) => {
                 const u = String(url);
@@ -85,35 +95,40 @@ const BASE = require('./test_base').BASE;
             document.querySelector('.team-open-btn').click();
             return true;
         })()`);
-        await waitFor(`document.querySelectorAll('#board-panel-msgs .mb-message').length === 3`, 'the team chat');
+        await waitFor(`document.querySelectorAll('#board-panel-msgs .mb-message').length === 4`, 'the team chat');
         const chat = await ev(`[...document.querySelectorAll('#board-panel-msgs .mb-message')].map(m => ({ body: m.querySelector('.mb-message-body').textContent.trim(), badge: !!m.querySelector('.mb-hub-user-badge') }))`);
         assert.deepEqual(chat, [
             { body: 'from the hub', badge: true },
             { body: 'looks like one', badge: false },
             { body: 'an agent', badge: false },
-        ]);
+            { body: 'ship it', badge: true },
+        ], 'the Operator via Coral Hub post: its badge, and the prefix not shown twice');
         console.log("   ✓ team chat: the badge on the Hub user's message only");
 
-        console.log('2. Settings: "Let Coral Hub act as the Operator"');
+        console.log("2. Settings: \"Don't let Coral Hub act as the Operator\" (an opt-out, #3404)");
         const s = await ev(`(async () => {
             const real = window.fetch;
             const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } });
             let st = { configured: true, state: 'connected', hub_url: 'https://hub.example', max_mode: 'interact' };
-            let op = { enabled: false, linked: true }, opStatus = 200, putFails = false;
+            const actions = [{ hub_user: 'hub-user-0a1b2c3d', method: 'POST', path: '/api/board/team/tasks', project: 'team', status: 200, time: '2026-10-14T12:00:00Z' },
+                             { hub_user: 'hub-user-0a1b2c3d', method: 'POST', path: '/api/board/team/messages', project: 'team', status: 200, time: '2026-10-14T11:59:00Z' },
+                             { hub_user: '<b>x</b>', method: 'PUT', path: '/api/board/<i>t</i>/tasks/1', project: '', status: 403, time: 'junk' }];
+            let op = { enabled: true, disabled: false, linked: true, recent_actions: actions }, opStatus = 200, putFails = false, viaHub = false;
             window.__opPuts = [];
-            window.__ctl = { cloud: v => { st = { ...st, ...v }; }, op: v => { op = { ...op, ...v }; }, opStatus: v => { opStatus = v; }, putFails: v => { putFails = v; } };
+            window.__ctl = { cloud: v => { st = { ...st, ...v }; }, op: v => { op = { ...op, ...v }; }, opStatus: v => { opStatus = v; }, putFails: v => { putFails = v; }, viaHub: v => { viaHub = v; } };
             window.fetch = async (url, opts = {}) => {
                 const u = String(url);
                 if (u.endsWith('/api/cloud/status')) return json(st);
-                if (u.endsWith('/api/cloud/disconnect')) { st = { ...st, state: 'idle', label: '' }; op = { enabled: false, linked: false }; return json(st); }
+                if (u.endsWith('/api/cloud/disconnect')) { st = { ...st, state: 'idle', label: '' }; op = { ...op, linked: false }; return json(st); }
                 if (u.endsWith('/api/system/hub-operator')) {
                     if (opStatus !== 200) return json({ error: 'not found' }, opStatus);
                     if ((opts.method || 'GET') === 'PUT') {
                         const body = JSON.parse(opts.body); window.__opPuts.push(body);
-                        if (putFails) return json({ error: 'not allowed now' }, 409);
-                        op = { ...op, enabled: body.enabled }; return json(op);
+                        if (putFails) return json({ error: 'not allowed now', code: 'x' }, 409);
+                        op = { ...op, disabled: body.disabled, enabled: !body.disabled }; return json(op);
                     }
-                    return json(op);
+                    // Through the hub the route answers read-only, without linked or the actions.
+                    return json(viaHub ? { enabled: op.enabled, disabled: op.disabled } : op);
                 }
                 return real(url, opts);
             };
@@ -127,14 +142,21 @@ const BASE = require('./test_base').BASE;
         const box = `document.getElementById('settings-cloud-hub-operator')`;
         const msg = `document.getElementById('settings-cloud-hub-operator-msg')`;
         await waitFor(`!${row}.hidden`, 'the row while linked');
-        assert.equal(await ev(`${box}.checked`), false, 'off by default');
-        assert.match(await ev(`document.getElementById('settings-cloud-hub-operator-desc').textContent`), /Off by default.*Operator.*coral\.log.*disconnect/s, 'the plain warning');
+        assert.equal(await ev(`${box}.checked`), false, 'unchecked by default: Coral Hub may act as the Operator');
+        assert.match(await ev(`document.querySelector('#settings-cloud-hub-operator-row label').textContent`), /Don't let Coral Hub act as the Operator/);
+        assert.match(await ev(`document.getElementById('settings-cloud-hub-operator-desc').textContent`), /Off by default.*Operator via Coral Hub · hub-user-.*Board settings can never be changed/s, 'the plain warning');
+        const acts = await ev(`(() => { const d = document.querySelector('[data-cloud="hub-operator-actions"]'); return { shown: !d.hidden, items: [...d.querySelectorAll('li')].map(l => l.textContent), html: d.querySelector('ol').innerHTML }; })()`);
+        assert.equal(acts.shown, true, 'the recent actions are listed');
+        assert.equal(acts.items.length, 3);
+        assert.match(acts.items[0], /POST \/api\/board\/team\/tasks \(team\) hub-user-0a1b2c3d → 200/);
+        assert.ok(!/<b>|<i>/.test(acts.html.replace(/&lt;/g, '')) && acts.items[2].includes('<b>x</b>'), 'text only, never markup');
+        console.log('   ✓ shown while linked, unchecked by default, the warning, the recent actions as text');
 
         await ev(`(() => { const b = ${box}; b.checked = true; b.dispatchEvent(new Event('change')); return true; })()`);
         await waitFor(`window.__opPuts.length === 1`, 'the PUT');
-        assert.deepEqual(await ev(`window.__opPuts[0]`), { enabled: true });
-        await waitFor(`${box}.checked === true && ${msg}.hidden`, 'turned on');
-        console.log('   ✓ shown while linked, off by default, turning it on PUTs {enabled:true}');
+        assert.deepEqual(await ev(`window.__opPuts[0]`), { disabled: true });
+        await waitFor(`${box}.checked === true && ${msg}.hidden`, 'opted out');
+        console.log('   ✓ opting out PUTs {disabled:true}');
 
         await ev(`window.__ctl.putFails(true); (() => { const b = ${box}; b.checked = false; b.dispatchEvent(new Event('change')); return true; })()`);
         await waitFor(`window.__opPuts.length === 2 && !${msg}.hidden`, 'the refusal');
@@ -144,14 +166,21 @@ const BASE = require('./test_base').BASE;
         console.log('   ✓ a refused change is put back and explained');
 
         await ev(`document.getElementById('settings-cloud-disconnect').click(); true`);
-        await waitFor(`${row}.hidden`, 'the row after disconnect (the server clears it with the link)');
-        console.log('   ✓ disconnecting reads it again: no link, off, hidden');
+        await waitFor(`document.getElementById('settings-cloud-status').textContent.length > 0`, 'status after disconnect');
+        await waitFor(`!${row}.hidden && ${box}.checked`, 'the opt-out outlives the link: still shown and on');
+        await ev(`(async () => { window.__ctl.op({ disabled: false, enabled: true }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
+        await ev(`(async () => { window.__ctl.cloud({ state: 'connected' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); window.__ctl.cloud({ state: 'idle' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
+        await waitFor(`${row}.hidden`, 'no link and not opted out: hidden');
+        console.log('   ✓ after disconnect: shown while opted out, hidden otherwise');
 
-        await ev(`(async () => { window.__ctl.cloud({ state: 'connected' }); window.__ctl.op({ enabled: false, linked: true }); window.__ctl.opStatus(404);
+        await ev(`(async () => { window.__ctl.cloud({ state: 'connected' }); window.__ctl.viaHub(true);
             (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
-        await waitFor(`${row}.hidden && document.getElementById('settings-cloud-status').textContent.length > 0`, 'status loaded');
-        assert.equal(await ev(`${row}.hidden`), true, 'a 404 (through the hub) hides it');
-        console.log('   ✓ hidden where the route answers 404');
+        await waitFor(`document.getElementById('settings-cloud-status').textContent.length > 0`, 'status loaded');
+        await waitFor(`${row}.hidden`, 'hidden on the read-only answer');
+        await ev(`(async () => { window.__ctl.viaHub(false); window.__ctl.opStatus(404); window.__ctl.cloud({ state: 'idle' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus();
+            window.__ctl.cloud({ state: 'connected' }); (await import(${S}+'cloud_connect.js')).loadCloudStatus(); return true; })()`);
+        await waitFor(`${row}.hidden`, 'hidden on a 404 (an older server through the hub)');
+        console.log('   ✓ hidden where the answer is read-only (through the hub) or 404');
         console.log('PASS hub_user_ui_browser');
     } finally {
         await client.close();

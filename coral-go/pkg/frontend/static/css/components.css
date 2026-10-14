@@ -252,6 +252,9 @@
 }
 .mb-hub-user-badge { border-color: var(--border); color: var(--text-secondary); }
 .mb-hub-user-badge.is-unknown { border-style: dashed; }
+.mb-hub-user-badge.is-operator { border-color: var(--accent, var(--border)); color: var(--accent, var(--text-secondary)); }
+.settings-cloud-hub-operator-actions { margin-top: 6px; }
+.settings-cloud-hub-operator-actions ol { margin: 4px 0 0; padding-left: 18px; font-size: var(--fs-sm, 11px); color: var(--text-secondary); }
 .mb-external-badge:not(.is-outbound):not(.mb-hub-user-badge) {
     border-color: var(--accent, var(--border));
     color: var(--accent, var(--text-secondary));

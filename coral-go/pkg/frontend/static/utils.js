@@ -581,6 +581,13 @@ export function externalMessageBadge(m) {
 /** A board chat message a Coral Hub user sent through the Hub (#3377). origin is set by the
  *  server on tunnel chat posts, never taken from a client and never inferred from the name. */
 export function hubUserBadge(m) {
+    // The Operator, acting through Coral Hub (#3404): which Hub user did it is recorded by the
+    // server from the validated header (hub_user), never taken from the name.
+    if (m && m.origin === 'hub_operator') {
+        const who = /^hub-user-[0-9a-f]{8}$/.test(String(m.hub_user || '')) ? m.hub_user : 'unknown Hub user';
+        const title = `Posted as the Operator by ${who} through Coral Hub, not by you at this computer.`;
+        return `<span class="mb-external-badge mb-hub-user-badge is-operator" title="${escapeAttr(title)}">Operator via Coral Hub · ${escapeHtml(who)}</span>`;
+    }
     // A Coral Hub that doesn't say which of its users sent it (an older hub): sent as the
     // reserved 'Coral Hub', origin hub_user_unknown. Never shown as a known user.
     if (m && m.origin === 'hub_user_unknown') {
@@ -591,6 +598,15 @@ export function hubUserBadge(m) {
     const who = String(m.subscriber_id || '');
     const title = `Sent through Coral Hub by a Hub user${who ? ` (${who})` : ''}, not by an agent or by you at this computer.`;
     return `<span class="mb-external-badge mb-hub-user-badge" title="${escapeAttr(title)}">Coral Hub user</span>`;
+}
+
+/** A board message's text for display. The server prefixes a post the Hub made as the
+ *  Operator with '[Operator via Coral Hub, hub-user-…] ' so agents can tell (#3404); the
+ *  dashboard shows that as a badge instead, so the prefix is dropped there. */
+export function boardMessageDisplayText(m) {
+    const text = String((m && m.content) || '');
+    if (m && m.origin === 'hub_operator') return text.replace(/^\[Operator via Coral Hub, hub-user-[0-9a-f]{8}\] /, '');
+    return text;
 }
 
 export function labelCodeBlocks(root) {

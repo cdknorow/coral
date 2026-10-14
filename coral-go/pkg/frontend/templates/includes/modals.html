@@ -629,8 +629,12 @@
                             <div id="settings-cloud-auto-accept-desc" class="settings-hint">On by default while access is Launch. A hub user can then let an agent's permission prompts be approved for it, for up to 8 hours (1 hour unless they choose otherwise). Turn this off to keep that on this computer only; it also stops any auto-accept the hub turned on.</div>
                         </div>
                         <div class="settings-cloud-hub-operator" id="settings-cloud-hub-operator-row" data-cloud="hub-operator-row" hidden>
-                            <label class="settings-cloud-auto-accept"><input type="checkbox" id="settings-cloud-hub-operator" data-cloud="hub-operator" aria-describedby="settings-cloud-hub-operator-desc"> Let Coral Hub act as the Operator</label>
-                            <div id="settings-cloud-hub-operator-desc" class="settings-hint">Off by default. When on, anyone using this Coral through Coral Hub can act as the Operator here: create and assign tasks, and post as the Operator on boards. Board settings still can't be changed through Coral Hub. Chat messages from Coral Hub always show the Hub user who sent them, whatever this says. Each use is written to coral.log, and it turns off when you disconnect from Coral Hub.</div>
+                            <label class="settings-cloud-auto-accept"><input type="checkbox" id="settings-cloud-hub-operator" data-cloud="hub-operator" aria-describedby="settings-cloud-hub-operator-desc"> Don't let Coral Hub act as the Operator</label>
+                            <div id="settings-cloud-hub-operator-desc" class="settings-hint">Off by default: at Interact or Launch, a Coral Hub user can act as the Operator here, so they can create, assign and complete tasks and post as the Operator on boards. Each of those shows which Hub user did it ("Operator via Coral Hub · hub-user-…"), agents are told it came through Coral Hub, and it's recorded below. Board settings can never be changed through Coral Hub. Turn this on to keep the Operator on this computer only: Hub users then post as themselves and can't act on tasks as the Operator.</div>
+                            <details class="settings-cloud-hub-operator-actions" data-cloud="hub-operator-actions" hidden>
+                                <summary>Recent actions as the Operator through Coral Hub</summary>
+                                <ol data-cloud="hub-operator-actions-list"></ol>
+                            </details>
                             <div id="settings-cloud-hub-operator-msg" data-cloud="hub-operator-msg" class="settings-hint settings-error" role="alert" hidden></div>
                         </div>
                     </div>

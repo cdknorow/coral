@@ -2,7 +2,8 @@
  * screen (#3221) share this one implementation. Each renders into a container whose parts
  * carry data-cloud roles (status, code, link, usercode, connect, cancel, disconnect,
  * command-row, command, copy, mode-row, max-mode, mode-desc, auto-accept-row,
- * allow-auto-accept, hub-operator-row, hub-operator, hub-operator-msg); a container may
+ * allow-auto-accept, hub-operator-row, hub-operator, hub-operator-msg, hub-operator-actions,
+ * hub-operator-actions-list); a container may
  * leave any of them out.
  *
  * Talks only to this server's /api/cloud/* routes. Every value from the server is
@@ -160,8 +161,9 @@ class CloudPanel {
         this.onState(st);
     }
 
-    // Shown when this computer answers (it never does through the hub) and either a Hub link
-    // exists or the setting is still on.
+    // 'Don't let Coral Hub act as the Operator' (#3404, an opt-out). Only this computer's own
+    // answer carries 'linked' (through the hub the route answers read-only, without it), so
+    // the row shows only here, while a Hub link exists or the opt-out is on (it outlives the link).
     async loadHubOperator() {
         const row = this.part('hub-operator-row');
         if (!row) return;
@@ -170,10 +172,31 @@ class CloudPanel {
             const r = await fetch(HUB_OPERATOR_URL);
             if (r.ok) s = await r.json();
         } catch { /* hidden */ }
-        row.hidden = !s || !(s.linked || s.enabled);
+        const local = !!s && typeof s.linked === 'boolean';
+        const disabled = !!s && (s.disabled !== undefined ? !!s.disabled : !s.enabled);
+        row.hidden = !local || !(s.linked || disabled);
         const box = this.part('hub-operator');
-        if (s && box) box.checked = !!s.enabled;
+        if (local && box) box.checked = disabled;
+        this.showHubOperatorActions(local ? s.recent_actions : null);
         this.sayHubOperator('');
+    }
+
+    // The newest actions the Hub took as the Operator (method, path, board, Hub user, status).
+    // All text, never HTML: these come from requests made through the hub.
+    showHubOperatorActions(actions) {
+        const box = this.part('hub-operator-actions');
+        const list = this.part('hub-operator-actions-list');
+        if (!box || !list) return;
+        const items = Array.isArray(actions) ? actions.slice(0, 20) : [];
+        box.hidden = !items.length;
+        list.replaceChildren(...items.map(a => {
+            const li = document.createElement('li');
+            const when = a.time || a.created_at || a.at || '';
+            const t = when ? new Date(when) : null;
+            li.textContent = [t && !isNaN(t) ? t.toLocaleString() : '', String(a.method || ''), String(a.path || ''),
+                a.project ? `(${a.project})` : '', String(a.hub_user || ''), a.status ? `→ ${a.status}` : ''].filter(Boolean).join(' ');
+            return li;
+        }));
     }
 
     sayHubOperator(text) {
@@ -181,16 +204,16 @@ class CloudPanel {
         if (m) { m.textContent = text; m.hidden = !text; }
     }
 
-    async setHubOperator(enabled) {
+    async setHubOperator(disabled) {
         const box = this.part('hub-operator');
         try {
-            const r = await post('PUT', HUB_OPERATOR_URL, { enabled });
+            const r = await post('PUT', HUB_OPERATOR_URL, { disabled });
             if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Request failed');
             const s = await r.json();
-            if (box) box.checked = !!s.enabled;
+            if (box) box.checked = s.disabled !== undefined ? !!s.disabled : !s.enabled;
             this.sayHubOperator('');
         } catch (e) {
-            if (box) box.checked = !enabled;
+            if (box) box.checked = !disabled;
             this.sayHubOperator('Could not change it: ' + (e.message || 'request failed'));
         }
     }

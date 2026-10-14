@@ -5,7 +5,7 @@ import { state } from './state.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
-import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge, hubUserBadge } from './utils.js';
+import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge, hubUserBadge, boardMessageDisplayText } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { isGoneAsleep } from './terminal_gone.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
@@ -600,7 +600,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
                 ${externalMessageBadge(m)}${hubUserBadge(m)}
                 <span class="mb-message-time">${_formatTime(m.created_at)}</span>
             </div>
-            <div class="mb-message-body">${renderMarkdown(boardMessageText(m.content))}</div>
+            <div class="mb-message-body">${renderMarkdown(boardMessageText(boardMessageDisplayText(m)))}</div>
         </div>`;
     }).join('');
     if (wasAtBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
