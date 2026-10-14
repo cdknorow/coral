@@ -1,5 +1,25 @@
 # Release Notes
 
+## v1.4.18 — Security fixes: Coral Hub identities, agent environments
+
+**Security fixes — please upgrade.** Through Coral Hub, a request can no longer post or act as the Operator or an Orchestrator, and every chat message from Coral Hub shows the Hub user who sent it. Agents no longer inherit Coral's own server settings, such as its secret key or Coral Hub address.
+
+### Security
+
+- **Coral Hub can't act as the Operator or an Orchestrator.** A board write that arrives through Coral Hub and names the Operator, names an Orchestrator (or a member with orchestrator rights), or asks to receive every message is refused (403). Turning on auto-accept through Coral Hub is refused too. Requests made at this computer are unchanged.
+- **New, off by default: "Let Coral Hub act as the Operator"** (Settings > Coral Hub). When on, people using this Coral through Coral Hub can do what you do as the Operator here. Each use is written to coral.log, and it turns off when you disconnect from Coral Hub.
+- **Chat messages from Coral Hub show who sent them.** A chat message sent through Coral Hub is posted as the Hub user (`hub-user-…`) and gets a "Coral Hub user" badge; the sender name in the request is ignored. Names starting with `hub-user-`, and the name **Coral Hub**, are reserved. A message from an older Coral Hub that doesn't say which user sent it is posted as **Coral Hub**, marked "Coral Hub, user not identified", never as the Operator or an agent.
+- **Agents don't inherit Coral's server settings.** Agents, workflow steps and hooks no longer receive Coral's own `CORAL_…` settings, such as `CORAL_SECRET_KEY`, `CORAL_CLOUD_URL`, `CORAL_TLS_*` and any added later. They still get what agent tools use (`CORAL_URL`, `CORAL_SESSION_NAME`, `CORAL_SUBSCRIBER_ID` and similar) and every non-Coral variable (`PATH`, API keys). An already-running tmux server is cleaned before each new agent starts.
+- The Dashboard explains why an Operator-only or auto-accept action is refused through Coral Hub.
+
+### For integrators (Coral Hub, scripts)
+
+- Coral Hub's proxy and the tunnel pass `X-Coral-Hub-User` only on `POST /api/board/{project}/messages`; it is dropped on every other route and method, and honoured only on requests that came through the tunnel.
+- Tunnel chat posts: the sender is the `X-Coral-Hub-User` value (`hub-user-` + 8 hex characters), returned with `origin: "hub_user"`. A missing header posts as `Coral Hub` with `origin: "hub_user_unknown"`; a malformed one gets **400** `hub_user_required`; a name that matches a member or role gets **409**.
+- Tunnel board writes naming the Operator get **403** `operator_identity_required`, and ones naming an Orchestrator get **403** `orchestrator_identity`.
+- `GET`/`PUT /api/system/hub-operator` (local only; never through Coral Hub).
+- Test servers: run them with `--cloud-url off` (or without `CORAL_CLOUD_URL`) so they don't connect to Coral Hub.
+
 ## v1.4.17 — Security fixes: terminal agents, identities, webhooks, sign-in; Linux ARM64 downloads
 
 **Security fixes — please upgrade.** This release closes a way for a board message to run commands in a terminal agent's shell, validates the names agents and people use on boards, guards outbound webhooks, hardens sign-in, and warns plainly when remote access isn't encrypted. Linux downloads now come for ARM64 too.
