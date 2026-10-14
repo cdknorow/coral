@@ -62,8 +62,11 @@ cleanup() {
     if [[ $code -ne 0 || $FAIL -gt 0 || ${KEEP_TEST_DATA:-0} == 1 ]]; then
         log "Test data and server log kept: $TMP"
     else
-        rm -rf "$TMP"
+        # A stand-in or tmux still shutting down can write into the folder while it is removed
+        # ('Directory not empty'): try again once, and never let it change the run's result.
+        rm -rf "$TMP" 2>/dev/null || { sleep 2; rm -rf "$TMP" 2>/dev/null || true; }
     fi
+    exit "$code"
 }
 trap cleanup EXIT
 
@@ -92,6 +95,11 @@ import sys,json
 d=json.load(sys.stdin); d=d.get("sessions",d) if isinstance(d,dict) else d
 for s in d:
     if str(s.get("board_project","")).startswith("id-team-"): print(s["name"], s["session_id"])'; }
+# Live team agents whose stand-in has already written its environment dump (with its token): a
+# just-restarted, woken or resumed agent has a new session id before its dump exists, and reading a
+# missing dump aborted the run (set -e). The stand-in writes the dump asynchronously, so wait for it.
+sessions_ready() { local n sid; while read -r n sid; do [[ -n "$sid" ]] && grep -q '^CORAL_SESSION_TOKEN=' "$DUMP/$sid.env" 2>/dev/null && echo "$n $sid"; done < <(sessions); }
+wait_sessions_ready() { local end=$((SECONDS + 30)); while [[ -z "$(sessions_ready | head -1)" ]]; do (( SECONDS >= end )) && return 1; sleep 0.5; done; }
 
 log "Building coral, coral-board and the stand-in agent..."
 (cd "$CORAL_DIR" && go build -tags "dev fts5" -o "$BIN/coral" ./cmd/coral/ && go build -o "$BIN/coral-board" ./cmd/coral-board/ \
@@ -185,7 +193,8 @@ done
 [[ -z "$(ls -A "$DATA/session_tokens" 2>/dev/null)" ]] && pass "every token file was read and deleted by the shell before the agent CLI started" || fail "token files left: $(ls "$DATA/session_tokens")"
 
 # ── A hook from inside an agent carries the token ─────────────────────
-read -r hname hsid < <(sessions | head -1)
+wait_sessions_ready || log "no live agent has its dump yet"
+read -r hname hsid < <(sessions_ready | head -1)
 htok=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$DUMP/$hsid.env"); hsess=$(sed -n 's/^CORAL_SESSION_NAME=//p' "$DUMP/$hsid.env")
 # The agent's own board state (written when it joined) names its board and role.
 hstate="$DATA/board_state_$hsess.json"
@@ -233,7 +242,8 @@ else
 fi
 
 # ── Wake: sleep then wake mints a new token for the same session ──────
-read -r wname wsid < <(sessions | head -1)
+wait_sessions_ready || log "no live agent has its dump yet"
+read -r wname wsid < <(sessions_ready | head -1)
 wfile="$DUMP/$wsid.env"; before_tok=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$wfile" 2>/dev/null || true)
 api POST "/api/sessions/live/$wsid/sleep" -d '{}' >/dev/null; sleep 2
 api POST "/api/sessions/live/$wsid/wake" -d '{}' >/dev/null
@@ -241,7 +251,8 @@ wait_until 60 "the woken agent's new token" bash -c "[[ -f '$wfile' && \$(sed -n
 collect
 
 # ── Resume: a new token, the old one stops matching ───────────────────
-read -r rname rsid < <(sessions | tail -1)
+wait_sessions_ready || log "no live agent has its dump yet"
+read -r rname rsid < <(sessions_ready | tail -1)
 rfile="$DUMP/$rsid.env"; rold=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$rfile" 2>/dev/null || true)
 api POST "/api/sessions/live/$rname/resume" -d "{\"session_id\":\"$rsid\",\"current_session_id\":\"$rsid\",\"agent_type\":\"claude\"}" >/dev/null
 if wait_until 60 "the resumed agent's new token" bash -c "[[ -f '$rfile' && \$(sed -n 's/^CORAL_SESSION_TOKEN=//p' '$rfile') != '$rold' ]]"; then
@@ -287,7 +298,8 @@ done
 [[ $leaks -eq 0 ]] && pass "no token in argv, the server log, the data folder (terminal logs, databases), the board or tmux's global env ($(grep -c . "$ALL_TOKENS") tokens checked)"
 
 # ── Impersonation is detected (phase 1: counted and logged, not refused) ──
-read -r iname isid < <(sessions | head -1)
+wait_sessions_ready || log "no live agent has its dump yet"
+read -r iname isid < <(sessions_ready | head -1)
 itok=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$DUMP/$isid.env")
 iboard=$(api GET /api/sessions/live | python3 -c "import sys,json;d=json.load(sys.stdin);d=d.get('sessions',d) if isinstance(d,dict) else d;print([s['board_project'] for s in d if s['session_id']=='$isid'][0])")
 other=$([[ "$iboard" == id-team-1 ]] && echo id-team-2 || echo id-team-1)
