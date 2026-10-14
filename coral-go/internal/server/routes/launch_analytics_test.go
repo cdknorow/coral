@@ -38,10 +38,15 @@ func captureAnalytics(t *testing.T) *analyticsSink {
 		sink.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 	}))
+	// Tracking work an earlier test's request left in flight reads config.PostHogKey; let it
+	// finish before this test writes it.
+	tracking.WaitForAsyncForTest()
 	prevKey := config.PostHogKey
 	config.PostHogKey = "phc_test_key"
 	restore := tracking.ConfigureForTest(srv.URL, t.TempDir(), "install-under-test")
 	t.Cleanup(func() {
+		// Drain this test's own in-flight tracking before the key and the capture server go away.
+		tracking.WaitForAsyncForTest()
 		restore()
 		srv.Close()
 		config.PostHogKey = prevKey

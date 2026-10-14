@@ -22,3 +22,9 @@ func ConfigureForTest(captureURL, dir, installID string) (restore func()) {
 		posthogURL, coralDir, cachedInstallID, retryDelays = prevURL, prevDir, prevID, prevDelays
 	}
 }
+
+// WaitForAsyncForTest blocks until every in-flight tracking goroutine has finished. A test
+// that is about to change tracking's configuration (config.PostHogKey, ConfigureForTest)
+// calls it first, so a goroutine another test's request left behind cannot read that
+// configuration while it is written (a data race under go test -race).
+func WaitForAsyncForTest() { waitForAsync() }
