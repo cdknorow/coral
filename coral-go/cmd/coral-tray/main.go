@@ -31,6 +31,7 @@ import (
 	"fyne.io/systray"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/loginlink"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/gen2brain/beeep"
@@ -240,6 +241,10 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 	}
 	defer rs.Close()
 	httpServer := rs.HTTPServer
+	// Every open of the dashboard signs in with a fresh single-use link from this server
+	// (#3394): no API key, no prompt, also once the dashboard here needs a session.
+	mintLink := func() (string, error) { return rs.NewLoginLink(port) }
+	coralAppDataDir = cfg.CoralDir()
 
 	// Heartbeat — write timestamp+PID to ~/.coral/heartbeat every 10s.
 	// This is the only way to detect SIGKILL (which can't be caught).
@@ -282,8 +287,8 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 		go func() {
 			time.Sleep(time.Second)
 			dashURL := fmt.Sprintf("http://localhost:%d", port)
-			if err := launchCoralApp(dashURL); err != nil {
-				executil.OpenBrowser(dashURL)
+			if err := launchCoralApp(dashURL, mintLink); err != nil {
+				executil.OpenBrowser(loginlink.Or(dashURL, mintLink))
 			}
 		}()
 	}
@@ -337,9 +342,9 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 			for {
 				select {
 				case <-mOpenApp.ClickedCh:
-					go launchCoralApp(url)
+					go launchCoralApp(url, mintLink)
 				case <-mOpenBrowser.ClickedCh:
-					executil.OpenBrowser(url)
+					executil.OpenBrowser(loginlink.Or(url, mintLink))
 				case <-mUpdate.ClickedCh:
 					go checkForUpdates()
 				case <-mShutdown.ClickedCh:
@@ -552,9 +557,15 @@ func killOrphanedCoralApp() {
 	}
 }
 
-// launchCoralApp launches coral-app or brings the existing one to front.
-// Returns an error if coral-app is not found or fails to start.
-func launchCoralApp(url string) error {
+// coralAppDataDir is the server's data folder, passed to coral-app so it can ask this
+// Coral for a new sign-in link when its session ends (#3394).
+var coralAppDataDir string
+
+// launchCoralApp launches coral-app or brings the existing one to front. A new window
+// signs in with a fresh link from mint, handed over in its environment (CORAL_APP_LOGIN_URL),
+// never on the command line, where any local user could read it with ps. An open window
+// already has its session. Returns an error if coral-app is not found or fails to start.
+func launchCoralApp(url string, mint func() (string, error)) error {
 	coralAppMu.Lock()
 	defer coralAppMu.Unlock()
 
@@ -575,7 +586,8 @@ func launchCoralApp(url string) error {
 		return fmt.Errorf("coral-app not found")
 	}
 
-	cmd := exec.Command(appPath, "--url", url)
+	cmd := exec.Command(appPath, "--url", url, "--data-dir", coralAppDataDir)
+	cmd.Env = append(os.Environ(), "CORAL_APP_LOGIN_URL="+loginlink.Or(url, mint))
 	if err := cmd.Start(); err != nil {
 		return err
 	}

@@ -15,21 +15,26 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sync"
 	"syscall"
 	"time"
 
 	webview "github.com/webview/webview_go"
 
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/loginlink"
 )
 
 var debugMode bool
@@ -55,7 +60,12 @@ func main() {
 	height := flag.Int("height", 800, "Window height")
 	wait := flag.Bool("wait", false, "Wait for server to be ready before opening")
 	debugFlag := flag.Bool("debug", false, "Enable debug logging to ~/.coral/app.log")
+	dataDir := flag.String("data-dir", "", "Coral's data folder, to ask it for a sign-in link (default: the usual one)")
 	flag.Parse()
+	// A sign-in link handed over by the tray (#3394), in the environment so no other user can
+	// read it with ps. Used once: drop it so nothing this window starts inherits it.
+	handedLink := os.Getenv("CORAL_APP_LOGIN_URL")
+	os.Unsetenv("CORAL_APP_LOGIN_URL")
 
 	debugMode = *debugFlag || os.Getenv("CORAL_DEBUG") == "1"
 
@@ -112,6 +122,21 @@ func main() {
 			os.Exit(1)
 		}
 		log.Println("[STARTUP] server is ready")
+	}
+
+	// Sign in without the API key or a prompt (#3394): the link the tray handed over, or a
+	// fresh one from this computer's Coral. Without one (an older Coral) the URL itself opens.
+	startURL := handedLink
+	if startURL == "" || !loginlink.HasToken(startURL) {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		link, err := loginlink.FromCLI(ctx, *url, config.ResolveCoralDir(*dataDir))
+		cancel()
+		if err != nil {
+			log.Printf("[STARTUP] no sign-in link (%v); opening %s", err, *url)
+			startURL = *url
+		} else {
+			startURL = link
+		}
 	}
 
 	log.Println("[WEBVIEW] calling showInDock()")
@@ -295,11 +320,40 @@ func main() {
 			})();
 		`)
 
-		log.Printf("Navigating to %s", *url)
+		log.Printf("Navigating to %s", loginlink.Redact(startURL))
 	}
 
-	log.Printf("[WEBVIEW] navigating to %s", *url)
-	w.Navigate(*url)
+	// The session ended (or the server restarted with a new one) and the dashboard shows its
+	// sign-in page: ask Coral for a fresh link and sign in again, without a prompt. Only for
+	// this Coral's own sign-in page, and at most once every 30 s, so a page that keeps
+	// answering 403 can't loop. The link never reaches the page's script.
+	baseOrigin := originOf(*url)
+	var lastSignIn time.Time
+	var signInMu sync.Mutex
+	w.Bind("_coralAppSignIn", func() {
+		signInMu.Lock()
+		if time.Since(lastSignIn) < 30*time.Second {
+			signInMu.Unlock()
+			return
+		}
+		lastSignIn = time.Now()
+		signInMu.Unlock()
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			link, err := loginlink.FromCLI(ctx, *url, config.ResolveCoralDir(*dataDir))
+			if err != nil {
+				log.Printf("[WEBVIEW] sign-in page shown; no new sign-in link: %v", err)
+				return
+			}
+			log.Printf("[WEBVIEW] sign-in page shown; signing in again at %s", loginlink.Redact(link))
+			w.Dispatch(func() { w.Navigate(link) })
+		}()
+	})
+	w.Init(fmt.Sprintf(`(function(){ if (location.origin === %q && location.pathname === '/auth' && window._coralAppSignIn) window._coralAppSignIn(); })();`, baseOrigin))
+
+	log.Printf("[WEBVIEW] navigating to %s", loginlink.Redact(startURL))
+	w.Navigate(startURL)
 
 	log.Printf("[WEBVIEW] starting event loop (goroutines=%d)", runtime.NumGoroutine())
 	w.Run()
@@ -339,4 +393,13 @@ func waitForServer(url string, timeout time.Duration) bool {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return false
+}
+
+// originOf returns the scheme://host[:port] of raw, as the page sees location.origin.
+func originOf(raw string) string {
+	u, err := neturl.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }

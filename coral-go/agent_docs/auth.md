@@ -135,6 +135,8 @@ At startup Coral mints a single-use sign-in token, valid 10 minutes, writes it t
 
 `coral open` asks the running Coral for a fresh link (through the same handshake as `coral cloud`) and opens it, or prints it with `--print` or without a display. In phase 1 the dashboard keeps working on this computer without the cookie.
 
+Coral's own apps sign in the same way, with no API key and no prompt (#3394). The tray and `launch-coral` run the server themselves and open every dashboard window or browser tab with a fresh link from it. The desktop window (`coral-app`) gets its first link from the tray in its environment (never on the command line, where other users could read it with `ps`), or, started on its own, asks Coral through the command-line handshake. If its session ends and the dashboard shows the sign-in page, it asks for a new link and signs in again (at most once every 30 seconds). Links are never written to logs; they appear as `login_token=REDACTED`. A Coral without sign-in links (before #3387) is opened at its plain address, as before.
+
 ### Identity report
 
 `GET /api/system/identity-report` (the dashboard on this computer or the coral CLI only; never through Coral Hub, never an agent's plain request) returns counts by caller type (`agent_token`, `agent_bad_token`, `agent_no_token`, `dashboard_cookie`, `dashboard_no_cookie`, `coral_hub`, `api_key`, `local_other`), the subset strict mode would refuse (`would_break_in_strict_mode`), mismatch counts by kind (`impersonation`, `operator`, `cross_board`) and the last 50 mismatches (never a token).

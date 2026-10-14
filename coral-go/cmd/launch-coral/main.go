@@ -30,6 +30,7 @@ import (
 	"github.com/cdknorow/coral/internal/agent"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/loginlink"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tmux"
 	"github.com/cdknorow/coral/internal/tracking"
@@ -103,15 +104,18 @@ func main() {
 		fmt.Println()
 	}
 
+	// The browser signs in with a fresh single-use link from the server started here (#3394).
+	var mintLink func() (string, error)
 	if !*skipWeb {
-		startWebServer(ctx, cfg)
+		rs := startWebServer(ctx, cfg)
+		mintLink = func() (string, error) { return rs.NewLoginLink(cfg.Port) }
 	}
 
 	// Open the browser
 	if !*noBrowser && !isSSH() {
 		go func() {
 			time.Sleep(time.Second)
-			executil.OpenBrowser(fmt.Sprintf("http://localhost:%d", cfg.Port))
+			executil.OpenBrowser(loginlink.Or(fmt.Sprintf("http://localhost:%d", cfg.Port), mintLink))
 		}()
 	}
 
@@ -236,7 +240,7 @@ func launchAgentSessions(ctx context.Context, tc *tmux.Client, targetDir, agentT
 	return sessionNames, nil
 }
 
-func startWebServer(ctx context.Context, cfg *config.Config) {
+func startWebServer(ctx context.Context, cfg *config.Config) *startup.RunningServer {
 	tracking.SetEntrypoint("launch-coral")
 	tracking.SetCoralDir(cfg.CoralDir())
 	rs, err := startup.Start(ctx, cfg, startup.Options{
@@ -265,6 +269,7 @@ func startWebServer(ctx context.Context, cfg *config.Config) {
 		rs.Shutdown(10 * time.Second)
 		rs.Close()
 	}()
+	return rs
 }
 
 // findProtocolMD locates PROTOCOL.md relative to the running binary or source.
