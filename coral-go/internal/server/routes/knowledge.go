@@ -30,6 +30,10 @@ type knowledgeJob struct {
 	// last updated (#3325).
 	StartedAt  string `json:"started_at,omitempty"`
 	FinishedAt string `json:"finished_at,omitempty"`
+	// A complete run can still be partial: the agents it could not distill (they keep
+	// their earlier knowledge), and the cross-referencing pass's error.
+	FailedAgents       []background.DistillFailure `json:"failed_agents,omitempty"`
+	CollaborationError string                      `json:"collaboration_error,omitempty"`
 }
 
 // snapshot copies the job for writing out. Callers hold knowledgeJobsMu: the run's
@@ -79,17 +83,20 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 
 		coralDir := h.cfg.CoralDir()
 		ctx := context.Background()
-		_, err := background.DistillTeamKnowledge(ctx, h.ss, h.teamStore, teamName, coralDir, progressFn)
+		bundle, err := background.DistillTeamKnowledge(ctx, h.ss, h.teamStore, teamName, coralDir, progressFn)
 
 		knowledgeJobsMu.Lock()
 		job.FinishedAt = time.Now().UTC().Format(time.RFC3339)
+		if bundle != nil {
+			job.FailedAgents, job.CollaborationError = bundle.FailedAgents, bundle.CollaborationError
+		}
 		if err != nil {
 			job.Status = "failed"
 			job.Error = err.Error()
 			log.Printf("[knowledge] distillation failed for team %s: %v", teamName, err)
 		} else {
 			job.Status = "complete"
-			log.Printf("[knowledge] distillation complete for team %s", teamName)
+			log.Printf("[knowledge] distillation complete for team %s (%d agents failed)", teamName, len(job.FailedAgents))
 		}
 		knowledgeJobsMu.Unlock()
 	}()

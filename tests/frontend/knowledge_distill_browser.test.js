@@ -135,9 +135,24 @@ const BUNDLE = { exists: true, index: '# Team alpha\\n\\nWhat the team knows.', 
         const done = await panelText();
         check('the tab shows the knowledge, with when it was updated', /What the team knows/.test(done) && /Updated /.test(done), done.slice(0, 160));
 
+        // ── A partial run (QA's #3325 note 2): complete, but some agents couldn't be distilled ──
+        await ev(`document.querySelectorAll('.toast').forEach(t => t.remove()); true`);
+        await ev(`[...document.querySelectorAll('#team-knowledge-view button')].find(b => b.classList.contains('knowledge-redistill-btn')).click(); true`);
+        await until(`window.__posts === 2`, 'the partial re-distill');
+        await ev(`window.__distill = { team_name: 'alpha', status: 'complete', finished_at: '2026-10-14T06:07:00Z', failed_agents: [{ agent: 'lead', error: 'claude CLI failed: exit status 1' }, { agent: 'qa', error: '' }], collaboration_error: 'claude CLI timed out after 2m0s' }; true`);
+        await until(`!!document.querySelector('#team-knowledge-view .knowledge-run-note.is-partial')`, 'the partial note');
+        const partial = await ev(`document.querySelector('#team-knowledge-view .knowledge-run-note').textContent`);
+        check('partial: the note names the agents that could not be distilled, and why',
+            /2 agents couldn't be distilled: lead \(claude CLI failed: exit status 1\); qa\. They keep their earlier knowledge, if any/.test(partial), partial);
+        check('partial: and the failed collaboration pass', /The collaboration pass failed \(claude CLI timed out after 2m0s\)/.test(partial), partial);
+        check('partial: the knowledge is still shown', /What the team knows/.test(await panelText()));
+        await until(`[...document.querySelectorAll('.toast .toast-message')].some(t => /couldn't be distilled/.test(t.textContent))`, 'the partial toast');
+        check('partial: the toast says it is ready, but 2 agents could not be distilled',
+            (await toasts()).some(t => /Knowledge for alpha is ready, but 2 agents couldn't be distilled/.test(t)), JSON.stringify(await toasts()));
+
         // ── A failure with earlier knowledge: that knowledge, with a note ──
         await ev(`[...document.querySelectorAll('#team-knowledge-view button')].find(b => b.classList.contains('knowledge-redistill-btn')).click(); true`);
-        await until(`window.__posts === 2`, 'the re-distill');
+        await until(`window.__posts === 3`, 'the re-distill');
         await ev(`window.__distill = { team_name: 'alpha', status: 'failed', error: 'claude exited 1', finished_at: '2026-10-14T06:10:00Z' }; true`);
         await until(`/The last distillation failed: claude exited 1/.test((document.getElementById('team-knowledge-view') || {}).textContent || '')`, 'the failure note');
         const failedOld = await panelText();
@@ -151,8 +166,8 @@ const BUNDLE = { exists: true, index: '# Team alpha\\n\\nWhat the team knows.', 
         await until(`/Distillation failed: claude exited 1/.test((document.getElementById('team-knowledge-view') || {}).textContent || '')`, 'the failure view');
         check('failed with no knowledge: the error and Retry', /Distillation failed: claude exited 1/.test(await panelText()) && (await ev(`[...document.querySelectorAll('#team-knowledge-view button')].some(b => b.textContent.trim() === 'Retry')`)));
         await ev(`[...document.querySelectorAll('#team-knowledge-view button')].find(b => b.textContent.trim() === 'Retry').click(); true`);
-        await until(`window.__posts === 3`, 'Retry starts a run');
-        check('Retry starts a run', (await ev('window.__posts')) === 3);
+        await until(`window.__posts === 4`, 'Retry starts a run');
+        check('Retry starts a run', (await ev('window.__posts')) === 4);
 
         // ── A run in progress is found after a reload, without opening the tab ──
         await ev(`window.__distill.progress = { phase: 'formatting', total: 4, completed: 4 }; window.__save(); true`);

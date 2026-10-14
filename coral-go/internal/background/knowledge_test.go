@@ -1,9 +1,14 @@
 package background
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSlugify(t *testing.T) {
@@ -255,4 +260,101 @@ func containsStr(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// fakeKnowledgeCall answers the three passes; an agent named in failExtract has its
+// extraction fail, and failCollab fails the cross-referencing pass.
+func fakeKnowledgeCall(failExtract map[string]bool, failCollab bool) func(prompt, content string) (string, error) {
+	return func(prompt, content string) (string, error) {
+		switch {
+		case strings.HasPrefix(prompt, "You are an agent knowledge extractor"):
+			for name := range failExtract {
+				if strings.Contains(prompt, `name is "`+name+`"`) {
+					return "", errors.New("claude CLI failed: exit status 1: rate limited")
+				}
+			}
+			return "## Tools & Commands\nmake test", nil
+		case strings.HasPrefix(prompt, "You are analyzing collaboration patterns"):
+			if failCollab {
+				return "", errors.New("claude CLI timed out after 2m0s")
+			}
+			return "## Collaboration Map\nnone", nil
+		}
+		return "---\ntype: Agent Knowledge\n---\nnew knowledge", nil
+	}
+}
+
+func distillTestAgents() []agentMeta {
+	return []agentMeta{
+		{name: "Ada", role: "worker", transcript: "ada transcript"},
+		{name: "Bob", role: "worker", transcript: "bob transcript"},
+		{name: "Cy", role: "worker"}, // no transcript: not a failure
+	}
+}
+
+func newTestBundle(team string) *KnowledgeBundle {
+	return &KnowledgeBundle{TeamName: team, Agents: map[string]*AgentConcept{}}
+}
+
+// QA's #3325 note 2: an agent whose extraction fails is reported, keeps its earlier
+// knowledge, and its error text never ends up in any agent's document.
+func TestDistillReportsFailedAgentsAndKeepsTheirKnowledge(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, WriteKnowledgeFile(dir, "team", "Ada", "OLD ADA"))
+	var phases []string
+	b, err := distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(map[string]bool{"Ada": true}, false), dir,
+		func(p DistillProgress) { phases = append(phases, p.Phase) })
+	require.NoError(t, err)
+	require.Equal(t, []DistillFailure{{Agent: "Ada", Error: "claude CLI failed: exit status 1: rate limited"}}, b.FailedAgents)
+	assert.Empty(t, b.CollaborationError)
+	assert.Equal(t, "complete", phases[len(phases)-1])
+
+	assert.Equal(t, "OLD ADA", LoadAgentKnowledge(dir, "team", "Ada"), "the failed agent keeps its earlier knowledge")
+	assert.Contains(t, LoadAgentKnowledge(dir, "team", "Bob"), "new knowledge")
+	assert.Contains(t, LoadAgentKnowledge(dir, "team", "Cy"), "new knowledge")
+	read, err := ReadKnowledgeBundle(dir, "team")
+	require.NoError(t, err)
+	assert.Contains(t, read.IndexMD, "[Ada](./ada.md)", "listed: it has earlier knowledge")
+	for name, c := range read.Agents {
+		assert.NotContains(t, c.FinalMD, "rate limited", name)
+	}
+
+	// Without earlier knowledge, the failed agent gets no file and no index entry.
+	dir2 := t.TempDir()
+	_, err = distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(map[string]bool{"Ada": true}, false), dir2, nil)
+	require.NoError(t, err)
+	assert.Empty(t, LoadAgentKnowledge(dir2, "team", "Ada"))
+	read, err = ReadKnowledgeBundle(dir2, "team")
+	require.NoError(t, err)
+	assert.NotContains(t, read.IndexMD, "ada.md")
+	assert.Contains(t, read.IndexMD, "[Bob](./bob.md)")
+}
+
+// When every extraction fails there is nothing new: the run fails and the team's earlier
+// knowledge is left exactly as it was.
+func TestDistillFailsWhenEveryExtractionFails(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, WriteKnowledgeIndex(dir, "team", "OLD INDEX"))
+	require.NoError(t, WriteKnowledgeFile(dir, "team", "Bob", "OLD BOB"))
+	_, err := distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(map[string]bool{"Ada": true, "Bob": true}, false), dir, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no agent's knowledge could be extracted (2 of 2 failed): claude CLI failed")
+	read, err := ReadKnowledgeBundle(dir, "team")
+	require.NoError(t, err)
+	assert.Equal(t, "OLD INDEX", read.IndexMD)
+	assert.Equal(t, "OLD BOB", LoadAgentKnowledge(dir, "team", "Bob"))
+	assert.Empty(t, LoadAgentKnowledge(dir, "team", "Cy"), "nothing written")
+}
+
+// A failed cross-referencing pass is reported; the documents are built without it, and
+// its error text is not in them.
+func TestDistillReportsAFailedCollaborationPass(t *testing.T) {
+	dir := t.TempDir()
+	b, err := distillAgents(newTestBundle("team"), distillTestAgents(), fakeKnowledgeCall(nil, true), dir, nil)
+	require.NoError(t, err)
+	assert.Empty(t, b.FailedAgents)
+	assert.Equal(t, "claude CLI timed out after 2m0s", b.CollaborationError)
+	for name, c := range b.Agents {
+		assert.NotContains(t, c.Pass2Raw, "timed out", name)
+	}
 }

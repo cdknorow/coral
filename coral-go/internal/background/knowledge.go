@@ -23,6 +23,17 @@ type KnowledgeBundle struct {
 	Agents    map[string]*AgentConcept `json:"agents"`
 	Links     []KnowledgeLink          `json:"links"`
 	IndexMD   string                   `json:"index_md"`
+	// FailedAgents are the agents whose knowledge could not be extracted in this run: their
+	// earlier knowledge file, if any, is kept as it was. CollaborationError is set when the
+	// cross-referencing pass failed, so the documents were built without it.
+	FailedAgents       []DistillFailure `json:"failed_agents,omitempty"`
+	CollaborationError string           `json:"collaboration_error,omitempty"`
+}
+
+// DistillFailure is an agent a distillation run could not distill, and why.
+type DistillFailure struct {
+	Agent string `json:"agent"`
+	Error string `json:"error"`
 }
 
 // AgentConcept is a single OKF concept file for an agent.
@@ -209,12 +220,25 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 		}
 	}
 
-	total := len(agents)
-	if total == 0 {
+	if len(agents) == 0 {
 		return nil, fmt.Errorf("team %q has no members", teamName)
 	}
+	call := func(prompt, content string) (string, error) {
+		return callClaudeForKnowledge(ctx, claudePath, callTimeout, prompt, content)
+	}
+	return distillAgents(bundle, agents, call, coralDir, progressFn)
+}
+
+// distillAgents runs the three passes over the agents with call (the Claude CLI) and writes
+// the bundle. An agent whose extraction fails is reported in FailedAgents and keeps its
+// earlier knowledge; when every extraction fails, the run fails and nothing is written.
+func distillAgents(bundle *KnowledgeBundle, agents []agentMeta, call func(prompt, content string) (string, error), coralDir string, progressFn func(DistillProgress)) (*KnowledgeBundle, error) {
+	teamName := bundle.TeamName
+	total := len(agents)
 
 	// ── Pass 1: Individual agent knowledge extraction ──
+	failed := map[string]bool{}
+	attempted := 0
 	for i, a := range agents {
 		if progressFn != nil {
 			progressFn(DistillProgress{Phase: "extracting", Agent: a.name, Total: total, Completed: i})
@@ -228,16 +252,25 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 		if a.transcript == "" {
 			concept.Pass1Raw = "No session transcript available for this agent."
 		} else {
+			attempted++
 			prompt := fmt.Sprintf(pass1Prompt, a.name, a.role)
-			result, err := callClaudeForKnowledge(ctx, claudePath, callTimeout, prompt, a.transcript)
+			result, err := call(prompt, a.transcript)
 			if err != nil {
-				concept.Pass1Raw = fmt.Sprintf("*Knowledge extraction failed: %v*", err)
+				// Not the error text: this goes into the other agents' documents.
+				concept.Pass1Raw = "Knowledge extraction failed for this agent in this run."
+				failed[a.name] = true
+				bundle.FailedAgents = append(bundle.FailedAgents, DistillFailure{Agent: a.name, Error: err.Error()})
 			} else {
 				concept.Pass1Raw = result
 			}
 		}
 
 		bundle.Agents[a.name] = concept
+	}
+	if attempted > 0 && len(bundle.FailedAgents) == attempted {
+		// Nothing new to write: keep the team's earlier knowledge as a whole.
+		return nil, fmt.Errorf("no agent's knowledge could be extracted (%d of %d failed): %s",
+			attempted, attempted, bundle.FailedAgents[0].Error)
 	}
 
 	// ── Pass 2: Cross-reference collaboration patterns ──
@@ -252,9 +285,10 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 	}
 
 	collabPrompt := fmt.Sprintf(pass2Prompt, teamName, agentSummaries.String())
-	collabResult, err := callClaudeForKnowledge(ctx, claudePath, callTimeout, collabPrompt, "")
+	collabResult, err := call(collabPrompt, "")
 	if err != nil {
-		collabResult = fmt.Sprintf("*Collaboration analysis failed: %v*", err)
+		bundle.CollaborationError = err.Error()
+		collabResult = "No collaboration analysis is available for this run."
 	}
 
 	// Store pass2 on all agents
@@ -271,6 +305,11 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 		if progressFn != nil {
 			progressFn(DistillProgress{Phase: "formatting", Agent: a.name, Total: total, Completed: i})
 		}
+		if failed[a.name] {
+			// Its earlier file (if any) stays; nothing new was learned about it.
+			delete(bundle.Agents, a.name)
+			continue
+		}
 
 		concept := bundle.Agents[a.name]
 		slug := slugify(a.name)
@@ -282,7 +321,7 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 			tags, now,
 			concept.Pass1Raw, collabResult)
 
-		result, err := callClaudeForKnowledge(ctx, claudePath, callTimeout, prompt, "")
+		result, err := call(prompt, "")
 		if err != nil {
 			// Fallback: assemble OKF manually from pass1+pass2
 			concept.FinalMD = assembleOKFFallback(a.name, a.role, teamName, now, concept.Pass1Raw, collabResult)
@@ -291,8 +330,14 @@ func DistillTeamKnowledge(ctx context.Context, ss *store.SessionStore, ts *store
 		}
 	}
 
-	// Build index.md
-	bundle.IndexMD = buildIndexMD(teamName, now, agents, bundle)
+	// Build index.md: a failed agent is listed only if it has earlier knowledge to link to.
+	indexed := make([]agentMeta, 0, len(agents))
+	for _, a := range agents {
+		if !failed[a.name] || LoadAgentKnowledge(coralDir, teamName, a.name) != "" {
+			indexed = append(indexed, a)
+		}
+	}
+	bundle.IndexMD = buildIndexMD(teamName, now, indexed, bundle)
 
 	// Write to disk
 	if err := writeKnowledgeBundle(coralDir, bundle); err != nil {

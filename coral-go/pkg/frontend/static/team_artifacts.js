@@ -363,9 +363,22 @@ async function loadKnowledgeTab() {
         note.setAttribute('role', 'status');
         note.textContent = job.status === 'failed'
             ? `The last distillation failed${job.error ? ': ' + job.error : ''}. This is the knowledge from before it.`
-            : (job.finished_at ? `Updated ${_formatWhen(job.finished_at)}` : 'Updated');
+            : (job.finished_at ? `Updated ${_formatWhen(job.finished_at)}` : 'Updated') + _partialNote(job);
+        if (job.status === 'complete' && _partialNote(job)) note.classList.add('is-partial');
         viewer.prepend(note);
     }
+}
+
+/** A complete run can be partial: the agents it couldn't distill keep their earlier knowledge. */
+function _partialNote(job) {
+    const failed = Array.isArray(job.failed_agents) ? job.failed_agents : [];
+    let text = '';
+    if (failed.length) {
+        const list = failed.map(f => `${f.agent}${f.error ? ` (${f.error})` : ''}`).join('; ');
+        text += `. ${failed.length} agent${failed.length === 1 ? '' : 's'} couldn't be distilled: ${list}. ${failed.length === 1 ? 'It keeps its' : 'They keep their'} earlier knowledge, if any`;
+    }
+    if (job.collaboration_error) text += `. The collaboration pass failed (${job.collaboration_error}), so the documents were built without it`;
+    return text;
 }
 
 function _formatWhen(iso) {

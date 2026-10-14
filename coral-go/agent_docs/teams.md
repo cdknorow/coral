@@ -211,6 +211,8 @@ Distillation reads the team's agent transcripts and writes a knowledge bundle (a
 
 Status: `{team_name, status: "running"|"complete"|"failed", progress: {phase, agent, total, completed}, error, started_at, finished_at}` (times RFC 3339 UTC). Phases: `starting`, `extracting` (pass 1, per agent), `cross-referencing` (pass 2), `formatting` (pass 3). The last finished run is kept per team so a dashboard can show when the knowledge was updated, or that the last run failed. Runs are tracked in memory: after a restart a team reads `none` (an interrupted run is never reported as running); start it again.
 
+A `complete` run can be partial. `failed_agents: [{agent, error}]` lists the agents whose knowledge could not be extracted (a Claude CLI call failed): each keeps its earlier knowledge file, if any, and is listed in the index only then; the error text never goes into any agent's document. `collaboration_error` is set when the cross-referencing pass failed, and the documents were built without it. When every agent's extraction fails, the run is `failed` and nothing is written, so the earlier knowledge stays as it was.
+
 The dashboard follows a run wherever it was started (#3325): leaving the Knowledge tab or the team doesn't lose it. The team's sidebar header shows "Distilling…" while it runs (a run started in another window, or before a reload, is found the first time the team is shown), and a toast says when the knowledge is ready or the run failed.
 
 ## Example: Full team lifecycle

@@ -1,6 +1,7 @@
 /* Knowledge distillation runs (#3325). The server runs a distillation in the background
    (POST /api/teams/detail/{team}/distill-knowledge answers 202; GET on the same path gives
-   {status: none|running|complete|failed, progress, error, started_at, finished_at}).
+   {status: none|running|complete|failed, progress, error, started_at, finished_at, and for a
+   complete run that was partial: failed_agents [{agent, error}], collaboration_error}).
 
    The run is tracked here, per team, independent of any view: one poller per team while it
    runs, an event ('coral:distill-status', detail {team, job}) on every change, a toast when it
@@ -62,7 +63,12 @@ function _ensurePoll(team) {
         if (job.status === 'running') return;
         _stopPoll(team);
         if (was && was.status === 'running') {
-            if (job.status === 'complete') showToast(`Knowledge for ${keyLabel(team)} is ready`);
+            if (job.status === 'complete') {
+                // A partial run still completed: not an error, but shown longer (the tab has the details).
+                const failed = (job.failed_agents || []).length;
+                if (failed) showToast(`Knowledge for ${keyLabel(team)} is ready, but ${failed} agent${failed === 1 ? '' : 's'} couldn't be distilled`, false, 8000);
+                else showToast(`Knowledge for ${keyLabel(team)} is ready`);
+            }
             else if (job.status === 'failed') showToast(`Knowledge distillation for ${keyLabel(team)} failed${job.error ? ': ' + job.error : ''}`, true);
             // Runs live in the server's memory: a restart mid-run loses it, and the status reads 'none'.
             else if (job.status === 'none') showToast(`The distillation for ${keyLabel(team)} was interrupted (Coral restarted); start it again`, true);
