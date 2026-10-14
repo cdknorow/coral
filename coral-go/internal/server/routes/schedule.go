@@ -83,7 +83,7 @@ func (h *ScheduleHandler) ListJobs(w http.ResponseWriter, r *http.Request) {
 func (h *ScheduleHandler) GetJob(w http.ResponseWriter, r *http.Request) {
 	jobID, _ := strconv.ParseInt(chi.URLParam(r, "jobID"), 10, 64)
 	job, err := h.sched.GetScheduledJob(r.Context(), jobID)
-	if err != nil {
+	if err != nil || job == nil {
 		errNotFound(w, "job not found")
 		return
 	}

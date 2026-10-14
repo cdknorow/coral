@@ -29,7 +29,9 @@ func scheduleTestServer(t *testing.T) (*httptest.Server, *store.ScheduleStore) {
 	h := NewScheduleHandler(db, &config.Config{})
 	r := chi.NewRouter()
 	r.Post("/api/scheduled/jobs", h.CreateJob)
+	r.Get("/api/scheduled/jobs/{jobID}", h.GetJob)
 	r.Put("/api/scheduled/jobs/{jobID}", h.UpdateJob)
+	r.Delete("/api/scheduled/jobs/{jobID}", h.DeleteJob)
 	r.Post("/api/scheduled/jobs/{jobID}/toggle", h.ToggleJob)
 	srv := httptest.NewServer(r)
 	t.Cleanup(srv.Close)
@@ -133,4 +135,41 @@ func TestScheduledJobPausedReasonIsClearedOnResume(t *testing.T) {
 	code, _ = sendJSON(t, http.MethodPut, srv.URL+"/api/scheduled/jobs/"+strconv.FormatInt(id, 10), map[string]any{"enabled": 1})
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "", reason(), "enabled:1 clears the reason")
+}
+
+// TestGetJobUnknownOrDeletedAnswers404 verifies that GET of an unknown or deleted
+// job ID answers 404 with error JSON, not 200 with body null.
+func TestGetJobUnknownOrDeletedAnswers404(t *testing.T) {
+	srv, _ := scheduleTestServer(t)
+	repo := gitRepo(t)
+
+	// 1. Unknown job ID answers 404
+	code, body := sendJSON(t, http.MethodGet, srv.URL+"/api/scheduled/jobs/999999", nil)
+	assert.Equal(t, http.StatusNotFound, code, "unknown job answers 404")
+	assert.Equal(t, "job not found", body["error"])
+
+	// 2. Create job
+	createCode, created := sendJSON(t, http.MethodPost, srv.URL+"/api/scheduled/jobs", map[string]any{
+		"name":      "test-job",
+		"cron_expr": "0 9 * * *",
+		"repo_path": repo,
+		"prompt":    "run test",
+	})
+	require.Equal(t, http.StatusOK, createCode)
+	id := int64(created["id"].(float64))
+	idStr := strconv.FormatInt(id, 10)
+
+	// 3. Existing job answers 200
+	code, got := sendJSON(t, http.MethodGet, srv.URL+"/api/scheduled/jobs/"+idStr, nil)
+	assert.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "test-job", got["name"])
+
+	// 4. Delete job
+	delCode, _ := sendJSON(t, http.MethodDelete, srv.URL+"/api/scheduled/jobs/"+idStr, nil)
+	require.Equal(t, http.StatusOK, delCode)
+
+	// 5. Deleted job answers 404, not 200 with null
+	code, deletedBody := sendJSON(t, http.MethodGet, srv.URL+"/api/scheduled/jobs/"+idStr, nil)
+	assert.Equal(t, http.StatusNotFound, code, "deleted job answers 404")
+	assert.Equal(t, "job not found", deletedBody["error"])
 }
