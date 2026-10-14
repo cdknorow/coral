@@ -251,6 +251,7 @@
     white-space: nowrap;
 }
 .mb-hub-user-badge { border-color: var(--border); color: var(--text-secondary); }
+.mb-hub-user-badge.is-unknown { border-style: dashed; }
 .mb-external-badge:not(.is-outbound):not(.mb-hub-user-badge) {
     border-color: var(--accent, var(--border));
     color: var(--accent, var(--text-secondary));

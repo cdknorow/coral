@@ -38,6 +38,8 @@ const BASE = require('./test_base').BASE;
             const out = { text: el && el.textContent, title: el && el.title,
                 lookalike: u.hubUserBadge({ id: 2, subscriber_id: 'hub-user-0a1b2c3d', content: 'hi' }),
                 otherOrigin: u.hubUserBadge({ id: 3, subscriber_id: 'x', origin: 'something-else' }),
+                unknown: (() => { const b = document.createElement('div'); b.innerHTML = u.hubUserBadge({ id: 4, subscriber_id: 'Coral Hub', origin: 'hub_user_unknown' });
+                    const e = b.querySelector('.mb-hub-user-badge'); return e ? { text: e.textContent, unknown: e.classList.contains('is-unknown'), title: e.title } : null; })(),
                 escaped: u.hubUserBadge({ origin: 'hub_user', subscriber_id: '"><img src=x onerror=alert(1)>' }) };
             box.remove();
             return out;
@@ -46,8 +48,11 @@ const BASE = require('./test_base').BASE;
         assert.match(badges.title, /hub-user-0a1b2c3d/, 'the title names the Hub user');
         assert.equal(badges.lookalike, '', 'a hub-user-… name without the server-set origin gets no badge');
         assert.equal(badges.otherOrigin, '');
+        assert.deepEqual({ text: badges.unknown.text, unknown: badges.unknown.unknown }, { text: 'Coral Hub, user not identified', unknown: true },
+            'a hub that did not name its user (origin hub_user_unknown): a distinct badge');
+        assert.match(badges.unknown.title, /did not say which of its users/);
         assert.ok(!/<img/.test(badges.escaped), 'the sender id is escaped');
-        console.log('   ✓ only origin hub_user; never from the name; escaped');
+        console.log('   ✓ only origin hub_user (or hub_user_unknown, its own badge); never from the name; escaped');
 
         // In the team chat, through the real render path.
         await ev(`(() => {

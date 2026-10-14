@@ -581,6 +581,12 @@ export function externalMessageBadge(m) {
 /** A board chat message a Coral Hub user sent through the Hub (#3377). origin is set by the
  *  server on tunnel chat posts, never taken from a client and never inferred from the name. */
 export function hubUserBadge(m) {
+    // A Coral Hub that doesn't say which of its users sent it (an older hub): sent as the
+    // reserved 'Coral Hub', origin hub_user_unknown. Never shown as a known user.
+    if (m && m.origin === 'hub_user_unknown') {
+        const title = 'Sent through Coral Hub, which did not say which of its users sent it. Not an agent, and not you at this computer.';
+        return `<span class="mb-external-badge mb-hub-user-badge is-unknown" title="${escapeAttr(title)}">Coral Hub, user not identified</span>`;
+    }
     if (!m || m.origin !== 'hub_user') return '';
     const who = String(m.subscriber_id || '');
     const title = `Sent through Coral Hub by a Hub user${who ? ` (${who})` : ''}, not by an agent or by you at this computer.`;
