@@ -1,5 +1,44 @@
 # Release Notes
 
+## v1.4.22 — Safety: automated messages never answer a prompt; workflow and agent security fixes
+
+**Safety and security fixes — please upgrade.** Coral no longer types its own messages into an agent that is waiting on you at a permission or selection prompt, where they could answer it. This release also closes workflow injection and file-escape holes, keeps agents from inheriting Coral's own settings or acting as the Operator, and fixes the terminal width bug.
+
+### Safety
+
+- **Automated messages never answer a prompt.** While an agent waits on you (a permission or selection menu, an approval question, the trust-this-folder screen, a login or model picker), Coral doesn't type board messages, nudges, task notifications, wait results or a new agent's first prompt into it: typed there, the text and its Enter could answer the prompt for you. Coral checks the agent's screen just before typing, holds the message, and sends it once, in order, after you answer. A new agent's first prompt waits for its normal input box. If a message has been held for two minutes, the dashboard shows that the agent needs your input. Held nudges are dropped after an hour, and everything held for an agent is dropped when it is killed, restarted or resumed.
+- Scripts and agents that type through the API (`/send`, `/keys`) are held the same way (they get **202** `{"held": true}`); the dashboard, Coral Hub at Interact and your own `coral` command line type at once.
+- Auto-accept (when you turn it on) remains the one automated way to answer an approval, and each answer is logged in the input debug log.
+
+### Security
+
+- **Workflows can't be hijacked through step output.** Output and artifacts substituted into a shell step (`{{prev_stdout_content}}` and similar) are quoted as one word, so their text can't change the command; trailing newlines are dropped as `$(...)` does. A step's `output_artifact` stays inside its own folder (no `..`, absolute paths or symlinks), and content over 64 KiB fails the step with a clear message.
+- **Agents never inherit Coral's identity or location settings**, and the command line never sends an unsigned request: aimed at a different Coral than its data folder, it says so and sends nothing.
+- **A wrong credential is refused in every mode:** a wrong API key or a forged Coral Hub stamp gets **401** `invalid_credential` (it used to be ignored on this computer). Send the current key from Settings, or none.
+- **Operator-only actions (strict mode):** with `--strict-local-auth`, an agent can't create, change or trigger workflows, scheduled jobs or task runs, or change sensitive settings (agent CLI paths, auto-accept, remote access, Coral Hub) or kill runs (**403** `forbidden_for_agent`), and can't obtain a dashboard sign-in link (forged browser headers no longer count). Without strict mode such calls are recorded in the identity report.
+- **Coral Hub:** board writes and working-mode changes through Coral Hub follow the "act as the Operator" rules (attributed, and refused with the opt-out); deleting a whole board or killing a whole team needs Launch, and the dashboard shows those actions disabled below Launch.
+- At most 5 workflow runs at once; a 6th trigger gets **429** with `Retry-After`.
+- Resuming an agent with an old session id is refused (409) instead of starting a duplicate agent.
+
+### Fixes
+
+- **Terminals render at the pane's real width**, so lines no longer wrap and spill in the dashboard.
+- **Linux:** if Coral's data folder is writable by group or others (e.g. Ubuntu's default umask 002), Coral removes that write permission when it writes its command-line token, as the token's safety check requires.
+- Jobs and workflows: a timeout kills the agent and its whole process group (a background child no longer survives); deleting a workflow removes its run folders, and each workflow keeps its newest 50 runs; hooks run in the workflow's folder.
+- The dashboard backs off on its first load while the server is busy, and a per-action limit (`X-Coral-Limit: action`) shows its own message without pausing the rest of the page.
+- Scheduled jobs: an unknown job answers 404 `job not found` (get, toggle, update).
+- Accessibility fixes in the dashboard.
+
+### Diagnostics
+
+- **Stall dumps:** if the server stops answering, Coral writes every goroutine's stack to `<data folder>/stall-<time>.txt` (`CORAL_STALL_WATCHDOG=off` turns it off). `CORAL_PPROF_ADDR` (loopback only) serves Go's profiler on its own port.
+
+### For integrators (Coral Hub, scripts)
+
+- `/send` and `/keys` from a non-person caller can answer **202** `{"ok": true, "held": true}`.
+- Wrong credentials: **401** `invalid_credential` / `cli_signature_required`, **403** `other_user`; strict mode adds **403** `forbidden_for_agent`.
+- Workflow triggers: **429** `too_many_runs` with `Retry-After: 30`.
+
 ## v1.4.21 — Optional strict local sign-in
 
 **New, off by default: optional strict local sign-in.** Start Coral with `--strict-local-auth` (or `CORAL_STRICT_LOCAL_AUTH=1`) and every request on this computer has to say who it is: the dashboard needs to be signed in, each agent uses its own session token, and the `coral` command line signs its requests. Nothing changes unless you turn it on.
