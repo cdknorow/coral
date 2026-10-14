@@ -10,6 +10,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isHub, initHub, isCloud } from './server_base.js';
 import { showToast } from './utils.js';
+import { pollEvery } from './overload.js';
 import {
     statusMeta, escHtml, describeServerError, formatLastSeen, isValidServerId,
     serverVersion, serverAgentCount, updateBadgeHtml,
@@ -54,7 +55,7 @@ export async function renderServersInto(el) {
     await load();
     clearInterval(_timer);
     // Keep status / last-seen fresh while the tab is open.
-    _timer = setInterval(() => { if (_editing === null && !_busy.size) load(); }, 5000);
+    _timer = pollEvery(() => { if (_editing === null && !_busy.size) load(); }, 5000);
 }
 
 /** Leaving the Servers tab: stop refreshing and drop an open form. */

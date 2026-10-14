@@ -9,6 +9,7 @@ import { chatAgentAdapter } from './chat_agents.js';
 import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
+import { pollEvery } from './overload.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -991,7 +992,7 @@ function _updateLoadMoreButton(container) {
 export function startLiveHistoryPoll() {
     stopLiveHistoryPoll();
     const firstLoad = refreshLiveHistory();
-    historyPollInterval = setInterval(refreshLiveHistory, 1000);
+    historyPollInterval = pollEvery(refreshLiveHistory, 1000, { machine: () => state.currentSession && sessionServer(state.currentSession) });
     return firstLoad;
 }
 

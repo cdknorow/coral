@@ -20,6 +20,7 @@ import {
     bareBoardName, postLaunch, waitForLaunched,
 } from './launch_server.js';
 import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
+import { pollEvery } from './overload.js';
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
@@ -720,7 +721,7 @@ window.generateTeamFromWizard = generateTeamFromWizard;
 
 function _startGeneratePolling(jobId) {
     if (_generatePollTimer) clearInterval(_generatePollTimer);
-    _generatePollTimer = setInterval(async () => {
+    _generatePollTimer = pollEvery(async () => {
         try {
             const resp = await fetch(`/api/teams/generate/${encodeURIComponent(jobId)}`);
             const data = await resp.json();

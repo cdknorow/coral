@@ -19,6 +19,7 @@ import { liveListRendered } from './ready.js';
 import { morphHtml } from './dom_morph.js';
 import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
 import { terminalGoneChip } from './terminal_gone.js';
+import { pollEvery } from './overload.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -464,7 +465,7 @@ export function showBoardChatTab(boardName) {
     _checkBoardPauseState(boardName);
     // Start polling
     if (_boardChatTimer) clearInterval(_boardChatTimer);
-    _boardChatTimer = setInterval(() => _loadBoardPanelChat(boardName), 3000);
+    _boardChatTimer = pollEvery(() => _loadBoardPanelChat(boardName), 3000, { whenHidden: true }); // unread counts and notifications
 }
 
 export function hideBoardChatTab() {

@@ -6,6 +6,7 @@ import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js'
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
 import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch } from './server_base.js';
+import { pollEvery } from './overload.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -551,7 +552,7 @@ let _pollCount = 0;
 function startBoardPoll() {
     stopBoardPoll();
     _pollCount = 0;
-    pollTimer = setInterval(() => {
+    pollTimer = pollEvery(() => {
         if (currentProject && (platform.isNative || !document.hidden)) {
             _pollNewMessages();
             // Refresh subscribers less often (every 30s instead of every 10s)
@@ -560,7 +561,7 @@ function startBoardPoll() {
                 loadBoardSubscribers(currentProject);
             }
         }
-    }, 10000);
+    }, 10000, { whenHidden: true }); // the native app polls while hidden
 }
 
 function stopBoardPoll() {

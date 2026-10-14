@@ -5,6 +5,7 @@ import { serverFetch, serverForSession, isCloud } from './server_base.js';
 import { createPanelFrame, openPanel, isPanelEvent, createEventThrottle, MAX_PANEL_BYTES, MAX_PANELS } from './panel_sandbox.js';
 import { sessionUnreachable, backoffBlocked, backoffRecord } from './remote_health.js';
 import { responseErrorText } from './server_status.js';
+import { pollEvery } from './overload.js';
 
 let session = null;
 let generation = 0;
@@ -288,7 +289,7 @@ export async function refreshAgentUI() {
 export function initAgentUI() {
     refreshAgentUI();
     let tick = 0;
-    setInterval(() => {
+    pollEvery(() => {
         if (document.hidden) return;
         // Every request on the hub is a tunnel round trip: poll fast only while the Agent UI tab is open, slowly (for the unread count) otherwise.
         if (isCloud() && ++tick % 5 && !document.getElementById('agentic-panel-agent-ui')?.classList.contains('active')) return;

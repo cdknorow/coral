@@ -16,6 +16,7 @@ import { hubBlocked } from './hub_access.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
 import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
+import { pollEvery } from './overload.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -651,7 +652,7 @@ export async function confirmRestart() {
             const newSessionId = state.currentSession.session_id;
             const newAgentType = state.currentSession.agent_type;
             let pollCount = 0;
-            const pollInterval = setInterval(async () => {
+            const pollInterval = pollEvery(async () => {
                 pollCount++;
                 try {
                     const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}`);
@@ -666,7 +667,7 @@ export async function confirmRestart() {
                     xtermMod.setRestarting(false);
                     showToast("Restart timed out — session may not have started", true);
                 }
-            }, 2000);
+            }, 2000, { whenHidden: true }); // follows a Restart the user just asked for
         }
     } catch (e) {
         showToast("Failed to restart session", true);

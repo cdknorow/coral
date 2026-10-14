@@ -94,6 +94,7 @@ const {
 Object.assign(window, lazyWindowFns(loadModals, ['_selectLaunchType', '_showMobileConnectModal']));
 import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
+import { installOverloadWatch } from './overload.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -753,6 +754,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         return resp;
     };
+
+    // Back off on 429/502/503 (#3403): every poller pauses while Coral (or the hub) is overloaded.
+    installOverloadWatch();
 
     await initCloud();   // no-op unless the page's boot data says mode "cloud"
     loadSettings().then(initEditions).catch(e => console.error('ways to run Coral:', e)).finally(() => markReady('settings'));

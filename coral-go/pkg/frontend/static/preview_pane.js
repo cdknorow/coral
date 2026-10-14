@@ -10,6 +10,7 @@ import { renderArtifact, resolveArtifactSource } from './artifact_preview.js';
 import { serverUrl, currentServer, isCloud } from './server_base.js';
 import { fetchImageSrc } from './image_source.js';
 import { wireDownloads } from './artifact_download.js';
+import { retryOnce } from './overload.js';
 
 const ICON_MAP = {
     javascript: '{ }', typescript: '{ }', jsx: '{ }', tsx: '{ }',
@@ -485,7 +486,7 @@ async function _render(tab) {
         _setBody('<div class="preview-pane-loading">Loading…</div>');
         if (!_agentName()) return;
         try {
-            const resp = await fetch(_fileUrl('file-content', tab.filepath));
+            const resp = await retryOnce(() => fetch(_fileUrl('file-content', tab.filepath)));
             const data = await resp.json();
             if (!current()) return;
             if (data.error) { _setBody(`<div class="preview-pane-error">${escapeHtml(data.error)}</div>`); return; }
@@ -588,7 +589,7 @@ async function _mountDiff(tab, body, current) {
     if (tab.originalContent === null) {
         _setBody('<div class="preview-pane-loading">Loading…</div>');
         try {
-            const resp = await fetch(_fileUrl('file-original', tab.filepath));
+            const resp = await retryOnce(() => fetch(_fileUrl('file-original', tab.filepath)));
             const data = await resp.json();
             if (!current()) return;
             tab.originalContent = data.error ? '' : (data.content || '');

@@ -1,4 +1,5 @@
 /* Bounded browser observations only. Never send session IDs, text, or errors. */
+import { pollEvery } from './overload.js';
 let enabled = false;
 let initialized = false;
 let sessionsReady = false;
@@ -42,7 +43,7 @@ function maybeReady() {
     // Installation/UTC-day deduplication belongs to the server, not browser storage.
     observeActiveDay();
     document.addEventListener('visibilitychange', () => observeActiveDay(true));
-    setInterval(observeActiveDay, 60000);
+    pollEvery(observeActiveDay, 60000);
 }
 
 export function dashboardInitialized() { initialized = true; maybeReady(); }

@@ -10,6 +10,7 @@ import { getTerminalCols, isTerminalWsOpen } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
 import { serverFetch, currentServer, isCloud } from './server_base.js';
 import { sessionUnreachable, liveViewShown, backoffBlocked, backoffRecord } from './remote_health.js';
+import { pollEvery } from './overload.js';
 
 let _refreshCaptureHasRun = false;
 
@@ -174,7 +175,7 @@ export function startCaptureRefresh() {
     stopCaptureRefresh();
     _lastCaptureAt = Date.now();
     refreshCapture();
-    state.captureInterval = setInterval(captureTick, CAPTURE_REFRESH_MS);
+    state.captureInterval = pollEvery(captureTick, CAPTURE_REFRESH_MS, { machine: () => currentServer() });
 }
 
 export function stopCaptureRefresh() {

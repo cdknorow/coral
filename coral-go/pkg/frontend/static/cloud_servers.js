@@ -19,6 +19,7 @@ import { state } from './state.js';
 import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount } from './server_status.js';
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
+import { pollEvery } from './overload.js';
 
 // The Servers tab (#3070) hosts this list; there is no separate dialog.
 let host = null;
@@ -42,7 +43,7 @@ export async function renderCloudServersInto(el) {
     render();
     await load();
     clearInterval(timer);
-    timer = setInterval(() => { if (!renaming && !busy.size) load(); }, 5000);
+    timer = pollEvery(() => { if (!renaming && !busy.size) load(); }, 5000);
 }
 
 /** Leaving the Servers tab: stop refreshing. */

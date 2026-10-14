@@ -2,6 +2,7 @@
 
 import { showView, escapeHtml, escapeAttr, jsStr } from './utils.js';
 import { state } from './state.js';
+import { pollEvery } from './overload.js';
 
 function _formatTokens(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
@@ -313,7 +314,7 @@ export async function showCostDashboard() {
     await _refreshCostDashboard();
     await _refreshCallMetrics();
     stopCostDashboard(); // clear any existing timer
-    _costRefreshTimer = setInterval(_refreshCostDashboard, 15000);
+    _costRefreshTimer = pollEvery(_refreshCostDashboard, 15000);
 }
 
 async function _refreshCallMetrics() {

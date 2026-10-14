@@ -5,6 +5,7 @@ import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, js
 import { addPendingMessage } from './live_chat.js';
 import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
 import { platform } from './platform/detect.js';
+import { pollEvery } from './overload.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -26,7 +27,7 @@ export function startBoardTaskPoll() {
     // Subagents are loaded by the poll below, every tick: their status and
     // spend keep changing while they run, with no user action to trigger a reload.
     _boardTaskPollTick(true);
-    _boardTaskPollTimer = setInterval(_boardTaskPollTick, boardTaskPollHooks.intervalMs);
+    _boardTaskPollTimer = pollEvery(_boardTaskPollTick, boardTaskPollHooks.intervalMs, { whenHidden: true }); // its own guard decides (#3200)
 }
 
 /** One poll tick: skipped while the previous tick runs, and while the tab is hidden (a hidden

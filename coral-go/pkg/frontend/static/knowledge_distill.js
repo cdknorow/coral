@@ -13,6 +13,7 @@
 import { teamFetch, keyLabel } from './server_base.js';
 import { showToast } from './utils.js';
 import { importOnce } from './import_once.js';
+import { pollEvery } from './overload.js';
 
 export const DISTILL_POLL_MS = 2000;
 export const distillHooks = { pollMs: DISTILL_POLL_MS };
@@ -74,7 +75,7 @@ function _ensurePoll(team) {
             else if (job.status === 'none') showToast(`The distillation for ${keyLabel(team)} was interrupted (Coral restarted); start it again`, true);
         }
     };
-    pollers.set(team, setInterval(tick, distillHooks.pollMs));
+    pollers.set(team, pollEvery(tick, distillHooks.pollMs));
 }
 
 /** Ask the server for a team's status now; a running job gets a poller. Resolves to the job. */

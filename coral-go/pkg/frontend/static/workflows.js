@@ -3,6 +3,7 @@
 import { escapeHtml as esc, escapeAttr as escAttr, showView, showToast, jsStr } from './utils.js';
 import { apiFetch, loadLiveSessions } from './api.js';
 import { selectLiveSession } from './sessions.js';
+import { pollEvery } from './overload.js';
 
 let workflows = [];
 let selectedWorkflowId = null;
@@ -335,7 +336,7 @@ export async function selectWorkflowRun(runId) {
 
     // Poll if running
     if (run.status === 'running' || run.status === 'pending') {
-        currentRunPollTimer = setInterval(async () => {
+        currentRunPollTimer = pollEvery(async () => {
             const updated = await fetchRunDetail(runId);
             if (!updated) { stopRunPolling(); return; }
             renderRunDetail(updated);

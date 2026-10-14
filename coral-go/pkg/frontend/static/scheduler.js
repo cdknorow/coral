@@ -2,6 +2,7 @@
 
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, showView, jsStr } from './utils.js';
+import { pollEvery } from './overload.js';
 
 let scheduledJobs = [];
 let selectedJobId = null;
@@ -445,5 +446,5 @@ export async function saveScheduledJob() {
 export function initScheduler() {
     fetchJobs();
     // Refresh jobs every 30s
-    setInterval(fetchJobs, 30000);
+    pollEvery(fetchJobs, 30000, { whenHidden: true }); // job notifications
 }
