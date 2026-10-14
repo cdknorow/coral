@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.25 — Hotfix: board messages and nudges reach Claude agents again
+
+**Please upgrade from v1.4.24.** In v1.4.24, once a Claude agent finished a turn, Coral could stop delivering board messages, nudges and other automated messages to it: Claude shows a faint suggestion for your next prompt in its empty input box, and Coral took it for text you had typed, so it held every message for that agent indefinitely. Coral now recognises the faint suggestion as an empty box, and delivers the held messages. A real draft in the input box (anything you typed, including a draft followed by Claude's faint suggestion, or a suggestion you accepted with Tab) still holds Coral's message until you send or clear it.
+
+### Fixes
+
+- **Messages to idle Claude agents are delivered again** (the faint prompt suggestion counts as an empty input box).
+- **A message held by a draft is reported properly:** it keeps its original hold time, so after two minutes the dashboard says it is waiting on the input box, held nudges expire after an hour as intended, and the log records each hold once instead of every 2 seconds.
+- **No stale messages after a restart:** a message that was being delivered while an agent was killed or restarted is dropped, instead of reaching the new agent.
+- **"Needs input" means a real prompt:** an agent is marked as needing your input only when it waits on a selection menu or a question, not when Coral's own message is waiting behind a draft in the input box, and the flag clears once Coral delivers or drops the held message (before, it could stay on for Antigravity and Codex agents).
+- **Terminal pane size after a reconnect:** after a dropped connection, a renamed agent or a Restart, the dashboard reconnects to the agent's own terminal, so its pane keeps the right size. Restart from the dashboard reattaches to the restarted agent.
+
+### For integrators
+
+- The automated-input log line for a held paste now names the reason (a draft in the input box, no input box on screen, or a paste that didn't reach the box) and is written once per reason.
+
 ## v1.4.24 — Faster on busy machines; Run as a hub from Settings; automated messages never mix with your typing
 
 **A busy machine stays responsive.** Agents now run at a lower OS priority than Coral, the database reads behind the dashboard no longer queue behind writes, and Coral Hub's small replies overtake large downloads on the tunnel. Coral's own messages to an agent never mix with what you are typing in its input box.
