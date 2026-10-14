@@ -3136,6 +3136,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	// Load stored fields from current session
 	var storedPrompt, storedBoard, storedBoardServer, storedDisplayName, storedBoardType string
+	storedSleeping := false
 	storedAgentType := agentType
 	var storedTools []string
 	var storedMCPServers map[string]any
@@ -3149,6 +3150,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 			storedBoardServer = derefStrPtr(ls.BoardServer)
 			storedDisplayName = derefStrPtr(ls.DisplayName)
 			storedBoardType = derefStrPtr(ls.BoardType)
+			storedSleeping = ls.IsSleeping == 1
 			storedTools = store.UnmarshalFlags(ls.Tools)
 			storedMCPServers = store.UnmarshalMCPServers(ls.MCPServers)
 		}
@@ -3233,6 +3235,13 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	if body.CurrentSessionID != "" {
 		h.ss.MigrateDisplayName(ctx, body.CurrentSessionID, newSessionID)
 		h.ss.MigrateSessionTags(ctx, body.CurrentSessionID, newSessionID)
+	}
+	// The new row inherits the sleeping flag; the resumed agent is running now, as
+	// after a restart. Left asleep, team wake and the board notifier skipped it
+	// until the server restarted (#3273).
+	h.ss.SetSessionSleeping(ctx, newSessionID, false)
+	if storedSleeping && storedBoard != "" && h.boardHandler != nil {
+		h.boardHandler.SetPaused(storedBoard, false)
 	}
 
 	// Re-subscribe to board — subscriber_id (role) is stable, so the cursor persists automatically.

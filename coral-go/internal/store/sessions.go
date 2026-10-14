@@ -269,10 +269,19 @@ func (s *SessionStore) MigrateDisplayName(ctx context.Context, oldSessionID, new
 // MigrateSessionTags gives newSessionID the tags oldSessionID has (a restart or
 // resume replaces the session row; the agent keeps its tags, #3216).
 func (s *SessionStore) MigrateSessionTags(ctx context.Context, oldSessionID, newSessionID string) error {
-	_, err := s.db.ExecContext(ctx,
-		"INSERT OR IGNORE INTO session_tags (session_id, tag_id) SELECT ?, tag_id FROM session_tags WHERE session_id = ?",
-		newSessionID, oldSessionID)
-	return err
+	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		if _, err := tx.ExecContext(ctx,
+			"INSERT OR IGNORE INTO session_tags (session_id, tag_id) SELECT ?, tag_id FROM session_tags WHERE session_id = ?",
+			newSessionID, oldSessionID); err != nil {
+			return err
+		}
+		// The old session's rows are orphans unless its history entry still shows
+		// them (session history lists tags by session id): drop only the orphans (#3273).
+		_, err := tx.ExecContext(ctx,
+			"DELETE FROM session_tags WHERE session_id = ? AND ? <> ? AND NOT EXISTS (SELECT 1 FROM session_index WHERE session_id = ?)",
+			oldSessionID, oldSessionID, newSessionID, oldSessionID)
+		return err
+	})
 }
 
 // ── Tags ───────────────────────────────────────────────────────────────

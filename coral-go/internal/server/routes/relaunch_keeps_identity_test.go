@@ -15,7 +15,9 @@ import (
 )
 
 // Resume keeps the agent's identity as restart does (#3216): its display name,
-// its tags and its board subscription (job title, receive mode, peek).
+// its tags and its board subscription (job title, receive mode, webhook, peek).
+// A sleeping agent comes back awake (#3273), and the old session's tag rows go
+// when no history entry shows them.
 func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
 	for _, op := range []string{"resume", "restart"} {
 		t.Run(op, func(t *testing.T) {
@@ -31,8 +33,10 @@ func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
 			tag, err := ss.CreateTag(ctx, "frontend", "")
 			require.NoError(t, err)
 			require.NoError(t, ss.AddSessionTag(ctx, cur, tag.ID))
-			_, err = handler.bs.Subscribe(ctx, board, "Builder", "Builder", name, nil, nil, "all", true)
+			hook := "https://hooks.example.com/coral"
+			_, err = handler.bs.Subscribe(ctx, board, "Builder", "Builder", name, &hook, nil, "all", true)
 			require.NoError(t, err)
+			require.NoError(t, ss.SetSessionSleeping(ctx, cur, true))
 
 			body := map[string]any{"agent_type": "claude", "session_id": cur}
 			if op == "resume" {
@@ -64,7 +68,17 @@ func TestResumeAndRestartKeepTheAgentsIdentity(t *testing.T) {
 			assert.Equal(t, "Builder", sub.SubscriberID)
 			assert.Equal(t, "Builder", sub.JobTitle)
 			assert.Equal(t, "all", sub.ReceiveMode)
+			require.NotNil(t, sub.WebhookURL)
+			assert.Equal(t, hook, *sub.WebhookURL)
 			assert.Equal(t, 1, sub.CanPeek)
+
+			ls, err := ss.GetLiveSession(ctx, out.SessionID)
+			require.NoError(t, err)
+			require.NotNil(t, ls)
+			assert.Equal(t, 0, ls.IsSleeping, "the agent runs again: not asleep (#3273)")
+			old, err := ss.GetSessionTags(ctx, cur)
+			require.NoError(t, err)
+			assert.Empty(t, old, "no history entry shows the old session: its tag rows are gone")
 		})
 	}
 }
