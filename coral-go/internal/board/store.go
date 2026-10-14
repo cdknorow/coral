@@ -4,14 +4,11 @@ package board
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,14 +20,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
-
-func encryptedKeyHex(key string) string {
-	if strings.HasPrefix(key, "rawhex:") {
-		return strings.TrimPrefix(key, "rawhex:")
-	}
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:])
-}
 
 // Subscriber represents a board subscriber.
 // SubscriberID is the stable identity (role/display name, e.g. "Orchestrator").
@@ -211,15 +200,9 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 	driver := "sqlite"
 	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)"
 	if key != "" {
-		driver = "sqlite3"
-		q := url.Values{}
-		q.Set("_key", encryptedKeyHex(key))
-		q.Set("_pragma_busy_timeout", "30000")
-		q.Set("_pragma_journal_mode", "WAL")
-		q.Set("_pragma_synchronous", "NORMAL")
-		q.Set("_pragma_temp_store", "MEMORY")
-		q.Set("_pragma_cache_size", "-8000")
-		dsn = dbPath + "?" + q.Encode()
+		// The SQLCipher driver's own DSN keys: it ignores _pragma_ ones (#3454).
+		driver = dbcrypt.EncryptedDriver
+		dsn = dbcrypt.EncryptedDSN(dbPath, key, dbcrypt.DSNOptions{ForeignKeys: false})
 	}
 	db, err := sqlx.Open(driver, dsn)
 	if err != nil {

@@ -28,8 +28,12 @@ func encryptedKeyHex(key string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// encryptedDSN opens a migrated file to verify it: read-only, without changing its
+// journal mode (the file is renamed into place afterwards, so it must not be left in
+// WAL with a -wal file beside it). SQLCipher 4's default page size, 4096, is the one
+// the export wrote (the old cipher_page_size key was ignored too).
 func encryptedDSN(path, key string) string {
-	return path + "?_key=" + encryptedKeyHex(key) + "&_pragma_cipher_page_size=4096&_pragma_busy_timeout=30000&_pragma_journal_mode=WAL&_pragma_synchronous=NORMAL&_pragma_temp_store=MEMORY"
+	return EncryptedDSN(path, key, DSNOptions{ReadOnly: true})
 }
 
 func encryptedKeyLiteral(key string) string {
@@ -471,7 +475,7 @@ func exportPlaintext(path, tmp, key string) error {
 	if _, err := src.Exec("SELECT sqlcipher_export('encrypted'); DETACH DATABASE encrypted;"); err != nil {
 		return fmt.Errorf("export encrypted database: %w", err)
 	}
-	check, err := sql.Open("sqlite3", encryptedDSN(tmp, key))
+	check, err := sql.Open(EncryptedDriver, encryptedDSN(tmp, key))
 	if err != nil {
 		return err
 	}
@@ -522,7 +526,7 @@ func migratePlaintextLegacy(path, key string) error {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("export encrypted database: %w", exportErr)
 	}
-	check, err := sql.Open("sqlite3", encryptedDSN(tmp, key))
+	check, err := sql.Open(EncryptedDriver, encryptedDSN(tmp, key))
 	if err != nil {
 		_ = os.Remove(tmp)
 		return err

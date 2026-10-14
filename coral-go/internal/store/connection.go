@@ -3,29 +3,20 @@ package store
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"database/sql"
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/testguard"
-	"net/url"
+	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 )
-
-func encryptedKeyHex(key string) string {
-	if strings.HasPrefix(key, "rawhex:") {
-		return strings.TrimPrefix(key, "rawhex:")
-	}
-	sum := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(sum[:])
-}
 
 // DB wraps an sqlx.DB with schema management and migration support.
 type DB struct {
@@ -82,16 +73,9 @@ func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 	driver := "sqlite"
 	dsn := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)"
 	if key != "" {
-		driver = "sqlite3"
-		q := url.Values{}
-		q.Set("_key", encryptedKeyHex(key))
-		q.Set("_pragma_busy_timeout", "30000")
-		q.Set("_pragma_journal_mode", "WAL")
-		q.Set("_pragma_foreign_keys", "1")
-		q.Set("_pragma_synchronous", "NORMAL")
-		q.Set("_pragma_temp_store", "MEMORY")
-		q.Set("_pragma_cache_size", "-8000")
-		dsn = dbPath + "?" + q.Encode()
+		// The SQLCipher driver's own DSN keys: it ignores _pragma_ ones (#3454).
+		driver = dbcrypt.EncryptedDriver
+		dsn = dbcrypt.EncryptedDSN(dbPath, key, dbcrypt.DSNOptions{ForeignKeys: true})
 	}
 	db, err := sqlx.Open(driver, dsn)
 	if err != nil {
@@ -112,6 +96,9 @@ func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 	if err := d.initAgentTaskEngine(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("initialize personal task workflows: %w", err)
+	}
+	if key != "" {
+		reportForeignKeyOrphans(ctx, dbPath, key)
 	}
 
 	return d, nil
@@ -764,3 +751,48 @@ CREATE INDEX IF NOT EXISTS idx_agent_events_edited_files ON agent_events(session
 CREATE INDEX IF NOT EXISTS idx_git_snap_session_time ON git_snapshots(session_id, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_git_snap_agent_time ON git_snapshots(agent_name, recorded_at DESC);
 `
+
+// reportForeignKeyOrphans logs rows of an encrypted database that break a foreign key
+// (#3454). Until then encrypted databases ran with foreign keys OFF (the driver ignored
+// the setting), so cascades didn't apply and orphans may exist. They are kept, never
+// a reason to refuse to start; foreign keys are enforced from now on. The check runs on
+// its own read-only connection, so it never holds the writer, within a time budget.
+func reportForeignKeyOrphans(ctx context.Context, dbPath, key string) {
+	ctx, cancel := context.WithTimeout(ctx, fkCheckBudget)
+	defer cancel()
+	db, err := sql.Open(dbcrypt.EncryptedDriver, dbcrypt.EncryptedDSN(dbPath, key, dbcrypt.DSNOptions{ReadOnly: true}))
+	if err != nil {
+		slog.Warn("[store] foreign key check skipped", "error", err)
+		return
+	}
+	defer db.Close()
+	rows, err := db.QueryContext(ctx, "PRAGMA foreign_key_check")
+	if err != nil {
+		slog.Warn("[store] foreign key check skipped", "error", err)
+		return
+	}
+	defer rows.Close()
+	byTable := map[string]int{}
+	total := 0
+	for rows.Next() {
+		var table, parent string
+		var rowid sql.NullInt64
+		var fkid int
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			slog.Warn("[store] foreign key check skipped", "error", err)
+			return
+		}
+		byTable[table+"->"+parent]++
+		total++
+	}
+	if err := rows.Err(); err != nil {
+		slog.Warn("[store] foreign key check incomplete", "error", err, "rows_so_far", total)
+		return
+	}
+	if total > 0 {
+		slog.Warn("[store] rows that break a foreign key were found and kept; foreign keys are enforced from now on", "rows", total, "by_table", byTable)
+	}
+}
+
+// fkCheckBudget bounds the startup foreign key check (a test seam).
+var fkCheckBudget = 5 * time.Second

@@ -43,6 +43,24 @@ func TestMigratePlaintextRetainsBackupAndData(t *testing.T) {
 		t.Fatalf("value = %q", value)
 	}
 	opened.Close()
+
+	// #3454: the verification didn't switch the migrated file to WAL before it was renamed
+	// into place (no -wal file is left behind); the first real open does.
+	if _, err := os.Stat(path + "-wal"); !os.IsNotExist(err) {
+		t.Fatalf("a -wal file beside the migrated database: %v", err)
+	}
+	w, err := sql.Open(EncryptedDriver, EncryptedDSN(path, "migration-key-material-1234567890", DSNOptions{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	var mode string
+	if err := w.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil || mode != "wal" {
+		t.Fatalf("journal_mode after the first open = %q (%v)", mode, err)
+	}
+	if err := w.QueryRow("SELECT value FROM sentinel").Scan(&value); err != nil || value != "private-row" {
+		t.Fatalf("data after the switch to WAL: %q (%v)", value, err)
+	}
 }
 
 func TestMigratePlaintextsPreparesBothBeforeSwap(t *testing.T) {
