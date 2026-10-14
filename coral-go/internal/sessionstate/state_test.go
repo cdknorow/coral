@@ -200,3 +200,35 @@ func TestIsApprovalRequest(t *testing.T) {
 		}
 	}
 }
+
+// #3471: once Coral's held sends are delivered or dropped, its own held notice
+// stops showing Needs input, so an agent with no hook events (agy, Codex) doesn't
+// keep it. A request the agent made itself is never cleared by it.
+func TestHeldInputEndedClearsOnlyCoralsOwnNotice(t *testing.T) {
+	ended := note(HeldInputEndedSummary)
+	if Classify(HeldInputEndedSummary) != NotificationInformational {
+		t.Fatal("the ended note must raise nothing")
+	}
+	if Classify(HeldInputSummary) != NotificationNeedsInput {
+		t.Fatal("the held notice shows Needs input")
+	}
+	for _, c := range []struct {
+		name   string
+		events []Event
+		want   bool
+	}{
+		{"held notice", []Event{stop, note(HeldInputSummary)}, true},
+		{"held notice, then ended", []Event{stop, note(HeldInputSummary), ended}, false},
+		{"agent's own permission request, then ended", []Event{tool, note(permission), ended}, true},
+		{"held notice, the agent's own request, then ended", []Event{stop, note(HeldInputSummary), note(permission), ended}, true},
+		{"ended alone", []Event{stop, ended}, false},
+	} {
+		got := Derive(Input{Events: c.events})
+		if got.NeedsInput != c.want {
+			t.Errorf("%s: NeedsInput = %v, want %v", c.name, got.NeedsInput, c.want)
+		}
+		if c.name == "held notice, then ended" && !got.AwaitingUser {
+			t.Errorf("%s: the stop's calm 'your move' state should remain", c.name)
+		}
+	}
+}

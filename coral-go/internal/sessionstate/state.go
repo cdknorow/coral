@@ -56,6 +56,9 @@ type State struct {
 func Derive(in Input) State {
 	state := State{NotStarted: in.NotStarted, Sleeping: in.Sleeping}
 	var latestType string
+	// What a request replaced, restored when Coral's own held notice is cleared.
+	var beforeType string
+	var beforeAwaiting bool
 	clearRequest := func() {
 		state.NeedsInput = false
 		state.WaitingReason = ""
@@ -78,8 +81,20 @@ func Derive(in Input) State {
 			clearRequest()
 			state.AwaitingUser = true
 		case "notification":
+			if event.Summary == HeldInputEndedSummary {
+				// Coral's held sends were delivered or dropped: its own notice no
+				// longer stands. A request the agent made itself is kept (#3471).
+				if state.NeedsInput && state.WaitingSummary == HeldInputSummary {
+					clearRequest()
+					latestType, state.AwaitingUser = beforeType, beforeAwaiting
+				}
+				continue
+			}
 			switch Classify(event.Summary) {
 			case NotificationNeedsInput:
+				if !state.NeedsInput {
+					beforeType, beforeAwaiting = latestType, state.AwaitingUser
+				}
 				latestType = "notification"
 				state.NeedsInput = true
 				state.AwaitingUser = false
@@ -106,6 +121,16 @@ func Derive(in Input) State {
 	}
 	return state
 }
+
+// HeldInputSummary is the notification Coral records when automated input has
+// been held a while because the agent waits on a prompt (#3431): it shows the
+// agent as needing the user (it matches "needs your input").
+const HeldInputSummary = "Coral is holding automated messages: this agent needs your input in its terminal (a prompt is open)"
+
+// HeldInputEndedSummary is recorded when those held sends were delivered or
+// dropped. It clears HeldInputSummary's request and nothing else, so an agent
+// with no hook events of its own (agy, Codex) doesn't stay at Needs input (#3471).
+const HeldInputEndedSummary = "Coral delivered or dropped the automated messages it was holding"
 
 // NotificationClass is what a notification means for the session state.
 type NotificationClass uint8
