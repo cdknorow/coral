@@ -25,7 +25,8 @@ const BASE = require('./test_base').BASE;
             document.getElementById('create-task-instructions').value = 'Use revision-specific evidence.';
             await tasks.submitCreateTask();
             window.testTaskID = state.currentBoardTasks.find(t => t.title === 'Build candidate').id;
-            tasks.showTaskDetailModal(window.testTaskID);
+            // The list item is light (#3269): wait for the full task in the view.
+            await tasks.showTaskDetailModal(window.testTaskID);
         })()`);
         assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('Use revision-specific evidence.')`));
         assert.ok(await ev(`document.getElementById('task-detail-content').textContent.includes('Required outputs: build')`));

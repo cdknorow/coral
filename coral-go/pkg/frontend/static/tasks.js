@@ -1154,6 +1154,8 @@ async function _fetchFullBoardTask(taskId, generation) {
     if (task && generation === _editGeneration && _boardTaskById(taskId) === task) showTaskDetailModal(taskId);
 }
 
+/** Shows a board task. A list item is light (#3269): it shows at once, then the
+ *  full task once fetched; the returned promise resolves when that is on screen. */
 export function showTaskDetailModal(taskId) {
     ++_editGeneration;
     _editOriginalTask = null;
@@ -1161,14 +1163,13 @@ export function showTaskDetailModal(taskId) {
     const sharedContent = document.getElementById('task-detail-content');
     if (sharedContent) { sharedContent._subagentHtml = null; delete sharedContent.dataset.subagentId; }
     const task = _boardTaskById(taskId);
-    if (!task) return;
-    // A list item is light (#3269): it shows at once, and the full task once fetched.
-    if (!task.workflow) _fetchFullBoardTask(taskId, _editGeneration);
+    if (!task) return Promise.resolve();
+    const full = task.workflow ? Promise.resolve() : _fetchFullBoardTask(taskId, _editGeneration);
 
     const modal = document.getElementById('task-detail-modal');
     const titleEl = document.getElementById('task-detail-modal-title');
     const content = document.getElementById('task-detail-content');
-    if (!modal || !content) return;
+    if (!modal || !content) return full;
 
     titleEl.textContent = `Task #${task.id}`;
     content.innerHTML = _taskDetailHtml(task, task.status === 'in_progress' ? _liveCosts[task.id] : null);
@@ -1195,6 +1196,7 @@ export function showTaskDetailModal(taskId) {
     }
 
     _openTaskDetailModal(modal);
+    return full;
 }
 
 // Tasks created for an agent that is not on a board. They share the board
