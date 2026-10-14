@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -223,7 +224,8 @@ func TestListTaskPage_LimitsAndBadQueries(t *testing.T) {
 		"garbage cursor":             {Status: TaskListCompleted, Cursor: "!!!"},
 		"cursor of another filter":   {Status: TaskListCompleted, Cursor: openCursor},
 		"cursor on the default view": {Cursor: openCursor},
-		"forged cursor":              {Status: TaskListAll, Cursor: encodeTaskCursor("a", "", -1)},
+		"a cursor from before #3342": {Status: TaskListAll, Cursor: base64.RawURLEncoding.EncodeToString([]byte("a||5"))},
+		"forged cursor":              {Status: TaskListAll, Cursor: encodeTaskCursor("team", "a", "", -1)},
 	} {
 		_, err := s.ListTaskPage(ctx, "team", q)
 		assert.ErrorIs(t, err, ErrBadTaskListQuery, name)
@@ -250,4 +252,38 @@ func TestListTaskPage_DonePageUsesTheIndex(t *testing.T) {
 	joined := strings.Join(plan, "\n")
 	assert.Contains(t, joined, "idx_board_tasks_done", joined)
 	assert.NotContains(t, joined, "TEMP B-TREE", "no sort of the whole history:\n"+joined)
+}
+
+// #3342: a cursor is bound to the board that issued it. A cursor from board A is refused on
+// board B (it used to offset B's pages); on A it still pages.
+func TestListTaskPage_CursorIsBoundToItsBoard(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	for _, board := range []string{"alpha", "beta"} {
+		for i := 0; i < 5; i++ {
+			_, err := s.CreateTask(ctx, board, fmt.Sprintf("%s-%d", board, i), "", "medium", "lead")
+			require.NoError(t, err)
+		}
+	}
+	for _, status := range []string{TaskListAll, TaskListOpen} {
+		p, err := s.ListTaskPage(ctx, "alpha", TaskListQuery{Status: status, Limit: 2})
+		require.NoError(t, err)
+		require.NotEmpty(t, p.NextCursor, status)
+
+		_, err = s.ListTaskPage(ctx, "beta", TaskListQuery{Status: status, Limit: 2, Cursor: p.NextCursor})
+		assert.ErrorIs(t, err, ErrBadTaskListQuery, status+": alpha's cursor on beta")
+
+		next, err := s.ListTaskPage(ctx, "alpha", TaskListQuery{Status: status, Limit: 2, Cursor: p.NextCursor})
+		require.NoError(t, err, status)
+		assert.Len(t, next.Tasks, 2, status+": alpha's cursor still pages alpha")
+	}
+	// Done tasks page by completed_at: the same binding.
+	_, err := s.ListTaskPage(ctx, "beta", TaskListQuery{Status: TaskListCompleted, Cursor: encodeTaskCursor("alpha", "d", "2026-10-14T06:00:00Z", 3)})
+	assert.ErrorIs(t, err, ErrBadTaskListQuery, "done: alpha's cursor on beta")
+	_, err = s.ListTaskPage(ctx, "alpha", TaskListQuery{Status: TaskListCompleted, Cursor: encodeTaskCursor("alpha", "d", "2026-10-14T06:00:00Z", 3)})
+	assert.NoError(t, err, "done: alpha's cursor on alpha")
+	// A board name with the separator in it still round-trips.
+	_, id, err := decodeTaskCursor(encodeTaskCursor("a|b", "a", "", 9), "a|b", "a")
+	require.NoError(t, err)
+	assert.Equal(t, int64(9), id)
 }

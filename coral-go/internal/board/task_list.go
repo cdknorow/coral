@@ -2,7 +2,9 @@ package board
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -153,7 +155,7 @@ func (s *Store) doneTaskPage(ctx context.Context, project, cursor string, limit 
 	where := `t.board_id = ? AND t.` + doneTaskStatusSQL
 	args := []any{project}
 	if cursor != "" {
-		at, id, err := decodeTaskCursor(cursor, "d")
+		at, id, err := decodeTaskCursor(cursor, project, "d")
 		if err != nil {
 			return nil, "", err
 		}
@@ -179,7 +181,7 @@ func (s *Store) doneTaskPage(ctx context.Context, project, cursor string, limit 
 	if last.CompletedAt != nil {
 		at = *last.CompletedAt
 	}
-	return rows, encodeTaskCursor("d", at, last.ID), nil
+	return rows, encodeTaskCursor(project, "d", at, last.ID), nil
 }
 
 // idTaskPage pages open tasks oldest first, or every task newest first, by id.
@@ -190,7 +192,7 @@ func (s *Store) idTaskPage(ctx context.Context, project, status, cursor string, 
 	}
 	args := []any{project}
 	if cursor != "" {
-		_, id, err := decodeTaskCursor(cursor, kind)
+		_, id, err := decodeTaskCursor(cursor, project, kind)
 		if err != nil {
 			return nil, "", err
 		}
@@ -206,7 +208,7 @@ func (s *Store) idTaskPage(ctx context.Context, project, status, cursor string, 
 		return rows, "", nil
 	}
 	rows = rows[:limit]
-	return rows, encodeTaskCursor(kind, "", rows[limit-1].ID), nil
+	return rows, encodeTaskCursor(project, kind, "", rows[limit-1].ID), nil
 }
 
 // loadListBlockedBy fills BlockedBy for list items, with the same batched loader as Task.
@@ -225,24 +227,37 @@ func (s *Store) loadListBlockedBy(ctx context.Context, items []TaskListItem) err
 	return nil
 }
 
-// A cursor is opaque to clients: base64url of "<kind>|<completed_at>|<id>". kind ties it
-// to the filter that issued it, so a cursor from one filter is refused by another.
-func encodeTaskCursor(kind, at string, id int64) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(kind + "|" + at + "|" + strconv.FormatInt(id, 10)))
+// A cursor is opaque to clients: base64url of "<kind>|<board>|<completed_at>|<id>". kind ties
+// it to the filter that issued it, so a cursor from one filter is refused by another; board
+// (#3342) ties it to the board, so a cursor from board A is refused on board B rather than
+// offsetting B's pages. A cursor from before #3342 (no board) is refused too: the dashboard's
+// next poll hands out a fresh one.
+func encodeTaskCursor(project, kind, at string, id int64) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(kind + "|" + cursorBoardTag(project) + "|" + at + "|" + strconv.FormatInt(id, 10)))
 }
 
-func decodeTaskCursor(cursor, kind string) (string, int64, error) {
+func decodeTaskCursor(cursor, project, kind string) (string, int64, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
 		return "", 0, fmt.Errorf("%w: bad cursor", ErrBadTaskListQuery)
 	}
 	parts := strings.Split(string(raw), "|")
-	if len(parts) != 3 || parts[0] != kind {
+	if len(parts) != 4 || parts[0] != kind {
 		return "", 0, fmt.Errorf("%w: bad cursor", ErrBadTaskListQuery)
 	}
-	id, err := strconv.ParseInt(parts[2], 10, 64)
+	if parts[1] != cursorBoardTag(project) {
+		return "", 0, fmt.Errorf("%w: cursor is for another board", ErrBadTaskListQuery)
+	}
+	id, err := strconv.ParseInt(parts[3], 10, 64)
 	if err != nil || id <= 0 {
 		return "", 0, fmt.Errorf("%w: bad cursor", ErrBadTaskListQuery)
 	}
-	return parts[1], id, nil
+	return parts[2], id, nil
+}
+
+// cursorBoardTag names the board in a cursor: a short hash, so any board name (one with a '|'
+// included) fits the format and the cursor does not spell the name out.
+func cursorBoardTag(project string) string {
+	sum := sha256.Sum256([]byte(project))
+	return hex.EncodeToString(sum[:8])
 }

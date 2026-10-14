@@ -77,3 +77,30 @@ func TestBoardListTasks_PagedLightListAndFullFallback(t *testing.T) {
 		assert.NotEmpty(t, page["error"], q)
 	}
 }
+
+// #3342: a cursor from one board is refused on another (400), instead of offsetting its pages.
+func TestBoardListTasks_CursorFromAnotherBoardIs400(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	ctx := context.Background()
+	for _, board := range []string{"alpha", "beta"} {
+		for i := 0; i < 3; i++ {
+			task, err := handler.bs.CreateTask(ctx, board, fmt.Sprintf("%s %d", board, i), "", "medium", "lead", "worker")
+			require.NoError(t, err)
+			_, err = handler.bs.ClaimTask(ctx, board, "worker", task.ID)
+			require.NoError(t, err)
+			_, err = handler.bs.CompleteTask(ctx, board, task.ID, "worker", nil)
+			require.NoError(t, err)
+		}
+	}
+	status, page := getTaskList(t, server.URL+"/api/board/alpha/tasks?status=completed&limit=1")
+	require.Equal(t, http.StatusOK, status)
+	cursor, _ := page["next_cursor"].(string)
+	require.NotEmpty(t, cursor)
+
+	status, page = getTaskList(t, server.URL+"/api/board/beta/tasks?status=completed&limit=1&cursor="+cursor)
+	assert.Equal(t, http.StatusBadRequest, status)
+	assert.Contains(t, page["error"], "another board")
+
+	status, _ = getTaskList(t, server.URL+"/api/board/alpha/tasks?status=completed&limit=1&cursor="+cursor)
+	assert.Equal(t, http.StatusOK, status, "on its own board the cursor still pages")
+}
