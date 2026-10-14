@@ -33,15 +33,17 @@ const BASE = require('./test_base').BASE;
             // Condition waits (#3118) instead of fixed sleeps: __qaTrack() counts the requests the current fetch mock
             // has in flight; __qaSettle() waits until every one has resolved or been aborted (so a stale response has
             // had its chance to land) and the result is on screen.
+            // Each __qaTrack() counts with its own counter: a request from an earlier case that settles late
+            // (an aborted one, under load) decrements that case's counter, never this one's (it read -1).
             window.__qaTrack = () => {
-                const mock = window.fetch; window.__pend = 0;
-                window.fetch = (u, o) => { window.__pend++; return Promise.resolve(mock(u, o)).finally(() => { window.__pend--; }); };
+                const mock = window.fetch; const pend = window.__pend = { n: 0 };
+                window.fetch = (u, o) => { pend.n++; return Promise.resolve(mock(u, o)).finally(() => { pend.n--; }); };
                 return mock;
             };
             window.__qaSettle = () => new Promise((resolve, reject) => {
                 const end = Date.now() + 5000;
-                const check = () => window.__pend === 0 ? requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
-                    : Date.now() > end ? reject(new Error('mocked requests still pending: ' + window.__pend)) : setTimeout(check, 10);
+                const check = () => window.__pend.n === 0 ? requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))
+                    : Date.now() > end ? reject(new Error('mocked requests still pending: ' + window.__pend.n)) : setTimeout(check, 10);
                 check();
             });
 
