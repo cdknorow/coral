@@ -12,5 +12,8 @@ func TestMain(m *testing.M) {
 	// The terminal tests drive shells, which need no 300ms between a command
 	// and its Enter (production keeps it for agent TUIs).
 	tmux.SetSendKeysSettleForTest(20 * time.Millisecond)
+	// The tests' tmux servers start their panes with $SHELL. A developer's interactive shell and its
+	// rc files make typed commands wait on an unknown startup; a plain sh has none.
+	os.Setenv("SHELL", "/bin/sh")
 	os.Exit(m.Run())
 }

@@ -33,11 +33,14 @@ func newTestClient(t *testing.T) *Client {
 	// Smoke-test that tmux can actually create a detached session on this
 	// socket. Some CI sandboxes reject new-session with exit 1 — skip rather
 	// than fail on an environmental issue.
-	if out, err := exec.Command(bin, "-S", sock, "new-session", "-d", "-s", "coral-smoke", "sleep 1").CombinedOutput(); err != nil {
-		exec.Command(bin, "-S", sock, "kill-server").Run()
+	// On its OWN socket: kill-server returns before that server has exited, and a test's first
+	// new-session on the same socket could reach the dying server ("server exited unexpectedly").
+	smoke := filepath.Join(dir, "smoke.sock")
+	if out, err := exec.Command(bin, "-S", smoke, "new-session", "-d", "-s", "coral-smoke", "sleep 1").CombinedOutput(); err != nil {
+		exec.Command(bin, "-S", smoke, "kill-server").Run()
 		t.Skipf("tmux cannot create sessions in this environment: %v (output: %s)", err, strings.TrimSpace(string(out)))
 	}
-	exec.Command(bin, "-S", sock, "kill-server").Run()
+	exec.Command(bin, "-S", smoke, "kill-server").Run()
 
 	c := &Client{
 		TmuxBin:           bin,
@@ -371,12 +374,18 @@ func TestClient_ClearHistory(t *testing.T) {
 	require.NoError(t, c.SendKeysToTarget(ctx, "clear-hist:0.0", "for i in $(seq 1 50); do echo SCROLLBACK_LINE; done"))
 
 	// Capture with large scrollback should have all of it
+	// Polled here rather than with assert.Eventually, whose condition runs in its own goroutine and
+	// would race this test reading before/captureErr for the failure message.
 	var before string
 	var captureErr error
-	ok := assert.Eventually(t, func() bool {
+	ok := false
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		before, captureErr = c.CapturePaneTarget(ctx, "clear-hist:0.0", 500)
-		return captureErr == nil && strings.Count(before, "SCROLLBACK_LINE\n") >= 50
-	}, 10*time.Second, 20*time.Millisecond, "scrollback never held 50 lines")
+		if captureErr == nil && strings.Count(before, "SCROLLBACK_LINE\n") >= 50 {
+			ok = true
+			break
+		}
+	}
 	if !ok {
 		// Seen once under heavy load and not reproduced since: say what the pane held, so the next one explains itself.
 		tail := before

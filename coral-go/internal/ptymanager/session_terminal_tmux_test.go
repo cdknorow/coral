@@ -28,11 +28,14 @@ func newTmuxTestTerminal(t *testing.T) *TmuxSessionTerminal {
 	// Smoke-test that tmux can create a detached session here. Some sandboxes
 	// reject new-session with exit 1 (no TTY / missing TERM / seccomp); skip
 	// rather than fail on an environmental issue.
-	if out, err := exec.Command("tmux", "-S", sock, "new-session", "-d", "-s", "coral-smoke", "sleep 1").CombinedOutput(); err != nil {
-		exec.Command("tmux", "-S", sock, "kill-server").Run()
+	// On its OWN socket: kill-server returns before that server has exited, and the first
+	// new-session on the same socket could reach the dying server ("server exited unexpectedly").
+	smoke := sock + ".smoke"
+	if out, err := exec.Command("tmux", "-S", smoke, "new-session", "-d", "-s", "coral-smoke", "sleep 1").CombinedOutput(); err != nil {
+		exec.Command("tmux", "-S", smoke, "kill-server").Run()
 		t.Skipf("tmux cannot create sessions in this environment: %v (output: %s)", err, strings.TrimSpace(string(out)))
 	}
-	exec.Command("tmux", "-S", sock, "kill-server").Run()
+	exec.Command("tmux", "-S", smoke, "kill-server").Run()
 
 	// Use NewClient to get a properly initialized client (sessionSockets map, etc.)
 	c := tmux.NewClient(t.TempDir())
