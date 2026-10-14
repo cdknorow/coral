@@ -1,5 +1,52 @@
 # Release Notes
 
+## v1.4.15 — The server no longer freezes; nothing is typed into a shell after an agent exits; signed Linux downloads
+
+**Please upgrade.** A Coral started from a terminal window could freeze completely if that window stopped showing output. This release fixes that, stops Coral from typing into a plain shell after an agent's CLI has exited, and makes recovering an agent whose terminal is gone a one-click action. Linux downloads are now signed, and every release can be verified.
+
+### Fixes
+
+- **The server no longer freezes when its terminal stops reading.** Coral copies its log to the terminal it was started from. If that window stopped taking output (for example after Ctrl-S, or a terminal app that stops reading a background window), the next log line blocked and the whole server froze: the dashboard stopped responding, agents got no messages, and Coral could not be stopped normally. Coral now writes `coral.log` first and never waits for the terminal; if the terminal falls behind, it shows how many lines it skipped (they're all in `coral.log`). Messages that explain why Coral stopped, such as "another Coral server is already running", still reach the terminal.
+- **Nothing is typed into a shell after an agent's CLI exits.** When an agent's CLI exited and left its terminal at a shell prompt, Coral could still type board messages, task prompts and other automated input into that shell, where it ran as shell commands. Coral now checks first and sends nothing to an agent whose CLI has exited. About a minute later the agent shows as asleep, and **Wake** starts it again in the same terminal. Anything you type yourself is still sent.
+- **Restart and Resume work when an agent's terminal is gone.** Before, for about a minute after a terminal closed, Restart and Resume were refused with "The agent's terminal is gone". They now start the agent in a new terminal in its own folder, without touching any other agent.
+- **Resume keeps the agent's identity.** A resumed agent keeps its display name, tags and board subscription (job title, receive mode), as Restart already did.
+- **"Terminal gone" is clear, and drafts are never lost.** Typing into an agent whose terminal has closed now shows the same message whether you use the terminal view or the composer: a line under the composer with a **Restart** button, a chip on the agent's row and a badge in the header. The text you were sending comes back in the composer and the draft is kept; it's cleared only once Coral confirms the send.
+- **Starting without a terminal never hangs.** Started in the background or as a service, Coral used to wait forever for an answer to a first-launch question nobody could see. Now remote access stays off and nothing is saved (you're asked on the next start from a terminal), a password-protected database explains that it needs a terminal, and the terms of service prompt says to run Coral once from a terminal. `--remote` no longer asks the remote-access question.
+- **The board task list no longer piles up requests.** On a board with many tasks, a slow tab could start a new full task-list fetch every 10 seconds before the last one finished. The task list now waits for the previous fetch and pauses while the tab is hidden.
+- **Sidebar: yellow means it needs you.** "Task assigned · idle" is now a muted ring with a neutral label. Yellow is kept for states that need your attention, such as Needs input.
+- **Input reaches only the agent it's meant for.** Coral matches an agent's terminal by its exact session id. Tools that still address an agent by name only are logged as deprecated (see the note for integrators below).
+
+### Security: signed, verifiable downloads
+
+Every package in this release is built and signed by Coral's release workflow on GitHub, with no long-lived signing keys (Sigstore keyless signing). The release adds `SHA256SUMS.txt.sigstore.json` and `coral-linux-amd64-1.4.15.tar.gz.sigstore.json`, and every package has a build-provenance attestation. To check a download:
+
+```bash
+# With the GitHub CLI (any package)
+gh attestation verify coral-linux-amd64-1.4.15.tar.gz --repo cdknorow/coral \
+  --signer-workflow cdknorow/coral/.github/workflows/release.yml
+
+# Offline, with cosign v2.4 or later
+cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/cdknorow/coral/\.github/workflows/release\.yml@refs/tags/v'
+sha256sum --check --ignore-missing SHA256SUMS.txt
+```
+
+If either check fails, the file isn't an official build: don't run it.
+
+### Other changes
+
+- **Cloud Hub is now called Coral Hub** in the dashboard and the docs.
+- Coral records which version of the terms of service you accepted.
+- When a tmux command fails, `coral.log` now includes tmux's own error message.
+
+### For integrators (Coral Hub, scripts)
+
+- **Restart and Resume on a gone terminal** now return **200** and recover the agent in a new terminal, instead of **409** `terminal_gone`.
+- **The terminal websocket** (`/ws/terminal/...`) sends `{"type":"terminal_gone","code":"terminal_gone","not_sent":true}` when input or a resize can't be delivered, then `terminal_closed` when the stream ends. Before, such input was dropped silently.
+- **Name-only writes are deprecated.** Sending messages or keys, or answering a prompt, without `session_id` still works but is logged as deprecated; a later release will require `session_id`.
+- **`pkg/license`** exports the terms text, version and digest.
+
 ## v1.4.14 — Security fix: input could reach the wrong agent; auto-accept permission prompts
 
 **Security fix — please upgrade.** Input meant for an agent whose terminal had closed could reach another agent's terminal. This release also adds auto-accept for agents' permission prompts, fixes a hub's remote server that stayed Unreachable until you clicked Test, makes Coral use the agent CLI path you set everywhere it starts one, and fixes a batch of smaller problems.
