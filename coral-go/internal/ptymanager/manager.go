@@ -200,7 +200,7 @@ func (m *PTYBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	s, ok := m.sessions[name]
 	m.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("session %q not found", name)
+		return nil, fmt.Errorf("session %q not found: %w", name, ErrTerminalGone)
 	}
 	return s.subscribe(subscriberID), nil
 }

@@ -1,0 +1,142 @@
+package routes
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"nhooyr.io/websocket"
+)
+
+// readWSFrame returns the next JSON text frame that satisfies match (binary output and
+// other frames are skipped), or nil when the deadline passes or the socket closes.
+func readWSFrame(t *testing.T, ctx context.Context, conn *websocket.Conn, within time.Duration, match func(map[string]any) bool) map[string]any {
+	t.Helper()
+	rctx, cancel := context.WithTimeout(ctx, within)
+	defer cancel()
+	for {
+		typ, data, err := conn.Read(rctx)
+		if err != nil {
+			return nil
+		}
+		if typ != websocket.MessageText {
+			continue
+		}
+		var m map[string]any
+		if json.Unmarshal(data, &m) == nil && match(m) {
+			return m
+		}
+	}
+}
+
+func frameType(want string) func(map[string]any) bool {
+	return func(m map[string]any) bool { return m["type"] == want }
+}
+
+// #3276: the server says it answers input (terminal_hello), then acknowledges each
+// terminal_input that carries an id once it is delivered, echoing the id.
+func TestWSTerminal_InputWithAnIDIsAcknowledged(t *testing.T) {
+	backend, _ := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "ack-agent", "d4e5f6a7-1111-4222-8333-444455556666", "")
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+
+	hello := readWSFrame(t, ctx, conn, 5*time.Second, func(m map[string]any) bool { return true })
+	require.NotNil(t, hello, "a first text frame")
+	assert.Equal(t, "terminal_hello", hello["type"], "the first text frame announces acks: %v", hello)
+	assert.Equal(t, true, hello["input_acks"])
+
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo ACKED_$((40+2))", "id": 7})
+	ack := readWSFrame(t, ctx, conn, 5*time.Second, frameType("terminal_input_ack"))
+	require.NotNil(t, ack, "an ack for the input")
+	assert.EqualValues(t, 7, ack["id"], "the ack carries the input's id")
+
+	// The input really reached the pane.
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "\r", "id": 8})
+	out := readBinaryUntilContains(t, ctx, conn, "ACKED_42")
+	assert.Contains(t, out, "ACKED_42")
+}
+
+// Input without an id (an older client) gets no answer, so nothing changes for it.
+func TestWSTerminal_InputWithoutAnIDGetsNoAck(t *testing.T) {
+	backend, _ := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "noid-agent", "e5f6a7b8-1111-4222-8333-444455556666", "")
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo no-id"})
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_resize", "cols": 100, "rows": 40})
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "\r", "id": 21})
+	// Frames are answered in order: the first ack seen is the id'd one, so the others got none.
+	ack := readWSFrame(t, ctx, conn, 5*time.Second, frameType("terminal_input_ack"))
+	require.NotNil(t, ack)
+	assert.EqualValues(t, 21, ack["id"], "the input without an id and the resize were not acknowledged")
+}
+
+// Input with an id to a gone pane: terminal_gone carries that id, and no ack comes.
+func TestWSTerminal_GoneCarriesTheInputID(t *testing.T) {
+	backend, client := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "goneid-agent", "f6a7b8c9-1111-4222-8333-444455556666", "")
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+	waitTerminalStreamLive(t, ctx, conn)
+
+	killTmuxSession(t, client.SocketPath, tmuxName)
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo lost", "id": 33})
+	var acked bool
+	gone := readWSFrame(t, ctx, conn, 8*time.Second, func(m map[string]any) bool {
+		if m["type"] == "terminal_input_ack" && m["id"] == float64(33) {
+			acked = true
+		}
+		return m["type"] == "terminal_gone"
+	})
+	require.NotNil(t, gone, "terminal_gone for the input")
+	assert.EqualValues(t, 33, gone["id"], "it names the refused input")
+	assert.Equal(t, true, gone["not_sent"])
+	assert.False(t, acked, "a refused input is never acknowledged")
+}
+
+// A terminal that is already gone when the socket opens: terminal_closed and a normal
+// close ('session ended'), not an InternalError 'attach failed' (#3276).
+func TestWSTerminal_GoneAtAttachSaysTerminalClosed(t *testing.T) {
+	backend, client := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "goneattach-agent", "a7b8c9d0-1111-4222-8333-444455556666", "")
+	killTmuxSession(t, client.SocketPath, tmuxName)
+	_ = backend.Kill(tmuxName) // forget it too, as after a crash and a server restart
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+
+	types := readWSTypes(t, ctx, conn, "terminal_closed", 5*time.Second)
+	assert.Equal(t, []string{"terminal_closed"}, types)
+	_, _, err := conn.Read(ctx)
+	var ce websocket.CloseError
+	require.True(t, errors.As(err, &ce), "the socket closes: %v", err)
+	assert.Equal(t, websocket.StatusNormalClosure, ce.Code)
+	assert.Equal(t, "session ended", ce.Reason)
+}
+
+// A frame whose id is not an integer (a third-party client) is still typed, as before ids
+// existed, and gets no answer (QA's #3276 note).
+func TestWSTerminal_NonIntegerIDIsTypedWithoutAnAck(t *testing.T) {
+	backend, _ := newTerminalTestTmuxBackend(t)
+	server := setupTerminalTestServer(t, backend)
+	tmuxName := spawnTestSession(t, backend, "strid-agent", "b8c9d0e1-1111-4222-8333-444455556666", "")
+	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
+	defer cancel()
+
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo STRID_$((3*3))\r", "id": "abc"})
+	out := readBinaryUntilContains(t, ctx, conn, "STRID_9")
+	assert.Contains(t, out, "STRID_9", "the input was typed")
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "", "id": 5})
+	ack := readWSFrame(t, ctx, conn, 5*time.Second, frameType("terminal_input_ack"))
+	require.NotNil(t, ack)
+	assert.EqualValues(t, 5, ack["id"], "the string id got no ack; the next integer id did")
+}

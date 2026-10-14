@@ -666,6 +666,13 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		if debugEnabled() {
 			slog.Info("[debug] ws/terminal attach failed", "name", name, "error", err)
 		}
+		// The terminal is already gone: say so as when it ends while open, so the client
+		// shows the session ended instead of retrying a broken connection (#3276).
+		if errors.Is(err, ptymanager.ErrTerminalGone) {
+			wsjson.Write(ctx, conn, map[string]any{"type": "terminal_closed"})
+			conn.Close(websocket.StatusNormalClosure, "session ended")
+			return
+		}
 		conn.Close(websocket.StatusInternalError, "attach failed")
 		return
 	}
@@ -682,6 +689,11 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		conn.Write(ctx, websocket.MessageBinary, seed)
 	}
 
+	// This server answers every terminal_input that carries an id (#3276): the client then
+	// settles a send on the answer instead of on a quiet window. Sent after the replay seed,
+	// which clients expect first.
+	wsjson.Write(ctx, conn, map[string]any{"type": "terminal_hello", "input_acks": true})
+
 	// Reader goroutine: receives terminal input from the client (JSON text frames)
 	go func() {
 		defer cancel()
@@ -695,9 +707,21 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 				Data string `json:"data"`
 				Cols int    `json:"cols"`
 				Rows int    `json:"rows"`
+				// ID, on terminal_input, asks for an answer carrying it (#3276): a
+				// terminal_input_ack once the input is delivered, or the refusal with the id.
+				// Decoded leniently: a frame whose id is not an integer is still typed, as
+				// before ids existed, and gets no answer.
+				RawID json.RawMessage `json:"id"`
+				ID    *int64          `json:"-"`
 			}
 			if err := json.Unmarshal(raw, &msg); err != nil {
 				continue
+			}
+			if len(msg.RawID) > 0 {
+				var id int64
+				if json.Unmarshal(msg.RawID, &id) == nil {
+					msg.ID = &id
+				}
 			}
 			// Input or a resize for a terminal that is gone is not dropped silently: the
 			// client is told, like the 409 terminal_gone of POST /send and /keys (#3218).
@@ -716,8 +740,21 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 					sendErr = h.backend.Resize(name, uint16(msg.Cols), rows)
 				}
 			}
-			if errors.Is(sendErr, ptymanager.ErrTerminalGone) {
-				wsjson.Write(ctx, conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msg.Type == "terminal_input"})
+			withID := func(frame map[string]any) map[string]any {
+				if msg.Type == "terminal_input" && msg.ID != nil {
+					frame["id"] = *msg.ID
+				}
+				return frame
+			}
+			switch {
+			case errors.Is(sendErr, ptymanager.ErrTerminalGone):
+				wsjson.Write(ctx, conn, withID(map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msg.Type == "terminal_input"}))
+			case msg.Type != "terminal_input" || msg.ID == nil:
+				// Resizes and input without an id get no answer (older clients).
+			case sendErr != nil:
+				wsjson.Write(ctx, conn, withID(map[string]any{"type": "terminal_input_failed", "error": "The input could not be sent to the agent's terminal.", "not_sent": true}))
+			default:
+				wsjson.Write(ctx, conn, withID(map[string]any{"type": "terminal_input_ack"}))
 			}
 		}
 	}()

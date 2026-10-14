@@ -379,7 +379,7 @@ func TestWSTerminal_BinaryFrameType(t *testing.T) {
 		msgType, data, err = conn.Read(closeCtx)
 		require.NoError(t, err, "connection ended without a terminal_closed frame")
 		if msgType == websocket.MessageText {
-			var msg map[string]string
+			var msg map[string]any // control frames carry booleans too (not_sent, input_acks)
 			require.NoError(t, json.Unmarshal(data, &msg), "control frame should be JSON: %q", data)
 			if msg["type"] == "terminal_closed" {
 				return

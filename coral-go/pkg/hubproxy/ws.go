@@ -2,12 +2,15 @@ package hubproxy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"nhooyr.io/websocket"
 )
@@ -163,22 +166,61 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		pumpFrom(ctx, cancel, down, up, "remote connection lost", pol.AllowClientFrame, pol.Closed)
+		pumpFrom(ctx, cancel, down, up, "remote connection lost", clientGate{pol.AllowClientFrame, pol.ReadOnlyNotice}, pol.Closed)
 	}()
-	go func() { defer wg.Done(); pumpFrom(ctx, cancel, up, down, "browser connection lost", nil, pol.Closed) }()
+	go func() {
+		defer wg.Done()
+		pumpFrom(ctx, cancel, up, down, "browser connection lost", clientGate{}, pol.Closed)
+	}()
 	wg.Wait()
 }
 
 // pump copies frames from src to dst. When src ends, dst is closed with src's
 // close code and reason if it sent one, or with 1011 and lostMsg if it dropped.
 func pump(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string) {
-	pumpFrom(ctx, cancel, src, dst, lostMsg, nil, nil)
+	pumpFrom(ctx, cancel, src, dst, lostMsg, clientGate{}, nil)
 }
 
-// pumpFrom is pump with an optional gate: while allow returns false, frames read from src
-// are dropped instead of forwarded (a read-only terminal).
-func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string, allow func() bool, withdrawn <-chan struct{}) {
+// clientGate is the read-only gate on frames from the browser (StreamPolicy).
+type clientGate struct {
+	allow  func() bool
+	notice func() map[string]any
+}
+
+// readOnlyNoticeEvery bounds the notices for dropped frames without an id (keystrokes).
+const readOnlyNoticeEvery = 2 * time.Second
+
+// frameID returns the integer "id" of a JSON text frame, if it has one (#3276). Only an
+// integer that fits a JSON-safe range is taken; anything else is no id.
+func frameID(typ websocket.MessageType, data []byte) (int64, bool) {
+	if typ != websocket.MessageText || len(data) == 0 || data[0] != '{' {
+		return 0, false
+	}
+	var f struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal(data, &f) != nil || len(f.ID) == 0 || len(f.ID) > 16 {
+		return 0, false
+	}
+	// A bare non-negative integer literal only: no string, sign, fraction or exponent.
+	for _, c := range f.ID {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+	}
+	id, err := strconv.ParseInt(string(f.ID), 10, 64)
+	if err != nil || id > 1<<53 {
+		return 0, false
+	}
+	return id, true
+}
+
+// pumpFrom is pump with an optional gate: while gate.allow returns false, frames read from
+// src are dropped instead of forwarded (a read-only terminal), and src is told when the gate
+// has a notice.
+func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, lostMsg string, gate clientGate, withdrawn <-chan struct{}) {
 	defer cancel()
+	var lastNotice time.Time
 	for {
 		typ, data, err := src.Read(ctx)
 		if err != nil {
@@ -213,7 +255,23 @@ func pumpFrom(ctx context.Context, cancel context.CancelFunc, src, dst WSConn, l
 			}
 			return
 		}
-		if allow != nil && !allow() {
+		if gate.allow != nil && !gate.allow() {
+			if gate.notice != nil && typ == websocket.MessageText {
+				id, hasID := frameID(typ, data)
+				if hasID || time.Since(lastNotice) >= readOnlyNoticeEvery {
+					frame := map[string]any{}
+					for k, v := range gate.notice() {
+						frame[k] = v
+					}
+					if hasID {
+						frame["id"] = id
+					}
+					if b, err := json.Marshal(frame); err == nil {
+						src.Write(ctx, websocket.MessageText, b)
+					}
+					lastNotice = time.Now()
+				}
+			}
 			continue
 		}
 		if err := dst.Write(ctx, typ, data); err != nil {

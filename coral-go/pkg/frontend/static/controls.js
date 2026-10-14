@@ -15,7 +15,7 @@ import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
 import { loadModals } from './lazy_panels.js';
 import { responseErrorText, responseError } from './server_status.js';
-import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept } from './terminal_gone.js';
+import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept, nextInputId, refuseSocketSends } from './terminal_gone.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -120,12 +120,18 @@ export async function sendCommand() {
         // Try WebSocket path first (sends text, then Enter separately)
         if (!hasAttachments) {
             const xterm = await _getXtermModule();
-            if (xterm.sendTerminalInputWs(command)) {
-                // Send Enter after delay so bracket paste + tmux processing completes
-                setTimeout(() => xterm.sendTerminalInputWs("\r"), 300);
+            // A server that answers input (#3276) acknowledges the text and the Enter by id.
+            const acks = !!xterm.terminalInputAcks?.();
+            const textId = acks ? nextInputId() : undefined;
+            if (xterm.sendTerminalInputWs(command, textId)) {
+                const enterId = acks ? nextInputId() : undefined;
                 // The box clears now, but the saved draft only once the send is accepted:
                 // a gone terminal refuses it and the text comes back (#3218).
-                const accepted = awaitSocketAccept(targetSession);
+                const accepted = awaitSocketAccept(targetSession, acks ? { ids: [textId, enterId] } : {});
+                // Send Enter after delay so bracket paste + tmux processing completes
+                setTimeout(() => {
+                    if (!xterm.sendTerminalInputWs("\r", enterId) && acks) refuseSocketSends(targetSession.session_id, enterId);
+                }, 300);
                 addPendingMessage(sentSessionId, command, sentAt);
                 input.value = "";
                 xterm.focusTerminal();

@@ -189,9 +189,12 @@ ws://localhost:PORT/ws/terminal/{name}?agent_type=claude&session_id=<uuid>
 ```json
 {
   "type": "terminal_input",
-  "data": "ls -la\n"
+  "data": "ls -la\n",
+  "id": 42
 }
 ```
+
+`id` (optional, an integer) asks for an answer: `terminal_input_ack` with the same id once the input is delivered, or `terminal_gone` / `terminal_input_failed` with that id if it was not. Input without an id gets no answer (older clients). Only send ids after the server's `terminal_hello` says `input_acks: true`; an older server ignores them and never answers.
 
 **Resize terminal:**
 ```json
@@ -222,9 +225,26 @@ ws.onmessage = (event) => {
 
 On connect, the server sends an initial replay seed (last ~256 KiB of output, configurable via `terminal_replay_bytes` setting) as a binary frame, prefixed with clear codes (`\x1b[2J\x1b[3J\x1b[H`) to prevent scrollback duplication on reconnect.
 
+**Hello (JSON text frame):** sent right after the replay seed. `input_acks: true` means this server answers every `terminal_input` that carries an `id` (#3276):
+```json
+{ "type": "terminal_hello", "input_acks": true }
+```
+
+**Input acknowledged (JSON text frame):** the input with this `id` was delivered to the terminal. The dashboard shows "Sent" and clears the saved draft only on the acknowledgements of both frames of a composer send (the text, then the Enter); without a hello it falls back to waiting 1.2 s for a refusal.
+```json
+{ "type": "terminal_input_ack", "id": 42 }
+```
+
+**Input failed (JSON text frame):** the input with this `id` could not be delivered for another reason (the terminal still exists). Nothing was typed; keep the draft.
+```json
+{ "type": "terminal_input_failed", "id": 42, "error": "The input could not be sent to the agent's terminal.", "not_sent": true }
+```
+
+Through the Coral Hub, a read-only hub drops the input and answers `hub_read_only` (with the input's `id` when it echoes one); the dashboard counts that as a refusal of that input, or of every unanswered input when there is no id.
+
 **Terminal closed (JSON text frame):**
 
-Sent when the session ends, including when its tmux session is killed or disappears (checked about once a second; the stream ends within a couple of seconds):
+Sent when the session ends, including when its tmux session is killed or disappears (checked about once a second; the stream ends within a couple of seconds), and at connect when the terminal is already gone. The socket then closes normally (1000, `session ended`); before #3276 a terminal gone at connect closed with 1011 `attach failed`:
 ```json
 {
   "type": "terminal_closed"
@@ -233,13 +253,14 @@ Sent when the session ends, including when its tmux session is killed or disappe
 
 **Terminal gone (JSON text frame):**
 
-Sent in answer to a `terminal_input` (or `terminal_resize`) for a terminal that no longer exists. Nothing was typed anywhere; it is the socket's counterpart of the HTTP 409 `terminal_gone` from `/send` and `/keys`, and the client should treat it the same way (keep the user's draft, say so). `not_sent` is true for input.
+Sent in answer to a `terminal_input` (or `terminal_resize`) for a terminal that no longer exists. Nothing was typed anywhere; it is the socket's counterpart of the HTTP 409 `terminal_gone` from `/send` and `/keys`, and the client should treat it the same way (keep the user's draft, say so). `not_sent` is true for input, and `id` names the input when it carried one.
 ```json
 {
   "type": "terminal_gone",
   "code": "terminal_gone",
   "error": "The agent's terminal is gone",
-  "not_sent": true
+  "not_sent": true,
+  "id": 42
 }
 ```
 

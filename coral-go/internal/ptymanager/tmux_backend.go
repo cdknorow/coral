@@ -290,7 +290,7 @@ func (b *TmuxBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	if !ok {
 		sess = b.recoverSession(name)
 		if sess == nil {
-			return nil, fmt.Errorf("session %q not found", name)
+			return nil, fmt.Errorf("session %q not found: %w", name, ErrTerminalGone)
 		}
 	}
 

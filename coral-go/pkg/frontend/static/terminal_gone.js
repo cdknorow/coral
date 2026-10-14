@@ -129,35 +129,71 @@ document.addEventListener('click', e => {
     window.restartDirect(chip.dataset.name, chip.dataset.agentType, chip.dataset.sessionId);
 }, true);
 
-// The terminal socket sends no reply to input. A composer send over it counts as accepted
-// once the socket has said nothing against it for SOCKET_ACCEPT_MS (its Enter goes at
-// +300 ms). terminal_gone or terminal_closed for that agent in the window refuses it, and
-// the composer keeps the draft (#3218).
+// A composer send over the terminal socket (#3218, #3276). A server that answers input
+// (terminal_hello) acknowledges each frame carrying an id: the send is accepted once all its
+// frames are acknowledged, and refused when one of them is (terminal_gone, terminal_input_failed,
+// the hub's hub_read_only). An older server sends no answer: there the send counts as accepted
+// once the socket has said nothing against it for SOCKET_ACCEPT_MS (its Enter goes at +300 ms).
 export const SOCKET_ACCEPT_MS = 1200;
+// With answers, a send that gets none in this long is not taken as delivered.
+export const SOCKET_ACK_TIMEOUT_MS = 20000;
+export const NO_ANSWER_TEXT = "The agent's terminal did not confirm the message. It may not have been sent: check the terminal before sending it again.";
 const _socketSends = new Set();
+let _nextInputId = 1;
 
-/** Resolves true when a socket send for `session` is accepted, false when it is refused. */
-export function awaitSocketAccept(session, ms = SOCKET_ACCEPT_MS) {
+/** A fresh id for a terminal_input frame. */
+export function nextInputId() { return _nextInputId++; }
+
+/** Resolves true when a socket send for `session` is accepted, false when it is refused.
+ *  ids: the frame ids the server will answer (an answering server); none: the quiet window. */
+export function awaitSocketAccept(session, { ids = null } = {}) {
     return new Promise(resolve => {
-        const p = { sid: session && session.session_id, resolve };
-        p.timer = setTimeout(() => { _socketSends.delete(p); resolve(true); }, ms);
+        const p = { sid: session && session.session_id, resolve, ids: ids ? new Set(ids) : null };
+        p.timer = ids
+            ? setTimeout(() => { if (_settle(p, false)) showComposerError(NO_ANSWER_TEXT); }, SOCKET_ACK_TIMEOUT_MS)
+            : setTimeout(() => _settle(p, true), SOCKET_ACCEPT_MS);
         _socketSends.add(p);
     });
 }
 
-function refuseSocketSends(sessionId) {
+function _settle(p, ok) {
+    if (!_socketSends.delete(p)) return false;
+    clearTimeout(p.timer);
+    p.resolve(ok);
+    return true;
+}
+
+/** Refuse the sends for sessionId (all of them, or only the one that sent frame `id`). */
+export function refuseSocketSends(sessionId, id) {
     for (const p of [..._socketSends]) {
         if (sessionId && p.sid !== sessionId) continue;
-        clearTimeout(p.timer);
-        _socketSends.delete(p);
-        p.resolve(false);
+        if (id !== undefined && id !== null && !(p.ids && p.ids.has(id))) continue;
+        _settle(p, false);
     }
 }
+
+// The server delivered frame `id`.
+document.addEventListener('coral:terminal-input-ack', e => {
+    const { sessionId, id } = e.detail || {};
+    for (const p of [..._socketSends]) {
+        if (!p.ids || (sessionId && p.sid !== sessionId) || !p.ids.delete(id)) continue;
+        if (p.ids.size === 0) _settle(p, true);
+    }
+});
+
+// Input refused by the server (it could not deliver it) or by the Coral Hub (read-only).
+document.addEventListener('coral:terminal-input-refused', e => {
+    const { sessionId, id, error } = e.detail || {};
+    const before = _socketSends.size;
+    refuseSocketSends(sessionId, id);
+    const cur = state.currentSession;
+    if (error && _socketSends.size < before && cur && (!sessionId || sessionId === cur.session_id)) showComposerError(error);
+});
 
 // The terminal socket said the agent's terminal is gone: shown as for the HTTP 409.
 document.addEventListener('coral:terminal-gone', e => {
     const sid = e.detail && e.detail.sessionId;
-    refuseSocketSends(sid);
+    refuseSocketSends(sid, e.detail && e.detail.id);
     const cur = state.currentSession;
     if (!cur || cur.type !== 'live' || (sid && sid !== cur.session_id)) return;
     reportSendError(cur, TERMINAL_GONE_TEXT, 'terminal_gone');

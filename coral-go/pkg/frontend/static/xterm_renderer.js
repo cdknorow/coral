@@ -61,6 +61,7 @@ let _connectedSessionId = null;
 let _connectedServer = 'local';
 let _wsGeneration = 0;
 let _paneClosed = false;  // true when server reports pane is gone
+let _inputAcks = false;   // the server answers input carrying an id (terminal_hello, #3276)
 let _restarting = false;  // true when a restart is in progress
 let _needsScrollToBottom = false;  // set on connect, cleared after settling
 let _scrollSettleTimer = null;
@@ -319,6 +320,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     _connectedSessionId = sessionId;
     _connectedServer = srv;
     _paneClosed = false;
+    _inputAcks = false; // until this server says it answers input (terminal_hello)
     _needsScrollToBottom = true;
     _setSessionEndedOverlay(false);
 
@@ -402,12 +404,22 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             _setDisconnectedBadge(false);
             _setSessionEndedOverlay(true);
             document.dispatchEvent(new CustomEvent('coral:terminal-closed', { detail: { sessionId } }));
+        } else if (data.type === "terminal_hello") {
+            // The server answers input that carries an id (#3276).
+            _inputAcks = data.input_acks === true;
+        } else if (data.type === "terminal_input_ack") {
+            document.dispatchEvent(new CustomEvent('coral:terminal-input-ack', { detail: { sessionId, id: data.id } }));
         } else if (data.type === "terminal_gone") {
             // Input for this agent found no terminal (#3218): the dashboard says so, as for a 409.
-            document.dispatchEvent(new CustomEvent('coral:terminal-gone', { detail: { sessionId } }));
+            // The id, when there is one, names the refused input (#3276).
+            document.dispatchEvent(new CustomEvent('coral:terminal-gone', { detail: { sessionId, id: data.id } }));
+        } else if (data.type === "terminal_input_failed") {
+            document.dispatchEvent(new CustomEvent('coral:terminal-input-refused', { detail: { sessionId, id: data.id, error: data.error } }));
         } else if (data.type === "hub_read_only") {
-            // The Cloud Hub dropped our input for this server's access mode (#3068).
+            // The Cloud Hub dropped our input for this server's access mode (#3068): a refusal
+            // of that input (#3276), named by its id when the hub echoes one.
             applyHubReadOnlyFrame(data);
+            document.dispatchEvent(new CustomEvent('coral:terminal-input-refused', { detail: { sessionId, id: data.id } }));
         }
         // Other types are ignored.
     };
@@ -521,15 +533,20 @@ export function focusTerminal() {
     }
 }
 
-/** Send raw terminal input data over the WebSocket (used by textarea integration). */
-export function sendTerminalInputWs(data) {
+/** Whether the open terminal socket's server answers input carrying an id (#3276). */
+export function terminalInputAcks() {
+    return !!(terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed && _inputAcks);
+}
+
+/** Send raw terminal input data over the WebSocket (used by textarea integration). With an
+ *  id, a server that answers input acknowledges or refuses it by that id (#3276). */
+export function sendTerminalInputWs(data, id) {
     // After terminal_closed the server reads nothing more from this socket, though it may
     // still be open: callers fall back to HTTP, which says when the terminal is gone (#3218).
     if (terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed) {
-        terminalWs.send(JSON.stringify({
-            type: "terminal_input",
-            data: data,
-        }));
+        const frame = { type: "terminal_input", data };
+        if (id !== undefined && _inputAcks) frame.id = id;
+        terminalWs.send(JSON.stringify(frame));
         return true;
     }
     return false;
