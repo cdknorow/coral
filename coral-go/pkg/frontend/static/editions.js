@@ -15,7 +15,7 @@ import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { isPopout } from './popout.js';
 import { escapeAttr } from './utils.js';
-import { mountCloudConnect } from './cloud_connect.js';
+import { mountCloudConnect, enrolledRetrying } from './cloud_connect.js';
 
 export const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-hub/';
 
@@ -166,11 +166,13 @@ function _ownHubHtml() {
 }
 
 // Each status: once connected, choosing how much the hub may do is the next step and Done
-// replaces Skip. The first status moves focus to Connect (it is hidden until then).
+// replaces Skip. Enrolled but reconnecting counts as connected: the hub approved this server,
+// and the access choice applies when the tunnel comes back. The first status moves focus to
+// Connect (it is hidden until then).
 function _onState(st) {
     const m = document.getElementById('editions-modal');
     if (!m) return;
-    const connected = !!st && st.state === 'connected';
+    const connected = !!st && (st.state === 'connected' || enrolledRetrying(st));
     const q = sel => m.querySelector(sel);
     const skip = q('[data-editions="skip"]'), done = q('[data-editions="done"]'), mode = q('[data-cloud="mode-row"]');
     const focusWasOnSkip = skip && document.activeElement === skip;

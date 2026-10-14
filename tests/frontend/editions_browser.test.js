@@ -151,6 +151,26 @@ async function run() {
             await load({ state: 'connected', label: 'My Laptop' });
             check(`${label}: another load does not ask again`, !(await open()));
 
+            // ── The hub approves, then its tunnel fails (QA's repro): enrolled, so connected (reconnecting…) ──
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load();
+            await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the Connect button');
+            await click('#editions-modal [data-cloud="connect"]');
+            await until(`!!document.querySelector('#editions-modal [data-cloud="code"]:not([hidden])')`, 'the code');
+            // Not enrolled yet (no server id, no label): retrying is still 'not connected'.
+            await ev(`Object.assign(window.__cloud, { state: 'retrying', last_error: 'the hub is unreachable; retrying', user_code: '', verification_url: '' }); true`);
+            await until(`/Not connected right now/.test(document.querySelector('#editions-modal [data-cloud="status"]').textContent)`, 'not connected', 6000);
+            s = await screen();
+            check(`${label}: retrying without an enrollment: not connected, Skip, no access choice`, !!s && /^Not connected right now/.test(s.status) && s.skip && !s.done && !s.mode, JSON.stringify(s));
+            await ev(`Object.assign(window.__cloud, { label: 'e2e-box', server_id: 'srv-e2e' }); true`);
+            await until(`!!document.querySelector('#editions-modal [data-editions="done"]:not([hidden])')`, 'connected (reconnecting)', 6000);
+            s = await screen();
+            check(`${label}: enrolled but the tunnel is retrying: 'Connected to Coral Hub as e2e-box (reconnecting…)', the access choice and Done`,
+                !!s && /^Connected to Coral Hub as e2e-box \(reconnecting…\)/.test(s.status) && s.mode && s.done && !s.skip && !s.code, JSON.stringify(s));
+            await click('#editions-modal [data-editions="done"]');
+            await until(savedIs('welcome_choice', 'connected'), 'the answer saved');
+            check(`${label}: Done answers it as connected`, !(await open()) && (await settings()).welcome_pending === 'False');
+
             // ── Skip for now, Escape, and Run your own hub ──
             await put({ welcome_pending: 'True' });
             await load();

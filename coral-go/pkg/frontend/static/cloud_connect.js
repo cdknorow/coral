@@ -34,6 +34,13 @@ function post(method, url, body) {
     });
 }
 
+/** Enrolled, but the tunnel is down and retrying (the hub approved the code, then was
+ *  unreachable): the server is connected to the hub as far as the user is concerned. A
+ *  'retrying' without an enrollment (no server id or label) is still not connected. */
+export function enrolledRetrying(st) {
+    return !!st && st.state === 'retrying' && !!(st.server_id || st.label);
+}
+
 export function describe(st) {
     switch (st.state) {
         case 'off':
@@ -48,6 +55,7 @@ export function describe(st) {
         case 'connected':
             return 'Connected to Coral Hub' + (st.label ? ' as ' + st.label : '') + '.';
         case 'retrying':
+            if (enrolledRetrying(st)) return 'Connected to Coral Hub' + (st.label ? ' as ' + st.label : '') + ' (reconnecting…). Coral keeps working locally meanwhile.';
             return 'Not connected right now (' + (st.last_error || 'retrying') + '). Coral keeps working locally and will reconnect on its own.';
         case 'revoked':
             return 'The hub revoked this server, so Coral stopped retrying. Connect again to re-enroll.';
