@@ -142,6 +142,10 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
             }
 
             // Any other send error: under the composer, no Restart; a successful send clears it.
+            // First let the re-selected agent settle (as before the first send): a late re-render
+            // after the select above clears the line under the composer, which this case would
+            // then wait for in vain (seen under load, at both widths).
+            await waitStable(ev, `[T.state.currentSession && T.state.currentSession.session_id, document.getElementById('composer-error').hidden, window.__m.requests.length, window.__rendered().length].join('|')`, `${label}: the re-selected agent settled`, 400);
             await failWrites(500, { error: 'tmux failed (mock)' });
             await clearToasts();
             await type('another try');
