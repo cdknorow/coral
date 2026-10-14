@@ -53,6 +53,12 @@ type Client struct {
 	// Protected by socketsMu since multiple goroutines access this map.
 	sessionSockets map[string]string
 	socketsMu      sync.RWMutex
+
+	// captureTargets caches the pane target CapturePane resolved for a session (#3439): a
+	// capture is then one tmux exec (capture-pane) instead of two (list-panes first). Only
+	// for a session id, whose tmux session name the target contains; a failed capture drops it.
+	captureTargetsMu sync.Mutex
+	captureTargets   map[string]string // agentName \x00 agentType \x00 sessionID -> target
 }
 
 // resolveTmuxBin returns the path used to invoke tmux, re-checking the
@@ -331,6 +337,9 @@ func (c *Client) listPanesOnSocket(ctx context.Context, socketPath string) []Pan
 	args := []string{"list-panes", "-a", "-F", "#{session_name}|#S:#I.#P|#{pane_current_path}|#{pane_title}"}
 	if socketPath != "" {
 		args = append([]string{"-S", socketPath}, args...)
+	}
+	if runObserver != nil {
+		runObserver([]string{"list-panes"})
 	}
 	bin := c.resolveTmuxBin()
 	cmd := exec.CommandContext(ctx, bin, args...)
@@ -619,6 +628,15 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 
 // CapturePane captures the current content of a tmux pane.
 func (c *Client) CapturePane(ctx context.Context, agentName string, lines int, agentType, sessionID string) (string, error) {
+	key := agentName + "\x00" + agentType + "\x00" + sessionID
+	if sessionID != "" {
+		if cached, ok := c.captureTarget(key); ok {
+			if out, err := c.run(ctx, "capture-pane", "-t", cached, "-p", fmt.Sprintf("-S-%d", lines)); err == nil {
+				return out, nil
+			}
+			c.setCaptureTarget(key, "") // the pane is gone or moved: look it up again
+		}
+	}
 	target, err := c.FindPaneTarget(ctx, agentName, agentType, sessionID)
 	if err != nil {
 		return "", err
@@ -626,8 +644,52 @@ func (c *Client) CapturePane(ctx context.Context, agentName string, lines int, a
 	if target == "" {
 		return "", nil
 	}
+	out, err := c.run(ctx, "capture-pane", "-t", target, "-p", fmt.Sprintf("-S-%d", lines))
+	if err != nil {
+		return "", nil
+	}
+	if sessionID != "" {
+		c.setCaptureTarget(key, target)
+	}
+	return out, nil
+}
 
-	return c.CapturePaneTarget(ctx, target, lines)
+// captureTargetsMax caps the target cache; it starts over when full (many short-lived agents).
+const captureTargetsMax = 256
+
+func (c *Client) captureTarget(key string) (string, bool) {
+	c.captureTargetsMu.Lock()
+	defer c.captureTargetsMu.Unlock()
+	t, ok := c.captureTargets[key]
+	return t, ok
+}
+
+// setCaptureTarget caches target for key, or forgets key when target is "".
+func (c *Client) setCaptureTarget(key, target string) {
+	c.captureTargetsMu.Lock()
+	defer c.captureTargetsMu.Unlock()
+	if target == "" {
+		delete(c.captureTargets, key)
+		return
+	}
+	if c.captureTargets == nil || len(c.captureTargets) >= captureTargetsMax {
+		c.captureTargets = map[string]string{}
+	}
+	c.captureTargets[key] = target
+}
+
+// forgetCaptureTargets drops the cached targets of a session that is being killed.
+func (c *Client) forgetCaptureTargets(sessionID string) {
+	if sessionID == "" {
+		return
+	}
+	c.captureTargetsMu.Lock()
+	defer c.captureTargetsMu.Unlock()
+	for k := range c.captureTargets {
+		if strings.HasSuffix(k, "\x00"+sessionID) {
+			delete(c.captureTargets, k)
+		}
+	}
 }
 
 // CapturePaneTarget captures pane content by target address.
@@ -686,6 +748,7 @@ func (c *Client) KillSessionOnly(ctx context.Context, agentName, agentType, sess
 
 // killTmuxSession finds and kills a tmux session by agent identity.
 func (c *Client) killTmuxSession(ctx context.Context, agentName, agentType, sessionID string) error {
+	c.forgetCaptureTargets(sessionID)
 	pane, err := c.FindPane(ctx, agentName, agentType, sessionID)
 	if err != nil {
 		return err
@@ -980,8 +1043,15 @@ func (c *Client) ResizePaneTarget(ctx context.Context, target string, columns, r
 
 // run executes a tmux command. If the args target a session (-t flag),
 // it routes to the correct socket using the session cache.
+// runObserver, when set (tests only), sees every tmux command run and listPanesOnSocket issue. It is
+// read without a lock: a test sets it before starting anything that runs tmux and clears it after.
+var runObserver func(args []string)
+
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
 	recordSendKeys(args)
+	if runObserver != nil {
+		runObserver(args)
+	}
 	// Check if this command targets a session — route via cache
 	if c.FallbackToDefault && c.SocketPath != "" {
 		for i, arg := range args {

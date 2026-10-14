@@ -1604,7 +1604,8 @@ func (h *BoardHandler) ListTasks(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	// Polled every 10 s per open board: an unchanged page is a 304 with no body (#3439).
+	httputil.WriteJSONValidated(w, r, http.StatusOK, page)
 }
 
 // ListAllTasks returns the most recent tasks across all boards.

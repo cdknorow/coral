@@ -171,6 +171,34 @@ export function boardFetch(teamKey, suffix, options) {
     return fetch(serverUrl(`/api/board/${encodeURIComponent(name)}${suffix || ''}`, server), options);
 }
 
+// ── Validated GETs (#3439) ───────────────────────────────────────────────
+// A poll whose answer is often unchanged sends the last answer's validator back (If-None-Match)
+// and, on a 304, reuses that answer: no body crosses the network, through Coral Hub too (which
+// drops ETag; Coral sends the same validator in X-Coral-Validator). The answer is kept as TEXT and
+// parsed again for each caller, so a caller that changes the objects it got never changes what a
+// later 304 hands back. A validator is used only when it is the opaque token Coral sends (at most
+// 128 bytes of printable ASCII, coral-hub's rule).
+const VALIDATOR_RE = /^[\x21-\x7e]{1,128}$/;
+const VALIDATED_MAX = 32;
+const _validated = new Map(); // key -> { tag, text }
+
+/** fetchValidated(key, doFetch): doFetch(headers) makes the request. Resolves to
+ *  { ok: true, text, notModified } or { ok: false, resp } for the caller's own error handling. */
+export async function fetchValidated(key, doFetch) {
+    const last = _validated.get(key);
+    const resp = await doFetch(last ? { 'If-None-Match': last.tag } : {});
+    if (resp.status === 304 && last) return { ok: true, text: last.text, notModified: true };
+    if (!resp.ok) return { ok: false, resp };
+    const text = await resp.text();
+    const tag = resp.headers.get('ETag') || resp.headers.get('X-Coral-Validator') || '';
+    _validated.delete(key);
+    if (VALIDATOR_RE.test(tag)) {
+        _validated.set(key, { tag, text });
+        if (_validated.size > VALIDATED_MAX) _validated.delete(_validated.keys().next().value);
+    }
+    return { ok: true, text, notModified: false };
+}
+
 /** fetch for any team-scoped endpoint whose path embeds the bare board name:
  *  teamFetch(teamKey, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`). */
 export function teamFetch(teamKey, pathFn, options) {

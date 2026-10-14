@@ -40,6 +40,13 @@ type PaneSizer interface {
 	PaneSize(name string) (cols, rows int, err error)
 }
 
+// OutputStamper is implemented by backends that can tell cheaply whether a session's terminal has
+// written anything since an earlier stamp (#3439). The poll endpoint then reuses its last capture
+// instead of running capture-pane while nothing was written. ok is false when it cannot tell.
+type OutputStamper interface {
+	OutputStamp(agentType, sessionID string) (stamp string, ok bool)
+}
+
 // TerminalBackend abstracts terminal session management.
 // Both PTY and tmux backends implement this interface.
 type TerminalBackend interface {

@@ -112,15 +112,33 @@ export async function refreshCapture() {
         if (state.currentSession.session_id) params.set("session_id", state.currentSession.session_id);
         const qs = params.toString() ? `?${params}` : "";
 
-        // Single batch endpoint replaces separate capture + tasks + events calls
-        const resp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/poll${qs}`);
-        const gateway = backoffRecord(backoffKey, resp.ok ? 200 : resp.status);
-        if (!resp.ok) {
+        // Single batch endpoint replaces separate capture + tasks + events calls. The last answer's
+        // ETag goes back with the next poll of the same agent: the server says 304, with no body,
+        // while nothing changed, and the last answer is used again (#3439).
+        const server = currentServer();
+        const path = `/api/sessions/live/${encodeURIComponent(state.currentSession.name)}/poll${qs}`;
+        const key = server + ' ' + path;
+        const last = _lastPoll && _lastPoll.key === key ? _lastPoll : null;
+        const resp = await serverFetch(server, path, last ? { headers: { 'If-None-Match': last.etag } } : undefined);
+        const unchanged = resp.status === 304 && !!last;
+        const gateway = backoffRecord(backoffKey, resp.ok || unchanged ? 200 : resp.status);
+        if (!resp.ok && !unchanged) {
             if (gateway) { if (!_gatewayLogged) { _gatewayLogged = true; console.warn(`capture poll: server not reachable (${resp.status}); backing off`); } return; }
             throw new Error(`poll failed: ${resp.status}`);
         }
         _gatewayLogged = false;
-        const data = await resp.json();
+        let data;
+        if (unchanged) {
+            data = last.data;
+            _pollStats.notModified++;
+        } else {
+            data = await resp.json();
+            // Through Coral Hub, ETag is dropped (no-store on a shared origin); the same validator
+            // comes in X-Coral-Validator.
+            const etag = resp.headers.get('ETag') || resp.headers.get('X-Coral-Validator');
+            _lastPoll = etag ? { key, etag, data } : null;
+            _pollStats.full++;
+        }
 
         // ── Capture ──
         const captureData = data.capture || {};
@@ -163,6 +181,11 @@ export async function refreshCapture() {
 
 let _lastCaptureAt = 0;
 let _gatewayLogged = false;
+// The last poll answer with its ETag, for the same agent's next poll (#3439).
+let _lastPoll = null; // { key, etag, data }
+// How many polls came back in full or as 304 (tests and diagnostics).
+const _pollStats = { full: 0, notModified: 0 };
+export function capturePollStats() { return { ..._pollStats }; }
 
 // One tick of the capture timer. The timer keeps its 500 ms beat so the fast pace is back within one beat of the
 // terminal socket dropping; while the socket is up most beats do nothing.

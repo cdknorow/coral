@@ -76,6 +76,11 @@ type SessionsHandler struct {
 	wsList wsTickCache // one /ws/coral build shared by all clients (ws_shared_list.go)
 	wsKick wsKicker    // prompt /ws/coral rebuilds after state changes (ws_kick.go)
 
+	// captureCache keeps each session's last poll capture with the backend's output stamp
+	// (#3439): while the pane has printed nothing, the poll reuses it instead of capture-pane.
+	captureMu    sync.Mutex
+	captureCache map[string]cachedCapture
+
 	// logStatusCache avoids rereading each agent's bounded log tail on every
 	// sidebar poll. Entries are invalidated by size/mtime and capped so a
 	// burst of short-lived sessions cannot grow memory without bound.
@@ -962,14 +967,15 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessions = archivedLast(sessions)
+	// Polled by every open dashboard: an unchanged list is a 304 with no body (#3439).
 	if snap := h.remoteSnapshot(); snap.Configured() {
-		writeJSON(w, http.StatusOK, map[string]any{
+		httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
 			"sessions": mergeRemote(sessions, snap), // each remote sorts its own rows
 			"servers":  snap.Servers,
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, emptyIfNil(sessions))
+	httputil.WriteJSONValidated(w, r, http.StatusOK, emptyIfNil(sessions))
 }
 
 // ResolveSession returns the authoritative routing and identity metadata for a
@@ -1282,7 +1288,7 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 
 	// Capture pane
 	captureResult := map[string]any{"name": name, "capture": nil}
-	if text, err := h.terminal.CaptureOutput(ctx, name, 200, agentType, sessionID); err == nil && text != "" {
+	if text, err := h.captureForPoll(ctx, name, agentType, sessionID); err == nil && text != "" {
 		captureResult["capture"] = text
 	} else {
 		captureResult["error"] = fmt.Sprintf("Could not capture pane for '%s'", name)
@@ -1302,11 +1308,58 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 		events = e
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	// Polled every 500 ms by an open terminal: an unchanged answer is a 304 with no body (#3439).
+	httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
 		"capture": captureResult,
 		"tasks":   tasks,
 		"events":  events,
 	})
+}
+
+type cachedCapture struct {
+	stamp string
+	text  string
+	at    time.Time
+}
+
+// captureReuseMax bounds how long a capture is reused on an unchanged output stamp: a few screen
+// changes print nothing to the pane's output log (a resize reflowing the screen, tmux
+// clear-history, copy-mode if anything ever uses it), and show at most this late.
+const captureReuseMax = 5 * time.Second
+
+// captureCacheMax caps the cache; it starts over when full (a burst of short-lived sessions).
+const captureCacheMax = 256
+
+// captureForPoll is CaptureOutput for the poll: when the backend can stamp the session's output
+// and nothing was written since the last capture (and that is recent), the last capture is
+// reused. The stamp is taken before capturing, so output printed meanwhile is seen next time.
+func (h *SessionsHandler) captureForPoll(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	stamper, _ := h.backend.(ptymanager.OutputStamper)
+	if stamper == nil {
+		return h.terminal.CaptureOutput(ctx, name, 200, agentType, sessionID)
+	}
+	stamp, ok := stamper.OutputStamp(agentType, sessionID)
+	key := name + "\x00" + agentType + "\x00" + sessionID
+	if ok {
+		h.captureMu.Lock()
+		c, hit := h.captureCache[key]
+		h.captureMu.Unlock()
+		if hit && c.stamp == stamp && time.Since(c.at) < captureReuseMax {
+			return c.text, nil
+		}
+	}
+	text, err := h.terminal.CaptureOutput(ctx, name, 200, agentType, sessionID)
+	h.captureMu.Lock()
+	defer h.captureMu.Unlock()
+	if ok && err == nil && text != "" {
+		if h.captureCache == nil || len(h.captureCache) >= captureCacheMax {
+			h.captureCache = map[string]cachedCapture{}
+		}
+		h.captureCache[key] = cachedCapture{stamp: stamp, text: text, at: time.Now()}
+	} else {
+		delete(h.captureCache, key)
+	}
+	return text, err
 }
 
 // Chat returns the JSONL conversation transcript.

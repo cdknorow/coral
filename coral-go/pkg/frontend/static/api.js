@@ -30,7 +30,7 @@
 import { state } from './state.js';
 import { renderLiveSessions, renderHistorySessions } from './render.js';
 import { buildApiParams } from './search_filters.js';
-import { serverUrl, serverForSession, initHub } from './server_base.js';
+import { serverUrl, serverForSession, initHub, fetchValidated } from './server_base.js';
 import { updateServersTabVisibility } from './servers_tab.js';
 
 export {
@@ -54,18 +54,29 @@ export async function apiFetch(url, options) {
         target = serverUrl(url, server);
     }
     const resp = await fetch(target, init);
-    if (!resp.ok) {
-        const text = await resp.text().catch(() => '');
-        // The server's own reason when it gives one ({"error": "..."}), e.g. a per-action limit's
-        // "too many workflow runs, try again in 30 s" (#3435); otherwise the status and the body.
-        let reason = '';
-        try { const body = JSON.parse(text); if (body && typeof body.error === 'string') reason = body.error; } catch { /* not JSON */ }
-        const error = new Error(reason || `${resp.status}: ${text || resp.statusText}`);
-        error.status = resp.status;
-        error.body = text;
-        throw error;
-    }
+    if (!resp.ok) throw await httpError(resp);
     return resp.json();
+}
+
+// The error for a refused answer: the server's own reason when it gives one ({"error": "..."}),
+// e.g. a per-action limit's "too many workflow runs, try again in 30 s" (#3435); otherwise the
+// status and the body.
+async function httpError(resp) {
+    const text = await resp.text().catch(() => '');
+    let reason = '';
+    try { const body = JSON.parse(text); if (body && typeof body.error === 'string') reason = body.error; } catch { /* not JSON */ }
+    const error = new Error(reason || `${resp.status}: ${text || resp.statusText}`);
+    error.status = resp.status;
+    error.body = text;
+    return error;
+}
+
+/** apiFetch for a polled GET that is often unchanged (#3439): sends the last answer's validator
+ *  and reuses that answer on a 304 (fetchValidated). Errors as apiFetch. */
+export async function apiFetchValidated(url) {
+    const r = await fetchValidated(url, headers => fetch(url, { headers }));
+    if (!r.ok) throw await httpError(r.resp);
+    return JSON.parse(r.text);
 }
 
 // A load that is already in flight is shared: the page start asks for the list twice in the same moment (once on
@@ -84,7 +95,7 @@ async function _loadLiveSessions(onFailure) {
     let rendering = false;
     try {
         await initHub();
-        const raw = await apiFetch("/api/sessions/live");
+        const raw = await apiFetchValidated("/api/sessions/live");
         // With remotes registered the list may arrive as {sessions, servers}.
         const sessions = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.sessions) ? raw.sessions : null);
         if (!sessions) throw new SyntaxError('Invalid live session list');

@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud } from './server_base.js';
+import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud, fetchValidated } from './server_base.js';
 import { platform } from './platform/detect.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 
@@ -520,9 +520,10 @@ async function _boardTasksFetch(boardName, suffix) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), boardTaskFetchHooks.timeoutMs);
     try {
-        const resp = await boardFetch(boardName, suffix, { signal: ctrl.signal });
-        if (!resp.ok) { const err = new Error(`board tasks fetch failed: ${resp.status}`); err.resp = resp; throw err; }
-        return await resp.json();
+        // Polled every 10 s per open board: an unchanged page comes back 304 (#3439).
+        const r = await fetchValidated('board-tasks ' + boardName + suffix, headers => boardFetch(boardName, suffix, { signal: ctrl.signal, headers }));
+        if (!r.ok) { const err = new Error(`board tasks fetch failed: ${r.resp.status}`); err.resp = r.resp; throw err; }
+        return JSON.parse(r.text);
     } finally {
         clearTimeout(timer);
     }

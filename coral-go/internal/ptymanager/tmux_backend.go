@@ -259,6 +259,19 @@ func (b *TmuxBackend) PaneSize(name string) (int, int, error) {
 	return cols, rows, nil
 }
 
+// OutputStamp is the size and modification time of the session's output log, which pipe-pane
+// appends everything the pane prints to: unchanged, the pane has printed nothing since.
+func (b *TmuxBackend) OutputStamp(agentType, sessionID string) (string, bool) {
+	if agentType == "" || sessionID == "" || b.logDir == "" {
+		return "", false
+	}
+	fi, err := os.Stat(naming.LogFile(b.logDir, agentType, sessionID))
+	if err != nil {
+		return "", false
+	}
+	return fmt.Sprintf("%d:%d", fi.Size(), fi.ModTime().UnixNano()), true
+}
+
 // recoverSession discovers a session from live tmux panes and registers it
 // in the in-memory map. This handles the post-restart case where tmux sessions
 // survive but TmuxBackend's map is empty. Returns the recovered session or nil.
