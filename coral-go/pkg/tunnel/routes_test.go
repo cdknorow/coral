@@ -56,6 +56,8 @@ func TestClassifyTiers(t *testing.T) {
 		{"PUT", "/api/settings/cli_path_claude", "", TierNever},
 		{"PUT", "/api/settings/git-diff-mode/x", "", TierNever},
 		{"GET", "/api/system/api-key", "", TierNever},
+		{"DELETE", "/api/system/debug-input-log", "", TierNever}, // the terminal input log: only at the machine (#3256)
+		{"GET", "/api/system/privacy", "", TierNever},
 		{"POST", "/api/system/api-key/regenerate", "", TierNever},
 		{"GET", "/api/system/status", "", TierNever},
 		{"PUT", "/api/sessions/live/a/file-content", "", TierLaunch},

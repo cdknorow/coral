@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/naming"
 )
 
@@ -153,6 +154,7 @@ func (s *session) sendInput(data []byte) error {
 // requested with a nil error) as io.ErrShortWrite instead of ignoring it. It
 // returns how many bytes reached the PTY.
 func (s *session) writeFull(data []byte) (int, error) {
+	inputlog.Record(s.name, inputlog.Raw, string(data))
 	n, err := s.proc.Write(data)
 	if err == nil && n < len(data) {
 		err = io.ErrShortWrite
@@ -201,6 +203,10 @@ func (s *session) replayBytes() []byte {
 // kill terminates the session and all child processes.
 func (s *session) kill() error {
 	// Graceful termination
+	if terminateTypesCtrlC {
+		// On Windows, Terminate types Ctrl-C into the console (pty_windows.go).
+		inputlog.Record(s.name, inputlog.Raw, "\x03")
+	}
 	s.proc.Terminate()
 
 	// Wait for graceful exit (5s timeout)

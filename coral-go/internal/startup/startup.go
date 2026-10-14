@@ -29,6 +29,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -67,6 +68,9 @@ type Options struct {
 	// remote_access_enabled setting exists) to ask the user whether to allow
 	// remote connections. It returns true to enable remote access.
 	RemoteAccessPrompt func() bool
+	// DebugInput forces the terminal input debug log on (--debug-input), whatever
+	// the setting says (#3256).
+	DebugInput bool
 }
 
 // RunningServer holds all resources created during startup.
@@ -307,6 +311,13 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// Apply terminal_replay_bytes setting from user_settings before any
 	// backend touches the replay buffer size.
 	applyReplayBytesFromSettings(ctx, db)
+
+	// The terminal input debug log (#3256): off unless the setting, CORAL_DEBUG_INPUT
+	// or --debug-input turns it on.
+	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
+	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
+		inputlog.SetSetting(inputlog.SettingOn(settings[inputlog.SettingKey]))
+	}
 
 	// Select terminal backend and agent runtime
 	if cfg.LogDir != "" {

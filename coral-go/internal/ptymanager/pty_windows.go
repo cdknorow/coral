@@ -58,6 +58,10 @@ func (p *windowsPTY) Resize(cols, rows uint16) error {
 	return p.cpty.Resize(int(cols), int(rows))
 }
 
+// terminateTypesCtrlC: Terminate stops the program by typing Ctrl-C into its
+// console, so the session records it in the input debug log (#3256).
+const terminateTypesCtrlC = true
+
 func (p *windowsPTY) Terminate() error {
 	// Send Ctrl+C to the console to allow graceful shutdown
 	_, err := p.cpty.Write([]byte{0x03}) // Ctrl+C

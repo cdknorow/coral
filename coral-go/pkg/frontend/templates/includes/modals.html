@@ -586,6 +586,15 @@
                     <span id="settings-telemetry-help" class="settings-hint">No prompts, transcripts, or secrets are sent.</span>
                 </dd>
                 <dt class="toggle-dt">
+                    <label for="settings-debug-input-log">Log terminal input (debug)</label>
+                    <span class="toggle-desc">Record everything Coral sends to agent terminals, for troubleshooting. Off by default; applies immediately.</span>
+                </dt>
+                <dd>
+                    <input type="checkbox" id="settings-debug-input-log" aria-describedby="settings-debug-input-log-status">
+                    <div id="settings-debug-input-log-status" class="settings-hint" role="status" hidden></div>
+                    <button class="btn btn-small" type="button" id="settings-debug-input-log-delete" hidden>Delete the log</button>
+                </dd>
+                <dt class="toggle-dt">
                     <label for="settings-remote-access-enabled">Remote access</label>
                     <span class="toggle-desc">Allow connections from other devices.</span>
                 </dt>

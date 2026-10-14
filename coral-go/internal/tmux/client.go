@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 )
@@ -546,6 +547,7 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 // pasteToTarget loads text into a tmux buffer and pastes it into the target pane.
 // Uses paste-buffer -p which respects the pane's bracketed paste mode setting.
 func (c *Client) pasteToTarget(ctx context.Context, target, text string) error {
+	inputlog.Record(target, inputlog.Paste, text)
 	// Load text into tmux buffer via stdin
 	args := []string{"load-buffer", "-"}
 	socketPath := c.SocketPath
@@ -898,6 +900,7 @@ func (c *Client) ResizePaneTarget(ctx context.Context, target string, columns, r
 // run executes a tmux command. If the args target a session (-t flag),
 // it routes to the correct socket using the session cache.
 func (c *Client) run(ctx context.Context, args ...string) (string, error) {
+	recordSendKeys(args)
 	// Check if this command targets a session — route via cache
 	if c.FallbackToDefault && c.SocketPath != "" {
 		for i, arg := range args {

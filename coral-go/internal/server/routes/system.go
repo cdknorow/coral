@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,6 +28,7 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
@@ -201,8 +203,45 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		if k == "telemetry_enabled" {
 			tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(s), "false"))
 		}
+		if k == inputlog.SettingKey {
+			inputlog.SetSetting(inputlog.SettingOn(s))
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// DeleteDebugInputLog deletes the terminal input debug log and its rotated copy
+// (#3256). It holds typed text, so only someone at this machine may delete it: the
+// request must come from a loopback address and not through the Coral Hub tunnel
+// (the route is also absent from the tunnel's table). While the log is on it answers 409: turn it off first.
+// DELETE /api/system/debug-input-log
+func (h *SystemHandler) DeleteDebugInputLog(w http.ResponseWriter, r *http.Request) {
+	// Coral Hub tunnel traffic also arrives from loopback (the connector proxies to
+	// 127.0.0.1), so a tunnel-stamped request is refused too, not only by the table.
+	if viaTunnel(r) || !fromLoopback(r) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"error": "Delete the terminal input log from the computer running Coral."})
+		return
+	}
+	n, err := inputlog.Delete()
+	if errors.Is(err, inputlog.ErrOn) {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+		return
+	}
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": n, "debug_input_log": inputlog.State()})
+}
+
+// fromLoopback reports whether the request's peer is a loopback address.
+func fromLoopback(r *http.Request) bool {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip, err := netip.ParseAddr(host)
+	return err == nil && ip.Unmap().IsLoopback()
 }
 
 // gitDiffModes are the comparison bases the changed-files panel offers.
@@ -357,6 +396,7 @@ func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request)
 		"remote_access_restart_required": remoteEnabled != effectiveRemote,
 		"remote_access_status":           status,
 		"effective_host":                 h.cfg.Host,
+		"debug_input_log":                inputlog.State(),
 	})
 }
 

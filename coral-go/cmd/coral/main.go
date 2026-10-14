@@ -80,6 +80,7 @@ func main() {
 	remoteAccess := flag.Bool("remote", false, "Allow remote (non-loopback) connections without requiring the saved setting")
 	hubMode := flag.Bool("hub", false, "Run as a multi-server hub: manage and view remote Coral servers (also CORAL_HUB=1)")
 	cloudURL := flag.String("cloud-url", "", "Coral Hub origin this server may connect to (also CORAL_CLOUD_URL). Release builds default to https://app.coralai.ai; \"\" or off disables it. Nothing is sent until you connect")
+	debugInput := flag.Bool("debug-input", false, "Record every write Coral makes to agent terminals in <data dir>/input-debug.log (debug; may contain secrets). Also CORAL_DEBUG_INPUT=1 or the Settings toggle")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {
@@ -156,6 +157,7 @@ func main() {
 		UnlockSurface:      "tty",
 		RemoteAccess:       *remoteAccess,
 		RemoteAccessPrompt: remotePrompt,
+		DebugInput:         *debugInput,
 	})
 	if err != nil {
 		logexit.Fatalf("Failed to start: %v", err)

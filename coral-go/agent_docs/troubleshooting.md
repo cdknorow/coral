@@ -338,6 +338,40 @@ lsof -nP -iTCP:PORT -sTCP:LISTEN     # who LISTENS on PORT (not who connects fro
 lsof -ti tcp:PORT -sTCP:LISTEN       # just the PID(s), for a script
 ```
 
+### Never kill by name or pattern
+
+Never use `pkill`, `killall` or `pgrep ... | xargs kill` to stop something. Kill only PIDs you
+started and recorded (`kill <pid>`, or a tree walked down from that PID).
+
+- Coral starts agents with long command lines, so almost any pattern (`cat`, `node`, `go`, a
+  path) also matches some agent's CLI on the machine, on any team.
+- On macOS, `pkill` and `pgrep` stop reading options at the first pattern: in
+  `pkill -f 'cat' -P $$`, the `-P` and the PID become MORE patterns, not a parent filter. One such
+  command once stopped the agent CLIs of three teams at once.
+- To look, not kill: `pgrep -lf PATTERN` with every option BEFORE the pattern, then kill the PIDs
+  you have checked by hand.
+
+### Seeing exactly what Coral types into an agent's terminal
+
+If an agent did something you didn't expect (it exited, or ran a command nobody typed), turn on
+**Settings > Log terminal input (debug)**, or start Coral with `CORAL_DEBUG_INPUT=1` or
+`--debug-input`. It is off by default. While it is on, every write Coral makes to an agent's
+terminal goes to `<data dir>/input-debug.log`, one line each: time, terminal, the code path that
+sent it (`source=`, for example the board notifier or the dashboard's composer), how it was sent
+(text, key names such as `C-c` or `Enter`, a paste, or raw bytes), and the text, escaped and cut
+at 200 characters.
+
+- It records typed text, which may include secrets. The file is readable only by you (mode
+  0600) and capped at 5 MB with one older copy (`input-debug.log.1`). `coral.log` and the
+  Settings page say when it is on. Turn it off when you are done.
+- The Settings toggle applies at once. `CORAL_DEBUG_INPUT=1` and `--debug-input` turn it on
+  whatever the setting says.
+- Turning it off keeps the file. Settings then shows **Delete the log**, which removes it and its
+  `.1` copy (`DELETE /api/system/debug-input-log`: only from the machine running Coral, and only
+  while the log is off).
+- Logging never slows input down: if the disk can't keep up, lines are dropped and the file
+  says how many.
+
 ## Performance
 
 ### Profiling a slow server

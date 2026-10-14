@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cdknorow/coral/internal/inputlog"
 )
 
 // ErrBracketedPasteUnavailable means the target application is not currently
@@ -141,6 +143,7 @@ func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, ses
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	inputlog.Record(target, inputlog.Paste, text)
 	buffer, err := c.loadPromptBuffer(ctx, SanitizePaste(text))
 	if err != nil {
 		return err

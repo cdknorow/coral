@@ -13,6 +13,7 @@ DELETE /api/sessions/history/{sessionID}/tags/{tagID} never
 DELETE /api/sessions/live/{name}/events never
 DELETE /api/sessions/live/{name}/notes/{noteID} interact
 DELETE /api/sessions/live/{name}/tasks/{taskID} interact
+DELETE /api/system/debug-input-log never
 DELETE /api/tags/{tagID} never
 DELETE /api/teams/detail/{name} never
 DELETE /api/themes/{name} never

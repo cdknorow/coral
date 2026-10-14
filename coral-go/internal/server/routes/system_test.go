@@ -39,6 +39,7 @@ func setupSystemTestServer(t *testing.T) (*httptest.Server, *SystemHandler) {
 	r.Get("/api/settings", handler.GetSettings)
 	r.Put("/api/settings", handler.PutSettings)
 	r.Get("/api/system/privacy", handler.GetPrivacyStatus)
+	r.Delete("/api/system/debug-input-log", handler.DeleteDebugInputLog)
 	r.Get("/api/tags", handler.ListTags)
 	r.Post("/api/tags", handler.CreateTag)
 	r.Delete("/api/tags/{tagID}", handler.DeleteTag)

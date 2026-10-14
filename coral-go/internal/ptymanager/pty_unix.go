@@ -17,6 +17,9 @@ type unixPTY struct {
 	done    chan struct{}
 }
 
+// terminateTypesCtrlC is false on Unix: Terminate sends SIGTERM, not input.
+const terminateTypesCtrlC = false
+
 func startPTYProcess(name string, args []string, dir string, env []string, cols, rows uint16) (ptyProcess, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir

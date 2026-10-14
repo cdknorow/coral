@@ -32,6 +32,54 @@ export function renderRemoteAccessStatus(status, loadError = false) {
     el.dataset.state = restart ? 'restart-required' : 'current';
 }
 
+// The terminal input debug log (#3256): the toggle shows the saved setting, and a
+// visible note says when the log is on (it records typed text, which may include
+// secrets). CORAL_DEBUG_INPUT / --debug-input force it on; the toggle can't
+// turn that off, so it is shown checked and disabled.
+export function renderDebugInputLogStatus(status) {
+    const box = document.getElementById('settings-debug-input-log');
+    const el = document.getElementById('settings-debug-input-log-status');
+    if (!box || !el) return;
+    const log = status?.debug_input_log || {};
+    box.disabled = log.forced === true;
+    if (log.forced === true) box.checked = true;
+    const del = document.getElementById('settings-debug-input-log-delete');
+    const file = log.path || 'input-debug.log';
+    if (log.enabled === true) {
+        const via = log.forced ? ' (turned on by CORAL_DEBUG_INPUT or --debug-input)' : '';
+        el.textContent = `On${via}: everything Coral sends to agent terminals, including typed text that may contain secrets, is written to ${file}. Turn it off when you are done.`;
+        el.dataset.state = 'on';
+        el.hidden = false;
+    } else if (log.file_exists === true) {
+        // Turning it off keeps the file, which may hold secrets: say so, and offer to delete it.
+        el.textContent = `Off. ${file} is kept; delete it when you no longer need it.`;
+        el.dataset.state = 'kept';
+        el.hidden = false;
+    } else {
+        el.textContent = '';
+        el.dataset.state = 'off';
+        el.hidden = true;
+    }
+    if (del) {
+        del.hidden = !(log.enabled !== true && log.file_exists === true);
+        del.onclick = deleteDebugInputLog;
+    }
+}
+
+// deleteDebugInputLog deletes the kept log (only from this machine; the server refuses otherwise).
+export async function deleteDebugInputLog() {
+    const el = document.getElementById('settings-debug-input-log-status');
+    try {
+        const resp = await fetch('/api/system/debug-input-log', { method: 'DELETE' });
+        const body = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(body.error || `delete failed (${resp.status})`);
+        if (state.privacyStatus) state.privacyStatus.debug_input_log = body.debug_input_log;
+        renderDebugInputLogStatus({ debug_input_log: body.debug_input_log });
+    } catch (error) {
+        if (el) { el.textContent = error.message; el.dataset.state = 'error'; el.hidden = false; }
+    }
+}
+
 export async function loadSettings() {
     try {
         const resp = await fetch("/api/settings");
@@ -78,6 +126,8 @@ export async function loadSettings() {
 
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+        const debugInput = document.getElementById('settings-debug-input-log');
+        if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         try {
             const privacyResp = await fetch('/api/system/privacy');
             if (!privacyResp.ok) throw new Error(`privacy status ${privacyResp.status}`);
@@ -85,6 +135,7 @@ export async function loadSettings() {
             const remote = document.getElementById('settings-remote-access-enabled');
             if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
             renderRemoteAccessStatus(state.privacyStatus);
+            renderDebugInputLogStatus(state.privacyStatus);
         } catch (error) {
             state.privacyStatus = null;
             const remote = document.getElementById('settings-remote-access-enabled');

@@ -36,6 +36,10 @@ That is the one-time first-launch screen. Choose **Skip for now** (or press Esca
 
 Agents receive `CORAL_URL`, `CORAL_PORT`, `CORAL_HOST` and `CORAL_DATA_DIR`, so board commands normally follow a server on another port or `--home`. If it still fails, confirm the server's view with `curl http://localhost:<port>/api/board/<project>/subscribers`.
 
+## An agent did something nobody typed
+
+To see exactly what Coral sends to agents' terminals, turn on **Settings > Log terminal input (debug)** (or start Coral with `CORAL_DEBUG_INPUT=1`). It's off by default. While it's on, every message, key and paste Coral sends to an agent is written to `<data dir>/input-debug.log`, with where it came from. It records what was typed, which may include secrets, so turn it off when you're done. Turning it off keeps the file; use **Delete the log** in Settings to remove it.
+
 ## Reporting a problem
 
 Include your Coral version (startup log or `/api/system/status`), OS and architecture, and the relevant lines from `<data dir>/coral.log`. Do not paste prompts, source code or API keys.

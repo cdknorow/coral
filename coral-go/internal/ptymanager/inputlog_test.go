@@ -1,0 +1,45 @@
+package ptymanager
+
+import (
+	"bytes"
+	"context"
+	"log"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cdknorow/coral/internal/inputlog"
+)
+
+// Every write to a PTY is recorded with the code path that sent it, and Ctrl-D
+// reaches coral.log even with the debug file off (#3256).
+func TestPTYWritesAreRecorded(t *testing.T) {
+	var coralLog bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&coralLog)
+	t.Cleanup(func() { log.SetOutput(old) })
+
+	dir := t.TempDir()
+	inputlog.Setup(dir, true)
+	t.Cleanup(func() { inputlog.Setup("", false) })
+	withFastSubmit(t)
+
+	b, sess, _ := newFakeBackend(t, "claude-pty1")
+	sess.bracketedPaste.Store(true) // the CLI asked for bracketed paste, so the prompt is pasted
+	require.NoError(t, b.SendInput("claude-pty1", []byte("ls\r")))
+	require.NoError(t, b.SendInput("claude-pty1", []byte("\x04")))
+	ctx := context.Background()
+	require.NoError(t, b.SendPrompt(ctx, "claude-pty1", "do the task"))
+
+	inputlog.Flush()
+	data, err := os.ReadFile(filepath.Join(dir, inputlog.FileName))
+	require.NoError(t, err)
+	got := string(data)
+	assert.Contains(t, got, `target=claude-pty1 source=ptymanager.TestPTYWritesAreRecorded kind=raw len=3 text="ls\r"`)
+	assert.Contains(t, got, `kind=raw len=1 text="\x04"`)
+	assert.Contains(t, got, "do the task", "the prompt write is recorded too")
+	assert.NotContains(t, coralLog.String(), "kind=", "input goes to the debug file only, never coral.log")
+}

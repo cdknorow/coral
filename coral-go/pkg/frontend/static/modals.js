@@ -19,7 +19,7 @@ import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
     bareBoardName, postLaunch, waitForLaunched,
 } from './launch_server.js';
-import { settingBool, renderRemoteAccessStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
+import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
@@ -3195,6 +3195,8 @@ export async function showSettingsModal() {
     if (!isCloud()) {
         const telemetry = document.getElementById('settings-telemetry-enabled');
         if (telemetry) telemetry.checked = settingBool(s.telemetry_enabled, true);
+        const debugInput = document.getElementById('settings-debug-input-log');
+        if (debugInput) debugInput.checked = settingBool(s.debug_input_log, false);
         const remote = document.getElementById('settings-remote-access-enabled');
         if (remote) remote.checked = settingBool(s.remote_access_enabled, false);
         renderRemoteAccessStatus(state.privacyStatus);
@@ -3204,6 +3206,7 @@ export async function showSettingsModal() {
             state.privacyStatus = await privacyResp.json();
             if (remote) remote.checked = settingBool(state.privacyStatus.remote_access_enabled, false);
             renderRemoteAccessStatus(state.privacyStatus);
+            renderDebugInputLogStatus(state.privacyStatus);
         } catch (_) {
             renderRemoteAccessStatus(state.privacyStatus, !state.privacyStatus);
         }
@@ -3440,6 +3443,10 @@ export async function applySettings() {
     const gitDiffMode = document.getElementById("settings-git-diff-mode")?.value || "branch_point";
     const gitPollIntervalS = document.getElementById("settings-git-poll-interval")?.value ?? "120";
     const telemetryEnabled = document.getElementById("settings-telemetry-enabled")?.checked ?? settingBool(state.settings?.telemetry_enabled, true);
+    // When CORAL_DEBUG_INPUT/--debug-input force the log on, the checkbox is shown checked and
+    // disabled: keep the saved setting rather than saving that forced state (#3256).
+    const debugInputBox = document.getElementById("settings-debug-input-log");
+    const debugInputLog = debugInputBox && !debugInputBox.disabled ? debugInputBox.checked : settingBool(state.settings?.debug_input_log, false);
     const remoteAccessEnabled = document.getElementById("settings-remote-access-enabled")?.checked ?? settingBool(state.settings?.remote_access_enabled, false);
 
     // Parse theme selection — "custom:<name>" or built-in "dark"/"light"/"system"
@@ -3479,6 +3486,7 @@ export async function applySettings() {
         git_diff_mode: gitDiffMode,
         git_poll_interval_s: gitPollIntervalS,
         telemetry_enabled: telemetryEnabled,
+        debug_input_log: debugInputLog,
         remote_access_enabled: remoteAccessEnabled,
     };
 
@@ -3500,7 +3508,20 @@ export async function applySettings() {
             state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
             state.privacyStatus.remote_access_restart_required = state.privacyStatus.remote_access_effective !== remoteAccessEnabled;
         }
+        if (!isCloud() && state.privacyStatus) {
+            const log = state.privacyStatus.debug_input_log || {};
+            state.privacyStatus.debug_input_log = { ...log, enabled: log.forced === true || debugInputLog };
+            // The server knows whether a log file is now kept on disk; refresh from it.
+            try {
+                const fresh = await fetch('/api/system/privacy');
+                if (fresh.ok) {
+                    const body = await fresh.json();
+                    if (body && body.debug_input_log) state.privacyStatus.debug_input_log = body.debug_input_log;
+                }
+            } catch { /* keep the local guess */ }
+        }
         if (!isCloud()) renderRemoteAccessStatus(state.privacyStatus);
+        if (!isCloud()) renderDebugInputLogStatus(state.privacyStatus);
         // Defaults may have changed — force next ACF open to re-fetch.
         _invalidateDefaultModels();
 
