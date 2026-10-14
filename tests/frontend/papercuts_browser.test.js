@@ -23,6 +23,7 @@ const BASE = require('./test_base').BASE;
     let holdList = null;     // a paused /api/sessions/live request
     let holdNextList = false;
     let fakeHub = false;     // answer /api/health as a hub (phase 15)
+    let heldReleased = false; // the held list has been answered: from then on every list is a hub's
     Fetch.requestPaused(async e => {
         const u = new URL(e.request.url);
         const json = (code, body) => Fetch.fulfillRequest({ requestId: e.requestId, responseCode: code, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }], body: Buffer.from(JSON.stringify(body)).toString('base64') });
@@ -40,6 +41,10 @@ const BASE = require('./test_base').BASE;
             holdList = e.requestId;
             return;
         }
+        // A hub answers EVERY list as {sessions, servers}. The app asks again shortly after the first list lands (under
+        // load ~100 ms later, inside the phase-15 wait); a plain array from the test server reset the server list to none
+        // and hid the Servers tab: the flake.
+        if (u.pathname === '/api/sessions/live' && fakeHub && heldReleased) return json(200, { sessions: [], servers: [{ id: 'r1', label: 'Remote', status: 'online' }] });
         return Fetch.continueRequest({ requestId: e.requestId });
     });
     const open = async (width, height, mobile) => {
@@ -183,12 +188,12 @@ const BASE = require('./test_base').BASE;
         await waitFor(`window.__feedFull === true`, "the feed's first full update applied");
         await Fetch.fulfillRequest({ requestId: holdList, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
             body: Buffer.from(JSON.stringify({ sessions: [], servers: [{ id: 'r1', label: 'Remote', status: 'online' }] })).toString('base64') });
-        holdList = null;
+        holdList = null; heldReleased = true;
         await coralReady('startup', 'liveList');
         await new Promise(r => setTimeout(r, 300)); // sleep-ok: a re-open would land right after the list
         assert.equal(await ev(`document.getElementById('nav-tab-servers').hidden`), false, 'still a hub with a remote: the tab stays');
         assert.deepEqual(await ev(`window.__reopenCalls`), [], 'the first list load does not re-open the view the user already chose');
-        fakeHub = false;
+        fakeHub = false; heldReleased = false;
         console.log('PASS (15) a hash set before the first list load is not restored again');
 
         // ── (10)(11) Phone: nav strip with no scrollbar and an edge fade; team-send button.
