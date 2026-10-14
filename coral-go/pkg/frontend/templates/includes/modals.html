@@ -628,6 +628,11 @@
                             <label class="settings-cloud-auto-accept"><input type="checkbox" id="settings-cloud-allow-auto-accept" data-cloud="allow-auto-accept" aria-describedby="settings-cloud-auto-accept-desc"> Coral Hub can turn on auto-accept</label>
                             <div id="settings-cloud-auto-accept-desc" class="settings-hint">On by default while access is Launch. A hub user can then let an agent's permission prompts be approved for it, for up to 8 hours (1 hour unless they choose otherwise). Turn this off to keep that on this computer only; it also stops any auto-accept the hub turned on.</div>
                         </div>
+                        <div class="settings-cloud-hub-operator" id="settings-cloud-hub-operator-row" data-cloud="hub-operator-row" hidden>
+                            <label class="settings-cloud-auto-accept"><input type="checkbox" id="settings-cloud-hub-operator" data-cloud="hub-operator" aria-describedby="settings-cloud-hub-operator-desc"> Let Coral Hub act as the Operator</label>
+                            <div id="settings-cloud-hub-operator-desc" class="settings-hint">Off by default. When on, anyone using this Coral through Coral Hub can act as the Operator here: create and assign tasks, and post as the Operator on boards. Board settings still can't be changed through Coral Hub. Chat messages from Coral Hub always show the Hub user who sent them, whatever this says. Each use is written to coral.log, and it turns off when you disconnect from Coral Hub.</div>
+                            <div id="settings-cloud-hub-operator-msg" data-cloud="hub-operator-msg" class="settings-hint settings-error" role="alert" hidden></div>
+                        </div>
                     </div>
                     <div class="settings-hint">The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch lets them start new agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
                 </dd>

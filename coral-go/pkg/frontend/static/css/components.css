@@ -250,7 +250,8 @@
     background: var(--bg-secondary);
     white-space: nowrap;
 }
-.mb-external-badge:not(.is-outbound) {
+.mb-hub-user-badge { border-color: var(--border); color: var(--text-secondary); }
+.mb-external-badge:not(.is-outbound):not(.mb-hub-user-badge) {
     border-color: var(--accent, var(--border));
     color: var(--accent, var(--text-secondary));
 }
@@ -3724,6 +3725,9 @@ dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 16px; }
 .auto-accept-confirm-duration select { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font: inherit; }
 .settings-cloud-auto-accept { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 #settings-cloud-auto-accept-row[hidden] { display: none; }
+#settings-cloud-hub-operator-row[hidden], #settings-cloud-hub-operator-msg[hidden] { display: none; }
+.settings-cloud-hub-operator { margin-top: 8px; }
+.settings-cloud-hub-operator .settings-error { color: var(--error, #e5534b); }
 /* The popout's switch while auto-accept is off (#3182): an outlined, quiet header button. */
 button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 11px; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--border); cursor: pointer; }
 button.auto-accept-header-off:hover { color: var(--text-primary); border-color: rgba(var(--warning-rgb), 0.6); }

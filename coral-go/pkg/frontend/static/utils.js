@@ -578,6 +578,15 @@ export function externalMessageBadge(m) {
     return `<span class="mb-external-badge${outbound ? ' is-outbound' : ''}" title="${escapeAttr(title)}">${outbound ? 'to' : 'from'} ${escapeHtml(board)}</span>`;
 }
 
+/** A board chat message a Coral Hub user sent through the Hub (#3377). origin is set by the
+ *  server on tunnel chat posts, never taken from a client and never inferred from the name. */
+export function hubUserBadge(m) {
+    if (!m || m.origin !== 'hub_user') return '';
+    const who = String(m.subscriber_id || '');
+    const title = `Sent through Coral Hub by a Hub user${who ? ` (${who})` : ''}, not by an agent or by you at this computer.`;
+    return `<span class="mb-external-badge mb-hub-user-badge" title="${escapeAttr(title)}">Coral Hub user</span>`;
+}
+
 export function labelCodeBlocks(root) {
     for (const code of root.querySelectorAll('pre > code[class*="language-"]')) {
         const lang = /language-([\w+#.-]+)/.exec(code.className);

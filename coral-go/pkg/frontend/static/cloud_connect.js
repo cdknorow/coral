@@ -2,7 +2,8 @@
  * screen (#3221) share this one implementation. Each renders into a container whose parts
  * carry data-cloud roles (status, code, link, usercode, connect, cancel, disconnect,
  * command-row, command, copy, mode-row, max-mode, mode-desc, auto-accept-row,
- * allow-auto-accept); a container may leave any of them out.
+ * allow-auto-accept, hub-operator-row, hub-operator, hub-operator-msg); a container may
+ * leave any of them out.
  *
  * Talks only to this server's /api/cloud/* routes. Every value from the server is
  * written with textContent / setAttribute, never as HTML, and the verification link
@@ -11,6 +12,9 @@
 import { copyText } from './utils.js';
 
 const STATUS_URL = '/api/cloud/status';
+// 'Let Coral Hub act as the Operator' (#3377): a local-only owner setting. The route answers only
+// on this computer (404 through the hub), so the row is shown only when it answers 200.
+const HUB_OPERATOR_URL = '/api/system/hub-operator';
 export const MODE_HELP = {
     view: 'Read everything: every agent\'s terminal output and chat, all board chat on every team, files, tasks and boards. Nothing can be typed, changed or started from the web.',
     interact: 'Also type into agents that are already running (send text, keys, answer prompts) and change tasks, notes and the board. Typing can run commands: an agent with shell tools acts on it. It can also change board settings, including turning on cross-team messaging.',
@@ -91,6 +95,7 @@ class CloudPanel {
         this.root = root;
         this.onState = onState || (() => {});
         this.timer = null;
+        this.enrolled = undefined; // unknown until the first status: the Operator row is read then
     }
 
     part(role) { return this.root.querySelector(`[data-cloud="${role}"]`); }
@@ -148,7 +153,46 @@ class CloudPanel {
         show('auto-accept-row', mode === 'launch');
         const allow = this.part('allow-auto-accept');
         if (allow) allow.checked = st.allow_hub_auto_accept !== false;
+        // The Hub link came or went (connect, disconnect, revoke): the server clears the
+        // Operator setting with it, so read it again.
+        const enrolled = ENROLLED.includes(st.state);
+        if (enrolled !== this.enrolled) { this.enrolled = enrolled; this.loadHubOperator(); }
         this.onState(st);
+    }
+
+    // Shown when this computer answers (it never does through the hub) and either a Hub link
+    // exists or the setting is still on.
+    async loadHubOperator() {
+        const row = this.part('hub-operator-row');
+        if (!row) return;
+        let s = null;
+        try {
+            const r = await fetch(HUB_OPERATOR_URL);
+            if (r.ok) s = await r.json();
+        } catch { /* hidden */ }
+        row.hidden = !s || !(s.linked || s.enabled);
+        const box = this.part('hub-operator');
+        if (s && box) box.checked = !!s.enabled;
+        this.sayHubOperator('');
+    }
+
+    sayHubOperator(text) {
+        const m = this.part('hub-operator-msg');
+        if (m) { m.textContent = text; m.hidden = !text; }
+    }
+
+    async setHubOperator(enabled) {
+        const box = this.part('hub-operator');
+        try {
+            const r = await post('PUT', HUB_OPERATOR_URL, { enabled });
+            if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Request failed');
+            const s = await r.json();
+            if (box) box.checked = !!s.enabled;
+            this.sayHubOperator('');
+        } catch (e) {
+            if (box) box.checked = !enabled;
+            this.sayHubOperator('Could not change it: ' + (e.message || 'request failed'));
+        }
     }
 
     async load() {
@@ -216,6 +260,7 @@ class CloudPanel {
         });
         this.part('max-mode')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/max-mode', { mode: e.target.value }));
         this.part('allow-auto-accept')?.addEventListener('change', (e) => this.act('PUT', '/api/cloud/allow-auto-accept', { allow: e.target.checked }));
+        this.part('hub-operator')?.addEventListener('change', (e) => this.setHubOperator(e.target.checked));
     }
 
     // Cancel an enrollment in progress (#3285). A server from before that endpoint answers
