@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/store"
@@ -141,7 +142,7 @@ func (p *RemoteBoardPoller) RunOnce(ctx context.Context) error {
 		if skipIfAgentExited(ctx, p.runtime, p.logger, sessionName, "remote board nudge") {
 			continue
 		}
-		err = p.runtime.SendInput(ctx, sessionName, nudge)
+		err = p.runtime.SendInput(ctx, sessionName, board.OneLine(nudge)) // one line (#3376)
 		if err != nil {
 			continue
 		}

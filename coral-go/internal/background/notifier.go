@@ -238,7 +238,7 @@ func (n *BoardNotifier) RunOnce(ctx context.Context) error {
 			continue
 		}
 		n.logger.Info("sending nudge", "subscriber_id", subscriberID, "session", sessName, "unread", unread)
-		err = n.runtime.SendInput(ctx, sessName, nudge)
+		err = n.runtime.SendInput(ctx, sessName, board.OneLine(nudge)) // one line (#3376)
 		if err != nil {
 			n.logger.Warn("failed to nudge agent", "agent", a.AgentName, "session", sessName, "error", err)
 			continue

@@ -176,13 +176,13 @@ func TestBoardNotifier_NoNudgeIntoABareShell(t *testing.T) {
 	assert.Equal(t, 1, rt.sentTo(name), "a running agent is nudged as before")
 }
 
-// The notifier skips 'terminal' sessions anyway (they don't read the board); the guard
-// itself never blocks one, since a terminal agent's shell is the agent.
-func TestSkipIfAgentExitedNeverBlocksATerminalAgent(t *testing.T) {
+// #3376 (reverses #3219's exemption): a terminal agent's terminal is a shell, where
+// $( ) and backticks in automated text would run, so the guard always skips it.
+func TestSkipIfAgentExitedAlwaysSkipsATerminalAgent(t *testing.T) {
 	rt := &fgMockRuntime{}
 	name := FormatSessionName("terminal", testUUID)
 	rt.set(name, "zsh")
-	assert.False(t, skipIfAgentExited(context.Background(), rt, nil, name, "test"))
+	assert.True(t, skipIfAgentExited(context.Background(), rt, nil, name, "test"))
 	claude := FormatSessionName("claude", testUUID)
 	rt.set(claude, "zsh")
 	assert.True(t, skipIfAgentExited(context.Background(), rt, nil, claude, "test"))

@@ -2213,7 +2213,8 @@ func (h *BoardHandler) resolveMessageWaits(project, senderID, content string) {
 			sessionName = sub.SessionName
 		}
 		if h.terminal != nil && sessionName != "" {
-			nudge := fmt.Sprintf("[Wait resolved] %s posted on '%s': %q. Run 'coral-board read' to see the message.", senderID, project, preview)
+			// The sender is quoted like the preview (#3376); sendAutomated keeps it one line.
+			nudge := fmt.Sprintf("[Wait resolved] %q posted on '%s': %q. Run 'coral-board read' to see the message.", senderID, project, preview)
 			if err := h.sendAutomated(ctx, sessionName, nudge); err != nil {
 				slog.Warn("failed to nudge waiting agent", "subscriber", w.SubscriberID, "session", sessionName, "error", err)
 			}

@@ -288,6 +288,8 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Debug request logger (session/ws calls only, when CORAL_DEBUG=1)
 	r.Use(routes.DebugRequestLogger)
+	// Board identities never carry control characters (#3376).
+	r.Use(routes.RejectBadIdentities)
 	// Record API traffic centrally so clients do not need to post metrics.
 	r.Use(routes.RequestMetrics(s.db))
 

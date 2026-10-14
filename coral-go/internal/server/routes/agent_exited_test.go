@@ -75,15 +75,16 @@ func TestBoardSendAutomatedSkipsABareShell(t *testing.T) {
 	assert.Equal(t, []string{"You have 1 unread message"}, term.sentTo(name), "a running agent gets it")
 }
 
-// Orchestrator's must: a 'terminal' agent's shell IS the agent.
-func TestBoardSendAutomatedReachesATerminalAgent(t *testing.T) {
+// #3376 (reverses #3219's 'a terminal agent's shell IS the agent'): automated board
+// text is never typed into a terminal agent's shell, where $( ) and backticks run.
+func TestBoardSendAutomatedNeverTypesIntoATerminalAgent(t *testing.T) {
 	term := newFGTerminal(newMockTerminal())
 	h := &BoardHandler{terminal: term}
 	name := naming.SessionName("terminal", exitedTestSID)
 	term.addSession(name, "/tmp/test")
 	term.setFG(name, "zsh")
-	require.NoError(t, h.sendAutomated(context.Background(), name, "hello"))
-	assert.Equal(t, []string{"hello"}, term.sentTo(name))
+	require.Error(t, h.sendAutomated(context.Background(), name, "hello $(id)"))
+	assert.Empty(t, term.sentTo(name))
 }
 
 // Orchestrator's must: what the user types in the dashboard is always sent.

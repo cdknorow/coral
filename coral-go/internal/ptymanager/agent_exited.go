@@ -13,6 +13,18 @@ type ShellIdleChecker interface {
 	AgentShellIdle(ctx context.Context, name, agentType, sessionID string) (idle bool, shell string, ok bool)
 }
 
+// IsTerminalAgent reports whether a session is a 'terminal' agent: its terminal IS a
+// shell, so automated text (a notification naming a sender, a message preview, a task
+// title) must never be typed there. Quoting can't make arbitrary text safe for a shell:
+// $( ) and backticks expand inside double quotes (#3376). agentType "" is read from the
+// session name.
+func IsTerminalAgent(name, agentType string) bool {
+	if agentType == "" {
+		agentType, _ = logparse.ParseSessionName(name)
+	}
+	return agentType == at.Terminal
+}
+
 // AgentExited reports whether an agent's CLI has exited and left its terminal at
 // a plain shell prompt, so automated input (nudges, notifications, scheduled
 // prompts, auto-accept) must not be typed there: a shell would run it as a
