@@ -20,9 +20,23 @@ func startPprof(ctx context.Context) {
 	if addr == "" {
 		return
 	}
-	if err := checkLoopbackAddr(addr); err != nil {
+	bound, err := startPprofOn(ctx, addr)
+	if err != nil {
 		log.Printf("[pprof] not started: %v", err)
 		return
+	}
+	log.Printf("[pprof] serving on http://%s/debug/pprof/ (this computer only)", bound)
+}
+
+// startPprofOn serves the profiling endpoints on addr, which must be a loopback IP
+// (port 0 picks one), until ctx ends. It returns the address it listens on.
+func startPprofOn(ctx context.Context, addr string) (net.Addr, error) {
+	if err := checkLoopbackAddr(addr); err != nil {
+		return nil, err
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
@@ -30,17 +44,17 @@ func startPprof(ctx context.Context) {
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		srv.Close()
 	}()
 	go func() {
-		log.Printf("[pprof] serving on http://%s/debug/pprof/", addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("[pprof] stopped: %v", err)
 		}
 	}()
+	return ln.Addr(), nil
 }
 
 // checkLoopbackAddr accepts host:port only when host is a loopback IP literal.

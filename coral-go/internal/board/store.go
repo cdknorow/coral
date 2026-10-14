@@ -160,6 +160,13 @@ type UnreadState struct {
 
 // SetSessionsDB sets an optional reference to the main sessions database,
 // enabling cross-DB queries for session_id resolution and cost tracking.
+// Ping runs SELECT 1 on the board database: with its single connection it waits while a
+// query or transaction holds it (the stall watchdog's probe, #3262).
+func (s *Store) Ping(ctx context.Context) error {
+	var one int
+	return s.db.GetContext(ctx, &one, "SELECT 1")
+}
+
 func (s *Store) SetSessionsDB(db *sqlx.DB) {
 	s.sessionsDB = db
 }

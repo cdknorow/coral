@@ -417,6 +417,19 @@ is not per-user: while it is on, any local account can read heap and
 goroutine dumps, which can contain prompts and other session data. Turn it
 off when you are done.
 
+### Coral froze: stall dumps
+
+Coral checks itself every 10 seconds: its HTTP router (an in-process `GET /api/health`),
+its logger, and both databases (`SELECT 1`). If one of them hasn't answered for 30
+seconds, Coral writes the stacks of every goroutine to `<data folder>/stall-<time>.txt`
+(`~/.coral/stall-20261014T120000.000Z.txt`), starting with which check is stuck and for
+how long. It writes the file directly, never through the logger (which may be the thing
+that is stuck). It writes one file per stall, at most one every 10 minutes, and keeps
+the newest 5. Attach the file to a bug report. The file is readable only by you (0600);
+stacks can include fragments of session data.
+
+`CORAL_STALL_WATCHDOG=off` turns the checks off.
+
 ### `sessions.db` is large
 
 Coral records one row per API call in `call_metrics` for the **Tool & API Calls**
