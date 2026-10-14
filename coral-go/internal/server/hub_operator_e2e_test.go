@@ -140,10 +140,15 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, out)
 	assert.Equal(t, "Coral Hub", out["subscriber_id"])
 
+	// Changing the team's working mode (what every agent is told) is the Operator's and is
+	// recorded with the Hub user like any board write (#3433).
+	code, out = viaHub("PUT", "/api/board/team/working-mode", map[string]any{"mode": "none", "dependency_guidance": false, "custom_instructions": "from the hub"}, user)
+	require.Equal(t, http.StatusOK, code, out)
+
 	code, out = onComputer("GET", "/api/system/hub-operator", nil)
 	require.Equal(t, http.StatusOK, code, out)
 	recent, _ := out["recent_actions"].([]any)
-	require.Len(t, recent, 3, out) // every board write through the tunnel is recorded (#3428), the post without a Hub user too
+	require.Len(t, recent, 4, out) // every board write through the tunnel is recorded (#3428), the post without a Hub user too
 	paths := []string{}
 	for _, a := range recent {
 		m := a.(map[string]any)
@@ -152,7 +157,7 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 		}
 		paths = append(paths, m["path"].(string))
 	}
-	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks", "/api/board/team/messages"}, paths)
+	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks", "/api/board/team/messages", "/api/board/team/working-mode"}, paths)
 
 	// Never changed through the hub; the board's settings neither.
 	code, _ = viaHub("PUT", "/api/system/hub-operator", map[string]any{"disabled": false})

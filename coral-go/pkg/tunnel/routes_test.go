@@ -579,3 +579,30 @@ func TestArtifactLinkVersionIsAnExactValue(t *testing.T) {
 	}
 	assert.Equal(t, "v=2", routeQueries["GET /api/artifacts/{}"])
 }
+
+// #3433: deleting a whole board can't be undone, so through Coral Hub it needs Launch; its
+// smaller board writes stay at Interact.
+func TestDeletingABoardNeedsLaunch(t *testing.T) {
+	if got := Classify("DELETE", "/api/board/team", ""); got != TierLaunch {
+		t.Fatalf("DELETE /api/board/team: %v, want launch", got)
+	}
+	for _, p := range []string{"/api/board/team/messages/4", "/api/board/team/waits", "/api/board/team/reminder"} {
+		if got := Classify("DELETE", p, ""); got != TierInteract {
+			t.Errorf("DELETE %s: %v, want interact", p, got)
+		}
+	}
+	allow := AllowRequest(func() Mode { return TierInteract })
+	if allow("DELETE", "/api/board/team", "") {
+		t.Error("a board delete is allowed at Interact")
+	}
+	if !AllowRequest(func() Mode { return TierLaunch })("DELETE", "/api/board/team", "") {
+		t.Error("a board delete is refused at Launch")
+	}
+	// Killing a whole team is Launch too; one agent's kill stays a safety stop at Interact.
+	if got := Classify("POST", "/api/sessions/live/team/alpha/kill", ""); got != TierLaunch {
+		t.Errorf("team kill: %v, want launch", got)
+	}
+	if got := Classify("POST", "/api/sessions/live/agent-1/kill", ""); got != TierInteract {
+		t.Errorf("single kill: %v, want interact", got)
+	}
+}

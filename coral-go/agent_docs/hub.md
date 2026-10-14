@@ -61,6 +61,9 @@ The tunnel carries no proof of who the Hub user is, so on boards (#3377, #3404),
 | A board write that names no actor (pause, resume, a reminder) | Is the Operator's: allowed by default, 403 `operator_identity_required` with the opt-out, 403 `hub_user_required` with no `X-Coral-Hub-User`. |
 | Acting as an orchestrator (an identity with "orchestrator" in it, or a subscriber with orchestrator or peek rights), or `receive_mode: "all"` | 403 `orchestrator_identity` |
 | `PUT /api/board/{p}/settings` (cross-team) | never |
+| `DELETE /api/board/{p}` (delete the whole board: its messages, tasks and members; can't be undone) | needs **Launch** (Interact gets 403 `local_mode` or `path_not_allowed`), and is the Operator's: attributed to the Hub user, recorded, refused with the opt-out (#3433) |
+| `POST /api/sessions/live/team/{board}/kill` (stop every agent of a team at once) | needs **Launch** (#3433). Stopping one agent (`…/{name}/kill`) stays at Interact: a safety stop |
+| `PUT /api/board/{p}/working-mode` and its presets (what every agent of the team is told) | Interact, the Operator's: attributed to the Hub user and recorded in Coral Hub actions, refused with the opt-out |
 | `POST /api/tasks/run` with `auto_accept` or a permission-skipping flag | needs the local allow-hub-auto-accept switch and Launch mode (403 `hub_auto_accept_disabled` / `hub_mode_too_low`) |
 
 A read never changes anything (#3428): `GET /api/board/{p}/messages` through the tunnel ignores `subscriber_id` and `session_id` and is served like `messages/all`, so it never moves a member\'s read position (`messages/check` and the other reads change nothing). Requests from the computer itself are unchanged.

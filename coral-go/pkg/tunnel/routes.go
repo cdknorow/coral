@@ -236,7 +236,6 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/notes",
 		"/api/sessions/live/{name}/tasks",
 		"/api/sessions/live/{name}/tasks/reorder",
-		"/api/sessions/live/team/{board}/kill",
 		"/api/sessions/live/team/{board}/sleep",
 		"/api/sessions/live/sleep-all",
 		"/api/sessions/live/{id}/sleep",
@@ -293,8 +292,13 @@ var routeTable = cat(
 		"/api/board/{project}/waits",
 		"/api/board/{project}/groups/{group}/members/{id}",
 		"/api/board/{project}/tasks/{id}/reminder",
-		"/api/board/{project}",
 	),
+	// Deleting a whole board (its messages, tasks and members) can't be undone: Launch, not
+	// Interact (#3433). It stays the Operator's (attributed, recorded, refused with the opt-out).
+	rules(http.MethodDelete, TierLaunch, "/api/board/{project}"),
+	// Killing every agent of a team at once ends all their work in progress: Launch (#3433).
+	// Stopping one agent stays Interact (a safety stop).
+	rules(http.MethodPost, TierLaunch, "/api/sessions/live/team/{board}/kill"),
 
 	// ── launch: starts or wakes processes, browses folders, opens editors ─
 	rules(http.MethodPost, TierLaunch,

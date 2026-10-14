@@ -1,6 +1,6 @@
 DELETE /api/agent/ui/{id} never
 DELETE /api/board/remotes never
-DELETE /api/board/{project} interact
+DELETE /api/board/{project} launch
 DELETE /api/board/{project}/groups/{groupID}/members/{sessionID} interact
 DELETE /api/board/{project}/messages/{messageID} interact
 DELETE /api/board/{project}/reminder interact
@@ -227,7 +227,7 @@ POST /api/sessions/history/{sessionID}/tags never
 POST /api/sessions/launch launch
 POST /api/sessions/launch-team launch
 POST /api/sessions/live/sleep-all interact
-POST /api/sessions/live/team/{boardName}/kill interact
+POST /api/sessions/live/team/{boardName}/kill launch
 POST /api/sessions/live/team/{boardName}/reset launch
 POST /api/sessions/live/team/{boardName}/sleep interact
 POST /api/sessions/live/team/{boardName}/wake launch
