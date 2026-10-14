@@ -519,10 +519,10 @@
     </div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="modal" role="dialog" aria-modal="true" style="display:none">
+    <div id="settings-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" style="display:none">
         <div class="modal-content modal-content-wide settings-modal-content">
             <div class="modal-header">
-                <h3>Settings</h3>
+                <h3 id="settings-title">Settings</h3>
             </div>
             <div class="modal-body settings-modal-body">
                 <button class="btn btn-primary settings-theme-btn" onclick="hideSettingsModal(); showThemeConfigurator()">
@@ -530,30 +530,30 @@
                     Customize Theme
                 </button>
                 <dl class="info-grid settings-grid">
-                <dt>Theme</dt>
+                <dt id="settings-theme-label">Theme</dt>
                 <dd>
-                    <select id="settings-theme" class="settings-select">
+                    <select aria-labelledby="settings-theme-label" id="settings-theme" class="settings-select">
                         <option value="dark">Dark</option>
                         <option value="light">Light</option>
                         <option value="system">System</option>
                     </select>
                 </dd>
-                <dt>Default Render Engine</dt>
+                <dt id="settings-renderer-select-label">Default Render Engine</dt>
                 <dd>
-                    <select id="settings-renderer-select" class="settings-select"></select>
+                    <select aria-labelledby="settings-renderer-select-label" id="settings-renderer-select" class="settings-select"></select>
                 </dd>
-                <dt>Default Agent Type</dt>
+                <dt id="settings-agent-type-label">Default Agent Type</dt>
                 <dd>
-                    <select id="settings-agent-type" class="settings-select">
+                    <select aria-labelledby="settings-agent-type-label" id="settings-agent-type" class="settings-select">
                         <option value="claude">Claude</option>
                         <option value="agy">Antigravity (agy)</option>
                         <option value="codex">Codex</option>
                         <option value="pi">Pi</option>
                     </select>
                 </dd>
-                <dt>Default Permission Mode</dt>
+                <dt id="settings-permission-mode-label">Default Permission Mode</dt>
                 <dd>
-                    <select id="settings-permission-mode" class="settings-select" onchange="window._updatePermModeDescription(this)">
+                    <select aria-labelledby="settings-permission-mode-label" id="settings-permission-mode" class="settings-select" onchange="window._updatePermModeDescription(this)">
                         <option value="default">Default</option>
                         <option value="plan">Plan</option>
                         <option value="acceptEdits">Accept Edits</option>
@@ -640,9 +640,9 @@
                     </div>
                     <div class="settings-hint">The hub can read everything you view through it. This is a ceiling: the mode actually in effect is the lower of this setting and the one chosen on the hub, and only you can change this one, here. Interact lets a hub user type into running agents, which can run commands; Launch lets them start new agents. Disconnect removes the token from this computer; revoke the server on the hub's Servers page to cut it off from there.</div>
                 </dd>
-                <dt>Database encryption</dt>
+                <dt id="settings-database-encryption-label">Database encryption</dt>
                 <dd>
-                    <select id="settings-database-encryption" class="settings-select" aria-describedby="settings-database-encryption-status">
+                    <select aria-labelledby="settings-database-encryption-label" id="settings-database-encryption" class="settings-select" aria-describedby="settings-database-encryption-status">
                         <option value="disabled">Disabled (existing plaintext database)</option>
                         <option value="key_file">Local key file (~/.coral/.db_key)</option>
                         <option value="password">Password at startup</option>
@@ -721,9 +721,9 @@
                         </span>
                     </label>
                 </dd>
-                <dt>Terminal Font Size</dt>
+                <dt id="settings-terminal-font-size-label">Terminal Font Size</dt>
                 <dd>
-                    <select id="settings-terminal-font-size" class="settings-select">
+                    <select aria-labelledby="settings-terminal-font-size-label" id="settings-terminal-font-size" class="settings-select">
                         <option value="10">10px</option>
                         <option value="11">11px</option>
                         <option value="12">12px</option>
@@ -733,9 +733,9 @@
                         <option value="18">18px</option>
                     </select>
                 </dd>
-                <dt>Terminal Scrollback</dt>
+                <dt id="settings-terminal-scrollback-label">Terminal Scrollback</dt>
                 <dd>
-                    <select id="settings-terminal-scrollback" class="settings-select">
+                    <select aria-labelledby="settings-terminal-scrollback-label" id="settings-terminal-scrollback" class="settings-select">
                         <option value="1000">1,000 lines</option>
                         <option value="5000">5,000 lines</option>
                         <option value="10000">10,000 lines</option>

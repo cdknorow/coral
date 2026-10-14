@@ -1,5 +1,5 @@
 // Servers tab (#3070): the Cloud Hub's machines (and a self-hosted hub's remotes) are a top-level tab, not a
-// dialog. Pins: when the tab shows, tab/tabpanel roles and focus, each row's access line (Hub / Machine /
+// dialog. Pins: when the tab shows, the nav button's aria-current, the region and focus, each row's access line (Hub / Machine /
 // Effective) and 'Raise hub mode' only when the hub is the limit (PATCH {access_mode: <machine>}), Revoke
 // contrast, deep links (#servers, #servers/<id>, the agent list's server chip), no overflow at 375 px with the
 // actions stacked, and the enroll page's Servers note.
@@ -99,7 +99,7 @@ const contrast = (a, b) => {
         const tab = document.getElementById('nav-tab-servers'), view = document.getElementById('servers-view');
         return {
             tabShown: !!tab && !tab.hidden && getComputedStyle(tab).display !== 'none',
-            role: tab && tab.getAttribute('role'), controls: tab && tab.getAttribute('aria-controls'), selected: tab && tab.getAttribute('aria-selected'),
+            role: tab && tab.getAttribute('role'), controls: tab && tab.getAttribute('aria-controls'), selected: tab && tab.getAttribute('aria-selected'), current: tab && tab.getAttribute('aria-current'),
             viewShown: !!view && getComputedStyle(view).display !== 'none', viewRole: view && view.getAttribute('role'),
             focus: document.activeElement && document.activeElement.id,
         };
@@ -117,22 +117,23 @@ const contrast = (a, b) => {
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Page.addScriptToEvaluateOnNewDocument({ source: CLOUD_PRELOAD });
 
-        console.log('1. Coral Hub: the tab, its roles and focus');
+        console.log('1. Coral Hub: the nav button, the view and focus');
         await cloudMode(true);
         await open();
         await ev(`localStorage.clear(); true`);
         let t = await tabState();
         assert.ok(t.tabShown, 'the Servers tab shows on the Coral Hub');
-        assert.equal(t.role, 'tab'); assert.equal(t.controls, 'servers-view');
-        assert.equal(t.selected, 'false', 'not selected before opening');
+        // Page navigation, not tabs (accessibility pass): no tab role, aria-current marks the open page.
+        assert.equal(t.role, null, 'no tab role'); assert.equal(t.controls, 'servers-view');
+        assert.equal(t.selected, null, 'no aria-selected'); assert.equal(t.current, null, 'not current before opening');
         await ev(`document.getElementById('nav-tab-servers').click(); true`);
         await waitFor(`document.querySelectorAll('#servers-view .cs-row').length === ${SERVERS.length}`, 'the server rows', 5000);
         t = await tabState();
-        assert.ok(t.viewShown && t.viewRole === 'tabpanel', 'the tab panel is shown with role=tabpanel');
-        assert.equal(t.selected, 'true', 'aria-selected after opening');
+        assert.ok(t.viewShown && t.viewRole === 'region', 'the view is shown as a labelled region');
+        assert.equal(t.current, 'page', 'aria-current=page after opening'); assert.equal(t.selected, null, 'still no aria-selected');
         assert.equal(t.focus, 'servers-tab-title', 'focus moves to the heading');
         assert.equal(await ev(`!!document.getElementById('cloud-servers-modal')`), false, 'no Servers dialog any more');
-        console.log('   ✓ tab role/controls/selected, tabpanel, heading focused, no dialog');
+        console.log('   ✓ nav button aria-current/controls, region, heading focused, no dialog');
 
         console.log('2. Row access lines and Raise');
         let r = Object.fromEntries((await rows()).map(x => [x.id, x]));
@@ -339,7 +340,7 @@ const contrast = (a, b) => {
         await open('#servers/m2');
         await waitFor(`document.activeElement && document.activeElement.id === 'server-row-m2'`, '#servers/m2 focuses its row', 6000);
         assert.ok((await rows()).find(x => x.id === 'server-row-m2').target, 'the linked row is highlighted');
-        assert.equal((await tabState()).selected, 'true');
+        assert.equal((await tabState()).current, 'page');
         await open('#servers');
         await waitFor(`document.activeElement && document.activeElement.id === 'servers-tab-title'`, '#servers focuses the heading', 6000);
         await ev(`window.switchNavTab('agents'); window.__m.add('chip-agent', 'C', 3, { sleeping: false, server: 'm3' }); T.render.renderLiveSessions(T.state.liveSessions); true`);
@@ -390,7 +391,7 @@ const contrast = (a, b) => {
         })()`);
         assert.ok((await tabState()).tabShown, 'a hub with a remote shows the tab');
         await ev(`window.switchNavTab('servers'); true`);
-        await waitFor(`document.getElementById('nav-tab-servers').getAttribute('aria-selected') === 'true'`, 'tab selected', 3000);
+        await waitFor(`document.getElementById('nav-tab-servers').getAttribute('aria-current') === 'page'`, 'nav button current', 3000);
         await waitFor(`!!document.querySelector('#server-row-r1 .servers-row-meta')`, 'self-hosted r1 row', 3000);
         const sh = await ev(`(() => { const r = document.querySelector('#server-row-r1 .servers-row-meta'); return { meta: r.textContent.replace(/\\s+/g, ' ').trim(), badges: document.querySelectorAll('#servers-view a.server-update-badge').length }; })()`);
         assert.match(sh.meta, /^https:\/\/r1\.example:8420 · Coral 1\.4\.5 · 3 agents$/, `self-hosted meta: online per the feed, no 'last contact' (#3152) (${sh.meta})`);

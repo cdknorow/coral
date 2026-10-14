@@ -7,6 +7,18 @@
 
 import { hideRestartModal } from './controls.js';
 
+// The control that last had focus outside every dialog. A dialog opened from a menu item (the top
+// bar's menu closes as the item is chosen, and most dialogs load their code first) finds focus
+// already dropped to the page by the time it opens: focus goes back here instead (dialog_focus.js).
+let _lastFocusOutside = null;
+document.addEventListener('focusin', (e) => {
+    const t = e.target;
+    if (t && t !== document.body && t.closest && !t.closest('.modal')) _lastFocusOutside = t;
+});
+export function lastFocusOutsideDialogs() {
+    return _lastFocusOutside && _lastFocusOutside.isConnected ? _lastFocusOutside : null;
+}
+
 // Close modals on outside click
 document.addEventListener("click", (e) => {
     const launchModal = document.getElementById("launch-modal");
@@ -87,10 +99,12 @@ document.addEventListener("keydown", (e) => {
                 if (focusable.length === 0) return;
                 const first = focusable[0];
                 const last = focusable[focusable.length - 1];
-                if (e.shiftKey && document.activeElement === first) {
+                // Focus outside the modal (left on the control that opened it) comes in too.
+                const outside = !modals[i].contains(document.activeElement);
+                if (e.shiftKey && (outside || document.activeElement === first)) {
                     e.preventDefault();
                     last.focus();
-                } else if (!e.shiftKey && document.activeElement === last) {
+                } else if (!e.shiftKey && (outside || document.activeElement === last)) {
                     e.preventDefault();
                     first.focus();
                 }

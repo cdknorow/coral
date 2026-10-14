@@ -54,14 +54,14 @@
             </button>
             <span class="top-bar-title"></span>
         </div>
-        <nav class="top-nav-tabs" role="tablist" aria-label="Main navigation">
-            <button class="top-nav-tab active" id="nav-tab-agents" onclick="switchNavTab('agents')">Agents</button>
+        <nav class="top-nav-tabs" aria-label="Main navigation">
+            <button class="top-nav-tab active" id="nav-tab-agents" onclick="switchNavTab('agents')" aria-current="page">Agents</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-history" onclick="switchNavTab('history')">Chats</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-workflows" onclick="switchNavTab('workflows')">Workflows</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-jobs" onclick="switchNavTab('jobs')">Jobs</button>
             <button class="top-nav-tab" data-local-only id="nav-tab-tokens" onclick="switchNavTab('tokens')" title="Analytics — token usage and cost">Analytics</button>
             <button class="top-nav-tab" id="nav-tab-docs" onclick="switchNavTab('docs')">Docs</button>
-            <button class="top-nav-tab" id="nav-tab-servers" onclick="switchNavTab('servers')" role="tab" aria-controls="servers-view" hidden>Servers</button>
+            <button class="top-nav-tab" id="nav-tab-servers" onclick="switchNavTab('servers')" aria-controls="servers-view" hidden>Servers</button>
             <button class="top-nav-tab" id="nav-tab-board" onclick="switchNavTab('board')" style="display:none">Board</button>
         </nav>
         <div id="startup-loading" class="startup-loading" role="status" aria-live="polite">
@@ -78,7 +78,7 @@
             <button class="top-bar-btn" onclick="window._goHome()" title="Home" aria-label="Home"><span class="material-icons top-bar-icon">home</span></button>
             <button class="top-bar-btn" id="panel-toggle-btn" onclick="toggleAgenticPanel()" title="Toggle side panel" aria-label="Toggle side panel"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="2" width="14" height="12" rx="1.5"/><line x1="10" y1="2" x2="10" y2="14"/></svg></button>
             <div class="top-bar-settings-wrapper">
-                <button class="top-bar-btn" onclick="toggleTopBarSettings()" title="Menu" aria-label="Settings menu">
+                <button class="top-bar-btn" onclick="toggleTopBarSettings()" title="Menu" aria-label="Settings menu" aria-controls="top-bar-settings-menu">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
                         stroke-linecap="round" stroke-linejoin="round">
                         <path

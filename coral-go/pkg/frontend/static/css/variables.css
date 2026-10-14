@@ -24,7 +24,7 @@
     /* Text */
     --text-primary:   #f0f0f2;
     --text-secondary: #a0a0a8;
-    --text-muted:     #626268;
+    --text-muted:     #8e8e95; /* at least 4.5:1 on the dark panels (WCAG AA); was #626268, 2.7-3.1:1 */
 
     /* Accent / Brand */
     --accent:     #58a6ff;
@@ -226,7 +226,7 @@
     /* Text */
     --text-primary:   #1f2328;
     --text-secondary: #59636e;
-    --text-muted:     #8b949e;
+    --text-muted:     #5f6770; /* at least 4.5:1 on the light panels (WCAG AA); was #8b949e, 2.6-3.1:1 */
 
     /* Accent / Brand */
     --accent:     #0969da;

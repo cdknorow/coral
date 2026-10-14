@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
@@ -128,7 +130,7 @@ var bundledThemes = map[string]string{
     "--border-light": "#3f3f46",
     "--text-primary": "#fafafa",
     "--text-secondary": "#a1a1aa",
-    "--text-muted": "#52525b",
+    "--text-muted": "#868692",
     "--accent": "#a78bfa",
     "--accent-dim": "#7c3aed",
     "--success": "#34d399",
@@ -202,7 +204,7 @@ var bundledThemes = map[string]string{
     "--border-light": "#3a3a42",
     "--text-primary": "#f0f0f2",
     "--text-secondary": "#a0a0a8",
-    "--text-muted": "#626268",
+    "--text-muted": "#8e8e95",
     "--accent": "#58a6ff",
     "--accent-dim": "#1f6feb",
     "--success": "#4aba60",
@@ -274,14 +276,46 @@ var bundledThemes = map[string]string{
 }`,
 }
 
+// shippedBundledThemes holds the SHA-256 of earlier shipped versions of each bundled theme. A seeded
+// file still byte for byte one of them was never edited by the user, so seeding replaces it with the
+// current version; a file the user changed is never touched. Added with the accessibility pass, when
+// Dark's and Obsidian's --text-muted were raised to 4.5:1 contrast on their panels (WCAG AA).
+var shippedBundledThemes = map[string][]string{
+	"Dark":     {"94d2f5eee45517989af1fc3656c16cc457d727794bae8f3fabd40edb633d4d65"},
+	"Obsidian": {"ed8ff2932320a5302b54babeb0b7e2aabc3d30b81e8af5a8200839a6bc935280"},
+}
+
 // SeedBundledThemes copies bundled themes to the user themes directory if they
-// don't already exist. Matches Python's seed_bundled_themes().
+// wasShippedVersion reports whether data is byte for byte an earlier shipped version of the
+// bundled theme name.
+func wasShippedVersion(name string, data []byte) bool {
+	sum := sha256.Sum256(data)
+	got := hex.EncodeToString(sum[:])
+	for _, h := range shippedBundledThemes[name] {
+		if got == h {
+			return true
+		}
+	}
+	return false
+}
+
+// don't already exist, and updates a seeded copy the user never edited (shippedBundledThemes).
 func (h *ThemesHandler) SeedBundledThemes() {
 	h.ensureDir()
 	for name, content := range bundledThemes {
 		dest := filepath.Join(h.themesDir, name+".json")
-		if _, err := os.Stat(dest); err == nil {
-			continue // already exists
+		if existing, err := os.ReadFile(dest); err == nil {
+			if !wasShippedVersion(name, existing) {
+				continue // the user's own version, or already current
+			}
+			if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
+				log.Printf("Warning: failed to update bundled theme %s: %v", name, err)
+			} else {
+				log.Printf("Updated bundled theme: %s", name)
+			}
+			continue
+		} else if !os.IsNotExist(err) {
+			continue // unreadable: leave it alone
 		}
 		if err := os.WriteFile(dest, []byte(content), 0644); err != nil {
 			log.Printf("Warning: failed to seed bundled theme %s: %v", name, err)

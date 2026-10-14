@@ -20,6 +20,7 @@ import { syncPaneWidth, refreshCapture } from './capture.js';
 import { loadSettings } from './settings_core.js';
 import { initEditions } from './editions.js';
 import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dialog (#3140)
+import './dialog_focus.js'; // focus into a dialog and back to its opener (accessibility pass); used by lazy modals.js
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
 import { fitTerminal, getTerminal, connectTerminalWs, disconnectTerminalWs } from './xterm_renderer.js';
@@ -243,10 +244,10 @@ function switchNavTab(tab, opts = {}) {
     const layout = document.querySelector('.layout');
     if (layout) layout.classList.toggle('sidebar-hidden', fullWidthTabs.has(tab));
 
-    // Update tab button states
-    document.querySelectorAll('.top-nav-tab').forEach(btn => { btn.classList.remove('active'); btn.setAttribute('aria-selected', 'false'); });
+    // Update the nav buttons: page navigation, so the current one is aria-current="page".
+    document.querySelectorAll('.top-nav-tab').forEach(btn => { btn.classList.remove('active'); btn.removeAttribute('aria-current'); });
     const activeTab = document.getElementById(`nav-tab-${tab}`);
-    if (activeTab) { activeTab.classList.add('active'); activeTab.setAttribute('aria-selected', 'true'); }
+    if (activeTab) { activeTab.classList.add('active'); activeTab.setAttribute('aria-current', 'page'); }
 
     // Show/hide sidebar sections based on tab
     const liveSection = document.querySelector('[data-section="live-sessions"]');

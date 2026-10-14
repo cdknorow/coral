@@ -21,6 +21,7 @@ import {
 } from './launch_server.js';
 import { settingBool, renderRemoteAccessStatus, renderDebugInputLogStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 import { pollEvery } from './overload.js';
+import { attachDialogFocus } from './dialog_focus.js';
 // Kept on modals.js's surface (app.js and others import them from here).
 export { loadSettings, applyTheme } from './settings_core.js';
 
@@ -3190,6 +3191,8 @@ async function saveDatabaseEncryptionSettings() {
 
 
 export async function showSettingsModal() {
+    // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
+    attachDialogFocus(document.getElementById('settings-modal'));
     const s = state.settings || {};
     // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
     // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
