@@ -1,5 +1,36 @@
 # Release Notes
 
+## v1.4.20 — Coral Hub tunnel hardening, phone View mode, lighter live updates
+
+**Security fixes for Coral Hub users — please upgrade.** This release closes the remaining findings of an audit of the Coral Hub tunnel and hub proxy, makes Coral Hub's View mode usable on phones, and makes the dashboard's live agent updates smaller.
+
+### Security (Coral Hub)
+
+- **The tunnel can't pass cookies or security headers under another spelling.** Header names in responses coming back through the tunnel are normalized before filtering, so a `set-cookie`, `refresh`, `content-security-policy` or `access-control-*` header in unusual capitalization can no longer slip past the filter and reach the browser on the Coral Hub site.
+- **WebSockets only for WebSocket routes.** Coral Hub and the machine's tunnel accept a WebSocket only on Coral's WebSocket paths (`/ws/…`); a WebSocket opened against an API path is refused before it reaches Coral.
+- **Peeking at an agent through Coral Hub can't choose who's asking.** Through Coral Hub, reading an agent's terminal from the board ignores the caller-supplied subscriber name, and never changes the task's activity time. On this computer nothing changes.
+
+### Coral Hub
+
+- **View mode works on phones.** The "View only" label fits the header on narrow screens (tap it for the full reason), and the message box and Send are visibly read-only while you're in View mode.
+- **Links to your Coral Hub machines pages.** On a dashboard opened through Coral Hub, the Servers tab can show links that Coral Hub provides to its machines pages. Only plain links to `/machines…` pages are shown.
+
+### Changes
+
+- **Lighter live updates.** The dashboard on this computer now receives only the fields of an agent that changed, instead of the whole agent, every time something updates. Coral Hub's own feed still gets whole rows.
+
+### Testing
+
+- The browser test runner removes its temporary folder after a passing run (about 250 MB each), and keeps only the results and logs after a failure. The troubleshooting guide explains what to do when test runs fill the disk.
+- Several timing-sensitive tests no longer fail on a busy machine, and a data race in the analytics tests is fixed.
+
+### For integrators (Coral Hub, scripts)
+
+- **Re-pin `pkg/hubproxy` and `pkg/tunnel` from v1.4.20.** A WebSocket to `/api/remote/{id}/api/…` now gets **403** at the hub. Tunnel response header names are canonicalized. No API changes.
+- `GET /ws/coral?diff=fields` (opt-in; ignored with `feed=hub`) sends a changed agent as `{_partial: true, server, session_id, name, agent_type, …changed fields}`, with `null` for a field that was removed. Through the tunnel only the exact value `diff=fields` is accepted.
+- `GET /hub/nav.json` (served by Coral Hub): a list of `{path, label}`; only paths matching `^/machines(/[a-z0-9-]+)*$`, labels of 1-40 characters, at most 8 items and 4 KiB are used.
+- Through Coral Hub, `GET /api/board/{project}/peek` ignores `subscriber_id`.
+
 ## v1.4.19 — Coral Hub acts as the Operator again, with attribution; sign-in links; fewer requests when busy
 
 **Coral Hub users at Interact or Launch act as the Operator again, by default, and every such action now records which Hub user did it.** You can opt out. This release also gives each agent its own identity (logged only for now), lets the desktop apps sign in by themselves, and makes the dashboard and Coral Hub enrollment back off instead of retrying hard.
