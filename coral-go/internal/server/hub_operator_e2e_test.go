@@ -143,14 +143,16 @@ func TestHubOperatorEndToEnd(t *testing.T) {
 	code, out = onComputer("GET", "/api/system/hub-operator", nil)
 	require.Equal(t, http.StatusOK, code, out)
 	recent, _ := out["recent_actions"].([]any)
-	require.Len(t, recent, 2, out)
+	require.Len(t, recent, 3, out) // every board write through the tunnel is recorded (#3428), the post without a Hub user too
 	paths := []string{}
 	for _, a := range recent {
 		m := a.(map[string]any)
-		assert.Equal(t, user, m["hub_user"])
+		if m["hub_user"] != "unknown" {
+			assert.Equal(t, user, m["hub_user"])
+		}
 		paths = append(paths, m["path"].(string))
 	}
-	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks"}, paths)
+	assert.ElementsMatch(t, []string{"/api/board/team/messages", "/api/board/team/tasks", "/api/board/team/messages"}, paths)
 
 	// Never changed through the hub; the board's settings neither.
 	code, _ = viaHub("PUT", "/api/system/hub-operator", map[string]any{"disabled": false})

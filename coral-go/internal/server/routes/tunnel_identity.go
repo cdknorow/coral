@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -35,6 +36,15 @@ const operatorIdentity = "Operator"
 // one 400, a name already on the board 409. Each use is recorded and logged with the
 // Hub user, and the handler sees it (hubOperatorUser). A chat post (POST …/messages)
 // is not checked here: PostMessage applies the same rules to its sender.
+//
+// Any other identity is refused (#3428): an actor field that names an existing member or
+// role of the board is 409 member_identity (as a chat post's name is), and any other name is
+// 403 hub_identity_required, because through the tunnel a board write is made as the Operator
+// or not at all (a Coral Hub user cannot name itself: hub-user-* is reserved). A write that
+// names no actor at all (pause, resume, a reminder) is the Operator's too: it needs
+// Operator-by-default, so the opt-out covers every write, and it is recorded like the rest.
+// POST/DELETE /reminder names the REMINDED subscriber in subscriber_id, which is a target and
+// not an actor. Every board write through the tunnel is recorded with its Hub user.
 //
 // Requests from this computer are unchanged (#3318/#2969 is the plan for those).
 func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bool) func(http.Handler) http.Handler {
@@ -79,9 +89,23 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 				refuse("Through Coral Hub a subscriber can't receive every message (receive_mode all is the orchestrator's)")
 				return
 			}
-			asOperator := false
-			for f, vs := range values {
-				for _, v := range vs {
+			targetRoute := isBoardReminderWrite(r)
+			var subs []board.Subscriber
+			if got, err := bs.ListSubscribers(r.Context(), project); err == nil {
+				subs = got
+			}
+			namesMemberOrRole := func(v string) bool {
+				for _, sub := range subs {
+					if board.SameIdentity(sub.SubscriberID, v) || board.SameIdentity(strings.TrimSpace(sub.JobTitle), v) {
+						return true
+					}
+				}
+				return false
+			}
+			asOperator, anyActor := false, false
+			// First every orchestrator and Operator rule, over all the fields...
+			for _, f := range tunnelOperatorFields {
+				for _, v := range values[f] {
 					v = strings.TrimSpace(v)
 					if v == "" {
 						continue
@@ -93,6 +117,7 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 							return
 						}
 						asOperator = true
+						anyActor = anyActor || f != "assignee" && f != "assigned_to"
 						continue
 					}
 					if f == "assignee" || f == "assigned_to" {
@@ -110,6 +135,37 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 						return
 					}
 				}
+			}
+			// ...then any other identity: an existing member or role (409), or a made-up name (403).
+			for _, f := range tunnelActorFields {
+				for _, v := range values[f] {
+					v = strings.TrimSpace(v)
+					if v == "" || strings.EqualFold(v, operatorIdentity) {
+						continue
+					}
+					if f == "subscriber_id" && targetRoute {
+						continue // the reminded subscriber: a target, not an actor
+					}
+					anyActor = true
+					if namesMemberOrRole(v) {
+						slog.Warn("[cloud] Coral Hub write refused: it named an existing member or role", "field", f, "method", r.Method, "path", r.URL.Path)
+						writeJSON(w, http.StatusConflict, map[string]any{"code": "member_identity",
+							"error": "That name is already a member or role on this board: through Coral Hub a write can't be made as an existing member (" + f + ")"})
+						return
+					}
+					writeJSON(w, http.StatusForbidden, map[string]any{"code": "hub_identity_required",
+						"error": "Through Coral Hub a board write is made as the Operator (or a chat post as the Coral Hub user); this name is neither (" + f + ")"})
+					return
+				}
+			}
+			if !anyActor {
+				// A write that names no actor is the Operator's (pause, resume, a reminder).
+				if operatorAllowed == nil || !operatorAllowed(r) {
+					writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required",
+						"error": "Through Coral Hub you can't act as the Operator: 'Don't let Coral Hub act as the Operator' is on in Settings on this computer"})
+					return
+				}
+				asOperator = true
 			}
 			if asOperator {
 				user, present, status, msg := tunnelHubUser(r, bs, project)
@@ -133,6 +189,17 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isBoardReminderWrite is POST or DELETE /api/board/{project}/reminder: its subscriber_id
+// names the subscriber being reminded.
+func isBoardReminderWrite(r *http.Request) bool {
+	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
+		return false
+	}
+	rest, _ := strings.CutPrefix(r.URL.Path, "/api/board/")
+	_, tail, _ := strings.Cut(rest, "/")
+	return tail == "reminder"
 }
 
 // isBoardChatPost is POST /api/board/{project}/messages.

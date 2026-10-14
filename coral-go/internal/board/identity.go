@@ -106,6 +106,13 @@ func IsReservedName(s string) bool {
 	return strings.HasPrefix(n, HubUserPrefix)
 }
 
+// SameIdentity reports whether two names are the same identity in normalizeName's form
+// (case, spacing, invisible characters and fullwidth letters don't make a different one).
+func SameIdentity(a, b string) bool {
+	na := normalizeName(a)
+	return na != "" && na == normalizeName(b)
+}
+
 // OneLine makes text safe to type into a terminal as one line of automated input:
 // every control character (newlines and carriage returns included, which a terminal
 // takes as Enter) and line separator becomes a space, and runs of spaces collapse.

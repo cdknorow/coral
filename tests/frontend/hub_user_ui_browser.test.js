@@ -144,6 +144,8 @@ const BASE = require('./test_base').BASE;
         await waitFor(`!${row}.hidden`, 'the row while linked');
         assert.equal(await ev(`${box}.checked`), false, 'unchecked by default: Coral Hub may act as the Operator');
         assert.match(await ev(`document.querySelector('#settings-cloud-hub-operator-row label').textContent`), /Don't let Coral Hub act as the Operator/);
+        // The list holds every board write made through Coral Hub (#3428), not only the Operator's: it says so.
+        assert.equal(await ev(`document.querySelector('[data-cloud="hub-operator-actions"] summary').textContent.trim()`), 'Coral Hub actions', 'the actions list is called Coral Hub actions');
         assert.match(await ev(`document.getElementById('settings-cloud-hub-operator-desc').textContent`), /Off by default.*Operator via Coral Hub · hub-user-.*Board settings can never be changed/s, 'the plain warning');
         const acts = await ev(`(() => { const d = document.querySelector('[data-cloud="hub-operator-actions"]'); return { shown: !d.hidden, items: [...d.querySelectorAll('li')].map(l => l.textContent), html: d.querySelector('ol').innerHTML }; })()`);
         assert.equal(acts.shown, true, 'the recent actions are listed');

@@ -879,8 +879,14 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
-	if hubOperator {
-		recordHubOperatorAction(r.Context(), h.bs, hubUser, r.Method, r.URL.Path, project, http.StatusOK)
+	if cloud.Tunneled(r) {
+		// Every board write through the tunnel is recorded, not only the Operator's (#3428):
+		// a chat post as the Hub user, or from a hub that sent no Hub user ("unknown").
+		who := hubUser
+		if who == "" {
+			who = "unknown"
+		}
+		recordHubOperatorAction(r.Context(), h.bs, who, r.Method, r.URL.Path, project, http.StatusOK)
 	}
 	// A message from an assignee is evidence of progress on its active task.
 	// Keep this separate from task state so posting never completes work.
@@ -1033,6 +1039,22 @@ func (h *BoardHandler) ReadMessages(w http.ResponseWriter, r *http.Request) {
 	project := urlParam(r, "project")
 	if h.isPaused(project) {
 		writeJSON(w, http.StatusOK, []board.Message{})
+		return
+	}
+	if cloud.Tunneled(r) {
+		// A read through Coral Hub never moves a member's read position (#3428): whoever
+		// the request names, it is served as the board's latest messages, with no cursor
+		// (only the limit is read, so the tunnel's allowlist of query parameters is unchanged).
+		tunnelLimit := queryInt(r, "limit", 50)
+		if tunnelLimit > 500 {
+			tunnelLimit = 500
+		}
+		messages, err := h.bs.ListMessages(r.Context(), project, tunnelLimit, 0, 0)
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, emptyIfNil(messages))
 		return
 	}
 	subscriberID := r.URL.Query().Get("subscriber_id")

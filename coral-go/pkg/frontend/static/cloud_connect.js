@@ -181,7 +181,8 @@ class CloudPanel {
         this.sayHubOperator('');
     }
 
-    // The newest actions the Hub took as the Operator (method, path, board, Hub user, status).
+    // The newest board writes made through Coral Hub: as the Operator, as a Coral Hub user's chat post, or from a hub
+    // that sent no Hub user (method, path, board, Hub user, status).
     // All text, never HTML: these come from requests made through the hub.
     showHubOperatorActions(actions) {
         const box = this.part('hub-operator-actions');

@@ -97,7 +97,7 @@ func TestTunnelIdentityGuard(t *testing.T) {
 
 	operatorActions := []struct{ method, target, body string }{
 		{"POST", "/api/board/p/tasks", `{"subscriber_id":"Operator","title":"x"}`},
-		{"PATCH", "/api/board/p/tasks/1", `{"subscriber_id":"Dev","assigned_to":"operator"}`},
+		{"PATCH", "/api/board/p/tasks/1", `{"assigned_to":"operator"}`},
 		{"PATCH", "/api/board/p/tasks/1/amend", `{"subscriber_id":"Operator","revision":1,"reason":"r"}`},
 		{"POST", "/api/board/p/tasks/1/reassign", `{"subscriber_id":"Operator","assignee":"Dev"}`},
 		{"POST", "/api/board/p/tasks/1/complete", `{"subscriber_id":"Operator"}`},
@@ -156,18 +156,61 @@ func TestTunnelIdentityGuard(t *testing.T) {
 	}
 	assert.Equal(t, before, passed)
 
-	// Unchanged: an ordinary member through the tunnel (no Hub user needed), reads, chat
-	// posts (PostMessage decides their sender), and everything from this computer.
+	// A member's name through the tunnel is refused like a chat post's (#3428): a Coral Hub
+	// user can't claim, complete, rename, unsubscribe or wait AS an existing member, with
+	// the opt-out on or off; any other made-up name is refused too. Nothing reaches the handler.
+	for _, optOutOn := range []bool{false, true} {
+		operatorOK = !optOutOn
+		before = passed
+		for _, tc := range []struct{ method, target, body string }{
+			{"POST", "/api/board/p/tasks/claim", `{"subscriber_id":"Dev"}`},
+			{"POST", "/api/board/p/tasks/1/complete", `{"subscriber_id":"dev ","message":"x"}`},
+			{"POST", "/api/board/p/subscribe", `{"subscriber_id":"Dev","job_title":"Hacked"}`},
+			{"DELETE", "/api/board/p/subscribe", `{"subscriber_id":"Dev\u00a0"}`},
+			{"POST", "/api/board/p/waits", `{"subscriber_id":"Dev","wait_type":"message","target_id":"x"}`},
+			{"POST", "/api/board/p/subscribe", `{"subscriber_id":"Developer"}`}, // an existing ROLE
+			{"POST", "/api/board/p/tasks", `{"created_by":"Dev","title":"x"}`},
+		} {
+			rec := do(true, tc.method, tc.target, tc.body, "hub-user-1234abcd")
+			assert.Equal(t, http.StatusConflict, rec.Code, tc.body)
+			assert.Equal(t, "member_identity", codeOf(t, rec), tc.body)
+		}
+		if !optOutOn { // the Operator claiming an existing role is refused too
+			rec := do(true, "POST", "/api/board/p/subscribe", `{"subscriber_id":"Operator","job_title":"Developer"}`, "hub-user-1234abcd")
+			assert.Equal(t, http.StatusConflict, rec.Code)
+			assert.Equal(t, "member_identity", codeOf(t, rec))
+		}
+		rec := do(true, "POST", "/api/board/p/tasks/claim", `{"subscriber_id":"Mallory"}`, "hub-user-1234abcd")
+		assert.Equal(t, http.StatusForbidden, rec.Code)
+		assert.Equal(t, "hub_identity_required", codeOf(t, rec))
+		assert.Equal(t, before, passed)
+	}
+	// A write that names no actor (pause, a reminder) is the Operator's: allowed and recorded
+	// by default, refused with the opt-out.
+	operatorOK = true
+	n0 := len(mustRecent(t, handler, ctx))
 	before = passed
-	seenHubUser = "x"
-	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/tasks/claim", `{"subscriber_id":"Dev"}`).Code)
-	assert.Equal(t, "", seenHubUser)
+	seenHubUser = ""
+	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/pause", `{}`, "hub-user-1234abcd").Code)
+	assert.Equal(t, "hub-user-1234abcd", seenHubUser)
+	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/reminder", `{"subscriber_id":"Dev","message":"hi"}`, "hub-user-1234abcd").Code, "the reminded subscriber is a target, not an actor")
+	assert.Equal(t, before+2, passed)
+	assert.Len(t, mustRecent(t, handler, ctx), n0+2, "every board write through the tunnel is recorded")
+	operatorOK = false
+	assert.Equal(t, http.StatusForbidden, do(true, "POST", "/api/board/p/pause", `{}`, "hub-user-1234abcd").Code)
+	assert.Equal(t, http.StatusForbidden, do(true, "POST", "/api/board/p/reminder", `{"subscriber_id":"Dev"}`, "hub-user-1234abcd").Code)
+	assert.Equal(t, before+2, passed)
+	operatorOK = true
+
+	// Unchanged: reads, chat posts (PostMessage decides their sender), and everything from
+	// this computer.
+	before = passed
 	assert.Equal(t, http.StatusOK, do(true, "GET", "/api/board/p/messages?subscriber_id=Operator", ``).Code)
 	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/messages", `{"subscriber_id":"Operator","content":"hi"}`).Code)
 	assert.Equal(t, http.StatusOK, do(false, "POST", "/api/board/p/tasks", `{"subscriber_id":"Operator","title":"x"}`).Code)
 	assert.Equal(t, "", seenHubUser, "from this computer it is the local Operator")
 	assert.Equal(t, http.StatusOK, do(false, "POST", "/api/board/p/subscribe", `{"subscriber_id":"Orchestrator","receive_mode":"all"}`).Code)
-	assert.Equal(t, before+5, passed)
+	assert.Equal(t, before+4, passed)
 }
 
 // With the opt-out on (here: the handler has no Hub-as-Operator check, which means never),
@@ -389,7 +432,7 @@ func TestTunnelChatPostAsTheOperator(t *testing.T) {
 	assert.Equal(t, "hub-user-1234abcd", out["subscriber_id"])
 	assert.Equal(t, "@Dev please look at the build", out["content"])
 	recent, _ = handler.bs.RecentHubOperatorActions(ctx, 10)
-	assert.Len(t, recent, 1, "only the one Operator post")
+	assert.Len(t, recent, 4, "every board write through the tunnel is recorded (#3428): the Operator post, the Hub user's, the one from a hub that sent no Hub user, and the post under the opt-out")
 
 	// A forged stamp (not this connector's) is never the Operator either.
 	allowed = true
@@ -559,4 +602,11 @@ func TestHubOperatorSetting(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, code, k)
 		assert.Contains(t, msg, "/api/system/hub-operator", k)
 	}
+}
+
+func mustRecent(t *testing.T, handler *BoardHandler, ctx context.Context) []board.HubOperatorAction {
+	t.Helper()
+	recent, err := handler.bs.RecentHubOperatorActions(ctx, 1000)
+	require.NoError(t, err)
+	return recent
 }
