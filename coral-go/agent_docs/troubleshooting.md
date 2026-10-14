@@ -35,17 +35,29 @@ curl -s -X POST "http://localhost:$PORT/api/sessions/live/$NAME/keys" \
 Trust is remembered per repository. Launching a team of four agents into a fresh repo
 blocks all four at once.
 
-### I got a supporter page instead of the dashboard
+### A "Connect to Coral Hub" screen covers the dashboard
 
-Coral is free and fully unlocked; this is a periodic supporter reminder. It is scheduled
-every 25 launches, counted from the launch at which Coral first did something useful, and
-never on that first launch (`nagInterval` in `internal/license/launch_counter.go`). Click
-**Continue Free**.
+That is the one-time first-launch screen. Click **Skip for now** (or press Escape) to keep
+Coral local; it does not come back, and nothing is sent to the hub. The server marks a new
+install `welcome_pending` in its settings and the dashboard clears it with your answer
+(`welcome_choice`: `connected`, `skipped` or `own-hub`), so another browser does not ask
+again. **Settings › About › Connect to Coral Hub…** reopens it. It only opens when a hub is
+configured, and test servers set `CORAL_NO_WELCOME=1` and never show it.
 
-It is shown to the first qualifying page load of a server start only
-(`claimSupporterReminder` in `internal/server/server.go`), so reloading does not bring it
-back until the next launch on the cadence. **Continue Free** links to `/?skip_activation=1`.
-Dev and beta builds and activated licenses never show it.
+Opened from another computer (a phone, or the LAN address), it says connecting has to
+happen on the computer running Coral: run `coral cloud connect` there.
+
+### Which hub Coral connects to, and how to turn it off
+
+Release builds offer **https://app.coralai.ai**; dev builds offer none. `--cloud-url
+<origin>` or `CORAL_CLOUD_URL` choose another; `--cloud-url ""` or `CORAL_CLOUD_URL=off`
+(also `none`, `0`, `false`) turn the connector off. Precedence: `--cloud-url`, then
+`CORAL_CLOUD_URL`, then the build's default. A configured hub is only an address: Coral
+makes no connection to it until you click **Connect** (or run `coral cloud connect`). The
+startup log says which hub it is: `[CLOUD] Coral Hub: https://app.coralai.ai (nothing is
+sent until this server is connected: Settings > Coral Hub)`.
+
+Coral has no licence, no supporter reminder and no usage limits in any build (#3221).
 
 ### `coral: command not found` after installing the DMG
 

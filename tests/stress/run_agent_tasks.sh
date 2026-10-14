@@ -33,6 +33,7 @@ export GOMAXPROCS="${GOMAXPROCS:-2}"
 export GOMEMLIMIT="${GOMEMLIMIT:-512MiB}"
 export CORAL_TELEMETRY_DISABLED=1
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job (it would run a real agent)
+export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

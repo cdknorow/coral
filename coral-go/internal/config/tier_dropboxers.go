@@ -4,15 +4,12 @@ package config
 
 // Build tier: Dropboxers
 // Built with: go build -tags dropboxers
-// Requires EULA, skips license, enforces demo limits (3 teams / 15 agents).
+// Partner build ("Coral For Dropbox"): skips the EULA.
+// Coral has no licence and no usage limits in any tier (#3221): the EULA is the only difference.
 var (
-	TierSkipEULA    = true
-	TierSkipLicense = true
-	TierDemoLimits  = true
-	TierName        = "dropboxers"
-	TierMaxTeams    = 3
-	TierMaxAgents   = 15
-
-	// Test store (Lemon Squeezy sandbox) — single product with built-in free trial
-	StoreURL = "https://store.coralai.ai/checkout/buy/44df39dc-9891-4094-8b77-f73c1d2596ae"
+	TierSkipEULA         = true
+	TierChecksForUpdates = false
+	TierName             = "dropboxers"
+	// The Coral Hub this build offers to connect to (#3221); nothing is sent until the user connects.
+	TierDefaultCloudURL = ""
 )

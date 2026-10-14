@@ -214,7 +214,7 @@ func TestVerification_TrackingHandler_BrowserEventGating(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	// 2. Allowed event accepted by HTTP endpoint
-	allowedReq, _ := http.NewRequest("POST", "/api/tracking/event", bytes.NewBufferString(`{"event":"supporter_checkout_clicked","props":{"surface":"settings_modal"}}`))
+	allowedReq, _ := http.NewRequest("POST", "/api/tracking/event", bytes.NewBufferString(`{"event":"dashboard_ready","props":{"page_id":"p1"}}`))
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, allowedReq)
 	assert.Equal(t, http.StatusOK, w.Code)

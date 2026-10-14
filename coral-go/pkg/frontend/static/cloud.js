@@ -10,7 +10,8 @@ import { state } from './state.js';
 import { isCloud } from './server_base.js';
 import { filterSettingsPayload, settingsErrorMessage } from './cloud_settings.js';
 
-/** GET paths that only a machine's own dashboard serves: license, privacy state, agent panels. (Themes, settings, tags,
+/** GET paths that only a machine's own dashboard serves: privacy state, agent panels (and the licence
+ *  status of machines older than #3221). (Themes, settings, tags,
  *  folder tags and views are the hub's own per-user data.) */
 export const NO_HUB_ENDPOINT = /^\/api\/(license\/status|system\/privacy|agent\/ui(\/.*)?)$/;
 
@@ -109,7 +110,7 @@ export function installCloudFetch() {
         // that can only fail, which would put a network error in the console on every page load.
         if (sameOrigin(input)) {
             const p = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href).pathname;
-            // '/api/cloud-unavailable' is where server_base.serverUrl() points a machine-only route (settings, license, ...)
+            // '/api/cloud-unavailable' is where server_base.serverUrl() points a machine-only route (settings, privacy, ...)
             // so it fails cleanly; any method, never sent.
             if (p === '/api/cloud-unavailable' || (method === 'GET' && NO_HUB_ENDPOINT.test(p))) {
                 return new Response('{"error":"not available through the hub"}', { status: 404, headers: { 'Content-Type': 'application/json' } });

@@ -69,6 +69,7 @@ wait_for_server() {
 TMPDIR_JOBS="$(mktemp -d)"
 export CORAL_DATA_DIR="$TMPDIR_JOBS"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job: a test server never runs a real agent on its own
+export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 
 log "Building coral (dev mode)..."
 cd "$CORAL_DIR"

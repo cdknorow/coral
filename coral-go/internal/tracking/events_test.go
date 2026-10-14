@@ -19,8 +19,6 @@ var allEventConstants = []string{
 	EventFirstTeamLaunched,
 	EventFirstTaskCompleted,
 	EventReturned24h,
-	EventSupporterCheckoutClicked,
-	EventLicenseActivated,
 	EventFirstTaskSucceeded,
 	EventTaskCompleted,
 	EventLaunchRequested,
@@ -93,7 +91,7 @@ func TestTelemetryDocListsEveryEvent(t *testing.T) {
 			t.Errorf("agent_docs/telemetry.md does not document event %q", e.Name)
 		}
 	}
-	for _, never := range []string{"prompts", "source code", "license key"} {
+	for _, never := range []string{"prompts", "source code", "api keys"} {
 		if !strings.Contains(strings.ToLower(doc), never) {
 			t.Errorf("agent_docs/telemetry.md is missing the %q never-collected claim", never)
 		}

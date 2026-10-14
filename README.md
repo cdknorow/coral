@@ -14,13 +14,11 @@
   <a href="https://github.com/cdknorow/coral/stargazers"><img src="https://img.shields.io/github/stars/cdknorow/coral?style=social" alt="GitHub Stars"></a>
   <a href="https://github.com/cdknorow/coral/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="Apache 2.0 License"></a>
   <a href="https://cdknorow.github.io/coral/"><img src="https://img.shields.io/badge/docs-live-blue" alt="Documentation"></a>
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><img src="https://img.shields.io/badge/support_Coral-$49.99_one--time-FF7D52" alt="Support Coral development for $49.99"></a>
   <a href="https://discord.gg/qhfgY57AZn"><img src="https://img.shields.io/discord/placeholder?label=Discord&color=5865F2" alt="Discord"></a>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
   <a href="https://cdknorow.github.io/coral/">Documentation</a> &bull;
   <a href="#features">Features</a> &bull;
   <a href="#how-it-works">How It Works</a> &bull;
@@ -87,11 +85,7 @@ Five things Coral does that your agent's own tooling doesn't:
 
 Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth tokens injected, per-task cost, one searchable history across every vendor's transcripts, a board-health monitor that escalates idle work to the orchestrator, agents that publish their own UI panels — is in the [feature list](#features) below.
 
-**Coral is free to use.** If it saves you time, you can support continued development by buying an optional Coral Pro license for $49.99 once, with no subscription. Supporters receive priority support and priority consideration for feature requests.
-
-<p align="center">
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"><strong>Support Coral development for $49.99 →</strong></a>
-</p>
+**Coral is free to use.**
 
 ## Quick Start
 
@@ -123,8 +117,6 @@ sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --che
 ```
 
 The Linux tarball also has its own bundle (`coral-linux-amd64-<version>.tar.gz.sigstore.json`), verified the same way. Either check failing means the file is not an official build: don't run it.
-
-No purchase is required. If you want to support development, [buy an optional Coral Pro supporter license](https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6).
 
 ### Build from source
 
@@ -268,7 +260,6 @@ Apache 2.0 License. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <a href="https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6">Support Coral</a> &bull;
   <a href="https://github.com/cdknorow/coral">Star the repo</a> &bull;
   <a href="https://discord.gg/qhfgY57AZn">Join Discord</a> &bull;
   <a href="https://cdknorow.github.io/coral/">Read the docs</a>

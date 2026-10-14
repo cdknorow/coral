@@ -12,7 +12,7 @@ const { JSDOM } = require('jsdom');
       <dt>Default Working Directory</dt><dd><input id="settings-working-dir"></dd>
       <dt>CLI Paths</dt><dd><input id="settings-cli-path-claude"></dd><dd><span>more</span></dd>
       <dt>Fit</dt><dd><input type="checkbox" id="settings-fit-pane-width"></dd>
-      <dt>Remote</dt><dd><input type="checkbox" id="settings-remote-access-enabled"></dd></dl><div id="license-section"></div></div></body>`, { url: 'https://hub.example/' });
+      <dt>Remote</dt><dd><input type="checkbox" id="settings-remote-access-enabled"></dd></dl><div id="about-section"></div></div></body>`, { url: 'https://hub.example/' });
     for (const k of ['window', 'document']) Object.defineProperty(globalThis, k, { value: dom.window[k], configurable: true, writable: true });
     const m = await import(pathToFileURL(path.join(dir, 'cloud_settings.js')).href);
 
@@ -37,7 +37,7 @@ const { JSDOM } = require('jsdom');
     assert.deepStrictEqual(rows, { Theme: false, 'Default Working Directory': true, 'CLI Paths': true, Fit: false, Remote: true });
     assert.strictEqual(document.getElementById('settings-working-dir').closest('dd').hidden, true);
     assert.strictEqual(document.querySelector('span').closest('dd').hidden, true, 'all dd rows of a hidden dt are hidden');
-    assert.strictEqual(document.getElementById('license-section').hidden, true);
+    assert.strictEqual(document.getElementById('about-section').hidden, true);
     assert.strictEqual(document.querySelectorAll('.settings-cloud-note').length, 1);
     console.log('cloud_settings.test.js: ok');
 })().catch(e => { console.error(e); process.exit(1); });

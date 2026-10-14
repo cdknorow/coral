@@ -32,7 +32,7 @@ API keys are encrypted at rest (AES-256-GCM, bound to the server id). The master
 | 502 `{"error":"remote rejected API key"}` | The remote answered 401. The server is marked `unauthorized`. |
 | 502 `{"error":"remote address not allowed"}` | Private address without `allow_private` |
 
-A remote's own 403 (demo limit, forbidden path, ...) is passed through unchanged. Requests are never handled locally as a fallback. Targets are always registered servers, and private addresses need `allow_private`.
+A remote's own 403 (a forbidden path, an access refusal, ...) is passed through unchanged. Requests are never handled locally as a fallback. Targets are always registered servers, and private addresses need `allow_private`.
 
 Connections are reused: all remotes share one pooled transport (idle connections kept 5 minutes), and the background `/api/health` poll uses the same pool, so a request after a quiet spell usually skips a new TCP/TLS handshake.
 

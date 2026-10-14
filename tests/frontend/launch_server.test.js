@@ -80,11 +80,11 @@ const { pathToFileURL } = require('url');
     // 200 with an error body (the launch handler reports CLI-not-found this way).
     r = await m.postLaunch('a', '/p', {}, { hub: true, servers, fetchFn: mk(200, '{"error":"claude CLI not found"}') });
     assert.ok(!r.ok && /CLI not found/.test(r.error));
-    // Local: 403 is the demo limit, error text unprefixed.
-    r = await m.postLaunch('local', '/p', {}, { hub: false, servers: [], fetchFn: mk(403, '{"error":"limit"}') });
-    assert.ok(!r.ok && r.demoLimit && r.error === 'limit');
+    // Local: an ordinary 403 is shown as the server says it, unprefixed (there are no demo limits, #3221).
+    r = await m.postLaunch('local', '/p', {}, { hub: false, servers: [], fetchFn: mk(403, '{"error":"path not allowed"}') });
+    assert.ok(!r.ok && !r.refused && r.error === 'path not allowed' && !('demoLimit' in r));
     r = await m.postLaunch('local', '/p', {}, { hub: false, servers: [], fetchFn: mk(200, '{"error":"nope"}') });
-    assert.ok(!r.ok && !r.demoLimit && r.error === 'nope');
+    assert.ok(!r.ok && r.error === 'nope');
 
     // Access refusals (#3068 C5) read as the one refusalMessage wording, naming
     // the server, never as the raw code; other 403s are unchanged.
@@ -100,14 +100,12 @@ const { pathToFileURL } = require('url');
         const want = refusalMessage(403, body, 'Box A');
         assert.ok(want.startsWith('Blocked:'), JSON.stringify(body));
         assert.strictEqual(r.error, want, JSON.stringify(body));
-        assert.ok(!r.ok && r.refused && !r.demoLimit && r.sent && r.status === 403, JSON.stringify(body));
+        assert.ok(!r.ok && r.refused && r.sent && r.status === 403, JSON.stringify(body));
         assert.ok(r.error.includes('Box A'), 'names the server');
         assert.ok(!/access_mode|launch_disabled|local_mode/.test(r.error), 'no raw code');
     }
     r = await m.postLaunch('a', '/p', {}, { hub: true, servers, fetchFn: mk(403, '{"error":"path not allowed","code":"path_not_allowed"}') });
     assert.ok(!r.ok && !r.refused && r.error === 'Box A: path not allowed', 'a non-access 403 is unchanged');
-    r = await m.postLaunch('local', '/p', {}, { hub: false, servers: [], fetchFn: mk(403, '{"error":"Demo limit reached: maximum 8"}') });
-    assert.ok(!r.ok && r.demoLimit && !r.refused, 'the local demo limit is unchanged');
 
     // Recognising the launched agent in the merged list (same name on another server does not count).
     const live = [{ name: 'x', server: 'local', session_id: 's0' }, { name: 'y', server: 'a', session_id: 's2', board_project: 'T' }];

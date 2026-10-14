@@ -29,8 +29,6 @@ The runtime disclosure is generated from `internal/tracking/events.go`. New funn
 | `first_task_completed` | First task marked complete, including a failed outcome | `outcome` |
 | `first_task_succeeded` | First task completed with a successful outcome | — |
 | `returned_24h` | First tracked process startup more than 24 hours after the first tracked open | — |
-| `supporter_checkout_clicked` | A supporter-store link was clicked | `surface`, `campaign`, `source`, `medium` |
-| `license_activated` | Successful license activation | `product_name`, `variant_name` |
 
 Launch completion does not prove provider authentication, model readiness, or a response. The WebSocket composer currently lacks a transport acknowledgment suitable for the confirmed-send milestone, so `first_prompt_submitted` covers HTTP sends only. `prompt_submit_requested` measures intent, not delivery. No first-response or generic agent-ready event is emitted: existing transcript updates cannot reliably attribute new assistant output to a particular submitted prompt.
 
@@ -50,7 +48,7 @@ Every event carries `version`, `edition`, `os`, `arch`, `schema_version`, `run_i
 
 Events use a random installation UUID stored in `<coralDir>/.install_id`. This identifies a data directory, not necessarily a person. It is not derived from hardware, hostname, username, or email. Deleting it changes the analytics identity.
 
-Event properties are validated against per-event schemas. Provider, backend, outcome, and failure codes use controlled values; counts and durations are bounded and typed. Unknown properties and invalid values are dropped. Unknown event names are not emitted. Existing supporter attribution uses bounded slugs, and existing license product/variant metadata uses bounded labels; neither includes the license key or purchaser details.
+Event properties are validated against per-event schemas. Provider, backend, outcome, and failure codes use controlled values; counts and durations are bounded and typed. Unknown properties and invalid values are dropped. Unknown event names are not emitted.
 
 ## Never collected
 
@@ -61,7 +59,7 @@ Event payloads do not include:
 - Agent output or transcripts.
 - Raw error messages or executed commands.
 - Your name, email address, or IP-derived location.
-- Your license key, passwords, or API keys.
+- Passwords or API keys.
 
 These statements describe Coral's payloads. The analytics service receives the network connection; this does not claim it cannot observe a source IP.
 
@@ -77,7 +75,7 @@ Delivery failures are recorded locally in `<coralDir>/tracking-failures.log`, ca
 
 ## Browser endpoint
 
-`POST /api/tracking/event` accepts only browser-observed events: supporter clicks, dashboard readiness/activity/failure, and composer submission intent. Server launch/task events and confirmed-send milestones cannot be submitted through this endpoint.
+`POST /api/tracking/event` accepts only browser-observed events: dashboard readiness/activity/failure, and composer submission intent. Server launch/task events and confirmed-send milestones cannot be submitted through this endpoint.
 
 For example:
 

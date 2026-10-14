@@ -3421,24 +3421,19 @@
     margin: 16px 0;
 }
 
-/* ── Settings / License Section ────────────────────────────── */
+/* ── Settings / About Section ────────────────────────────── */
 
-.settings-license-section {
+.settings-about-section {
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid var(--border);
 }
 
-.settings-license-title {
+.settings-about-title {
     font-size: 13px;
     font-weight: 600;
     margin-bottom: 8px;
     color: var(--text-secondary);
-}
-
-.settings-license-loading {
-    color: var(--text-secondary);
-    font-size: 13px;
 }
 
 .settings-version-label {

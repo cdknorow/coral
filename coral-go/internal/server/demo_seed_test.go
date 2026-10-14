@@ -36,3 +36,44 @@ func TestDemoSeedCanBeTurnedOff(t *testing.T) {
 		})
 	}
 }
+
+// The first-launch screen (#3221) is due on a new install and stays due until the user
+// chooses; once welcome_choice is stored, a restart never marks it again. CORAL_NO_WELCOME=1
+// (test servers) never marks it.
+func TestWelcomePendingOnFirstLaunchOnly(t *testing.T) {
+	setting := func(t *testing.T, db interface {
+		GetContext(context.Context, any, string, ...any) error
+	}, key string) string {
+		var v string
+		_ = db.GetContext(context.Background(), &v, `SELECT value FROM user_settings WHERE key = ?`, key)
+		return v
+	}
+	for _, tc := range []struct {
+		env    string
+		chosen bool
+		want   string
+	}{{"", false, "True"}, {"", true, ""}, {"1", false, ""}} {
+		t.Run("CORAL_NO_WELCOME="+tc.env, func(t *testing.T) {
+			t.Setenv("CORAL_NO_WELCOME", tc.env)
+			cfg := newE2EConfig(t, t.TempDir())
+			db, err := storetest.Open(t, cfg.DBPath)
+			require.NoError(t, err)
+			t.Cleanup(func() { db.Close() })
+			if tc.chosen {
+				_, err := db.Exec(`INSERT INTO user_settings (key, value) VALUES ('welcome_choice', 'hub')`)
+				require.NoError(t, err)
+			}
+			stack := newTermStack(t)
+			New(cfg, db, stack.backend, stack.terminal)
+			assert.Equal(t, tc.want, setting(t, db, "welcome_pending"))
+			// The dashboard answers the screen; a restart does not bring it back.
+			if tc.want == "True" {
+				_, err := db.Exec(`INSERT INTO user_settings (key, value) VALUES ('welcome_choice', 'coral'), ('welcome_pending', 'False')
+					ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+				require.NoError(t, err)
+				New(cfg, db, stack.backend, stack.terminal)
+				assert.Equal(t, "False", setting(t, db, "welcome_pending"))
+			}
+		})
+	}
+}

@@ -113,14 +113,14 @@ async function accessRefusal(status, body, serverName) {
 
 /**
  * Send a launch to `server`.
- * Resolves {ok, status, data, error, demoLimit, refused}; it does not throw for HTTP or
+ * Resolves {ok, status, data, error, refused}; it does not throw for HTTP or
  * network failures (error carries the message to show). When `server` is not
  * usable nothing is sent at all.
  */
 export async function postLaunch(server, path, payload, { hub = state.hub, servers = state.servers, fetchFn = serverFetch } = {}) {
     const id = normServer(server);
     const blocked = launchBlockReason(id, hub, servers);
-    if (blocked) return { ok: false, status: 0, data: null, error: blocked, demoLimit: false, sent: false };
+    if (blocked) return { ok: false, status: 0, data: null, error: blocked, sent: false };
     let resp;
     try {
         resp = await fetchFn(id, path, {
@@ -130,7 +130,7 @@ export async function postLaunch(server, path, payload, { hub = state.hub, serve
         });
     } catch (e) {
         const where = isLocalServer(id) ? '' : ` on ${serverLabel(id, servers)}`;
-        return { ok: false, status: 0, data: null, error: `Failed to launch${where}: ${e && e.message ? e.message : 'network error'}`, demoLimit: false, sent: true };
+        return { ok: false, status: 0, data: null, error: `Failed to launch${where}: ${e && e.message ? e.message : 'network error'}`, sent: true };
     }
     const data = parseLaunchBody(await resp.text().catch(() => ''));
     const status = resp.status;
@@ -138,16 +138,13 @@ export async function postLaunch(server, path, payload, { hub = state.hub, serve
     // same "Blocked: ..." message everywhere, never as the raw error code.
     const refusal = await accessRefusal(status, data, isLocalServer(id) ? '' : serverLabel(id, servers));
     if (refusal) {
-        return { ok: false, status, data, error: refusal, demoLimit: false, sent: true, refused: true };
-    }
-    if (status === 403 && isLocalServer(id)) {
-        return { ok: false, status, data, error: (data && data.error) || 'Demo limit reached', demoLimit: true, sent: true };
+        return { ok: false, status, data, error: refusal, sent: true, refused: true };
     }
     if (!resp.ok || (data && data.error)) {
         const error = (data && data.error) || `Launch failed (HTTP ${status})`;
-        return { ok: false, status, data, error: isLocalServer(id) ? error : `${serverLabel(id, servers)}: ${error}`, demoLimit: false, sent: true };
+        return { ok: false, status, data, error: isLocalServer(id) ? error : `${serverLabel(id, servers)}: ${error}`, sent: true };
     }
-    return { ok: true, status, data: data || {}, error: '', demoLimit: false, sent: true };
+    return { ok: true, status, data: data || {}, error: '', sent: true };
 }
 
 /** True when the polled live list already contains what a launch created. */

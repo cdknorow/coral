@@ -407,9 +407,6 @@ func (h *SystemHandler) Status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"startup_complete":  true,
 		"version":           config.Version,
-		"store_url":         config.StoreURL,
-		"supporter_urls":    SupporterCheckoutURLs(config.StoreURL),
-		"skip_license":      config.TierSkipLicense,
 		"tier_name":         config.TierName,
 		"tmux_available":    tmuxAvailable,
 		"tmux_status":       tmuxStatus,
@@ -467,7 +464,7 @@ func FetchLatestVersion() string {
 // UpdateCheck returns update availability info.
 // GET /api/system/update-check
 func (h *SystemHandler) UpdateCheck(w http.ResponseWriter, r *http.Request) {
-	if config.TierSkipLicense {
+	if !config.TierChecksForUpdates {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"available": false,
 			"current":   config.Version,

@@ -16,8 +16,6 @@ const (
 	EventTeamLaunched    = "team_launched"
 
 	// Conversion.
-	EventSupporterCheckoutClicked = "supporter_checkout_clicked"
-	EventLicenseActivated         = "license_activated"
 )
 
 // EventDoc describes one event in terms a user can check against the source.
@@ -51,7 +49,7 @@ var NeverCollected = []string{
 	"Repository, branch, and file names",
 	"Agent output",
 	"Your name, email address, or IP-derived location",
-	"Your license key",
+	"Your API keys or passwords",
 }
 
 // AllEvents is the complete, ordered list of every event Coral can send.
@@ -75,8 +73,6 @@ var AllEvents = []EventDoc{
 	{Name: EventPromptSubmitRequested, When: "Once ever: the first time you send a prompt from the dashboard composer.", Extra: "source — dashboard_composer; never the prompt"},
 	{Name: EventFirstPromptSubmitted, When: "Once ever: the first time a prompt is accepted by an agent terminal over the dashboard's HTTP send.", Extra: "source — http_send; never the prompt"},
 	{Name: EventReturned24h, When: "Once ever: the first time you open Coral more than 24 hours after your first open."},
-	{Name: EventSupporterCheckoutClicked, When: "Every time you click a link to the supporter store.", Extra: "surface, campaign, source, medium — which link was clicked and where it came from"},
-	{Name: EventLicenseActivated, When: "Every time a license key is activated successfully.", Extra: "product_name, variant_name — never the key, your name, or your email"},
 }
 
 // Enabled reports whether this build can send anything at all. Builds compiled

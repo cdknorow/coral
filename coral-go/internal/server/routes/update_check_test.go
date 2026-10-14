@@ -165,11 +165,11 @@ func TestUpdateCheck_GitHubError(t *testing.T) {
 	assert.Equal(t, "", resp["latest"])
 }
 
-// skipWhenUpdateCheckIsOff: dev and beta builds skip the update check entirely (UpdateCheck returns
+// skipWhenUpdateCheckIsOff: dev, beta and partner builds skip the update check entirely (UpdateCheck returns
 // available=false without asking GitHub), so these tests of the GitHub path only apply to other tiers.
 func skipWhenUpdateCheckIsOff(t *testing.T) {
 	t.Helper()
-	if config.TierSkipLicense {
+	if !config.TierChecksForUpdates {
 		t.Skip("dev and beta builds skip the update check; run without -tags dev to exercise it")
 	}
 }

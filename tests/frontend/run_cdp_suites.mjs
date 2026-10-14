@@ -182,9 +182,10 @@ async function startShard(n, gen = 0) {
   const port = await freePort();
   const data = path.join(dir, 'data'); fs.mkdirSync(data);
   const codexHome = path.join(dir, 'codex'); fs.mkdirSync(path.join(codexHome, 'sessions'), { recursive: true });
+  // CORAL_NO_WELCOME: no first-launch 'ways to run Coral' screen over every suite's page (#3221).
   // CORAL_NO_DEMO_SEED: no demo workflow or scheduled job, which would run a real agent and pop an alert
   // on top of whichever suite is on screen ~30 s after startup.
-  const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1', CORAL_NO_DEMO_SEED: '1' };
+  const testEnv = { ...cleanEnv, CODEX_HOME: codexHome, CORAL_TELEMETRY_DISABLED: '1', CORAL_NO_DEMO_SEED: '1', CORAL_NO_WELCOME: '1' };
   const log = path.join(dir, 'coral.log');
   const hostHome = path.join(dir, 'home'); fs.mkdirSync(hostHome);
   const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome };

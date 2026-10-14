@@ -185,6 +185,20 @@ func TestOffMakesNoOutboundConnection(t *testing.T) {
 	require.Zero(t, e.hub.hits.Load(), "an off connector must never dial")
 }
 
+// Release builds configure https://app.coralai.ai by default (#3221). A configured hub is
+// only an address: a server that has never been connected sends nothing to it, however
+// long it runs, until the user clicks Connect.
+func TestConfiguredButNeverConnectedNeverDials(t *testing.T) {
+	e := newEnv(t)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.Equal(t, StateIdle, m.Status().State)
+	time.Sleep(500 * time.Millisecond)
+	require.Zero(t, e.hub.hits.Load(), "no request to the hub before Connect")
+	require.NoError(t, m.Connect(context.Background()))
+	require.Eventually(t, func() bool { return e.hub.hits.Load() > 0 }, 5*time.Second, 20*time.Millisecond, "Connect reaches the hub")
+}
+
 func TestEnrollConnectAndServeAllowedRoutes(t *testing.T) {
 	e := newEnv(t)
 	m := e.manager(e.hub.srv.URL)

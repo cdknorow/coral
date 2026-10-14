@@ -964,7 +964,7 @@ All endpoints return JSON. Error format:
 |------|---------|
 | 200 | Success |
 | 400 | Bad request (missing/invalid parameters) |
-| 403 | Forbidden (auth required), or live-agent/demo limit reached |
+| 403 | Forbidden (auth required) |
 | 404 | Session not found |
 | 409 | Conflict (e.g. input sent to a sleeping or archived agent) |
 | 500 | Internal server error |

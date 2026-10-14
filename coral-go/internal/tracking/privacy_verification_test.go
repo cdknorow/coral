@@ -34,8 +34,7 @@ func TestVerification_TelemetryOptOut_InterceptAllEntryPoints(t *testing.T) {
 	// 1. Install & Heartbeat
 	TrackInstallAsync()
 
-	// 2. Named events (supporter click, session launched, etc.)
-	TrackEvent(EventSupporterCheckoutClicked, map[string]string{"surface": "modal"})
+	// 2. Named events (session launched, team launched, etc.)
 	TrackEvent(EventSessionLaunched, nil)
 	TrackEvent(EventTeamLaunched, map[string]string{"agent_count": "3"})
 

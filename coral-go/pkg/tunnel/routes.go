@@ -96,7 +96,7 @@ func cat(groups ...[]route) []route {
 //
 //	/api/settings (GET, PUT)           PUT can set cli_path_* (code execution) and remote access
 //	/api/system/*                      API key read/rotate, DB security, editors, QR/network info, privacy
-//	/api/license/*, /api/tracking/*    licence and telemetry
+//	/api/tracking/*                    telemetry
 //	/api/webhooks*                     outbound HTTP (SSRF) and stored URLs
 //	/api/workflows, /api/scheduled     create/update/delete define commands that run later
 //	/api/board/remotes*, /api/servers*, /api/remote/*   outbound requests / hub mode

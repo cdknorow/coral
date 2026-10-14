@@ -9,7 +9,7 @@ of Coral without using the bundled frontend.
 ## Authentication
 
 All API requests require authentication unless the endpoint is explicitly
-ungated (license, health, static assets).
+ungated (health, static assets).
 
 ### Localhost
 Requests from `127.0.0.1` / `::1` bypass authentication entirely.
@@ -515,28 +515,6 @@ ws://localhost:8420/ws/terminal/{name}?agent_type=claude&session_id=uuid
 Bidirectional WebSocket for terminal I/O:
 - **Receive**: `terminal_update` (content), `terminal_closed`
 - **Send**: `terminal_input` (keystrokes)
-
----
-
-### License
-
-#### Activate
-```
-POST /api/license/activate
-Content-Type: application/json
-
-{"license_key": "XXXX-XXXX-XXXX-XXXX"}
-```
-
-#### Get status
-```
-GET /api/license/status
-```
-
-#### Deactivate
-```
-POST /api/license/deactivate
-```
 
 ---
 

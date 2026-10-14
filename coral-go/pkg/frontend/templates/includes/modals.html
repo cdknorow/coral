@@ -595,26 +595,28 @@
                 </dd>
                 <dt>Coral Hub</dt>
                 <dd id="settings-cloud">
-                    <div id="settings-cloud-status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
-                    <div id="settings-cloud-code" class="settings-cloud-code" hidden>
-                        <div>Open <a id="settings-cloud-link" target="_blank" rel="noopener noreferrer"></a> while signed in and enter this code:</div>
-                        <div id="settings-cloud-usercode" class="settings-mono-input settings-cloud-usercode"></div>
+                    <div id="settings-cloud-status" data-cloud="status" class="settings-hint" role="status" aria-live="polite">Loading…</div>
+                    <div id="settings-cloud-code" data-cloud="code" class="settings-cloud-code" hidden>
+                        <div>Open <a id="settings-cloud-link" data-cloud="link" target="_blank" rel="noopener noreferrer"></a> — your code should already be filled in:</div>
+                        <div id="settings-cloud-usercode" data-cloud="usercode" class="settings-mono-input settings-cloud-usercode"></div>
                     </div>
+                    <div class="cloud-command-row" data-cloud="command-row" hidden><code data-cloud="command"></code><button type="button" class="btn btn-small" data-cloud="copy">Copy</button></div>
                     <div class="settings-cloud-actions">
-                        <button type="button" id="settings-cloud-connect" class="btn btn-small" hidden>Connect to Coral Hub</button>
-                        <button type="button" id="settings-cloud-disconnect" class="btn btn-small" hidden>Disconnect</button>
+                        <button type="button" id="settings-cloud-connect" data-cloud="connect" class="btn btn-small" hidden>Connect to Coral Hub</button>
+                        <button type="button" id="settings-cloud-cancel" data-cloud="cancel" class="btn btn-small" hidden>Cancel</button>
+                        <button type="button" id="settings-cloud-disconnect" data-cloud="disconnect" class="btn btn-small" hidden>Disconnect</button>
                     </div>
-                    <div class="settings-cloud-mode" id="settings-cloud-mode-row" hidden>
+                    <div class="settings-cloud-mode" id="settings-cloud-mode-row" data-cloud="mode-row" hidden>
                         <label for="settings-cloud-max-mode">Most the hub may do on this computer</label>
-                        <select id="settings-cloud-max-mode" class="settings-select" aria-describedby="settings-cloud-mode-desc">
+                        <select id="settings-cloud-max-mode" data-cloud="max-mode" class="settings-select" aria-describedby="settings-cloud-mode-desc">
                             <option value="view">View (default)</option>
                             <option value="interact">Interact</option>
                             <option value="launch">Launch</option>
                         </select>
-                        <div id="settings-cloud-mode-desc" class="settings-hint"></div>
+                        <div id="settings-cloud-mode-desc" data-cloud="mode-desc" class="settings-hint"></div>
                         <div class="settings-hint settings-cloud-hub-mode-hint">The hub has its own setting per server (default View). The lower of the two applies.</div>
-                        <div id="settings-cloud-auto-accept-row" hidden>
-                            <label class="settings-cloud-auto-accept"><input type="checkbox" id="settings-cloud-allow-auto-accept" aria-describedby="settings-cloud-auto-accept-desc"> Coral Hub can turn on auto-accept</label>
+                        <div id="settings-cloud-auto-accept-row" data-cloud="auto-accept-row" hidden>
+                            <label class="settings-cloud-auto-accept"><input type="checkbox" id="settings-cloud-allow-auto-accept" data-cloud="allow-auto-accept" aria-describedby="settings-cloud-auto-accept-desc"> Coral Hub can turn on auto-accept</label>
                             <div id="settings-cloud-auto-accept-desc" class="settings-hint">On by default while access is Launch. A hub user can then let an agent's permission prompts be approved for it, for up to 8 hours (1 hour unless they choose otherwise). Turn this off to keep that on this computer only; it also stops any auto-accept the hub turned on.</div>
                         </div>
                     </div>
@@ -804,13 +806,11 @@
                     Edit Default Prompts
                 </button>
 
-                <!-- License Section -->
-                <div class="settings-section settings-license-section" id="license-section">
-                    <h4 class="settings-license-title">License</h4>
-                    <div id="license-status-display">
-                        <span class="settings-license-loading">Loading...</span>
-                    </div>
+                <!-- About: the version (Coral has no paid licence, #3221) -->
+                <div class="settings-section settings-about-section" id="about-section">
+                    <h4 class="settings-about-title">About</h4>
                     <div id="app-version-label" class="settings-version-label"></div>
+                    <button type="button" class="btn btn-small settings-editions-btn" data-editions="open">Connect to Coral Hub…</button>
                 </div>
                 <div id="tier-branding-label" class="tier-branding" style="display:none"></div>
             </div>

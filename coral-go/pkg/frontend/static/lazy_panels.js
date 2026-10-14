@@ -34,7 +34,7 @@ export const loadThemeConfig = panel('the theme editor', './theme_config.js');
 export const loadTemplateBrowser = panel('the template browser', './template_browser.js');
 export const loadChatSearch = panel('chat search', './chat_search.js');
 // The launch, settings, resume, info and team dialogs (#3140). settings_core.js keeps
-// what runs at startup (loadSettings, the theme) and inside links (trackSupporterClick).
+// what runs at startup (loadSettings, the theme).
 export const loadModals = panel('this dialog', './modals.js');
 
 /** Stubs for `names` exported by the module `load` imports. A stub loads the

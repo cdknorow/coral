@@ -1,0 +1,209 @@
+/* Coral Hub on first launch and on the home screen (#3221).
+
+   - First launch: after the EULA, the dashboard opens "Connect to Coral Hub" (app.coralai.ai)
+     with the real connect flow inline (cloud_connect.js, the same code as Settings > Coral
+     Hub): Connect → link and code → live status → once connected, how much the hub may do
+     → Done. "Skip for now" keeps Coral local. "Run your own hub" (coral --hub) is the
+     secondary option, with a short explainer. The server marks a new install
+     welcome_pending; the answer is saved as welcome_choice, so another browser does not ask
+     again. Settings > About reopens it. It opens only when this build has a hub configured.
+   - Home: a short section about Coral Hub and running your own hub, which the user can
+     hide (home_editions_hidden).
+   Neither appears in the Cloud Hub itself or in an agent popout. */
+
+import { state } from './state.js';
+import { isCloud } from './server_base.js';
+import { isPopout } from './popout.js';
+import { escapeAttr } from './utils.js';
+import { mountCloudConnect } from './cloud_connect.js';
+
+export const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-hub/';
+
+function _available() {
+    return !isCloud() && !isPopout();
+}
+
+const _pending = () => String((state.settings || {}).welcome_pending) === 'True';
+
+async function _saveSettings(values) {
+    Object.assign(state.settings || (state.settings = {}), values);
+    try {
+        await fetch('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    } catch { /* kept for this page; the server asks again next launch */ }
+}
+
+/** After settings load: the first-launch screen when due (and a hub is configured), and the home section. */
+export async function initEditions() {
+    syncHomeEditions();
+    if (!_available() || !_pending()) return;
+    try {
+        const r = await fetch('/api/cloud/status');
+        // 'off': this build has no hub to connect to (a dev build, or --cloud-url off).
+        if (r.ok && (await r.json()).state === 'off') return;
+    } catch { return; }
+    showHubSetup();
+}
+
+// ── The screen ───────────────────────────────────────────────────────────
+
+let _returnFocus = null;
+let _panel = null;
+
+function _modal() {
+    let m = document.getElementById('editions-modal');
+    if (m) return m;
+    m = document.createElement('div');
+    m.id = 'editions-modal';
+    m.className = 'modal editions-modal';
+    m.setAttribute('role', 'dialog');
+    m.setAttribute('aria-modal', 'true');
+    m.setAttribute('aria-labelledby', 'editions-title');
+    m.style.display = 'none';
+    document.body.appendChild(m);
+    m.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { e.preventDefault(); _dismiss('skipped'); }
+        if (e.key === 'Tab') _trapTab(m, e);
+    });
+    return m;
+}
+
+function _trapTab(m, e) {
+    const f = [...m.querySelectorAll('button, a[href], select, input')].filter(el => !el.disabled && el.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+/** Open the screen: 'connect' (Connect to Coral Hub) or 'own-hub' (the explainer). */
+export function showHubSetup(step = 'connect') {
+    if (!_available()) return;
+    const m = _modal();
+    if (m.style.display === 'none') _returnFocus = document.activeElement;
+    _panel?.stop();
+    _panel = null;
+    m.innerHTML = step === 'own-hub' ? _ownHubHtml() : _connectHtml();
+    delete m.dataset.focused;
+    m.style.display = 'flex';
+    if (step !== 'own-hub') _panel = mountCloudConnect(m.querySelector('.editions-cloud'), { onState: _onState });
+    (m.querySelector('[data-editions-focus]:not([hidden])') || m.querySelector('button:not([hidden])'))?.focus();
+}
+
+function _connectHtml() {
+    return `<div class="modal-content editions-content">
+        <h2 id="editions-title" class="editions-title">Connect to Coral Hub</h2>
+        <p class="editions-sub">Use your agents from any browser, including your phone, at app.coralai.ai. Coral Hub is in an invite-only beta. Nothing is sent until you connect.</p>
+        <div class="editions-cloud">
+            <div class="editions-status" data-cloud="status" role="status" aria-live="polite">Loading…</div>
+            <div class="editions-code" data-cloud="code" hidden>
+                <div>Open <a data-cloud="link" target="_blank" rel="noopener noreferrer"></a> — your code should already be filled in:</div>
+                <div class="editions-usercode" data-cloud="usercode"></div>
+            </div>
+            <div class="cloud-command-row" data-cloud="command-row" hidden><code data-cloud="command"></code><button type="button" class="btn btn-small" data-cloud="copy">Copy</button></div>
+            <div class="editions-cloud-actions">
+                <button type="button" class="btn btn-primary editions-connect" data-cloud="connect" data-editions-focus hidden>Connect</button>
+                <button type="button" class="btn" data-cloud="cancel" hidden>Cancel</button>
+            </div>
+            <div class="editions-mode" data-cloud="mode-row" hidden>
+                <label for="editions-max-mode">Most Coral Hub may do on this computer</label>
+                <select id="editions-max-mode" class="settings-select" data-cloud="max-mode" aria-describedby="editions-mode-desc">
+                    <option value="view">View (default)</option>
+                    <option value="interact">Interact</option>
+                    <option value="launch">Launch</option>
+                </select>
+                <div id="editions-mode-desc" class="settings-hint" data-cloud="mode-desc"></div>
+                <div data-cloud="auto-accept-row" hidden>
+                    <label class="editions-auto-accept"><input type="checkbox" data-cloud="allow-auto-accept"> Coral Hub can turn on auto-accept</label>
+                </div>
+                <div class="settings-hint">You can change this any time in Settings › Coral Hub.</div>
+            </div>
+        </div>
+        <div class="modal-actions editions-actions">
+            <button type="button" class="btn btn-link editions-own" data-editions="own-hub">Run your own hub instead</button>
+            <span class="editions-actions-spacer"></span>
+            <button type="button" class="btn" data-editions="skip">Skip for now</button>
+            <button type="button" class="btn btn-primary" data-editions="done" hidden>Done</button>
+        </div>
+    </div>`;
+}
+
+function _ownHubHtml() {
+    return `<div class="modal-content editions-content">
+        <h2 id="editions-title" class="editions-title">Run your own hub</h2>
+        <p class="editions-sub">One dashboard for the agents on all your machines. Free and self-hosted.</p>
+        <ol class="editions-steps">
+            <li>On the machine you'll use as the hub, start Coral with <code>coral --hub</code>.</li>
+            <li>On each other machine, start Coral and copy its API key from Settings.</li>
+            <li>In the hub's <strong>Servers</strong> tab, add each machine with its address and key.</li>
+        </ol>
+        <a class="editions-guide" href="${escapeAttr(OWN_HUB_GUIDE_URL)}" target="_blank" rel="noopener">Read the guide<span class="material-icons" aria-hidden="true">open_in_new</span></a>
+        <div class="modal-actions editions-actions">
+            <button type="button" class="btn" data-editions="back">Back</button>
+            <span class="editions-actions-spacer"></span>
+            <button type="button" class="btn btn-primary" data-editions="done-own" data-editions-focus>Go to the dashboard</button>
+        </div>
+    </div>`;
+}
+
+// Each status: once connected, choosing how much the hub may do is the next step and Done
+// replaces Skip. The first status moves focus to Connect (it is hidden until then).
+function _onState(st) {
+    const m = document.getElementById('editions-modal');
+    if (!m) return;
+    const connected = !!st && st.state === 'connected';
+    const q = sel => m.querySelector(sel);
+    const skip = q('[data-editions="skip"]'), done = q('[data-editions="done"]'), mode = q('[data-cloud="mode-row"]');
+    const focusWasOnSkip = skip && document.activeElement === skip;
+    if (skip) skip.hidden = connected;
+    if (done) done.hidden = !connected;
+    if (mode && !connected) mode.hidden = true;
+    if (connected && focusWasOnSkip) done.focus();
+    if (!m.dataset.focused) {
+        m.dataset.focused = '1';
+        const connect = q('[data-cloud="connect"]');
+        if (connect && !connect.hidden) connect.focus();
+    }
+}
+
+function _close() {
+    _panel?.stop();
+    _panel = null;
+    const m = document.getElementById('editions-modal');
+    if (m) { m.style.display = 'none'; m.innerHTML = ''; }
+    if (_returnFocus && document.contains(_returnFocus)) _returnFocus.focus();
+    _returnFocus = null;
+}
+
+/** Close the screen; on first launch this answers it (welcome_choice). */
+function _dismiss(choice) {
+    if (_pending()) _saveSettings({ welcome_choice: choice, welcome_pending: 'False' });
+    _close();
+}
+
+// ── The home section ─────────────────────────────────────────────────────
+
+/** Show the home section unless hidden (or in the Cloud Hub / a popout). */
+export function syncHomeEditions() {
+    const el = document.getElementById('editions-home');
+    if (!el) return;
+    el.hidden = !_available() || String((state.settings || {}).home_editions_hidden) === 'True';
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────
+
+document.addEventListener('click', e => {
+    const t = e.target && e.target.closest && e.target.closest('[data-editions]');
+    if (!t) return;
+    const action = t.dataset.editions;
+    if (action === 'skip') _dismiss('skipped');
+    else if (action === 'done') _dismiss('connected');
+    else if (action === 'own-hub') showHubSetup('own-hub');
+    else if (action === 'back') showHubSetup('connect');
+    else if (action === 'done-own') _dismiss('own-hub');
+    else if (action === 'open') { window.hideSettingsModal?.(); showHubSetup('connect'); }
+    else if (action === 'home-hub') showHubSetup('connect');
+    else if (action === 'home-own') showHubSetup('own-hub');
+    else if (action === 'hide-home') { _saveSettings({ home_editions_hidden: 'True' }); syncHomeEditions(); }
+    else return;
+    e.preventDefault();
+});

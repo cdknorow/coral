@@ -43,8 +43,7 @@ type milestoneState struct {
 	// Reached maps a milestone name to the RFC3339 UTC time it happened.
 	// Unlike Fired this is product state, not analytics: it records that the
 	// user actually did the thing, and is written whether or not analytics are
-	// configured. It is what gates the supporter reminder, which must not
-	// depend on an analytics key being present.
+	// configured, so it never depends on an analytics key being present.
 	Reached map[string]string `json:"reached,omitempty"`
 	// Pending holds the frozen snapshot of a one-time event whose delivery has
 	// been attempted but not accepted: the time of the original occurrence and
@@ -370,8 +369,7 @@ func AcknowledgeDisclosure() error {
 // ── Demonstrated value ───────────────────────────────────────────────────
 
 // ValueMilestones are the milestones that mean Coral has actually done
-// something for the user. The supporter reminder is gated on one of these
-// having happened, so the ask always follows a result rather than preceding it.
+// something for the user (see ValueDelivered).
 var ValueMilestones = []string{
 	EventFirstAgentLaunched,
 	EventFirstTaskCompleted,
@@ -390,8 +388,7 @@ func ValueDelivered() bool { return ValueDeliveredIn(resolveCoralDir()) }
 // rather than as "not configured" — a distinction the caller cannot see.
 //
 // It reads the same milestone state the funnel uses and works on builds with
-// no analytics key: whether we ask a user for support is a product decision
-// and must not depend on analytics being configured.
+// no analytics key.
 func ValueDeliveredIn(dir string) bool {
 	if dir == "" {
 		return false

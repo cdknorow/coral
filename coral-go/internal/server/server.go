@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/cdknorow/coral/internal/cloud"
-	"html"
 	"html/template"
 	"io"
 	"io/fs"
@@ -16,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -27,13 +25,11 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
-	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/store"
-	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/cdknorow/coral/pkg/frontend"
 )
 
@@ -57,8 +53,6 @@ type Server struct {
 	boardStore      *board.Store
 	backend         ptymanager.TerminalBackend
 	terminal        ptymanager.SessionTerminal
-	licenseMgr      *license.Manager
-	launchCounter   *license.LaunchCounter
 	keyStore        *auth.KeyStore
 	router          chi.Router
 	indexTmpl       *template.Template
@@ -72,11 +66,6 @@ type Server struct {
 	goalMetrics     *routes.GoalMetricsHandler
 	systemHandler   *routes.SystemHandler
 	workflowHandler *routes.WorkflowHandler
-
-	// reminderShown is claimed by the first page load that serves the
-	// supporter reminder, so a reload cannot bring it back. It is per
-	// process: "once per launch" means once per server start.
-	reminderShown atomic.Bool
 }
 
 // remoteAgentHubConfig tunes the hub's remote poller. Zero values mean the
@@ -107,26 +96,6 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 		boardStore.SetSessionsDB(db.DB)
 	}
 
-	// Initialize license manager (skip when license not required)
-	licenseMgr := license.NewManager(cfg.CoralDir())
-	if cfg.LicenseRequired() && licenseMgr.NeedsRevalidation() {
-		log.Println("Revalidating license...")
-		licenseMgr.Revalidate()
-	}
-
-	// Track launch count for nag screen frequency
-	launchCounter := license.NewLaunchCounter(cfg.CoralDir())
-	launchCount := launchCounter.Increment()
-	// The supporter reminder is scheduled from the launch at which Coral first
-	// delivered a result, not from install. See LaunchCounter.RecordValueAnchor.
-	// ValueDeliveredIn, not ValueDelivered: this runs before main calls
-	// tracking.SetCoralDir, and the package default is ~/.coral — which would
-	// let the production install's state decide a test instance's behaviour.
-	valueDelivered := tracking.ValueDeliveredIn(cfg.CoralDir())
-	launchCounter.RecordValueAnchor(valueDelivered)
-	log.Printf("Launch count: %d (value_delivered=%v nag=%v)",
-		launchCount, valueDelivered, launchCounter.IsNagLaunch())
-
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())
 	if err != nil {
@@ -135,14 +104,12 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	log.Printf("API Key: %s...", keyStore.Key()[:8])
 
 	s := &Server{
-		cfg:           cfg,
-		db:            db,
-		boardStore:    boardStore,
-		backend:       backend,
-		terminal:      terminal,
-		licenseMgr:    licenseMgr,
-		launchCounter: launchCounter,
-		keyStore:      keyStore,
+		cfg:        cfg,
+		db:         db,
+		boardStore: boardStore,
+		backend:    backend,
+		terminal:   terminal,
+		keyStore:   keyStore,
 	}
 
 	// Parse Go templates from embedded FS
@@ -302,19 +269,13 @@ func (s *Server) buildRouter() chi.Router {
 		r.Use(auth.Middleware(s.keyStore))
 	}
 
-	// License middleware — tracks license state but does not gate any routes.
-	// Skipped entirely in dev and beta tiers (compile-time build tags).
-	if s.cfg.LicenseRequired() {
-		r.Use(license.Middleware(s.licenseMgr))
-	}
-
 	// Debug request logger (session/ws calls only, when CORAL_DEBUG=1)
 	r.Use(routes.DebugRequestLogger)
 	// Record API traffic centrally so clients do not need to post metrics.
 	r.Use(routes.RequestMetrics(s.db))
 
 	// Health check — the native app polls this every 5s to detect crashes.
-	// Auth middleware bypasses localhost; license middleware ungates this path.
+	// Auth middleware bypasses localhost.
 	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -322,16 +283,6 @@ func (s *Server) buildRouter() chi.Router {
 		// "hub" tells the frontend whether to show the multi-server UI.
 		json.NewEncoder(w).Encode(map[string]any{"status": "ok", "version": config.ReportedVersion(), "hub": s.cfg.HubMode})
 	})
-
-	// License endpoints (ungated — must be accessible to activate)
-	licRoutes := license.NewRoutes(s.licenseMgr)
-	if secret := os.Getenv("CORAL_LS_WEBHOOK_SECRET"); secret != "" {
-		licRoutes.SetWebhookSecret(secret)
-	}
-	r.Post("/api/license/activate", licRoutes.Activate)
-	r.Post("/api/license/deactivate", licRoutes.Deactivate)
-	r.Get("/api/license/status", licRoutes.Status)
-	r.Post("/api/license/webhook", licRoutes.Webhook)
 
 	// Auth endpoints
 	authRoutes := auth.NewRoutes(s.keyStore)
@@ -360,6 +311,12 @@ func (s *Server) buildRouter() chi.Router {
 	// job for it, so a test server never runs a real agent on its own (#3136).
 	if !envTrue("CORAL_NO_DEMO_SEED") {
 		workflowHandler.SeedDemoWorkflow(store.NewScheduleStore(s.db))
+	}
+	// The first-launch "ways to run Coral" screen (#3221) is shown once per install:
+	// until the user picks one, the dashboard finds welcome_pending in its settings.
+	// CORAL_NO_WELCOME=1 (test servers) never asks.
+	if !envTrue("CORAL_NO_WELCOME") {
+		markWelcomePending(s.db)
 	}
 
 	// Live sessions
@@ -668,7 +625,6 @@ func (s *Server) buildRouter() chi.Router {
 	}()
 	s.boardHandler = boardHandler
 	sessHandler.SetBoardHandler(boardHandler)
-	sessHandler.SetLicenseManager(s.licenseMgr)
 	sessHandler.SetScheduleStore(store.NewScheduleStore(s.db))
 	sessHandler.SetTeamStore(teamsHandler.Store())
 	sessHandler.SetTokenStore(store.NewTokenUsageStore(s.db))
@@ -834,11 +790,6 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	purgePreSandboxCache(w, r)
 
-	if s.claimSupporterReminder(r) {
-		s.serveActivation(w, r)
-		return
-	}
-
 	if s.indexTmpl == nil {
 		w.Write([]byte(`<!DOCTYPE html><html><body>Template not loaded</body></html>`))
 		return
@@ -893,304 +844,6 @@ func (s *Server) serveAgentPopout(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// claimSupporterReminder decides whether this page load gets the supporter
-// reminder instead of the dashboard. Every condition must hold:
-//
-//   - the build asks for a license at all (dev and beta builds never do);
-//   - the user has not already activated one — supporters are never asked again;
-//   - this launch is on the reminder cadence, which does not start until Coral
-//     has actually delivered a result (see LaunchCounter.IsNagLaunch);
-//   - the user has not dismissed it with "Continue Free" on this request.
-//
-// This gates only WHEN we ask for support. No Coral feature is gated on a
-// license: see license.Middleware, which passes every request through.
-// It claims that showing: the dashboard is reloaded constantly and every load
-// comes through here, so the reminder is served to the first qualifying load
-// of a server start and to no other.
-func (s *Server) claimSupporterReminder(r *http.Request) bool {
-	due := supporterReminderDue(
-		s.cfg.LicenseRequired(),
-		s.licenseMgr != nil && s.licenseMgr.IsValid(),
-		s.launchCounter != nil && s.launchCounter.IsNagLaunch(),
-		r.URL.Query().Get("skip_activation") == "1",
-	)
-	if !due {
-		return false
-	}
-	return s.reminderShown.CompareAndSwap(false, true)
-}
-
-// supporterReminderDue is the entire rule, kept as a pure function so each
-// clause can be tested on its own.
-func supporterReminderDue(licenseRequired, licensed, onCadence, dismissed bool) bool {
-	if !licenseRequired {
-		return false // dev and beta builds never ask.
-	}
-	if licensed {
-		return false // supporters are never asked again.
-	}
-	if !onCadence {
-		return false // no result delivered yet, or not a reminder launch.
-	}
-	return !dismissed
-}
-
-func (s *Server) serveActivation(w http.ResponseWriter, r *http.Request) {
-	page := activationPage
-	page = strings.ReplaceAll(page, "{{STORE_URL}}",
-		html.EscapeString(routes.SupporterCheckoutURL(config.StoreURL, routes.SurfaceActivationNag)))
-	w.Write([]byte(page))
-}
-
-const activationPage = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Coral</title>
-<style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #0f1117;
-    color: #e1e4e8;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 24px;
-  }
-  .page { max-width: 780px; width: 100%; }
-  .page-header { text-align: center; margin-bottom: 32px; }
-  .page-header h1 { font-size: 28px; font-weight: 700; margin-bottom: 6px; }
-  .page-header p { color: #8b949e; font-size: 15px; }
-
-  /* Pricing cards */
-  .pricing-row { display: flex; gap: 16px; margin-bottom: 24px; }
-  .price-card {
-    flex: 1;
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    padding: 28px 24px;
-    position: relative;
-  }
-  .price-card.featured { border-color: #58a6ff; }
-  .price-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
-  .price-desc { color: #8b949e; font-size: 13px; margin-bottom: 16px; }
-  .price-amount { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
-  .price-amount .strike { text-decoration: line-through; color: #484f58; font-size: 20px; font-weight: 500; margin-right: 6px; }
-  .price-note { color: #8b949e; font-size: 12px; margin-bottom: 16px; }
-  .price-features { list-style: none; margin-bottom: 20px; }
-  .price-features li {
-    font-size: 13px; color: #c9d1d9;
-    padding: 4px 0 4px 22px;
-    position: relative;
-  }
-  .price-features li::before {
-    content: '\2713'; color: #3fb950; font-weight: 700;
-    position: absolute; left: 0;
-  }
-  .price-btn {
-    display: block; width: 100%; text-align: center;
-    padding: 10px; border-radius: 8px;
-    font-size: 14px; font-weight: 600;
-    text-decoration: none; cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-    border: none;
-  }
-  .price-btn-primary { background: #58a6ff; color: #fff; }
-  .price-btn-primary:hover { background: #4090e0; }
-  .price-btn-secondary { background: transparent; color: #58a6ff; border: 1px solid #30363d; }
-  .price-btn-secondary:hover { border-color: #58a6ff; }
-
-  /* Activation card */
-  .activate-card {
-    background: #161b22;
-    border: 1px solid #30363d;
-    border-radius: 12px;
-    padding: 32px 48px;
-    text-align: center;
-  }
-  .activate-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
-  .activate-card .subtitle { color: #8b949e; font-size: 13px; margin-bottom: 20px; }
-  .input-group { position: relative; margin-bottom: 12px; }
-  .input-group input {
-    width: 100%;
-    padding: 11px 16px;
-    background: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 8px;
-    color: #e1e4e8;
-    font-size: 14px;
-    font-family: monospace;
-    letter-spacing: 1px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .input-group input:focus { border-color: #58a6ff; }
-  .activate-btn {
-    width: 100%;
-    padding: 11px;
-    background: #238636;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .activate-btn:hover { background: #2ea043; }
-  .activate-btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
-  .error { color: #f85149; font-size: 13px; margin-top: 10px; display: none; }
-  .success { color: #3fb950; font-size: 13px; margin-top: 10px; display: none; }
-
-  .skip-btn {
-    display: block; width: 100%; text-align: center;
-    padding: 11px; margin-top: 12px;
-    background: transparent; color: #8b949e;
-    border: 1px solid #30363d; border-radius: 8px;
-    font-size: 13px; cursor: pointer;
-    text-decoration: none;
-    transition: color 0.15s, border-color 0.15s;
-  }
-  .skip-btn:hover { color: #c9d1d9; border-color: #484f58; }
-
-  .footer-link { text-align: center; margin-top: 20px; }
-  .footer-link a { color: #8b949e; font-size: 13px; text-decoration: none; }
-  .footer-link a:hover { color: #58a6ff; }
-
-  @media (max-width: 600px) {
-    .pricing-row { flex-direction: column; }
-    .activate-card { padding: 24px; }
-  }
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="page-header">
-    <h1>Coral</h1>
-    <p>Free and fully unlocked. A one-time license supports development and retires this reminder.</p>
-  </div>
-
-  <div class="pricing-row">
-    <div class="price-card">
-      <h3>Free &amp; Fully Unlocked</h3>
-      <p class="price-desc">The full product, forever</p>
-      <div class="price-amount">Free</div>
-      <p class="price-note">No card required &middot; every feature unlocked</p>
-      <ul class="price-features">
-        <li>Every feature, no time limit</li>
-        <li>Unlimited teams and agents</li>
-        <li>Claude Code, Codex, Antigravity CLI (agy) and Pi.dev</li>
-        <li>Real-time dashboard and message boards</li>
-        <li>Agent team templates &mdash; generate a team from a plain-English description, import one from a folder</li>
-        <li>Token and cost tracking per agent and per session</li>
-        <li>Native desktop app (macOS and Linux)</li>
-        <li>Skip this screen anytime</li>
-      </ul>
-      <a href="/?skip_activation=1" class="price-btn price-btn-secondary">Continue Free</a>
-    </div>
-
-    <div class="price-card featured">
-      <h3>Coral Pro &mdash; Supporter License</h3>
-      <p class="price-desc">Back the project</p>
-      <div class="price-amount">$49.99</div>
-      <p class="price-note">One-time &middot; no subscription</p>
-      <ul class="price-features">
-        <li>Retires this periodic reminder</li>
-        <li>Priority support</li>
-        <li>Priority consideration for feature requests</li>
-        <li>Directly funds ongoing development</li>
-      </ul>
-      <p style="font-size:11px;color:#484f58;margin-top:0;margin-bottom:12px;text-align:center;">Coral stays free either way. A license backs the project &mdash; it doesn&rsquo;t unlock anything, because nothing is locked.</p>
-      <a href="{{STORE_URL}}" class="price-btn price-btn-primary" target="_blank" onclick="trackSupporterClick('activation_nag')">Buy a License</a>
-    </div>
-  </div>
-
-  <div class="activate-card">
-    <h3>Already have a license key?</h3>
-    <p class="subtitle">Enter your key below to activate Coral.</p>
-    <form id="activate-form">
-      <div class="input-group">
-        <input type="text" id="license-key" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" required>
-      </div>
-      <button type="submit" id="submit-btn" class="activate-btn">Activate License</button>
-    </form>
-    <div class="error" id="error-msg"></div>
-    <div class="success" id="success-msg"></div>
-    <a href="/?skip_activation=1" class="skip-btn">Continue with the free version</a>
-    <p style="font-size:12px;color:#484f58;margin-top:16px;">Need help? <a href="https://coralai.ai/support.html" target="_blank" style="color:#58a6ff;">Contact Support</a></p>
-  </div>
-
-  <div class="footer-link">
-    <a href="https://coralai.ai/support.html" target="_blank">Contact Support</a>
-  </div>
-</div>
-<script>
-  const form = document.getElementById('activate-form');
-  const input = document.getElementById('license-key');
-  const btn = document.getElementById('submit-btn');
-  const errorEl = document.getElementById('error-msg');
-  const successEl = document.getElementById('success-msg');
-
-  // Fire-and-forget supporter-link click reporting. Never delays the link.
-  function trackSupporterClick(surface) {
-    try {
-      const payload = JSON.stringify({ event: 'supporter_checkout_clicked', props: { surface } });
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/tracking/event', new Blob([payload], { type: 'application/json' }));
-        return;
-      }
-      fetch('/api/tracking/event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        keepalive: true,
-      }).catch(() => {});
-    } catch (e) { /* analytics must never break the link */ }
-  }
-  window.trackSupporterClick = trackSupporterClick;
-
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const key = input.value.trim();
-    if (!key) return;
-
-    btn.disabled = true;
-    btn.textContent = 'Activating...';
-    errorEl.style.display = 'none';
-    successEl.style.display = 'none';
-
-    try {
-      const resp = await fetch('/api/license/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ license_key: key }),
-      });
-      const data = await resp.json();
-      if (data.valid) {
-        successEl.textContent = 'License activated! Redirecting...';
-        successEl.style.display = 'block';
-        setTimeout(() => window.location.reload(), 1000);
-      } else {
-        errorEl.textContent = data.error || 'Invalid license key.';
-        errorEl.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Activate License';
-      }
-    } catch (err) {
-      errorEl.textContent = 'Network error. Please try again.';
-      errorEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Activate License';
-    }
-  });
-</script>
-</body>
-</html>`
-
 func isLocalhostOrigin(origin string) bool {
 	// Match http(s)://localhost or http(s)://127.0.0.1, optionally followed
 	// by a port (:1234) or path (/...). Rejects tricky subdomains like
@@ -1211,6 +864,19 @@ func isLocalhostOrigin(origin string) bool {
 		}
 	}
 	return false
+}
+
+// markWelcomePending records that the first-launch screen is due, unless the user has
+// already chosen (welcome_choice) or it is already due. The dashboard clears it.
+func markWelcomePending(db *store.DB) {
+	if db == nil {
+		return
+	}
+	if _, err := db.Exec(`INSERT INTO user_settings (key, value)
+		SELECT 'welcome_pending', 'True' WHERE NOT EXISTS (SELECT 1 FROM user_settings WHERE key = 'welcome_choice')
+		ON CONFLICT(key) DO NOTHING`); err != nil {
+		log.Printf("first-launch screen: %v", err)
+	}
 }
 
 // envTrue reports whether the environment variable is set to 1 or true.

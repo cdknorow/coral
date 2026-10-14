@@ -39,7 +39,7 @@ coral-go/               # Primary Go implementation
     board/              # Message board store
     config/             # Configuration
     jsonl/              # JSONL log reader
-    license/            # License checking
+    license/            # EULA (terms acceptance)
     pulse/              # Pulse event parser
     ptymanager/         # PTY/tmux session management
     server/             # HTTP server, routes, frontend assets
@@ -71,7 +71,7 @@ Agent docs live in `coral-go/agent_docs/` (single source of truth) and are synce
 ### Building (via Makefile)
 ```bash
 cd coral-go && make build       # production build
-cd coral-go && make dev         # dev build (skips EULA + license)
+cd coral-go && make dev         # dev build (skips the EULA)
 cd coral-go && make run         # dev build + run on :8420
 cd coral-go && make test-server # dev build + run on :8450 (0.0.0.0)
 cd coral-go && make test        # run all tests
@@ -87,7 +87,7 @@ cd coral-go && go build -o coral ./cmd/coral/
 ```bash
 cd coral-go && go build -tags dev -o coral ./cmd/coral/ && ./coral --host 127.0.0.1 --port 8420
 ```
-The `dev` build tag skips EULA and license validation.
+The `dev` build tag skips the EULA.
 
 ### Test Server
 To spin up a test server for manual verification, use `0.0.0.0` (not `127.0.0.1`) so it's reachable from other machines, and a non-default port to avoid conflicts.
@@ -117,63 +117,64 @@ Pushing a tag triggers the GitHub Actions release workflow. Tag suffixes control
 
 #### Build Tiers
 
-Tiers are selected via **compile-time build tags** (not ldflags):
+Tiers are selected via **compile-time build tags** (not ldflags). Coral has no licence and no usage limits in any tier. Tiers differ only in the EULA and the default Coral Hub (`TierDefaultCloudURL`: https://app.coralai.ai for prod, beta and staging; none for dev and dropboxers):
 
-| Tier | Build Tag | EULA | License | Demo Limits |
-|------|-----------|------|---------|-------------|
-| Prod | (default) | Required | Required | None (LS plan controls) |
-| Dev | `-tags dev` | Skipped | Skipped | None |
-| Beta | `-tags beta` | Required | Skipped | 2 teams / 8 agents |
+| Tier | Build Tag | EULA |
+|------|-----------|------|
+| Prod | (default) | Required |
+| Dev | `-tags dev` | Skipped |
+| Beta | `-tags beta` | Required (same as prod; kept so `-beta` tags still build) |
+| Dropboxers | `-tags dropboxers` | Skipped ("Coral For Dropbox" partner build) |
 
 #### Tag Naming Conventions
 
-| Tag Format | Tier | Windows Build |
+Every tag builds Linux, macOS and Windows. The suffix picks the build tier and whether the
+release is a prerelease (never shown as "Latest", so installed Corals don't offer it as an
+update):
+
+| Tag Format | Tier | Release |
 |---|---|---|
-| `v0.x.x` | prod | skipped |
-| `v0.x.x-dev` | dev | skipped |
-| `v0.x.x-beta` | beta | skipped |
-| `v0.x.x-windows` | prod | **built** |
-| `v0.x.x-all` | prod | **built** |
+| `v0.x.x` | prod | **Latest** (use this for production) |
+| `v0.x.x-dev` | dev (EULA skipped) | prerelease |
+| `v0.x.x-beta` | beta (same as prod) | prerelease |
+| `v0.x.x-forDropbox` | dropboxers (EULA skipped, "Coral For Dropbox" branding) | prerelease |
+| `v0.x.x-rc…` | prod | prerelease |
 
-Suffixes can be combined, e.g. `v0.x.x-dev-windows` builds Windows with dev tier.
-
-- **`-dev`**: Dev tier build tag. Skips EULA and license. Good for internal testing.
-- **`-beta`** / **`-forDropbox`**: Beta tier build tag. Skips license, enforces demo limits (max 2 teams, max 8 agents).
-- **`-windows`** / **`-all`**: Includes the Windows build (skipped by default to save CI compute).
+The version is the tag name without the leading `v`, suffix included, so tag production
+releases as plain `vX.Y.Z`: the old `-windows` / `-all` suffixes no longer change the build
+and would end up in the version string.
 
 #### Local builds with tiers
 ```bash
-# Dev build (no EULA, no license)
+# Dev build (no EULA)
 CORAL_TIER=dev ./installers/build-macos.sh 0.10.15
 
-# Beta build (demo limits, no license)
+# Beta build (same as prod)
 CORAL_TIER=beta ./installers/build-macos.sh 0.10.15
 
-# Prod build (default — license required)
+# Prod build (default — EULA required)
 ./installers/build-macos.sh 0.10.15
 ```
 
 #### Example release flow
 ```bash
-# Dev build (no license, no limits, no Windows)
+# Dev build (no EULA; prerelease)
 git tag v0.10.15-dev
 git push origin main --tags
 
-# Beta build for partners (no license, demo limits)
+# Beta build for partners (same as prod; prerelease)
 git tag v0.10.15-beta
 git push origin main --tags
 
-# Full production release (all platforms)
-git tag v0.10.15-all
+# Production release (all platforms; the workflow creates the GitHub Release,
+# uploads the packages, SHA256SUMS.txt and their Sigstore bundles, and attests provenance)
+git tag v0.10.15
 git push origin main --tags
-
-# Create the GitHub Release (uploads happen automatically)
-gh release create v0.10.15 --title "v0.10.15" --generate-notes
 ```
 
 The workflow (`.github/workflows/release.yml`) produces:
 - **Linux**: `coral-linux-amd64-<version>.tar.gz`
-- **Windows** (when included): `Coral-<version>-x64.msi` + `Coral-<version>-x64-portable.zip`
+- **Windows**: `Coral-<version>-x64.msi` + `Coral-<version>-x64-portable.zip`
 - **macOS**: `Coral.dmg` (universal binary, signed + notarized if certs configured)
 
 ### Required GitHub Secrets (for signing)

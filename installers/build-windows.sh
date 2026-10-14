@@ -21,15 +21,15 @@ echo "==> Building coral-go for Windows (amd64) v${VERSION}"
 BUILD_TAGS=""
 if [ "$CORAL_TIER" = "dev" ]; then
     BUILD_TAGS="-tags dev"
-    echo "==> Tier: dev (EULA skipped, license skipped)"
+    echo "==> Tier: dev (EULA skipped)"
 elif [ "$CORAL_TIER" = "dropboxers" ]; then
     BUILD_TAGS="-tags dropboxers"
-    echo "==> Tier: dropboxers (license skipped, 3 teams / 12 agents)"
+    echo "==> Tier: dropboxers (EULA skipped)"
 elif [ "$CORAL_TIER" = "beta" ]; then
     BUILD_TAGS="-tags beta"
-    echo "==> Tier: beta (license skipped, demo limits enforced)"
+    echo "==> Tier: beta (EULA required, same as prod)"
 else
-    echo "==> Tier: prod (license required)"
+    echo "==> Tier: prod (EULA required)"
 fi
 
 rm -rf "$BUILD_DIR"

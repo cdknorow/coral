@@ -74,6 +74,7 @@ if lsof -iTCP:"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1; then
 fi
 export CORAL_DATA_DIR="$TMPDIR_TEAMS/coral-data"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job (it would run a real agent)
+export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 export CORAL_TMUX_NO_FALLBACK=1
 mkdir -p "$CORAL_DATA_DIR"
 

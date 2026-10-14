@@ -687,8 +687,9 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 		return agents, nil
 	}
 
-	// Cloud Hub connector. Off unless --cloud-url / CORAL_CLOUD_URL is set; when off
-	// it opens no outbound connection and starts no goroutine.
+	// Coral Hub connector. Release builds offer https://app.coralai.ai unless --cloud-url /
+	// CORAL_CLOUD_URL say otherwise (off disables it). Nothing is sent to the hub until the
+	// user connects; when off it opens no outbound connection and starts no goroutine.
 	startCloudConnector(ctx, db, cfg, srv, sessStore)
 
 	// Multi-server hub: remote agent poller and feed relay. Hub mode only;
@@ -843,6 +844,6 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 	if hubURL == "" {
 		return
 	}
-	log.Printf("[CLOUD] connector enabled for %s (open Settings > Connect to Coral Hub to enroll)", hubURL)
+	log.Printf("[CLOUD] Coral Hub: %s (nothing is sent until this server is connected: Settings > Coral Hub)", hubURL)
 	safeGo(ctx, "cloud_connector", func() { mgr.Run(ctx) })
 }

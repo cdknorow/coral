@@ -36,7 +36,7 @@ export function serverWsBase(server) {
 
 /** Routes a connector must never be asked about from the Cloud Hub: they configure, license or
  *  administer the machine itself (the hub's route table refuses them anyway; this keeps the UI
- *  from even trying). */
+ *  from even trying). license: machines older than #3221 still have those routes. */
 const CLOUD_NEVER = /^\/api\/(system|settings|webhooks|license|servers)(\/|\?|$)/;
 /** The one machine-settings route the hub does expose: the changed-files comparison base (Interact tier, three validated values). */
 const CLOUD_ALLOWED = /^\/api\/settings\/git-diff-mode$/;

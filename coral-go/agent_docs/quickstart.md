@@ -134,13 +134,14 @@ state separately. Details: `PRIVACY_CONTROLS.md` and `/api/system/privacy`.
 
 Go to **http://localhost:8420**.
 
-> **Occasionally the first screen is a supporter page, not the dashboard.** Coral is free
-> and fully unlocked. The reminder is scheduled every 25 launches, counted from the launch
-> at which Coral first did something useful (`nagInterval` in
-> `internal/license/launch_counter.go`), never on that first launch. Click
-> **Continue Free** to reach the dashboard. The skip is a URL parameter and sets no
-> cookie. The reminder is shown to the first qualifying page load of a server start only,
-> so reloading does not bring it back.
+> **The first time, Coral offers to connect to Coral Hub** (app.coralai.ai, invite-only
+> beta), so you can use your agents from any browser or your phone. **Connect** shows a
+> link with your code filled in; once you approve it, choose how much the hub may do on
+> this computer (View, Interact or Launch) and click **Done**. **Skip for now** keeps
+> Coral local: nothing is sent to the hub until you connect. **Run your own hub instead**
+> explains `coral --hub`. It asks once per install; **Settings › About › Connect to Coral
+> Hub…** shows it again. In a terminal, `coral cloud connect` does the same. Coral is
+> free, with no licence and no usage limits.
 
 ## 4. Launch your first agent
 
@@ -217,7 +218,6 @@ by trusting the agent's summary.
 | Symptom | Cause |
 |---|---|
 | Agent launched, no output, looks hung | The trust prompt in step 4. Open the terminal and answer it. |
-| Landed on a pricing/supporter page | The periodic reminder. Click **Continue Free**. |
 | `coral: command not found` after a DMG install | `install-cli.sh` was never run, or its link directory (`~/.local/bin` by default) is not on your `PATH`. |
 | `coral` starts something unfamiliar | The retired `agent-coral` pip package is shadowing it. Run `which -a coral`. |
 | Agents launch but never post to the board | Confirm the server's view with `/api/board/<project>/subscribers`. Agents are given `CORAL_URL` and `CORAL_DATA_DIR`; a custom wrapper that clears the environment can lose them. |

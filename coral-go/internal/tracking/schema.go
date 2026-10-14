@@ -111,9 +111,6 @@ var eventSpecs = map[string]map[string]propSpec{
 	EventFirstTaskSucceeded: {},
 	EventReturned24h:        {},
 
-	EventSupporterCheckoutClicked: {"surface": slugProp, "campaign": slugProp, "source": slugProp, "medium": slugProp},
-	EventLicenseActivated:         {"product_name": labelProp, "variant_name": labelProp},
-
 	EventLaunchRequested: {"kind": kindEnu, "attempt_id": slugProp, "provider": providerEnu, "backend": backendEnu, "requested_agents": agentCount, "resume": boolProp},
 	EventLaunchResult: {"kind": kindEnu, "attempt_id": slugProp, "provider": providerEnu, "backend": backendEnu, "requested_agents": agentCount,
 		"resume": boolProp, "outcome": enum(OutcomeSuccess, OutcomeFailure, OutcomePartial), "failure_category": failureEnu,

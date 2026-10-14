@@ -55,7 +55,7 @@ func main() {
 	foreground := flag.Bool("foreground", false, "Run in foreground (used internally)")
 	stop := flag.Bool("stop", false, "Stop a running tray instance")
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
-	devMode := flag.Bool("dev", false, "Development mode: skip license check")
+	devMode := flag.Bool("dev", false, "Deprecated, no effect: Coral has no licence check, and only builds made with -tags dev skip the EULA")
 	debugMode := flag.Bool("debug", false, "Enable debug logging to ~/.coral/tray.log")
 	defaultBackend := "tmux"
 	if runtime.GOOS == "windows" {
@@ -119,9 +119,9 @@ func main() {
 	if *noBrowser {
 		args = append(args, "--no-browser")
 	}
-	if *devMode {
-		args = append(args, "--dev")
-	}
+	// -dev is accepted for old launchers but not passed on: coral has no --dev flag and
+	// would refuse to start (#3221).
+	_ = *devMode
 	if *debugMode {
 		args = append(args, "--debug")
 	}

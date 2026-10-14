@@ -1,6 +1,6 @@
 # Settings & System API
 
-System-level endpoints for settings, health checks, CLI tools, filesystem browsing, tags, network info, license management, authentication, and team operations.
+System-level endpoints for settings, health checks, CLI tools, filesystem browsing, tags, network info, authentication, and team operations.
 
 ## Settings
 
@@ -107,8 +107,6 @@ Returns server startup status, version, and tier information.
 {
   "startup_complete": true,
   "version": "1.0.0",
-  "store_url": "https://store.coralai.ai",
-  "skip_license": false,
   "tier_name": "prod"
 }
 ```
@@ -330,93 +328,6 @@ Returns a 256x256 PNG QR code image encoding the given URL.
 
 ---
 
-## License & Activation
-
-### Activate License
-
-```
-POST /api/license/activate
-```
-
-**Request Body:**
-```json
-{"license_key": "XXXX-XXXX-XXXX-XXXX"}
-```
-
-**Response (success):**
-```json
-{
-  "valid": true,
-  "customer_name": "John Doe",
-  "customer_email": "john@example.com",
-  "activated_at": "2024-03-01T10:00:00Z"
-}
-```
-
-**Response (failure):**
-```json
-{"valid": false, "error": "Invalid license key"}
-```
-
-Locks the license to the machine via hardware fingerprinting. Backend: Lemon Squeezy API (10-second timeout).
-
-### License Status
-
-```
-GET /api/license/status
-```
-
-**Response (licensed):**
-```json
-{
-  "valid": true,
-  "activated": true,
-  "customer_name": "John Doe",
-  "customer_email": "john@example.com",
-  "product_name": "Coral",
-  "activated_at": "2024-03-01T10:00:00Z",
-  "last_validated": "2024-03-25T15:30:00Z",
-  "machine_id": "abc123def456",
-  "days_until_revalidation": 5,
-  "trial_ends_at": "2024-04-01T00:00:00Z"
-}
-```
-
-**Response (unlicensed):**
-```json
-{"valid": false, "activated": false}
-```
-
-Revalidation window: 7 days. Offline grace period: 30 days.
-
-### Deactivate License
-
-```
-POST /api/license/deactivate
-```
-
-Removes the license file and frees the machine slot.
-
-**Response:** `{"ok": true}` or `{"ok": false, "error": "..."}`
-
-### License Webhook
-
-```
-POST /api/license/webhook
-```
-
-Receives Lemon Squeezy webhook notifications. Authenticated via HMAC-SHA256 signature (`X-Signature` header). Body size limit: 64 KB.
-
-**Handled events:**
-- `license_key.revoked` — Revokes license locally
-- `subscription_expired` — Marks license invalid
-- `subscription_cancelled` — Revokes immediately
-- `subscription_created` / `subscription_updated` — Triggers revalidation
-
-**Config:** Set webhook secret via `CORAL_LS_WEBHOOK_SECRET` environment variable.
-
----
-
 ## Authentication
 
 ### Auth Page
@@ -591,16 +502,8 @@ Jobs expire after 10 minutes (`404` after expiry).
 
 ## Middleware
 
-### License Middleware
-
-When `config.LicenseRequired()` is true, gates all `/api/*` paths except:
-- `/api/license/*`, `/api/health`, `/api/system/status`
-- `/static/*`, `/`
-
-Returns `403 Forbidden` if license is invalid.
-
 ### API Key Middleware
 
 - Localhost connections bypass authentication
 - Remote connections require a valid API key (header) or session cookie
-- Ungated paths: `/api/license/*`, `/static/*`
+- Ungated paths: `/static/*`

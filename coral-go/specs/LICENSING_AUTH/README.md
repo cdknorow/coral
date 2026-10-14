@@ -1,5 +1,10 @@
 # Licensing & Authentication Strategy
 
+> **Superseded (#3221, October 2026).** Coral has no licence: the Lemon Squeezy licence,
+> its activation API and the demo limits were removed, and Coral Hub (app.coralai.ai) is the
+> paid path. The authentication parts below are historical context only; see
+> `agent_docs/auth.md` and `agent_docs/settings-system.md` for what is current.
+
 ## Overview
 
 Coral serves three distinct deployment models, each with different auth and

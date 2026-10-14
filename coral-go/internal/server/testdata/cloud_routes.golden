@@ -66,7 +66,6 @@ GET /api/folder-tags view
 GET /api/folder-tags/{folderName} view
 GET /api/goals/metrics view
 GET /api/health view
-GET /api/license/status never
 GET /api/scheduled/jobs view
 GET /api/scheduled/jobs/{jobID} view
 GET /api/scheduled/jobs/{jobID}/runs view
@@ -212,9 +211,6 @@ POST /api/cloud/connect never
 POST /api/cloud/disconnect never
 POST /api/folder-tags/{folderName} never
 POST /api/indexer/refresh never
-POST /api/license/activate never
-POST /api/license/deactivate never
-POST /api/license/webhook never
 POST /api/notifications never
 POST /api/scheduled/jobs never
 POST /api/scheduled/jobs/{jobID}/toggle never

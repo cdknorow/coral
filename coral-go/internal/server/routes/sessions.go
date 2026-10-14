@@ -37,7 +37,6 @@ import (
 	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/jsonl"
-	"github.com/cdknorow/coral/internal/license"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
@@ -63,7 +62,6 @@ type SessionsHandler struct {
 	backend      ptymanager.TerminalBackend // nil = use tmux directly
 
 	boardHandler  *BoardHandler          // for sleep/wake board pausing
-	licenseMgr    *license.Manager       // for runtime trial limit checks
 	schedStore    *store.ScheduleStore   // for active runs in websocket
 	notifications *NotificationStore     // for UI notifications via websocket
 	teamStore     *store.TeamStore       // for team persistence
@@ -155,11 +153,6 @@ func (h *SessionsHandler) SetBoardHandler(bh *BoardHandler) {
 	h.boardHandler = bh
 }
 
-// SetLicenseManager sets the license manager for runtime trial limit checks.
-func (h *SessionsHandler) SetLicenseManager(lm *license.Manager) {
-	h.licenseMgr = lm
-}
-
 // SetNotificationStore sets the notification store for WebSocket delivery.
 func (h *SessionsHandler) SetNotificationStore(ns *NotificationStore) {
 	h.notifications = ns
@@ -178,18 +171,6 @@ func (h *SessionsHandler) SetTeamStore(ts *store.TeamStore) {
 // SetTokenStore sets the token usage store for tracking.
 func (h *SessionsHandler) SetTokenStore(ts *store.TokenUsageStore) {
 	h.tokenStore = ts
-}
-
-// effectiveMaxAgents returns the max concurrent agents.
-// Uses compile-time tier limits only (beta/dropboxers). Trial users with
-// card on file get full access — no runtime trial limits.
-func (h *SessionsHandler) effectiveMaxAgents() int {
-	return h.cfg.MaxLiveAgents
-}
-
-// effectiveMaxTeams returns the max concurrent teams.
-func (h *SessionsHandler) effectiveMaxTeams() int {
-	return h.cfg.MaxLiveTeams
 }
 
 // getDiffMode reads the git_diff_mode from global user settings.
@@ -2823,10 +2804,10 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	// An awake agent whose own terminal is gone (it crashed or was closed) restarts the
 	// same way: a fresh terminal in its working directory, never another agent's pane
 	// (#3213; before, the restart answered terminal_gone until the agent showed asleep).
-	fresh, terminalGone := sleeping, false
+	fresh := sleeping
 	if fresh == nil && storedSession != nil && storedSession.WorkingDir != "" {
 		if pane, err := h.terminal.FindSession(ctx, name, agentType, body.SessionID); err == nil && pane == nil {
-			fresh, terminalGone = storedSession, true
+			fresh = storedSession
 		}
 	}
 
@@ -2837,14 +2818,6 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	var workdir, target string
 	usePTY := false
 	if fresh != nil {
-		if h.effectiveMaxAgents() > 0 && !terminalGone { // a gone terminal's agent is already counted: it replaces itself
-			if count, err := h.ss.CountActiveLiveSessions(ctx); err == nil && count >= h.effectiveMaxAgents() {
-				writeJSON(w, http.StatusForbidden, map[string]string{
-					"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
-				})
-				return
-			}
-		}
 		workdir = fresh.WorkingDir
 		usePTY = fresh.Backend != nil && *fresh.Backend == "pty" && h.backend != nil
 		if usePTY {
@@ -3130,17 +3103,6 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Edition limits: check max active (non-sleeping) agents before resuming
-	if h.effectiveMaxAgents() > 0 {
-		count, err := h.ss.CountActiveLiveSessions(ctx)
-		if err == nil && count >= h.effectiveMaxAgents() {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
-			})
-			return
-		}
-	}
-
 	if namesNoSession(name, body.CurrentSessionID) {
 		writeSessionIDRequired(w)
 		return
@@ -3425,18 +3387,6 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Edition limits: check max active (non-sleeping) agents
-	if h.effectiveMaxAgents() > 0 {
-		count, err := h.ss.CountActiveLiveSessions(r.Context())
-		if err == nil && count >= h.effectiveMaxAgents() {
-			attempt.Finish(tracking.OutcomeFailure, tracking.FailLimitReached, 0, 1)
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
-			})
-			return
-		}
-	}
-
 	// Resolve model: request wins, else per-type default from settings.
 	effectiveModel := h.resolveModel(r.Context(), body.AgentType, body.Model)
 
@@ -3594,30 +3544,6 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-
-	// Edition limits: check max live teams
-	if h.effectiveMaxTeams() > 0 {
-		teamCount, err := h.ss.CountLiveTeams(ctx)
-		if err == nil && teamCount >= h.effectiveMaxTeams() {
-			attempt.Finish(tracking.OutcomeFailure, tracking.FailLimitReached, 0, len(body.Agents))
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": fmt.Sprintf("Demo limit reached: maximum %d team allowed", h.effectiveMaxTeams()),
-			})
-			return
-		}
-	}
-
-	// Edition limits: check max active (non-sleeping) agents
-	if h.effectiveMaxAgents() > 0 {
-		agentCount, err := h.ss.CountActiveLiveSessions(ctx)
-		if err == nil && agentCount+len(body.Agents) > h.effectiveMaxAgents() {
-			attempt.Finish(tracking.OutcomeFailure, tracking.FailLimitReached, 0, len(body.Agents))
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
-			})
-			return
-		}
-	}
 
 	// Create git worktree if requested
 	workingDir := body.WorkingDir
@@ -5739,25 +5665,10 @@ func (h *SessionsHandler) Wake(w http.ResponseWriter, r *http.Request) {
 	// Find sleeping sessions on this board and relaunch
 	allLive, _ := h.ss.GetAllLiveSessions(ctx)
 
-	// Count currently active (non-sleeping) agents for limit enforcement
-	activeCount := 0
-	for _, ls := range allLive {
-		if ls.IsSleeping == 0 {
-			activeCount++
-		}
-	}
-
 	relaunched := 0
 	for _, ls := range allLive {
 		if ls.IsSleeping != 1 || ls.IsArchived == 1 || ls.BoardName == nil || *ls.BoardName != boardName {
 			continue // archived agents stay asleep on team wake; they wake only one at a time
-		}
-
-		// Edition limits: stop waking if we'd exceed max live agents
-		if h.effectiveMaxAgents() > 0 && activeCount+relaunched >= h.effectiveMaxAgents() {
-			log.Printf("[wake] limit reached (%d/%d) — skipping remaining agents on board %s",
-				activeCount+relaunched, h.effectiveMaxAgents(), boardName)
-			break
 		}
 
 		// Relaunch the session
@@ -5980,17 +5891,6 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 	if sess.IsSleeping != 1 {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Session is not sleeping"})
 		return
-	}
-
-	// Edition limits: check max live agents before waking
-	if h.effectiveMaxAgents() > 0 {
-		activeCount, _ := h.ss.CountActiveLiveSessions(ctx)
-		if activeCount >= h.effectiveMaxAgents() {
-			writeJSON(w, http.StatusForbidden, map[string]string{
-				"error": fmt.Sprintf("Demo limit reached: maximum %d concurrent agents allowed", h.effectiveMaxAgents()),
-			})
-			return
-		}
 	}
 
 	if err := h.wakeExistingSession(ctx, sess); err != nil {

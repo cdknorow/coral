@@ -52,8 +52,8 @@ export function applyCloudSettingsDialog() {
         const ids = row.flatMap(el => Array.from(el.querySelectorAll('[id]')).map(c => c.id));
         if (!ids.some(id => SHOWN_CONTROLS.has(id))) for (const el of row) el.hidden = true;
     }
-    const lic = document.getElementById('license-section');
-    if (lic) lic.hidden = true;
+    const about = document.getElementById('about-section');
+    if (about) about.hidden = true;
     const note = document.createElement('p');
     note.className = 'settings-hint settings-cloud-note';
     note.textContent = ('Settings for this account are saved on the hub. Machine settings (working directory, remote access, API key, CLI paths, telemetry) are set on the machine in Coral.');

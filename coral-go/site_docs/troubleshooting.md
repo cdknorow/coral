@@ -28,9 +28,9 @@ Remote access is off by default and applies only after a restart. See [Remote ac
 
 Another Coral or program holds the port (default 8420). Use `--port`, and add `--home` with a different directory if you want a separate instance.
 
-## A pricing or supporter page appeared
+## A "Connect to Coral Hub" screen appeared
 
-Coral is free and fully unlocked. A supporter reminder can appear on some launches. It is shown at most once per Coral start, so reloading the dashboard does not bring it back. Choose **Continue Free** to go to the dashboard. It is never shown once a license is activated.
+That is the one-time first-launch screen. Choose **Skip for now** (or press Escape) to keep Coral local: nothing is sent to Coral Hub until you connect, and the screen does not come back. **Settings › About › Connect to Coral Hub…** reopens it. Coral is free, with no licence and no usage limits.
 
 ## Agents do not post to the message board
 

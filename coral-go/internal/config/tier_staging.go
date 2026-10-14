@@ -4,15 +4,12 @@ package config
 
 // Build tier: Staging
 // Built with: go build -tags staging
-// Shows EULA and license pages (like prod) but uses the test/sandbox store.
+// Same as prod: requires the EULA and checks for a newer release.
+// Coral has no licence and no usage limits in any tier (#3221): the EULA is the only difference.
 var (
-	TierSkipEULA    = false
-	TierSkipLicense = false
-	TierDemoLimits  = false
-	TierName        = "staging"
-	TierMaxTeams    = 0
-	TierMaxAgents   = 0
-
-	// Test store (Lemon Squeezy sandbox) — single product with built-in free trial
-	StoreURL = "https://store.coralai.ai/checkout/buy/44df39dc-9891-4094-8b77-f73c1d2596ae"
+	TierSkipEULA         = false
+	TierChecksForUpdates = true
+	TierName             = "staging"
+	// The Coral Hub this build offers to connect to (#3221); nothing is sent until the user connects.
+	TierDefaultCloudURL = "https://app.coralai.ai"
 )

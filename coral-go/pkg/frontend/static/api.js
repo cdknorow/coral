@@ -14,7 +14,7 @@
  *   - /api/settings, /api/settings/default-prompts (user preferences)
  *   - /api/themes*, /api/tags, /api/folder-tags, /api/views (hub UI data)
  *   - /api/webhooks*, /api/scheduled/*, /api/workflows (hub automation)
- *   - /api/license/*, /api/system/* (licence, update check, privacy, API key,
+ *   - /api/system/* (update check, privacy, API key,
  *     network info, database security, editors; system/status and
  *     system/cli-check are local unless launching on a remote, see WP6)
  *   - /api/servers* (the remote registry itself) and /api/remote/* (proxy)

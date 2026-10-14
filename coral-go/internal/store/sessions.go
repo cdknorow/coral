@@ -1005,15 +1005,6 @@ func (s *SessionStore) ResolveByPIDs(ctx context.Context, pids []int) (*LiveSess
 	return &ls, nil
 }
 
-// CountLiveTeams returns the number of distinct teams (board_name values),
-// including both active and sleeping teams.
-func (s *SessionStore) CountLiveTeams(ctx context.Context) (int, error) {
-	var count int
-	err := s.db.GetContext(ctx, &count,
-		"SELECT COUNT(DISTINCT board_name) FROM live_sessions WHERE board_name IS NOT NULL AND board_name != '' AND status = 'active'")
-	return count, err
-}
-
 // CountBoardSessions returns the number of live sessions on a given board.
 func (s *SessionStore) CountBoardSessions(ctx context.Context, boardName string) (int, error) {
 	var count int

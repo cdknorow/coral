@@ -1250,6 +1250,9 @@
     .welcome { padding: 30px 18px; }
     .welcome-header { margin-bottom: 22px; }
     .welcome-launch-list { grid-template-columns: 1fr; }
+    .editions-home-list { grid-template-columns: 1fr; }
+    .editions-modal .editions-content { width: 100%; max-width: calc(100vw - 32px); padding: 20px; }
+    .editions-actions .btn { min-height: 44px; }
 
     /* Welcome team cards: stack vertically on mobile */
     .welcome-team-presets {

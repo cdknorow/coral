@@ -99,7 +99,7 @@
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg>
                         Stop all auto-accept
                     </button>
-                    <div id="license-tier-badge" class="overflow-menu-tier" style="display:none"></div>
+                    <div id="tier-badge" class="overflow-menu-tier" style="display:none"></div>
                     <hr class="overflow-menu-divider">
                     <!-- Webhooks hidden until thoroughly tested
                     <button class="overflow-menu-item" onclick="closeTopBarSettings(); showWebhookModal()">
@@ -180,6 +180,25 @@
                             <span class="material-icons welcome-launch-arrow">arrow_forward</span>
                         </button>
                     </div>
+                    <!-- Coral Hub (#3221): hidden until settings load; the user can hide it -->
+                    <section id="editions-home" class="editions-home" aria-labelledby="editions-home-title" hidden>
+                        <div class="editions-home-head">
+                            <h2 id="editions-home-title">Use Coral from anywhere</h2>
+                            <button type="button" class="editions-home-hide" data-editions="hide-home" aria-label="Hide this section" title="Hide this section"><span class="material-icons" aria-hidden="true">close</span></button>
+                        </div>
+                        <div class="editions-home-list">
+                            <button type="button" class="editions-home-item" data-editions="home-hub">
+                                <span class="editions-home-icon material-icons" aria-hidden="true">cloud</span>
+                                <span class="editions-home-copy"><strong>Coral Hub</strong><span>Your agents in any browser, including your phone, at app.coralai.ai. Invite-only beta.</span></span>
+                                <span class="editions-home-arrow material-icons" aria-hidden="true">arrow_forward</span>
+                            </button>
+                            <button type="button" class="editions-home-item" data-editions="home-own">
+                                <span class="editions-home-icon material-icons" aria-hidden="true">device_hub</span>
+                                <span class="editions-home-copy"><strong>Run your own hub</strong><span>Connect your own machines with <code>coral --hub</code>. Free and self-hosted.</span></span>
+                                <span class="editions-home-arrow material-icons" aria-hidden="true">arrow_forward</span>
+                            </button>
+                        </div>
+                    </section>
                     <nav class="welcome-links" aria-label="Learn more">
                         <a href="https://cdknorow.github.io/coral/" target="_blank" rel="noopener"><span class="material-icons">menu_book</span>Documentation</a>
                         <a href="https://github.com/cdknorow/coral" target="_blank" rel="noopener"><span class="material-icons">code</span>GitHub</a>

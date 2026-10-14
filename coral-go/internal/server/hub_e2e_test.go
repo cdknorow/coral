@@ -1011,28 +1011,20 @@ func TestHubE2E_LaunchOnRemoteOnly(t *testing.T) {
 	assert.Empty(t, hub.backend.ListSessions())
 }
 
-// A remote's own 403 (here: demo limit reached, and a directory that does not
-// exist) is an ordinary answer. It must reach the caller unchanged and must not
-// mark the server "unauthorized" (regression for the proxy mapping every 403 to
-// "remote rejected API key").
+// A remote's own 403 (here: a directory outside what it serves) is an ordinary answer.
+// It must reach the caller unchanged and must not mark the server "unauthorized"
+// (regression for the proxy mapping every 403 to "remote rejected API key").
 func TestHubE2E_Remote403IsNotAKeyFailure(t *testing.T) {
 	env := newE2EEnv(t)
 	hub := newE2EHub(t, env, "", true)
-	a := newE2ERemote(t, "a", func(c *config.Config) { c.MaxLiveAgents = 1 })
+	a := newE2ERemote(t, "a", nil)
 	require.Equal(t, 201, hub.register("a", a.url(), a.key(), true).Code)
 
-	hub.launchTerminal("a", a.work, "first")
-	code, body := hub.do("POST", "/api/remote/a/api/sessions/launch", map[string]any{"working_dir": a.work, "agent_type": "terminal"})
-	assert.Equal(t, 403, code, string(body))
-	assert.Contains(t, string(body), "Demo limit")
-	assert.NotContains(t, string(body), "rejected API key")
-
-	code, body = hub.do("GET", "/api/remote/a/api/filesystem/list?path="+url.QueryEscape(filepath.Join(a.dir, "does-not-exist")), nil)
+	code, body := hub.do("GET", "/api/remote/a/api/filesystem/list?path="+url.QueryEscape(filepath.Join(a.dir, "does-not-exist")), nil)
 	assert.Equal(t, 403, code, string(body))
 	assert.NotContains(t, string(body), "rejected API key")
 
 	assert.Equal(t, "online", hub.serverStatus("a"))
-	assert.Equal(t, 1, a.liveCount())
 }
 
 // ── 8. offline / online ─────────────────────────────────────────────

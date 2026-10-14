@@ -86,6 +86,7 @@ wait_for_server() {
 TMPDIR_STRESS="$(mktemp -d)"
 export CORAL_DATA_DIR="$TMPDIR_STRESS"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job (it would run a real agent)
+export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 # Synthetic provider histories only; never scan the operator Codex sessions.
 export CODEX_HOME="$TMPDIR_STRESS/codex"
 mkdir -p "$TMPDIR_STRESS/home"

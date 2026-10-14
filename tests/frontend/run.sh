@@ -54,6 +54,8 @@ export CODEX_HOME="$CORAL_HOME/codex"
 export CORAL_TELEMETRY_DISABLED=1
 # No demo workflow/scheduled job: it would run a real agent and pop an alert mid-suite.
 export CORAL_NO_DEMO_SEED=1
+# No first-launch 'ways to run Coral' screen over every suite's page (#3221).
+export CORAL_NO_WELCOME=1
 mkdir -p "$CODEX_HOME/sessions"
 
 CORAL_BIN="${CORAL_BIN:-}"

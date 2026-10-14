@@ -17,7 +17,8 @@ import { sendCommand, sendCommandWithTeam, sendBoardProtocol, resendInputPrompt,
 import { selectLiveSession, selectHistorySession, editAndResubmit, renameAgent, setAgentIcon, showEmojiPicker } from './sessions.js';
 import { buildSessionTooltip, showTeamDetails, hideTeamDetails, toggleGroupCollapse, killGroup, killBoard, toggleTeamSleep, toggleAgentSleep, toggleAgentArchive, toggleArchivedSection, sleepAllAgents, wakeAllAgents, shareAgentTeam, saveTeamFromSidebar, killSessionDirect, dismissKilledSession, dismissBoardKilled, showInfoDirect, attachDirect, restartDirect, showConfirmModal, hideConfirmModal, showPromptModal, hidePromptModal, showAlertModal, hideAlertModal, copyFolderPath, moveGroupUp, moveGroupDown, toggleGroupByTeam, expandSleepingGroup, setBoardAccentColor, moveSessionUp, moveSessionDown, showTeamTokenUsage, distillTeamKnowledge, showTeamKnowledge, renderLiveSessions, toggleSessionSummary, applySessionSummaryPref, filterLiveAgents, focusAgentSearch, agentSearchKey, toggleShowServer, toggleGroupByServer, renderServerSwitcher } from './render.js';
 import { syncPaneWidth, refreshCapture } from './capture.js';
-import { loadSettings, trackSupporterClick } from './settings_core.js';
+import { loadSettings } from './settings_core.js';
+import { initEditions } from './editions.js';
 import './modal_chrome.js'; // modal backdrop/Escape/Tab handling for every dialog (#3140)
 import { toggleBrowser, browserNavigateTo, browserNavigateUp, browserSelectRecent } from './browser.js';
 import { initSidebarResize, initTaskBarResize, initBoardChatResize, initSidebarCollapse, switchJobsSubtab, initAgenticPanelCollapse, toggleAgenticPanel, initAgenticBlockResize, initAgenticBlockCollapse, toggleSidebarRail, initSidebarRail } from './sidebar.js';
@@ -86,9 +87,9 @@ const {
     showResumeModal, hideResumeModal, resumeLaunchNew, showSettingsModal, hideSettingsModal, applySettings,
     toggleFlag, showAddAgentToBoard, hideAddAgentBoardModal, launchAgentToBoard, launchTerminalToBoard, launchDefaultAgent,
     showAddStandaloneAgent, launchStandaloneTerminal, exportPersonas, importPersonas, exportTeamTemplates, importTeamTemplates,
-    showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts, deactivateLicense,
+    showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts,
 } = lazyFns(loadModals, [
-    'showLaunchModal', 'hideLaunchModal', 'launchSession', 'showInfoModal', 'hideInfoModal', 'copyInfoCommand', 'showResumeModal', 'hideResumeModal', 'resumeLaunchNew', 'showSettingsModal', 'hideSettingsModal', 'applySettings', 'toggleFlag', 'showAddAgentToBoard', 'hideAddAgentBoardModal', 'launchAgentToBoard', 'launchTerminalToBoard', 'launchDefaultAgent', 'showAddStandaloneAgent', 'launchStandaloneTerminal', 'exportPersonas', 'importPersonas', 'exportTeamTemplates', 'importTeamTemplates', 'showDefaultPromptsModal', 'hideDefaultPromptsModal', 'resetDefaultPrompt', 'saveDefaultPrompts', 'deactivateLicense']);
+    'showLaunchModal', 'hideLaunchModal', 'launchSession', 'showInfoModal', 'hideInfoModal', 'copyInfoCommand', 'showResumeModal', 'hideResumeModal', 'resumeLaunchNew', 'showSettingsModal', 'hideSettingsModal', 'applySettings', 'toggleFlag', 'showAddAgentToBoard', 'hideAddAgentBoardModal', 'launchAgentToBoard', 'launchTerminalToBoard', 'launchDefaultAgent', 'showAddStandaloneAgent', 'launchStandaloneTerminal', 'exportPersonas', 'importPersonas', 'exportTeamTemplates', 'importTeamTemplates', 'showDefaultPromptsModal', 'hideDefaultPromptsModal', 'resetDefaultPrompt', 'saveDefaultPrompts']);
 // Called from the home view's buttons before any dialog has loaded; modals.js sets them on window itself.
 Object.assign(window, lazyWindowFns(loadModals, ['_selectLaunchType', '_showMobileConnectModal']));
 import { initCloud } from './cloud.js';
@@ -121,8 +122,6 @@ Object.assign(window, {
     // modals
     showSettingsModal, hideSettingsModal, applySettings,
     showDefaultPromptsModal, hideDefaultPromptsModal, resetDefaultPrompt, saveDefaultPrompts,
-    _deactivateLicense: deactivateLicense,
-    _trackSupporterClick: trackSupporterClick,
     showLaunchModal, hideLaunchModal, launchSession, toggleFlag,
     showInfoModal, hideInfoModal, copyInfoCommand,
     showResumeModal, hideResumeModal, resumeLaunchNew,
@@ -746,7 +745,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     await initCloud();   // no-op unless the page's boot data says mode "cloud"
-    loadSettings().finally(() => markReady('settings'));
+    loadSettings().then(initEditions).catch(e => console.error('ways to run Coral:', e)).finally(() => markReady('settings'));
     initServersUi();   // reveals hub-only entry points when /api/health reports hub:true
 
     // Single-agent popout mode (/agent/{uuid}): chrome-free workspace only.

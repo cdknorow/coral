@@ -41,15 +41,15 @@ LDFLAGS="$LDFLAGS -X github.com/cdknorow/coral/internal/config.PostHogKey=$POSTH
 BUILD_TAGS="fts5"
 if [ "$CORAL_TIER" = "dev" ]; then
     BUILD_TAGS+=",dev"
-    echo "==> Tier: dev (EULA skipped, license skipped, no demo limits)"
+    echo "==> Tier: dev (EULA skipped)"
 elif [ "$CORAL_TIER" = "dropboxers" ]; then
     BUILD_TAGS+=",dropboxers"
-    echo "==> Tier: dropboxers (EULA required, license skipped, 3 teams / 12 agents)"
+    echo "==> Tier: dropboxers (EULA skipped)"
 elif [ "$CORAL_TIER" = "beta" ]; then
     BUILD_TAGS+=",beta"
-    echo "==> Tier: beta (EULA required, license skipped, demo limits enforced)"
+    echo "==> Tier: beta (EULA required, same as prod)"
 else
-    echo "==> Tier: prod (EULA required, license required)"
+    echo "==> Tier: prod (EULA required)"
 fi
 
 rm -rf "$APP_DIR" "$DIST_DIR/coral-arm64" "$DIST_DIR/coral-amd64"

@@ -4,15 +4,12 @@ package config
 
 // Build tier: Prod (default)
 // Built with: go build (no tags)
-// Requires EULA and license. Demo limits controlled by LS plan at runtime.
+// Requires the EULA; checks GitHub for a newer release at startup.
+// Coral has no licence and no usage limits in any tier (#3221): the EULA is the only difference.
 var (
-	TierSkipEULA    = false
-	TierSkipLicense = false
-	TierDemoLimits  = false
-	TierName        = "prod"
-	TierMaxTeams    = 0
-	TierMaxAgents   = 0
-
-	// Live store (Lemon Squeezy) — single product with built-in free trial
-	StoreURL = "https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6"
+	TierSkipEULA         = false
+	TierChecksForUpdates = true
+	TierName             = "prod"
+	// The Coral Hub this build offers to connect to (#3221); nothing is sent until the user connects.
+	TierDefaultCloudURL = "https://app.coralai.ai"
 )

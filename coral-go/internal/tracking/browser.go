@@ -11,11 +11,10 @@ import (
 // POST /api/tracking/event. Server lifecycle events (launches, tasks, first_*
 // milestones) are emitted only by the server and are rejected there.
 var BrowserEvents = map[string]bool{
-	EventSupporterCheckoutClicked: true,
-	EventDashboardReady:           true,
-	EventDashboardActiveDay:       true,
-	EventDashboardFailed:          true,
-	EventPromptSubmitRequested:    true,
+	EventDashboardReady:        true,
+	EventDashboardActiveDay:    true,
+	EventDashboardFailed:       true,
+	EventPromptSubmitRequested: true,
 }
 
 const (
@@ -43,7 +42,6 @@ var (
 //   - dashboard_failed: at most maxFailuresPerCode per code per run.
 //   - prompt_submit_requested: once per install (a milestone; opt-out and
 //     delivery failure do not consume it).
-//   - supporter_checkout_clicked: every click.
 func TrackBrowserEvent(event string, props map[string]string) {
 	if !BrowserEvents[event] {
 		return

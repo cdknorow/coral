@@ -1055,6 +1055,57 @@ body.panel-dragging .sidebar {
 .welcome-links a:hover .material-icons,
 .welcome-links button:hover .material-icons { color: var(--accent); }
 
+/* More ways to run Coral (#3221): a quiet section under the launch cards, never above them */
+.editions-home { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--border); }
+.editions-home[hidden] { display: none; }
+.editions-home-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.editions-home-head h2 { margin: 0; color: var(--text-secondary); font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.editions-home-hide { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: 6px; background: none; color: var(--text-muted); cursor: pointer; }
+.editions-home-hide:hover, .editions-home-hide:focus-visible { color: var(--text-primary); background: var(--bg-hover); }
+.editions-home-hide .material-icons { font-size: 18px; }
+@media (pointer: coarse), (max-width: 1024px) { .editions-home-hide { width: 44px; height: 44px; margin: -8px -8px -8px 0; } }
+.editions-home-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.editions-home-item { position: relative; display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 14px 40px 14px 14px; border: 1px solid var(--border); border-radius: 12px; background: transparent; color: var(--text-secondary); font-family: inherit; text-align: left; text-decoration: none; cursor: pointer; transition: border-color .15s ease, background .15s ease; }
+.editions-home-item:hover, .editions-home-item:focus-visible { border-color: var(--border-light); background: var(--bg-hover); }
+.editions-home-icon { flex-shrink: 0; color: var(--text-muted); font-size: 20px; }
+.editions-home-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.editions-home-copy strong { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.editions-home-copy span { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.editions-home-copy code, .editions-content code { white-space: nowrap; padding: 0 4px; border-radius: 4px; background: var(--bg-tertiary); color: var(--text-primary); font-size: .95em; }
+.editions-home-arrow { position: absolute; top: 14px; right: 14px; color: var(--text-muted); font-size: 17px; }
+.editions-home-item:hover .editions-home-arrow { color: var(--accent); }
+
+/* The first-launch "Connect to Coral Hub" screen */
+.editions-modal .editions-content { width: 520px; gap: 0; }
+.editions-title { margin: 0 0 6px; color: var(--text-primary); font-size: 20px; line-height: 1.25; }
+.editions-sub { margin: 0 0 18px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.editions-cloud { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-primary); }
+.editions-status { color: var(--text-primary); font-size: 14px; line-height: 1.45; }
+.editions-code { color: var(--text-secondary); font-size: 13px; }
+.editions-code[hidden], .editions-mode[hidden], .editions-cloud [hidden] { display: none; }
+.editions-code a { color: var(--accent); word-break: break-all; }
+.editions-usercode { margin-top: 6px; color: var(--text-primary); font: 600 24px/1.2 var(--font-mono, monospace); letter-spacing: .12em; user-select: all; }
+.editions-cloud-actions { display: flex; gap: 8px; }
+.editions-cloud-actions:not(:has(> :not([hidden]))) { display: none; }
+.cloud-command-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cloud-command-row[hidden] { display: none; }
+.cloud-command-row code { padding: 4px 8px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-primary); font-size: 13px; user-select: all; }
+.editions-mode { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.editions-mode label { color: var(--text-primary); font-size: 13px; font-weight: 500; }
+.editions-auto-accept { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.editions-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 18px; }
+.editions-actions-spacer { flex: 1; }
+.editions-actions .btn.editions-own { padding-left: 0; padding-right: 0; background: none; border-color: transparent; box-shadow: none; color: var(--accent); }
+.editions-actions .btn.editions-own:hover, .editions-actions .btn.editions-own:focus-visible { background: none; text-decoration: underline; }
+.editions-steps { margin: 0 0 16px; padding-left: 20px; color: var(--text-secondary); font-size: 14px; line-height: 1.55; }
+.editions-steps li + li { margin-top: 8px; }
+.editions-guide { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; color: var(--accent); font-size: 13px; text-decoration: none; }
+.editions-guide:hover { text-decoration: underline; }
+.editions-guide .material-icons { font-size: 15px; }
+.editions-actions { margin-top: 20px; }
+.editions-modal .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.settings-editions-btn { margin-top: 10px; }
+
 /* ── Resize Handle Grip Pattern ────────────────────────────── */
 
 .task-bar-resize-handle::after,

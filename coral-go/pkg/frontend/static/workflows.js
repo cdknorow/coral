@@ -97,11 +97,6 @@ export async function launchWorkflowAgent() {
             }),
         });
 
-        if (resp.status === 403) {
-            showToast('Demo limit reached — stop existing sessions first', true);
-            return;
-        }
-
         const result = await resp.json();
         if (result.error) {
             showToast(result.error, true);
@@ -169,7 +164,6 @@ ${wfJSON}
             }),
         });
 
-        if (resp.status === 403) { showToast('Demo limit reached — stop existing sessions first', true); return; }
         const result = await resp.json();
         if (result.error) { showToast(result.error, true); return; }
 

@@ -1,11 +1,10 @@
 /* Settings and theme, loaded with the page (#3140). loadSettings() runs at
- * startup and applies the theme; the theme follows the OS in "system" mode; the
- * supporter-link helpers run inside links that open at once. Everything else of
+ * startup and applies the theme; the theme follows the OS in "system" mode.
+ * Everything else of
  * the settings, launch and team dialogs (modals.js) loads the first time one
  * opens. */
 
 import { state } from './state.js';
-import { escapeHtml, escapeAttr } from './utils.js';
 import { updateTerminalTheme } from './xterm_renderer.js';
 
 export function settingBool(value, fallback = true) {
@@ -102,82 +101,28 @@ export async function loadSettings() {
         if (!s.custom_theme || s.custom_theme === "GhostV3") {
             state.settings.custom_theme = "Dark";
         }
-        // Load license tier badge in settings dropdown
-        _loadLicenseTierBadge();
+        // A partner build names itself in the settings menu
+        _loadTierBadge();
     } catch (e) {
         console.error("Failed to load settings:", e);
     }
 }
 
-/**
- * Pick the attributed supporter link for one UI surface out of an
- * /api/system/status payload. The server builds these from the same base as
- * store_url, so a store_url override still drives them. Falls back to the raw
- * store_url and then to `fallback`, so a click always has somewhere to go.
- */
-export function supporterURL(statusData, surface, fallback) {
-    return statusData?.supporter_urls?.[surface] || statusData?.store_url || fallback;
-}
-
-/**
- * Report a supporter/store link click to the server, which forwards it to
- * analytics. Fire-and-forget: it must never delay or block opening the link.
- * `surface` is a fixed slug identifying where in the UI the link lives.
- */
-export function trackSupporterClick(surface) {
-    try {
-        const payload = JSON.stringify({ event: 'supporter_checkout_clicked', props: { surface } });
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon('/api/tracking/event', new Blob([payload], { type: 'application/json' }));
-            return;
-        }
-        fetch('/api/tracking/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload,
-            keepalive: true,
-        }).catch(() => {});
-    } catch { /* analytics must never break the link */ }
-}
-
-/** Show license tier (Supporter License / Free) in the settings dropdown. */
-export async function _loadLicenseTierBadge() {
-    const badge = document.getElementById('license-tier-badge');
+/** A partner build's name in the settings menu (Coral for Dropbox); nothing otherwise.
+ *  Coral has no paid licence (#3221). */
+export async function _loadTierBadge() {
+    const badge = document.getElementById('tier-badge');
     if (!badge) return;
     try {
-        // Check if license is skipped for this build tier
-        const statusResp = await fetch('/api/system/status');
-        if (statusResp.ok) {
-            const statusData = await statusResp.json();
-            if (statusData.skip_license) {
-                if (statusData.tier_name === 'dropboxers') {
-                    badge.innerHTML = '<span class="tier-label tier-pro">Coral For Dropbox</span>';
-                    badge.style.display = '';
-                } else {
-                    badge.style.display = 'none';
-                }
-                return;
-            }
-        }
-        const resp = await fetch('/api/license/status');
+        const resp = await fetch('/api/system/status');
         if (!resp.ok) return;
         const data = await resp.json();
-        if (data.activated && data.valid) {
-            // Licensed supporter — show the product name.
-            const label = data.product_name || 'Supporter License';
-            badge.innerHTML = `<span class="tier-label tier-pro">${escapeHtml(label)}</span>`;
+        if (data.tier_name === 'dropboxers') {
+            badge.innerHTML = '<span class="tier-label tier-pro">Coral For Dropbox</span>';
+            badge.style.display = '';
         } else {
-            // Free version — fully unlocked; offer to support development.
-            let storeProURL = 'https://store.coralai.ai';
-            try {
-                const sResp = await fetch('/api/system/status');
-                const sData = await sResp.json();
-                storeProURL = supporterURL(sData, 'settings_tier_badge', storeProURL);
-            } catch (_) {}
-            badge.innerHTML = '<span class="tier-label tier-trial">Free</span>' +
-                `<a href="${escapeAttr(storeProURL)}" target="_blank" rel="noopener" onclick="_trackSupporterClick('settings_tier_badge')" style="font-size:11px;color:var(--accent);margin-left:8px;text-decoration:none">Support the developer</a>`;
+            badge.style.display = 'none';
         }
-        badge.style.display = '';
     } catch { /* silent — non-critical */ }
 }
 

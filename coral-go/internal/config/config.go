@@ -67,10 +67,6 @@ type Config struct {
 	// to tick faster than once a second.
 	WSPollInterval time.Duration
 
-	// Edition limits (0 = unlimited)
-	MaxLiveTeams  int
-	MaxLiveAgents int
-
 	// Task dependencies
 	MaxTaskDependencyDepth int
 }
@@ -105,7 +101,7 @@ func Load(dataDir ...string) *Config {
 	}
 
 	cfg := &Config{
-		CloudURL:        strings.TrimSpace(os.Getenv("CORAL_CLOUD_URL")),
+		CloudURL:        CloudURLSetting(os.LookupEnv("CORAL_CLOUD_URL")),
 		coralDir:        coralDir,
 		DBPath:          filepath.Join(coralDir, "sessions.db"),
 		DBBusyTimeoutMS: 5000,
@@ -131,31 +127,29 @@ func Load(dataDir ...string) *Config {
 		MaxTaskDependencyDepth: 3,
 	}
 
-	// Demo limits from build tier (beta) or runtime LS plan (prod)
-	if TierDemoLimits {
-		cfg.MaxLiveTeams = TierMaxTeams
-		cfg.MaxLiveAgents = TierMaxAgents
-	}
-
 	return cfg
 }
 
-// LicenseRequired returns true if license validation should be enforced.
-// False for dev and beta tiers (set at compile time via build tags).
-func (c *Config) LicenseRequired() bool {
-	return !TierSkipLicense
+// CloudURLSetting resolves the Coral Hub origin from a --cloud-url / CORAL_CLOUD_URL value:
+// unset means the build tier's default (https://app.coralai.ai in release builds, none in
+// dev); "", "off", "none", "0" or "false" turn the connector off. A configured hub is only
+// an address: nothing is sent to it until the user connects (#3221).
+func CloudURLSetting(v string, set bool) string {
+	if !set {
+		return TierDefaultCloudURL
+	}
+	v = strings.TrimSpace(v)
+	switch strings.ToLower(v) {
+	case "", "off", "none", "0", "false":
+		return ""
+	}
+	return v
 }
 
 // EULARequired returns true if the EULA acceptance dialog should be shown.
 // False for dev tier (set at compile time via build tags).
 func EULARequired() bool {
 	return !TierSkipEULA
-}
-
-// DemoLimitsEnforced returns true if demo edition limits (2 teams / 8 agents)
-// should be enforced. True for beta tier.
-func DemoLimitsEnforced() bool {
-	return TierDemoLimits
 }
 
 // CoralDir returns the root data directory for all Coral state.

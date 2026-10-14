@@ -4,15 +4,12 @@ package config
 
 // Build tier: Dev
 // Built with: go build -tags dev
-// Skips EULA and license, no demo limits. For internal development only.
+// Skips the EULA. For internal development only.
+// Coral has no licence and no usage limits in any tier (#3221): the EULA is the only difference.
 var (
-	TierSkipEULA    = true
-	TierSkipLicense = true
-	TierDemoLimits  = false
-	TierName        = "dev"
-	TierMaxTeams    = 0
-	TierMaxAgents   = 0
-
-	// Test store (Lemon Squeezy sandbox) — single product with built-in free trial
-	StoreURL = "https://store.coralai.ai/checkout/buy/44df39dc-9891-4094-8b77-f73c1d2596ae"
+	TierSkipEULA         = true
+	TierChecksForUpdates = false
+	TierName             = "dev"
+	// The Coral Hub this build offers to connect to (#3221); nothing is sent until the user connects.
+	TierDefaultCloudURL = ""
 )

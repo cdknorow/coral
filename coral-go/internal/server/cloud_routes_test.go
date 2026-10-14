@@ -95,7 +95,7 @@ func TestCloudAllowlistHasNoDeadOrDangerousRules(t *testing.T) {
 	for _, never := range []string{
 		"GET /api/settings", "PUT /api/settings", "GET /api/system/api-key", "POST /api/system/api-key/regenerate",
 		"GET /api/system/editors",
-		"POST /api/webhooks", "PUT /api/system/database-security", "POST /api/license/activate",
+		"POST /api/webhooks", "PUT /api/system/database-security",
 		"GET /api/cloud/status", "POST /api/cloud/connect", "POST /api/cloud/disconnect", "PUT /api/cloud/max-mode",
 		"POST /api/board/remotes", "PUT /api/agent/ui/x", "DELETE /api/agent/ui/x", "POST /api/agent/artifacts", "GET /api/agent/tasks", "POST /api/workflows", "POST /api/scheduled/jobs",
 	} {

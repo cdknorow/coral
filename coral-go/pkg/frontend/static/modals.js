@@ -19,9 +19,9 @@ import {
     pickerVisible, pickerOptions, serverLabel, launchBlockReason, coerceSelection,
     bareBoardName, postLaunch, waitForLaunched,
 } from './launch_server.js';
-import { settingBool, renderRemoteAccessStatus, supporterURL, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
+import { settingBool, renderRemoteAccessStatus, applyTheme, clearCustomThemeVars, applyCustomThemeByName } from './settings_core.js';
 // Kept on modals.js's surface (app.js and others import them from here).
-export { loadSettings, supporterURL, trackSupporterClick, applyTheme } from './settings_core.js';
+export { loadSettings, applyTheme } from './settings_core.js';
 
 export function toggleFlag(inputId, flag) {
     const input = document.getElementById(inputId);
@@ -436,7 +436,6 @@ function _launchBlocked(server) {
  */
 async function _launchOn(server, path, payload, agentType, { dirInput = null } = {}) {
     const res = await postLaunch(server, path, payload);
-    if (res.demoLimit) { _showDemoLimitModal(res.error); return null; }
     if (!res.ok) {
         if (agentType && res.error.includes('not found') && res.error.includes('CLI')) _showCLINotFoundModal(agentType, server);
         else showToast(res.error, true);
@@ -1157,57 +1156,6 @@ function _showCLINotFoundModal(agentType, server = LOCAL_SERVER) {
     modal.addEventListener('click', (e) => {
         if (e.target.dataset?.action === 'close' || e.target === modal) modal.remove();
         if (e.target.dataset?.action === 'settings') { modal.remove(); showSettingsModal(); }
-    });
-}
-
-async function _showDemoLimitModal(message) {
-    let tierName = '';
-    try {
-        const resp = await fetch('/api/system/status');
-        const data = await resp.json();
-        if (data.tier_name) tierName = data.tier_name;
-    } catch (_e) { /* use default */ }
-
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.style.display = 'flex';
-
-    if (tierName === 'dropboxers') {
-        modal.innerHTML = `
-            <div class="modal-content" style="width:480px;text-align:center">
-                <h3 style="margin-bottom:12px">Beta Limit Reached</h3>
-                <p style="color:var(--text-secondary);font-size:14px;line-height:1.6;margin:0 0 16px">
-                    The Coral For Dropbox beta is limited to:<br>
-                    <strong>12 agents</strong> and <strong>3 agent teams</strong>
-                </p>
-                <p style="color:var(--text-secondary);font-size:13px;margin:0 0 20px">
-                    Please stop existing sessions before launching new ones.
-                </p>
-                <div class="modal-actions" style="justify-content:center">
-                    <button class="btn btn-primary" data-action="close">OK</button>
-                </div>
-            </div>
-        `;
-    } else {
-        modal.innerHTML = `
-            <div class="modal-content" style="width:480px;text-align:center">
-                <h3 style="margin-bottom:12px">Limit Reached</h3>
-                <p style="color:var(--text-secondary);font-size:14px;line-height:1.6;margin:0 0 16px">
-                    ${message || 'You have reached the maximum number of concurrent agents or teams.'}
-                </p>
-                <p style="color:var(--text-secondary);font-size:13px;margin:0 0 20px">
-                    Please stop existing sessions before launching new ones.
-                </p>
-                <div class="modal-actions" style="justify-content:center">
-                    <button class="btn btn-primary" data-action="close">OK</button>
-                </div>
-            </div>
-        `;
-    }
-
-    document.body.appendChild(modal);
-    modal.addEventListener('click', (e) => {
-        if (e.target.dataset?.action === 'close' || e.target === modal) modal.remove();
     });
 }
 
@@ -3156,11 +3104,6 @@ export async function resumeLaunchNew() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         });
-        if (resp.status === 403) {
-            const err = await resp.json();
-            showToast(err.error || "Demo limit reached", true);
-            return;
-        }
         const result = await resp.json();
         if (result.error) {
             showToast(result.error, true);
@@ -3440,8 +3383,8 @@ export async function showSettingsModal() {
         gitPollSelect.value = secs;
     }
 
-    // License status
-    if (!isCloud()) _loadLicenseStatus();
+    // A partner build's name (Coral has no paid licence, #3221)
+    if (!isCloud()) _loadTierBranding();
 
     // App version
     fetch('/api/system/status').then(r => r.json()).then(d => {
@@ -3454,91 +3397,17 @@ export async function showSettingsModal() {
     document.getElementById("settings-modal").style.display = "flex";
 }
 
-async function _loadLicenseStatus() {
-    const container = document.getElementById('license-status-display');
-    if (!container) return;
+async function _loadTierBranding() {
     try {
-        // Hide license section for builds that skip license
-        const statusResp = await fetch('/api/system/status');
-        if (statusResp.ok) {
-            const statusData = await statusResp.json();
-            if (statusData.skip_license) {
-                const licenseSection = document.getElementById('license-section');
-                if (licenseSection) licenseSection.style.display = 'none';
-                const branding = document.getElementById('tier-branding-label');
-                if (branding && statusData.tier_name === 'dropboxers') {
-                    branding.textContent = 'Coral For Dropbox';
-                    branding.style.display = '';
-                }
-                return;
-            }
-        }
-        const resp = await fetch('/api/license/status');
-        if (!resp.ok) throw new Error('fetch failed');
+        const resp = await fetch('/api/system/status');
+        if (!resp.ok) return;
         const data = await resp.json();
-        if (data.activated && data.valid) {
-            const email = escapeHtml(data.customer_email || '');
-            const name = escapeHtml(data.customer_name || '');
-            const activated = data.activated_at ? new Date(data.activated_at).toLocaleDateString() : '';
-            const validated = data.last_validated ? new Date(data.last_validated).toLocaleDateString() : '';
-            const revalDays = data.days_until_revalidation;
-            const revalText = revalDays != null ? `${revalDays} day${revalDays !== 1 ? 's' : ''}` : '';
-            const machineId = escapeHtml(data.machine_id || '');
-
-            const statusLabel = `<span style="color:var(--green, #4caf50);font-weight:600">${escapeHtml(data.product_name || 'Supporter License')}</span>`;
-
-            container.innerHTML = `
-                <dl class="info-grid" style="margin:0">
-                    <dt>Status</dt><dd>${statusLabel}</dd>
-                    ${name ? `<dt>Name</dt><dd>${name}</dd>` : ''}
-                    ${email ? `<dt>Email</dt><dd>${email}</dd>` : ''}
-                    ${activated ? `<dt>Activated</dt><dd>${activated}</dd>` : ''}
-                    ${validated ? `<dt>Last Validated</dt><dd>${validated}</dd>` : ''}
-                    ${revalText ? `<dt>Next Revalidation</dt><dd>${revalText}</dd>` : ''}
-                    ${machineId ? `<dt>Machine ID</dt><dd><code style="font-size:11px;color:var(--text-secondary)">${machineId}</code></dd>` : ''}
-                </dl>
-                <p style="font-size:12px;color:var(--text-secondary);margin:10px 0 0">Thanks for supporting Coral's development. &#10084;&#65039;</p>
-                <button class="btn btn-small" onclick="_deactivateLicense()" style="margin-top:8px;color:var(--text-secondary)">Deactivate</button>`;
-        } else if (data.activated && !data.valid) {
-            container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Your license could not be validated — Coral remains free and fully unlocked.</span>
-                <br><a href="https://coralai.ai/support.html" target="_blank" style="font-size:11px;color:var(--text-muted)">Contact Support</a>
-                <button class="btn btn-small" onclick="_deactivateLicense()" style="margin-top:8px">Deactivate</button>`;
-        } else {
-            let storeURL = 'https://store.coralai.ai';
-            try {
-                const sysResp = await fetch('/api/system/status');
-                if (sysResp.ok) {
-                    const sysData = await sysResp.json();
-                    storeURL = supporterURL(sysData, 'license_settings_panel', storeURL);
-                }
-            } catch { /* use default */ }
-            container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Free — fully unlocked. A one-time license supports development and retires the activation reminder.</span>
-                <br><a href="${escapeAttr(storeURL)}" target="_blank" rel="noopener" onclick="_trackSupporterClick('license_settings_panel')" class="btn btn-small btn-primary" style="margin-top:8px;display:inline-block;text-decoration:none;font-size:11px">Support the developer</a>`;
+        const branding = document.getElementById('tier-branding-label');
+        if (branding && data.tier_name === 'dropboxers') {
+            branding.textContent = 'Coral For Dropbox';
+            branding.style.display = '';
         }
-    } catch {
-        container.innerHTML = `<span style="color:var(--text-secondary);font-size:13px">Unable to check license</span>`;
-    }
-}
-
-export async function deactivateLicense() {
-    window.showConfirmModal?.(
-        'Deactivate License',
-        'Deactivate this license? You can reactivate it on another machine.',
-        async () => {
-            try {
-                const resp = await fetch('/api/license/deactivate', { method: 'POST' });
-                if (resp.ok) {
-                    showToast('License deactivated');
-                    _loadLicenseStatus();
-                } else {
-                    const data = await resp.json().catch(() => ({}));
-                    showToast(data.error || 'Deactivation failed', true);
-                }
-            } catch {
-                showToast('Deactivation failed', true);
-            }
-        }
-    );
+    } catch { /* non-critical */ }
 }
 
 export function hideSettingsModal() {

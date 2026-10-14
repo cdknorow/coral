@@ -40,6 +40,7 @@ api()  { local m="$1" p="$2"; shift 2; curl -s -m 15 -X "$m" "${BASE_URL}${p}" -
 TMP="$(mktemp -d /tmp/coral-killall.XXXXXX)"
 export CORAL_DATA_DIR="$TMP/data"
 export CORAL_NO_DEMO_SEED=1  # no demo workflow/job (it would run a real agent)
+export CORAL_NO_WELCOME=1    # no first-launch screen (#3221)
 export CORAL_TMUX_NO_FALLBACK=1
 SOCK="$CORAL_DATA_DIR/tmux.sock"
 WORK="$TMP/proj"

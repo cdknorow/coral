@@ -79,7 +79,7 @@ func main() {
 	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
 	remoteAccess := flag.Bool("remote", false, "Allow remote (non-loopback) connections without requiring the saved setting")
 	hubMode := flag.Bool("hub", false, "Run as a multi-server hub: manage and view remote Coral servers (also CORAL_HUB=1)")
-	cloudURL := flag.String("cloud-url", "", "Coral Hub origin to connect this server to, e.g. https://hub.example.com (also CORAL_CLOUD_URL). Off by default; with it off this server makes no outbound connection to the cloud")
+	cloudURL := flag.String("cloud-url", "", "Coral Hub origin this server may connect to (also CORAL_CLOUD_URL). Release builds default to https://app.coralai.ai; \"\" or off disables it. Nothing is sent until you connect")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {
@@ -93,9 +93,12 @@ func main() {
 
 	cfg := config.Load(*homeDir)
 	cfg.HubMode = *hubMode || envTruthy(os.Getenv("CORAL_HUB"))
-	if *cloudURL != "" {
-		cfg.CloudURL = *cloudURL
-	}
+	// --cloud-url wins over CORAL_CLOUD_URL and the tier default, and --cloud-url "" turns it off.
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "cloud-url" {
+			cfg.CloudURL = config.CloudURLSetting(*cloudURL, true)
+		}
+	})
 	setupCrashLogging(cfg.CoralDir())
 
 	// Warn if typing "coral" would run a different program. An abandoned PyPI
@@ -115,16 +118,7 @@ func main() {
 	tracking.SetEntrypoint("coral")
 	tracking.SetCoralDir(cfg.CoralDir())
 
-	// Resolve license variant name for logging (no feature gating).
-	variantName := ""
-	if cfg.LicenseRequired() {
-		lm := license.NewManager(cfg.CoralDir())
-		variantName = lm.VariantName()
-	}
-
-	log.Printf("[STARTUP] build tier=%s eula=%v license=%v demo_limits=%v variant=%q max_teams=%d max_agents=%d",
-		config.TierName, config.EULARequired(), cfg.LicenseRequired(), config.DemoLimitsEnforced(), variantName,
-		cfg.MaxLiveTeams, cfg.MaxLiveAgents)
+	log.Printf("[STARTUP] build tier=%s eula=%v", config.TierName, config.EULARequired())
 
 	if *host != "" {
 		cfg.Host = *host
@@ -171,8 +165,8 @@ func main() {
 	// Anonymous install/upgrade tracking (non-blocking)
 	tracking.TrackInstallAsync()
 
-	// Check for updates on startup (non-blocking, skip for license-free builds)
-	if config.Version != "" && !config.TierSkipLicense {
+	// Check for updates on startup (non-blocking; release tiers only)
+	if config.Version != "" && config.TierChecksForUpdates {
 		go func() {
 			time.Sleep(5 * time.Second)
 			latest := routes.FetchLatestVersion()
