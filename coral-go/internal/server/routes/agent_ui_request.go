@@ -206,22 +206,41 @@ func (h *SessionsHandler) agentUIRequest(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	sendCtx := r.Context()
-	if enabled, known := bracketedPasteFromLog(h.cfg, ls.AgentType, ls.SessionID); known {
-		sendCtx = ptymanager.WithBracketedPasteHint(sendCtx, enabled)
-	}
-	var sendErr error
-	if automatedInputBlocked(r.Context(), h.terminal, terminalName, ls.AgentType, ls.SessionID, "agent UI request notification") {
-		sendErr = errAgentExited // nothing typed: the agent's CLI has exited (#3219)
-	} else {
-		sendErr = sender.SendPrompt(sendCtx, terminalName, notification, ls.AgentType, ls.SessionID)
-	}
-	// Record the result even if the client went away mid-request.
+	pasteEnabled, pasteKnown := bracketedPasteFromLog(h.cfg, ls.AgentType, ls.SessionID)
 	finish := h.db.FinishUIRequest
 	if uiRequestFinishOverride != nil {
 		finish = uiRequestFinishOverride
 	}
-	finishErr := finish(context.WithoutCancel(r.Context()), sid, body.RequestID, sendErr)
+	// Through the automated-input gate (#3431): while the agent waits on a
+	// prompt the notification is held and typed once the prompt is gone; its
+	// result is recorded when it is actually sent (until then a retry answers
+	// "in progress").
+	var finishErr error
+	send := func(ctx context.Context) error {
+		var err error
+		if automatedInputBlocked(ctx, h.terminal, terminalName, ls.AgentType, ls.SessionID, "agent UI request notification") {
+			err = errAgentExited // nothing typed: the agent's CLI has exited (#3219)
+		} else {
+			if pasteKnown {
+				ctx = ptymanager.WithBracketedPasteHint(ctx, pasteEnabled)
+			}
+			err = sender.SendPrompt(ctx, terminalName, notification, ls.AgentType, ls.SessionID)
+		}
+		// Record the result even if the client went away mid-request.
+		finishErr = finish(context.WithoutCancel(ctx), sid, body.RequestID, err)
+		return err
+	}
+	var sendErr error
+	delivery, err := ptymanager.DeliverAutomated(r.Context(), ptymanager.AutomatedInput{
+		Term: h.terminal, Name: terminalName, AgentType: ls.AgentType, SessionID: ls.SessionID,
+		Key: "ui-request:" + body.RequestID, Text: notification, What: "agent UI request notification", Send: send,
+	})
+	if delivery == ptymanager.Held {
+		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "delivered": false, "held": true, "recorded": true, "request_id": body.RequestID, "panel_id": panelID, "session_id": sid,
+			"note": "the agent is waiting on a prompt for the user; the request is delivered once that prompt is answered"})
+		return
+	}
+	sendErr = err
 	if sendErr != nil {
 		switch {
 		case errors.Is(sendErr, ptymanager.ErrDeliveryUnknown):

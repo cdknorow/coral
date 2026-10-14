@@ -358,6 +358,8 @@ func (s *Server) buildRouter() chi.Router {
 	// ── API Routes ──────────────────────────────────────────────
 	sessHandler := routes.NewSessionsHandler(s.db, s.cfg, s.backend, s.terminal, s.boardStore)
 	s.sessHandler = sessHandler
+	// The automated-input gate reads agents' state through it (#3431).
+	sessHandler.InstallAutomatedInputHooks()
 	sysHandler := routes.NewSystemHandler(s.db, s.cfg)
 	sysHandler.SetTerminal(s.terminal)
 	s.systemHandler = sysHandler

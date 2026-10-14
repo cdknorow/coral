@@ -36,3 +36,28 @@ func skipIfAgentExited(ctx context.Context, rt any, logger *slog.Logger, name, w
 	}
 	return true
 }
+
+// deliverAutomated is how every automated sender in this package types into an
+// agent (#3431): never into an exited agent's shell or a terminal agent
+// (skipIfAgentExited, which reports it as skipped), and only when the agent isn't
+// waiting on a prompt: ptymanager.DeliverAutomated holds it until the prompt is
+// gone. key groups sends that supersede each other ("" for the text itself);
+// requireInputBox holds it until the agent's normal input box is on screen (a
+// launch's first prompt).
+func deliverAutomated(ctx context.Context, rt AgentRuntime, logger *slog.Logger, name, agentType, sessionID, key, text, what string, requireInputBox bool) (skipped bool, err error) {
+	if skipIfAgentExited(ctx, rt, logger, name, what) {
+		return true, nil
+	}
+	_, err = ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{
+		Term: rt, Name: name, AgentType: agentType, SessionID: sessionID,
+		Key: key, Text: text, What: what, RequireInputBox: requireInputBox,
+		Send: func(ctx context.Context) error {
+			// Re-checked at send time too: a held send may be typed much later.
+			if skipIfAgentExited(ctx, rt, logger, name, what) {
+				return nil
+			}
+			return rt.SendInput(ctx, name, text)
+		},
+	})
+	return false, err
+}

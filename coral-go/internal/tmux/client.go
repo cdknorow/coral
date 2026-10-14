@@ -493,6 +493,29 @@ func (c *Client) SendKeys(ctx context.Context, agentName, command, agentType, se
 	return c.SendKeysToTarget(ctx, target, command)
 }
 
+// ErrEnterWithheld is returned when a send typed its text but withheld the
+// final Enter because the WithBeforeEnter check failed (#3431).
+var ErrEnterWithheld = errors.New("the text was typed but its Enter was withheld: a prompt opened")
+
+type beforeEnterKey struct{}
+
+// WithBeforeEnter installs a check run just before a send's final Enter (after
+// its text or paste). If it reports false, the Enter is not sent and the send
+// returns ErrEnterWithheld: the automated-input gate uses it so a permission
+// prompt that opens between the text and the Enter doesn't take the Enter.
+func WithBeforeEnter(ctx context.Context, ok func(context.Context) bool) context.Context {
+	return context.WithValue(ctx, beforeEnterKey{}, ok)
+}
+
+// EnterAllowed runs ctx's WithBeforeEnter check (true when there is none).
+func EnterAllowed(ctx context.Context) bool { return enterAllowed(ctx) }
+
+// enterAllowed runs ctx's WithBeforeEnter check (true when there is none).
+func enterAllowed(ctx context.Context) bool {
+	ok, _ := ctx.Value(beforeEnterKey{}).(func(context.Context) bool)
+	return ok == nil || ok(ctx)
+}
+
 // sendKeysSettle is the pause between typing a command and its Enter.
 var sendKeysSettle = 300 * time.Millisecond
 
@@ -532,6 +555,11 @@ func (c *Client) SendKeysToTarget(ctx context.Context, target, command string) e
 
 	// Brief pause for tmux to deliver keystrokes
 	time.Sleep(sendKeysSettle)
+
+	if !enterAllowed(ctx) {
+		cleanup()
+		return ErrEnterWithheld
+	}
 
 	// Always send Enter even if send-keys reported an error — the text
 	// may have been delivered despite a non-zero exit from tmux.

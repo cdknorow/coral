@@ -200,6 +200,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 				o.countOperatorCall("(no token)", r.Method+" "+route)
 			}
 		}
+		r = r.WithContext(context.WithValue(r.Context(), callerKindKey{}, caller))
 		// In every mode (#3421 v2, operator decision) a credential that is PRESENT must be
 		// valid: a command-line signature, an API key, a Coral Hub stamp. A wrong one is
 		// refused, never ignored. A request with no credential at all keeps working outside
@@ -347,6 +348,39 @@ func (o *IdentityObserver) refuse(w http.ResponseWriter, status int, code, msg s
 	o.refused[code]++
 	o.mu.Unlock()
 	writeJSON(w, status, map[string]any{"error": msg, "code": code})
+}
+
+// callerKindKey holds a token-less request's caller type (classify) in its context.
+type callerKindKey struct{}
+
+// humanInputCaller reports whether a request that types into an agent comes from
+// a person: the dashboard (signed in, or this computer's browser), Coral Hub (its
+// tunnel admits input only at Interact) or the operator's signed command line.
+// An agent's token or tool, an API key or any other caller is automation, and its
+// input goes through the automated-input gate (#3431). Unclassified (no observer
+// in the chain) counts as automation: the gate then types at once unless a
+// prompt is open.
+func humanInputCaller(r *http.Request) bool {
+	if r.Header.Get(store.SessionTokenHeader) != "" {
+		return false
+	}
+	if _, ok := r.Context().Value(verifiedSessionKey{}).(*store.SessionTokenOwner); ok {
+		return false
+	}
+	switch kind, _ := r.Context().Value(callerKindKey{}).(string); kind {
+	case callerDashCookie, callerDashNoCookie:
+		return true
+	case callerHub:
+		// Only the connector's own per-process stamp: any process can send an
+		// X-Coral-Via-Tunnel header (Backend's #3431 review).
+		return cloud.TunneledAuthentic(r)
+	case callerCLISigned:
+		// Only a signature the middleware checked: any process can send the
+		// header. Unchecked (strict mode off), the CLI's input is gated like a
+		// script's, which still types at once while no prompt is open.
+		return cliauth.Verified(r)
+	}
+	return false
 }
 
 // classify names the caller of a request that carries no session token.

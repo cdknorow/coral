@@ -164,6 +164,9 @@ func (c *Client) SendPrompt(ctx context.Context, agentName, text, agentType, ses
 	case <-dctx.Done():
 		return MarkDeliveryUnknown(fmt.Errorf("pasted the prompt but timed out before Enter: %w", dctx.Err()))
 	}
+	if !enterAllowed(ctx) {
+		return ErrEnterWithheld
+	}
 	if _, err := c.run(dctx, "send-keys", "-t", target, "Enter"); err != nil {
 		return MarkDeliveryUnknown(fmt.Errorf("pasted the prompt but sending Enter failed: %w", err))
 	}

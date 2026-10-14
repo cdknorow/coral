@@ -19,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/naming"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/tmux"
@@ -415,7 +416,11 @@ func (a *AutoAcceptor) check(ctx context.Context, s store.AutoAcceptState) {
 	// event, one microsecond (the stamps' precision) before the key: a notification created at
 	// the same instant as the read can then never tie with the approval and lose on id.
 	sentAt := a.wallNow().Add(-time.Microsecond).UTC().Format(store.ISOFormat)
-	if err := a.h.terminal.SendRawInput(ctx, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID); err != nil {
+	// The one automated answer to an open prompt, by the operator's opt-in
+	// (#3431): through ptymanager's named exemption, logged in the input debug log.
+	if err := ptymanager.AutoAcceptSend(ctx, paneName(s), func(ctx context.Context) error {
+		return a.h.terminal.SendRawInput(ctx, paneName(s), []string{strconv.Itoa(d.N)}, s.AgentType, s.SessionID)
+	}); err != nil {
 		slog.Warn("auto-accept: sending the answer failed", "session", s.SessionID, "error", err)
 		return
 	}

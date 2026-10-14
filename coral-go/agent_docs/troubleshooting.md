@@ -403,6 +403,24 @@ at 200 characters.
   while the log is off).
 - Logging never slows input down: if the disk can't keep up, lines are dropped and the file
   says how many.
+- Automated text Coral held because the agent was waiting on a prompt (a permission or
+  selection menu) is logged as `[HELD, <why>]`; it is typed once the prompt is answered. The
+  opt-in auto-accept's answer to an approval is logged as `[auto-accept answers an approval prompt]`.
+
+### An agent didn't get a board message or task notification
+
+Coral never types automated text (board messages and nudges, task notifications, wait results,
+a launch's first prompt) into an agent that is waiting on a prompt for you: a permission or
+selection menu, an approval question, the trust-this-folder screen or a login or model picker.
+Typed there, the text and its Enter would answer the prompt. It holds the text and types it,
+once, after you answer the prompt in the agent's terminal or the chat. If a message has been
+held for two minutes, the agent shows as needing your input on the dashboard. A newer unread
+count replaces a held one. A held nudge or notification is dropped after an hour; a new agent's
+first prompt waits as long as the agent runs. Killing, restarting or resuming an agent drops
+what was held for it, so nothing meant for the old process reaches the new one. If a prompt opens
+in the moment between a message's text and its Enter, the Enter is held too and pressed after
+you answer. `coral.log` logs each hold and delivery ("automated input held",
+"automated input delivered after the prompt closed").
 
 ## Performance
 

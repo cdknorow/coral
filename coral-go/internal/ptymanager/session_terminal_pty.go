@@ -146,6 +146,7 @@ func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys [
 }
 
 func (p *PTYSessionTerminal) SendToTarget(_ context.Context, target, command string) error {
+	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
 	resolved := p.resolveSessionKey(target)
 	if len(command) > inlineCommandLimit {
 		invocation, cleanup, err := commandInvocation(command)
@@ -166,6 +167,7 @@ func (p *PTYSessionTerminal) SendTerminalInput(_ context.Context, target, data s
 }
 
 func (p *PTYSessionTerminal) CreateSession(_ context.Context, name, workDir string) error {
+	DropHeld(name, "a new terminal") // nothing held for the old process is typed into a new one (#3431)
 	// Parse agent type from session name
 	agentType := "agent"
 	sessionID := name
@@ -177,10 +179,12 @@ func (p *PTYSessionTerminal) CreateSession(_ context.Context, name, workDir stri
 }
 
 func (p *PTYSessionTerminal) KillSession(ctx context.Context, name, agentType, sessionID string) error {
+	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return p.killByAnyKey(ctx, name, agentType, sessionID)
 }
 
 func (p *PTYSessionTerminal) KillSessionOnly(ctx context.Context, name, agentType, sessionID string) error {
+	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return p.killByAnyKey(ctx, name, agentType, sessionID)
 }
 
@@ -212,6 +216,7 @@ func isSessionName(name string) bool {
 }
 
 func (p *PTYSessionTerminal) RestartPane(_ context.Context, target, _ string) error {
+	DropHeld(target, "restarted") // nothing held for the old process is typed into a new one (#3431)
 	return p.backend.Restart(target, "")
 }
 

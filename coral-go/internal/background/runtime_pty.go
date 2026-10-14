@@ -19,6 +19,7 @@ func NewPTYRuntime(backend *ptymanager.PTYBackend) *PTYRuntime {
 }
 
 func (r *PTYRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, command string) error {
+	ptymanager.DropHeld(name, "spawned") // nothing held for the old process is typed into a new one (#3431)
 	// Extract agent type and session ID from name format "{type}-{uuid}"
 	agentType, sessionID := parseSessionName(name)
 	if agentType == "" {
@@ -37,6 +38,7 @@ func (r *PTYRuntime) SendInput(ctx context.Context, name, text string) error {
 }
 
 func (r *PTYRuntime) KillAgent(ctx context.Context, name string) error {
+	ptymanager.DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return r.backend.Kill(name)
 }
 
@@ -71,4 +73,10 @@ func FormatSessionName(agentType, sessionID string) string {
 // for ptymanager.AgentExited (#3219).
 func (r *PTYRuntime) AgentShellIdle(_ context.Context, name, _, _ string) (bool, string, bool) {
 	return r.backend.ShellIdle(name)
+}
+
+// AgentScreen implements ptymanager.ScreenReader: the end of the session's
+// output, read by the automated-input gate before typing (#3431).
+func (r *PTYRuntime) AgentScreen(_ context.Context, name, _, _ string) (string, error) {
+	return r.backend.ReplayScreen(name)
 }

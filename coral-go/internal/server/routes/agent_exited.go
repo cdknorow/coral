@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"sync"
 
 	"github.com/cdknorow/coral/internal/board"
@@ -51,10 +52,52 @@ func automatedInputBlocked(ctx context.Context, term any, name, agentType, sessi
 
 // sendAutomated types board-generated text (a notification or nudge) into an
 // agent's terminal, unless its CLI has exited (#3219). Always as one line: a newline in
-// a name or preview would be an Enter keystroke (#3376).
+// a name or preview would be an Enter keystroke (#3376). It goes through the
+// automated-input gate: held while the agent waits on a prompt (#3431).
 func (h *BoardHandler) sendAutomated(ctx context.Context, sessionName, text string) error {
-	if automatedInputBlocked(ctx, h.terminal, sessionName, "", "", "board message") {
+	return deliverAutomated(ctx, h.terminal, sessionName, "", "", "", board.OneLine(text), "board message")
+}
+
+// deliverAutomated is how every automated sender in this package types into an
+// agent (#3431): not into an exited agent's shell or a terminal agent
+// (automatedInputBlocked), and only when the agent isn't waiting on a prompt
+// (ptymanager.DeliverAutomated holds it until the prompt is gone). key groups
+// sends that supersede each other ("" for the text itself).
+func deliverAutomated(ctx context.Context, term ptymanager.SessionTerminal, name, agentType, sessionID, key, text, what string) error {
+	if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
 		return errAgentExited
 	}
-	return h.terminal.SendInput(ctx, sessionName, board.OneLine(text), "", "")
+	_, err := ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{
+		Term: term, Name: name, AgentType: agentType, SessionID: sessionID,
+		Key: key, Text: text, What: what,
+		Send: func(ctx context.Context) error {
+			// Re-checked at send time too: a held send may be typed much later.
+			if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
+				return errAgentExited
+			}
+			return term.SendInput(ctx, name, text, agentType, sessionID)
+		},
+	})
+	return err
+}
+
+// sendAutomatedHTTP sends input an automated HTTP caller asked for, through the
+// gate. When it is held it answers 202 itself and reports true; on an error it
+// answers it and reports true; when it was typed it reports false and the
+// handler answers as usual.
+func (h *SessionsHandler) sendAutomatedHTTP(w http.ResponseWriter, r *http.Request, name, agentType, sessionID, text, what string, send func(context.Context) error) bool {
+	delivery, err := ptymanager.DeliverAutomated(r.Context(), ptymanager.AutomatedInput{
+		Term: h.terminal, Name: name, AgentType: agentType, SessionID: sessionID,
+		Text: text, What: "automated " + what, Send: send,
+	})
+	if err != nil {
+		writeTerminalError(w, err)
+		return true
+	}
+	if delivery == ptymanager.Held {
+		writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "held": true,
+			"note": "the agent is waiting on a prompt for the user; this input is typed once that prompt is answered"})
+		return true
+	}
+	return false
 }

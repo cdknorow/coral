@@ -40,6 +40,10 @@ Agents receive `CORAL_URL`, `CORAL_PORT`, `CORAL_HOST` and `CORAL_DATA_DIR`, so 
 
 To see exactly what Coral sends to agents' terminals, turn on **Settings > Log terminal input (debug)** (or start Coral with `CORAL_DEBUG_INPUT=1`). It's off by default. While it's on, every message, key and paste Coral sends to an agent is written to `<data dir>/input-debug.log`, with where it came from. It records what was typed, which may include secrets, so turn it off when you're done. Turning it off keeps the file; use **Delete the log** in Settings to remove it.
 
+## A message reached the agent late
+
+Coral never types its own messages (board messages, nudges, task notifications, a new agent's first prompt) into an agent that is waiting for you at a prompt, such as a permission or selection menu or the trust-this-folder screen: typed there, the message would answer the prompt for you. It waits until you answer, then sends the message once. If it has waited two minutes, the dashboard shows that the agent needs your input.
+
 ## Reporting a problem
 
 Include your Coral version (startup log or `/api/system/status`), OS and architecture, and the relevant lines from `<data dir>/coral.log`. Do not paste prompts, source code or API keys.

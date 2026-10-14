@@ -2513,7 +2513,18 @@ func (h *SessionsHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.terminal.SendInput(r.Context(), name, body.Command, body.AgentType, body.SessionID); err != nil {
+	send := func(ctx context.Context) error {
+		return h.terminal.SendInput(ctx, name, body.Command, body.AgentType, body.SessionID)
+	}
+	// A person (the dashboard, Coral Hub at Interact, the operator's signed CLI)
+	// types directly. Anything else (an agent's tool, a script, an API key) is
+	// automation: it goes through the automated-input gate and is held while the
+	// agent waits on a prompt, so it can't answer one (#3431).
+	if !humanInputCaller(r) {
+		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, body.Command, "/send", send); held {
+			return
+		}
+	} else if err := send(r.Context()); err != nil {
 		writeTerminalError(w, err)
 		return
 	}
@@ -2542,7 +2553,15 @@ func (h *SessionsHandler) Keys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.terminal.SendRawInput(r.Context(), name, body.Keys, body.AgentType, body.SessionID); err != nil {
+	send := func(ctx context.Context) error {
+		return h.terminal.SendRawInput(ctx, name, body.Keys, body.AgentType, body.SessionID)
+	}
+	// As for Send: keys from anything but a person go through the gate (#3431).
+	if !humanInputCaller(r) {
+		if held := h.sendAutomatedHTTP(w, r, name, body.AgentType, body.SessionID, strings.Join(body.Keys, " "), "/keys", send); held {
+			return
+		}
+	} else if err := send(r.Context()); err != nil {
 		writeTerminalError(w, err)
 		return
 	}

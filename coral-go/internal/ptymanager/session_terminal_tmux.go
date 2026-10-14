@@ -72,6 +72,7 @@ func (t *TmuxSessionTerminal) SendRawInput(ctx context.Context, name string, key
 }
 
 func (t *TmuxSessionTerminal) SendToTarget(ctx context.Context, target, command string) error {
+	DropHeld(target, "a launch command is typed") // nothing held for the old process is typed into a new one (#3431)
 	return t.client.SendKeysToTarget(ctx, target, command)
 }
 
@@ -80,18 +81,22 @@ func (t *TmuxSessionTerminal) SendTerminalInput(ctx context.Context, target, dat
 }
 
 func (t *TmuxSessionTerminal) CreateSession(ctx context.Context, name, workDir string) error {
+	DropHeld(name, "a new terminal") // nothing held for the old process is typed into a new one (#3431)
 	return t.client.NewSession(ctx, name, workDir)
 }
 
 func (t *TmuxSessionTerminal) KillSession(ctx context.Context, name, agentType, sessionID string) error {
+	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return t.client.KillSession(ctx, name, agentType, sessionID)
 }
 
 func (t *TmuxSessionTerminal) KillSessionOnly(ctx context.Context, name, agentType, sessionID string) error {
+	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return t.client.KillSessionOnly(ctx, name, agentType, sessionID)
 }
 
 func (t *TmuxSessionTerminal) RestartPane(ctx context.Context, target, workDir string) error {
+	DropHeld(target, "restarted") // nothing held for the old process is typed into a new one (#3431)
 	return t.client.RespawnPane(ctx, target, workDir)
 }
 

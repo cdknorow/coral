@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -26,6 +27,7 @@ func (r *TmuxRuntime) Client() *tmux.Client {
 }
 
 func (r *TmuxRuntime) SpawnAgent(ctx context.Context, name, workDir, logFile, command string) error {
+	ptymanager.DropHeld(name, "spawned") // nothing held for the old process is typed into a new one (#3431)
 	if err := r.client.NewSession(ctx, name, workDir); err != nil {
 		return fmt.Errorf("tmux new-session: %w", err)
 	}
@@ -63,6 +65,7 @@ func (r *TmuxRuntime) SendInput(ctx context.Context, name, text string) error {
 }
 
 func (r *TmuxRuntime) KillAgent(ctx context.Context, name string) error {
+	ptymanager.DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	_, err := r.client.DisplayMessage(ctx, name, "")
 	if err != nil {
 		// Session doesn't exist, nothing to kill
@@ -140,4 +143,22 @@ func (r *TmuxRuntime) AgentShellIdle(ctx context.Context, name, agentType, sessi
 		return false, "", false
 	}
 	return idle, shell, true
+}
+
+// AgentScreen implements ptymanager.ScreenReader: the bottom of the agent's pane,
+// read by the automated-input gate before typing (#3431).
+func (r *TmuxRuntime) AgentScreen(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	if agentType == "" && sessionID == "" {
+		agentType, sessionID = parseSessionName(name)
+	}
+	return r.client.CapturePane(ctx, name, 40, agentType, sessionID)
+}
+
+// SendEnter implements ptymanager.EnterSender: the Enter a send withheld because
+// a prompt opened after its text (#3431).
+func (r *TmuxRuntime) SendEnter(ctx context.Context, name, agentType, sessionID string) error {
+	if agentType == "" && sessionID == "" {
+		agentType, sessionID = parseSessionName(name)
+	}
+	return r.client.SendRawKeys(ctx, name, []string{"Enter"}, agentType, sessionID)
 }

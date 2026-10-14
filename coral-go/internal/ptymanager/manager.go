@@ -24,6 +24,7 @@ func NewPTYBackend() *PTYBackend {
 }
 
 func (m *PTYBackend) Spawn(name, agentType, workDir, sessionID, command string, cols, rows uint16) error {
+	DropHeld(name, "spawned") // nothing held for the old process is typed into a new one (#3431)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -41,6 +42,7 @@ func (m *PTYBackend) Spawn(name, agentType, workDir, sessionID, command string, 
 }
 
 func (m *PTYBackend) Kill(name string) error {
+	DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	m.mu.Lock()
 	s, ok := m.sessions[name]
 	if !ok {
@@ -54,6 +56,7 @@ func (m *PTYBackend) Kill(name string) error {
 }
 
 func (m *PTYBackend) Restart(name, command string) error {
+	DropHeld(name, "restarted") // nothing held for the old process is typed into a new one (#3431)
 	m.mu.RLock()
 	old, ok := m.sessions[name]
 	m.mu.RUnlock()

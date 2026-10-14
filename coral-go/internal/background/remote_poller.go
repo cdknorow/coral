@@ -139,10 +139,11 @@ func (p *RemoteBoardPoller) RunOnce(ctx context.Context) error {
 		nudge := fmt.Sprintf("You have %d unread message%s on the message board. Run 'coral-board read' to see them.",
 			data.Unread, plural)
 		sessionName := naming.SessionName(agent.AgentType, agent.SessionID)
-		if skipIfAgentExited(ctx, p.runtime, p.logger, sessionName, "remote board nudge") {
+		// One line (#3376), through the automated-input gate (#3431).
+		skipped, err := deliverAutomated(ctx, p.runtime, p.logger, sessionName, agent.AgentType, agent.SessionID, "remote-board-unread:"+sub.Project, board.OneLine(nudge), "remote board nudge", false)
+		if skipped {
 			continue
 		}
-		err = p.runtime.SendInput(ctx, sessionName, board.OneLine(nudge)) // one line (#3376)
 		if err != nil {
 			continue
 		}
