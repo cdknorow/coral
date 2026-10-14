@@ -71,7 +71,7 @@ async function run() {
   // Condition waits (#3118). The coral socket is stubbed, so startup is everything but the feed.
   const { waitFor, waitStable, nextFrame, coralReady } = require('./helpers/wait').bind(ev);
   const until = (expression, what, timeout = 5000) => waitFor(expression, what, { soft: true, timeout });
-  await coralReady('startup', 'liveList', 'history', 'settings');
+  await coralReady('startup', 'liveList', 'liveListLoaded', 'history', 'settings');
   const MODAL_OPEN = `(m => !!m && getComputedStyle(m).display !== 'none')(document.getElementById('task-detail-modal'))`;
   const settledHtml = (sel, what) => waitStable(`(document.querySelector(${JSON.stringify(sel)}) || {}).innerHTML || ''`, what, 200).catch(() => {});
   // The 10 s board/subagent poll runs every second here (tasks.js boardTaskPollHooks): same timer, shorter period.

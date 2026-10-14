@@ -2,13 +2,21 @@
  * nothing here polls or changes behaviour.
  *
  *   window.__coralReady                    a Promise: resolves once the first live list
- *                                          has rendered, the feed connected, and the first
- *                                          history list and settings loaded (each loaded
- *                                          or failed). In a popout, history counts as done.
+ *                                          has rendered, the page start's live-list answers
+ *                                          have been applied ('liveListLoaded'), the feed
+ *                                          connected, and the first history list and
+ *                                          settings loaded (each loaded or failed). In a
+ *                                          popout, history counts as done.
  *   window.__coralReady.liveListRendered() the next live-list render after the call
  *                                          (resolves with the row count).
- *   window.__coralReady.startup(...parts)  just those parts ('liveList', 'feed', 'history',
- *                                          'settings'), for a suite that stubs one out.
+ *   window.__coralReady.startup(...parts)  just those parts ('liveList', 'liveListLoaded',
+ *                                          'feed', 'history', 'settings'), for a suite that
+ *                                          stubs one out.
+ *
+ * 'liveList' is the first render of the agent list, which the feed's first update can also
+ * cause; 'liveListLoaded' is the page start's HTTP list answers applied (or failed). A test
+ * that injects state (a hub, its servers, a fake agent) waits for 'liveListLoaded', so no
+ * late list answer lands on top of what it set up.
  *   window.__coralReady.parts              read-only snapshot of which parts are done.
  *   window.__coralReady.agentSelected(id)  the current agent is `id` (its name or its
  *                                          session_id) and its view has settled: the
@@ -20,7 +28,7 @@
  * Matching window events: 'coral:ready', 'coral:live-list-rendered' {count},
  * 'coral:agent-view-ready' {name, sessionId, mode}. */
 
-const _parts = { liveList: false, feed: false, history: false, settings: false };
+const _parts = { liveList: false, liveListLoaded: false, feed: false, history: false, settings: false };
 let _resolveReady;
 const ready = new Promise(r => { _resolveReady = r; });
 let _isReady = false;
@@ -36,7 +44,7 @@ function emit(type, detail) {
     try { window.dispatchEvent(new CustomEvent(type, { detail })); } catch { /* never break the app */ }
 }
 
-/** Mark one startup part done ('liveList' | 'feed' | 'history' | 'settings'). */
+/** Mark one startup part done ('liveList' | 'liveListLoaded' | 'feed' | 'history' | 'settings'). */
 export function markReady(part) {
     if (!(part in _parts) || _parts[part]) return;
     _parts[part] = true;

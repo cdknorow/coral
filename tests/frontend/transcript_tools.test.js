@@ -84,7 +84,7 @@ async function run() {
   await Emulation.setDeviceMetricsOverride({ width: 1500, height: 950, deviceScaleFactor: 1, mobile: false });
   await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
   // Startup done, except the feed: this suite stubs /ws/coral, so it never connects.
-  await coralReady('startup', 'liveList', 'history', 'settings');
+  await coralReady('startup', 'liveList', 'liveListLoaded', 'history', 'settings');
   await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
   await ev(`Promise.resolve(window.selectLiveSession('coral-go', 'claude', ${JSON.stringify(SID)})).then(() => { window.setLiveViewMode('chat'); return true; })`);
   await coralReady('agentSelected', 'coral-go');

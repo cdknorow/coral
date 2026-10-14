@@ -26,7 +26,7 @@ const BASE = require('./test_base').BASE;
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await coralReady('startup', 'liveList');
+        await coralReady('startup', 'liveList', 'liveListLoaded');
         // A board with one agent on it.
         assert.equal((await api(`/api/board/${board}/subscribe`, 'POST', { subscriber_id: 'Lead', job_title: 'Lead Developer' })).status < 300, true);
 

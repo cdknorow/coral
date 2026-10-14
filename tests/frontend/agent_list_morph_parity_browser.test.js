@@ -60,7 +60,7 @@ async function session(noMorph) {
         await ev(`localStorage.clear(); localStorage.setItem('coral-group-by-team', 'true'); ${noMorph ? "localStorage.setItem('coral-no-morph', '1');" : ''} true`);
         await Page.reload(); await Page.loadEventFired();
         // The feed is stubbed, so startup is everything but the feed.
-        await coralReady('startup', 'liveList', 'history', 'settings');
+        await coralReady('startup', 'liveList', 'liveListLoaded', 'history', 'settings');
         assert.equal(await ev(`(async () => (await import((window.__coralStatic || '/static/') + 'dom_morph.js')).morphDisabled())()`), noMorph, `kill switch ${noMorph ? 'on' : 'off'}`);
         await ev(`window.switchNavTab('agents'); window._coralSetLiveSessions(JSON.parse(JSON.stringify(window.__sessions))); true`);
 

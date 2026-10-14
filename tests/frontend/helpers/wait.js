@@ -5,7 +5,10 @@
 //
 //   const { waitFor, waitStable, coralReady } = require('./helpers/wait').bind(ev);
 //   await coralReady();                                    // first live list rendered, feed up, settings in
-//   await coralReady('startup', 'liveList', 'history', 'settings');  // the same, for a suite that stubs /ws/coral
+//   await coralReady('startup', 'liveList', 'liveListLoaded', 'history', 'settings');  // the same, for a suite that stubs /ws/coral
+//   'liveList' is the first render of the agent list (the feed's first update can cause it); 'liveListLoaded' is the
+//   page start's HTTP list answers applied. Wait for 'liveListLoaded' before injecting state (a hub, servers, fake
+//   agents), or a late list answer lands on top of it. coralReady() with no arguments includes it.
 //   await coralReady('agentSelected', sessionId);          // that agent's chat page rendered or terminal attached
 //   await waitFor(`document.querySelectorAll('.row').length === 2`, 'both rows');
 //   await waitStable(`document.querySelectorAll('.row').length`, 'the row count', 300);

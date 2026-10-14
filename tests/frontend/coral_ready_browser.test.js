@@ -1,6 +1,8 @@
 // window.__coralReady (#3118): the readiness signals suites await instead of
-// fixed sleeps. Startup resolves once (live list rendered, feed connected,
-// history and settings loaded); liveListRendered() resolves on the next render
+// fixed sleeps. Startup resolves once (live list rendered, the page start's
+// list answers applied, feed connected, history and settings loaded);
+// 'liveListLoaded' never resolves before a startup list answer has landed,
+// and never hangs when the list or the startup check fails; liveListRendered() resolves on the next render
 // with its row count; agentSelected(name) resolves when that agent is current
 // and its view settled (chat first page, or terminal attached), at once if it
 // already is, and never for an agent switched away from before it settled.
@@ -21,6 +23,28 @@ const BASE = require('./test_base').BASE;
             for (const t of ['coral:ready', 'coral:live-list-rendered', 'coral:agent-view-ready'])
                 window.addEventListener(t, e => window.__readyEvents.push([t, e.detail]));
         })();` });
+        // The page start's /api/sessions/live requests, counted; window.__failList / __failStatus
+        // (from sessionStorage) make them fail. Installed after the harness, which serves the list. When 'liveListLoaded' resolves, the counts are kept.
+        await Page.addScriptToEvaluateOnNewDocument({ source: `(() => {
+            const real = window.fetch.bind(window);
+            const lists = window.__lists = { started: 0, done: 0, statusDone: false, atLoaded: null };
+            const fail = k => sessionStorage.getItem(k) === '1';
+            window.fetch = (url, opts) => {
+                const p = new URL(String(url), location.origin).pathname;
+                if (p === '/api/system/status' && fail('failStatus')) return Promise.resolve(new Response('{}', { status: 500 }));
+                // The startup check answers late, so its list load is a second request after the first.
+                if (p === '/api/system/status') return new Promise(r => setTimeout(r, 400)).then(() => real(url, opts)).finally(() => { lists.statusDone = true; }); // sleep-ok: the startup check answering late is the case under test
+                if (p !== '/api/sessions/live') return real(url, opts);
+                lists.started++;
+                const r = fail('failList') ? Promise.resolve(new Response('{"error":"boom"}', { status: 500 })) : real(url, opts);
+                // The answer is counted once the page has had it (the app applies it after this).
+                return r.then(v => { setTimeout(() => { lists.done++; }, 0); return v; }, e => { lists.done++; throw e; });
+            };
+            let rd;
+            Object.defineProperty(window, '__coralReady', { configurable: true, get: () => rd, set: v => {
+                rd = v; v.startup('liveListLoaded').then(() => { lists.atLoaded = { started: lists.started, done: lists.done, statusDone: lists.statusDone }; });
+            } });
+        })();` });
         await Page.navigate({ url: BASE });
         await Page.loadEventFired();
         await install();
@@ -29,11 +53,31 @@ const BASE = require('./test_base').BASE;
         assert.equal(await ev(`window.__coralReady instanceof Promise`), true, '__coralReady is a Promise');
         await ev(`Promise.race([window.__coralReady.then(() => 'ok'), new Promise((_, no) => setTimeout(() => no(new Error('__coralReady did not resolve in 10 s')), 10000))])`);
         assert.equal(await ev(`window.__readyEvents.filter(e => e[0] === 'coral:ready').length`), 1, 'coral:ready fires once');
-        assert.deepEqual(await ev(`window.__coralReady.parts`), { liveList: true, feed: true, history: true, settings: true }, 'parts snapshot');
+        assert.deepEqual(await ev(`window.__coralReady.parts`), { liveList: true, liveListLoaded: true, feed: true, history: true, settings: true }, 'parts snapshot');
         assert.equal(await ev(`(() => { const p = window.__coralReady.parts; p.feed = false; return window.__coralReady.parts.feed; })()`), true, 'parts is a copy');
         assert.equal(await ev(`window.__coralReady.startup('liveList', 'history', 'settings').then(() => 'ok')`), 'ok', 'startup(...parts) for a subset');
         assert.match(await ev(`window.__coralReady.startup('bogus').then(() => 'ok', e => e.message)`), /unknown startup part: bogus/);
         console.log('   ✓ startup: __coralReady resolved, coral:ready once; parts snapshot; startup(...parts)');
+
+        // 1b. 'liveListLoaded': after the page start's list answers, not just a render
+        const at = await ev(`window.__lists.atLoaded`);
+        assert.ok(at && at.started >= 2, 'both start list loads ran (the startup check answered late): ' + JSON.stringify(at));
+        assert.ok(at.statusDone, 'it waited for the startup check and its list load, not just the first one');
+        assert.equal(at.done, at.started, 'every start list answer was in when it resolved: ' + JSON.stringify(at));
+        console.log('   ✓ liveListLoaded: resolved after ' + at.started + ' start list request(s)');
+
+        // 1c. It never hangs: a refused list, or a failing startup check, still marks it
+        for (const key of ['failList', 'failStatus']) {
+            await ev(`sessionStorage.setItem('${key}', '1'); true`);
+            await Page.navigate({ url: BASE }); await Page.loadEventFired();
+            const got = await ev(`Promise.race([window.__coralReady.startup('liveListLoaded').then(() => 'ok'), new Promise(r => setTimeout(() => r('timeout'), 8000))])`); // sleep-ok: an upper bound, not a wait
+            assert.equal(got, 'ok', key + ': liveListLoaded still resolves');
+            await ev(`sessionStorage.removeItem('${key}'); true`);
+        }
+        await Page.navigate({ url: BASE }); await Page.loadEventFired();
+        await install();
+        await ev(`window.__coralReady`);
+        console.log('   ✓ liveListLoaded: resolves when the list is refused and when the startup check fails');
 
         // 2. The next live-list render, with its count
         const count = await ev(`(async () => {

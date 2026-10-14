@@ -32,7 +32,7 @@ const BASE = require('./test_base').BASE;
         const escape = () => ev(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); true`);
 
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await coralReady('startup', 'liveList', 'settings');
+        await coralReady('startup', 'liveList', 'liveListLoaded', 'settings');
 
         // 1. Cold load: no modals.js; settings and theme applied anyway.
         assert.equal(count('modals.js'), 0, 'a cold load does not request modals.js');
@@ -73,7 +73,7 @@ const BASE = require('./test_base').BASE;
         // 5. A fresh page where the first load fails: toast, then the next click retries (?retry=1) and opens.
         reqs.length = 0; block = 1;
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await coralReady('startup', 'liveList', 'settings');
+        await coralReady('startup', 'liveList', 'liveListLoaded', 'settings');
         await ev(`window.showSettingsModal(); true`);
         await waitFor(`[...document.querySelectorAll('.toast')].some(t => /Could not load this dialog/.test(t.textContent))`, 'the failure toast', 5000);
         assert.ok(!(await shown('settings-modal')), 'no dialog after the failure');
@@ -87,7 +87,7 @@ const BASE = require('./test_base').BASE;
         // 6. Restart (opened by controls.js) loads the dialogs first, so its config form renders.
         reqs.length = 0;
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await coralReady('startup', 'liveList', 'settings');
+        await coralReady('startup', 'liveList', 'liveListLoaded', 'settings');
         const restart = await ev(`(async () => {
             const { state } = await import((window.__coralStatic || '/static/') + 'state.js');
             state.currentSession = { type: 'live', name: 'rs', session_id: 'rs-id', agent_type: 'claude', display_name: 'Restart me', prompt: 'p' };

@@ -681,30 +681,40 @@ function syncFilterDomToState() {
     updateFilterBadge();
 }
 
+// window.__coralReady 'liveListLoaded': the page start loads the live list twice, once at
+// once and once when the startup check finds the server ready (the two join when they
+// overlap). The part is marked when both have settled, loaded or failed, so a test that
+// injects state after it can't have a late list answer land on top. A startup check that
+// fails, or a page without one, counts as settled for this, so the signal never hangs.
+let _startListLoads = 2;
+const _startListLoadSettled = () => { if (--_startListLoads === 0) markReady('liveListLoaded'); };
+let _pollListLoadSettled = false;
+const _settlePollListLoad = () => { if (!_pollListLoadSettled) { _pollListLoadSettled = true; _startListLoadSettled(); } };
+
 function pollStartupStatus() {
     const el = document.getElementById('startup-loading');
-    if (!el) return;
+    if (!el) { _settlePollListLoad(); return; }
     const check = async () => {
         // The hub has no local startup phase: each machine is its own server, and the merged list
         // fills in as the feed reports them, so there is nothing to wait for here.
         if (isCloud()) {
             el.classList.add('hidden');
             dashboardStartupComplete();
-            loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded);
+            loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
             return;
         }
         try {
             const resp = await fetch('/api/system/status');
-            if (!resp.ok) { dashboardFailed('status_fetch_http'); setTimeout(check, 2000); return; }
+            if (!resp.ok) { dashboardFailed('status_fetch_http'); _settlePollListLoad(); setTimeout(check, 2000); return; }
             const data = await resp.json();
             if (!data || typeof data.startup_complete !== 'boolean') throw new SyntaxError('Invalid startup status');
             if (data.startup_complete) {
                 el.classList.add('hidden');
                 dashboardStartupComplete();
-                loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded);
+                loadLiveSessions(dashboardFailed).then(dashboardSessionsLoaded).finally(_settlePollListLoad);
                 return;
             }
-        } catch (error) { dashboardFailed(error instanceof SyntaxError ? 'status_fetch_invalid' : 'status_fetch_network'); }
+        } catch (error) { dashboardFailed(error instanceof SyntaxError ? 'status_fetch_invalid' : 'status_fetch_network'); _settlePollListLoad(); }
         setTimeout(check, 2000);
     };
     check();
@@ -765,7 +775,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         dashboardSessionsLoaded(ok);
         // Dashboard deep link: #chat/<sessionId> restores the live session once the list is loaded.
         if (!popout && window.location.hash === startupHash) restoreChatFromHash();
-    });
+    }).finally(_startListLoadSettled);
     loadAllFolderTags();
     loadCustomViews();
     initAgentUI();

@@ -58,7 +58,7 @@ const STUB = `(() => {
         await Promise.all([Page.enable(), Runtime.enable()]);
         await Page.addScriptToEvaluateOnNewDocument({ source: STUB });
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
-        await coralReady('startup', 'liveList', 'settings');
+        await coralReady('startup', 'liveList', 'liveListLoaded', 'settings');
         // A hub with one remote agent, fed through the real feed handler (the real feed socket detached).
         await ev(`(async () => {
             const st = window.__coralStatic || '/static/';
