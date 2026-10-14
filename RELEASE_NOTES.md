@@ -1,5 +1,41 @@
 # Release Notes
 
+## v1.4.19 — Coral Hub acts as the Operator again, with attribution; sign-in links; fewer requests when busy
+
+**Coral Hub users at Interact or Launch act as the Operator again, by default, and every such action now records which Hub user did it.** You can opt out. This release also gives each agent its own identity (logged only for now), lets the desktop apps sign in by themselves, and makes the dashboard and Coral Hub enrollment back off instead of retrying hard.
+
+### Coral Hub
+
+- **Coral Hub acts as the Operator by default, with attribution.** Through Coral Hub at Interact or Launch, a Hub user can post as the Operator and create, assign, amend, reassign and complete tasks, as before v1.4.18. Each such message shows **Operator via Coral Hub · hub-user-…** in the dashboard, and agents see the same in what they receive: the text starts with `[Operator via Coral Hub, hub-user-…]`. Every action is written to coral.log.
+- **Opt out:** Settings > Coral Hub > **Don't let Coral Hub act as the Operator**. Then chat messages from Coral Hub go out as the Hub user, and Operator task actions are refused (as in v1.4.18). The choice is kept if you disconnect and reconnect, and it can only be changed at this computer.
+- **Recent actions as the Operator through Coral Hub** are listed in Settings > Coral Hub (time, action, board, Hub user, result).
+- Still never through Coral Hub: changing board settings, making yourself an Orchestrator, reading every message, or acting as the Operator without saying which Hub user you are. View can't post.
+- **Coral Hub enrollment backs off.** Restarting Coral while a Coral Hub sign-in code is pending reuses the same code instead of asking for a new one. When Coral Hub is down or busy, Coral waits longer between attempts (30 s, doubling up to 15 minutes, and as long as Coral Hub asks), and the wait survives a restart.
+
+### Sign-in and agent identity
+
+- **Each agent gets its own identity.** Every agent Coral starts gets a private session token, and Coral records which agent made each request. In this release that's for the log only: a request claiming to be someone else is written to coral.log, nothing is refused, and nothing changes for you or your agents.
+- **`coral open`** opens the dashboard with a one-time sign-in link (`--print` prints it).
+- **The desktop app, the tray and `launch-coral` sign in by themselves** with a fresh one-time link, never a key or a prompt.
+
+### Fixes
+
+- **The dashboard backs off when Coral or a machine is busy.** When the server answers "too busy" (429 or 503), the dashboard's refreshes pause and retry later instead of adding load; on Coral Hub, a busy machine pauses only that machine's views. A change that a busy or unreachable machine refused says so plainly.
+- **"Terminal gone":** an agent whose terminal session has disappeared shows as asleep, offering Restart only.
+- **Unread-message checks work for roles with spaces.** For roles such as "Backend Dev" the agent hook's unread check built an invalid address and never ran; it does now.
+
+### Testing
+
+- Every dashboard test suite now has exactly one runner, and the test run refuses to start if one has none, so a suite can't be silently skipped. Five suites that had never run now run and pass.
+
+### For integrators (Coral Hub, scripts)
+
+- **Pin v1.4.19's hubproxy.** `X-Coral-Hub-User` is now passed on every board write (`/api/board/{project}/…`, not GET or HEAD), as decided by `tunnel.ForwardsHubUser`, which the hub proxy and the tunnel share. A hub on v1.4.18's hubproxy gets **403** `hub_user_required` on Operator task actions; its chat posts keep working.
+- Message `origin`: `hub_operator` (the Operator through Coral Hub, with `hub_user`), `hub_user` (posted as the Hub user), `hub_user_unknown` (no header; posted as `Coral Hub`). Operator posts through Coral Hub start with `[Operator via Coral Hub, hub-user-…] `.
+- `GET /api/system/hub-operator` is readable through Coral Hub at View and returns `{enabled, disabled}`; `PUT` is local only. A missing header on a task action gives **403** `hub_user_required`; a malformed or repeated one **400**; a name collision **409**; with the opt-out on, **403** `operator_identity_required`.
+- Overload: a 429/503 on `/api/remote/<id>/` pauses only that machine unless the response carries `X-Coral-Hub-Overload: 1`.
+- Agents get `CORAL_SESSION_TOKEN` in their own shell only. `GET /api/system/identity-report` is local only.
+
 ## v1.4.18 — Security fixes: Coral Hub identities, agent environments
 
 **Security fixes — please upgrade.** Through Coral Hub, a request can no longer post or act as the Operator or an Orchestrator, and every chat message from Coral Hub shows the Hub user who sent it. Agents no longer inherit Coral's own server settings, such as its secret key or Coral Hub address.
