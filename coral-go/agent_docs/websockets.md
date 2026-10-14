@@ -224,10 +224,22 @@ On connect, the server sends an initial replay seed (last ~256 KiB of output, co
 
 **Terminal closed (JSON text frame):**
 
-Sent when the session ends:
+Sent when the session ends, including when its tmux session is killed or disappears (checked about once a second; the stream ends within a couple of seconds):
 ```json
 {
   "type": "terminal_closed"
+}
+```
+
+**Terminal gone (JSON text frame):**
+
+Sent in answer to a `terminal_input` (or `terminal_resize`) for a terminal that no longer exists. Nothing was typed anywhere; it is the socket's counterpart of the HTTP 409 `terminal_gone` from `/send` and `/keys`, and the client should treat it the same way (keep the user's draft, say so). `not_sent` is true for input.
+```json
+{
+  "type": "terminal_gone",
+  "code": "terminal_gone",
+  "error": "The agent's terminal is gone",
+  "not_sent": true
 }
 ```
 

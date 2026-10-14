@@ -920,7 +920,9 @@ func (c *Client) runOnSocket(ctx context.Context, socketPath string, args ...str
 }
 
 // sessionFromTarget extracts the session name from a tmux target (e.g. "name.0" → "name").
+// A leading "=" (exact match, as in has-session -t =name) is not part of the name.
 func sessionFromTarget(target string) string {
+	target = strings.TrimPrefix(target, "=")
 	if i := strings.IndexAny(target, ".:"); i > 0 {
 		return target[:i]
 	}

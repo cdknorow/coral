@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -697,10 +699,13 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 			if err := json.Unmarshal(raw, &msg); err != nil {
 				continue
 			}
+			// Input or a resize for a terminal that is gone is not dropped silently: the
+			// client is told, like the 409 terminal_gone of POST /send and /keys (#3218).
+			var sendErr error
 			switch msg.Type {
 			case "terminal_input":
 				if msg.Data != "" {
-					h.backend.SendInput(name, []byte(msg.Data))
+					sendErr = h.backend.SendInput(name, []byte(msg.Data))
 				}
 			case "terminal_resize":
 				if msg.Cols >= 10 {
@@ -708,8 +713,11 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 					if rows == 0 {
 						rows = 50
 					}
-					h.backend.Resize(name, uint16(msg.Cols), rows)
+					sendErr = h.backend.Resize(name, uint16(msg.Cols), rows)
 				}
+			}
+			if errors.Is(sendErr, ptymanager.ErrTerminalGone) {
+				wsjson.Write(ctx, conn, map[string]any{"type": "terminal_gone", "code": "terminal_gone", "error": terminalGoneMessage, "not_sent": msg.Type == "terminal_input"})
 			}
 		}
 	}()

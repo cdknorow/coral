@@ -86,6 +86,8 @@ func TestSessionFromTarget(t *testing.T) {
 		{"bare-name", "bare-name"},
 		{"session:1.2", "session"},
 		{"a.b", "a"},
+		{"=claude-abc", "claude-abc"},
+		{"=claude-abc:0.0", "claude-abc"},
 	}
 	for _, tt := range tests {
 		got := sessionFromTarget(tt.input)

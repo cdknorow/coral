@@ -80,8 +80,8 @@ func (m *PTYBackend) SendInput(name string, data []byte) error {
 	m.mu.RLock()
 	s, ok := m.sessions[name]
 	m.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("session %q not found", name)
+	if !ok || !s.isRunning() {
+		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
 	return s.sendInput(data)
 }
@@ -189,8 +189,8 @@ func (m *PTYBackend) Resize(name string, cols, rows uint16) error {
 	m.mu.RLock()
 	s, ok := m.sessions[name]
 	m.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("session %q not found", name)
+	if !ok || !s.isRunning() {
+		return fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
 	}
 	return s.resize(cols, rows)
 }

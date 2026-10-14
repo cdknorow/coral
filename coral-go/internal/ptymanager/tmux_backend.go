@@ -188,7 +188,7 @@ func (b *TmuxBackend) SendInput(name string, data []byte) error {
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("pane %q not found", name)
+		return fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
 	}
 
 	return b.client.SendTerminalInputToTarget(ctx, target, string(data))
@@ -216,7 +216,7 @@ func (b *TmuxBackend) Resize(name string, cols, rows uint16) error {
 		return err
 	}
 	if target == "" {
-		return fmt.Errorf("pane %q not found", name)
+		return fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
 	}
 	return b.client.ResizePaneTarget(ctx, target, int(cols), int(rows))
 }
@@ -309,7 +309,7 @@ func (b *TmuxBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	b.mu.Lock()
 	tail, exists := b.tails[name]
 	if !exists {
-		tail = b.startTail(name, logPath)
+		tail = b.startTail(name, naming.SessionName(sess.info.AgentType, sess.info.SessionID), logPath)
 		b.tails[name] = tail
 	}
 	b.mu.Unlock()
@@ -456,7 +456,7 @@ func (b *TmuxBackend) Close() error {
 // to the log after startTail returns are observed: if the seek-to-EOF ran
 // asynchronously, a write racing with goroutine startup could land before the
 // seek and be skipped. Caller must hold b.mu write lock.
-func (b *TmuxBackend) startTail(name, logPath string) *logTail {
+func (b *TmuxBackend) startTail(name, tmuxName, logPath string) *logTail {
 	ctx, cancel := context.WithCancel(context.Background())
 	tail := &logTail{
 		subscribers: make(map[string]chan []byte),
@@ -502,8 +502,58 @@ func (b *TmuxBackend) startTail(name, logPath string) *logTail {
 		defer f.Close()
 		b.tailLoop(ctx, name, tail, f, offset, watcher)
 	}()
+	go b.watchSession(ctx, name, tmuxName, tail)
 
 	return tail
+}
+
+// tailSessionCheckEvery is how often an attached terminal's tmux session is
+// checked for existence; tailSessionMisses consecutive misses end the stream.
+var (
+	tailSessionCheckEvery = time.Second
+	tailSessionMisses     = 2
+)
+
+// watchSession ends an attach stream once its tmux session is gone (#3218): the
+// log file outlives a killed session, so the tail alone would never end, the
+// dashboard would never get terminal_closed and would keep sending input into
+// nothing. Two consecutive misses are required, so one failed tmux call does
+// not end a live stream.
+func (b *TmuxBackend) watchSession(ctx context.Context, name, tmuxName string, tail *logTail) {
+	t := time.NewTicker(tailSessionCheckEvery)
+	defer t.Stop()
+	misses := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		if b.client.HasSession(ctx, "="+tmuxName) {
+			misses = 0
+			continue
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if misses++; misses < tailSessionMisses {
+			continue
+		}
+		log.Printf("[tmux] session %s is gone; ending its terminal stream", tmuxName)
+		b.stopTailIf(name, tail)
+		return
+	}
+}
+
+// stopTailIf stops the tail for name only if it is still this one (a restart may
+// have replaced it).
+func (b *TmuxBackend) stopTailIf(name string, tail *logTail) {
+	b.mu.RLock()
+	current := b.tails[name]
+	b.mu.RUnlock()
+	if current == tail {
+		b.stopTail(name)
+	}
 }
 
 // stopTail cancels and cleans up the tail for a session.
