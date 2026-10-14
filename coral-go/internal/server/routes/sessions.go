@@ -648,26 +648,63 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			sessionAgents[a.SessionID] = a.AgentName
 		}
 	}
-	trace.begin("db_identity")
-	displayNames, err := h.ss.GetDisplayNames(ctx, sessionIDs)
-	if err != nil {
-		slog.Warn("failed to read live session identities", "error", err)
+	// The enrichment reads don't depend on each other: they run concurrently, a few at
+	// a time, on the read pools (#3461). Run one after another they summed every
+	// connection wait, and under write load the live list's p95 reached ~1 s.
+	trace.begin("db_reads")
+	var (
+		displayNames, icons, nameColors, latestGoals map[string]string
+		displayErr, subsErr, goalsErr, unreadErr     error
+		gitState                                     map[string]*store.GitSnapshot
+		fileCounts                                   map[string]int
+		latestEvents                                 map[string][2]string
+		stateEvents                                  map[string][]store.AgentEvent
+		tokenUsageMap                                map[string]*store.TokenUsage
+		latestTurnCtx                                map[string]int
+		boardSubs                                    map[string]*board.Subscriber
+		allUnread                                    map[string]int
+	)
+	reads := []func(){
+		func() { displayNames, displayErr = h.ss.GetDisplayNames(ctx, sessionIDs) },
+		func() { icons, _ = h.ss.GetIcons(ctx, sessionIDs) },
+		func() { nameColors, _ = h.ss.GetNameColors(ctx, sessionIDs) },
+		func() { gitState, _ = h.gs.GetLiveGitState(ctx, sessionAgents) },
+		func() { fileCounts, _ = h.ts.GetEditedFileCounts(ctx, sessionIDs) },
+		func() { latestEvents, _ = h.ts.GetLatestEventTypes(ctx, sessionIDs) },
+		func() { stateEvents, _ = h.ts.GetSessionStateEvents(ctx, sessionIDs) },
+		func() { latestGoals, goalsErr = h.ts.GetLatestGoals(ctx, sessionIDs) },
+	}
+	if h.tokenStore != nil && len(sessionIDs) > 0 {
+		reads = append(reads,
+			func() { tokenUsageMap, _ = h.tokenStore.GetLatestUsageBySessionIDs(ctx, sessionIDs) },
+			func() { latestTurnCtx, _ = h.tokenStore.GetLatestTurnContextBySessionIDs(ctx, sessionIDs) })
+	}
+	if h.bs != nil {
+		reads = append(reads,
+			func() { boardSubs, subsErr = h.bs.GetAllSubscriptions(ctx) },
+			func() { allUnread, unreadErr = h.bs.GetUnreadCountsForSessions(ctx, sessionNames) })
+	}
+	runBounded(listReadConcurrency, reads)
+	trace.end("db_reads", append([]any{"reads", len(reads)}, dbPoolAttrs(h.db)...)...)
+	if displayErr != nil {
+		slog.Warn("failed to read live session identities", "error", displayErr)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
 		return
 	}
-	icons, _ := h.ss.GetIcons(ctx, sessionIDs)
-	nameColors, _ := h.ss.GetNameColors(ctx, sessionIDs)
-	trace.end("db_identity", dbPoolAttrs(h.db)...)
+	if subsErr != nil {
+		slog.Warn("failed to get board subscriptions", "error", subsErr)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent subscriptions are temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
+		return
+	}
+	if goalsErr != nil {
+		slog.Warn("failed to get latest goals", "error", goalsErr)
+	}
+	if unreadErr != nil {
+		slog.Warn("failed to get board unread counts", "error", unreadErr)
+	}
 	if icons == nil {
 		icons = map[string]string{}
 	}
-
-	// Batch fetch git state, file counts, events, and goals
-	trace.begin("db_enrichment")
-	gitState, _ := h.gs.GetLiveGitState(ctx, sessionAgents)
-	fileCounts, _ := h.ts.GetEditedFileCounts(ctx, sessionIDs)
-	latestEvents, _ := h.ts.GetLatestEventTypes(ctx, sessionIDs)
-	stateEvents, _ := h.ts.GetSessionStateEvents(ctx, sessionIDs)
 	if gitState == nil {
 		gitState = map[string]*store.GitSnapshot{}
 	}
@@ -680,18 +717,11 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if stateEvents == nil {
 		stateEvents = map[string][]store.AgentEvent{}
 	}
-	trace.end("db_enrichment", dbPoolAttrs(h.db)...)
 	// Launch times, used to bound how long after launch a stalled start is
 	// reported. See agentNeverStarted.
 	createdAtMap := map[string]string{}
 	for _, ls := range allLive {
 		createdAtMap[ls.SessionID] = ls.CreatedAt
-	}
-	var tokenUsageMap map[string]*store.TokenUsage
-	var latestTurnCtx map[string]int
-	if h.tokenStore != nil && len(sessionIDs) > 0 {
-		tokenUsageMap, _ = h.tokenStore.GetLatestUsageBySessionIDs(ctx, sessionIDs)
-		latestTurnCtx, _ = h.tokenStore.GetLatestTurnContextBySessionIDs(ctx, sessionIDs)
 	}
 	if tokenUsageMap == nil {
 		tokenUsageMap = map[string]*store.TokenUsage{}
@@ -699,42 +729,15 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 	if latestTurnCtx == nil {
 		latestTurnCtx = map[string]int{}
 	}
-
-	var latestGoals map[string]string
-	trace.begin("db_goals_board")
-	latestGoals, err = h.ts.GetLatestGoals(ctx, sessionIDs)
-	if err != nil {
-		slog.Warn("failed to get latest goals", "error", err)
-	}
 	if latestGoals == nil {
 		latestGoals = map[string]string{}
-	}
-
-	// Fetch board subscriptions keyed by tmux session name
-	var boardSubs map[string]*board.Subscriber
-	if h.bs != nil {
-		boardSubs, err = h.bs.GetAllSubscriptions(ctx)
-		if err != nil {
-			slog.Warn("failed to get board subscriptions", "error", err)
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent subscriptions are temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
-			return
-		}
 	}
 	if boardSubs == nil {
 		boardSubs = map[string]*board.Subscriber{}
 	}
-	// Fetch board unread counts
-	var allUnread map[string]int
-	if h.bs != nil {
-		allUnread, err = h.bs.GetUnreadCountsForSessions(ctx, sessionNames)
-		if err != nil {
-			slog.Warn("failed to get board unread counts", "error", err)
-		}
-	}
 	if allUnread == nil {
 		allUnread = map[string]int{}
 	}
-	trace.end("db_goals_board", dbPoolAttrs(h.db)...)
 
 	// Fallback: board_name from live_sessions DB for agents not yet subscribed
 	liveBoardNames := make(map[string][2]string) // session_id -> [board_name, display_name]
@@ -6396,4 +6399,24 @@ func sleepReason(ls store.LiveSession) string {
 		return ""
 	}
 	return *ls.SleepReason
+}
+
+// listReadConcurrency bounds the live list's concurrent reads: the size of the read
+// pools (#3441), so one list doesn't queue more than they serve at once (#3461).
+const listReadConcurrency = 4
+
+// runBounded runs fns at most limit at a time and waits for all of them. Each fn
+// writes only its own results.
+func runBounded(limit int, fns []func()) {
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for _, fn := range fns {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(fn func()) {
+			defer func() { <-sem; wg.Done() }()
+			fn()
+		}(fn)
+	}
+	wg.Wait()
 }

@@ -349,7 +349,8 @@ func (s *TokenUsageStore) GetLatestUsageBySessionIDs(ctx context.Context, sessio
 		return nil, err
 	}
 	var records []TokenUsage
-	if err := s.db.SelectContext(ctx, &records, latestUsageRollup+`
+	// The read pool (#3461): the live list asks this on every refresh.
+	if err := s.db.Reader().SelectContext(ctx, &records, latestUsageRollup+`
 		SELECT MAX(max_id) as id, session_id, MAX(agent_name) as agent_name, MAX(agent_type) as agent_type,
 		 MAX(team_id) as team_id, MAX(board_name) as board_name,
 		 SUM(input_tokens) as input_tokens, SUM(output_tokens) as output_tokens,
@@ -386,7 +387,8 @@ func (s *TokenUsageStore) GetLatestTurnContextBySessionIDs(ctx context.Context, 
 		ContextTokens int    `db:"context_tokens"`
 		RecordedAt    string `db:"recorded_at"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, latestUsageRollup+`
+	// The read pool (#3461): the live list asks this on every refresh.
+	if err := s.db.Reader().SelectContext(ctx, &rows, latestUsageRollup+`
 		SELECT session_id, latest_context as context_tokens, MAX(recorded_at) as recorded_at
 		FROM counted GROUP BY session_id`, ids); err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"runtime"
 	"time"
 )
 
@@ -25,7 +26,23 @@ func startPprof(ctx context.Context) {
 		log.Printf("[pprof] not started: %v", err)
 		return
 	}
-	log.Printf("[pprof] serving on http://%s/debug/pprof/ (this computer only)", bound)
+	enableContentionProfiles()
+	log.Printf("[pprof] serving on http://%s/debug/pprof/ (this computer only; block and mutex profiles on)", bound)
+}
+
+// Block and mutex profiles are empty unless sampling is turned on; with
+// CORAL_PPROF_ADDR set (someone is diagnosing) it is, so /debug/pprof/block and
+// /debug/pprof/mutex show where requests wait, e.g. for a database connection
+// (#3461). The rates keep the overhead small: one blocking event sampled per 10 us
+// spent blocked, one in 100 mutex contentions.
+const (
+	blockProfileRate     = 10_000 // nanoseconds
+	mutexProfileFraction = 100
+)
+
+func enableContentionProfiles() {
+	runtime.SetBlockProfileRate(blockProfileRate)
+	runtime.SetMutexProfileFraction(mutexProfileFraction)
 }
 
 // startPprofOn serves the profiling endpoints on addr, which must be a loopback IP
