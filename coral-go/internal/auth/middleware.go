@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/cdknorow/coral/internal/httputil"
 )
 
 // Method is how the middleware let a request in. Handlers that must tell a
@@ -73,6 +75,8 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 			// as a Coral hub polling this server every few seconds) into 429s.
 			if key := extractAPIKey(r); key != "" {
 				if ks.RateLimited(clientIP(r)) {
+					// Too many wrong keys from this address: a limit on signing in (#3434).
+					w.Header().Set(httputil.ActionLimitHeader, "action")
 					http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
 					return
 				}

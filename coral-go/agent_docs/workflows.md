@@ -316,7 +316,9 @@ POST /api/workflows/by-name/{name}/trigger
 
 The request body is optional.
 
-At most **5 workflow runs** are in progress at once. A trigger beyond that answers `429` with `Retry-After: 30` and `{"code": "too_many_runs"}`; a scheduled job that fires then is recorded as failed with the same reason.
+At most **5 workflow runs** are in progress at once. A trigger beyond that answers `429` with `Retry-After: 30`, `X-Coral-Limit: action` and `{"code": "too_many_runs"}`; a scheduled job that fires then is recorded as failed with the same reason.
+
+`X-Coral-Limit: action` marks a 429 that limits one action (also task runs, cross-team posts, sign-in attempts and Coral Hub enrollment), as opposed to a busy server: the dashboard shows its message and keeps everything else running.
 
 ### Request body
 

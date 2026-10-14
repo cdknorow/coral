@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/peercred"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
@@ -263,10 +265,9 @@ func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		}
 		var rl *cloud.RateLimitedError
 		if errors.As(err, &rl) {
-			if rl.RetryAfter > 0 {
-				w.Header().Set("Retry-After", strconv.Itoa(int(rl.RetryAfter.Seconds())))
-			}
-			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": rl.Error()})
+			// Coral Hub refused to start an enrollment now: a limit on this action, not this
+			// server being busy (#3434).
+			httputil.WriteActionLimit(w, int(math.Ceil(rl.RetryAfter.Seconds())), "rate_limited", rl.Error())
 			return
 		}
 		if errors.Is(err, cloud.ErrHubUnavailable) {

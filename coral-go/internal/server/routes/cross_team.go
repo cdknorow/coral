@@ -12,6 +12,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -223,8 +224,8 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 
 	if ok, wait := h.crossTeam.allow(body.FromBoard + "\x00" + body.SubscriberID + "\x00" + target); !ok {
 		secs := int(math.Ceil(wait.Seconds()))
-		w.Header().Set("Retry-After", strconv.Itoa(secs))
-		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": fmt.Sprintf("too many messages to %q; retry in %ds", target, secs)})
+		// A limit on this sender's posts, not a busy server (#3434).
+		httputil.WriteActionLimit(w, secs, "rate_limited", fmt.Sprintf("too many messages to %q; retry in %ds", target, secs))
 		return
 	}
 

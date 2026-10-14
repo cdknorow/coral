@@ -184,8 +184,7 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		runID, err := h.scheduler.FireOneshot(r.Context(), launchConfig)
 		if err != nil {
 			if _, ok := err.(*background.ConcurrencyLimitError); ok {
-				w.Header().Set("Retry-After", "30")
-				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+				httputil.WriteActionLimit(w, 30, "too_many_runs", err.Error()) // a limit on this action (#3434)
 				return
 			}
 			errInternalServer(w, err.Error())

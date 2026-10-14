@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/board"
@@ -180,6 +181,15 @@ func TestCrossTeamRateLimit(t *testing.T) {
 	code, out := e.send("alpha", "Orchestrator", "", "ping")
 	require.Equal(t, http.StatusTooManyRequests, code)
 	require.Contains(t, out["error"], "retry in 6s")
+	require.Equal(t, "rate_limited", out["code"])
+	// A limit on this action, marked so the dashboard doesn't pause every poller (#3434).
+	body, _ := json.Marshal(map[string]any{"from_board": "alpha", "subscriber_id": "Orchestrator", "session_name": "tmux-alphaOrchestrator", "content": "ping"})
+	resp, err := http.Post(e.url+"/api/board/beta/external-messages", "application/json", bytes.NewReader(body))
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusTooManyRequests, resp.StatusCode)
+	assert.Equal(t, "action", resp.Header.Get("X-Coral-Limit"))
+	assert.NotEmpty(t, resp.Header.Get("Retry-After"))
 	e.now = e.now.Add(5 * time.Second)
 	code, _ = e.send("alpha", "Orchestrator", "", "ping")
 	require.Equal(t, http.StatusTooManyRequests, code)

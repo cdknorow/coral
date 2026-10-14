@@ -56,7 +56,7 @@ func (ar *Routes) ValidateKey(w http.ResponseWriter, r *http.Request) {
 	// or several people behind one address, never get a 429 for using the right key.
 	ip := clientIP(r)
 	if ar.ks.RateLimited(ip) {
-		httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many attempts. Try again later."})
+		httputil.WriteActionLimit(w, 0, "too_many_attempts", "Too many attempts. Try again later.") // #3434
 		return
 	}
 

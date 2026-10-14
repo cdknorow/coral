@@ -17,6 +17,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/mediatype"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -440,8 +441,7 @@ func (h *WorkflowHandler) triggerWorkflow(w http.ResponseWriter, r *http.Request
 		if err != nil {
 			var limit *background.ConcurrencyLimitError
 			if errors.As(err, &limit) {
-				w.Header().Set("Retry-After", "30")
-				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": fmt.Sprintf("%d workflow runs are already in progress; try again when one finishes", limit.Limit), "code": "too_many_runs"})
+				httputil.WriteActionLimit(w, 30, "too_many_runs", fmt.Sprintf("%d workflow runs are already in progress; try again when one finishes", limit.Limit)) // #3434
 				return
 			}
 			errInternalServer(w, err.Error())

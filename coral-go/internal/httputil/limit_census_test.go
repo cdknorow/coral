@@ -1,0 +1,93 @@
+package httputil
+
+import (
+	"io/fs"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// too429 finds a 429 in Go code: the constant, or the number given as a status.
+var too429 = regexp.MustCompile(`http\.StatusTooManyRequests|WriteHeader\(429\)|,\s*429\)`)
+
+// tooManyRequestsSites is every place in Coral's own (non-test) code that mentions a 429,
+// with why it is fine (#3434). A 429 Coral WRITES must be a per-action limit sent with
+// WriteActionLimit (or the marker set by hand): the dashboard pauses every poller on an
+// unmarked 429, taking it for an overloaded server. A new site fails this test until it is
+// marked (or, for a real overload answer, explained here).
+var tooManyRequestsSites = map[string]struct {
+	count  int
+	reason string
+}{
+	"internal/httputil/limit.go":   {1, "WriteActionLimit itself: always sends X-Coral-Limit: action"},
+	"internal/auth/middleware.go":  {1, "too many wrong API keys: marked by hand (X-Coral-Limit set just before), plain-text body"},
+	"internal/cloud/enroll.go":     {2, "client side: reads Coral Hub's 429, never writes one"},
+	"internal/cloud/redeem.go":     {1, "client side: reads Coral Hub's 429"},
+	"internal/tracking/posthog.go": {2, "client side: retries the analytics service's 429 (and says so in a comment)"},
+	"cmd/coral/cloud_connect.go":   {1, "client side: the CLI reads Coral Hub's 429"},
+}
+
+func TestEveryTooManyRequestsIsAccountedFor(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case "vendor", "node_modules", "testdata", ".git":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if n := len(too429.FindAllIndex(b, -1)); n > 0 {
+			rel, _ := filepath.Rel(root, path)
+			got[filepath.ToSlash(rel)] = n
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var problems []string
+	for f, n := range got {
+		want, ok := tooManyRequestsSites[f]
+		switch {
+		case !ok:
+			problems = append(problems, f+": a new 429; a per-action limit must use httputil.WriteActionLimit (or be explained in tooManyRequestsSites)")
+		case n != want.count:
+			problems = append(problems, f+": the number of 429s changed; check each one is marked, then update tooManyRequestsSites")
+		}
+	}
+	for f := range tooManyRequestsSites {
+		if _, ok := got[f]; !ok {
+			problems = append(problems, f+": listed but has no 429 any more; remove it from tooManyRequestsSites")
+		}
+	}
+	sort.Strings(problems)
+	for _, p := range problems {
+		t.Error(p)
+	}
+	// The hand-marked one really is marked.
+	mw, err := os.ReadFile(filepath.Join(root, "internal/auth/middleware.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`ActionLimitHeader, "action"\)\s*\n\s*http\.Error\(w, "Too many authentication attempts", http\.StatusTooManyRequests\)`).Match(mw) {
+		t.Error("internal/auth/middleware.go: the 429 for too many wrong keys must set X-Coral-Limit: action just before")
+	}
+}
