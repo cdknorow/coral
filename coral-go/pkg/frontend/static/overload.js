@@ -5,9 +5,13 @@
    503, and every open tab used to keep hammering at the same cadence. Now:
 
    - Every same-origin /api/ answer is watched (installOverloadWatch wraps fetch once).
-     A 429/502/503 from Coral itself pauses every poller for max(Retry-After, 2 s), doubled for
-     each further overload in a row up to 30 s (a longer Retry-After wins), spread over
-     100-150% so the tabs of one account don't come back together.
+     A 429/502/503 from Coral itself pauses every poller: the first time for the server's
+     Retry-After (spread over 100-125%), or 2 s (100-150%) when it gives none (#3430). Only an
+     overload after that pause has run out counts as the next in a row: the pause then doubles,
+     up to 30 s (a longer Retry-After wins), spread over 100-150% so the tabs of one account don't
+     come back together. Answers to requests already in flight when a pause began do not double
+     it (a page that sent five requests used to jump to the fifth step at once); a longer
+     Retry-After among them still extends it.
    - Through a hub, a 429/503 for one remote machine (/api/remote/<id>/…) pauses only the
      pollers for that machine, unless the hub marks it as its own congestion
      (X-Coral-Hub-Overload: 1), which pauses everything. A remote 502 means that machine is
@@ -20,7 +24,9 @@
      It returns the interval id, so clearInterval still stops it.
    - What the user does is never dropped: an action the server refuses as busy says so
      ("Coral is busy…", or "That machine is busy or unreachable…" for a remote one), and
-     retryOnce() retries a file load once after the pause.
+     retryOnce() retries a file load once after the pause. A view's first load that is refused
+     as busy shows that it is retrying and runs again as soon as the pause ends (afterPause),
+     not a poll interval later (#3430).
 
    The live feed (/ws/coral) has its own reconnect backoff (feed_pacing.js). */
 
@@ -53,11 +59,20 @@ export function retryAfterMs(value, now = overloadHooks.now()) {
     return Number.isFinite(t) ? Math.max(0, Math.min(t - now, MAX_RETRY_AFTER_MS)) : 0;
 }
 
-/** How long to pause after the `failures`-th overload answer in a row (1 = the first). */
+/** How long to pause after the `failures`-th overload answer in a row (1 = the first). The first
+ *  honours the server's Retry-After as given (#3430), with a little spread; without one, and from
+ *  the second on, it is max(Retry-After, 2 s doubling to 30 s) spread over 100-150%. */
 export function pauseMs(retryAfter, failures, rand = overloadHooks.rand) {
+    if (failures <= 1 && retryAfter > 0) return Math.round(retryAfter * (1 + 0.25 * rand()));
     const backoff = Math.min(MAX_BACKOFF_MS, MIN_PAUSE_MS * 2 ** Math.max(0, failures - 1));
     const base = Math.max(retryAfter || 0, backoff);
     return Math.round(base * (1 + 0.5 * rand()));
+}
+
+/** Whether an answer says the server is busy (429 or 503), so a first load waits and retries
+ *  instead of showing an error. A 502 is a gateway or an unreachable machine: an error with Retry. */
+export function isBusyStatus(status) {
+    return status === 429 || status === 503;
 }
 
 /** The remote machine an /api/remote/<id>/… path is for, or '' for Coral itself. */
@@ -85,17 +100,23 @@ export function countsAsOverload(path, status, hubOverload = false) {
 }
 
 /** Record one answer. machine: the remote machine it is for ('' = Coral itself). An overload
- *  pauses its scope for pauseMs (never shortening a pause already running); a success
- *  (2xx/3xx) clears the failure count, but only once that scope's pause has run out, so a cheap
- *  call answering fine in the meantime can't cut the pause short. Other answers change nothing. */
+ *  pauses its scope for pauseMs, counting as the next in a row only once the running pause has
+ *  run out: during it, it is an answer to a request already in flight, and only a longer
+ *  Retry-After extends the pause (nothing shortens it). A success (2xx/3xx) clears the failure
+ *  count, but only once that scope's pause has run out, so a cheap call answering fine in the
+ *  meantime can't cut the pause short. Other answers change nothing. */
 export function noteResponse(status, retryAfterValue, { machine = '', overload } = {}) {
     const isOverload = overload !== undefined ? overload : OVERLOAD.has(status);
     const st = _scopeState(machine);
     const now = overloadHooks.now();
     if (isOverload) {
+        const retryAfter = retryAfterMs(retryAfterValue, now);
+        if (now < st.until) {
+            if (retryAfter > 0 && now + retryAfter > st.until) st.until = now + retryAfter;
+            return;
+        }
         st.failures++;
-        const until = now + pauseMs(retryAfterMs(retryAfterValue, now), st.failures);
-        if (until > st.until) st.until = until;
+        st.until = now + pauseMs(retryAfter, st.failures);
         return;
     }
     if (status >= 200 && status < 400 && now >= st.until) st.failures = 0;
@@ -112,6 +133,35 @@ export function pausedForMs(machine = '') {
     const now = overloadHooks.now();
     const st = machine ? _machines.get(machine) : null;
     return Math.max(0, _global.until - now, st ? st.until - now : 0);
+}
+
+/** Who is busy, for a first load's "Loading… (… busy, retrying)" line: 'Coral Hub' when the hub
+ *  marks its own congestion, 'the machine' when one remote machine refused through a hub, and
+ *  otherwise the server the page talks to ('Coral Hub' on a hub-served dashboard, else 'Coral').
+ *  Without an answer (a pause already running), by the pause: Coral's own, or that machine's. */
+export function busyWho(resp, { machine = '', hub = false } = {}) {
+    const self = hub ? 'Coral Hub' : 'Coral';
+    if (resp) {
+        if (resp.headers && resp.headers.get('X-Coral-Hub-Overload') === '1') return 'Coral Hub';
+        let m = '';
+        try { m = resp.url ? machineOf(new URL(resp.url).pathname) : ''; } catch { /* not a URL */ }
+        return m ? 'the machine' : self;
+    }
+    const m = machine === 'local' ? '' : String(machine || '');
+    return m && overloadHooks.now() >= _global.until && isPaused(m) ? 'the machine' : self;
+}
+
+/** The text a first load refused as busy shows while it waits to retry. */
+export function busyRetryingText(resp, opts) {
+    return `Loading… (${busyWho(resp, opts)} busy, retrying)`;
+}
+
+/** Runs fn once the pause for Coral (or, given, that machine) has run out: at once when there is
+ *  none. For a view's first load refused as busy, which should not wait for its next poll (a
+ *  board polls every 10 s). Returns the timer id. */
+export function afterPause(fn, machine = '') {
+    const m = machine === 'local' ? '' : String(machine || '');
+    return setTimeout(fn, pausedForMs(m) + 50);
 }
 
 /** Tests: forget every pause. */

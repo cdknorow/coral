@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { retryAfterMs, pauseMs, noteResponse, isPaused, pausedForMs, overloadHooks, _resetOverloadForTests, countsAsOverload, overloadScope, machineOf } from '../../coral-go/pkg/frontend/static/overload.js';
+import { retryAfterMs, pauseMs, noteResponse, isPaused, pausedForMs, overloadHooks, _resetOverloadForTests, countsAsOverload, overloadScope, machineOf, afterPause, isBusyStatus } from '../../coral-go/pkg/frontend/static/overload.js';
 
 const lo = () => 0, hi = () => 0.999999;
 
@@ -17,10 +17,14 @@ assert.equal(retryAfterMs('100000', now), 300000, 'capped at 5 min');
 assert.equal(retryAfterMs('soon', now), 0);
 assert.equal(retryAfterMs(null, now), 0);
 
-// Backoff: 2 s doubling to 30 s; a longer Retry-After wins; jitter x1.0-1.5.
+// Backoff: the first overload honours Retry-After (x1.0-1.25, #3430); without one, and from the
+// second on, 2 s doubling to 30 s; a longer Retry-After wins; jitter x1.0-1.5.
 assert.deepEqual([1, 2, 3, 4, 5, 6, 9].map(n => pauseMs(0, n, lo)), [2000, 4000, 8000, 16000, 30000, 30000, 30000], 'doubling, capped at 30 s');
-assert.equal(pauseMs(1000, 1, lo), 2000, 'at least 2 s');
+assert.equal(pauseMs(1000, 1, lo), 1000, 'the first pause is the Retry-After the server gave (#3430)');
+assert.equal(pauseMs(1000, 1, hi), 1250, 'spread up to x1.25');
+assert.equal(pauseMs(1000, 2, lo), 4000, 'the second in a row doubles: at least 4 s');
 assert.equal(pauseMs(45000, 1, lo), 45000, 'a longer Retry-After wins');
+assert.equal(pauseMs(45000, 3, lo), 45000, 'also later on');
 assert.equal(pauseMs(0, 1, hi), 3000, 'jitter top is x1.5');
 const spread = new Set(Array.from({ length: 300 }, () => pauseMs(0, 3)));
 assert.ok(spread.size > 50, 'real jitter varies it');
@@ -30,8 +34,8 @@ for (const d of spread) assert.ok(d >= 8000 && d <= 12000, `pause ${d} within x1
 {
     const tabs = Array.from({ length: 40 }, () => pauseMs(5000, 1));
     assert.ok(new Set(tabs).size > 20, 'the tabs spread out');
-    assert.ok(Math.max(...tabs) - Math.min(...tabs) > 1000, 'over more than a second');
-    for (const d of tabs) assert.ok(d >= 5000 && d <= 7500, `${d} within x1.0-1.5 of Retry-After 5 s`);
+    assert.ok(Math.max(...tabs) - Math.min(...tabs) > 600, 'over more than half a second');
+    for (const d of tabs) assert.ok(d >= 5000 && d <= 6250, `${d} within x1.0-1.25 of Retry-After 5 s`);
 }
 
 // The shared state (v2): an overload pauses; NOTHING shortens a running pause; a success clears
@@ -48,11 +52,16 @@ assert.equal(pausedForMs(), 5000, 'a 404 between two 503s does not shorten it');
 noteResponse(200, null);
 assert.equal(pausedForMs(), 5000, 'nor does a 200 from a cheap call meanwhile');
 noteResponse(503, null);
-assert.equal(pausedForMs(), 5000, 'a shorter second pause does not shorten it either (2nd in a row: 4 s < 5 s)');
-t += 5001;
+assert.equal(pausedForMs(), 5000, 'an answer to a request in flight does not shorten it');
+noteResponse(503, '9');
+assert.equal(pausedForMs(), 9000, 'nor double it: only a longer Retry-After among them extends it (#3430)');
+t += 9001;
 assert.equal(isPaused(), false, 'the window ends');
 noteResponse(429, null);
-assert.equal(pausedForMs(), 8000, 'third overload in a row: 8 s (the 200 during the pause did not reset the count)');
+assert.equal(pausedForMs(), 4000, 'the next overload after the pause is the 2nd in a row: 4 s (the answers during the pause and the 200 did not count or reset)');
+t += 4001;
+noteResponse(503, null);
+assert.equal(pausedForMs(), 8000, 'still failing after that pause: 3rd in a row, 8 s');
 t += 8001;
 noteResponse(200, null);
 noteResponse(503, null);
@@ -61,6 +70,34 @@ t += 2001;
 noteResponse(500, null);
 noteResponse(503, null);
 assert.equal(pausedForMs(), 4000, 'a 500 is not a success: the count goes on');
+
+// A page that sent several requests at once, all refused: one pause of the Retry-After, not the
+// fifth step of the doubling (#3430: a first chat load waited up to 30 s).
+_resetOverloadForTests();
+for (let i = 0; i < 5; i++) noteResponse(503, '1');
+assert.equal(pausedForMs(), 1000, 'five answers to one burst: Retry-After 1 s, once');
+t += 1001;
+noteResponse(200, null);
+noteResponse(503, '1');
+assert.equal(pausedForMs(), 1000, 'a success after the pause: the next overload is a first again');
+
+// afterPause runs once the pause is over (at once with none); isBusyStatus (a 502 is not busy:
+// a gateway or an unreachable machine, which a first load shows as an error with Retry).
+assert.deepEqual([429, 502, 503, 500, 200].map(isBusyStatus), [true, false, true, false, false]);
+{
+    const realSetTimeout = globalThis.setTimeout;
+    const delays = [];
+    globalThis.setTimeout = (fn, ms) => { delays.push(ms); return 0; };
+    _resetOverloadForTests();
+    afterPause(() => {});
+    noteResponse(503, '2');
+    afterPause(() => {});
+    noteResponse(503, '3', { machine: 'box-b' });
+    afterPause(() => {}, 'box-b');
+    afterPause(() => {}, 'local');
+    globalThis.setTimeout = realSetTimeout;
+    assert.deepEqual(delays, [50, 2050, 3050, 2050], 'no pause: next tick; Coral paused 2 s; that machine 3 s; local = Coral');
+}
 
 // Per machine (through a hub): a remote 429/503 pauses only that machine's pollers, unless the
 // hub marks the answer as its own congestion; a remote 502 (machine unreachable) is not load.

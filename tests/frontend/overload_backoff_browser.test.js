@@ -51,8 +51,8 @@ const BASE = require('./test_base').BASE;
         await ev(`(async () => { window.__qa.status = 503; window.__qa.retryAfter = '1'; await fetch('/api/qa-overload/poll'); window.__at = window.__ticks; return true; })()`);
         assert.equal(await ev(`window.__o.isPaused()`), true, 'paused');
         const pausedMs = await ev(`window.__o.pausedForMs()`);
-        assert.ok(pausedMs >= 1900 && pausedMs <= 3000, 'max(Retry-After 1 s, 2 s floor) with jitter x1.0-1.5: ' + pausedMs);
-        await new Promise(r => setTimeout(r, 900)); // sleep-ok: proving the probe stays silent inside the window
+        assert.ok(pausedMs >= 950 && pausedMs <= 1300, 'the first pause is the Retry-After 1 s the server gave, with jitter x1.0-1.25 (#3430): ' + pausedMs);
+        await new Promise(r => setTimeout(r, 600)); // sleep-ok: proving the probe stays silent inside the (1-1.25 s) window
         assert.equal(await ev(`window.__ticks - window.__at`), 0, 'no ticks while paused');
         await waitFor(`!window.__o.isPaused()`, 'the window to end', { timeout: 5000 });
         await waitFor(`window.__ticks - window.__at >= 3`, 'the probe resuming');

@@ -3,9 +3,9 @@
 import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
-import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
+import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey, isCloud } from './server_base.js';
 import { platform } from './platform/detect.js';
-import { pollEvery } from './overload.js';
+import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
@@ -521,7 +521,7 @@ async function _boardTasksFetch(boardName, suffix) {
     const timer = setTimeout(() => ctrl.abort(), boardTaskFetchHooks.timeoutMs);
     try {
         const resp = await boardFetch(boardName, suffix, { signal: ctrl.signal });
-        if (!resp.ok) throw new Error(`board tasks fetch failed: ${resp.status}`);
+        if (!resp.ok) { const err = new Error(`board tasks fetch failed: ${resp.status}`); err.resp = resp; throw err; }
         return await resp.json();
     } finally {
         clearTimeout(timer);
@@ -543,19 +543,31 @@ export async function loadBoardTasks(boardName) {
         renderBoardTaskList();
         return;
     }
-    let data = null;
+    let data = null, refused = null;
     try {
         data = await _boardTasksFetch(boardName, `/tasks?limit=${BOARD_TASK_PAGE}`);
     } catch (e) {
         data = null;
+        if (e && e.resp && isBusyStatus(e.resp.status)) refused = e.resp;
     }
     if (seq !== _boardTasksLoadSeq) return;
     const sameBoard = _boardList.board === boardName;
     if (!data) {
         // A failed refresh keeps the board's last good list; another board's is dropped.
-        if (sameBoard) return;
+        if (sameBoard && !_boardList.busy) return;
         _boardList = _emptyBoardList(boardName);
         state.currentBoardTasks = [];
+        // A first load refused as busy (#3430): say so instead of "No tasks yet", and load again
+        // once the pause is over rather than at the next 10 s poll; a newer load supersedes it.
+        if (refused) {
+            _boardList.busy = busyRetryingText(refused, { hub: isCloud() });
+            let machine = '';
+            try { machine = machineOf(new URL(refused.url).pathname); } catch { /* same server */ }
+            afterPause(() => {
+                // Only for the board still shown, and only if no newer load has started.
+                if (seq === _boardTasksLoadSeq && (state.selectedTeam || _currentBoardKey()) === boardName) loadBoardTasks(boardName);
+            }, machine);
+        }
         renderBoardTaskList();
         return;
     }
@@ -746,9 +758,11 @@ export function renderBoardTaskList() {
         if (headerLabel) headerLabel.textContent = 'Tasks';
         const toggle = document.getElementById('board-task-hide-toggle-container');
         if (toggle) toggle.innerHTML = '';
-        container.innerHTML = state.selectedTeam
-            ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
-            : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>';
+        container.innerHTML = _boardList.busy
+            ? `<div class="board-task-empty board-task-busy" role="status">${escapeHtml(_boardList.busy)}</div>`
+            : state.selectedTeam
+                ? '<div class="board-task-empty">No tasks yet. Use + Task to add one for this team.</div>'
+                : '<div class="board-task-empty">No tasks yet. Use + Task to give this agent something to work on.</div>';
         return;
     }
     if (section) section.style.display = '';

@@ -9,7 +9,7 @@ import { chatAgentAdapter } from './chat_agents.js';
 import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
 import { responseError } from './server_status.js';
 import { reportSendError } from './terminal_gone.js';
-import { pollEvery } from './overload.js';
+import { pollEvery, isPaused, afterPause, isBusyStatus, busyRetryingText } from './overload.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -709,6 +709,13 @@ export async function refreshLiveHistory() {
 
     if (refreshInFlight === historyGeneration) return;
     const generation = historyGeneration;
+    const server = sessionServer(session);
+    // The first load during a pause (#3430): the server would refuse it as busy. Say so, and load
+    // the moment the pause ends rather than a poll later.
+    if (!initialLoadDone && isPaused(server === 'local' ? '' : server)) {
+        _showHistoryBusy(container, null, server, generation);
+        return;
+    }
     refreshInFlight = generation;
 
     if (activeChatAbortController) {
@@ -722,6 +729,13 @@ export async function refreshLiveHistory() {
             signal: abortCtrl.signal,
         });
         if (generation !== historyGeneration) return;
+
+        // The first load refused as busy (#3430): not an error. Show that it is retrying, and retry
+        // once the pause the answer started has run out.
+        if (!resp.ok && !initialLoadDone && isBusyStatus(resp.status)) {
+            _showHistoryBusy(container, resp, server, generation);
+            return;
+        }
 
         if (!resp.ok) {
             let errorText = `HTTP ${resp.status}`;
@@ -806,6 +820,26 @@ export async function refreshLiveHistory() {
         }
         if (refreshInFlight === generation) refreshInFlight = -1;
     }
+}
+
+// A first history load refused as busy, or due during a pause: "Loading… (Coral Hub busy,
+// retrying)" in place of the loading line, and the load again as soon as the pause is over, for
+// the same agent only. One retry is queued at a time; the 1 s poll covers it too.
+let _historyBusyRetry = null;
+function _showHistoryBusy(container, resp, server, generation) {
+    let el = container.querySelector(':scope > .loading-indicator');
+    if (!el) {
+        container.innerHTML = '<div class="loading-indicator"></div>';
+        el = container.querySelector(':scope > .loading-indicator');
+    }
+    el.classList.add('chat-history-busy');
+    el.setAttribute('role', 'status');
+    el.textContent = busyRetryingText(resp, { machine: server, hub: isCloud() });
+    if (_historyBusyRetry) clearTimeout(_historyBusyRetry);
+    _historyBusyRetry = afterPause(() => {
+        _historyBusyRetry = null;
+        if (generation === historyGeneration && !initialLoadDone) refreshLiveHistory();
+    }, server);
 }
 
 /** Load older messages (prepend above current messages). */

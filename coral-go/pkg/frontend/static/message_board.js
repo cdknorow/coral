@@ -5,8 +5,8 @@ import { state } from './state.js';
 import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
-import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch } from './server_base.js';
-import { pollEvery } from './overload.js';
+import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
+import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 
 let currentProject = null;
 let pollTimer = null;
@@ -59,6 +59,8 @@ async function fetchMessages(project, limit = PAGE_SIZE, page = {}) {
     for (const [k, v] of Object.entries(page)) params.set(k, String(v));
     if (!('offset' in page)) params.set('offset', '0');
     const resp = await boardFetch(project, `/messages/all?${params}`);
+    // A refusal is not an empty board: a 503's {error} body once read as zero messages (#3430).
+    if (!resp.ok) { const err = new Error(`messages: HTTP ${resp.status}`); err.resp = resp; throw err; }
     const data = await resp.json();
     // Support both old format (array) and new format ({messages, total})
     if (Array.isArray(data)) {
@@ -228,9 +230,27 @@ async function loadBoardMessages(project) {
         _loadedOffset = _keyset ? result.beforeCount : Math.max(0, _totalMessages - _allMessages.length);
         renderMessages(_allMessages);
     } catch (e) {
+        // Refused as busy (#3430): say it is retrying, and load again once the pause is over
+        // instead of at the next 10 s poll (which only fetches new messages after a first load).
+        if (e && e.resp && isBusyStatus(e.resp.status) && currentProject === project) {
+            if (loadingEl) {
+                loadingEl.classList.add('mb-busy');
+                loadingEl.setAttribute('role', 'status');
+                loadingEl.textContent = busyRetryingText(e.resp, { hub: isCloud() });
+            }
+            let machine = '';
+            try { machine = machineOf(new URL(e.resp.url).pathname); } catch { /* same server */ }
+            clearTimeout(_boardBusyRetry);
+            _boardBusyRetry = afterPause(() => {
+                _boardBusyRetry = null;
+                if (currentProject === project && _loadedProject !== project) loadBoardMessages(project);
+            }, machine);
+            return;
+        }
         console.error('Failed to load board messages:', e);
     }
 }
+let _boardBusyRetry = null;
 
 async function loadEarlierMessages() {
     const project = currentProject;
