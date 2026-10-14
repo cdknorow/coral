@@ -3,6 +3,7 @@
 //
 //   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
 //                           [--shards N] [--retries N] [--allow-flaky] [--keep] [--stress [--runs N] [--cpu-throttle X]]
+//                           [--sequences]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -27,6 +28,12 @@
 //
 // Exit status: 0 when every suite passed on its first attempt, 1 when any suite failed every attempt,
 // 3 when the only problems are FLAKY suites (--allow-flaky turns that 3 into 0), 2 on a setup error.
+//
+// SEQUENCES (#3464) are groups of suites whose order matters: one can leave state behind that breaks
+// the next (terminal_scroll right after terminal_pane_size once did). A full run (no --only) also runs
+// each group back to back on a fresh shard, so that case is tested whatever the shard split; the result
+// is one line, "sequence: a > b". --sequences runs only the groups. No retries: an order problem is the
+// point.
 //
 // --stress runs the selected suites --runs N times (default 3) on --shards shards (default 3 in this
 // mode) with every page's CPU throttled --cpu-throttle X times (default 4) through CDP
@@ -81,6 +88,10 @@ const runs = stress ? intArg('--runs', 3, 1) : 1;
 const throttle = stress ? Number(arg('--cpu-throttle', '4')) : 1;
 if (!(throttle >= 1)) { console.error('--cpu-throttle must be a number >= 1'); process.exit(2); }
 const allowFlaky = flag('--allow-flaky');
+const sequencesOnly = flag('--sequences');
+const SEQUENCES = [
+  ['terminal_pane_size_browser.test.js', 'terminal_scroll.test.js'],
+];
 const keep = flag('--keep');
 const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
@@ -285,10 +296,12 @@ try {
 } catch (e) { console.error(e.message); process.exit(2); }
 console.log('');
 
-const tests = [...suites.cdp, ...suites.server]
+const tests = sequencesOnly ? [] : [...suites.cdp, ...suites.server]
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
-if (!tests.length) { console.error('no CDP suites matched'); process.exit(2); }
-console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}`);
+const sequences = stress || (only && !sequencesOnly) ? [] : SEQUENCES;
+for (const t of sequences.flat()) if (!suites.cdp.includes(t)) { console.error(`SEQUENCES names ${t}, which is not a CDP suite`); process.exit(2); }
+if (!tests.length && !sequences.length) { console.error('no CDP suites matched'); process.exit(2); }
+console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}${sequences.length ? `, then ${sequences.length} sequence(s)` : ''}`);
 
 // clearOrigin gives the next suite a clean browser: it opens one fresh about:blank tab and closes every
 // other page (a reused tab would keep its sessionStorage, and the previous suite's still-open document
@@ -408,9 +421,30 @@ async function runOnce(run) {
   }));
 }
 
+// runSequences runs each SEQUENCES group in order on a fresh shard and records it as one result.
+async function runSequences() {
+  for (const group of sequences) {
+    const name = `sequence: ${group.join(' > ')}`;
+    const shard = await ensureShard(0, `fresh for ${name}`);
+    let failed = null, secs = 0;
+    for (const t of group) {
+      const r = await runAttempt(t, shard);
+      secs += Number(r.secs) || 0;
+      if (r.status !== 'pass') { failed = { t, r }; break; }
+    }
+    const status = failed ? (failed.r.status === 'timeout' ? 'timeout' : 'fail') : 'pass';
+    const res = { test: name, run: 1, status, ok: !failed, code: failed ? failed.r.code : 0, secs: secs.toFixed(1), attempts: [] };
+    if (failed) { res.output = `${failed.t} failed after ${group.slice(0, group.indexOf(failed.t)).join(', ')}:\n${failed.r.out}`; res.tail = lastLines(failed.r.out, 6); }
+    results.push(res);
+    console.log(`${(status === 'pass' ? 'PASS' : status.toUpperCase()).padEnd(7)} ${name}  (${secs.toFixed(1)}s)${failed ? `  ${failed.t} exit=${failed.r.code}` : ''}`);
+    if (failed) console.log(failed.r.out.trim().split('\n').slice(process.env.CDP_FULL ? 0 : -30).map(l => '      ' + l).join('\n'));
+  }
+}
+
 const runStarted = Date.now();
 try {
   for (let run = 1; run <= runs; run++) await runOnce(run);
+  await runSequences();
 } catch (e) { console.error(`runner error (a shard could not be replaced?): ${e.message}`); process.exit(2); }
 const elapsed = ((Date.now() - runStarted) / 1000).toFixed(1);
 results.sort((a, b) => a.test.localeCompare(b.test) || a.run - b.run);

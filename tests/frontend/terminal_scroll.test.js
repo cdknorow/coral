@@ -218,6 +218,22 @@ async function run() {
         }
     }
 
+    // ── S5: Hidden and shown again (the chat view) — back at the bottom (#3464) ──
+    // Hiding the container resets its DOM scroll position to 0; a layout pass after it is shown
+    // again (here a resize, as the pane-size answer does) could take that as the buffer's position
+    // and show the top of the scrollback.
+    if (hasTerminal) {
+        const { waitFor, waitStable } = require('./helpers/wait').bind(evalInPage);
+        await evalInPage(`(() => { window.getTerminal().scrollToBottom(); document.getElementById('xterm-container').style.display = 'none'; return true; })()`);
+        await waitFor(`document.getElementById('xterm-container').offsetWidth === 0`, 'the terminal hidden');
+        await evalInPage(`(() => { document.getElementById('xterm-container').style.display = 'flex'; const t = window.getTerminal(); t.resize(t.cols, t.rows - 1); t.resize(t.cols, t.rows + 1); return true; })()`);
+        await waitFor(`document.getElementById('xterm-container').offsetWidth > 0`, 'the terminal shown');
+        const s5 = await waitStable(`(() => { const b = window.getTerminal().buffer.active; return { viewportY: b.viewportY, baseY: b.baseY }; })()`, 'the viewport', 500);
+        check('S5 viewport at bottom after the terminal is hidden and shown again',
+            s5.baseY > 0 && s5.viewportY >= s5.baseY,
+            `viewportY=${s5.viewportY} baseY=${s5.baseY}`);
+    }
+
     // ── Cleanup: kill the test session ───────────────────────────────
     console.log('Cleaning up test session...');
     // The server exposes kill as POST .../kill (there is no DELETE route; a

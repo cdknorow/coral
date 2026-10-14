@@ -271,6 +271,7 @@ let _paneClosed = false;  // true when server reports pane is gone
 let _inputAcks = false;   // the server answers input carrying an id (terminal_hello, #3276)
 let _restarting = false;  // true when a restart is in progress
 let _needsScrollToBottom = false;  // set on connect, cleared after settling
+let _bottomWhenHidden = null;      // while the container is hidden: whether it was at the bottom
 let _scrollSettleTimer = null;
 
 export function setRestarting(value) {
@@ -482,9 +483,21 @@ export function createTerminal(containerEl) {
     if (typeof ResizeObserver !== 'undefined') {
         if (_resizeObserver) _resizeObserver.disconnect();
         _resizeObserver = new ResizeObserver(() => {
-            if (fitAddon && !_panelDragging && containerEl.offsetWidth > 0 && containerEl.offsetHeight > 0) {
-                _sizeLocal(true);
+            const shown = containerEl.offsetWidth > 0 && containerEl.offsetHeight > 0;
+            // Hiding the container (the chat view, another agent) resets its scroll position: a
+            // terminal that was at the bottom goes back there when shown again, not to the top of
+            // its scrollback (#3464).
+            if (!shown) {
+                if (terminal && _bottomWhenHidden === null) {
+                    const b = terminal.buffer.active;
+                    _bottomWhenHidden = b.viewportY >= b.baseY;
+                }
+                return;
             }
+            const wasBottom = _bottomWhenHidden;
+            _bottomWhenHidden = null;
+            if (fitAddon && !_panelDragging) _sizeLocal(true);
+            if (wasBottom && terminal) requestAnimationFrame(() => { if (terminal) terminal.scrollToBottom(); });
         });
         _resizeObserver.observe(containerEl);
     }
@@ -584,7 +597,8 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
                 _paneClosed = false;
                 _restarting = false;
                 _setSessionEndedOverlay(false);
-                terminal.write(new Uint8Array(event.data));
+                // xterm parses writes later: scroll once this chunk is in the buffer (#3464).
+                terminal.write(new Uint8Array(event.data), () => { if (_needsScrollToBottom && terminal) terminal.scrollToBottom(); });
                 if (_needsScrollToBottom) {
                     terminal.scrollToBottom();
                     // Keep scrolling to bottom for 500ms after connect
@@ -613,6 +627,9 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             document.dispatchEvent(new CustomEvent('coral:terminal-closed', { detail: { sessionId } }));
         } else if (data.type === "terminal_size") {
             _onPaneSize(Number(data.cols), Number(data.rows), Number(data.seq) || 0, data.initial === true);
+            // A size change while the replay settles relays the viewport out, which can take the DOM
+            // scroll position (0 after the container was hidden) as the buffer's (#3464).
+            if (_needsScrollToBottom) requestAnimationFrame(() => { if (terminal) terminal.scrollToBottom(); });
         } else if (data.type === "terminal_hello") {
             // The server answers input that carries an id (#3276).
             _inputAcks = data.input_acks === true;
@@ -708,6 +725,7 @@ export function disposeTerminal() {
         _resizeObserver.disconnect();
         _resizeObserver = null;
     }
+    _bottomWhenHidden = null;
     if (terminal) {
         terminal.dispose();
         terminal = null;
