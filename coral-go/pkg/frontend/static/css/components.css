@@ -1846,6 +1846,7 @@
 }
 .settings-hint[data-state="restart-required"] { color: var(--warning); }
 .settings-hint[data-state="error"] { color: var(--danger); }
+.settings-hint[data-unencrypted="true"] { color: var(--warning); }
 .settings-database-encryption-warning {
     display: block;
     margin-top: 6px;

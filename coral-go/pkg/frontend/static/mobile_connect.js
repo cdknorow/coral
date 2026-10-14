@@ -92,7 +92,9 @@ async function renderAccess(status, gen, signal) {
     if (network.remote_access_effective === false) throw new Error('Mobile access is not running. Check again after restarting Coral.');
     let baseUrl = window.location.origin;
     const address = network.primary || network.ips?.[0];
-    if (address) baseUrl = `http://${address}:${network.port || window.location.port || '8420'}`;
+    // With native TLS, other devices must use https (#3355).
+    const scheme = network.scheme === 'https' ? 'https' : 'http';
+    if (address) baseUrl = `${scheme}://${address}:${network.port || window.location.port || '8420'}`;
     byId('mobile-connect-status').textContent = '';
     byId('mobile-connect-actions').replaceChildren();
     byId('mobile-connect-url').textContent = baseUrl;

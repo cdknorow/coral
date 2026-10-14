@@ -395,8 +395,11 @@ func (h *SystemHandler) GetPrivacyStatus(w http.ResponseWriter, r *http.Request)
 		"remote_access_effective":        effectiveRemote,
 		"remote_access_restart_required": remoteEnabled != effectiveRemote,
 		"remote_access_status":           status,
-		"effective_host":                 h.cfg.Host,
-		"debug_input_log":                inputlog.State(),
+		// TLS (#3355): whether the port also serves HTTPS. Remote access without it is
+		// unencrypted, and the dashboard says so.
+		"remote_access_tls": h.cfg.TLS,
+		"effective_host":    h.cfg.Host,
+		"debug_input_log":   inputlog.State(),
 	})
 }
 
@@ -972,6 +975,9 @@ func (h *SystemHandler) NetworkInfo(w http.ResponseWriter, r *http.Request) {
 		"primary":                 primary,
 		"port":                    h.cfg.Port,
 		"remote_access_effective": !config.IsLoopbackHost(h.cfg.Host),
+		// The scheme other devices must use: with TLS on, plain HTTP is refused from the
+		// network (#3355).
+		"scheme": map[bool]string{true: "https", false: "http"}[h.cfg.TLS],
 	})
 }
 

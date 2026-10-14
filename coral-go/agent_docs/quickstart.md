@@ -130,6 +130,34 @@ Remote (LAN/mobile) access is **off by default**. Enabling it saves a preference
 takes effect only after Coral restarts; the dashboard reports the saved and effective
 state separately. Details: `PRIVACY_CONTROLS.md` and `/api/system/privacy`.
 
+### Remote access securely
+
+Remote access on its own is **plain HTTP**: the API key, the login cookie and everything
+typed into agent terminals cross the network unencrypted, readable by anyone on it. The
+first-launch question, the startup log (`[startup] WARNING: remote access is on over plain
+HTTP …`) and **Settings › Privacy › Remote access** all say so. Pick one of:
+
+- **Coral Hub** (recommended away from home): the server connects out to Coral Hub over
+  TLS; nothing listens on the network. See [hub.md](hub.md#connecting-a-server-to-coral-hub).
+- **A TLS reverse proxy** on the same computer (Caddy, nginx, Tailscale Serve…) in front of
+  `http://127.0.0.1:8420`, with remote access left **off** so Coral itself listens on
+  loopback only. Forward WebSocket upgrades (`/ws/…`), and send
+  `X-Forwarded-Proto: https`.
+- **Native TLS**: `coral --tls-cert cert.pem --tls-key key.pem` (or `CORAL_TLS_CERT` and
+  `CORAL_TLS_KEY`), PEM files, with remote access on. The same port then serves HTTPS, and
+  WSS for the terminal and live feeds (the dashboard picks `wss:` on an `https:` page). From
+  other computers only HTTPS is accepted: a plain `GET` is redirected to `https://`, any other
+  plain request gets `400`. Plain `http://localhost` keeps working on this computer, so
+  `coral-board`, the hooks and agents need no change. Giving only one of the two files, or a
+  pair that does not load, stops Coral at startup. The mobile QR code uses `https://`. A
+  self-signed certificate works, but each device must trust it; `mkcert` makes a local CA.
+  For example:
+
+  ```console
+  $ coral --remote --tls-cert ~/certs/coral.pem --tls-key ~/certs/coral-key.pem
+  Coral dashboard: https://localhost:8420 (TLS; plain http:// only from this computer)
+  ```
+
 ## 3. Open the dashboard
 
 Go to **http://localhost:8420**.

@@ -89,3 +89,19 @@ func TestRemoteAccessStatus_OnlyExplicitTrueEnables(t *testing.T) {
 	assert.Equal(t, true, s["remote_access_configured"])
 	assert.Equal(t, "disabled", s["remote_access_status"])
 }
+
+// #3355: the dashboard is told whether remote access is encrypted, and the mobile QR
+// code which scheme other devices must use.
+func TestRemoteAccessStatus_ReportsTLS(t *testing.T) {
+	server, handler := setupSystemTestServer(t)
+	handler.cfg.Host = "0.0.0.0"
+	s := privacyGetJSON(t, server.URL+"/api/system/privacy")
+	assert.Equal(t, false, s["remote_access_tls"])
+	net := networkInfoServer(t, handler)
+	assert.Equal(t, "http", privacyGetJSON(t, net.URL+"/api/system/network-info")["scheme"])
+
+	handler.cfg.TLS = true
+	s = privacyGetJSON(t, server.URL+"/api/system/privacy")
+	assert.Equal(t, true, s["remote_access_tls"])
+	assert.Equal(t, "https", privacyGetJSON(t, net.URL+"/api/system/network-info")["scheme"])
+}

@@ -35,6 +35,9 @@ type Config struct {
 	// Server
 	Host string
 	Port int
+	// TLS is true when the server also speaks HTTPS on its port (--tls-cert/--tls-key,
+	// #3355); set at startup once the certificate has loaded.
+	TLS bool
 
 	// Directories
 	CoralRoot string

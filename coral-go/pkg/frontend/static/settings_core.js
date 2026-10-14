@@ -29,6 +29,14 @@ export function renderRemoteAccessStatus(status, loadError = false) {
     } else {
         el.textContent = `Saved and running: ${effective ? 'remote access enabled' : 'local-only'}.`;
     }
+    // Remote access without TLS is plain HTTP (#3355): say so wherever it is, or will be, on.
+    if ((effective || saved) && status?.remote_access_tls !== true) {
+        el.textContent += ' Not encrypted: the API key, login and terminal traffic cross the network as plain HTTP. Use Coral Hub, a TLS reverse proxy, or start Coral with --tls-cert and --tls-key.';
+        el.dataset.unencrypted = 'true';
+    } else {
+        delete el.dataset.unencrypted;
+        if (effective && status?.remote_access_tls === true) el.textContent += ' Encrypted (HTTPS).';
+    }
     el.dataset.state = restart ? 'restart-required' : 'current';
 }
 

@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"golang.org/x/term"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -84,6 +85,8 @@ func main() {
 	bootstrapFile := flag.String("bootstrap-file", "", "One-time Coral Hub credential file to enroll this server with at startup (owned by you, mode 0600, removed after reading). On Linux /run/coral/bootstrap.d/credential is read without the flag")
 	proofFile := flag.String("proof-file", "", "Optional proof file to send with the bootstrap credential (at most 16 KiB of JSON from a provider helper)")
 	cloudConnect := flag.String("cloud-connect", cloudConnectPrompt, "With --cloud-url/CORAL_CLOUD_URL on a server not yet connected: prompt (connect in the terminal at startup; without a terminal, log the link and code), auto (only log them, never prompt) or off")
+	tlsCert := flag.String("tls-cert", os.Getenv("CORAL_TLS_CERT"), "PEM certificate file: serve HTTPS (and WSS) on the port, and accept only HTTPS from other computers. Needs --tls-key (also CORAL_TLS_CERT)")
+	tlsKey := flag.String("tls-key", os.Getenv("CORAL_TLS_KEY"), "PEM private key file for --tls-cert (also CORAL_TLS_KEY)")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {
@@ -160,7 +163,8 @@ func main() {
 	// next interactive start still asks.
 	var remotePrompt func() bool
 	if term.IsTerminal(int(os.Stdin.Fd())) {
-		remotePrompt = promptRemoteAccess
+		tlsOn := strings.TrimSpace(*tlsCert) != "" && strings.TrimSpace(*tlsKey) != ""
+		remotePrompt = func() bool { return promptRemoteAccess(os.Stdin, os.Stdout, tlsOn) }
 	}
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType:        *backendFlag,
@@ -169,6 +173,8 @@ func main() {
 		RemoteAccess:       *remoteAccess,
 		RemoteAccessPrompt: remotePrompt,
 		DebugInput:         *debugInput,
+		TLSCert:            *tlsCert,
+		TLSKey:             *tlsKey,
 	})
 	if err != nil {
 		logexit.Fatalf("Failed to start: %v", err)
@@ -191,9 +197,14 @@ func main() {
 
 	// Print dashboard URL to stdout so it's visible in the terminal
 	fmt.Printf("\n  Coral dashboard: http://localhost:%d\n", cfg.Port)
+	if cfg.TLS {
+		// Other devices use https; this computer keeps plain http (#3355).
+		fmt.Printf("  Other devices: https://<this computer>:%d (TLS)\n", cfg.Port)
+	}
 	fmt.Printf("  Press Ctrl+C to stop\n\n")
 
-	// Open browser unless --no-browser
+	// Open browser unless --no-browser. Always http://localhost: it works on this
+	// computer with TLS on too, without a warning for a self-signed certificate.
 	if !*noBrowser {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
@@ -280,27 +291,38 @@ func runEncryptionSelfTest() error {
 	return nil
 }
 
-func promptRemoteAccess() bool {
-	fmt.Println()
-	fmt.Println("  Remote Access")
-	fmt.Println("  ─────────────")
-	fmt.Println("  Allow connections from other devices on your network (phones, tablets, etc.)?")
-	fmt.Println()
-	fmt.Println("  Note: If you're running inside WSL2, you'll need to either enable remote")
-	fmt.Println("  access here or set up port forwarding from Windows to reach the dashboard.")
-	fmt.Println()
-	fmt.Print("  Enable remote access? [y/N]: ")
-	scanner := bufio.NewScanner(os.Stdin)
+// promptRemoteAccess asks once, on first launch, whether other devices may connect. It
+// says plainly that without TLS the connection is unencrypted (#3355).
+func promptRemoteAccess(in io.Reader, out io.Writer, tlsOn bool) bool {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  Remote Access")
+	fmt.Fprintln(out, "  ─────────────")
+	fmt.Fprintln(out, "  Allow connections from other devices on your network (phones, tablets, etc.)?")
+	fmt.Fprintln(out)
+	if tlsOn {
+		fmt.Fprintln(out, "  They connect over HTTPS (--tls-cert/--tls-key).")
+	} else {
+		fmt.Fprintln(out, "  Warning: remote access is plain HTTP, NOT encrypted. Your API key, login cookie")
+		fmt.Fprintln(out, "  and everything typed into agent terminals cross the network readable by anyone")
+		fmt.Fprintln(out, "  on it. For use beyond a network you trust, use Coral Hub (encrypted), a TLS")
+		fmt.Fprintln(out, "  reverse proxy, or start Coral with --tls-cert and --tls-key.")
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "  Note: If you're running inside WSL2, you'll need to either enable remote")
+	fmt.Fprintln(out, "  access here or set up port forwarding from Windows to reach the dashboard.")
+	fmt.Fprintln(out)
+	fmt.Fprint(out, "  Enable remote access? [y/N]: ")
+	scanner := bufio.NewScanner(in)
 	if scanner.Scan() {
 		answer := strings.TrimSpace(strings.ToLower(scanner.Text()))
 		if answer == "y" || answer == "yes" {
-			fmt.Println("  Remote access enabled. You can change this later in Settings > Privacy.")
-			fmt.Println()
+			fmt.Fprintln(out, "  Remote access enabled. You can change this later in Settings > Privacy.")
+			fmt.Fprintln(out)
 			return true
 		}
 	}
-	fmt.Println("  Remote access disabled. You can change this later in Settings > Privacy.")
-	fmt.Println()
+	fmt.Fprintln(out, "  Remote access disabled. You can change this later in Settings > Privacy.")
+	fmt.Fprintln(out)
 	return false
 }
 

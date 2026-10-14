@@ -71,6 +71,12 @@ type Options struct {
 	// DebugInput forces the terminal input debug log on (--debug-input), whatever
 	// the setting says (#3256).
 	DebugInput bool
+
+	// TLSCert and TLSKey are a PEM certificate and key file (--tls-cert/--tls-key,
+	// CORAL_TLS_CERT/CORAL_TLS_KEY, #3355). With both, the port also serves HTTPS and
+	// accepts only HTTPS from other computers. Only one, or a pair that does not load,
+	// stops startup.
+	TLSCert, TLSKey string
 }
 
 // RunningServer holds all resources created during startup.
@@ -302,6 +308,14 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	boardProbe.Close()
 	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
 
+	// Native TLS (#3355): load the pair before binding, so a bad pair stops startup.
+	tlsConfig, err := loadTLSConfig(opts.TLSCert, opts.TLSKey)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	cfg.TLS = tlsConfig != nil
+
 	// Bind the port now and keep the listener open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve).
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -309,6 +323,9 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if err != nil {
 		db.Close()
 		return nil, fmt.Errorf("port %d is already in use: %w", cfg.Port, err)
+	}
+	if tlsConfig != nil {
+		ln = newSniffListener(ln, tlsConfig)
 	}
 
 	// Apply terminal_replay_bytes setting from user_settings before any
@@ -345,8 +362,12 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// the final sleeping state (including recovered sessions).
 	srv.RestoreSleepingBoards()
 
+	var handler http.Handler = srv.Router()
+	if tlsConfig != nil {
+		handler = requireTLSFromNetwork(handler)
+	}
 	httpServer := &http.Server{
-		Handler:           srv.Router(),
+		Handler:           handler,
 		ReadTimeout:       15 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second, // Prevents slowloris attacks
 		WriteTimeout:      0,                // Disabled for WebSocket/SSE
@@ -363,7 +384,14 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		onErr = func(err error) { log.Printf("[FATAL] Server error: %v", err) }
 	}
 	go func() {
-		log.Printf("Coral dashboard: http://localhost:%d", cfg.Port)
+		if tlsConfig != nil {
+			log.Printf("Coral dashboard: https://localhost:%d (TLS; plain http:// only from this computer)", cfg.Port)
+		} else {
+			log.Printf("Coral dashboard: http://localhost:%d", cfg.Port)
+		}
+		if w := remoteAccessWarning(cfg.Host, cfg.TLS); w != "" {
+			log.Print(w)
+		}
 		if err := httpServer.Serve(ln); err != nil && err != http.ErrServerClosed {
 			onErr(err)
 		}
