@@ -2,6 +2,8 @@ package testguard
 
 import (
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -39,6 +41,7 @@ func scrubAgentShellEnv() {
 	for _, k := range agentShellVars {
 		os.Unsetenv(k)
 	}
+	isolateDataDir()
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		for _, p := range agentShellPrefixes {
@@ -48,4 +51,18 @@ func scrubAgentShellEnv() {
 			}
 		}
 	}
+}
+
+// isolateDataDir keeps a test binary out of the production data folder. Agent
+// shells export CORAL_DATA_DIR / CORAL_DIR pointing at ~/.coral, and without
+// them Coral falls back to ~/.coral itself, so a test that resolved the data
+// folder the way the server or a CLI does read production's files: with the
+// command-line token there, `coral auto-accept off` in a test signed with it.
+// CORAL_DIR is dropped and CORAL_DATA_DIR points at a per-process folder under
+// the temp dir, not created here (a test that needs one sets its own with
+// t.Setenv or t.TempDir). HOME is left alone: Go's build cache lives under it,
+// and tests that build binaries would start from an empty cache.
+func isolateDataDir() {
+	os.Unsetenv("CORAL_DIR")
+	os.Setenv("CORAL_DATA_DIR", filepath.Join(os.TempDir(), "coral-testguard-data-"+strconv.Itoa(os.Getpid())))
 }

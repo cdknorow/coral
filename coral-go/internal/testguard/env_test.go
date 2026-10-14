@@ -46,3 +46,35 @@ func TestAgentShellEnvIsScrubbedAtInit(t *testing.T) {
 		t.Fatalf("child test binary did not run the check:\n%s", out)
 	}
 }
+
+// A test binary never resolves Coral's data folder to the one its shell names
+// (an agent shell's CORAL_DATA_DIR / CORAL_DIR is production's ~/.coral): the
+// scrub drops CORAL_DIR and points CORAL_DATA_DIR at a per-process folder under
+// the temp dir.
+func TestTestBinaryDataDirIsNeverTheShells(t *testing.T) {
+	if os.Getenv("TESTGUARD_DATADIR_CHILD") == "1" {
+		if v, ok := os.LookupEnv("CORAL_DIR"); ok {
+			t.Fatalf("CORAL_DIR reached the test binary: %q", v)
+		}
+		got := os.Getenv("CORAL_DATA_DIR")
+		if got == "/prod/.coral" || !strings.HasPrefix(got, os.TempDir()) || !strings.Contains(got, "coral-testguard-data-") {
+			t.Fatalf("CORAL_DATA_DIR = %q, want a testguard folder under %s", got, os.TempDir())
+		}
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestTestBinaryDataDirIsNeverTheShells$", "-test.count=1")
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, scrubbedMarker+"=") {
+			env = append(env, kv)
+		}
+	}
+	cmd.Env = append(env, "TESTGUARD_DATADIR_CHILD=1", "CORAL_DATA_DIR=/prod/.coral", "CORAL_DIR=/prod/.coral")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("child test binary failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "PASS") {
+		t.Fatalf("child test binary did not run the check:\n%s", out)
+	}
+}
