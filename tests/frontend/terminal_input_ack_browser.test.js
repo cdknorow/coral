@@ -101,7 +101,12 @@ async function run() {
         const out = await ev(`window.__out.slice()`);
         const acks = await ev(`window.__in.filter(m => m.type === 'terminal_input_ack').map(m => m.id)`);
         check('accepted: text and Enter carry ids, both acknowledged', out.length === 2 && out.every(m => Number.isInteger(m.id)) && out.every(m => acks.includes(m.id)), JSON.stringify({ out, acks }));
-        check('accepted: "Sent" on the acks, before the old 1.2 s window', sentAt !== null && sentAt - t0 < 1100, sentAt === null ? 'no Sent' : `${Math.round(sentAt - t0)} ms`);
+        // "Sent" comes from the acks, not from the old 1.2 s window: it appears no earlier than the last ack (the
+        // window would fire on its own, before slow acks) and right after it. Relative to the acks, not a fixed
+        // bound from the send: under load the acks themselves can take over a second (read 1.3 s on a saturated box).
+        const lastAckAt = await ev(`Math.max(...window.__in.filter(m => m.type === 'terminal_input_ack').map(m => m.at))`);
+        check('accepted: "Sent" on the acks (after the last ack, at once), not on the old window', sentAt !== null && sentAt >= lastAckAt - 5 && sentAt - lastAckAt < 500,
+            sentAt === null ? 'no Sent' : `${Math.round(sentAt - lastAckAt)} ms after the last ack, ${Math.round(sentAt - t0)} ms after the send`);
         check('accepted: the saved draft is cleared', (await savedDraft()) === null, await savedDraft());
 
         // ── Refused by a read-only Coral Hub: the input is dropped, hub_read_only answers ──
