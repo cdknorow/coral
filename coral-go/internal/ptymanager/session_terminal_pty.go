@@ -132,6 +132,16 @@ func (p *PTYSessionTerminal) SendPrompt(ctx context.Context, name, text, _, sess
 	return p.backend.SendPrompt(ctx, key, text)
 }
 
+// SendEnter implements EnterSender: the Enter of a send the automated-input gate
+// withheld because a prompt opened after its text (#3431, #3457).
+func (p *PTYSessionTerminal) SendEnter(_ context.Context, name, _, sessionID string) error {
+	key, err := p.keyFor(name, sessionID)
+	if err != nil {
+		return err
+	}
+	return p.backend.SendInput(key, []byte("\r"))
+}
+
 func (p *PTYSessionTerminal) SendRawInput(_ context.Context, name string, keys []string, _, sessionID string) error {
 	resolved, err := p.keyFor(name, sessionID)
 	if err != nil {

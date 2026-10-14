@@ -156,6 +156,9 @@ func (m *PTYBackend) SendPrompt(ctx context.Context, name, text string) error {
 	}
 	// Input has started: finish regardless of ctx, bounded by the fixed delay.
 	time.Sleep(promptSubmitDelay)
+	if !tmux.EnterAllowed(ctx) {
+		return tmux.ErrEnterWithheld // a prompt opened: the gate holds the Enter (#3457)
+	}
 	if n, err := s.writeFull([]byte("\r")); err != nil || n != 1 {
 		if err == nil {
 			err = io.ErrShortWrite

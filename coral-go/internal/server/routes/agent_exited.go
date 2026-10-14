@@ -70,6 +70,14 @@ func deliverAutomated(ctx context.Context, term ptymanager.SessionTerminal, name
 	_, err := ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{
 		Term: term, Name: name, AgentType: agentType, SessionID: sessionID,
 		Key: key, Text: text, What: what,
+		// As a bracketed paste where the agent takes one: a menu ignores it (#3457).
+		Paste: true,
+		Ready: func(ctx context.Context) error {
+			if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {
+				return errAgentExited
+			}
+			return nil
+		},
 		Send: func(ctx context.Context) error {
 			// Re-checked at send time too: a held send may be typed much later.
 			if automatedInputBlocked(ctx, term, name, agentType, sessionID, what) {

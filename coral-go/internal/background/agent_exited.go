@@ -2,6 +2,7 @@ package background
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -51,6 +52,14 @@ func deliverAutomated(ctx context.Context, rt AgentRuntime, logger *slog.Logger,
 	_, err = ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{
 		Term: rt, Name: name, AgentType: agentType, SessionID: sessionID,
 		Key: key, Text: text, What: what, RequireInputBox: requireInputBox,
+		// As a bracketed paste where the agent takes one: a menu ignores it (#3457).
+		Paste: true,
+		Ready: func(ctx context.Context) error {
+			if skipIfAgentExited(ctx, rt, logger, name, what) {
+				return errSkippedExited
+			}
+			return nil
+		},
 		Send: func(ctx context.Context) error {
 			// Re-checked at send time too: a held send may be typed much later.
 			if skipIfAgentExited(ctx, rt, logger, name, what) {
@@ -59,5 +68,11 @@ func deliverAutomated(ctx context.Context, rt AgentRuntime, logger *slog.Logger,
 			return rt.SendInput(ctx, name, text)
 		},
 	})
+	if errors.Is(err, errSkippedExited) {
+		return true, nil // the agent exited before its turn: skipped, as above
+	}
 	return false, err
 }
+
+// errSkippedExited: the agent's CLI exited before a held send's turn; nothing typed.
+var errSkippedExited = errors.New("skipped: the agent has exited")

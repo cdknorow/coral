@@ -66,10 +66,17 @@ var allowedSenders = map[string]string{
 	"internal/ptymanager/tmux_backend.go\tTmuxBackend.SendInput\tSendTerminalInputToTarget":                          "primitive",
 	"internal/ptymanager/prompt_screen.go\tTmuxSessionTerminal.SendEnter\tSendRawKeys":                               "primitive",
 	"internal/background/runtime_tmux.go\tTmuxRuntime.SendEnter\tSendRawKeys":                                        "primitive",
-	"internal/tmux/client.go\tClient.SendKeys\tSendKeysToTarget":                                                     "primitive",
-	"internal/tmux/client.go\tClient.SendKeysToTarget\tpasteToTarget":                                                "primitive",
-	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tpasteToTarget":                                       "primitive",
-	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tSendTerminalInputToTarget":                           "primitive",
+	// #3457: automated text as a bracketed paste.
+	"internal/ptymanager/automated_input.go\tinputGate.pasteChecked\tSendPrompt":           "gate (the paste, Enter only after the re-check)",
+	"internal/ptymanager/automated_input.go\tinputGate.pasteChecked\tSendEnter":            "gate (a held paste's Enter, once its text is in the box and no prompt is open)",
+	"internal/background/runtime_tmux.go\tTmuxRuntime.SendPrompt\tSendPrompt":              "primitive",
+	"internal/background/runtime_pty.go\tPTYRuntime.SendPrompt\tSendPrompt":                "primitive",
+	"internal/background/runtime_pty.go\tPTYRuntime.SendEnter\tSendInput":                  "primitive",
+	"internal/ptymanager/session_terminal_pty.go\tPTYSessionTerminal.SendEnter\tSendInput": "primitive",
+	"internal/tmux/client.go\tClient.SendKeys\tSendKeysToTarget":                           "primitive",
+	"internal/tmux/client.go\tClient.SendKeysToTarget\tpasteToTarget":                      "primitive",
+	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tpasteToTarget":             "primitive",
+	"internal/tmux/client.go\tClient.SendTerminalInputToTarget\tSendTerminalInputToTarget": "primitive",
 }
 
 func TestEveryTerminalSendIsReviewed(t *testing.T) {

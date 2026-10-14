@@ -37,6 +37,17 @@ func (r *PTYRuntime) SendInput(ctx context.Context, name, text string) error {
 	return r.backend.SendLine(name, text)
 }
 
+// SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
+// paste and its Enter, while the agent has bracketed paste on (#3457).
+func (r *PTYRuntime) SendPrompt(ctx context.Context, name, text, _, _ string) error {
+	return r.backend.SendPrompt(ctx, name, text)
+}
+
+// SendEnter implements ptymanager.EnterSender (#3431, #3457).
+func (r *PTYRuntime) SendEnter(_ context.Context, name, _, _ string) error {
+	return r.backend.SendInput(name, []byte("\r"))
+}
+
 func (r *PTYRuntime) KillAgent(ctx context.Context, name string) error {
 	ptymanager.DropHeld(name, "killed") // nothing held for the old process is typed into a new one (#3431)
 	return r.backend.Kill(name)

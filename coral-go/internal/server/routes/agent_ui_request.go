@@ -1,17 +1,14 @@
 package routes
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -87,33 +84,10 @@ func buildUIPanelRequestNotification(requestID, panelID, request, sessionName, s
 // by Coral's own logging) for the last DECSET/DECRST 2004 sequence. known is
 // false when the log is missing or has never seen the sequence.
 func bracketedPasteFromLog(cfg *config.Config, agentType, sessionID string) (enabled, known bool) {
-	if cfg == nil || cfg.LogDir == "" {
+	if cfg == nil {
 		return false, false
 	}
-	f, err := os.Open(naming.LogFile(cfg.LogDir, agentType, sessionID))
-	if err != nil {
-		return false, false
-	}
-	defer f.Close()
-	const tail = 256 << 10
-	if st, err := f.Stat(); err == nil && st.Size() > tail {
-		if _, err := f.Seek(st.Size()-tail, io.SeekStart); err != nil {
-			return false, false
-		}
-	}
-	data, err := io.ReadAll(io.LimitReader(f, tail))
-	if err != nil {
-		return false, false
-	}
-	on := bytes.LastIndex(data, []byte("\x1b[?2004h"))
-	off := bytes.LastIndex(data, []byte("\x1b[?2004l"))
-	switch {
-	case on > off:
-		return true, true
-	case off > on:
-		return false, true
-	}
-	return false, false
+	return ptymanager.BracketedPasteFromLog(cfg.LogDir, agentType, sessionID)
 }
 
 func (h *SessionsHandler) uiRequestServerURL() string {

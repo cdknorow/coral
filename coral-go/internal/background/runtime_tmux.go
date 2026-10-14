@@ -154,6 +154,18 @@ func (r *TmuxRuntime) AgentScreen(ctx context.Context, name, agentType, sessionI
 	return r.client.CapturePane(ctx, name, 40, agentType, sessionID)
 }
 
+// SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
+// paste and its Enter (#3457).
+func (r *TmuxRuntime) SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error {
+	if agentType == "" && sessionID == "" {
+		agentType, sessionID = parseSessionName(name)
+	}
+	return r.client.SendPrompt(ctx, name, text, agentType, sessionID)
+}
+
+// RenderedScreen implements ptymanager.RenderedScreen: AgentScreen is the pane as drawn.
+func (r *TmuxRuntime) RenderedScreen() bool { return true }
+
 // SendEnter implements ptymanager.EnterSender: the Enter a send withheld because
 // a prompt opened after its text (#3431).
 func (r *TmuxRuntime) SendEnter(ctx context.Context, name, agentType, sessionID string) error {

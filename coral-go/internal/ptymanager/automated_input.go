@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/inputlog"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/tmux"
 )
 
@@ -72,6 +73,20 @@ type AutomatedInput struct {
 	// open), so an input box Coral doesn't recognise can't hold a launch for
 	// ever; an open prompt still holds it.
 	RequireInputBox bool
+	// Paste sends Text as one bracketed paste and then Enter where the agent's
+	// terminal can (PromptSender, with bracketed paste on), so a menu that opens just
+	// before it ignores it instead of taking it as an answer (#3457); Send is then
+	// the fallback, for a terminal or agent without bracketed paste. Ready, when
+	// set, runs just before the paste (the caller's has-the-agent-exited check).
+	Paste bool
+	Ready func(ctx context.Context) error
+
+	// pasteRetry: a held paste send. Its text may already be in the input box
+	// (only its Enter is left), or a menu dropped it (pasted again, once).
+	pasteRetry int
+	// hadPlaceholder: the box held a "[Pasted ...]" placeholder before Coral's paste
+	// (a person's), so one is never taken as ours.
+	hadPlaceholder bool
 }
 
 // EnterSender is implemented by terminals that can press Enter in an agent's
@@ -215,6 +230,11 @@ func DeliverAutomated(ctx context.Context, in AutomatedInput) (Delivery, error) 
 // held on its own, ahead of anything else held for the agent; it reports true
 // then. Any other error is returned.
 func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHeld bool, err error) {
+	if in.Paste {
+		if held, err, done := g.pasteChecked(ctx, in); done {
+			return held, err
+		}
+	}
 	check := func(ctx context.Context) bool {
 		r, ok := in.Term.(ScreenReader)
 		if !ok {
@@ -233,6 +253,159 @@ func (g *inputGate) sendChecked(ctx context.Context, in AutomatedInput) (enterHe
 		return true, nil
 	}
 	return false, err
+}
+
+// pasteChecked sends in as a bracketed paste and its Enter. Enter goes only when no
+// prompt is open and (on a rendered screen) the input box shows the text; otherwise
+// the send is held first in the agent's queue, and on its turn sends just its Enter
+// if the text is in the box, or pastes again (once) if a menu dropped it. done is
+// false when the paste can't be used (no PromptSender, bracketed paste off or
+// unknown): the caller falls back to typing.
+func (g *inputGate) pasteChecked(ctx context.Context, in AutomatedInput) (enterHeld bool, err error, done bool) {
+	ps, ok := in.Term.(PromptSender)
+	if !ok {
+		return false, nil, false
+	}
+	if in.Ready != nil {
+		if err := in.Ready(ctx); err != nil {
+			return false, err, true
+		}
+	}
+	agentType, sessionID := in.identity()
+	sr, _ := in.Term.(ScreenReader)
+	rendered := false
+	if rs, ok := in.Term.(RenderedScreen); ok && sr != nil {
+		rendered = rs.RenderedScreen()
+	}
+	if in.pasteRetry > 0 && sr != nil {
+		// Its turn again (#3457 v2): what is in the input box decides. Our text: only
+		// its Enter. Empty (or a placeholder): a menu dropped the paste, so paste
+		// again, at most maxPasteRetries times. Anything else (a person's draft, or
+		// text Coral can't recognise): never added to; held, and reported.
+		screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
+		if serr != nil {
+			g.holdPaste(in, "the screen couldn't be read", false)
+			return true, nil, true
+		}
+		if open, _ := PromptOnScreen(screen); open {
+			g.holdPaste(in, "a prompt is still open", false)
+			return true, nil, true
+		}
+		state := boxOurs // a PTY's raw output can't show the box: Enter only, never paste again
+		if rendered {
+			state = inputBoxState(screen, in.Text, in.hadPlaceholder)
+		} else {
+			slog.Info("automated input: unconfirmed delivery (the terminal's box can't be read; sending only the Enter)",
+				"session", in.Name, "sender", in.What)
+		}
+		switch state {
+		case boxOurs:
+			es, ok := in.Term.(EnterSender)
+			if !ok {
+				return false, errors.New("this terminal can't press Enter on its own"), true
+			}
+			return false, es.SendEnter(ctx, in.Name, agentType, sessionID), true
+		case boxEmpty:
+			if in.pasteRetry > maxPasteRetries {
+				g.holdPaste(in, "pasted again but it never reached the input box", false)
+				return true, nil, true
+			}
+		case boxOther:
+			g.holdPaste(in, "the input box holds other text; not adding to it", false)
+			return true, nil, true
+		default:
+			g.holdPaste(in, "the input box isn't on screen", false)
+			return true, nil, true
+		}
+	}
+	if in.pasteRetry == 0 && rendered && InputBoxKnown(agentType) {
+		// Before the first paste (#3457 v3): a box holding someone else's text (a
+		// person's draft, or their own paste) is never added to, so it is never
+		// submitted with ours; the send waits. Our text already there (an earlier
+		// attempt): only its Enter.
+		if screen, serr := sr.AgentScreen(ctx, in.Name, agentType, sessionID); serr == nil {
+			in.hadPlaceholder = hasPlaceholder(screen)
+			switch inputBoxState(screen, in.Text, in.hadPlaceholder) {
+			case boxOther:
+				g.holdPaste(in, "the input box holds someone else's text; not adding to it", false)
+				return true, nil, true
+			case boxOurs:
+				es, ok := in.Term.(EnterSender)
+				if !ok {
+					return false, errors.New("this terminal can't press Enter on its own"), true
+				}
+				return false, es.SendEnter(ctx, in.Name, agentType, sessionID), true
+			}
+		}
+	}
+	pctx := ctx
+	if _, known := BracketedPasteHint(ctx); !known {
+		if enabled, known := BracketedPasteFromLog(naming.DefaultLogDir(), agentType, sessionID); known {
+			pctx = WithBracketedPasteHint(ctx, enabled)
+		}
+	}
+	check := func(ctx context.Context) bool {
+		if sr == nil {
+			return true
+		}
+		// The agent repaints its box a moment after the paste: look for the text for
+		// up to pasteVerifyWait before deciding it didn't land (#3457 v2).
+		deadline := time.Now().Add(pasteVerifyWait)
+		for {
+			screen, err := sr.AgentScreen(ctx, in.Name, agentType, sessionID)
+			if err != nil {
+				return true
+			}
+			if open, _ := PromptOnScreen(screen); open {
+				return false
+			}
+			if !rendered || inputBoxState(screen, in.Text, in.hadPlaceholder) == boxOurs {
+				return true
+			}
+			if time.Now().After(deadline) || ctx.Err() != nil {
+				return false
+			}
+			time.Sleep(pasteVerifyEvery)
+		}
+	}
+	err = ps.SendPrompt(tmux.WithBeforeEnter(pctx, check), in.Name, in.Text, agentType, sessionID)
+	switch {
+	case errors.Is(err, ErrBracketedPasteUnavailable):
+		return false, nil, false
+	case errors.Is(err, tmux.ErrEnterWithheld):
+		g.holdPaste(in, "a prompt opened, or the paste didn't reach the input box", true)
+		return true, nil, true
+	}
+	return false, err, true
+}
+
+// maxPasteRetries bounds pasting a send again into an empty box: after that it stays
+// held (and is reported) rather than pasted once more.
+const maxPasteRetries = 1
+
+// pasteVerifyWait and pasteVerifyEvery: how long, and how often, the gate looks for
+// pasted text in the input box before deciding the paste didn't land (variables for
+// tests).
+var (
+	pasteVerifyWait  = time.Second
+	pasteVerifyEvery = 100 * time.Millisecond
+)
+
+// holdPaste holds a paste send whose Enter was withheld, first in the agent's queue.
+// pasted says the text was just pasted (a later turn may paste it once more).
+func (g *inputGate) holdPaste(in AutomatedInput, why string, pasted bool) {
+	if pasted {
+		in.pasteRetry++
+	}
+	g.mu.Lock()
+	g.held[in.Name] = append([]*heldInput{{in: in, heldAt: g.now(), why: why}}, g.held[in.Name]...)
+	start := !g.running
+	g.running = true
+	g.mu.Unlock()
+	g.logHeld(in, why, "paste held")
+	if start {
+		go g.loop()
+	}
 }
 
 // holdEnter holds the Enter of a send whose text was typed but whose Enter was
