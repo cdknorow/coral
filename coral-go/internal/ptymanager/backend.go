@@ -47,6 +47,12 @@ type OutputStamper interface {
 	OutputStamp(agentType, sessionID string) (stamp string, ok bool)
 }
 
+// AgentProcesses is implemented by backends that can name the processes their agents run in
+// (#3444): the roots of the process trees whose CPU and memory the machine health sums up.
+type AgentProcesses interface {
+	AgentPIDs() []int
+}
+
 // TerminalBackend abstracts terminal session management.
 // Both PTY and tmux backends implement this interface.
 type TerminalBackend interface {

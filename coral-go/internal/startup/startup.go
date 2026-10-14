@@ -409,7 +409,8 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// Start all background services
 	startBackgroundServices(ctx, db, cfg, srv, agentRT)
 	startPprof(ctx)
-	startStallWatch(ctx, cfg.CoralDir(), srv.Router(), db, srv.BoardStore())
+	wd := startStallWatch(ctx, cfg.CoralDir(), srv.Router(), db, srv.BoardStore())
+	srv.StartMachineHealth(ctx, wd)
 
 	// Start HTTP server in background goroutine using the already-bound listener
 	onErr := opts.OnServerError

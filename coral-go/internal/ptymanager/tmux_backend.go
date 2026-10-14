@@ -272,6 +272,17 @@ func (b *TmuxBackend) OutputStamp(agentType, sessionID string) (string, bool) {
 	return fmt.Sprintf("%d:%d", fi.Size(), fi.ModTime().UnixNano()), true
 }
 
+// AgentPIDs is the process of every pane on Coral's tmux socket (#3444): one tmux exec.
+func (b *TmuxBackend) AgentPIDs() []int {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	pids, err := b.client.PanePIDs(ctx)
+	if err != nil {
+		return nil
+	}
+	return pids
+}
+
 // recoverSession discovers a session from live tmux panes and registers it
 // in the in-memory map. This handles the post-restart case where tmux sessions
 // survive but TmuxBackend's map is empty. Returns the recovered session or nil.

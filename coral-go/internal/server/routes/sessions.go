@@ -38,6 +38,7 @@ import (
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/jsonl"
 	"github.com/cdknorow/coral/internal/logparse"
+	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -68,6 +69,8 @@ type SessionsHandler struct {
 	tokenStore    *store.TokenUsageStore // for token usage tracking
 
 	goals GoalRequester // nil until the goal generator starts
+
+	machineHealth MachineHealthSource // nil until StartMachineHealth (#3444)
 
 	pending pendingTools // tool calls started but not finished (PreToolUse hook)
 
@@ -158,6 +161,16 @@ func (h *SessionsHandler) RequestGoal(w http.ResponseWriter, r *http.Request) {
 // SetBoardHandler sets the board handler reference for sleep/wake operations.
 func (h *SessionsHandler) SetBoardHandler(bh *BoardHandler) {
 	h.boardHandler = bh
+}
+
+// MachineHealthSource is the latest machine health sample (#3444); machinehealth.Sampler.
+type MachineHealthSource interface {
+	Current() (machinehealth.Health, bool)
+}
+
+// SetMachineHealth gives the feeds (/ws/coral, the dashboard's and a hub's) the machine's health.
+func (h *SessionsHandler) SetMachineHealth(src MachineHealthSource) {
+	h.machineHealth = src
 }
 
 // SetNotificationStore sets the notification store for WebSocket delivery.

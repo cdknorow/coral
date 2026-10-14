@@ -20,6 +20,9 @@ type ptyProcess interface {
 
 	// Done returns a channel that is closed when the process exits.
 	Done() <-chan struct{}
+
+	// Pid is the process started in the terminal (0 when not known).
+	Pid() int
 }
 
 // startPTYProcess starts a command inside a new pseudo-terminal.

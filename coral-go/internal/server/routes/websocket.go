@@ -82,6 +82,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	prevSessions := make(map[string]string)      // session key -> json string
 	prevByKey := make(map[string]map[string]any) // session key -> the row last sent (read-only tick data)
 	prevRunsJSON := "[]"
+	prevHealth := map[string]string{} // machine_health: each top-level field as last sent (#3444)
 	firstMessage := true
 	var lastSent time.Time // last message written to this connection
 	// A hub's feed (?feed=hub) is a machine client, not a dashboard: it must
@@ -211,11 +212,19 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// The machine's health (#3444): in full in coral_update, then only the changed fields
+		// (and null for one that went away, such as reason back at ok) in coral_diff.
+		healthDelta, healthNow := h.machineHealthDelta(prevHealth)
+
 		if firstMessage {
 			msg := map[string]any{
 				"type":        "coral_update",
 				"sessions":    sessions,
 				"active_runs": activeRuns,
+			}
+			if healthNow != nil {
+				msg["machine_health"] = healthDelta
+				prevHealth = healthNow
 			}
 			if len(pending) > 0 {
 				msg["notifications"] = pending
@@ -264,8 +273,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		runsChanged := currRunsStr != prevRunsJSON
 
 		hasNotifications := len(pending) > 0
-		if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications {
+		healthChanged := len(healthDelta) > 0
+		if len(changed) > 0 || len(removed) > 0 || len(removedRemote) > 0 || serversChanged || runsChanged || hasNotifications || healthChanged {
 			payload := map[string]any{"type": "coral_diff"}
+			if healthChanged {
+				payload["machine_health"] = healthDelta
+			}
 			if len(changed) > 0 {
 				payload["changed"] = changed
 			}
@@ -289,6 +302,9 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			}
 			sent()
 			lastSent = time.Now()
+			if healthChanged {
+				prevHealth = healthNow
+			}
 			prevServersJSON = serversJSON
 			prevSessions = currSessions
 			prevByKey = sessionByKey
@@ -938,4 +954,38 @@ func sameJSON(a, b any) bool {
 	ja, errA := json.Marshal(a)
 	jb, errB := json.Marshal(b)
 	return errA == nil && errB == nil && bytes.Equal(ja, jb)
+}
+
+// machineHealthDelta is the machine's health as top-level fields (JSON) and the fields that differ
+// from prev, with null for a field that went away (#3444). Both are nil without a sample.
+func (h *SessionsHandler) machineHealthDelta(prev map[string]string) (map[string]any, map[string]string) {
+	if h.machineHealth == nil {
+		return nil, nil
+	}
+	cur, ok := h.machineHealth.Current()
+	if !ok {
+		return nil, nil
+	}
+	b, err := json.Marshal(cur)
+	if err != nil {
+		return nil, nil
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(b, &fields) != nil {
+		return nil, nil
+	}
+	now := make(map[string]string, len(fields))
+	delta := map[string]any{}
+	for k, v := range fields {
+		now[k] = string(v)
+		if prev[k] != string(v) {
+			delta[k] = v
+		}
+	}
+	for k := range prev {
+		if _, still := now[k]; !still {
+			delta[k] = nil
+		}
+	}
+	return delta, now
 }

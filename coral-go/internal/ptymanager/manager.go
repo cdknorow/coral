@@ -210,6 +210,21 @@ func (m *PTYBackend) PaneSize(name string) (int, int, error) {
 	return int(cols), int(rows), nil
 }
 
+// AgentPIDs is the process each running session was started with (#3444).
+func (m *PTYBackend) AgentPIDs() []int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var pids []int
+	for _, s := range m.sessions {
+		if s.isRunning() {
+			if pid := s.proc.Pid(); pid > 0 {
+				pids = append(pids, pid)
+			}
+		}
+	}
+	return pids
+}
+
 func (m *PTYBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	m.mu.RLock()
 	s, ok := m.sessions[name]

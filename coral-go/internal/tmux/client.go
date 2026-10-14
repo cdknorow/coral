@@ -1018,6 +1018,21 @@ func (c *Client) SetPaneTitle(ctx context.Context, target, title string) {
 }
 
 // GetPanePID returns the shell PID running in the first pane of the given session.
+// PanePIDs is the process of every pane on the socket (#3444).
+func (c *Client) PanePIDs(ctx context.Context) ([]int, error) {
+	out, err := c.run(ctx, "list-panes", "-a", "-F", "#{pane_pid}")
+	if err != nil {
+		return nil, err
+	}
+	var pids []int
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil && pid > 0 {
+			pids = append(pids, pid)
+		}
+	}
+	return pids, nil
+}
+
 func (c *Client) GetPanePID(ctx context.Context, sessionName string) (int, error) {
 	out, err := c.run(ctx, "list-panes", "-t", sessionName, "-F", "#{pane_pid}")
 	if err != nil {

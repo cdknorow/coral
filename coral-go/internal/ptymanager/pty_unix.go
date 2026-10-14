@@ -17,6 +17,14 @@ type unixPTY struct {
 	done    chan struct{}
 }
 
+// Pid is the process started in the terminal.
+func (p *unixPTY) Pid() int {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return 0
+	}
+	return p.cmd.Process.Pid
+}
+
 // terminateTypesCtrlC is false on Unix: Terminate sends SIGTERM, not input.
 const terminateTypesCtrlC = false
 

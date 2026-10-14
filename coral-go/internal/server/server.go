@@ -28,9 +28,11 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logexit"
+	"github.com/cdknorow/coral/internal/machinehealth"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
+	"github.com/cdknorow/coral/internal/stallwatch"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/frontend"
 )
@@ -231,6 +233,26 @@ func (s *Server) MintLoginToken() (string, error) {
 		return "", errors.New("no key store")
 	}
 	return s.keyStore.MintLoginToken()
+}
+
+// StartMachineHealth samples this machine's health every 15 s for the feeds (#3444): Coral's own
+// process, the agents' process trees (the backend's agent processes), the host, the data folder's
+// disk, and the stall watchdog's probe latencies (wd may be nil: the watchdog is off).
+func (s *Server) StartMachineHealth(ctx context.Context, wd *stallwatch.Watchdog) {
+	src := machinehealth.Source{DataDir: s.cfg.CoralDir()}
+	if ap, ok := s.backend.(ptymanager.AgentProcesses); ok {
+		src.AgentPIDs = ap.AgentPIDs
+	}
+	if wd != nil {
+		src.Responsive = func() (machinehealth.Responsiveness, bool) {
+			st := wd.Stats()
+			return machinehealth.Responsiveness{Last: st.Last, P95: st.P95, LastSlow: st.LastSlow}, true
+		}
+	}
+	sampler := machinehealth.Start(ctx, src)
+	if s.sessHandler != nil {
+		s.sessHandler.SetMachineHealth(sampler)
+	}
 }
 
 func (s *Server) BoardStore() *board.Store {

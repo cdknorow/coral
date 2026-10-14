@@ -48,6 +48,7 @@ func (f *fakePTYProcess) Resize(_, _ uint16) error { return nil }
 func (f *fakePTYProcess) Terminate() error         { return nil }
 func (f *fakePTYProcess) ForceKill() error         { return nil }
 func (f *fakePTYProcess) Done() <-chan struct{}    { return f.done }
+func (f *fakePTYProcess) Pid() int                 { return 0 }
 func (f *fakePTYProcess) written() [][]byte {
 	f.mu.Lock()
 	defer f.mu.Unlock()

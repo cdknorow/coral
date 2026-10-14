@@ -48,8 +48,16 @@ const FilePrefix = "stall-"
 type probeState struct {
 	running  bool
 	started  time.Time
-	reported bool // this stall already has a dump (or was skipped by MinGap)
+	reported bool          // this stall already has a dump (or was skipped by MinGap)
+	last     time.Duration // how long its last completed run took
 }
+
+// SlowThreshold is how long a probe may take before the machine counts as stalled for the
+// hub's machine health (#3444); far below Threshold, which writes a dump.
+const SlowThreshold = 2 * time.Second
+
+// latencyWindow is how many recent probe latencies Stats' p95 is taken over.
+const latencyWindow = 60
 
 // Watchdog runs the probes; see Start.
 type Watchdog struct {
@@ -58,6 +66,45 @@ type Watchdog struct {
 	state    map[string]*probeState
 	lastDump time.Time
 	dumps    int
+
+	latencies []time.Duration // the most recent completed probe latencies (latencyWindow)
+	lastSlow  time.Time       // the last time a probe took (or had been running) SlowThreshold or more
+}
+
+// Stats is the watchdog's view of how responsive the server is (#3444).
+type Stats struct {
+	Last     time.Duration // the slowest probe's last run, or how long one still running has run
+	P95      time.Duration // the 95th percentile of recent probe latencies (0 before any)
+	LastSlow time.Time     // the last time a probe took SlowThreshold or more (zero: never)
+}
+
+// Stats reports Last, P95 and LastSlow. A probe still running counts with its elapsed time,
+// so a probe that never returns shows as slow at once.
+func (w *Watchdog) Stats() Stats {
+	now := w.cfg.now()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	var st Stats
+	for _, p := range w.cfg.Probes {
+		ps := w.state[p.Name]
+		d := ps.last
+		if ps.running && now.Sub(ps.started) > d {
+			d = now.Sub(ps.started)
+		}
+		if d > st.Last {
+			st.Last = d
+		}
+	}
+	if st.Last >= SlowThreshold && now.After(w.lastSlow) {
+		w.lastSlow = now
+	}
+	st.LastSlow = w.lastSlow
+	if n := len(w.latencies); n > 0 {
+		sorted := append([]time.Duration(nil), w.latencies...)
+		sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+		st.P95 = sorted[(n*95+99)/100-1]
+	}
+	return st
 }
 
 // Start runs the watchdog until ctx ends.
@@ -156,6 +203,17 @@ func (w *Watchdog) probe(ctx context.Context, p Probe, st *probeState) {
 		w.mu.Unlock()
 	}()
 	_ = p.Check(ctx)
+	d := w.cfg.now().Sub(st.started)
+	w.mu.Lock()
+	st.last = d
+	w.latencies = append(w.latencies, d)
+	if len(w.latencies) > latencyWindow {
+		w.latencies = w.latencies[len(w.latencies)-latencyWindow:]
+	}
+	if d >= SlowThreshold {
+		w.lastSlow = w.cfg.now()
+	}
+	w.mu.Unlock()
 }
 
 // dump writes the goroutine dump with direct file calls (0600) and prunes old ones.
