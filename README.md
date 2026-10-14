@@ -94,7 +94,7 @@ Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth to
 Download the latest binary for free from [GitHub Releases](https://github.com/cdknorow/coral/releases):
 
 - **macOS**: `Coral.v<version>.dmg` (universal binary), or `brew install --cask cdknorow/coral/coral`
-- **Linux**: `coral-linux-amd64-<version>.tar.gz`
+- **Linux**: `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64, e.g. Graviton or Docker on Apple silicon)
 
 #### Verify your download
 
@@ -116,7 +116,7 @@ cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json \
 sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --check --ignore-missing
 ```
 
-The Linux tarball also has its own bundle (`coral-linux-amd64-<version>.tar.gz.sigstore.json`), verified the same way. Either check failing means the file is not an official build: don't run it.
+Each Linux tarball also has its own bundle (`coral-linux-<amd64|arm64>-<version>.tar.gz.sigstore.json`), verified the same way. Either check failing means the file is not an official build: don't run it.
 
 ### Build from source
 

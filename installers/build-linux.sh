@@ -1,13 +1,16 @@
 #!/bin/bash
 # Build coral-go Linux portable tarball
 #
-# Usage: ./installers/build-linux.sh [version]
-#   Set CORAL_TIER=dev|beta to select build tier. Default: prod (license required).
-# Output: installers/dist/coral-linux-amd64-<version>.tar.gz
+# Usage: ./installers/build-linux.sh [version] [amd64|arm64]
+#   Set CORAL_TIER=dev|beta to select build tier. Default: prod.
+#   The architecture defaults to amd64; arm64 cross-compiles (CGO is off).
+# Output: installers/dist/coral-linux-<arch>-<version>.tar.gz
 
 set -euo pipefail
 
 VERSION="${1:-dev}"
+ARCH="${2:-amd64}"
+case "$ARCH" in amd64|arm64) ;; *) echo "architecture must be amd64 or arm64" >&2; exit 2 ;; esac
 CORAL_TIER="${CORAL_TIER:-}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -15,7 +18,7 @@ GO_DIR="$PROJECT_DIR/coral-go"
 DIST_DIR="$SCRIPT_DIR/dist"
 BUILD_DIR="$DIST_DIR/coral-linux"
 
-echo "==> Building coral-go for Linux (amd64) v${VERSION}"
+echo "==> Building coral-go for Linux (${ARCH}) v${VERSION}"
 
 # Build tags — select tier via CORAL_TIER env var
 BUILD_TAGS="fts5"
@@ -39,16 +42,16 @@ cd "$GO_DIR"
 
 for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
     echo "==> Compiling $cmd"
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags "$BUILD_TAGS" \
+    GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 go build -tags "$BUILD_TAGS" \
         -ldflags="-s -w -X github.com/cdknorow/coral/internal/config.Version=$VERSION" \
         -o "$BUILD_DIR/$cmd" "./cmd/$cmd/"
 done
 
-"$PROJECT_DIR/tests/release/verify_standard_bundle.sh" "$BUILD_DIR"
+"$PROJECT_DIR/tests/release/verify_standard_bundle.sh" "$BUILD_DIR" "$ARCH"
 
 echo "==> Creating tarball"
 cd "$DIST_DIR"
-TARBALL="coral-linux-amd64-${VERSION}.tar.gz"
+TARBALL="coral-linux-${ARCH}-${VERSION}.tar.gz"
 rm -f "$TARBALL"
 tar czf "$TARBALL" -C coral-linux .
 

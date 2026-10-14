@@ -8,9 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       runner:
-        description: "Runner label to build on"
+        description: "Runner label to build on (an arm64 build needs an arm64 runner, e.g. ubuntu-24.04-arm)"
         required: true
         default: "ubuntu-26.04"
+      arch:
+        description: "Linux architecture to build: amd64 or arm64 (must match the runner)"
+        required: true
+        default: "amd64"
+        type: choice
+        options: [amd64, arm64]
 
 permissions:
   contents: read
@@ -40,31 +46,35 @@ jobs:
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
 
-      - name: Build Linux binaries (amd64)
+      - name: Build Linux binaries (${{ inputs.arch }})
         working-directory: coral-go
+        env:
+          ARCH: ${{ inputs.arch }}
         run: |
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.Version=0.0.0-dryrun"
           mkdir -p ../dist/linux
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             [ -d "./cmd/$cmd" ] || continue
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build \
               -tags fts5 \
               -ldflags "$LDFLAGS" \
               -o "../dist/linux/$cmd" \
               "./cmd/$cmd/"
           done
-          ../tests/release/verify_standard_bundle.sh ../dist/linux
+          ../tests/release/verify_standard_bundle.sh ../dist/linux "$ARCH"
 
       - name: Smoke test package on Ubuntu 22.04
+        env:
+          ARCH: ${{ inputs.arch }}
         run: |
           set -euo pipefail
           package="$PWD/dist/linux"
-          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral -h
-          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/launch-coral -h
-          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral-board workflow --help
+          docker run --rm --network none --platform "linux/$ARCH" -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral -h
+          docker run --rm --network none --platform "linux/$ARCH" -v "$package:/pkg:ro" ubuntu:22.04 /pkg/launch-coral -h
+          docker run --rm --network none --platform "linux/$ARCH" -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral-board workflow --help
 
       - name: Verify server and board commands without shared libraries
-        run: python3 tests/release/smoke_standard_linux.py dist/linux
+        run: python3 tests/release/smoke_standard_linux.py dist/linux ${{ inputs.arch }}
 
       - name: Create tarball
-        run: tar czf dist/coral-linux-amd64-dryrun.tar.gz -C dist/linux .
+        run: tar czf "dist/coral-linux-${{ inputs.arch }}-dryrun.tar.gz" -C dist/linux .

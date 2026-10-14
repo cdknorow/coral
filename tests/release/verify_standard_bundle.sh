@@ -2,7 +2,14 @@
 # Verify the default package has no SQLCipher/OpenSSL payload or host crypto ABI.
 set -euo pipefail
 
-package_dir="$(cd "${1:?usage: verify_standard_bundle.sh PACKAGE_DIR}" && pwd -P)"
+package_dir="$(cd "${1:?usage: verify_standard_bundle.sh PACKAGE_DIR [amd64|arm64]}" && pwd -P)"
+# For a Linux package, the architecture every binary must be built for (default amd64).
+linux_arch="${2:-amd64}"
+case "$linux_arch" in
+  amd64) elf_machine='x86-64' ;;
+  arm64) elf_machine='ARM aarch64' ;;
+  *) echo "unknown Linux architecture: $linux_arch" >&2; exit 2 ;;
+esac
 commands=(coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync)
 
 search_roots=("$package_dir")
@@ -20,6 +27,10 @@ case "$(file -b "$package_dir/coral")" in
     for cmd in "${commands[@]}"; do
       binary="$package_dir/$cmd"
       test -x "$binary"
+      if ! file -b "$binary" | grep -q "$elf_machine"; then
+        echo "Standard Linux $cmd is not built for $linux_arch: $(file -b "$binary")" >&2
+        exit 1
+      fi
       headers="$(objdump -x "$binary")"
       if grep -Eq '^[[:space:]]*INTERP[[:space:]]+off' <<<"$headers"; then
         echo "Standard Linux $cmd has a dynamic loader dependency" >&2
