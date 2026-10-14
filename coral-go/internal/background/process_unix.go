@@ -8,10 +8,20 @@ import (
 	"time"
 )
 
+// configureChildProcess puts cmd in its own process group and makes a context
+// cancel or timeout kill that whole group, not only the direct child: by default
+// exec.CommandContext kills just the process it started, so `sh -c 'sleep 600 &'`
+// left the sleep running after a step's timeout (audit HIGH-03).
 func configureChildProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		killChildProcess(cmd)
+		return nil
+	}
 }
 
+// killChildProcess sends SIGTERM to cmd's process group, then SIGKILL after 5 s
+// to whatever is left of it.
 func killChildProcess(cmd *exec.Cmd) {
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {

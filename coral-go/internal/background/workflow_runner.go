@@ -111,8 +111,37 @@ func (wr *WorkflowRunner) TriggerWorkflow(ctx context.Context, workflow *store.W
 		return nil, fmt.Errorf("create workflow run: %w", err)
 	}
 
+	wr.pruneRuns(ctx, workflow.ID)
 	go wr.executeRun(run.ID, workflow)
 	return run, nil
+}
+
+// WorkflowRunsKept is how many runs (records and run directories) each
+// workflow keeps; older finished runs are removed when a new one starts.
+const WorkflowRunsKept = 50
+
+// pruneRuns removes a workflow's runs beyond the newest WorkflowRunsKept, with
+// their directories (audit MED-04). Best effort: a failure only logs.
+func (wr *WorkflowRunner) pruneRuns(ctx context.Context, workflowID int64) {
+	ids, err := wr.store.PruneWorkflowRuns(ctx, workflowID, WorkflowRunsKept)
+	if err != nil {
+		wr.logger.Warn("could not prune old workflow runs", "workflow_id", workflowID, "error", err)
+		return
+	}
+	RemoveRunDirs(wr.dataDir, ids)
+}
+
+// RemoveRunDirs deletes <dataDir>/workflows/runs/<id> for each run id.
+func RemoveRunDirs(dataDir string, ids []int64) {
+	if dataDir == "" {
+		return
+	}
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(dataDir, "workflows", "runs", strconv.FormatInt(id, 10)))
+	}
 }
 
 // KillRun terminates a running workflow. Returns true if the run was killed.
@@ -291,9 +320,9 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		if stepHooks != nil {
 			statusEnv := append(env, "CORAL_STEP_STATUS="+stepStatusStr(stepErr))
 			if stepErr != nil {
-				wr.fireHooks(ctx, stepHooks, "StepFailed", statusEnv)
+				wr.fireHooks(ctx, stepHooks, "StepFailed", hookDir(workflow.RepoPath, stepDir), statusEnv)
 			} else {
-				wr.fireHooks(ctx, stepHooks, "StepComplete", statusEnv)
+				wr.fireHooks(ctx, stepHooks, "StepComplete", hookDir(workflow.RepoPath, stepDir), statusEnv)
 			}
 		}
 
@@ -441,7 +470,7 @@ func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, ste
 
 	// For non-Claude agents, fire Stop hooks via the runner after process exit
 	if stepHooks != nil && agentCfg.AgentType != "claude" {
-		wr.fireHooks(stepCtx, stepHooks, "Stop", env)
+		wr.fireHooks(stepCtx, stepHooks, "Stop", hookDir(repoPath, stepDir), env)
 	}
 
 	return stepErr
@@ -982,9 +1011,19 @@ func filterHooksForClaude(hooks map[string]interface{}) map[string]interface{} {
 	return filtered
 }
 
+// hookDir is where a step's hook commands run: the workflow's repository, as
+// its steps do, or the step's own run directory when the workflow has none.
+func hookDir(repoPath, stepDir string) string {
+	if repoPath != "" {
+		return repoPath
+	}
+	return stepDir
+}
+
 // fireHooks executes hook commands for a given event. Best-effort: hook failures
 // are logged but don't fail the step. Timeout per hook: 60s (matches Claude Code default).
-func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interface{}, event string, env []string) {
+// Each hook runs in dir, in its own process group, which its timeout kills whole.
+func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interface{}, event, dir string, env []string) {
 	eventHooks, ok := hooks[event]
 	if !ok {
 		return
@@ -1015,7 +1054,9 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 
 			hookCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			cmd := exec.CommandContext(hookCtx, "sh", "-c", command)
+			cmd.Dir = dir
 			cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
+			configureChildProcess(cmd)
 			if err := cmd.Run(); err != nil {
 				wr.logger.Warn("hook execution failed", "event", event, "command", command, "error", err)
 			}

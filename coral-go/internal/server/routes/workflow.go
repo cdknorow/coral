@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -152,7 +153,7 @@ func (h *WorkflowHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request)
 	if body.RepoPath != "" {
 		resolved, err := canonicalizeRepoPath(body.RepoPath)
 		if err != nil {
-			errBadRequest(w, "repo_path does not exist")
+			errBadRequest(w, repoPathError(err))
 			return
 		}
 		body.RepoPath = resolved
@@ -258,7 +259,7 @@ func (h *WorkflowHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Request)
 		if rpStr, ok := rp.(string); ok && rpStr != "" {
 			resolved, err := canonicalizeRepoPath(rpStr)
 			if err != nil {
-				errBadRequest(w, "repo_path does not exist")
+				errBadRequest(w, repoPathError(err))
 				return
 			}
 			fields["repo_path"] = resolved
@@ -348,10 +349,25 @@ func (h *WorkflowHandler) DeleteWorkflow(w http.ResponseWriter, r *http.Request)
 		errBadRequest(w, "invalid workflow ID")
 		return
 	}
+	// Its runs' directories go with it (audit MED-04): stop any still running,
+	// delete the workflow (its run records cascade), then remove the directories.
+	runIDs, err := h.ws.WorkflowRunIDs(r.Context(), workflowID)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	if h.runner != nil {
+		if active, err := h.ws.GetActiveRunsForWorkflow(r.Context(), workflowID); err == nil {
+			for _, run := range active {
+				h.runner.KillRun(r.Context(), run.ID)
+			}
+		}
+	}
 	if err := h.ws.DeleteWorkflow(r.Context(), workflowID); err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
+	background.RemoveRunDirs(h.cfg.CoralDir(), runIDs)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -626,6 +642,18 @@ func (h *WorkflowHandler) GetStepFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // canonicalizeRepoPath resolves symlinks and validates that the path is an existing directory.
+// errNotADirectory is canonicalizeRepoPath's error for a path that exists but
+// isn't a directory.
+var errNotADirectory = errors.New("not a directory")
+
+// repoPathError is the 400 message for a repo_path canonicalizeRepoPath refused.
+func repoPathError(err error) string {
+	if errors.Is(err, errNotADirectory) {
+		return "repo_path is not a directory"
+	}
+	return "repo_path does not exist"
+}
+
 func canonicalizeRepoPath(p string) (string, error) {
 	cleaned := filepath.Clean(p)
 	resolved, err := filepath.EvalSymlinks(cleaned)
@@ -633,8 +661,11 @@ func canonicalizeRepoPath(p string) (string, error) {
 		return "", err
 	}
 	info, err := os.Stat(resolved)
-	if err != nil || !info.IsDir() {
-		return "", fmt.Errorf("not a directory")
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", errNotADirectory
 	}
 	return resolved, nil
 }

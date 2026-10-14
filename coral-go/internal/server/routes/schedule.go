@@ -3,7 +3,6 @@ package routes
 import (
 	"context"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -401,14 +400,17 @@ func jobTimezoneError(tz string) string {
 }
 
 // jobRepoError is why a job's repo_path is unusable, or "": it must be an
-// existing directory inside a git work tree.
+// existing directory inside a git work tree. The directory check is the one
+// workflows use (canonicalizeRepoPath: symlinks resolved, a directory), and git
+// is asked about that resolved directory.
 func jobRepoError(ctx context.Context, dir string) string {
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+	resolved, err := canonicalizeRepoPath(dir)
+	if err != nil {
 		return "repo_path is not an existing directory: " + dir
 	}
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	out, err := executil.Command(cctx, "git", "-C", dir, "rev-parse", "--is-inside-work-tree").Output()
+	out, err := executil.Command(cctx, "git", "-C", resolved, "rev-parse", "--is-inside-work-tree").Output()
 	if err != nil || strings.TrimSpace(string(out)) != "true" {
 		return "repo_path is not a git repository: " + dir
 	}

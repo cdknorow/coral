@@ -119,7 +119,7 @@ POST /api/workflows
 
 ### Step hooks
 
-Any step (shell or agent) can define `hooks` to run commands on lifecycle events. See [Hooks](hooks.md) for the full format and event reference.
+Any step (shell or agent) can define `hooks` to run commands on lifecycle events. See [Hooks](hooks.md) for the full format and event reference. A hook command runs in the workflow's `repo_path` (or the step's run directory when there is none), in its own process group, with a 60 s limit.
 
 ```json
 {
@@ -204,7 +204,7 @@ curl -X POST ${CORAL_URL}/api/notifications -H 'Content-Type: application/json' 
 - `shell` steps require `command`.
 - `agent` steps require `prompt`.
 - `agent` steps also need an `agent_type`, either in the step-level `agent` object or inherited from `default_agent`.
-- `timeout_s`, when set, must be between `1` and `86400`.
+- `timeout_s`, when set, must be between `1` and `86400`. When a step times out, its whole process group is killed, including anything it started in the background.
 - `hooks`, when set, must use valid event names and hook group structure (see [Hooks](hooks.md)).
 
 ### Example
@@ -247,7 +247,8 @@ Returns the created workflow object with hydrated `steps`, `default_agent`, and 
 | 400 | `{"error": "name contains invalid characters"}` | Name includes unsupported characters. |
 | 400 | `{"error": "at least one step is required"}` | `steps` is empty. |
 | 400 | `{"error": "maximum 20 steps allowed"}` | Too many steps. |
-| 400 | `{"error": "repo_path does not exist"}` | Repo path is invalid. |
+| 400 | `{"error": "repo_path does not exist"}` | Repo path doesn't exist. |
+| 400 | `{"error": "repo_path is not a directory"}` | Repo path is a file or other non-directory. |
 | 400 | `{"error": "invalid max_duration"}` | `max_duration_s` is out of range. |
 | 400 | `{"error": "duplicate step name"}` | Two steps share the same name. |
 | 400 | `{"error": "shell step missing command"}` | Shell step omitted `command`. |
@@ -290,7 +291,9 @@ Returns `{"error": "workflow not found"}, 404` if the workflow ID does not exist
 DELETE /api/workflows/{workflowID}
 ```
 
-Deletes the workflow and its run history.
+Deletes the workflow and its run history: its runs still in progress are stopped, and every run's directory (`<data>/workflows/runs/<runID>/`) is removed.
+
+Each workflow keeps its newest 50 runs. Starting a run removes older finished runs, records and directories; a run still in progress is never removed.
 
 ### Response
 

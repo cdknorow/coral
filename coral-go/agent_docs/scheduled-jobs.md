@@ -123,7 +123,7 @@ POST /api/scheduled/jobs
 | `base_branch` | string | `"main"` | Base branch for prompt jobs. |
 | `prompt` | string | required for `prompt` | Prompt sent to the agent for prompt jobs. |
 | `enabled` | int | `1` | `1` to enable, `0` to create paused. |
-| `max_duration_s` | int | `3600` | Timeout in seconds. |
+| `max_duration_s` | int | `3600` | Timeout in seconds. After this the agent is killed and the run is recorded as `killed` (`timeout`). |
 | `cleanup_worktree` | int | `1` | Remove the worktree when the run finishes. |
 | `flags` | string | `""` | Extra CLI flags for prompt jobs. |
 | `job_type` | string | `"prompt"` | `prompt` or `workflow`. |

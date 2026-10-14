@@ -114,7 +114,7 @@ func TestFireHooks_ExecutesCommand(t *testing.T) {
 	wfStore := store.NewWorkflowStore(db)
 	runner := NewWorkflowRunner(wfStore, nil, nil, nil, nil, tmpDir, "localhost", 8420)
 
-	runner.fireHooks(context.Background(), hooks, "StepComplete", nil)
+	runner.fireHooks(context.Background(), hooks, "StepComplete", t.TempDir(), nil)
 
 	// Verify the hook command was executed
 	if _, err := os.Stat(markerFile); os.IsNotExist(err) {
@@ -144,7 +144,7 @@ func TestFireHooks_SkipsUnmatchedEvent(t *testing.T) {
 	runner := NewWorkflowRunner(wfStore, nil, nil, nil, nil, tmpDir, "localhost", 8420)
 
 	// Fire a different event — should not execute the StepComplete hook
-	runner.fireHooks(context.Background(), hooks, "StepFailed", nil)
+	runner.fireHooks(context.Background(), hooks, "StepFailed", t.TempDir(), nil)
 
 	if _, err := os.Stat(markerFile); err == nil {
 		t.Error("hook should NOT have fired for unmatched event")
@@ -173,7 +173,7 @@ func TestFireHooks_PassesEnvVars(t *testing.T) {
 	runner := NewWorkflowRunner(wfStore, nil, nil, nil, nil, tmpDir, "localhost", 8420)
 
 	env := []string{"CORAL_STEP_NAME=test-step"}
-	runner.fireHooks(context.Background(), hooks, "StepComplete", env)
+	runner.fireHooks(context.Background(), hooks, "StepComplete", t.TempDir(), env)
 
 	data, err := os.ReadFile(outputFile)
 	if err != nil {

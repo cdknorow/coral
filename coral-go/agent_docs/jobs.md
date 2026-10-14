@@ -42,7 +42,7 @@ Queues a new agent task. Returns immediately — all work (worktree creation, ag
 | `base_branch` | string | `"main"` | Branch to create the worktree from. |
 | `create_worktree` | bool | `true` | Create a fresh git worktree **per run** (`<repo>_task_run_<runID>`). Unlike team launches, jobs are designed to be isolated from each other — but see the defect note above. |
 | `cleanup_worktree` | bool | `true` | Remove the worktree when the run finishes. |
-| `max_duration_s` | int | `3600` | Timeout in seconds. The run is killed after this. |
+| `max_duration_s` | int | `3600` | Timeout in seconds. After this the agent is killed and the run is recorded as `killed` (`timeout`). |
 | `flags` | string | `""` | Extra CLI flags passed to the agent. |
 | `display_name` | string | `null` | Label shown in the UI. Defaults to `Task #<run_id>`. |
 | `webhook_url` | string | `null` | URL to receive POST callbacks on status changes. |

@@ -376,6 +376,34 @@ func (s *WorkflowStore) ListRecentRuns(ctx context.Context, limit, offset int, s
 	return runs, err
 }
 
+// WorkflowRunIDs returns the ids of every run of a workflow.
+func (s *WorkflowStore) WorkflowRunIDs(ctx context.Context, workflowID int64) ([]int64, error) {
+	var ids []int64
+	err := s.db.SelectContext(ctx, &ids, "SELECT id FROM workflow_runs WHERE workflow_id = ? ORDER BY id", workflowID)
+	return ids, err
+}
+
+// PruneWorkflowRuns deletes a workflow's runs older than its newest keep runs,
+// except ones still pending or running, and returns the deleted ids so their
+// run directories can be removed too.
+func (s *WorkflowStore) PruneWorkflowRuns(ctx context.Context, workflowID int64, keep int) ([]int64, error) {
+	const where = `workflow_id = ? AND status NOT IN ('pending', 'running')
+		   AND id NOT IN (SELECT id FROM workflow_runs WHERE workflow_id = ? ORDER BY id DESC LIMIT ?)`
+	tx, err := s.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var ids []int64
+	if err := tx.SelectContext(ctx, &ids, "SELECT id FROM workflow_runs WHERE "+where+" ORDER BY id", workflowID, workflowID, keep); err != nil || len(ids) == 0 {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM workflow_runs WHERE "+where, workflowID, workflowID, keep); err != nil {
+		return nil, err
+	}
+	return ids, tx.Commit()
+}
+
 // GetActiveRunsForWorkflow returns pending/running runs for a workflow.
 func (s *WorkflowStore) GetActiveRunsForWorkflow(ctx context.Context, workflowID int64) ([]WorkflowRun, error) {
 	var runs []WorkflowRun

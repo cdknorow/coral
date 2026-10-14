@@ -562,16 +562,11 @@ func (s *JobScheduler) KillRun(ctx context.Context, runID int64) bool {
 	}
 
 	// Kill the agent session if we have a session_id
-	if run.SessionID != nil && *run.SessionID != "" && s.runtime != nil {
-		sid := *run.SessionID
-		// Look up agent_type from the job record
-		agentType := at.Claude
-		if job, err := s.store.GetScheduledJob(ctx, run.JobID); err == nil && job != nil {
-			agentType = job.AgentType
-		}
-		sessionName := agentType + "-" + sid
-		s.runtime.KillAgent(ctx, sessionName)
+	agentType := at.Claude
+	if job, err := s.store.GetScheduledJob(ctx, run.JobID); err == nil && job != nil {
+		agentType = job.AgentType
 	}
+	s.killRunSession(ctx, run, agentType)
 
 	now := time.Now().UTC().Format(store.ISOFormat)
 	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
@@ -601,6 +596,20 @@ func (s *JobScheduler) KillRun(ctx context.Context, runID int64) bool {
 	s.fireWebhookForRun(runID)
 
 	return true
+}
+
+// killRunSession kills the agent session a run launched, if it recorded one.
+func (s *JobScheduler) killRunSession(ctx context.Context, run *store.ScheduledRun, agentType string) {
+	if run == nil || run.SessionID == nil || *run.SessionID == "" || s.runtime == nil {
+		return
+	}
+	if agentType == "" {
+		agentType = at.Claude
+	}
+	name := agentType + "-" + *run.SessionID
+	if err := s.runtime.KillAgent(ctx, name); err != nil {
+		s.logger.Warn("could not kill the run's agent", "run_id", run.ID, "session", name, "error", err)
+	}
 }
 
 // launchAndWatch is the core goroutine that creates worktrees, launches agents,
@@ -716,14 +725,30 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 		exitReason = "timeout"
 	}
 
-	s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
-		"status":      status,
-		"finished_at": now,
-		"exit_reason": exitReason,
-	})
+	// A run that timed out or failed after launching must not leave its agent
+	// running (audit HIGH-02): kill the session before the worktree is removed
+	// from under it. A user's kill (KillRun) has already killed it, and a Coral
+	// shutdown cancels ctx itself; agents outlive a restart, so neither kills here.
+	userKilled := false
+	if run, err := s.store.GetScheduledRun(ctx, runID); err == nil && run != nil {
+		userKilled = run.Status == "killed"
+		if !userKilled && ctx.Err() == nil && (status == "killed" || launchErr != nil) {
+			s.killRunSession(ctx, run, job.AgentType)
+		}
+	}
 
-	// Fire completion webhook
-	s.fireWebhookForRun(runID)
+	// KillRun has already recorded the user's kill and fired its webhook; don't
+	// overwrite it with the "failed" that its cancel produces here.
+	if !userKilled {
+		s.store.UpdateScheduledRun(ctx, runID, map[string]interface{}{
+			"status":      status,
+			"finished_at": now,
+			"exit_reason": exitReason,
+		})
+
+		// Fire completion webhook
+		s.fireWebhookForRun(runID)
+	}
 
 	// Cleanup worktree if configured
 	if rc.cleanupWorktree && worktreeDir != "" {
