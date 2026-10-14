@@ -688,6 +688,10 @@ func (s *Store) PostMessage(ctx context.Context, project, subscriberID, content 
 // OriginHubUser marks a chat post a Coral Hub user made through the tunnel (#3377).
 const OriginHubUser = "hub_user"
 
+// OriginHubUserUnknown marks a Coral Hub chat post with no Hub user header: a hub still on
+// an older pkg/hubproxy (#3377). It's sent as HubUnknownSender.
+const OriginHubUserUnknown = "hub_user_unknown"
+
 // PostMessageWithOrigin is PostMessage with a server-set origin ("" for none).
 func (s *Store) PostMessageWithOrigin(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin string) (*Message, error) {
 	now := nowUTC()

@@ -149,7 +149,7 @@ func (h *Handler) proxyHTTP(w http.ResponseWriter, r *http.Request, id string, t
 			out.URL.Path, out.URL.RawPath = dec, raw
 			out.URL.RawQuery = stripAPIKey(pr.In.URL.RawQuery)
 			if isTunnel(t) {
-				allowlistHeaders(out.Header) // untrusted far side: allowlist, not denylist
+				allowlistHeaders(out.Header, out.Method, dec) // untrusted far side: allowlist, not denylist
 			}
 			for _, hd := range []string{"Authorization", "Cookie", "Origin", "Referer", "Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "X-Real-Ip"} {
 				out.Header.Del(hd)

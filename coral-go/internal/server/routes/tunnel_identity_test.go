@@ -107,13 +107,14 @@ func TestTunnelChatPostIsTheHubUser(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
 	_, err := handler.bs.Subscribe(context.Background(), "p", "hub-user-0000beef", "Developer", "s3", nil, nil, "")
 	require.NoError(t, err) // a member created before the name was reserved
+	const noHeader = "\x00none"
 	post := func(tunneled bool, hubUser, body string) (int, map[string]any) {
 		req, _ := http.NewRequest("POST", server.URL+"/api/board/p/messages", bytes.NewBufferString(body))
 		req.Header.Set("Content-Type", "application/json")
 		if tunneled {
 			stamp(req)
 		}
-		if hubUser != "" {
+		if hubUser != noHeader {
 			req.Header.Set(tunnel.HubUserHeader, hubUser)
 		}
 		resp, err := http.DefaultClient.Do(req)
@@ -124,7 +125,7 @@ func TestTunnelChatPostIsTheHubUser(t *testing.T) {
 		return resp.StatusCode, out
 	}
 	body := `{"subscriber_id":"Operator","as":"Operator","content":"hello from the hub"}`
-	for _, bad := range []string{"", "hub-user-XYZ", "Operator", "@Lead", "hub-user-1234567890", "hub:1234abcd"} {
+	for _, bad := range []string{"", "hub-user-XYZ", "Operator", "@Lead", "hub-user-1234567890", "hub:1234abcd"} { // present but malformed
 		code, out := post(true, bad, body)
 		assert.Equal(t, http.StatusBadRequest, code, bad)
 		assert.Equal(t, "hub_user_required", out["code"], bad)
@@ -150,13 +151,24 @@ func TestTunnelChatPostIsTheHubUser(t *testing.T) {
 	require.NotNil(t, last.Origin)
 	assert.Equal(t, board.OriginHubUser, *last.Origin)
 
+	// A hub still on an older pkg/hubproxy sends no header at all (one release of skew):
+	// posted as the reserved 'Coral Hub' with origin hub_user_unknown, never the body's
+	// Operator or any member.
+	code, out = post(true, noHeader, `{"subscriber_id":"Operator","as":"Operator","content":"from an old hub"}`)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, board.HubUnknownSender, out["subscriber_id"])
+	assert.Equal(t, board.OriginHubUserUnknown, out["origin"])
+	sub, _ = handler.bs.GetProjectSubscription(context.Background(), "p", "Operator")
+	assert.Nil(t, sub)
+	assert.True(t, board.IsReservedName("Coral Hub"), "no member can take that name")
+
 	// From this computer the header is ignored: the body's sender, no origin.
 	code, out = post(false, "hub-user-1234abcd", `{"subscriber_id":"Operator","content":"local"}`)
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, "Operator", out["subscriber_id"])
 	assert.Nil(t, out["origin"])
 	// A local client can't set origin either (it isn't read from the body).
-	code, out = post(false, "", `{"subscriber_id":"Dev","content":"x","origin":"hub_user"}`)
+	code, out = post(false, noHeader, `{"subscriber_id":"Dev","content":"x","origin":"hub_user"}`)
 	require.Equal(t, http.StatusOK, code)
 	assert.Nil(t, out["origin"])
 }

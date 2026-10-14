@@ -102,7 +102,7 @@ func TestScrubUsesAnAllowlist(t *testing.T) {
 	} {
 		in[k] = []string{v} // raw keys, as a hostile hub could send them
 	}
-	out := scrub(in)
+	out := scrub(in, http.MethodGet, "/api/health")
 	assert.Equal(t, "a", out.Get("Accept"))
 	assert.Equal(t, "en", out.Get("Accept-Language"))
 	assert.Equal(t, "application/json", out.Get("Content-Type"))

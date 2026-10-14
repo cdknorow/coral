@@ -821,12 +821,12 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	// the Operator (#3377). It's marked with a server-set origin for the dashboard's badge.
 	origin := ""
 	if cloud.Tunneled(r) {
-		hubUser, status, msg := h.tunnelChatSender(r, project)
+		hubUser, hubOrigin, status, msg := h.tunnelChatSender(r, project)
 		if status != 0 {
 			writeJSON(w, status, map[string]any{"error": msg, "code": "hub_user_required"})
 			return
 		}
-		subscriberID, origin = hubUser, board.OriginHubUser
+		subscriberID, origin = hubUser, hubOrigin
 		body.As = "" // a Coral Hub user is not subscribed to the board
 	}
 
@@ -873,21 +873,51 @@ var hubUserRe = regexp.MustCompile(`^hub-user-[0-9a-f]{8}$`)
 // tunnelChatSender returns the Coral Hub user for a tunnel chat post, or an HTTP
 // status and message: 400 when the header is missing or malformed (never a fallback
 // to the Operator), 409 when the name is already a member or a role on this board.
-func (h *BoardHandler) tunnelChatSender(r *http.Request, project string) (string, int, string) {
-	user := r.Header.Get(tunnel.HubUserHeader)
+//
+// Version skew, for one release: a hub still on an older pkg/hubproxy sends no header at
+// all. Its post is accepted as the reserved sender "Coral Hub" with origin
+// hub_user_unknown (never the Operator or a member), and a deprecation line is logged at
+// most every 10 minutes. A header that is present but malformed is still 400.
+func (h *BoardHandler) tunnelChatSender(r *http.Request, project string) (user, origin string, status int, msg string) {
+	values, present := r.Header[http.CanonicalHeaderKey(tunnel.HubUserHeader)]
+	if !present {
+		logHubUserMissing()
+		return board.HubUnknownSender, board.OriginHubUserUnknown, 0, ""
+	}
+	user = ""
+	if len(values) == 1 {
+		user = values[0]
+	}
 	if len(user) > 32 || !hubUserRe.MatchString(user) {
-		return "", http.StatusBadRequest, "A chat post through Coral Hub needs the Coral Hub user (" + tunnel.HubUserHeader + ": hub-user-<8 hex>)"
+		return "", "", http.StatusBadRequest, "A chat post through Coral Hub needs the Coral Hub user (" + tunnel.HubUserHeader + ": hub-user-<8 hex>)"
 	}
 	subs, err := h.bs.ListSubscribers(r.Context(), project)
 	if err != nil {
-		return "", http.StatusInternalServerError, "could not read the board's members"
+		return "", "", http.StatusInternalServerError, "could not read the board's members"
 	}
 	for _, s := range subs {
 		if strings.EqualFold(s.SubscriberID, user) || strings.EqualFold(strings.TrimSpace(s.JobTitle), user) {
-			return "", http.StatusConflict, "That Coral Hub user's name is already a member or role on this board"
+			return "", "", http.StatusConflict, "That Coral Hub user's name is already a member or role on this board"
 		}
 	}
-	return user, 0, ""
+	return user, board.OriginHubUser, 0, ""
+}
+
+var hubUserMissingLog struct {
+	sync.Mutex
+	last time.Time
+}
+
+// logHubUserMissing logs, at most every 10 minutes, that a Coral Hub chat post named
+// no Hub user: the hub should move to a pkg/hubproxy that forwards X-Coral-Hub-User.
+func logHubUserMissing() {
+	hubUserMissingLog.Lock()
+	defer hubUserMissingLog.Unlock()
+	if time.Since(hubUserMissingLog.last) < 10*time.Minute {
+		return
+	}
+	hubUserMissingLog.last = time.Now()
+	slog.Warn("[cloud] deprecated: a Coral Hub chat post without X-Coral-Hub-User was posted as 'Coral Hub'; the hub should update its pkg/hubproxy (the header will be required in a later release)")
 }
 
 // dispatchWebhooks sends webhook callbacks to all subscribers with webhook_url set.

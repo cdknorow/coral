@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -298,12 +299,27 @@ var forwardRequestHeaders = map[string]bool{
 // HubUserHeader names the Coral Hub user behind a tunnel chat post (#3377).
 const HubUserHeader = "X-Coral-Hub-User"
 
-func scrub(h http.Header) http.Header {
+// hubUserRoute is the one route the Coral Hub user header is forwarded on: a chat post
+// (#3377). It is dropped everywhere else, so no other handler can ever see it.
+var hubUserRoute = regexp.MustCompile(`^/api/board/[^/]+/messages$`)
+
+// ForwardsHubUser reports whether X-Coral-Hub-User is forwarded for a request:
+// only POST /api/board/{project}/messages. The hub (pkg/hubproxy) and the connector
+// apply the same rule.
+func ForwardsHubUser(method, decodedPath string) bool {
+	return method == http.MethodPost && hubUserRoute.MatchString(decodedPath)
+}
+
+// scrub keeps the allowlisted hub headers for a request to method and decodedPath.
+func scrub(h http.Header, method, decodedPath string) http.Header {
 	out := http.Header{}
 	for k, vs := range h {
 		if forwardRequestHeaders[http.CanonicalHeaderKey(k)] {
 			out[http.CanonicalHeaderKey(k)] = append([]string(nil), vs...)
 		}
+	}
+	if !ForwardsHubUser(method, decodedPath) {
+		out.Del(HubUserHeader)
 	}
 	// The hub cannot send this header (it is not on the allowlist) and cannot remove it:
 	// Coral's file endpoints use it to apply the strict, tunnel-only path bounds.
@@ -436,7 +452,7 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		s.Reject(CodeBadRequest, "bad request", 0)
 		return
 	}
-	req.Header = l.stamp(scrub(h.Headers))
+	req.Header = l.stamp(scrub(h.Headers, h.Method, dec))
 	if h.ContentLength > 0 {
 		req.ContentLength = h.ContentLength
 	}
@@ -551,7 +567,7 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		l.reject(s)
 		return
 	}
-	hdr := l.stamp(scrub(h.Headers))
+	hdr := l.stamp(scrub(h.Headers, http.MethodGet, dec))
 	if l.Authorize != nil {
 		l.Authorize(hdr)
 	}

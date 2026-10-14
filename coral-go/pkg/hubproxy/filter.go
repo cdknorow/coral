@@ -298,12 +298,20 @@ var forwardToConnector = map[string]bool{
 	"Accept": true, "Accept-Language": true, "Content-Type": true, "Range": true, "If-Range": true,
 	"If-Match": true, "If-None-Match": true, "If-Modified-Since": true, "If-Unmodified-Since": true,
 	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
+	// The Coral Hub user behind a chat post (#3377); only on that route, see below.
+	tunnel.HubUserHeader: true,
 }
 
-func allowlistHeaders(h http.Header) {
+// allowlistHeaders keeps the allowlisted headers of a request to method and the
+// machine's decodedPath. X-Coral-Hub-User only goes with a chat post,
+// POST /api/board/{project}/messages (the connector applies the same rule).
+func allowlistHeaders(h http.Header, method, decodedPath string) {
 	for k := range h {
 		if !forwardToConnector[http.CanonicalHeaderKey(k)] {
 			delete(h, k)
 		}
+	}
+	if !tunnel.ForwardsHubUser(method, decodedPath) {
+		h.Del(tunnel.HubUserHeader)
 	}
 }
