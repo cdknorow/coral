@@ -57,7 +57,10 @@ type StepResult struct {
 	OutputTail string `json:"output_tail,omitempty"`
 	// ErrorTail is the end of a failed step's stderr, so the run view can show why it failed
 	// without opening stderr.txt.
-	ErrorTail   string   `json:"error_tail,omitempty"`
+	ErrorTail string `json:"error_tail,omitempty"`
+	// Note says why something the step asked for didn't happen although the step itself
+	// ran (e.g. an output_artifact that was refused, #3423).
+	Note        string   `json:"note,omitempty"`
 	SessionID   string   `json:"session_id,omitempty"`
 	SessionName string   `json:"session_name,omitempty"`
 	Files       []string `json:"files"`
@@ -364,10 +367,20 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	stepCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	// Expand {{var}} templates in shell commands using pre-computed absolute paths.
-	// These are safe (not user-controlled content). Commands can also reference
-	// $CORAL_PREV_STDOUT etc. directly via environment variables.
-	expandedCmd := expandTemplates(step.Command, env)
+	// Expand {{var}} templates: paths as they are, step output as one quoted shell word
+	// (#3423). Commands can also reference $CORAL_PREV_STDOUT etc. directly.
+	expandedCmd, terr := expandShellTemplates(step.Command, env)
+	if terr != nil {
+		// Never an exec that fails with no message (E2BIG): say why, in the step (#3423 F3).
+		msg := "coral: " + terr.Error() + "\n"
+		os.WriteFile(filepath.Join(stepDir, "stderr.txt"), []byte(msg), 0644)
+		os.WriteFile(filepath.Join(stepDir, "stdout.txt"), nil, 0644)
+		code := 1
+		result.ExitCode = &code
+		os.WriteFile(filepath.Join(stepDir, "exit_code"), []byte("1"), 0644)
+		result.ErrorTail = msg
+		return terr
+	}
 	cmd := exec.CommandContext(stepCtx, "sh", "-c", expandedCmd)
 	cmd.Dir = repoPath
 	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
@@ -424,12 +437,12 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 		result.ErrorTail = readTail(filepath.Join(stepDir, "stderr.txt"), 40)
 	}
 
-	// If output_artifact is set, copy stdout to the specified artifact path
+	// If output_artifact is set, copy stdout to it: inside the step's folder only, never
+	// through a symlink (#3423, CRIT-02).
 	if step.OutputArtifact != "" {
-		artifactPath := filepath.Join(stepDir, filepath.Clean(step.OutputArtifact))
-		os.MkdirAll(filepath.Dir(artifactPath), 0755)
-		if data, err := os.ReadFile(filepath.Join(stepDir, "stdout.txt")); err == nil {
-			os.WriteFile(artifactPath, data, 0644)
+		if err := writeArtifact(stepDir, step.OutputArtifact); err != nil {
+			slog.Warn("[workflow] output_artifact not written", "step", step.Name, "error", err)
+			noteArtifactRefused(stepDir, step.OutputArtifact, err, result)
 		}
 	}
 
@@ -607,12 +620,12 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		result.ErrorTail = readTail(filepath.Join(stepDir, "stderr.txt"), 40)
 	}
 
-	// If output_artifact is set, copy stdout to the specified artifact path
+	// If output_artifact is set, copy stdout to it: inside the step's folder only, never
+	// through a symlink (#3423, CRIT-02).
 	if step.OutputArtifact != "" {
-		artifactPath := filepath.Join(stepDir, filepath.Clean(step.OutputArtifact))
-		os.MkdirAll(filepath.Dir(artifactPath), 0755)
-		if data, err := os.ReadFile(filepath.Join(stepDir, "stdout.txt")); err == nil {
-			os.WriteFile(artifactPath, data, 0644)
+		if err := writeArtifact(stepDir, step.OutputArtifact); err != nil {
+			slog.Warn("[workflow] output_artifact not written", "step", step.Name, "error", err)
+			noteArtifactRefused(stepDir, step.OutputArtifact, err, result)
 		}
 	}
 
@@ -764,11 +777,18 @@ func (wr *WorkflowRunner) buildStepEnv(workflow *store.Workflow, runID int64, ru
 			"CORAL_PREV_STDERR="+filepath.Join(prevDir, "stderr.txt"),
 		)
 		// If previous step has an output_artifact, set path and read content
+		// Only an artifact inside that step's folder, never through a symlink (#3423): its
+		// content in the environment when it fits (MED-03), else the path alone.
 		if stepIndex-1 < len(steps) && steps[stepIndex-1].OutputArtifact != "" {
-			artifactPath := filepath.Join(prevDir, steps[stepIndex-1].OutputArtifact)
-			env = append(env, "CORAL_PREV_ARTIFACT="+artifactPath)
-			if data, err := os.ReadFile(artifactPath); err == nil {
-				env = append(env, "CORAL_PREV_ARTIFACT_CONTENT="+string(data))
+			if p, err := artifactPath(prevDir, steps[stepIndex-1].OutputArtifact); err == nil {
+				env = append(env, "CORAL_PREV_ARTIFACT="+p)
+				if data, err := readRegular(p, maxArtifactEnv+1); err == nil {
+					if len(data) > maxArtifactEnv {
+						env = append(env, "CORAL_PREV_ARTIFACT_TRUNCATED=1")
+					} else {
+						env = append(env, "CORAL_PREV_ARTIFACT_CONTENT="+stripNUL(string(data)))
+					}
+				}
 			}
 		}
 	}
@@ -790,22 +810,61 @@ var templatePattern = regexp.MustCompile(`\{\{(\w+)\}\}`)
 
 // envKeyForTemplate maps template variable names to their environment variable equivalents.
 var envKeyForTemplate = map[string]string{
-	"run_dir":               "CORAL_WORKFLOW_RUN_DIR",
-	"run_id":                "CORAL_WORKFLOW_RUN_ID",
-	"step_dir":              "CORAL_WORKFLOW_STEP_DIR",
-	"prev_dir":              "CORAL_PREV_DIR",
-	"prev_stdout":           "CORAL_PREV_STDOUT",
-	"prev_stderr":           "CORAL_PREV_STDERR",
-	"prev_artifact":         "CORAL_PREV_ARTIFACT",
-	"prev_artifact_content": "CORAL_PREV_ARTIFACT_CONTENT",
+	"run_dir":       "CORAL_WORKFLOW_RUN_DIR",
+	"run_id":        "CORAL_WORKFLOW_RUN_ID",
+	"step_dir":      "CORAL_WORKFLOW_STEP_DIR",
+	"prev_dir":      "CORAL_PREV_DIR",
+	"prev_stdout":   "CORAL_PREV_STDOUT",
+	"prev_stderr":   "CORAL_PREV_STDERR",
+	"prev_artifact": "CORAL_PREV_ARTIFACT",
 }
 
 // stepNPattern matches {{step_N_dir}} and {{step_N_stdout}} patterns.
 var stepNPattern = regexp.MustCompile(`^step_(\d+)_(dir|stdout)$`)
 
-// expandTemplates replaces {{var}} placeholders with values from environment variables.
-// This uses pre-computed absolute paths — no user-controlled content is interpolated.
-func expandTemplates(text string, env []string) string {
+// expandTemplates replaces {{var}} placeholders for an agent prompt: paths, and the
+// content of a previous step's output as plain text.
+func expandTemplates(text string, env []string) string { return expandTemplatesFor(text, env, false) }
+
+// expandShellTemplates is expandTemplates for a shell step's command (#3423, CRIT-01): a
+// content template ({{prev_stdout_content}}, {{step_N_stdout_content}},
+// {{prev_artifact_content}}) becomes ONE single-quoted shell word, so whatever a previous
+// step printed can't change the command. Trailing newlines are dropped first, as command
+// substitution does (F1); a missing or refused artifact is an empty word, never the
+// template text (F2); content over 64 KiB is an error that names the file form instead
+// (F3). Prefer the environment ("$CORAL_PREV_STDOUT", "$CORAL_PREV_ARTIFACT") or reading
+// the file in the command.
+func expandShellTemplates(text string, env []string) (string, error) {
+	var tooBig error
+	out := expandTemplatesWith(text, env, true, func(name string, n int) {
+		if tooBig == nil {
+			tooBig = fmt.Errorf("{{%s}} is %d bytes, more than %d KiB can go on a command line: use the file instead ({{%s}} or $%s)",
+				name, n, maxTemplateContent>>10, strings.TrimSuffix(name, "_content"), templateFileEnv(strings.TrimSuffix(name, "_content")))
+		}
+	})
+	return out, tooBig
+}
+
+// maxTemplateContent caps a content template in a shell command (F3): above it, the
+// command line could not be executed (Linux allows 128 KiB per argument).
+const maxTemplateContent = 64 << 10
+
+// templateFileEnv names the variable holding the file a content template reads.
+func templateFileEnv(base string) string {
+	if ek, ok := envKeyForTemplate[base]; ok {
+		return ek
+	}
+	if m := stepNPattern.FindStringSubmatch(base); m != nil {
+		return fmt.Sprintf("CORAL_STEP_%s_STDOUT", m[1])
+	}
+	return "CORAL_PREV_STDOUT"
+}
+
+func expandTemplatesFor(text string, env []string, shell bool) string {
+	return expandTemplatesWith(text, env, shell, nil)
+}
+
+func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name string, n int)) string {
 	// Build lookup from env slice
 	envMap := make(map[string]string, len(env))
 	for _, e := range env {
@@ -854,11 +913,37 @@ func expandTemplates(text string, env []string) string {
 				envKey = fmt.Sprintf("CORAL_STEP_%s_%s", m[1], suffix)
 			}
 			if envKey != "" {
-				if filePath, found := envMap[envKey]; found {
-					if data, err := os.ReadFile(filePath); err == nil {
-						return string(data)
+				filePath, found := envMap[envKey]
+				var data []byte
+				readOK := false
+				if found {
+					if d, err := readRegular(filePath, maxArtifactRead); err == nil {
+						data, readOK = d, true
 					}
 				}
+				if !readOK {
+					// A refused or missing artifact (or an unreadable output) is an empty
+					// word in a command, never the template text (F2); in a prompt, nothing.
+					if found || baseVar == "prev_artifact" {
+						if shell {
+							return "''"
+						}
+						return ""
+					}
+					return match
+				}
+				if !shell {
+					return stripNUL(string(data))
+				}
+				// As command substitution: trailing newlines dropped, embedded ones kept (F1).
+				content := strings.TrimRight(stripNUL(string(data)), "\n")
+				if len(content) > maxTemplateContent {
+					if tooBig != nil {
+						tooBig(varName, len(content))
+					}
+					return "''"
+				}
+				return shellWord(content)
 			}
 			return match
 		}

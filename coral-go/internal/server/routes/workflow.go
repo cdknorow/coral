@@ -197,7 +197,7 @@ func (h *WorkflowHandler) CreateWorkflow(w http.ResponseWriter, r *http.Request)
 		errInternalServer(w, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, created)
+	writeJSON(w, http.StatusCreated, withWarnings(created, stepWarnings(body.Steps)))
 }
 
 // UpdateWorkflow updates an existing workflow.
@@ -287,6 +287,7 @@ func (h *WorkflowHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Handle steps
+	var warnings []string
 	if stepsRaw, ok := raw["steps"]; ok {
 		var steps []json.RawMessage
 		if err := json.Unmarshal(stepsRaw, &steps); err != nil {
@@ -311,6 +312,7 @@ func (h *WorkflowHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Request)
 			errBadRequest(w, errMsg)
 			return
 		}
+		warnings = stepWarnings(steps)
 
 		stepsJSON, err := store.StepsJSONFromRaw(steps)
 		if err != nil {
@@ -338,7 +340,7 @@ func (h *WorkflowHandler) UpdateWorkflow(w http.ResponseWriter, r *http.Request)
 		errNotFound(w, "workflow not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, updated)
+	writeJSON(w, http.StatusOK, withWarnings(updated, warnings))
 }
 
 // DeleteWorkflow deletes a workflow and its run history.
@@ -686,9 +688,14 @@ func validateSteps(steps []json.RawMessage, defaultAgent json.RawMessage) string
 			ContinueOnFailure bool            `json:"continue_on_failure"`
 			Agent             json.RawMessage `json:"agent"`
 			Hooks             json.RawMessage `json:"hooks"`
+			OutputArtifact    string          `json:"output_artifact"`
 		}
 		if err := json.Unmarshal(stepRaw, &step); err != nil {
 			return fmt.Sprintf("step %d: invalid JSON", i)
+		}
+		// output_artifact stays inside the step's folder (#3423, CRIT-02).
+		if step.OutputArtifact != "" && (!filepath.IsLocal(step.OutputArtifact) || strings.ContainsRune(step.OutputArtifact, 0)) {
+			return fmt.Sprintf("step %d: output_artifact must be a relative path inside the step's folder (no absolute path, no ..)", i)
 		}
 
 		// Validate name
@@ -752,6 +759,69 @@ func validateSteps(steps []json.RawMessage, defaultAgent json.RawMessage) string
 		}
 	}
 	return ""
+}
+
+// contentTemplate matches a template that inserts a previous step's output.
+var contentTemplate = regexp.MustCompile(`\{\{\w+_content\}\}`)
+
+// stepWarnings lists shell commands where a content template sits inside quotes (#3423):
+// the runner inserts step output as one quoted shell word, so quoting it again puts the
+// quotes into the value. Saving still works; the warnings come back with the workflow.
+func stepWarnings(steps []json.RawMessage) []string {
+	var out []string
+	for i, raw := range steps {
+		var step struct {
+			Name    string `json:"name"`
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		}
+		if json.Unmarshal(raw, &step) != nil || step.Type != "shell" {
+			continue
+		}
+		for _, loc := range contentTemplate.FindAllStringIndex(step.Command, -1) {
+			if quoteAt(step.Command, loc[0]) != 0 {
+				out = append(out, fmt.Sprintf("step %d (%s): %s is inside quotes; it is already inserted as one quoted shell word, so remove the quotes around it (or use \"$CORAL_PREV_STDOUT\")",
+					i, step.Name, step.Command[loc[0]:loc[1]]))
+			}
+		}
+	}
+	return out
+}
+
+// quoteAt is the POSIX quote open at byte i of cmd: '\”, '"' or 0.
+func quoteAt(cmd string, i int) byte {
+	var q byte
+	for j := 0; j < i && j < len(cmd); j++ {
+		c := cmd[j]
+		switch {
+		case q == 0 && c == '\\':
+			j++
+		case q == '"' && c == '\\':
+			j++
+		case q == 0 && (c == '\'' || c == '"'):
+			q = c
+		case q != 0 && c == q:
+			q = 0
+		}
+	}
+	return q
+}
+
+// withWarnings adds "warnings" to a JSON object answer when there are any.
+func withWarnings(v any, warnings []string) any {
+	if len(warnings) == 0 {
+		return v
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var m map[string]any
+	if json.Unmarshal(b, &m) != nil {
+		return v
+	}
+	m["warnings"] = warnings
+	return m
 }
 
 // validHookEvents are the recognized hook event names.

@@ -179,7 +179,7 @@ curl -X POST ${CORAL_URL}/api/notifications -H 'Content-Type: application/json' 
 | `CORAL_PREV_STDOUT` | Path to previous step's stdout file |
 | `CORAL_PREV_STDERR` | Path to previous step's stderr file |
 | `CORAL_PREV_ARTIFACT` | Path to previous step's output artifact (if `output_artifact` was set) |
-| `CORAL_PREV_ARTIFACT_CONTENT` | Contents of the previous step's output artifact |
+| `CORAL_PREV_ARTIFACT_CONTENT` | Contents of the previous step's output artifact, up to 64 KiB (NUL bytes removed). A bigger artifact is left out, and `CORAL_PREV_ARTIFACT_TRUNCATED=1` is set instead: read the file at `$CORAL_PREV_ARTIFACT` |
 | `CORAL_STEP_N_DIR` | Artifact directory for step N (0-indexed) |
 | `CORAL_STEP_N_STDOUT` | Path to stdout file for step N |
 
@@ -189,11 +189,14 @@ curl -X POST ${CORAL_URL}/api/notifications -H 'Content-Type: application/json' 
 |----------|--------------------|
 | `{{prev_stdout}}` | `$CORAL_PREV_STDOUT` |
 | `{{prev_stderr}}` | `$CORAL_PREV_STDERR` |
-| `{{prev_artifact_content}}` | `$CORAL_PREV_ARTIFACT_CONTENT` |
+| `{{prev_artifact_content}}` | the content of `$CORAL_PREV_ARTIFACT` |
+| `{{prev_stdout_content}}`, `{{step_N_stdout_content}}` | the content of that step's stdout |
 | `{{step_N_stdout}}` | `$CORAL_STEP_N_STDOUT` |
 | `{{step_dir}}` | `$CORAL_WORKFLOW_STEP_DIR` |
 | `{{run_dir}}` | `$CORAL_WORKFLOW_RUN_DIR` |
 | `{{run_id}}` | `$CORAL_WORKFLOW_RUN_ID` |
+
+**Content templates in a shell `command`** (`{{…_content}}`): the content is inserted as **one single-quoted shell word**, so whatever a previous step printed can never change your command (no `;`, `$(…)` or quotes in it are run). Trailing newlines are dropped, as `$(…)` does (`git rev-parse --verify {{prev_stdout_content}}` works). A missing or refused artifact is an empty word. Content over 64 KiB fails the step with a message: use the file (`{{prev_stdout}}`, `"$CORAL_PREV_STDOUT"`) for big output. Don't put quotes around them: `printf %s {{prev_stdout_content}}`, not `"{{prev_stdout_content}}"`; saving a workflow with a quoted one returns a `warnings` list. The preferred forms are the variables and files: `"$CORAL_PREV_ARTIFACT_CONTENT"`, `cat "$CORAL_PREV_STDOUT"`. In an agent `prompt` the content is inserted as plain text.
 
 **PATH** — the Coral tools directory (containing `coral-board`, hooks, and agent CLIs) is prepended to `PATH` automatically.
 
@@ -205,6 +208,7 @@ curl -X POST ${CORAL_URL}/api/notifications -H 'Content-Type: application/json' 
 - `agent` steps require `prompt`.
 - `agent` steps also need an `agent_type`, either in the step-level `agent` object or inherited from `default_agent`.
 - `timeout_s`, when set, must be between `1` and `86400`. When a step times out, its whole process group is killed, including anything it started in the background.
+- `output_artifact`, when set, must be a relative path inside the step's folder (no absolute path, no `..`). Coral never writes or reads it through a symlink, so a step can't make it point elsewhere; a refused one is shown in that step's `note` and at the end of its stderr.
 - `hooks`, when set, must use valid event names and hook group structure (see [Hooks](hooks.md)).
 
 ### Example
