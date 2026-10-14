@@ -37,11 +37,15 @@ export function accessBlockedMessage(a, required = 'interact') {
 // list; until it is loaded they show the action (the hub still refuses) and redraw once it is.
 let _cloudServers = null;
 let _warming = null;
+// Warm the list only until it has loaded once (DevOps' #3443 note): a failed load, or a machine
+// the list leaves out, must not make every menu redraw ask again and redraw again. The redraw
+// event goes out only when this server's answer actually changed.
 function _warmAccess(server) {
-    if (_warming) return;
+    if (_warming || (_cloudServers && _cloudServers.serverListLoaded())) return;
+    const before = _cloudServers ? JSON.stringify(_cloudServers.cachedServerAccess(server)) : 'null';
     _warming = importOnce('./cloud_servers.js')
         .then(m => { _cloudServers = m; return m.serverAccess(server); })
-        .then(() => document.dispatchEvent(new CustomEvent('coral:server-access-loaded')))
+        .then(a => { if (JSON.stringify(a) !== before) document.dispatchEvent(new CustomEvent('coral:server-access-loaded')); })
         .catch(() => {})
         .finally(() => { _warming = null; });
 }

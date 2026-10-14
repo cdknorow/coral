@@ -3771,3 +3771,56 @@ button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); 
 .terminal-gone-chip:hover { background: rgba(var(--error-rgb), 0.22); }
 .terminal-gone-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 20px; padding: 0 8px; }
+
+/* Machine health (#3446): a status dot and a compact card. The dot is the only coloured part;
+   every value is text in the normal text colours (contrast as in the accessibility pass). */
+.machine-health-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    vertical-align: middle;
+    background: transparent;
+    border: 1.5px solid var(--text-muted);
+}
+.machine-health-dot.machine-health-ok { background: var(--success); border-color: var(--success); }
+.machine-health-dot.machine-health-busy { background: var(--warning); border-color: var(--warning); }
+.machine-health-dot.machine-health-stalled { background: var(--error); border-color: var(--error); }
+.machine-health-card {
+    margin: 6px 0;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+}
+.machine-health-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.machine-health-title {
+    margin: 0;
+    font-size: var(--fs-sm, 12px);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.machine-health-status {
+    font-size: var(--fs-sm, 12px);
+    color: var(--text-secondary);
+}
+.machine-health-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 2px 12px;
+    margin: 6px 0 0;
+    font-size: var(--fs-sm, 12px);
+}
+.machine-health-grid dt { color: var(--text-secondary); }
+.machine-health-grid dd { margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.machine-health-note {
+    margin: 6px 0 0;
+    font-size: var(--fs-sm, 12px);
+    color: var(--text-secondary);
+}
+.cs-title .machine-health-dot { margin-left: 6px; }

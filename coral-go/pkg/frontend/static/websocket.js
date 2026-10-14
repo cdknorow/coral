@@ -16,6 +16,7 @@ import { applySleepingView } from './sleeping_view.js';
 import { updateServersTabVisibility } from './servers_tab.js';
 import { markReady } from './ready.js';
 import { syncUnreachableBanner } from './hub_access.js';
+import { applyMachineHealth } from './machine_health.js';
 import { syncAutoAcceptHeader, noteAutoAcceptPauses } from './auto_accept.js';
 import { pruneTerminalGone, syncTerminalGoneHeader } from './terminal_gone.js';
 
@@ -67,6 +68,9 @@ export function connectCoralWs() {
 
     state.coralWs = new WebSocket(url);
     state.coralWs.addEventListener('open', () => markReady('feed')); // window.__coralReady (#3118)
+    // The machine-health card shows unknown while the feed is down (#3446).
+    state.coralWs.addEventListener('open', () => document.dispatchEvent(new CustomEvent('coral:feed-state')));
+    state.coralWs.addEventListener('close', () => document.dispatchEvent(new CustomEvent('coral:feed-state')));
 
     state.coralWs.onmessage = (event) => {
         _feedFailures = 0;   // a socket that delivers is healthy; the next drop starts the backoff over
@@ -124,6 +128,8 @@ export function _resetWaitingSeedForTests() { _waitingSeeded = false; state.prev
 
 /** Apply one message from /ws/coral. Exported for tests (window._coralHandleWsMessage). */
 export function handleCoralMessage(data) {
+    // This machine's health (#3444, #3446): before a diff is merged into a full update below.
+    applyMachineHealth(data);
     {
         // Handle diff updates: merge changed/removed into existing session list
         if (data.type === "coral_diff") {

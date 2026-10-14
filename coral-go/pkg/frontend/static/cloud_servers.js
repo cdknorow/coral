@@ -20,6 +20,7 @@ import { h } from './cloud.js';
 import { formatLastSeen, updateNotice, RELEASES_URL, serverVersion, serverAgentCount } from './server_status.js';
 import { accessBlockedMessage, accessChanged } from './hub_access.js';
 import { pollEvery } from './overload.js';
+import { healthDot, healthCard } from './machine_health.js';
 
 // The Servers tab (#3070) hosts this list; there is no separate dialog.
 let host = null;
@@ -198,6 +199,11 @@ export async function serverAccess(serverId) {
     return s ? _access(s, serverId) : null;
 }
 
+/** Whether the Servers list has been loaded once (even if that load failed or left a server out). */
+export function serverListLoaded() {
+    return _modeCache.byId !== null;
+}
+
 /** serverAccess from the cached Servers list, without asking the hub: null when the list was not
  *  loaded yet or the server is unknown. For drawing a menu (#3443); serverAccess loads it. */
 export function cachedServerAccess(serverId) {
@@ -256,6 +262,9 @@ function row(s) {
             h('span', { className: 'cs-dot ' + (online ? 'online' : 'offline'), 'aria-hidden': 'true' }),
             h('span', { text: s.label || 'Unnamed server' }),
             h('span', { className: 'sr-only', text: online ? ' (online)' : ' (offline)' }),
+            // The machine's health (#3446): the hub relays it while the machine is connected;
+            // without it (offline, held, reconnecting) the dot says unknown, never a stale ok.
+            healthDot(online ? live.machine_health : null, s.label || 'Server'),
             updateBadge(live));
     const version = serverVersion(live);
     const agents = serverAgentCount(live);
@@ -297,7 +306,7 @@ function row(s) {
             h('a', { href: RELEASES_URL, target: '_blank', rel: 'noopener noreferrer', text: 'Get the latest release' }))
         : null;
     return h('li', { className: 'cs-row', id: rowId(s.id), tabIndex: -1, dataset: { id: s.id } },
-        h('div', { className: 'cs-main' }, title, meta, launch),
+        h('div', { className: 'cs-main' }, title, meta, online ? healthCard(live.machine_health, { title: 'Health' }) : null, launch),
         h('div', { className: 'cs-actions' }, actions),
         confirming === s.id ? h('div', { className: 'cs-note', text: 'Revoking disconnects this server now and its token stops working. To connect it again you must enroll it again.' }) : null,
         note ? h('div', { className: 'cs-note', text: note }) : null,
