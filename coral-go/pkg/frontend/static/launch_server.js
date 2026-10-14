@@ -59,7 +59,7 @@ export function serverLabel(server, servers) {
 /** Why `server` cannot be launched on right now, or "" when it can. */
 export function launchBlockReason(server, hub, servers) {
     const id = normServer(server);
-    if (id === LOCAL_SERVER) return state.cloud === true ? 'The Cloud Hub has no local agents. Choose one of your servers.' : '';
+    if (id === LOCAL_SERVER) return state.cloud === true ? 'The Coral Hub has no local agents. Choose one of your servers.' : '';
     if (hub !== true) return 'Hub mode is off; remote servers are unavailable.';
     const hit = remoteServers(servers).find(s => s.id === id);
     if (!hit) return `Server "${id}" is not registered.`;

@@ -21,7 +21,7 @@ Put `--` before a message whose first word starts with a dash; otherwise it is r
 **Identity is local trust.** The server checks that the sender is an Orchestrator on its board and that the request comes from that Orchestrator's own session. Every agent on a Coral server runs as the same OS user, though, so this stops mistakes, not a determined agent impersonating another. The OS user is the real boundary, as for all board identities. Known gaps, accepted for now:
 
 - **Operator sends** need no session, and can name any existing board that has cross-team messaging enabled as `from_board`, so a local caller can send as `Operator (<board>)`.
-- **Settings** trust `"subscriber_id": "Operator"` in the request, so a local caller can enable cross-team messaging on any board, which weakens the "both boards opt in" rule. Through the Cloud Hub, **Interact** access to a machine also allows changing board settings, including turning on cross-team messaging (View access cannot).
+- **Settings** trust `"subscriber_id": "Operator"` in the request, so a local caller can enable cross-team messaging on any board, which weakens the "both boards opt in" rule. Through the Coral Hub, **Interact** access to a machine also allows changing board settings, including turning on cross-team messaging (View access cannot).
 - **Session names are not secret**: the subscribers list returns them (the dashboard uses them to open an agent), so the session check can be satisfied by copying the Orchestrator's.
 
 Real per-session credentials would close these; until then, treat cross-team identity like every other board identity on a shared machine.

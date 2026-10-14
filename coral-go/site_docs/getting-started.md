@@ -75,7 +75,7 @@ For an agent you trust with its task, you can let Coral answer its permission pr
 - An amber **AUTO** chip marks the agent while it is on; click the chip in the agent's header (or use the menu) to turn it off. **Stop all auto-accept** in the top-bar menu turns it off everywhere.
 - Every approval is listed in the agent's **Activity**. If the same prompt keeps coming back, Coral turns auto-accept off and tells you why.
 - It turns off by itself when the agent restarts, resumes or wakes, or when its time limit runs out. It stays on if only Coral restarts while the agent keeps running.
-- It runs on the Coral server, so it keeps working with the dashboard closed. From the Cloud Hub it needs Launch access on this computer, and you can switch hub control off in Settings (**Cloud Hub can turn on auto-accept**, on by default while access is Launch); a hub-enabled auto-accept always has a time limit of at most 8 hours.
+- It runs on the Coral server, so it keeps working with the dashboard closed. From the Coral Hub it needs Launch access on this computer, and you can switch hub control off in Settings (**Coral Hub can turn on auto-accept**, on by default while access is Launch); a hub-enabled auto-accept always has a time limit of at most 8 hours.
 
 ## Running a second instance
 

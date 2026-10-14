@@ -211,7 +211,7 @@ var columnMigrations = []struct {
 	// Coral turns it off (loop guard, expiry, hub access withdrawn, Stop all); enabling again clears it.
 	{"live_sessions", "auto_accept", "INTEGER NOT NULL DEFAULT 0"},
 	{"live_sessions", "auto_accept_until", "INTEGER"},    // unix seconds; NULL = no time limit
-	{"live_sessions", "auto_accept_source", "TEXT"},      // 'local' (dashboard) or 'hub' (Cloud Hub)
+	{"live_sessions", "auto_accept_source", "TEXT"},      // 'local' (dashboard) or 'hub' (Coral Hub)
 	{"live_sessions", "auto_accept_paused_code", "TEXT"}, // why Coral turned it off (see store/auto_accept.go)
 	{"session_index", "agent_name", "TEXT"},
 	{"session_index", "display_name", "TEXT"},

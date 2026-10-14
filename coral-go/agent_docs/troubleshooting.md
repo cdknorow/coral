@@ -89,8 +89,8 @@ The version is in the `[STARTUP]` log line, or in the `version` field of `GET /a
 You built with plain `go build`. `make dev` and `make build` stamp the latest release tag, so the
 build reports the next patch, `<next>-dev+<commit>[.dirty]` (e.g. `1.4.3-dev+<commit>` after
 v1.4.2; `ReportedVersion` in `internal/config/version.go`). This is the version shown in
-`/api/health`, the startup log and the Cloud Hub tunnel Hello. Hubs treat `0.0.0-dev` as a very
-old version: the Cloud Hub then connects with the plain `/ws/coral` feed instead of `feed=hub`, so
+`/api/health`, the startup log and the Coral Hub tunnel Hello. Hubs treat `0.0.0-dev` as a very
+old version: the Coral Hub then connects with the plain `/ws/coral` feed instead of `feed=hub`, so
 that machine's dashboard notifications are taken by the hub's feed and never shown locally, and
 the hub shows it as needing an update. Build with `make build` or `make dev`.
 

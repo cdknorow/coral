@@ -27,9 +27,9 @@ const SERVERS = [
 const EXPECT = {
     'srv-avail': { level: 'available', label: 'Update', text: 'Update available: 1.5.0' },
     'srv-avail-bare': { level: 'available', label: 'Update', text: 'Update available' },
-    'srv-req': { level: 'required', label: 'Update required', text: 'Update required: this Coral (1.3.9) is too old for some Cloud Hub features. Update to 1.5.0.' },
-    'srv-req-bare': { level: 'required', label: 'Update required', text: 'Update required: this Coral is too old for some Cloud Hub features. Update to the latest release.' },
-    'srv-hostile': { level: 'required', label: 'Update required', text: `Update required: this Coral (${HOSTILE_V}) is too old for some Cloud Hub features. Update to ${HOSTILE_L}.` },
+    'srv-req': { level: 'required', label: 'Update required', text: 'Update required: this Coral (1.3.9) is too old for some Coral Hub features. Update to 1.5.0.' },
+    'srv-req-bare': { level: 'required', label: 'Update required', text: 'Update required: this Coral is too old for some Coral Hub features. Update to the latest release.' },
+    'srv-hostile': { level: 'required', label: 'Update required', text: `Update required: this Coral (${HOSTILE_V}) is too old for some Coral Hub features. Update to ${HOSTILE_L}.` },
 };
 const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
 
@@ -112,7 +112,7 @@ const NONE = ['srv-current', 'srv-unknown', 'srv-odd'];
         await checkNotices('desktop');
         console.log('   ✓ button marker (required), header markers and details only for available/required, exact texts, constant link, tooltips, hostile text inert');
 
-        console.log('2. Cloud Hub server list (Servers tab)');
+        console.log('2. Coral Hub server list (Servers tab)');
         const dialog = await ev(`(async () => {
             const real = window.fetch;
             window.fetch = (u, o) => String(u).startsWith('/api/servers')

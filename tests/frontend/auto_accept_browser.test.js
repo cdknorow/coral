@@ -73,8 +73,8 @@ const BASE = require('./test_base').BASE;
         const onItem = await ev(`(() => { const b = ${menuItem('aa-on')}; return [b.getAttribute('role'), b.getAttribute('aria-checked'), b.querySelector('.auto-accept-state').textContent, b.title, ${row('aa-on')}.querySelector('.auto-accept-chip').title]; })()`);
         assert.deepEqual(onItem.slice(0, 2), ['menuitemcheckbox', 'true']);
         assert.match(onItem[2], /^On until \d\d?:\d\d/, 'the time limit is shown');
-        assert.match(onItem[3], /until \d\d?:\d\d(\s?[AP]M)?, turned on from the Cloud Hub/, 'source and limit on the switch');
-        assert.match(onItem[4], /Auto-accept is on \(until .*turned on from the Cloud Hub\)/, 'and on the chip');
+        assert.match(onItem[3], /until \d\d?:\d\d(\s?[AP]M)?, turned on from the Coral Hub/, 'source and limit on the switch');
+        assert.match(onItem[4], /Auto-accept is on \(until .*turned on from the Coral Hub\)/, 'and on the chip');
         assert.deepEqual(await ev(`(() => { const b = ${menuItem('aa-off')}; return [b.getAttribute('aria-checked'), b.querySelector('.auto-accept-state').textContent]; })()`), ['false', 'Off']);
         console.log('   ✓ chip and switch state');
 
@@ -193,13 +193,13 @@ const BASE = require('./test_base').BASE;
         assert.equal((await ev(`[...document.querySelectorAll('.toast')].map(t => t.textContent)`)).filter(t => /turned off for/.test(t)).length, 0, 'no per-agent "turned off" toasts for your own stop-all');
         console.log('   ✓ one request, all off, item hidden, one summary toast');
 
-        console.log('9. The Cloud Hub dialog requires a time limit (1 hour by default)');
+        console.log('9. The Coral Hub dialog requires a time limit (1 hour by default)');
         await ev(`window.__aa.confirmAutoAccept('Hub agent', () => {}, () => {}, { hub: true }); true`);
         assert.deepEqual(await ev(`(() => { const sel = document.getElementById('auto-accept-duration'); return [sel.value, sel.options[0].text, [...sel.options].some(o => o.value === '')]; })()`), ['3600', '15 minutes', false]);
         await ev(`[...document.querySelectorAll('dialog.auto-accept-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
         console.log('   ✓ 1 hour preselected, no "No time limit"');
 
-        console.log('10. Settings: "Cloud Hub can turn on auto-accept" shows only with Launch, on by default, saves locally');
+        console.log('10. Settings: "Coral Hub can turn on auto-accept" shows only with Launch, on by default, saves locally');
         const cloudRow = await ev(`(async () => {
             if (!document.getElementById('settings-cloud-allow-auto-accept')) return 'missing';
             const real = window.fetch;
@@ -254,9 +254,9 @@ const BASE = require('./test_base').BASE;
         })()`);
         assert.match(refusals.agent_identity, /only be turned on by you, in the dashboard, not by an agent/);
         assert.match(refusals.no_dashboard_provenance, /only be turned on from the dashboard/);
-        assert.match(refusals.hub_auto_accept_disabled, /turned off Cloud Hub auto-accept there/);
+        assert.match(refusals.hub_auto_accept_disabled, /turned off Coral Hub auto-accept there/);
         assert.equal(await ev(`window.__state.liveSessions.find(x => x.session_id === 'aa-off').auto_accept`), false, 'still off after a refusal');
-        assert.equal(await ev(`window.__aa.pausedText('coral_restarted')`), 'Coral restarted (an auto-accept turned on from the Cloud Hub ends then)');
+        assert.equal(await ev(`window.__aa.pausedText('coral_restarted')`), 'Coral restarted (an auto-accept turned on from the Coral Hub ends then)');
         console.log('   ✓ three refusal codes in words; coral_restarted worded');
 
         console.log('12. Popout (no agent menu): the header control is the switch, asks first, then shows AUTO');

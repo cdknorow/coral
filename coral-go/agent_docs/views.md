@@ -2,7 +2,7 @@
 
 Custom views allow users to create additional dashboard tabs with custom HTML content and system prompts. Views are stored in the SQLite database.
 
-**Reads are open; writes are dashboard-only.** `POST`, `PUT` and `DELETE` are accepted only from the Coral dashboard in a browser on this computer (loopback peer, localhost `Host`, same-origin fetch, no Cloud Hub tunnel, no `Authorization: Bearer`). Anything else, including an agent or script calling with curl, gets `403 {"error": "Custom views can only be changed from the Coral dashboard on this computer"}`. `POST` and `PUT` also need `Content-Type: application/json` (else 400).
+**Reads are open; writes are dashboard-only.** `POST`, `PUT` and `DELETE` are accepted only from the Coral dashboard in a browser on this computer (loopback peer, localhost `Host`, same-origin fetch, no Coral Hub tunnel, no `Authorization: Bearer`). Anything else, including an agent or script calling with curl, gets `403 {"error": "Custom views can only be changed from the Coral dashboard on this computer"}`. `POST` and `PUT` also need `Content-Type: application/json` (else 400).
 
 A view runs in an isolated sandbox with no network and reads data only through a read-only endpoint allowlist. `created_via` records who wrote it: `"ui"` (the dashboard) or `"api"` (any other caller or unknown provenance). The dashboard shows an `"api"` view's source and runs it only after **Run this view**; open and save it in the editor to make it `"ui"`.
 

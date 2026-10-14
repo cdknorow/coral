@@ -60,7 +60,7 @@ import { checkForUpdates, dismissUpdateToast } from './update_check.js';
 import { teamFetch } from './server_base.js';
 import { showServersModal, hideServersModal, initServersUi } from './servers.js';
 import './servers_tab.js'; // Servers tab: chip clicks and deep links (#3070)
-import './csp_compat.js';   // runs inline handlers without eval on the Cloud Hub (inert elsewhere)
+import './csp_compat.js';   // runs inline handlers without eval on the Coral Hub (inert elsewhere)
 import { markReady } from './ready.js';
 import { lazyFns, lazyWindowFns, loadWorkflows, loadCostDashboard, loadDocs, loadThemeConfig, loadTemplateBrowser, loadChatSearch, loadModals } from './lazy_panels.js';
 
@@ -740,7 +740,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.fetch = async function(...args) {
         const resp = await _origFetch.apply(this, args);
         if (resp.status === 401 && !window.location.pathname.startsWith('/auth') && !isCloud()) {
-            window.location.href = '/auth';   // the Cloud Hub has its own redirect (cloud.js)
+            window.location.href = '/auth';   // the Coral Hub has its own redirect (cloud.js)
         }
         return resp;
     };

@@ -79,7 +79,7 @@ func main() {
 	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
 	remoteAccess := flag.Bool("remote", false, "Allow remote (non-loopback) connections without requiring the saved setting")
 	hubMode := flag.Bool("hub", false, "Run as a multi-server hub: manage and view remote Coral servers (also CORAL_HUB=1)")
-	cloudURL := flag.String("cloud-url", "", "Cloud Hub origin to connect this server to, e.g. https://hub.example.com (also CORAL_CLOUD_URL). Off by default; with it off this server makes no outbound connection to the cloud")
+	cloudURL := flag.String("cloud-url", "", "Coral Hub origin to connect this server to, e.g. https://hub.example.com (also CORAL_CLOUD_URL). Off by default; with it off this server makes no outbound connection to the cloud")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {

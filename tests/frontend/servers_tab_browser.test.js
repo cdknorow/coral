@@ -117,12 +117,12 @@ const contrast = (a, b) => {
         await Page.addScriptToEvaluateOnNewDocument({ source: PRELOAD });
         await Page.addScriptToEvaluateOnNewDocument({ source: CLOUD_PRELOAD });
 
-        console.log('1. Cloud Hub: the tab, its roles and focus');
+        console.log('1. Coral Hub: the tab, its roles and focus');
         await cloudMode(true);
         await open();
         await ev(`localStorage.clear(); true`);
         let t = await tabState();
-        assert.ok(t.tabShown, 'the Servers tab shows on the Cloud Hub');
+        assert.ok(t.tabShown, 'the Servers tab shows on the Coral Hub');
         assert.equal(t.role, 'tab'); assert.equal(t.controls, 'servers-view');
         assert.equal(t.selected, 'false', 'not selected before opening');
         await ev(`document.getElementById('nav-tab-servers').click(); true`);
@@ -168,7 +168,7 @@ const contrast = (a, b) => {
         let d = await dlgState();
         assert.equal(d.n, 1, 'one dialog');
         assert.ok(d.open && d.modal, 'a modal dialog (showModal)');
-        assert.equal(d.title, 'Allow Box One to launch agents from the Cloud Hub?', 'aria-labelledby names the server');
+        assert.equal(d.title, 'Allow Box One to launch agents from the Coral Hub?', 'aria-labelledby names the server');
         assert.equal(d.text, 'This lets the hub start new processes on that machine.', 'aria-describedby says what Launch allows');
         assert.deepEqual(d.buttons, ['Cancel', 'Raise to Launch']);
         assert.equal(d.focus, 'Cancel', 'Cancel has focus, so Enter does not raise');
@@ -219,7 +219,7 @@ const contrast = (a, b) => {
         await ev(`window.__patches = []; true`);
         await pick('m1', 'launch');
         await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation from the select', 3000);
-        assert.equal((await dlgState()).title, 'Allow Box One to launch agents from the Cloud Hub?');
+        assert.equal((await dlgState()).title, 'Allow Box One to launch agents from the Coral Hub?');
         await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);
         await noDialog('Cancel from the select');
         await waitFor(`document.querySelector('#server-row-m1 select').value === 'interact'`, 'the select back on the current mode', 3000);
@@ -238,7 +238,7 @@ const contrast = (a, b) => {
         await ev(`window.__patches = []; true`);
         await pick('m3', 'launch');
         await waitFor(`!!document.querySelector('dialog.cs-confirm[open]')`, 'the Launch confirmation for m3', 3000);
-        assert.equal((await dlgState()).title, 'Allow Box Three to launch agents from the Cloud Hub?', 'the dialog names the server whose select changed');
+        assert.equal((await dlgState()).title, 'Allow Box Three to launch agents from the Coral Hub?', 'the dialog names the server whose select changed');
         await ev(`[...document.querySelectorAll('dialog.cs-confirm button')].find(b => b.textContent === 'Raise to Launch').click(); true`);
         await waitFor(`window.__patches.length > 0`, 'the m3 PATCH', 3000);
         await settled();
@@ -260,7 +260,7 @@ const contrast = (a, b) => {
             return { ...r, calls, xss: !!window.__qaXss };
         })()`);
         assert.equal(xss.img, false, 'a label with markup renders no element');
-        assert.equal(xss.title, 'Allow <img src=x onerror="window.__qaXss=1"> to launch agents from the Cloud Hub?');
+        assert.equal(xss.title, 'Allow <img src=x onerror="window.__qaXss=1"> to launch agents from the Coral Hub?');
         assert.equal(xss.xss, false);
         assert.deepEqual(xss.calls, ['no'], 'Cancel then close(): exactly one callback');
         console.log('   ✓ Launch confirmation: modal, labelled, Cancel focused; Cancel/Escape/close send nothing and focus returns to Raise/the select; one dialog and one PATCH on double clicks; select Interact and lowering never ask; select Launch asks and Cancel restores it; label is text');
@@ -292,7 +292,7 @@ const contrast = (a, b) => {
         assert.match(metaOf('m2'), /^Online · Coral 1\.4\.6 · 1 agent$/, `m2 meta: version from 'version', singular agent (${metaOf('m2')})`);
         assert.match(metaOf('m3'), /^Offline · Coral 1\.5\.0 · 0 agents · last contact /, `m3 meta: offline shows last contact (${metaOf('m3')})`);
         assert.match(metaOf('m4'), /^Online · 2 agents$/, `m4 meta: no version when unknown (${metaOf('m4')})`);
-        const notice = { m1: 'Update required: this Coral (1.4.2) is too old for some Cloud Hub features. Update to 1.5.0.', m2: 'Update available: 1.5.0' };
+        const notice = { m1: 'Update required: this Coral (1.4.2) is too old for some Coral Hub features. Update to 1.5.0.', m2: 'Update available: 1.5.0' };
         for (const [id, level] of [['m1', 'required'], ['m2', 'available']]) {
             assert.equal(rowInfo[id].badges.length, 1, `${id}: one update badge`);
             const b = rowInfo[id].badges[0];

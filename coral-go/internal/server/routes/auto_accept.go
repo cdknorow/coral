@@ -296,9 +296,9 @@ func (a *AutoAcceptor) Run(ctx context.Context) {
 // enables left from before this process (they never outlive a restart).
 func (a *AutoAcceptor) Start(ctx context.Context) {
 	if n, err := a.h.ss.ClearHubAutoAccept(ctx, store.AutoAcceptCoralRestarted); err != nil {
-		slog.Warn("auto-accept: ending Cloud Hub enables after a restart failed", "error", err)
+		slog.Warn("auto-accept: ending Coral Hub enables after a restart failed", "error", err)
 	} else if n > 0 {
-		slog.Info("auto-accept: Coral restarted; turned off Cloud Hub enables", "agents", n)
+		slog.Info("auto-accept: Coral restarted; turned off Coral Hub enables", "agents", n)
 	}
 }
 
@@ -691,7 +691,7 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 	}
 	hub := cloud.TunneledAuthentic(r)
 	if !hub && !dashboardBrowser(r) {
-		refuseAutoAccept(w, http.StatusForbidden, "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Cloud Hub")
+		refuseAutoAccept(w, http.StatusForbidden, "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Coral Hub")
 		return
 	}
 	if hub {
@@ -701,7 +701,7 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		if !HubAutoAcceptAllowed(settings) {
-			refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", "Cloud Hub auto-accept is turned off on this computer")
+			refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", "Coral Hub auto-accept is turned off on this computer")
 			return
 		}
 	}
@@ -723,7 +723,7 @@ func (h *SessionsHandler) EnableAutoAccept(w http.ResponseWriter, r *http.Reques
 		limit = time.Duration(*body.DurationS) * time.Second
 	}
 	if hub {
-		source, origin = store.AutoAcceptSourceHub, "the Cloud Hub"
+		source, origin = store.AutoAcceptSourceHub, "the Coral Hub"
 		if limit == 0 {
 			limit = autoAcceptHubDefault
 		}
@@ -786,7 +786,7 @@ func (h *SessionsHandler) DisableAutoAccept(w http.ResponseWriter, r *http.Reque
 	if before.Enabled {
 		origin := "the dashboard"
 		if cloud.TunneledAuthentic(r) {
-			origin = "the Cloud Hub"
+			origin = "the Coral Hub"
 		} else if !localDashboard(r) {
 			origin = "a local client"
 		}

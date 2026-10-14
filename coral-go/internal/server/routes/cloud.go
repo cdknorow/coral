@@ -177,7 +177,7 @@ func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 	if mode < tunnel.TierLaunch {
 		// Enabling auto-accept from the hub needs Launch: what it enabled ends.
 		if _, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptModeLowered); err != nil {
-			errInternalServer(w, "Could not turn off Cloud Hub auto-accept")
+			errInternalServer(w, "Could not turn off Coral Hub auto-accept")
 			return
 		}
 	}
@@ -211,7 +211,7 @@ func (h *CloudHandler) SetAllowHubAutoAccept(w http.ResponseWriter, r *http.Requ
 	}
 	if !*body.Allow {
 		if _, err := h.ss.ClearHubAutoAccept(r.Context(), store.AutoAcceptHubAllowOff); err != nil {
-			errInternalServer(w, "Could not turn off Cloud Hub auto-accept")
+			errInternalServer(w, "Could not turn off Coral Hub auto-accept")
 			return
 		}
 	}

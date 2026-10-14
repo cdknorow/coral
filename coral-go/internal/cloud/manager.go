@@ -34,7 +34,7 @@ const (
 )
 
 // ErrNotConfigured is returned by Connect when no hub URL is configured.
-var ErrNotConfigured = errors.New("cloud hub is not configured: start Coral with --cloud-url or CORAL_CLOUD_URL")
+var ErrNotConfigured = errors.New("Coral Hub is not configured: start Coral with --cloud-url or CORAL_CLOUD_URL")
 
 // Options configures a Manager.
 type Options struct {

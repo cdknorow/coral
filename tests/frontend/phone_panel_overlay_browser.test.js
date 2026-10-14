@@ -75,7 +75,7 @@ const BASE = require('./test_base').BASE;
         await Emulation.setTouchEmulationEnabled({ enabled: false });
         await Emulation.clearDeviceMetricsOverride();
 
-        console.log('Cloud Hub server list: no literal "null"');
+        console.log('Coral Hub server list: no literal "null"');
         for (const mode of ['ok', 'error']) {
             const nulls = await ev(`(async () => {
                 const real = window.fetch;

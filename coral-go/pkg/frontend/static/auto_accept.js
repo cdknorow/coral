@@ -33,11 +33,11 @@ export const PAUSED_TEXT = {
     repeat_loop: 'the same prompt repeated 5 times in a minute',
     rate_cap: 'more than 30 approvals in a minute',
     expired: 'its time limit ran out',
-    mode_lowered: 'the Cloud Hub’s access dropped below Launch',
-    hub_allow_off: 'Cloud Hub auto-accept was turned off on this computer',
-    link_removed: 'this computer was disconnected from the Cloud Hub',
+    mode_lowered: 'the Coral Hub’s access dropped below Launch',
+    hub_allow_off: 'Coral Hub auto-accept was turned off on this computer',
+    link_removed: 'this computer was disconnected from the Coral Hub',
     stopped_by_owner: 'you stopped all auto-accept',
-    coral_restarted: 'Coral restarted (an auto-accept turned on from the Cloud Hub ends then)',
+    coral_restarted: 'Coral restarted (an auto-accept turned on from the Coral Hub ends then)',
 };
 export const pausedText = code => PAUSED_TEXT[code] || 'Coral turned it off';
 
@@ -68,7 +68,7 @@ function clock(unixSeconds) {
 function onDetails(s) {
     const parts = [];
     if (s.auto_accept_until) parts.push(`until ${clock(s.auto_accept_until)}`);
-    if (s.auto_accept_source === 'hub') parts.push('turned on from the Cloud Hub');
+    if (s.auto_accept_source === 'hub') parts.push('turned on from the Coral Hub');
     return parts.join(', ');
 }
 
@@ -171,7 +171,7 @@ export function autoAcceptPath(sessionId, enabled) {
 const REFUSED_TEXT = {
     agent_identity: 'Auto-accept can only be turned on by you, in the dashboard, not by an agent.',
     no_dashboard_provenance: 'Auto-accept can only be turned on from the dashboard.',
-    hub_auto_accept_disabled: 'The owner of that computer has turned off Cloud Hub auto-accept there (in its Coral Settings).',
+    hub_auto_accept_disabled: 'The owner of that computer has turned off Coral Hub auto-accept there (in its Coral Settings).',
 };
 
 async function refusalText(resp, server) {

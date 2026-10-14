@@ -16,7 +16,7 @@ const (
 )
 
 // ErrNoCloudConnection is returned when this server is not enrolled.
-var ErrNoCloudConnection = errors.New("not enrolled with a cloud hub")
+var ErrNoCloudConnection = errors.New("not enrolled with a Coral Hub")
 
 // CloudConnection is the safe view of the enrollment. It never carries the token.
 type CloudConnection struct {

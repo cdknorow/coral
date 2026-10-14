@@ -90,7 +90,7 @@ export function confirmLaunch(label, onConfirm, onCancel) {
     const cancel = h('button', { type: 'button', className: 'btn', text: 'Cancel', autofocus: true });
     const ok = h('button', { type: 'button', className: 'btn btn-primary', text: 'Raise to Launch' });
     const dlg = h('dialog', { className: 'cs-confirm', 'aria-labelledby': 'cs-confirm-title', 'aria-describedby': 'cs-confirm-text' },
-        h('h3', { id: 'cs-confirm-title', text: `Allow ${label} to launch agents from the Cloud Hub?` }),
+        h('h3', { id: 'cs-confirm-title', text: `Allow ${label} to launch agents from the Coral Hub?` }),
         h('p', { id: 'cs-confirm-text', text: 'This lets the hub start new processes on that machine.' }),
         h('div', { className: 'cs-confirm-actions' }, cancel, ok));
     let done = false;

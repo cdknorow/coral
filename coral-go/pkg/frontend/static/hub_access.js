@@ -28,7 +28,7 @@ export function accessBlockedMessage(a, required = 'interact') {
     const fix = a.limitedBy === 'machine'
         ? 'Change it in Coral on that machine (Settings > Coral Hub).'
         : 'Raise it in Servers.';
-    const need = label(required) ? ` needs ${label(required)}` : ' is read-only through the Cloud Hub';
+    const need = label(required) ? ` needs ${label(required)}` : ' is read-only through the Coral Hub';
     return `Blocked: ${a.label || 'this server'}${need}${parts.length ? ` (${parts.join(' · ')})` : ''}. ${fix}`;
 }
 

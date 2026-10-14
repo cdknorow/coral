@@ -17,7 +17,7 @@ ws://localhost:PORT/ws/coral
 No query parameters required for a dashboard.
 
 Machine clients that hold a long-lived feed instead of showing a dashboard (a
-Coral hub, the Cloud Hub) should connect with `?feed=hub`:
+Coral hub, the Coral Hub) should connect with `?feed=hub`:
 
 ```
 ws://localhost:PORT/ws/coral?feed=hub

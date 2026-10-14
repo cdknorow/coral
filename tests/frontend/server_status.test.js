@@ -57,7 +57,7 @@ const { pathToFileURL } = require('url');
     }
     assert.strictEqual(m.updateNotice({ update: 'available', latest_coral: '1.4.4' }).text, 'Update available: 1.4.4');
     assert.strictEqual(m.updateNotice({ update: 'required', coral_version: '1.3.40', latest_coral: '1.4.4' }).text,
-        'Update required: this Coral (1.3.40) is too old for some Cloud Hub features. Update to 1.4.4.');
+        'Update required: this Coral (1.3.40) is too old for some Coral Hub features. Update to 1.4.4.');
     assert.ok(/Update to the latest release\.$/.test(m.updateNotice({ update: 'required', coral_version: '1.3.40' }).text));
     const hostile = { update: 'required', coral_version: '<img src=x onerror=1>', latest_coral: '"><script>x</script>' };
     const ub = m.updateBadgeHtml(hostile);

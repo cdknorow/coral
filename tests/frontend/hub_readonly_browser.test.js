@@ -234,7 +234,7 @@ const CLOUD_PRELOAD = `(() => {
         await ev(`window.__wsInject(JSON.stringify({ type: 'hub_read_only', required: 'sudo-everything', hub_mode: '<b>root</b>' })); true`);
         await clearToasts(); await pressEnter(); await afterEnter();
         t = await toasts();
-        assert.ok(t.some(x => x.text === 'Blocked: Box M4 is read-only through the Cloud Hub. Raise it in Servers.'), `unknown enum: generic text, nothing echoed (${JSON.stringify(t)})`);
+        assert.ok(t.some(x => x.text === 'Blocked: Box M4 is read-only through the Coral Hub. Raise it in Servers.'), `unknown enum: generic text, nothing echoed (${JSON.stringify(t)})`);
         assert.ok(!t.some(x => /sudo-everything|root/.test(x.text)), 'no server-sent value echoed');
         // Reselecting clears the frame state; the list says Interact now.
         await select('frame', 'm4');

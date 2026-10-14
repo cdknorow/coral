@@ -501,7 +501,7 @@ func TestAutoAcceptEnableProvenance(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Equal(t, "hub", body["auto_accept_source"])
 	assert.Equal(t, float64(r.now.Add(time.Hour).Unix()), body["auto_accept_until"])
-	assert.Equal(t, "Auto-accept turned on from the Cloud Hub", r.events(sid, "auto_accept_enabled")[0].Summary)
+	assert.Equal(t, "Auto-accept turned on from the Coral Hub", r.events(sid, "auto_accept_enabled")[0].Summary)
 	code, body = r.enableAs(sid, sid, map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}, map[string]any{"duration_s": 600})
 	require.Equal(t, http.StatusOK, code, body)
 	assert.Equal(t, float64(r.now.Add(10*time.Minute).Unix()), body["auto_accept_until"], "the hub may ask for less")

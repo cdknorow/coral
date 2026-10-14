@@ -49,7 +49,7 @@ coral-agent ui events --id architecture --after 0
 
 These commands belong in the originating agent's Coral session so the panel appears in the intended workspace. The normal request form supplies the agent with publication instructions; users do not need to run these commands to request a panel.
 
-## Panels on the Cloud Hub
+## Panels on the Coral Hub
 
 On a hub, a panel is agent-authored content: treat it like a page from an agent, not like part of Coral. The hub reads it as text and runs it in a sandboxed frame with no network, no storage and no way to reach Coral or your hub session. It can only send the one kind of response message described above, at most about two a second and 100 a minute per panel. Expanding a panel works the same as on the machine. Panels cannot be deleted or opened in their own tab from the hub; the agent that published a panel manages it.
 

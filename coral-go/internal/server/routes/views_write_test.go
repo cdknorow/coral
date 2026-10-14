@@ -66,7 +66,7 @@ func TestViewWritesNeedDashboardEvidence(t *testing.T) {
 		"same-site (another local port)":             func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "same-site") },
 		"none (typed URL / non-fetch)":               func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "none") },
 		"bearer key holder (a proxy)":                func(r *http.Request) { asDashboard(r); r.Header.Set("Authorization", "Bearer k") },
-		"cloud hub connector stamp":                  func(r *http.Request) { asDashboard(r); r.Header.Set(tunnel.ViaHeader, "1") },
+		"Coral Hub connector stamp":                  func(r *http.Request) { asDashboard(r); r.Header.Set(tunnel.ViaHeader, "1") },
 		"non-loopback peer":                          func(r *http.Request) { asDashboard(r); r.RemoteAddr = "192.0.2.7:4444" },
 		"external Host (DNS rebinding)":              func(r *http.Request) { asDashboard(r); r.Host = "evil.example:8420" },
 		"foreign Origin, no fetch metadata":          func(r *http.Request) { r.Header.Set("Origin", "http://evil.example") },

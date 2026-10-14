@@ -52,11 +52,11 @@ const (
 // autoAcceptClearedSummary is the activity line for each cleared code.
 var autoAcceptClearedSummary = map[string]string{
 	AutoAcceptExpired:        "Auto-accept turned off: its time limit ran out",
-	AutoAcceptModeLowered:    "Auto-accept turned off: the Cloud Hub's access dropped below Launch",
-	AutoAcceptHubAllowOff:    "Auto-accept turned off: Cloud Hub auto-accept was turned off on this computer",
-	AutoAcceptLinkRemoved:    "Auto-accept turned off: this computer was disconnected from the Cloud Hub",
+	AutoAcceptModeLowered:    "Auto-accept turned off: the Coral Hub's access dropped below Launch",
+	AutoAcceptHubAllowOff:    "Auto-accept turned off: Coral Hub auto-accept was turned off on this computer",
+	AutoAcceptLinkRemoved:    "Auto-accept turned off: this computer was disconnected from the Coral Hub",
 	AutoAcceptStoppedByOwner: "Auto-accept turned off: you stopped all auto-accept",
-	AutoAcceptCoralRestarted: "Auto-accept turned off: Coral restarted (Cloud Hub enables end with it)",
+	AutoAcceptCoralRestarted: "Auto-accept turned off: Coral restarted (Coral Hub enables end with it)",
 	AutoAcceptAgentRestarted: "Auto-accept turned off: the agent restarted",
 	AutoAcceptAgentSlept:     "Auto-accept turned off: the agent went to sleep",
 	AutoAcceptAgentWoken:     "Auto-accept turned off: the agent was woken (a new run)",

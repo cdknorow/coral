@@ -53,7 +53,7 @@ func Guard(maxMode func() tunnel.Mode) func(http.Handler) http.Handler {
 			if Tunneled(r) && !allow(r.Method, r.URL.Path, r.URL.RawQuery) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				_, _ = w.Write([]byte(`{"error":"not available through the cloud hub in this access mode"}`))
+				_, _ = w.Write([]byte(`{"error":"not available through the Coral Hub in this access mode"}`))
 				return
 			}
 			next.ServeHTTP(w, r)

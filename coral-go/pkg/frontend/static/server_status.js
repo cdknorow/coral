@@ -84,7 +84,7 @@ export function updateNotice(e) {
     const current = field(e.coral_version);
     return {
         level: 'required', label: 'Update required',
-        text: `Update required: this Coral${current ? ` (${current})` : ''} is too old for some Cloud Hub features. `
+        text: `Update required: this Coral${current ? ` (${current})` : ''} is too old for some Coral Hub features. `
             + (latest ? `Update to ${latest}.` : 'Update to the latest release.'),
     };
 }
