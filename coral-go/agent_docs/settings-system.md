@@ -42,6 +42,14 @@ Upserts arbitrary key-value settings.
 
 **Note:** Booleans are converted to Python-style `"True"` / `"False"` strings.
 
+**CLI paths:** `cli_path_<type>` (Settings › CLI Paths: `claude`, `codex`, `agy`,
+`antigravity`, `gemini`, `pi`) is the program Coral runs for that agent type. A new value
+must be an absolute path to an executable regular file (a symlink to one is fine) with no
+shell metacharacters (`' " \` $ ; & | < > * ? !`) or control characters; `""` clears it.
+Otherwise the whole request is refused with `400` and the reason, and nothing in it is
+saved. A value equal to the saved one is not checked again, so a CLI uninstalled since
+doesn't block saving other settings.
+
 ### Get Default Prompt Templates
 
 ```
@@ -206,6 +214,21 @@ POST /api/upload
 Send multipart form field `file`. PNG, JPEG, GIF, WebP, BMP, and TIFF images up
 to 20 MiB are stored under Coral's uploads directory. SVG is rejected. The
 response contains `ok`, absolute `path`, original `filename`, and byte `size`.
+
+Uploads are kept for `uploads_retention_days` (default 30, 1-365): a background job
+removes older ones hourly. The folder is capped at `uploads_max_mb` (default 1024,
+50-102400): a new upload evicts the oldest uploads to fit, never one from the last hour;
+if it still doesn't fit the answer is `507` with the reason.
+
+### Delete an upload
+
+```
+DELETE /api/upload/{name}
+```
+
+`name` is the file name (the last element of the upload's `path`). Only a regular file
+directly in the uploads directory: `400` for anything else, `404` if it's gone. Local
+only: never through Coral Hub.
 
 ---
 

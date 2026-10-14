@@ -3502,7 +3502,13 @@ export async function applySettings() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
         });
-        if (!response.ok) throw new Error(`settings save failed (${response.status})`);
+        if (!response.ok) {
+            // A refused value (e.g. a CLI path that isn't an executable file, #3364) says why.
+            const data = await response.json().catch(() => null);
+            const err = new Error(`settings save failed (${response.status})`);
+            if (data && typeof data.error === 'string') err.userMessage = data.error;
+            throw err;
+        }
         state.settings = { ...state.settings, ...payload };
         if (!isCloud() && state.privacyStatus) {
             state.privacyStatus.remote_access_enabled = remoteAccessEnabled;
@@ -3568,7 +3574,7 @@ export async function applySettings() {
 
         showToast("Settings saved");
     } catch (e) {
-        showToast("Failed to save settings", true);
+        showToast(e && e.userMessage ? `Failed to save settings: ${e.userMessage}` : "Failed to save settings", true);
         return;
     }
 

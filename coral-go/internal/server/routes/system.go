@@ -172,6 +172,41 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	// cli_path_<type> (Settings > CLI Paths) is the program Coral runs for that agent
+	// type: only a known type, and only an absolute path to an executable file with no
+	// shell metacharacters (#3364). Checked before anything is saved; a value that is
+	// unchanged is not re-checked, so a CLI that was uninstalled since doesn't block
+	// saving other settings.
+	var current map[string]string
+	for k, v := range body {
+		agentType, isCLIPath := agent.IsCLIPathSetting(k)
+		if !isCLIPath {
+			continue
+		}
+		path, _ := v.(string)
+		if _, isString := v.(string); !isString && v != nil {
+			errBadRequest(w, k+" must be a string")
+			return
+		}
+		if !agent.KnownCLIAgentType(agentType) {
+			errBadRequest(w, "unknown agent type in "+k)
+			return
+		}
+		if current == nil {
+			if current, _ = h.ss.GetSettings(r.Context()); current == nil {
+				current = map[string]string{}
+			}
+		}
+		path = strings.TrimSpace(path)
+		if path == current[k] {
+			continue
+		}
+		if err := agent.ValidateCLIPath(path); err != nil {
+			errBadRequest(w, k+": "+err.Error())
+			return
+		}
+		body[k] = path
+	}
 	for k, v := range body {
 		// Convert any value to string, matching Python's str() behavior.
 		// Python's str(True)="True", str(False)="False" — capitalize bools.

@@ -1,8 +1,10 @@
 package routes
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +12,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/cdknorow/coral/internal/uploads"
 )
 
 var (
@@ -36,6 +42,13 @@ var (
 
 	maxFileSize int64 = 20 * 1024 * 1024 // 20 MB
 )
+
+// uploadSettings reads the user settings for the uploads cap (#3364); nil uses the
+// defaults.
+var uploadSettings func(context.Context) (map[string]string, error)
+
+// SetUploadSettings gives the upload handler the settings reader.
+func SetUploadSettings(fn func(context.Context) (map[string]string, error)) { uploadSettings = fn }
 
 // InitUploadDir sets the upload directory based on the coral data directory.
 // Must be called during server initialization before handling upload requests.
@@ -102,6 +115,23 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The folder's size cap (uploads_max_mb, #3364): the oldest uploads go first, never
+	// one from the last hour.
+	var settings map[string]string
+	if uploadSettings != nil {
+		settings, _ = uploadSettings(r.Context())
+	}
+	if err := uploads.MakeRoom(uploadDir, int64(len(content)), uploads.MaxBytes(settings), time.Now()); err != nil {
+		if errors.Is(err, uploads.ErrFull) {
+			writeJSON(w, http.StatusInsufficientStorage, map[string]any{"error": fmt.Sprintf(
+				"The uploads folder is full (%d MB, uploads_max_mb): uploads from the last hour are kept. Try again later, or raise the limit.",
+				uploads.MaxBytes(settings)>>20)})
+			return
+		}
+		errInternalServer(w, "Failed to check the uploads folder")
+		return
+	}
+
 	// Generate safe filename
 	isClipboard := filename == "" || strings.EqualFold(filename, "image.png") || strings.EqualFold(filename, "blob")
 	var safeName string
@@ -125,6 +155,22 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		"filename": orDefault(filename, safeName),
 		"size":     len(content),
 	})
+}
+
+// DeleteUpload removes one upload by its file name (#3364).
+// DELETE /api/upload/{name}
+func DeleteUpload(w http.ResponseWriter, r *http.Request) {
+	err := uploads.Delete(uploadDir, chi.URLParam(r, "name"))
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	case errors.Is(err, uploads.ErrBadName):
+		errBadRequest(w, "not an upload name")
+	case errors.Is(err, os.ErrNotExist):
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such upload"})
+	default:
+		errInternalServer(w, "Failed to delete the upload")
+	}
 }
 
 func shortHex(n int) string {

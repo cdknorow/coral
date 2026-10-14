@@ -17,6 +17,7 @@ DELETE /api/system/debug-input-log never
 DELETE /api/tags/{tagID} never
 DELETE /api/teams/detail/{name} never
 DELETE /api/themes/{name} never
+DELETE /api/upload/{name} never
 DELETE /api/views/{id} never
 DELETE /api/webhooks/{webhookID} never
 DELETE /api/workflows/{workflowID} never

@@ -87,6 +87,9 @@ func New(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, t
 func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, dbKey string) *Server {
 	// Initialize upload directory from config
 	routes.InitUploadDir(cfg.CoralDir())
+	if db != nil {
+		routes.SetUploadSettings(store.NewSessionStore(db).GetSettings)
+	}
 
 	// Open the board store (separate SQLite DB)
 	boardStore, err := board.NewStoreWithKey(filepath.Join(cfg.CoralDir(), "messageboard.db"), dbKey)
@@ -593,6 +596,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Uploads
 	r.Post("/api/upload", routes.UploadFile)
+	r.Delete("/api/upload/{name}", routes.DeleteUpload)
 
 	sessHandler.RegisterAgentUI(r)
 

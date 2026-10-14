@@ -844,6 +844,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	metricsRetention := background.NewCallMetricsRetention(db)
 	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
 
+	// Uploads retention: pasted/dropped images expire after uploads_retention_days
+	// (30 by default) and the folder stays under uploads_max_mb (#3364).
+	uploadsRetention := background.NewUploadsRetention(db, cfg.CoralDir())
+	safeGo(ctx, "uploads_retention", func() { uploadsRetention.Run(ctx) })
+
 	// Thinking tracker — no hook fires for model thinking, so thinking turns
 	// and their durations are read from Claude transcripts into the activity stream
 	thinkingTracker := background.NewThinkingTracker(sessStore, taskStore, 2*time.Second)
