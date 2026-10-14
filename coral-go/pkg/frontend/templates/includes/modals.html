@@ -818,6 +818,16 @@
                         <option value="0">Off &mdash; refresh manually</option>
                     </select>
                 </dd>
+                <dt>
+                    <label for="settings-agent-priority">Agent priority</label>
+                    <span class="toggle-desc">Low runs agents below Coral itself (nice +10 on Mac and Linux, below normal on Windows), so the dashboard and Coral Hub stay quick while agents use every CPU. Applies to agents started after the change.</span>
+                </dt>
+                <dd>
+                    <select id="settings-agent-priority" class="settings-select">
+                        <option value="low">Low (recommended)</option>
+                        <option value="normal">Normal</option>
+                    </select>
+                </dd>
                 </dl>
                 <button class="btn btn-primary settings-prompts-btn" onclick="hideSettingsModal(); showDefaultPromptsModal()">
                     <span style="font-size:16px;vertical-align:middle;margin-right:6px">✏️</span>

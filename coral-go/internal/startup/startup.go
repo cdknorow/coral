@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/agentprio"
 	"log"
 	"log/slog"
 	"net"
@@ -72,6 +73,10 @@ type Options struct {
 	// DebugInput forces the terminal input debug log on (--debug-input), whatever
 	// the setting says (#3256).
 	DebugInput bool
+
+	// AgentPriority overrides the agent_priority setting (--agent-priority or
+	// CORAL_AGENT_PRIORITY: low or normal, #3437); "" keeps the setting.
+	AgentPriority string
 
 	// TLSCert and TLSKey are a PEM certificate and key file (--tls-cert/--tls-key,
 	// CORAL_TLS_CERT/CORAL_TLS_KEY, #3355). With both, the port also serves HTTPS and
@@ -365,7 +370,15 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
 	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
 		inputlog.SetSetting(inputlog.SettingOn(settings[inputlog.SettingKey]))
+		agentprio.SetSetting(settings[agentprio.SettingKey])
 	}
+	// Agents run at a lower OS priority than this server (#3437): the setting,
+	// or --agent-priority / CORAL_AGENT_PRIORITY.
+	forcedPriority := opts.AgentPriority
+	if forcedPriority == "" {
+		forcedPriority = os.Getenv(agentprio.EnvVar)
+	}
+	agentprio.Setup(forcedPriority)
 
 	// Select terminal backend and agent runtime
 	if cfg.LogDir != "" {
@@ -680,6 +693,11 @@ func selectBackend(backendType, logDir, coralDir string) (ptymanager.TerminalBac
 		return ptyBackend, background.NewPTYRuntime(ptyBackend), ptymanager.NewPTYSessionTerminal(ptyBackend)
 	}
 	tmuxClient := tmux.NewClient(coralDir)
+	// Panes a tmux server from before #3437 started at normal priority: lower
+	// them (and their children) once, on our own socket only.
+	if n := tmuxClient.LowerExistingPanes(context.Background()); n > 0 {
+		log.Printf("Lowered the priority of %d existing agent processes (agent_priority=%s)", n, agentprio.Level())
+	}
 	tmuxBackend := ptymanager.NewTmuxBackend(tmuxClient, logDir)
 	log.Println("Using tmux terminal backend")
 	return tmuxBackend, background.NewTmuxRuntime(tmuxClient), ptymanager.NewTmuxSessionTerminal(tmuxClient)

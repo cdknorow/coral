@@ -426,6 +426,27 @@ you answer. `coral.log` logs each hold and delivery ("automated input held",
 
 ## Performance
 
+### The dashboard is slow while agents are busy
+
+Agents run at a lower OS priority than Coral itself, so a machine whose agents use every CPU
+still answers the dashboard and Coral Hub quickly. Each agent's terminal (a tmux pane, or a PTY
+session's process) and everything started in it run at nice +10 on macOS and Linux, and at below
+normal priority on Windows, as do workflow steps and hooks. The Coral server and the tmux server
+keep normal priority.
+
+It's **Settings > Agent priority**: **Low** (the default) or **Normal**. `--agent-priority low|normal`
+or `CORAL_AGENT_PRIORITY` override the setting. A change applies to agents started afterwards:
+an agent already running keeps its priority until it is restarted, because a process can lower
+its priority but not raise it back. At startup Coral lowers the panes of its own tmux server that
+an older Coral started at normal priority; it never touches your own tmux sessions on the default server.
+
+Measured on a Linux machine with 16 CPU-bound agents sharing 2 cores with the server (three runs
+of each): the agent list (`GET /api/sessions/live`) answered in 28-41 ms (p50) and 57-80 ms (p95)
+with Normal, and 10-11 ms and 18-19 ms with Low; the board's chat history's p95 went from 10-12 ms
+to 4 ms.
+
+Check an agent with `ps -o ni= -p <pid>` (10 for Low, the same as Coral's for Normal).
+
 ### Profiling a slow server
 
 Set `CORAL_PPROF_ADDR` to a loopback address, e.g.

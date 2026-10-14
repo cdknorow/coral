@@ -3,6 +3,7 @@
 package ptymanager
 
 import (
+	"github.com/cdknorow/coral/internal/agentprio"
 	"os"
 	"os/exec"
 	"syscall"
@@ -42,6 +43,8 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	if err != nil {
 		return nil, err
 	}
+	// The agent and what it starts run at the agents' lower priority (#3437).
+	agentprio.Apply(cmd.Process.Pid)
 
 	p := &unixPTY{
 		cmd:     cmd,

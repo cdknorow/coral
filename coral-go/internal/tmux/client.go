@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/agentprio"
 	"github.com/cdknorow/coral/internal/testguard"
 	"log"
 	"os"
@@ -790,12 +791,55 @@ func (c *Client) HasSession(ctx context.Context, name string) bool {
 func (c *Client) NewSession(ctx context.Context, name, workDir string) error {
 	log.Printf("[tmux] NewSession requested: name=%q work_dir=%q tmux_bin=%q socket=%q path=%q", name, workDir, c.TmuxBin, c.SocketPath, os.Getenv("PATH"))
 	c.scrubServerEnv(ctx)
-	_, err := c.run(ctx, "new-session", "-d", "-s", name, "-c", workDir)
+	out, err := c.run(ctx, "new-session", "-d", "-P", "-F", "#{pane_pid}", "-s", name, "-c", workDir)
 	if err != nil {
 		return err
 	}
+	// The pane and everything started in it run at the agents' lower priority
+	// (#3437); the tmux server itself keeps the server's.
+	applyAgentPriority(out)
 	c.run(ctx, "set-option", "-t", name, "history-limit", "50000")
 	return nil
+}
+
+// applyAgentPriority lowers the priority of the pane process whose pid tmux
+// printed (#3437). A renice in the pane's first moments can be lost while
+// tmux's freshly forked child is still setting up (seen on macOS, about 1 in
+// 15), so it is applied again shortly after, to the pane and anything it has
+// started by then, so a child forked before the renice isn't missed.
+func applyAgentPriority(out string) {
+	pid, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return
+	}
+	agentprio.Apply(pid)
+	time.AfterFunc(agentPriorityRecheck, func() { agentprio.ApplyTree(pid) })
+}
+
+// agentPriorityRecheck is when the pane's priority is applied a second time.
+var agentPriorityRecheck = 150 * time.Millisecond
+
+// LowerExistingPanes lowers the priority of every pane already running on this
+// client's own socket, and their children, once at startup: a tmux server from
+// before #3437 started them at normal priority. Only our socket, never the
+// user's default server: the list goes straight to our socket, without run's
+// fallback, so when Coral's tmux server isn't running yet (after a reboot) it
+// lowers nothing rather than the user's own panes.
+func (c *Client) LowerExistingPanes(ctx context.Context) int {
+	if c.SocketPath == "" {
+		return 0
+	}
+	out, err := c.runOnSocket(ctx, c.SocketPath, "list-panes", "-a", "-F", "#{pane_pid}")
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, f := range strings.Fields(out) {
+		if pid, err := strconv.Atoi(f); err == nil {
+			n += agentprio.ApplyTree(pid)
+		}
+	}
+	return n
 }
 
 // scrubServerEnv keeps Coral's server-only settings out of new agent panes (#3389). A tmux
@@ -879,8 +923,13 @@ func (c *Client) RespawnPane(ctx context.Context, target, workDir string) error 
 	if workDir != "" {
 		args = append(args, "-c", workDir)
 	}
-	_, err := c.run(ctx, args...)
-	return err
+	if _, err := c.run(ctx, args...); err != nil {
+		return err
+	}
+	if out, err := c.DisplayMessage(ctx, target, "#{pane_pid}"); err == nil {
+		applyAgentPriority(out) // #3437
+	}
+	return nil
 }
 
 // ClearHistory clears the tmux pane scrollback history.

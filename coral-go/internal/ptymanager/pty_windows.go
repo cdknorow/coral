@@ -5,6 +5,7 @@ package ptymanager
 import (
 	"context"
 	"fmt"
+	"github.com/cdknorow/coral/internal/agentprio"
 	"strings"
 	"sync"
 
@@ -36,6 +37,8 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	if err != nil {
 		return nil, fmt.Errorf("conpty.Start: %w", err)
 	}
+	// BELOW_NORMAL priority for the agent (#3437); its children inherit it.
+	agentprio.Apply(cpty.Pid())
 
 	p := &windowsPTY{
 		cpty: cpty,

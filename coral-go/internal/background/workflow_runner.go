@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cdknorow/coral/internal/agentprio"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -433,6 +434,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start command: %w", err)
 	}
+	agentprio.ApplyGroup(cmd.Process.Pid) // the step's process group at the agents' priority (#3437)
 
 	// Track active child for kill
 	wr.mu.Lock()
@@ -618,6 +620,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start agent: %w", err)
 	}
+	agentprio.ApplyGroup(cmd.Process.Pid) // #3437
 
 	// Track active child for kill
 	wr.mu.Lock()
@@ -1168,7 +1171,12 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 			cmd.Dir = dir
 			cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 			configureChildProcess(cmd)
-			if err := cmd.Run(); err != nil {
+			err := cmd.Start()
+			if err == nil {
+				agentprio.ApplyGroup(cmd.Process.Pid) // #3437
+				err = cmd.Wait()
+			}
+			if err != nil {
 				wr.logger.Warn("hook execution failed", "event", event, "command", command, "error", err)
 			}
 			cancel()

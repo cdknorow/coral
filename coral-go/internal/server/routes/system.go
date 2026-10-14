@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cdknorow/coral/internal/agentprio"
 	"net"
 	"net/http"
 	"net/netip"
@@ -244,6 +245,9 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if k == "telemetry_enabled" {
 			tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(s), "false"))
+		}
+		if k == agentprio.SettingKey {
+			agentprio.SetSetting(s) // agents started from now on (#3437)
 		}
 		if k == inputlog.SettingKey {
 			inputlog.SetSetting(inputlog.SettingOn(s))
