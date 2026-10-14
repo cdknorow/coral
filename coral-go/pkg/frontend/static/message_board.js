@@ -443,7 +443,13 @@ export async function postBoardMessage() {
             body: JSON.stringify({ subscriber_id: OPERATOR_ID, as: 'Operator', content }),
         });
         if (!resp.ok) {
-            console.error('Post failed:', resp.status, await resp.text());
+            // The draft stays; say why, in the server's words when it gives them (a per-sender rate
+            // limit's "too many messages…; retry in 20s", #3435).
+            const text = await resp.text().catch(() => '');
+            let reason = '';
+            try { const b = JSON.parse(text); if (b && typeof b.error === 'string') reason = b.error; } catch { /* not JSON */ }
+            console.error('Post failed:', resp.status, text);
+            showToast(reason ? `Not posted: ${reason}` : `Not posted (HTTP ${resp.status}).`, true);
             return;
         }
         input.value = '';

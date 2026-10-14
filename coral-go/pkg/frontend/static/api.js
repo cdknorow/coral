@@ -56,8 +56,13 @@ export async function apiFetch(url, options) {
     const resp = await fetch(target, init);
     if (!resp.ok) {
         const text = await resp.text().catch(() => '');
-        const error = new Error(`${resp.status}: ${text || resp.statusText}`);
+        // The server's own reason when it gives one ({"error": "..."}), e.g. a per-action limit's
+        // "too many workflow runs, try again in 30 s" (#3435); otherwise the status and the body.
+        let reason = '';
+        try { const body = JSON.parse(text); if (body && typeof body.error === 'string') reason = body.error; } catch { /* not JSON */ }
+        const error = new Error(reason || `${resp.status}: ${text || resp.statusText}`);
         error.status = resp.status;
+        error.body = text;
         throw error;
     }
     return resp.json();

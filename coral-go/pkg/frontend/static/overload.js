@@ -22,6 +22,10 @@
      paused (for its machine too, when given) and, unless whenHidden, while the tab is hidden.
      Pollers that drive notifications, unread counts or the title keep running hidden.
      It returns the interval id, so clearInterval still stops it.
+   - A 429 marked X-Coral-Limit: action is one action's own limit (too many workflow or task runs,
+     a sender's cross-team rate, sign-in attempts), not load (#3435): nothing pauses, no "busy"
+     message, and the action shows the server's own reason. The hub's own congestion
+     (X-Coral-Hub-Overload: 1) is load whatever else the answer says.
    - What the user does is never dropped: an action the server refuses as busy says so
      ("Coral is busy…", or "That machine is busy or unreachable…" for a remote one), and
      retryOnce() retries a file load once after the pause. A view's first load that is refused
@@ -67,6 +71,13 @@ export function pauseMs(retryAfter, failures, rand = overloadHooks.rand) {
     const backoff = Math.min(MAX_BACKOFF_MS, MIN_PAUSE_MS * 2 ** Math.max(0, failures - 1));
     const base = Math.max(retryAfter || 0, backoff);
     return Math.round(base * (1 + 0.5 * rand()));
+}
+
+/** Whether a response is a per-action limit rather than load: a 429 marked X-Coral-Limit: action
+ *  (#3435), unless the hub marks its own congestion. */
+export function isActionLimit(resp) {
+    if (!resp || resp.status !== 429 || !resp.headers) return false;
+    return resp.headers.get('X-Coral-Limit') === 'action' && resp.headers.get('X-Coral-Hub-Overload') !== '1';
 }
 
 /** Whether an answer says the server is busy (429 or 503), so a first load waits and retries
@@ -207,6 +218,8 @@ export function installOverloadWatch() {
     window.fetch = async function (input, init) {
         const resp = await orig(input, init);
         const apiPath = _apiPath(input);
+        // One action's own limit, not load (#3435): pollers keep running, the caller says why.
+        if (apiPath && isActionLimit(resp)) return resp;
         if (apiPath) {
             const hubOverload = !!(resp.headers && resp.headers.get('X-Coral-Hub-Overload') === '1');
             const scope = overloadScope(apiPath, resp.status, hubOverload);

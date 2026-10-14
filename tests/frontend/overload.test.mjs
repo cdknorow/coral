@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { retryAfterMs, pauseMs, noteResponse, isPaused, pausedForMs, overloadHooks, _resetOverloadForTests, countsAsOverload, overloadScope, machineOf, afterPause, isBusyStatus } from '../../coral-go/pkg/frontend/static/overload.js';
+import { retryAfterMs, pauseMs, noteResponse, isPaused, pausedForMs, overloadHooks, _resetOverloadForTests, countsAsOverload, overloadScope, machineOf, afterPause, isBusyStatus, isActionLimit } from '../../coral-go/pkg/frontend/static/overload.js';
 
 const lo = () => 0, hi = () => 0.999999;
 
@@ -120,6 +120,18 @@ assert.equal(isPaused('box-c'), false, 'nor another machine');
 noteResponse(503, '3');
 assert.equal(isPaused('box-c'), true, 'a global pause covers every machine');
 _resetOverloadForTests();
+
+// A 429 marked X-Coral-Limit: action is one action's own limit, not load (#3435); the hub's own
+// congestion stays load whatever else the answer carries.
+{
+    const r = (status, headers) => new Response('{}', { status, headers });
+    assert.equal(isActionLimit(r(429, { 'X-Coral-Limit': 'action', 'Retry-After': '30' })), true, 'a marked 429');
+    assert.equal(isActionLimit(r(429, {})), false, 'an unmarked 429 is load');
+    assert.equal(isActionLimit(r(503, { 'X-Coral-Limit': 'action' })), false, 'only a 429');
+    assert.equal(isActionLimit(r(429, { 'X-Coral-Limit': 'other' })), false, 'only the action value');
+    assert.equal(isActionLimit(r(429, { 'X-Coral-Limit': 'action', 'X-Coral-Hub-Overload': '1' })), false, "the hub's congestion wins");
+    assert.equal(isActionLimit(null), false);
+}
 
 // Lint: no poller on a bare fixed interval. Every setInterval in static/ goes through
 // pollEvery, or says on the line why it is not a poller (// interval-ok: …).
