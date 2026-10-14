@@ -16,12 +16,21 @@
 #            (HttpOnly, SameSite=Strict), token stripped by the redirect, reuse refused
 #   scale    3 teams x 4 agents plus 2 restart rounds of all 12, within IDENTITY_BUDGET_S
 #
-# Usage:  tests/stress/run_identity.sh          (or: tests/stress/run.sh --identity)
+# With --strict (or IDENTITY_STRICT=1) the server runs with --strict-local-auth (phase 2, #3418) and the same
+# team run must work end to end with ZERO refusals, while impersonation, cross-board, untokened and
+# dashboard-without-cookie calls are refused (403 identity_mismatch, 401 session_token_required,
+# 401 dashboard_auth_required), the CLI-signed Operator path outside agents works, an agent-marked shell with
+# no token never becomes Operator, and the app sign-in path (page load -> /auth -> coral open link) lands on
+# the dashboard.
+#
+# Usage:  tests/stress/run_identity.sh [--strict]   (or: tests/stress/run.sh --identity [--strict])
 #   CORAL_IDENTITY_PORT (default 8476), IDENTITY_BUDGET_S (default 240), KEEP_TEST_DATA=1
 # Never touches ~/.coral or port 8420; the server runs with CORAL_CLOUD_URL unset and
 # --cloud-url off; it and its tmux server are stopped by PID / their own socket.
 #
 set -euo pipefail
+STRICT=0
+[[ "${1:-}" == "--strict" || "${IDENTITY_STRICT:-0}" == 1 ]] && STRICT=1
 # Clears an agent shell's identity and production links (and documents: never run bare 'tmux' here).
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/agent_env.sh"
 
@@ -58,9 +67,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-api() { local m="$1" p="$2"; shift 2; curl -s -m 15 -X "$m" "$BASE$p" -H "Content-Type: application/json" "$@"; }
+# Strict mode refuses a dashboard-style request without the session cookie: the harness signs in once (below)
+# and every call of its own carries the cookie jar. COOKIE_ARGS is empty in phase 1.
+JAR="$TMP/jar"; COOKIE_ARGS=""
+api() { local m="$1" p="$2"; shift 2; curl -s -m 15 $COOKIE_ARGS -X "$m" "$BASE$p" -H "Content-Type: application/json" "$@"; }
 # The identity report is for the dashboard on this computer: send what its page sends.
-report() { curl -s -m 10 -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" "$BASE/api/system/identity-report"; }
+report() { curl -s -m 10 $COOKIE_ARGS -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" "$BASE/api/system/identity-report"; }
 rjson() { report | python3 -c "import sys,json; d=json.load(sys.stdin); print(eval(sys.argv[1]))" "$1"; }
 dumps() { ls "$DUMP"/*.env 2>/dev/null | wc -l | tr -d ' '; }
 tokens() { cat "$DUMP"/*.env 2>/dev/null | sed -n 's/^CORAL_SESSION_TOKEN=//p'; }
@@ -90,9 +102,17 @@ env -u CORAL_CLOUD_URL -u CORAL_PORT -u CORAL_URL -u CLAUDE_PROJECTS_DIR HOME="$
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
     MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
-    "$BIN/coral" --home "$DATA" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend tmux >"$TMP/server.log" 2>&1 &
+    "$BIN/coral" --home "$DATA" --no-browser --cloud-url off --host 127.0.0.1 --port "$PORT" --backend tmux \
+    $([[ $STRICT == 1 ]] && echo --strict-local-auth) >"$TMP/server.log" 2>&1 &
 SERVER_PID=$!
 wait_until 30 "the server" curl -fsS -m 2 "$BASE/api/health" -o /dev/null || exit 1
+coral_open() { env -u DISPLAY "$BIN/coral" open --print --url "$BASE" --home "$DATA" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1; }
+if [[ $STRICT == 1 ]]; then
+    log "STRICT: signing the harness in with a 'coral open' link, then every call carries the cookie"
+    signin=$(coral_open)
+    [[ -n "$signin" ]] && curl -s -m 10 -c "$JAR" -o /dev/null "$signin"
+    grep -q coral_session "$JAR" 2>/dev/null && COOKIE_ARGS="-b $JAR" || { fail "could not sign in with a coral open link"; exit 1; }
+fi
 api PUT /api/settings -d "{\"cli_path_claude\": \"$BIN/mock-agent\"}" >/dev/null
 
 # ── Dashboard sign-in links ───────────────────────────────────────────
@@ -109,7 +129,6 @@ check_link() { # check_link <link> <label>
     [[ $code == 403 ]] && pass "$2: a second use is refused" || fail "$2: reuse answered $code"
 }
 check_link "$BASE/?login_token=$(tr -d '\n' < "$DATA/login_token")" "startup link"
-coral_open() { env -u DISPLAY "$BIN/coral" open --print --url "$BASE" --home "$DATA" | sed -n 's/^ *\(http[^ ]*login_token=[^ ]*\).*/\1/p' | head -1; }
 open_link=$(coral_open)
 [[ -n "$open_link" ]] && check_link "$open_link" "coral open" || fail "coral open printed no link"
 # Expiry (this dev build runs with CORAL_TEST_LOGIN_TOKEN_TTL=3s; the real TTL is 10 min).
@@ -140,14 +159,14 @@ short=$(tokens | awk 'length($0) < 40' | grep -c . || true)
 [[ $n -ge 12 && $n -eq $u && $short -eq 0 ]] && pass "12 team agents each got their own token ($u unique, none short)" || fail "tokens after team launch: $n total, $u unique, $short short"
 
 # ── Attribution: coral-board from inside the agents ───────────────────
-wait_until 60 "the agents' coral-board posts to be attributed" bash -c "[[ \$(curl -s -H 'Origin: $BASE' -H 'Sec-Fetch-Site: same-origin' $BASE/api/system/identity-report | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"callers\"].get(\"agent_token\",0))') -ge 12 ]]" || true
+wait_until 60 "the agents' coral-board posts to be attributed" bash -c "[[ \$(curl -s $COOKIE_ARGS -H 'Origin: $BASE' -H 'Sec-Fetch-Site: same-origin' $BASE/api/system/identity-report | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"callers\"].get(\"agent_token\",0))') -ge 12 ]]" || true
 attributed=$(rjson 'd["callers"].get("agent_token",0)')
 mism=$(rjson 'sum(d["mismatches"].values())')
 [[ $attributed -ge 12 && $mism -eq 0 ]] && pass "coral-board calls from the agents are attributed ($attributed) with no mismatch" || fail "attribution: agent_token=$attributed mismatches=$mism"
 
 # ── No agent action: the agents never handle the token ────────────────
 blind_ok=1
-wait_until 60 "the blind agents' coral-board posts" bash -c "for f in '$DUMP'/*.blind; do n=\$(head -1 \"\$f\"); curl -s -H 'Origin: $BASE' -H 'Sec-Fetch-Site: same-origin' $BASE/api/system/identity-report | python3 -c \"import sys,json;sys.exit(0 if json.load(sys.stdin)['attributed_by_session'].get('\$n',0)>0 else 1)\" || exit 1; done" || blind_ok=0
+wait_until 60 "the blind agents' coral-board posts" bash -c "for f in '$DUMP'/*.blind; do n=\$(head -1 \"\$f\"); curl -s $COOKIE_ARGS -H 'Origin: $BASE' -H 'Sec-Fetch-Site: same-origin' $BASE/api/system/identity-report | python3 -c \"import sys,json;sys.exit(0 if json.load(sys.stdin)['attributed_by_session'].get('\$n',0)>0 else 1)\" || exit 1; done" || blind_ok=0
 [[ $blind_ok == 1 && $(rjson 'sum(d["mismatches"].values())') == 0 ]] && pass "4 'blind' agents that never read the token are attributed through coral-board alone, no mismatch" || fail "blind agents not all attributed"
 tools=$(rjson 'd["attributed_by_tool"]')
 [[ $tools == *coral-board* && $tools != *mock-agent* ]] && pass "only Coral's tools sent the token: $tools" || fail "attributed tools: $tools"
@@ -173,6 +192,13 @@ after=$(rjson 'd["attributed_by_tool"].get("coral-hook-message-check",0)')
 [[ $after -gt $before ]] || log "hook check: session=$hsess sub=$hsub output=$hook_out"
 [[ $after -gt $before ]] && pass "coral-hook-message-check sends the token from its environment and is attributed" || fail "hook not attributed ($before -> $after)"
 
+# Strict mode: everything above was a normal team run with the harness signed in, so NOTHING was refused.
+EXP_TOKEN=0; EXP_MISMATCH=0; EXP_DASH=0   # refusals the probes below cause on purpose
+if [[ $STRICT == 1 ]]; then
+    [[ "$(rjson 'd.get("mode")')" == strict ]] && pass "the identity report says mode strict" || fail "report mode: $(rjson 'd.get("mode")')"
+    [[ "$(rjson 'json.dumps(d.get("refused",{}))')" == "{}" ]] && pass "STRICT: a healthy team run (12 agents, attribution, a hook, blind agents) had zero refusals" || fail "STRICT: refusals in a healthy run: $(rjson 'json.dumps(d.get("refused",{}))')"
+fi
+
 # ── Restart rounds: new tokens, old ones stop matching ────────────────
 OLD=$(tokens | head -1)
 for round in 1 2; do
@@ -191,9 +217,14 @@ total=$(grep -c . "$ALL_TOKENS" || true)
 [[ $total -ge 36 ]] && pass "restarts minted new tokens: $total unique across 3 rounds of 12, no collision" || fail "only $total unique tokens after 2 restart rounds (want 36)"
 (( ELAPSED <= BUDGET_S )) && pass "12 agents + 24 restarts in ${ELAPSED}s (budget ${BUDGET_S}s)" || fail "too slow: ${ELAPSED}s > ${BUDGET_S}s"
 bad_before=$(rjson 'd["callers"].get("agent_bad_token",0)')
-curl -s -m 10 -o /dev/null -H "X-Coral-Session-Token: $OLD" -A "coral-board/test" "$BASE/api/board/id-team-1/messages/check?subscriber_id=x"
+oldcode=$(curl -s -m 10 -o /dev/null -w "%{http_code}" -H "X-Coral-Session-Token: $OLD" -A "coral-board/test" "$BASE/api/board/id-team-1/messages/check?subscriber_id=x")
 bad_after=$(rjson 'd["callers"].get("agent_bad_token",0)')
-[[ $bad_after -eq $((bad_before + 1)) ]] && pass "a restarted agent's old token no longer matches" || fail "old token: bad_token $bad_before -> $bad_after"
+if [[ $STRICT == 1 ]]; then
+    EXP_TOKEN=$((EXP_TOKEN + 1))
+    [[ $oldcode == 401 ]] && pass "STRICT: a restarted agent's old token is refused (401)" || fail "STRICT: old token answered $oldcode"
+else
+    [[ $bad_after -eq $((bad_before + 1)) ]] && pass "a restarted agent's old token no longer matches" || fail "old token: bad_token $bad_before -> $bad_after"
+fi
 
 # ── Wake: sleep then wake mints a new token for the same session ──────
 read -r wname wsid < <(sessions | head -1)
@@ -209,9 +240,14 @@ rfile="$DUMP/$rsid.env"; rold=$(sed -n 's/^CORAL_SESSION_TOKEN=//p' "$rfile" 2>/
 api POST "/api/sessions/live/$rname/resume" -d "{\"session_id\":\"$rsid\",\"current_session_id\":\"$rsid\",\"agent_type\":\"claude\"}" >/dev/null
 if wait_until 60 "the resumed agent's new token" bash -c "[[ -f '$rfile' && \$(sed -n 's/^CORAL_SESSION_TOKEN=//p' '$rfile') != '$rold' ]]"; then
     b0=$(rjson 'd["callers"].get("agent_bad_token",0)')
-    curl -s -m 10 -o /dev/null -H "X-Coral-Session-Token: $rold" -A "coral-board/test" "$BASE/api/board/id-team-1/messages/check?subscriber_id=x"
+    rcode=$(curl -s -m 10 -o /dev/null -w "%{http_code}" -H "X-Coral-Session-Token: $rold" -A "coral-board/test" "$BASE/api/board/id-team-1/messages/check?subscriber_id=x")
     b1=$(rjson 'd["callers"].get("agent_bad_token",0)')
-    [[ $b1 -eq $((b0 + 1)) ]] && pass "resume minted a new token and the old one no longer matches" || fail "resume: old token still matched ($b0 -> $b1)"
+    if [[ $STRICT == 1 ]]; then
+        EXP_TOKEN=$((EXP_TOKEN + 1))
+        [[ $rcode == 401 ]] && pass "STRICT: resume minted a new token and the old one is refused (401)" || fail "STRICT: resume old token answered $rcode"
+    else
+        [[ $b1 -eq $((b0 + 1)) ]] && pass "resume minted a new token and the old one no longer matches" || fail "resume: old token still matched ($b0 -> $b1)"
+    fi
 fi
 collect
 
@@ -244,13 +280,88 @@ c1=$(post_as "$iboard" "Somebody Else"); c2=$(post_as "$iboard" "Operator")
 self=$(api GET /api/sessions/live | python3 -c "import sys,json;d=json.load(sys.stdin);d=d.get('sessions',d) if isinstance(d,dict) else d;print([s.get('display_name') or s['name'] for s in d if s['session_id']=='$isid'][0])")
 c3=$(post_as "$other" "$self")
 mm=$(rjson 'd["mismatches"]')
-python3 - "$m0" "$(rjson 'json.dumps(d["mismatches"])')" <<'PY' && pass "impersonation, Operator and another board each detected once (requests not refused: $c1 $c2 $c3)" || fail "mismatch counts: before $m0 after $mm"
+if [[ $STRICT == 1 ]]; then
+    EXP_MISMATCH=3
+    [[ "$c1 $c2 $c3" == "403 403 403" ]] && pass "STRICT: impersonation, Operator and another board are each REFUSED (403: $c1 $c2 $c3)" || fail "STRICT: impersonation probes answered $c1 $c2 $c3 (want 403 403 403)"
+fi
+python3 - "$m0" "$(rjson 'json.dumps(d["mismatches"])')" <<'PY' && pass "impersonation, Operator and another board each detected once (requests $([[ $STRICT == 1 ]] && echo refused || echo not refused): $c1 $c2 $c3)" || fail "mismatch counts: before $m0 after $mm"
 import sys, json
 a, b = json.loads(sys.argv[1]), json.loads(sys.argv[2])
 d = {k: b.get(k, 0) - a.get(k, 0) for k in ("impersonation", "operator", "cross_board")}
 sys.exit(0 if d == {"impersonation": 1, "operator": 1, "cross_board": 1} else 1)
 PY
 grep -q "\[identity\] mismatch" "$TMP/server.log" && pass "the server log has the mismatch lines" || fail "no mismatch line in the server log"
+
+# ── STRICT MODE (phase 2, #3418) ──────────────────────────────────────
+if [[ $STRICT == 1 ]]; then
+    code_of() { curl -s -m 10 -o /dev/null -w "%{http_code}" "$@"; }
+    body_of() { curl -s -m 10 "$@"; }
+
+    # The refusal body names its code.
+    body=$(body_of -X POST "$BASE/api/board/$iboard/messages" $COOKIE_ARGS -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-board/test" -d '{"subscriber_id":"Somebody Else","content":"x"}')
+    EXP_MISMATCH=4
+    grep -q identity_mismatch <<<"$body" && pass "STRICT: the refusal says identity_mismatch" || fail "STRICT: refusal body: $body"
+
+    # Untokened agent-tool call: refused, never served.
+    c=$(code_of -A "coral-board/test" "$BASE/api/board/id-team-1/messages/check?subscriber_id=x"); EXP_TOKEN=$((EXP_TOKEN + 1))
+    b=$(body_of -A "coral-board/test" "$BASE/api/board/id-team-1/messages/check?subscriber_id=x"); EXP_TOKEN=$((EXP_TOKEN + 1))
+    [[ $c == 401 ]] && grep -q session_token_required <<<"$b" && pass "STRICT: an agent-tool call with no token is refused (401 session_token_required)" || fail "STRICT: untokened call answered $c $b"
+    # ...and the real coral-board from an agent-marked shell whose token was removed: refused, never Operator.
+    st0=$(rjson 'd.get("refused",{}).get("session_token_required",0)')
+    out=$(env -i PATH="$PATH" HOME="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" CORAL_SESSION_NAME="stripped-agent" CORAL_SUBSCRIBER_ID="Operator" "$BIN/coral-board" post "stripped token probe" 2>&1) && rc=0 || rc=$?
+    EXP_TOKEN=$((EXP_TOKEN + 1))
+    st1=$(rjson 'd.get("refused",{}).get("session_token_required",0)')
+    # The SERVER must have refused it (the counter moved), not merely coral-board failing for another reason.
+    if [[ $rc -ne 0 && $st1 -gt $st0 ]] && ! api GET "/api/board/id-team-1/messages/all" | grep -q "stripped token probe"; then
+        pass "STRICT: an agent-marked shell with its token removed gets nothing posted (never Operator): ${out:0:80}"
+    else
+        fail "STRICT: stripped-token post rc=$rc refused $st0 -> $st1 out=$out"
+    fi
+
+    # A human at a normal shell (no agent markers) signs with the CLI token and acts as the Operator.
+    out=$(env -i PATH="$PATH" HOME="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" join id-team-1 --as Operator 2>&1) && rc=0 || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        out2=$(env -i PATH="$PATH" HOME="$TMP/h" CORAL_DATA_DIR="$DATA" CORAL_URL="$BASE" "$BIN/coral-board" post "operator from a plain shell" 2>&1) && rc2=0 || rc2=$?
+        if [[ $rc2 -eq 0 ]] && api GET "/api/board/id-team-1/messages/all" | grep -q "operator from a plain shell"; then
+            pass "STRICT: coral-board from a plain shell signs with the CLI token and posts as the Operator"
+        else
+            fail "STRICT: plain-shell post rc=$rc2 $out2"
+        fi
+    else
+        fail "STRICT: plain-shell join as Operator failed: $out"
+    fi
+
+    # The dashboard without the session cookie.
+    c=$(code_of "$BASE/api/sessions/live"); EXP_DASH=$((EXP_DASH + 1))
+    b=$(body_of "$BASE/api/sessions/live"); EXP_DASH=$((EXP_DASH + 1))
+    [[ $c == 401 ]] && grep -q dashboard_auth_required <<<"$b" && pass "STRICT: /api without the cookie: 401 dashboard_auth_required" || fail "STRICT: /api without a cookie answered $c"
+    c=$(code_of -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" "$BASE/api/system/identity-report"); EXP_DASH=$((EXP_DASH + 1))
+    [[ $c == 401 ]] && pass "STRICT: the identity report is cookie-gated too (401 without the cookie)" || fail "STRICT: report without cookie answered $c"
+    c=$(code_of "$BASE/api/health"); [[ $c == 200 ]] && pass "STRICT: /api/health stays open" || fail "STRICT: health answered $c"
+    c=$(code_of -X POST "$BASE/api/cloud/cli-hello" -H "Content-Type: application/json" -d '{"nonce":"x"}'); [[ $c != 401 ]] && pass "STRICT: the CLI hello stays open ($c)" || fail "STRICT: cli-hello answered 401"
+    hdr="$TMP/hdr2"; c=$(curl -s -m 10 -o /dev/null -D "$hdr" -w "%{http_code}" "$BASE/"); loc=$(sed -n 's/^[Ll]ocation: //p' "$hdr" | tr -d '\r')
+    [[ $c == 307 && $loc == *"/auth?locked=1"* ]] && pass "STRICT: a page load without the cookie goes to the locked /auth ($loc)" || fail "STRICT: / without a cookie: $c $loc"
+    page=$(body_of "$BASE/auth?locked=1")
+    if grep -qi "locked" <<<"$page" && ! grep -qiE "<input|<form" <<<"$page"; then pass "STRICT: the locked page says Coral is locked and has no input or form (no key asked)"; else fail "STRICT: the /auth page: ${page:0:120}"; fi
+
+    # The app/tray sign-in path: cookie-less page load -> /auth -> a fresh link from the CLI handshake -> the dashboard.
+    link=$(coral_open); app_jar="$TMP/appjar"; rm -f "$app_jar"
+    c=$(curl -s -m 10 -c "$app_jar" -o /dev/null -w "%{http_code}" "$link")
+    c2=$(curl -s -m 10 -b "$app_jar" -o "$TMP/dash.html" -w "%{http_code}" "$BASE/")
+    if [[ $c == 302 && $c2 == 200 ]] && grep -qi "<html" "$TMP/dash.html"; then pass "STRICT: the app sign-in path (coral open link) lands on the dashboard"; else fail "STRICT: sign-in $c then / $c2"; fi
+    c=$(code_of -b "$app_jar" "$link"); [[ $c == 403 ]] && pass "STRICT: the used sign-in link cannot be replayed (403)" || fail "STRICT: replay answered $c"
+
+    # Refusals are exactly the deliberate probes (by reason), none anywhere else.
+    refused_now=$(rjson 'json.dumps(d.get("refused",{}))')
+    if python3 - "$refused_now" "$EXP_MISMATCH" "$EXP_TOKEN" "$EXP_DASH" <<'CHECKEOF'
+import sys, json
+got = json.loads(sys.argv[1]); want = {"identity_mismatch": int(sys.argv[2]), "session_token_required": int(sys.argv[3]), "dashboard_auth_required": int(sys.argv[4])}
+sys.exit(0 if all(got.get(k, 0) == v for k, v in want.items()) and set(got) <= set(want) else 1)
+CHECKEOF
+    then pass "STRICT: the report's refused counts are exactly the deliberate probes ($refused_now)"; else fail "STRICT: refused $refused_now vs expected mismatch=$EXP_MISMATCH token=$EXP_TOKEN dash=$EXP_DASH"; fi
+fi
+
+
 log "What strict mode would refuse, by caller, tool and route (#3418; this script's own curl calls are local_other curl):"
 report | python3 -c '
 import sys, json
