@@ -90,8 +90,12 @@
 }
 
 .session-dot.stale    { background: var(--text-muted); }
-.session-dot.task-idle { background: var(--warning); }
-.session-dot.sleeping { background: var(--warning); opacity: 0.5; }
+/* Task assigned · idle: a muted hollow ring. Yellow is reserved for the urgent
+   states (Needs input / Check terminal); idle-with-a-task is not urgent (#3227). */
+.session-dot.task-idle {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--text-muted);
+}
 .session-dot.working {
     /* Working is GREEN. Green no longer means "done": a finished turn is
        "Ready for input" (no dot) and only killed rows are "Ended". */
@@ -174,7 +178,8 @@
 }
 
 .avatar-status-dot.stale    { background: var(--text-muted); }
-.avatar-status-dot.sleeping { background: var(--warning); opacity: 0.6; }
+.avatar-status-dot.sleeping { background: var(--text-muted); opacity: 0.6; }
+.avatar-status-dot.task-idle { background: var(--bg-primary); box-shadow: inset 0 0 0 1.5px var(--text-muted); }
 .avatar-status-dot.working {
     background: var(--working);
     animation: pulse-working 1.5s ease-in-out infinite;
@@ -1073,6 +1078,15 @@
 [data-theme="light"] .session-group-item .badge.session-state-pill {
     color: var(--warning);
 }
+
+/* Neutral state pill (Task assigned · idle): informational, never a warning. */
+.session-group-item .badge.session-state-pill.neutral,
+[data-theme="light"] .session-group-item .badge.session-state-pill.neutral {
+    font-weight: 500;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    box-shadow: inset 0 0 0 1px var(--border);
+}
 [data-theme="light"] .session-group-item .badge.session-state-pill.stuck {
     color: var(--error);
 }
@@ -1924,7 +1938,7 @@
 .availability-agent-heading small, .availability-agent li span, .availability-unassigned li span { display: block; margin: 4px 0; }
 .availability-badge { white-space: nowrap; border-radius: 12px; padding: 4px 8px; background: var(--bg-tertiary); font-size: 12px; color: var(--text-secondary); }
 .availability-badge.is-free { color: var(--success); }
-.availability-task_idle .availability-badge, .availability-summary-task_idle { color: var(--warning); }
+.availability-task_idle .availability-badge, .availability-summary-task_idle { color: var(--text-secondary); }
 .availability-waiting .availability-badge, .availability-summary-waiting { color: var(--accent); }
 .team-availability-dialog ul { padding-left: 18px; font-size: 13px; }
 .team-availability-dialog li { margin: 8px 0; }

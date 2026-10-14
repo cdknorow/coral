@@ -329,7 +329,8 @@ body.panel-dragging .preview-pane {
 .terminal-status-dot.sleeping,
 .terminal-status-dot.ended,
 .terminal-status-dot.done      { background: var(--text-muted); opacity: 0.7; }
-.terminal-status-dot.stale     { background: var(--text-muted); }
+.terminal-status-dot.stale,
+.terminal-status-dot.task-idle { background: var(--text-muted); } /* never yellow (#3227) */
 
 .terminal-session-label {
     font-family: var(--font-mono);

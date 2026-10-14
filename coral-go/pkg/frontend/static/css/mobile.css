@@ -977,8 +977,9 @@
         font-weight: 500; /* agents are children of the 600-weight group header */
     }
 
-    #mobile-session-list .waiting-badge {
-        display: none;
+    #mobile-session-list .waiting-badge,
+    #mobile-session-list .session-state-pill {
+        display: none; /* the phone shows the state chip in the meta row */
     }
 
     #mobile-session-list .session-mobile-banner-row {

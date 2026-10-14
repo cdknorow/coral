@@ -193,7 +193,8 @@ export const SESSION_STATES = {
     check_terminal: { label: 'Check terminal', dot: 'waiting',   pill: 'Check terminal', pillClass: '',          chip: 'needs-input', attention: true },
     your_turn:      { label: 'Ready for input', dot: 'your-turn', pill: null,            pillClass: '',          chip: '',            attention: false },
     working:        { label: 'Working',        dot: 'working',   pill: null,             pillClass: '',          chip: 'running',     attention: false },
-    task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: null, pillClass: '', chip: 'idle', attention: true },
+    // Not urgent: a muted ring + neutral pill, never the yellow of Needs input (#3227).
+    task_idle:      { label: 'Task assigned · idle', dot: 'task-idle', pill: 'Idle · task', pillClass: 'neutral', chip: 'idle', attention: false },
     idle:           { label: 'Idle',           dot: 'stale',     pill: null,             pillClass: '',          chip: 'idle',        attention: false },
 };
 
@@ -1705,12 +1706,13 @@ function _renderSessionItem(s, groupName, isCompact, collapsed, teamDefaultDir) 
     const branchTag = (gsWt && s.branch)
         ? `<div class="session-worktree-line" title="Worktree branch ${escapeAttr(s.branch)}${escapeAttr(gsWt.base_branch ? ' (vs ' + escapeAttr(gsWt.base_branch) + ')' : '')}">${_WORKTREE_ICON}<span class="wt-branch">${escapeHtml(s.branch)}</span>${_gitStateSummary(gsWt)}</div>`
         : "";
-    // One pill at most, from the shared state table. Only the attention states
-    // carry a pill. "Ready for input" has none: the tooltip and the aria-label carry
-    // that state (no dot) (operator request, task #175).
+    // One pill at most, from the shared state table. The attention states carry a
+    // warning pill; "Task assigned · idle" a neutral one (#3227). "Ready for input"
+    // has none: the tooltip and the aria-label carry that state (no dot) (task #175).
     const stateInfo = sessionStateInfo(s);
+    const pillKind = stateInfo.attention ? 'waiting-badge session-state-pill session-attention-pill' : 'session-state-pill';
     const waitingBadge = stateInfo.pill
-        ? ` <span class="badge waiting-badge session-state-pill session-attention-pill${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
+        ? ` <span class="badge ${pillKind}${stateInfo.pillClass ? ' ' + stateInfo.pillClass : ''}">${stateInfo.pill}</span>`
         : '';
     // Context is secondary: any state pill owns line 1 and the ctx pill
     // collapses to the dot's ring, which survives on every glyph.
@@ -1930,7 +1932,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
         <span class="drag-grip" title="Drag to reorder">&#x2630;</span>
         <div class="session-info">
             <div class="session-name-row">
-                <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" aria-hidden="true"></span>
+                <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" title="${escapeAttr(stateInfo.label)}" aria-hidden="true"></span>
                 <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>${autoAcceptChip(s)}
                 <span class="session-name-spacer"></span>
                 ${stale ? '' : waitingBadge + ctxPill}
@@ -2097,7 +2099,6 @@ function _isSleepingExpanded(groupName) {
     catch { return false; }
 }
 
-/** True when the row shows an attention pill (needs input / check terminal / stuck). */
 /** Row-level attention (amber/red tint + attention pill): the three states
  *  that need the operator at the terminal. */
 export function sessionNeedsAttention(s) {

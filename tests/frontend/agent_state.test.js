@@ -24,7 +24,7 @@ function check(label, cond, detail) {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const U = () => require('crypto').randomUUID();
 
-const ID = { working: U(), idle: U(), needs: U(), check: U(), stuck: U(), turnSolo: U(), sleeping: U(), turnMember: U(), turnOrch: U(), kill: U() };
+const ID = { working: U(), idle: U(), needs: U(), check: U(), stuck: U(), turnSolo: U(), sleeping: U(), turnMember: U(), turnOrch: U(), kill: U(), taskIdle: U() };
 const base = (o) => Object.assign({ name: 'coral-go', display_name: '', agent_type: 'claude', summary: 'Goal text', context_pct: 10, working: false, waiting_for_input: false, not_started: false, stuck: false, sleeping: false, awaiting_user: false, done: false, board_unread: 0, working_directory: '/repo/coral-go' }, o);
 const SESSIONS = [
     base({ session_id: ID.working, display_name: 'Worker', working: true }),
@@ -38,6 +38,8 @@ const SESSIONS = [
     // team: a member whose turn ended (never counted) and the orchestrator (counted)
     base({ session_id: ID.turnMember, name: 'team-dir', working_directory: '/repo/team', display_name: 'Member Turn', awaiting_user: true, done: true, board_project: 'qa-team', board_is_orchestrator: false, board_unread: 3 }),
     base({ session_id: ID.turnOrch, name: 'team-dir', working_directory: '/repo/team', display_name: 'Orch Turn', awaiting_user: true, done: true, board_project: 'qa-team', board_is_orchestrator: true }),
+    // team member with an assigned task but idle (board /status says task_idle): not urgent (#3227)
+    base({ session_id: ID.taskIdle, name: 'team-dir', working_directory: '/repo/team', display_name: 'Tasked', board_project: 'qa-team', board_is_orchestrator: false }),
 ];
 const ORDER = SESSIONS.map(s => s.session_id).join(',');
 // Payload order, except that a group lists its sleeping agents after the awake ones (the killed row,
@@ -54,6 +56,8 @@ const STUB = `
   window.fetch = (url, opts) => { const u=String(url); const path=u.replace(/^https?:\\/\\/[^/]+/,'').split('?')[0]; const m=((opts&&opts.method)||'GET').toUpperCase();
     const json=(b)=>Promise.resolve(new Response(JSON.stringify(b),{status:200,headers:{'Content-Type':'application/json'}}));
     if (path==='/api/sessions/live' && m==='GET') return json(window.__fixture);
+    if (path==='/api/board/qa-team/status' && m==='GET') return json({ summary: { task_idle: 1 }, observed_at: new Date().toISOString(), unassigned_tasks: [], health_report: [],
+      agents: [{ name: 'Tasked', session_id: '${ID.taskIdle}', availability: 'task_idle', available: false, reason: 'Assigned task, idle', tasks: [{ scope: 'board', id: 7, status: 'in_progress', title: 'T' }] }] });
     if (m!=='GET') { window.__posts.push(path); return json({ok:true}); }
     if (/\\/(tasks|notes|events)(\\?|$)/.test(path)) return json([]);
     if (/\\/files(\\?|$)/.test(path)) return json({ files: [] }); if (/\\/git(\\?|$)/.test(path)) return json({ snapshots: [] }); if (/\\/chat(\\?|$)/.test(path)) return json({ messages: [] });
@@ -71,6 +75,7 @@ const EXPECT = {
     [ID.sleeping]: { state: 'sleeping', label: 'Sleeping', dot: 'sleeping', pill: null, attention: false },
     [ID.turnMember]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
     [ID.turnOrch]: { state: 'your_turn', label: 'Ready for input', dot: 'your-turn', pill: null, attention: false },
+    [ID.taskIdle]: { state: 'task_idle', label: 'Task assigned · idle', dot: 'task-idle', pill: 'Idle · task', attention: false },
 };
 
 async function run() {
@@ -104,7 +109,7 @@ async function run() {
         const range = document.createRange(); range.selectNodeContents(name); const rects = range.getClientRects(); const nx = rects.length ? rects[0].left : null;
         const pills = Array.from(li.querySelectorAll('.session-state-pill')).map(p => ({ text: p.textContent.trim(), cls: p.className, transform: getComputedStyle(p).textTransform }));
         const chip = q('.session-unread-chip'); const mchip = q('.session-status-chip');
-        return [li.dataset.sessionId, { state: li.getAttribute('data-state'), aria: li.getAttribute('aria-label'), dotCls: dot ? dot.className : null, dotHidden: dcs ? dcs.visibility === 'hidden' : null, dotBg: dcs ? dcs.backgroundColor : null, dotAnim: dcs ? dcs.animationName : null, dotGlyph: dot ? getComputedStyle(dot, '::before').content : null,
+        return [li.dataset.sessionId, { state: li.getAttribute('data-state'), aria: li.getAttribute('aria-label'), dotCls: dot ? dot.className : null, dotHidden: dcs ? dcs.visibility === 'hidden' : null, dotBg: dcs ? dcs.backgroundColor : null, dotAnim: dcs ? dcs.animationName : null, dotGlyph: dot ? getComputedStyle(dot, '::before').content : null, dotTitle: dot ? dot.getAttribute('title') : null, dotRing: dcs ? dcs.boxShadow : null, rowBg: getComputedStyle(li).backgroundColor,
             pills, ctxPill: q('.session-ctx-pill') ? q('.session-ctx-pill').textContent.trim() : null, attention: li.classList.contains('needs-attention'), isStuck: li.classList.contains('is-stuck'), done: li.classList.contains('session-done'),
             unread: chip ? { text: chip.textContent.trim(), title: chip.getAttribute('title'), shown: getComputedStyle(chip).display !== 'none' } : null, mobileChip: mchip ? mchip.textContent.trim() : null,
             nameX: nx, h: li.getBoundingClientRect().height, labelDecoration: getComputedStyle(name).textDecorationLine }]; })))()`;
@@ -112,6 +117,8 @@ async function run() {
 
     try {
         await boot(1440, 900, false, false);
+        // task_idle comes from the team's board /status, fetched after the first render.
+        await until(`document.querySelector('#live-sessions-list .session-group-item[data-session-id="${ID.taskIdle}"]')?.getAttribute('data-state') === 'task_idle'`, 'the task_idle row');
         let rows = await ev(ROWS('live-sessions-list'));
 
         // ── E/D: one vocabulary per state on row attr, dot, pill, aria, tooltip ──
@@ -119,6 +126,11 @@ async function run() {
             const r = rows[sid]; const nm = SESSIONS.find(s => s.session_id === sid).display_name;
             check(`state ${exp.state} (${nm}): data-state, dot class, pill, aria label`, !!r && r.state === exp.state && new RegExp('\\b' + exp.dot + '\\b').test(r.dotCls || '') && (exp.pill === null ? r.pills.length === 0 : (r.pills.length === 1 && r.pills[0].text === exp.pill && r.pills[0].transform !== 'uppercase')) && new RegExp('^' + nm + ', ' + exp.label + '(,|$)').test(r.aria || '') && r.attention === exp.attention, JSON.stringify(r && { state: r.state, dot: r.dotCls, pills: r.pills.map(p => p.text), aria: r.aria, attention: r.attention }));
         }
+        // #3227: yellow is for urgent states only. Task assigned · idle: muted ring, neutral pill, no amber tint.
+        const warn = await ev(`getComputedStyle(document.documentElement).getPropertyValue('--warning').trim()`);
+        const ti = rows[ID.taskIdle], nd = rows[ID.needs];
+        check('#3227 task_idle: hollow muted ring (not the yellow of Needs input), neutral pill, no needs-attention tint', !!ti && /rgba\(0, 0, 0, 0\)|transparent/.test(ti.dotBg) && /inset/.test(ti.dotRing || '') && ti.dotBg !== nd.dotBg && ti.pills.length === 1 && /\bneutral\b/.test(ti.pills[0].cls) && !/waiting-badge|session-attention-pill/.test(ti.pills[0].cls) && ti.rowBg !== nd.rowBg, JSON.stringify({ warn, ti: ti && { bg: ti.dotBg, ring: ti.dotRing, pill: ti.pills[0], row: ti.rowBg }, needs: { bg: nd.dotBg, row: nd.rowBg } }));
+        check('#3227 every row dot has a tooltip naming its state', Object.entries(EXPECT).every(([sid, exp]) => rows[sid] && rows[sid].dotTitle === exp.label), JSON.stringify(Object.fromEntries(Object.entries(EXPECT).map(([sid, e]) => [e.state, rows[sid] && rows[sid].dotTitle]))));
         const tipStates = await ev(`Object.fromEntries(window._coralGetLiveSessions().map(s => [s.session_id, String(window.buildSessionTooltip(s)).replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ')]))`);
         check('tooltip State row uses the same words', Object.entries(EXPECT).every(([sid, exp]) => new RegExp('State\\s+' + exp.label).test(tipStates[sid] || '')), JSON.stringify(Object.fromEntries(Object.entries(EXPECT).map(([sid, e]) => [e.state, (tipStates[sid] || '').slice(0, 40)]))));
         check('Ready for input rows render NO pill while attention rows still do', [ID.turnSolo, ID.turnMember, ID.turnOrch].every(id => rows[id].pills.length === 0) && /session-attention-pill/.test(rows[ID.needs].pills[0].cls) && /session-attention-pill/.test(rows[ID.check].pills[0].cls) && /stuck/.test(rows[ID.stuck].pills[0].cls) && rows[ID.stuck].isStuck, JSON.stringify({ turn: rows[ID.turnSolo].pills, needs: rows[ID.needs].pills[0].cls, stuck: rows[ID.stuck].pills[0].cls }));
