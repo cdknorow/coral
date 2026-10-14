@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -155,6 +156,22 @@ func lowLatencyClient(c *http.Client) *http.Client {
 	return &out
 }
 
+// Diagnostic switches (#3440 v3), for comparing the layers on a real link:
+// CORAL_TUNNEL_SCHEDULER=off sends writes straight to yamux as before #3440, and
+// CORAL_TUNNEL_LOWAT=off leaves the socket's send queue at the OS default.
+const (
+	schedulerEnv = "CORAL_TUNNEL_SCHEDULER"
+	lowWaterEnv  = "CORAL_TUNNEL_LOWAT"
+)
+
+func envOff(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "off", "0", "false", "no":
+		return true
+	}
+	return false
+}
+
 // onTunnelConn, when set (tests only), sees each connection the tunnel dials.
 var onTunnelConn func(net.Conn)
 
@@ -246,7 +263,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 		log = slog.Default()
 	}
 	cs := &ClientSession{ys: ys, cfg: cfg, h: o.Handler, cancel: cancel, version: w.AcceptedVersion, maxStreams: cfg.MaxStreams, log: log, started: time.Now()}
-	if !o.uplink.Off {
+	if !o.uplink.Off && !envOff(schedulerEnv) {
 		cs.up = newUplink(o.uplink)
 	}
 	go cs.acceptLoop()

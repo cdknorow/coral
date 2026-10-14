@@ -70,3 +70,26 @@ func TestTunnelDialSetsNotSentLowWaterOnItsConnection(t *testing.T) {
 		})
 	}
 }
+
+// CORAL_TUNNEL_LOWAT=off leaves the socket at the OS default (a diagnostic switch).
+func TestLowWaterSwitch(t *testing.T) {
+	t.Setenv(lowWaterEnv, "off")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer ln.Close()
+	go func() {
+		if c, err := ln.Accept(); err == nil {
+			c.Close()
+		}
+	}()
+	c, err := (&net.Dialer{Control: LowLatencyControl}).DialContext(context.Background(), "tcp", ln.Addr().String())
+	require.NoError(t, err)
+	defer c.Close()
+	raw, err := c.(*net.TCPConn).SyscallConn()
+	require.NoError(t, err)
+	var got int
+	require.NoError(t, raw.Control(func(fd uintptr) {
+		got, _ = unix.GetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT)
+	}))
+	assert.NotEqual(t, sendLowWater, got)
+}

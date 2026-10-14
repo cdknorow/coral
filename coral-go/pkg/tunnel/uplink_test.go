@@ -550,3 +550,47 @@ func TestUplinkAbandonedWait(t *testing.T) {
 	require.NoError(t, u.acquire(laneBulk, 1, nil), "the link is free again")
 	u.release()
 }
+
+// #3440 v3 (coral-hub saw a poll body trail its headers by ~90 ms): a non-bulk reply
+// of unknown length (headers flushed, then a small body), and a bodyless 304, follow
+// their headers at once through the scheduler, well within one RTT.
+func TestUnknownLengthBodyFollowsItsHeaders(t *testing.T) {
+	app := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/sessions/live/x/poll304" {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush() // headers first: the body's length is unknown
+		w.Write(bytes.Repeat([]byte("p"), 2<<10))
+	})
+	s := hol
+	s.queue = sendLowWater
+	sess := connectShaped(t, newHub(t, SessionConfig{}), app, s, uplinkConfig{})
+	for _, path := range []string{"/api/sessions/live/x/poll", "/api/sessions/live/x/poll304"} {
+		var worst time.Duration
+		for i := 0; i < 10; i++ {
+			resp, err := get(sess, path, "")
+			require.NoError(t, err)
+			afterHeaders := time.Now()
+			_, err = io.Copy(io.Discard, resp.Body)
+			require.NoError(t, err)
+			resp.Body.Close()
+			worst = max(worst, time.Since(afterHeaders))
+		}
+		t.Logf("%s: body after headers, worst %v", path, worst.Round(time.Millisecond))
+		assert.Less(t, worst, hol.rtt, path)
+	}
+}
+
+// CORAL_TUNNEL_SCHEDULER=off: the session's writes go straight to yamux.
+func TestSchedulerSwitch(t *testing.T) {
+	t.Setenv(schedulerEnv, "off")
+	h := newHub(t, SessionConfig{})
+	cs, err := Dial(context.Background(), h.URL(), testToken, ClientOptions{SessionConfig: h.Cfg, Handler: HandlerFunc(func(context.Context, *Stream) {}), AllowInsecure: true})
+	require.NoError(t, err)
+	defer cs.Close()
+	h.next(t)
+	assert.Nil(t, cs.up)
+}

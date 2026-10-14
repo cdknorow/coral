@@ -16,6 +16,9 @@ func LowLatencyControl(network, _ string, c syscall.RawConn) error {
 	default:
 		return nil
 	}
+	if envOff(lowWaterEnv) {
+		return nil
+	}
 	_ = c.Control(func(fd uintptr) {
 		_ = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_NOTSENT_LOWAT, sendLowWater)
 	})
