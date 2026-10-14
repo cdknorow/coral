@@ -1239,23 +1239,28 @@ func TestHubE2E_ProxyRefusals(t *testing.T) {
 	// Private/reserved addresses are refused at dial time unless allow_private
 	// is set on that server. (Registration refuses them too, so insert the row
 	// the way an older/edited DB could have it.)
+	// The private target is its own server, which nothing else talks to: any request
+	// it sees, including the hub's background polling, would be a connection to the
+	// private address. (Counting server a's requests also counted the hub's background
+	// poll of a, which could land in the window: #3465.)
+	lan := newE2ERemote(t, "lan", nil)
 	rs := store.NewRemoteServerStore(hub.db, hub.dir)
-	_, err := rs.Add(context.Background(), "lan", "LAN", a.url(), a.key(), false)
+	_, err := rs.Add(context.Background(), "lan", "LAN", lan.url(), lan.key(), false)
 	require.NoError(t, err)
-	before = len(a.seen())
 	code, body := hub.do("GET", "/api/remote/lan/api/health", nil)
 	assert.Equal(t, 502, code, string(body))
 	assert.Contains(t, string(body), "not allowed")
-	assert.Len(t, a.seen(), before, "no connection was made to the private address")
+	assert.Empty(t, lan.seen(), "no connection was made to the private address")
 	dcode, _ := hub.do("POST", "/api/servers/lan/test", nil)
 	assert.Equal(t, 200, dcode)
 	assert.Equal(t, "unreachable", hub.serverStatus("lan"), "private target is never contacted")
-	assert.Len(t, a.seen(), before)
+	assert.Empty(t, lan.seen(), "nor by the server test")
 	// Editing allow_private through the registry API (the only way) enables it.
 	pc, pb := hub.do("PATCH", "/api/servers/lan", map[string]any{"allow_private": true})
 	require.Equal(t, 200, pc, string(pb))
 	code, _ = hub.do("GET", "/api/remote/lan/api/health", nil)
 	assert.Equal(t, 200, code)
+	assert.NotEmpty(t, lan.seen(), "with allow_private the hub reaches it")
 	// Unauthenticated-as-hub-user header tricks do not enable it either.
 	req, _ = http.NewRequest("POST", hub.ts.URL+"/api/servers", strings.NewReader(
 		fmt.Sprintf(`{"id":"x","url":%q,"api_key":"k"}`, a.url())))
