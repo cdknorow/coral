@@ -95,6 +95,7 @@ Object.assign(window, lazyWindowFns(loadModals, ['_selectLaunchType', '_showMobi
 import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
 import { installOverloadWatch } from './overload.js';
+import { handleUnauthorized } from './auth_redirect.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -745,13 +746,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         initBrowser();
     }
 
-    // Intercept 401 responses — redirect to auth page
+    // A 401 from Coral's /api (session ended; strict mode #3418): to /auth?return_to=this page,
+    // once (auth_redirect.js). The Coral Hub has its own redirect (cloud.js).
     const _origFetch = window.fetch;
     window.fetch = async function(...args) {
         const resp = await _origFetch.apply(this, args);
-        if (resp.status === 401 && !window.location.pathname.startsWith('/auth') && !isCloud()) {
-            window.location.href = '/auth';   // the Coral Hub has its own redirect (cloud.js)
-        }
+        if (resp.status === 401 && !isCloud() && _sameOriginApi(args[0])) handleUnauthorized();
         return resp;
     };
 
@@ -1114,3 +1114,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         throw error;
     }
 });
+
+
+// Whether a fetch target is this origin's /api (a 401 from elsewhere is not Coral's session).
+function _sameOriginApi(input) {
+    try {
+        const u = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, location.href);
+        return u.origin === location.origin && u.pathname.startsWith('/api/');
+    } catch { return false; }
+}
