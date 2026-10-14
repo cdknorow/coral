@@ -2011,6 +2011,15 @@
 .knowledge-link-ext { color: var(--accent); text-decoration: none; }
 .knowledge-link-ext:hover { text-decoration: underline; }
 .knowledge-empty { text-align: center; padding: 24px; color: var(--text-muted); }
+/* Knowledge distillation in progress / last run (#3325) */
+.knowledge-progress { display: inline-block; width: 200px; height: 4px; margin-top: 8px; overflow: hidden; border-radius: 2px; background: var(--bg-tertiary); }
+.knowledge-progress-bar { height: 100%; border-radius: 2px; background: var(--accent); transition: width .3s; }
+.knowledge-run-note { margin: 0 0 8px; padding: 6px 10px; border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 12px; }
+.knowledge-run-note.is-failed { color: var(--error); }
+/* The team header while its knowledge is being distilled */
+.team-distill-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; padding: 0 6px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-secondary); font-size: 11px; font-weight: 500; line-height: 16px; white-space: nowrap; }
+.team-distill-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse-working 1.5s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .team-distill-dot { animation: none; } }
 .knowledge-save-btn { margin-left: 4px; }
 
 /* Repo/branch beside the agent name in the terminal header */

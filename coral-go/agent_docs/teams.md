@@ -199,6 +199,20 @@ Teams are also managed through the session endpoints:
 
 ---
 
+## Knowledge distillation
+
+Distillation reads the team's agent transcripts and writes a knowledge bundle (an overview plus one document per agent) that is injected into the prompts of the team's agents when they start or wake.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/teams/detail/{name}/distill-knowledge` | Start a run in the background: `202` with the job. If one is already running, `200` with that job (never a second run). |
+| GET | `/api/teams/detail/{name}/distill-knowledge` | The run's status (below), or `{"status":"none"}`. |
+| GET | `/api/teams/detail/{name}/knowledge` | The bundle: `{"exists": false}` or `{"exists": true, "index", "agents": [{name, content}], …}`. |
+
+Status: `{team_name, status: "running"|"complete"|"failed", progress: {phase, agent, total, completed}, error, started_at, finished_at}` (times RFC 3339 UTC). Phases: `starting`, `extracting` (pass 1, per agent), `cross-referencing` (pass 2), `formatting` (pass 3). The last finished run is kept per team so a dashboard can show when the knowledge was updated, or that the last run failed. Runs are tracked in memory: after a restart a team reads `none` (an interrupted run is never reported as running); start it again.
+
+The dashboard follows a run wherever it was started (#3325): leaving the Knowledge tab or the team doesn't lose it. The team's sidebar header shows "Distilling…" while it runs (a run started in another window, or before a reload, is found the first time the team is shown), and a toast says when the knowledge is ready or the run failed.
+
 ## Example: Full team lifecycle
 
 ```bash

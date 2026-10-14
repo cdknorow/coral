@@ -4,6 +4,7 @@ import { escapeHtml, escapeAttr, jsStr, sanitizeHtml } from './utils.js';
 import { bindDownload } from './artifact_download.js';
 import { mountExplorer, showExplorer, syncExplorerSession } from './file_explorer.js';
 import { boardFetch, teamFetch, serverUrl, splitKey, sessionTeamKey, sessionServer, artifactPath } from './server_base.js';
+import { refreshDistill, startDistill, distillJob } from './knowledge_distill.js';
 
 let source = 'files';
 let team = null;
@@ -313,7 +314,8 @@ async function loadKnowledgeTab() {
         panel.innerHTML = '<div class="knowledge-empty">Select a team to view knowledge.</div>';
         return;
     }
-    if (knowledgeLoaded) return;
+    // Loaded already, unless the panel was re-rendered empty meanwhile (#3325).
+    if (knowledgeLoaded && panel.childElementCount > 0) return;
     if (knowledgeLoading) return;
     knowledgeLoading = true;
     knowledgeMode = 'preview';
@@ -321,6 +323,17 @@ async function loadKnowledgeTab() {
     knowledgeDirty = {};
 
     panel.innerHTML = '<div class="knowledge-empty">Loading...</div>';
+
+    // A run in progress (started here earlier, in another window, or before a reload) is
+    // shown and followed; the bundle is loaded once there is none (#3325).
+    const job = await refreshDistill(boardName);
+    if (boardName !== currentTeam()) { knowledgeLoading = false; return; }
+    if (job.status === 'running') {
+        knowledgeLoading = false;
+        knowledgeLoaded = true;
+        renderDistillProgress(panel, job);
+        return;
+    }
 
     const data = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/knowledge`)
         .then(r => r.ok ? r.json() : null).catch(() => null);
@@ -332,6 +345,7 @@ async function loadKnowledgeTab() {
     knowledgeLoaded = true;
 
     if (!data || !data.exists) {
+        if (job.status === 'failed') { renderDistillFailed(panel, boardName, job); return; }
         panel.innerHTML = `<div class="knowledge-empty">
             <div style="margin-bottom:12px">No distilled knowledge yet for this team.</div>
             <button class="btn btn-primary" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Distill Knowledge</button>
@@ -341,7 +355,64 @@ async function loadKnowledgeTab() {
 
     knowledgeData = data;
     renderKnowledgePanel(panel, boardName);
+    // The last run's outcome above the bundle: when it finished, or that it failed.
+    const viewer = panel.querySelector('.knowledge-viewer');
+    if (viewer && (job.status === 'complete' || job.status === 'failed')) {
+        const note = document.createElement('div');
+        note.className = 'knowledge-run-note' + (job.status === 'failed' ? ' is-failed' : '');
+        note.setAttribute('role', 'status');
+        note.textContent = job.status === 'failed'
+            ? `The last distillation failed${job.error ? ': ' + job.error : ''}. This is the knowledge from before it.`
+            : (job.finished_at ? `Updated ${_formatWhen(job.finished_at)}` : 'Updated');
+        viewer.prepend(note);
+    }
 }
+
+function _formatWhen(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+const _SPIN = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spin" style="margin-bottom:8px" aria-hidden="true"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>';
+const _PHASES = { starting: 'Starting knowledge distillation', extracting: 'Pass 1: Extracting knowledge', 'cross-referencing': 'Pass 2: Cross-referencing collaboration', formatting: 'Pass 3: Building OKF documents' };
+
+/** The run in progress, from its last status. */
+function renderDistillProgress(panel, job) {
+    const p = (job && job.progress) || {};
+    const pct = p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0;
+    const phase = _PHASES[p.phase] || (p.phase ? String(p.phase) : _PHASES.starting);
+    const agent = p.agent ? ` — ${escapeHtml(p.agent)}` : '';
+    const counts = p.total > 0 ? `${Number(p.completed) || 0}/${Number(p.total) || 0} agents` : 'This reads all agent transcripts and runs 3 passes through Claude';
+    panel.innerHTML = `<div class="knowledge-empty knowledge-distilling" role="status">
+        ${_SPIN}
+        <div>${escapeHtml(phase)}${agent}</div>
+        <div class="knowledge-progress" aria-hidden="true"><div class="knowledge-progress-bar" style="width:${pct}%"></div></div>
+        <div style="font-size:12px;margin-top:4px">${escapeHtml(counts)}</div>
+        <div style="font-size:12px;margin-top:4px">You can leave this view: the run continues, and you'll be told when it's done.</div>
+    </div>`;
+}
+
+function renderDistillFailed(panel, boardName, job) {
+    panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)" role="alert">
+        Distillation failed: ${escapeHtml((job && job.error) || 'Unknown error')}
+        <div><button class="btn btn-sm" style="margin-top:12px" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Retry</button></div>
+    </div>`;
+}
+
+// The Knowledge tab follows the team's run wherever it was started (#3325). The panel is
+// looked up on every change, so a re-rendered or re-opened view is updated too.
+document.addEventListener('coral:distill-status', e => {
+    const { team: t, job, prev } = e.detail || {};
+    // Finished while the tab was not on screen: the next visit loads the result.
+    if (t && t === currentTeam() && prev && prev.status === 'running' && job.status !== 'running') knowledgeLoaded = false;
+    if (!t || t !== currentTeam() || source !== 'knowledge') return;
+    const panel = document.getElementById('team-knowledge-view');
+    if (!panel) return;
+    if (job.status === 'running') { knowledgeLoaded = true; renderDistillProgress(panel, job); return; }
+    // Finished (or found finished): show the result.
+    if (prev && prev.status === 'running') { knowledgeLoaded = false; knowledgeLoading = false; loadKnowledgeTab(); }
+});
 
 function navigateKnowledge(panel, tabName) {
     knowledgeActiveTab = tabName;
@@ -507,50 +578,13 @@ export async function distillKnowledgeInTab(boardName) {
     const panel = document.getElementById('team-knowledge-view');
     if (!panel) return;
     knowledgeLoaded = true;
-
-    panel.innerHTML = `<div class="knowledge-empty">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spin" style="margin-bottom:8px"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-        <div>Starting knowledge distillation...</div>
-        <div style="font-size:12px;margin-top:4px">This reads all agent transcripts and runs 3 passes through Claude</div>
-    </div>`;
-
+    renderDistillProgress(panel, distillJob(boardName).status === 'running' ? distillJob(boardName) : { progress: { phase: 'starting' } });
     try {
-        const resp = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/distill-knowledge`, { method: 'POST' });
-        if (!resp.ok) throw new Error('Failed to start distillation');
-
-        const pollInterval = setInterval(async () => {
-            try {
-                const status = await teamFetch(boardName, n => `/api/teams/detail/${encodeURIComponent(n)}/distill-knowledge`).then(r => r.json());
-                if (status.status === 'complete') {
-                    clearInterval(pollInterval);
-                    knowledgeLoaded = false;
-                    loadKnowledgeTab();
-                } else if (status.status === 'failed') {
-                    clearInterval(pollInterval);
-                    panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">
-                        Distillation failed: ${escapeHtml(status.error || 'Unknown error')}
-                        <button class="btn btn-sm" style="margin-top:12px" onclick="distillTeamKnowledge('${jsStr(boardName)}')">Retry</button>
-                    </div>`;
-                } else if (status.progress) {
-                    const p = status.progress;
-                    const pct = p.total > 0 ? Math.round((p.completed / p.total) * 100) : 0;
-                    let phaseLabel = p.phase;
-                    if (p.phase === 'extracting') phaseLabel = 'Pass 1: Extracting knowledge';
-                    else if (p.phase === 'cross-referencing') phaseLabel = 'Pass 2: Cross-referencing collaboration';
-                    else if (p.phase === 'formatting') phaseLabel = 'Pass 3: Building OKF documents';
-                    const agentLabel = p.agent ? ` — ${escapeHtml(p.agent)}` : '';
-                    panel.innerHTML = `<div class="knowledge-empty">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="spin" style="margin-bottom:8px"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-                        <div>${phaseLabel}${agentLabel}</div>
-                        <div style="margin-top:8px;width:200px;height:4px;background:var(--bg-tertiary);border-radius:2px;display:inline-block;overflow:hidden">
-                            <div style="width:${pct}%;height:100%;background:var(--accent);border-radius:2px;transition:width 0.3s"></div>
-                        </div>
-                        <div style="font-size:12px;margin-top:4px">${p.completed}/${p.total} agents</div>
-                    </div>`;
-                }
-            } catch { /* ignore poll errors */ }
-        }, 2000);
+        // Starts a run, or joins the one already running (#3325). Progress, the result and a
+        // toast follow from knowledge_distill.js, wherever the user is by then.
+        await startDistill(boardName);
     } catch (err) {
-        panel.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">${escapeHtml(err.message)}</div>`;
+        const p = document.getElementById('team-knowledge-view');
+        if (p && boardName === currentTeam()) p.innerHTML = `<div class="knowledge-empty" style="color:var(--error)">${escapeHtml(err.message)}</div>`;
     }
 }

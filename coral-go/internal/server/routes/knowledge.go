@@ -6,13 +6,16 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/background"
 )
 
-// knowledgeJobs tracks in-progress distillation runs.
+// knowledgeJobs tracks distillation runs: the running one, or the last one to finish, per
+// team. It lives in memory, so after a restart a team has none (an interrupted run is not
+// reported as running forever) until it is started again (#3325).
 var (
 	knowledgeJobsMu sync.Mutex
 	knowledgeJobs   = make(map[string]*knowledgeJob)
@@ -23,7 +26,15 @@ type knowledgeJob struct {
 	Status   string                     `json:"status"`
 	Progress background.DistillProgress `json:"progress"`
 	Error    string                     `json:"error,omitempty"`
+	// StartedAt / FinishedAt (RFC 3339, UTC): the dashboard shows when the knowledge was
+	// last updated (#3325).
+	StartedAt  string `json:"started_at,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
 }
+
+// snapshot copies the job for writing out. Callers hold knowledgeJobsMu: the run's
+// goroutine updates the job under it.
+func (j *knowledgeJob) snapshot() knowledgeJob { return *j }
 
 // DistillKnowledge starts or returns the status of a knowledge distillation run.
 // POST /api/teams/detail/{name}/distill-knowledge
@@ -41,17 +52,20 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 
 	knowledgeJobsMu.Lock()
 	if job, exists := knowledgeJobs[teamName]; exists && job.Status == "running" {
+		snap := job.snapshot()
 		knowledgeJobsMu.Unlock()
-		writeJSON(w, http.StatusOK, job)
+		writeJSON(w, http.StatusOK, snap)
 		return
 	}
 
 	job := &knowledgeJob{
-		TeamName: teamName,
-		Status:   "running",
-		Progress: background.DistillProgress{Phase: "starting"},
+		TeamName:  teamName,
+		Status:    "running",
+		Progress:  background.DistillProgress{Phase: "starting"},
+		StartedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 	knowledgeJobs[teamName] = job
+	started := job.snapshot()
 	knowledgeJobsMu.Unlock()
 
 	// Run distillation in background — use a detached context since the
@@ -68,6 +82,7 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 		_, err := background.DistillTeamKnowledge(ctx, h.ss, h.teamStore, teamName, coralDir, progressFn)
 
 		knowledgeJobsMu.Lock()
+		job.FinishedAt = time.Now().UTC().Format(time.RFC3339)
 		if err != nil {
 			job.Status = "failed"
 			job.Error = err.Error()
@@ -79,7 +94,7 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 		knowledgeJobsMu.Unlock()
 	}()
 
-	writeJSON(w, http.StatusAccepted, job)
+	writeJSON(w, http.StatusAccepted, started)
 }
 
 // GetKnowledgeStatus returns the status of a distillation run.
@@ -89,13 +104,17 @@ func (h *SessionsHandler) GetKnowledgeStatus(w http.ResponseWriter, r *http.Requ
 
 	knowledgeJobsMu.Lock()
 	job, exists := knowledgeJobs[teamName]
+	var snap knowledgeJob
+	if exists {
+		snap = job.snapshot()
+	}
 	knowledgeJobsMu.Unlock()
 
 	if !exists {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "none"})
 		return
 	}
-	writeJSON(w, http.StatusOK, job)
+	writeJSON(w, http.StatusOK, snap)
 }
 
 // GetTeamKnowledge returns the distilled knowledge bundle for a team.
