@@ -825,3 +825,13 @@ body.panel-dragging .xterm-container {
 .terminal-header > .live-view-toggle { flex-shrink: 0; margin-right: 10px; }
 .terminal-header-actions .terminal-branch,
 .terminal-header-actions .terminal-folder { margin-right: 8px; }
+
+/* A window that does not set the pane's size (a viewer, View mode, a phone) renders the xterm at
+   the pane's own size (#3422): scroll to see a pane wider or taller than the window. */
+.xterm-container.xterm-follow-pane {
+    overflow: auto;
+}
+.xterm-container.xterm-follow-pane .xterm {
+    height: auto;
+    width: max-content;
+}

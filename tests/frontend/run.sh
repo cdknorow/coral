@@ -145,6 +145,9 @@ fi
 # Suites read CORAL_TEST_URL via test_base.js. Drop the inherited live-server variables so nothing
 # a suite spawns can fall back to them.
 export CORAL_TEST_URL="http://127.0.0.1:$CORAL_PORT"
+# The test server's own tmux socket (<home>/tmux.sock): suites that compare the pane with the
+# dashboard read it with 'tmux -S' on this path, never the production socket (#3422).
+export CORAL_TEST_TMUX_SOCKET="$CORAL_HOME/tmux.sock"
 unset CORAL_URL CORAL_PORT CORAL_HOST CORAL_DATA_DIR CORAL_DIR
 export CDP_PORT
 cd "$HERE"

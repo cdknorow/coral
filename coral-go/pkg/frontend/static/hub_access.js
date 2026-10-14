@@ -95,8 +95,11 @@ if (typeof document !== 'undefined') {
  *  session still on screen is updated. */
 export function setHubReadOnly(session, a, required = 'interact', fromFrame = false) {
     if (!session || state.currentSession !== session) return;
+    const was = !!session.hubReadOnly;
     session.hubReadOnly = a ? { message: accessBlockedMessage(a, required), chip: readOnlyChipText(a), fromFrame, hubLimits: a.limitedBy !== 'machine', server: sessionServer(session) } : null;
     renderChip();
+    // The terminal sets or follows the pane's size by this (#3422).
+    if (was !== !!session.hubReadOnly) document.dispatchEvent(new CustomEvent('coral:hub-access-changed'));
 }
 
 /** Look up the selected agent's server access and update the chip. */

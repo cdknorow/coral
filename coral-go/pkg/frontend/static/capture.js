@@ -2,11 +2,10 @@
 
 import { importOnce } from './import_once.js';
 import { state, CAPTURE_REFRESH_MS, CAPTURE_REFRESH_STREAMING_MS } from './state.js';
-import { isInteractiveOwner } from './ownership.js';
 import { getRenderer } from './renderers.js';
 import { renderTaskList } from './tasks.js';
 import { renderEventTimeline } from './agentic_state.js';
-import { getTerminalCols, isTerminalWsOpen } from './xterm_renderer.js';
+import { getTerminalCols, isTerminalWsOpen, mayResizePane, isFollowingPane } from './xterm_renderer.js';
 import { platform } from './platform/detect.js';
 import { serverFetch, currentServer, isCloud } from './server_base.js';
 import { sessionUnreachable, liveViewShown, backoffBlocked, backoffRecord } from './remote_health.js';
@@ -45,8 +44,10 @@ const _resizeRefused = new Set();
 export async function syncPaneWidth() {
     if (!state.settings?.fit_pane_width) return;
     if (!state.currentSession || state.currentSession.type !== "live") return;
-    // Only the interactive owner window may resize the shared pane.
-    if (!isInteractiveOwner()) return;
+    // Only the interactive owner window may resize the shared pane (one that has joined the agent's
+    // ownership group: a booting popout has not), never a phone or a View-only viewer, and not while
+    // the terminal shows the pane at its own size (#3422).
+    if (!mayResizePane() || isFollowingPane()) return;
     // In xterm mode the semantic pane is hidden, so use xterm's own column count
     const cols = getTerminalCols() || measureTerminalColumns();
     if (!cols || cols < 10) return;

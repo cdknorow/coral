@@ -709,6 +709,42 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 	// which clients expect first.
 	wsjson.Write(ctx, conn, map[string]any{"type": "terminal_hello", "input_acks": true})
 
+	// The pane's real size (#3422): sent now and whenever it changes, whoever changed it
+	// (another dashboard, a phone, a tmux attach). A viewer that does not set the size
+	// renders at this one instead of wrapping the pane's lines at its own width.
+	// The first report is marked initial: it is written before any frame from the client is read,
+	// so it never answers the client's own resize. A resize that carries a seq is answered with
+	// the size the pane has after it (tmux may clamp), echoing the seq, so the client can tell an
+	// answer to its latest resize from a change made elsewhere.
+	sizer, _ := h.backend.(ptymanager.PaneSizer)
+	sizeCheck := make(chan int64, 1)
+	lastCols, lastRows := 0, 0
+	sendSize := func(seq int64, initial bool) {
+		if sizer == nil {
+			return
+		}
+		cols, rows, err := sizer.PaneSize(name)
+		if err != nil || (seq == 0 && cols == lastCols && rows == lastRows) {
+			return
+		}
+		lastCols, lastRows = cols, rows
+		frame := map[string]any{"type": "terminal_size", "cols": cols, "rows": rows}
+		if seq > 0 {
+			frame["seq"] = seq
+		}
+		if initial {
+			frame["initial"] = true
+		}
+		wsjson.Write(ctx, conn, frame)
+	}
+	sendSize(0, true)
+	var sizeTick <-chan time.Time
+	if sizer != nil {
+		t := time.NewTicker(terminalSizeEvery)
+		defer t.Stop()
+		sizeTick = t.C
+	}
+
 	// Reader goroutine: receives terminal input from the client (JSON text frames)
 	go func() {
 		defer cancel()
@@ -722,6 +758,8 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 				Data string `json:"data"`
 				Cols int    `json:"cols"`
 				Rows int    `json:"rows"`
+				// Seq, on terminal_resize, is echoed on the terminal_size that answers it (#3422).
+				Seq int64 `json:"seq"`
 				// ID, on terminal_input, asks for an answer carrying it (#3276): a
 				// terminal_input_ack once the input is delivered, or the refusal with the id.
 				// Decoded leniently: a frame whose id is not an integer (or is null) is
@@ -753,6 +791,13 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 						rows = 50
 					}
 					sendErr = h.backend.Resize(name, uint16(msg.Cols), rows)
+					// Answer with the size the pane now has (it may differ: tmux clamps). Only
+					// the latest resize needs its answer: an unread earlier one is replaced.
+					select {
+					case <-sizeCheck:
+					default:
+					}
+					sizeCheck <- msg.Seq
 				}
 			}
 			withID := func(frame map[string]any) map[string]any {
@@ -780,6 +825,10 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			conn.Close(websocket.StatusNormalClosure, "")
 			return
+		case seq := <-sizeCheck:
+			sendSize(seq, false)
+		case <-sizeTick:
+			sendSize(0, false)
 		case data, ok := <-ch:
 			if !ok {
 				wsjson.Write(ctx, conn, map[string]any{"type": "terminal_closed"})
@@ -792,6 +841,10 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+// terminalSizeEvery is how often an open terminal socket checks the pane's size for changes
+// made elsewhere (#3422); a resize sent on the socket itself is answered at once.
+const terminalSizeEvery = time.Second
 
 const (
 	// notStartedThresholdSeconds is how long an agent may produce nothing before

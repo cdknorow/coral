@@ -221,6 +221,41 @@ func (b *TmuxBackend) Resize(name string, cols, rows uint16) error {
 	return b.client.ResizePaneTarget(ctx, target, int(cols), int(rows))
 }
 
+// PaneSize reports the session's pane size from tmux itself, so a resize by any client (another
+// dashboard, a phone, a tmux attach) is seen (#3422).
+func (b *TmuxBackend) PaneSize(name string) (int, int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	b.mu.RLock()
+	sess, ok := b.sessions[name]
+	b.mu.RUnlock()
+	if !ok {
+		sess = b.recoverSession(name)
+	}
+	agentType, sessionID := "", ""
+	if sess != nil {
+		agentType = sess.info.AgentType
+		sessionID = sess.info.SessionID
+	}
+	target, err := b.client.FindPaneTarget(ctx, name, agentType, sessionID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if target == "" {
+		return 0, 0, fmt.Errorf("%w: pane %q not found", ErrTerminalGone, name)
+	}
+	out, err := b.client.DisplayMessage(ctx, target, "#{pane_width} #{pane_height}")
+	if err != nil {
+		return 0, 0, err
+	}
+	var cols, rows int
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d %d", &cols, &rows); err != nil || cols <= 0 || rows <= 0 {
+		return 0, 0, fmt.Errorf("pane size %q: unexpected tmux output", strings.TrimSpace(out))
+	}
+	return cols, rows, nil
+}
+
 // recoverSession discovers a session from live tmux panes and registers it
 // in the in-memory map. This handles the post-restart case where tmux sessions
 // survive but TmuxBackend's map is empty. Returns the recovered session or nil.

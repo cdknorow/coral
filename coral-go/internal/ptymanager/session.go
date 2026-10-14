@@ -34,6 +34,7 @@ type session struct {
 
 	mu          sync.Mutex
 	subscribers map[string]chan []byte
+	cols, rows  uint16 // the PTY's size as last set (guarded by mu)
 
 	// Ring buffer of recent output for snapshot on reconnect
 	ringMu  sync.Mutex
@@ -87,6 +88,8 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		logFile:     logFile,
 		logPath:     logPath,
 		subscribers: make(map[string]chan []byte),
+		cols:        cols,
+		rows:        rows,
 		ring:        make([]byte, 0, 256*1024),
 		ringMax:     256 * 1024, // 256KB ring buffer
 	}
@@ -181,7 +184,20 @@ func (s *session) writeFull(data []byte) (int, error) {
 
 // resize changes the PTY window size.
 func (s *session) resize(cols, rows uint16) error {
-	return s.proc.Resize(cols, rows)
+	if err := s.proc.Resize(cols, rows); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.cols, s.rows = cols, rows
+	s.mu.Unlock()
+	return nil
+}
+
+// size is the PTY's size as last set.
+func (s *session) size() (uint16, uint16) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cols, s.rows
 }
 
 // subscribe registers a subscriber for terminal output.

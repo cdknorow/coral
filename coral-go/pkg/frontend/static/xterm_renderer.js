@@ -1,7 +1,7 @@
 /* xterm.js terminal renderer — streams raw ANSI output via WebSocket */
 
 import { state } from './state.js';
-import { isInteractiveOwner, claimOwnership } from './ownership.js';
+import { isInteractiveOwner, claimOwnership, ownershipSessionId } from './ownership.js';
 import { dbg } from './utils.js';
 import { normServer, serverWsBase, sessionServer } from './server_base.js';
 import { hubBlocksKeystrokes, applyHubReadOnlyFrame } from './hub_access.js';
@@ -15,6 +15,119 @@ let _onResizeDisposable = null;
 let _resizeObserver = null;
 let _terminalFocused = false;
 let _panelDragging = false;
+
+// ── The pane's one size (#3422) ──────────────────────────────────────────
+// The tmux pane has one size, which the server reports on the socket (terminal_size). Only a
+// window that may set it (the interactive owner, with Interact, wider than a phone) fits its
+// container and resizes the pane. Every other window (a viewer tab, View mode through the hub,
+// a phone) renders the xterm at the pane's own size and scrolls, instead of wrapping lines drawn
+// for a wider pane at its own width. A window that sets the size follows a change made elsewhere
+// (another browser or device) instead of fighting it, until it is resized or typed in again.
+// An older server sends no size: then every window fits its container, as before.
+let _pane = null;        // { cols, rows } the server last reported for this socket, or null
+let _following = false;  // rendering at the pane's size rather than this window's own
+let _containerEl = null;
+// Each resize on a socket carries a sequence number, which the server echoes on the report that
+// answers it: an answer to an earlier resize, and the server's first report (written before it reads
+// anything this window sent), are not someone else's change.
+let _seq = 0;            // the last resize sent on the current socket (0: none yet)
+let _askedSize = null;   // { cols, rows } that resize asked for
+let _followBox = '';     // the container's size when this window started following
+const PHONE_MAX_WIDTH = 767; // the mobile layout's breakpoint (mobile.js, css/mobile.css)
+
+function _isPhoneWidth() {
+    return window.innerWidth <= PHONE_MAX_WIDTH;
+}
+
+/** True when this window may set the shared pane's size: the interactive owner of the selected
+ *  agent, not limited to View by the hub or the machine, and not a phone (a phone never shrinks
+ *  the pane for others). A window that has not joined the agent's ownership group yet (a popout
+ *  booting) is not its owner: isInteractiveOwner() alone says yes there, and such a window once
+ *  resized the shared pane to its own width under the window that owns it (#3422). */
+export function mayResizePane() {
+    const s = state.currentSession;
+    // An agent without a session id has no ownership group: the rule before groups applies.
+    if (s && s.session_id && ownershipSessionId() !== s.session_id) return false;
+    if (!isInteractiveOwner() || _isPhoneWidth()) return false;
+    return !(s && s.hubReadOnly);
+}
+
+/** True while the xterm shows the pane at the pane's size instead of fitting this window. */
+export function isFollowingPane() {
+    return _following;
+}
+
+function _sendResize(cols, rows) {
+    if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+        terminalWs.send(JSON.stringify({ type: 'terminal_resize', cols, rows, seq: ++_seq }));
+        _askedSize = { cols, rows };
+    }
+}
+
+// The container's outer size: scrollbars that following adds or removes do not change it.
+function _box() {
+    return _containerEl ? _containerEl.offsetWidth + 'x' + _containerEl.offsetHeight : '';
+}
+
+// Render at the pane's size (horizontal scroll when it is wider than the window).
+function _followPane() {
+    if (!terminal || !_pane) return;
+    if (!_following) _followBox = _box();
+    _following = true;
+    if (_containerEl) _containerEl.classList.add('xterm-follow-pane');
+    if (terminal.cols !== _pane.cols || terminal.rows !== _pane.rows) terminal.resize(_pane.cols, _pane.rows);
+}
+
+// Something on this side changed: fit and set the pane's size when this window may, otherwise
+// follow the pane's. `observed` is the container's ResizeObserver, which also fires when nothing
+// the user did changed its size (the tab hidden or shown): while following, only a real change of
+// the container's size takes the pane's size back. The view shown, a keystroke and taking control
+// always do.
+function _sizeLocal(observed = false) {
+    if (!terminal || !fitAddon) return;
+    if (_pane && !mayResizePane()) { _followPane(); return; }
+    const el = _containerEl;
+    if (el && (el.offsetWidth === 0 || el.offsetHeight === 0)) return; // hidden: sized when shown
+    if (_following && observed && _box() === _followBox) return;
+    const wasFollowing = _following;
+    _following = false;
+    if (el) el.classList.remove('xterm-follow-pane');
+    const before = terminal.cols + 'x' + terminal.rows;
+    fitAddon.fit();
+    // fit() reports a change through onResize, which sends it. Taking the size back at an unchanged
+    // size is sent here.
+    if (wasFollowing && before === terminal.cols + 'x' + terminal.rows && mayResizePane()) {
+        _sendResize(terminal.cols, terminal.rows);
+    }
+}
+
+// The server reported the pane's size: `seq` when it answers a resize, `initial` for its first
+// report on the socket.
+function _onPaneSize(cols, rows, seq, initial) {
+    if (!(cols > 0 && rows > 0)) return;
+    _pane = { cols, rows };
+    if (!terminal) return;
+    const may = mayResizePane();
+    if (may && seq) {
+        if (seq < _seq) return; // answers a resize this window has since replaced
+        // The answer to its latest resize: this window sets the size (again), unless tmux gave it
+        // another size than asked, which is then the pane's.
+        if (_askedSize && cols === _askedSize.cols && rows === _askedSize.rows) {
+            _stopFollowing();
+            if (terminal.cols !== cols || terminal.rows !== rows) terminal.resize(cols, rows);
+            return;
+        }
+    } else if (may && !_following) {
+        if (cols === terminal.cols && rows === terminal.rows) return;
+        if (initial && _seq > 0) return; // predates this window's own resize; its answer follows
+    }
+    _followPane();
+}
+
+function _stopFollowing() {
+    _following = false;
+    if (_containerEl) _containerEl.classList.remove('xterm-follow-pane');
+}
 
 // Input queue: buffers keystrokes while WebSocket is disconnected
 let _inputQueue = [];
@@ -136,7 +249,7 @@ export function createTerminal(containerEl) {
         terminal.write("\x1bc");
         dbg('createTerminal: reusing existing terminal, queued buffer reset');
         if (fitAddon) {
-            requestAnimationFrame(() => { if (fitAddon) fitAddon.fit(); });
+            requestAnimationFrame(() => _sizeLocal());
         }
         return terminal;
     }
@@ -204,6 +317,8 @@ export function createTerminal(containerEl) {
         if (hubBlocksKeystrokes()) return;
         // A keystroke in a viewer window takes interactive control (multi-window ownership).
         claimOwnership();
+        // The window being typed in sets the pane's size again (#3422).
+        if (_following && mayResizePane()) _sizeLocal();
 
         // Control chars / escape sequences flush immediately (no batching delay)
         const isControl = data.length === 1 && data.charCodeAt(0) < 32;
@@ -237,6 +352,7 @@ export function createTerminal(containerEl) {
     });
 
     terminal.open(containerEl);
+    _containerEl = containerEl;
     // xterm's default DOM renderer builds its font and size rules in <style> elements at runtime, which the Cloud
     // Hub's `style-src 'self'` policy blocks (the terminal then renders in a fallback font with wrong cell sizes).
     // The canvas renderer paints into a canvas and needs no injected style. It must load after open().
@@ -255,7 +371,7 @@ export function createTerminal(containerEl) {
     // correctly in both browsers and embedded webviews.
     requestAnimationFrame(() => {
         if (fitAddon) {
-            fitAddon.fit();
+            _sizeLocal();
             dbg('rAF fit() done, cols:', terminal?.cols, 'rows:', terminal?.rows,
                 'container:', containerEl.offsetWidth, 'x', containerEl.offsetHeight);
         }
@@ -267,7 +383,7 @@ export function createTerminal(containerEl) {
         if (_resizeObserver) _resizeObserver.disconnect();
         _resizeObserver = new ResizeObserver(() => {
             if (fitAddon && !_panelDragging && containerEl.offsetWidth > 0 && containerEl.offsetHeight > 0) {
-                fitAddon.fit();
+                _sizeLocal(true);
             }
         });
         _resizeObserver.observe(containerEl);
@@ -288,14 +404,9 @@ export function createTerminal(containerEl) {
 
     // Sync tmux pane dimensions when xterm resizes (e.g. after fitAddon.fit())
     _onResizeDisposable = terminal.onResize(({ cols, rows }) => {
-        // Only the interactive owner resizes the shared tmux pane; viewers fit locally.
-        if (terminalWs && terminalWs.readyState === WebSocket.OPEN && isInteractiveOwner()) {
-            terminalWs.send(JSON.stringify({
-                type: "terminal_resize",
-                cols: cols,
-                rows: rows,
-            }));
-        }
+        // Only a window that may set the pane's size resizes it, and never while it is only
+        // following the pane's own size (#3422).
+        if (!_following && mayResizePane()) _sendResize(cols, rows);
     });
 
     return terminal;
@@ -321,6 +432,8 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
     _connectedServer = srv;
     _paneClosed = false;
     _inputAcks = false; // until this server says it answers input (terminal_hello)
+    _pane = null;       // until this server reports the pane's size (terminal_size, #3422)
+    _seq = 0;
     _needsScrollToBottom = true;
     _setSessionEndedOverlay(false);
 
@@ -341,13 +454,7 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
         dbg('terminalWs OPEN', { sessionId, url: terminalWs.url });
         _setDisconnectedBadge(false);
         document.dispatchEvent(new CustomEvent('coral:terminal-reconnected'));
-        if (terminal && isInteractiveOwner()) {
-            terminalWs.send(JSON.stringify({
-                type: 'terminal_resize',
-                cols: terminal.cols,
-                rows: terminal.rows,
-            }));
-        }
+        if (terminal && !_following && mayResizePane()) _sendResize(terminal.cols, terminal.rows);
         // Flush any input queued while disconnected
         if (_inputQueue.length > 0) {
             const queued = _inputQueue.join("");
@@ -404,6 +511,8 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             _setDisconnectedBadge(false);
             _setSessionEndedOverlay(true);
             document.dispatchEvent(new CustomEvent('coral:terminal-closed', { detail: { sessionId } }));
+        } else if (data.type === "terminal_size") {
+            _onPaneSize(Number(data.cols), Number(data.rows), Number(data.seq) || 0, data.initial === true);
         } else if (data.type === "terminal_hello") {
             // The server answers input that carries an id (#3276).
             _inputAcks = data.input_acks === true;
@@ -419,6 +528,8 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             // The Cloud Hub dropped our input for this server's access mode (#3068): a refusal
             // of that input (#3276), named by its id when the hub echoes one.
             applyHubReadOnlyFrame(data);
+            // View only: render at the pane's size from now on (#3422).
+            _sizeLocal();
             document.dispatchEvent(new CustomEvent('coral:terminal-input-refused', { detail: { sessionId, id: data.id } }));
         }
         // Other types are ignored.
@@ -487,6 +598,11 @@ export function disposeTerminal() {
     }
     _terminalFocused = false;
     _inputQueue = [];
+    _pane = null;
+    _following = false;
+    _seq = 0;
+    if (_containerEl) _containerEl.classList.remove('xterm-follow-pane');
+    _containerEl = null;
     if (_resizeObserver) {
         _resizeObserver.disconnect();
         _resizeObserver = null;
@@ -499,9 +615,7 @@ export function disposeTerminal() {
 }
 
 export function fitTerminal() {
-    if (fitAddon) {
-        fitAddon.fit();
-    }
+    _sizeLocal();
 }
 
 export function setPanelDragging(dragging) {
@@ -554,9 +668,13 @@ export function sendTerminalInputWs(data, id) {
 
 // When this window becomes the interactive owner, push its current geometry
 // once so the shared pane matches the window that is actually typing.
+// A viewer that loses control follows the pane's size (#3422).
 document.addEventListener('coral:ownership-changed', (e) => {
-    if (!(e.detail && e.detail.owner)) return;
-    if (terminal && terminalWs && terminalWs.readyState === WebSocket.OPEN) {
-        terminalWs.send(JSON.stringify({ type: 'terminal_resize', cols: terminal.cols, rows: terminal.rows }));
-    }
+    if (!terminal) return;
+    if (!(e.detail && e.detail.owner)) { if (_pane) _followPane(); return; }
+    _sizeLocal();
+    if (terminal && !_following && mayResizePane()) _sendResize(terminal.cols, terminal.rows);
 });
+
+// The hub's or the machine's access for this agent changed (View <-> Interact).
+document.addEventListener('coral:hub-access-changed', () => _sizeLocal());

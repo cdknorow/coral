@@ -33,6 +33,13 @@ func SetReplayBytes(n int) {
 	replayBytes.Store(int64(n))
 }
 
+// PaneSizer is implemented by backends that can report a session's current terminal size
+// (#3422). The terminal socket tells every viewer the pane's real size, so a viewer that does
+// not set it (view-only, not the owner, a phone) renders at that size instead of its own.
+type PaneSizer interface {
+	PaneSize(name string) (cols, rows int, err error)
+}
+
 // TerminalBackend abstracts terminal session management.
 // Both PTY and tmux backends implement this interface.
 type TerminalBackend interface {

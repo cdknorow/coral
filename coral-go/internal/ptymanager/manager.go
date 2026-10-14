@@ -195,6 +195,18 @@ func (m *PTYBackend) Resize(name string, cols, rows uint16) error {
 	return s.resize(cols, rows)
 }
 
+// PaneSize reports the size the session's PTY was last given (#3422).
+func (m *PTYBackend) PaneSize(name string) (int, int, error) {
+	m.mu.RLock()
+	s, ok := m.sessions[name]
+	m.mu.RUnlock()
+	if !ok || !s.isRunning() {
+		return 0, 0, fmt.Errorf("%w: session %q not found", ErrTerminalGone, name)
+	}
+	cols, rows := s.size()
+	return int(cols), int(rows), nil
+}
+
 func (m *PTYBackend) Attach(name, subscriberID string) (<-chan []byte, error) {
 	m.mu.RLock()
 	s, ok := m.sessions[name]

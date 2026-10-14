@@ -266,7 +266,10 @@ async function startShard(n, gen = 0) {
   }
   const throttler = throttle > 1 ? await throttlePages(cdp, throttle) : null;
   console.log(`${shards > 1 ? `shard ${n}${gen ? ` (restart ${gen})` : ''}: ` : ''}coral http://127.0.0.1:${port}  chrome cdp :${cdp}${throttle > 1 ? `  cpu x${throttle}` : ''}  tmp ${dir}`);
-  return { n, gen, log, coral, chrome, throttler, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp) } };
+  // CORAL_TEST_TMUX_SOCKET: this shard's own tmux socket (<data>/tmux.sock), for suites that compare
+  // the pane with the dashboard (#3422).
+  return { n, gen, log, coral, chrome, throttler, env: { ...testEnv, CORAL_TEST_URL: `http://127.0.0.1:${port}`, CDP_PORT: String(cdp), CORAL_CDP_PORT: String(cdp),
+    CORAL_TEST_TMUX_SOCKET: path.join(data, 'tmux.sock') } };
 }
 
 async function stopShard(shard) {

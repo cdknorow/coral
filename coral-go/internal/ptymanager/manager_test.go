@@ -118,13 +118,24 @@ func TestPTYBackendResize(t *testing.T) {
 		t.Fatalf("Spawn failed: %v", err)
 	}
 
+	// The size it was spawned with is reported (#3422).
+	if c, r, err := backend.PaneSize("resize-test"); err != nil || c != 80 || r != 24 {
+		t.Errorf("PaneSize after spawn = %d x %d, %v; want 80 x 24", c, r, err)
+	}
+
 	// Resize should not error
 	err = backend.Resize("resize-test", 120, 40)
 	if err != nil {
 		t.Errorf("Resize failed: %v", err)
 	}
+	if c, r, err := backend.PaneSize("resize-test"); err != nil || c != 120 || r != 40 {
+		t.Errorf("PaneSize after resize = %d x %d, %v; want 120 x 40", c, r, err)
+	}
 
 	backend.Kill("resize-test")
+	if _, _, err := backend.PaneSize("resize-test"); err == nil {
+		t.Error("PaneSize of a killed session: want an error")
+	}
 }
 
 func TestPTYBackendReplay(t *testing.T) {

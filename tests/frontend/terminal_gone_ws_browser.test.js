@@ -106,8 +106,11 @@ async function run() {
         const viaSocket = await ev(`(async () => ${XT}.sendTerminalInputWs(''))()`);
         await ev(`window.sendCommand()`);
         await until(`window.__termFrames.includes('terminal_gone')`, 'the real terminal_gone frame');
-        const frames = await ev(`window.__termFrames.slice()`); // terminal_hello is the server's greeting after the replay seed: under load it can land after the reset above, so it is not what 'first' means here
-        check('the composer sent over the open socket and the server answered terminal_gone', viaSocket === true && frames.filter(t => t !== 'terminal_hello')[0] === 'terminal_gone', JSON.stringify({ viaSocket, frames }));
+        // terminal_hello is the server's greeting after the replay seed, and terminal_size reports the pane's size
+        // (#3422): under load either can land after the reset above, and neither answers the input, so they are not
+        // what 'first' means here.
+        const frames = await ev(`window.__termFrames.slice()`);
+        check('the composer sent over the open socket and the server answered terminal_gone', viaSocket === true && frames.filter(t => t !== 'terminal_hello' && t !== 'terminal_size')[0] === 'terminal_gone', JSON.stringify({ viaSocket, frames }));
         await until(`!document.getElementById('composer-error').hidden`, 'the line under the composer');
         const box = await ev(`(() => { const b = document.getElementById('composer-error'); return { hidden: b.hidden, text: b.querySelector('.composer-error-text').textContent, restart: !b.querySelector('.composer-error-restart').hidden }; })()`);
         check('the line under the composer, with Restart (as for a 409)', !box.hidden && box.text === MESSAGE && box.restart, JSON.stringify(box));
