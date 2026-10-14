@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"io"
 	"os"
 	"strings"
@@ -23,6 +24,8 @@ func main() {
 		thresholdFlag = flag.String("threshold", "15m", "Duration threshold for active-without-progress candidates (e.g. 15m, 30m)")
 	)
 	flag.Parse()
+	// Sign requests to a local Coral with the command-line token (strict local auth, #3418).
+	cliauth.InstallOperatorSigning()
 
 	board := strings.TrimSpace(*boardFlag)
 	if board == "" && flag.NArg() > 0 {

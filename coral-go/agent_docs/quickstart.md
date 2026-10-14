@@ -175,7 +175,8 @@ Go to **http://localhost:8420**.
 ## 4. Launch your first agent
 
 From the dashboard click **+New**, choose a working directory and an agent type. The
-equivalent API call:
+equivalent API call (with [strict local auth](auth.md#strict-local-auth-opt-in) on, add
+`-H "Authorization: Bearer <api key>"` to every `curl` in this guide):
 
 ```console
 $ curl -s -X POST http://127.0.0.1:8420/api/sessions/launch \

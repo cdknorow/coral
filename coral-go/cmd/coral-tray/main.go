@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"fyne.io/systray"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/loginlink"
@@ -349,7 +350,7 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 					go checkForUpdates()
 				case <-mShutdown.ClickedCh:
 					go func() {
-						killed := killAllAgents(url)
+						killed := killAllAgents(url, dataDir)
 						killCoralApp()
 						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 						defer cancel()
@@ -396,9 +397,13 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 	})
 }
 
-// killAllAgents calls the REST API to kill all running agent sessions.
-func killAllAgents(baseURL string) int {
+// killAllAgents calls the REST API to kill all running agent sessions. The requests are
+// signed with Coral's command-line token, so they work with strict local auth (#3418).
+func killAllAgents(baseURL, dataDir string) int {
 	client := &http.Client{Timeout: 5 * time.Second}
+	if tok, err := cliauth.ReadToken(dataDir); err == nil {
+		client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok}
+	}
 
 	resp, err := client.Get(baseURL + "/api/sessions/live")
 	if err != nil {

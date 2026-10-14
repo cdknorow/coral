@@ -86,6 +86,7 @@ func main() {
 	proofFile := flag.String("proof-file", "", "Optional proof file to send with the bootstrap credential (at most 16 KiB of JSON from a provider helper)")
 	cloudConnect := flag.String("cloud-connect", cloudConnectPrompt, "With --cloud-url/CORAL_CLOUD_URL on a server not yet connected: prompt (connect in the terminal at startup; without a terminal, log the link and code), auto (only log them, never prompt) or off")
 	tlsCert := flag.String("tls-cert", os.Getenv("CORAL_TLS_CERT"), "PEM certificate file: serve HTTPS (and WSS) on the port, and accept only HTTPS from other computers. Needs --tls-key (also CORAL_TLS_CERT)")
+	strictLocalAuth := flag.Bool("strict-local-auth", envTrue(os.Getenv("CORAL_STRICT_LOCAL_AUTH")), "Require a credential for every request from this computer: an agent's session token, the dashboard's sign-in (run 'coral open' to sign in) or a command-line signature; refuse an agent acting as someone else (also CORAL_STRICT_LOCAL_AUTH=1)")
 	tlsKey := flag.String("tls-key", os.Getenv("CORAL_TLS_KEY"), "PEM private key file for --tls-cert (also CORAL_TLS_KEY)")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
@@ -175,6 +176,7 @@ func main() {
 		DebugInput:         *debugInput,
 		TLSCert:            *tlsCert,
 		TLSKey:             *tlsKey,
+		StrictLocalAuth:    *strictLocalAuth,
 	})
 	if err != nil {
 		logexit.Fatalf("Failed to start: %v", err)
@@ -359,6 +361,15 @@ func mustExecutable() string {
 
 // envTruthy reports whether an environment value turns a switch on.
 func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// envTrue reports whether an environment switch is on ("1", "true", "yes", "on").
+func envTrue(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "1", "true", "yes", "on":
 		return true

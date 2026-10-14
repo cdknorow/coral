@@ -13,7 +13,14 @@ import (
 // Routes provides HTTP handlers for authentication endpoints.
 type Routes struct {
 	ks *KeyStore
+	// strictLocal: strict local auth is on (#3418), so /auth on this computer shows the
+	// locked page instead of the API-key form.
+	strictLocal bool
 }
+
+// SetStrictLocal makes /auth show LockedPageHTML to a browser on this computer that isn't
+// signed in (strict local auth, #3418). Other computers keep the API-key page.
+func (ar *Routes) SetStrictLocal(on bool) { ar.strictLocal = on }
 
 // NewRoutes creates auth route handlers.
 func NewRoutes(ks *KeyStore) *Routes {
@@ -24,6 +31,12 @@ func NewRoutes(ks *KeyStore) *Routes {
 // GET /auth
 func (ar *Routes) AuthPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if ar.strictLocal && isLocalhost(r) && !ar.ks.HasValidSession(r) {
+		// 200, so the Coral app's window renders it; the app signs in again from /auth.
+		w.Header().Set("Cache-Control", "no-store")
+		w.Write([]byte(LockedPageHTML))
+		return
+	}
 	w.Write([]byte(authPageHTML))
 }
 

@@ -38,6 +38,12 @@ type Config struct {
 	// TLS is true when the server also speaks HTTPS on its port (--tls-cert/--tls-key,
 	// #3355); set at startup once the certificate has loaded.
 	TLS bool
+	// StrictLocalAuth (--strict-local-auth or CORAL_STRICT_LOCAL_AUTH=1, #3418): a request
+	// from this computer needs a credential (an agent's session token, the dashboard's
+	// sign-in cookie or the command-line signature), and an identity that doesn't match
+	// its token is refused instead of logged. Off by default; never settable through the
+	// API, so neither Coral Hub nor an agent can turn it off.
+	StrictLocalAuth bool
 
 	// Directories
 	CoralRoot string

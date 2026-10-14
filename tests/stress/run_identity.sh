@@ -251,8 +251,10 @@ d = {k: b.get(k, 0) - a.get(k, 0) for k in ("impersonation", "operator", "cross_
 sys.exit(0 if d == {"impersonation": 1, "operator": 1, "cross_board": 1} else 1)
 PY
 grep -q "\[identity\] mismatch" "$TMP/server.log" && pass "the server log has the mismatch lines" || fail "no mismatch line in the server log"
-log "SKIP: strict-mode refusal is phase 2 (v1.4.18); phase 1 only reports what it would refuse: $(rjson 'd["would_break_in_strict_mode"]')"
-
-
+log "What strict mode would refuse, by caller, tool and route (#3418; this script's own curl calls are local_other curl):"
+report | python3 -c '
+import sys, json
+for k, v in sorted(json.load(sys.stdin).get("would_break_by_route", {}).items(), key=lambda kv: -kv[1]):
+    print("[identity]   %5d  %s" % (v, k))'
 log "Done: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

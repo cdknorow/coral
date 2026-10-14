@@ -7,11 +7,17 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -32,11 +38,16 @@ const (
 	callerHub           = "coral_hub"           // through the Coral Hub tunnel
 	callerAPIKey        = "api_key"
 	callerLocalOther    = "local_other" // curl, scripts, the CLI without a token
+	callerCLISigned     = "cli_signed"  // a command-line signature (#3418): the local Operator
+	callerOpen          = "open"        // the liveness check and the command line's hello
 	mismatchCrossBoard  = "cross_board"
 	mismatchImpersonate = "impersonation"
 	mismatchOperator    = "operator"
 	identityLogInterval = 5 * time.Minute
 	identityRecentMax   = 50
+	// identityBreakKeysMax bounds the would-break breakdown (distinct caller, tool and
+	// route triples); later new triples are counted under "other".
+	identityBreakKeysMax = 200
 )
 
 // wouldBreak are the caller types strict mode would refuse.
@@ -67,21 +78,31 @@ type IdentityObserver struct {
 	bs         *board.Store
 	hasSession func(*http.Request) bool
 
+	// Strict local auth (#3418), set once before serving (SetStrict).
+	strict    bool
+	validKey  func(*http.Request) bool                  // a valid API key in the request
+	verifyCLI func(*http.Request) (*http.Request, bool) // a valid command-line signature
+
 	mu         sync.Mutex
 	callers    map[string]int64
 	bySession  map[string]int64 // token-attributed requests per session name
 	byTool     map[string]int64 // token-attributed requests per tool (User-Agent name)
 	mismatches map[string]int64
-	recent     []IdentityMismatch
-	lastLog    map[string]time.Time
-	now        func() time.Time
+	// breakBy counts would-break requests by "caller tool METHOD /route/{pattern}" (#3418):
+	// which callers strict mode would refuse, and where.
+	breakBy map[string]int64
+	// refused counts strict-mode refusals by code (#3418): zero in a healthy team.
+	refused map[string]int64
+	recent  []IdentityMismatch
+	lastLog map[string]time.Time
+	now     func() time.Time
 }
 
 // NewIdentityObserver returns the observer; hasSession reports a valid dashboard cookie.
 func NewIdentityObserver(db *store.DB, bs *board.Store, hasSession func(*http.Request) bool) *IdentityObserver {
 	return &IdentityObserver{db: db, bs: bs, hasSession: hasSession,
 		callers: map[string]int64{}, bySession: map[string]int64{}, byTool: map[string]int64{},
-		mismatches: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
+		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
 }
 
 var agentToolPrefixes = []string{"coral-board/", "coral-agent/", "coral-hook-"}
@@ -96,10 +117,28 @@ func isAgentTool(r *http.Request) bool {
 	return false
 }
 
-// Middleware observes; it never refuses a request (phase 1).
+// SetStrict turns on strict local auth (#3418): requests from this computer that strict
+// mode would refuse are refused instead of counted. validKey checks an API key;
+// verifyCLI checks a command-line signature (and uses up its nonce).
+func (o *IdentityObserver) SetStrict(validKey func(*http.Request) bool, verifyCLI func(*http.Request) (*http.Request, bool)) {
+	o.strict, o.validKey, o.verifyCLI = true, validKey, verifyCLI
+}
+
+// Strict reports whether strict local auth is on.
+func (o *IdentityObserver) Strict() bool { return o != nil && o.strict }
+
+// Middleware classifies every request. In phase 1 (log only) it never refuses one; with
+// strict local auth it refuses what the report lists as would-break.
 func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if o == nil || !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/ws/") {
+		if o == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !strings.HasPrefix(r.URL.Path, "/api/") && !strings.HasPrefix(r.URL.Path, "/ws/") {
+			if o.strict && o.lockPage(w, r) {
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -107,33 +146,173 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			owner, err := o.db.SessionTokenOwnerOf(r.Context(), token)
 			if err != nil {
 				o.count(callerAgentBadToken)
-				o.logOnce("bad_token:"+r.UserAgent(), "[identity] request with an unknown or revoked session token", "request", r.Method+" "+r.URL.Path, "tool", r.UserAgent())
+				o.logOnce("bad_token:"+r.UserAgent(), "[identity] request with an unknown or revoked session token", "request", r.Method+" "+r.URL.Path, "tool", r.UserAgent(), "strict", o.strict)
+				if o.strict {
+					o.countBreak(callerAgentBadToken, r)
+					o.refuse(w, http.StatusUnauthorized, "session_token_required",
+						"This agent's session token is unknown or no longer valid (the agent was restarted or closed). Restart the agent from Coral.")
+					return
+				}
 				next.ServeHTTP(w, r)
+				o.countBreak(callerAgentBadToken, r)
 				return
 			}
 			o.count(callerAgentToken)
 			o.attribute(owner.SessionName, r.UserAgent())
+			if o.strict {
+				// The token is the whole identity: a command-line signature on the same
+				// request never adds the Operator's authority (#3418).
+				r.Header.Del(cliauth.CLIAuthHeader)
+			}
 			r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
-			o.checkBoard(r, owner)
+			if m := o.checkBoard(r, owner); m != nil && o.strict {
+				o.refuse(w, http.StatusForbidden, "identity_mismatch",
+					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
+				return
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
-		switch {
-		case isAgentTool(r):
-			o.count(callerAgentNoToken)
-		case cloud.Tunneled(r):
-			o.count(callerHub)
-		case r.Header.Get("X-API-Key") != "" || r.URL.Query().Get("api_key") != "" || strings.HasPrefix(strings.ToLower(r.Header.Get("Authorization")), "bearer "):
-			o.count(callerAPIKey)
-		case o.hasSession != nil && o.hasSession(r):
-			o.count(callerDashCookie)
-		case sameOriginFetch(r) && (r.Header.Get("Origin") != "" || r.Header.Get("Referer") != "" || r.Header.Get("Sec-Fetch-Site") != ""):
-			o.count(callerDashNoCookie)
-		default:
-			o.count(callerLocalOther)
+		caller := o.classify(r)
+		o.count(caller)
+		if o.strict {
+			r2, ok := o.admit(r, caller)
+			if !ok {
+				o.countBreak(caller, r)
+				if caller == callerAgentNoToken {
+					o.refuse(w, http.StatusUnauthorized, "session_token_required",
+						"This tool runs without the agent's session token (an agent started before strict mode or before v1.4.19?). Restart the agent from Coral.")
+				} else {
+					o.refuse(w, http.StatusUnauthorized, "dashboard_auth_required",
+						"Coral is locked: open it from the Coral app, or run 'coral open' to sign in this browser")
+				}
+				return
+			}
+			next.ServeHTTP(w, r2)
+			return
 		}
 		next.ServeHTTP(w, r)
+		if wouldBreak[caller] {
+			o.countBreak(caller, r)
+		}
 	})
+}
+
+// strictOpenPaths need no credential in strict mode: the liveness check and the command
+// line's hello (step 1 of its signature, which proves the server, not the caller).
+var strictOpenPaths = map[string]bool{"GET /api/health": true, "HEAD /api/health": true, "POST " + cliauth.CLIHelloPath: true}
+
+// admit applies strict local auth to a request with no session token: the request (with
+// what was verified recorded on it) and whether it may go on.
+func (o *IdentityObserver) admit(r *http.Request, caller string) (*http.Request, bool) {
+	if strictOpenPaths[r.Method+" "+r.URL.Path] {
+		return r, true
+	}
+	switch auth.MethodFrom(r.Context()) {
+	case auth.MethodAPIKey, auth.MethodSession:
+		return r, true // another computer, checked by the auth middleware
+	}
+	if cloud.TunneledAuthentic(r) {
+		return r, true // Coral Hub: the tunnel's own rules (a forged stamp is not this)
+	}
+	if r.Header.Get(cliauth.CLIAuthHeader) != "" && o.verifyCLI != nil {
+		if r2, ok := o.verifyCLI(r); ok {
+			return r2, true // the person at the command line: the local Operator
+		}
+		return r, false
+	}
+	if caller == callerAgentNoToken {
+		return r, false // never promoted: an agent tool needs its own token
+	}
+	if o.hasSession != nil && o.hasSession(r) {
+		return r, true
+	}
+	if o.validKey != nil && o.validKey(r) {
+		return r, true
+	}
+	return r, false
+}
+
+// lockPage sends a page load without the dashboard's sign-in to /auth (#3418), the way
+// the API-key flow does, so the Coral app signs in again by itself. It reports whether it
+// answered.
+func (o *IdentityObserver) lockPage(w http.ResponseWriter, r *http.Request) bool {
+	p := r.URL.Path
+	if p == "/auth" || strings.HasPrefix(p, "/auth/") || strings.HasPrefix(p, "/static/") || p == "/manifest.json" || p == "/favicon.ico" {
+		return false
+	}
+	switch auth.MethodFrom(r.Context()) {
+	case auth.MethodAPIKey, auth.MethodSession:
+		return false
+	}
+	if cloud.TunneledAuthentic(r) || (o.hasSession != nil && o.hasSession(r)) || (o.validKey != nil && o.validKey(r)) {
+		return false
+	}
+	http.Redirect(w, r, "/auth?locked=1&return_to="+url.QueryEscape(auth.SafeReturnTo(r.URL.RequestURI())), http.StatusTemporaryRedirect)
+	return true
+}
+
+// refuse answers a strict-mode refusal and counts it by code.
+func (o *IdentityObserver) refuse(w http.ResponseWriter, status int, code, msg string) {
+	o.mu.Lock()
+	o.refused[code]++
+	o.mu.Unlock()
+	writeJSON(w, status, map[string]any{"error": msg, "code": code})
+}
+
+// classify names the caller of a request that carries no session token.
+func (o *IdentityObserver) classify(r *http.Request) string {
+	switch {
+	case strictOpenPaths[r.Method+" "+r.URL.Path]:
+		return callerOpen
+	case r.Header.Get(cliauth.CLIAuthHeader) != "":
+		return callerCLISigned
+	case isAgentTool(r):
+		return callerAgentNoToken
+	case cloud.Tunneled(r):
+		return callerHub
+	case r.Header.Get("X-API-Key") != "" || r.URL.Query().Get("api_key") != "" || strings.HasPrefix(strings.ToLower(r.Header.Get("Authorization")), "bearer "):
+		return callerAPIKey
+	case o.hasSession != nil && o.hasSession(r):
+		return callerDashCookie
+	case sameOriginFetch(r) && (r.Header.Get("Origin") != "" || r.Header.Get("Referer") != "" || r.Header.Get("Sec-Fetch-Site") != ""):
+		return callerDashNoCookie
+	}
+	return callerLocalOther
+}
+
+// countBreak records where a would-break request went: the caller type, the tool (the
+// User-Agent's product name) and the route pattern chi matched (after routing, so ids
+// don't multiply the keys). Never the query or any identity value.
+func (o *IdentityObserver) countBreak(caller string, r *http.Request) {
+	tool, _, _ := strings.Cut(r.UserAgent(), "/")
+	tool = strings.TrimSpace(tool)
+	if tool == "" {
+		tool = "-"
+	}
+	if len(tool) > 40 {
+		tool = tool[:40]
+	}
+	route := ""
+	if rc := chi.RouteContext(r.Context()); rc != nil {
+		route = rc.RoutePattern()
+		if route == "" && rc.Routes != nil {
+			// Refused before routing (strict mode): ask the router which route it was.
+			if tctx := chi.NewRouteContext(); rc.Routes.Match(tctx, r.Method, r.URL.Path) {
+				route = tctx.RoutePattern()
+			}
+		}
+	}
+	if route == "" {
+		route = "(unrouted)"
+	}
+	key := caller + " " + tool + " " + r.Method + " " + route
+	o.mu.Lock()
+	if _, ok := o.breakBy[key]; !ok && len(o.breakBy) >= identityBreakKeysMax {
+		key = caller + " other"
+	}
+	o.breakBy[key]++
+	o.mu.Unlock()
 }
 
 // attribute counts a token-attributed request by session and by tool.
@@ -167,23 +346,29 @@ func (o *IdentityObserver) logOnce(key, msg string, args ...any) {
 	slog.Warn(msg, args...)
 }
 
-// checkBoard compares a board request's claimed identity with the token's session.
-func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) {
+// checkBoard compares a board request's claimed identity with the token's session, and
+// returns the first mismatch (nil when there is none). Every mismatch is recorded.
+func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionTokenOwner) (first *IdentityMismatch) {
 	rest, ok := strings.CutPrefix(r.URL.Path, "/api/board/")
 	if !ok || o.bs == nil {
-		return
+		return nil
 	}
 	project, _, _ := strings.Cut(rest, "/")
 	switch project {
 	case "", "projects", "tasks", "remotes":
-		return
+		return nil
 	}
 	sub, err := o.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
 	if err != nil || sub == nil {
-		return // not on a board yet (it may be subscribing now)
+		return nil // not on a board yet (it may be subscribing now)
+	}
+	note := func(m IdentityMismatch) {
+		if first == nil {
+			first = &m
+		}
 	}
 	if !strings.EqualFold(project, sub.Project) {
-		o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project")
+		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
 	}
 	claims := map[string][]string{}
 	for _, f := range []string{"subscriber_id", "as", "created_by"} {
@@ -209,17 +394,18 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 			switch {
 			case v == "" || v == sub.SubscriberID:
 			case strings.EqualFold(v, "Operator"):
-				o.mismatch(r, owner, mismatchOperator, sub.SubscriberID, v, f)
+				note(o.mismatch(r, owner, mismatchOperator, sub.SubscriberID, v, f))
 			case f == "as" && strings.EqualFold(v, sub.JobTitle):
 				// 'as' is a display name for auto-subscribe: the session's own role is fine
 			default:
-				o.mismatch(r, owner, mismatchImpersonate, sub.SubscriberID, v, f)
+				note(o.mismatch(r, owner, mismatchImpersonate, sub.SubscriberID, v, f))
 			}
 		}
 	}
+	return first
 }
 
-func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOwner, kind, expected, claimed, field string) {
+func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOwner, kind, expected, claimed, field string) IdentityMismatch {
 	m := IdentityMismatch{At: o.now().UTC().Format(time.RFC3339), Kind: kind, Session: owner.SessionName,
 		Expected: expected, Claimed: claimed, Field: field, Request: r.Method + " " + r.URL.Path}
 	o.mu.Lock()
@@ -229,8 +415,13 @@ func (o *IdentityObserver) mismatch(r *http.Request, owner *store.SessionTokenOw
 		o.recent = o.recent[len(o.recent)-identityRecentMax:]
 	}
 	o.mu.Unlock()
-	o.logOnce("mismatch:"+owner.SessionName+":"+kind, "[identity] mismatch (log only)",
+	msg := "[identity] mismatch (log only)"
+	if o.strict {
+		msg = "[identity] mismatch refused (strict local auth)"
+	}
+	o.logOnce("mismatch:"+owner.SessionName+":"+kind, msg,
 		"kind", kind, "session", owner.SessionName, "expected", expected, "claimed", claimed, "field", field, "request", m.Request)
+	return m
 }
 
 // Report is the phase-1 identity report.
@@ -249,6 +440,14 @@ func (o *IdentityObserver) Report() map[string]any {
 	for k, v := range o.mismatches {
 		mm[k] = v
 	}
+	breakBy := map[string]int64{}
+	for k, v := range o.breakBy {
+		breakBy[k] = v
+	}
+	refused := map[string]int64{}
+	for k, v := range o.refused {
+		refused[k] = v
+	}
 	recent := append([]IdentityMismatch(nil), o.recent...)
 	sessions, tools := map[string]int64{}, map[string]int64{}
 	for k, v := range o.bySession {
@@ -257,6 +456,10 @@ func (o *IdentityObserver) Report() map[string]any {
 	for k, v := range o.byTool {
 		tools[k] = v
 	}
-	return map[string]any{"mode": "log_only", "callers": callers, "would_break_in_strict_mode": breaking,
+	mode := "log_only"
+	if o.strict {
+		mode = "strict"
+	}
+	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused,
 		"mismatches": mm, "recent_mismatches": recent, "attributed_by_session": sessions, "attributed_by_tool": tools}
 }

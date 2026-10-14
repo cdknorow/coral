@@ -230,6 +230,17 @@ func post(baseURL, board, sessionName, message string) {
 }
 
 func readMessages(baseURL, board string) int {
+	// Like a real agent (#3418): read through coral-board, which carries the session token,
+	// so the stand-in also works with strict local auth. The count is only for the log.
+	if cb := os.Getenv("MOCK_AGENT_CORAL_BOARD"); cb != "" {
+		cmd := exec.Command(cb, "read")
+		cmd.Env = append(os.Environ(), "CORAL_URL="+baseURL)
+		out, err := cmd.Output()
+		if err != nil {
+			return -1
+		}
+		return strings.Count(string(out), "\n[")
+	}
 	resp, err := http.Get(fmt.Sprintf("%s/api/board/%s/messages", baseURL, board))
 	if err != nil {
 		return -1

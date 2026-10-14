@@ -106,7 +106,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			returnTo := r.URL.RequestURI()
+			returnTo := SafeReturnTo(r.URL.RequestURI())
 			http.Redirect(w, r, "/auth?return_to="+url.QueryEscape(returnTo), http.StatusTemporaryRedirect)
 		})
 	}
@@ -139,4 +139,19 @@ func isValidLocalhostHost(host string) bool {
 	}
 	// Reject external domain names
 	return false
+}
+
+// SafeReturnTo returns p when it is a path on this origin, else "/" (#3418): it must
+// start with one "/", and contain no backslash (browsers read "/\" as "//", another
+// host) and no control character. The /auth page applies the same rule.
+func SafeReturnTo(p string) string {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.ContainsRune(p, '\\') {
+		return "/"
+	}
+	for _, c := range p {
+		if c < 0x20 || c == 0x7f {
+			return "/"
+		}
+	}
+	return p
 }

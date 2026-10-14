@@ -16,6 +16,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/peercred"
 	"github.com/cdknorow/coral/internal/store"
@@ -167,6 +168,9 @@ func (h *CloudHandler) refuseCloud(w http.ResponseWriter, r *http.Request, allow
 	}
 	if allow&allowDashboard != 0 && r.Header.Get(cloud.CLIAuthHeader) == "" && localDashboard(r) {
 		return false
+	}
+	if allow&allowCLI != 0 && cliauth.Verified(r) {
+		return false // strict local auth checked the signature already (#3418)
 	}
 	if allow&allowCLI != 0 && r.Header.Get(cloud.CLIAuthHeader) != "" && localCLI(r) {
 		// The MAC covers the body, so read it here and give the handler a copy.
@@ -404,6 +408,36 @@ func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+// VerifyCLI checks a command-line signature for strict local auth (#3418): a loopback
+// request without browser headers, from Coral's own user, signed with the command-line
+// token. It uses up the nonce and returns the request marked cliauth.Verified, with its
+// body restored, so the cloud routes accept it without checking again.
+func (h *CloudHandler) VerifyCLI(r *http.Request) (*http.Request, bool) {
+	if r.Header.Get(cloud.CLIAuthHeader) == "" || !localCLI(r) {
+		return r, false
+	}
+	if same, supported := h.sameUser(r); supported && !same {
+		return r, false
+	}
+	var body []byte
+	if r.Body != nil && r.Body != http.NoBody {
+		b, err := io.ReadAll(io.LimitReader(r.Body, cliSignedBodyMax+1))
+		r.Body.Close()
+		if err != nil || len(b) > cliSignedBodyMax {
+			return r, false
+		}
+		body = b
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	if !h.cliAuth.Verify(r, body) {
+		return r, false
+	}
+	return cliauth.WithVerified(r), true
+}
+
+// cliSignedBodyMax matches the command-line transport's limit (an artifact upload).
+const cliSignedBodyMax = 32 << 20
 
 // SetLinkedCheck replaces how the handler tells whether a Hub link exists (tests that
 // run a tunnel without enrolling with a hub).

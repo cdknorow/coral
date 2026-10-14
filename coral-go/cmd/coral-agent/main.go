@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"io"
 	"net/http"
@@ -57,6 +58,8 @@ Commands:
   history search <query> [flags] Search conversation history (post-compaction)
   history context [sess] <idx>   Retrieve surrounding conversation context
   search <query> [flags]         Shortcut for 'history search'
+  notify --title T [--message M] [--level L] [--alert]
+                                 Show a notification on the dashboard
 
 Environment:
   CORAL_URL   Server URL (default http://localhost:8420)
@@ -64,6 +67,9 @@ Environment:
 
 func main() {
 	hooks.InstallIdentity("coral-agent") // the agent session's token, sent with every request (#3387)
+	// A person running it in their own terminal (no agent session) signs with the
+	// command-line token instead, as the local Operator (strict local auth, #3418).
+	cliauth.InstallOperatorSigning()
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -101,6 +107,11 @@ func main() {
 		cmdHistory(os.Args[2:])
 	case "search":
 		cmdHistorySearch(os.Args[2:])
+	case "notify":
+		if err := cmdNotify(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
 	case "--help", "-h", "help":
 		printUsage()
 	default:

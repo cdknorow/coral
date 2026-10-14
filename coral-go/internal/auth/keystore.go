@@ -360,6 +360,17 @@ func generateToken(length int) (string, error) {
 // HasValidSession reports whether the request carries a valid session cookie. Loopback
 // requests are never asked for one today; the identity report (#3387) counts the ones
 // without it, which strict mode would refuse.
+// HasValidKey reports whether the request carries this server's API key (Bearer or
+// ?api_key=). Loopback requests skip the API-key check in Middleware; strict local auth
+// (#3418) admits a local request that has a valid one.
+func (ks *KeyStore) HasValidKey(r *http.Request) bool {
+	if ks == nil {
+		return false
+	}
+	key := extractAPIKey(r)
+	return key != "" && ks.ValidateKey(key)
+}
+
 func (ks *KeyStore) HasValidSession(r *http.Request) bool {
 	if ks == nil {
 		return false

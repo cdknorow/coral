@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"github.com/cdknorow/coral/internal/hooks"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"github.com/cdknorow/coral/internal/testguard"
@@ -277,6 +278,9 @@ func apiCall(method, path string, body any) (map[string]any, error) {
 
 func main() {
 	hooks.InstallIdentity("coral-board") // the agent session's token, sent with every request (#3387)
+	// A person running it in their own terminal (no agent session) signs with the
+	// command-line token instead, as the local Operator (strict local auth, #3418).
+	cliauth.InstallOperatorSigning()
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)

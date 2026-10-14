@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/cliauth"
 	"io"
 	"net/http"
 	"os"
@@ -39,7 +40,15 @@ func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	// The kill switch must work with strict local auth (#3418): sign with Coral's
+	// command-line token when this user can read it (never inside an agent session).
+	client := &http.Client{Timeout: 15 * time.Second}
+	if !cliauth.InsideAgentSession() {
+		if tok, err := cliauth.ReadToken(cliauth.DataDir()); err == nil {
+			client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok}
+		}
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(stderr, "coral auto-accept: could not reach Coral at %s: %v\n", *base, err)
 		return 1

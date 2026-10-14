@@ -115,9 +115,9 @@ Returns the current authentication status and method used.
 | `"session"` | Authenticated via session cookie |
 | `"none"` | Not authenticated |
 
-## Agent identity and sign-in links (phase 1: log only)
+## Agent identity and sign-in links
 
-Coral is moving from "anything on this computer is trusted" to "every caller says who it is". Phase 1 (#3387) only **observes**: nothing is refused, and the report below shows what a stricter mode would break.
+Coral is moving from "anything on this computer is trusted" to "every caller says who it is". Phase 1 (#3387) only **observes** and reports what a stricter mode would break. Phase 2 (#3418) adds that stricter mode as an **opt-in**: [strict local auth](#strict-local-auth-opt-in), off by default.
 
 ### Per-session agent tokens
 
@@ -133,14 +133,43 @@ The server attributes each request to the token's session and its board subscrip
 
 At startup Coral mints a single-use sign-in token, valid 10 minutes, writes it to `<data>/login_token` (0600) and opens the browser with `http://localhost:<port>/?login_token=…`. With no display (`--no-browser`, a Linux box without `DISPLAY`) it prints the link instead. Opening the link trades the token for the dashboard's session cookie (HttpOnly, SameSite=Strict) and redirects to the same page without it. A used or expired link answers 403.
 
-`coral open` asks the running Coral for a fresh link (through the same handshake as `coral cloud`) and opens it, or prints it with `--print` or without a display. In phase 1 the dashboard keeps working on this computer without the cookie.
+`coral open` asks the running Coral for a fresh link (through the same handshake as `coral cloud`) and opens it, or prints it with `--print` or without a display. Without strict local auth the dashboard also works on this computer without the cookie; with it, the cookie is required.
 
 Coral's own apps sign in the same way, with no API key and no prompt (#3394). The tray and `launch-coral` run the server themselves and open every dashboard window or browser tab with a fresh link from it. The desktop window (`coral-app`) gets its first link from the tray in its environment (never on the command line, where other users could read it with `ps`), or, started on its own, asks Coral through the command-line handshake. If its session ends and the dashboard shows the sign-in page, it asks for a new link and signs in again (at most once every 30 seconds). Links are never written to logs; they appear as `login_token=REDACTED`. A Coral without sign-in links (before #3387) is opened at its plain address, as before.
 
 ### Identity report
 
-`GET /api/system/identity-report` (the dashboard on this computer or the coral CLI only; never through Coral Hub, never an agent's plain request) returns counts by caller type (`agent_token`, `agent_bad_token`, `agent_no_token`, `dashboard_cookie`, `dashboard_no_cookie`, `coral_hub`, `api_key`, `local_other`), the subset strict mode would refuse (`would_break_in_strict_mode`), mismatch counts by kind (`impersonation`, `operator`, `cross_board`) and the last 50 mismatches (never a token).
+`GET /api/system/identity-report` (the dashboard on this computer or the coral CLI only; never through Coral Hub, never an agent's plain request) returns `mode` (`log_only` or `strict`), counts by caller type (`agent_token`, `agent_bad_token`, `agent_no_token`, `dashboard_cookie`, `dashboard_no_cookie`, `coral_hub`, `api_key`, `local_other`), the subset strict mode would refuse (`would_break_in_strict_mode`), the same broken down as `"caller tool METHOD /route/{pattern}"` (`would_break_by_route`, e.g. `"local_other curl GET /api/sessions/live": 8`; the tool is the User-Agent's product name; never ids, queries or identity values; at most 200 keys), mismatch counts by kind (`impersonation`, `operator`, `cross_board`) and the last 50 mismatches (never a token). Read `would_break_by_route` before turning strict mode on: every line is something that will be refused.
 
 ### System messages
 
 Board messages Coral posts itself (the task queue, the health monitor) carry `is_system: true`, set by the server only and never inferred from a sender's name. The chat collapses them by that flag.
+
+### Strict local auth (opt-in)
+
+Start Coral with `--strict-local-auth` (or `CORAL_STRICT_LOCAL_AUTH=1`). It is a startup switch only: no setting or API turns it on or off, so neither Coral Hub nor an agent can change it. Agents never inherit the variable.
+
+With it on, a request **from this computer** needs one of:
+
+| Caller | Credential |
+|---|---|
+| An agent's tools (`coral-board`, `coral-agent`, the `coral-hook-*` hooks) | the agent's session token, which Coral gives them automatically (nothing to do) |
+| The dashboard in a browser | its sign-in cookie: open Coral from the app or tray, or run `coral open` |
+| You at the command line (`coral-board`/`coral-agent` in your own terminal, `coral auto-accept off --all`, `coral open`, `coral cloud`, the tray's Shutdown, `coral-coordination-report`) | a signature made with Coral's command-line token (`<data>/cli-token`, 0600): automatic when you run them as the user Coral runs as. They act as the local Operator. |
+| A script | the API key (`Authorization: Bearer <key>`), or one of the above |
+
+Always open: `GET /api/health`, the command line's hello (`POST /api/cloud/cli-hello`), the sign-in page (`/auth`), static files. Coral Hub (the tunnel) and other computers (API key or sign-in) keep their own rules.
+
+What is refused:
+
+| Request | Answer |
+|---|---|
+| An agent's tool acting as someone else: another member (`subscriber_id`, `as`, `created_by`), the `Operator`, or another board | 403 `identity_mismatch` (also logged and in the report) |
+| An agent's tool with an unknown or revoked token, or none (an agent started before v1.4.19, or a token removed) | 401 `session_token_required`: restart the agent from Coral |
+| Anything else without a credential (`curl`, a browser with no sign-in) | 401 `dashboard_auth_required`; a page load is sent to `/auth?locked=1&return_to=…` |
+
+Inside an agent session (`CORAL_SESSION_NAME` is set) the tools **never** fall back to the command-line signature, even if they could read the token file: an agent whose token is missing is refused, not promoted to Operator.
+
+**Recovering:** run `coral open` (or open Coral from the app or the tray) to sign the browser in again. If an agent is refused with `session_token_required`, restart it. To turn strict mode off, restart Coral without the flag.
+
+**What it protects against, and what it doesn't.** Strict mode is about **mistakes and prompt-injected agents acting through Coral's tools**: an agent told to post as the Orchestrator or the Operator, to work on another team's board, or a stray local script or web page calling Coral's API without a sign-in. It is **not** a defence against a malicious program running as your user: such a program can read Coral's data folder (the command-line token, the sign-in link file) and act as you. Keep untrusted code in another user account or a sandbox.

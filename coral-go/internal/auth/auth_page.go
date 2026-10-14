@@ -79,7 +79,10 @@ const authPageHTML = `<!DOCTYPE html>
   const params = new URLSearchParams(window.location.search);
   const urlKey = params.get('api_key');
 	const requestedReturnTo = params.get('return_to');
+	// A path on this origin only (auth.SafeReturnTo): one leading "/", no backslash
+	// ("/\host" is another host to a browser), no control character.
 	const returnTo = requestedReturnTo && requestedReturnTo.startsWith('/') && !requestedReturnTo.startsWith('//')
+			&& !requestedReturnTo.includes('\\') && !/[\u0000-\u001f\u007f]/.test(requestedReturnTo)
 		? requestedReturnTo
 		: '/';
   if (urlKey) {

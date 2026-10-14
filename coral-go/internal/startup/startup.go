@@ -77,6 +77,8 @@ type Options struct {
 	// accepts only HTTPS from other computers. Only one, or a pair that does not load,
 	// stops startup.
 	TLSCert, TLSKey string
+	// StrictLocalAuth turns on strict local auth (--strict-local-auth, #3418).
+	StrictLocalAuth bool
 }
 
 // RunningServer holds all resources created during startup.
@@ -332,6 +334,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 		return nil, err
 	}
 	cfg.TLS = tlsConfig != nil
+	cfg.StrictLocalAuth = opts.StrictLocalAuth
 
 	// Bind the port now and keep the listener open to avoid a TOCTOU race
 	// (another process grabbing the port between check and serve).

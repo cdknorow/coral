@@ -318,6 +318,16 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(routes.RequestMetrics(s.db))
 	// Identity phase 1 (#3387): who each request is from; mismatches logged, never refused.
 	s.identity = routes.NewIdentityObserver(s.db, s.boardStore, s.keyStore.HasValidSession)
+	if s.cfg.StrictLocalAuth {
+		// Phase 2 (#3418): refuse what the report lists instead of logging it.
+		log.Printf("[identity] strict local auth is on: requests from this computer need an agent session token, the dashboard sign-in (coral open) or a command-line signature")
+		s.identity.SetStrict(s.keyStore.HasValidKey, func(r *http.Request) (*http.Request, bool) {
+			if s.cloudHandler == nil {
+				return r, false
+			}
+			return s.cloudHandler.VerifyCLI(r)
+		})
+	}
 	r.Use(s.identity.Middleware)
 
 	// Health check — the native app polls this every 5s to detect crashes.
@@ -332,6 +342,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Auth endpoints
 	authRoutes := auth.NewRoutes(s.keyStore)
+	authRoutes.SetStrictLocal(s.cfg.StrictLocalAuth) // /auth here shows the locked page (#3418)
 	r.Get("/auth", authRoutes.AuthPage)
 	r.Post("/auth", authRoutes.ValidateKey)
 	r.Post("/auth/key", authRoutes.ValidateKey)
