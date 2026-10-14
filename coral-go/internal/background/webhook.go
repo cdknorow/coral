@@ -30,7 +30,7 @@ type WebhookDispatcher struct {
 func NewWebhookDispatcher(webhookStore *store.WebhookStore, interval time.Duration) *WebhookDispatcher {
 	return &WebhookDispatcher{
 		store:    webhookStore,
-		client:   &http.Client{Timeout: 10 * time.Second},
+		client:   httputil.WebhookClient(10 * time.Second), // #3363: no private targets, checked at dial time
 		interval: interval,
 		logger:   slog.Default().With("service", "webhook_dispatcher"),
 	}
@@ -72,8 +72,9 @@ func (d *WebhookDispatcher) deliverNow(ctx context.Context, delivery store.Webho
 		return false
 	}
 
-	// SSRF protection: validate webhook URL doesn't target internal networks
-	if _, err := httputil.ResolveAndValidateURL(cfg.URL); err != nil {
+	// SSRF protection (#3363): the client refuses private targets at dial time too; this
+	// check gives the delivery a clear error without a connection attempt.
+	if err := httputil.ValidateWebhookURL(ctx, cfg.URL); err != nil {
 		errMsg := fmt.Sprintf("webhook URL blocked (SSRF): %v", err)
 		d.store.MarkWebhookDelivery(ctx, delivery.ID, "failed", nil, &errMsg, nil, nil)
 		return false

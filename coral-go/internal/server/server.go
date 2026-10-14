@@ -25,6 +25,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -247,6 +248,8 @@ func (s *Server) buildRouter() chi.Router {
 	// Requests that came through the Cloud Hub tunnel (marked by the connector) are
 	// re-checked against the connector's route policy before anything else sees them.
 	r.Use(cloud.Guard(routes.MaxModeFromSettings(store.NewSessionStore(s.db))))
+	// Outbound webhooks may reach private networks only when the user says so (#3363).
+	httputil.SetWebhookAllowPrivate(webhookAllowPrivateFromSettings(store.NewSessionStore(s.db)))
 	// NOTE: middleware.RealIP was intentionally removed. It rewrites r.RemoteAddr
 	// from X-Forwarded-For headers, which would allow an attacker to spoof
 	// 127.0.0.1 and bypass auth.IsLocalhost(). Coral is a desktop app with no
@@ -892,6 +895,25 @@ func markWelcomePending(db *store.DB) {
 		SELECT 'welcome_pending', 'True' WHERE NOT EXISTS (SELECT 1 FROM user_settings WHERE key = 'welcome_choice')
 		ON CONFLICT(key) DO NOTHING`); err != nil {
 		log.Printf("first-launch screen: %v", err)
+	}
+}
+
+// webhookAllowPrivateFromSettings reads the webhook_allow_private setting (or
+// CORAL_WEBHOOK_ALLOW_PRIVATE=1) on each call, so a change applies to the next delivery.
+func webhookAllowPrivateFromSettings(ss *store.SessionStore) func() bool {
+	return func() bool {
+		if envTrue("CORAL_WEBHOOK_ALLOW_PRIVATE") {
+			return true
+		}
+		st, err := ss.GetSettings(context.Background())
+		if err != nil {
+			return false
+		}
+		switch strings.ToLower(strings.TrimSpace(st["webhook_allow_private"])) {
+		case "1", "true", "yes":
+			return true
+		}
+		return false
 	}
 }
 

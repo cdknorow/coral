@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/tracking"
 )
@@ -744,6 +745,12 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	if body.JobTitle == "" {
 		body.JobTitle = "Agent"
 	}
+	if body.WebhookURL != nil && *body.WebhookURL != "" {
+		if err := httputil.ValidateWebhookURL(r.Context(), *body.WebhookURL); err != nil {
+			errBadRequest(w, err.Error())
+			return
+		}
+	}
 	sub, err := h.bs.Subscribe(r.Context(), project, subscriberID, body.JobTitle, body.SessionName, body.WebhookURL, nil, body.ReceiveMode)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -873,7 +880,6 @@ func (h *BoardHandler) dispatchWebhooks(project, senderSubscriberID string, msg 
 		return
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
 	for _, target := range targets {
 		if target.WebhookURL == nil || *target.WebhookURL == "" {
 			continue
@@ -884,7 +890,7 @@ func (h *BoardHandler) dispatchWebhooks(project, senderSubscriberID string, msg 
 				return
 			}
 			req.Header.Set("Content-Type", "application/json")
-			resp, err := client.Do(req)
+			resp, err := boardWebhookClient.Do(req)
 			if err != nil {
 				slog.Debug("board webhook delivery failed", "url", url, "error", err)
 				return
@@ -893,6 +899,10 @@ func (h *BoardHandler) dispatchWebhooks(project, senderSubscriberID string, msg 
 		}(*target.WebhookURL)
 	}
 }
+
+// boardWebhookClient posts to subscriber webhooks (#3363): private and loopback targets are
+// refused at dial time unless the webhook_allow_private setting allows them.
+var boardWebhookClient = httputil.WebhookClient(5 * time.Second)
 
 // ReadMessages reads new messages (cursor-based).
 // GET /api/board/{project}/messages

@@ -60,6 +60,10 @@ func (h *WebhooksHandler) CreateWebhook(w http.ResponseWriter, r *http.Request) 
 	if body.Platform == "" {
 		body.Platform = "generic"
 	}
+	if err := httputil.ValidateWebhookURL(r.Context(), body.URL); err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
 	wh, err := h.ws.CreateWebhookConfig(r.Context(), body.Name, body.Platform, body.URL, body.AgentFilter)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -76,6 +80,13 @@ func (h *WebhooksHandler) UpdateWebhook(w http.ResponseWriter, r *http.Request) 
 	if err := decodeJSON(r, &fields); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
+	}
+	if v, ok := fields["url"]; ok {
+		u, _ := v.(string)
+		if err := httputil.ValidateWebhookURL(r.Context(), u); err != nil {
+			errBadRequest(w, err.Error())
+			return
+		}
 	}
 	if err := h.ws.UpdateWebhookConfig(r.Context(), whID, fields); err != nil {
 		errInternalServer(w, err.Error())

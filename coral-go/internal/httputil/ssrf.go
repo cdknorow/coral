@@ -62,6 +62,7 @@ var blockedCIDRs []*net.IPNet
 
 func init() {
 	for _, cidr := range []string{
+		"0.0.0.0/8",       // "this network": 0.x addresses reach the local host on some systems
 		"100.64.0.0/10",   // CGNAT
 		"192.0.2.0/24",    // Documentation (TEST-NET-1)
 		"198.51.100.0/24", // Documentation (TEST-NET-2)
@@ -74,7 +75,8 @@ func init() {
 
 // IsIPBlocked checks if an IP address is private, reserved, or otherwise unsafe for SSRF.
 func isIPBlocked(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() ||
+		ip.IsInterfaceLocalMulticast() || ip.IsMulticast() {
 		return true
 	}
 

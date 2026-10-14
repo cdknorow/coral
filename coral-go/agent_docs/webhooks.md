@@ -2,6 +2,16 @@
 
 The Webhooks API provides CRUD operations for webhook configurations, test delivery, and delivery history. Webhooks support Slack, Discord, and generic platforms with automatic retry logic and circuit breaker protection.
 
+## Allowed targets
+
+Coral posts webhooks from your computer, so a webhook URL must not reach this computer or its network. Notification webhooks, job-run callbacks (`webhook_url` on `POST /api/tasks/run`) and board subscriber webhooks (`webhook_url` on subscribe) all follow the same rules:
+
+- The URL is `http://` or `https://`, with no user name or password in it.
+- The host must not be (or resolve to) a loopback, private (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (169.254/16, including cloud metadata at 169.254.169.254), CGNAT, multicast or unspecified address.
+- Saving a URL that breaks these rules answers `400` and says why. Each delivery checks again when it connects, so a host that later resolves to a private address is not reached either. Redirects are checked the same way, and no proxy from the environment is used.
+
+To send webhooks to your own network (a home-automation box, a local chat bridge), set `webhook_allow_private` to `true` (`PUT /api/settings`) or start Coral with `CORAL_WEBHOOK_ALLOW_PRIVATE=1`. Then only the scheme is checked.
+
 ## Endpoints
 
 | Method | Path | Description |

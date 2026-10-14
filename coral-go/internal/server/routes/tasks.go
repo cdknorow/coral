@@ -12,6 +12,7 @@ import (
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -65,6 +66,12 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(body.Prompt) == "" {
 		errBadRequest(w, "'prompt' is required")
 		return
+	}
+	if body.WebhookURL != "" {
+		if err := httputil.ValidateWebhookURL(r.Context(), body.WebhookURL); err != nil {
+			errBadRequest(w, err.Error())
+			return
+		}
 	}
 	if strings.TrimSpace(body.RepoPath) == "" {
 		errBadRequest(w, "'repo_path' is required")

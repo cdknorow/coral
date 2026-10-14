@@ -16,6 +16,7 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/executil"
+	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -812,13 +813,12 @@ func (s *JobScheduler) fireWebhookForRun(runID int64) {
 		if err != nil {
 			return
 		}
-		client := &http.Client{Timeout: 10 * time.Second}
 		req, err := http.NewRequest("POST", *run.WebhookURL, bytes.NewReader(body))
 		if err != nil {
 			return
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := client.Do(req)
+		resp, err := runWebhookClient.Do(req)
 		if err != nil {
 			s.logger.Warn("webhook callback failed", "run_id", runID, "error", err)
 			return
@@ -827,6 +827,10 @@ func (s *JobScheduler) fireWebhookForRun(runID int64) {
 		s.logger.Info("webhook callback sent", "run_id", runID, "status", resp.StatusCode)
 	}()
 }
+
+// runWebhookClient posts job-run callbacks (#3363): private and loopback targets are refused
+// at dial time unless the webhook_allow_private setting allows them.
+var runWebhookClient = httputil.WebhookClient(10 * time.Second)
 
 // createWorktree creates a git worktree for an isolated job run.
 func runGitCmd(ctx context.Context, repoPath string, args ...string) error {
