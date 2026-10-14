@@ -16,8 +16,19 @@ env:
 jobs:
   # ── Linux ──────────────────────────────────────────────────────
   # linux-runner-dryrun.yml mirrors these steps; keep the two in step.
+  # Each architecture builds and is smoke-tested on its own native runner: the
+  # smoke tests refuse emulation as acceptance evidence.
   build-linux:
-    runs-on: ubuntu-24.04
+    name: build-linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
 
@@ -29,10 +40,11 @@ jobs:
       - name: Sync agent docs
         run: bash tools/sync-agent-docs.sh
 
-      - name: Build Linux binaries (amd64)
+      - name: Build Linux binaries (${{ matrix.arch }})
         working-directory: coral-go
         env:
           POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          ARCH: ${{ matrix.arch }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-s -w -X github.com/cdknorow/coral/internal/config.PostHogKey=${POSTHOG_PROJECT_KEY} -X github.com/cdknorow/coral/internal/config.Version=${VERSION}"
@@ -47,36 +59,40 @@ jobs:
           mkdir -p ../dist/linux
           for cmd in coral launch-coral coral-board coral-agent coral-hook-agentic-state coral-hook-message-check coral-hook-session-start coral-hook-task-sync; do
             [ -d "./cmd/$cmd" ] || continue
-            CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+            CGO_ENABLED=0 GOOS=linux GOARCH="$ARCH" go build \
               $BUILD_TAGS \
               -ldflags "$LDFLAGS" \
               -o "../dist/linux/$cmd" \
               "./cmd/$cmd/"
           done
-          ../tests/release/verify_standard_bundle.sh ../dist/linux
+          ../tests/release/verify_standard_bundle.sh ../dist/linux "$ARCH"
 
       - name: Smoke test package on Ubuntu 22.04
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           package="$PWD/dist/linux"
-          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral -h
-          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/launch-coral -h
-          docker run --rm --network none --platform linux/amd64 -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral-board workflow --help
+          docker run --rm --network none --platform "linux/$ARCH" -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral -h
+          docker run --rm --network none --platform "linux/$ARCH" -v "$package:/pkg:ro" ubuntu:22.04 /pkg/launch-coral -h
+          docker run --rm --network none --platform "linux/$ARCH" -v "$package:/pkg:ro" ubuntu:22.04 /pkg/coral-board workflow --help
 
       - name: Verify server and board commands without shared libraries
-        run: python3 tests/release/smoke_standard_linux.py dist/linux
+        run: python3 tests/release/smoke_standard_linux.py dist/linux ${{ matrix.arch }}
 
       - name: Create tarball
+        env:
+          ARCH: ${{ matrix.arch }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           cd dist/linux
-          tar czf "../coral-linux-amd64-${VERSION}.tar.gz" .
+          tar czf "../coral-linux-${ARCH}-${VERSION}.tar.gz" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: coral-linux-amd64
-          path: dist/coral-linux-amd64-*.tar.gz
+          name: coral-linux-${{ matrix.arch }}
+          path: dist/coral-linux-${{ matrix.arch }}-*.tar.gz
 
   # ── Windows ──────────────────────────────────────────────────
   build-windows:
@@ -602,6 +618,7 @@ jobs:
           # they are required too: a missing file or a failed upload fails the
           # step.
           for f in artifacts/coral-linux-amd64/*.tar.gz \
+                   artifacts/coral-linux-arm64/*.tar.gz \
                    artifacts/coral-macos-dmg/*.dmg \
                    artifacts/coral-windows-msi/*.msi \
                    artifacts/coral-windows-portable/*.zip; do
@@ -613,7 +630,7 @@ jobs:
           done
           # Checksums for every published package. Linux has no OS-level code
           # signing, so users verify the tarball against this file.
-          (cd artifacts && sha256sum coral-linux-amd64/*.tar.gz coral-macos-dmg/*.dmg \
+          (cd artifacts && sha256sum coral-linux-amd64/*.tar.gz coral-linux-arm64/*.tar.gz coral-macos-dmg/*.dmg \
             coral-windows-msi/*.msi coral-windows-portable/*.zip | sed 's#  [^ ]*/#  #') > SHA256SUMS.txt
           cat SHA256SUMS.txt
           gh release upload "$TAG" SHA256SUMS.txt --clobber
@@ -622,23 +639,28 @@ jobs:
           # no OS-level signing. They prove the files were built by this workflow from
           # this tag of this repository. If Sigstore is unreachable the step fails, so
           # a release never claims signatures it lacks; re-run the job (--clobber).
-          LINUX_TGZ=$(ls artifacts/coral-linux-amd64/*.tar.gz)
+          LINUX_TGZS=(artifacts/coral-linux-amd64/*.tar.gz artifacts/coral-linux-arm64/*.tar.gz)
           cosign sign-blob --yes --bundle SHA256SUMS.txt.sigstore.json SHA256SUMS.txt
-          cosign sign-blob --yes --bundle "$(basename "$LINUX_TGZ").sigstore.json" "$LINUX_TGZ"
+          for tgz in "${LINUX_TGZS[@]}"; do
+            cosign sign-blob --yes --bundle "$(basename "$tgz").sigstore.json" "$tgz"
+          done
           # Self-check against the identity users pin, before publishing the bundles.
           ID="${GITHUB_SERVER_URL}/${GITHUB_WORKFLOW_REF}"
-          for f in SHA256SUMS.txt "$LINUX_TGZ"; do
+          for f in SHA256SUMS.txt "${LINUX_TGZS[@]}"; do
             cosign verify-blob --bundle "$(basename "$f").sigstore.json" \
               --certificate-identity "$ID" \
               --certificate-oidc-issuer https://token.actions.githubusercontent.com "$f"
           done
-          gh release upload "$TAG" SHA256SUMS.txt.sigstore.json "$(basename "$LINUX_TGZ").sigstore.json" --clobber
+          bundles=(SHA256SUMS.txt.sigstore.json)
+          for tgz in "${LINUX_TGZS[@]}"; do bundles+=("$(basename "$tgz").sigstore.json"); done
+          gh release upload "$TAG" "${bundles[@]}" --clobber
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             artifacts/coral-linux-amd64/*.tar.gz
+            artifacts/coral-linux-arm64/*.tar.gz
             artifacts/coral-macos-dmg/*.dmg
             artifacts/coral-windows-msi/*.msi
             artifacts/coral-windows-portable/*.zip

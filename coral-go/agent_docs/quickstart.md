@@ -50,7 +50,7 @@ setting. The launch API rejects an unsupported `agent_type` (`ValidateAgentType`
 | Platform | Status |
 |---|---|
 | **macOS** | Signed and notarized universal app (`Coral.v<version>.dmg`, Apple Silicon and Intel, macOS 13 minimum) with bundled tmux. The macOS 13 minimum is checked in the binaries but has not been run on a macOS 13 host. |
-| **Linux** | `coral-linux-amd64-<version>.tar.gz`, statically linked, x86-64 only. No arm64 build. CLI/server only — no tray or desktop app. tmux is not bundled. |
+| **Linux** | `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64), statically linked. CLI/server only — no tray or desktop app. tmux is not bundled. |
 | **Windows** | No official asset is published for the regular bare-tag release. |
 | **Homebrew** | Not recommended: the public tap previously shipped a blank checksum and its repair has not been independently verified. Use the GitHub release. |
 
@@ -65,6 +65,7 @@ filenames carry a version: `Coral.v<version>.dmg`, not `Coral.dmg`.
 and `launch-coral`) and no installer:
 
 ```console
+$ uname -m        # x86_64 → the amd64 tarball, aarch64 → the arm64 tarball
 $ tar xzf coral-linux-amd64-<version>.tar.gz
 ```
 

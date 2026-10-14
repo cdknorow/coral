@@ -35,49 +35,71 @@ fi
 exit 0
 GH
 chmod +x "$WORK/bin/gh"
+# Fake cosign: sign-blob writes the bundle it is asked for; verify-blob succeeds.
+cat > "$WORK/bin/cosign" <<'COSIGN'
+#!/usr/bin/env bash
+echo "cosign $*" >> "$COSIGN_LOG"
+if [[ "$1" == "sign-blob" ]]; then
+  while [[ $# -gt 0 ]]; do [[ "$1" == "--bundle" ]] && { : > "$2"; break; }; shift; done
+fi
+exit 0
+COSIGN
+chmod +x "$WORK/bin/cosign"
+# macOS has shasum, not sha256sum.
+if ! command -v sha256sum >/dev/null; then
+  printf '#!/usr/bin/env bash\nexec shasum -a 256 "$@"\n' > "$WORK/bin/sha256sum"
+  chmod +x "$WORK/bin/sha256sum"
+fi
 
 failures=0
-# run_case NAME EXPECTED_EXIT EXPECTED_UPLOADS FILES... (FAIL_UPLOAD env optional)
+# run_case NAME EXPECTED_EXIT EXPECTED_UPLOADS EXPECTED_SIGNATURES FILES... (FAIL_UPLOAD env optional)
 run_case() {
-  local name="$1" want_exit="$2" want_uploads="$3"; shift 3
+  local name="$1" want_exit="$2" want_uploads="$3" want_signs="$4"; shift 4
   local dir="$WORK/case-$name"
   mkdir -p "$dir"
   ( cd "$dir"
     for f in "$@"; do mkdir -p "$(dirname "$f")"; : > "$f"; done )
   export GH_LOG="$dir/gh.log"; : > "$GH_LOG"
+  export COSIGN_LOG="$dir/cosign.log"; : > "$COSIGN_LOG"
   local rc=0
-  ( cd "$dir" && PATH="$WORK/bin:$PATH" GITHUB_REF_NAME=v0.0.0-test bash --noprofile --norc -eo pipefail "$WORK/step.sh" ) > "$dir/out.log" 2>&1 || rc=$?
-  local uploads
+  ( cd "$dir" && PATH="$WORK/bin:$PATH" GITHUB_REF_NAME=v0.0.0-test GITHUB_SERVER_URL=https://github.com \
+      GITHUB_WORKFLOW_REF=cdknorow/coral/.github/workflows/release.yml@refs/tags/v0.0.0-test \
+      bash --noprofile --norc -eo pipefail "$WORK/step.sh" ) > "$dir/out.log" 2>&1 || rc=$?
+  local uploads signs
   uploads="$(grep -c '^gh release upload' "$GH_LOG" || true)"
+  signs="$(grep -c '^cosign sign-blob' "$COSIGN_LOG" || true)"
   local exit_ok=0
   if [[ "$want_exit" == "nonzero" ]]; then
     [[ "$rc" -ne 0 ]] && exit_ok=1
   else
     [[ "$rc" -eq "$want_exit" ]] && exit_ok=1
   fi
-  if [[ "$exit_ok" -eq 1 && "$uploads" == "$want_uploads" ]]; then
-    echo "PASS $name (exit=$rc uploads=$uploads)"
+  if [[ "$exit_ok" -eq 1 && "$uploads" == "$want_uploads" && "$signs" == "$want_signs" ]]; then
+    echo "PASS $name (exit=$rc uploads=$uploads signatures=$signs)"
   else
-    echo "FAIL $name: exit=$rc (want $want_exit) uploads=$uploads (want $want_uploads)" >&2
+    echo "FAIL $name: exit=$rc (want $want_exit) uploads=$uploads (want $want_uploads) signatures=$signs (want $want_signs)" >&2
     sed 's/^/  | /' "$dir/out.log" >&2
     failures=$((failures + 1))
   fi
 }
 
 LINUX=artifacts/coral-linux-amd64/coral-linux-amd64-1.tar.gz
+LINUX_ARM=artifacts/coral-linux-arm64/coral-linux-arm64-1.tar.gz
 DMG=artifacts/coral-macos-dmg/Coral.dmg
 MSI=artifacts/coral-windows-msi/Coral-1-x64.msi
 ZIP=artifacts/coral-windows-portable/Coral-1-x64-portable.zip
+ALL=("$LINUX" "$LINUX_ARM" "$DMG" "$MSI" "$ZIP")
 
-# The v1.3.16 failure: Windows packages intentionally absent must succeed.
-run_case windows-absent 0 2 "$LINUX" "$DMG"
-run_case all-present 0 4 "$LINUX" "$DMG" "$MSI" "$ZIP"
-run_case windows-partial 0 3 "$LINUX" "$DMG" "$MSI"
-# Real upload failures must still fail the step, optional or required.
-FAIL_UPLOAD=Coral.dmg run_case required-upload-fails nonzero 2 "$LINUX" "$DMG"
-FAIL_UPLOAD=.msi run_case optional-upload-fails nonzero 3 "$LINUX" "$DMG" "$MSI"
-# A missing required package is an error, not a skip.
-run_case required-missing nonzero 1 "$LINUX"
+# Every package present: 5 package uploads + SHA256SUMS.txt + one call with the 3 bundles;
+# 3 signatures (the checksums and both Linux tarballs).
+run_case all-present 0 7 3 "${ALL[@]}"
+# Every package is required (Windows is built on every tag; both Linux arches):
+# a missing one stops the step before anything is signed.
+run_case arm64-missing nonzero 1 0 "$LINUX" "$DMG" "$MSI" "$ZIP"
+run_case amd64-missing nonzero 0 0 "$LINUX_ARM" "$DMG" "$MSI" "$ZIP"
+run_case windows-missing nonzero 3 0 "$LINUX" "$LINUX_ARM" "$DMG"
+# A failed upload fails the step, before signing.
+FAIL_UPLOAD=Coral.dmg run_case upload-fails nonzero 3 0 "${ALL[@]}"
 
 if [[ "$failures" -ne 0 ]]; then
   echo "$failures case(s) failed" >&2

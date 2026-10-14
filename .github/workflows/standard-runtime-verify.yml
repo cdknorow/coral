@@ -12,8 +12,18 @@ env:
   CORAL_TELEMETRY_DISABLED: "1"
 jobs:
   native-linux:
-    runs-on: ubuntu-22.04
+    # Each architecture's package is checked on its own native runner (no emulation).
+    name: native-linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -24,15 +34,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
+          ARCH: ${{ matrix.arch }}
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           mkdir -p verify/package
-          gh release download "$RELEASE_TAG" --pattern "coral-linux-amd64-${RELEASE_TAG#v}.tar.gz" --dir verify
+          gh release download "$RELEASE_TAG" --pattern "coral-linux-${ARCH}-${RELEASE_TAG#v}.tar.gz" --dir verify
           gh release view "$RELEASE_TAG" --json assets > verify/assets.json
           python3 - <<'PYCODE'
           import hashlib, json, os, pathlib
-          name = 'coral-linux-amd64-' + os.environ['RELEASE_TAG'][1:] + '.tar.gz'
+          name = 'coral-linux-' + os.environ['ARCH'] + '-' + os.environ['RELEASE_TAG'][1:] + '.tar.gz'
           package = pathlib.Path('verify') / name
           assets = json.loads(pathlib.Path('verify/assets.json').read_text())['assets']
           asset, = [item for item in assets if item['name'] == name]
@@ -40,8 +51,8 @@ jobs:
           assert actual == asset['digest'], (actual, asset['digest'])
           print(name, actual)
           PYCODE
-          tar -xzf "verify/coral-linux-amd64-${RELEASE_TAG#v}.tar.gz" -C verify/package
+          tar -xzf "verify/coral-linux-${ARCH}-${RELEASE_TAG#v}.tar.gz" -C verify/package
       - name: Verify static package structure
-        run: bash tests/release/verify_standard_bundle.sh verify/package
+        run: bash tests/release/verify_standard_bundle.sh verify/package ${{ matrix.arch }}
       - name: Run server and board commands without shared libraries
-        run: python3 tests/release/smoke_standard_linux.py verify/package
+        run: python3 tests/release/smoke_standard_linux.py verify/package ${{ matrix.arch }}

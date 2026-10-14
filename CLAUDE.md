@@ -109,7 +109,7 @@ Build installers for each platform from any OS:
 ```bash
 ./installers/build-windows.sh 0.7.0   # → installers/dist/coral-windows-amd64-0.7.0.zip
 ./installers/build-macos.sh 0.7.0     # → installers/dist/Coral-0.7.0.dmg (or .tar.gz on Linux)
-./installers/build-linux.sh 0.7.0     # → installers/dist/coral-linux-amd64-0.7.0.tar.gz
+./installers/build-linux.sh 0.7.0     # → installers/dist/coral-linux-amd64-0.7.0.tar.gz (add arm64 for coral-linux-arm64-…)
 ```
 
 ### Tagged Release (CI)
@@ -173,7 +173,7 @@ git push origin main --tags
 ```
 
 The workflow (`.github/workflows/release.yml`) produces:
-- **Linux**: `coral-linux-amd64-<version>.tar.gz`
+- **Linux**: `coral-linux-amd64-<version>.tar.gz` and `coral-linux-arm64-<version>.tar.gz` (each built and smoke-tested on its own native runner), each with a `.sigstore.json` bundle
 - **Windows**: `Coral-<version>-x64.msi` + `Coral-<version>-x64-portable.zip`
 - **macOS**: `Coral.dmg` (universal binary, signed + notarized if certs configured)
 
