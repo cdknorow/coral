@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cdknorow/coral/pkg/tunnel"
 	"unicode"
 
 	"github.com/cdknorow/coral/internal/config"
@@ -112,6 +114,9 @@ func isLoopback(h string) bool {
 // switch verification off.
 func NewHubHTTPClient() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
+	// The tunnel's socket keeps a short unsent queue, so the connector's uplink scheduler
+	// decides what goes first, not the kernel (#3440). Harmless for the other hub calls.
+	tr.DialContext = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second, Control: tunnel.LowLatencyControl}).DialContext
 	tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	tr.ResponseHeaderTimeout = 15 * time.Second
 	return &http.Client{

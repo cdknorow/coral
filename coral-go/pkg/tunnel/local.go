@@ -508,6 +508,16 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		hdr.Set(BodyLengthHeader, strconv.FormatInt(resp.ContentLength, 10))
 	}
 	rewriteLocation(hdr)
+	if resp.ContentLength >= 0 && resp.ContentLength <= wholeReplyMax && !decoded && bodyAllowed(s.Header.Method, resp.StatusCode) {
+		// A small reply of known length goes in one write: one turn on the uplink (#3440).
+		body := make([]byte, resp.ContentLength)
+		if _, err := io.ReadFull(respBody, body); err != nil {
+			s.Reject(CodeUpstream, "local response ended early", 0)
+			return
+		}
+		_ = s.RespondWhole(ResponseHeader{Status: resp.StatusCode, Headers: hdr}, body)
+		return
+	}
 	w, err := s.Respond(ResponseHeader{Status: resp.StatusCode, Headers: hdr})
 	if err != nil {
 		return
@@ -658,4 +668,10 @@ func pump(ctx context.Context, cancel context.CancelFunc, src, dst wsEnd, gate f
 			return
 		}
 	}
+}
+
+// bodyAllowed: whether a response to method with status carries the body its
+// Content-Length announces (not HEAD, 1xx, 204 or 304).
+func bodyAllowed(method string, status int) bool {
+	return method != http.MethodHead && status >= 200 && status != http.StatusNoContent && status != http.StatusNotModified
 }

@@ -1,6 +1,7 @@
 package tunnel
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/hashicorp/yamux"
@@ -74,6 +76,8 @@ type ClientOptions struct {
 	// connection attempt or session ends (with the reason).
 	OnState func(connected bool, err error)
 	Logger  *slog.Logger
+
+	uplink uplinkConfig // the uplink scheduler's tuning (tests)
 }
 
 // ClientSession is the connector's end of one established tunnel.
@@ -88,6 +92,7 @@ type ClientSession struct {
 	log        *slog.Logger
 	closeOnce  sync.Once
 	started    time.Time
+	up         *uplink // nil: writes go straight to yamux
 }
 
 func isLoopbackHost(h string) bool {
@@ -109,6 +114,49 @@ func noRedirectClient(c *http.Client) *http.Client {
 	out.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &out
 }
+
+// lowLatencyClient makes the tunnel's own connection keep a short kernel send queue
+// (TCP_NOTSENT_LOWAT, #3440 v2), whoever built the HTTP client: the uplink scheduler's
+// order is lost if the OS already holds hundreds of KiB ahead of a small reply. A
+// client whose transport is an *http.Transport (or none) gets a copy whose dialer sets
+// it on every connection it opens; a transport wrapped in another RoundTripper must
+// set it in its own dialer (Coral's NewHubHTTPClient does).
+func lowLatencyClient(c *http.Client) *http.Client {
+	tr := c.Transport
+	if tr == nil {
+		tr = http.DefaultTransport
+	}
+	t, ok := tr.(*http.Transport)
+	if !ok {
+		return c
+	}
+	t = t.Clone()
+	dial := t.DialContext
+	if dial == nil {
+		dial = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	}
+	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dial(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		if sc, ok := conn.(syscall.Conn); ok {
+			if raw, err := sc.SyscallConn(); err == nil {
+				_ = LowLatencyControl(network, addr, raw)
+			}
+		}
+		if onTunnelConn != nil {
+			onTunnelConn(conn)
+		}
+		return conn, nil
+	}
+	out := *c
+	out.Transport = t
+	return &out
+}
+
+// onTunnelConn, when set (tests only), sees each connection the tunnel dials.
+var onTunnelConn func(net.Conn)
 
 func checkURL(raw string, insecure bool) error {
 	u, err := url.Parse(raw)
@@ -142,7 +190,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	cfg := o.SessionConfig.withDefaults()
 	hctx, hcancel := context.WithTimeout(ctx, handshakeTimeout)
 	defer hcancel()
-	c, _, err := websocket.Dial(hctx, rawURL, &websocket.DialOptions{HTTPClient: noRedirectClient(o.HTTPClient)})
+	c, _, err := websocket.Dial(hctx, rawURL, &websocket.DialOptions{HTTPClient: lowLatencyClient(noRedirectClient(o.HTTPClient))})
 	if err != nil {
 		return nil, err
 	}
@@ -198,6 +246,9 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 		log = slog.Default()
 	}
 	cs := &ClientSession{ys: ys, cfg: cfg, h: o.Handler, cancel: cancel, version: w.AcceptedVersion, maxStreams: cfg.MaxStreams, log: log, started: time.Now()}
+	if !o.uplink.Off {
+		cs.up = newUplink(o.uplink)
+	}
 	go cs.acceptLoop()
 	go func() { <-ys.CloseChan(); cs.Close() }()
 	return cs, nil
@@ -264,7 +315,8 @@ func (c *ClientSession) serve(st *yamux.Stream) {
 		case <-ctx.Done():
 		}
 	}()
-	s := &Stream{Header: hdr, st: st, cancel: cancel, ctx: ctx, limits: c.cfg.Limits}
+	s := &Stream{Header: hdr, st: st, cancel: cancel, ctx: ctx, limits: c.cfg.Limits,
+		w: &upWriter{st: st, u: c.up, lane: laneFor(hdr), done: ctx.Done()}}
 	defer func() {
 		if r := recover(); r != nil {
 			c.log.Error("tunnel: handler panic", "panic", r)
@@ -278,6 +330,7 @@ type Stream struct {
 	Header Header
 
 	st     *yamux.Stream
+	w      io.Writer // st's writes, through the uplink scheduler
 	ctx    context.Context
 	cancel context.CancelFunc
 	limits Limits
@@ -328,7 +381,32 @@ func (s *Stream) Respond(rh ResponseHeader) (io.WriteCloser, error) {
 	if err := s.send(rh); err != nil {
 		return nil, err
 	}
-	return &chunkWriter{w: s.st}, nil
+	return &chunkWriter{w: s.w}, nil
+}
+
+// RespondWhole sends the response header, the whole body and its end in one write, so a
+// small reply takes one turn on the link instead of three (#3440). Same bytes on the
+// wire as Respond, Write, Close.
+func (s *Stream) RespondWhole(rh ResponseHeader, body []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.responded {
+		return errors.New("tunnel: response already sent")
+	}
+	s.responded = true
+	var buf bytes.Buffer
+	if err := writeFrame(&buf, rh); err != nil {
+		return err
+	}
+	cw := &chunkWriter{w: &buf}
+	if _, err := cw.Write(body); err != nil {
+		return err
+	}
+	if err := cw.Close(); err != nil {
+		return err
+	}
+	_, err := s.w.Write(buf.Bytes())
+	return err
 }
 
 func (s *Stream) send(rh ResponseHeader) error {
@@ -338,7 +416,7 @@ func (s *Stream) send(rh ResponseHeader) error {
 		return errors.New("tunnel: response already sent")
 	}
 	s.responded = true
-	return writeFrame(s.st, rh)
+	return writeFrame(s.w, rh)
 }
 
 // Reject answers the stream with an error. status is the upstream status for
@@ -352,7 +430,7 @@ func (s *Stream) AcceptWS(subprotocol string) (*WSConn, error) {
 	if err := s.send(ResponseHeader{Status: http.StatusSwitchingProtocols, Subprotocol: subprotocol}); err != nil {
 		return nil, err
 	}
-	return newWSConn(s.st, subprotocol, s.cancel), nil
+	return newWSConn(streamRW{s.st, s.w}, subprotocol, s.cancel), nil
 }
 
 // Run keeps a tunnel up until ctx ends: it dials, serves, and reconnects with
@@ -403,3 +481,11 @@ func Run(ctx context.Context, rawURL, token string, o ClientOptions) error {
 		}
 	}
 }
+
+// streamRW reads and closes the stream and writes through the scheduler.
+type streamRW struct {
+	*yamux.Stream
+	w io.Writer
+}
+
+func (s streamRW) Write(p []byte) (int, error) { return s.w.Write(p) }
