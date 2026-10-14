@@ -4,6 +4,7 @@ package config
 
 import (
 	"github.com/cdknorow/coral/internal/testguard"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -70,6 +71,19 @@ type Config struct {
 	// off and this server never opens an outbound connection to the cloud.
 	CloudURL string
 
+	// CloudURLExplicit: CloudURL was given on purpose (--cloud-url or CORAL_CLOUD_URL),
+	// not taken from the build tier's default.
+	CloudURLExplicit bool
+
+	// CloudConnect is whether this server offers to connect to Coral Hub on its own
+	// (#3459), as --cloud-connect or CORAL_CLOUD_CONNECT set it: prompt or auto offer
+	// it (the dashboard's first-launch screen, and the startup step), off never does,
+	// and unset offers it only for an explicitly given URL (see EffectiveCloudConnect).
+	// The build's default URL alone offers nothing. Coral Hub stays reachable either
+	// way, from the home screen, Settings > Coral Hub and 'coral cloud connect', and an
+	// enrolled server reconnects on its own.
+	CloudConnect string
+
 	// BootstrapFile and ProofFile name a one-time Coral Hub credential and its
 	// optional proof (--bootstrap-file, --proof-file), redeemed at startup when
 	// this server has no identity yet (#3149). Paths only: a credential is never
@@ -111,11 +125,14 @@ func Load(dataDir ...string) *Config {
 		logDir = filepath.Join(coralDir, "logs") // created by startup, once it is going to run
 	}
 
+	envURL, envURLSet := os.LookupEnv("CORAL_CLOUD_URL")
 	cfg := &Config{
-		CloudURL:        CloudURLSetting(os.LookupEnv("CORAL_CLOUD_URL")),
-		coralDir:        coralDir,
-		DBPath:          filepath.Join(coralDir, "sessions.db"),
-		DBBusyTimeoutMS: 5000,
+		CloudURL:         CloudURLSetting(envURL, envURLSet),
+		CloudURLExplicit: envURLSet && CloudURLSetting(envURL, envURLSet) != "",
+		CloudConnect:     cloudConnectFromEnv(os.Getenv("CORAL_CLOUD_CONNECT")),
+		coralDir:         coralDir,
+		DBPath:           filepath.Join(coralDir, "sessions.db"),
+		DBBusyTimeoutMS:  5000,
 
 		Host: envOrDefault("CORAL_HOST", "0.0.0.0"),
 		Port: envIntOrDefault("CORAL_PORT", DefaultPort),
@@ -211,4 +228,45 @@ func envIntOrDefault(key string, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+// EffectiveCloudConnect is CloudConnect as it applies (#3459): an explicit setting
+// as given; unset, prompt for an explicitly given Coral Hub URL and off otherwise
+// (the build's default URL alone).
+func (c *Config) EffectiveCloudConnect() string {
+	if c.CloudConnect != "" {
+		return c.CloudConnect
+	}
+	if c.CloudURLExplicit && c.CloudURL != "" {
+		return "prompt"
+	}
+	return "off"
+}
+
+// OffersCloudConnect reports whether this server offers to connect to Coral Hub on its
+// own: the first-launch screen and the startup step.
+func (c *Config) OffersCloudConnect() bool {
+	if c == nil || c.CloudURL == "" {
+		return false
+	}
+	m := c.EffectiveCloudConnect()
+	return m == "prompt" || m == "auto"
+}
+
+// cloudConnectFromEnv reads CORAL_CLOUD_CONNECT: prompt, auto or off, or the usual
+// switch words (1, true, yes, on mean prompt; 0, false, no mean off). Anything else is
+// reported and taken as off, rather than stopping a service over a typo; --cloud-connect
+// itself is still refused when wrong.
+func cloudConnectFromEnv(v string) string {
+	v = strings.ToLower(strings.TrimSpace(v))
+	switch v {
+	case "", "prompt", "auto", "off":
+		return v
+	case "1", "true", "yes", "on":
+		return "prompt"
+	case "0", "false", "no":
+		return "off"
+	}
+	log.Printf("[config] WARNING: CORAL_CLOUD_CONNECT=%q is not prompt, auto or off: taken as off", v)
+	return "off"
 }

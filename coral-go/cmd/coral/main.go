@@ -84,7 +84,7 @@ func main() {
 	debugInput := flag.Bool("debug-input", false, "Record every write Coral makes to agent terminals in <data dir>/input-debug.log (debug; may contain secrets). Also CORAL_DEBUG_INPUT=1 or the Settings toggle")
 	bootstrapFile := flag.String("bootstrap-file", "", "One-time Coral Hub credential file to enroll this server with at startup (owned by you, mode 0600, removed after reading). On Linux /run/coral/bootstrap.d/credential is read without the flag")
 	proofFile := flag.String("proof-file", "", "Optional proof file to send with the bootstrap credential (at most 16 KiB of JSON from a provider helper)")
-	cloudConnect := flag.String("cloud-connect", cloudConnectPrompt, "With --cloud-url/CORAL_CLOUD_URL on a server not yet connected: prompt (connect in the terminal at startup; without a terminal, log the link and code), auto (only log them, never prompt) or off")
+	cloudConnect := flag.String("cloud-connect", "", "Offer to connect to Coral Hub on a server not yet connected (also CORAL_CLOUD_CONNECT): prompt (the dashboard's first-launch screen, and a prompt in the terminal at startup; without a terminal, log the link and code), auto (the screen, and only log them) or off. Unset: prompt when --cloud-url/CORAL_CLOUD_URL is given, otherwise off (the build's default URL alone offers nothing; Coral Hub stays in Settings, on the home screen and in 'coral cloud connect')")
 	tlsCert := flag.String("tls-cert", os.Getenv("CORAL_TLS_CERT"), "PEM certificate file: serve HTTPS (and WSS) on the port, and accept only HTTPS from other computers. Needs --tls-key (also CORAL_TLS_CERT)")
 	strictLocalAuth := flag.Bool("strict-local-auth", envTrue(os.Getenv("CORAL_STRICT_LOCAL_AUTH")), "Require a credential for every request from this computer: an agent's session token, the dashboard's sign-in (run 'coral open' to sign in) or a command-line signature; refuse an agent acting as someone else (also CORAL_STRICT_LOCAL_AUTH=1)")
 	tlsKey := flag.String("tls-key", os.Getenv("CORAL_TLS_KEY"), "PEM private key file for --tls-cert (also CORAL_TLS_KEY)")
@@ -105,11 +105,17 @@ func main() {
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "cloud-url" {
 			cfg.CloudURL = config.CloudURLSetting(*cloudURL, true)
+			cfg.CloudURLExplicit = cfg.CloudURL != ""
 		}
 	})
 	cfg.BootstrapFile, cfg.ProofFile = *bootstrapFile, *proofFile
 	setupCrashLogging(cfg.CoralDir())
-	cloudMode, err := cloudStartupMode(*cloudConnect, explicitCloudURL(*cloudURL), isTerminal(os.Stdin) && isTerminal(os.Stdout))
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "cloud-connect" {
+			cfg.CloudConnect = strings.ToLower(strings.TrimSpace(*cloudConnect))
+		}
+	})
+	cloudMode, err := cloudStartupMode(cfg.EffectiveCloudConnect(), cfg.CloudURL != "", isTerminal(os.Stdin) && isTerminal(os.Stdout))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)

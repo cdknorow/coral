@@ -19,16 +19,18 @@ import (
 	"github.com/cdknorow/coral/internal/config"
 )
 
-// The startup "Connect to Coral Hub" step (#3285). When Coral is started with a
-// Coral Hub URL given explicitly (--cloud-url or CORAL_CLOUD_URL) and this
-// server is not enrolled yet, it connects it, with the same flow as
-// `coral cloud connect`:
-//   - prompt (the default) on a terminal: the link and code, a live wait, then
-//     the access question; s or Ctrl-C skips it, and the server keeps running;
-//   - otherwise (a service, a pipe, '&', or --cloud-connect=auto) it never
-//     blocks: it logs the link and code, and a new code when one expires, for an
-//     hour;
-//   - --cloud-connect=off: nothing.
+// The startup "Connect to Coral Hub" step (#3285). Off unless asked for (#3459):
+// with --cloud-connect (or CORAL_CLOUD_CONNECT) prompt or auto, or with a Coral Hub
+// URL given explicitly (--cloud-url or CORAL_CLOUD_URL; unset --cloud-connect then
+// means prompt), on a server that has a Coral Hub URL and is not enrolled yet, it
+// connects it, with the same flow as `coral cloud connect`:
+//   - prompt on a terminal: the link and code, a live wait, then the access
+//     question; s or Ctrl-C skips it, and the server keeps running;
+//   - otherwise (a service, a pipe, '&', or auto) it never blocks: it logs the
+//     link and code, and a new code when one expires, for an hour;
+//   - off, or unset with only the build's default URL: nothing. Coral Hub is still a
+//     click away on the home screen and in Settings, and `coral cloud connect` works.
+// setting is config.EffectiveCloudConnect.
 // The dashboard is up meanwhile.
 
 const (
@@ -40,24 +42,15 @@ const (
 // cloudLogWindow is how long a server without a terminal keeps offering codes.
 var cloudLogWindow = time.Hour
 
-// explicitCloudURL reports whether a Coral Hub URL was given on purpose (the
-// flag, or the environment), as opposed to a build default.
-func explicitCloudURL(flagValue string) bool {
-	if strings.TrimSpace(flagValue) != "" {
-		return true
-	}
-	switch v := strings.ToLower(strings.TrimSpace(os.Getenv("CORAL_CLOUD_URL"))); v {
-	case "", "off", "none", "0", "false":
-		return false
-	}
-	return true
-}
-
-// cloudStartupMode is what the startup step does: prompt, log, or off.
-func cloudStartupMode(flagValue string, explicit, tty bool) (string, error) {
-	switch flagValue {
-	case cloudConnectPrompt, "":
-		if !explicit {
+// cloudStartupMode is what the startup step does: prompt, log, or off. setting is
+// --cloud-connect or CORAL_CLOUD_CONNECT; haveURL is whether a Coral Hub URL is
+// configured at all.
+func cloudStartupMode(setting string, haveURL, tty bool) (string, error) {
+	switch setting {
+	case "", cloudConnectOff:
+		return cloudConnectOff, nil
+	case cloudConnectPrompt:
+		if !haveURL {
 			return cloudConnectOff, nil
 		}
 		if tty {
@@ -65,14 +58,12 @@ func cloudStartupMode(flagValue string, explicit, tty bool) (string, error) {
 		}
 		return "log", nil
 	case cloudConnectAuto:
-		if !explicit {
+		if !haveURL {
 			return cloudConnectOff, nil
 		}
 		return "log", nil
-	case cloudConnectOff:
-		return cloudConnectOff, nil
 	}
-	return "", fmt.Errorf("--cloud-connect must be prompt, auto or off (got %q)", flagValue)
+	return "", fmt.Errorf("--cloud-connect (or CORAL_CLOUD_CONNECT) must be prompt, auto or off (got %q)", setting)
 }
 
 // interruptRouter turns SIGINT/SIGTERM into a shutdown, except that while a

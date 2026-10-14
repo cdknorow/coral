@@ -42,7 +42,9 @@ Coral local; it does not come back, and nothing is sent to the hub. The server m
 install `welcome_pending` in its settings and the dashboard clears it with your answer
 (`welcome_choice`: `connected`, `skipped` or `own-hub`), so another browser does not ask
 again. **Settings › About › Connect to Coral Hub…** reopens it. It only opens when a hub is
-configured, and test servers set `CORAL_NO_WELCOME=1` and never show it.
+configured and Coral was started to offer it (a hub URL passed with `--cloud-url` or
+`CORAL_CLOUD_URL`, or `--cloud-connect prompt` or `auto`; not for the release build's default
+URL alone), and test servers set `CORAL_NO_WELCOME=1` and never show it.
 
 Opened from another computer (a phone, or the LAN address), it says connecting has to
 happen on the computer running Coral: run `coral cloud connect` there.

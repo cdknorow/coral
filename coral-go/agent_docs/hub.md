@@ -90,7 +90,7 @@ Archive needs v1.4.2 on the machine: the dashboard offers **Archive** only for r
 
 ## Connecting a server to Coral Hub
 
-Coral connects to Coral Hub only when it is started with `--cloud-url <hub origin>` (or `CORAL_CLOUD_URL`). Connecting links this server to your Coral Hub account; only someone at this computer, as the user Coral runs as, can do it. The dashboard's **Settings > Coral Hub** does it from a browser on this computer. Opened from another computer, every `/api/cloud` route answers `403` with `code: local_dashboard_required` and `command: coral cloud connect`.
+Coral connects to Coral Hub only when it has a Coral Hub URL: `--cloud-url <hub origin>`, `CORAL_CLOUD_URL`, or a release build's default (`https://app.coralai.ai`; `--cloud-url off` turns it off). The release build's default URL never connects, prompts or pops anything up by itself: a fresh install offers Coral Hub only on the home screen, in **Settings > Coral Hub** and through `coral cloud connect`, unless a URL is passed explicitly or Coral is started with `--cloud-connect` (see [At startup](#at-startup)). Connecting links this server to your Coral Hub account; only someone at this computer, as the user Coral runs as, can do it. The dashboard's **Settings > Coral Hub** does it from a browser on this computer. Opened from another computer, every `/api/cloud` route answers `403` with `code: local_dashboard_required` and `command: coral cloud connect`.
 
 ### A headless server (SSH)
 
@@ -108,13 +108,17 @@ Alternatively, forward the dashboard and use it as if you were on the server: `s
 
 ### At startup
 
-When Coral is started with a Coral Hub URL **given explicitly** (`--cloud-url` or `CORAL_CLOUD_URL`) and is not connected yet, it runs the same flow once the dashboard is up, with `--cloud-connect`:
+With only the build's default URL, Coral does not offer Coral Hub on its own (#3459): no **Connect to Coral Hub** screen in the dashboard (or the macOS and Windows apps, which show the dashboard) after the terms, no prompt in the terminal and no enrollment code in the log. The offer is on, for a server that has a Coral Hub URL and is not connected yet, when a URL is **given explicitly** (`--cloud-url <url>` or `CORAL_CLOUD_URL=<url>`: like `prompt`) or with `--cloud-connect` (or `CORAL_CLOUD_CONNECT`):
 
-- `prompt` (the default): on a terminal, it asks "Connect this server to Coral Hub now?", shows the link and code, waits, then asks the access mode. `s`, or Ctrl-C while it waits, skips it; the server keeps running on its own. Without a terminal (a service, a pipe, `&`) it never waits for input: it does what `auto` does.
-- `auto`: it logs `[CLOUD] To connect this server to Coral Hub, open <url> and enter code XXXX-XXXX` (stderr and `coral.log`), and a new code when one expires, for an hour. Approve it from the journal; the access stays View.
-- `off`: nothing; use `coral cloud connect` or the dashboard.
+- `prompt`: the dashboard opens its one-time first-launch **Connect to Coral Hub** screen, and on a terminal Coral asks "Connect this server to Coral Hub now?", shows the link and code, waits, then asks the access mode. `s`, or Ctrl-C while it waits, skips it; the server keeps running on its own. Without a terminal (a service, a pipe, `&`) it never waits for input: it does what `auto` does.
+- `auto`: the first-launch screen, and Coral logs `[CLOUD] To connect this server to Coral Hub, open <url> and enter code XXXX-XXXX` (stderr and `coral.log`), and a new code when one expires, for an hour. Approve it from the journal; the access stays View.
+- `off`: nothing, even with an explicit URL; use the home screen, **Settings > Coral Hub** or `coral cloud connect`.
+- not set: `prompt` with an explicit URL, otherwise `off`.
+- `CORAL_CLOUD_CONNECT` also takes `1`, `true`, `yes` or `on` (= `prompt`) and `0`, `false` or `no` (= `off`); any other value logs a warning and means `off` (a wrong `--cloud-connect` stops startup with an error).
 
-A server that is already connected skips the step and logs `[CLOUD] Coral Hub: this server is connected as …`.
+`GET /api/cloud/status` reports the result as `offer_at_launch`; the dashboard opens the first-launch screen only when it is true.
+
+A server that is already connected reconnects on its own whatever the setting, skips the step and logs `[CLOUD] Coral Hub: this server is connected as …`.
 
 ### How the command line proves who it is
 

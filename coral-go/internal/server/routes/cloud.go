@@ -58,6 +58,9 @@ func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
 
 // CloudHandler serves the "Connect to Coral Hub" settings section.
 type CloudHandler struct {
+	// OfferAtLaunch is config.OffersCloudConnect (#3459), set by the server.
+	OfferAtLaunch bool
+
 	ss       *store.SessionStore
 	identity *IdentityObserver
 	// bs holds the record of Operator actions taken through Coral Hub (#3404).
@@ -127,6 +130,9 @@ type cloudStatus struct {
 	// Bootstrap is the last one-time-credential enrollment's outcome
 	// ({status, detail, at}); absent when there was none.
 	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
+	// OfferAtLaunch: the dashboard opens its first-launch Connect to Coral Hub
+	// screen only when this server was started to offer it (#3459).
+	OfferAtLaunch bool `json:"offer_at_launch"`
 }
 
 func (h *CloudHandler) status() cloudStatus {
@@ -142,7 +148,7 @@ func (h *CloudHandler) status() cloudStatus {
 			boot = json.RawMessage(v)
 		}
 	}
-	return cloudStatus{Status: st, AllowHubAutoAccept: allow, Bootstrap: boot}
+	return cloudStatus{Status: st, AllowHubAutoAccept: allow, Bootstrap: boot, OfferAtLaunch: h.OfferAtLaunch}
 }
 
 // Who may use the /api/cloud routes. Never the Cloud Hub (they are not in the

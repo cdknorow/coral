@@ -519,6 +519,7 @@ func (s *Server) buildRouter() chi.Router {
 
 	// Cloud Hub connector settings (never reachable through the tunnel)
 	s.cloudHandler = routes.NewCloudHandler(store.NewSessionStore(s.db), s.cfg.CoralDir())
+	s.cloudHandler.OfferAtLaunch = s.cfg.OffersCloudConnect()
 	r.Get("/api/cloud/status", s.cloudHandler.GetStatus)
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
 	r.Post("/api/cloud/connect/cancel", s.cloudHandler.CancelConnect)

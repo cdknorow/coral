@@ -2,6 +2,9 @@ package startup
 
 import (
 	"context"
+	"io"
+	"log"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -58,6 +61,42 @@ func TestInvalidCloudURLLeavesTheConnectorOff(t *testing.T) {
 		m, _ := cloudEnv(t, bad)
 		require.Equal(t, cloud.StateOff, m.Status().State, bad)
 	}
+}
+
+// An enrolled server reconnects on its own with the default (no --cloud-connect): the
+// switch only governs offering a new connection (#3459).
+func TestEnrolledServerConnectsWithoutTheOffer(t *testing.T) {
+	t.Setenv(secretbox.EnvKey, "")
+	t.Setenv("CORAL_CLOUD_CONNECT", "")
+	// Connections, not requests: the test hub's certificate is not trusted, so the dial ends
+	// at the handshake; that it is made at all is the point.
+	dials := &atomic.Int64{}
+	hub := httptest.NewUnstartedServer(http.NotFoundHandler())
+	hub.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			dials.Add(1)
+		}
+	}
+	hub.Config.ErrorLog = log.New(io.Discard, "", 0)
+	hub.StartTLS()
+	t.Cleanup(hub.Close)
+	dir := t.TempDir()
+	cfg := config.Load(dir)
+	cfg.CloudURL = hub.URL
+	require.False(t, cfg.OffersCloudConnect())
+	db, err := storetest.Open(t, filepath.Join(dir, "sessions.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	u, err := cloud.NormalizeHubURL(hub.URL)
+	require.NoError(t, err)
+	cs := store.NewCloudStore(db, store.NewRemoteServerStore(db, cfg.CoralDir()))
+	require.NoError(t, cs.Save(context.Background(), u, "srv_1", "My Laptop", "coralhub_srv_abcd1234_"+"x0123456789012345678901234567890123456789012"))
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	a := &attacher{}
+	startCloudConnector(ctx, db, cfg, a, store.NewSessionStore(db))
+	require.Eventually(t, func() bool { return dials.Load() > 0 }, 5*time.Second, 20*time.Millisecond, "the enrolled server dials its hub")
+	require.NotEqual(t, cloud.StateIdle, a.m.Status().State)
 }
 
 func TestConfiguredButNotEnrolledDoesNotDialUntilTheUserConnects(t *testing.T) {

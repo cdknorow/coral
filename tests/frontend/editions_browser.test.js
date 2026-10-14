@@ -1,4 +1,9 @@
 // Coral Hub on first launch and on the home screen (#3221).
+//   - Off unless the server offers it (#3459, status offer_at_launch, which the Go tests derive
+//     from the flags): with only the built-in default URL neither a prod-tier server (not
+//     enrolled) nor a dev one (no hub) opens it, and Coral Hub stays on the home screen. An
+//     explicit URL or --cloud-connect prompt opens it (the flows below); a dev build with the
+//     flag still does not (no hub).
 //   - The server marks a new install welcome_pending. The dashboard opens "Connect to Coral
 //     Hub" once, with the real connect flow inline (cloud_connect.js): Connect → link and
 //     code → live status → connected → how much the hub may do → Done. The answer is stored
@@ -37,7 +42,7 @@ const STUB = `
   window.__cloudForbidden = !!window.__cloudStartForbidden; window.__cloudCalls = [];
   window.__cloudForbiddenBody = window.__cloudStartForbiddenBody || { error: 'Cloud connector settings are only available from the Coral dashboard on this computer' };
   window.__cloudCancel = 'ok'; // 'ok' (a server with #3285) or '404' (an older one)
-  window.__cloud = Object.assign({ state: 'idle', hub_url: 'https://app.coralai.ai', configured: true, max_mode: 'view', allow_hub_auto_accept: true }, window.__cloudStart || {});
+  window.__cloud = Object.assign({ state: 'idle', hub_url: 'https://app.coralai.ai', configured: true, max_mode: 'view', allow_hub_auto_accept: true, offer_at_launch: true }, window.__cloudStart || {});
   const realFetch = window.fetch.bind(window);
   const json = (b, status = 200) => Promise.resolve(new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } }));
   window.fetch = (url, opts = {}) => {
@@ -108,7 +113,37 @@ async function run() {
         for (const [w, h, mobile, label] of [[1280, 800, false, 'desktop'], [390, 844, true, 'phone']]) {
             await Emulation.setDeviceMetricsOverride({ width: w, height: h, deviceScaleFactor: 1, mobile });
 
-            // ── First launch: Connect to Coral Hub, the whole flow ──
+            // ── Without the flag (#3459): no popup on a fresh prod-tier or dev install ──
+            const PROD = { state: 'idle', hub_url: 'https://app.coralai.ai', configured: true };
+            const DEV = { state: 'off', hub_url: '', configured: false };
+            for (const [tier, cloud] of [['prod tier', PROD], ['dev', DEV]]) {
+                await put({ welcome_pending: 'True', welcome_choice: '', home_editions_hidden: 'False' });
+                await load({ ...cloud, offer_at_launch: false });
+                check(`${label}: fresh ${tier} install without the flag: no Coral Hub popup`, !(await open()));
+                const st0 = await settings();
+                check(`${label}: ${tier}: nothing is answered for the user (welcome_pending stays)`, st0.welcome_pending === 'True' && !st0.welcome_choice, JSON.stringify({ p: st0.welcome_pending, c: st0.welcome_choice }));
+                check(`${label}: ${tier}: no connect was started`, (await ev('window.__cloudCalls')).length === 0, JSON.stringify(await ev('window.__cloudCalls')));
+            }
+            await showHome(mobile);
+            const hm0 = await home();
+            check(`${label}: Coral Hub stays reachable from the home screen`, hm0.shown && hm0.items.length > 0, JSON.stringify(hm0));
+            await click('#editions-home [data-editions="home-hub"]');
+            await until(`(() => { const m = document.getElementById('editions-modal'); return !!m && m.style.display !== 'none'; })()`, 'the screen from home');
+            check(`${label}: the home card still opens Connect to Coral Hub`, ((await screen()) || {}).title === 'Connect to Coral Hub');
+            await escape();
+            // An explicit URL (--cloud-url / CORAL_CLOUD_URL): the server offers it, as with the flag.
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load({ ...PROD, hub_url: 'https://hub.example.com', offer_at_launch: true });
+            await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the screen for an explicit URL');
+            check(`${label}: an explicit URL: the first-launch screen opens`, ((await screen()) || {}).title === 'Connect to Coral Hub');
+            await escape();
+            await until(`document.getElementById('editions-modal').style.display === 'none'`, 'closed');
+            // With the flag, a dev build (no hub configured) still asks nothing.
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load({ ...DEV, offer_at_launch: true });
+            check(`${label}: dev with the flag: no popup (no hub to connect to)`, !(await open()));
+
+            // ── With the flag: first launch, Connect to Coral Hub, the whole flow ──
             await put({ welcome_pending: 'True', welcome_choice: '', home_editions_hidden: 'False' });
             await load();
             await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the Connect button');

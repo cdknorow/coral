@@ -21,34 +21,82 @@ import (
 
 func TestCloudStartupMode(t *testing.T) {
 	for _, tc := range []struct {
-		flag          string
-		explicit, tty bool
-		want          string
+		setting      string
+		haveURL, tty bool
+		want         string
 	}{
+		// Off unless asked for (#3459): a URL, explicit or the release default, is not enough.
+		{"", true, true, "off"},
+		{"", true, false, "off"},
+		{"off", true, true, "off"},
 		{"prompt", true, true, "prompt"},
 		{"prompt", true, false, "log"}, // never block without a terminal (#3271)
-		{"prompt", false, true, "off"}, // no URL given: nothing to connect to
+		{"prompt", false, true, "off"}, // no hub configured: nothing to connect to
 		{"auto", true, true, "log"},
 		{"auto", false, false, "off"},
-		{"off", true, true, "off"},
-		{"", true, true, "prompt"},
 	} {
-		got, err := cloudStartupMode(tc.flag, tc.explicit, tc.tty)
+		got, err := cloudStartupMode(tc.setting, tc.haveURL, tc.tty)
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, got, "%+v", tc)
 	}
 	_, err := cloudStartupMode("yes", true, true)
 	assert.Error(t, err)
+}
 
-	t.Setenv("CORAL_CLOUD_URL", "")
-	assert.False(t, explicitCloudURL(""))
-	assert.True(t, explicitCloudURL("https://app.coralai.ai"))
-	for _, v := range []string{"off", "none", "0", " OFF "} {
-		t.Setenv("CORAL_CLOUD_URL", v)
-		assert.False(t, explicitCloudURL(""), v)
+// The build's default URL alone offers nothing; an explicit URL, or CORAL_CLOUD_CONNECT
+// (--cloud-connect) prompt or auto, does; off wins over an explicit URL (#3459).
+func TestCloudConnectSetting(t *testing.T) {
+	mode := func(cfg *config.Config) string {
+		m, err := cloudStartupMode(cfg.EffectiveCloudConnect(), cfg.CloudURL != "", true)
+		require.NoError(t, err)
+		return m
 	}
+	// The built-in default only (a release build, nothing passed).
+	cfg := config.Load(t.TempDir())
+	cfg.CloudURL, cfg.CloudURLExplicit, cfg.CloudConnect = "https://app.coralai.ai", false, ""
+	assert.False(t, cfg.OffersCloudConnect(), "the default URL alone offers nothing")
+	assert.Equal(t, "off", mode(cfg))
+
+	// An explicit URL: like --cloud-connect prompt.
+	t.Setenv("CORAL_CLOUD_CONNECT", "")
 	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
-	assert.True(t, explicitCloudURL(""))
+	cfg = config.Load(t.TempDir())
+	assert.True(t, cfg.CloudURLExplicit)
+	assert.True(t, cfg.OffersCloudConnect(), "CORAL_CLOUD_URL given: offered")
+	assert.Equal(t, "prompt", mode(cfg))
+	t.Setenv("CORAL_CLOUD_CONNECT", "off")
+	cfg = config.Load(t.TempDir())
+	assert.False(t, cfg.OffersCloudConnect(), "off wins over an explicit URL")
+	assert.Equal(t, "off", mode(cfg))
+	t.Setenv("CORAL_CLOUD_CONNECT", "auto")
+	assert.Equal(t, "log", mode(config.Load(t.TempDir())))
+	t.Setenv("CORAL_CLOUD_CONNECT", "")
+	t.Setenv("CORAL_CLOUD_URL", "off")
+	cfg = config.Load(t.TempDir())
+	assert.False(t, cfg.CloudURLExplicit, "CORAL_CLOUD_URL=off is no URL")
+	assert.False(t, cfg.OffersCloudConnect())
+	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
+	// Switch words: 1, true, yes, on are prompt; 0, false, no are off; anything else is a
+	// warning and off, never a refusal to start (Backend, #3459).
+	for v, want := range map[string]string{"1": "prompt", "true": "prompt", "Yes": "prompt", "on": "prompt",
+		"0": "off", "false": "off", "no": "off", "maybe": "off", "promt": "off"} {
+		t.Setenv("CORAL_CLOUD_CONNECT", v)
+		cfg = config.Load(t.TempDir())
+		assert.Equal(t, want, cfg.CloudConnect, v)
+		assert.Equal(t, want == "prompt", cfg.OffersCloudConnect(), v)
+	}
+
+	for _, v := range []string{"prompt", " Prompt ", "auto"} {
+		t.Setenv("CORAL_CLOUD_CONNECT", v)
+		cfg = config.Load(t.TempDir())
+		assert.True(t, cfg.OffersCloudConnect(), v)
+	}
+	t.Setenv("CORAL_CLOUD_CONNECT", "off")
+	assert.False(t, config.Load(t.TempDir()).OffersCloudConnect())
+	// With the flag but no hub (a dev build, or --cloud-url off): nothing to offer.
+	t.Setenv("CORAL_CLOUD_CONNECT", "prompt")
+	t.Setenv("CORAL_CLOUD_URL", "off")
+	assert.False(t, config.Load(t.TempDir()).OffersCloudConnect())
 }
 
 // While the step is diverted, Ctrl-C ends the step only; SIGTERM, and Ctrl-C at

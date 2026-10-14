@@ -30,7 +30,7 @@ Another Coral or program holds the port (default 8420). Use `--port`, and add `-
 
 ## A "Connect to Coral Hub" screen appeared
 
-That is the one-time first-launch screen. Choose **Skip for now** (or press Escape) to keep Coral local: nothing is sent to Coral Hub until you connect, and the screen does not come back. **Settings › About › Connect to Coral Hub…** reopens it. Coral is free, with no licence and no usage limits.
+That is the one-time first-launch screen. Choose **Skip for now** (or press Escape) to keep Coral local: nothing is sent to Coral Hub until you connect, and the screen does not come back. **Settings › About › Connect to Coral Hub…** reopens it. It appears only when Coral is started with a hub URL (`--cloud-url` or `CORAL_CLOUD_URL`) or with `--cloud-connect prompt` or `auto`; otherwise Coral Hub waits on the home screen and in **Settings › Coral Hub**. Coral is free, with no licence and no usage limits.
 
 ## Agents do not post to the message board
 

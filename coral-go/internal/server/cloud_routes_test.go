@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -224,6 +226,37 @@ func TestCloudSettingsRoutes(t *testing.T) {
 	require.Equal(t, 400, call(h, "POST", "/api/cloud/connect", `{}`, map[string]string{"Content-Type": "text/plain"}).Code)
 	require.Equal(t, 400, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"interact"}`, map[string]string{"Content-Type": "text/plain"}).Code)
 	require.Equal(t, 400, call(h, "PUT", "/api/cloud/max-mode", `{}`, js).Code)
+}
+
+// The dashboard's first-launch screen opens only when the server was started to offer it
+// (#3459): a configured hub URL is not enough.
+func TestCloudStatusOffersAtLaunchOnlyWithTheFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name, url, connect string
+		explicit, want     bool
+	}{
+		{"prod tier default URL, no flag", "https://app.coralai.ai", "", false, false},
+		{"prod tier, off", "https://app.coralai.ai", "off", false, false},
+		{"prod tier, prompt", "https://app.coralai.ai", "prompt", false, true},
+		{"prod tier, auto", "https://app.coralai.ai", "auto", false, true},
+		{"explicit URL, no flag", "https://app.coralai.ai", "", true, true},
+		{"explicit URL, off", "https://app.coralai.ai", "off", true, false},
+		{"dev, prompt", "", "prompt", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newE2ERemote(t, "offer", func(c *config.Config) {
+				c.CloudURL, c.CloudConnect, c.CloudURLExplicit = tc.url, tc.connect, tc.explicit
+			})
+			rec := call(r.srv.Router(), "GET", "/api/cloud/status", "", nil)
+			require.Equal(t, 200, rec.Code)
+			var st struct {
+				OfferAtLaunch *bool `json:"offer_at_launch"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &st))
+			require.NotNil(t, st.OfferAtLaunch, rec.Body.String())
+			require.Equal(t, tc.want, *st.OfferAtLaunch)
+		})
+	}
 }
 
 const cloudExceptions = "testdata/cloud_route_exceptions.txt"
