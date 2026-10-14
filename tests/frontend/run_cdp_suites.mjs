@@ -6,8 +6,9 @@
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
-// a debugging port, runs every test that talks CDP (they import chrome-remote-interface) one at a time
-// with a timeout, and prints pass/fail per suite.
+// a debugging port, runs every CDP and server suite (see suites.mjs) one at a time with a timeout, and
+// prints pass/fail per suite. It refuses to start (exit 2) while any *.test.js/mjs file here has no runner
+// or more than one, so a suite can't be silently skipped.
 //
 // --shards N (default 1) starts N such server+Chrome pairs, each with its own data dir, ports and profile,
 // and runs N suites at once: each shard takes the next suite from one shared queue, so within a shard
@@ -53,6 +54,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { classifySuites, problems } from './suites.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const goDir = path.resolve(here, '../../coral-go');
@@ -79,6 +81,14 @@ const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
 ].find(p => fs.existsSync(p)));
 if (!chromePath) { console.error('no Chrome found; pass --chrome or set CHROME'); process.exit(2); }
+
+// Every suite file must have exactly one runner before anything starts (#3405).
+const suites = classifySuites(here);
+{
+  const bad = problems(suites);
+  console.log(`suites: ${suites.cdp.length} CDP (${suites.cdpByName} named *_browser), ${suites.server.length} server-only, ${suites.node.length} node (npm run test:cloud)`);
+  if (bad.length) { console.error(bad.join('\n')); process.exit(2); }
+}
 
 const freePort = async () => {
   for (;;) {
@@ -248,10 +258,10 @@ try {
 } catch (e) { console.error(e.message); process.exit(2); }
 console.log('');
 
-const tests = fs.readdirSync(here).filter(f => /\.test\.(js|mjs)$/.test(f))
-  .filter(f => fs.readFileSync(path.join(here, f), 'utf8').includes('chrome-remote-interface'))
+const tests = [...suites.cdp, ...suites.server]
   .filter(f => !only || only.split(',').some(o => f.includes(o))).sort();
 if (!tests.length) { console.error('no CDP suites matched'); process.exit(2); }
+console.log(`running ${tests.length} of ${suites.cdp.length + suites.server.length} suites${only ? ` (--only ${only})` : ''}`);
 
 // clearOrigin gives the next suite a clean browser: it opens one fresh about:blank tab and closes every
 // other page (a reused tab would keep its sessionStorage, and the previous suite's still-open document
