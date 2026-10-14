@@ -218,3 +218,29 @@ func TestLauncherPromptNeverTypedIntoAShell(t *testing.T) {
 	require.NoError(t, l.SendPrompt(context.Background(), testUUID, name, "claude", "do the task"))
 	assert.Equal(t, 0, rt.sentTo(name), "the prompt is not typed into the shell")
 }
+
+// #3268: Restart and Resume replace an old session's row with a new one, so the new
+// agent gets its own launch grace (its created_at is the replacement's time), however
+// old the agent it replaces was.
+func TestReconciler_ReplacedSessionGetsItsOwnLaunchGrace(t *testing.T) {
+	ss, rt, r := newExitedFixture(t)
+	r.now = time.Now
+	ctx := context.Background()
+	const newID = "7d1c2b3a-4e5f-4a6b-8c9d-0e1f2a3b4c5d"
+	registerAwake(t, ss, "claude", testUUID)
+	require.NoError(t, ss.ReplaceLiveSession(ctx, testUUID, &store.LiveSession{
+		SessionID: newID, AgentType: "claude", AgentName: "proj", WorkingDir: t.TempDir(),
+	}))
+	ls, err := ss.GetLiveSession(ctx, newID)
+	require.NoError(t, err)
+	created, err := time.Parse(store.ISOFormat, ls.CreatedAt)
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now(), created, 10*time.Second, "the replacement's grace starts when it is created")
+
+	rt.listed = []AgentInfo{{AgentType: "claude", SessionID: newID}}
+	rt.set(FormatSessionName("claude", newID), "zsh") // its terminal shows a shell while the CLI starts
+	for i := 0; i < 3; i++ {
+		r.reconcileOnce(ctx)
+	}
+	assert.False(t, isSleeping(t, ss, newID), "inside its own launch grace it is not an exited agent")
+}

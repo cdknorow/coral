@@ -46,16 +46,48 @@ func ShellIdle(pid int) (idle bool, shell string, err error) {
 	if !IsShellCommand(shell) {
 		return false, shell, nil // the terminal's process is the agent itself (it was exec'd)
 	}
-	err = exec.Command("pgrep", "-P", strconv.Itoa(pid)).Run()
+	children, err := exec.Command("pgrep", "-P", strconv.Itoa(pid)).Output()
 	var ee *exec.ExitError
 	switch {
 	case err == nil:
-		return false, shell, nil // a child runs: the CLI, or a wrapper running it
+		// Children: busy only if one of them is in the foreground of the terminal. A
+		// background job ('sleep &') left after the CLI exited is not the agent (#3268).
+		if foregroundChild(strings.Fields(string(children))) {
+			return false, shell, nil
+		}
+		return true, shell, nil
 	case errors.As(err, &ee) && ee.ExitCode() == 1:
 		return true, shell, nil // pgrep found no child
 	default:
 		return false, shell, fmt.Errorf("list children of %d: %w", pid, err)
 	}
+}
+
+// foregroundChild reports whether any of these processes is in its terminal's
+// foreground process group (a '+' in the ps state). When it cannot tell it says yes,
+// the old, safe reading: a child is running.
+func foregroundChild(pids []string) bool {
+	if len(pids) == 0 {
+		return false
+	}
+	out, err := exec.Command("ps", append([]string{"-o", "stat=", "-p"}, strings.Join(pids, ","))...).Output()
+	if err != nil {
+		// ps exits 1 when some pids are already gone: judge by the ones it printed.
+		if len(out) == 0 {
+			return err != nil && !isExit1(err)
+		}
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, "+") {
+			return true
+		}
+	}
+	return false
+}
+
+func isExit1(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 1
 }
 
 // AgentShellIdle reports whether the agent's own pane is back at its idle shell

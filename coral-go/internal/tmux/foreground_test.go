@@ -61,3 +61,36 @@ func TestAgentShellIdleOfAGoneTerminal(t *testing.T) {
 	_, _, err := c.AgentShellIdle(context.Background(), "claude-0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9", "claude", "0b1c2d3e-4f50-4617-8293-a4b5c6d7e8f9")
 	assert.True(t, errors.Is(err, ErrTerminalGone), "err = %v", err)
 }
+
+// #3268: a background job left in the shell after the agent CLI exits ('sleep &') is
+// a child of the shell, but nothing is running in the foreground: the shell is still
+// at its prompt, so the agent has exited and nothing may be typed into it.
+func TestAgentShellIdleIgnoresBackgroundJobs(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	const sid = "5c7e9a21-3b4d-4f60-8a1b-9d2e3f4a5b60"
+	name := "claude-" + sid
+	createTestSession(t, c, name, t.TempDir())
+	state := func() (bool, bool) {
+		v, _, err := c.AgentShellIdle(ctx, name, "claude", sid)
+		return v, err == nil
+	}
+	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, 5*time.Second, 25*time.Millisecond)
+
+	// A job in the background: the shell is back at its prompt.
+	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 60 &"))
+	require.Eventually(t, func() bool {
+		out, _ := c.DisplayMessage(ctx, name+".0", "#{pane_pid}")
+		return out != ""
+	}, 5*time.Second, 25*time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
+	idle, ok := state()
+	require.True(t, ok)
+	assert.True(t, idle, "a background job is not the agent: the shell is idle")
+
+	// A foreground command on top of the background job is still busy.
+	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 30"))
+	require.Eventually(t, func() bool { v, ok := state(); return ok && !v }, 5*time.Second, 25*time.Millisecond, "a foreground command keeps the shell busy")
+	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
+	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, 5*time.Second, 25*time.Millisecond)
+}
