@@ -192,6 +192,36 @@
     margin-top: 0;
 }
 
+/* Task-queue lines (#3343): a run of them is one muted, collapsible row. */
+.mb-queue-run {
+    margin: 10px 0;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.mb-queue-summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    list-style: none;
+}
+.mb-queue-summary::-webkit-details-marker { display: none; }
+.mb-queue-summary::before { content: '▸'; font-size: 10px; }
+.mb-queue-run[open] > .mb-queue-summary::before { content: '▾'; }
+.mb-queue-summary:hover, .mb-queue-summary:focus-visible { background: var(--bg-tertiary); color: var(--text-secondary); }
+.mb-queue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-queue-line {
+    display: flex;
+    gap: 8px;
+    padding: 3px 8px 3px 24px;
+    overflow-wrap: anywhere;
+}
+.mb-queue-time { flex: none; opacity: 0.8; }
+.mb-queue-text { min-width: 0; white-space: pre-wrap; }
+
 .mb-message-header {
     display: flex;
     align-items: baseline;

@@ -2,6 +2,7 @@
 
 import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge } from './utils.js';
 import { state } from './state.js';
+import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
 import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch } from './server_base.js';
@@ -280,10 +281,15 @@ function renderMessages(messages) {
         Showing ${messages.length} of ${_totalMessages} messages
     </div>`;
 
-    container.innerHTML = loadEarlierHtml + countHtml + messages.map((m, i) => {
+    // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
+    const items = groupTaskQueueRuns(messages, !_selectMode);
+    container.innerHTML = loadEarlierHtml + countHtml + items.map((item, i) => {
+        if (item.kind === 'queue') return renderTaskQueueRun(item, formatTime);
+        const m = item.m;
         const color = getAgentColor(m.job_title || 'Unknown');
         const agent = m.job_title || 'Unknown';
-        const prevAgent = i > 0 ? (messages[i - 1].job_title || 'Unknown') : null;
+        const prev = i > 0 && items[i - 1].kind === 'msg' ? items[i - 1].m : null;
+        const prevAgent = prev ? (prev.job_title || 'Unknown') : null;
         const sameAsPrev = agent === prevAgent;
         const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
         const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id);
@@ -305,6 +311,8 @@ function renderMessages(messages) {
     if (pendingMessageId) {
         const target = container.querySelector(`[data-message-id="${CSS.escape(pendingMessageId)}"]`);
         if (target) {
+            const run = target.closest('details');
+            if (run) run.open = true; // a task-queue line inside a collapsed row
             target.classList.add('chat-search-target');
             target.scrollIntoView({ block: 'center', behavior: 'smooth' });
             pendingMessageId = null;

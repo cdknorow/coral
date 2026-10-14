@@ -7,6 +7,7 @@ import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
 import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
 import { renderTranscript } from './live_chat.js';
+import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
 import { updateSectionVisibility } from './sidebar.js';
@@ -570,10 +571,15 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
         </div>`;
     }
 
-    msgsEl.innerHTML = loadEarlierHtml + messages.map((m, i) => {
+    // Runs of task-queue lines are one collapsed row (#3343), except in select mode.
+    const items = groupTaskQueueRuns(messages, !_boardChatSelectMode);
+    msgsEl.innerHTML = loadEarlierHtml + items.map((item, i) => {
+        if (item.kind === 'queue') return renderTaskQueueRun(item, _formatTime);
+        const m = item.m;
         const agent = m.job_title || m.sender_name || 'Unknown';
         const color = getAgentColor(agent);
-        const prevAgent = i > 0 ? (messages[i - 1].job_title || messages[i - 1].sender_name || 'Unknown') : null;
+        const prev = i > 0 && items[i - 1].kind === 'msg' ? items[i - 1].m : null;
+        const prevAgent = prev ? (prev.job_title || prev.sender_name || 'Unknown') : null;
         const sameAsPrev = agent === prevAgent;
         const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
         const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id || m.session_id);

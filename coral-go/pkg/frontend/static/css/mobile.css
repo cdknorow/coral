@@ -593,6 +593,9 @@
         padding: 8px 10px !important;
     }
 
+    /* A collapsed task-queue row is a touch target (#3343). */
+    .mb-queue-summary { min-height: 44px; }
+
     /* Board input area — lift above bottom tab bar */
     #mb-board {
         padding-bottom: 60px !important;
