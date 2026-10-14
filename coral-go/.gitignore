@@ -1,0 +1,3 @@
+# The command-line token Coral writes in its data directory (#3149). A test or a
+# run whose data directory is a source folder must never commit one.
+cli-token

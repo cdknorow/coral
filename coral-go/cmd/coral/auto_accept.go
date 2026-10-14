@@ -66,5 +66,8 @@ func subcommand(args []string) (int, bool) {
 	if len(args) > 0 && args[0] == "db" {
 		return runDB(args[1:], os.Stdout, os.Stderr), true
 	}
+	if len(args) > 0 && args[0] == "cloud" {
+		return runCloud(args[1:], os.Stdin, os.Stdout, os.Stderr), true
+	}
 	return 0, false
 }

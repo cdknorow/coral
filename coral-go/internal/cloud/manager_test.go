@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,13 +28,16 @@ const fakeToken = "coralhub_srv_abcd1234_" + "x012345678901234567890123456789012
 
 // fakeHub implements the hub endpoints the connector uses.
 type fakeHub struct {
-	srv       *httptest.Server
-	hits      atomic.Int64 // every request, any path
-	tunnels   atomic.Int64 // /tunnel attempts
-	approveAt atomic.Int64 // poll calls before success (pending until reached)
-	polls     atomic.Int64
-	revoked   atomic.Bool
-	sessions  chan *tunnel.Session
+	srv         *httptest.Server
+	hits        atomic.Int64 // every request, any path
+	tunnels     atomic.Int64 // /tunnel attempts
+	approveAt   atomic.Int64 // poll calls before success (pending until reached)
+	polls       atomic.Int64
+	revoked     atomic.Bool
+	deny        atomic.Bool  // poll answers access_denied
+	expireAfter atomic.Int64 // >0: polls from this one on answer expired_token
+	busy        atomic.Int64 // >0: start answers 429 rate_limited with this Retry-After
+	sessions    chan *tunnel.Session
 }
 
 func newFakeHub(t *testing.T) *fakeHub {
@@ -42,12 +46,30 @@ func newFakeHub(t *testing.T) *fakeHub {
 	h.approveAt.Store(2)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/enroll/start", func(w http.ResponseWriter, r *http.Request) {
+		if n := h.busy.Load(); n > 0 {
+			w.Header().Set("Retry-After", strconv.FormatInt(n, 10))
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(`{"error":"rate_limited"}`))
+			return
+		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"device_code": strings.Repeat("d", 43), "user_code": "ABCD-EFGH",
 			"verification_url": h.srv.URL + "/enroll?code=ABCD-EFGH", "interval": 2, "expires_in": 600,
 		})
 	})
 	mux.HandleFunc("POST /api/enroll/poll", func(w http.ResponseWriter, r *http.Request) {
+		if n := h.expireAfter.Load(); n > 0 && h.polls.Load()+1 >= n {
+			h.polls.Add(1)
+			w.WriteHeader(400)
+			w.Write([]byte(`{"error":"expired_token"}`))
+			return
+		}
+		if h.deny.Load() {
+			h.polls.Add(1)
+			w.WriteHeader(400)
+			w.Write([]byte(`{"error":"access_denied"}`))
+			return
+		}
 		if h.polls.Add(1) < h.approveAt.Load() {
 			w.WriteHeader(400)
 			w.Write([]byte(`{"error":"authorization_pending"}`))
@@ -410,4 +432,94 @@ func TestLinkLostRunsOnDisconnectAndRevoke(t *testing.T) {
 			require.Eventually(t, func() bool { return lost.Load() == 1 }, 5*time.Second, 10*time.Millisecond)
 		})
 	}
+}
+
+// #3285: right after startup an enrolled server still looks idle until Run has
+// read its enrollment. Status says so (loading), and Connect waits instead of
+// starting a new enrollment on top of the stored one.
+func TestConnectWaitsForTheStoredEnrollment(t *testing.T) {
+	e := newEnv(t)
+	m := e.manager(e.hub.srv.URL)
+	require.True(t, m.Status().Loading)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, m.Connect(ctx), context.DeadlineExceeded, "no enrollment before the connector has loaded")
+	require.Zero(t, e.hub.hits.Load(), "and no dial")
+	start(t, m)
+	require.Eventually(t, func() bool { return !m.Status().Loading }, 2*time.Second, 5*time.Millisecond)
+	require.False(t, New(Options{}).Status().Loading, "no hub: nothing to load")
+}
+
+// #3285: Ctrl-C in 'coral cloud connect' cancels an enrollment in progress (the
+// code is dropped, nothing is linked) and never undoes a connection.
+func TestCancelEnrollmentOnlyCancelsAnEnrollment(t *testing.T) {
+	e := newEnv(t)
+	e.hub.approveAt.Store(1 << 30) // stays pending
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.NoError(t, m.Connect(context.Background()))
+	require.Equal(t, StateEnrolling, m.Status().State)
+	m.CancelEnrollment(context.Background())
+	st := m.Status()
+	require.Equal(t, StateIdle, st.State)
+	require.Empty(t, st.UserCode, "the code is dropped")
+	require.Equal(t, "enrollment cancelled", st.LastError)
+
+	e.hub.approveAt.Store(2)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateConnected)
+	m.CancelEnrollment(context.Background())
+	require.Equal(t, StateConnected, m.Status().State, "a connection is never undone")
+}
+
+// coral-hub's contract (v1.4.16): a denied request ends the enrollment at once with a
+// clear reason, instead of being retried as a hub error.
+func TestEnrollmentAccessDeniedStopsAtOnce(t *testing.T) {
+	e := newEnv(t)
+	e.hub.deny.Store(true)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateIdle)
+	require.Equal(t, "the request was denied in Coral Hub", m.Status().LastError)
+	require.Equal(t, ErrCodeAccessDenied, m.Status().LastErrorCode)
+	require.EqualValues(t, 1, e.hub.polls.Load(), "no more polls after the denial")
+}
+
+// A rate-limited start says how long to wait, from the hub's Retry-After.
+func TestEnrollmentStartRateLimited(t *testing.T) {
+	e := newEnv(t)
+	e.hub.busy.Store(90)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	err := m.Connect(context.Background())
+	var rl *RateLimitedError
+	require.ErrorAs(t, err, &rl)
+	require.Equal(t, 90*time.Second, rl.RetryAfter)
+	st := m.Status()
+	require.Equal(t, StateIdle, st.State)
+	require.Equal(t, "Coral Hub is busy: try again in 1m30s", st.LastError)
+	require.Equal(t, ErrCodeRateLimited, st.LastErrorCode)
+}
+
+// coral-hub's contract: a user outside the closed beta can't sign in, so the code just
+// expires (no distinct answer, by design). The expiry says so, with a code the UI keys on;
+// a later state clears the code.
+func TestEnrollmentExpiredSaysClosedBeta(t *testing.T) {
+	e := newEnv(t)
+	e.hub.approveAt.Store(1 << 30) // stays pending
+	e.hub.expireAfter.Store(1)
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateIdle)
+	st := m.Status()
+	require.Equal(t, ErrCodeExpired, st.LastErrorCode)
+	require.Equal(t, "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html", st.LastError)
+
+	e.hub.expireAfter.Store(0)
+	e.hub.approveAt.Store(0)
+	require.NoError(t, m.Connect(context.Background()))
+	waitState(t, m, StateConnected)
+	require.Empty(t, m.Status().LastErrorCode)
 }

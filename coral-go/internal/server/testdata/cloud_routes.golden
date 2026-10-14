@@ -208,8 +208,11 @@ POST /api/board/{project}/waits interact
 POST /api/board/{project}/working-mode/presets interact
 POST /api/board/{project}/working-mode/presets/{presetID}/reset interact
 POST /api/call-metrics never
+POST /api/cloud/cli-hello never
 POST /api/cloud/connect never
+POST /api/cloud/connect/cancel never
 POST /api/cloud/disconnect never
+POST /api/cloud/redeem never
 POST /api/folder-tags/{folderName} never
 POST /api/indexer/refresh never
 POST /api/notifications never

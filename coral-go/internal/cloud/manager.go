@@ -53,6 +53,9 @@ type Options struct {
 	// disconnects it, or the hub revokes it. Whatever the hub turned on is turned
 	// off (auto-accept, #3182).
 	OnLinkLost func(ctx context.Context)
+	// RecordTerms records the terms version the Hub confirmed when a credential
+	// is redeemed (nil: the local acceptance marker; tests replace it).
+	RecordTerms func(version string) error
 }
 
 // Status is the safe, secret-free view for the UI.
@@ -66,19 +69,42 @@ type Status struct {
 	Label           string    `json:"label,omitempty"`
 	ServerID        string    `json:"server_id,omitempty"`
 	LastError       string    `json:"last_error,omitempty"`
-	MaxMode         string    `json:"max_mode"` // view | interact | launch: set locally, never by the hub
+	// LastErrorCode names the reason, for a UI that must not match on LastError's wording:
+	// code_expired, access_denied or rate_limited (#3285, coral-hub's contract).
+	LastErrorCode string `json:"last_error_code,omitempty"`
+	MaxMode       string `json:"max_mode"` // view | interact | launch: set locally, never by the hub
+	// Loading is true from startup until the connector has read the stored
+	// enrollment (and a startup credential, if any): State is not final yet.
+	Loading bool `json:"loading,omitempty"`
 }
+
+// Last error codes (Status.LastErrorCode).
+const (
+	ErrCodeExpired      = "code_expired"
+	ErrCodeAccessDenied = "access_denied"
+	ErrCodeRateLimited  = "rate_limited"
+)
+
+// codeExpiredMessage is coral-hub's required text for a code that expired. A user outside
+// Coral Hub's closed beta can't sign in, so their code just expires: the hub gives no
+// distinct answer for that, by design (it would leak who is on the allowlist).
+const codeExpiredMessage = "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html"
 
 // Manager owns the enrollment and the tunnel.
 type Manager struct {
 	o  Options
 	hc *http.Client
 
-	mu     sync.Mutex
-	root   context.Context
-	cancel context.CancelFunc // current enrollment or tunnel goroutine
-	st     Status
-	gen    int // bumped on every start/stop so stale goroutines cannot write state
+	mu       sync.Mutex
+	redeemMu sync.Mutex // one redeem at a time
+	root     context.Context
+	cancel   context.CancelFunc // current enrollment or tunnel goroutine
+	st       Status
+	gen      int // bumped on every start/stop so stale goroutines cannot write state
+	// loaded is closed once Run has read the stored enrollment (at once with no
+	// hub): until then an enrolled server still looks idle.
+	loaded     chan struct{}
+	loadedOnce sync.Once
 }
 
 // New creates a Manager. Nothing runs until Run.
@@ -93,12 +119,25 @@ func New(o Options) *Manager {
 	if hc == nil {
 		hc = NewHubHTTPClient()
 	}
-	m := &Manager{o: o, hc: hc}
+	m := &Manager{o: o, hc: hc, loaded: make(chan struct{})}
 	m.st = Status{Configured: o.HubURL != "", HubURL: o.HubURL, State: StateOff}
 	if o.HubURL != "" {
 		m.st.State = StateIdle
+	} else {
+		m.markLoaded()
 	}
 	return m
+}
+
+func (m *Manager) markLoaded() { m.loadedOnce.Do(func() { close(m.loaded) }) }
+
+func (m *Manager) isLoaded() bool {
+	select {
+	case <-m.loaded:
+		return true
+	default:
+		return false
+	}
 }
 
 // Run starts the connector if this server is already enrolled, then waits for ctx.
@@ -126,10 +165,41 @@ func (m *Manager) Run(ctx context.Context) {
 	default:
 		m.startTunnel(conn)
 	}
+	m.markLoaded()
 	<-ctx.Done()
 	m.mu.Lock()
 	m.stopLocked()
 	m.mu.Unlock()
+}
+
+// Bootstrap redeems a one-time credential at startup, before Run (no network
+// call before its file is validated).
+func (m *Manager) Bootstrap(ctx context.Context, settings *store.SessionStore, hostname string, src CredentialSource) BootstrapResult {
+	m.redeemMu.Lock()
+	defer m.redeemMu.Unlock()
+	return Bootstrap(ctx, BootstrapOptions{HubURL: m.o.HubURL, Store: m.o.Store, Settings: settings, HTTPClient: m.hc, Hostname: hostname, Logger: m.o.Logger, RecordTerms: m.o.RecordTerms}, src)
+}
+
+// PreCheck reports whether a bootstrap could proceed (see PreCheck).
+func (m *Manager) PreCheck(ctx context.Context) BootstrapResult {
+	return PreCheck(ctx, m.o.HubURL, m.o.Store)
+}
+
+// Redeem enrolls the running server with a credential handed over by
+// `coral cloud connect --ticket-file` (the server stays the only writer of the
+// identity), then connects.
+func (m *Manager) Redeem(ctx context.Context, settings *store.SessionStore, hostname string, src CredentialSource) BootstrapResult {
+	res := m.Bootstrap(ctx, settings, hostname, src)
+	if res.Status != BootstrapEnrolled {
+		return res
+	}
+	m.mu.Lock()
+	running := m.root != nil
+	m.mu.Unlock()
+	if conn, err := m.o.Store.Get(ctx); err == nil && running {
+		m.startTunnel(conn)
+	}
+	return res
 }
 
 // Status returns the current state.
@@ -138,6 +208,7 @@ func (m *Manager) Status() Status {
 	defer m.mu.Unlock()
 	s := m.st
 	s.MaxMode = m.currentMode().String()
+	s.Loading = !m.isLoaded()
 	return s
 }
 
@@ -151,7 +222,7 @@ func (m *Manager) stopLocked() {
 
 func (m *Manager) setError(state, msg string) {
 	m.mu.Lock()
-	m.st.State, m.st.LastError = state, msg
+	m.st.State, m.st.LastError, m.st.LastErrorCode = state, msg, ""
 	m.mu.Unlock()
 }
 
@@ -160,6 +231,13 @@ func (m *Manager) setError(state, msg string) {
 func (m *Manager) Connect(ctx context.Context) error {
 	if m.o.HubURL == "" {
 		return ErrNotConfigured
+	}
+	// An enrolled server looks idle until Run has read its enrollment: never
+	// start a new enrollment before then.
+	select {
+	case <-m.loaded:
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 	m.mu.Lock()
 	if m.root == nil {
@@ -176,7 +254,14 @@ func (m *Manager) Connect(ctx context.Context) error {
 	host, _ := os.Hostname()
 	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, m.o.Now(), EnrollInfo{Hostname: host, CoralVersion: m.o.CoralVersion})
 	if err != nil {
-		m.setError(StateIdle, "could not reach the hub to start enrollment")
+		var rl *RateLimitedError
+		if errors.As(err, &rl) {
+			m.mu.Lock()
+			m.st.State, m.st.LastError, m.st.LastErrorCode = StateIdle, rl.Error(), ErrCodeRateLimited
+			m.mu.Unlock()
+		} else {
+			m.setError(StateIdle, "could not reach the hub to start enrollment")
+		}
 		return err
 	}
 	m.mu.Lock()
@@ -190,6 +275,25 @@ func (m *Manager) Connect(ctx context.Context) error {
 	m.mu.Unlock()
 	go m.pollEnrollment(ectx, gen, dc)
 	return nil
+}
+
+// CancelEnrollment stops an enrollment in progress: the user code is dropped and
+// nothing is linked (`coral cloud connect`, Ctrl-C). In any other state it does
+// nothing, so it can never undo a connection. If the Hub's approval was saved
+// just before the cancel, that enrollment stands and connects.
+func (m *Manager) CancelEnrollment(ctx context.Context) {
+	m.mu.Lock()
+	if m.st.State != StateEnrolling {
+		m.mu.Unlock()
+		return
+	}
+	m.stopLocked()
+	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle, LastError: "enrollment cancelled"}
+	running := m.root != nil
+	m.mu.Unlock()
+	if conn, err := m.o.Store.Get(ctx); err == nil && running && conn.HubURL == m.o.HubURL {
+		m.startTunnel(conn)
+	}
 }
 
 func (m *Manager) stale(gen int) bool { return gen != m.gen }
@@ -206,7 +310,7 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 		case <-time.After(interval):
 		}
 		if !m.o.Now().Before(dc.ExpiresAt) {
-			m.finishEnroll(gen, "the code expired; start again")
+			m.finishEnrollCode(gen, codeExpiredMessage, ErrCodeExpired)
 			return
 		}
 		en, err := PollEnrollment(ctx, m.hc, m.o.HubURL, dc.DeviceCode)
@@ -234,7 +338,10 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 		case errors.Is(err, ErrSlowDown):
 			interval += 5 * time.Second
 		case errors.Is(err, ErrEnrollmentExpired):
-			m.finishEnroll(gen, "the code expired; start again")
+			m.finishEnrollCode(gen, codeExpiredMessage, ErrCodeExpired)
+			return
+		case errors.Is(err, ErrAccessDenied):
+			m.finishEnrollCode(gen, "the request was denied in Coral Hub", ErrCodeAccessDenied)
 			return
 		default:
 			if failures++; failures >= 10 {
@@ -245,13 +352,15 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 	}
 }
 
-func (m *Manager) finishEnroll(gen int, msg string) {
+func (m *Manager) finishEnroll(gen int, msg string) { m.finishEnrollCode(gen, msg, "") }
+
+func (m *Manager) finishEnrollCode(gen int, msg, code string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.stale(gen) {
 		return
 	}
-	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle, LastError: msg}
+	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle, LastError: msg, LastErrorCode: code}
 }
 
 // startTunnel runs the tunnel for an enrolled server until revoked or stopped.
@@ -272,7 +381,7 @@ func (m *Manager) runTunnel(ctx context.Context, gen int) {
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if !m.stale(gen) {
-			m.st.State, m.st.LastError = state, msg
+			m.st.State, m.st.LastError, m.st.LastErrorCode = state, msg, ""
 		}
 	}
 	token, err := m.o.Store.Token(ctx)

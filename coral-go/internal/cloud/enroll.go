@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -24,8 +26,35 @@ var (
 	ErrAuthorizationPending = errors.New("cloud: authorization pending")
 	ErrSlowDown             = errors.New("cloud: polling too fast")
 	ErrEnrollmentExpired    = errors.New("cloud: enrollment code expired")
+	ErrAccessDenied         = errors.New("cloud: the request was denied in Coral Hub")
 	ErrHubResponse          = errors.New("cloud: unexpected response from the hub")
 )
+
+// RateLimitedError is the hub refusing to start an enrollment for now (429
+// rate_limited). RetryAfter is from its Retry-After header, capped; zero if absent.
+type RateLimitedError struct{ RetryAfter time.Duration }
+
+func (e *RateLimitedError) Error() string {
+	if e.RetryAfter > 0 {
+		return fmt.Sprintf("Coral Hub is busy: try again in %s", e.RetryAfter.Round(time.Second))
+	}
+	return "Coral Hub is busy: try again in a minute"
+}
+
+const maxRetryAfter = 15 * time.Minute
+
+// enrollRetryAfter reads a Retry-After header in seconds or as an HTTP date. Unlike
+// redeem's (retried automatically, capped at a minute), it is only shown to the user.
+func enrollRetryAfter(h http.Header, now time.Time) time.Duration {
+	v := strings.TrimSpace(h.Get("Retry-After"))
+	var d time.Duration
+	if secs, err := strconv.Atoi(v); err == nil {
+		d = time.Duration(secs) * time.Second
+	} else if t, err := http.ParseTime(v); err == nil {
+		d = t.Sub(now)
+	}
+	return min(max(d, 0), maxRetryAfter)
+}
 
 const (
 	maxHubResponse = 16 << 10
@@ -76,10 +105,23 @@ func NewHubHTTPClient() *http.Client {
 	tr.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	tr.ResponseHeaderTimeout = 15 * time.Second
 	return &http.Client{
-		Transport:     tr,
+		Transport:     userAgentTransport{tr},
 		Timeout:       20 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
+}
+
+// userAgentTransport names Coral to the hub on every call: Coral/<version> (<os>/<arch>).
+type userAgentTransport struct{ base http.RoundTripper }
+
+func (t userAgentTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("User-Agent", hubUserAgent())
+	return t.base.RoundTrip(r)
+}
+
+func hubUserAgent() string {
+	return fmt.Sprintf("Coral/%s (%s/%s)", cleanInfo(config.ReportedVersion(), 40), runtime.GOOS, runtime.GOARCH)
 }
 
 // DeviceCode is what the user needs to complete enrollment in the browser.
@@ -99,35 +141,41 @@ type Enrolled struct {
 }
 
 func hubPost(ctx context.Context, hc *http.Client, hubURL, path string, in, out any) (int, error) {
+	status, _, err := hubPostHeader(ctx, hc, hubURL, path, in, out)
+	return status, err
+}
+
+// hubPostHeader is hubPost with the response headers.
+func hubPostHeader(ctx context.Context, hc *http.Client, hubURL, path string, in, out any) (int, http.Header, error) {
 	var body io.Reader = http.NoBody
 	if in != nil {
 		b, err := json.Marshal(in)
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		body = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, hubURL+path, body)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("cloud: hub unreachable") // do not echo URL or error text
+		return 0, nil, fmt.Errorf("cloud: hub unreachable") // do not echo URL or error text
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxHubResponse))
 	if err != nil {
-		return resp.StatusCode, ErrHubResponse
+		return resp.StatusCode, resp.Header, ErrHubResponse
 	}
 	if out != nil && len(b) > 0 {
 		if err := json.Unmarshal(b, out); err != nil {
-			return resp.StatusCode, ErrHubResponse
+			return resp.StatusCode, resp.Header, ErrHubResponse
 		}
 	}
-	return resp.StatusCode, nil
+	return resp.StatusCode, resp.Header, nil
 }
 
 // EnrollInfo is what this machine tells the hub about itself, so the person approving the
@@ -162,11 +210,15 @@ func StartEnrollment(ctx context.Context, hc *http.Client, hubURL string, now ti
 		ExpiresIn       int    `json:"expires_in"`
 	}
 	info = EnrollInfo{Hostname: cleanInfo(info.Hostname, 64), CoralVersion: cleanInfo(info.CoralVersion, 40)}
-	status, err := hubPost(ctx, hc, hubURL, "/api/enroll/start", info, &r)
-	if err != nil && ctx.Err() == nil {
+	status, hdr, err := hubPostHeader(ctx, hc, hubURL, "/api/enroll/start", info, &r)
+	if err != nil && status == 0 && ctx.Err() == nil {
 		// One quick retry for a transient connection error (a fresh code is harmless).
 		time.Sleep(200 * time.Millisecond)
-		status, err = hubPost(ctx, hc, hubURL, "/api/enroll/start", info, &r)
+		status, hdr, err = hubPostHeader(ctx, hc, hubURL, "/api/enroll/start", info, &r)
+	}
+	if status == http.StatusTooManyRequests {
+		// rate_limited: whatever the body says, back off for as long as the hub asks.
+		return nil, &RateLimitedError{RetryAfter: enrollRetryAfter(hdr, now)}
 	}
 	if err != nil {
 		return nil, err
@@ -217,12 +269,16 @@ func PollEnrollment(ctx context.Context, hc *http.Client, hubURL, deviceCode str
 			return nil, ErrHubResponse
 		}
 		return &Enrolled{Token: r.Token, ServerID: r.ServerID, Label: cleanLabel(r.Label)}, nil
-	case http.StatusBadRequest:
+	case http.StatusBadRequest, http.StatusForbidden:
 		switch r.Error {
 		case "authorization_pending":
 			return nil, ErrAuthorizationPending
+		case "slow_down": // RFC 8628 sends it as a 400
+			return nil, ErrSlowDown
 		case "expired_token":
 			return nil, ErrEnrollmentExpired
+		case "access_denied":
+			return nil, ErrAccessDenied
 		}
 	case http.StatusTooManyRequests:
 		return nil, ErrSlowDown

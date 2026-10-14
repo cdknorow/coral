@@ -81,6 +81,9 @@ func main() {
 	hubMode := flag.Bool("hub", false, "Run as a multi-server hub: manage and view remote Coral servers (also CORAL_HUB=1)")
 	cloudURL := flag.String("cloud-url", "", "Coral Hub origin this server may connect to (also CORAL_CLOUD_URL). Release builds default to https://app.coralai.ai; \"\" or off disables it. Nothing is sent until you connect")
 	debugInput := flag.Bool("debug-input", false, "Record every write Coral makes to agent terminals in <data dir>/input-debug.log (debug; may contain secrets). Also CORAL_DEBUG_INPUT=1 or the Settings toggle")
+	bootstrapFile := flag.String("bootstrap-file", "", "One-time Coral Hub credential file to enroll this server with at startup (owned by you, mode 0600, removed after reading). On Linux /run/coral/bootstrap.d/credential is read without the flag")
+	proofFile := flag.String("proof-file", "", "Optional proof file to send with the bootstrap credential (at most 16 KiB of JSON from a provider helper)")
+	cloudConnect := flag.String("cloud-connect", cloudConnectPrompt, "With --cloud-url/CORAL_CLOUD_URL on a server not yet connected: prompt (connect in the terminal at startup; without a terminal, log the link and code), auto (only log them, never prompt) or off")
 	selfTest := flag.Bool("encryption-self-test", false, "Run an isolated encrypted database round-trip and exit")
 	flag.Parse()
 	if *selfTest {
@@ -100,7 +103,13 @@ func main() {
 			cfg.CloudURL = config.CloudURLSetting(*cloudURL, true)
 		}
 	})
+	cfg.BootstrapFile, cfg.ProofFile = *bootstrapFile, *proofFile
 	setupCrashLogging(cfg.CoralDir())
+	cloudMode, err := cloudStartupMode(*cloudConnect, explicitCloudURL(*cloudURL), isTerminal(os.Stdin) && isTerminal(os.Stdout))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
 	// Warn if typing "coral" would run a different program. An abandoned PyPI
 	// package ships the same six binary names, uses the same ~/.coral directory
@@ -139,9 +148,11 @@ func main() {
 	// kills the process.
 	signal.Ignore(syscall.SIGHUP)
 
-	// Graceful shutdown on SIGINT/SIGTERM
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Graceful shutdown on SIGINT/SIGTERM. While the Connect to Coral Hub step
+	// waits at the terminal, Ctrl-C ends only that step (interruptRouter).
+	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
+	interrupts := newInterruptRouter(stop)
 
 	// Without a terminal on stdin (a service, or a shell that started Coral in the
 	// background) a prompt would block startup in read(0) forever. Skip the remote
@@ -189,6 +200,9 @@ func main() {
 			executil.OpenBrowser(fmt.Sprintf("http://localhost:%d", cfg.Port))
 		}()
 	}
+
+	// Connect to Coral Hub, when asked for and not connected yet (#3285).
+	runCloudStartupStep(ctx, cfg, cloudMode, interrupts, os.Stdin, os.Stdout)
 
 	<-ctx.Done()
 	fmt.Println() // newline after ^C

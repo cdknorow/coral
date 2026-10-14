@@ -61,6 +61,14 @@ type Config struct {
 	// off and this server never opens an outbound connection to the cloud.
 	CloudURL string
 
+	// BootstrapFile and ProofFile name a one-time Coral Hub credential and its
+	// optional proof (--bootstrap-file, --proof-file), redeemed at startup when
+	// this server has no identity yet (#3149). Paths only: a credential is never
+	// taken from the environment or argv. On Linux, without the flag, the
+	// well-known /run/coral/bootstrap.d/credential is used if present.
+	BootstrapFile string
+	ProofFile     string
+
 	// WebSocket
 	WSPollIntervalS int
 	// WSPollInterval, when set, replaces WSPollIntervalS. Only tests set it,
@@ -76,18 +84,12 @@ type Config struct {
 // (CORAL_DATA_DIR, CORAL_DIR, ~/.coral). Pass "" to use the default.
 func Load(dataDir ...string) *Config {
 	homeDir, _ := os.UserHomeDir()
-	coralDir := filepath.Join(homeDir, ".coral")
 	logDir := os.TempDir()
-
-	// CLI --home flag takes highest precedence
-	if len(dataDir) > 0 && dataDir[0] != "" {
-		coralDir = dataDir[0]
-	} else if envDir := os.Getenv("CORAL_DATA_DIR"); envDir != "" {
-		// CORAL_DATA_DIR takes precedence (matches Python), CORAL_DIR as fallback alias.
-		coralDir = envDir
-	} else if envDir := os.Getenv("CORAL_DIR"); envDir != "" {
-		coralDir = envDir
+	var override string
+	if len(dataDir) > 0 {
+		override = dataDir[0]
 	}
+	coralDir := ResolveCoralDir(override)
 
 	// Ensure data directory exists
 	testguard.CheckDataPath(coralDir)
@@ -150,6 +152,23 @@ func CloudURLSetting(v string, set bool) string {
 // False for dev tier (set at compile time via build tags).
 func EULARequired() bool {
 	return !TierSkipEULA
+}
+
+// ResolveCoralDir returns the data directory Load would use, without creating
+// it: dataDir (the --home flag) if set, else CORAL_DATA_DIR, CORAL_DIR, or
+// ~/.coral.
+func ResolveCoralDir(dataDir string) string {
+	switch {
+	case dataDir != "":
+		return dataDir
+	case os.Getenv("CORAL_DATA_DIR") != "":
+		// CORAL_DATA_DIR takes precedence (matches Python), CORAL_DIR as fallback alias.
+		return os.Getenv("CORAL_DATA_DIR")
+	case os.Getenv("CORAL_DIR") != "":
+		return os.Getenv("CORAL_DIR")
+	}
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".coral")
 }
 
 // CoralDir returns the root data directory for all Coral state.

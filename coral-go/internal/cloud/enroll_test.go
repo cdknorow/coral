@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -108,6 +109,12 @@ func TestPollEnrollmentAnswers(t *testing.T) {
 	require.ErrorIs(t, err, ErrEnrollmentExpired)
 	_, err = run(429, `{"error":"slow_down"}`)
 	require.ErrorIs(t, err, ErrSlowDown)
+	_, err = run(400, `{"error":"slow_down"}`)
+	require.ErrorIs(t, err, ErrSlowDown, "RFC 8628 sends slow_down as a 400")
+	_, err = run(400, `{"error":"access_denied"}`)
+	require.ErrorIs(t, err, ErrAccessDenied)
+	_, err = run(403, `{"error":"access_denied"}`)
+	require.ErrorIs(t, err, ErrAccessDenied)
 	_, err = run(400, `{"error":"something_else"}`)
 	require.ErrorIs(t, err, ErrHubResponse)
 
@@ -162,4 +169,47 @@ func TestStartEnrollmentReportsACleanedHostnameAndVersion(t *testing.T) {
 	require.NotContains(t, got.Hostname, "\n")
 	require.LessOrEqual(t, len([]rune(got.Hostname)), 64)
 	require.Equal(t, "1.2.3", got.CoralVersion)
+}
+
+// 429 rate_limited at start: the wait comes from Retry-After (seconds or a date),
+// capped, whatever the body is.
+func TestStartEnrollmentRateLimited(t *testing.T) {
+	now := time.Date(2026, 10, 14, 8, 0, 0, 0, time.UTC)
+	run := func(retryAfter, body string) error {
+		url, hc := hubWith(t, func(w http.ResponseWriter, r *http.Request) {
+			if retryAfter != "" {
+				w.Header().Set("Retry-After", retryAfter)
+			}
+			w.WriteHeader(http.StatusTooManyRequests)
+			w.Write([]byte(body))
+		})
+		_, err := StartEnrollment(context.Background(), hc, url, now, EnrollInfo{})
+		return err
+	}
+	for ra, want := range map[string]time.Duration{
+		"120": 2 * time.Minute, "": 0, "-5": 0, "junk": 0, "86400": maxRetryAfter,
+		now.Add(5 * time.Minute).Format(http.TimeFormat): 5 * time.Minute,
+	} {
+		var rl *RateLimitedError
+		require.ErrorAs(t, run(ra, `{"error":"rate_limited"}`), &rl, ra)
+		require.Equal(t, want, rl.RetryAfter, ra)
+	}
+	var rl *RateLimitedError
+	require.ErrorAs(t, run("30", "Too Many Requests"), &rl, "a non-JSON body is still rate limiting")
+	require.Equal(t, "Coral Hub is busy: try again in 30s", rl.Error())
+	require.ErrorAs(t, run("", ""), &rl)
+	require.Equal(t, "Coral Hub is busy: try again in a minute", rl.Error())
+}
+
+// Every hub call names Coral, its version and platform.
+func TestHubCallsSendACoralUserAgent(t *testing.T) {
+	var ua string
+	url, hc := hubWith(t, func(w http.ResponseWriter, r *http.Request) {
+		ua = r.Header.Get("User-Agent")
+		w.WriteHeader(400)
+		w.Write([]byte(`{"error":"authorization_pending"}`))
+	})
+	_, err := PollEnrollment(context.Background(), hc, url, "dev")
+	require.ErrorIs(t, err, ErrAuthorizationPending)
+	require.Regexp(t, `^Coral/\S+ \(`+runtime.GOOS+`/`+runtime.GOARCH+`\)$`, ua)
 }

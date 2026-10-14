@@ -1,12 +1,21 @@
 package routes
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log/slog"
+	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/peercred"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -46,13 +55,45 @@ func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
 type CloudHandler struct {
 	ss *store.SessionStore
 
+	// cliAuth checks `coral cloud connect`: it proves it knows the 0600 token
+	// without sending it (cloud.CLIAuth);
+	// empty if it could not be written, which turns the command-line path off.
+	cliAuth  *cloud.CLIAuth
+	cliToken string
+	dataDir  string
+	// sameUser tells whether a loopback request comes from Coral's own user
+	// (peercred.SameUser; a test seam).
+	sameUser func(*http.Request) (same, supported bool)
+
 	mu  sync.RWMutex
 	mgr *cloud.Manager
 }
 
-// NewCloudHandler creates the handler. The manager is attached later (SetManager)
-// because it needs the running server's address.
-func NewCloudHandler(ss *store.SessionStore) *CloudHandler { return &CloudHandler{ss: ss} }
+// NewCloudHandler creates the handler and writes a fresh command-line token in
+// dataDir. The manager is attached later (SetManager) because it needs the
+// running server's address.
+func NewCloudHandler(ss *store.SessionStore, dataDir string) *CloudHandler {
+	h := &CloudHandler{ss: ss, sameUser: peercred.SameUser, dataDir: dataDir}
+	tok, err := cloud.WriteCLIToken(dataDir)
+	if err != nil {
+		slog.Warn("cloud: could not write the command-line token; `coral cloud connect` will be refused", "error", err)
+	}
+	h.cliAuth = cloud.NewCLIAuth(tok)
+	h.cliToken = tok
+	return h
+}
+
+// Close removes the command-line token this server wrote, at a graceful
+// shutdown: a stopped server leaves no token behind (a new one is written at
+// every start).
+func (h *CloudHandler) Close() {
+	if err := cloud.RemoveCLIToken(h.dataDir, h.cliToken); err != nil {
+		slog.Warn("cloud: could not remove the command-line token", "error", err)
+	}
+}
+
+// SetPeerCheck replaces the same-user check (tests).
+func (h *CloudHandler) SetPeerCheck(f func(*http.Request) (same, supported bool)) { h.sameUser = f }
 
 // SetManager attaches the connector manager.
 func (h *CloudHandler) SetManager(m *cloud.Manager) {
@@ -71,6 +112,9 @@ func (h *CloudHandler) manager() *cloud.Manager {
 type cloudStatus struct {
 	cloud.Status
 	AllowHubAutoAccept bool `json:"allow_hub_auto_accept"`
+	// Bootstrap is the last one-time-credential enrollment's outcome
+	// ({status, detail, at}); absent when there was none.
+	Bootstrap json.RawMessage `json:"bootstrap,omitempty"`
 }
 
 func (h *CloudHandler) status() cloudStatus {
@@ -79,22 +123,96 @@ func (h *CloudHandler) status() cloudStatus {
 		st = m.Status()
 	}
 	allow := true
+	var boot json.RawMessage
 	if s, err := h.ss.GetSettings(context.Background()); err == nil {
 		allow = HubAutoAcceptAllowed(s)
+		if v := s[cloud.BootstrapStatusSetting]; json.Valid([]byte(v)) {
+			boot = json.RawMessage(v)
+		}
 	}
-	return cloudStatus{Status: st, AllowHubAutoAccept: allow}
+	return cloudStatus{Status: st, AllowHubAutoAccept: allow, Bootstrap: boot}
 }
 
-// refuseTunneled admits only the positively identified local dashboard (loopback peer,
-// localhost Host, same-origin browser fetch, no tunnel stamp, no Bearer credential). The
-// connector's own settings are not reachable by the hub through the tunnel, by a proxy
-// holding the API key, or by a stray curl: only someone using Coral on this computer.
-func refuseTunneled(w http.ResponseWriter, r *http.Request) bool {
-	if cloud.Tunneled(r) || !localDashboard(r) {
-		errForbidden(w, "Cloud connector settings are only available from the Coral dashboard on this computer")
+// Who may use the /api/cloud routes. Never the Cloud Hub (they are not in the
+// tunnel table, and a tunneled request is refused here too).
+const (
+	allowDashboard = 1 << iota // the positively identified local dashboard
+	allowCLI                   // `coral cloud connect`: a loopback command-line request with the token
+)
+
+// refuseCloud admits only someone using Coral on this computer, as Coral's own
+// user. On Linux the kernel names the user behind a loopback socket: another
+// user (or a pod sidecar running as another uid) is refused whatever it sends,
+// before any other rule, since browser headers can be forged with curl. Then
+// either the dashboard (loopback peer, localhost Host, same-origin browser
+// fetch, no tunnel stamp, no Bearer credential) or the command line with the
+// 0600 token from Coral's data folder, as allowed.
+func (h *CloudHandler) refuseCloud(w http.ResponseWriter, r *http.Request, allow int) bool {
+	if cloud.Tunneled(r) {
+		errForbidden(w, "Cloud connector settings are only available on this computer")
 		return true
 	}
-	return false
+	if same, supported := h.sameUser(r); supported && !same {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Cloud connector settings are only available to the user Coral runs as", "code": "other_user"})
+		return true
+	}
+	if allow&allowDashboard != 0 && r.Header.Get(cloud.CLIAuthHeader) == "" && localDashboard(r) {
+		return false
+	}
+	if allow&allowCLI != 0 && r.Header.Get(cloud.CLIAuthHeader) != "" && localCLI(r) {
+		// The MAC covers the body, so read it here and give the handler a copy.
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		if err == nil && h.cliAuth.Verify(r, body) {
+			return false
+		}
+	}
+	if allow&allowDashboard != 0 {
+		// The Settings screen shows this as is, with a copy button for the command
+		// (#3285): connecting is for someone at this computer, never a remote browser.
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error":   "Connecting has to happen on the computer running Coral. On that computer, open this dashboard, or run: coral cloud connect",
+			"code":    "local_dashboard_required",
+			"command": "coral cloud connect",
+		})
+	} else {
+		errForbidden(w, "Only `coral cloud connect`, run as the user Coral runs as on this computer, can do this")
+	}
+	return true
+}
+
+// CLIHello: POST /api/cloud/cli-hello {"nonce": c}, step 1 of the command
+// line's handshake (cloud.CLIAuth): the server proves it knows the token. Only a
+// loopback command-line request as Coral's user, never through the tunnel.
+func (h *CloudHandler) CLIHello(w http.ResponseWriter, r *http.Request) {
+	if cloud.Tunneled(r) {
+		errForbidden(w, "Cloud connector settings are only available on this computer")
+		return
+	}
+	if same, supported := h.sameUser(r); supported && !same {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "Cloud connector settings are only available to the user Coral runs as", "code": "other_user"})
+		return
+	}
+	if !localCLI(r) {
+		errForbidden(w, "Only `coral cloud connect`, run on this computer, can do this")
+		return
+	}
+	if !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Nonce string `json:"nonce"`
+	}
+	if err := decodeJSON(r, &body); err != nil {
+		errBadRequest(w, "nonce is required")
+		return
+	}
+	sn, proof, err := h.cliAuth.Hello(body.Nonce)
+	if err != nil {
+		errBadRequest(w, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"nonce": sn, "proof": proof})
 }
 
 // requireJSON makes state-changing calls non-"simple" cross-site requests, so a web
@@ -109,7 +227,7 @@ func requireJSON(w http.ResponseWriter, r *http.Request) bool {
 
 // GetStatus: GET /api/cloud/status
 func (h *CloudHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
-	if refuseTunneled(w, r) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.status())
@@ -117,7 +235,7 @@ func (h *CloudHandler) GetStatus(w http.ResponseWriter, r *http.Request) {
 
 // Connect: POST /api/cloud/connect — starts enrollment and returns the user code.
 func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
-	if refuseTunneled(w, r) || !requireJSON(w, r) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
 		return
 	}
 	m := h.manager()
@@ -130,15 +248,35 @@ func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 			errBadRequest(w, err.Error())
 			return
 		}
+		var rl *cloud.RateLimitedError
+		if errors.As(err, &rl) {
+			if rl.RetryAfter > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(int(rl.RetryAfter.Seconds())))
+			}
+			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": rl.Error()})
+			return
+		}
 		errInternalServer(w, "Could not start enrollment; check that the hub is reachable")
 		return
 	}
 	writeJSON(w, http.StatusOK, h.status())
 }
 
+// CancelConnect: POST /api/cloud/connect/cancel — stops an enrollment in
+// progress (Ctrl-C in `coral cloud connect`); never undoes a connection.
+func (h *CloudHandler) CancelConnect(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	if m := h.manager(); m != nil {
+		m.CancelEnrollment(r.Context())
+	}
+	writeJSON(w, http.StatusOK, h.status())
+}
+
 // Disconnect: POST /api/cloud/disconnect — forgets the token locally.
 func (h *CloudHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
-	if refuseTunneled(w, r) || !requireJSON(w, r) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
 		return
 	}
 	m := h.manager()
@@ -155,7 +293,7 @@ func (h *CloudHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 
 // SetMaxMode: PUT /api/cloud/max-mode {"mode": "view"|"interact"|"launch"}
 func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
-	if refuseTunneled(w, r) || !requireJSON(w, r) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
 		return
 	}
 	var body struct {
@@ -191,7 +329,7 @@ func (h *CloudHandler) SetMaxMode(w http.ResponseWriter, r *http.Request) {
 // dashboard only (never through the tunnel). Off turns off every agent's
 // auto-accept that the Cloud Hub enabled.
 func (h *CloudHandler) SetAllowHubAutoAccept(w http.ResponseWriter, r *http.Request) {
-	if refuseTunneled(w, r) || !requireJSON(w, r) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) || !requireJSON(w, r) {
 		return
 	}
 	var body struct {
@@ -216,4 +354,73 @@ func (h *CloudHandler) SetAllowHubAutoAccept(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	writeJSON(w, http.StatusOK, h.status())
+}
+
+// localCLI admits only a command-line client on this computer: a loopback peer
+// with a localhost Host, no tunnel stamp (any value), and nothing a browser
+// sends (Origin, Referer, fetch metadata), so neither the Cloud Hub, another
+// machine nor a web page can reach it.
+func localCLI(r *http.Request) bool {
+	if viaTunnel(r) || r.Header.Get("Origin") != "" || r.Header.Get("Referer") != "" || r.Header.Get("Sec-Fetch-Site") != "" {
+		return false
+	}
+	peer, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	if ip := net.ParseIP(peer); ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	return localHostOK(r.Host)
+}
+
+// Redeem: POST /api/cloud/redeem, from `coral cloud connect`. The running
+// server redeems, so it stays the only writer of the identity. The command
+// reads the credential file itself, as the user who runs it, and sends the
+// credential only in the Authorization header and the proof's contents as
+// {"proof": {...}}: the server never opens a path a caller names (any local
+// user can reach this route). {"check": true}, with no credential, asks only
+// whether a bootstrap could proceed, so the command reads nothing when it
+// could not; it passes the same gate as a redeem, so it is no oracle for
+// another user. Local command line only, as Coral's user with its token; never
+// through the tunnel. Answers 200
+// {status, detail, exit_code}; status "ready" for a check that may proceed.
+func (h *CloudHandler) Redeem(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowCLI) || !requireJSON(w, r) {
+		return
+	}
+	var body struct {
+		Check bool            `json:"check"`
+		Proof json.RawMessage `json:"proof"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil || dec.More() {
+		errBadRequest(w, "send only {\"check\": true} or {\"proof\": {...}}; never a file path")
+		return
+	}
+	cred, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if bearer == body.Check {
+		errBadRequest(w, "send either check or the credential in the Authorization header")
+		return
+	}
+	src := cloud.CredentialSource{Value: []byte(cred)}
+	if len(body.Proof) > 0 && string(body.Proof) != "null" {
+		src.Proof = body.Proof
+	}
+	m := h.manager()
+	var res cloud.BootstrapResult
+	switch {
+	case m == nil:
+		res = cloud.BootstrapResult{Status: cloud.BootstrapNoHub, Detail: "no Coral Hub is configured (--cloud-url)"}
+	case body.Check:
+		if res = m.PreCheck(r.Context()); res.Status == cloud.BootstrapNone {
+			res.Status = cloud.BootstrapReady
+		}
+	default:
+		hostname, _ := os.Hostname()
+		res = m.Redeem(r.Context(), h.ss, hostname, src)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": res.Status, "detail": res.Detail, "exit_code": cloud.BootstrapExitCode(res.Status)})
 }

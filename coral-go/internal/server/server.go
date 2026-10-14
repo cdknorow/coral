@@ -148,6 +148,13 @@ func (s *Server) RunRemoteAgents(ctx context.Context) {
 
 // SetScheduler injects the job scheduler into the tasks handler for launching/killing.
 // SetCloud attaches the Cloud Hub connector manager to the /api/cloud routes.
+// CloseCloud removes the command-line token at a graceful shutdown (#3285).
+func (s *Server) CloseCloud() {
+	if s.cloudHandler != nil {
+		s.cloudHandler.Close()
+	}
+}
+
 func (s *Server) SetCloud(m *cloud.Manager) {
 	if s.cloudHandler != nil {
 		s.cloudHandler.SetManager(m)
@@ -432,12 +439,15 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/ws/terminal/{name}", sessHandler.WSTerminal)
 
 	// Cloud Hub connector settings (never reachable through the tunnel)
-	s.cloudHandler = routes.NewCloudHandler(store.NewSessionStore(s.db))
+	s.cloudHandler = routes.NewCloudHandler(store.NewSessionStore(s.db), s.cfg.CoralDir())
 	r.Get("/api/cloud/status", s.cloudHandler.GetStatus)
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
+	r.Post("/api/cloud/connect/cancel", s.cloudHandler.CancelConnect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
+	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)
+	r.Post("/api/cloud/cli-hello", s.cloudHandler.CLIHello)
 
 	// System / settings
 	r.Get("/api/settings", sysHandler.GetSettings)

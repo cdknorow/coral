@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -248,4 +250,82 @@ func TestAutoAcceptEnableFromALoggedInRemoteDashboard(t *testing.T) {
 	require.NotEmpty(t, phone, "the QR link logs the phone in")
 	rec = lan(enable, same, phone)
 	require.Equal(t, 200, rec.Code, rec.Body.String())
+}
+
+// POST /api/cloud/redeem (coral cloud connect) is for the command line on
+// this computer only: never through the tunnel (not in its table), never from
+// a browser or another machine.
+func TestCloudRedeemIsLocalCommandLineOnly(t *testing.T) {
+	require.Equal(t, tunnel.TierNever, tunnel.Classify("POST", "/api/cloud/redeem", ""))
+	r := newE2ERemote(t, "redeem-local", nil)
+	h := r.srv.Router()
+	token, err := cloud.ReadCLIToken(r.cfg.CoralDir())
+	require.NoError(t, err)
+	cli := func(hdr map[string]string, body string, remote string) (int, map[string]any) {
+		req := httptest.NewRequest("POST", "/api/cloud/redeem", strings.NewReader(body))
+		req.RemoteAddr = remote
+		req.Host = "127.0.0.1:8420"
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(cloud.CLIAuthHeader, cliSign(t, h, token, "POST", "/api/cloud/redeem", body, hdr["Authorization"]))
+		for k, v := range hdr {
+			req.Header.Set(k, v)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	const local = "127.0.0.1:50000"
+	bearer := map[string]string{"Authorization": "Bearer chb_0123456789abcdefXYZ"}
+	for name, hdr := range map[string]map[string]string{
+		"tunnel stamp": mergeHdr(bearer, map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}),
+		"browser":      mergeHdr(bearer, map[string]string{"Sec-Fetch-Site": "same-origin"}),
+		"origin":       mergeHdr(bearer, map[string]string{"Origin": "http://127.0.0.1:8420"}),
+		"referer":      mergeHdr(bearer, map[string]string{"Referer": "http://127.0.0.1:8420/"}),
+	} {
+		code, _ := cli(hdr, `{}`, local)
+		assert.Equal(t, 403, code, name)
+	}
+	code, _ := cli(bearer, `{}`, "192.168.1.20:5000")
+	assert.NotEqual(t, 200, code, "another machine")
+	code, _ = cli(mergeHdr(bearer, map[string]string{cloud.CLIAuthHeader: ""}), `{}`, local)
+	assert.Equal(t, 403, code, "without proof of Coral's command-line token")
+	code, _ = cli(mergeHdr(bearer, map[string]string{cloud.CLIAuthHeader: "", "X-Coral-CLI-Token": token}), `{}`, local)
+	assert.Equal(t, 403, code, "the raw token is never accepted")
+
+	code, _ = cli(nil, `{}`, local)
+	assert.Equal(t, 400, code, "a credential or a check is required")
+	code, _ = cli(bearer, `{"check":true}`, local)
+	assert.Equal(t, 400, code, "not both")
+
+	// The server never opens a path a caller names (any local user can reach
+	// this route): file keys are refused outright and the file is untouched.
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o700))
+	key := filepath.Join(dir, "id_ed25519")
+	require.NoError(t, os.WriteFile(key, []byte("-----BEGIN OPENSSH PRIVATE KEY-----\n"), 0o600))
+	for _, body := range []string{
+		`{"ticket_file":"` + key + `"}`,
+		`{"proof_file":"` + key + `"}`,
+		`{"check":true,"ticket_file":"` + key + `"}`,
+	} {
+		code, _ = cli(nil, body, local)
+		assert.Equal(t, 400, code, body)
+		code, _ = cli(bearer, body, local)
+		assert.Equal(t, 400, code, body)
+	}
+	assert.FileExists(t, key)
+
+	// No --cloud-url on this test server: the answer says so (exit 2).
+	code, out := cli(bearer, `{}`, local)
+	require.Equal(t, 200, code)
+	assert.Equal(t, cloud.BootstrapNoHub, out["status"])
+	assert.Equal(t, float64(2), out["exit_code"])
+	code, out = cli(nil, `{"check":true}`, local)
+	require.Equal(t, 200, code)
+	assert.Equal(t, cloud.BootstrapNoHub, out["status"])
+	code, out = cli(bearer, `{"proof":{"kind":"gcp","token":"x"}}`, local)
+	require.Equal(t, 200, code)
+	assert.Equal(t, cloud.BootstrapNoHub, out["status"], "an inline proof is accepted")
 }

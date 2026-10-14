@@ -170,6 +170,9 @@ func newE2ERemote(t *testing.T, id string, mutate func(*config.Config)) *e2eRemo
 		srv:      New(cfg, db, backend, stack.terminal),
 		hijacked: map[net.Conn]struct{}{},
 	}
+	// Requests built with httptest carry no local address, which peercred refuses
+	// on Linux (fail closed): tests about the peer check set their own.
+	r.srv.cloudHandler.SetPeerCheck(func(*http.Request) (bool, bool) { return false, false })
 	require.NoError(t, os.MkdirAll(r.work, 0o755))
 	r.start("127.0.0.1:0")
 	t.Cleanup(func() {

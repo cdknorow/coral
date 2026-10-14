@@ -95,6 +95,9 @@ func (rs *RunningServer) Shutdown(timeout time.Duration) {
 	if err := rs.HTTPServer.Shutdown(ctx); err != nil {
 		log.Printf("Shutdown error: %v", err)
 	}
+	if rs.Server != nil {
+		rs.Server.CloseCloud() // no command-line token outlives the server (#3285)
+	}
 	// Mark all PTY sessions as sleeping before killing them so they can
 	// be re-launched on next startup.
 	if _, isPTY := rs.Backend.(*ptymanager.PTYBackend); isPTY && rs.DB != nil {
@@ -858,9 +861,20 @@ func startCloudConnector(ctx context.Context, db *store.DB, cfg *config.Config, 
 		},
 	})
 	srv.SetCloud(mgr)
+	// A one-time credential (--bootstrap-file, or on Linux the well-known
+	// /run/coral/bootstrap.d/credential) enrolls this server before the connector
+	// runs. It is checked locally first; it never blocks the server's own startup.
+	src := cloud.CredentialSource{WellKnown: cfg.BootstrapFile == "", File: cfg.BootstrapFile, ProofFile: cfg.ProofFile}
+	hostname, _ := os.Hostname()
 	if hubURL == "" {
+		if cfg.BootstrapFile != "" {
+			mgr.Bootstrap(ctx, ss, hostname, src) // records no_hub_configured; reads nothing
+		}
 		return
 	}
 	log.Printf("[CLOUD] Coral Hub: %s (nothing is sent until this server is connected: Settings > Coral Hub)", hubURL)
-	safeGo(ctx, "cloud_connector", func() { mgr.Run(ctx) })
+	safeGo(ctx, "cloud_connector", func() {
+		mgr.Bootstrap(ctx, ss, hostname, src)
+		mgr.Run(ctx)
+	})
 }
