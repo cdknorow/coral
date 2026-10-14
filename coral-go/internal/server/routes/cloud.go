@@ -293,7 +293,70 @@ func (h *CloudHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "Could not disconnect")
 		return
 	}
+	// The Hub link is gone: so is its permission to act as the Operator (#3377).
+	if s, _ := h.ss.GetSettings(r.Context()); s[HubOperatorSetting] == "true" {
+		_ = h.ss.SetSetting(r.Context(), HubOperatorSetting, "false")
+		slog.Info("[cloud] 'Let Coral Hub act as the Operator' turned off: the Hub link was removed")
+	}
 	writeJSON(w, http.StatusOK, h.status())
+}
+
+// HubOperatorSetting is the local owner switch "Let Coral Hub act as the Operator"
+// (#3377): off by default. Through the tunnel the Operator identity (task planning,
+// cross-team posts, completing others' tasks) is refused unless it is on, this server
+// is linked to Coral Hub, and the request carries the connector's own stamp.
+const HubOperatorSetting = "hub_acts_as_operator"
+
+func (h *CloudHandler) hubLinked() bool {
+	m := h.manager()
+	if m == nil {
+		return false
+	}
+	switch m.Status().State {
+	case cloud.StateConnected, cloud.StateConnecting, cloud.StateRetrying:
+		return true
+	}
+	return false
+}
+
+// HubOperatorAllowed reports whether this tunnel request may act as the Operator.
+func (h *CloudHandler) HubOperatorAllowed(r *http.Request) bool {
+	if !cloud.TunneledAuthentic(r) || !h.hubLinked() {
+		return false
+	}
+	s, err := h.ss.GetSettings(r.Context())
+	return err == nil && s[HubOperatorSetting] == "true"
+}
+
+// HubOperator: GET/PUT /api/system/hub-operator {"enabled": bool}. Only on this
+// computer, from the dashboard: 404 through the tunnel.
+func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
+	if cloud.Tunneled(r) {
+		http.NotFound(w, r)
+		return
+	}
+	if h.refuseCloud(w, r, allowDashboard) {
+		return
+	}
+	if r.Method == http.MethodPut {
+		if !requireJSON(w, r) {
+			return
+		}
+		var body struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := decodeJSON(r, &body); err != nil || body.Enabled == nil {
+			errBadRequest(w, "enabled (true or false) is required")
+			return
+		}
+		if err := h.ss.SetSetting(r.Context(), HubOperatorSetting, strconv.FormatBool(*body.Enabled)); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		slog.Info("[cloud] 'Let Coral Hub act as the Operator' changed on this computer", "enabled", *body.Enabled)
+	}
+	s, _ := h.ss.GetSettings(r.Context())
+	writeJSON(w, http.StatusOK, map[string]any{"enabled": s[HubOperatorSetting] == "true", "linked": h.hubLinked()})
 }
 
 // SetMaxMode: PUT /api/cloud/max-mode {"mode": "view"|"interact"|"launch"}

@@ -123,6 +123,7 @@ GET /api/system/auth-status never
 GET /api/system/cli-check never
 GET /api/system/database-security never
 GET /api/system/editors never
+GET /api/system/hub-operator never
 GET /api/system/network-info never
 GET /api/system/privacy never
 GET /api/system/qr never
@@ -275,7 +276,7 @@ POST /api/workflows/by-name/{name}/trigger launch
 POST /api/workflows/runs/{runID}/kill interact
 POST /api/workflows/{workflowID}/trigger launch
 PUT /api/agent/ui/{id} never
-PUT /api/board/{project}/settings interact
+PUT /api/board/{project}/settings never
 PUT /api/board/{project}/working-mode interact
 PUT /api/board/{project}/working-mode/presets/{presetID} interact
 PUT /api/cloud/allow-auto-accept never
@@ -289,6 +290,7 @@ PUT /api/sessions/live/{name}/name-color interact
 PUT /api/settings never
 PUT /api/settings/git-diff-mode interact
 PUT /api/system/database-security never
+PUT /api/system/hub-operator never
 PUT /api/teams/detail/{name}/knowledge/{agentName} never
 PUT /api/themes/{name} never
 PUT /api/views/{id} never

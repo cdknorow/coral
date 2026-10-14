@@ -290,6 +290,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(routes.DebugRequestLogger)
 	// Board identities never carry control characters (#3376).
 	r.Use(routes.RejectBadIdentities)
+	// Through Coral Hub, nobody acts with an orchestrator's rights on a board (#3377).
+	r.Use(routes.TunnelIdentityGuard(s.boardStore, func(r *http.Request) bool {
+		return s.cloudHandler != nil && s.cloudHandler.HubOperatorAllowed(r)
+	}))
 	// Record API traffic centrally so clients do not need to post metrics.
 	r.Use(routes.RequestMetrics(s.db))
 
@@ -457,6 +461,8 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/cloud/connect", s.cloudHandler.Connect)
 	r.Post("/api/cloud/connect/cancel", s.cloudHandler.CancelConnect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
+	r.Get("/api/system/hub-operator", s.cloudHandler.HubOperator)
+	r.Put("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)

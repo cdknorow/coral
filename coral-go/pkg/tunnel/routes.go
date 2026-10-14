@@ -272,7 +272,7 @@ var routeTable = cat(
 		"/api/sessions/live/{name}/name-color",
 		"/api/board/{project}/working-mode",
 		"/api/board/{project}/working-mode/presets/{id}",
-		"/api/board/{project}/settings",
+		// PUT /api/board/{project}/settings (cross-team settings) is never through the tunnel (#3377).
 	),
 	rules(http.MethodPatch, TierInteract,
 		"/api/sessions/live/{name}/notes/{id}",

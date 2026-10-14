@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,9 +19,11 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/tracking"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 const taskNudge = "You have tasks available. Run 'coral-board task claim' to start."
@@ -813,15 +816,35 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		subscriberID = body.SessionID
 	}
 
+	// Through Coral Hub, a chat post's sender is the Coral Hub user named by the
+	// connector-forwarded X-Coral-Hub-User header, never a name from the body and never
+	// the Operator (#3377). It's marked with a server-set origin for the dashboard's badge.
+	origin := ""
+	if cloud.Tunneled(r) {
+		hubUser, status, msg := h.tunnelChatSender(r, project)
+		if status != 0 {
+			writeJSON(w, status, map[string]any{"error": msg, "code": "hub_user_required"})
+			return
+		}
+		subscriberID, origin = hubUser, board.OriginHubUser
+		body.As = "" // a Coral Hub user is not subscribed to the board
+	}
+
 	// Auto-subscribe the poster if 'as' is provided and they aren't subscribed yet
 	if body.As != "" && subscriberID != "" {
 		sub, _ := h.bs.GetProjectSubscription(r.Context(), project, subscriberID)
 		if sub == nil {
-			h.bs.Subscribe(r.Context(), project, subscriberID, body.As, "", nil, nil, "all")
+			// Through Coral Hub the auto-subscribe gets the default mode (mentions), not
+			// every message (#3377).
+			mode := "all"
+			if cloud.Tunneled(r) {
+				mode = ""
+			}
+			h.bs.Subscribe(r.Context(), project, subscriberID, body.As, "", nil, nil, mode)
 		}
 	}
 
-	msg, err := h.bs.PostMessage(r.Context(), project, subscriberID, body.Content, body.TargetGroupID)
+	msg, err := h.bs.PostMessageWithOrigin(r.Context(), project, subscriberID, body.Content, body.TargetGroupID, origin)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -842,6 +865,29 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	go h.resolveMessageWaits(project, subscriberID, body.Content)
 
 	writeJSON(w, http.StatusOK, msg)
+}
+
+// hubUserRe is the X-Coral-Hub-User value coral-hub sends (#3377).
+var hubUserRe = regexp.MustCompile(`^hub-user-[0-9a-f]{8}$`)
+
+// tunnelChatSender returns the Coral Hub user for a tunnel chat post, or an HTTP
+// status and message: 400 when the header is missing or malformed (never a fallback
+// to the Operator), 409 when the name is already a member or a role on this board.
+func (h *BoardHandler) tunnelChatSender(r *http.Request, project string) (string, int, string) {
+	user := r.Header.Get(tunnel.HubUserHeader)
+	if len(user) > 32 || !hubUserRe.MatchString(user) {
+		return "", http.StatusBadRequest, "A chat post through Coral Hub needs the Coral Hub user (" + tunnel.HubUserHeader + ": hub-user-<8 hex>)"
+	}
+	subs, err := h.bs.ListSubscribers(r.Context(), project)
+	if err != nil {
+		return "", http.StatusInternalServerError, "could not read the board's members"
+	}
+	for _, s := range subs {
+		if strings.EqualFold(s.SubscriberID, user) || strings.EqualFold(strings.TrimSpace(s.JobTitle), user) {
+			return "", http.StatusConflict, "That Coral Hub user's name is already a member or role on this board"
+		}
+	}
+	return user, 0, ""
 }
 
 // dispatchWebhooks sends webhook callbacks to all subscribers with webhook_url set.

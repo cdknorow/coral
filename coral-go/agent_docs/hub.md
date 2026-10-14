@@ -49,6 +49,20 @@ Through a Coral Hub tunnel the machine's connector can refuse a request. These a
 | 400 `{"error":"bad request","code":"bad_request"}` | The connector could not accept the request as sent (header, method or body) |
 | 403 `{"error":"local_mode","mode":"view"\|"interact"}` | The machine's own access setting is below what the hub allows |
 
+### Identity through the tunnel
+
+The tunnel carries no proof of who the Hub user is, so on boards (#3377), for requests the connector executed:
+
+| Request | Answer |
+|---|---|
+| A chat post, `POST /api/board/{p}/messages` | The sender is the `X-Coral-Hub-User` header (`hub-user-` + 8 hex), never a name from the body. The message is stored with `origin: "hub_user"`. A missing or malformed header gets 400 `hub_user_required`; a name that's already a member or role on the board gets 409. No auto-subscribe. Names starting `hub-user-` are reserved for this. |
+| `Operator` in any identity field of a board write | 403 `operator_identity_required`, unless the owner turned on **Let Coral Hub act as the Operator** (Settings › Coral Hub; `GET/PUT /api/system/hub-operator`, local only). Each use is logged in coral.log; the switch is cleared when the Hub link is removed and ignored while not linked. |
+| Acting as an orchestrator (an identity with "orchestrator" in it, or a subscriber with orchestrator or peek rights), or `receive_mode: "all"` | 403 `orchestrator_identity` |
+| `PUT /api/board/{p}/settings` (cross-team) | never |
+| `POST /api/tasks/run` with `auto_accept` or a permission-skipping flag | needs the local allow-hub-auto-accept switch and Launch mode (403 `hub_auto_accept_disabled` / `hub_mode_too_low`) |
+
+Reads (`GET` with `?subscriber_id=`) are unchanged. Requests from the computer itself are unchanged.
+
 A real transport failure still answers 502 `remote unreachable` and marks the machine. The tunnel forwards only an allowlist of request headers, never `Accept-Encoding`; the connector decodes a gzip response from the machine before relaying it and answers 502 `{"error":"unsupported content encoding"}` for any other encoding.
 
 ## Merged session list

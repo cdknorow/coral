@@ -290,7 +290,13 @@ var forwardRequestHeaders = map[string]bool{
 	"Accept": true, "Accept-Language": true, "Content-Type": true, "Range": true, "If-Range": true,
 	"If-Match": true, "If-None-Match": true, "If-Modified-Since": true, "If-Unmodified-Since": true,
 	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
+	// The Coral Hub user behind a chat post (#3377): honoured only on tunnel chat posts,
+	// validated by the server (hub-user-<8 hex>).
+	"X-Coral-Hub-User": true,
 }
+
+// HubUserHeader names the Coral Hub user behind a tunnel chat post (#3377).
+const HubUserHeader = "X-Coral-Hub-User"
 
 func scrub(h http.Header) http.Header {
 	out := http.Header{}

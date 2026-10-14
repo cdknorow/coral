@@ -11,14 +11,17 @@ import (
 
 	at "github.com/cdknorow/coral/internal/agenttypes"
 	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/httputil"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/store"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // TasksHandler handles one-shot task run endpoints.
 type TasksHandler struct {
+	ss        *store.SessionStore
 	sched     *store.ScheduleStore
 	cfg       *config.Config
 	scheduler *background.JobScheduler
@@ -27,6 +30,7 @@ type TasksHandler struct {
 
 func NewTasksHandler(db *store.DB, cfg *config.Config) *TasksHandler {
 	return &TasksHandler{
+		ss:    store.NewSessionStore(db),
 		sched: store.NewScheduleStore(db),
 		cfg:   cfg,
 	}
@@ -40,6 +44,19 @@ func (h *TasksHandler) SetScheduler(s *background.JobScheduler) {
 // SetProxyStore injects the proxy request store for task-level cost rollups.
 func (h *TasksHandler) SetProxyStore(ps *proxy.Store) {
 	h.proxy = ps
+}
+
+// autoAcceptFlags are the agent CLI flags that skip permission prompts.
+var autoAcceptFlags = []string{"--dangerously-skip-permissions", "--full-auto", "--yolo", "--dangerously-bypass-approvals-and-sandbox", "bypassPermissions"}
+
+// hasAutoAcceptFlag reports whether a run's raw flags skip permission prompts.
+func hasAutoAcceptFlag(flags string) bool {
+	for _, f := range autoAcceptFlags {
+		if strings.Contains(flags, f) {
+			return true
+		}
+	}
+	return false
 }
 
 // SubmitTask creates a one-shot task run.
@@ -80,6 +97,32 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 	if info, err := os.Stat(body.RepoPath); err != nil || !info.IsDir() {
 		errBadRequest(w, "repo_path '"+body.RepoPath+"' does not exist")
 		return
+	}
+	// A git work tree, as for scheduled jobs (#3171, #3377): the run makes a worktree in it.
+	if msg := jobRepoError(r.Context(), body.RepoPath); msg != "" {
+		errBadRequest(w, msg)
+		return
+	}
+	// Through the Coral Hub, an unattended run that skips permission prompts (auto_accept,
+	// or the same CLI flags passed directly) follows the agent auto-accept rule: the
+	// local allow-hub-auto-accept switch and the Launch mode (#3377, SEC-JB-01).
+	if cloud.Tunneled(r) && (body.AutoAccept || hasAutoAcceptFlag(body.Flags)) {
+		settings, err := h.ss.GetSettings(r.Context())
+		if err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		switch {
+		case !cloud.TunneledAuthentic(r):
+			refuseAutoAccept(w, http.StatusForbidden, "no_dashboard_provenance", "Auto-accept can only be turned on from the Coral dashboard or the Coral Hub")
+			return
+		case !HubAutoAcceptAllowed(settings):
+			refuseAutoAccept(w, http.StatusForbidden, "hub_auto_accept_disabled", "Coral Hub auto-accept is turned off on this computer")
+			return
+		case MaxModeFromSettings(h.ss)() < tunnel.TierLaunch:
+			refuseAutoAccept(w, http.StatusForbidden, "hub_mode_too_low", "An auto-accepting run needs Coral Hub access set to Launch on this computer")
+			return
+		}
 	}
 
 	// Apply defaults
