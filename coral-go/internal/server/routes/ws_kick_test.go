@@ -93,11 +93,20 @@ func TestWSCoral_KickPushesStateChangesImmediately(t *testing.T) {
 	// A burst of kicks spread over ~30ms (a UI archiving agents one request at a
 	// time): both connections rebuild once, sharing one build.
 	before := builds.Load()
+	burstStart := time.Now()
 	for range 10 {
 		handler.kickWS()
 		time.Sleep(3 * time.Millisecond)
 	}
+	// The burst is meant to fit one coalescing window (~30 ms of 50). On a loaded machine the sleeps stretch and the
+	// burst can span several windows; each window may then cost a build, so the bound follows the span actually taken.
+	span := time.Since(burstStart)
 	require.Eventually(t, func() bool { return builds.Load() > before }, 2*time.Second, 5*time.Millisecond)
 	time.Sleep(4 * wsKickCoalesce) // let any second build show up
-	require.Equal(t, before+1, builds.Load(), "a burst of kicks across two clients costs one build")
+	got := builds.Load() - before
+	maxBuilds := 1 + int64(span/wsKickCoalesce)
+	require.LessOrEqual(t, got, maxBuilds, "a burst of kicks across two clients costs one build per coalescing window it spans (burst took %v)", span)
+	if span < wsKickCoalesce {
+		require.Equal(t, int64(1), got, "a burst that fits one window costs one build")
+	}
 }

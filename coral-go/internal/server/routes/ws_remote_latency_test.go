@@ -103,8 +103,23 @@ func TestWSCoral_RemoteChangesDoNotWaitBehindKicks(t *testing.T) {
 	// Most go out at once; one that lands while a kick is coalescing rides that
 	// kick's build, so none waits longer than the kick window. Before #3142 a
 	// change waited for the next kick build (median ~80-110 ms, max ~190 ms).
-	assert.Less(t, lat[len(lat)/2], 10*time.Millisecond, "median remote change -> dashboard with kicks every 200ms: %v", lat)
-	assert.Less(t, lat[len(lat)-1], wsKickCoalesce+30*time.Millisecond, "no remote change waits beyond the kick window: %v", lat)
+	// The bounds are for a quiet machine; a loaded one delays every wake-up by the scheduler's jitter, so they grow by it.
+	slack := 2 * schedulerJitter()
+	assert.Less(t, lat[len(lat)/2], 10*time.Millisecond+slack, "median remote change -> dashboard with kicks every 200ms (slack %v): %v", slack, lat)
+	assert.Less(t, lat[len(lat)-1], wsKickCoalesce+30*time.Millisecond+slack, "no remote change waits beyond the kick window (slack %v): %v", slack, lat)
+}
+
+// schedulerJitter is the worst lateness of 20 one-millisecond sleeps: ~0 on a quiet machine, tens of ms when loaded.
+func schedulerJitter() time.Duration {
+	var worst time.Duration
+	for range 20 {
+		start := time.Now()
+		time.Sleep(time.Millisecond)
+		if late := time.Since(start) - time.Millisecond; late > worst {
+			worst = late
+		}
+	}
+	return worst
 }
 
 // A burst of remote changes still costs at most one build a second: the
