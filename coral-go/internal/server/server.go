@@ -28,6 +28,7 @@ import (
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/license"
+	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server/routes"
@@ -129,7 +130,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	// Initialize API key auth
 	keyStore, err := auth.NewKeyStore(cfg.CoralDir())
 	if err != nil {
-		log.Fatalf("Failed to initialize API key store: %v", err)
+		logexit.Fatalf("Failed to initialize API key store: %v", err)
 	}
 	log.Printf("API Key: %s...", keyStore.Key()[:8])
 
@@ -758,7 +759,7 @@ func (s *Server) buildRouter() chi.Router {
 	// ── Static Files ────────────────────────────────────────────
 	staticSub, err := fs.Sub(staticFS, "static")
 	if err != nil {
-		log.Fatalf("Failed to embed static files: %v", err)
+		logexit.Fatalf("Failed to embed static files: %v", err)
 	}
 	if v, err := staticBuildVersion(staticSub); err == nil {
 		s.staticVersion = v

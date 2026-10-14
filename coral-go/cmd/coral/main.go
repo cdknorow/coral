@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"golang.org/x/term"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -24,6 +23,7 @@ import (
 	"github.com/cdknorow/coral/internal/dbcrypt"
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/license"
+	"github.com/cdknorow/coral/internal/logexit"
 	"github.com/cdknorow/coral/internal/server/routes"
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/store"
@@ -32,9 +32,10 @@ import (
 
 const coralDevStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-02"
 
-// setupCrashLogging logs to both terminal (stderr) and <coralDir>/coral.log.
-// This ensures panics are captured in the file while keeping terminal output
-// visible when running interactively.
+// setupCrashLogging logs to <coralDir>/coral.log and copies each line to the
+// terminal (stderr) when running interactively. The file comes first and the
+// terminal copy never blocks: see logOutput (#3226). Exits go through logexit,
+// which flushes the terminal copy first so the last lines are not lost.
 func setupCrashLogging(coralDir string) {
 	os.MkdirAll(coralDir, 0755)
 	logFile := filepath.Join(coralDir, "coral.log")
@@ -42,7 +43,9 @@ func setupCrashLogging(coralDir string) {
 	if err != nil {
 		return
 	}
-	log.SetOutput(io.MultiWriter(os.Stderr, f))
+	out, terminal := logOutput(f, os.Stderr)
+	log.SetOutput(out)
+	logexit.SetFlush(terminal.Flush)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
 }
 
@@ -50,12 +53,14 @@ func main() {
 	if code, ok := subcommand(os.Args[1:]); ok {
 		os.Exit(code)
 	}
+	// Runs last on a normal return: the terminal gets "[SHUTDOWN] done".
+	defer logexit.Flush()
 
 	// Global panic recovery — log the full stack trace before exiting
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[FATAL] panic in main: %v\n%s", r, debug.Stack())
-			os.Exit(1)
+			logexit.Exit(1)
 		}
 	}()
 
@@ -159,7 +164,7 @@ func main() {
 		RemoteAccessPrompt: remotePrompt,
 	})
 	if err != nil {
-		log.Fatalf("Failed to start: %v", err)
+		logexit.Fatalf("Failed to start: %v", err)
 	}
 	defer rs.Close()
 
