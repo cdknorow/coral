@@ -224,5 +224,6 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, arg)
 	}
 
+	parts, raw = withSessionToken(parts, raw, params, at.Pi)
 	return ShellJoin(parts, raw...)
 }

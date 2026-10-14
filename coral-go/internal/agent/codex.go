@@ -386,6 +386,7 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, arg)
 	}
 
+	parts, raw = withSessionToken(parts, raw, params, "codex")
 	return ShellJoin(parts, raw...)
 }
 

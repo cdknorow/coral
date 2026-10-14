@@ -40,7 +40,7 @@ func (h *BoardHandler) SubmitCompletionReview(w http.ResponseWriter, r *http.Req
 		}
 		return
 	}
-	h.bs.PostMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("[Task #%d completion review requested] Candidate saved; completion is not accepted. An orchestrator may release the worker slot with task release-review. Reason: %s", id, body.Reason), nil)
+	h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("[Task #%d completion review requested] Candidate saved; completion is not accepted. An orchestrator may release the worker slot with task release-review. Reason: %s", id, body.Reason), nil)
 	writeJSON(w, http.StatusOK, task)
 }
 
@@ -69,10 +69,10 @@ func (h *BoardHandler) ReleaseCompletionReview(w http.ResponseWriter, r *http.Re
 		return
 	}
 	h.stopReminder(project, id)
-	h.bs.PostMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("[Task #%d pending completion review] %s released the worker slot. No completion outcome was accepted. Reason: %s", id, body.SubscriberID, body.Reason), nil)
+	h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", fmt.Sprintf("[Task #%d pending completion review] %s released the worker slot. No completion outcome was accepted. Reason: %s", id, body.SubscriberID, body.Reason), nil)
 	if task.AssignedTo != nil {
 		if next := h.bs.NextPendingTaskForSubscriber(r.Context(), project, *task.AssignedTo); next != nil {
-			h.bs.PostMessage(r.Context(), project, "Coral Task Queue", h.buildAssignmentNotification(r.Context(), project, next, *task.AssignedTo, false), nil)
+			h.bs.PostSystemMessage(r.Context(), project, "Coral Task Queue", h.buildAssignmentNotification(r.Context(), project, next, *task.AssignedTo, false), nil)
 		}
 	}
 	if h.notifyFn != nil {

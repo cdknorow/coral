@@ -909,6 +909,10 @@ func (s *SessionStore) UnregisterLiveSession(ctx context.Context, sessionID stri
 		if err := clearAutoAcceptTx(ctx, tx, sessionID, AutoAcceptRunEnded, false); err != nil {
 			return err
 		}
+		// The session is over: so is its agent token (#3387).
+		if err := revokeSessionTokensTx(ctx, tx, sessionID); err != nil {
+			return err
+		}
 		_, err := tx.ExecContext(ctx,
 			"UPDATE live_sessions SET status = 'inactive', stopped_at = ? WHERE session_id = ?",
 			nowUTC(), sessionID)
@@ -1049,6 +1053,10 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 // ReplaceLiveSession replaces an old session with a new one, carrying forward metadata.
 func (s *SessionStore) ReplaceLiveSession(ctx context.Context, oldSessionID string, newSession *LiveSession) error {
 	return s.db.WithTx(ctx, func(tx *sqlx.Tx) error {
+		// A restart or resume replaces the session: the old one's token stops working (#3387).
+		if err := revokeSessionTokensTx(ctx, tx, oldSessionID); err != nil {
+			return err
+		}
 		// Carry forward flags, prompt, board from old session if not set
 		var old LiveSession
 		err := tx.GetContext(ctx, &old,

@@ -13,7 +13,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -77,6 +79,24 @@ func main() {
 	}
 	baseURL := fmt.Sprintf("http://127.0.0.1:%s", port)
 
+	// Identity stress test (#3387): record what this agent was given, in the test's own
+	// folder (never Coral's): its session token and session name.
+	// A board named in MOCK_AGENT_BLIND_PREFIX is a "blind" team: its agents never read
+	// the token at all (no dump), like a real agent; they only record what Coral handed
+	// them as prompt and settings, which must not mention the token.
+	if dir := os.Getenv("MOCK_AGENT_ENV_DUMP"); dir != "" && sessionID != "" {
+		blind := os.Getenv("MOCK_AGENT_BLIND_PREFIX") != "" && strings.HasPrefix(boardName, os.Getenv("MOCK_AGENT_BLIND_PREFIX"))
+		if !blind {
+			writeAtomic(filepath.Join(dir, sessionID+".env"),
+				"CORAL_SESSION_TOKEN="+os.Getenv("CORAL_SESSION_TOKEN")+"\nCORAL_SESSION_NAME="+sessionName+"\n")
+		}
+		settingsText, _ := os.ReadFile(settingsFile)
+		writeAtomic(filepath.Join(dir, sessionID+".handed"), strings.Join(os.Args[1:], "\n")+"\n"+string(settingsText))
+		if blind {
+			writeAtomic(filepath.Join(dir, sessionID+".blind"), sessionName+"\n")
+		}
+	}
+
 	// Log startup
 	fmt.Fprintf(os.Stderr, "[mock-agent] started session_id=%s session_name=%s board=%s port=%s\n",
 		short(sessionID), sessionName, boardName, port)
@@ -129,6 +149,15 @@ func main() {
 	}
 }
 
+// writeAtomic writes a dump file whole (temp file, then rename), so a test polling the
+// folder never reads it half written.
+func writeAtomic(path, content string) {
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, []byte(content), 0o600) == nil {
+		_ = os.Rename(tmp, path)
+	}
+}
+
 // extractBoard searches text for a board name pattern like: board "NAME" or message board "NAME"
 func extractBoard(text string) string {
 	for _, prefix := range []string{`message board "`, `board "`} {
@@ -175,6 +204,16 @@ func parseSettings(path string) (boardName string, env map[string]string) {
 }
 
 func post(baseURL, board, sessionName, message string) {
+	// Like a real agent's tool call (#3387): post through coral-board, which adds the
+	// session token from its inherited environment; the mock never touches the token.
+	if cb := os.Getenv("MOCK_AGENT_CORAL_BOARD"); cb != "" {
+		cmd := exec.Command(cb, "post", message)
+		cmd.Env = append(os.Environ(), "CORAL_URL="+baseURL)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "[mock-agent] coral-board post failed: %v %s\n", err, out)
+		}
+		return
+	}
 	subscriberID := os.Getenv("CORAL_SUBSCRIBER_ID")
 	if subscriberID == "" {
 		subscriberID = sessionName

@@ -191,6 +191,18 @@ func TestStartWithTLSAnswersHealthOverHTTPS(t *testing.T) {
 	require.NoError(t, err)
 	plain.Body.Close()
 	assert.Equal(t, http.StatusOK, plain.StatusCode, "plain HTTP on loopback still works")
+
+	// #3387: an app running Coral in-process gets a fresh sign-in link with no API key.
+	link, err := rs.NewLoginLink(cfg.Port)
+	require.NoError(t, err)
+	assert.Contains(t, link, "/?login_token=")
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp2, err := noFollow.Get(strings.Replace(link, "localhost", "127.0.0.1", 1))
+	require.NoError(t, err)
+	resp2.Body.Close()
+	assert.Equal(t, http.StatusFound, resp2.StatusCode)
+	assert.NotEmpty(t, resp2.Cookies(), "signed in")
+	assert.NotEmpty(t, rs.LoginToken, "the startup token too")
 }
 
 func freePort(t *testing.T) int {

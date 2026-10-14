@@ -10,6 +10,7 @@ import (
 	"github.com/cdknorow/coral/internal/tmux"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 )
 
 func main() {
+	hooks.InstallIdentity("coral-hook-message-check") // the agent session's token, sent with every request (#3387)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[CRASH] hook panicked: %v\n%s", r, debug.Stack())
@@ -59,7 +61,9 @@ func main() {
 	}
 
 	resp, err := hooks.CoralAPI(base, "GET",
-		fmt.Sprintf("/api/board/%s/messages/check?subscriber_id=%s", project, subscriberID), nil)
+		// Escaped: a role like "QA 1" or "Backend Dev" made an invalid URL, and the check
+		// silently never ran.
+		fmt.Sprintf("/api/board/%s/messages/check?subscriber_id=%s", url.PathEscape(project), url.QueryEscape(subscriberID)), nil)
 	if err != nil {
 		return
 	}

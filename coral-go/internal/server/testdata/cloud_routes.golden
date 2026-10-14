@@ -124,6 +124,7 @@ GET /api/system/cli-check never
 GET /api/system/database-security never
 GET /api/system/editors never
 GET /api/system/hub-operator never
+GET /api/system/identity-report never
 GET /api/system/network-info never
 GET /api/system/privacy never
 GET /api/system/qr never
@@ -256,6 +257,7 @@ POST /api/sessions/live/{sessionID}/sleep interact
 POST /api/sessions/live/{sessionID}/unarchive interact
 POST /api/sessions/live/{sessionID}/wake launch
 POST /api/system/api-key/regenerate never
+POST /api/system/login-token never
 POST /api/system/telemetry/acknowledge never
 POST /api/tags never
 POST /api/tasks/run launch

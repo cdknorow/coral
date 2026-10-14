@@ -113,6 +113,10 @@ type Message struct {
 	// Origin is set by the server only: "hub_user" for a chat post a Coral Hub user made
 	// through the tunnel (#3377). The dashboard badges those; never inferred from a name.
 	Origin *string `db:"origin" json:"origin,omitempty"`
+	// IsSystem is set by the server only, for Coral's own posts (the task queue, the
+	// health monitor), never inferred from the sender's name (#3387). The chat
+	// collapses these (#3343).
+	IsSystem bool `db:"is_system" json:"is_system"`
 	// Legacy column — kept for DB compat, mirrors SubscriberID for new rows.
 	SessionID string `db:"session_id" json:"-"`
 }
@@ -403,10 +407,18 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		"ALTER TABLE board_tasks ADD COLUMN revision INTEGER NOT NULL DEFAULT 1",
 		"ALTER TABLE board_messages ADD COLUMN external_json TEXT",
 		"ALTER TABLE board_messages ADD COLUMN origin TEXT",
+		"ALTER TABLE board_messages ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0",
 	}
 	for _, ddl := range alterColumns {
 		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 			if !strings.Contains(err.Error(), "duplicate column") {
+				log.Printf("[board] migration warning: %v", err)
+			}
+			continue
+		}
+		if strings.Contains(ddl, "ADD COLUMN is_system") {
+			// The column is new: mark the existing posts of Coral's own senders once (#3387).
+			if _, err := s.db.ExecContext(ctx, "UPDATE board_messages SET is_system = 1 WHERE subscriber_id IN ('Coral Task Queue', 'Coral Health Monitor')"); err != nil {
 				log.Printf("[board] migration warning: %v", err)
 			}
 		}
@@ -682,7 +694,7 @@ func (s *Store) UpdateSessionName(ctx context.Context, project, subscriberID, se
 
 // PostMessage posts a new message to a project board.
 func (s *Store) PostMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string) (*Message, error) {
-	return s.PostMessageWithOrigin(ctx, project, subscriberID, content, targetGroupID, "")
+	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, "", false)
 }
 
 // OriginHubUser marks a chat post a Coral Hub user made through the tunnel (#3377).
@@ -694,19 +706,29 @@ const OriginHubUserUnknown = "hub_user_unknown"
 
 // PostMessageWithOrigin is PostMessage with a server-set origin ("" for none).
 func (s *Store) PostMessageWithOrigin(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin string) (*Message, error) {
+	return s.postMessage(ctx, project, subscriberID, content, targetGroupID, origin, false)
+}
+
+// PostSystemMessage posts as one of Coral's own senders (the task queue, the health
+// monitor) and marks the message is_system (#3387). Only server code calls it.
+func (s *Store) PostSystemMessage(ctx context.Context, project, sender, content string, targetGroupID *string) (*Message, error) {
+	return s.postMessage(ctx, project, sender, content, targetGroupID, "", true)
+}
+
+func (s *Store) postMessage(ctx context.Context, project, subscriberID, content string, targetGroupID *string, origin string, system bool) (*Message, error) {
 	now := nowUTC()
 	var originVal *string
 	if origin != "" {
 		originVal = &origin
 	}
 	result, err := s.db.ExecContext(ctx,
-		"INSERT INTO board_messages (project, session_id, subscriber_id, content, target_group_id, created_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		project, subscriberID, subscriberID, content, targetGroupID, now, originVal)
+		"INSERT INTO board_messages (project, session_id, subscriber_id, content, target_group_id, created_at, origin, is_system) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		project, subscriberID, subscriberID, content, targetGroupID, now, originVal, system)
 	if err != nil {
 		return nil, err
 	}
 	id, _ := result.LastInsertId()
-	msg := &Message{ID: id, Project: project, SubscriberID: subscriberID, Content: content, CreatedAt: now, Origin: originVal}
+	msg := &Message{ID: id, Project: project, SubscriberID: subscriberID, Content: content, CreatedAt: now, Origin: originVal, IsSystem: system}
 	if targetGroupID != nil {
 		msg.TargetGroupID = targetGroupID
 	}
@@ -761,7 +783,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		args = append(args, fetchLimit)
 
 		query := fmt.Sprintf(
-			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.created_at,
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.is_system, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
@@ -784,7 +806,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		}
 	} else {
 		err = s.db.SelectContext(ctx, &messages,
-			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.created_at,
+			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.is_system, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
@@ -867,7 +889,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 		err = s.db.SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			        m.target_group_id, m.external_json, m.origin
+			        m.target_group_id, m.external_json, m.origin, m.is_system
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			 WHERE m.project = ? AND m.id < ?
@@ -878,7 +900,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 		err = s.db.SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			        m.target_group_id, m.external_json, m.origin
+			        m.target_group_id, m.external_json, m.origin, m.is_system
 			 FROM board_messages m
 			 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			 WHERE m.project = ?
@@ -890,7 +912,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 			`SELECT * FROM (
 			    SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			           COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-			           m.target_group_id, m.external_json, m.origin
+			           m.target_group_id, m.external_json, m.origin, m.is_system
 			    FROM board_messages m
 			    LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 			    WHERE m.project = ?
@@ -904,7 +926,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 // listMessagesSelect is the dashboard message row; callers append the WHERE.
 const listMessagesSelect = `SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 	        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-	        m.target_group_id, m.external_json, m.origin
+	        m.target_group_id, m.external_json, m.origin, m.is_system
 	 FROM board_messages m
 	 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id`
 
@@ -950,7 +972,7 @@ func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) 
 	err := s.db.GetContext(ctx, &msg,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
-		        m.target_group_id, m.external_json, m.origin
+		        m.target_group_id, m.external_json, m.origin, m.is_system
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers s ON m.project = s.project AND m.subscriber_id = s.subscriber_id
 		 WHERE m.id = ?`, id)
@@ -973,7 +995,7 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 	err := s.db.SelectContext(ctx, &messages,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(bs.job_title, m.subscriber_id, 'Unknown') as job_title,
-		        m.target_group_id, m.external_json, m.origin
+		        m.target_group_id, m.external_json, m.origin, m.is_system
 		 FROM board_messages m
 		 LEFT JOIN board_subscribers bs ON m.project = bs.project AND m.subscriber_id = bs.subscriber_id
 		 WHERE lower(m.content) LIKE lower(?)

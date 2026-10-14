@@ -11,7 +11,11 @@ import { escapeHtml, escapeAttr } from './utils.js';
 export const TASK_QUEUE_SENDER = 'Coral Task Queue';
 
 export function isTaskQueueMessage(m) {
-    return !!m && (m.subscriber_id === TASK_QUEUE_SENDER || m.job_title === TASK_QUEUE_SENDER);
+    if (!m) return false;
+    // The server sets is_system for its own posts (#3387); a name is never trusted when it does.
+    if (typeof m.is_system === 'boolean') return m.is_system && m.subscriber_id === TASK_QUEUE_SENDER;
+    // An older server (no is_system field): the sender's name.
+    return m.subscriber_id === TASK_QUEUE_SENDER || m.job_title === TASK_QUEUE_SENDER;
 }
 
 /** Splits messages into items: {kind:'msg', m} or {kind:'queue', key, msgs} for each run

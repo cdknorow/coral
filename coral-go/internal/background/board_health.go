@@ -30,7 +30,7 @@ func NewBoardHealthMonitor(store *board.Store, interval time.Duration) *BoardHea
 	if interval <= 0 {
 		interval = 10 * time.Minute
 	}
-	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), lastIssue: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostMessage}
+	return &BoardHealthMonitor{store: store, interval: interval, idleAfter: 30 * time.Minute, escalateAfter: 60 * time.Minute, last: make(map[string]string), lastIssue: make(map[string]string), idleNotified: make(map[int64]time.Time), now: time.Now, postMessage: store.PostSystemMessage}
 }
 
 // SetPostMessageFn provides an isolated delivery seam for retry tests.

@@ -477,7 +477,7 @@ func (h *BoardHandler) notifyOrchestratorOfCancelledDependency(ctx context.Conte
 			continue
 		}
 		msg := fmt.Sprintf("[Task #%d stalled] %s depends on cancelled task #%d (%s); its %s dependency cannot be satisfied. Update or rewire the task.", task.ID, task.Title, cancelled.ID, cancelled.Title, condition)
-		h.bs.PostMessage(ctx, task.BoardID, "Coral Task Queue", "@Orchestrator "+msg, nil)
+		h.bs.PostSystemMessage(ctx, task.BoardID, "Coral Task Queue", "@Orchestrator "+msg, nil)
 		if h.terminal == nil {
 			continue
 		}
@@ -1413,20 +1413,20 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	if task.Status == "draft" {
 		go func() {
 			notification := fmt.Sprintf("[Task #%d (draft)] %s", task.ID, task.Title)
-			h.bs.PostMessage(context.Background(), project, "Coral Task Queue", notification, nil)
+			h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
 		}()
 	} else if task.Status == "blocked" {
 		go func() {
 			deps, _ := h.bs.GetTaskDependencies(context.Background(), task.ID)
 			blockerList := formatBlockerList(deps)
 			notification := fmt.Sprintf("[Task #%d (blocked)] %s — blocked by %s", task.ID, task.Title, blockerList)
-			h.bs.PostMessage(context.Background(), project, "Coral Task Queue", notification, nil)
+			h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
 		}()
 	} else {
 		go func() {
 			ctx := context.Background()
 			notification := h.buildAssignmentNotification(ctx, project, task, assignee, false)
-			h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 
 			// Send direct terminal nudge
 			if h.terminal != nil {
@@ -1623,7 +1623,7 @@ func (h *BoardHandler) ClaimTask(w http.ResponseWriter, r *http.Request) {
 	// Post board notification asynchronously to avoid DB contention
 	go func() {
 		notification := fmt.Sprintf("[Task #%d claimed by %s] %s", task.ID, body.SubscriberID, task.Title)
-		h.bs.PostMessage(context.Background(), project, "Coral Task Queue", notification, nil)
+		h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
 	}()
 	writeJSON(w, http.StatusOK, task)
 }
@@ -1684,7 +1684,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 			msg = completionMsg
 		}
 		notification := fmt.Sprintf("[Task #%d completed by %s] Outcome: %s; %d artifacts. %s", completedTask.ID, subscriberID, completedTask.Workflow.Outcome, len(completedTask.Workflow.Artifacts), msg)
-		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 		h.notifyOrchestratorsTaskCompleted(ctx, project, subscriberID, completedTask, fmt.Sprintf("Outcome: %s. %s", completedTask.Workflow.Outcome, msg))
 
 		// Resolve downstream blocked tasks
@@ -1700,7 +1700,7 @@ func (h *BoardHandler) CompleteTaskByID(w http.ResponseWriter, r *http.Request) 
 		if nextTask != nil && (taskAssignedToSubscriber(nextTask, subscriberID) || !isOrchestratorSubscriber(sub, subscriberID)) {
 			auditMsg := fmt.Sprintf("@%s You have tasks available — run 'coral-board task claim' to start",
 				subscriberID)
-			h.bs.PostMessage(ctx, project, "Coral Task Queue", auditMsg, nil)
+			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", auditMsg, nil)
 			h.sendTaskNudge(ctx, project, subscriberID, taskNudge)
 		}
 	}()
@@ -1741,12 +1741,12 @@ func (h *BoardHandler) CancelTaskByID(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		notification := fmt.Sprintf("[Task #%d cancelled by %s] %s", task.ID, body.SubscriberID, task.Title)
-		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 		// Reconcile the full descendant graph immediately. Pending descendants
 		// become blocked/stalled and retain their owner for orchestrator repair.
 		if stallErr == nil {
 			for _, child := range stalled {
-				h.bs.PostMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@Orchestrator [Task #%d stalled] %s depends on cancelled task #%d; rewire or create a retry before claiming it.", child.ID, child.Title, task.ID), nil)
+				h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", fmt.Sprintf("@Orchestrator [Task #%d stalled] %s depends on cancelled task #%d; rewire or create a retry before claiming it.", child.ID, child.Title, task.ID), nil)
 			}
 		}
 		h.notifyOrchestratorOfCancelledDependency(ctx, project, body.SubscriberID, task)
@@ -1880,7 +1880,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		nudged := false
 		notification := fmt.Sprintf("[Task #%d edited] %s", task.ID, task.Title)
-		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 
 		// Notify on status transitions from dependency changes
 		if prevStatus == "pending" && task.Status == "blocked" {
@@ -1890,7 +1890,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			}
 			if assignee != "" {
 				msg := fmt.Sprintf("[Task #%d blocked] %s — @%s task is now blocked, please pause work", task.ID, task.Title, assignee)
-				h.bs.PostMessage(ctx, project, "Coral Task Queue", msg, nil)
+				h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
 			}
 		} else if prevStatus == "blocked" && task.Status == "pending" {
 			assignee := ""
@@ -1901,7 +1901,7 @@ func (h *BoardHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 			if assignee != "" {
 				msg += fmt.Sprintf(" — @%s your task is now ready", assignee)
 			}
-			h.bs.PostMessage(ctx, project, "Coral Task Queue", msg, nil)
+			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", msg, nil)
 
 			if assignee != "" {
 				h.sendTaskNudge(ctx, project, assignee, taskClaimNudge(task.ID))
@@ -1963,7 +1963,7 @@ func (h *BoardHandler) AmendTask(w http.ResponseWriter, r *http.Request) {
 		if task.AssignedTo != nil && *task.AssignedTo != "" {
 			notice += fmt.Sprintf(" — @%s reread task detail before acting", *task.AssignedTo)
 		}
-		h.bs.PostMessage(context.Background(), project, "Coral Task Queue", notice, nil)
+		h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notice, nil)
 	}()
 	writeJSON(w, http.StatusOK, task)
 }
@@ -1999,7 +1999,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx := context.Background()
 		notification := h.buildAssignmentNotification(ctx, project, task, body.Assignee, true)
-		h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+		h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 		if body.Assignee != "" && task.Status == "pending" {
 			if hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, body.Assignee, task.ID); !hasActive {
 				h.sendTaskNudge(ctx, project, body.Assignee, taskClaimNudge(task.ID))
@@ -2017,7 +2017,7 @@ func (h *BoardHandler) ReassignTask(w http.ResponseWriter, r *http.Request) {
 			if assignee != "" {
 				msg += fmt.Sprintf(" — @%s task is blocked again, please pause work", assignee)
 			}
-			h.bs.PostMessage(ctx, t.BoardID, "Coral Task Queue", msg, nil)
+			h.bs.PostSystemMessage(ctx, t.BoardID, "Coral Task Queue", msg, nil)
 		}
 	}()
 	writeJSON(w, http.StatusOK, task)
@@ -2047,7 +2047,7 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 			deps, _ := h.bs.GetTaskDependencies(context.Background(), task.ID)
 			blockerList := formatBlockerList(deps)
 			notification := fmt.Sprintf("[Task #%d published (blocked)] %s — blocked by %s", task.ID, task.Title, blockerList)
-			h.bs.PostMessage(context.Background(), project, "Coral Task Queue", notification, nil)
+			h.bs.PostSystemMessage(context.Background(), project, "Coral Task Queue", notification, nil)
 		}()
 	} else {
 		go func() {
@@ -2056,7 +2056,7 @@ func (h *BoardHandler) PublishTask(w http.ResponseWriter, r *http.Request) {
 			if assignee != "" {
 				notification += fmt.Sprintf(" — @%s", assignee)
 			}
-			h.bs.PostMessage(ctx, project, "Coral Task Queue", notification, nil)
+			h.bs.PostSystemMessage(ctx, project, "Coral Task Queue", notification, nil)
 
 			if assignee != "" {
 				hasActive, _ := h.bs.HasActiveTaskForAssignee(ctx, project, assignee, task.ID)
@@ -2092,7 +2092,7 @@ func (h *BoardHandler) notifyUnblockedTasks(ctx context.Context, project string,
 		if assignee != "" {
 			msg += fmt.Sprintf(" — @%s your task is now ready", assignee)
 		}
-		h.bs.PostMessage(ctx, t.BoardID, "Coral Task Queue", msg, nil)
+		h.bs.PostSystemMessage(ctx, t.BoardID, "Coral Task Queue", msg, nil)
 
 		// Send terminal nudge to assignee
 		if assignee != "" {

@@ -361,6 +361,7 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, "-i", arg)
 	}
 
+	parts, raw = withSessionToken(parts, raw, params, a.AgentType())
 	return ShellJoin(parts, raw...)
 }
 

@@ -718,6 +718,17 @@ CREATE TABLE IF NOT EXISTS goal_generations (
     created_at         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_goal_generations_time ON goal_generations(created_at);
+
+-- Per-session agent tokens (#3387, identity phase 1). Only the SHA-256 of a token is
+-- kept; minting for a session revokes its previous token.
+CREATE TABLE IF NOT EXISTS session_tokens (
+    token_hash   TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    session_name TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    revoked_at   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_session_tokens_session ON session_tokens(session_id);
 CREATE INDEX IF NOT EXISTS idx_goal_generations_session ON goal_generations(session_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_git_snap_session ON git_snapshots(session_id);

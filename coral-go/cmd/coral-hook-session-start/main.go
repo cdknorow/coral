@@ -15,6 +15,7 @@ import (
 )
 
 func main() {
+	hooks.InstallIdentity("coral-hook-session-start") // the agent session's token, sent with every request (#3387)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[CRASH] hook panicked: %v\n%s", r, debug.Stack())

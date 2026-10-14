@@ -39,6 +39,10 @@ func withMethod(r *http.Request, m Method) *http.Request {
 func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A sign-in link (?login_token=…, #3387): from here or another computer.
+			if ks.handleLoginToken(w, r) {
+				return
+			}
 			// Always allow localhost — but validate Host header to prevent
 			// DNS rebinding (attacker domain resolving to 127.0.0.1)
 			if isLocalhost(r) {

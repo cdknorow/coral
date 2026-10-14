@@ -86,8 +86,23 @@ type RunningServer struct {
 	Server     *server.Server
 	DB         *store.DB
 	Backend    ptymanager.TerminalBackend
+	// LoginToken is the startup dashboard sign-in token, also in <data>/login_token
+	// (#3387): single-use, 10 minutes. "" if it could not be minted.
+	LoginToken string
 	instance   *instanceLock
 	lockPath   string
+}
+
+// NewLoginLink returns a fresh single-use dashboard sign-in link on this computer
+// (http://localhost:<port>/?login_token=…, 10 minutes) (#3387). Apps that run Coral
+// in-process (launch-coral, coral-tray, and coral-app through the tray's --url) open
+// this instead of the bare dashboard URL, so they sign in with no API key and no prompt.
+func (rs *RunningServer) NewLoginLink(port int) (string, error) {
+	token, err := rs.Server.MintLoginToken()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("http://localhost:%d/?login_token=%s", port, token), nil
 }
 
 // Shutdown gracefully shuts down the HTTP server and cleans up resources.
@@ -307,6 +322,8 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 	boardProbe.Close()
 	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
+	// Per-session agent tokens, before anything can launch an agent (#3387).
+	setupSessionTokens(db, cfg.CoralDir())
 
 	// Native TLS (#3355): load the pair before binding, so a bad pair stops startup.
 	tlsConfig, err := loadTLSConfig(opts.TLSCert, opts.TLSKey)
@@ -348,6 +365,10 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 
 	// Build the HTTP server
 	srv := server.NewWithKey(cfg, db, backend, terminal, dbKey)
+	loginToken, lerr := srv.WriteLoginToken()
+	if lerr != nil {
+		log.Printf("[identity] could not write the dashboard sign-in token: %v", lerr)
+	}
 
 	// Reconcile orphaned live sessions: if the app was killed without
 	// cleanly sleeping sessions, they remain in live_sessions with
@@ -401,6 +422,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	return &RunningServer{
 		HTTPServer: httpServer,
 		Server:     srv,
+		LoginToken: loginToken,
 		DB:         db,
 		Backend:    backend,
 		instance:   instance,

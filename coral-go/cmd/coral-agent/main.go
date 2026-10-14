@@ -63,6 +63,7 @@ Environment:
   CORAL_PORT  Server port (overrides CORAL_URL)`
 
 func main() {
+	hooks.InstallIdentity("coral-agent") // the agent session's token, sent with every request (#3387)
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)

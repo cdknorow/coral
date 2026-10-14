@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/cdknorow/coral/internal/auth"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/peercred"
 	"github.com/cdknorow/coral/internal/store"
@@ -53,7 +54,10 @@ func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
 
 // CloudHandler serves the "Connect to Coral Hub" settings section.
 type CloudHandler struct {
-	ss *store.SessionStore
+	ss       *store.SessionStore
+	identity *IdentityObserver
+	// mintLogin mints a dashboard sign-in token (#3387).
+	mintLogin func() (string, error)
 
 	// cliAuth checks `coral cloud connect`: it proves it knows the 0600 token
 	// without sending it (cloud.CLIAuth);
@@ -357,6 +361,59 @@ func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 	}
 	s, _ := h.ss.GetSettings(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{"enabled": s[HubOperatorSetting] == "true", "linked": h.hubLinked()})
+}
+
+// SetLoginMinter gives the handler the dashboard login-token minter (#3387).
+func (h *CloudHandler) SetLoginMinter(fn func() (string, error)) {
+	h.mu.Lock()
+	h.mintLogin = fn
+	h.mu.Unlock()
+}
+
+// LoginToken: POST /api/system/login-token: a fresh single-use dashboard sign-in
+// token for `coral open` (#3387). Only the coral CLI on this computer, through its
+// HMAC handshake (or the dashboard here).
+func (h *CloudHandler) LoginToken(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) {
+		return
+	}
+	h.mu.RLock()
+	mint := h.mintLogin
+	h.mu.RUnlock()
+	if mint == nil {
+		errBadRequest(w, "sign-in links are not available")
+		return
+	}
+	token, err := mint()
+	if err != nil {
+		errInternalServer(w, "could not mint a sign-in link")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"login_token": token, "path": "/?login_token=" + token, "expires_in": int(auth.LoginTokenTTL.Seconds())})
+}
+
+// SetIdentityObserver gives the handler the identity observer for its report (#3387).
+func (h *CloudHandler) SetIdentityObserver(o *IdentityObserver) {
+	h.mu.Lock()
+	h.identity = o
+	h.mu.Unlock()
+}
+
+// IdentityReport: GET /api/system/identity-report: who called and what strict mode
+// would refuse (#3387, phase 1). Only the dashboard on this computer or the coral CLI
+// (its HMAC handshake): an agent can't read other sessions' mismatch details.
+func (h *CloudHandler) IdentityReport(w http.ResponseWriter, r *http.Request) {
+	if h.refuseCloud(w, r, allowDashboard|allowCLI) {
+		return
+	}
+	h.mu.RLock()
+	o := h.identity
+	h.mu.RUnlock()
+	if o == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"mode": "off"})
+		return
+	}
+	writeJSON(w, http.StatusOK, o.Report())
 }
 
 // SetMaxMode: PUT /api/cloud/max-mode {"mode": "view"|"interact"|"launch"}

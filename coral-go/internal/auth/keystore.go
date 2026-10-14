@@ -49,6 +49,8 @@ type KeyStore struct {
 	order    []string // LRU order (oldest first)
 	rateMap  map[string]*rateLimitEntry
 	trusted  []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
+	// loginTokens maps a login token's SHA-256 to its expiry (#3387).
+	loginTokens map[string]time.Time
 }
 
 // NewKeyStore creates or loads an API key from the given directory.
@@ -353,4 +355,15 @@ func generateToken(length int) (string, error) {
 		return "", fmt.Errorf("crypto/rand failed: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// HasValidSession reports whether the request carries a valid session cookie. Loopback
+// requests are never asked for one today; the identity report (#3387) counts the ones
+// without it, which strict mode would refuse.
+func (ks *KeyStore) HasValidSession(r *http.Request) bool {
+	if ks == nil {
+		return false
+	}
+	token := extractSessionCookie(r)
+	return token != "" && ks.ValidateSession(token)
 }

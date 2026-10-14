@@ -114,3 +114,31 @@ Returns the current authentication status and method used.
 | `"key"` | Authenticated via API key header |
 | `"session"` | Authenticated via session cookie |
 | `"none"` | Not authenticated |
+
+## Agent identity and sign-in links (phase 1: log only)
+
+Coral is moving from "anything on this computer is trusted" to "every caller says who it is". Phase 1 (#3387) only **observes**: nothing is refused, and the report below shows what a stricter mode would break.
+
+### Per-session agent tokens
+
+Every agent session gets a random token when Coral launches, restarts, resumes or wakes it. Coral's own launch line reads the token from a single-use file (0600, random name, in `<data>/session_tokens/`) into `CORAL_SESSION_TOKEN` and deletes the file before the agent CLI starts. The token is never typed or echoed in the terminal, never in a command line (`ps`), a log or the board, and never in the tmux server's environment; only that pane's shell and what it starts have it. Restarting or resuming mints a new token and the old one stops working.
+
+`coral-board`, `coral-agent` and the `coral-hook-*` tools pick it up from their environment and send it as `X-Coral-Session-Token` with every request, with no action from the agent: nothing in a prompt or a tool call touches it.
+
+The server attributes each request to the token's session and its board subscription. A board request that claims another identity (another `subscriber_id`, `as` or `created_by`, `Operator`, or another board in the path) is logged once per session and kind every 5 minutes as `[identity] mismatch (log only)`, and counted.
+
+**Threat model.** Tokens stop mistakes and prompt-injected impersonation through Coral's own tools. They do not stop a malicious process running as the same user: it can read another process's environment (`/proc/<pid>/environ` on Linux, `ps -E` on macOS). Isolation between users is the OS's; isolation between agents of one user is about honest attribution.
+
+### Dashboard sign-in links
+
+At startup Coral mints a single-use sign-in token, valid 10 minutes, writes it to `<data>/login_token` (0600) and opens the browser with `http://localhost:<port>/?login_token=…`. With no display (`--no-browser`, a Linux box without `DISPLAY`) it prints the link instead. Opening the link trades the token for the dashboard's session cookie (HttpOnly, SameSite=Strict) and redirects to the same page without it. A used or expired link answers 403.
+
+`coral open` asks the running Coral for a fresh link (through the same handshake as `coral cloud`) and opens it, or prints it with `--print` or without a display. In phase 1 the dashboard keeps working on this computer without the cookie.
+
+### Identity report
+
+`GET /api/system/identity-report` (the dashboard on this computer or the coral CLI only; never through Coral Hub, never an agent's plain request) returns counts by caller type (`agent_token`, `agent_bad_token`, `agent_no_token`, `dashboard_cookie`, `dashboard_no_cookie`, `coral_hub`, `api_key`, `local_other`), the subset strict mode would refuse (`would_break_in_strict_mode`), mismatch counts by kind (`impersonation`, `operator`, `cross_board`) and the last 50 mismatches (never a token).
+
+### System messages
+
+Board messages Coral posts itself (the task queue, the health monitor) carry `is_system: true`, set by the server only and never inferred from a sender's name. The chat collapses them by that flag.

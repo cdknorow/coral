@@ -15,11 +15,14 @@ if [[ "$PORT" == 8420 ]]; then echo "ERROR: refusing port 8420 (production Coral
 RESTART_ONLY=false
 if [[ "${1:-}" == "--restart-only" ]]; then
     RESTART_ONLY=true
+elif [[ "${1:-}" == "--identity" ]]; then
+    # Identity phase 1 (#3387): session tokens, attribution, impersonation, sign-in links, scale.
+    exec bash "$SCRIPT_DIR/run_identity.sh"
 elif [[ "${1:-}" == "--kill-all" ]]; then
     # Folder Kill all with real agents in the real dashboard (#3053/#3058); its own server and port.
     exec bash "$SCRIPT_DIR/run_kill_all.sh"
 elif [[ $# -gt 0 ]]; then
-    echo "Usage: $0 [--restart-only | --kill-all]" >&2
+    echo "Usage: $0 [--restart-only | --kill-all | --identity]" >&2
     exit 2
 fi
 HOST="127.0.0.1"

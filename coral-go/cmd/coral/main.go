@@ -203,9 +203,22 @@ func main() {
 	}
 	fmt.Printf("  Press Ctrl+C to stop\n\n")
 
-	// Open browser unless --no-browser. Always http://localhost: it works on this
-	// computer with TLS on too, without a warning for a self-signed certificate.
-	if !*noBrowser {
+	// Open the browser with a sign-in link unless --no-browser, or print the link when
+	// there's no display (#3387). Always http://localhost: it works on this computer with
+	// TLS on too, without a warning for a self-signed certificate.
+	if rs.LoginToken != "" {
+		link := fmt.Sprintf("http://localhost:%d/?login_token=%s", cfg.Port, rs.LoginToken)
+		// To the terminal only (stderr), never coral.log: the link is a credential and
+		// coral.log persists and is shared in bug reports (#3387).
+		if *noBrowser || !canOpenBrowser() {
+			openDashboard(os.Stderr, link, false)
+		} else {
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				openDashboard(os.Stderr, link, true)
+			}()
+		}
+	} else if !*noBrowser {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			executil.OpenBrowser(fmt.Sprintf("http://localhost:%d", cfg.Port))

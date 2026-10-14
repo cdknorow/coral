@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/cdknorow/coral/internal/cloud"
 	"html/template"
 	"io"
@@ -55,6 +56,7 @@ type Server struct {
 	backend         ptymanager.TerminalBackend
 	terminal        ptymanager.SessionTerminal
 	keyStore        *auth.KeyStore
+	identity        *routes.IdentityObserver
 	router          chi.Router
 	indexTmpl       *template.Template
 	indexPage       renderedPage // the dashboard page, rendered and compressed once per data
@@ -213,6 +215,24 @@ func (s *Server) BoardHandler() *routes.BoardHandler {
 }
 
 // BoardStore returns the board store (used by board notifier background service).
+// WriteLoginToken mints the startup dashboard login token and writes it to
+// <data>/login_token (#3387). "" when there is no key store.
+func (s *Server) WriteLoginToken() (string, error) {
+	if s.keyStore == nil {
+		return "", nil
+	}
+	return s.keyStore.WriteLoginTokenFile(s.cfg.CoralDir())
+}
+
+// MintLoginToken mints a fresh single-use dashboard sign-in token (#3387), for an app
+// that runs Coral in-process (launch-coral, coral-tray): no API key, file or prompt.
+func (s *Server) MintLoginToken() (string, error) {
+	if s.keyStore == nil {
+		return "", errors.New("no key store")
+	}
+	return s.keyStore.MintLoginToken()
+}
+
 func (s *Server) BoardStore() *board.Store {
 	return s.boardStore
 }
@@ -296,6 +316,9 @@ func (s *Server) buildRouter() chi.Router {
 	}))
 	// Record API traffic centrally so clients do not need to post metrics.
 	r.Use(routes.RequestMetrics(s.db))
+	// Identity phase 1 (#3387): who each request is from; mismatches logged, never refused.
+	s.identity = routes.NewIdentityObserver(s.db, s.boardStore, s.keyStore.HasValidSession)
+	r.Use(s.identity.Middleware)
 
 	// Health check — the native app polls this every 5s to detect crashes.
 	// Auth middleware bypasses localhost.
@@ -463,6 +486,12 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
 	r.Get("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	r.Put("/api/system/hub-operator", s.cloudHandler.HubOperator)
+	s.cloudHandler.SetIdentityObserver(s.identity)
+	if s.keyStore != nil {
+		s.cloudHandler.SetLoginMinter(s.keyStore.MintLoginToken)
+	}
+	r.Post("/api/system/login-token", s.cloudHandler.LoginToken)
+	r.Get("/api/system/identity-report", s.cloudHandler.IdentityReport)
 	r.Put("/api/cloud/max-mode", s.cloudHandler.SetMaxMode)
 	r.Put("/api/cloud/allow-auto-accept", s.cloudHandler.SetAllowHubAutoAccept)
 	r.Post("/api/cloud/redeem", s.cloudHandler.Redeem)

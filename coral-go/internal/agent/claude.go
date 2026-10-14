@@ -276,6 +276,7 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, arg)
 	}
 
+	parts, raw = withSessionToken(parts, raw, params, "claude")
 	return ShellJoin(parts, raw...)
 }
 

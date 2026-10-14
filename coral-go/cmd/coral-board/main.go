@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/cdknorow/coral/internal/hooks"
 	"github.com/cdknorow/coral/internal/taskcli"
 	"github.com/cdknorow/coral/internal/testguard"
 	"github.com/cdknorow/coral/internal/tmux"
@@ -275,6 +276,7 @@ func apiCall(method, path string, body any) (map[string]any, error) {
 }
 
 func main() {
+	hooks.InstallIdentity("coral-board") // the agent session's token, sent with every request (#3387)
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
