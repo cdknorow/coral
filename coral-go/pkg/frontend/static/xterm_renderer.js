@@ -401,7 +401,10 @@ export function connectTerminalWs(name, agentType, sessionId, server) {
             _paneClosed = true;
             _setDisconnectedBadge(false);
             _setSessionEndedOverlay(true);
-            document.dispatchEvent(new CustomEvent('coral:terminal-closed'));
+            document.dispatchEvent(new CustomEvent('coral:terminal-closed', { detail: { sessionId } }));
+        } else if (data.type === "terminal_gone") {
+            // Input for this agent found no terminal (#3218): the dashboard says so, as for a 409.
+            document.dispatchEvent(new CustomEvent('coral:terminal-gone', { detail: { sessionId } }));
         } else if (data.type === "hub_read_only") {
             // The Cloud Hub dropped our input for this server's access mode (#3068).
             applyHubReadOnlyFrame(data);
@@ -520,7 +523,9 @@ export function focusTerminal() {
 
 /** Send raw terminal input data over the WebSocket (used by textarea integration). */
 export function sendTerminalInputWs(data) {
-    if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+    // After terminal_closed the server reads nothing more from this socket, though it may
+    // still be open: callers fall back to HTTP, which says when the terminal is gone (#3218).
+    if (terminalWs && terminalWs.readyState === WebSocket.OPEN && !_paneClosed) {
         terminalWs.send(JSON.stringify({
             type: "terminal_input",
             data: data,

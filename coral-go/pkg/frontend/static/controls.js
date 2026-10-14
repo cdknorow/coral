@@ -9,12 +9,13 @@ import { escapeHtml, escapeAttr, showToast, showView, jsStr } from './utils.js';
 import { stopCaptureRefresh } from './capture.js';
 import { renderLiveSessions } from './render.js';
 import { loadAgentEvents, renderEventTimeline } from './agentic_state.js';
-import { addPendingMessage, resetLiveHistory } from './live_chat.js';
+import { addPendingMessage, removePendingMessage, resetLiveHistory } from './live_chat.js';
 import { serverFetch, currentServer, serverForSession, sessionServer } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { hubBlocked } from './hub_access.js';
 import { loadModals } from './lazy_panels.js';
-import { responseErrorText } from './server_status.js';
+import { responseErrorText, responseError } from './server_status.js';
+import { reportSendError, showComposerError, clearComposerError, awaitSocketAccept } from './terminal_gone.js';
 
 // Lazy imports to avoid circular dependency (xterm_renderer imports controls)
 let _xtermModule = null;
@@ -122,12 +123,13 @@ export async function sendCommand() {
             if (xterm.sendTerminalInputWs(command)) {
                 // Send Enter after delay so bracket paste + tmux processing completes
                 setTimeout(() => xterm.sendTerminalInputWs("\r"), 300);
+                // The box clears now, but the saved draft only once the send is accepted:
+                // a gone terminal refuses it and the text comes back (#3218).
+                const accepted = awaitSocketAccept(targetSession);
                 addPendingMessage(sentSessionId, command, sentAt);
                 input.value = "";
-                const key = sessionKey(targetSession);
-                if (key) saveSessionDraft(key, "");
-                showToast(`Sent: ${command}`);
                 xterm.focusTerminal();
+                accepted.then(ok => _settleSocketSend(targetSession, command, sentAt, ok));
                 return;
             }
         }
@@ -141,15 +143,18 @@ export async function sendCommand() {
             });
             if (!resp.ok) {
                 // Plain text naming the server; never the raw response (#3151). The draft stays.
-                showToast(await responseErrorText(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`), true);
+                // Said under the composer (#3218); a gone terminal also marks the agent and offers Restart.
+                const { text, code } = await responseError(resp, sessionServer(targetSession), `The message was not sent (HTTP ${resp.status}).`);
+                reportSendError(targetSession, text, code);
                 console.error("Send failed:", resp.status);
                 return;
             }
             const result = await resp.json();
             if (result.error) {
-                showToast(result.error, true);
+                showComposerError(result.error);
                 console.error("Send error:", result.error);
             } else {
+                clearComposerError();
                 addPendingMessage(sentSessionId, command, sentAt);
                 input.value = "";
                 clearAttachments(targetSession);
@@ -159,12 +164,29 @@ export async function sendCommand() {
                 _getXtermModule().then(m => m.focusTerminal());
             }
         } catch (e) {
-            showToast("Failed to send command", true);
+            showComposerError("The message was not sent. Check the connection and try again.");
             console.error("Send exception:", e);
         }
     } finally {
         _isSending = false;
     }
+}
+
+/** A composer send over the terminal socket was accepted or refused (#3218). */
+function _settleSocketSend(session, command, sentAt, ok) {
+    const key = sessionKey(session);
+    const saved = (key && state.sessionInputText[key]) || "";
+    const input = document.getElementById("command-input");
+    const onIt = !!(input && state.currentSession && sessionKey(state.currentSession) === key);
+    if (ok) {
+        // Text typed since the send is a new draft and stays.
+        if (key && saved.trim() === command) saveSessionDraft(key, "");
+        showToast(`Sent: ${command}`);
+        return;
+    }
+    removePendingMessage(session.session_id, sentAt);
+    if (key && !saved.trim()) saveSessionDraft(key, command);
+    if (onIt && !input.value) input.value = command;
 }
 
 const DEFAULT_TEAM_REMINDER_ORCHESTRATOR = "Remember to coordinate with your team and check the message board for updates";
@@ -438,17 +460,19 @@ export async function sendRawKeys(keys, { silent = false } = {}) {
             body: JSON.stringify({ keys, agent_type: state.currentSession.agent_type, session_id: state.currentSession.session_id }),
         });
         if (!resp.ok) {
-            showToast(await responseErrorText(resp, currentServer(), `The keys were not sent (HTTP ${resp.status}).`), true);
+            const { text, code } = await responseError(resp, currentServer(), `The keys were not sent (HTTP ${resp.status}).`);
+            reportSendError(state.currentSession, text, code);
             return;
         }
         const result = await resp.json();
         if (result.error) {
-            showToast(result.error, true);
+            showComposerError(result.error);
         } else {
+            clearComposerError();
             if (!silent) showToast(`Sent: ${keys.join(" + ")}`);
         }
     } catch (e) {
-        showToast("Failed to send keys", true);
+        showComposerError("The keys were not sent. Check the connection and try again.");
         console.error("sendRawKeys exception:", e);
     }
 }

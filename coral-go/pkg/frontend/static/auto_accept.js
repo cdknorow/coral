@@ -19,10 +19,14 @@ import { scheduleLiveSessionsRender } from './render.js';
 import { isPopout } from './popout.js';
 
 const WARNING_TITLE = 'Turn on auto-accept for this agent?';
-const WARNING_TEXT = 'Coral will answer “Yes” to this agent’s permission prompts for you, which can include '
-    + 'risky actions such as deleting files, force-pushing, running sudo or changing files outside the agent’s '
-    + 'folder. Only turn this on for a task you trust, ideally in a sandbox or a disposable worktree. Questions '
-    + 'and plan approvals still wait for you. It turns off when the agent restarts or wakes.';
+// The operator's exact words (#3182), in parts so the risk stands out and what still waits gets
+// its own line (#3218). WARNING_TEXT is the whole, unchanged.
+const WARNING_LEAD = 'Coral will answer “Yes” to this agent’s permission prompts for you, ';
+const WARNING_RISK = 'which can include risky actions such as deleting files, force-pushing, running sudo or '
+    + 'changing files outside the agent’s folder.';
+const WARNING_TRUST = ' Only turn this on for a task you trust, ideally in a sandbox or a disposable worktree.';
+const WARNING_WAITS = 'Questions and plan approvals still wait for you. It turns off when the agent restarts or wakes.';
+export const WARNING_TEXT = WARNING_LEAD + WARNING_RISK + WARNING_TRUST + ' ' + WARNING_WAITS;
 
 // Why Coral turned it off (auto_accept_paused_code). The server sends codes only; the words are ours.
 export const PAUSED_TEXT = {
@@ -109,9 +113,15 @@ export function confirmAutoAccept(name, onConfirm, onCancel, { hub = isCloud() }
     const who = document.createElement('p');
     who.className = 'auto-accept-confirm-agent';
     who.textContent = name;
-    const p = document.createElement('p');
+    const p = document.createElement('div');
     p.id = 'auto-accept-confirm-text';
-    p.textContent = WARNING_TEXT;
+    const risk = document.createElement('p');
+    const strong = document.createElement('strong');
+    strong.textContent = WARNING_RISK;
+    risk.append(WARNING_LEAD, strong, WARNING_TRUST);
+    const waits = document.createElement('p');
+    waits.textContent = WARNING_WAITS;
+    p.append(risk, ' ', waits); // the space keeps the description one text when read as a whole
     const label = document.createElement('label');
     label.className = 'auto-accept-confirm-duration';
     label.textContent = 'Turn it off after ';

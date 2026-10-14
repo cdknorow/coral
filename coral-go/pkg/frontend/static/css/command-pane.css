@@ -75,7 +75,7 @@
     border-radius: 6px;
     color: var(--text-primary);
     font-size: 13px;
-    font-family: var(--font-mono);
+    font-family: var(--font-sans); /* the same on a phone as in the desktop card (#3218) */
     outline: none;
     transition: border-color 0.15s;
     resize: none;
@@ -471,4 +471,36 @@
 #command-pane.agent-sleeping textarea:disabled {
     opacity: 0.55;
     cursor: not-allowed;
+}
+
+/* A failed send, under the text where the user typed (#3218): not a toast over the composer. */
+.composer-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 6px 12px 0;
+    padding: 6px 8px 6px 12px;
+    border: 1px solid rgba(var(--error-rgb), 0.5);
+    border-radius: 8px;
+    background: rgba(var(--error-rgb), 0.1);
+    color: var(--error);
+    font-size: 13px;
+    line-height: 1.35;
+}
+.composer-error[hidden] { display: none; }
+.composer-error-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.composer-error-restart { flex-shrink: 0; }
+.composer-error-dismiss {
+    flex-shrink: 0;
+    min-width: 28px;
+    min-height: 28px;
+    border: none;
+    background: none;
+    color: inherit;
+    font-size: 16px;
+    cursor: pointer;
+}
+@media (max-width: 767px) {
+    .composer-error { margin: 0 8px 6px; }
+    .composer-error-restart, .composer-error-dismiss { min-height: 44px; min-width: 44px; }
 }

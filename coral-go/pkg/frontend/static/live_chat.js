@@ -7,7 +7,8 @@ import { fitTerminal } from './xterm_renderer.js';
 import { deriveSessionState } from './render.js';
 import { chatAgentAdapter } from './chat_agents.js';
 import { serverFetch, sessionServer, serverUrl, currentServer, isCloud } from './server_base.js';
-import { responseErrorText } from './server_status.js';
+import { responseError } from './server_status.js';
+import { reportSendError } from './terminal_gone.js';
 
 let historyPollInterval = null;
 let historyMessageCount = 0;
@@ -1322,6 +1323,21 @@ export function addPendingMessage(sessionId, text, sentAt = Date.now()) {
     }
 }
 
+/** Withdraw the pending bubble of a send that was refused (its terminal was gone, #3218). */
+export function removePendingMessage(sessionId, sentAt) {
+    const list = pendingBySession.get(sessionId);
+    const i = list ? list.findIndex(p => p.at === sentAt) : -1;
+    if (i < 0) return;
+    list.splice(i, 1);
+    lastSendAt.delete(sessionId);
+    savePendingToStorage();
+    const container = document.getElementById("live-history-messages");
+    if (container && state.currentSession && state.currentSession.session_id === sessionId) {
+        syncPendingBubbles(container, sessionId);
+        syncWorkingIndicator(container, state.currentSession);
+    }
+}
+
 // An interrupt ends the current work; Claude Code then submits whatever was
 // queued, so those messages are now being worked on.
 function noteInterrupt(sessionId, msg) {
@@ -1800,7 +1816,8 @@ async function sendPromptAnswer(card, n, label, action, text) {
             body: JSON.stringify({ session_id: session.session_id, agent_type: session.agent_type || "", n, label, text: text || "" }),
         });
         if (!resp.ok) {
-            showToast(await responseErrorText(resp, sessionServer(session), "Could not send the answer. Use the terminal."), true);
+            const { text, code } = await responseError(resp, sessionServer(session), "Could not send the answer. Use the terminal.");
+            reportSendError(session, text, code); // under the composer (#3218)
             controls.forEach(c => { c.disabled = false; });
             return false;
         }

@@ -294,6 +294,12 @@ async function run() {
     const leak = await t1.ev(LEAK_PROBE(sid));
     check('9 no session id in visible text / document.title / non-href attributes', leak.text.length === 0 && !leak.title && leak.attrs.length === 0, JSON.stringify(leak));
     check('37 no destructive controls in the popout', s1.destructive.length === 0, JSON.stringify(s1.destructive));
+    // A terminal_gone send error says so under the composer but offers no Restart here (#3218).
+    const goneUI = await t1.ev(`(async () => { const m = await import((window.__coralStatic || '/static/') + 'terminal_gone.js');
+        m.showComposerError(m.TERMINAL_GONE_TEXT, { restart: true });
+        const b = document.getElementById('composer-error'); const r = { shown: !b.hidden, restart: !b.querySelector('.composer-error-restart').hidden };
+        m.clearComposerError(); return r; })()`);
+    check('37 a gone terminal offers no Restart in the popout', goneUI.shown && !goneUI.restart, JSON.stringify(goneUI));
     check('32 identity region is aria-live=polite', s1.identityLive === 'polite', String(s1.identityLive));
     check('B no page exceptions during popout boot', t1.exceptions.length === 0, JSON.stringify(t1.exceptions.slice(0, 3)));
     const audit0 = auditRouting(t1.requests, { agent_type: 'terminal', session_id: sid, name: aname, tmux_session: `terminal-${sid}` });

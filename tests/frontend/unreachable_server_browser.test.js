@@ -82,12 +82,14 @@ const STUB = `(() => {
         assert.equal(consoleErrors.filter(e => /Failed to refresh capture/.test(e)).length, 0, 'no console error per failed poll');
         console.log(`   ✓ gateway errors back off: ${polls} polls in 6 s, no console spam`);
 
-        // 2. A failed send names the server in plain text; no raw JSON, no 'Sent', draft kept.
+        // 2. A failed send names the server in plain text, under the composer (#3218); no raw JSON, no 'Sent', draft kept.
         await ev(`(() => { const i = document.getElementById('command-input'); i.value = 'echo plain'; return true; })()`);
         await ev(`window.sendCommand()`);
-        await waitFor(`[...document.querySelectorAll('.toast')].some(t => /box-b\\.lan is unreachable/.test(t.textContent))`, 'the plain unreachable toast', 5000);
+        await waitFor(`(() => { const b = document.getElementById('composer-error'); return !b.hidden && /box-b\\.lan is unreachable/.test(b.textContent); })()`, 'the plain unreachable error under the composer', 5000);
+        const e2 = await ev(`document.querySelector('#composer-error .composer-error-text').textContent`);
+        assert.ok(!/[{}]|Server error|502/.test(e2), 'no raw JSON or status code: ' + e2);
+        assert.equal(await ev(`document.querySelector('#composer-error .composer-error-restart').hidden`), true, 'no Restart: the agent is fine, its server is not');
         const t2 = await toasts();
-        assert.ok(!t2.some(t => /[{}]|Server error|502/.test(t)), 'no raw JSON or status code: ' + JSON.stringify(t2));
         assert.ok(!t2.some(t => /^Sent/.test(t)), 'nothing says Sent');
         assert.equal(await ev(`document.getElementById('command-input').value`), 'echo plain', 'the draft is kept');
         console.log('   ✓ failed send: plain text naming the server, draft kept, no "Sent"');

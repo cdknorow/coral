@@ -97,6 +97,14 @@ const BASE = require('./test_base').BASE;
         assert.match(d.text, /which can include risky actions such as deleting files, force-pushing, running sudo or changing files outside the agent’s folder/);
         assert.match(d.text, /Questions and plan approvals still wait for you\. It turns off when the agent restarts or wakes\./);
         assert.doesNotMatch(d.text, /risky actions[^.]*still wait/, 'no claim that risky actions wait');
+        // The risk stands out and what still waits has its own line (#3218), in the operator's exact words.
+        const parts = await ev(`(() => { const t = document.getElementById('auto-accept-confirm-text'); const ps = [...t.querySelectorAll('p')];
+            return { strong: t.querySelector('strong')?.textContent, weight: Number(getComputedStyle(t.querySelector('strong')).fontWeight), lines: ps.map(p => p.textContent), whole: t.textContent }; })()`);
+        assert.equal(parts.strong, 'which can include risky actions such as deleting files, force-pushing, running sudo or changing files outside the agent’s folder.');
+        assert.ok(parts.weight >= 600, 'the risk sentence is bold');
+        assert.equal(parts.lines.length, 2, 'two lines');
+        assert.equal(parts.lines[1], 'Questions and plan approvals still wait for you. It turns off when the agent restarts or wakes.');
+        assert.equal(parts.whole, 'Coral will answer “Yes” to this agent’s permission prompts for you, which can include risky actions such as deleting files, force-pushing, running sudo or changing files outside the agent’s folder. Only turn this on for a task you trust, ideally in a sandbox or a disposable worktree. Questions and plan approvals still wait for you. It turns off when the agent restarts or wakes.', 'the operator’s words, unchanged');
         assert.deepEqual(await ev(`(() => { const sel = document.getElementById('auto-accept-duration'); return [sel.value, [...sel.options].map(o => o.text)]; })()`),
             ['', ['No time limit', '15 minutes', '30 minutes', '1 hour', '2 hours', '4 hours', '8 hours']], 'local: no time limit by default');
         await ev(`[...document.querySelectorAll('dialog.auto-accept-confirm button')].find(b => b.textContent === 'Cancel').click(); true`);

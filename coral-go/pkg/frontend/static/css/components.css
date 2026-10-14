@@ -3687,6 +3687,9 @@ dialog.auto-accept-confirm::backdrop { background: rgba(0, 0, 0, 0.55); }
 dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 16px; }
 .auto-accept-confirm-agent { margin: 0 0 10px; color: var(--text-secondary); font-weight: 600; }
 #auto-accept-confirm-text { margin: 0 0 18px; line-height: 1.5; color: var(--text-secondary); }
+#auto-accept-confirm-text p { margin: 0 0 8px; }
+#auto-accept-confirm-text p:last-child { margin: 0; }
+#auto-accept-confirm-text strong { color: var(--text-primary); font-weight: 600; }
 .auto-accept-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 .auto-accept-confirm-enable { background: var(--warning); border-color: var(--warning); color: #111; font-weight: 600; }
 .auto-accept-confirm-enable:hover { filter: brightness(1.08); }
@@ -3699,3 +3702,24 @@ dialog.auto-accept-confirm h3 { margin: 0 0 6px; font-size: 16px; }
 button.auto-accept-header-off { display: inline-flex; align-items: center; margin: 0 4px 0 0; padding: 0 6px; border-radius: 4px; font: inherit; font-size: 11px; line-height: 18px; background: none; color: var(--text-secondary); border: 1px solid var(--border); cursor: pointer; }
 button.auto-accept-header-off:hover { color: var(--text-primary); border-color: rgba(var(--warning-rgb), 0.6); }
 button.auto-accept-header-off:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* An agent whose terminal is gone (#3218): on its row and in the header; a click restarts it. */
+.terminal-gone-chip {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 4px;
+    padding: 0 5px;
+    border-radius: 4px;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    color: var(--error);
+    background: rgba(var(--error-rgb), 0.12);
+    border: 1px solid rgba(var(--error-rgb), 0.45);
+    cursor: pointer;
+}
+.terminal-gone-chip:hover { background: rgba(var(--error-rgb), 0.22); }
+.terminal-gone-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 20px; padding: 0 8px; }

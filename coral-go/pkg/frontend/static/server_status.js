@@ -330,8 +330,9 @@ export function proxyErrorMessage(httpStatus, body, serverId) {
     return '';
 }
 
-/** The agent's own terminal no longer exists (409 terminal_gone, #3211): nothing was sent. */
-export const TERMINAL_GONE_MESSAGE = "The agent's terminal is gone";
+/** The agent's own terminal no longer exists (409 terminal_gone, #3211): nothing was sent.
+ *  Restart starts it in a fresh terminal (#3213), so the text says so (#3218). */
+export const TERMINAL_GONE_MESSAGE = "The agent's terminal is gone. Restart it to continue.";
 
 /** A plain sentence for a failed response: terminal_gone's fixed text, the proxy's
  *  mapped text, else the body's own error string (never raw JSON), else `fallback`.
@@ -344,6 +345,13 @@ export async function responseErrorText(resp, serverId, fallback) {
     if (mapped) return mapped;
     if (body && typeof body.error === 'string' && body.error.trim()) return body.error.trim();
     return fallback;
+}
+
+/** responseErrorText plus the body's error code ('' when none), for callers that act on it. */
+export async function responseError(resp, serverId, fallback) {
+    let code = '';
+    try { const b = await resp.clone().json(); if (b && typeof b.code === 'string') code = b.code; } catch { /* not JSON */ }
+    return { text: await responseErrorText(resp, serverId, fallback), code };
 }
 
 /** Relative "x ago" for an RFC3339 timestamp; '' / 'never' for empty. */

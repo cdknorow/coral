@@ -200,6 +200,8 @@ const CLOUD_PRELOAD = `(() => {
         s = await sends();
         assert.ok(s.posts === 1 || s.frames.some(f => f.includes('go ahead')), `sent through the socket or /send (posts ${s.posts}, frames ${JSON.stringify(s.frames)})`);
         assert.equal(await draft(), '', 'draft cleared after a real send');
+        // Over the socket "Sent" shows once the send is accepted (no terminal_gone in the window, #3218).
+        await waitFor(`[...document.querySelectorAll('.toast .toast-message')].some(t => /^Sent/.test(t.textContent.trim()))`, 'the Sent toast', 3000).catch(() => {});
         assert.ok((await toasts()).some(x => /^Sent/.test(x.text)), 'Sent toast after a real send');
         console.log(`   ✓ sent (${s.posts ? 'POST /send' : 'socket'}), draft cleared, Sent toast`);
 

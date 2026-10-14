@@ -15,6 +15,7 @@ import { getCachedAgentAvailability, refreshTeamAvailabilityIfChanged } from './
 import { liveListRendered } from './ready.js';
 import { morphHtml } from './dom_morph.js';
 import { autoAcceptChip, autoAcceptMenuItem } from './auto_accept.js';
+import { terminalGoneChip } from './terminal_gone.js';
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -1933,7 +1934,7 @@ ${_archiveItem}            <hr class="overflow-menu-divider">
         <div class="session-info">
             <div class="session-name-row">
                 <span class="session-dot ${dotClass}${ctxHigh ? ' ctx-high' : ''}" title="${escapeAttr(stateInfo.label)}" aria-hidden="true"></span>
-                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>${autoAcceptChip(s)}
+                <span class="session-label" title="${escapeAttr(displayLabel)}"><span class="session-label-name${s.agent_type === 'terminal' ? ' is-terminal' : ''}"${agentNameColor(s) ? ` style="--agent-name-color:${agentNameColor(s)}"` : ''}>${escapeHtml(displayLabel)}</span>${reminderTag}${typeTag}${dirChip}</span>${autoAcceptChip(s)}${terminalGoneChip(s)}
                 <span class="session-name-spacer"></span>
                 ${stale ? '' : waitingBadge + ctxPill}
                 ${goalBtn}
