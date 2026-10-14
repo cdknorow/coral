@@ -139,7 +139,7 @@ Coral's own apps sign in the same way, with no API key and no prompt (#3394). Th
 
 ### Identity report
 
-`GET /api/system/identity-report` (the dashboard on this computer or the coral CLI only; never through Coral Hub, never an agent's plain request) returns `mode` (`log_only` or `strict`), counts by caller type (`agent_token`, `agent_bad_token`, `agent_no_token`, `dashboard_cookie`, `dashboard_no_cookie`, `coral_hub`, `api_key`, `local_other`), the subset strict mode would refuse (`would_break_in_strict_mode`), the same broken down as `"caller tool METHOD /route/{pattern}"` (`would_break_by_route`, e.g. `"local_other curl GET /api/sessions/live": 8`; the tool is the User-Agent's product name; never ids, queries or identity values; at most 200 keys), mismatch counts by kind (`impersonation`, `operator`, `cross_board`) and the last 50 mismatches (never a token). Read `would_break_by_route` before turning strict mode on: every line is something that will be refused.
+`GET /api/system/identity-report` (the dashboard on this computer or the coral CLI only; never through Coral Hub, never an agent's plain request) returns `mode` (`log_only` or `strict`), counts by caller type (`agent_token`, `agent_bad_token`, `agent_no_token`, `dashboard_cookie`, `dashboard_no_cookie`, `coral_hub`, `api_key`, `local_other`), the subset strict mode would refuse (`would_break_in_strict_mode`), the same broken down as `"caller tool METHOD /route/{pattern}"` (`would_break_by_route`, e.g. `"local_other curl GET /api/sessions/live": 8`; the tool is the User-Agent's product name; never ids, queries or identity values; at most 200 keys), mismatch counts by kind (`impersonation`, `operator`, `cross_board`), agents' calls to the Operator-only routes (`agent_operator_calls`, see below) and the last 50 mismatches (never a token). Read `would_break_by_route` before turning strict mode on: every line is something that will be refused.
 
 ### System messages
 
@@ -166,6 +166,7 @@ What is refused:
 |---|---|
 | An agent's tool acting as someone else: another member (`subscriber_id`, `as`, `created_by`), the `Operator`, or another board | 403 `identity_mismatch` (also logged and in the report) |
 | An agent's tool with an unknown or revoked token, or none (an agent started before v1.4.19, or a token removed) | 401 `session_token_required`: restart the agent from Coral |
+| An agent's token on a route that runs code or starts agents on this computer: creating, changing, deleting or triggering a workflow (`/api/workflows…`), scheduling, changing or toggling a job (`/api/scheduled/jobs…`), starting a task run (`POST /api/tasks/run`) | 403 `forbidden_for_agent`: these are the Operator's (the dashboard, the API key, or the command line outside an agent). Without strict mode they work, and each agent call is listed in the identity report's `agent_operator_calls` (`"<session> METHOD /route"`) |
 | Anything else without a credential (`curl`, a browser with no sign-in) | 401 `dashboard_auth_required`; a page load is sent to `/auth?locked=1&return_to=…` |
 
 Inside an agent session (`CORAL_SESSION_NAME` is set) the tools **never** fall back to the command-line signature, even if they could read the token file: an agent whose token is missing is refused, not promoted to Operator.

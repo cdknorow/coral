@@ -316,6 +316,8 @@ POST /api/workflows/by-name/{name}/trigger
 
 The request body is optional.
 
+At most **5 workflow runs** are in progress at once. A trigger beyond that answers `429` with `Retry-After: 30` and `{"code": "too_many_runs"}`; a scheduled job that fires then is recorded as failed with the same reason.
+
 ### Request body
 
 | Field | Type | Default | Description |

@@ -184,6 +184,7 @@ func (h *TasksHandler) SubmitTask(w http.ResponseWriter, r *http.Request) {
 		runID, err := h.scheduler.FireOneshot(r.Context(), launchConfig)
 		if err != nil {
 			if _, ok := err.(*background.ConcurrencyLimitError); ok {
+				w.Header().Set("Retry-After", "30")
 				writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
 				return
 			}

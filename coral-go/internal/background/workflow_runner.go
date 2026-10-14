@@ -85,11 +85,17 @@ type WorkflowRunner struct {
 	host     string // Server host for CORAL_HOST env var
 	port     int    // Server port for CORAL_PORT env var
 
-	// mu protects activeChildren and runCancels
+	// mu protects activeChildren, runCancels and running
 	mu             sync.Mutex
 	activeChildren map[int64]*activeChild       // runID -> active child
 	runCancels     map[int64]context.CancelFunc // runID -> cancel func
+	// running counts runs in progress; at maxRuns a new trigger is refused (#3424, MED-02).
+	running int
+	maxRuns int
 }
+
+// maxConcurrentWorkflowRuns caps workflow runs in progress, like the job scheduler.
+const maxConcurrentWorkflowRuns = 5
 
 // NewWorkflowRunner creates a new WorkflowRunner.
 func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, runtime AgentRuntime, _ any, _ any, dataDir, host string, port int) *WorkflowRunner {
@@ -101,6 +107,7 @@ func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, ru
 		host:           host,
 		port:           port,
 		logger:         slog.Default().With("service", "workflow_runner"),
+		maxRuns:        maxConcurrentWorkflowRuns,
 		activeChildren: make(map[int64]*activeChild),
 		runCancels:     make(map[int64]context.CancelFunc),
 	}
@@ -108,14 +115,33 @@ func NewWorkflowRunner(wfStore *store.WorkflowStore, launcher *AgentLauncher, ru
 
 // TriggerWorkflow creates a run record and starts execution in a goroutine.
 // Returns the created run. Callers can track progress via GetWorkflowRun.
+// A run beyond maxRuns in progress is refused with ConcurrencyLimitError (#3424, MED-02).
 func (wr *WorkflowRunner) TriggerWorkflow(ctx context.Context, workflow *store.Workflow, triggerType string, triggerContext *string) (*store.WorkflowRun, error) {
+	wr.mu.Lock()
+	if wr.maxRuns > 0 && wr.running >= wr.maxRuns {
+		limit := wr.maxRuns
+		wr.mu.Unlock()
+		return nil, &ConcurrencyLimitError{Limit: limit}
+	}
+	wr.running++
+	wr.mu.Unlock()
+	done := func() {
+		wr.mu.Lock()
+		wr.running--
+		wr.mu.Unlock()
+	}
+
 	run, err := wr.store.CreateWorkflowRun(ctx, workflow.ID, triggerType, triggerContext)
 	if err != nil {
+		done()
 		return nil, fmt.Errorf("create workflow run: %w", err)
 	}
 
 	wr.pruneRuns(ctx, workflow.ID)
-	go wr.executeRun(run.ID, workflow)
+	go func() {
+		defer done()
+		wr.executeRun(run.ID, workflow)
+	}()
 	return run, nil
 }
 

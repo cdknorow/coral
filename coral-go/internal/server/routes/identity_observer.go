@@ -92,6 +92,9 @@ type IdentityObserver struct {
 	// breakBy counts would-break requests by "caller tool METHOD /route/{pattern}" (#3418):
 	// which callers strict mode would refuse, and where.
 	breakBy map[string]int64
+	// operatorCalls counts calls by agents to the Operator-only routes (#3424), by
+	// "session METHOD /route": refused with strict local auth, recorded otherwise.
+	operatorCalls map[string]int64
 	// refused counts strict-mode refusals by code (#3418): zero in a healthy team.
 	refused map[string]int64
 	recent  []IdentityMismatch
@@ -103,7 +106,7 @@ type IdentityObserver struct {
 func NewIdentityObserver(db *store.DB, bs *board.Store, hasSession func(*http.Request) bool) *IdentityObserver {
 	return &IdentityObserver{db: db, bs: bs, hasSession: hasSession,
 		callers: map[string]int64{}, bySession: map[string]int64{}, byTool: map[string]int64{},
-		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
+		mismatches: map[string]int64{}, breakBy: map[string]int64{}, refused: map[string]int64{}, operatorCalls: map[string]int64{}, lastLog: map[string]time.Time{}, now: time.Now}
 }
 
 var agentToolPrefixes = []string{"coral-board/", "coral-agent/", "coral-hook-"}
@@ -174,6 +177,14 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 				r.Header.Del(cliauth.CLIAuthHeader)
 			}
 			r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
+			if route, ok := operatorOnlyRoute(r); ok {
+				o.countOperatorCall(owner.SessionName, r.Method+" "+route)
+				if o.strict {
+					o.refuse(w, http.StatusForbidden, "forbidden_for_agent",
+						"An agent can't "+operatorOnlyRoutes[r.Method+" "+route]+": that is for the Operator (the dashboard, or the command line outside an agent)")
+					return
+				}
+			}
 			if m := o.checkBoard(r, owner); m != nil && o.strict {
 				o.refuse(w, http.StatusForbidden, "identity_mismatch",
 					"This agent can't act as "+strconv.Quote(m.Claimed)+" ("+m.Field+"): its session is "+strconv.Quote(m.Expected)+" ("+m.Kind+")")
@@ -184,6 +195,11 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 		}
 		caller := o.classify(r)
 		o.count(caller)
+		if caller == callerAgentNoToken {
+			if route, ok := operatorOnlyRoute(r); ok {
+				o.countOperatorCall("(no token)", r.Method+" "+route)
+			}
+		}
 		// In every mode (#3421 v2, operator decision) a credential that is PRESENT must be
 		// valid: a command-line signature, an API key, a Coral Hub stamp. A wrong one is
 		// refused, never ignored. A request with no credential at all keeps working outside
@@ -222,6 +238,53 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 			o.countBreak(caller, r)
 		}
 	})
+}
+
+// operatorOnlyRoutes run code or start agents on this computer (#3424, audit HIGH-01):
+// workflows (shell steps), scheduled jobs and task runs. With strict local auth an agent's
+// token can't use them (the Operator can: the dashboard, an API key, the signed command
+// line); otherwise each agent call is recorded in the identity report.
+var operatorOnlyRoutes = map[string]string{
+	"POST /api/workflows":                        "create a workflow",
+	"PUT /api/workflows/{workflowID}":            "change a workflow",
+	"DELETE /api/workflows/{workflowID}":         "delete a workflow",
+	"POST /api/workflows/{workflowID}/trigger":   "run a workflow",
+	"POST /api/workflows/by-name/{name}/trigger": "run a workflow",
+	"POST /api/scheduled/jobs":                   "schedule a job",
+	"PUT /api/scheduled/jobs/{jobID}":            "change a scheduled job",
+	"DELETE /api/scheduled/jobs/{jobID}":         "delete a scheduled job",
+	"POST /api/scheduled/jobs/{jobID}/toggle":    "turn a scheduled job on or off",
+	"POST /api/tasks/run":                        "start a task run",
+}
+
+// operatorOnlyRoute returns the route pattern of r when it is one of operatorOnlyRoutes,
+// asking the router (the middleware runs before routing).
+func operatorOnlyRoute(r *http.Request) (string, bool) {
+	if !strings.HasPrefix(r.URL.Path, "/api/workflows") && !strings.HasPrefix(r.URL.Path, "/api/scheduled/") && r.URL.Path != "/api/tasks/run" {
+		return "", false
+	}
+	rc := chi.RouteContext(r.Context())
+	if rc == nil || rc.Routes == nil {
+		return "", false
+	}
+	tctx := chi.NewRouteContext()
+	if !rc.Routes.Match(tctx, r.Method, r.URL.Path) {
+		return "", false
+	}
+	route := tctx.RoutePattern()
+	_, ok := operatorOnlyRoutes[r.Method+" "+route]
+	return route, ok
+}
+
+func (o *IdentityObserver) countOperatorCall(session, route string) {
+	o.mu.Lock()
+	key := session + " " + route
+	if _, ok := o.operatorCalls[key]; !ok && len(o.operatorCalls) >= identityBreakKeysMax {
+		key = "other"
+	}
+	o.operatorCalls[key]++
+	o.mu.Unlock()
+	o.logOnce("operator_route:"+session, "[identity] an agent called an Operator-only route", "session", session, "route", route, "strict", o.strict)
 }
 
 // strictOpenPaths need no credential in strict mode: the liveness check and the command
@@ -474,6 +537,10 @@ func (o *IdentityObserver) Report() map[string]any {
 	for k, v := range o.refused {
 		refused[k] = v
 	}
+	opCalls := map[string]int64{}
+	for k, v := range o.operatorCalls {
+		opCalls[k] = v
+	}
 	recent := append([]IdentityMismatch(nil), o.recent...)
 	sessions, tools := map[string]int64{}, map[string]int64{}
 	for k, v := range o.bySession {
@@ -486,6 +553,6 @@ func (o *IdentityObserver) Report() map[string]any {
 	if o.strict {
 		mode = "strict"
 	}
-	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused,
+	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls,
 		"mismatches": mm, "recent_mismatches": recent, "attributed_by_session": sessions, "attributed_by_tool": tools}
 }

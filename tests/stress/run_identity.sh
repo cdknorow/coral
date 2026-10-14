@@ -199,7 +199,7 @@ after=$(rjson 'd["attributed_by_tool"].get("coral-hook-message-check",0)')
 [[ $after -gt $before ]] && pass "coral-hook-message-check sends the token from its environment and is attributed" || fail "hook not attributed ($before -> $after)"
 
 # Strict mode: everything above was a normal team run with the harness signed in, so NOTHING was refused.
-EXP_TOKEN=0; EXP_MISMATCH=0; EXP_DASH=0   # refusals the probes below cause on purpose
+EXP_TOKEN=0; EXP_MISMATCH=0; EXP_DASH=0; EXP_AGENT_OP=0   # refusals the probes below cause on purpose
 if [[ $STRICT == 1 ]]; then
     [[ "$(rjson 'd.get("mode")')" == strict ]] && pass "the identity report says mode strict" || fail "report mode: $(rjson 'd.get("mode")')"
     [[ "$(rjson 'json.dumps(d.get("refused",{}))')" == "{}" ]] && pass "STRICT: a healthy team run (12 agents, attribution, a hook, blind agents) had zero refusals" || fail "STRICT: refusals in a healthy run: $(rjson 'json.dumps(d.get("refused",{}))')"
@@ -368,11 +368,17 @@ if [[ $STRICT == 1 ]]; then
     if [[ $c == 302 && $c2 == 200 ]] && grep -qi "<html" "$TMP/dash.html"; then pass "STRICT: the app sign-in path (coral open link) lands on the dashboard"; else fail "STRICT: sign-in $c then / $c2"; fi
     c=$(code_of -b "$app_jar" "$link"); [[ $c == 403 ]] && pass "STRICT: the used sign-in link cannot be replayed (403)" || fail "STRICT: replay answered $c"
 
+    # #3424: an agent's token can't start code on this computer (task runs, workflows, jobs).
+    c=$(code_of -X POST "$BASE/api/tasks/run" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{"prompt":"x","repo_path":"/tmp"}')
+    c2=$(code_of -X POST "$BASE/api/workflows" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{"name":"x","steps":[{"name":"s","type":"shell","command":"true"}]}')
+    EXP_AGENT_OP=2
+    [[ $c == 403 && $c2 == 403 ]] && pass "STRICT: an agent's token can't start a task run or create a workflow (403 forbidden_for_agent)" || fail "STRICT: agent task run answered $c, workflow $c2"
+
     # Refusals are exactly the deliberate probes (by reason), none anywhere else.
     refused_now=$(rjson 'json.dumps(d.get("refused",{}))')
-    if python3 - "$refused_now" "$EXP_MISMATCH" "$EXP_TOKEN" "$EXP_DASH" <<'CHECKEOF'
+    if python3 - "$refused_now" "$EXP_MISMATCH" "$EXP_TOKEN" "$EXP_DASH" "$EXP_AGENT_OP" <<'CHECKEOF'
 import sys, json
-got = json.loads(sys.argv[1]); want = {"identity_mismatch": int(sys.argv[2]), "session_token_required": int(sys.argv[3]), "dashboard_auth_required": int(sys.argv[4])}
+got = json.loads(sys.argv[1]); want = {"identity_mismatch": int(sys.argv[2]), "session_token_required": int(sys.argv[3]), "dashboard_auth_required": int(sys.argv[4]), "forbidden_for_agent": int(sys.argv[5])}
 sys.exit(0 if all(got.get(k, 0) == v for k, v in want.items()) and set(got) <= set(want) else 1)
 CHECKEOF
     then pass "STRICT: the report's refused counts are exactly the deliberate probes ($refused_now)"; else fail "STRICT: refused $refused_now vs expected mismatch=$EXP_MISMATCH token=$EXP_TOKEN dash=$EXP_DASH"; fi

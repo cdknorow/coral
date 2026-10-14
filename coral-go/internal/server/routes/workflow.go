@@ -438,6 +438,12 @@ func (h *WorkflowHandler) triggerWorkflow(w http.ResponseWriter, r *http.Request
 	if h.runner != nil {
 		run, err := h.runner.TriggerWorkflow(r.Context(), wf, body.TriggerType, triggerCtx)
 		if err != nil {
+			var limit *background.ConcurrencyLimitError
+			if errors.As(err, &limit) {
+				w.Header().Set("Retry-After", "30")
+				writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": fmt.Sprintf("%d workflow runs are already in progress; try again when one finishes", limit.Limit), "code": "too_many_runs"})
+				return
+			}
 			errInternalServer(w, err.Error())
 			return
 		}
