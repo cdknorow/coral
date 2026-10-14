@@ -102,6 +102,28 @@ Download the latest binary for free from [GitHub Releases](https://github.com/cd
 - **macOS**: `Coral.v<version>.dmg` (universal binary), or `brew install --cask cdknorow/coral/coral`
 - **Linux**: `coral-linux-amd64-<version>.tar.gz`
 
+#### Verify your download
+
+Every release is built and signed by Coral's release workflow on GitHub, with no long-lived keys (Sigstore keyless signing). You can check that a download came from that workflow, from a release tag of `cdknorow/coral`.
+
+With the [GitHub CLI](https://cli.github.com/) (any package):
+
+```bash
+gh attestation verify coral-linux-amd64-<version>.tar.gz --repo cdknorow/coral \
+  --signer-workflow cdknorow/coral/.github/workflows/release.yml
+```
+
+Offline, with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) v2.4 or later: download `SHA256SUMS.txt` and `SHA256SUMS.txt.sigstore.json` from the same release, then:
+
+```bash
+cosign verify-blob SHA256SUMS.txt --bundle SHA256SUMS.txt.sigstore.json \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity-regexp '^https://github\.com/cdknorow/coral/\.github/workflows/release\.yml@refs/tags/v'
+sha256sum --check --ignore-missing SHA256SUMS.txt   # macOS: shasum -a 256 --check --ignore-missing
+```
+
+The Linux tarball also has its own bundle (`coral-linux-amd64-<version>.tar.gz.sigstore.json`), verified the same way. Either check failing means the file is not an official build: don't run it.
+
 No purchase is required. If you want to support development, [buy an optional Coral Pro supporter license](https://store.coralai.ai/checkout/buy/1cf08999-ef06-466d-938c-b0f6ec4f92e6).
 
 ### Build from source
