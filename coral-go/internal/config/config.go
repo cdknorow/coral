@@ -65,6 +65,9 @@ type Config struct {
 	// registry, the /api/remote proxy and merged remote agents. Off by default;
 	// set by the --hub flag or CORAL_HUB=1.
 	HubMode bool
+	// HubModeForced: HubMode came from --hub or CORAL_HUB=1, which win over the saved
+	// Settings > Run as a hub (#3460); turning it off then means starting without them.
+	HubModeForced bool
 
 	// CloudURL is the Cloud Hub origin this server may connect to as a connector
 	// (--cloud-url or CORAL_CLOUD_URL). Empty (the default) means the connector is
@@ -126,7 +129,10 @@ func Load(dataDir ...string) *Config {
 	}
 
 	envURL, envURLSet := os.LookupEnv("CORAL_CLOUD_URL")
+	hubEnv := truthy(os.Getenv("CORAL_HUB"))
 	cfg := &Config{
+		HubMode:          hubEnv,
+		HubModeForced:    hubEnv,
 		CloudURL:         CloudURLSetting(envURL, envURLSet),
 		CloudURLExplicit: envURLSet && CloudURLSetting(envURL, envURLSet) != "",
 		CloudConnect:     cloudConnectFromEnv(os.Getenv("CORAL_CLOUD_CONNECT")),
@@ -269,4 +275,13 @@ func cloudConnectFromEnv(v string) string {
 	}
 	log.Printf("[config] WARNING: CORAL_CLOUD_CONNECT=%q is not prompt, auto or off: taken as off", v)
 	return "off"
+}
+
+// truthy reads an on/off environment value: 1, true, yes or on.
+func truthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }

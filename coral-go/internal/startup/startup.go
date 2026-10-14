@@ -46,6 +46,11 @@ const devStartupMarker = "DEV-TMUX-DIAGNOSTIC-2026-06-03-01"
 
 // Options configures optional behaviors that differ between entry points.
 type Options struct {
+	// Restart, when set, restarts this process (the desktop apps' tray, #3460):
+	// Settings > Run as a hub offers a Restart button then. It returns once the
+	// restart is under way; the server shuts down shortly after.
+	Restart func() error
+
 	// BackendType is "pty" or "tmux". Default is "tmux".
 	BackendType string
 
@@ -330,6 +335,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	}
 	boardProbe.Close()
 	applyPrivacySettings(ctx, db, cfg, opts.RemoteAccess, opts.RemoteAccessPrompt)
+	applyHubModeSetting(ctx, db, cfg)
 	// Per-session agent tokens, before anything can launch an agent (#3387).
 	setupSessionTokens(db, cfg.CoralDir())
 
@@ -389,6 +395,7 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 
 	// Build the HTTP server
 	srv := server.NewWithKey(cfg, db, backend, terminal, dbKey)
+	srv.SetRestarter(opts.Restart)
 	loginToken, lerr := srv.WriteLoginToken()
 	if lerr != nil {
 		log.Printf("[identity] could not write the dashboard sign-in token: %v", lerr)
@@ -493,6 +500,23 @@ func applyPrivacySettings(ctx context.Context, db *store.DB, cfg *config.Config,
 		restrictToLoopback(cfg, "remote access is not enabled")
 	}
 	tracking.SetTelemetryEnabled(!strings.EqualFold(strings.TrimSpace(settings["telemetry_enabled"]), "false"))
+}
+
+// applyHubModeSetting turns hub mode on when Settings > Run as a hub saved it
+// (hub_mode, #3460). --hub and CORAL_HUB=1 already did (and win); nothing here
+// turns it off. Unreadable settings leave it as the flags set it.
+func applyHubModeSetting(ctx context.Context, db *store.DB, cfg *config.Config) {
+	if cfg.HubMode {
+		return
+	}
+	settings, err := store.NewSessionStore(db).GetSettings(ctx)
+	if err != nil {
+		return
+	}
+	if strings.EqualFold(strings.TrimSpace(settings[routes.HubModeSetting]), "true") {
+		cfg.HubMode = true
+		log.Printf("[startup] hub mode is on (Settings > Run as a hub)")
+	}
 }
 
 // restrictToLoopback forces a local-only bind. When the requested host would

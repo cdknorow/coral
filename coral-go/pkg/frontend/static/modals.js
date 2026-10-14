@@ -3219,6 +3219,7 @@ export async function showSettingsModal() {
         loadDatabaseEncryptionStatus();
         // Loaded with the dialog, through importOnce so a failed load is retried (#3140).
         importOnce('./cloud_connect.js').then(m => { m.initCloudConnect(); m.loadCloudStatus(); }).catch(() => {});
+        importOnce('./hub_mode_setting.js').then(m => m.loadHubModeSetting()).catch(() => {});
     }
 
     // Theme — populate with built-in options + saved custom themes

@@ -2,6 +2,14 @@
 
 A Coral server started with `--hub` (or `CORAL_HUB=1`) can register other standalone Coral servers (remotes), show their agents in its dashboard and proxy calls to them. Without hub mode none of these routes exist (404). `GET /api/health` reports `"hub": true|false`.
 
+### Turning hub mode on from Settings
+
+**Settings > Run as a hub** (#3460) does the same as `--hub` for people who start Coral from the macOS or Windows app. It saves `hub_mode` and applies at the next start: `--hub` or `CORAL_HUB=1` turn hub mode on, and so does the saved setting; nothing else does. With `--hub` or `CORAL_HUB=1` the toggle shows as on and locked: to turn hub mode off, start Coral without them (and clear the setting). The desktop apps show a **Restart Coral** button, which starts a new instance and stops this one (agents keep running in tmux and are found again); a server started from a terminal says to quit and start it again.
+
+- `GET /api/system/hub-mode` → `{saved, running, forced, restart_required, can_restart}`; `PUT` with `{"enabled": bool}` saves it. `POST /api/system/restart` restarts where the process can (`202`), otherwise `409 restart_unavailable`. All three answer only the dashboard on this computer, as the user Coral runs as: never through Coral Hub (`403`), never another local user (`403 other_user`). `PUT /api/settings` refuses `hub_mode` (`400`).
+- Hub mode adds the routes below on Coral's own listener: the same host, port, TLS and sign-in (the API key from other computers; Remote Access decides whether other computers can connect at all). Nothing new listens.
+- Turning it off only unroutes them: the registered servers and their keys stay in the database and are back when hub mode is.
+
 User guide: [Multi-server hub](https://cdknorow.github.io/coral/multi-server-hub/).
 
 ## Registry (hub only)

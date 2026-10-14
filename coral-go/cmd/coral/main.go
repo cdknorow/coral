@@ -101,7 +101,10 @@ func main() {
 	}
 
 	cfg := config.Load(*homeDir)
-	cfg.HubMode = *hubMode || envTruthy(os.Getenv("CORAL_HUB"))
+	// --hub or CORAL_HUB=1 (read by config.Load) force hub mode on; otherwise the saved
+	// Settings > Run as a hub decides, at startup (#3460).
+	cfg.HubMode = *hubMode || cfg.HubMode
+	cfg.HubModeForced = cfg.HubMode
 	// --cloud-url wins over CORAL_CLOUD_URL and the tier default, and --cloud-url "" turns it off.
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "cloud-url" {

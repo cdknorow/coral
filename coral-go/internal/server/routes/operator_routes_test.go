@@ -42,6 +42,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		r.Put("/api/workflows/{workflowID}", ok)
 		r.Put("/api/settings", ok)
 		r.Put("/api/system/hub-operator", ok)
+		r.Put("/api/system/hub-mode", ok)
+		r.Post("/api/system/restart", ok)
 		r.Delete("/api/webhooks/{webhookID}", ok)
 		r.Put("/api/settings/git-diff-mode", ok)
 		r.Get("/api/workflows", ok)
@@ -64,6 +66,8 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			// routes that were guarded only by the forgeable dashboard-provenance headers, and Coral's configuration
 			{"POST", "/api/system/login-token"}, {"POST", "/api/system/api-key/regenerate"}, {"POST", "/api/cloud/connect"},
 			{"POST", "/api/cloud/disconnect"}, {"POST", "/api/webhooks"}, {"DELETE", "/api/webhooks/4"}, {"PUT", "/api/system/hub-operator"},
+			// #3460: Run as a hub, and restarting Coral
+			{"PUT", "/api/system/hub-mode"}, {"POST", "/api/system/restart"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)

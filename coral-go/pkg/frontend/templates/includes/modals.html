@@ -779,6 +779,14 @@
                         <option value="fuzzy">Fuzzy Matching</option>
                     </select>
                 </dd>
+                <!-- Run as a hub (#3460, hub_mode_setting.js): saved at once, applied at the next start -->
+                <dt id="settings-hub-mode-label">Run as a hub</dt>
+                <dd id="settings-hub-mode">
+                    <label class="settings-hub-mode-toggle"><input type="checkbox" id="settings-hub-mode-enabled" aria-describedby="settings-hub-mode-desc settings-hub-mode-status"> Run this Coral as a hub</label>
+                    <div id="settings-hub-mode-desc" class="settings-hint">Manage and view your other Coral servers from this one, in a Servers tab. It uses this Coral's own address, port and sign-in: the API key from other computers, and Remote Access above for who can reach it. Nothing new listens. Turning it off keeps the servers you added.</div>
+                    <div id="settings-hub-mode-status" class="settings-hint" role="status" aria-live="polite"></div>
+                    <button type="button" class="btn btn-small" id="settings-hub-mode-restart" hidden>Restart Coral</button>
+                </dd>
                 <dt>
                     <label for="settings-file-search-limit">File Search Limit</label>
                     <span class="toggle-desc">Max number of files returned in search results</span>

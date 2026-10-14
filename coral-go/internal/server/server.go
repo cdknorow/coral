@@ -525,6 +525,10 @@ func (s *Server) buildRouter() chi.Router {
 	r.Post("/api/cloud/connect/cancel", s.cloudHandler.CancelConnect)
 	r.Post("/api/cloud/disconnect", s.cloudHandler.Disconnect)
 	r.Get("/api/system/hub-operator", s.cloudHandler.HubOperator)
+	s.cloudHandler.HubModeRunning, s.cloudHandler.HubModeForced = s.cfg.HubMode, s.cfg.HubModeForced
+	r.Get("/api/system/hub-mode", s.cloudHandler.HubMode)
+	r.Put("/api/system/hub-mode", s.cloudHandler.HubMode)
+	r.Post("/api/system/restart", s.cloudHandler.RestartServer)
 	r.Put("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	s.cloudHandler.SetIdentityObserver(s.identity)
 	s.cloudHandler.SetBoardStore(s.boardStore)
@@ -1066,4 +1070,12 @@ func loopbackHost(hostport string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+// SetRestarter lets Settings restart this process (#3460); nil (the default) offers no
+// Restart button.
+func (s *Server) SetRestarter(fn func() error) {
+	if s.cloudHandler != nil {
+		s.cloudHandler.Restart = fn
+	}
 }

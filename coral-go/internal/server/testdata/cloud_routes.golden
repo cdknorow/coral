@@ -123,6 +123,7 @@ GET /api/system/auth-status never
 GET /api/system/cli-check never
 GET /api/system/database-security never
 GET /api/system/editors never
+GET /api/system/hub-mode never
 GET /api/system/hub-operator view
 GET /api/system/identity-report never
 GET /api/system/network-info never
@@ -258,6 +259,7 @@ POST /api/sessions/live/{sessionID}/unarchive interact
 POST /api/sessions/live/{sessionID}/wake launch
 POST /api/system/api-key/regenerate never
 POST /api/system/login-token never
+POST /api/system/restart never
 POST /api/system/telemetry/acknowledge never
 POST /api/tags never
 POST /api/tasks/run launch
@@ -292,6 +294,7 @@ PUT /api/sessions/live/{name}/name-color interact
 PUT /api/settings never
 PUT /api/settings/git-diff-mode interact
 PUT /api/system/database-security never
+PUT /api/system/hub-mode never
 PUT /api/system/hub-operator never
 PUT /api/teams/detail/{name}/knowledge/{agentName} never
 PUT /api/themes/{name} never

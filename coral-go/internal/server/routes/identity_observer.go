@@ -272,6 +272,9 @@ var operatorOnlyRoutes = map[string]string{
 	"PUT /api/system/database-security":   "change the database security setting",
 	"DELETE /api/system/debug-input-log":  "delete the terminal input debug log",
 	"PUT /api/system/hub-operator":        "change the Coral Hub Operator setting",
+	// #3460: Settings > Run as a hub, and restarting Coral (Security's review).
+	"PUT /api/system/hub-mode":            "change whether Coral runs as a hub",
+	"POST /api/system/restart":            "restart Coral",
 	"PUT /api/cloud/max-mode":             "change what Coral Hub may do",
 	"PUT /api/cloud/allow-auto-accept":    "change whether Coral Hub may turn on auto-accept",
 	"POST /api/cloud/connect":             "connect to Coral Hub",

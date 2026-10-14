@@ -61,6 +61,12 @@ type CloudHandler struct {
 	// OfferAtLaunch is config.OffersCloudConnect (#3459), set by the server.
 	OfferAtLaunch bool
 
+	// Hub mode (#3460), set by the server: whether this process runs as a hub, whether
+	// --hub or CORAL_HUB=1 forced it, and how to restart, when this process can.
+	HubModeRunning bool
+	HubModeForced  bool
+	Restart        func() error
+
 	ss       *store.SessionStore
 	identity *IdentityObserver
 	// bs holds the record of Operator actions taken through Coral Hub (#3404).
@@ -646,4 +652,83 @@ func (h *CloudHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 		res = m.Redeem(r.Context(), h.ss, hostname, src)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": res.Status, "detail": res.Detail, "exit_code": cloud.BootstrapExitCode(res.Status)})
+}
+
+// refuseSystemSetting is refuseCloud's dashboard-only gate for Coral's own system settings
+// (hub mode, restart, #3460): the same checks, with answers that point at this computer's
+// dashboard rather than at `coral cloud connect`. With strict local auth an agent token is
+// already refused by the identity observer (operatorOnlyRoutes).
+func (h *CloudHandler) refuseSystemSetting(w http.ResponseWriter, r *http.Request) bool {
+	const where = "This is set in the Coral dashboard on the computer running Coral"
+	if cloud.Tunneled(r) {
+		errForbidden(w, where+", not through Coral Hub")
+		return true
+	}
+	if same, supported := h.sameUser(r); supported && !same {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": where + ", as the user Coral runs as", "code": "other_user"})
+		return true
+	}
+	if r.Header.Get(cloud.CLIAuthHeader) == "" && localDashboard(r) {
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": where + ": open Settings there", "code": "local_dashboard_required"})
+	return true
+}
+
+// HubModeSetting is Settings > Run as a hub (#3460): "true" starts this Coral as a
+// multi-server hub, like --hub. It applies at the next start.
+const HubModeSetting = "hub_mode"
+
+// HubMode: GET/PUT /api/system/hub-mode, on this computer only, from the dashboard
+// (never through Coral Hub, never another local user). {"enabled": bool} saves the
+// setting; the answer is {saved, running, forced, restart_required, can_restart}.
+func (h *CloudHandler) HubMode(w http.ResponseWriter, r *http.Request) {
+	if h.refuseSystemSetting(w, r) {
+		return
+	}
+	if r.Method == http.MethodPut {
+		if !requireJSON(w, r) {
+			return
+		}
+		var body struct {
+			Enabled *bool `json:"enabled"`
+		}
+		if err := decodeJSON(r, &body); err != nil || body.Enabled == nil {
+			errBadRequest(w, "enabled (true or false) is required")
+			return
+		}
+		if err := h.ss.SetSetting(r.Context(), HubModeSetting, strconv.FormatBool(*body.Enabled)); err != nil {
+			errInternalServer(w, err.Error())
+			return
+		}
+		slog.Info("[hub] 'Run as a hub' changed on this computer; it applies at the next start", "enabled", *body.Enabled)
+	}
+	s, _ := h.ss.GetSettings(r.Context())
+	saved := strings.EqualFold(strings.TrimSpace(s[HubModeSetting]), "true")
+	want := saved || h.HubModeForced
+	writeJSON(w, http.StatusOK, map[string]any{
+		"saved": saved, "running": h.HubModeRunning, "forced": h.HubModeForced,
+		"restart_required": want != h.HubModeRunning, "can_restart": h.Restart != nil,
+	})
+}
+
+// RestartServer: POST /api/system/restart, on this computer only, from the dashboard,
+// and only where this process can restart itself (the desktop apps); 409 elsewhere.
+func (h *CloudHandler) RestartServer(w http.ResponseWriter, r *http.Request) {
+	if h.refuseSystemSetting(w, r) {
+		return
+	}
+	if !requireJSON(w, r) {
+		return
+	}
+	if h.Restart == nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "This Coral can't restart itself: quit it and start it again", "code": "restart_unavailable"})
+		return
+	}
+	if err := h.Restart(); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	slog.Info("[system] restarting at the dashboard's request")
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
 }

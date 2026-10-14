@@ -185,6 +185,11 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Run as a hub has its own route, on this computer only (#3460).
+	if _, ok := body[HubModeSetting]; ok {
+		errBadRequest(w, HubModeSetting+" is set with PUT /api/system/hub-mode")
+		return
+	}
 	var current map[string]string
 	for k, v := range body {
 		agentType, isCLIPath := agent.IsCLIPathSetting(k)

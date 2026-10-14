@@ -36,6 +36,7 @@ import (
 	"github.com/cdknorow/coral/internal/startup"
 	"github.com/cdknorow/coral/internal/tracking"
 	"github.com/gen2brain/beeep"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // iconData is embedded per-platform in icon_unix.go (.png) and icon_windows.go (.ico).
@@ -183,6 +184,16 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 		log.Println("Debug mode enabled")
 	}
 
+	// Restarted from Settings (#3460): wait for the instance that started this one to
+	// exit and free the port before starting the server.
+	if v := os.Getenv(restartWaitEnv); v != "" {
+		os.Unsetenv(restartWaitEnv)
+		if pid, err := strconv.Atoi(v); err == nil {
+			log.Printf("[STARTUP] restarting: waiting for pid %d to exit", pid)
+			waitForExit(pid, time.Minute)
+		}
+	}
+
 	// Write PID
 	writePID(dataDir)
 	defer removePID(dataDir)
@@ -212,8 +223,17 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 	cfg := config.Load()
 	cfg.Host = host
 	cfg.Port = port
+	restartCh := make(chan struct{}, 1)
 	rs, err := startup.Start(ctx, cfg, startup.Options{
 		BackendType: backendType,
+		// Settings > Run as a hub's Restart button (#3460): handled in the menu loop below.
+		Restart: func() error {
+			select {
+			case restartCh <- struct{}{}:
+			default: // already restarting
+			}
+			return nil
+		},
 		PasswordPrompt: func() (string, error) {
 			return nativeDatabasePassword()
 		},
@@ -358,6 +378,23 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 						beeep.Notify("Coral", fmt.Sprintf("Shut down %d agent(s) and dashboard server.", killed), "")
 						systray.Quit()
 					}()
+				case <-restartCh:
+					// A new instance with the same arguments, which waits for this one
+					// to exit; agents keep running in tmux and the new server finds them.
+					if err := spawnRestart(dataDir); err != nil {
+						log.Printf("[restart] could not start a new instance: %v", err)
+						beeep.Notify("Coral", "Could not restart: "+err.Error(), "")
+						continue
+					}
+					log.Printf("[restart] new instance started; stopping this one")
+					killCoralApp()
+					func() {
+						shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						httpServer.Shutdown(shutdownCtx)
+					}()
+					systray.Quit()
+					return
 				case <-mQuit.ClickedCh:
 					killCoralApp()
 					func() {
@@ -667,4 +704,36 @@ func isInsideAppBundle() bool {
 		exe = resolved
 	}
 	return strings.Contains(exe, ".app/Contents/MacOS/")
+}
+
+// restartWaitEnv carries the PID of the instance a restarted one replaces (#3460).
+const restartWaitEnv = "CORAL_TRAY_RESTART_WAIT_PID"
+
+// spawnRestart starts this program again with the same arguments, detached, logging to
+// tray.log; the new instance waits for this one to exit (restartWaitEnv).
+func spawnRestart(dataDir string) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Env = append(os.Environ(), restartWaitEnv+"="+strconv.Itoa(os.Getpid()))
+	if lf, err := os.OpenFile(filepath.Join(dataDir, "tray.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644); err == nil {
+		cmd.Stdout, cmd.Stderr = lf, lf
+		defer lf.Close() // the child has its own copy
+	}
+	cmd.SysProcAttr = detachProcessAttrs()
+	return cmd.Start()
+}
+
+// waitForExit returns once pid has exited, or after limit.
+func waitForExit(pid int, limit time.Duration) {
+	end := time.Now().Add(limit)
+	for time.Now().Before(end) {
+		if alive, err := process.PidExists(int32(pid)); err != nil || !alive {
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	log.Printf("[STARTUP] pid %d still running after %s; starting anyway", pid, limit)
 }
