@@ -8,6 +8,12 @@ const BASE = require('./test_base').BASE;
 const PORT = new URL(BASE).port;
 // Built on the fly unless CORAL_AGENT_BIN points at a coral-agent binary.
 let BIN = process.env.CORAL_AGENT_BIN;
+let work = '';
+// The binary built here and the agent's working folder are removed on exit, pass or fail.
+process.on('exit', () => {
+  if (!process.env.CORAL_AGENT_BIN) fs.rmSync(BIN, { force: true });
+  if (work) fs.rmSync(work, { recursive: true, force: true });
+});
 if (!BIN) {
   BIN = path.join(os.tmpdir(), `coral-agent-test-${process.pid}`);
   execFileSync('go', ['build', '-o', BIN, './cmd/coral-agent/'], { cwd: path.join(__dirname, '..', '..', 'coral-go'), stdio: 'inherit' });
@@ -25,7 +31,7 @@ function agent(sessionName, ...args) {
 }
 
 (async () => {
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-agent-e2e-'));
+  work = fs.mkdtempSync(path.join(os.tmpdir(), 'coral-agent-e2e-'));
   const launch = await json('POST', '/api/sessions/launch', { working_dir: work, agent_type: 'terminal', display_name: 'E2E Agent' });
   check('launch a terminal agent', launch.status === 200 && launch.data && launch.data.session_id, JSON.stringify(launch.data).slice(0, 200));
   const sid = launch.data.session_id;
