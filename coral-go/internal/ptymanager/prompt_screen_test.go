@@ -3,6 +3,7 @@ package ptymanager
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -125,4 +126,22 @@ func TestInputBoxOnScreen(t *testing.T) {
 	}
 	assert.True(t, InputBoxKnown("claude"))
 	assert.False(t, InputBoxKnown("agy"), "an agent whose box Coral can't recognise")
+}
+
+// Real Claude 2.1.299 screens (#3457 hotfix): a no-break space after the marker,
+// which regexp's \s doesn't match. Its idle input box wasn't recognised, so a
+// launch's first prompt (RequireInputBox) waited the whole 2-minute fallback.
+func TestRealClaudeScreens(t *testing.T) {
+	rule := strings.Repeat("─", 120)
+	idle := rule + "\n❯ Try \"how do I log an error?\"\n" + rule + "\n  ⏸ manual mode on · ? for shortcuts · ← for agents\n"
+	typed := rule + "\n❯ You have 1 unread message on the message board.\n" + rule + "\n  ⏸ manual mode on\n"
+	assert.True(t, InputBoxOnScreen(idle), "Claude's idle input box")
+	assert.True(t, InputBoxOnScreen(typed), "with text in it")
+	open, _ := PromptOnScreen(idle)
+	assert.False(t, open, "no prompt")
+
+	menu := " Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow\n   3. No\n\n Esc to cancel · Tab to amend\n"
+	open, _ = PromptOnScreen(menu)
+	assert.True(t, open, "a menu with the no-break space is a prompt")
+	assert.False(t, InputBoxOnScreen(menu), "its highlighted option isn't an input box")
 }

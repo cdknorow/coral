@@ -71,6 +71,11 @@ func PromptOnScreen(screen string) (bool, string) {
 
 // tailLines returns the last n non-blank-trailing lines of s.
 func tailLines(s string, n int) []string {
+	// Claude draws a no-break space after its markers ("❯\u00a0text"); regexp's \s
+	// is ASCII only, so without this its input box was never recognised and a
+	// launch's first prompt waited the whole fallback (#3457, a real Claude 2.1.299
+	// screen).
+	s = strings.ReplaceAll(s, "\u00a0", " ")
 	lines := strings.Split(strings.ReplaceAll(s, "\r", ""), "\n")
 	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
 		lines = lines[:len(lines)-1]
