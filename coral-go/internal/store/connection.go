@@ -147,6 +147,11 @@ func (d *DB) ensureSchema(ctx context.Context) error {
 	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_agent_events_session_type`)
 	// Pre-release name of idx_agent_events_edited_files, without json_valid.
 	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_agent_events_file_edits`)
+	// Nothing filters call_metrics by agent or board (the summary reads a
+	// created_at range), and these two were ~550 MB on a busy server and made
+	// every insert update three indexes instead of one (#3261).
+	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_call_metrics_agent`)
+	d.ExecContext(ctx, `DROP INDEX IF EXISTS idx_call_metrics_board`)
 
 	// Indexes on migrated columns cannot live in schemaSQL (see above).
 	// sourceDedup's NOT IN subquery reads every jsonl session id.
@@ -687,8 +692,6 @@ CREATE TABLE IF NOT EXISTS call_metrics (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_call_metrics_created ON call_metrics(created_at);
-CREATE INDEX IF NOT EXISTS idx_call_metrics_agent ON call_metrics(agent_name, created_at);
-CREATE INDEX IF NOT EXISTS idx_call_metrics_board ON call_metrics(board_name, created_at);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_session_time ON token_usage(session_id, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_token_usage_team ON token_usage(team_id);

@@ -74,8 +74,9 @@ func TestRequestMetricsResolvesSessionToAgentDisplayName(t *testing.T) {
 
 	r := chi.NewRouter()
 	r.Use(RequestMetrics(db))
-	r.Get("/api/sessions/live/{name}/poll", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	req := httptest.NewRequest(http.MethodGet, "/api/sessions/live/death_or_trade/poll?session_id=session-1", nil)
+	// A recorded browser call (the dashboard's own polls are not recorded, #3261).
+	r.Get("/api/sessions/live/{name}/git", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions/live/death_or_trade/git?session_id=session-1", nil)
 	r.ServeHTTP(httptest.NewRecorder(), req)
 
 	rows, err := db.CallMetricSummary(context.Background(), time.Now().UTC().Add(-time.Hour))

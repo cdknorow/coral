@@ -808,6 +808,11 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	tokenPoller.SetSubagentStore(store.NewSubagentStore(db))
 	safeGo(ctx, "token_poller", func() { tokenPoller.Run(ctx) })
 
+	// Call metrics retention: keeps call_metrics to the retention window
+	// (call_metrics_retention_days, 14 days by default) in short batches (#3261).
+	metricsRetention := background.NewCallMetricsRetention(db)
+	safeGo(ctx, "call_metrics_retention", func() { metricsRetention.Run(ctx) })
+
 	// Thinking tracker — no hook fires for model thinking, so thinking turns
 	// and their durations are read from Claude transcripts into the activity stream
 	thinkingTracker := background.NewThinkingTracker(sessStore, taskStore, 2*time.Second)

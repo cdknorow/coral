@@ -26,8 +26,16 @@ func (h *CallMetricsHandler) Summary(w http.ResponseWriter, r *http.Request) {
 	if hours <= 0 {
 		hours = 24
 	}
-	if hours > 336 {
-		hours = 336
+	// Never more than the raw rows kept (#3261): a window longer than the
+	// retention would be reported as complete while missing its older part.
+	maxHours := 336
+	if settings, err := store.NewSessionStore(h.db).GetSettings(r.Context()); err == nil {
+		if keep := store.CallMetricsRetentionDays(settings) * 24; keep < maxHours {
+			maxHours = keep
+		}
+	}
+	if hours > maxHours {
+		hours = maxHours
 	}
 	rows, err := h.db.CallMetricSummary(r.Context(), time.Now().Add(-time.Duration(hours)*time.Hour))
 	if err != nil {
@@ -74,6 +82,9 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			if store.IsInternalMetricOperation(pattern) {
 				return // dashboard and hub plumbing, not a tool or API call (#3152)
 			}
+			if r.Method == http.MethodGet && dashboardPollOperations[pattern] && identity.agentName == "" {
+				return // the dashboard's own refresh polls (#3261)
+			}
 			// Through the hub's proxy, skip only the remote's polls; proxied
 			// actions (launch, send, …) count like local ones.
 			if pattern == "/api/remote/{server}/*" && store.IsInternalRemotePath(r.Method, "/"+chi.URLParam(r, "*")) {
@@ -101,6 +112,21 @@ func RequestMetrics(db *store.DB) func(http.Handler) http.Handler {
 			db.EnqueueCallMetric(metric)
 		})
 	}
+}
+
+// dashboardPollOperations are the routes the dashboard polls on its own while
+// an agent is open (chat, poll, prompt options, events, the board's message
+// list). A GET from the dashboard carries no agent identity and is not a call
+// anyone made; the same routes called by an agent's CLI (X-Coral-Agent,
+// X-Coral-Subscriber-ID or subscriber_id) still count. pending-tool is kept: the
+// PreToolUse hook posts it once per tool call, which is the tool-call signal
+// (#3261, the operator's choice).
+var dashboardPollOperations = map[string]bool{
+	"/api/sessions/live/{name}/chat":           true,
+	"/api/sessions/live/{name}/poll":           true,
+	"/api/sessions/live/{name}/prompt-options": true,
+	"/api/sessions/live/{name}/events":         true,
+	"/api/board/{project}/messages/all":        true,
 }
 
 type requestMetricIdentityData struct {

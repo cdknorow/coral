@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -317,4 +319,45 @@ func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetr
 		ORDER BY COUNT(*) DESC`, since.UTC().Format(time.RFC3339Nano),
 		internalMetricOperations[0], internalMetricOperations[1], internalMetricOperations[2])
 	return out, err
+}
+
+// Retention (#3261). Raw call metrics are kept for CallMetricsRetentionDays
+// (the call_metrics_retention_days setting); the summary never reads further
+// back than that.
+const (
+	CallMetricsRetentionSetting     = "call_metrics_retention_days"
+	CallMetricsRetentionDefaultDays = 14
+	callMetricsRetentionMinDays     = 1
+	callMetricsRetentionMaxDays     = 90
+)
+
+// CallMetricsRetentionDays reads the retention setting: the default when it is
+// missing or not a number, clamped to 1-90 days.
+func CallMetricsRetentionDays(settings map[string]string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(settings[CallMetricsRetentionSetting]))
+	if err != nil {
+		return CallMetricsRetentionDefaultDays
+	}
+	if n < callMetricsRetentionMinDays {
+		return callMetricsRetentionMinDays
+	}
+	if n > callMetricsRetentionMaxDays {
+		return callMetricsRetentionMaxDays
+	}
+	return n
+}
+
+// PruneCallMetrics deletes at most batch call metrics recorded before cutoff,
+// oldest first, in one short statement, and reports how many it deleted. It
+// walks idx_call_metrics_created (created_at is RFC 3339 UTC, so string order
+// is time order) and never sorts the whole history; a caller that wants
+// everything gone calls it again, yielding the single connection in between.
+func (d *DB) PruneCallMetrics(ctx context.Context, cutoff time.Time, batch int) (int64, error) {
+	res, err := d.ExecContext(ctx, `DELETE FROM call_metrics WHERE id IN (
+		SELECT id FROM call_metrics WHERE created_at < ? ORDER BY created_at LIMIT ?)`,
+		cutoff.UTC().Format(time.RFC3339Nano), batch)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }

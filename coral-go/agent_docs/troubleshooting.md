@@ -385,6 +385,32 @@ is not per-user: while it is on, any local account can read heap and
 goroutine dumps, which can contain prompts and other session data. Turn it
 off when you are done.
 
+### `sessions.db` is large
+
+Coral records one row per API call in `call_metrics` for the **Tool & API Calls**
+view. It keeps them for `call_metrics_retention_days` (default `14`, `1`-`90`; set
+it with `PUT /api/settings`), deleted by a background job in short batches: about
+2 minutes after start, then hourly, at most 500,000 rows a run. The dashboard's
+own refresh polls (an open agent's chat, poll, prompt options and events, and a
+board's message list, when no agent identity is sent) are not recorded. The view
+never shows more than the retention window.
+
+Deleted rows are reused, so the file stops growing but doesn't shrink by itself.
+To shrink it once, stop Coral and run:
+
+```
+coral db compact            # or: coral db compact --home <data folder>
+```
+
+It refuses while a Coral server runs on that data folder (and Coral can't start
+while it works), writes a backup `sessions.before-compact-<time>.db` next to the
+database first, then compacts it and prints the sizes. It needs free disk about
+twice the database's size. An encrypted database isn't supported yet. Delete the
+backup once Coral works as before. Measured on a 2 GB database: 15 s, 2.0 GB to
+1.24 GB.
+
+`token_usage` (the cost ledger) is not trimmed: it holds every session's spend.
+
 ## Platform
 
 ### Windows
