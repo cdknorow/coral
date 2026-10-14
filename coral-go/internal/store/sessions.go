@@ -75,6 +75,7 @@ type LiveSession struct {
 	TeamID        *int64  `db:"team_id" json:"team_id,omitempty"`
 	CreatedAt     string  `db:"created_at" json:"created_at"`
 	StoppedAt     *string `db:"stopped_at" json:"stopped_at,omitempty"`
+	Status        string  `db:"status" json:"status,omitempty"`
 }
 
 // UserSetting is a key-value pair.
@@ -1043,7 +1044,7 @@ func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*L
 	var ls LiveSession
 	err := s.db.GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
-		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
+		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil

@@ -2750,6 +2750,20 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	var storedSession *store.LiveSession
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(ctx, body.SessionID); err == nil && ls != nil {
+			if ls.Status != "active" || ls.StoppedAt != nil {
+				writeJSON(w, http.StatusConflict, map[string]string{
+					"error": "session is not live",
+					"code":  "session_not_live",
+				})
+				return
+			}
+			if ls.IsArchived == 1 {
+				writeJSON(w, http.StatusConflict, map[string]string{
+					"error": "session is archived",
+					"code":  "session_archived",
+				})
+				return
+			}
 			storedSession = ls
 			// Restart requests from older clients may omit agent_type. Keep the
 			// persisted provider instead of silently switching Codex to Claude.
@@ -3104,24 +3118,64 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	if namesNoSession(name, body.CurrentSessionID) {
+	targetSID := body.CurrentSessionID
+	if targetSID == "" {
+		if _, sid := logparse.ParseSessionName(name); sid != "" {
+			targetSID = sid
+		} else if _, err := uuid.Parse(name); err == nil {
+			targetSID = name
+		}
+	}
+
+	if namesNoSession(name, targetSID) {
 		writeSessionIDRequired(w)
 		return
 	}
+
+	ls, err := h.ss.GetLiveSession(ctx, targetSID)
+	if err != nil {
+		slog.Warn("failed to validate live session metadata", "session_id", targetSID, "error", err)
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"error": "Agent metadata is temporarily unavailable; try again.",
+			"code":  "agent_metadata_unavailable",
+		})
+		return
+	}
+	if ls == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{
+			"error": "live session not found",
+			"code":  "session_not_found",
+		})
+		return
+	}
+	if ls.Status != "active" || ls.StoppedAt != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "session is not live",
+			"code":  "session_not_live",
+		})
+		return
+	}
+	if ls.IsArchived == 1 {
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "session is archived",
+			"code":  "session_archived",
+		})
+		return
+	}
+
+	body.CurrentSessionID = targetSID
+
 	// The agent's own terminal, or (#3213) when it is gone a fresh one in the agent's
 	// working directory: never another agent's pane.
 	var workdir string
-	pane, _ := h.terminal.FindSession(ctx, name, agentType, body.CurrentSessionID)
-	if pane == nil && body.CurrentSessionID != "" {
-		if ls, err := h.ss.GetLiveSession(ctx, body.CurrentSessionID); err == nil && ls != nil && ls.WorkingDir != "" {
+	pane, _ := h.terminal.FindSession(ctx, name, agentType, targetSID)
+	if pane == nil {
+		if ls.WorkingDir != "" {
 			workdir = ls.WorkingDir
 		} else {
 			writeTerminalError(w, ptymanager.ErrTerminalGone)
 			return
 		}
-	} else if pane == nil {
-		errNotFound(w, "Pane not found")
-		return
 	} else {
 		workdir = pane.CurrentPath
 	}
@@ -3136,26 +3190,18 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	newLogPath := naming.LogFile(h.cfg.LogDir, agentType, newSessionID)
 
 	// Load stored fields from current session
-	var storedPrompt, storedBoard, storedBoardServer, storedDisplayName, storedBoardType string
-	storedSleeping := false
+	storedPrompt := derefStrPtr(ls.Prompt)
+	storedSleeping := ls.IsSleeping == 1
 	storedAgentType := agentType
-	var storedTools []string
-	var storedMCPServers map[string]any
-	if body.CurrentSessionID != "" {
-		if ls, err := h.ss.GetLiveSession(ctx, body.CurrentSessionID); err == nil && ls != nil {
-			storedPrompt = derefStrPtr(ls.Prompt)
-			if ls.AgentType != "" {
-				storedAgentType = ls.AgentType
-			}
-			storedBoard = derefStrPtr(ls.BoardName)
-			storedBoardServer = derefStrPtr(ls.BoardServer)
-			storedDisplayName = derefStrPtr(ls.DisplayName)
-			storedBoardType = derefStrPtr(ls.BoardType)
-			storedSleeping = ls.IsSleeping == 1
-			storedTools = store.UnmarshalFlags(ls.Tools)
-			storedMCPServers = store.UnmarshalMCPServers(ls.MCPServers)
-		}
+	if ls.AgentType != "" {
+		storedAgentType = ls.AgentType
 	}
+	storedBoard := derefStrPtr(ls.BoardName)
+	storedBoardServer := derefStrPtr(ls.BoardServer)
+	storedDisplayName := derefStrPtr(ls.DisplayName)
+	storedBoardType := derefStrPtr(ls.BoardType)
+	storedTools := store.UnmarshalFlags(ls.Tools)
+	storedMCPServers := store.UnmarshalMCPServers(ls.MCPServers)
 
 	role := naming.SubscriberID(storedDisplayName, agentType)
 
