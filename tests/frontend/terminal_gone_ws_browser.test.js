@@ -63,11 +63,17 @@ async function run() {
     // Frames the page's terminal socket received, recorded from the real socket.
     await Page.addScriptToEvaluateOnNewDocument({ source: `(function(){ const Real = window.WebSocket; window.__termFrames = [];
         function W(u, p) { const s = p === undefined ? new Real(u) : new Real(u, p);
+            if (/\\/ws\\/terminal/.test(String(u))) window.__lastTermWs = s;
             if (/\\/ws\\/terminal/.test(String(u))) s.addEventListener('message', e => { if (typeof e.data === 'string') { try { const t = JSON.parse(e.data).type; window.__termFrames.push(t);
-                // Next task, after the page handled the frame: the socket is usually still open here.
-                if (t === 'terminal_closed' && window.__xt) setTimeout(() => { window.__closedProbe = { open: s.readyState === 1, sent: window.__xt.sendTerminalInputWs('') }; }, 0); } catch {} } });
+                } catch {} } });
             return s; }
-        W.prototype = Real.prototype; W.CONNECTING = 0; W.OPEN = 1; W.CLOSING = 2; W.CLOSED = 3; window.WebSocket = W; })();` });
+        W.prototype = Real.prototype; W.CONNECTING = 0; W.OPEN = 1; W.CLOSING = 2; W.CLOSED = 3; window.WebSocket = W;
+        // Probe inside the page's own handling of terminal_closed (it dispatches coral:terminal-closed
+        // synchronously from the socket's message handler): the server's close frame follows
+        // terminal_closed at once, so a probe one task later found the socket already closed under
+        // load. Here the socket is still open, so it shows the page itself refuses to send.
+        document.addEventListener('coral:terminal-closed', () => { if (window.__xt && !window.__closedProbe)
+            window.__closedProbe = { open: !!window.__lastTermWs && window.__lastTermWs.readyState === 1, sent: window.__xt.sendTerminalInputWs('') }; }); })();` });
 
     try {
         const live = await launch('WS Live');
@@ -100,8 +106,8 @@ async function run() {
         const viaSocket = await ev(`(async () => ${XT}.sendTerminalInputWs(''))()`);
         await ev(`window.sendCommand()`);
         await until(`window.__termFrames.includes('terminal_gone')`, 'the real terminal_gone frame');
-        const frames = await ev(`window.__termFrames.slice()`);
-        check('the composer sent over the open socket and the server answered terminal_gone', viaSocket === true && frames[0] === 'terminal_gone', JSON.stringify({ viaSocket, frames }));
+        const frames = await ev(`window.__termFrames.slice()`); // terminal_hello is the server's greeting after the replay seed: under load it can land after the reset above, so it is not what 'first' means here
+        check('the composer sent over the open socket and the server answered terminal_gone', viaSocket === true && frames.filter(t => t !== 'terminal_hello')[0] === 'terminal_gone', JSON.stringify({ viaSocket, frames }));
         await until(`!document.getElementById('composer-error').hidden`, 'the line under the composer');
         const box = await ev(`(() => { const b = document.getElementById('composer-error'); return { hidden: b.hidden, text: b.querySelector('.composer-error-text').textContent, restart: !b.querySelector('.composer-error-restart').hidden }; })()`);
         check('the line under the composer, with Restart (as for a 409)', !box.hidden && box.text === MESSAGE && box.restart, JSON.stringify(box));
