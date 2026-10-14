@@ -4,11 +4,16 @@ import { state } from './state.js';
 import { escapeHtml, escapeAttr, showToast, renderMarkdown, DOMPURIFY_CONFIG, jsStr } from './utils.js';
 import { addPendingMessage } from './live_chat.js';
 import { serverUrl, artifactPath, contextServer, keyLabel, serverFetch, currentServer, serverForSession, sessionServer, boardFetch, identityKey } from './server_base.js';
+import { platform } from './platform/detect.js';
 
 // ── Board task polling ───────────────────────────────────────────────
 let _boardTaskPollTimer = null;
 // Seam for tests: the poll period, read when the poll starts (tests shorten it instead of waiting 10 s per tick).
 export const boardTaskPollHooks = { intervalMs: 10000 };
+// The tick in flight, if any. A large board's task list can take longer than the period to
+// fetch and draw; a tick never starts while the previous one runs, so slow fetches cannot
+// pile up behind each other (#3262).
+let _boardTaskPollInFlight = null;
 // Live cost cache: taskID → { cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, request_count }
 let _liveCosts = {};
 
@@ -20,9 +25,24 @@ export function startBoardTaskPoll() {
     }
     // Subagents are loaded by the poll below, every tick: their status and
     // spend keep changing while they run, with no user action to trigger a reload.
-    _pollBoardTasksOnce();
-    _boardTaskPollTimer = setInterval(_pollBoardTasksOnce, boardTaskPollHooks.intervalMs);
+    _boardTaskPollTick(true);
+    _boardTaskPollTimer = setInterval(_boardTaskPollTick, boardTaskPollHooks.intervalMs);
 }
+
+/** One poll tick: skipped while the previous tick runs, and while the tab is hidden (a hidden
+ *  tab catches up when shown). Native webviews can report hidden permanently, so they always poll. */
+function _boardTaskPollTick(force = false) {
+    // force: a (re)start for a new selection loads at once, even past the old selection's tick.
+    if (!force && (_boardTaskPollInFlight || (!platform.isNative && document.hidden))) return;
+    const run = _pollBoardTasksOnce().catch(() => {}).finally(() => {
+        if (_boardTaskPollInFlight === run) _boardTaskPollInFlight = null;
+    });
+    _boardTaskPollInFlight = run;
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && _boardTaskPollTimer) _boardTaskPollTick();
+});
 
 export function stopBoardTaskPoll() {
     if (_boardTaskPollTimer) {
@@ -35,7 +55,7 @@ async function _pollBoardTasksOnce() {
     // A selected team shows that team's board tasks, even with no agent selected.
     if (state.selectedTeam) {
         await loadBoardTasks(state.selectedTeam);
-        _fetchLiveCosts(state.selectedTeam);
+        await _fetchLiveCosts(state.selectedTeam);
         return;
     }
     if (!state.currentSession || state.currentSession.type !== 'live') return;
@@ -43,7 +63,7 @@ async function _pollBoardTasksOnce() {
     const boardProject = _currentBoardKey();
     if (boardProject) {
         await loadBoardTasks(boardProject);
-        _fetchLiveCosts(boardProject);
+        await _fetchLiveCosts(boardProject);
     }
 }
 
@@ -480,20 +500,28 @@ function initTaskDragReorder() {
 
 /* ── Board Tasks ────────────────────────────────────────── */
 
+// The latest loadBoardTasks call wins: a slow answer for a board the user has left (or an
+// older answer for the same board) never replaces a newer one (#3262).
+let _boardTasksLoadSeq = 0;
+
 export async function loadBoardTasks(boardName) {
+    const seq = ++_boardTasksLoadSeq;
     if (!boardName) {
         state.currentBoardTasks = [];
         renderBoardTaskList();
         return;
     }
+    let tasks;
     try {
         const resp = await boardFetch(boardName, `/tasks`);
         if (!resp.ok) throw new Error(`board tasks fetch failed: ${resp.status}`);
         const data = await resp.json();
-        state.currentBoardTasks = data.tasks || [];
+        tasks = data.tasks || [];
     } catch (e) {
-        state.currentBoardTasks = [];
+        tasks = [];
     }
+    if (seq !== _boardTasksLoadSeq) return;
+    state.currentBoardTasks = tasks;
     renderBoardTaskList();
 }
 
