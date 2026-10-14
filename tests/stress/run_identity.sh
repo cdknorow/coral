@@ -386,6 +386,26 @@ if [[ $STRICT == 1 ]]; then
     EXP_AGENT_OP=2
     [[ $c == 403 && $c2 == 403 ]] && pass "STRICT: an agent's token can't start a task run or create a workflow (403 forbidden_for_agent)" || fail "STRICT: agent task run answered $c, workflow $c2"
 
+    # #3445: nor change Coral's settings (cli_path_* is persistent code execution) or stop the Operator's runs;
+    # launching agents stays allowed (a team launches its agents) and is recorded.
+    c3=$(code_of -X PUT "$BASE/api/settings" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{"cli_path_claude":"/bin/sh"}')
+    c4=$(code_of -X POST "$BASE/api/workflows/runs/1/kill" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{}')
+    c5=$(code_of -X POST "$BASE/api/tasks/runs/1/kill" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{}')
+    EXP_AGENT_OP=$((EXP_AGENT_OP + 3))
+    [[ $c3 == 403 && $c4 == 403 && $c5 == 403 ]] && pass "STRICT: an agent's token can't change Coral's settings or stop a workflow or task run (403 forbidden_for_agent)" || fail "STRICT: agent settings PUT answered $c3, workflow kill $c4, task kill $c5"
+    [[ "$(api GET /api/settings | python3 -c 'import sys,json;print(json.load(sys.stdin).get("cli_path_claude",""))' 2>/dev/null)" != "/bin/sh" ]] && pass "STRICT: the refused settings change did not happen (cli_path_claude is not /bin/sh)" || fail "STRICT: cli_path_claude was changed by an agent"
+    # #3445 (QA finding): the dashboard-provenance headers (Origin, Sec-Fetch-Site) are forgeable, so an agent token
+    # plus those two headers must not mint a sign-in link (that made the agent the Operator), rotate the API key or
+    # create a webhook.
+    c7=$(code_of -X POST "$BASE/api/system/login-token" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" -A "coral-agent/test" -d '{}')
+    c8=$(code_of -X POST "$BASE/api/system/api-key/regenerate" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -H "Origin: $BASE" -H "Sec-Fetch-Site: same-origin" -A "coral-agent/test" -d '{}')
+    c9=$(code_of -X POST "$BASE/api/webhooks" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{"url":"https://example.com/h","name":"x"}')
+    EXP_AGENT_OP=$((EXP_AGENT_OP + 3))
+    [[ $c7 == 403 && $c8 == 403 && $c9 == 403 ]] && pass "STRICT: an agent token (even with forged Origin and Sec-Fetch-Site) can't mint a sign-in link, rotate the API key or create a webhook" || fail "STRICT: agent login-token $c7, key regenerate $c8, webhook $c9"
+    c6=$(code_of -X POST "$BASE/api/sessions/launch" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d '{}')
+    [[ $c6 != 403 && $c6 != 401 ]] && pass "STRICT: an agent can still launch agents (a bad request is $c6, not a refusal)" || fail "STRICT: an agent launch was refused ($c6)"
+    rj=$(report); grep -q "POST /api/sessions/launch" <<<"$rj" && pass "STRICT: the agent's launch is recorded in agent_operator_calls" || fail "STRICT: the agent launch is not in agent_operator_calls"
+
     # Refusals are exactly the deliberate probes (by reason), none anywhere else.
     refused_now=$(rjson 'json.dumps(d.get("refused",{}))')
     if python3 - "$refused_now" "$EXP_MISMATCH" "$EXP_TOKEN" "$EXP_DASH" "$EXP_AGENT_OP" <<'CHECKEOF'
@@ -396,6 +416,17 @@ CHECKEOF
     then pass "STRICT: the report's refused counts are exactly the deliberate probes ($refused_now)"; else fail "STRICT: refused $refused_now vs expected mismatch=$EXP_MISMATCH token=$EXP_TOKEN dash=$EXP_DASH"; fi
 fi
 
+
+# ── #3445, default mode: an agent's settings change, run kill and launch go through and are RECORDED ──
+if [[ $STRICT != 1 ]]; then
+    for req in "PUT /api/settings {}" "POST /api/workflows/runs/1/kill {}" "POST /api/tasks/runs/1/kill {}" "POST /api/sessions/launch {}"; do
+        set -- $req
+        curl -s -m 10 -o /dev/null -X "$1" "$BASE$2" -H "Content-Type: application/json" -H "X-Coral-Session-Token: $itok" -A "coral-agent/test" -d "$3"
+    done
+    rj=$(report); miss=""
+    for route in "PUT /api/settings" "POST /api/workflows/runs/{runID}/kill" "POST /api/tasks/runs/{runID}/kill" "POST /api/sessions/launch"; do grep -qF "$route" <<<"$rj" || miss="$miss [$route]"; done
+    [[ -z "$miss" ]] && pass "an agent's settings change, run kills and launch are recorded in agent_operator_calls (log only in default mode)" || fail "not recorded in agent_operator_calls:$miss"
+fi
 
 log "What strict mode would refuse, by caller, tool and route (#3418; this script's own curl calls are local_other curl):"
 report | python3 -c '

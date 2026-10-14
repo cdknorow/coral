@@ -177,9 +177,9 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 				r.Header.Del(cliauth.CLIAuthHeader)
 			}
 			r = r.WithContext(context.WithValue(r.Context(), verifiedSessionKey{}, owner))
-			if route, ok := operatorOnlyRoute(r); ok {
+			if route, only, ok := guardedRoute(r); ok {
 				o.countOperatorCall(owner.SessionName, r.Method+" "+route)
-				if o.strict {
+				if only && o.strict {
 					o.refuse(w, http.StatusForbidden, "forbidden_for_agent",
 						"An agent can't "+operatorOnlyRoutes[r.Method+" "+route]+": that is for the Operator (the dashboard, or the command line outside an agent)")
 					return
@@ -196,7 +196,7 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 		caller := o.classify(r)
 		o.count(caller)
 		if caller == callerAgentNoToken {
-			if route, ok := operatorOnlyRoute(r); ok {
+			if route, _, ok := guardedRoute(r); ok {
 				o.countOperatorCall("(no token)", r.Method+" "+route)
 			}
 		}
@@ -256,25 +256,75 @@ var operatorOnlyRoutes = map[string]string{
 	"DELETE /api/scheduled/jobs/{jobID}":         "delete a scheduled job",
 	"POST /api/scheduled/jobs/{jobID}/toggle":    "turn a scheduled job on or off",
 	"POST /api/tasks/run":                        "start a task run",
+
+	// #3445: stopping the Operator's runs, and changing Coral's settings (the whole PUT: it holds
+	// cli_path_* (persistent code execution for every later launch), auto-accept, remote access,
+	// cloud and hub-operator keys and the debug input log, and no agent tool sends it).
+	"POST /api/workflows/runs/{runID}/kill": "stop a workflow run",
+	"POST /api/tasks/runs/{runID}/kill":     "stop a task run",
+	"PUT /api/settings":                     "change Coral's settings",
+
+	// #3445, found by QA: routes whose only guard was "this looks like the dashboard" (an Origin and
+	// a Sec-Fetch-Site header any local caller can send, so an agent token plus two forged headers
+	// minted a sign-in link and became the Operator), and Coral's configuration and outbound paths.
+	"POST /api/system/login-token":        "mint a dashboard sign-in link",
+	"POST /api/system/api-key/regenerate": "regenerate the API key",
+	"PUT /api/system/database-security":   "change the database security setting",
+	"DELETE /api/system/debug-input-log":  "delete the terminal input debug log",
+	"PUT /api/system/hub-operator":        "change the Coral Hub Operator setting",
+	"PUT /api/cloud/max-mode":             "change what Coral Hub may do",
+	"PUT /api/cloud/allow-auto-accept":    "change whether Coral Hub may turn on auto-accept",
+	"POST /api/cloud/connect":             "connect to Coral Hub",
+	"POST /api/cloud/connect/cancel":      "cancel connecting to Coral Hub",
+	"POST /api/cloud/disconnect":          "disconnect from Coral Hub",
+	"POST /api/cloud/redeem":              "redeem a Coral Hub credential",
+	"POST /api/webhooks":                  "create a webhook",
+	"PATCH /api/webhooks/{webhookID}":     "change a webhook",
+	"DELETE /api/webhooks/{webhookID}":    "delete a webhook",
+	"POST /api/webhooks/{webhookID}/test": "send a test webhook",
 }
 
-// operatorOnlyRoute returns the route pattern of r when it is one of operatorOnlyRoutes,
+// recordedAgentRoutes are allowed to an agent in every mode (an agent launches the agents of
+// its team, terminal ones included, by design) but each call is recorded in the identity
+// report's agent_operator_calls, so the owner can see who launched what (#3445).
+var recordedAgentRoutes = map[string]string{
+	"POST /api/sessions/launch":      "launch an agent",
+	"POST /api/sessions/launch-team": "launch a team",
+}
+
+// guardedRoutePrefixes limit the (costly) route match to the paths the tables above can hold.
+var guardedRoutePrefixes = []string{"/api/workflows", "/api/scheduled/", "/api/tasks/", "/api/settings", "/api/sessions/launch", "/api/system/", "/api/cloud/", "/api/webhooks"}
+
+// guardedRoute returns the route pattern of r when it is one of operatorOnlyRoutes (only is
+// true: an agent is refused in strict mode) or recordedAgentRoutes (recorded, never refused),
 // asking the router (the middleware runs before routing).
-func operatorOnlyRoute(r *http.Request) (string, bool) {
-	if !strings.HasPrefix(r.URL.Path, "/api/workflows") && !strings.HasPrefix(r.URL.Path, "/api/scheduled/") && r.URL.Path != "/api/tasks/run" {
-		return "", false
+func guardedRoute(r *http.Request) (route string, only, ok bool) {
+	hit := false
+	for _, pre := range guardedRoutePrefixes {
+		if strings.HasPrefix(r.URL.Path, pre) {
+			hit = true
+			break
+		}
+	}
+	if !hit {
+		return "", false, false
 	}
 	rc := chi.RouteContext(r.Context())
 	if rc == nil || rc.Routes == nil {
-		return "", false
+		return "", false, false
 	}
 	tctx := chi.NewRouteContext()
 	if !rc.Routes.Match(tctx, r.Method, r.URL.Path) {
-		return "", false
+		return "", false, false
 	}
-	route := tctx.RoutePattern()
-	_, ok := operatorOnlyRoutes[r.Method+" "+route]
-	return route, ok
+	route = tctx.RoutePattern()
+	if _, ok := operatorOnlyRoutes[r.Method+" "+route]; ok {
+		return route, true, true
+	}
+	if _, ok := recordedAgentRoutes[r.Method+" "+route]; ok {
+		return route, false, true
+	}
+	return "", false, false
 }
 
 func (o *IdentityObserver) countOperatorCall(session, route string) {
@@ -285,7 +335,7 @@ func (o *IdentityObserver) countOperatorCall(session, route string) {
 	}
 	o.operatorCalls[key]++
 	o.mu.Unlock()
-	o.logOnce("operator_route:"+session, "[identity] an agent called an Operator-only route", "session", session, "route", route, "strict", o.strict)
+	o.logOnce("operator_route:"+session, "[identity] an agent called an Operator-only (or recorded) route", "session", session, "route", route, "strict", o.strict)
 }
 
 // strictOpenPaths need no credential in strict mode: the liveness check and the command

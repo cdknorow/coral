@@ -36,10 +36,14 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		ok := func(w http.ResponseWriter, r *http.Request) { reached++ }
 		r := chi.NewRouter()
 		r.Use(o.Middleware)
-		for _, p := range []string{"/api/workflows", "/api/workflows/{workflowID}/trigger", "/api/workflows/by-name/{name}/trigger", "/api/scheduled/jobs", "/api/tasks/run", "/api/scheduled/jobs/{jobID}/toggle"} {
+		for _, p := range []string{"/api/workflows", "/api/workflows/{workflowID}/trigger", "/api/workflows/by-name/{name}/trigger", "/api/scheduled/jobs", "/api/tasks/run", "/api/workflows/runs/{runID}/kill", "/api/tasks/runs/{runID}/kill", "/api/sessions/launch", "/api/sessions/launch-team", "/api/system/login-token", "/api/system/api-key/regenerate", "/api/cloud/connect", "/api/cloud/disconnect", "/api/webhooks", "/api/scheduled/jobs/{jobID}/toggle"} {
 			r.Post(p, ok)
 		}
 		r.Put("/api/workflows/{workflowID}", ok)
+		r.Put("/api/settings", ok)
+		r.Put("/api/system/hub-operator", ok)
+		r.Delete("/api/webhooks/{webhookID}", ok)
+		r.Put("/api/settings/git-diff-mode", ok)
 		r.Get("/api/workflows", ok)
 		do := func(method, path string, hdr map[string]string) *httptest.ResponseRecorder {
 			req := httptest.NewRequest(method, path, strings.NewReader("{}"))
@@ -55,6 +59,11 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 			{"POST", "/api/workflows"}, {"PUT", "/api/workflows/3"}, {"POST", "/api/workflows/3/trigger"},
 			{"POST", "/api/workflows/by-name/nightly/trigger"}, {"POST", "/api/scheduled/jobs"},
 			{"POST", "/api/scheduled/jobs/7/toggle"}, {"POST", "/api/tasks/run"},
+			// #3445: Coral's settings and the Operator's runs
+			{"PUT", "/api/settings"}, {"POST", "/api/workflows/runs/5/kill"}, {"POST", "/api/tasks/runs/9/kill"},
+			// routes that were guarded only by the forgeable dashboard-provenance headers, and Coral's configuration
+			{"POST", "/api/system/login-token"}, {"POST", "/api/system/api-key/regenerate"}, {"POST", "/api/cloud/connect"},
+			{"POST", "/api/cloud/disconnect"}, {"POST", "/api/webhooks"}, {"DELETE", "/api/webhooks/4"}, {"PUT", "/api/system/hub-operator"},
 		}
 		for _, wr := range writes {
 			rec := do(wr.method, wr.path, agent)
@@ -67,6 +76,15 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 				assert.Equal(t, http.StatusOK, rec.Code, "default mode: recorded, not refused: %s", wr.path)
 			}
 		}
+		if strict {
+			forged := map[string]string{store.SessionTokenHeader: token, "User-Agent": "coral-agent/dev", "Origin": "http://example.com", "Sec-Fetch-Site": "same-origin"}
+			assert.Equal(t, http.StatusForbidden, do("POST", "/api/system/login-token", forged).Code, "an agent token with forged dashboard headers still can't mint a sign-in link")
+		}
+		// An agent launching agents (a team launch, a terminal agent) stays allowed in every mode and is
+		// recorded; a harmless UI preference (git-diff-mode) is not gated.
+		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch", agent).Code, "agent launches are allowed")
+		assert.Equal(t, http.StatusOK, do("POST", "/api/sessions/launch-team", agent).Code, "team launches are allowed")
+		assert.Equal(t, http.StatusOK, do("PUT", "/api/settings/git-diff-mode", agent).Code, "other settings routes are not gated")
 		// Reads stay open to agents; the Operator (here the dashboard's sign-in) can write.
 		assert.Equal(t, http.StatusOK, do("GET", "/api/workflows", agent).Code)
 		cookie = true
@@ -76,7 +94,11 @@ func TestOperatorOnlyRoutes(t *testing.T) {
 		calls := o.Report()["agent_operator_calls"].(map[string]int64)
 		assert.EqualValues(t, 1, calls["claude-dev POST /api/tasks/run"], calls)
 		assert.EqualValues(t, 1, calls["claude-dev PUT /api/workflows/{workflowID}"], calls)
-		assert.Len(t, calls, len(writes), "every agent write recorded once, by route pattern (no ids)")
+		assert.EqualValues(t, 1, calls["claude-dev PUT /api/settings"], calls)
+		assert.EqualValues(t, 1, calls["claude-dev POST /api/workflows/runs/{runID}/kill"], calls)
+		assert.EqualValues(t, 1, calls["claude-dev POST /api/sessions/launch"], calls)
+		assert.EqualValues(t, 1, calls["claude-dev POST /api/sessions/launch-team"], calls)
+		assert.Len(t, calls, len(writes)+2, "every agent write and launch recorded once, by route pattern (no ids)")
 		if !strict {
 			do("POST", "/api/scheduled/jobs", map[string]string{"User-Agent": "coral-agent/dev"})
 			calls = o.Report()["agent_operator_calls"].(map[string]int64)
