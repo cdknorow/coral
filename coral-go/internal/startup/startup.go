@@ -29,6 +29,7 @@ import (
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/config"
 	"github.com/cdknorow/coral/internal/dbcrypt"
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/proxy"
 	"github.com/cdknorow/coral/internal/ptymanager"
 	"github.com/cdknorow/coral/internal/server"
@@ -308,6 +309,10 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	applyReplayBytesFromSettings(ctx, db)
 
 	// Select terminal backend and agent runtime
+	if cfg.LogDir != "" {
+		os.MkdirAll(cfg.LogDir, 0o755)
+	}
+	naming.SetDefaultLogDir(cfg.LogDir)
 	backend, agentRT, terminal := selectBackend(opts.BackendType, cfg.LogDir, cfg.CoralDir())
 
 	// Build the HTTP server

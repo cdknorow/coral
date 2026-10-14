@@ -257,6 +257,12 @@ func GetAgent(agentType string) Agent {
 		return &PiAgent{}
 	case at.Claude, "":
 		return &ClaudeAgent{}
+	case at.Terminal:
+		// A plain shell has no agent of its own, but launch and restart still ask
+		// for the implementation before skipping the command for it. The Claude
+		// one stands in, as the fallback below did, without calling a supported
+		// type "unknown" (#3259).
+		return &ClaudeAgent{}
 	default:
 		// Reached only if a caller skipped ValidateAgentType. Falling back to
 		// Claude is kept so a stored session with an unexpected type still
@@ -272,9 +278,10 @@ func GetAgent(agentType string) Agent {
 // suitable for an error message.
 //
 // "terminal" is included deliberately. It is a plain shell rather than an
-// agent, so it has no Agent implementation and never reaches GetAgent — the
-// launch path skips command building for it entirely — but it is a valid
-// agent_type at the API and rejecting it would break terminal sessions.
+// agent, so it has no Agent implementation of its own (GetAgent hands back the
+// Claude one, and the launch path skips command building for it entirely), but
+// it is a valid agent_type at the API and rejecting it would break terminal
+// sessions.
 func LaunchableAgentTypes() []string {
 	return []string{at.Claude, at.Codex, at.Agy, at.Gemini, at.Pi, at.Terminal}
 }

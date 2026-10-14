@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cdknorow/coral/internal/naming"
 	"github.com/cdknorow/coral/internal/sessionstate"
 	"github.com/cdknorow/coral/internal/store"
 )
@@ -120,7 +121,7 @@ func (d *IdleDetector) RunOnce(ctx context.Context) error {
 		}
 
 		// Check log file staleness
-		logPath := fmt.Sprintf("%s/%s_coral_%s.log", os.TempDir(), agent.AgentType, agent.SessionID)
+		logPath := naming.LogFile(naming.DefaultLogDir(), agent.AgentType, agent.SessionID)
 		info, err := os.Stat(logPath)
 		if err != nil {
 			continue

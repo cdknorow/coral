@@ -637,8 +637,7 @@ func (c *Client) KillSession(ctx context.Context, agentName, agentType, sessionI
 
 	// Clean up log and settings files
 	if sessionID != "" {
-		logDir := os.TempDir()
-		logPath := naming.LogFile(logDir, agentType, sessionID)
+		logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
 		os.Remove(logPath)
 
 		settingsFile := filepath.Join(os.TempDir(), fmt.Sprintf("coral_settings_%s.json", sessionID))
@@ -778,6 +777,28 @@ func (c *Client) SendTerminalInputToTarget(ctx context.Context, target, data str
 		}
 		_, err := c.run(ctx, hexArgs...)
 		return err
+	}
+
+	// Text that ends in a line break ("ls\r"): the Enter is a key press, not part of the
+	// text. Pasted, the \r stays inside the bracketed paste and zsh (and any readline
+	// shell that honours bracketed paste) takes it as pasted text: the command sits on
+	// the line, unsubmitted. Send the text, then Enter as a key.
+	if body := strings.TrimRight(data, "\r\n"); body != data {
+		if body != "" {
+			if err := c.SendTerminalInputToTarget(ctx, target, body); err != nil {
+				return err
+			}
+		}
+		enters := strings.Count(data[len(body):], "\r")
+		if enters == 0 {
+			enters = 1 // a bare \n submits too
+		}
+		for i := 0; i < enters; i++ {
+			if _, err := c.run(ctx, "send-keys", "-t", target, "Enter"); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
 	// Multi-line text: use tmux paste-buffer -p (bracket paste aware)

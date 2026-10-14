@@ -5,8 +5,10 @@ package naming
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // SessionName returns the canonical tmux/pty session name for an agent.
@@ -33,6 +35,32 @@ func SubscriberID(displayName, agentType string) string {
 		return displayName
 	}
 	return agentType
+}
+
+var (
+	defaultLogDirMu sync.RWMutex
+	defaultLogDir   string
+)
+
+// SetDefaultLogDir sets where agent pipe logs go for code that has no config at hand
+// (the terminal backends, the launcher, the idle detector). Startup sets it from
+// config.LogDir; empty means the system temp dir.
+func SetDefaultLogDir(dir string) {
+	defaultLogDirMu.Lock()
+	defaultLogDir = dir
+	defaultLogDirMu.Unlock()
+}
+
+// DefaultLogDir is the directory agent pipe logs are written to: the one startup set,
+// otherwise the system temp dir.
+func DefaultLogDir() string {
+	defaultLogDirMu.RLock()
+	dir := defaultLogDir
+	defaultLogDirMu.RUnlock()
+	if dir == "" {
+		return os.TempDir()
+	}
+	return dir
 }
 
 // LogFile returns the canonical log file path for an agent session.

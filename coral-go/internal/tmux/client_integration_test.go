@@ -530,3 +530,43 @@ func TestClient_KillSessionOnly(t *testing.T) {
 
 	assert.False(t, c.HasSession(ctx, "claude-kill-only-test"))
 }
+
+// A line typed in the dashboard terminal arrives as text ending in \r. A zsh pane
+// takes a bracketed paste's \r as pasted text, so the command used to sit on the line
+// unsubmitted; /bin/sh submitted it (#3259).
+func TestClient_SendTerminalInputToTarget_SubmitsTrailingCR(t *testing.T) {
+	zsh, err := exec.LookPath("zsh")
+	if err != nil {
+		t.Skip("zsh not available")
+	}
+	c := newTestClient(t)
+	ctx := context.Background()
+	createTestSession(t, c, "zsh-cr", t.TempDir())
+	target := "zsh-cr:0.0"
+
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "exec env PROMPT='ZSH> ' "+zsh+" -f -i"))
+	require.NoError(t, c.SendTerminalInputToTarget(ctx, target, "\r"))
+	require.Eventually(t, func() bool {
+		out, _ := c.CapturePaneTarget(ctx, target, 50)
+		return strings.Contains(out, "ZSH> ")
+	}, 10*time.Second, 50*time.Millisecond, "zsh never showed its prompt")
+
+	for _, tc := range []struct{ name, data, want string }{
+		{"text and CR", "echo ONE_$((1+1))\r", "ONE_2"},
+		{"text and CRLF", "echo TWO_$((1+2))\r\n", "TWO_3"},
+		{"two lines then CR", "echo A_$((2+2))\necho B_$((2+3))\r", "B_5"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, c.SendTerminalInputToTarget(ctx, target, tc.data))
+			require.Eventually(t, func() bool {
+				out, _ := c.CapturePaneTarget(ctx, target, 100)
+				for _, line := range strings.Split(out, "\n") {
+					if strings.TrimSpace(line) == tc.want {
+						return true
+					}
+				}
+				return false
+			}, 5*time.Second, 50*time.Millisecond, "the command was not submitted to zsh")
+		})
+	}
+}

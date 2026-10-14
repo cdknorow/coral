@@ -65,8 +65,8 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		return nil, fmt.Errorf("startPTYProcess: %w", err)
 	}
 
-	// Set up log file (use os.TempDir for cross-platform support)
-	logPath := naming.LogFile(os.TempDir(), agentType, sessionID)
+	// Set up log file (the default log dir is the temp dir unless startup moved it)
+	logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Printf("Warning: could not open log file %s: %v", logPath, err)

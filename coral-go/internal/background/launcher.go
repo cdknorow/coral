@@ -61,7 +61,7 @@ func (l *AgentLauncher) LaunchAgent(ctx context.Context, workingDir, agentType, 
 	}
 
 	folderName := filepath.Base(workingDir)
-	logDir := os.TempDir()
+	logDir := naming.DefaultLogDir()
 	sessionID := uuid.New().String()
 	sessionName := naming.SessionName(agentType, sessionID)
 	logFile := naming.LogFile(logDir, agentType, sessionID)

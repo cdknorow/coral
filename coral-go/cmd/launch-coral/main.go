@@ -68,13 +68,18 @@ func main() {
 	}
 	targetDir = absTarget
 
-	logDir := os.TempDir()
-	logDir = strings.TrimRight(logDir, "/")
+	// Agent pipe logs go where the server looks for them: cfg.LogDir (the data dir's
+	// logs folder for an explicit data dir, the temp dir otherwise).
+	cfg := config.Load()
+	logDir := strings.TrimRight(cfg.LogDir, "/")
+	if logDir == "" {
+		logDir = strings.TrimRight(os.TempDir(), "/")
+	}
+	os.MkdirAll(logDir, 0o755)
 
-	// Clean up old coral logs
+	// Clean up old coral logs (only in a folder of our own, never the shared temp dir)
 	cleanOldLogs(logDir)
 
-	cfg := config.Load()
 	if *portFlag > 0 {
 		cfg.Port = *portFlag
 	}
@@ -131,11 +136,24 @@ func main() {
 	log.Println("Shutting down...")
 }
 
+// oldLogAge is how old an agent pipe log must be before launch-coral removes it: a server
+// already running on the same data dir keeps its live agents' logs fresh, so they stay.
+const oldLogAge = 24 * time.Hour
+
+// cleanOldLogs removes the agent pipe logs in logDir that were last written more than
+// oldLogAge ago. It never cleans the shared system temp dir: the default install keeps
+// its live agents' logs there, and a launch from here must not delete another Coral's (#3259).
 func cleanOldLogs(logDir string) {
+	if sameDir(logDir, os.TempDir()) {
+		return
+	}
 	pattern := filepath.Join(logDir, "*_coral_*.log")
 	matches, _ := filepath.Glob(pattern)
+	cutoff := time.Now().Add(-oldLogAge)
 	for _, m := range matches {
-		os.Remove(m)
+		if info, err := os.Stat(m); err == nil && info.ModTime().Before(cutoff) {
+			os.Remove(m)
+		}
 	}
 }
 
@@ -317,4 +335,16 @@ end tell`, attachCmd, title)
 		}
 		fmt.Printf("  [~] No supported terminal emulator found (use: %s)\n", attachCmd)
 	}
+}
+
+// sameDir reports whether a and b name the same directory (symlinks resolved when they exist).
+func sameDir(a, b string) bool {
+	resolve := func(p string) string {
+		p = filepath.Clean(p)
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			return r
+		}
+		return p
+	}
+	return resolve(a) == resolve(b)
 }
