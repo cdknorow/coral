@@ -12,7 +12,7 @@ import { copyText } from './utils.js';
 
 const STATUS_URL = '/api/cloud/status';
 export const MODE_HELP = {
-    view: 'Read the terminal, chat, files, tasks and board. Nothing can be typed or started from the web.',
+    view: 'Read everything: every agent\'s terminal output and chat, all board chat on every team, files, tasks and boards. Nothing can be typed, changed or started from the web.',
     interact: 'Also type into agents that are already running (send text, keys, answer prompts) and change tasks, notes and the board. Typing can run commands: an agent with shell tools acts on it. It can also change board settings, including turning on cross-team messaging.',
     launch: 'Also start, wake and restart agents and browse folders to choose where. Launching runs code on this computer as you.',
 };

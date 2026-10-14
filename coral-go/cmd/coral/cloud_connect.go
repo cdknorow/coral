@@ -360,7 +360,7 @@ func (c *cloudClient) cancelled(ui connectUI) int {
 func (c *cloudClient) askAccess(ctx context.Context, ui connectUI) int {
 	fmt.Fprint(ui.out, `
 The most Coral Hub may do on this server:
-  1) View      see agents, terminals and boards (default)
+  1) View      read everything: terminals, chats, all board chat (default)
   2) Interact  also type into agents and answer their prompts
   3) Launch    also start, restart and stop agents
 `)
