@@ -14,6 +14,7 @@
 // finds CDP suites by that name.
 const assert = require('node:assert/strict');
 const { connect } = require('./agent_view_harness');
+const { waitStable } = require('./helpers/wait');
 
 const BASE = require('./test_base').BASE;
 const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
@@ -69,6 +70,10 @@ const MESSAGE = "The agent's terminal is gone. Restart it to continue.";
             await ev(`window.__m.add('qa-other', 'O', 3, { sleeping: false, board_project: 'team-gone' })`);
             await select('qa-gone');
             await firstPage();
+            // Let the page finish settling before the first send: a late re-render of the selected
+            // agent (seen right after the switch to phone width) clears the line under the composer,
+            // which the first case would then wait for in vain.
+            await waitStable(ev, `[T.state.currentSession && T.state.currentSession.session_id, document.getElementById('composer-error').hidden, window.__m.requests.length, window.__rendered().length].join('|')`, `${label}: the selected agent settled`, 400);
             // The composer's font is the same sans font on a phone as on a desktop (#3218).
             const font = await ev(`(() => { const f = getComputedStyle(document.getElementById('command-input')).fontFamily;
                 const sans = getComputedStyle(document.documentElement).getPropertyValue('--font-sans').trim(); return { f, sans }; })()`);
