@@ -96,7 +96,7 @@ echo "Starting Coral dev server on :$CORAL_PORT (home=$CORAL_HOME)..."
 # ~/.claude/projects, ~/.codex, ~/.gemini or ~/.pi (privacy and deterministic results).
 mkdir -p "$CORAL_HOME/host-home"
 env -u CORAL_PORT -u CORAL_URL -u CORAL_DATA_DIR -u CORAL_DIR -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$CORAL_HOME/host-home" \
-    "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser \
+    "$CORAL_BIN" --host 127.0.0.1 --port "$CORAL_PORT" --home "$CORAL_HOME" --no-browser --cloud-url off \
     > "$CORAL_HOME/server.log" 2>&1 &
 CORAL_PID=$!
 

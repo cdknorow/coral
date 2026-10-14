@@ -296,11 +296,19 @@ tmux-backed sessions.
 ### Running a test server or the frontend suites
 
 Never point a test server at `~/.coral`; that is the live instance's database. Give a manual
-test server its own data directory and port:
+test server its own data directory and port, and turn Coral Hub off so it can never start a
+real enrollment with app.coralai.ai (a release build connects to it by default):
 
 ```bash
-CORAL_DATA_DIR=$(mktemp -d) ./coral --host 127.0.0.1 --port PORT
+CORAL_DATA_DIR=$(mktemp -d) ./coral --host 127.0.0.1 --port PORT --cloud-url off
 ```
+
+Agents don't inherit Coral's own server settings (#3389): every `CORAL_` variable except the
+ones agent tools read (`CORAL_URL`/`HOST`/`PORT`, `CORAL_DATA_DIR`/`DIR`, the agent's
+`CORAL_SESSION_NAME`/`ID` and `CORAL_SUBSCRIBER_ID`, `CORAL_SHELL`, `CORAL_TELEMETRY_DISABLED`,
+`CORAL_DEBUG` and a workflow step's `CORAL_WORKFLOW_*`/`CORAL_STEP_*`/`CORAL_PREV*`) is removed
+from their environment, so `CORAL_SECRET_KEY`, `CORAL_CLOUD_URL`, the TLS paths and the like
+never reach an agent or a server it starts. The list is `internal/agentenv`.
 
 The frontend CDP suites read their server from `CORAL_TEST_URL` (`tests/frontend/test_base.js`),
 never `CORAL_URL`: shells a running Coral spawns export `CORAL_URL` pointing at the live server.

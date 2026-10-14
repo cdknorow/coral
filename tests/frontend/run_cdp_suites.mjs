@@ -190,7 +190,7 @@ async function startShard(n, gen = 0) {
   const hostHome = path.join(dir, 'home'); fs.mkdirSync(hostHome);
   const serverEnv = { ...testEnv, CORAL_DATA_DIR: data, HOME: hostHome };
   for (const k of HOST_DATA_VARS) delete serverEnv[k];
-  const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
+  const coral = spawn(bin, ['--home', data, '--host', '127.0.0.1', '--port', String(port), '--no-browser', '--cloud-url', 'off', ...(process.env.CORAL_BACKEND ? ['--backend', process.env.CORAL_BACKEND] : [])],
     { env: serverEnv, stdio: ['ignore', fs.openSync(log, 'w'), fs.openSync(log, 'a')], detached: true });
   track(coral);
   allLogs.push(log);

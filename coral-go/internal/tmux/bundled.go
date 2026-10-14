@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/cdknorow/coral/internal/agentenv"
 )
 
 // Seams for tests; production code never reassigns them.
@@ -84,11 +86,13 @@ func sameFile(a, b string) bool {
 // binary so helpers running inside the panes of a server this client starts can
 // call the same tmux. Nothing is changed for a system tmux.
 func tmuxEnv(bin string) []string {
+	// The tmux server Coral starts passes its environment to every agent pane, so it gets
+	// the agent environment, without Coral's server-only settings (#3389).
+	env := agentenv.Filter(os.Environ())
 	terminfoDir, bundled := isBundledBinary(bin)
 	if !bundled {
-		return nil
+		return env
 	}
-	env := os.Environ()
 	if terminfoDir != "" {
 		existing := os.Getenv("TERMINFO_DIRS")
 		merged := terminfoDir
@@ -101,7 +105,10 @@ func tmuxEnv(bin string) []string {
 		}
 		env = setEnv(env, "TERMINFO_DIRS", merged)
 	}
-	if os.Getenv("CORAL_TMUX_BIN") == "" {
+	// Set on purpose (the filter above removed any inherited one): an explicit choice wins.
+	if explicit := os.Getenv("CORAL_TMUX_BIN"); explicit != "" {
+		env = setEnv(env, "CORAL_TMUX_BIN", explicit)
+	} else {
 		env = setEnv(env, "CORAL_TMUX_BIN", bin)
 	}
 	return env

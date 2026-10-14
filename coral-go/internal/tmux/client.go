@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/agentenv"
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/naming"
@@ -697,12 +698,41 @@ func (c *Client) HasSession(ctx context.Context, name string) bool {
 // from being prepended to commands sent via send-keys.
 func (c *Client) NewSession(ctx context.Context, name, workDir string) error {
 	log.Printf("[tmux] NewSession requested: name=%q work_dir=%q tmux_bin=%q socket=%q path=%q", name, workDir, c.TmuxBin, c.SocketPath, os.Getenv("PATH"))
+	c.scrubServerEnv(ctx)
 	_, err := c.run(ctx, "new-session", "-d", "-s", name, "-c", workDir)
 	if err != nil {
 		return err
 	}
 	c.run(ctx, "set-option", "-t", name, "history-limit", "50000")
 	return nil
+}
+
+// scrubServerEnv keeps Coral's server-only settings out of new agent panes (#3389). A tmux
+// server started by Coral already has the agent environment (tmuxEnv), but one that was
+// already running (started by an older Coral, or by the user on the same socket) keeps the
+// environment it started with, and new panes get its global environment. Each such
+// CORAL_ variable is marked to be removed before a new pane starts (set-environment -g -r).
+// No server yet: nothing to do, new-session starts one with the filtered environment.
+func (c *Client) scrubServerEnv(ctx context.Context) {
+	if c.SocketPath != "" && !c.FallbackToDefault {
+		if _, err := os.Stat(c.SocketPath); err != nil {
+			return // no server on this socket yet (and no log line for asking)
+		}
+	}
+	out, err := c.run(ctx, "show-environment", "-g")
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(out, "\n") {
+		name, _, _ := strings.Cut(strings.TrimSpace(line), "=")
+		// "-NAME" is already marked for removal; CORAL_TMUX_BIN is set on purpose (tmuxEnv).
+		if !strings.HasPrefix(name, "CORAL_") || agentenv.Keep(name) || name == "CORAL_TMUX_BIN" {
+			continue
+		}
+		if _, err := c.run(ctx, "set-environment", "-g", "-r", name); err != nil {
+			log.Printf("[tmux] could not keep %s out of new panes: %v", name, err)
+		}
+	}
 }
 
 // SetEnvironment sets an environment variable for a tmux session.

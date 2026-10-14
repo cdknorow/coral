@@ -94,8 +94,9 @@ To spin up a test server for manual verification, use `0.0.0.0` (not `127.0.0.1`
 
 **CRITICAL: Always use a separate data directory for test servers.** The production Coral instance uses `~/.coral/` — running a test server against the same database will corrupt live sessions, kill running agents, and lose state. Use `CORAL_DATA_DIR` to isolate test data:
 ```bash
-cd coral-go && go build -tags dev -o coral ./cmd/coral/ && CORAL_DATA_DIR=/tmp/coral-test ./coral --host 0.0.0.0 --port 8450
+cd coral-go && go build -tags dev -o coral ./cmd/coral/ && CORAL_DATA_DIR=/tmp/coral-test ./coral --host 0.0.0.0 --port 8450 --cloud-url off
 ```
+`--cloud-url off` keeps a test server away from the real Coral Hub (a release build connects to app.coralai.ai by default, and a `CORAL_CLOUD_URL` in the shell would point it there).
 
 ### Database
 - SQLite with WAL mode, stored at `~/.coral/sessions.db`

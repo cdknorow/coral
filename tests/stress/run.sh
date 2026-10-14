@@ -107,7 +107,7 @@ go build -p 1 -o "$TMPDIR_STRESS/coral-agent" ./cmd/coral-agent/
 
 start_server() {
 log "Starting coral server on port $PORT..."
-env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_STRESS/home" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser >>"$TMPDIR_STRESS/server.log" 2>&1 &
+env -u CLAUDE_PROJECTS_DIR -u GEMINI_TMP_DIR -u ANTIGRAVITY_DATA_DIR -u PI_CODING_AGENT_DIR HOME="$TMPDIR_STRESS/home" "$TMPDIR_STRESS/coral" --host "$HOST" --port "$PORT" --backend tmux --no-browser --cloud-url off >>"$TMPDIR_STRESS/server.log" 2>&1 &
 SERVER_PID=$!
 wait_for_server
 }

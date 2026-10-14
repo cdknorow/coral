@@ -324,3 +324,32 @@ func TestSession_LogFileContainsOutput(t *testing.T) {
 		t.Errorf("log file should contain 'LOG_MARKER_42', got: %q", string(data))
 	}
 }
+
+// #3389: an agent never inherits Coral's own server settings; what agent tools read stays.
+func TestNewSession_AgentEnvHasNoServerSettings(t *testing.T) {
+	canFork(t)
+	t.Setenv("CORAL_SECRET_KEY", "leak-3389")
+	t.Setenv("CORAL_CLOUD_URL", "https://app.coralai.ai")
+	t.Setenv("CORAL_URL", "http://127.0.0.1:9999")
+	s, err := newSession("env-3389", "test", t.TempDir(), "sid-env-3389", "env", 80, 24)
+	if err != nil {
+		t.Fatalf("newSession failed: %v", err)
+	}
+	defer s.kill()
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(string(s.replayBytes()), "TERM=xterm-256color") && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	content := string(s.replayBytes())
+	if !strings.Contains(content, "TERM=xterm-256color") {
+		t.Fatalf("no env output: %q", content)
+	}
+	for _, gone := range []string{"leak-3389", "CORAL_SECRET_KEY=", "CORAL_CLOUD_URL="} {
+		if strings.Contains(content, gone) {
+			t.Errorf("the agent saw %s", gone)
+		}
+	}
+	if !strings.Contains(content, "CORAL_URL=http://127.0.0.1:9999") {
+		t.Errorf("CORAL_URL (read by coral-board) should reach the agent")
+	}
+}

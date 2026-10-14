@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cdknorow/coral/internal/agentenv"
 	"github.com/cdknorow/coral/internal/inputlog"
 	"github.com/cdknorow/coral/internal/naming"
 )
@@ -58,7 +59,8 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		parts = defaultShell()
 	}
 
-	env := append(os.Environ(),
+	// Coral's own server settings never reach the agent (#3389).
+	env := append(agentenv.Filter(os.Environ()),
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		fmt.Sprintf("CORAL_SESSION_NAME=%s", name),

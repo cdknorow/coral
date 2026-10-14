@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentenv"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -340,7 +341,7 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	expandedCmd := expandTemplates(step.Command, env)
 	cmd := exec.CommandContext(stepCtx, "sh", "-c", expandedCmd)
 	cmd.Dir = repoPath
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 	// Set process group for clean kill
 	configureChildProcess(cmd)
 
@@ -527,7 +528,7 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 
 	cmd := exec.CommandContext(ctx, binPath, args...)
 	cmd.Dir = repoPath
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 	configureChildProcess(cmd)
 
 	// Capture stdout and stderr to files
@@ -1014,7 +1015,7 @@ func (wr *WorkflowRunner) fireHooks(ctx context.Context, hooks map[string]interf
 
 			hookCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			cmd := exec.CommandContext(hookCtx, "sh", "-c", command)
-			cmd.Env = append(os.Environ(), env...)
+			cmd.Env = append(agentenv.Filter(os.Environ()), env...) // #3389: no server-only settings
 			if err := cmd.Run(); err != nil {
 				wr.logger.Warn("hook execution failed", "event", event, "command", command, "error", err)
 			}

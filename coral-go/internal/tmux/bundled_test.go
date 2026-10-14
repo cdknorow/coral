@@ -126,8 +126,17 @@ func envMap(env []string) map[string]string {
 
 func TestTmuxEnvOnlyTouchesTheBundledTmuxAndKeepsUserSettings(t *testing.T) {
 	b := newFakeBundle(t, "exit 0")
-	assert.Nil(t, tmuxEnv("/opt/homebrew/bin/tmux"), "a system tmux inherits our environment unchanged")
-	assert.Nil(t, tmuxEnv("tmux"))
+	// A system tmux gets our environment without Coral's server-only settings (#3389): the
+	// tmux server passes its environment to every agent pane. (Checked without printing it.)
+	t.Setenv("CORAL_SECRET_KEY", "leak-3389")
+	for _, bin := range []string{"/opt/homebrew/bin/tmux", "tmux"} {
+		sys := envMap(tmuxEnv(bin))
+		_, leaked := sys["CORAL_SECRET_KEY"]
+		assert.False(t, leaked, "a system tmux never gets CORAL_SECRET_KEY")
+		assert.Equal(t, os.Getenv("HOME"), sys["HOME"], "and keeps the user's own settings")
+		_, tbin := sys["CORAL_TMUX_BIN"]
+		assert.False(t, tbin, "nothing is added for a system tmux")
+	}
 
 	env := envMap(tmuxEnv(b.tmuxBin))
 	assert.Equal(t, filepath.Clean(b.terminfo), env["TERMINFO_DIRS"])
