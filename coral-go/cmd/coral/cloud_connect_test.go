@@ -41,9 +41,10 @@ type fakeCoral struct {
 	// (the last one stays).
 	statuses []string
 	// connectFail, if set, is the HTTP status /api/cloud/connect answers (with an error body).
-	connectFail int
-	connects    int
-	onStatus    func() // test hook, called on every status read
+	connectFail       int
+	connectRetryAfter string
+	connects          int
+	onStatus          func() // test hook, called on every status read
 }
 
 type fakeRedeem struct {
@@ -115,6 +116,9 @@ func (f *fakeCoral) serve(w http.ResponseWriter, r *http.Request) {
 	case "/api/cloud/connect":
 		f.connects++
 		if f.connectFail != 0 {
+			if f.connectRetryAfter != "" {
+				w.Header().Set("Retry-After", f.connectRetryAfter)
+			}
 			w.WriteHeader(f.connectFail)
 			_, _ = io.WriteString(w, `{"error":"Could not start enrollment: Coral Hub could not be reached or had an error; try again in a minute"}`)
 			return
@@ -573,4 +577,21 @@ func TestCloudConnectHubUnavailableIsRetryable(t *testing.T) {
 	f.connectFail = http.StatusInternalServerError
 	errb.Reset()
 	assert.Equal(t, 1, runCloud([]string{"connect", "--url", f.srv.URL}, strings.NewReader(""), &out, &errb), "anything else is not retryable")
+}
+
+// #3285 follow-up: the unattended startup step waits as long as Coral's Retry-After says
+// (the hub's, or this machine's own limit on new codes), never less than 30 s.
+func TestCloudClientRecordsRetryAfter(t *testing.T) {
+	f := newFakeCoral(t, ready, enrolled)
+	f.statuses = []string{idle}
+	f.connectFail, f.connectRetryAfter = http.StatusTooManyRequests, "540"
+	c, _ := newCloudClient(f.srv.URL, "", "connect", io.Discard)
+	require.NotNil(t, c)
+	var out bytes.Buffer
+	assert.Equal(t, 4, c.connectFlow(context.Background(), connectUI{out: &out, in: bufio.NewReader(strings.NewReader("")), how: "coral cloud connect"}))
+	assert.Equal(t, 540*time.Second, c.retryAfter)
+	f.connectFail, f.connectRetryAfter = 0, ""
+	f.statuses = []string{idle, enrolling, connected}
+	c.connectFlow(context.Background(), connectUI{out: &out, in: bufio.NewReader(strings.NewReader("")), how: "coral cloud connect"})
+	assert.Zero(t, c.retryAfter, "cleared by the next answer")
 }

@@ -171,10 +171,19 @@ func runCloudStartupStep(ctx context.Context, cfg *config.Config, mode string, i
 				if c.connectFlow(ctx, ui) != 4 || !time.Now().Before(end) {
 					break
 				}
-				// A new code, after a pause so an unreachable Hub is not hammered.
+				// A new code, after a pause so an unreachable Hub is not hammered: at least
+				// 30 s, and as long as Coral says (its Retry-After: the hub's, or this
+				// machine's own limit on new codes).
+				wait := 30 * time.Second
+				if c.retryAfter > wait {
+					wait = c.retryAfter
+				}
+				if left := time.Until(end); wait > left {
+					wait = left
+				}
 				select {
 				case <-ctx.Done():
-				case <-time.After(30 * time.Second):
+				case <-time.After(wait):
 				}
 			}
 			if ctx.Err() == nil && !time.Now().Before(end) {

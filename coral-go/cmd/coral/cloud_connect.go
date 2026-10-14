@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,6 +106,9 @@ type cloudClient struct {
 	server string
 	cmd    string
 	stderr io.Writer
+	// retryAfter is the last refusal's Retry-After (0 if none): the unattended startup
+	// step waits at least this long before asking again.
+	retryAfter time.Duration
 }
 
 func newCloudClient(base, home, cmd string, stderr io.Writer) (*cloudClient, int) {
@@ -141,7 +145,11 @@ func (c *cloudClient) call(ctx context.Context, method, path string, body any, h
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	c.retryAfter = 0
 	if resp.StatusCode != http.StatusOK {
+		if secs, err := strconv.Atoi(strings.TrimSpace(resp.Header.Get("Retry-After"))); err == nil && secs > 0 {
+			c.retryAfter = time.Duration(secs) * time.Second
+		}
 		var e struct {
 			Error string `json:"error"`
 		}

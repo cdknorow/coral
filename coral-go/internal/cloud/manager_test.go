@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cdknorow/coral/internal/store"
@@ -37,6 +38,8 @@ type fakeHub struct {
 	deny        atomic.Bool  // poll answers access_denied
 	expireAfter atomic.Int64 // >0: polls from this one on answer expired_token
 	busy        atomic.Int64 // >0: start answers 429 rate_limited with this Retry-After
+	starts      atomic.Int64 // POST /api/enroll/start requests
+	down        atomic.Bool  // start answers 503
 	sessions    chan *tunnel.Session
 }
 
@@ -46,6 +49,11 @@ func newFakeHub(t *testing.T) *fakeHub {
 	h.approveAt.Store(2)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/enroll/start", func(w http.ResponseWriter, r *http.Request) {
+		h.starts.Add(1)
+		if h.down.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if n := h.busy.Load(); n > 0 {
 			w.Header().Set("Retry-After", strconv.FormatInt(n, 10))
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -517,9 +525,87 @@ func TestEnrollmentExpiredSaysClosedBeta(t *testing.T) {
 	require.Equal(t, ErrCodeExpired, st.LastErrorCode)
 	require.Equal(t, "The code expired before it was approved. If you couldn't sign in at app.coralai.ai, Coral Hub is in closed beta: request access at https://coralai.ai/hub.html", st.LastError)
 
+	// Right after an expiry a new code waits for the per-machine gap (#3285 follow-up)…
+	var rl *RateLimitedError
+	require.ErrorAs(t, m.Connect(context.Background()), &rl)
+	require.True(t, rl.Local)
+	// …as if the 10 minutes had passed:
+	require.NoError(t, e.cs.ClearEnrollment(context.Background()))
 	e.hub.expireAfter.Store(0)
 	e.hub.approveAt.Store(0)
 	require.NoError(t, m.Connect(context.Background()))
 	waitState(t, m, StateConnected)
 	require.Empty(t, m.Status().LastErrorCode)
+}
+
+// #3285 follow-up: a machine in a restart loop reuses its pending code: 20 restarts in a
+// row ask the hub for ONE device code.
+func TestEnrollmentReusesThePendingCodeAcrossRestarts(t *testing.T) {
+	e := newEnv(t)
+	e.hub.approveAt.Store(1 << 30) // stays pending
+	var codes []string
+	for i := 0; i < 20; i++ {
+		m := e.manager(e.hub.srv.URL)
+		stop := start(t, m)
+		require.NoError(t, m.Connect(context.Background()))
+		st := m.Status()
+		require.Equal(t, StateEnrolling, st.State)
+		codes = append(codes, st.UserCode)
+		stop()
+	}
+	assert.EqualValues(t, 1, e.hub.starts.Load(), "one enroll/start for 20 restarts")
+	for _, c := range codes {
+		assert.Equal(t, codes[0], c, "the same code every time")
+	}
+}
+
+// A hub that's down: the next start waits a growing, jittered backoff, across restarts,
+// without asking the hub meanwhile; the hub's Retry-After is the least wait.
+func TestEnrollmentStartBacksOff(t *testing.T) {
+	e := newEnv(t)
+	e.hub.down.Store(true)
+	ctx := context.Background()
+	m := e.manager(e.hub.srv.URL)
+	start(t, m)
+	require.ErrorIs(t, m.Connect(ctx), ErrHubUnavailable)
+	require.EqualValues(t, 1, e.hub.starts.Load())
+	en, err := e.cs.GetEnrollment(ctx, e.hub.srv.URL)
+	require.NoError(t, err)
+	wait := time.Until(en.NextStartAt)
+	assert.True(t, wait > 25*time.Second && wait <= 37*time.Second, "first backoff ~30 s (+jitter): %s", wait)
+
+	// A restart doesn't reset it, and nothing reaches the hub.
+	m2 := e.manager(e.hub.srv.URL)
+	start(t, m2)
+	var rl *RateLimitedError
+	require.ErrorAs(t, m2.Connect(ctx), &rl)
+	assert.True(t, rl.Local)
+	assert.EqualValues(t, 1, e.hub.starts.Load())
+
+	// The next failure doubles it.
+	en.NextStartAt = time.Now().Add(-time.Second)
+	require.NoError(t, e.cs.SaveEnrollment(ctx, en))
+	require.ErrorIs(t, m2.Connect(ctx), ErrHubUnavailable)
+	en, _ = e.cs.GetEnrollment(ctx, e.hub.srv.URL)
+	assert.Equal(t, 2, en.Failures)
+	wait = time.Until(en.NextStartAt)
+	assert.True(t, wait > 55*time.Second && wait <= 73*time.Second, "second backoff ~60 s: %s", wait)
+
+	// A 429 with a longer Retry-After than the backoff: the Retry-After wins.
+	e.hub.down.Store(false)
+	e.hub.busy.Store(900)
+	en.NextStartAt = time.Now().Add(-time.Second)
+	require.NoError(t, e.cs.SaveEnrollment(ctx, en))
+	require.ErrorAs(t, m2.Connect(ctx), &rl)
+	en, _ = e.cs.GetEnrollment(ctx, e.hub.srv.URL)
+	assert.True(t, time.Until(en.NextStartAt) >= 899*time.Second, "Retry-After honoured: %s", time.Until(en.NextStartAt))
+}
+
+func TestEnrollBackoffIsCapped(t *testing.T) {
+	prev := enrollJitter
+	enrollJitter = func(time.Duration) time.Duration { return 0 }
+	t.Cleanup(func() { enrollJitter = prev })
+	for n, want := range map[int]time.Duration{1: 30 * time.Second, 2: time.Minute, 3: 2 * time.Minute, 5: 8 * time.Minute, 6: 15 * time.Minute, 50: 15 * time.Minute} {
+		assert.Equal(t, want, enrollBackoff(n), "failure %d", n)
+	}
 }

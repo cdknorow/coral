@@ -595,6 +595,21 @@ CREATE TABLE IF NOT EXISTS cloud_connection (
     last_error TEXT
 );
 
+-- Coral Hub enrollment in progress, and its rate limit (one row). The device code is
+-- sealed like the server token. Kept across restarts so a restart loop reuses one code
+-- instead of asking the hub for a new one each time.
+CREATE TABLE IF NOT EXISTS cloud_enrollment (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    hub_url          TEXT NOT NULL,
+    device_code      TEXT NOT NULL DEFAULT '',
+    user_code        TEXT NOT NULL DEFAULT '',
+    verification_url TEXT NOT NULL DEFAULT '',
+    interval_s       INTEGER NOT NULL DEFAULT 5,
+    expires_at       TEXT NOT NULL DEFAULT '',
+    next_start_at    TEXT NOT NULL DEFAULT '',
+    failures         INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS custom_views (
 	id         INTEGER PRIMARY KEY AUTOINCREMENT,
 	name       TEXT NOT NULL,

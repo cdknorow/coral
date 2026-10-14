@@ -35,9 +35,16 @@ var (
 
 // RateLimitedError is the hub refusing to start an enrollment for now (429
 // rate_limited). RetryAfter is from its Retry-After header, capped; zero if absent.
-type RateLimitedError struct{ RetryAfter time.Duration }
+type RateLimitedError struct {
+	RetryAfter time.Duration
+	// Local: this machine's own limit on asking for new codes, not the hub's answer.
+	Local bool
+}
 
 func (e *RateLimitedError) Error() string {
+	if e.Local {
+		return fmt.Sprintf("a new Coral Hub code can be asked for again in %s", e.RetryAfter.Round(time.Second))
+	}
 	if e.RetryAfter > 0 {
 		return fmt.Sprintf("Coral Hub is busy: try again in %s", e.RetryAfter.Round(time.Second))
 	}

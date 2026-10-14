@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"os"
 	"sync"
@@ -251,10 +252,38 @@ func (m *Manager) Connect(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 
+	// A code from an earlier start (this run or a previous one) is reused until it
+	// expires; a new one is asked for at most once per enrollMinGap, and after a failed
+	// start only after a growing, jittered wait. So a machine in a restart loop asks
+	// the hub for one code, not one per start.
+	now := m.o.Now()
+	pend, _ := m.o.Store.GetEnrollment(ctx, m.o.HubURL)
+	if pend != nil && pend.DeviceCode != "" && now.Add(enrollReuseMargin).Before(pend.ExpiresAt) {
+		m.startPolling(&DeviceCode{DeviceCode: pend.DeviceCode, UserCode: pend.UserCode, VerificationURL: pend.VerificationURL,
+			Interval: pend.Interval, ExpiresAt: pend.ExpiresAt})
+		return nil
+	}
+	if pend != nil && now.Before(pend.NextStartAt) {
+		rl := &RateLimitedError{RetryAfter: pend.NextStartAt.Sub(now), Local: true}
+		m.mu.Lock()
+		m.st.State, m.st.LastError, m.st.LastErrorCode = StateIdle, rl.Error(), ErrCodeRateLimited
+		m.mu.Unlock()
+		return rl
+	}
+
 	host, _ := os.Hostname()
-	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, m.o.Now(), EnrollInfo{Hostname: host, CoralVersion: m.o.CoralVersion})
+	dc, err := StartEnrollment(ctx, m.hc, m.o.HubURL, now, EnrollInfo{Hostname: host, CoralVersion: m.o.CoralVersion})
 	if err != nil {
+		failures := 1
+		if pend != nil {
+			failures = pend.Failures + 1
+		}
+		wait := enrollBackoff(failures)
 		var rl *RateLimitedError
+		if errors.As(err, &rl) && rl.RetryAfter > wait {
+			wait = rl.RetryAfter // the hub's Retry-After is the least we wait
+		}
+		_ = m.o.Store.SaveEnrollment(ctx, &store.CloudEnrollment{HubURL: m.o.HubURL, NextStartAt: now.Add(wait), Failures: failures})
 		if errors.As(err, &rl) {
 			m.mu.Lock()
 			m.st.State, m.st.LastError, m.st.LastErrorCode = StateIdle, rl.Error(), ErrCodeRateLimited
@@ -264,6 +293,57 @@ func (m *Manager) Connect(ctx context.Context) error {
 		}
 		return err
 	}
+	next := now.Add(enrollMinGap)
+	if dc.ExpiresAt.After(next) {
+		next = dc.ExpiresAt
+	}
+	_ = m.o.Store.SaveEnrollment(ctx, &store.CloudEnrollment{HubURL: m.o.HubURL, DeviceCode: dc.DeviceCode, UserCode: dc.UserCode,
+		VerificationURL: dc.VerificationURL, Interval: dc.Interval, ExpiresAt: dc.ExpiresAt, NextStartAt: next.Add(enrollJitter(enrollMinGap / 10))})
+	m.startPolling(dc)
+	return nil
+}
+
+// Enrollment start limits (#3285 follow-up).
+const (
+	enrollReuseMargin = 30 * time.Second // a code this close to expiry is not reused
+	enrollMinGap      = 10 * time.Minute // at most one new code per this, per machine
+	enrollBackoffBase = 30 * time.Second
+	enrollBackoffMax  = 15 * time.Minute
+)
+
+// enrollJitter is a random extra wait in [0, max): machines that fail together don't
+// retry together.
+var enrollJitter = func(max time.Duration) time.Duration {
+	if max <= 0 {
+		return 0
+	}
+	return time.Duration(rand.Int63n(int64(max)))
+}
+
+// enrollBackoff is the wait after the n-th consecutive failed start: 30 s doubling,
+// capped at 15 min, plus up to 20% jitter.
+func enrollBackoff(n int) time.Duration {
+	d := enrollBackoffBase
+	for i := 1; i < n && d < enrollBackoffMax; i++ {
+		d *= 2
+	}
+	if d > enrollBackoffMax {
+		d = enrollBackoffMax
+	}
+	return d + enrollJitter(d/5)
+}
+
+// dropPendingCode forgets a code that expired or was denied, but keeps the start limit,
+// so the next code still waits for it.
+func (m *Manager) dropPendingCode(ctx context.Context) {
+	if e, err := m.o.Store.GetEnrollment(ctx, m.o.HubURL); err == nil && e != nil {
+		e.DeviceCode, e.UserCode, e.VerificationURL, e.ExpiresAt = "", "", "", time.Time{}
+		_ = m.o.Store.SaveEnrollment(ctx, e)
+	}
+}
+
+// startPolling shows the code and polls the hub for the user's approval.
+func (m *Manager) startPolling(dc *DeviceCode) {
 	m.mu.Lock()
 	m.stopLocked()
 	m.gen++
@@ -274,7 +354,6 @@ func (m *Manager) Connect(ctx context.Context) error {
 		UserCode: dc.UserCode, VerificationURL: dc.VerificationURL, ExpiresAt: dc.ExpiresAt}
 	m.mu.Unlock()
 	go m.pollEnrollment(ectx, gen, dc)
-	return nil
 }
 
 // CancelEnrollment stops an enrollment in progress: the user code is dropped and
@@ -310,12 +389,14 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 		case <-time.After(interval):
 		}
 		if !m.o.Now().Before(dc.ExpiresAt) {
+			m.dropPendingCode(ctx)
 			m.finishEnrollCode(gen, codeExpiredMessage, ErrCodeExpired)
 			return
 		}
 		en, err := PollEnrollment(ctx, m.hc, m.o.HubURL, dc.DeviceCode)
 		switch {
 		case err == nil:
+			_ = m.o.Store.ClearEnrollment(ctx) // enrolled: no pending code, no rate limit
 			if serr := m.o.Store.Save(ctx, m.o.HubURL, en.ServerID, en.Label, en.Token); serr != nil {
 				m.finishEnroll(gen, "enrolled, but the token could not be stored securely; check the Coral data directory")
 				return
@@ -338,9 +419,11 @@ func (m *Manager) pollEnrollment(ctx context.Context, gen int, dc *DeviceCode) {
 		case errors.Is(err, ErrSlowDown):
 			interval += 5 * time.Second
 		case errors.Is(err, ErrEnrollmentExpired):
+			m.dropPendingCode(ctx)
 			m.finishEnrollCode(gen, codeExpiredMessage, ErrCodeExpired)
 			return
 		case errors.Is(err, ErrAccessDenied):
+			m.dropPendingCode(ctx)
 			m.finishEnrollCode(gen, "the request was denied in Coral Hub", ErrCodeAccessDenied)
 			return
 		default:
@@ -441,6 +524,7 @@ func (m *Manager) Disconnect(ctx context.Context) error {
 	m.st = Status{Configured: true, HubURL: m.o.HubURL, State: StateIdle}
 	m.mu.Unlock()
 	m.linkLost(ctx)
+	_ = m.o.Store.ClearEnrollment(ctx)
 	return m.o.Store.Delete(ctx)
 }
 
