@@ -1,5 +1,35 @@
 # Release Notes
 
+## v1.4.21 — Optional strict local sign-in
+
+**New, off by default: optional strict local sign-in.** Start Coral with `--strict-local-auth` (or `CORAL_STRICT_LOCAL_AUTH=1`) and every request on this computer has to say who it is: the dashboard needs to be signed in, each agent uses its own session token, and the `coral` command line signs its requests. Nothing changes unless you turn it on.
+
+### Security
+
+- **Strict local sign-in (`--strict-local-auth`).** With it on:
+  - **The dashboard is locked until you sign in.** The desktop app and the tray sign in by themselves. In a browser, run `coral open` in a terminal on this computer; opening the dashboard any other way shows a "Coral is locked" page that explains this. It never asks for or shows a key. Signing in uses a one-time link.
+  - **Agents act only as themselves.** An agent's request must carry its own session token. A request that claims to be another agent, the Operator or another board is refused, as is one with a missing, old or wrong token.
+  - **Nothing inside an agent session can act as the Operator.** `coral-board`, `coral-agent` and `coral` sign their requests as you only in your own terminal, never inside an agent's session.
+  - Health checks keep working, and Coral Hub's own access rules are unchanged. Strict mode is a startup option only: it can't be changed through settings or Coral Hub, and agents don't inherit it.
+- **What it doesn't do:** it stops mistakes and agents acting as someone else through Coral's tools, not a malicious program running as your own user. See "Agent identity and sign-in links" in the auth docs for how to turn it on and how to recover.
+- **Sign-in redirects stay on this Coral.** A `return_to` address with a backslash, a control character or a second slash is refused, so a crafted sign-in link can't send the browser to another site.
+
+### Changes
+
+- **`coral-agent notify`** posts a notification from a hook or a workflow step (they used `curl`, which strict mode refuses).
+- The identity report lists the routes each caller would lose in strict mode, so you can check before turning it on.
+
+### Testing
+
+- `tests/stress/run_identity.sh --strict` runs a whole team (three teams of four agents, restarts, wake and resume) under strict mode and checks that only deliberate probes are refused.
+- A flaky dashboard test (agent_ui) is fixed.
+
+### For integrators (Coral Hub, scripts)
+
+- Strict mode answers **401** `dashboard_auth_required` (dashboard and `/ws/` without a sign-in), **401** `session_token_required` (agent tool without a valid token) and **403** `identity_mismatch` (a token used as someone else). A page load is redirected (307) to `/auth?locked=1&return_to=…`.
+- Scripts on this computer: use `coral-board` / `coral-agent` from your own terminal (they sign requests), or the API key. `GET /api/health` and `POST /api/cloud/cli-hello` stay open.
+- Requests through the Coral Hub tunnel are unaffected.
+
 ## v1.4.20 — Coral Hub tunnel hardening, phone View mode, lighter live updates
 
 **Security fixes for Coral Hub users — please upgrade.** This release closes the remaining findings of an audit of the Coral Hub tunnel and hub proxy, makes Coral Hub's View mode usable on phones, and makes the dashboard's live agent updates smaller.
