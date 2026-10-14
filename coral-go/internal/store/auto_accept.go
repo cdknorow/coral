@@ -180,7 +180,7 @@ func (s *SessionStore) ExpireAutoAccept(ctx context.Context, now time.Time) (int
 // the session is unknown).
 func (s *SessionStore) GetAutoAcceptState(ctx context.Context, sessionID string) (AutoAcceptState, error) {
 	var st AutoAcceptState
-	err := s.db.GetContext(ctx, &st, "SELECT "+autoAcceptCols+" FROM live_sessions WHERE session_id = ?", sessionID)
+	err := s.reader().GetContext(ctx, &st, "SELECT "+autoAcceptCols+" FROM live_sessions WHERE session_id = ?", sessionID)
 	if err == sql.ErrNoRows {
 		return AutoAcceptState{SessionID: sessionID}, nil
 	}
@@ -191,7 +191,7 @@ func (s *SessionStore) GetAutoAcceptState(ctx context.Context, sessionID string)
 // was paused, keyed by session id. Sessions that never used it are absent.
 func (s *SessionStore) GetAutoAcceptStates(ctx context.Context) (map[string]AutoAcceptState, error) {
 	var rows []AutoAcceptState
-	if err := s.db.SelectContext(ctx, &rows,
+	if err := s.reader().SelectContext(ctx, &rows,
 		"SELECT "+autoAcceptCols+` FROM live_sessions
 		 WHERE status = 'active' AND (auto_accept = 1 OR auto_accept_paused_code IS NOT NULL)`); err != nil {
 		return nil, err
@@ -206,7 +206,7 @@ func (s *SessionStore) GetAutoAcceptStates(ctx context.Context) (map[string]Auto
 // ListAutoAcceptSessions returns the active, awake sessions with auto-accept on.
 func (s *SessionStore) ListAutoAcceptSessions(ctx context.Context) ([]AutoAcceptState, error) {
 	var rows []AutoAcceptState
-	err := s.db.SelectContext(ctx, &rows,
+	err := s.reader().SelectContext(ctx, &rows,
 		"SELECT "+autoAcceptCols+` FROM live_sessions
 		 WHERE auto_accept = 1 AND status = 'active' AND is_sleeping = 0 AND is_archived = 0`)
 	return rows, err

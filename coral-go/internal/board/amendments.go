@@ -134,7 +134,7 @@ func (s *Store) AmendTask(ctx context.Context, project string, taskID int64, act
 
 func (s *Store) loadTaskAmendments(ctx context.Context, taskID int64) ([]TaskAmendment, error) {
 	var rows []TaskAmendment
-	if err := s.db.SelectContext(ctx, &rows, "SELECT id,revision,actor,created_at,reason,changes_json,previous_snapshot_json,effective_snapshot_json FROM task_amendments WHERE task_id=? ORDER BY revision", taskID); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, "SELECT id,revision,actor,created_at,reason,changes_json,previous_snapshot_json,effective_snapshot_json FROM task_amendments WHERE task_id=? ORDER BY revision", taskID); err != nil {
 		return nil, err
 	}
 	return rows, decodeAmendments(rows)

@@ -132,11 +132,33 @@ type SubscriberReminder struct {
 // Store provides message board operations with its own SQLite database.
 type Store struct {
 	db                      *sqlx.DB
+	readDB                  *sqlx.DB
 	sessionsDB              *sqlx.DB // optional reference to the main sessions DB for cross-DB queries
 	completionCheckRunner   CompletionCheckRunner
 	completionChecksEnabled bool
 	unreadCounts            unreadCountCache
 	waitChanges             waitSignal
+}
+
+func isInMemoryPath(dbPath string) bool {
+	return dbPath == ":memory:" || strings.HasPrefix(dbPath, "file::memory:") || strings.Contains(dbPath, "mode=memory")
+}
+
+func (s *Store) reader() *sqlx.DB {
+	if s.readDB != nil {
+		return s.readDB
+	}
+	return s.db
+}
+
+// Reader returns the read-only connection pool for the board database.
+func (s *Store) Reader() *sqlx.DB {
+	return s.reader()
+}
+
+// ReaderStats returns statistics for the read pool (or writer pool if in-memory).
+func (s *Store) ReaderStats() sql.DBStats {
+	return s.reader().Stats()
 }
 
 // UnreadState is the startup notification baseline for one active session.
@@ -219,12 +241,39 @@ func NewStoreWithKey(dbPath, key string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("recover task readiness: %w", err)
 	}
+
+	if isInMemoryPath(dbPath) {
+		s.readDB = db
+		return s, nil
+	}
+
+	readDSN := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)&_pragma=query_only(1)"
+	if key != "" {
+		readDSN = dbcrypt.EncryptedDSN(dbPath, key, dbcrypt.DSNOptions{ReadOnly: true, ForeignKeys: false})
+	}
+	readDB, err := sqlx.Open(driver, readDSN)
+	if err != nil {
+		db.Close()
+		return nil, fmt.Errorf("open board read database: %w", err)
+	}
+	readDB.SetMaxOpenConns(4)
+	readDB.SetMaxIdleConns(4)
+	s.readDB = readDB
 	return s, nil
 }
 
 // Close closes the database connection.
 func (s *Store) Close() error {
-	return s.db.Close()
+	var firstErr error
+	if s.readDB != nil && s.readDB != s.db {
+		if err := s.readDB.Close(); err != nil {
+			firstErr = err
+		}
+	}
+	if err := s.db.Close(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
 // EncryptionSelfTest exercises the board database through the real store path
@@ -261,7 +310,7 @@ func (s *Store) DeleteSubscriberReminder(ctx context.Context, project, subscribe
 
 func (s *Store) ListSubscriberReminders(ctx context.Context) ([]SubscriberReminder, error) {
 	var out []SubscriberReminder
-	err := s.db.SelectContext(ctx, &out, `SELECT project,subscriber_id,message,interval_seconds FROM board_reminders`)
+	err := s.reader().SelectContext(ctx, &out, `SELECT project,subscriber_id,message,interval_seconds FROM board_reminders`)
 	return out, err
 }
 
@@ -623,7 +672,7 @@ func (s *Store) AdvanceReadCursor(ctx context.Context, project, subscriberID str
 // ListSubscribers returns all active subscribers for a project.
 func (s *Store) ListSubscribers(ctx context.Context, project string) ([]Subscriber, error) {
 	var subs []Subscriber
-	err := s.db.SelectContext(ctx, &subs,
+	err := s.reader().SelectContext(ctx, &subs,
 		"SELECT * FROM board_subscribers WHERE project = ? AND is_active = 1 ORDER BY subscribed_at", project)
 	return subs, err
 }
@@ -631,7 +680,7 @@ func (s *Store) ListSubscribers(ctx context.Context, project string) ([]Subscrib
 // GetSubscription returns the active subscription for a subscriber.
 func (s *Store) GetSubscription(ctx context.Context, subscriberID string) (*Subscriber, error) {
 	var sub Subscriber
-	err := s.db.GetContext(ctx, &sub,
+	err := s.reader().GetContext(ctx, &sub,
 		"SELECT * FROM board_subscribers WHERE subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", subscriberID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -645,7 +694,7 @@ func (s *Store) GetSubscription(ctx context.Context, subscriberID string) (*Subs
 // than GetSubscription.
 func (s *Store) GetProjectSubscription(ctx context.Context, project, subscriberID string) (*Subscriber, error) {
 	var sub Subscriber
-	err := s.db.GetContext(ctx, &sub,
+	err := s.reader().GetContext(ctx, &sub,
 		"SELECT * FROM board_subscribers WHERE project = ? AND subscriber_id = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", project, subscriberID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -663,7 +712,7 @@ func (s *Store) GetTask(ctx context.Context, project string, taskID int64) (*Tas
 // multiple active subscriptions across different boards.
 func (s *Store) GetSubscriptionBySessionName(ctx context.Context, sessionName string) (*Subscriber, error) {
 	var sub Subscriber
-	err := s.db.GetContext(ctx, &sub,
+	err := s.reader().GetContext(ctx, &sub,
 		"SELECT * FROM board_subscribers WHERE session_name = ? AND is_active = 1 ORDER BY subscribed_at DESC LIMIT 1", sessionName)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -675,7 +724,7 @@ func (s *Store) GetSubscriptionBySessionName(ctx context.Context, sessionName st
 // (the tmux session identifier) for compatibility with live session lookups.
 func (s *Store) GetAllSubscriptions(ctx context.Context) (map[string]*Subscriber, error) {
 	var subs []Subscriber
-	err := s.db.SelectContext(ctx, &subs, "SELECT * FROM board_subscribers WHERE is_active = 1")
+	err := s.reader().SelectContext(ctx, &subs, "SELECT * FROM board_subscribers WHERE is_active = 1")
 	if err != nil {
 		return nil, err
 	}
@@ -770,7 +819,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 		ReceiveMode string `db:"receive_mode"`
 		CanPeek     int    `db:"can_peek"`
 	}
-	err := s.db.GetContext(ctx, &sub,
+	err := s.reader().GetContext(ctx, &sub,
 		"SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID)
 	if err != nil {
@@ -814,7 +863,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			 ORDER BY m.id ASC LIMIT ?`,
 			strings.Join(whereClauses, " OR "))
 		var candidates []Message
-		err = s.db.SelectContext(ctx, &candidates, query, args...)
+		err = s.reader().SelectContext(ctx, &candidates, query, args...)
 		if err != nil {
 			return nil, err
 		}
@@ -828,7 +877,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 			}
 		}
 	} else {
-		err = s.db.SelectContext(ctx, &messages,
+		err = s.reader().SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title
 			 FROM board_messages m
@@ -852,7 +901,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 
 	// Skip past own messages
 	var ownMax int64
-	s.db.GetContext(ctx, &ownMax,
+	s.reader().GetContext(ctx, &ownMax,
 		"SELECT COALESCE(MAX(id), 0) FROM board_messages WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID)
 	if ownMax > newCursor {
@@ -875,7 +924,7 @@ func (s *Store) ReadMessages(ctx context.Context, project, subscriberID string, 
 // this skips without their having been displayed.
 func (s *Store) MarkReadThrough(ctx context.Context, project, subscriberID string, throughID, fromID int64) (skipped int, firstSkipped, lastSkipped int64, err error) {
 	var lastReadID int64
-	if err = s.db.GetContext(ctx, &lastReadID,
+	if err = s.reader().GetContext(ctx, &lastReadID,
 		"SELECT last_read_id FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID); err != nil {
 		if err == sql.ErrNoRows {
@@ -891,7 +940,7 @@ func (s *Store) MarkReadThrough(ctx context.Context, project, subscriberID strin
 		First int64 `db:"first"`
 		Last  int64 `db:"last"`
 	}
-	if err = s.db.GetContext(ctx, &r,
+	if err = s.reader().GetContext(ctx, &r,
 		`SELECT COUNT(*) AS n, COALESCE(MIN(id), 0) AS first, COALESCE(MAX(id), 0) AS last FROM board_messages
 		 WHERE project = ? AND id > ? AND id < ? AND subscriber_id != ? AND subscriber_id NOT IN ('Coral Task Queue')`,
 		project, lastReadID, fromID, subscriberID); err != nil {
@@ -909,7 +958,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 	var messages []Message
 	var err error
 	if beforeID > 0 {
-		err = s.db.SelectContext(ctx, &messages,
+		err = s.reader().SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
 			        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
@@ -920,7 +969,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 			project, beforeID, limit, offset)
 	} else if offset > 0 {
 		// Paginated load: use ASC order with offset for consistent pagination
-		err = s.db.SelectContext(ctx, &messages,
+		err = s.reader().SelectContext(ctx, &messages,
 			`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
 			        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
@@ -931,7 +980,7 @@ func (s *Store) ListMessages(ctx context.Context, project string, limit, offset 
 			project, limit, offset)
 	} else {
 		// Initial load (offset=0): get most recent messages
-		err = s.db.SelectContext(ctx, &messages,
+		err = s.reader().SelectContext(ctx, &messages,
 			`SELECT * FROM (
 			    SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 			           COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
@@ -970,7 +1019,7 @@ const (
 // seeks the (project, id) index, so its cost does not grow with board size.
 func (s *Store) ListMessagesBefore(ctx context.Context, project string, beforeID int64, limit int) ([]Message, error) {
 	var messages []Message
-	err := s.db.SelectContext(ctx, &messages, listMessagesBeforeSQL, project, beforeID, limit)
+	err := s.reader().SelectContext(ctx, &messages, listMessagesBeforeSQL, project, beforeID, limit)
 	return messages, err
 }
 
@@ -978,21 +1027,21 @@ func (s *Store) ListMessagesBefore(ctx context.Context, project string, beforeID
 // oldest first: what arrived after the newest loaded message.
 func (s *Store) ListMessagesAfter(ctx context.Context, project string, afterID int64, limit int) ([]Message, error) {
 	var messages []Message
-	err := s.db.SelectContext(ctx, &messages, listMessagesAfterSQL, project, afterID, limit)
+	err := s.reader().SelectContext(ctx, &messages, listMessagesAfterSQL, project, afterID, limit)
 	return messages, err
 }
 
 // CountMessagesBefore counts the project's messages with id < beforeID.
 func (s *Store) CountMessagesBefore(ctx context.Context, project string, beforeID int64) (int, error) {
 	var count int
-	err := s.db.GetContext(ctx, &count, countMessagesBeforeSQL, project, beforeID)
+	err := s.reader().GetContext(ctx, &count, countMessagesBeforeSQL, project, beforeID)
 	return count, err
 }
 
 // GetMessageByID returns a single message by its ID.
 func (s *Store) GetMessageByID(ctx context.Context, id int64) (*Message, error) {
 	var msg Message
-	err := s.db.GetContext(ctx, &msg,
+	err := s.reader().GetContext(ctx, &msg,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(s.job_title, m.subscriber_id, 'Unknown') as job_title,
 		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
@@ -1015,7 +1064,7 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 		limit = 1000
 	}
 	var messages []Message
-	err := s.db.SelectContext(ctx, &messages,
+	err := s.reader().SelectContext(ctx, &messages,
 		`SELECT m.id, m.project, m.subscriber_id, m.session_id, m.content, m.created_at,
 		        COALESCE(bs.job_title, m.subscriber_id, 'Unknown') as job_title,
 		        m.target_group_id, m.external_json, m.origin, m.hub_user, m.is_system
@@ -1029,7 +1078,7 @@ func (s *Store) SearchMessageHits(ctx context.Context, query string, limit int) 
 // CountMessages returns the total message count for a project.
 func (s *Store) CountMessages(ctx context.Context, project string) (int, error) {
 	var count int
-	err := s.db.GetContext(ctx, &count,
+	err := s.reader().GetContext(ctx, &count,
 		"SELECT COUNT(*) FROM board_messages WHERE project = ?", project)
 	return count, err
 }
@@ -1146,7 +1195,7 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 		ReceiveMode string `db:"receive_mode"`
 		CanPeek     int    `db:"can_peek"`
 	}
-	err := s.db.GetContext(ctx, &sub,
+	err := s.reader().GetContext(ctx, &sub,
 		"SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project = ? AND subscriber_id = ?",
 		project, subscriberID)
 	if err != nil {
@@ -1170,7 +1219,7 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 
 	if receiveMode == "all" {
 		var count int
-		err := s.db.GetContext(ctx, &count,
+		err := s.reader().GetContext(ctx, &count,
 			`SELECT COUNT(*) FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != ?`+systemFilter,
 			project, sub.LastReadID, subscriberID)
 		return count, err
@@ -1191,7 +1240,7 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 
 	// Group-based mode: count messages from group members only
 	var memberIDs []string
-	err = s.db.SelectContext(ctx, &memberIDs,
+	err = s.reader().SelectContext(ctx, &memberIDs,
 		"SELECT subscriber_id FROM board_groups WHERE project = ? AND group_id = ?",
 		project, receiveMode)
 	if err != nil || len(memberIDs) == 0 {
@@ -1210,7 +1259,7 @@ func (s *Store) CheckUnread(ctx context.Context, project, subscriberID string) (
 		`SELECT COUNT(*) FROM board_messages
 		 WHERE project = ? AND id > ? AND subscriber_id != ?`+systemFilter+` AND subscriber_id IN (%s)`,
 		strings.Join(placeholders, ","))
-	err = s.db.GetContext(ctx, &count, query, args...)
+	err = s.reader().GetContext(ctx, &count, query, args...)
 	return count, err
 }
 
@@ -1224,7 +1273,7 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 		ReceiveMode string `db:"receive_mode"`
 		CanPeek     int    `db:"can_peek"`
 	}
-	if err := s.db.GetContext(ctx, &sub, "SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
+	if err := s.reader().GetContext(ctx, &sub, "SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
 		return 0, nil
 	}
 	if sub.ReceiveMode == "none" {
@@ -1245,7 +1294,7 @@ func (s *Store) LatestUnreadMessageID(ctx context.Context, project, subscriberID
 		where += " AND (" + strings.Join(parts, " OR ") + ")"
 	}
 	var latest int64
-	err := s.db.GetContext(ctx, &latest, "SELECT COALESCE(MAX(m.id),0) FROM board_messages m WHERE "+where, args...)
+	err := s.reader().GetContext(ctx, &latest, "SELECT COALESCE(MAX(m.id),0) FROM board_messages m WHERE "+where, args...)
 	return latest, err
 }
 
@@ -1271,7 +1320,7 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 		ReceiveMode string `db:"receive_mode"`
 		CanPeek     int    `db:"can_peek"`
 	}
-	if err := s.db.GetContext(ctx, &sub, "SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
+	if err := s.reader().GetContext(ctx, &sub, "SELECT last_read_id, job_title, receive_mode, can_peek FROM board_subscribers WHERE project=? AND subscriber_id=?", project, subscriberID); err != nil {
 		return false, nil
 	}
 	if sub.ReceiveMode == "none" {
@@ -1296,7 +1345,7 @@ func (s *Store) hasUnreadSenderMessage(ctx context.Context, project, subscriberI
 		where += " AND (" + strings.Join(parts, " OR ") + ")"
 	}
 	var found int
-	err := s.db.GetContext(ctx, &found, "SELECT 1 FROM board_messages m WHERE "+where+" LIMIT 1", args...)
+	err := s.reader().GetContext(ctx, &found, "SELECT 1 FROM board_messages m WHERE "+where+" LIMIT 1", args...)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -1339,7 +1388,7 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 			return nil, err
 		}
 	}
-	if err := s.db.SelectContext(ctx, &subs, s.db.Rebind(query), args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &subs, s.reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
 	if len(subs) == 0 {
@@ -1362,7 +1411,7 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 	if err != nil {
 		return nil, err
 	}
-	if err := s.db.SelectContext(ctx, &groupRows, s.db.Rebind(query), args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &groupRows, s.reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
 
@@ -1416,7 +1465,7 @@ func (s *Store) countUnread(ctx context.Context, sessionNames []string, retry bo
 		}
 
 		// Stream messages instead of retaining every unread body in memory.
-		rows, err := s.db.QueryxContext(ctx,
+		rows, err := s.reader().QueryxContext(ctx,
 			"SELECT id, subscriber_id, content FROM board_messages WHERE project = ? AND id > ? AND subscriber_id != 'Coral Task Queue' ORDER BY id",
 			project, minStart)
 		if err != nil {
@@ -1485,7 +1534,7 @@ func (s *Store) GetAllUnreadStates(ctx context.Context) (map[string]UnreadState,
 		SubscriberID string `db:"subscriber_id"`
 		SessionName  string `db:"session_name"`
 	}
-	if err := s.db.SelectContext(ctx, &subs,
+	if err := s.reader().SelectContext(ctx, &subs,
 		"SELECT project, subscriber_id, session_name FROM board_subscribers WHERE is_active = 1"); err != nil {
 		return nil, err
 	}
@@ -1529,7 +1578,7 @@ func (s *Store) RemoveFromGroup(ctx context.Context, project, groupID, subscribe
 // ListGroupMembers returns subscriber_ids in a group.
 func (s *Store) ListGroupMembers(ctx context.Context, project, groupID string) ([]string, error) {
 	var members []string
-	err := s.db.SelectContext(ctx, &members,
+	err := s.reader().SelectContext(ctx, &members,
 		"SELECT subscriber_id FROM board_groups WHERE project = ? AND group_id = ? ORDER BY subscriber_id",
 		project, groupID)
 	if err != nil {
@@ -1541,7 +1590,7 @@ func (s *Store) ListGroupMembers(ctx context.Context, project, groupID string) (
 // ListGroups returns all groups for a project with member counts.
 func (s *Store) ListGroups(ctx context.Context, project string) ([]GroupInfo, error) {
 	var groups []GroupInfo
-	err := s.db.SelectContext(ctx, &groups,
+	err := s.reader().SelectContext(ctx, &groups,
 		`SELECT group_id, COUNT(*) as member_count
 		 FROM board_groups WHERE project = ?
 		 GROUP BY group_id ORDER BY group_id`,
@@ -1567,7 +1616,7 @@ func (s *Store) DeleteMessage(ctx context.Context, messageID int64) (bool, error
 // GetWebhookTargets returns subscribers with webhook URLs (excluding sender).
 func (s *Store) GetWebhookTargets(ctx context.Context, project, excludeSubscriberID string) ([]Subscriber, error) {
 	var subs []Subscriber
-	err := s.db.SelectContext(ctx, &subs,
+	err := s.reader().SelectContext(ctx, &subs,
 		`SELECT * FROM board_subscribers
 		 WHERE project = ? AND subscriber_id != ? AND webhook_url IS NOT NULL AND webhook_url != '' AND is_active = 1`,
 		project, excludeSubscriberID)
@@ -1579,7 +1628,7 @@ func (s *Store) GetWebhookTargets(ctx context.Context, project, excludeSubscribe
 // ListProjects returns all known projects with subscriber and message counts.
 func (s *Store) ListProjects(ctx context.Context) ([]ProjectInfo, error) {
 	var projects []ProjectInfo
-	err := s.db.SelectContext(ctx, &projects,
+	err := s.reader().SelectContext(ctx, &projects,
 		`SELECT project,
 		        (SELECT COUNT(*) FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1) as subscriber_count,
 		        (SELECT COUNT(*) FROM board_messages m WHERE m.project = p.project) as message_count
@@ -1604,7 +1653,7 @@ type EnrichedProject struct {
 // ListProjectsEnriched returns board projects with timestamps, subscriber info, and participant names.
 func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, error) {
 	var projects []EnrichedProject
-	err := s.db.SelectContext(ctx, &projects,
+	err := s.reader().SelectContext(ctx, &projects,
 		`SELECT
 		     p.project,
 		     (SELECT COUNT(*) FROM board_subscribers s WHERE s.project = p.project AND s.is_active = 1) as subscriber_count,
@@ -1629,7 +1678,7 @@ func (s *Store) ListProjectsEnriched(ctx context.Context) ([]EnrichedProject, er
 // SearchMessages returns project names that have messages matching the query (LIKE search).
 func (s *Store) SearchMessages(ctx context.Context, query string) ([]string, error) {
 	var projects []string
-	err := s.db.SelectContext(ctx, &projects,
+	err := s.reader().SelectContext(ctx, &projects,
 		"SELECT DISTINCT project FROM board_messages WHERE content LIKE ? COLLATE NOCASE",
 		"%"+query+"%")
 	if err != nil {
@@ -1671,7 +1720,7 @@ func (s *Store) DeleteProject(ctx context.Context, project string) error {
 // getTaskByID fetches a task by ID and board_id.
 func (s *Store) getTaskByID(ctx context.Context, project string, taskID int64) (*Task, error) {
 	var t Task
-	err := s.db.GetContext(ctx, &t,
+	err := s.reader().GetContext(ctx, &t,
 		"SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE id = ? AND board_id = ?", taskID, project)
 	if err != nil {
 		return nil, err
@@ -1772,7 +1821,7 @@ func (s *Store) CreateTaskWithOpts(ctx context.Context, project, title, body, pr
 // ListTasks returns all tasks for a project, ordered by priority then ID.
 func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
-	err := s.db.SelectContext(ctx, &tasks,
+	err := s.reader().SelectContext(ctx, &tasks,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks WHERE board_id = ?
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
 		project)
@@ -1791,7 +1840,7 @@ func (s *Store) ListTasks(ctx context.Context, project string) ([]Task, error) {
 // thousands of queries holding the single connection per call.
 func (s *Store) ListOpenTasks(ctx context.Context, project string) ([]Task, error) {
 	var tasks []Task
-	err := s.db.SelectContext(ctx, &tasks,
+	err := s.reader().SelectContext(ctx, &tasks,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
 		 WHERE board_id = ? AND status IN ('pending', 'in_progress', 'blocked', 'draft')
 		 ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, id ASC`,
@@ -1809,7 +1858,7 @@ func (s *Store) ListAllTasks(ctx context.Context, limit int) ([]Task, error) {
 		limit = 100
 	}
 	var tasks []Task
-	err := s.db.SelectContext(ctx, &tasks,
+	err := s.reader().SelectContext(ctx, &tasks,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens FROM board_tasks
 		 ORDER BY created_at DESC, id DESC LIMIT ?`, limit)
 	if err != nil {
@@ -1857,7 +1906,7 @@ func (s *Store) loadBlockedBy(ctx context.Context, tasks []Task) {
 		Title            *string `db:"title"`
 		Status           *string `db:"status"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, args...); err != nil {
 		return
 	}
 	if len(rows) == 0 {
@@ -1894,7 +1943,7 @@ func (s *Store) HasActiveTaskForAssignee(ctx context.Context, project, assignee 
 	}
 
 	var count int
-	err := s.db.GetContext(ctx, &count,
+	err := s.reader().GetContext(ctx, &count,
 		`SELECT COUNT(1) FROM board_tasks
 		 WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress' AND id != ?`,
 		project, assignee, excludeTaskID)
@@ -1909,7 +1958,7 @@ func (s *Store) HasActiveTaskForAssignee(ctx context.Context, project, assignee 
 // example archived agents, which the session store knows about).
 func (s *Store) FindIdleSubscriber(ctx context.Context, project string, skip func(*Subscriber) bool) *Subscriber {
 	var subs []Subscriber
-	err := s.db.SelectContext(ctx, &subs,
+	err := s.reader().SelectContext(ctx, &subs,
 		`SELECT * FROM board_subscribers
 		 WHERE project = ? AND is_active = 1 AND session_name != ''
 		 AND subscriber_id NOT IN (
@@ -1930,7 +1979,7 @@ func (s *Store) FindIdleSubscriber(ctx context.Context, project string, skip fun
 // ActiveTaskForSubscriber returns the subscriber's current in-progress task, or nil.
 func (s *Store) ActiveTaskForSubscriber(ctx context.Context, project, subscriberID string) *Task {
 	var task Task
-	err := s.db.GetContext(ctx, &task,
+	err := s.reader().GetContext(ctx, &task,
 		`SELECT id, revision, board_id, title, body, status, priority, created_by, assigned_to, completed_by, completion_message, created_at, claimed_at, completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
 		 FROM board_tasks WHERE board_id = ? AND assigned_to = ? AND status = 'in_progress'
 		 ORDER BY claimed_at DESC LIMIT 1`, project, subscriberID)
@@ -2113,7 +2162,7 @@ func (s *Store) SnoozeTaskReminder(ctx context.Context, project string, taskID i
 // supplied time. Older databases use claimed_at until activity is recorded.
 func (s *Store) IdleTasks(ctx context.Context, project string, before time.Time) ([]Task, error) {
 	var tasks []Task
-	err := s.db.SelectContext(ctx, &tasks, `SELECT id, revision, board_id, title, body, status, priority,
+	err := s.reader().SelectContext(ctx, &tasks, `SELECT id, revision, board_id, title, body, status, priority,
 		created_by, assigned_to, completed_by, completion_message, created_at, claimed_at,
 		completed_at, session_id, cost_usd, input_tokens, output_tokens, cache_read_tokens,
 		cache_write_tokens FROM board_tasks
@@ -2135,7 +2184,7 @@ func (s *Store) computeAndStoreTaskCost(ctx context.Context, taskID int64) {
 		ClaimedAt   *string `db:"claimed_at"`
 		CompletedAt *string `db:"completed_at"`
 	}
-	if err := s.db.GetContext(ctx, &task,
+	if err := s.reader().GetContext(ctx, &task,
 		`SELECT session_id, claimed_at, completed_at FROM board_tasks WHERE id = ?`, taskID); err != nil {
 		return
 	}
@@ -2415,7 +2464,7 @@ func (s *Store) GetTaskDependencies(ctx context.Context, taskID int64) ([]TaskDe
 		Title            *string `db:"title"`
 		Status           *string `db:"status"`
 	}
-	err := s.db.SelectContext(ctx, &deps,
+	err := s.reader().SelectContext(ctx, &deps,
 		`SELECT td.blocked_by_task_id, td.blocked_by_board_id, bt.title, bt.status
 		 FROM task_dependencies td
 		 LEFT JOIN board_tasks bt ON bt.id = td.blocked_by_task_id
@@ -2449,7 +2498,7 @@ func (s *Store) ListDownstreamTasks(ctx context.Context, project string, upstrea
 		ID      int64  `db:"id"`
 		BoardID string `db:"board_id"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, `SELECT DISTINCT b.id, b.board_id
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT DISTINCT b.id, b.board_id
 		FROM task_dependencies d JOIN board_tasks b ON b.id = d.task_id
 		WHERE d.blocked_by_task_id = ? AND d.blocked_by_board_id = ?`, upstreamID, project); err != nil {
 		return nil, err
@@ -2731,7 +2780,7 @@ func (s *Store) ValidateDependencyDepth(ctx context.Context, taskID int64, deps 
 		visited[id] = true
 
 		var upstreamIDs []int64
-		if err := s.db.SelectContext(ctx, &upstreamIDs,
+		if err := s.reader().SelectContext(ctx, &upstreamIDs,
 			"SELECT blocked_by_task_id FROM task_dependencies WHERE task_id = ?", id); err != nil {
 			return depth, err
 		}
@@ -2785,7 +2834,7 @@ func (s *Store) GetTaskLiveCost(ctx context.Context, project string, taskID int6
 		SessionID *string `db:"session_id"`
 		ClaimedAt *string `db:"claimed_at"`
 	}
-	if err := s.db.GetContext(ctx, &task,
+	if err := s.reader().GetContext(ctx, &task,
 		`SELECT session_id, claimed_at FROM board_tasks WHERE id = ? AND board_id = ?`,
 		taskID, project); err != nil {
 		return nil, fmt.Errorf("task #%d not found", taskID)

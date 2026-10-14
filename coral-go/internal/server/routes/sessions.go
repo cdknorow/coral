@@ -1010,7 +1010,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 	}
 	if ls == nil {
 		var indexed bool
-		if err := h.db.GetContext(r.Context(), &indexed,
+		if err := h.db.Reader().GetContext(r.Context(), &indexed,
 			"SELECT EXISTS(SELECT 1 FROM session_index WHERE session_id = ?)", sessionID); err != nil {
 			errInternalServer(w, err.Error())
 			return
@@ -1048,7 +1048,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 	}
 
 	var status string
-	if err := h.db.GetContext(r.Context(), &status,
+	if err := h.db.Reader().GetContext(r.Context(), &status,
 		"SELECT status FROM live_sessions WHERE session_id = ?", sessionID); err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -1134,7 +1134,7 @@ func (h *SessionsHandler) validateExactLiveTarget(ctx context.Context, name, age
 		return nil, http.StatusNotFound, "live session not found"
 	}
 	var status string
-	if err := h.db.GetContext(ctx, &status,
+	if err := h.db.Reader().GetContext(ctx, &status,
 		"SELECT status FROM live_sessions WHERE session_id = ?", sessionID); err != nil {
 		slog.Warn("failed to validate live session metadata", "session_id", sessionID, "error", err)
 		return nil, http.StatusServiceUnavailable, "Agent metadata is temporarily unavailable; try again."
@@ -1657,11 +1657,11 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		IsSleeping int     `db:"is_sleeping"`
 		StoppedAt  *string `db:"stopped_at"`
 	}
-	err := h.db.GetContext(r.Context(), &row,
+	err := h.db.Reader().GetContext(r.Context(), &row,
 		"SELECT status, is_sleeping, stopped_at FROM live_sessions WHERE session_id = ?", sessionID)
 	if err == sql.ErrNoRows {
 		var indexed bool
-		if indexErr := h.db.GetContext(r.Context(), &indexed,
+		if indexErr := h.db.Reader().GetContext(r.Context(), &indexed,
 			"SELECT EXISTS(SELECT 1 FROM session_index WHERE session_id = ?)", sessionID); indexErr != nil || !indexed {
 			errNotFound(w, "session not found")
 			return
@@ -4136,7 +4136,7 @@ func (h *SessionsHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	// Resolve display_name from live session
 	var displayName *string
 	var dn string
-	err := h.db.GetContext(r.Context(), &dn,
+	err := h.db.Reader().GetContext(r.Context(), &dn,
 		"SELECT display_name FROM live_sessions WHERE agent_name = ? AND status = 'active' AND display_name IS NOT NULL LIMIT 1", name)
 	if err == nil && dn != "" {
 		displayName = &dn

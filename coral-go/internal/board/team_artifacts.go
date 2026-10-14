@@ -39,7 +39,7 @@ func (s *Store) TeamSubscriberSessions(ctx context.Context, project string) (map
 		SubscriberID string  `db:"subscriber_id"`
 		SessionName  *string `db:"session_name"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, `SELECT subscriber_id, session_name FROM board_subscribers WHERE project = ? AND subscriber_id IS NOT NULL`, project); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT subscriber_id, session_name FROM board_subscribers WHERE project = ? AND subscriber_id IS NOT NULL`, project); err != nil {
 		return nil, err
 	}
 	out := make(map[string]string, len(rows))
@@ -138,7 +138,7 @@ func (s *Store) ListTeamArtifactTasksQuery(ctx context.Context, q TeamArtifactQu
 	}
 	query += " ORDER BY t.id DESC LIMIT ?"
 	args = append(args, limit+1)
-	err = s.db.SelectContext(ctx, &rows, query, args...)
+	err = s.reader().SelectContext(ctx, &rows, query, args...)
 	if err != nil {
 		return nil, false, err
 	}

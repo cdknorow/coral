@@ -41,7 +41,7 @@ func (s *Store) loadWorkflowData(ctx context.Context, ids []int64) (map[int64]st
 			TaskID int64  `db:"task_id"`
 			Data   string `db:"data"`
 		}
-		if err := s.db.SelectContext(ctx, &rows, "SELECT task_id, data FROM task_workflows WHERE task_id IN ("+ph+")", args...); err != nil {
+		if err := s.reader().SelectContext(ctx, &rows, "SELECT task_id, data FROM task_workflows WHERE task_id IN ("+ph+")", args...); err != nil {
 			return err
 		}
 		for _, r := range rows {
@@ -79,7 +79,7 @@ func (s *Store) hydrateWorkflows(ctx context.Context, tasks []Task) {
 			TaskID int64 `db:"task_id"`
 			TaskAmendment
 		}
-		if err := s.db.SelectContext(ctx, &rows, "SELECT task_id,id,revision,actor,created_at,reason,changes_json,previous_snapshot_json,effective_snapshot_json FROM task_amendments WHERE task_id IN ("+ph+") ORDER BY task_id, revision", args...); err != nil {
+		if err := s.reader().SelectContext(ctx, &rows, "SELECT task_id,id,revision,actor,created_at,reason,changes_json,previous_snapshot_json,effective_snapshot_json FROM task_amendments WHERE task_id IN ("+ph+") ORDER BY task_id, revision", args...); err != nil {
 			return err
 		}
 		for _, r := range rows {
@@ -96,7 +96,7 @@ func (s *Store) hydrateWorkflows(ctx context.Context, tasks []Task) {
 	inputRows := make(map[int64][]dependencyInputRow)
 	inputsErr := forEachIDChunk(pendingIDs, func(ph string, args []any) error {
 		var rows []dependencyInputRow
-		if err := s.db.SelectContext(ctx, &rows, `SELECT d.task_id, b.id, b.board_id, b.status,
+		if err := s.reader().SelectContext(ctx, &rows, `SELECT d.task_id, b.id, b.board_id, b.status,
 	 COALESCE(r.condition, 'success') AS condition, COALESCE(r.required_artifacts, '[]') AS required_artifacts
 	 FROM task_dependencies d JOIN board_tasks b ON b.id = d.blocked_by_task_id AND b.board_id = d.blocked_by_board_id
 	 LEFT JOIN task_dependency_rules r ON r.task_id = d.task_id AND r.upstream_id = b.id
@@ -171,7 +171,7 @@ func (s *Store) loadDependencyRules(ctx context.Context, taskIDs []int64) (map[d
 			UpstreamID int64 `db:"upstream_id"`
 			dependencyRuleRow
 		}
-		if err := s.db.SelectContext(ctx, &rows, `SELECT d.task_id, b.id AS upstream_id,
+		if err := s.reader().SelectContext(ctx, &rows, `SELECT d.task_id, b.id AS upstream_id,
 	 COALESCE(r.condition,'success') AS condition, COALESCE(r.required_artifacts,'[]') AS required_artifacts, b.status, COALESCE(w.data,'{}') AS data
 	 FROM task_dependencies d JOIN board_tasks b ON b.id = d.blocked_by_task_id AND b.board_id = d.blocked_by_board_id
 	 LEFT JOIN task_dependency_rules r ON r.upstream_id = b.id AND r.task_id = d.task_id

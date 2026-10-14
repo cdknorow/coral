@@ -114,7 +114,7 @@ func (s *Store) ListTaskPage(ctx context.Context, project string, q TaskListQuer
 			return nil, fmt.Errorf("%w: a cursor continues status=%s", ErrBadTaskListQuery, TaskListCompleted)
 		}
 		var open []TaskListItem
-		if err = s.db.SelectContext(ctx, &open, `SELECT `+taskListColumns+`
+		if err = s.reader().SelectContext(ctx, &open, `SELECT `+taskListColumns+`
 			 WHERE t.board_id = ? AND t.`+openTaskStatusSQL+`
 			 ORDER BY CASE t.priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 END, t.id ASC`,
 			project); err != nil {
@@ -139,7 +139,7 @@ func (s *Store) ListTaskPage(ctx context.Context, project string, q TaskListQuer
 	if err := s.loadListBlockedBy(ctx, page.Tasks); err != nil {
 		return nil, err
 	}
-	if err := s.db.QueryRowxContext(ctx, `SELECT
+	if err := s.reader().QueryRowxContext(ctx, `SELECT
 		 COALESCE(SUM(CASE WHEN `+openTaskStatusSQL+` THEN 1 ELSE 0 END), 0),
 		 COALESCE(SUM(CASE WHEN `+doneTaskStatusSQL+` THEN 1 ELSE 0 END), 0)
 		 FROM board_tasks WHERE board_id = ?`, project).Scan(&page.TotalOpen, &page.TotalCompleted); err != nil {
@@ -168,7 +168,7 @@ func (s *Store) doneTaskPage(ctx context.Context, project, cursor string, limit 
 		}
 	}
 	var rows []TaskListItem
-	if err := s.db.SelectContext(ctx, &rows, `SELECT `+taskListColumns+` WHERE `+where+`
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT `+taskListColumns+` WHERE `+where+`
 		 ORDER BY t.completed_at DESC, t.id DESC LIMIT ?`, append(args, limit+1)...); err != nil {
 		return nil, "", err
 	}
@@ -200,7 +200,7 @@ func (s *Store) idTaskPage(ctx context.Context, project, status, cursor string, 
 		args = append(args, id)
 	}
 	var rows []TaskListItem
-	if err := s.db.SelectContext(ctx, &rows, `SELECT `+taskListColumns+` WHERE `+where+`
+	if err := s.reader().SelectContext(ctx, &rows, `SELECT `+taskListColumns+` WHERE `+where+`
 		 ORDER BY `+order+` LIMIT ?`, append(args, limit+1)...); err != nil {
 		return nil, "", err
 	}

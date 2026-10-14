@@ -26,7 +26,7 @@ func (s *TaskStore) GetEditedFileCounts(ctx context.Context, sessionIDs []string
 		SessionID string `db:"session_id"`
 		Count     int    `db:"cnt"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, s.db.Rebind(query), args...); err != nil {
+	if err := s.db.Reader().SelectContext(ctx, &rows, s.db.Reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
 	for _, row := range rows {
@@ -57,7 +57,7 @@ func (s *GitStore) GetLiveGitState(ctx context.Context, sessionAgents map[string
 		TargetSessionID string `db:"target_session_id"`
 		GitSnapshot
 	}
-	if err := s.db.SelectContext(ctx, &rows, s.db.Rebind(query), args...); err != nil {
+	if err := s.db.Reader().SelectContext(ctx, &rows, s.db.Reader().Rebind(query), args...); err != nil {
 		return nil, err
 	}
 	for i := range rows {

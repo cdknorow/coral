@@ -126,3 +126,37 @@ func dbcryptKeyHex(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])
 }
+
+// #3441: the encrypted DB reader pool uses query_only(1), sees the writer's WAL,
+// and enforces read-only access.
+func TestEncryptedDatabaseReaderPoolQueryOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sessions.db")
+	db, err := OpenWithKey(context.Background(), path, settingsTestKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	reader := db.Reader()
+	if reader == db.DB {
+		t.Fatal("expected separate reader pool for disk-backed encrypted db")
+	}
+
+	for name, want := range map[string]string{
+		"journal_mode": "wal",
+		"foreign_keys": "1",
+		"busy_timeout": "30000",
+		"synchronous":  "1",
+		"temp_store":   "2",
+		"cache_size":   "-8000",
+		"query_only":   "1",
+	} {
+		if got := pragma(t, reader, name); got != want {
+			t.Errorf("reader PRAGMA %s = %s, want %s", name, got, want)
+		}
+	}
+
+	if _, err := reader.Exec(`INSERT INTO user_settings(key, value) VALUES ('k', 'v')`); err == nil {
+		t.Fatal("expected write to fail on encrypted reader pool")
+	}
+}

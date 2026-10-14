@@ -374,7 +374,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			BoardName   *string `db:"board_name"`
 			DisplayName *string `db:"display_name"`
 		}
-		if err := h.db.SelectContext(ctx, &rows, "SELECT session_id, board_name, display_name FROM live_sessions WHERE board_name IS NOT NULL AND status = 'active'"); err == nil {
+		if err := h.db.Reader().SelectContext(ctx, &rows, "SELECT session_id, board_name, display_name FROM live_sessions WHERE board_name IS NOT NULL AND status = 'active'"); err == nil {
 			for _, r := range rows {
 				bn, dn := "", ""
 				if r.BoardName != nil {

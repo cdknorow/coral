@@ -99,12 +99,16 @@ func (s *SessionStore) DB() *DB {
 	return s.db
 }
 
+func (s *SessionStore) reader() *sqlx.DB {
+	return s.db.Reader()
+}
+
 // ── User Settings ──────────────────────────────────────────────────────
 
 // GetSettings returns all user settings as a map.
 func (s *SessionStore) GetSettings(ctx context.Context) (map[string]string, error) {
 	var settings []UserSetting
-	if err := s.db.SelectContext(ctx, &settings, "SELECT key, value FROM user_settings"); err != nil {
+	if err := s.reader().SelectContext(ctx, &settings, "SELECT key, value FROM user_settings"); err != nil {
 		return nil, err
 	}
 	result := make(map[string]string, len(settings))
@@ -138,7 +142,7 @@ func (s *SessionStore) DeleteSetting(ctx context.Context, key string) (bool, err
 // GetSessionNotes returns notes metadata for a session.
 func (s *SessionStore) GetSessionNotes(ctx context.Context, sessionID string) (*SessionMeta, error) {
 	var meta SessionMeta
-	err := s.db.GetContext(ctx, &meta,
+	err := s.reader().GetContext(ctx, &meta,
 		`SELECT notes_md, auto_summary, is_user_edited, updated_at
 		 FROM session_meta WHERE session_id = ?`, sessionID)
 	if err == sql.ErrNoRows {
@@ -184,7 +188,7 @@ func (s *SessionStore) SaveAutoSummary(ctx context.Context, sessionID, summary s
 // GetDisplayName returns the display name for a session.
 func (s *SessionStore) GetDisplayName(ctx context.Context, sessionID string) (*string, error) {
 	var name *string
-	err := s.db.GetContext(ctx, &name,
+	err := s.reader().GetContext(ctx, &name,
 		"SELECT display_name FROM session_meta WHERE session_id = ?", sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -222,7 +226,7 @@ func (s *SessionStore) GetDisplayNames(ctx context.Context, sessionIDs []string)
 		SessionID   string `db:"session_id"`
 		DisplayName string `db:"display_name"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 
@@ -249,7 +253,7 @@ func (s *SessionStore) GetLiveDisplayNames(ctx context.Context, sessionIDs []str
 		SessionID   string `db:"session_id"`
 		DisplayName string `db:"display_name"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 	result := make(map[string]string, len(rows))
@@ -291,7 +295,7 @@ func (s *SessionStore) MigrateSessionTags(ctx context.Context, oldSessionID, new
 // ListTags returns all defined tags.
 func (s *SessionStore) ListTags(ctx context.Context) ([]Tag, error) {
 	var tags []Tag
-	err := s.db.SelectContext(ctx, &tags, "SELECT id, name, color FROM tags ORDER BY name")
+	err := s.reader().SelectContext(ctx, &tags, "SELECT id, name, color FROM tags ORDER BY name")
 	return tags, err
 }
 
@@ -321,7 +325,7 @@ func (s *SessionStore) DeleteTag(ctx context.Context, tagID int64) error {
 // GetSessionTags returns tags associated with a session.
 func (s *SessionStore) GetSessionTags(ctx context.Context, sessionID string) ([]Tag, error) {
 	var tags []Tag
-	err := s.db.SelectContext(ctx, &tags,
+	err := s.reader().SelectContext(ctx, &tags,
 		`SELECT t.id, t.name, t.color FROM tags t
 		 JOIN session_tags st ON st.tag_id = t.id
 		 WHERE st.session_id = ? ORDER BY t.name`, sessionID)
@@ -349,7 +353,7 @@ func (s *SessionStore) RemoveSessionTag(ctx context.Context, sessionID string, t
 // GetFolderTags returns tags for a folder.
 func (s *SessionStore) GetFolderTags(ctx context.Context, folderName string) ([]Tag, error) {
 	var tags []Tag
-	err := s.db.SelectContext(ctx, &tags,
+	err := s.reader().SelectContext(ctx, &tags,
 		`SELECT t.id, t.name, t.color FROM tags t
 		 JOIN folder_tags ft ON ft.tag_id = t.id
 		 WHERE ft.folder_name = ? ORDER BY t.name`, folderName)
@@ -380,7 +384,7 @@ func (s *SessionStore) GetAllFolderTags(ctx context.Context) (map[string][]Tag, 
 		Name       string `db:"name"`
 		Color      string `db:"color"`
 	}
-	err := s.db.SelectContext(ctx, &rows,
+	err := s.reader().SelectContext(ctx, &rows,
 		`SELECT ft.folder_name, t.id, t.name, t.color FROM folder_tags ft
 		 JOIN tags t ON t.id = ft.tag_id ORDER BY t.name`)
 	if err != nil {
@@ -437,7 +441,7 @@ func (s *SessionStore) UpsertSessionIndex(ctx context.Context, idx *SessionIndex
 // callers must use the source file to recover provider-specific identity.
 func (s *SessionStore) GetIndexedSession(ctx context.Context, sessionID string) (*SessionIndex, error) {
 	var idx SessionIndex
-	err := s.db.GetContext(ctx, &idx,
+	err := s.reader().GetContext(ctx, &idx,
 		`SELECT session_id, source_type, source_file, first_timestamp, last_timestamp,
 			message_count, display_summary, agent_name, display_name, indexed_at, file_mtime
 		 FROM session_index WHERE session_id = ?`, sessionID)
@@ -487,7 +491,7 @@ func (s *SessionStore) MarkSummarized(ctx context.Context, sessionID, status str
 // GetPendingSummaries returns session IDs pending summarization.
 func (s *SessionStore) GetPendingSummaries(ctx context.Context, limit int) ([]string, error) {
 	var ids []string
-	err := s.db.SelectContext(ctx, &ids,
+	err := s.reader().SelectContext(ctx, &ids,
 		"SELECT session_id FROM summarizer_queue WHERE status = 'pending' LIMIT ?", limit)
 	return ids, err
 }
@@ -508,7 +512,7 @@ func (s *SessionStore) GetAgentNames(ctx context.Context, sessionIDs []string) (
 		AgentName   string  `db:"agent_name"`
 		DisplayName *string `db:"display_name"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 	result := make(map[string][2]string, len(rows))
@@ -536,7 +540,7 @@ func (s *SessionStore) GetIndexedMtimes(ctx context.Context) (map[string]float64
 		SourceFile string  `db:"source_file"`
 		FileMtime  float64 `db:"file_mtime"`
 	}
-	err := s.db.SelectContext(ctx, &rows,
+	err := s.reader().SelectContext(ctx, &rows,
 		`SELECT si.source_file, si.file_mtime FROM session_index si
 		 WHERE EXISTS (SELECT 1 FROM session_fts f WHERE f.session_id = si.session_id)`)
 	if err != nil {
@@ -684,7 +688,7 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 		return nil, err
 	}
 	var total int
-	if err := s.db.GetContext(ctx, &total, countSQL, countArgs...); err != nil {
+	if err := s.reader().GetContext(ctx, &total, countSQL, countArgs...); err != nil {
 		return nil, err
 	}
 
@@ -711,7 +715,7 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 		AgentName      *string `db:"agent_name"`
 		DisplayName    *string `db:"display_name"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, pageArgs...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, pageArgs...); err != nil {
 		return nil, err
 	}
 
@@ -745,7 +749,7 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 			AutoSummary  string `db:"auto_summary"`
 			IsUserEdited bool   `db:"is_user_edited"`
 		}
-		if err := s.db.SelectContext(ctx, &metaRows, metaQuery, metaArgs...); err == nil {
+		if err := s.reader().SelectContext(ctx, &metaRows, metaQuery, metaArgs...); err == nil {
 			for _, r := range metaRows {
 				content := r.NotesMD
 				if content == "" {
@@ -775,7 +779,7 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 			Name      string `db:"name"`
 			Color     string `db:"color"`
 		}
-		if err := s.db.SelectContext(ctx, &tagRows, tagQuery, tagArgs...); err == nil {
+		if err := s.reader().SelectContext(ctx, &tagRows, tagQuery, tagArgs...); err == nil {
 			for _, r := range tagRows {
 				tagsMap[r.SessionID] = append(tagsMap[r.SessionID], Tag{
 					ID: r.ID, Name: r.Name, Color: r.Color,
@@ -797,7 +801,7 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 			SessionID string `db:"session_id"`
 			Branch    string `db:"branch"`
 		}
-		if err := s.db.SelectContext(ctx, &branchRows, branchQuery, branchArgs...); err == nil {
+		if err := s.reader().SelectContext(ctx, &branchRows, branchQuery, branchArgs...); err == nil {
 			for _, r := range branchRows {
 				branchMap[r.SessionID] = r.Branch
 			}
@@ -812,7 +816,7 @@ func (s *SessionStore) ListSessionsPaged(ctx context.Context, params SessionList
 			AgentName   string  `db:"agent_name"`
 			DisplayName *string `db:"display_name"`
 		}
-		if err := s.db.SelectContext(ctx, &agentRows, agentQuery, agentArgs...); err == nil {
+		if err := s.reader().SelectContext(ctx, &agentRows, agentQuery, agentArgs...); err == nil {
 			for _, r := range agentRows {
 				agentMap[r.SessionID] = struct {
 					AgentName   string
@@ -942,7 +946,7 @@ func (s *SessionStore) GetStoppedSessions(ctx context.Context, sessionIDs []stri
 		SessionID string `db:"session_id"`
 		StoppedAt string `db:"stopped_at"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 	for _, r := range rows {
@@ -954,7 +958,7 @@ func (s *SessionStore) GetStoppedSessions(ctx context.Context, sessionIDs []stri
 // GetAllLiveSessions returns all registered live sessions.
 func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, error) {
 	var sessions []LiveSession
-	err := s.db.SelectContext(ctx, &sessions,
+	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
 		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE status = 'active' ORDER BY created_at`)
@@ -964,7 +968,7 @@ func (s *SessionStore) GetAllLiveSessions(ctx context.Context) ([]LiveSession, e
 // CountActiveLiveSessions returns the number of non-sleeping live sessions.
 func (s *SessionStore) CountActiveLiveSessions(ctx context.Context) (int, error) {
 	var count int
-	err := s.db.GetContext(ctx, &count,
+	err := s.reader().GetContext(ctx, &count,
 		"SELECT COUNT(*) FROM live_sessions WHERE is_sleeping = 0 AND status = 'active'")
 	return count, err
 }
@@ -972,7 +976,7 @@ func (s *SessionStore) CountActiveLiveSessions(ctx context.Context) (int, error)
 // GetBoardSessions returns all live sessions on a given board.
 func (s *SessionStore) GetBoardSessions(ctx context.Context, boardName string) ([]LiveSession, error) {
 	var sessions []LiveSession
-	err := s.db.SelectContext(ctx, &sessions,
+	err := s.reader().SelectContext(ctx, &sessions,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
 		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, is_sleeping, is_archived, board_type, capabilities, model, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at
 		 FROM live_sessions WHERE board_name = ? AND status = 'active' ORDER BY created_at`, boardName)
@@ -982,7 +986,7 @@ func (s *SessionStore) GetBoardSessions(ctx context.Context, boardName string) (
 // CountLiveSessions returns the total number of live sessions (including sleeping).
 func (s *SessionStore) CountLiveSessions(ctx context.Context) (int, error) {
 	var count int
-	err := s.db.GetContext(ctx, &count,
+	err := s.reader().GetContext(ctx, &count,
 		"SELECT COUNT(*) FROM live_sessions WHERE status = 'active'")
 	return count, err
 }
@@ -1013,7 +1017,7 @@ func (s *SessionStore) ResolveByPIDs(ctx context.Context, pids []int) (*LiveSess
 	}
 	query = s.db.Rebind(query)
 	var ls LiveSession
-	err = s.db.GetContext(ctx, &ls, query, args...)
+	err = s.reader().GetContext(ctx, &ls, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1023,7 +1027,7 @@ func (s *SessionStore) ResolveByPIDs(ctx context.Context, pids []int) (*LiveSess
 // CountBoardSessions returns the number of live sessions on a given board.
 func (s *SessionStore) CountBoardSessions(ctx context.Context, boardName string) (int, error) {
 	var count int
-	err := s.db.GetContext(ctx, &count,
+	err := s.reader().GetContext(ctx, &count,
 		"SELECT COUNT(*) FROM live_sessions WHERE board_name = ? AND status = 'active'", boardName)
 	return count, err
 }
@@ -1031,7 +1035,7 @@ func (s *SessionStore) CountBoardSessions(ctx context.Context, boardName string)
 // GetLiveSessionPromptInfo returns prompt, board_name, and board_server for a live session.
 func (s *SessionStore) GetLiveSessionPromptInfo(ctx context.Context, sessionID string) (*LiveSession, error) {
 	var ls LiveSession
-	err := s.db.GetContext(ctx, &ls,
+	err := s.reader().GetContext(ctx, &ls,
 		"SELECT prompt, board_name, board_server, board_type FROM live_sessions WHERE session_id = ?", sessionID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -1042,7 +1046,7 @@ func (s *SessionStore) GetLiveSessionPromptInfo(ctx context.Context, sessionID s
 // GetLiveSession returns a full live session record by session_id.
 func (s *SessionStore) GetLiveSession(ctx context.Context, sessionID string) (*LiveSession, error) {
 	var ls LiveSession
-	err := s.db.GetContext(ctx, &ls,
+	err := s.reader().GetContext(ctx, &ls,
 		`SELECT session_id, agent_type, agent_name, working_dir, display_name,
 		 resume_from_id, flags, is_job, prompt, board_name, board_server, backend, icon, name_color, is_sleeping, is_archived, sleep_reason, board_type, git_diff_mode, capabilities, model, context_window, tools, mcp_servers, pid, worktree_path, worktree_repo, team_id, created_at, stopped_at, status
 		 FROM live_sessions WHERE session_id = ?`, sessionID)
@@ -1193,7 +1197,7 @@ func (s *SessionStore) GetNameColors(ctx context.Context, sessionIDs []string) (
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryxContext(ctx, query, args...)
+	rows, err := s.reader().QueryxContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1219,7 +1223,7 @@ func (s *SessionStore) GetIcons(ctx context.Context, sessionIDs []string) (map[s
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryxContext(ctx, query, args...)
+	rows, err := s.reader().QueryxContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1310,7 +1314,7 @@ func (s *SessionStore) SetSessionArchived(ctx context.Context, sessionID string,
 // IsSessionArchived reports whether an active live session is archived.
 func (s *SessionStore) IsSessionArchived(ctx context.Context, sessionID string) (bool, error) {
 	var archived bool
-	err := s.db.GetContext(ctx, &archived,
+	err := s.reader().GetContext(ctx, &archived,
 		"SELECT EXISTS(SELECT 1 FROM live_sessions WHERE session_id = ? AND status = 'active' AND is_archived = 1)", sessionID)
 	return archived, err
 }
@@ -1319,7 +1323,7 @@ func (s *SessionStore) IsSessionArchived(ctx context.Context, sessionID string) 
 // A board with any awake session is not considered sleeping.
 func (s *SessionStore) GetSleepingBoardNames(ctx context.Context) ([]string, error) {
 	var names []string
-	err := s.db.SelectContext(ctx, &names,
+	err := s.reader().SelectContext(ctx, &names,
 		`SELECT board_name FROM live_sessions WHERE board_name IS NOT NULL AND status = 'active'
 		 GROUP BY board_name HAVING COUNT(*) = SUM(CASE WHEN is_sleeping = 1 THEN 1 ELSE 0 END)`)
 	if err != nil {
@@ -1364,7 +1368,7 @@ func (s *SessionStore) GetSessionDuration(ctx context.Context, sessionID string)
 		StoppedAt *string `db:"stopped_at"`
 		Status    string  `db:"status"`
 	}
-	err := s.db.GetContext(ctx, &result,
+	err := s.reader().GetContext(ctx, &result,
 		"SELECT created_at, stopped_at, status FROM live_sessions WHERE session_id = ?", sessionID)
 	if err != nil {
 		return 0, err
@@ -1407,7 +1411,7 @@ func (s *SessionStore) GetRecentStoppedSessions(ctx context.Context, since strin
 	}
 	query += " ORDER BY stopped_at DESC LIMIT ?"
 	args = append(args, limit)
-	err := s.db.SelectContext(ctx, &sessions, query, args...)
+	err := s.reader().SelectContext(ctx, &sessions, query, args...)
 	return sessions, err
 }
 

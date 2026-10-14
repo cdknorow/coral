@@ -281,7 +281,7 @@ type dependencyRuleRow struct {
 
 func (s *Store) loadDependencyRule(ctx context.Context, id int64, d *TaskDep) error {
 	var row dependencyRuleRow
-	err := s.db.GetContext(ctx, &row, `SELECT COALESCE(r.condition,'success') AS condition, COALESCE(r.required_artifacts,'[]') AS required_artifacts, b.status, COALESCE(w.data,'{}') AS data
+	err := s.reader().GetContext(ctx, &row, `SELECT COALESCE(r.condition,'success') AS condition, COALESCE(r.required_artifacts,'[]') AS required_artifacts, b.status, COALESCE(w.data,'{}') AS data
  FROM board_tasks b LEFT JOIN task_dependency_rules r ON r.upstream_id=b.id AND r.task_id=?
  LEFT JOIN task_workflows w ON w.task_id=b.id WHERE b.id=? AND b.board_id=?`, id, d.TaskID, d.BoardID)
 	if err == sql.ErrNoRows {
@@ -344,7 +344,7 @@ func (s *Store) prepareWorkflow(ctx context.Context, project string, w TaskWorkf
 			continue
 		}
 		var status string
-		if err := s.db.GetContext(ctx, &status, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", id, project); err != nil {
+		if err := s.reader().GetContext(ctx, &status, "SELECT status FROM board_tasks WHERE id = ? AND board_id = ?", id, project); err != nil {
 			return w, fmt.Errorf("related task #%d not found on this board", id)
 		}
 		if id == w.RetryOf && status != "completed" && status != "skipped" {
@@ -355,7 +355,7 @@ func (s *Store) prepareWorkflow(ctx context.Context, project string, w TaskWorkf
 }
 
 func (s *Store) hydrateWorkflow(ctx context.Context, t *Task) error {
-	w, err := loadWorkflow(ctx, s.db, t.ID)
+	w, err := loadWorkflow(ctx, s.reader(), t.ID)
 	if err != nil {
 		return err
 	}
@@ -365,7 +365,7 @@ func (s *Store) hydrateWorkflow(ctx context.Context, t *Task) error {
 	}
 	finishWorkflow(t, w)
 	if t.Status == "pending" {
-		inputs, _, err := dependencyInputs(ctx, s.db, t.ID)
+		inputs, _, err := dependencyInputs(ctx, s.reader(), t.ID)
 		if err != nil {
 			return err
 		}

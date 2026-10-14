@@ -65,7 +65,7 @@ func loadWorkingMode(ctx context.Context, db sqlx.QueryerContext, project string
 	return m, err
 }
 func (s *Store) GetWorkingMode(ctx context.Context, project string) (WorkingMode, error) {
-	return loadWorkingMode(ctx, s.db, project)
+	return loadWorkingMode(ctx, s.reader(), project)
 }
 func (s *Store) SetWorkingMode(ctx context.Context, project string, m WorkingMode) (WorkingMode, error) {
 	preset, err := loadWorkflowPreset(ctx, s.db, project, m.Mode)

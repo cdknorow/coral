@@ -101,7 +101,7 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 		log.Printf("Warning: failed to open board store: %v", err)
 	}
 	if boardStore != nil && db != nil {
-		boardStore.SetSessionsDB(db.DB)
+		boardStore.SetSessionsDB(db.Reader())
 	}
 
 	// Initialize API key auth

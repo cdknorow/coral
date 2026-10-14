@@ -67,7 +67,7 @@ func DescribeTaskBlockage(id int64, title string, deps []TaskDep) TaskBlockage {
 // otherwise eligible blocked tasks. This is diagnostic only, never a claim.
 func (s *Store) BlockedTasksForSubscriber(ctx context.Context, project, subscriber string, requestedID int64) ([]TaskBlockage, error) {
 	var rows []Task
-	err := s.db.SelectContext(ctx, &rows, `SELECT id,title FROM board_tasks WHERE board_id=? AND status='blocked' AND (assigned_to=? OR assigned_to IS NULL OR assigned_to='') AND (?=0 OR id=?) ORDER BY id LIMIT 20`, project, subscriber, requestedID, requestedID)
+	err := s.reader().SelectContext(ctx, &rows, `SELECT id,title FROM board_tasks WHERE board_id=? AND status='blocked' AND (assigned_to=? OR assigned_to IS NULL OR assigned_to='') AND (?=0 OR id=?) ORDER BY id LIMIT 20`, project, subscriber, requestedID, requestedID)
 	if err != nil {
 		return nil, err
 	}

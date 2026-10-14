@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,16 +22,40 @@ import (
 // DB wraps an sqlx.DB with schema management and migration support.
 type DB struct {
 	*sqlx.DB
+	readDB     *sqlx.DB
 	TaskEngine *board.Store
 
 	callMetricsInit sync.Once
 	callMetrics     *callMetricBuffer
 }
 
-// Close writes queued request metrics, then closes the database.
+// Reader returns the read-only connection pool, or the primary connection
+// if no separate read pool exists (such as for in-memory databases).
+func (d *DB) Reader() *sqlx.DB {
+	if d.readDB != nil {
+		return d.readDB
+	}
+	return d.DB
+}
+
+// ReaderStats returns database stats for the read-only connection pool.
+func (d *DB) ReaderStats() sql.DBStats {
+	return d.Reader().Stats()
+}
+
+// Close writes queued request metrics, then closes the database and read pool.
 func (d *DB) Close() error {
 	d.closeCallMetrics()
-	return d.DB.Close()
+	var firstErr error
+	if d.readDB != nil && d.readDB != d.DB {
+		if err := d.readDB.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if err := d.DB.Close(); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	return firstErr
 }
 
 // Open creates a new DB connection to the given SQLite path.
@@ -101,7 +126,37 @@ func openWithDriver(ctx context.Context, dbPath, key string) (*DB, error) {
 		reportForeignKeyOrphans(ctx, dbPath, key)
 	}
 
+	if isInMemoryPath(dbPath) {
+		d.readDB = db
+	} else {
+		readDSN := dbPath + "?_pragma=busy_timeout(30000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)&_pragma=temp_store(MEMORY)&_pragma=cache_size(-8000)&_pragma=query_only(1)"
+		if key != "" {
+			readDSN = dbcrypt.EncryptedDSN(dbPath, key, dbcrypt.DSNOptions{ReadOnly: true, ForeignKeys: true})
+		}
+		readDB, err := sqlx.Open(driver, readDSN)
+		if err != nil {
+			d.Close()
+			return nil, fmt.Errorf("open read database: %w", err)
+		}
+		readDB.SetMaxOpenConns(4)
+		readDB.SetMaxIdleConns(4)
+		d.readDB = readDB
+	}
+
 	return d, nil
+}
+
+func isInMemoryPath(dbPath string) bool {
+	if dbPath == "" || dbPath == ":memory:" {
+		return true
+	}
+	if strings.Contains(dbPath, ":memory:") {
+		return true
+	}
+	if strings.HasPrefix(dbPath, "file:") && strings.Contains(dbPath, "mode=memory") {
+		return true
+	}
+	return false
 }
 
 // ensureSchema creates all tables, indexes, and runs migrations.

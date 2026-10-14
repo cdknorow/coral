@@ -304,7 +304,7 @@ func (s *DB) CallMetricSummary(ctx context.Context, since time.Time) ([]CallMetr
 		return nil, err
 	}
 	var out []CallMetricSummary
-	err := s.SelectContext(ctx, &out, `SELECT cm.operation, cm.call_type,
+	err := s.Reader().SelectContext(ctx, &out, `SELECT cm.operation, cm.call_type,
 		COALESCE(NULLIF(ls.display_name, ''), cm.agent_name, '') AS agent_name,
 		COALESCE(NULLIF(cm.board_name, ''), ls.board_name, '') AS board_name,
 		COUNT(*) AS calls,

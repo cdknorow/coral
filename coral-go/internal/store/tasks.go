@@ -83,6 +83,10 @@ func NewTaskStore(db *DB) *TaskStore {
 	return &TaskStore{db: db}
 }
 
+func (s *TaskStore) reader() *sqlx.DB {
+	return s.db.Reader()
+}
+
 // ── Agent Tasks ────────────────────────────────────────────────────────
 
 // ListAgentTasks returns tasks for an agent, optionally scoped by session.
@@ -90,7 +94,7 @@ func (s *TaskStore) ListAgentTasks(ctx context.Context, agentName string, sessio
 	filter, filterArgs := sessionFilter(sessionID)
 	args := append([]interface{}{agentName}, filterArgs...)
 	var tasks []AgentTask
-	err := s.db.SelectContext(ctx, &tasks,
+	err := s.reader().SelectContext(ctx, &tasks,
 		`SELECT id, agent_name, session_id, title, body, priority, completion_message, completed, sort_order, created_at, updated_at,
 		        started_at, completed_at, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, display_name
 		 FROM agent_tasks WHERE agent_name = ?`+filter+` ORDER BY sort_order`,
@@ -114,7 +118,7 @@ func (s *TaskStore) CreateAgentTask(ctx context.Context, agentName, title string
 // GetAgentTask returns one agent task by ID, or nil.
 func (s *TaskStore) GetAgentTask(ctx context.Context, taskID int64) (*AgentTask, error) {
 	var t AgentTask
-	err := s.db.GetContext(ctx, &t, "SELECT * FROM agent_tasks WHERE id = ?", taskID)
+	err := s.reader().GetContext(ctx, &t, "SELECT * FROM agent_tasks WHERE id = ?", taskID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -278,7 +282,7 @@ func (s *TaskStore) computeAgentTaskCost(ctx context.Context, taskID int64, comp
 		SessionID *string `db:"session_id"`
 		StartedAt *string `db:"started_at"`
 	}
-	err := s.db.GetContext(ctx, &task,
+	err := s.reader().GetContext(ctx, &task,
 		"SELECT session_id, started_at FROM agent_tasks WHERE id = ?", taskID)
 	if err != nil || task.SessionID == nil || task.StartedAt == nil {
 		return
@@ -293,7 +297,7 @@ func (s *TaskStore) computeAgentTaskCost(ctx context.Context, taskID int64, comp
 		CacheWriteTokens int     `db:"cache_write_tokens"`
 		CostUSD          float64 `db:"cost_usd"`
 	}
-	err = s.db.GetContext(ctx, &usage,
+	err = s.reader().GetContext(ctx, &usage,
 		`SELECT COALESCE(SUM(input_tokens), 0) as input_tokens,
 		        COALESCE(SUM(output_tokens), 0) as output_tokens,
 		        COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
@@ -379,7 +383,7 @@ func (s *TaskStore) ListAgentNotes(ctx context.Context, agentName string, sessio
 	filter, filterArgs := sessionFilter(sessionID)
 	args := append([]interface{}{agentName}, filterArgs...)
 	var notes []AgentNote
-	err := s.db.SelectContext(ctx, &notes,
+	err := s.reader().SelectContext(ctx, &notes,
 		`SELECT id, agent_name, content, created_at, updated_at
 		 FROM agent_notes WHERE agent_name = ?`+filter+` ORDER BY created_at DESC`,
 		args...)
@@ -468,7 +472,7 @@ func (s *TaskStore) InsertAgentEvent(ctx context.Context, event *AgentEvent) (*A
 // idempotent across re-reads and restarts.
 func (s *TaskStore) AgentEventExists(ctx context.Context, sessionID, eventType, refID string) (bool, error) {
 	var n int
-	err := s.db.GetContext(ctx, &n,
+	err := s.reader().GetContext(ctx, &n,
 		`SELECT COUNT(*) FROM agent_events WHERE session_id = ? AND event_type = ? AND ref_id = ?`,
 		sessionID, eventType, refID)
 	return n > 0, err
@@ -493,7 +497,7 @@ func (s *TaskStore) ListAgentEvents(ctx context.Context, agentName string, limit
 	}
 	args = append(args, limit)
 	var events []AgentEvent
-	err := s.db.SelectContext(ctx, &events,
+	err := s.reader().SelectContext(ctx, &events,
 		`SELECT id, agent_name, session_id, event_type, tool_name, summary, detail_json, created_at, duration_ms, ref_id
 		 FROM agent_events`+where+` ORDER BY created_at DESC LIMIT ?`,
 		args...)
@@ -516,7 +520,7 @@ func (s *TaskStore) GetAgentEventCounts(ctx context.Context, agentName string, s
 	whereClauses = append(whereClauses, "tool_name IS NOT NULL")
 	where := " WHERE " + strings.Join(whereClauses, " AND ")
 	var counts []ToolCount
-	err := s.db.SelectContext(ctx, &counts,
+	err := s.reader().SelectContext(ctx, &counts,
 		`SELECT tool_name, COUNT(*) as count FROM agent_events`+where+`
 		 GROUP BY tool_name ORDER BY count DESC`,
 		args...)
@@ -555,7 +559,7 @@ func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string
 		EventType string `db:"event_type"`
 		Summary   string `db:"summary"`
 	}
-	if err := s.db.SelectContext(ctx, &rows,
+	if err := s.reader().SelectContext(ctx, &rows,
 		`SELECT session_id, event_type, summary FROM agent_events WHERE id IN (
 		   SELECT (SELECT e.id FROM agent_events e
 		           WHERE e.session_id = s.value AND e.event_type NOT IN ('status', 'goal', 'confidence')
@@ -589,7 +593,7 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 		return nil, err
 	}
 	var rows []AgentEvent
-	if err := s.db.SelectContext(ctx, &rows,
+	if err := s.reader().SelectContext(ctx, &rows,
 		`WITH boundary AS (
 		   SELECT s.value AS sid,
 		          (SELECT x.id FROM agent_events x
@@ -626,7 +630,7 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 // GetLatestGoalEvent returns the newest goal event for a session, or nil.
 func (s *TaskStore) GetLatestGoalEvent(ctx context.Context, sessionID string) (*AgentEvent, error) {
 	var ev AgentEvent
-	err := s.db.GetContext(ctx, &ev,
+	err := s.reader().GetContext(ctx, &ev,
 		`SELECT * FROM agent_events WHERE session_id = ? AND event_type = 'goal'
 		 ORDER BY created_at DESC, id DESC LIMIT 1`, sessionID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -651,7 +655,7 @@ func (s *TaskStore) GetLatestGoals(ctx context.Context, sessionIDs []string) (ma
 		SessionID string `db:"session_id"`
 		Summary   string `db:"summary"`
 	}
-	if err := s.db.SelectContext(ctx, &rows,
+	if err := s.reader().SelectContext(ctx, &rows,
 		`SELECT session_id, summary FROM agent_events WHERE id IN (
 		   SELECT (SELECT e.id FROM agent_events e
 		           WHERE e.session_id = s.value AND e.event_type = 'goal'
@@ -685,7 +689,7 @@ func (s *TaskStore) GetFileEdits(ctx context.Context, sessionID, workingDir stri
 		FilePath     string `db:"file_path"`
 		LastEditedAt string `db:"last_edited_at"`
 	}
-	err := s.db.SelectContext(ctx, &rows,
+	err := s.reader().SelectContext(ctx, &rows,
 		`SELECT agent_name,
 		        json_extract(detail_json, '$.file_path') as file_path,
 		        MAX(created_at) as last_edited_at
@@ -727,7 +731,7 @@ func (s *TaskStore) GetAllEditedFileCounts(ctx context.Context) (map[string]int,
 		SessionID string `db:"session_id"`
 		Count     int    `db:"cnt"`
 	}
-	err := s.db.SelectContext(ctx, &rows,
+	err := s.reader().SelectContext(ctx, &rows,
 		`SELECT session_id, COUNT(DISTINCT json_extract(detail_json, '$.file_path')) AS cnt
 		 FROM agent_events INDEXED BY idx_agent_events_edited_files
 		 WHERE event_type = 'tool_use'
@@ -771,7 +775,7 @@ func (s *TaskStore) GetEditedFilesBySession(ctx context.Context, sessionIDs []st
 		SessionID string `db:"session_id"`
 		FilePath  string `db:"file_path"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, query, args...); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, query, args...); err != nil {
 		return nil, err
 	}
 
@@ -793,7 +797,7 @@ func (s *TaskStore) GetEditedFilesBySession(ctx context.Context, sessionIDs []st
 // ListTasksBySession returns tasks for a historical session.
 func (s *TaskStore) ListTasksBySession(ctx context.Context, sessionID string) ([]AgentTask, error) {
 	var tasks []AgentTask
-	err := s.db.SelectContext(ctx, &tasks,
+	err := s.reader().SelectContext(ctx, &tasks,
 		`SELECT * FROM agent_tasks WHERE session_id = ? ORDER BY sort_order`, sessionID)
 	if err != nil {
 		return nil, err
@@ -809,7 +813,7 @@ func (s *TaskStore) ListTasksBySession(ctx context.Context, sessionID string) ([
 // ListNotesBySession returns notes for a historical session.
 func (s *TaskStore) ListNotesBySession(ctx context.Context, sessionID string) ([]AgentNote, error) {
 	var notes []AgentNote
-	err := s.db.SelectContext(ctx, &notes,
+	err := s.reader().SelectContext(ctx, &notes,
 		`SELECT id, agent_name, content, created_at, updated_at
 		 FROM agent_notes WHERE session_id = ? ORDER BY created_at DESC`, sessionID)
 	return notes, err

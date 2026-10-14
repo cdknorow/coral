@@ -124,7 +124,7 @@ func (s *Store) countMentionsUnread(ctx context.Context, project, subscriberID, 
 		}
 		args := append([]any{}, filterArgs...)
 		args = append(args, start, project, start)
-		if err := s.db.GetContext(ctx, &row,
+		if err := s.reader().GetContext(ctx, &row,
 			`SELECT COALESCE(SUM(CASE WHEN `+filter+` THEN 1 ELSE 0 END), 0) AS n, COALESCE(MAX(id), ?) AS hi
 			 FROM board_messages WHERE project = ? AND id > ?`, args...); err != nil {
 			return 0, err

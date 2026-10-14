@@ -82,7 +82,7 @@ func (s *Store) ListWorkflowPresets(ctx context.Context, project string) ([]Work
 		Name         string `db:"name"`
 		Instructions string `db:"instructions"`
 	}
-	if err := s.db.SelectContext(ctx, &rows, "SELECT id,name,instructions FROM board_workflow_presets WHERE board_id=? ORDER BY id", project); err != nil {
+	if err := s.reader().SelectContext(ctx, &rows, "SELECT id,name,instructions FROM board_workflow_presets WHERE board_id=? ORDER BY id", project); err != nil {
 		return nil, err
 	}
 	for _, row := range rows {

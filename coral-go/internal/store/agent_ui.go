@@ -37,7 +37,7 @@ func (e AgentUIEvent) MarshalJSON() ([]byte, error) {
 }
 func (d *DB) ListAgentUI(ctx context.Context, sid string) ([]AgentUIPanel, error) {
 	panels := []AgentUIPanel{}
-	err := d.SelectContext(ctx, &panels, `SELECT session_id,id,title,revision,updated_at FROM agent_ui_panels WHERE session_id=? ORDER BY updated_at DESC,id`, sid)
+	err := d.Reader().SelectContext(ctx, &panels, `SELECT session_id,id,title,revision,updated_at FROM agent_ui_panels WHERE session_id=? ORDER BY updated_at DESC,id`, sid)
 	if err != nil {
 		return panels, err
 	}
@@ -55,12 +55,12 @@ func (d *DB) ListAgentUI(ctx context.Context, sid string) ([]AgentUIPanel, error
 // diagnosable after an update.
 func (d *DB) AgentUIEventCount(ctx context.Context, sid, id string) (int64, error) {
 	var count int64
-	err := d.GetContext(ctx, &count, `SELECT COUNT(*) FROM agent_ui_events WHERE session_id=? AND panel_id=?`, sid, id)
+	err := d.Reader().GetContext(ctx, &count, `SELECT COUNT(*) FROM agent_ui_events WHERE session_id=? AND panel_id=?`, sid, id)
 	return count, err
 }
 func (d *DB) GetAgentUI(ctx context.Context, sid, id string) (*AgentUIPanel, error) {
 	var p AgentUIPanel
-	err := d.GetContext(ctx, &p, `SELECT * FROM agent_ui_panels WHERE session_id=? AND id=?`, sid, id)
+	err := d.Reader().GetContext(ctx, &p, `SELECT * FROM agent_ui_panels WHERE session_id=? AND id=?`, sid, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -91,6 +91,6 @@ func (d *DB) AddAgentUIEvent(ctx context.Context, sid, id string, revision int64
 }
 func (d *DB) AgentUIEvents(ctx context.Context, sid, id string, after int64) ([]AgentUIEvent, error) {
 	events := []AgentUIEvent{}
-	err := d.SelectContext(ctx, &events, `SELECT id,revision,action,payload,created_at FROM agent_ui_events WHERE session_id=? AND panel_id=? AND id>? ORDER BY id LIMIT 100`, sid, id, after)
+	err := d.Reader().SelectContext(ctx, &events, `SELECT id,revision,action,payload,created_at FROM agent_ui_events WHERE session_id=? AND panel_id=? AND id>? ORDER BY id LIMIT 100`, sid, id, after)
 	return events, err
 }

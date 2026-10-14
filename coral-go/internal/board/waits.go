@@ -138,7 +138,7 @@ func (s *Store) RegisterWait(ctx context.Context, project, subscriberID, session
 // GetActiveWait returns the current active wait for a subscriber on a project, expiring it if timed out.
 func (s *Store) GetActiveWait(ctx context.Context, project, subscriberID string) (*RegisteredWait, error) {
 	var wait RegisteredWait
-	err := s.db.GetContext(ctx, &wait,
+	err := s.reader().GetContext(ctx, &wait,
 		"SELECT id, project, subscriber_id, session_name, wait_type, target_id, reason, status, created_at, resolved_at, expires_at FROM board_waits WHERE project = ? AND subscriber_id = ? AND status = 'active'",
 		project, subscriberID)
 	if err != nil {
@@ -158,7 +158,7 @@ func (s *Store) GetActiveWait(ctx context.Context, project, subscriberID string)
 // ListActiveWaits returns all active waits on a project, expiring any whose timeout has elapsed.
 func (s *Store) ListActiveWaits(ctx context.Context, project string) ([]RegisteredWait, error) {
 	var waits []RegisteredWait
-	err := s.db.SelectContext(ctx, &waits,
+	err := s.reader().SelectContext(ctx, &waits,
 		"SELECT id, project, subscriber_id, session_name, wait_type, target_id, reason, status, created_at, resolved_at, expires_at FROM board_waits WHERE project = ? AND status = 'active'",
 		project)
 	if err != nil {
@@ -206,7 +206,7 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 		SubscriberID string `db:"subscriber_id"`
 		JobTitle     string `db:"job_title"`
 	}
-	_ = s.db.SelectContext(ctx, &subscribers, "SELECT subscriber_id, job_title FROM board_subscribers WHERE project = ?", project)
+	_ = s.reader().SelectContext(ctx, &subscribers, "SELECT subscriber_id, job_title FROM board_subscribers WHERE project = ?", project)
 	for _, w := range waits {
 		if w.SubscriberID == senderID {
 			continue
@@ -219,7 +219,7 @@ func (s *Store) ResolveMatchingMessageWaits(ctx context.Context, project, sender
 		var sub struct {
 			JobTitle string `db:"job_title"`
 		}
-		if err := s.db.GetContext(ctx, &sub, "SELECT job_title FROM board_subscribers WHERE project = ? AND subscriber_id = ?", project, w.SubscriberID); err == nil {
+		if err := s.reader().GetContext(ctx, &sub, "SELECT job_title FROM board_subscribers WHERE project = ? AND subscriber_id = ?", project, w.SubscriberID); err == nil {
 			jobTitle = sub.JobTitle
 		}
 

@@ -146,7 +146,7 @@ var sensitiveKeys = map[string]bool{}
 // GetSettings returns all user settings, filtering out sensitive keys.
 // GET /api/settings
 func (h *SystemHandler) GetSettings(w http.ResponseWriter, r *http.Request) {
-	rows, err := h.db.QueryxContext(r.Context(), "SELECT key, value FROM user_settings")
+	rows, err := h.db.Reader().QueryxContext(r.Context(), "SELECT key, value FROM user_settings")
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -851,7 +851,7 @@ func (h *SystemHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 		Color string `json:"color" db:"color"`
 	}
 	var tags []tag
-	if err := h.db.SelectContext(r.Context(), &tags, "SELECT id, name, color FROM tags ORDER BY name"); err != nil {
+	if err := h.db.Reader().SelectContext(r.Context(), &tags, "SELECT id, name, color FROM tags ORDER BY name"); err != nil {
 		errInternalServer(w, err.Error())
 		return
 	}
