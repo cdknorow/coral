@@ -3,7 +3,6 @@
 package ptymanager
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -19,9 +18,7 @@ func TestPTYShellIdleFollowsTheCommand(t *testing.T) {
 	t.Cleanup(func() { b.Close() })
 	name := "claude-" + exitedSID
 	if err := b.Spawn(name, "claude", t.TempDir(), exitedSID, "", 80, 24); err != nil {
-		if strings.Contains(err.Error(), "operation not permitted") {
-			t.Skip("PTY spawn not permitted in this environment")
-		}
+		skipIfPTYSpawnDenied(t, err)
 		require.NoError(t, err)
 	}
 	idle := func() bool { v, _, ok := b.ShellIdle(name); return ok && v }

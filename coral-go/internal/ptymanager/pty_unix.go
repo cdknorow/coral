@@ -21,10 +21,11 @@ func startPTYProcess(name string, args []string, dir string, env []string, cols,
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-		Pgid:    0,
-	}
+	// No Setpgid: pty.StartWithSize makes the child a session leader (Setsid + Setctty),
+	// which is already the leader of its own process group, and setpgid on a session
+	// leader fails with EPERM, so no PTY could be spawned on macOS (#3229).
+	// Terminate and ForceKill signal that group (kill(-pgid)).
+	cmd.SysProcAttr = &syscall.SysProcAttr{}
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
 	if err != nil {

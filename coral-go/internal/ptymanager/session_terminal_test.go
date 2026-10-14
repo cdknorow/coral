@@ -28,9 +28,7 @@ func spawnTestSession(t *testing.T, backend *PTYBackend, name string) {
 	t.Helper()
 	dir := t.TempDir()
 	err := backend.Spawn(name, "claude", dir, "test-sess-id-000000000000000000000000000000000001", "", 80, 24)
-	if err != nil && strings.Contains(err.Error(), "operation not permitted") {
-		t.Skip("PTY spawn not permitted in this environment (sandbox)")
-	}
+	skipIfPTYSpawnDenied(t, err)
 	require.NoError(t, err)
 }
 
@@ -117,9 +115,7 @@ func TestPTYSessionTerminal_CreateSession(t *testing.T) {
 	dir := t.TempDir()
 
 	err := terminal.CreateSession(context.Background(), "test-session", dir)
-	if err != nil && strings.Contains(err.Error(), "operation not permitted") {
-		t.Skip("PTY spawn not permitted in this environment (sandbox)")
-	}
+	skipIfPTYSpawnDenied(t, err)
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
@@ -132,9 +128,7 @@ func TestPTYSessionTerminal_CreateSession_Duplicate(t *testing.T) {
 	dir := t.TempDir()
 
 	err := terminal.CreateSession(context.Background(), "dup-session", dir)
-	if err != nil && strings.Contains(err.Error(), "operation not permitted") {
-		t.Skip("PTY spawn not permitted in this environment (sandbox)")
-	}
+	skipIfPTYSpawnDenied(t, err)
 	require.NoError(t, err)
 
 	err = terminal.CreateSession(context.Background(), "dup-session", dir)
@@ -301,9 +295,7 @@ func TestPTYSessionTerminal_ConcurrentListAndKill(t *testing.T) {
 		dir := t.TempDir()
 		sessionID := "test-sess-id-00000000000000000000000000000000000" + string(rune('1'+i))
 		err := backend.Spawn(name, "claude", dir, sessionID, "", 80, 24)
-		if err != nil && strings.Contains(err.Error(), "operation not permitted") {
-			t.Skip("PTY spawn not permitted in this environment (sandbox)")
-		}
+		skipIfPTYSpawnDenied(t, err)
 	}
 	time.Sleep(200 * time.Millisecond)
 

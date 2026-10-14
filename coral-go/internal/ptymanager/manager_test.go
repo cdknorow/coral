@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -16,12 +15,13 @@ func canFork(t *testing.T) {
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not available")
 	}
-	// Test if PTY fork/exec with process group is permitted
+	// Can a PTY be started here at all? Probe the way Coral spawns: a failure that is not
+	// a real sandbox fails the test (#3229).
 	cmd := exec.Command("true")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: 0}
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 	if err != nil {
-		t.Skipf("pty.StartWithSize not permitted: %v", err)
+		skipIfPTYSpawnDenied(t, err)
+		t.Fatalf("pty.StartWithSize: %v", err)
 	}
 	ptmx.Close()
 	cmd.Wait()

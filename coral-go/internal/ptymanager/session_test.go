@@ -47,10 +47,17 @@ func TestNewSession_SetsEnvironment(t *testing.T) {
 	}
 }
 
+// An empty command starts the default shell (newSession's documented default); the
+// test used to "pass" only because every spawn failed on macOS (#3229).
 func TestNewSession_EmptyCommand(t *testing.T) {
-	_, err := newSession("empty-cmd", "test", t.TempDir(), "sid-empty", "", 80, 24)
-	if err == nil {
-		t.Error("expected error for empty command")
+	canFork(t)
+	s, err := newSession("empty-cmd", "test", t.TempDir(), "sid-empty", "", 80, 24)
+	if err != nil {
+		t.Fatalf("an empty command should start the default shell: %v", err)
+	}
+	defer s.kill()
+	if !s.isRunning() {
+		t.Error("the default shell should be running")
 	}
 }
 
