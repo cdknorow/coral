@@ -18,7 +18,11 @@
 // sets them for the step it runs.
 package agentenv
 
-import "strings"
+import (
+	"os"
+	"strconv"
+	"strings"
+)
 
 // Allowed are the CORAL_ variables an agent may inherit.
 var Allowed = map[string]bool{
@@ -65,4 +69,44 @@ func Filter(env []string) []string {
 		}
 	}
 	return out
+}
+
+// IdentityVars name an agent session's identity. A Coral server is never an agent session,
+// so it never keeps them from whatever started it (#3421: a test server started from an
+// agent's shell handed that agent's name, role and token to its own agents).
+var IdentityVars = []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID", "CORAL_SESSION_TOKEN"}
+
+// LocationVars tell an agent's tools which Coral to talk to and where its data is.
+var LocationVars = []string{"CORAL_PORT", "CORAL_HOST", "CORAL_URL", "CORAL_DIR", "CORAL_DATA_DIR"}
+
+// UseServerEnv makes this process's environment, which every agent, tmux server and
+// workflow step inherits (filtered by Filter), say THIS server: it removes inherited
+// agent identity and sets the location variables to this server's own host, port and
+// data folder (#3421). Call it once at startup, after the port is bound.
+func UseServerEnv(host string, port int, dataDir string) {
+	for _, k := range IdentityVars {
+		os.Unsetenv(k)
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1" // an agent dials a real address, not "every interface"
+	}
+	set := map[string]string{"CORAL_HOST": host}
+	if port > 0 {
+		set["CORAL_PORT"] = strconv.Itoa(port)
+		h := host
+		if strings.Contains(h, ":") && !strings.HasPrefix(h, "[") {
+			h = "[" + h + "]"
+		}
+		set["CORAL_URL"] = "http://" + h + ":" + strconv.Itoa(port)
+	}
+	if dataDir != "" {
+		set["CORAL_DIR"], set["CORAL_DATA_DIR"] = dataDir, dataDir
+	}
+	for _, k := range LocationVars {
+		if v, ok := set[k]; ok {
+			os.Setenv(k, v)
+		} else {
+			os.Unsetenv(k)
+		}
+	}
 }

@@ -82,6 +82,7 @@ type IdentityObserver struct {
 	strict    bool
 	validKey  func(*http.Request) bool                  // a valid API key in the request
 	verifyCLI func(*http.Request) (*http.Request, bool) // a valid command-line signature
+	otherUser func(*http.Request) bool                  // a loopback caller running as another OS user
 
 	mu         sync.Mutex
 	callers    map[string]int64
@@ -117,12 +118,20 @@ func isAgentTool(r *http.Request) bool {
 	return false
 }
 
-// SetStrict turns on strict local auth (#3418): requests from this computer that strict
-// mode would refuse are refused instead of counted. validKey checks an API key;
-// verifyCLI checks a command-line signature (and uses up its nonce).
-func (o *IdentityObserver) SetStrict(validKey func(*http.Request) bool, verifyCLI func(*http.Request) (*http.Request, bool)) {
-	o.strict, o.validKey, o.verifyCLI = true, validKey, verifyCLI
+// SetVerifiers gives the observer the credential checks it applies in every mode:
+// validKey checks an API key; verifyCLI checks a command-line signature (and uses up its
+// nonce).
+func (o *IdentityObserver) SetVerifiers(validKey func(*http.Request) bool, verifyCLI func(*http.Request) (*http.Request, bool)) {
+	o.validKey, o.verifyCLI = validKey, verifyCLI
 }
+
+// SetOtherUser gives the observer the peer check: a signed request from another OS user is
+// refused 403 other_user (as the cloud routes say), not 401.
+func (o *IdentityObserver) SetOtherUser(f func(*http.Request) bool) { o.otherUser = f }
+
+// SetStrict turns on strict local auth (#3418): requests from this computer that strict
+// mode would refuse are refused instead of counted.
+func (o *IdentityObserver) SetStrict() { o.strict = true }
 
 // Strict reports whether strict local auth is on.
 func (o *IdentityObserver) Strict() bool { return o != nil && o.strict }
@@ -175,14 +184,31 @@ func (o *IdentityObserver) Middleware(next http.Handler) http.Handler {
 		}
 		caller := o.classify(r)
 		o.count(caller)
-		if o.strict {
+		// In every mode (#3421 v2, operator decision) a credential that is PRESENT must be
+		// valid: a command-line signature, an API key, a Coral Hub stamp. A wrong one is
+		// refused, never ignored. A request with no credential at all keeps working outside
+		// strict mode (counted in the identity report as local_other); with strict local
+		// auth, every caller needs one.
+		claimed := caller == callerCLISigned || caller == callerAPIKey || caller == callerHub
+		if o.strict || claimed {
 			r2, ok := o.admit(r, caller)
 			if !ok {
 				o.countBreak(caller, r)
-				if caller == callerAgentNoToken {
+				switch caller {
+				case callerAgentNoToken:
 					o.refuse(w, http.StatusUnauthorized, "session_token_required",
 						"This tool runs without the agent's session token (an agent started before strict mode or before v1.4.19?). Restart the agent from Coral.")
-				} else {
+				case callerCLISigned:
+					if o.otherUser != nil && o.otherUser(r) {
+						o.refuse(w, http.StatusForbidden, "other_user", "Only the user Coral runs as can use its command line")
+						break
+					}
+					o.refuse(w, http.StatusUnauthorized, "cli_signature_required",
+						"The command-line signature is not valid for this Coral (another data folder's token, or a used or expired signature)")
+				case callerAPIKey, callerHub:
+					o.refuse(w, http.StatusUnauthorized, "invalid_credential",
+						"The credential sent is not valid for this Coral (a wrong API key, or a Coral Hub stamp that isn't this connector's): it is refused, never ignored")
+				default:
 					o.refuse(w, http.StatusUnauthorized, "dashboard_auth_required",
 						"Coral is locked: open it from the Coral app, or run 'coral open' to sign in this browser")
 				}

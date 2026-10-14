@@ -39,7 +39,7 @@ func TestStrictLocalAuth(t *testing.T) {
 	cookie := false
 	o := NewIdentityObserver(db, bh.bs, func(*http.Request) bool { return cookie })
 	cliCalls := 0
-	o.SetStrict(
+	o.SetVerifiers(
 		func(r *http.Request) bool { return r.Header.Get("Authorization") == "Bearer good-key" },
 		func(r *http.Request) (*http.Request, bool) {
 			cliCalls++
@@ -48,6 +48,7 @@ func TestStrictLocalAuth(t *testing.T) {
 			}
 			return r, false
 		})
+	o.SetStrict()
 	require.True(t, o.Strict())
 	var reached []string
 	cliVerified := false
@@ -117,17 +118,18 @@ func TestStrictLocalAuth(t *testing.T) {
 		}
 	}
 
-	// No credential at all, a wrong API key, a forged Coral Hub stamp: locked.
-	for _, hdr := range []map[string]string{
-		nil,
-		{"Origin": "http://127.0.0.1:8420", "Sec-Fetch-Site": "same-origin"},
-		{"Authorization": "Bearer wrong"},
-		{tunnel.ViaHeader: "1"},
-		{cliauth.CLIAuthHeader: "bad"},
+	// No credential at all: locked. A credential that is wrong: refused for what it is
+	// (in every mode, #3421 v2).
+	for hdr, want := range map[*map[string]string]string{
+		{}: "dashboard_auth_required",
+		{"Origin": "http://127.0.0.1:8420", "Sec-Fetch-Site": "same-origin"}: "dashboard_auth_required",
+		{"Authorization": "Bearer wrong"}:                                    "invalid_credential",
+		{tunnel.ViaHeader: "1"}:                                              "invalid_credential",
+		{cliauth.CLIAuthHeader: "bad"}:                                       "cli_signature_required",
 	} {
-		rec := do("GET", "/api/sessions/live", ``, hdr)
-		assert.Equal(t, http.StatusUnauthorized, rec.Code, hdr)
-		assert.Equal(t, "dashboard_auth_required", code(rec), hdr)
+		rec := do("GET", "/api/sessions/live", ``, *hdr)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, *hdr)
+		assert.Equal(t, want, code(rec), *hdr)
 	}
 	assert.Len(t, reached, 2)
 

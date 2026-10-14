@@ -91,10 +91,12 @@ func TestAutoAcceptForgedTunnelStampIsRefused(t *testing.T) {
 		{tunnel.ViaHeader: cloud.ViaSecret() + "x", "Sec-Fetch-Site": ""}, // close is not equal
 	} {
 		rec := call(h, "POST", "/api/sessions/live/dev/auto-accept/enable", body, mergeHdr(js, hdr))
-		require.Equal(t, 403, rec.Code, "%v: %s", hdr, rec.Body.String())
+		// Refused: by the route (403 no_dashboard_provenance) or, as a wrong credential,
+		// before it (401 invalid_credential, #3421 v2: a forged stamp is refused, never ignored).
+		require.Contains(t, []int{401, 403}, rec.Code, "%v: %s", hdr, rec.Body.String())
 		var out map[string]any
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
-		assert.Equal(t, "no_dashboard_provenance", out["code"], "%v", hdr)
+		assert.Contains(t, []any{"no_dashboard_provenance", "invalid_credential"}, out["code"], "%v", hdr)
 	}
 	st, err := ss.GetAutoAcceptState(context.Background(), sid)
 	require.NoError(t, err)
@@ -277,6 +279,9 @@ func TestCloudRedeemIsLocalCommandLineOnly(t *testing.T) {
 		return rec.Code, out
 	}
 	const local = "127.0.0.1:50000"
+	// Refused by the route (403) or before it (401: a wrong key or signature is refused,
+	// never ignored, #3421 v2).
+	refused := []int{401, 403}
 	bearer := map[string]string{"Authorization": "Bearer chb_0123456789abcdefXYZ"}
 	for name, hdr := range map[string]map[string]string{
 		"tunnel stamp": mergeHdr(bearer, map[string]string{tunnel.ViaHeader: cloud.ViaSecret()}),
@@ -285,14 +290,14 @@ func TestCloudRedeemIsLocalCommandLineOnly(t *testing.T) {
 		"referer":      mergeHdr(bearer, map[string]string{"Referer": "http://127.0.0.1:8420/"}),
 	} {
 		code, _ := cli(hdr, `{}`, local)
-		assert.Equal(t, 403, code, name)
+		assert.Contains(t, refused, code, name)
 	}
 	code, _ := cli(bearer, `{}`, "192.168.1.20:5000")
 	assert.NotEqual(t, 200, code, "another machine")
 	code, _ = cli(mergeHdr(bearer, map[string]string{cloud.CLIAuthHeader: ""}), `{}`, local)
-	assert.Equal(t, 403, code, "without proof of Coral's command-line token")
+	assert.Contains(t, refused, code, "without proof of Coral's command-line token")
 	code, _ = cli(mergeHdr(bearer, map[string]string{cloud.CLIAuthHeader: "", "X-Coral-CLI-Token": token}), `{}`, local)
-	assert.Equal(t, 403, code, "the raw token is never accepted")
+	assert.Contains(t, refused, code, "the raw token is never accepted")
 
 	code, _ = cli(nil, `{}`, local)
 	assert.Equal(t, 400, code, "a credential or a check is required")

@@ -170,11 +170,67 @@ func TestStrictLocalAuthEndToEnd(t *testing.T) {
 
 // Off (the default), nothing changes: phase 1 only reports.
 func TestStrictLocalAuthOffByDefault(t *testing.T) {
-	_, ts, _ := strictServer(t, false)
+	srv, ts, dir := strictServer(t, false)
 	resp, err := http.Get(ts.URL + "/api/sessions/live")
 	require.NoError(t, err)
 	resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// #3421 v2: still no credential needed by default (counted as an unsigned caller), but a
+	// credential that is PRESENT must be valid: a wrong one is refused, never ignored. A
+	// dashboard holding an old cookie is not a wrong credential.
+	status := func(c *http.Client, hdr http.Header) (int, string) {
+		req, _ := http.NewRequest("GET", ts.URL+"/api/sessions/live", nil)
+		for k, v := range hdr {
+			req.Header[k] = v
+		}
+		resp, err := c.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, codeOfBody(b)
+	}
+	browser := http.Header{"Origin": {ts.URL}, "Sec-Fetch-Site": {"same-origin"}}
+	for name, hdr := range map[string]http.Header{
+		"bare":                    nil,
+		"dashboard, no cookie":    browser,
+		"dashboard, stale cookie": {"Origin": {ts.URL}, "Sec-Fetch-Site": {"same-origin"}, "Cookie": {"coral_session=expired-session"}},
+		"agent tool, no token":    {"User-Agent": {"coral-board/dev"}},
+		"valid API key":           {"Authorization": {"Bearer " + srv.keyStore.Key()}},
+	} {
+		code, c := status(http.DefaultClient, hdr)
+		assert.Equal(t, http.StatusOK, code, "%s: %s", name, c)
+	}
+	for name, tc := range map[string]struct {
+		hdr  http.Header
+		code string
+	}{
+		"wrong API key":       {http.Header{"Authorization": {"Bearer not-the-key"}}, "invalid_credential"},
+		"wrong ?api_key=":     {nil, "invalid_credential"},
+		"forged tunnel stamp": {http.Header{"X-Coral-Via-Tunnel": {"1"}}, "invalid_credential"},
+		"bad signature":       {http.Header{cliauth.CLIAuthHeader: {"made.up"}}, "cli_signature_required"},
+	} {
+		c := http.DefaultClient
+		var code int
+		var got string
+		if name == "wrong ?api_key=" {
+			resp, err := c.Get(ts.URL + "/api/sessions/live?api_key=not-the-key")
+			require.NoError(t, err)
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			code, got = resp.StatusCode, codeOfBody(b)
+		} else {
+			code, got = status(c, tc.hdr)
+		}
+		assert.Equal(t, http.StatusUnauthorized, code, name)
+		assert.Equal(t, tc.code, got, name)
+	}
+	tok, err := cliauth.ReadToken(dir)
+	require.NoError(t, err)
+	code, _ := status(&http.Client{Transport: cliauth.Transport{Base: http.DefaultTransport, Token: tok, Dir: dir}}, nil)
+	assert.Equal(t, http.StatusOK, code, "a signed command-line request")
+	callers := srv.identity.Report()["callers"].(map[string]int64)
+	assert.Positive(t, callers["local_other"], "the unsigned caller is reported")
 	resp, err = http.Get(ts.URL + "/auth")
 	require.NoError(t, err)
 	b, _ := io.ReadAll(resp.Body)

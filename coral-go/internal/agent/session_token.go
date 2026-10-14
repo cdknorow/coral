@@ -1,6 +1,9 @@
 package agent
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // SessionTokenEnv is the variable an agent's tools read its session token from (#3387).
 const SessionTokenEnv = "CORAL_SESSION_TOKEN"
@@ -39,12 +42,69 @@ func sessionTokenPrefix(p LaunchParams, agentType string) string {
 	}
 }
 
-// withSessionToken puts the token prefix first in a launch line's parts and names it
-// raw (it's shell syntax Coral built, #3362).
+// withSessionToken puts the agent's own Coral environment and then its token prefix first
+// in a launch line's parts and names them raw (shell syntax Coral built, #3362).
 func withSessionToken(parts, raw []string, p LaunchParams, agentType string) ([]string, []string) {
-	pre := sessionTokenPrefix(p, agentType)
-	if pre == "" {
-		return parts, raw
+	var pres []string
+	for _, pre := range []string{coralEnvPrefix(p), sessionTokenPrefix(p, agentType)} {
+		if pre != "" {
+			pres = append(pres, pre)
+		}
 	}
-	return append([]string{pre}, parts...), append(raw, pre)
+	return append(pres, parts...), append(raw, pres...)
+}
+
+// coralEnvPrefix sets this agent's Coral environment in the shell that starts it (#3421):
+// which server (CORAL_PORT/HOST/URL), where its data is (CORAL_DIR/DATA_DIR) and who it
+// is (CORAL_SESSION_NAME/ID, CORAL_SUBSCRIBER_ID). A pane's shell starts with the tmux
+// server's environment, so without this an agent could inherit another Coral's (a test
+// server started from an agent's shell gave its agents that agent's name and server).
+// Identity this launch doesn't know is unset; a location it doesn't know is left as the
+// server set it at startup.
+func coralEnvPrefix(p LaunchParams) string {
+	set := CoralEnv(p)
+	if p.SessionID != "" {
+		set = append(set, [2]string{"CORAL_SESSION_ID", p.SessionID})
+	}
+	known := map[string]bool{}
+	for _, kv := range set {
+		known[kv[0]] = true
+	}
+	var unset []string
+	for _, k := range []string{"CORAL_SESSION_NAME", "CORAL_SESSION_ID", "CORAL_SUBSCRIBER_ID", SessionTokenEnv} {
+		if !known[k] {
+			unset = append(unset, k)
+		}
+	}
+	var b strings.Builder
+	switch detectShell() {
+	case ShellPowerShell:
+		for _, k := range unset {
+			fmt.Fprintf(&b, "Remove-Item Env:%s -ErrorAction SilentlyContinue; ", k)
+		}
+		for _, kv := range set {
+			fmt.Fprintf(&b, "$env:%s = %s; ", kv[0], shellQuoteLiteral(kv[1]))
+		}
+		return strings.TrimSuffix(b.String(), " ")
+	case ShellCmd:
+		for _, k := range unset {
+			fmt.Fprintf(&b, `set "%s=" & `, k)
+		}
+		for _, kv := range set {
+			fmt.Fprintf(&b, `set "%s=%s" & `, kv[0], kv[1])
+		}
+		return strings.TrimSuffix(b.String(), " ")
+	default:
+		if len(unset) > 0 {
+			fmt.Fprintf(&b, "unset %s; ", strings.Join(unset, " "))
+		}
+		if len(set) > 0 {
+			b.WriteString("export")
+			for _, kv := range set {
+				fmt.Fprintf(&b, " %s=%s", kv[0], singleQuote(kv[1]))
+			}
+			b.WriteString(";")
+		}
+	}
+	return strings.TrimSpace(b.String())
 }

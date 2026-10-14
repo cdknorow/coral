@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -90,6 +91,16 @@ func main() {
 			writeAtomic(filepath.Join(dir, sessionID+".env"),
 				"CORAL_SESSION_TOKEN="+os.Getenv("CORAL_SESSION_TOKEN")+"\nCORAL_SESSION_NAME="+sessionName+"\n")
 		}
+		// Every CORAL_ variable the agent was started with (#3421: none may come from
+		// the environment of whatever started the Coral server).
+		var coralEnv []string
+		for _, kv := range os.Environ() {
+			if strings.HasPrefix(kv, "CORAL_") {
+				coralEnv = append(coralEnv, kv)
+			}
+		}
+		sort.Strings(coralEnv)
+		writeAtomic(filepath.Join(dir, sessionID+".coralenv"), strings.Join(coralEnv, "\n")+"\n")
 		settingsText, _ := os.ReadFile(settingsFile)
 		writeAtomic(filepath.Join(dir, sessionID+".handed"), strings.Join(os.Args[1:], "\n")+"\n"+string(settingsText))
 		if blind {

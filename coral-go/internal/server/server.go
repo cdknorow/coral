@@ -318,15 +318,19 @@ func (s *Server) buildRouter() chi.Router {
 	r.Use(routes.RequestMetrics(s.db))
 	// Identity phase 1 (#3387): who each request is from; mismatches logged, never refused.
 	s.identity = routes.NewIdentityObserver(s.db, s.boardStore, s.keyStore.HasValidSession)
+	// In every mode a bare local caller needs a credential (#3421 v2): the API key or a
+	// command-line signature (checked once here, then marked for the cloud routes).
+	s.identity.SetVerifiers(s.keyStore.HasValidKey, func(r *http.Request) (*http.Request, bool) {
+		if s.cloudHandler == nil {
+			return r, false
+		}
+		return s.cloudHandler.VerifyCLI(r)
+	})
+	s.identity.SetOtherUser(func(r *http.Request) bool { return s.cloudHandler != nil && s.cloudHandler.OtherUser(r) })
 	if s.cfg.StrictLocalAuth {
 		// Phase 2 (#3418): refuse what the report lists instead of logging it.
 		log.Printf("[identity] strict local auth is on: requests from this computer need an agent session token, the dashboard sign-in (coral open) or a command-line signature")
-		s.identity.SetStrict(s.keyStore.HasValidKey, func(r *http.Request) (*http.Request, bool) {
-			if s.cloudHandler == nil {
-				return r, false
-			}
-			return s.cloudHandler.VerifyCLI(r)
-		})
+		s.identity.SetStrict()
 	}
 	r.Use(s.identity.Middleware)
 

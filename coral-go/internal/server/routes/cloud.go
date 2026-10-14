@@ -417,7 +417,7 @@ func (h *CloudHandler) VerifyCLI(r *http.Request) (*http.Request, bool) {
 	if r.Header.Get(cloud.CLIAuthHeader) == "" || !localCLI(r) {
 		return r, false
 	}
-	if same, supported := h.sameUser(r); supported && !same {
+	if h.OtherUser(r) {
 		return r, false
 	}
 	var body []byte
@@ -434,6 +434,13 @@ func (h *CloudHandler) VerifyCLI(r *http.Request) (*http.Request, bool) {
 		return r, false
 	}
 	return cliauth.WithVerified(r), true
+}
+
+// OtherUser reports whether a loopback request comes from another OS user (where the
+// system can tell, peercred): such a caller is refused with code other_user.
+func (h *CloudHandler) OtherUser(r *http.Request) bool {
+	same, supported := h.sameUser(r)
+	return supported && !same
 }
 
 // cliSignedBodyMax matches the command-line transport's limit (an artifact upload).

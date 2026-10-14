@@ -55,7 +55,10 @@ func TestCloudRoutesSameUserGate(t *testing.T) {
 		h.ServeHTTP(rec, req)
 		return rec
 	}
-	admitted := func(rec *httptest.ResponseRecorder) bool { return rec.Code != http.StatusForbidden }
+	// Refused by the route (403) or, for a wrong credential, before it (401, #3421 v2).
+	admitted := func(rec *httptest.ResponseRecorder) bool {
+		return rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized
+	}
 
 	for _, peer := range []struct {
 		name            string

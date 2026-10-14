@@ -59,7 +59,9 @@ func TestLaunchLineDeliversTheSessionTokenWithoutTypingIt(t *testing.T) {
 
 	// No minter (tests, other callers): no token part at all.
 	SessionTokenMinter = nil
-	assert.NotContains(t, (&ClaudeAgent{}).BuildLaunchCommand(p), "CORAL_SESSION_TOKEN")
-	assert.False(t, strings.Contains((&CodexAgent{}).BuildLaunchCommand(p), "CORAL_SESSION_TOKEN"))
+	// (It is still unset: an agent never keeps a token from whatever started Coral, #3421.)
+	assert.NotContains(t, (&ClaudeAgent{}).BuildLaunchCommand(p), `CORAL_SESSION_TOKEN="$(cat`)
+	assert.False(t, strings.Contains((&CodexAgent{}).BuildLaunchCommand(p), `CORAL_SESSION_TOKEN="$(cat`))
+	assert.Contains(t, (&ClaudeAgent{}).BuildLaunchCommand(p), "unset ")
 	CleanupTempFiles(p.SessionID)
 }

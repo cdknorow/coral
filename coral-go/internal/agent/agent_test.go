@@ -182,9 +182,9 @@ func TestGetCLIName(t *testing.T) {
 
 func TestClaude_BasicLaunch(t *testing.T) {
 	a := &ClaudeAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{
+	cmd := launchBody(a.BuildLaunchCommand(LaunchParams{
 		SessionID: "test-session-123",
-	})
+	}))
 	if !strings.HasPrefix(cmd, "claude ") {
 		t.Errorf("expected command to start with 'claude ', got %q", cmd)
 	}
@@ -391,7 +391,7 @@ func TestBuildBoardSystemPrompt_PromptOnly(t *testing.T) {
 
 func TestCodex_BasicLaunch(t *testing.T) {
 	a := &CodexAgent{}
-	cmd := a.BuildLaunchCommand(LaunchParams{})
+	cmd := launchBody(a.BuildLaunchCommand(LaunchParams{}))
 	if !strings.HasPrefix(cmd, "codex ") {
 		t.Errorf("expected codex command with Coral hooks, got %q", cmd)
 	}
@@ -699,7 +699,7 @@ func TestCodex_PermissionModeTranslation(t *testing.T) {
 
 func TestAgy_BasicLaunch(t *testing.T) {
 	a := &AgyAgent{}
-	if cmd := a.BuildLaunchCommand(LaunchParams{}); cmd != "agy" {
+	if cmd := launchBody(a.BuildLaunchCommand(LaunchParams{})); cmd != "agy" {
 		t.Errorf("expected bare 'agy', got %q", cmd)
 	}
 }
@@ -1921,6 +1921,24 @@ func TestPublishArtifactDocsStateTheDefault(t *testing.T) {
 		text := string(data)
 		if !strings.Contains(text, "explicitly asks") || !strings.Contains(text, "coral-agent") {
 			t.Errorf("%s does not state that external publishing needs an explicit request", doc)
+		}
+	}
+}
+
+// launchBody is a launch line without its leading Coral environment part (#3421), the
+// "unset …;" and "export …;" that every builder puts first.
+func launchBody(line string) string {
+	for {
+		trimmed := false
+		for _, kw := range []string{"unset ", "export CORAL_"} {
+			if strings.HasPrefix(line, kw) {
+				if i := strings.Index(line, "; "); i >= 0 {
+					line, trimmed = line[i+2:], true
+				}
+			}
+		}
+		if !trimmed {
+			return line
 		}
 	}
 }

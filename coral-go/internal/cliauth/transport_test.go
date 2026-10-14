@@ -56,11 +56,15 @@ func TestTransportSignsRequests(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Equal(t, []string{`POST /api/board/p/messages?x=1 {"content":"hi"}`, "GET /api/sessions/live "}, *seen)
 
-	// A server that doesn't know the token can't prove it: nothing but the hello is sent.
+	// A server that doesn't know the token can't prove it: the request is never sent, signed
+	// or not (#3421 v2), and the error names the target and the folder the token came from.
 	other, otherSeen := signedServer(t, "another-token")
-	_, err = c.Get(other.URL + "/api/sessions/live")
-	assert.ErrorIs(t, err, ErrNotCoral)
-	assert.Empty(t, *otherSeen)
+	c2 := &http.Client{Transport: Transport{Base: http.DefaultTransport, Token: "the-token", Dir: "/data/coral"}}
+	_, err = c2.Post(other.URL+"/api/board/p/messages", "application/json", strings.NewReader(`{"content":"x"}`))
+	require.ErrorIs(t, err, ErrNotCoral)
+	assert.Contains(t, err.Error(), other.URL)
+	assert.Contains(t, err.Error(), "/data/coral")
+	assert.Empty(t, *otherSeen, "nothing but the hello reached it")
 }
 
 type recordRT struct{ hdr http.Header }

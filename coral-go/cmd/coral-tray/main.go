@@ -402,7 +402,7 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 func killAllAgents(baseURL, dataDir string) int {
 	client := &http.Client{Timeout: 5 * time.Second}
 	if tok, err := cliauth.ReadToken(dataDir); err == nil {
-		client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok}
+		client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok, Dir: dataDir}
 	}
 
 	resp, err := client.Get(baseURL + "/api/sessions/live")

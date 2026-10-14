@@ -34,21 +34,24 @@ func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args[1:]); err != nil || !*all || fs.NArg() > 0 {
 		return usage()
 	}
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(*base, "/")+"/api/auto-accept/disable-all", strings.NewReader("{}"))
-	if err != nil {
-		fmt.Fprintln(stderr, "coral auto-accept:", err)
-		return 1
-	}
-	req.Header.Set("Content-Type", "application/json")
-	// The kill switch must work with strict local auth (#3418): sign with Coral's
-	// command-line token when this user can read it (never inside an agent session).
-	client := &http.Client{Timeout: 15 * time.Second}
-	if !cliauth.InsideAgentSession() {
-		if tok, err := cliauth.ReadToken(cliauth.DataDir()); err == nil {
-			client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok}
+	url := strings.TrimRight(*base, "/") + "/api/auto-accept/disable-all"
+	send := func(client *http.Client) (*http.Response, error) {
+		req, err := http.NewRequest(http.MethodPost, url, strings.NewReader("{}"))
+		if err != nil {
+			return nil, err
 		}
+		req.Header.Set("Content-Type", "application/json")
+		return client.Do(req)
 	}
-	resp, err := client.Do(req)
+	// Coral rejects unsigned command-line requests (#3421 v2): the kill switch signs with
+	// Coral's command-line token (never inside an agent session). A server that can't
+	// prove it knows that token gets nothing, and the error says which folder was used.
+	client := &http.Client{Timeout: 15 * time.Second}
+	dir := cliauth.DataDir()
+	if tok, terr := cliauth.ReadToken(dir); terr == nil && !cliauth.InsideAgentSession() {
+		client.Transport = cliauth.Transport{Base: http.DefaultTransport, Token: tok, Dir: dir}
+	}
+	resp, err := send(client)
 	if err != nil {
 		fmt.Fprintf(stderr, "coral auto-accept: could not reach Coral at %s: %v\n", *base, err)
 		return 1

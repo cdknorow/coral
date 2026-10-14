@@ -1217,8 +1217,10 @@ func TestHubE2E_ProxyRefusals(t *testing.T) {
 
 	// The browser's credentials never reach the remote; the remote key never
 	// reaches the browser.
-	req, _ := http.NewRequest("GET", hub.ts.URL+"/api/remote/a/api/sessions/live?api_key=browser-secret&x=1", nil)
-	req.Header.Set("Authorization", "Bearer browser-secret")
+	// (The hub's own valid key: a WRONG key is refused, never ignored, #3421 v2.)
+	browserKey := hub.srv.keyStore.Key()
+	req, _ := http.NewRequest("GET", hub.ts.URL+"/api/remote/a/api/sessions/live?api_key="+browserKey+"&x=1", nil)
+	req.Header.Set("Authorization", "Bearer "+browserKey)
 	req.Header.Set("Cookie", "coral_session=browser-secret")
 	code, _ := hub.send(req)
 	require.Equal(t, 200, code)
@@ -1227,8 +1229,12 @@ func TestHubE2E_ProxyRefusals(t *testing.T) {
 	assert.Equal(t, "/api/sessions/live", last.Path)
 	assert.Equal(t, "Bearer "+a.key(), last.Auth)
 	assert.Empty(t, last.Cookie)
-	assert.NotContains(t, last.RawQuery, "browser-secret")
+	assert.NotContains(t, last.RawQuery, browserKey)
 	assert.Contains(t, last.RawQuery, "x=1")
+	wrong, _ := http.NewRequest("GET", hub.ts.URL+"/api/remote/a/api/sessions/live?x=1", nil)
+	wrong.Header.Set("Authorization", "Bearer browser-secret")
+	code, _ = hub.send(wrong)
+	assert.Equal(t, http.StatusUnauthorized, code, "a wrong API key is refused, never ignored")
 
 	// Private/reserved addresses are refused at dial time unless allow_private
 	// is set on that server. (Registration refuses them too, so insert the row

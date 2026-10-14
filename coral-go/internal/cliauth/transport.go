@@ -80,11 +80,13 @@ func ReadToken(dir string) (string, error) {
 }
 
 // Transport signs every request to a loopback Coral with the command-line token: one
-// hello (the server proves it knows the token first) and one signed request. Requests to
-// any other host go through Base unchanged.
+// hello (the server proves it knows the token first) and one signed request. A loopback
+// server that can't prove it gets nothing else: the request fails with ErrNotCoral.
+// Requests to any other host go through Base unchanged.
 type Transport struct {
 	Base  http.RoundTripper
 	Token string
+	Dir   string // where the token was read (named in the error when a server can't prove it)
 }
 
 func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -103,14 +105,25 @@ func (t Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		body = b
 	}
-	cn, sn, err := t.hello(r.Context(), r.URL.Scheme+"://"+r.URL.Host)
-	if err != nil {
-		return nil, err
-	}
 	out := r.Clone(r.Context())
 	out.Body = io.NopCloser(bytes.NewReader(body))
 	out.ContentLength = int64(len(body))
 	out.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(body)), nil }
+	base := r.URL.Scheme + "://" + r.URL.Host
+	cn, sn, err := t.hello(r.Context(), base)
+	if errors.Is(err, ErrNotCoral) {
+		// Never sent unsigned (#3421 v2, operator decision): the server rejects unsigned
+		// command-line requests, and a program that can't prove it knows the token gets
+		// nothing but the hello.
+		dir := t.Dir
+		if dir == "" {
+			dir = "Coral's data folder"
+		}
+		return nil, fmt.Errorf("%s could not prove it is the Coral whose command-line token is in %s, so nothing was sent; point CORAL_URL (or --url) at that Coral, or CORAL_DATA_DIR at this server's data folder: %w", base, dir, ErrNotCoral)
+	}
+	if err != nil {
+		return nil, err
+	}
 	sig, err := SignCLIRequest(t.Token, cn, sn, out.Method, out.URL.Path, body, out.Header.Get("Authorization"))
 	if err != nil {
 		return nil, ErrNotCoral
@@ -168,14 +181,15 @@ func InstallOperatorSigning() bool {
 	if InsideAgentSession() {
 		return false
 	}
-	tok, err := ReadToken(DataDir())
+	dir := DataDir()
+	tok, err := ReadToken(dir)
 	if err != nil {
 		return false
 	}
 	if _, done := http.DefaultTransport.(Transport); done {
 		return true
 	}
-	http.DefaultTransport = Transport{Base: http.DefaultTransport, Token: tok}
+	http.DefaultTransport = Transport{Base: http.DefaultTransport, Token: tok, Dir: dir}
 	return true
 }
 

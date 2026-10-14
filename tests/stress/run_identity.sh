@@ -98,7 +98,13 @@ log "Building coral, coral-board and the stand-in agent..."
     && go build -o "$BIN/mock-agent" ./cmd/mock-agent/ && go build -o "$BIN/coral-hook-message-check" ./cmd/coral-hook-message-check/)
 
 log "Starting an isolated server on $PORT (data $DATA)..."
-env -u CORAL_CLOUD_URL -u CORAL_PORT -u CORAL_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" \
+# #3421: the server is started from a HOSTILE parent environment, like a test server started
+# from an agent's shell: another Coral's port, URL, data folder and an agent identity and
+# token. None of it may reach this server's agents (checked below).
+HOSTILE_ENV=(CORAL_PORT=1 CORAL_HOST=10.255.255.1 CORAL_URL=http://10.255.255.1:1 CORAL_DIR=/nonexistent/parent-coral
+    CORAL_DATA_DIR=/nonexistent/parent-coral CORAL_SESSION_NAME=parent-session-3421 CORAL_SESSION_ID=parent-sid-3421
+    CORAL_SUBSCRIBER_ID=ParentRole3421 CORAL_SESSION_TOKEN=leak-token-parent-3421)
+env -u CORAL_CLOUD_URL -u CLAUDE_PROJECTS_DIR HOME="$TMP/h" "${HOSTILE_ENV[@]}" \
     CORAL_NO_DEMO_SEED=1 CORAL_NO_WELCOME=1 CORAL_TMUX_NO_FALLBACK=1 \
     MOCK_AGENT_CORAL_BOARD="$BIN/coral-board" MOCK_AGENT_ENV_DUMP="$DUMP" MOCK_AGENT_BLIND_PREFIX=id-blind \
     CORAL_TEST_LOGIN_TOKEN_TTL=3s \
@@ -250,6 +256,17 @@ if wait_until 60 "the resumed agent's new token" bash -c "[[ -f '$rfile' && \$(s
     fi
 fi
 collect
+
+# ── #3421: nothing from the parent's environment reaches an agent ────────
+envdumps=$(ls "$DUMP"/*.coralenv 2>/dev/null | wc -l | tr -d ' ')
+parent_leaks=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep -cE 'parent-session-3421|parent-sid-3421|ParentRole3421|leak-token-parent-3421|/nonexistent/parent-coral|10\.255\.255\.1|^CORAL_PORT=1$' || true)
+wrong_port=$(cat "$DUMP"/*.coralenv 2>/dev/null | grep '^CORAL_PORT=' | grep -vc "^CORAL_PORT=$PORT$" || true)
+tmux_parent=$(tmux -S "$DATA/tmux.sock" show-environment -g 2>/dev/null | grep -cE 'parent-session-3421|ParentRole3421|leak-token-parent-3421|/nonexistent/parent-coral|10\.255\.255\.1' || true)
+if [[ $envdumps -ge 12 && $parent_leaks -eq 0 && $wrong_port -eq 0 && $tmux_parent -eq 0 ]]; then
+    pass "a server started from a hostile parent env gives its $envdumps agents only its own CORAL_* (port $PORT, its data dir, their own identity); the tmux server holds none of the parent's"
+else
+    fail "parent env reached agents: dumps=$envdumps leaks=$parent_leaks wrong_port=$wrong_port tmux=$tmux_parent"
+fi
 
 # ── Leaks: the token is nowhere it shouldn't be ───────────────────────
 leaks=0

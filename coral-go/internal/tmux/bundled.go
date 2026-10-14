@@ -89,6 +89,11 @@ func tmuxEnv(bin string) []string {
 	// The tmux server Coral starts passes its environment to every agent pane, so it gets
 	// the agent environment, without Coral's server-only settings (#3389).
 	env := agentenv.Filter(os.Environ())
+	// Never an agent identity in the tmux server's environment (#3421): each pane gets its
+	// own from the launch line.
+	for _, k := range agentenv.IdentityVars {
+		env = dropEnv(env, k)
+	}
 	terminfoDir, bundled := isBundledBinary(bin)
 	if !bundled {
 		return env
@@ -226,4 +231,15 @@ func noteTmuxResult(err error, bin, socketPath string) {
 	if prev != msg {
 		log.Printf("[tmux] client/server version problem (socket=%q): %s", socketPath, msg)
 	}
+}
+
+// dropEnv returns env without key's entries.
+func dropEnv(env []string, key string) []string {
+	out := env[:0:0]
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, key+"=") {
+			out = append(out, kv)
+		}
+	}
+	return out
 }

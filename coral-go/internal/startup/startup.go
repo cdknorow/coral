@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/agent"
+	"github.com/cdknorow/coral/internal/agentenv"
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
@@ -347,6 +348,13 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	if tlsConfig != nil {
 		ln = newSniffListener(ln, tlsConfig)
 	}
+	// Everything this server starts (the tmux server, agents, workflow steps) inherits this
+	// process's environment: make it say THIS server, never whatever started it (#3421).
+	boundPort := cfg.Port
+	if tcp, ok := ln.Addr().(*net.TCPAddr); ok {
+		boundPort = tcp.Port
+	}
+	agentenv.UseServerEnv(cfg.Host, boundPort, cfg.CoralDir())
 
 	// Apply terminal_replay_bytes setting from user_settings before any
 	// backend touches the replay buffer size.

@@ -723,14 +723,37 @@ func (c *Client) scrubServerEnv(ctx context.Context) {
 	if err != nil {
 		return
 	}
+	identity := map[string]bool{}
+	for _, k := range agentenv.IdentityVars {
+		identity[k] = true
+	}
+	have := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
-		name, _, _ := strings.Cut(strings.TrimSpace(line), "=")
+		name, value, _ := strings.Cut(strings.TrimSpace(line), "=")
+		have[name] = value
 		// "-NAME" is already marked for removal; CORAL_TMUX_BIN is set on purpose (tmuxEnv).
-		if !strings.HasPrefix(name, "CORAL_") || agentenv.Keep(name) || name == "CORAL_TMUX_BIN" {
+		// An agent identity is never the server's (#3421): removed like a server setting.
+		if !strings.HasPrefix(name, "CORAL_") || name == "CORAL_TMUX_BIN" || (agentenv.Keep(name) && !identity[name]) {
 			continue
 		}
 		if _, err := c.run(ctx, "set-environment", "-g", "-r", name); err != nil {
 			log.Printf("[tmux] could not keep %s out of new panes: %v", name, err)
+		}
+	}
+	// Where the server and its data are: this Coral's own values (startup set them, #3421),
+	// not those of whatever started the tmux server.
+	for _, k := range agentenv.LocationVars {
+		v, set := os.LookupEnv(k)
+		old, had := have[k]
+		switch {
+		case set && (!had || old != v):
+			if _, err := c.run(ctx, "set-environment", "-g", k, v); err != nil {
+				log.Printf("[tmux] could not set %s for new panes: %v", k, err)
+			}
+		case !set && had:
+			if _, err := c.run(ctx, "set-environment", "-g", "-r", k); err != nil {
+				log.Printf("[tmux] could not keep %s out of new panes: %v", k, err)
+			}
 		}
 	}
 }
