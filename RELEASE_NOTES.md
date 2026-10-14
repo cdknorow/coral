@@ -1,5 +1,51 @@
 # Release Notes
 
+## v1.4.16 — Security fix in agent launch; connect any Coral to Coral Hub; no more licence
+
+**Please upgrade:** this release fixes a way for a crafted launch setting or imported definition to run shell commands. Coral is also now free to use with no licence key or demo limits; only the terms of service remain. A Coral running on a headless server, over SSH or in a container can connect to **Coral Hub**. The board task list is paged and much lighter, terminal input over the websocket is confirmed, and a batch of fixes landed.
+
+### Security
+
+- **Agent launch commands now quote every user- or file-supplied value.** A crafted flag, resume id, or imported team, template or workflow definition could previously run shell commands when an agent launched. Thanks to our Security Reviewer.
+
+### New
+
+- **Connect to Coral Hub from anywhere Coral runs.** On first launch, after the terms, Coral offers **Connect to Coral Hub** (app.coralai.ai), **Run your own hub** (`coral --hub`) or **Skip for now** to keep Coral local; Settings > Coral Hub connects later. For a server without a browser:
+  - `coral cloud connect` in a terminal on that machine (over SSH, for example) prints a code to approve in Coral Hub. It only talks to the Coral running on that machine, and checks it really is that Coral before sending anything.
+  - For automated setups (containers, provisioning), a one-time credential file can be handed to `coral cloud connect --ticket-file` or placed where Coral reads it at startup; it's removed after use.
+  - If the code expires before it's approved, Coral explains that Coral Hub is in closed beta and links to the access request. A busy hub, a denied request and an already-connected server each get a clear message (`--force` reconnects).
+  - Opening a server's Coral Hub settings from another computer now explains that connecting has to happen on that computer, with the command to run.
+  - While a connected server's link to Coral Hub reconnects, it shows **Connected to Coral Hub as <name> (reconnecting…)** instead of "Not connected", and Coral keeps working locally meanwhile.
+- **`coral db compact`.** Run it with Coral stopped to shrink `sessions.db` once; it writes a backup first. API call metrics are now kept for 14 days by default (`call_metrics_retention_days`, 1 to 90), the dashboard's own refresh polls are no longer counted, and two unused indexes are dropped. On a busy server this took the database from 2 GB to 1.2 GB.
+- **Log terminal input (debug).** A Settings toggle (or `CORAL_DEBUG_INPUT=1` / `--debug-input`) that records everything Coral sends to agent terminals, with where it came from, for troubleshooting. It's off by default, readable only by you, and size-capped. It can contain secrets you type, so turn it off when you're done; **Delete the log** removes the file.
+
+### Changes
+
+- **No licence and no demo limits.** The developer-licence purchase, the reminder on the 25th launch and the beta tier's 2-team / 8-agent limit are gone. An old `license.dat` is ignored.
+- **The board task list is paged and light.** A board shows its open tasks and the most recent completed ones without their full text, and loads the rest as you scroll ("Load more"). The full task loads when you open it. Each refresh of a 2,000-task board used to download 17.5 MB; in testing, a 70-task board's default page is 28 KB against 1.1 MB for the full list. The dashboard also no longer starts a refresh while one is running, or refreshes a hidden tab.
+- **Terminal input is confirmed.** Text sent from the composer over the terminal connection is cleared only once Coral confirms it reached the agent; if the terminal is gone, it comes back in the composer.
+- **Knowledge distillation** keeps running when you leave the team and shows its progress when you come back. If Coral restarts mid-run, it says the run was interrupted. If some agents' knowledge can't be extracted, their earlier knowledge is kept unchanged and the tab says which agents failed; before, the error text could end up in an agent's knowledge.
+
+### Fixes
+
+- **`--backend pty` works again on macOS and Linux.** Every PTY agent failed to start ("operation not permitted"). Thanks to QA for finding it behind skipped tests.
+- A line typed in the dashboard terminal now runs in zsh (it used to stay on the line, unsubmitted).
+- Resume of a sleeping agent wakes it; its tags move to the new session, and history keeps its own.
+- A background job left in an exited agent's shell no longer hides that the agent exited.
+- Scheduled jobs: a job paused after three failures runs again when you re-enable it; unknown time zones and folders that aren't git repositories are refused; one-off runs work in a folder under Coral's data folder, not next to your repository.
+- `launch-coral` no longer deletes other Coral instances' agent logs from the shared temp folder; a server started with its own data folder keeps agent logs in `<data folder>/logs`.
+- Launching a plain terminal agent no longer logs an "unknown agent type" warning.
+- A data race when stopping a PTY agent is fixed (QA).
+
+### For integrators (Coral Hub, scripts)
+
+- `GET /api/board/{project}/tasks` returns open tasks plus recent completed ones, without bodies, by default. Use `full=1` for the full list and `cursor` for the next page; a cursor only works for the board it came from.
+- `/ws/terminal`: send `terminal_input` with an integer `id` to get `terminal_input_ack {id}`, `terminal_input_failed {id, not_sent}` or `terminal_gone {id, not_sent}`. Without an `id` (or with a non-integer one) input is typed as before, with no answer. A gone terminal at attach now gets `terminal_closed`, not "attach failed".
+- The Coral Hub can opt in to per-input read-only notices with `StreamPolicy.ReadOnlyNotice` (pkg/hubproxy).
+- New cloud routes are local-only and never reachable through the hub: `POST /api/cloud/cli-hello`, `/api/cloud/redeem`, `/api/cloud/connect/cancel`, and `DELETE /api/system/debug-input-log`. Auto-accept enable refuses a credential in the query string through the hub.
+- The connector status has `last_error_code` (`code_expired`, `access_denied`, `rate_limited`), so a UI never matches on wording.
+- Releases keep the v1.4.15 signing: verify with `gh attestation verify` or `cosign verify-blob` as in the README.
+
 ## v1.4.15 — The server no longer freezes; nothing is typed into a shell after an agent exits; signed Linux downloads
 
 **Please upgrade.** A Coral started from a terminal window could freeze completely if that window stopped showing output. This release fixes that, stops Coral from typing into a plain shell after an agent's CLI has exited, and makes recovering an agent whose terminal is gone a one-click action. Linux downloads are now signed, and every release can be verified.
