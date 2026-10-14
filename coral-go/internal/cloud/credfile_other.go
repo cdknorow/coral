@@ -51,3 +51,6 @@ func readSecretFile(path string, max int64) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// secureTokenDir: nothing to do where the token's folder isn't checked.
+func secureTokenDir(string) error { return nil }

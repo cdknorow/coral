@@ -164,7 +164,7 @@ func TestReadCredentialFile(t *testing.T) {
 		assert.FileExists(t, ro)
 	}
 
-	missing := filepath.Join(t.TempDir(), "nope")
+	missing := filepath.Join(filepath.Dir(credFile(t, goodCred)), "nope")
 	_, _, err = ReadCredentialFile(missing)
 	assert.True(t, errors.Is(err, os.ErrNotExist), "%v", err)
 }

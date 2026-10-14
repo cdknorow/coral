@@ -41,7 +41,9 @@ func TestCLIToken(t *testing.T) {
 	require.NoError(t, os.Chmod(filepath.Join(dir, CLITokenFile), 0o644))
 	_, err = ReadCLIToken(dir)
 	assert.ErrorIs(t, err, ErrUnsafeCredentialFile, "readable by others")
-	_, err = ReadCLIToken(t.TempDir())
+	empty := t.TempDir()
+	require.NoError(t, os.Chmod(empty, 0o700)) // not 0775 under a umask of 002 (#3442)
+	_, err = ReadCLIToken(empty)
 	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
@@ -76,4 +78,36 @@ func TestRemoveCLIToken(t *testing.T) {
 	require.NoError(t, RemoveCLIToken(dir, mine))
 	assert.FileExists(t, filepath.Join(dir, CLITokenFile), "not ours: kept")
 	assert.NoError(t, RemoveCLIToken("", mine))
+}
+
+// #3442: a data folder made 0755 under a umask of 002 (Ubuntu's default) is 0775; the
+// server drops the group and other write before writing the token, so the command line
+// can read it back. A folder reached through a symlink works the same.
+func TestCLITokenGroupWritableDataFolder(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.Chmod(dir, 0o775))
+	_, err := ReadCLIToken(dir)
+	require.Error(t, err)
+	tok, err := WriteCLIToken(dir)
+	require.NoError(t, err)
+	st, err := os.Stat(dir)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), st.Mode().Perm())
+	got, err := ReadCLIToken(dir)
+	require.NoError(t, err)
+	assert.Equal(t, tok, got)
+
+	real := filepath.Join(t.TempDir(), "real")
+	require.NoError(t, os.Mkdir(real, 0o777))
+	require.NoError(t, os.Chmod(real, 0o777))
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(real, link))
+	tok, err = WriteCLIToken(link)
+	require.NoError(t, err)
+	got, err = ReadCLIToken(link)
+	require.NoError(t, err)
+	assert.Equal(t, tok, got)
+	st, err = os.Stat(real)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o755), st.Mode().Perm())
 }

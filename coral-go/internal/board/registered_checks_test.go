@@ -68,7 +68,9 @@ func TestLocalRegisteredCheckRunnerGitAncestryRejectsUnmergedAndAcceptsRemoteBra
 	cmd = exec.Command("git", "commit", "-qm", "later")
 	cmd.Dir = dir
 	require.NoError(t, cmd.Run())
-	laterBytes, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	cmd = exec.Command("git", "rev-parse", "HEAD")
+	cmd.Dir = dir // the test repo's commit, not the checkout running the tests (#3442)
+	laterBytes, err := cmd.Output()
 	require.NoError(t, err)
 	later := runner.Run(context.Background(), "git_ancestry", strings.TrimSpace(string(laterBytes)), map[string]string{"remote": "origin", "branch": "release/candidate"})
 	require.False(t, later.Passed)

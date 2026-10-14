@@ -31,6 +31,9 @@ func WriteCLIToken(dir string) (string, error) {
 	if strings.TrimSpace(dir) == "" {
 		return "", errors.New("no data directory for the command-line token")
 	}
+	if err := secureTokenDir(dir); err != nil {
+		return "", err
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err

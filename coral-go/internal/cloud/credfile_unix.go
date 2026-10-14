@@ -362,3 +362,24 @@ func readSecretFile(path string, max int64) ([]byte, error) {
 	defer c.close()
 	return readFD(c.fd, max)
 }
+
+// secureTokenDir makes the data folder pass openCheckedPath's folder check before the
+// command-line token is written there (#3442): the folder is created 0755, which a
+// umask of 002 (Ubuntu's default for users) turns into 0775, and the command line would
+// then refuse the token. A folder Coral's user owns loses group and other write; one it
+// doesn't own is left alone (the read refuses it, with that message).
+func secureTokenDir(dir string) error {
+	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0) // followed, as the read does
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	var st unix.Stat_t
+	if err := unix.Fstat(fd, &st); err != nil {
+		return err
+	}
+	if int(st.Uid) != os.Geteuid() || st.Mode&0o022 == 0 {
+		return nil
+	}
+	return unix.Fchmod(fd, uint32(st.Mode&0o7777&^0o022))
+}
