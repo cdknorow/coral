@@ -24,7 +24,10 @@ type session struct {
 	sessionID  string
 	workingDir string
 
-	proc    ptyProcess
+	proc ptyProcess
+	// logFile is written by readLoop and closed by whichever ends first, readLoop at
+	// EOF or kill: logMu guards it (writeLog, closeLog).
+	logMu   sync.Mutex
 	logFile *os.File
 	logPath string
 
@@ -96,12 +99,7 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 // When the PTY closes (EOF), the log file is closed here to prevent FD leaks
 // if the session exits naturally without kill() being called.
 func (s *session) readLoop() {
-	defer func() {
-		if s.logFile != nil {
-			s.logFile.Close()
-			s.logFile = nil
-		}
-	}()
+	defer s.closeLog()
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := s.proc.Read(buf)
@@ -110,9 +108,7 @@ func (s *session) readLoop() {
 			copy(data, buf[:n])
 
 			// Write to log file (for status display, FTS indexing)
-			if s.logFile != nil {
-				s.logFile.Write(data)
-			}
+			s.writeLog(data)
 
 			s.trackBracketedPaste(data)
 
@@ -141,6 +137,25 @@ func (s *session) readLoop() {
 			}
 			return
 		}
+	}
+}
+
+// writeLog appends PTY output to the log file, if it is still open.
+func (s *session) writeLog(data []byte) {
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	if s.logFile != nil {
+		s.logFile.Write(data)
+	}
+}
+
+// closeLog closes the log file once, whichever of readLoop and kill gets here first.
+func (s *session) closeLog() {
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	if s.logFile != nil {
+		s.logFile.Close()
+		s.logFile = nil
 	}
 }
 
@@ -222,11 +237,8 @@ func (s *session) kill() error {
 	// Close PTY handle
 	s.proc.Close()
 
-	// Close log file (may already be nil if readLoop closed it on natural exit)
-	if s.logFile != nil {
-		s.logFile.Close()
-		s.logFile = nil
-	}
+	// Close log file (may already be closed if readLoop did it on natural exit)
+	s.closeLog()
 
 	// Close all subscriber channels
 	s.mu.Lock()

@@ -47,6 +47,12 @@ test: sync-docs
 	go test ./...
 	$(CGO_OPENSSL_FLAGS) go test -tags fts5 ./...
 
+# Race detector on the packages with their own goroutines around process and PTY
+# lifetimes (#3320). Slower than `make test`: run before changing session code.
+.PHONY: test-race
+test-race: sync-docs
+	go test -race -timeout 30m ./internal/ptymanager ./internal/cloud/... ./pkg/...
+
 # End-to-end frontend tests (headless Chrome + CDP). Requires node + Chrome.
 .PHONY: test-frontend
 test-frontend:
