@@ -1,5 +1,27 @@
 # Release Notes
 
+## v1.4.24 — Faster on busy machines; Run as a hub from Settings; automated messages never mix with your typing
+
+**A busy machine stays responsive.** Agents now run at a lower OS priority than Coral, the database reads behind the dashboard no longer queue behind writes, and Coral Hub's small replies overtake large downloads on the tunnel. Coral's own messages to an agent never mix with what you are typing in its input box.
+
+### Changes
+
+- **Agents run at a lower priority than Coral** (nice +10 on macOS and Linux, below normal on Windows), so the dashboard and Coral Hub stay quick while agents use every CPU. On a test machine with 16 busy agents on 2 cores, the agent list's p95 went from 57–80 ms to 18–19 ms. Choose it in **Settings › Agent priority** (**Low**, the default, or **Normal**), or with `--agent-priority` / `CORAL_AGENT_PRIORITY`. A change applies to agents started afterwards. At startup Coral also lowers agents an older Coral started in its own tmux server; it never touches your own tmux sessions.
+- **Faster reads:** sessions.db and board.db have separate read connections (the encrypted build too), so chat, the agent list, polls and unread counts no longer wait behind a write. The agent list's reads also run in parallel.
+- **Coral's messages never mix with your typing.** Board messages, nudges and other automated text go into an agent's input box as one paste, and Coral checks it arrived before pressing Enter. If you have a half-written message (or your own paste) in the box (for Claude, Codex and Gemini agents, whose input box Coral can read), Coral holds its message until you have sent or cleared yours, and it only ever submits its own text.
+- **Settings › Run as a hub** turns a running Coral into a hub server (the same as `--hub`), for people who start Coral from the macOS or Windows app. It's saved and applies on the next start, and the app can restart Coral for you. Only the dashboard on this computer can change it, and with `--strict-local-auth` an agent can't.
+- **Coral Hub over a slow link:** small replies (the terminal, the agent list) are no longer stuck behind large downloads on the tunnel; on a download-heavy link, chat history's p99 went from 626 ms to 319 ms.
+- **Phone:** a **Fit to width** toggle shrinks the terminal's font to show the whole pane, instead of scrolling sideways.
+- **Fix:** the terminal no longer jumps to the top after you switch agents or hide and show it.
+- **Fix (tray app):** the tray app's files and its cleanup of a leftover Coral process are limited to its own data folder, so a second Coral never touches the first; on Windows, quitting and restarting the app now actually stop the old process.
+
+### For integrators (Coral Hub, scripts)
+
+- `GET /api/system/hub-mode` returns `{saved, running, forced, restart_required, can_restart}`; `PUT` with `{"enabled": bool}` saves it; `POST /api/system/restart` answers **202**, or **409** `restart_unavailable` when Coral can't restart itself (started from a command line). All three answer only the dashboard on this computer (**403** `local_dashboard_required` otherwise; **403** `forbidden_for_agent` for an agent under `--strict-local-auth`).
+- Debug phases (`CORAL_DEBUG_PHASES`): the agent list's `db_identity`, `db_enrichment` and `db_goals_board` phases are now one `db_reads` phase.
+- `CORAL_PPROF_ADDR` now also serves block and mutex profiles.
+- Field debugging for the tunnel: `CORAL_TUNNEL_SCHEDULER=off` and `CORAL_TUNNEL_LOWAT=off` turn off the new send scheduler and socket setting.
+
 ## v1.4.23 — Fix: scheduled jobs, task runs and workflow steps type Claude's first prompt right away again
 
 **Please upgrade from v1.4.22.** In v1.4.22, Claude agents started by a scheduled job, a task run or a workflow step waited two minutes before Coral typed their first prompt: Coral didn't recognise Claude's input box, so it held the prompt until its two-minute fallback. Coral now recognises the input box, and the first prompt is typed as soon as Claude is ready. Agents launched from the dashboard or as a team were unaffected (their first prompt is passed at launch). Prompts are still held while an agent shows a permission or selection prompt, as in v1.4.22.
