@@ -7,10 +7,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// #3377: the connector forwards the Coral Hub user header ONLY on a chat post,
-// POST /api/board/{project}/messages, and drops it on every other route and method;
-// other hub headers are dropped as before.
-func TestScrubForwardsTheHubUserHeaderOnlyOnChatPosts(t *testing.T) {
+// #3377, #3404: the connector forwards the Coral Hub user header ONLY on a board write,
+// /api/board/{project}/... other than GET or HEAD (chat posts, and the Operator's task
+// actions and cross-team posts through Coral Hub), and drops it on every other route
+// and method; other hub headers are dropped as before.
+func TestScrubForwardsTheHubUserHeaderOnlyOnBoardWrites(t *testing.T) {
 	in := http.Header{}
 	in.Set(HubUserHeader, "hub-user-1234abcd")
 	in.Set("X-Coral-Hub-Admin", "1")
@@ -20,12 +21,19 @@ func TestScrubForwardsTheHubUserHeaderOnlyOnChatPosts(t *testing.T) {
 	}{
 		{http.MethodPost, "/api/board/team/messages", true},
 		{http.MethodPost, "/api/board/a b/messages", true},
+		{http.MethodPost, "/api/board/team/tasks", true},
+		{http.MethodPatch, "/api/board/team/tasks/7", true},
+		{http.MethodPatch, "/api/board/team/tasks/7/amend", true},
+		{http.MethodPost, "/api/board/team/tasks/7/reassign", true},
+		{http.MethodPost, "/api/board/team/tasks/7/complete", true},
+		{http.MethodPost, "/api/board/team/external-messages", true},
+		{http.MethodDelete, "/api/board/team/waits", true},
 		{http.MethodGet, "/api/board/team/messages", false},
-		{http.MethodPut, "/api/board/team/messages", false},
-		{http.MethodPost, "/api/board/team/messages/mark-read", false},
-		{http.MethodPost, "/api/board/team/tasks", false},
-		{http.MethodPost, "/api/board/team/external-messages", false},
+		{http.MethodHead, "/api/board/team/tasks", false},
 		{http.MethodPost, "/api/board/messages", false},
+		{http.MethodDelete, "/api/board/team", false},
+		{http.MethodPost, "/api/boards/team/tasks", false},
+		{http.MethodPut, "/api/settings", false},
 		{http.MethodPost, "/api/sessions/live/x/send", false},
 		{http.MethodGet, "/ws/terminal/x", false},
 	} {

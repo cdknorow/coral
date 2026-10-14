@@ -291,23 +291,28 @@ var forwardRequestHeaders = map[string]bool{
 	"Accept": true, "Accept-Language": true, "Content-Type": true, "Range": true, "If-Range": true,
 	"If-Match": true, "If-None-Match": true, "If-Modified-Since": true, "If-Unmodified-Since": true,
 	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
-	// The Coral Hub user behind a chat post (#3377): honoured only on tunnel chat posts,
-	// validated by the server (hub-user-<8 hex>).
+	// The Coral Hub user behind a board write (#3377, #3404): honoured only on board
+	// writes, validated by the server (hub-user-<8 hex>).
 	"X-Coral-Hub-User": true,
 }
 
-// HubUserHeader names the Coral Hub user behind a tunnel chat post (#3377).
+// HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
+// chat post (#3377), and who acted when Coral Hub acts as the Operator (#3404).
 const HubUserHeader = "X-Coral-Hub-User"
 
-// hubUserRoute is the one route the Coral Hub user header is forwarded on: a chat post
-// (#3377). It is dropped everywhere else, so no other handler can ever see it.
-var hubUserRoute = regexp.MustCompile(`^/api/board/[^/]+/messages$`)
+// hubUserRoute is where the Coral Hub user header is forwarded: a board's own routes,
+// /api/board/{project}/... (#3404). It is dropped everywhere else, so no other handler
+// can ever see it.
+var hubUserRoute = regexp.MustCompile(`^/api/board/[^/]+/.+$`)
 
-// ForwardsHubUser reports whether X-Coral-Hub-User is forwarded for a request:
-// only POST /api/board/{project}/messages. The hub (pkg/hubproxy) and the connector
+// ForwardsHubUser reports whether X-Coral-Hub-User is forwarded for a request: a write
+// (not GET or HEAD) to /api/board/{project}/... The hub (pkg/hubproxy) and the connector
 // apply the same rule.
 func ForwardsHubUser(method, decodedPath string) bool {
-	return method == http.MethodPost && hubUserRoute.MatchString(decodedPath)
+	if method == http.MethodGet || method == http.MethodHead {
+		return false
+	}
+	return hubUserRoute.MatchString(decodedPath)
 }
 
 // scrub keeps the allowlisted hub headers for a request to method and decodedPath.

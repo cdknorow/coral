@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -144,6 +145,18 @@ func (h *BoardHandler) PostExternalMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	ctx := r.Context()
+
+	// The Operator through Coral Hub (#3404): admitted by TunnelIdentityGuard with the
+	// Coral Hub user, and the text says so, so the receiving Orchestrator can tell it
+	// from the local Operator.
+	if body.SubscriberID == crossTeamOperatorID && cloud.Tunneled(r) {
+		hubUser := hubOperatorUser(r)
+		if hubUser == "" {
+			writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required", "error": "Through Coral Hub you can't act as the Operator here"})
+			return
+		}
+		body.Content = HubOperatorPrefix(hubUser) + body.Content
+	}
 
 	// Only Orchestrators and the Operator may send.
 	role := crossTeamOperatorID

@@ -63,6 +63,15 @@ type BoardHandler struct {
 	isArchivedSession func(ctx context.Context, sessionName string) bool
 	// uploads caches per-session upload records for the artifact views.
 	uploads uploadDirCache
+	// hubOperatorAllowed reports whether a tunnel request may act as the Operator
+	// (#3404); nil means never.
+	hubOperatorAllowed func(*http.Request) bool
+}
+
+// SetHubOperatorAllowed tells the board whether a Coral Hub user may act as the
+// Operator (CloudHandler.HubOperatorAllowed).
+func (h *BoardHandler) SetHubOperatorAllowed(fn func(*http.Request) bool) {
+	h.hubOperatorAllowed = fn
 }
 
 // SetArchivedSessionLookup tells the board which sessions are archived agents:
@@ -817,17 +826,32 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Through Coral Hub, a chat post's sender is the Coral Hub user named by the
-	// connector-forwarded X-Coral-Hub-User header, never a name from the body and never
-	// the Operator (#3377). It's marked with a server-set origin for the dashboard's badge.
-	origin := ""
+	// connector-forwarded X-Coral-Hub-User header, never a name from the body (#3377).
+	// It's marked with a server-set origin for the dashboard's badge. A post that asks
+	// to be the Operator is sent as the Operator unless the owner turned on "Don't let
+	// Coral Hub act as the Operator" (#3404): origin hub_operator, attributed to the Hub user, and its
+	// text says so, so an agent can tell it from the local Operator. Without the header
+	// it is never the Operator.
+	origin, hubUser, hubOperator := "", "", false
 	if cloud.Tunneled(r) {
-		hubUser, hubOrigin, status, msg := h.tunnelChatSender(r, project)
+		user, hubOrigin, status, msg := h.tunnelChatSender(r, project)
 		if status != 0 {
 			writeJSON(w, status, map[string]any{"error": msg, "code": "hub_user_required"})
 			return
 		}
-		subscriberID, origin = hubUser, hubOrigin
-		body.As = "" // a Coral Hub user is not subscribed to the board
+		asksOperator := strings.EqualFold(strings.TrimSpace(subscriberID), operatorIdentity) || strings.EqualFold(strings.TrimSpace(body.As), operatorIdentity)
+		if hubOrigin == board.OriginHubUser && asksOperator && h.hubOperatorAllowed != nil && h.hubOperatorAllowed(r) {
+			subscriberID, origin, hubUser, hubOperator = operatorIdentity, board.OriginHubOperator, user, true
+			body.Content = HubOperatorPrefix(user) + body.Content
+		} else {
+			subscriberID, origin = user, hubOrigin
+			if hubOrigin == board.OriginHubUser {
+				hubUser = user
+			}
+		}
+		// Neither a Coral Hub user nor the Operator is subscribed by a post through the
+		// tunnel: the Operator's own subscription is the local dashboard's.
+		body.As = ""
 	}
 
 	// Auto-subscribe the poster if 'as' is provided and they aren't subscribed yet
@@ -844,10 +868,19 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	msg, err := h.bs.PostMessageWithOrigin(r.Context(), project, subscriberID, body.Content, body.TargetGroupID, origin)
+	var msg *board.Message
+	var err error
+	if hubUser != "" {
+		msg, err = h.bs.PostHubMessage(r.Context(), project, hubUser, body.Content, body.TargetGroupID, hubOperator)
+	} else {
+		msg, err = h.bs.PostMessageWithOrigin(r.Context(), project, subscriberID, body.Content, body.TargetGroupID, origin)
+	}
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	if hubOperator {
+		recordHubOperatorAction(r.Context(), h.bs, hubUser, r.Method, r.URL.Path, project, http.StatusOK)
 	}
 	// A message from an assignee is evidence of progress on its active task.
 	// Keep this separate from task state so posting never completes work.
@@ -871,7 +904,7 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 var hubUserRe = regexp.MustCompile(`^hub-user-[0-9a-f]{8}$`)
 
 // tunnelChatSender returns the Coral Hub user for a tunnel chat post, or an HTTP
-// status and message: 400 when the header is missing or malformed (never a fallback
+// status and message: 400 when the header is malformed or repeated (never a fallback
 // to the Operator), 409 when the name is already a member or a role on this board.
 //
 // Version skew, for one release: a hub still on an older pkg/hubproxy sends no header at
@@ -879,28 +912,42 @@ var hubUserRe = regexp.MustCompile(`^hub-user-[0-9a-f]{8}$`)
 // hub_user_unknown (never the Operator or a member), and a deprecation line is logged at
 // most every 10 minutes. A header that is present but malformed is still 400.
 func (h *BoardHandler) tunnelChatSender(r *http.Request, project string) (user, origin string, status int, msg string) {
-	values, present := r.Header[http.CanonicalHeaderKey(tunnel.HubUserHeader)]
+	user, present, status, msg := tunnelHubUser(r, h.bs, project)
 	if !present {
 		logHubUserMissing()
 		return board.HubUnknownSender, board.OriginHubUserUnknown, 0, ""
 	}
-	user = ""
+	if status != 0 {
+		return "", "", status, msg
+	}
+	return user, board.OriginHubUser, 0, ""
+}
+
+// tunnelHubUser reads the Coral Hub user of a tunnel board write from the header the
+// connector forwards (#3377, #3404). present is false when there is no header. Otherwise
+// status is 400 when the header is malformed or repeated, 409 when the name is already a
+// member or a role on this board, and 0 for a valid user.
+func tunnelHubUser(r *http.Request, bs *board.Store, project string) (user string, present bool, status int, msg string) {
+	values, present := r.Header[http.CanonicalHeaderKey(tunnel.HubUserHeader)]
+	if !present {
+		return "", false, 0, ""
+	}
 	if len(values) == 1 {
 		user = values[0]
 	}
 	if len(user) > 32 || !hubUserRe.MatchString(user) {
-		return "", "", http.StatusBadRequest, "A chat post through Coral Hub needs the Coral Hub user (" + tunnel.HubUserHeader + ": hub-user-<8 hex>)"
+		return "", true, http.StatusBadRequest, "A board write through Coral Hub needs exactly one Coral Hub user (" + tunnel.HubUserHeader + ": hub-user-<8 hex>)"
 	}
-	subs, err := h.bs.ListSubscribers(r.Context(), project)
+	subs, err := bs.ListSubscribers(r.Context(), project)
 	if err != nil {
-		return "", "", http.StatusInternalServerError, "could not read the board's members"
+		return "", true, http.StatusInternalServerError, "could not read the board's members"
 	}
 	for _, s := range subs {
 		if strings.EqualFold(s.SubscriberID, user) || strings.EqualFold(strings.TrimSpace(s.JobTitle), user) {
-			return "", "", http.StatusConflict, "That Coral Hub user's name is already a member or role on this board"
+			return "", true, http.StatusConflict, "That Coral Hub user's name is already a member or role on this board"
 		}
 	}
-	return user, board.OriginHubUser, 0, ""
+	return user, true, 0, ""
 }
 
 var hubUserMissingLog struct {

@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // tunnelActorFields name who is acting in a board write. (assignee / assigned_to name
@@ -27,11 +27,14 @@ const operatorIdentity = "Operator"
 // orchestrator_identity) when an actor field contains "orchestrator", names an existing
 // subscriber with orchestrator or peek rights, or the body asks for receive_mode "all".
 //
-// The Operator (the dashboard's own identity: task planning, cross-team posts) is
-// refused the same way, 403 operator_identity_required, in any identity field, unless
-// operatorAllowed says the owner turned on "Let Coral Hub act as the Operator"; each
-// such use is logged. A chat post (POST …/messages) is not checked here: its sender is
-// the Coral Hub user from X-Coral-Hub-User (PostMessage).
+// The Operator (the dashboard's own identity: task planning, cross-team posts,
+// completing others' tasks) may be used in any identity field when operatorAllowed says
+// so: by default, unless the owner turned on "Don't let Coral Hub act as the Operator"
+// (#3404); otherwise 403 operator_identity_required. It is never the Operator without the
+// Coral Hub user: no X-Coral-Hub-User is 403 hub_user_required, a malformed or repeated
+// one 400, a name already on the board 409. Each use is recorded and logged with the
+// Hub user, and the handler sees it (hubOperatorUser). A chat post (POST …/messages)
+// is not checked here: PostMessage applies the same rules to its sender.
 //
 // Requests from this computer are unchanged (#3318/#2969 is the plan for those).
 func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bool) func(http.Handler) http.Handler {
@@ -76,6 +79,7 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 				refuse("Through Coral Hub a subscriber can't receive every message (receive_mode all is the orchestrator's)")
 				return
 			}
+			asOperator := false
 			for f, vs := range values {
 				for _, v := range vs {
 					v = strings.TrimSpace(v)
@@ -85,10 +89,10 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 					if strings.EqualFold(v, operatorIdentity) {
 						if operatorAllowed == nil || !operatorAllowed(r) {
 							writeJSON(w, http.StatusForbidden, map[string]any{"code": "operator_identity_required",
-								"error": "Through Coral Hub you can't act as the Operator unless 'Let Coral Hub act as the Operator' is on in Settings on this computer"})
+								"error": "Through Coral Hub you can't act as the Operator: 'Don't let Coral Hub act as the Operator' is on in Settings on this computer"})
 							return
 						}
-						slog.Info("[cloud] Coral Hub acted as the Operator", "method", r.Method, "path", r.URL.Path, "field", f)
+						asOperator = true
 						continue
 					}
 					if f == "assignee" || f == "assigned_to" {
@@ -106,6 +110,25 @@ func TunnelIdentityGuard(bs *board.Store, operatorAllowed func(*http.Request) bo
 						return
 					}
 				}
+			}
+			if asOperator {
+				user, present, status, msg := tunnelHubUser(r, bs, project)
+				if !present {
+					writeJSON(w, http.StatusForbidden, map[string]any{"code": "hub_user_required",
+						"error": "Acting as the Operator through Coral Hub needs the Coral Hub user (" + tunnel.HubUserHeader + "); this hub does not send it"})
+					return
+				}
+				if status != 0 {
+					writeJSON(w, status, map[string]any{"error": msg, "code": "hub_user_required"})
+					return
+				}
+				rec := &statusRecorder{ResponseWriter: w}
+				next.ServeHTTP(rec, withHubOperator(r, user))
+				if rec.status == 0 {
+					rec.status = http.StatusOK
+				}
+				recordHubOperatorAction(r.Context(), bs, user, r.Method, r.URL.Path, project, rec.status)
+				return
 			}
 			next.ServeHTTP(w, r)
 		})

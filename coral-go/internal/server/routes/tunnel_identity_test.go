@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -37,8 +39,10 @@ func codeOf(t *testing.T, rec *httptest.ResponseRecorder) string {
 	return s
 }
 
-// #3377 (SEC-BD-02): through the tunnel nobody acts with an orchestrator's rights, and
-// the Operator only with the owner's opt-in. Requests from this computer are unchanged.
+// #3377 (SEC-BD-02): through the tunnel nobody acts with an orchestrator's rights. #3404:
+// the Operator may be used (by default; refused with the owner's opt-out), only with a
+// valid Coral Hub user, and every use is recorded with that user. Requests from this
+// computer are unchanged.
 func TestTunnelIdentityGuard(t *testing.T) {
 	_, handler := setupBoardTestServer(t)
 	ctx := context.Background()
@@ -46,62 +50,128 @@ func TestTunnelIdentityGuard(t *testing.T) {
 	require.NoError(t, err)
 	_, err = handler.bs.Subscribe(ctx, "p", "Dev", "Developer", "s2", nil, nil, "")
 	require.NoError(t, err)
+	_, err = handler.bs.Subscribe(ctx, "p", "hub-user-0000beef", "Developer", "s3", nil, nil, "")
+	require.NoError(t, err) // a member created before the name was reserved
 
-	operatorOK := false
-	passed := 0
-	g := TunnelIdentityGuard(handler.bs, func(*http.Request) bool { return operatorOK })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { passed++ }))
-	do := func(tunneled bool, method, target, body string) *httptest.ResponseRecorder {
+	operatorOK := true
+	passed, seenHubUser := 0, ""
+	g := TunnelIdentityGuard(handler.bs, func(*http.Request) bool { return operatorOK })(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		passed++
+		seenHubUser = hubOperatorUser(r)
+		if strings.HasSuffix(r.URL.Path, "/fails") {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	const noHeader = "\x00none"
+	do := func(tunneled bool, method, target, body string, hubUsers ...string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, target, strings.NewReader(body))
 		if tunneled {
 			stamp(r)
+		}
+		for _, u := range hubUsers {
+			if u != noHeader {
+				r.Header.Add(tunnel.HubUserHeader, u)
+			}
 		}
 		rec := httptest.NewRecorder()
 		g.ServeHTTP(rec, r)
 		return rec
 	}
 
-	// Orchestrator self-promotion and impersonation.
+	// Orchestrator self-promotion and impersonation: refused, also with the Operator allowed
+	// and a valid Hub user.
 	for _, tc := range []struct{ target, body string }{
 		{"/api/board/p/subscribe", `{"subscriber_id":"w","job_title":"Orchestrator"}`},
 		{"/api/board/p/subscribe", `{"subscriber_id":"my-orchestrator"}`},
 		{"/api/board/p/subscribe", `{"subscriber_id":"w","receive_mode":"all"}`},
+		{"/api/board/p/subscribe", `{"subscriber_id":"Operator","receive_mode":"all"}`},
+		{"/api/board/p/subscribe", `{"subscriber_id":"Operator","job_title":"Orchestrator"}`},
 		{"/api/board/p/tasks/claim", `{"subscriber_id":"Lead"}`}, // an existing peek-capable subscriber
 		{"/api/board/p/tasks", `{"created_by":"Orchestrator","title":"x"}`},
+		{"/api/board/p/tasks", `{"subscriber_id":"Operator","created_by":"Orchestrator","title":"x"}`},
 	} {
-		rec := do(true, "POST", tc.target, tc.body)
+		rec := do(true, "POST", tc.target, tc.body, "hub-user-1234abcd")
 		assert.Equal(t, http.StatusForbidden, rec.Code, tc.body)
 		assert.Equal(t, "orchestrator_identity", codeOf(t, rec), tc.body)
 	}
 
-	// The Operator: refused by default in any identity field, allowed (and logged) with the opt-in.
-	for _, tc := range []struct{ method, target, body string }{
+	operatorActions := []struct{ method, target, body string }{
 		{"POST", "/api/board/p/tasks", `{"subscriber_id":"Operator","title":"x"}`},
 		{"PATCH", "/api/board/p/tasks/1", `{"subscriber_id":"Dev","assigned_to":"operator"}`},
-		{"POST", "/api/board/p/tasks/1/reassign", `{"subscriber_id":"Dev","assignee":"Operator"}`},
+		{"PATCH", "/api/board/p/tasks/1/amend", `{"subscriber_id":"Operator","revision":1,"reason":"r"}`},
+		{"POST", "/api/board/p/tasks/1/reassign", `{"subscriber_id":"Operator","assignee":"Dev"}`},
+		{"POST", "/api/board/p/tasks/1/complete", `{"subscriber_id":"Operator"}`},
+		{"POST", "/api/board/q/external-messages", `{"from_board":"p","subscriber_id":"Operator","content":"x"}`},
 		{"DELETE", "/api/board/p/waits?subscriber_id=Operator", ``},
+	}
+
+	// By default the Operator is allowed with a valid Hub user; the handler sees who.
+	for _, tc := range operatorActions {
+		before := passed
+		seenHubUser = ""
+		rec := do(true, tc.method, tc.target, tc.body, "hub-user-1234abcd")
+		assert.Equal(t, http.StatusOK, rec.Code, tc.body)
+		assert.Equal(t, before+1, passed, tc.body)
+		assert.Equal(t, "hub-user-1234abcd", seenHubUser, tc.body)
+	}
+	// Recorded with the Hub user and the outcome (the newest first).
+	assert.Equal(t, http.StatusNotFound, do(true, "POST", "/api/board/p/tasks/9/fails", `{"subscriber_id":"Operator"}`, "hub-user-1234abcd").Code)
+	recent, err := handler.bs.RecentHubOperatorActions(ctx, 100)
+	require.NoError(t, err)
+	require.Len(t, recent, len(operatorActions)+1)
+	assert.Equal(t, board.HubOperatorAction{ID: recent[0].ID, At: recent[0].At, HubUser: "hub-user-1234abcd", Method: "POST", Path: "/api/board/p/tasks/9/fails", Project: "p", Status: http.StatusNotFound}, recent[0])
+	assert.Equal(t, "PATCH", recent[len(recent)-3].Method)
+	assert.Equal(t, http.StatusOK, recent[len(recent)-1].Status)
+
+	// Never the Operator without a valid Hub user: none (an older hub) 403, malformed or
+	// repeated 400, a name already on the board 409. Nothing reaches the handler.
+	before := passed
+	for _, tc := range []struct {
+		users []string
+		code  int
+	}{
+		{[]string{noHeader}, http.StatusForbidden},
+		{[]string{""}, http.StatusBadRequest},
+		{[]string{"Operator"}, http.StatusBadRequest},
+		{[]string{"hub-user-XYZ"}, http.StatusBadRequest},
+		{[]string{"hub-user-1234abcd, hub-user-5678abcd"}, http.StatusBadRequest},
+		{[]string{"hub-user-1234abcd", "hub-user-1234abcd"}, http.StatusBadRequest},
+		{[]string{"hub-user-1234abcd", "hub-user-5678abcd"}, http.StatusBadRequest},
+		{[]string{"hub-user-0000beef"}, http.StatusConflict},
 	} {
-		rec := do(true, tc.method, tc.target, tc.body)
+		rec := do(true, "POST", "/api/board/p/tasks", `{"subscriber_id":"Operator","title":"x"}`, tc.users...)
+		assert.Equal(t, tc.code, rec.Code, tc.users)
+		assert.Equal(t, "hub_user_required", codeOf(t, rec), tc.users)
+	}
+	assert.Equal(t, before, passed)
+	recent, _ = handler.bs.RecentHubOperatorActions(ctx, 100)
+	assert.Len(t, recent, len(operatorActions)+1, "refusals are not Operator actions")
+
+	// With the owner's opt-out: refused in any identity field, whoever the Hub user is.
+	operatorOK = false
+	for _, tc := range operatorActions {
+		rec := do(true, tc.method, tc.target, tc.body, "hub-user-1234abcd")
 		assert.Equal(t, http.StatusForbidden, rec.Code, tc.body)
 		assert.Equal(t, "operator_identity_required", codeOf(t, rec), tc.body)
 	}
-	before := passed
-	operatorOK = true
-	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/tasks", `{"subscriber_id":"Operator","title":"x"}`).Code)
-	assert.Equal(t, before+1, passed)
-	operatorOK = false
+	assert.Equal(t, before, passed)
 
-	// Unchanged: an ordinary member through the tunnel, reads, chat posts (their sender is
-	// the Hub user), and everything from this computer.
+	// Unchanged: an ordinary member through the tunnel (no Hub user needed), reads, chat
+	// posts (PostMessage decides their sender), and everything from this computer.
 	before = passed
+	seenHubUser = "x"
 	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/tasks/claim", `{"subscriber_id":"Dev"}`).Code)
+	assert.Equal(t, "", seenHubUser)
 	assert.Equal(t, http.StatusOK, do(true, "GET", "/api/board/p/messages?subscriber_id=Operator", ``).Code)
 	assert.Equal(t, http.StatusOK, do(true, "POST", "/api/board/p/messages", `{"subscriber_id":"Operator","content":"hi"}`).Code)
 	assert.Equal(t, http.StatusOK, do(false, "POST", "/api/board/p/tasks", `{"subscriber_id":"Operator","title":"x"}`).Code)
+	assert.Equal(t, "", seenHubUser, "from this computer it is the local Operator")
 	assert.Equal(t, http.StatusOK, do(false, "POST", "/api/board/p/subscribe", `{"subscriber_id":"Orchestrator","receive_mode":"all"}`).Code)
 	assert.Equal(t, before+5, passed)
 }
 
-// A tunnel chat post is sent as the Coral Hub user from the header, marked origin
+// With the opt-out on (here: the handler has no Hub-as-Operator check, which means never),
+// a tunnel chat post is sent as the Coral Hub user from the header, marked origin
 // hub_user; never the Operator, never a member's name. The header means nothing locally.
 func TestTunnelChatPostIsTheHubUser(t *testing.T) {
 	server, handler := setupBoardTestServer(t)
@@ -232,15 +302,180 @@ func TestTasksRunAutoAcceptThroughTheHub(t *testing.T) {
 	_ = os.RemoveAll(notGit)
 }
 
-// The 'Let Coral Hub act as the Operator' switch: local dashboard only (404 through the
-// tunnel), off by default, not settable with PUT /api/settings, honoured only on an
-// authentic tunnel request while linked.
+// #3404: by default a Coral Hub user's chat post that asks to be the Operator is sent as
+// the Operator, attributed to the Hub user (origin hub_operator, hub_user), and its text says
+// so, also to an agent reading it. Without a Hub user it is never the Operator.
+func TestTunnelChatPostAsTheOperator(t *testing.T) {
+	server, handler := setupBoardTestServer(t)
+	ctx := context.Background()
+	_, err := handler.bs.Subscribe(ctx, "p", "Dev", "Backend Dev", "s2", nil, nil, "")
+	require.NoError(t, err)
+	_, err = handler.bs.Subscribe(ctx, "p", "hub-user-0000beef", "Developer", "s3", nil, nil, "")
+	require.NoError(t, err)
+	allowed := true
+	handler.SetHubOperatorAllowed(func(r *http.Request) bool { return allowed && cloud.TunneledAuthentic(r) })
+	const noHeader = "\x00none"
+	post := func(hubUsers []string, body string) (int, map[string]any) {
+		req, _ := http.NewRequest("POST", server.URL+"/api/board/p/messages", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		stamp(req)
+		for _, u := range hubUsers {
+			if u != noHeader {
+				req.Header.Add(tunnel.HubUserHeader, u)
+			}
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+	one := func(u string) []string { return []string{u} }
+	asOperator := `{"subscriber_id":"Operator","as":"Operator","content":"@Dev please look at the build"}`
+
+	code, out := post(one("hub-user-1234abcd"), asOperator)
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Equal(t, "Operator", out["subscriber_id"])
+	assert.Equal(t, board.OriginHubOperator, out["origin"])
+	assert.Equal(t, "hub-user-1234abcd", out["hub_user"])
+	assert.Equal(t, "[Operator via Coral Hub, hub-user-1234abcd] @Dev please look at the build", out["content"])
+	sub, _ := handler.bs.GetProjectSubscription(ctx, "p", "Operator")
+	assert.Nil(t, sub, "the Operator's subscription is the local dashboard's")
+	recent, err := handler.bs.RecentHubOperatorActions(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, recent, 1)
+	assert.Equal(t, "hub-user-1234abcd", recent[0].HubUser)
+	assert.Equal(t, "/api/board/p/messages", recent[0].Path)
+
+	// What the agent reads (coral-board read) says who it is from.
+	resp, err := http.Get(server.URL + "/api/board/p/messages?subscriber_id=Dev")
+	require.NoError(t, err)
+	var read []board.Message
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&read))
+	resp.Body.Close()
+	require.Len(t, read, 1)
+	assert.Equal(t, "Operator", read[0].SubscriberID)
+	assert.True(t, strings.HasPrefix(read[0].Content, "[Operator via Coral Hub, hub-user-1234abcd] "), read[0].Content)
+	require.NotNil(t, read[0].HubUser)
+	assert.Equal(t, "hub-user-1234abcd", *read[0].HubUser)
+
+	// Not asking to be the Operator: the Hub user, as in v1.4.18, also recorded.
+	code, out = post(one("hub-user-1234abcd"), `{"subscriber_id":"Dev","content":"hi"}`)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "hub-user-1234abcd", out["subscriber_id"])
+	assert.Equal(t, board.OriginHubUser, out["origin"])
+	assert.Equal(t, "hub-user-1234abcd", out["hub_user"])
+	assert.Equal(t, "hi", out["content"])
+
+	// Never the Operator without a valid Hub user.
+	code, out = post(one(noHeader), asOperator)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, board.HubUnknownSender, out["subscriber_id"])
+	assert.Equal(t, board.OriginHubUserUnknown, out["origin"])
+	assert.Nil(t, out["hub_user"])
+	for _, bad := range [][]string{one(""), one("Operator"), one("hub-user-XYZ"), {"hub-user-1234abcd", "hub-user-1234abcd"}, {"hub-user-1234abcd", "hub-user-5678abcd"}} {
+		code, out = post(bad, asOperator)
+		assert.Equal(t, http.StatusBadRequest, code, bad)
+		assert.Equal(t, "hub_user_required", out["code"], bad)
+	}
+	code, _ = post(one("hub-user-0000beef"), asOperator)
+	assert.Equal(t, http.StatusConflict, code)
+
+	// The opt-out: the Hub user again, not the Operator.
+	allowed = false
+	code, out = post(one("hub-user-1234abcd"), asOperator)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "hub-user-1234abcd", out["subscriber_id"])
+	assert.Equal(t, "@Dev please look at the build", out["content"])
+	recent, _ = handler.bs.RecentHubOperatorActions(ctx, 10)
+	assert.Len(t, recent, 1, "only the one Operator post")
+
+	// A forged stamp (not this connector's) is never the Operator either.
+	allowed = true
+	req, _ := http.NewRequest("POST", server.URL+"/api/board/p/messages", bytes.NewBufferString(asOperator))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(tunnel.ViaHeader, "forged")
+	req.Header.Set(tunnel.HubUserHeader, "hub-user-1234abcd")
+	resp, err = http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	var forged map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&forged)
+	resp.Body.Close()
+	assert.Equal(t, "hub-user-1234abcd", forged["subscriber_id"])
+
+	// Old rows: a Hub user's earlier posts get hub_user from their sender (migration).
+	// (Covered in internal/board; here the new column is listed by the dashboard's read.)
+	resp, err = http.Get(server.URL + "/api/board/p/messages/all")
+	require.NoError(t, err)
+	var all []board.Message
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&all))
+	resp.Body.Close()
+	require.NotEmpty(t, all)
+	require.NotNil(t, all[0].HubUser)
+	assert.Equal(t, "Operator", all[0].SubscriberID)
+}
+
+// #3404: a cross-team post by the Operator through Coral Hub says so in its text, so the
+// receiving Orchestrator can tell; without the guard's Hub user it is refused.
+func TestCrossTeamOperatorThroughTheHub(t *testing.T) {
+	e := newCrossTeamEnv(t)
+	e.enable("alpha", true)
+	e.enable("beta", true)
+	send := func(hubUser string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", "/api/board/beta/external-messages", strings.NewReader(`{"from_board":"alpha","subscriber_id":"Operator","content":"status?"}`))
+		stamp(r)
+		if hubUser != "" {
+			r = withHubOperator(r, hubUser)
+		}
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("project", "beta")
+		r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		e.h.PostExternalMessage(rec, r)
+		return rec
+	}
+	rec := send("")
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+	assert.Equal(t, "operator_identity_required", codeOf(t, rec))
+	rec = send("hub-user-1234abcd")
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var out struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	assert.Equal(t, "@Orchestrator [Operator via Coral Hub, hub-user-1234abcd] status?", out.Message.Content)
+	// No rate-limit exemption: the Hub's Operator shares the Operator's cross-team limit.
+	limited := false
+	for i := 0; i < crossTeamBurst+1 && !limited; i++ {
+		limited = send("hub-user-1234abcd").Code == http.StatusTooManyRequests
+	}
+	assert.True(t, limited, "the cross-team limit applies through Coral Hub")
+	e.now = e.now.Add(time.Hour)
+	// From this computer: unchanged.
+	code, body := e.send("alpha", "Operator", "", "local status?")
+	require.Equal(t, http.StatusOK, code, body)
+	msg, _ := body["message"].(map[string]any)
+	assert.Equal(t, "@Orchestrator local status?", msg["content"])
+}
+
+// #3404: "Don't let Coral Hub act as the Operator" is an opt-out, off by default; set only
+// from the dashboard on this computer (not with PUT /api/settings), readable but not
+// changeable through the tunnel, honoured only on an authentic tunnel request while linked.
 func TestHubOperatorSetting(t *testing.T) {
 	db, err := storetest.Open(t, filepath.Join(t.TempDir(), "c.db"))
 	require.NoError(t, err)
 	defer db.Close()
 	ss := store.NewSessionStore(db)
 	h := NewCloudHandler(ss, t.TempDir())
+	bs, err := board.NewStore(filepath.Join(t.TempDir(), "b.db"))
+	require.NoError(t, err)
+	defer bs.Close()
+	h.SetBoardStore(bs)
+	linked := false
+	h.linked = func() bool { return linked }
 	local := func(method, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, "http://127.0.0.1:8420/api/system/hub-operator", strings.NewReader(body))
 		r.RemoteAddr = "127.0.0.1:5555"
@@ -251,25 +486,77 @@ func TestHubOperatorSetting(t *testing.T) {
 		h.HubOperator(rec, r)
 		return rec
 	}
+	tunneled := func(method, body string) *httptest.ResponseRecorder {
+		r := stamp(httptest.NewRequest(method, "/api/system/hub-operator", strings.NewReader(body)))
+		rec := httptest.NewRecorder()
+		h.HubOperator(rec, r)
+		return rec
+	}
+	authentic := func() *http.Request { return stamp(httptest.NewRequest("POST", "/api/board/p/tasks", nil)) }
+
 	rec := local("GET", "")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.JSONEq(t, `{"enabled":false,"linked":false}`, rec.Body.String())
-	rec = local("PUT", `{"enabled":true}`)
+	assert.JSONEq(t, `{"enabled":true,"disabled":false,"linked":false,"recent_actions":[]}`, rec.Body.String())
+	assert.JSONEq(t, `{"enabled":true,"disabled":false}`, tunneled("GET", "").Body.String(), "the hub can read it")
+
+	// Honoured only while linked, and only on an authentic tunnel request.
+	assert.False(t, h.HubOperatorAllowed(authentic()), "not linked")
+	linked = true
+	assert.True(t, h.HubOperatorAllowed(authentic()), "linked, opt-out off: the default")
+	assert.False(t, h.HubOperatorAllowed(httptest.NewRequest("POST", "/api/board/p/tasks", nil)), "not through the tunnel")
+	forged := httptest.NewRequest("POST", "/api/board/p/tasks", nil)
+	forged.Header.Set(tunnel.ViaHeader, "1")
+	assert.False(t, h.HubOperatorAllowed(forged), "a stamp that isn't this connector's")
+
+	// The opt-out.
+	rec = local("PUT", `{"disabled":true}`)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.JSONEq(t, `{"enabled":true,"linked":false}`, rec.Body.String())
-	assert.Equal(t, http.StatusBadRequest, local("PUT", `{}`).Code)
+	assert.JSONEq(t, `{"enabled":false,"disabled":true,"linked":true,"recent_actions":[]}`, rec.Body.String())
+	assert.False(t, h.HubOperatorAllowed(authentic()))
+	assert.JSONEq(t, `{"enabled":false,"disabled":true}`, tunneled("GET", "").Body.String())
+	// v1.4.18's form is its inverse.
+	require.Equal(t, http.StatusOK, local("PUT", `{"enabled":true}`).Code)
+	assert.True(t, h.HubOperatorAllowed(authentic()))
+	require.Equal(t, http.StatusOK, local("PUT", `{"enabled":false}`).Code)
+	assert.False(t, h.HubOperatorAllowed(authentic()))
+	for _, bad := range []string{`{}`, `{"disabled":true,"enabled":true}`, `{"disabled":"yes"}`} {
+		assert.Equal(t, http.StatusBadRequest, local("PUT", bad).Code, bad)
+	}
 
-	tr := stamp(httptest.NewRequest("PUT", "/api/system/hub-operator", strings.NewReader(`{"enabled":true}`)))
-	trec := httptest.NewRecorder()
-	h.HubOperator(trec, tr)
-	assert.Equal(t, http.StatusNotFound, trec.Code, "never through the tunnel")
+	// Never changed through the tunnel (and never routed there: PUT is TierNever).
+	for _, m := range []string{"PUT", "POST", "DELETE"} {
+		assert.Equal(t, http.StatusNotFound, tunneled(m, `{"disabled":false}`).Code, m)
+	}
+	assert.Equal(t, tunnel.TierView, tunnel.Classify("GET", "/api/system/hub-operator", ""))
+	assert.Equal(t, tunnel.TierNever, tunnel.Classify("PUT", "/api/system/hub-operator", ""))
+	// View can't post; board settings stay refused through the tunnel.
+	assert.Equal(t, tunnel.TierInteract, tunnel.Classify("POST", "/api/board/p/messages", ""))
+	assert.Equal(t, tunnel.TierInteract, tunnel.Classify("POST", "/api/board/p/tasks", ""))
+	assert.Equal(t, tunnel.TierNever, tunnel.Classify("PUT", "/api/board/p/settings", ""))
+	assert.False(t, h.HubOperatorAllowed(authentic()), "still on")
 
-	// On, but this server isn't linked to Coral Hub: not honoured.
-	assert.False(t, h.HubOperatorAllowed(stamp(httptest.NewRequest("POST", "/api/board/p/tasks", nil))))
-	assert.False(t, h.HubOperatorAllowed(httptest.NewRequest("POST", "/api/board/p/tasks", nil)))
+	// The recent Operator actions are listed locally only.
+	require.NoError(t, bs.RecordHubOperatorAction(context.Background(), board.HubOperatorAction{HubUser: "hub-user-1234abcd", Method: "POST", Path: "/api/board/p/tasks", Project: "p", Status: 200}))
+	var got struct {
+		Recent []board.HubOperatorAction `json:"recent_actions"`
+	}
+	require.NoError(t, json.Unmarshal(local("GET", "").Body.Bytes(), &got))
+	require.Len(t, got.Recent, 1)
+	assert.Equal(t, "hub-user-1234abcd", got.Recent[0].HubUser)
+	assert.NotContains(t, tunneled("GET", "").Body.String(), "recent_actions")
+
+	// v1.4.18's opt-in is dropped at startup.
+	require.NoError(t, ss.SetSetting(context.Background(), legacyHubOperatorSetting, "true"))
+	DropLegacyHubOperatorSetting(context.Background(), ss)
+	settings, _ := ss.GetSettings(context.Background())
+	_, still := settings[legacyHubOperatorSetting]
+	assert.False(t, still)
+	assert.Equal(t, "true", settings[HubOperatorDisabledSetting], "the opt-out is untouched")
 
 	server, _ := setupSystemTestServer(t)
-	code, msg := putSettingsJSON(t, server.URL, map[string]any{HubOperatorSetting: "true"})
-	assert.Equal(t, http.StatusBadRequest, code)
-	assert.Contains(t, msg, "/api/system/hub-operator")
+	for _, k := range []string{HubOperatorDisabledSetting, legacyHubOperatorSetting} {
+		code, msg := putSettingsJSON(t, server.URL, map[string]any{k: "false"})
+		assert.Equal(t, http.StatusBadRequest, code, k)
+		assert.Contains(t, msg, "/api/system/hub-operator", k)
+	}
 }

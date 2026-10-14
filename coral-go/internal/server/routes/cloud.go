@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/cdknorow/coral/internal/auth"
+	"github.com/cdknorow/coral/internal/board"
 	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/peercred"
 	"github.com/cdknorow/coral/internal/store"
@@ -56,6 +57,8 @@ func MaxModeFromSettings(ss *store.SessionStore) func() tunnel.Mode {
 type CloudHandler struct {
 	ss       *store.SessionStore
 	identity *IdentityObserver
+	// bs holds the record of Operator actions taken through Coral Hub (#3404).
+	bs *board.Store
 	// mintLogin mints a dashboard sign-in token (#3387).
 	mintLogin func() (string, error)
 
@@ -68,6 +71,8 @@ type CloudHandler struct {
 	// sameUser tells whether a loopback request comes from Coral's own user
 	// (peercred.SameUser; a test seam).
 	sameUser func(*http.Request) (same, supported bool)
+	// linked overrides whether a Hub link exists (a test seam; nil reads the manager).
+	linked func() bool
 
 	mu  sync.RWMutex
 	mgr *cloud.Manager
@@ -297,21 +302,37 @@ func (h *CloudHandler) Disconnect(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, "Could not disconnect")
 		return
 	}
-	// The Hub link is gone: so is its permission to act as the Operator (#3377).
-	if s, _ := h.ss.GetSettings(r.Context()); s[HubOperatorSetting] == "true" {
-		_ = h.ss.SetSetting(r.Context(), HubOperatorSetting, "false")
-		slog.Info("[cloud] 'Let Coral Hub act as the Operator' turned off: the Hub link was removed")
-	}
 	writeJSON(w, http.StatusOK, h.status())
 }
 
-// HubOperatorSetting is the local owner switch "Let Coral Hub act as the Operator"
-// (#3377): off by default. Through the tunnel the Operator identity (task planning,
-// cross-team posts, completing others' tasks) is refused unless it is on, this server
-// is linked to Coral Hub, and the request carries the connector's own stamp.
-const HubOperatorSetting = "hub_acts_as_operator"
+// HubOperatorDisabledSetting is the local owner opt-out "Don't let Coral Hub act as the
+// Operator" (#3404). Off by default: a Coral Hub user at Interact or Launch acts as the
+// Operator (task planning, cross-team posts, completing others' tasks), as before
+// v1.4.18, with every use attributed to the validated Hub user. It is kept when the Hub
+// link is removed. Local only: the hub can read it (GET /api/system/hub-operator, view
+// tier) but never change it.
+const HubOperatorDisabledSetting = "hub_operator_disabled"
+
+// legacyHubOperatorSetting is #3377's opt-in (v1.4.18), "hub_acts_as_operator". It is
+// dropped at startup (DropLegacyHubOperatorSetting): the opt-out replaces it, and its "true"
+// means what the opt-out's default now means.
+const legacyHubOperatorSetting = "hub_acts_as_operator"
+
+// DropLegacyHubOperatorSetting removes #3377's hub_acts_as_operator, if present.
+func DropLegacyHubOperatorSetting(ctx context.Context, ss *store.SessionStore) {
+	if ok, err := ss.DeleteSetting(ctx, legacyHubOperatorSetting); err == nil && ok {
+		slog.Info("[cloud] dropped the v1.4.18 setting hub_acts_as_operator: Coral Hub acts as the Operator unless 'Don't let Coral Hub act as the Operator' is on")
+	}
+}
+
+func hubOperatorDisabled(settings map[string]string) bool {
+	return settings[HubOperatorDisabledSetting] == "true"
+}
 
 func (h *CloudHandler) hubLinked() bool {
+	if h.linked != nil {
+		return h.linked()
+	}
 	m := h.manager()
 	if m == nil {
 		return false
@@ -323,20 +344,32 @@ func (h *CloudHandler) hubLinked() bool {
 	return false
 }
 
-// HubOperatorAllowed reports whether this tunnel request may act as the Operator.
+// HubOperatorAllowed reports whether this tunnel request may act as the Operator: it
+// carries the connector's own stamp, this server is linked to Coral Hub, and the owner
+// has not turned on the opt-out. The tunnel's route table has already admitted the
+// request at the effective mode (a View request never reaches a board write).
 func (h *CloudHandler) HubOperatorAllowed(r *http.Request) bool {
 	if !cloud.TunneledAuthentic(r) || !h.hubLinked() {
 		return false
 	}
 	s, err := h.ss.GetSettings(r.Context())
-	return err == nil && s[HubOperatorSetting] == "true"
+	return err == nil && !hubOperatorDisabled(s)
 }
 
-// HubOperator: GET/PUT /api/system/hub-operator {"enabled": bool}. Only on this
-// computer, from the dashboard: 404 through the tunnel.
+// HubOperator: GET/PUT /api/system/hub-operator. On this computer, from the dashboard:
+// {"disabled": bool} turns the opt-out on or off ({"enabled": bool}, the v1.4.18 form,
+// is its inverse); the answer adds whether a Hub link exists and the recent Operator
+// actions taken through Coral Hub. Through the tunnel only GET, read only, and only
+// {"enabled", "disabled"}, so the Hub can show it.
 func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 	if cloud.Tunneled(r) {
-		http.NotFound(w, r)
+		if r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		s, _ := h.ss.GetSettings(r.Context())
+		off := hubOperatorDisabled(s)
+		writeJSON(w, http.StatusOK, map[string]any{"enabled": !off, "disabled": off})
 		return
 	}
 	if h.refuseCloud(w, r, allowDashboard) {
@@ -347,21 +380,38 @@ func (h *CloudHandler) HubOperator(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var body struct {
-			Enabled *bool `json:"enabled"`
+			Disabled *bool `json:"disabled"`
+			Enabled  *bool `json:"enabled"`
 		}
-		if err := decodeJSON(r, &body); err != nil || body.Enabled == nil {
-			errBadRequest(w, "enabled (true or false) is required")
+		if err := decodeJSON(r, &body); err != nil || (body.Disabled == nil) == (body.Enabled == nil) {
+			errBadRequest(w, "disabled (true or false) is required")
 			return
 		}
-		if err := h.ss.SetSetting(r.Context(), HubOperatorSetting, strconv.FormatBool(*body.Enabled)); err != nil {
+		off := body.Disabled != nil && *body.Disabled || body.Enabled != nil && !*body.Enabled
+		if err := h.ss.SetSetting(r.Context(), HubOperatorDisabledSetting, strconv.FormatBool(off)); err != nil {
 			errInternalServer(w, err.Error())
 			return
 		}
-		slog.Info("[cloud] 'Let Coral Hub act as the Operator' changed on this computer", "enabled", *body.Enabled)
+		slog.Info("[cloud] 'Don't let Coral Hub act as the Operator' changed on this computer", "disabled", off)
 	}
 	s, _ := h.ss.GetSettings(r.Context())
-	writeJSON(w, http.StatusOK, map[string]any{"enabled": s[HubOperatorSetting] == "true", "linked": h.hubLinked()})
+	off := hubOperatorDisabled(s)
+	out := map[string]any{"enabled": !off, "disabled": off, "linked": h.hubLinked(), "recent_actions": []board.HubOperatorAction{}}
+	if h.bs != nil {
+		if recent, err := h.bs.RecentHubOperatorActions(r.Context(), 50); err == nil {
+			out["recent_actions"] = recent
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
+
+// SetLinkedCheck replaces how the handler tells whether a Hub link exists (tests that
+// run a tunnel without enrolling with a hub).
+func (h *CloudHandler) SetLinkedCheck(fn func() bool) { h.linked = fn }
+
+// SetBoardStore gives the handler the board store, for the recent Operator actions
+// taken through Coral Hub (#3404).
+func (h *CloudHandler) SetBoardStore(bs *board.Store) { h.bs = bs }
 
 // SetLoginMinter gives the handler the dashboard login-token minter (#3387).
 func (h *CloudHandler) SetLoginMinter(fn func() (string, error)) {

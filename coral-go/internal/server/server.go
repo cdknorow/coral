@@ -487,6 +487,9 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	r.Put("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	s.cloudHandler.SetIdentityObserver(s.identity)
+	s.cloudHandler.SetBoardStore(s.boardStore)
+	// #3404: the v1.4.18 opt-in is replaced by an opt-out.
+	routes.DropLegacyHubOperatorSetting(context.Background(), store.NewSessionStore(s.db))
 	if s.keyStore != nil {
 		s.cloudHandler.SetLoginMinter(s.keyStore.MintLoginToken)
 	}
@@ -675,6 +678,9 @@ func (s *Server) buildRouter() chi.Router {
 	// Message board
 	boardHandler := routes.NewBoardHandler(s.boardStore)
 	boardHandler.SetTerminal(s.terminal)
+	boardHandler.SetHubOperatorAllowed(func(r *http.Request) bool {
+		return s.cloudHandler != nil && s.cloudHandler.HubOperatorAllowed(r)
+	})
 	boardHandler.SetArchivedSessionLookup(routes.ArchivedSessionLookup(store.NewSessionStore(s.db)))
 	boardHandler.SetTaskArtifactWriter(s.cfg.CoralDir(), sessHandler.PersistTaskChanges)
 	go boardHandler.RecoverTaskNotifications(context.Background())

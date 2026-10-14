@@ -177,10 +177,12 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 	// shell metacharacters (#3364). Checked before anything is saved; a value that is
 	// unchanged is not re-checked, so a CLI that was uninstalled since doesn't block
 	// saving other settings.
-	// The Hub-as-Operator switch has its own route, which logs every change (#3377).
-	if _, ok := body["hub_acts_as_operator"]; ok {
-		errBadRequest(w, "hub_acts_as_operator is set with PUT /api/system/hub-operator")
-		return
+	// The Hub-as-Operator opt-out has its own route, which logs every change (#3377, #3404).
+	for _, k := range []string{HubOperatorDisabledSetting, legacyHubOperatorSetting} {
+		if _, ok := body[k]; ok {
+			errBadRequest(w, k+" is set with PUT /api/system/hub-operator")
+			return
+		}
 	}
 	var current map[string]string
 	for k, v := range body {

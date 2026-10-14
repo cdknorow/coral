@@ -298,20 +298,24 @@ var forwardToConnector = map[string]bool{
 	"Accept": true, "Accept-Language": true, "Content-Type": true, "Range": true, "If-Range": true,
 	"If-Match": true, "If-None-Match": true, "If-Modified-Since": true, "If-Unmodified-Since": true,
 	"Cache-Control": true, "Last-Event-Id": true, "User-Agent": true,
-	// The Coral Hub user behind a chat post (#3377); only on that route, see below.
+	// The Coral Hub user behind a board write (#3377, #3404); only on those routes, see below.
 	tunnel.HubUserHeader: true,
 }
 
 // allowlistHeaders keeps the allowlisted headers of a request to method and the
-// machine's decodedPath. X-Coral-Hub-User only goes with a chat post,
-// POST /api/board/{project}/messages (the connector applies the same rule).
+// machine's decodedPath. X-Coral-Hub-User only goes with a board write,
+// /api/board/{project}/... other than GET or HEAD (the connector applies the same rule).
+//
+// Keys are compared and deleted as written: h.Del would only remove the canonical
+// spelling, so a non-canonical "x-coral-hub-user" key could otherwise survive
+// (SEC-TUN-01). Defence in depth: the connector's scrub canonicalizes first and drops
+// it there too.
 func allowlistHeaders(h http.Header, method, decodedPath string) {
+	hubUser := tunnel.ForwardsHubUser(method, decodedPath)
 	for k := range h {
-		if !forwardToConnector[http.CanonicalHeaderKey(k)] {
+		canon := http.CanonicalHeaderKey(k)
+		if !forwardToConnector[canon] || (canon == tunnel.HubUserHeader && !hubUser) {
 			delete(h, k)
 		}
-	}
-	if !tunnel.ForwardsHubUser(method, decodedPath) {
-		h.Del(tunnel.HubUserHeader)
 	}
 }

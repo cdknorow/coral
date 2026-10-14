@@ -96,6 +96,7 @@ func cat(groups ...[]route) []route {
 //
 //	/api/settings (GET, PUT)           PUT can set cli_path_* (code execution) and remote access
 //	/api/system/*                      API key read/rotate, DB security, editors, QR/network info, privacy
+//	                                   (except GET /api/system/hub-operator, read only)
 //	/api/tracking/*                    telemetry
 //	/api/webhooks*                     outbound HTTP (SSRF) and stored URLs
 //	/api/workflows, /api/scheduled     create/update/delete define commands that run later
@@ -164,6 +165,9 @@ var routeTable = cat(
 		"/api/sessions/history/{id}/resume-info",
 		"/api/board/projects",
 		"/api/board/tasks",
+		// Whether Coral Hub may act as the Operator on this computer (#3404): read only, so
+		// the Hub can show it. Changing it (PUT) stays local (never).
+		"/api/system/hub-operator",
 		"/api/board/{project}/messages",
 		"/api/board/{project}/messages/all",
 		"/api/board/{project}/messages/check",
