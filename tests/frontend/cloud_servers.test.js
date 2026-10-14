@@ -30,7 +30,10 @@ const { pathToFileURL } = require('url');
 
     for (const k of ['view', 'interact', 'launch']) assert.ok(m.MODE_INFO[k].text.length > 20);
     assert.match(m.MODE_INFO.interact.text, /run commands/);
-    assert.match(m.MODE_INFO.interact.text, /delete boards/);
+    assert.match(m.MODE_INFO.interact.text, /kill an agent/);
+    // A whole team and a board need Launch through the hub (#3433, #3443).
+    assert.doesNotMatch(m.MODE_INFO.interact.text, /delete boards|delete a board/);
+    assert.match(m.MODE_INFO.launch.text, /kill a whole team, delete a board/);
     assert.match(m.MODE_INFO.interact.text, /board settings, including turning on cross-team messaging/);
     // cloud_connect.js keeps its own (module-local) Interact description for the machine's Cloud panel: keep it in step.
     const connect = require('fs').readFileSync(path.join(dir, 'cloud_connect.js'), 'utf8');

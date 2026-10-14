@@ -130,8 +130,8 @@ export const MODES = ['view', 'interact', 'launch'];
 
 export const MODE_INFO = {
     view: { label: 'View', text: 'Read terminals, chats, files, tasks and boards. Nothing you do here changes anything on the machine.' },
-    interact: { label: 'Interact', text: 'Also type into agents, change tasks and boards, and stop or delete work (kill agents, delete boards). Agents can run commands, so this can make the machine run code. It can also change board settings, including turning on cross-team messaging.' },
-    launch: { label: 'Launch', text: 'Also start new agents and teams and browse the machine\'s folders.' },
+    interact: { label: 'Interact', text: 'Also type into agents, change tasks and boards, and stop work one agent at a time (kill an agent). Agents can run commands, so this can make the machine run code. It can also change board settings, including turning on cross-team messaging.' },
+    launch: { label: 'Launch', text: 'Also start new agents and teams, browse the machine\'s folders, and remove whole teams and boards (kill a whole team, delete a board).' },
 };
 
 const rank = m => MODES.indexOf(m);
@@ -195,13 +195,23 @@ export async function serverMayInteract(serverId) {
  *  effective_mode / limited_by when the row carries them. */
 export async function serverAccess(serverId) {
     const s = await _serverRow(serverId);
-    if (!s) return null;
+    return s ? _access(s, serverId) : null;
+}
+
+/** serverAccess from the cached Servers list, without asking the hub: null when the list was not
+ *  loaded yet or the server is unknown. For drawing a menu (#3443); serverAccess loads it. */
+export function cachedServerAccess(serverId) {
+    const s = _modeCache.byId && _modeCache.byId[serverId];
+    return s ? _access(s, serverId) : null;
+}
+
+function _access(s, serverId) {
     const hub = hubMode(s);
     const local = rank(s.local_mode) >= 0 ? s.local_mode : null;
     const effective = rank(s.effective_mode) >= 0 ? s.effective_mode : effectiveMode(s);
     let limitedBy = s.limited_by === 'hub' || s.limited_by === 'machine' ? s.limited_by : null;
     if (!limitedBy && rank(effective) < rank('launch')) limitedBy = local && rank(local) < rank(hub) ? 'machine' : 'hub';
-    return { hub, local, effective, limitedBy, mayInteract: rank(effective) >= rank('interact'), label: s.label || serverId };
+    return { hub, local, effective, limitedBy, mayInteract: rank(effective) >= rank('interact'), mayLaunch: rank(effective) >= rank('launch'), label: s.label || serverId };
 }
 
 

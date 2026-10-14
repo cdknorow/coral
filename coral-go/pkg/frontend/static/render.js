@@ -2,6 +2,7 @@
 
 import { importOnce } from './import_once.js';
 import { state } from './state.js';
+import { launchBlockedReason } from './hub_access.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
 import { distillChip } from './knowledge_distill.js';
@@ -1240,9 +1241,33 @@ export async function killGroup(groupName) {
     );
 }
 
+// The team menu's "Kill All". Through the Coral Hub, killing a whole team needs Launch on its
+// machine (#3433): below that it is shown disabled with the reason (#3443).
+function killAllItem(boardName) {
+    const icon = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>';
+    const blocked = launchBlockedReason(splitKey(boardName).server);
+    if (blocked) {
+        return `<button class="overflow-menu-item overflow-menu-danger overflow-menu-blocked" disabled aria-disabled="true" title="${escapeAttr(blocked)}">
+                    ${icon}
+                    Kill All <span class="overflow-menu-note">needs Launch</span>
+                </button>`;
+    }
+    return `<button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
+                    ${icon}
+                    Kill All
+                </button>`;
+}
+
+// Redraw the team menus once the Coral Hub's access list is in (#3443).
+document.addEventListener('coral:server-access-loaded', () => { if (state.liveSessions) renderLiveSessions(state.liveSessions); });
+
 export async function killBoard(boardName) {
     const boardSessions = state.liveSessions.filter(s => inTeam(s, boardName));
     if (!boardSessions.length) return;
+    // Through the Coral Hub a whole team needs Launch (#3433, #3443): say why (a toast, as Delete
+    // does) instead of a refusal per agent.
+    const blocked = launchBlockedReason(splitKey(boardName).server);
+    if (blocked) { showToast(blocked, true); return; }
 
     showConfirmModal(
         "Kill Team",
@@ -2466,10 +2491,7 @@ function _renderLiveSessions(sessions) {
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 8a7 7 0 0 1 12.9-3.8"/><path d="M15 8a7 7 0 0 1-12.9 3.8"/><polyline points="13 1 14 4.2 10.5 4.2"/><polyline points="3 15 2 11.8 5.5 11.8"/></svg>
                     Reset Team
                 </button>
-                <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
-                    Kill All
-                </button>
+                ${killAllItem(boardName)}
                 <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${jsStr(boardName)}')" title="Remove all killed agents from the sidebar">
                     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
                     Dismiss All
@@ -2723,10 +2745,7 @@ function _renderLiveSessions(sessions) {
                             Token Usage
                         </button>
                         <hr class="overflow-menu-divider">
-                        <button class="overflow-menu-item overflow-menu-danger" onclick="event.stopPropagation(); closeSidebarKebabs(); killBoard('${jsStr(boardName)}')">
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></svg>
-                            Kill All
-                        </button>
+                        ${killAllItem(boardName)}
                         <button class="overflow-menu-item" onclick="event.stopPropagation(); closeSidebarKebabs(); dismissBoardKilled('${jsStr(boardName)}')" title="Remove all killed agents from the sidebar">
                             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h10M5 6V4a3 3 0 0 1 6 0v2M6 10v2M10 10v2M4 6l1 8h6l1-8"/></svg>
                             Dismiss All

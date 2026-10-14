@@ -1964,6 +1964,20 @@
     color: var(--error);
 }
 
+/* A team action this account may not take through the Coral Hub (#3443): shown, not usable,
+   with a short visible note; the full reason is the title. */
+.overflow-menu-item.overflow-menu-blocked,
+.overflow-menu-item.overflow-menu-blocked:hover {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: none;
+}
+.overflow-menu-note {
+    margin-left: auto;
+    font-size: var(--fs-xs, 11px);
+    color: var(--text-muted);
+}
+
 .overflow-menu-divider {
     border: none;
     border-top: 1px solid var(--border);

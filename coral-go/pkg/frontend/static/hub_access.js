@@ -32,6 +32,30 @@ export function accessBlockedMessage(a, required = 'interact') {
     return `Blocked: ${a.label || 'this server'}${need}${parts.length ? ` (${parts.join(' · ')})` : ''}. ${fix}`;
 }
 
+// Launch-level actions on a whole team or board (#3443): through the Coral Hub, killing a whole team
+// and deleting a board need Launch on that machine (#3433). The menus draw from the cached Servers
+// list; until it is loaded they show the action (the hub still refuses) and redraw once it is.
+let _cloudServers = null;
+let _warming = null;
+function _warmAccess(server) {
+    if (_warming) return;
+    _warming = importOnce('./cloud_servers.js')
+        .then(m => { _cloudServers = m; return m.serverAccess(server); })
+        .then(() => document.dispatchEvent(new CustomEvent('coral:server-access-loaded')))
+        .catch(() => {})
+        .finally(() => { _warming = null; });
+}
+
+/** Why this account cannot kill a whole team or delete a board on `server` through the Coral Hub:
+ *  the "Blocked: … needs Launch" text, or '' when it can, outside the hub, or when that is not
+ *  known yet. */
+export function launchBlockedReason(server) {
+    if (!isCloud() || !server || server === 'local') return '';
+    const a = _cloudServers ? _cloudServers.cachedServerAccess(server) : null;
+    if (!a) { _warmAccess(server); return ''; }
+    return a.mayLaunch ? '' : accessBlockedMessage(a, 'launch');
+}
+
 /** Header chip text, e.g. "Read-only: Hub: View". */
 export function readOnlyChipText(a) {
     const m = a.limitedBy === 'machine' ? label(a.effective) || label(a.local) : label(a.hub) || label(a.effective);

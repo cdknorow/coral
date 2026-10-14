@@ -6,6 +6,7 @@ import { groupTaskQueueRuns, renderTaskQueueRun } from './board_system_lines.js'
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
 import { identityKey, keyLabel, splitKey, serverFetch, sessionServer, boardFetch, teamFetch, isCloud } from './server_base.js';
+import { launchBlockedReason } from './hub_access.js';
 import { pollEvery, afterPause, isBusyStatus, busyRetryingText, machineOf } from './overload.js';
 
 let currentProject = null;
@@ -129,6 +130,7 @@ export function selectBoardProject(project, messageId = null) {
     const sleepBtn = document.getElementById('mb-sleep-btn');
     if (sleepBtn) sleepBtn.style.display = '';
     document.getElementById('mb-delete-btn').style.display = '';
+    syncBoardDeleteButton(project);
 
     const badge = document.getElementById('messageboard-project-badge');
     badge.textContent = keyLabel(project);
@@ -529,7 +531,22 @@ export async function deleteBoardMessage(messageId) {
 
 // ── Delete project ───────────────────────────────────────────────────────
 
+// Through the Coral Hub, deleting a board needs Launch on its machine (#3433): below that the
+// button is shown disabled with the reason (#3443), and redrawn once the access list is in.
+function syncBoardDeleteButton(project) {
+    const btn = document.getElementById('mb-delete-btn');
+    if (!btn || !project) return;
+    const blocked = launchBlockedReason(splitKey(project).server);
+    btn.disabled = !!blocked;
+    btn.setAttribute('aria-disabled', blocked ? 'true' : 'false');
+    btn.title = blocked || '';
+    btn.textContent = blocked ? 'Delete (needs Launch)' : 'Delete';
+}
+document.addEventListener('coral:server-access-loaded', () => syncBoardDeleteButton(currentProject));
+
 export function deleteMessageBoardProject() {
+    const blocked = currentProject ? launchBlockedReason(splitKey(currentProject).server) : '';
+    if (blocked) { showToast(blocked, true); return; }
     if (!currentProject) return;
     const project = currentProject;
     window.showConfirmModal('Delete Board', `Delete project "${keyLabel(project)}" and all its messages?`, async () => {
