@@ -100,3 +100,9 @@ dialog.cs-confirm::backdrop { background: rgba(0, 0, 0, .55); }
 dialog.cs-confirm h3 { margin: 0 0 8px; font-size: var(--fs-md, 15px); overflow-wrap: anywhere; }
 dialog.cs-confirm p { margin: 0 0 16px; color: var(--text-secondary); font-size: var(--fs-sm, 13px); }
 .cs-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* Coral Hub's own pages (#3406): plain links under the Servers title, only on the hub. */
+.hub-nav { display: flex; flex-wrap: wrap; gap: var(--space-sm, 6px) var(--space-md, 12px); margin: 0 0 var(--space-md, 8px); }
+.hub-nav[hidden] { display: none; }
+.hub-nav-link { color: var(--accent); text-decoration: none; font-size: var(--fs-md, 13px); }
+.hub-nav-link:hover, .hub-nav-link:focus-visible { text-decoration: underline; }

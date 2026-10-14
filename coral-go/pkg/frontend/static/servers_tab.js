@@ -36,6 +36,7 @@ export async function showServersTabContent(focusId) {
     if (!body) return;
     _active = true;
     if (isCloud()) {
+        importOnce('./hub_nav.js').then(n => n.loadHubNav()).catch(() => {});
         const m = await importOnce('./cloud_servers.js', 'the server list');
         await m.renderCloudServersInto(body);
     } else {
