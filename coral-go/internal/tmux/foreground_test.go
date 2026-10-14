@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// shellWait bounds how long a pane may take to show a command as the foreground job or the shell as idle again.
+// Starting the command and ps/pgrep each take a moment; 5 s was too tight for a machine under load (it failed in a
+// 188 s full run), and a pass returns as soon as the state is seen, so a long bound costs nothing.
+const shellWait = 20 * time.Second
+
 func TestIsShellCommand(t *testing.T) {
 	for _, c := range []string{"zsh", "-zsh", "bash", "sh", "/bin/zsh", "fish", "dash", "pwsh", "pwsh.exe", "cmd.exe", "ZSH", " bash "} {
 		assert.True(t, IsShellCommand(c), c)
@@ -37,13 +42,13 @@ func TestAgentShellIdleFollowsTheCLI(t *testing.T) {
 		return err == nil && !v
 	}
 
-	require.Eventually(t, idle, 5*time.Second, 25*time.Millisecond, "a fresh pane is at an idle shell prompt")
+	require.Eventually(t, idle, shellWait, 25*time.Millisecond, "a fresh pane is at an idle shell prompt")
 
 	// A long-running command stands in for the agent CLI.
 	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 30"))
-	require.Eventually(t, busy, 5*time.Second, 25*time.Millisecond, "a running CLI keeps the shell busy")
+	require.Eventually(t, busy, shellWait, 25*time.Millisecond, "a running CLI keeps the shell busy")
 	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
-	require.Eventually(t, idle, 5*time.Second, 25*time.Millisecond, "idle again once it exits")
+	require.Eventually(t, idle, shellWait, 25*time.Millisecond, "idle again once it exits")
 
 	// A CLI started through a shell wrapper script shows 'sh' in the foreground, yet
 	// it is running: the pane's shell has a child, so it is not taken as exited.
@@ -51,9 +56,9 @@ func TestAgentShellIdleFollowsTheCLI(t *testing.T) {
 	require.Eventually(t, func() bool {
 		fg, err := c.DisplayMessage(ctx, name+".0", "#{pane_current_command}")
 		return err == nil && fg != "" && busy()
-	}, 5*time.Second, 25*time.Millisecond, "a wrapper script is not an exited agent")
+	}, shellWait, 25*time.Millisecond, "a wrapper script is not an exited agent")
 	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
-	require.Eventually(t, idle, 5*time.Second, 25*time.Millisecond)
+	require.Eventually(t, idle, shellWait, 25*time.Millisecond)
 }
 
 func TestAgentShellIdleOfAGoneTerminal(t *testing.T) {
@@ -75,22 +80,22 @@ func TestAgentShellIdleIgnoresBackgroundJobs(t *testing.T) {
 		v, _, err := c.AgentShellIdle(ctx, name, "claude", sid)
 		return v, err == nil
 	}
-	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, 5*time.Second, 25*time.Millisecond)
+	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, shellWait, 25*time.Millisecond)
 
 	// A job in the background: the shell is back at its prompt.
 	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 60 &"))
 	require.Eventually(t, func() bool {
 		out, _ := c.DisplayMessage(ctx, name+".0", "#{pane_pid}")
 		return out != ""
-	}, 5*time.Second, 25*time.Millisecond)
-	time.Sleep(500 * time.Millisecond)
+	}, shellWait, 25*time.Millisecond)
+	time.Sleep(500 * time.Millisecond) // sleep-ok: a negative proof; the shell must still read as idle after the job has had time to be wrongly counted
 	idle, ok := state()
 	require.True(t, ok)
 	assert.True(t, idle, "a background job is not the agent: the shell is idle")
 
 	// A foreground command on top of the background job is still busy.
 	require.NoError(t, c.SendKeysToTarget(ctx, name+".0", "sleep 30"))
-	require.Eventually(t, func() bool { v, ok := state(); return ok && !v }, 5*time.Second, 25*time.Millisecond, "a foreground command keeps the shell busy")
+	require.Eventually(t, func() bool { v, ok := state(); return ok && !v }, shellWait, 25*time.Millisecond, "a foreground command keeps the shell busy")
 	require.NoError(t, c.SendRawKeys(ctx, name, []string{"C-c"}, "claude", sid))
-	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, 5*time.Second, 25*time.Millisecond)
+	require.Eventually(t, func() bool { v, ok := state(); return ok && v }, shellWait, 25*time.Millisecond)
 }
