@@ -266,6 +266,15 @@ func (s *SessionStore) MigrateDisplayName(ctx context.Context, oldSessionID, new
 	return s.SetDisplayName(ctx, newSessionID, *name)
 }
 
+// MigrateSessionTags gives newSessionID the tags oldSessionID has (a restart or
+// resume replaces the session row; the agent keeps its tags, #3216).
+func (s *SessionStore) MigrateSessionTags(ctx context.Context, oldSessionID, newSessionID string) error {
+	_, err := s.db.ExecContext(ctx,
+		"INSERT OR IGNORE INTO session_tags (session_id, tag_id) SELECT ?, tag_id FROM session_tags WHERE session_id = ?",
+		newSessionID, oldSessionID)
+	return err
+}
+
 // ── Tags ───────────────────────────────────────────────────────────────
 
 // ListTags returns all defined tags.

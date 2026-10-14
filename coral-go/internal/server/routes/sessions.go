@@ -3076,6 +3076,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 		PID:           restartPID,
 	})
 	h.ss.MigrateDisplayName(ctx, body.SessionID, newSessionID)
+	h.ss.MigrateSessionTags(ctx, body.SessionID, newSessionID) // and its tags (#3216)
 	if sleeping != nil {
 		// The new row inherits the sleeping flag; this agent is running now.
 		h.ss.SetSessionSleeping(ctx, newSessionID, false)
@@ -3173,11 +3174,15 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	// Load stored fields from current session
 	var storedPrompt, storedBoard, storedBoardServer, storedDisplayName, storedBoardType string
+	storedAgentType := agentType
 	var storedTools []string
 	var storedMCPServers map[string]any
 	if body.CurrentSessionID != "" {
 		if ls, err := h.ss.GetLiveSession(ctx, body.CurrentSessionID); err == nil && ls != nil {
 			storedPrompt = derefStrPtr(ls.Prompt)
+			if ls.AgentType != "" {
+				storedAgentType = ls.AgentType
+			}
 			storedBoard = derefStrPtr(ls.BoardName)
 			storedBoardServer = derefStrPtr(ls.BoardServer)
 			storedDisplayName = derefStrPtr(ls.DisplayName)
@@ -3242,6 +3247,13 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The agent's board subscription (job title, receive mode, peek), carried to
+	// the new session as restart does (#3216).
+	var resumeSubscription *board.Subscriber
+	if h.bs != nil && body.CurrentSessionID != "" {
+		resumeSubscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, body.CurrentSessionID))
+	}
+
 	h.ss.ReplaceLiveSession(ctx, body.CurrentSessionID, &store.LiveSession{
 		SessionID:    newSessionID,
 		AgentType:    agentType,
@@ -3255,8 +3267,20 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		PID:          resumePID,
 	})
 
+	// The agent keeps its name and tags, like a restart (#3216).
+	if body.CurrentSessionID != "" {
+		h.ss.MigrateDisplayName(ctx, body.CurrentSessionID, newSessionID)
+		h.ss.MigrateSessionTags(ctx, body.CurrentSessionID, newSessionID)
+	}
+
 	// Re-subscribe to board — subscriber_id (role) is stable, so the cursor persists automatically.
-	if storedBoard != "" {
+	if sub := resumeSubscription; sub != nil {
+		if _, err := h.bs.Subscribe(ctx, sub.Project, sub.SubscriberID, sub.JobTitle, newSessionName,
+			sub.WebhookURL, sub.OriginServer, sub.ReceiveMode, sub.CanPeek == 1); err != nil {
+			log.Printf("[resume] re-subscribe %s to board %s: %v", newSessionName, sub.Project, err)
+		}
+		writeBoardStateFile(newSessionName, sub.Project, sub.JobTitle, h.cfg)
+	} else if storedBoard != "" {
 		h.setupBoardAndPrompt(newSessionID, newSessionName, agentType, storedBoard, storedDisplayName)
 	}
 
