@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.4.23 — Fix: scheduled jobs, task runs and workflow steps type Claude's first prompt right away again
+
+**Please upgrade from v1.4.22.** In v1.4.22, Claude agents started by a scheduled job, a task run or a workflow step waited two minutes before Coral typed their first prompt: Coral didn't recognise Claude's input box, so it held the prompt until its two-minute fallback. Coral now recognises the input box, and the first prompt is typed as soon as Claude is ready. Agents launched from the dashboard or as a team were unaffected (their first prompt is passed at launch). Prompts are still held while an agent shows a permission or selection prompt, as in v1.4.22.
+
+### Changes
+
+- **Coral Hub stays out of the way on a fresh install.** A new install no longer shows the **Connect to Coral Hub** screen, a terminal prompt or an enrollment code on its own. Connect from the home screen, **Settings › Coral Hub** or `coral cloud connect`. Starting Coral with an explicit `--cloud-url` (or `CORAL_CLOUD_URL`) still offers it at launch; `--cloud-connect` / `CORAL_CLOUD_CONNECT` choose `prompt`, `auto` or `off`, and an unrecognised `CORAL_CLOUD_CONNECT` value logs a warning and means `off`. A server that is already connected reconnects as before.
+- **Machine health:** a health card in Settings and a status dot for this computer; the machine view in Coral Hub shows each machine's status, CPU, memory, load, disk and agents.
+- **Faster dashboard:** chat no longer waits on the database for each refresh (agent details are cached in memory), and terminal, live-list and board-task polls answer 304 when nothing changed.
+- **Encrypted build:** databases now use the settings Coral intended (WAL, a 30 s busy timeout, and foreign keys on sessions.db). Any existing orphan rows are reported once in the log at startup, by table count only, and never block startup.
+- **Linux arm64:** the tray app builds for linux/arm64.
+
+### For integrators (Coral Hub, scripts)
+
+- `GET /api/cloud/status` reports `offer_at_launch`.
+- Terminal, live-list and board-task polls support `ETag` / `If-None-Match` (and `X-Coral-Validator`) and answer **304** when nothing changed.
+- The Coral Hub feed carries a `machine_health` event (CPU, memory, load, disk, agents), field-diffed, every 15 seconds.
+
 ## v1.4.22 — Safety: automated messages never answer a prompt; workflow and agent security fixes
 
 **Safety and security fixes — please upgrade.** Coral no longer types its own messages into an agent that is waiting on you at a permission or selection prompt, where they could answer it. This release also closes workflow injection and file-escape holes, keeps agents from inheriting Coral's own settings or acting as the Operator, and fixes the terminal width bug.
