@@ -93,6 +93,8 @@ type SessionsHandler struct {
 	// is still loaded from the database and is never taken from the client.
 	resumeMu    sync.Mutex
 	resumeCache map[string]string
+	// chatMeta caches the live-session record a chat request needs (#3438).
+	chatMeta    *chatMetaCache
 	resumeKnown map[string]bool
 
 	cachePrune sessionCachePruneState // session_cache_prune.go
@@ -248,6 +250,7 @@ func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.Ter
 		transcriptPending: make(map[string]bool),
 		transcriptWarmSem: make(chan struct{}, 4),
 		resumeCache:       make(map[string]string),
+		chatMeta:          newChatMetaCache(),
 		resumeKnown:       make(map[string]bool),
 	}
 }
@@ -1317,15 +1320,40 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	workingDir := r.URL.Query().Get("working_directory")
 	var resumeFromID string
 	var resumeLookupDone bool
+	metaCache := "not_needed" // hit: from memory; miss: read from the sessions DB (#3438)
 	trace.begin("metadata_lookup")
 
-	// If missing metadata, attempt lookup by session_id or name
-	if (agentType == "" || workingDir == "" || sessionID == "") && h.ss != nil {
+	// If missing metadata, attempt lookup by session_id or name: from memory when it was
+	// read recently (#3438: a chat through Coral Hub always lacks the working directory,
+	// and the sessions DB has one connection shared with every background writer).
+	if agentType == "" || workingDir == "" || sessionID == "" {
+		targetID := sessionID
+		if targetID == "" {
+			targetID = name
+		}
+		metaCache = "miss"
+		if m, ok := h.chatMeta.get(targetID); ok {
+			metaCache = "hit"
+			resumeLookupDone = true
+			resumeFromID = m.resumeFromID
+			if agentType == "" {
+				agentType = m.agentType
+			}
+			if workingDir == "" {
+				workingDir = m.workingDir
+			}
+			if sessionID == "" {
+				sessionID = m.sessionID
+			}
+		}
+	}
+	if (agentType == "" || workingDir == "" || sessionID == "") && h.ss != nil && !resumeLookupDone {
 		targetID := sessionID
 		if targetID == "" {
 			targetID = name
 		}
 		if ls, err := h.ss.GetLiveSession(r.Context(), targetID); err == nil && ls != nil {
+			h.chatMeta.put(chatMeta{agentType: ls.AgentType, workingDir: ls.WorkingDir, sessionID: ls.SessionID, resumeFromID: derefStrPtr(ls.ResumeFromID)}, targetID, ls.SessionID)
 			resumeLookupDone = true
 			resumeFromID = derefStrPtr(ls.ResumeFromID)
 			h.rememberResumeFromID(ls.SessionID, resumeFromID)
@@ -1339,8 +1367,22 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 				sessionID = ls.SessionID
 			}
 		} else if all, err := h.ss.GetAllLiveSessions(r.Context()); err == nil {
+			matches := 0
 			for _, s := range all {
 				if s.AgentName == name || s.SessionID == name {
+					matches++
+				}
+			}
+			for _, s := range all {
+				if s.AgentName == name || s.SessionID == name {
+					// Cached under the name only when it names one session: an agent name is a
+					// folder name, which several agents can share (the first match is used, as
+					// before, but not pinned).
+					keys := []string{s.SessionID}
+					if matches == 1 {
+						keys = append(keys, name)
+					}
+					h.chatMeta.put(chatMeta{agentType: s.AgentType, workingDir: s.WorkingDir, sessionID: s.SessionID, resumeFromID: derefStrPtr(s.ResumeFromID)}, keys...)
 					resumeLookupDone = true
 					resumeFromID = derefStrPtr(s.ResumeFromID)
 					h.rememberResumeFromID(s.SessionID, resumeFromID)
@@ -1364,7 +1406,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if !resumeLookupDone && sessionID != "" {
 		resumeFromID = h.cachedResumeFromID(r.Context(), sessionID)
 	}
-	trace.end("metadata_lookup", dbPoolAttrs(h.db)...)
+	trace.end("metadata_lookup", append([]any{"meta_cache", metaCache}, dbPoolAttrs(h.db)...)...)
 
 	if agentType == "" {
 		agentType = at.Claude
@@ -2665,6 +2707,7 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	// (e.g., if the tmux socket is in a bad state), and we must ensure the
 	// DB row is removed so sleeping sessions don't reappear on server restart.
 	if body.SessionID != "" {
+		h.chatMeta.forget(body.SessionID)
 		if err := h.ss.UnregisterLiveSession(bgCtx, body.SessionID); err != nil {
 			log.Printf("[kill] failed to unregister session %s: %v", body.SessionID, err)
 		}
@@ -3064,6 +3107,7 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Replace live session in DB (carry forward stored fields)
+	h.chatMeta.forget(body.SessionID, newSessionID)
 	h.ss.ReplaceLiveSession(ctx, body.SessionID, &store.LiveSession{
 		SessionID:     newSessionID,
 		AgentType:     agentType,
@@ -3284,6 +3328,7 @@ func (h *SessionsHandler) Resume(w http.ResponseWriter, r *http.Request) {
 		resumeSubscription, _ = h.bs.GetSubscriptionBySessionName(ctx, naming.SessionName(storedAgentType, body.CurrentSessionID))
 	}
 
+	h.chatMeta.forget(body.CurrentSessionID, newSessionID)
 	h.ss.ReplaceLiveSession(ctx, body.CurrentSessionID, &store.LiveSession{
 		SessionID:    newSessionID,
 		AgentType:    agentType,
@@ -3859,6 +3904,7 @@ func (h *SessionsHandler) ResetTeam(w http.ResponseWriter, r *http.Request) {
 
 	// Kill all agents and unsubscribe from board
 	for _, s := range sessions {
+		h.chatMeta.forget(s.SessionID)
 		h.ss.UnregisterLiveSession(bgCtx, s.SessionID)
 		h.terminal.KillSession(bgCtx, s.AgentName, s.AgentType, s.SessionID)
 		removeBoardStateFile(s.AgentName, h.cfg)
@@ -4595,6 +4641,7 @@ func (h *SessionsHandler) launchSession(ctx context.Context, workDir, agentType,
 	}
 
 	// Register in DB
+	h.chatMeta.forget(sessionID, sessionName, folderName)
 	h.ss.RegisterLiveSession(ctx, &store.LiveSession{
 		SessionID:     sessionID,
 		AgentType:     agentType,
@@ -5513,6 +5560,7 @@ func (h *SessionsHandler) KillTeam(w http.ResponseWriter, r *http.Request) {
 			}
 			cancel()
 		}
+		h.chatMeta.forget(ls.SessionID)
 		h.ss.UnregisterLiveSession(bgCtx, ls.SessionID)
 		h.terminal.KillSession(ctx, ls.AgentName, ls.AgentType, ls.SessionID)
 		removeBoardStateFile(ls.AgentName, h.cfg)
