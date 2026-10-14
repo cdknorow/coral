@@ -369,7 +369,7 @@ Returns the current API key. **Localhost only** (returns `403` for remote reques
 POST /api/system/api-key/regenerate
 ```
 
-Generates a new random API key and saves to disk. **Localhost only.**
+Generates a new random API key and saves to disk; every session ends (browsers sign in again). **Localhost only.**
 
 **Response:** `{"key": "coral_sk_newkey..."}`
 

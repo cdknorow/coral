@@ -54,11 +54,11 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Allow auth page, static assets, manifest, and license webhook
+			// Allow the auth page, sign-out (it only ends the caller's own session, so an
+			// expired one can still clear its cookie), static assets and the manifest.
 			path := r.URL.Path
-			if path == "/auth" || strings.HasPrefix(path, "/static/") ||
-				path == "/manifest.json" || path == "/favicon.ico" ||
-				path == "/api/license/webhook" {
+			if path == "/auth" || path == "/auth/logout" || strings.HasPrefix(path, "/static/") ||
+				path == "/manifest.json" || path == "/favicon.ico" {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -79,7 +79,7 @@ func Middleware(ks *KeyStore) func(http.Handler) http.Handler {
 						if err != nil {
 							log.Printf("[auth] failed to create session: %v", err)
 						} else {
-							setSessionCookie(w, r, token)
+							ks.setSessionCookie(w, r, token)
 						}
 					}
 					next.ServeHTTP(w, withMethod(r, MethodAPIKey))

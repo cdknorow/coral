@@ -3,8 +3,9 @@ package auth
 import (
 	"encoding/json"
 	"log"
-	"net"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/cdknorow/coral/internal/httputil"
 )
@@ -38,13 +39,16 @@ func (ar *Routes) ValidateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if !ar.ks.CheckRateLimit(ip) {
+	// Only wrong keys count against the limit (as in Middleware): a user who signs in often,
+	// or several people behind one address, never get a 429 for using the right key.
+	ip := clientIP(r)
+	if ar.ks.RateLimited(ip) {
 		httputil.WriteJSON(w, http.StatusTooManyRequests, map[string]string{"error": "Too many attempts. Try again later."})
 		return
 	}
 
 	if !ar.ks.ValidateKey(body.Key) {
+		ar.ks.RecordFailure(ip)
 		httputil.WriteJSON(w, http.StatusUnauthorized, map[string]string{"error": "Invalid API key"})
 		return
 	}
@@ -55,7 +59,25 @@ func (ar *Routes) ValidateKey(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "Failed to create session"})
 		return
 	}
-	setSessionCookie(w, r, token)
+	ar.ks.setSessionCookie(w, r, token)
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// Logout ends the caller's session and clears its cookie (#3356). Only a same-origin request
+// is honoured (a page on another site can't sign the user out); one without a session just
+// gets the cookie cleared.
+// POST /auth/logout
+func (ar *Routes) Logout(w http.ResponseWriter, r *http.Request) {
+	if origin := r.Header.Get("Origin"); origin != "" {
+		if u, err := url.Parse(origin); err != nil || !strings.EqualFold(u.Host, r.Host) {
+			httputil.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin sign-out refused"})
+			return
+		}
+	}
+	if token := extractSessionCookie(r); token != "" {
+		ar.ks.RevokeSession(token)
+	}
+	ar.ks.clearSessionCookie(w, r)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

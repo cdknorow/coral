@@ -101,7 +101,11 @@ func NewWithKey(cfg *config.Config, db *store.DB, backend ptymanager.TerminalBac
 	if err != nil {
 		logexit.Fatalf("Failed to initialize API key store: %v", err)
 	}
-	log.Printf("API Key: %s...", keyStore.Key()[:8])
+	// Never log any part of the key (#3356): Settings > Remote Access shows it on this machine.
+	log.Printf("API key loaded (Settings > Remote Access shows it on this computer)")
+	if err := keyStore.SetTrustedProxies(os.Getenv("CORAL_TRUSTED_PROXIES")); err != nil {
+		log.Printf("[auth] CORAL_TRUSTED_PROXIES ignored: %v", err)
+	}
 
 	s := &Server{
 		cfg:        cfg,
@@ -296,6 +300,7 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/auth", authRoutes.AuthPage)
 	r.Post("/auth", authRoutes.ValidateKey)
 	r.Post("/auth/key", authRoutes.ValidateKey)
+	r.Post("/auth/logout", authRoutes.Logout)
 	r.Get("/api/system/api-key", authRoutes.GetAPIKey)
 	r.Post("/api/system/api-key/regenerate", authRoutes.RegenerateKey)
 	r.Get("/api/system/auth-status", authRoutes.AuthStatus)

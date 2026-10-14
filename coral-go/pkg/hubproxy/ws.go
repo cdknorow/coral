@@ -46,7 +46,9 @@ func DialWebSocket(ctx context.Context, t Target, path, rawQuery string, protoco
 			return nil, err
 		}
 	}
-	return t.DialWS(ctx, raw, rawQuery, protocols)
+	// Never forward the browser's api_key (#3356): the target adds its own credential. The
+	// HTTP target's wsURL strips it too, but a tunnel target passes the query as given.
+	return t.DialWS(ctx, raw, stripAPIKey(rawQuery), protocols)
 }
 
 func dialWS(ctx context.Context, t HTTPTarget, base *url.URL, raw, rawQuery string, protocols []string) (*websocket.Conn, error) {
@@ -130,7 +132,7 @@ func (h *Handler) bridgeWS(w http.ResponseWriter, r *http.Request, id string, t 
 		return
 	}
 	// Dial the remote first so failures can still be reported as HTTP errors.
-	up, err := t.DialWS(r.Context(), raw, r.URL.RawQuery, requestedProtocols(r))
+	up, err := t.DialWS(r.Context(), raw, stripAPIKey(r.URL.RawQuery), requestedProtocols(r))
 	if err != nil {
 		h.writeUpstreamErr(w, r.Context(), id, err)
 		return

@@ -114,14 +114,32 @@ func TestKeyStore_SessionLRUEviction(t *testing.T) {
 	assert.False(t, ks.ValidateSession(firstToken))
 }
 
-func TestKeyStore_SessionsSurviveKeyRegeneration(t *testing.T) {
+// #3356: a new key is how a user locks out whoever had the old one, so it ends every session.
+func TestKeyStore_KeyRegenerationEndsEverySession(t *testing.T) {
 	ks := newTestKeyStore(t)
-	token, err := ks.CreateSession("192.168.1.5", "test")
+	a, err := ks.CreateSession("192.168.1.5", "test")
+	require.NoError(t, err)
+	b, err := ks.CreateSession("192.168.1.6", "test")
 	require.NoError(t, err)
 	_, err = ks.RegenerateKey()
 	require.NoError(t, err)
-	// Existing sessions should still be valid after key regeneration
-	assert.True(t, ks.ValidateSession(token))
+	assert.False(t, ks.ValidateSession(a))
+	assert.False(t, ks.ValidateSession(b))
+	// Signing in again with the new key works, and LRU bookkeeping starts fresh.
+	c, err := ks.CreateSession("192.168.1.5", "test")
+	require.NoError(t, err)
+	assert.True(t, ks.ValidateSession(c))
+}
+
+func TestKeyStore_RevokeSession(t *testing.T) {
+	ks := newTestKeyStore(t)
+	a, _ := ks.CreateSession("192.168.1.5", "test")
+	b, _ := ks.CreateSession("192.168.1.6", "test")
+	ks.RevokeSession(a)
+	ks.RevokeSession("no-such-token")
+	assert.False(t, ks.ValidateSession(a))
+	assert.True(t, ks.ValidateSession(b), "only that session ends")
+	assert.NotContains(t, ks.order, a)
 }
 
 // ── Rate Limiting Tests ─────────────────────────────────────
@@ -374,7 +392,7 @@ func TestSetSessionCookie_Attributes(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", nil)
 	r.RemoteAddr = "127.0.0.1:12345"
-	setSessionCookie(w, r, "test-token-123")
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-123")
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	c := cookies[0]
@@ -392,7 +410,7 @@ func TestSetSessionCookie_SecureOnTLS(t *testing.T) {
 	r := httptest.NewRequest("GET", "https://192.168.1.100/", nil)
 	r.TLS = &tls.ConnectionState{} // simulate TLS
 	r.RemoteAddr = "192.168.1.100:12345"
-	setSessionCookie(w, r, "test-token-456")
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-456")
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.True(t, cookies[0].Secure, "TLS requests should set Secure")
@@ -402,7 +420,7 @@ func TestSetSessionCookie_NotSecureOnPlainHTTP(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "http://192.168.1.100/", nil)
 	r.RemoteAddr = "192.168.1.100:12345"
-	setSessionCookie(w, r, "test-token-789")
+	newTestKeyStore(t).setSessionCookie(w, r, "test-token-789")
 	cookies := w.Result().Cookies()
 	require.Len(t, cookies, 1)
 	assert.False(t, cookies[0].Secure, "plain HTTP requests should not set Secure")
@@ -446,4 +464,36 @@ func TestMiddleware_FailedKeysAreRateLimited(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w.Code
 	}())
+}
+
+// #3356: behind a reverse proxy that terminates TLS, the cookie is Secure when the proxy says
+// https, but only a trusted proxy (a loopback peer, or CORAL_TRUSTED_PROXIES) is believed.
+func TestSetSessionCookie_SecureBehindATrustedProxy(t *testing.T) {
+	ks := newTestKeyStore(t)
+	require.NoError(t, ks.SetTrustedProxies("10.0.0.0/8, 192.168.1.7"))
+	secure := func(peer, proto string) bool {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/auth/key", nil)
+		r.RemoteAddr = peer
+		if proto != "" {
+			r.Header.Set("X-Forwarded-Proto", proto)
+		}
+		ks.setSessionCookie(w, r, "tok")
+		return w.Result().Cookies()[0].Secure
+	}
+	assert.True(t, secure("127.0.0.1:5000", "https"), "a proxy on this machine")
+	assert.True(t, secure("[::1]:5000", "HTTPS"), "a proxy on this machine (IPv6, any case)")
+	assert.True(t, secure("10.1.2.3:5000", "https"), "a proxy in a trusted CIDR")
+	assert.True(t, secure("192.168.1.7:5000", "https, http"), "a trusted proxy IP; the first value wins")
+	assert.False(t, secure("192.168.1.8:5000", "https"), "an untrusted peer can't claim https")
+	assert.False(t, secure("10.1.2.3:5000", "http"), "a trusted proxy saying http")
+	assert.False(t, secure("10.1.2.3:5000", ""), "no header")
+}
+
+func TestSetTrustedProxies_RejectsGarbage(t *testing.T) {
+	ks := newTestKeyStore(t)
+	assert.Error(t, ks.SetTrustedProxies("not-an-ip"))
+	assert.Error(t, ks.SetTrustedProxies("10.0.0.0/99"))
+	assert.NoError(t, ks.SetTrustedProxies(""))
+	assert.NoError(t, ks.SetTrustedProxies(" ::1 , fd00::/8 "))
 }

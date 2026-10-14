@@ -96,11 +96,12 @@ Coral exposes a REST API over HTTP. All endpoints are prefixed with `/api/` unle
 | `PUT` | `/api/views/{id}` | Update a view |
 | `DELETE` | `/api/views/{id}` | Delete a view |
 
-### Authentication (5 endpoints)
+### Authentication (6 endpoints)
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/auth` | Auth page (HTML) |
 | `POST` | `/auth`, `/auth/key` | Validate API key |
+| `POST` | `/auth/logout` | Sign out (end this session, clear the cookie) |
 | `GET` | `/api/system/api-key` | Get API key (localhost only) |
-| `POST` | `/api/system/api-key/regenerate` | Regenerate API key (localhost only) |
+| `POST` | `/api/system/api-key/regenerate` | Regenerate API key, ending every session (localhost only) |
 | `GET` | `/api/system/auth-status` | Get auth status |

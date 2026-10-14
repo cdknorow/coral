@@ -48,6 +48,7 @@ type KeyStore struct {
 	sessions map[string]*Session
 	order    []string // LRU order (oldest first)
 	rateMap  map[string]*rateLimitEntry
+	trusted  []*net.IPNet // reverse proxies whose X-Forwarded-Proto is believed (#3356)
 }
 
 // NewKeyStore creates or loads an API key from the given directory.
@@ -93,7 +94,8 @@ func (ks *KeyStore) Key() string {
 	return ks.key
 }
 
-// RegenerateKey generates a new API key and persists it.
+// RegenerateKey generates a new API key and persists it. Every session signed in with the
+// old key ends too (#3356): a new key is how a user locks out whoever had the old one.
 func (ks *KeyStore) RegenerateKey() (string, error) {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
@@ -102,10 +104,92 @@ func (ks *KeyStore) RegenerateKey() (string, error) {
 		return "", fmt.Errorf("regenerate API key: %w", err)
 	}
 	ks.key = key
+	ks.sessions = make(map[string]*Session)
+	ks.order = nil
 	if err := os.WriteFile(ks.keyPath, []byte(ks.key+"\n"), 0600); err != nil {
 		log.Printf("[auth] warning: failed to persist regenerated key to disk: %v", err)
 	}
 	return ks.key, nil
+}
+
+// RevokeSession ends one session (sign out). An unknown token is a no-op.
+func (ks *KeyStore) RevokeSession(token string) {
+	ks.mu.Lock()
+	defer ks.mu.Unlock()
+	if _, ok := ks.sessions[token]; !ok {
+		return
+	}
+	delete(ks.sessions, token)
+	for i, t := range ks.order {
+		if t == token {
+			ks.order = append(ks.order[:i], ks.order[i+1:]...)
+			break
+		}
+	}
+}
+
+// SetTrustedProxies sets the reverse proxies (comma-separated IPs or CIDRs) whose
+// X-Forwarded-Proto is believed when deciding the session cookie's Secure flag. A loopback
+// peer is always trusted: only something on this machine can connect from there.
+func (ks *KeyStore) SetTrustedProxies(list string) error {
+	var nets []*net.IPNet
+	for _, item := range strings.Split(list, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if !strings.Contains(item, "/") {
+			ip := net.ParseIP(item)
+			if ip == nil {
+				return fmt.Errorf("trusted proxy %q: not an IP or CIDR", item)
+			}
+			bits := 128
+			if ip.To4() != nil {
+				ip, bits = ip.To4(), 32
+			}
+			nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		_, n, err := net.ParseCIDR(item)
+		if err != nil {
+			return fmt.Errorf("trusted proxy %q: %w", item, err)
+		}
+		nets = append(nets, n)
+	}
+	ks.mu.Lock()
+	ks.trusted = nets
+	ks.mu.Unlock()
+	return nil
+}
+
+// fromTrustedProxy reports whether the request's peer is a proxy whose forwarding headers
+// are believed: a loopback peer, or one in SetTrustedProxies.
+func (ks *KeyStore) fromTrustedProxy(r *http.Request) bool {
+	if isLocalhost(r) {
+		return true
+	}
+	ip := net.ParseIP(clientIP(r))
+	if ip == nil {
+		return false
+	}
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
+	for _, n := range ks.trusted {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// overHTTPS reports whether the browser reached Coral over https: directly over TLS, or
+// through a trusted reverse proxy that says so in X-Forwarded-Proto. From any other peer the
+// header is ignored, so a client cannot set it to change how the cookie is issued.
+func (ks *KeyStore) overHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return ks.fromTrustedProxy(r) && strings.EqualFold(strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]), "https")
 }
 
 // ValidateKey checks if the given key matches the stored key.
@@ -235,19 +319,30 @@ func extractSessionCookie(r *http.Request) string {
 	return c.Value
 }
 
-// SetSessionCookie sets the session cookie on the response.
-// The Secure flag is set when the request arrived over TLS or from
-// a non-localhost remote address (implying a reverse proxy / HTTPS
-// frontend), so the cookie won't leak over plain HTTP.
-func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
-	secure := r.TLS != nil
+// setSessionCookie sets the session cookie on the response. It is Secure when the browser
+// reached Coral over https (overHTTPS: TLS here, or a trusted proxy's X-Forwarded-Proto), so
+// the cookie is never sent back over plain http.
+func (ks *KeyStore) setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(sessionMaxAge.Seconds()),
 		HttpOnly: true,
-		Secure:   secure,
+		Secure:   ks.overHTTPS(r),
+		SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// clearSessionCookie tells the browser to drop the session cookie.
+func (ks *KeyStore) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   ks.overHTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 }
