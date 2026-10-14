@@ -108,6 +108,12 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 
 		require.NoError(t, os.WriteFile(rolloutA, []byte(metaA), 0644))
 		require.NoError(t, os.WriteFile(rolloutB, []byte(metaB), 0644))
+		// Newer than subtest 4's marked rollouts, explicitly: a file's write time comes
+		// from the kernel's coarse clock (ext4: a few ms behind time.Now()), so a file
+		// written just now can look OLDER than one Chtimes set to time.Now() (#3458).
+		later := time.Now().Add(2 * time.Minute)
+		require.NoError(t, os.Chtimes(rolloutA, later, later))
+		require.NoError(t, os.Chtimes(rolloutB, later, later))
 
 		// Both agents have the same working directory
 		cwd := "/Users/cknorowski/Software/death_or_trade"

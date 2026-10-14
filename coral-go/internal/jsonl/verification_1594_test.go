@@ -174,6 +174,11 @@ func TestTask1594_IncrementalCodexActivityTracking(t *testing.T) {
 		// Case 5b: File replaced with different header
 		replaced := `{"timestamp":"2026-09-30T05:00:00Z","type":"event_msg","payload":{"type":"turn_aborted"}}` + "\n"
 		require.NoError(t, os.WriteFile(p, []byte(replaced), 0644))
+		// Same size as the truncated file: only its time tells it changed, and two writes
+		// within one tick of the kernel's coarse file clock (Linux) share a time. A
+		// replacement comes later in practice; say so explicitly (#3458).
+		later := time.Now().Add(time.Minute)
+		require.NoError(t, os.Chtimes(p, later, later))
 
 		evt, atTime = readCodexTurnEventIncremental(p, &state)
 		require.Equal(t, "session_reset", evt, "header replacement must trigger reset and re-scan")
