@@ -60,7 +60,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
-	trace.end("db_sessions", append([]any{"rows", len(sessions)}, dbPoolAttrs(h.db)...)...)
+	trace.endPool("db_sessions", h.db, "rows", len(sessions))
 	trace.begin("db_board_snapshot")
 	subs, err := h.bs.ListSubscribers(ctx, name)
 	if err != nil {
@@ -86,7 +86,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
-	trace.end("db_board_snapshot", append([]any{"subscribers", len(subs), "tasks", len(tasks)}, dbPoolAttrs(h.db)...)...)
+	trace.endPool("db_board_snapshot", h.db, "subscribers", len(subs), "tasks", len(tasks))
 	trace.begin("terminal_discovery")
 	runtime, err := h.discoverAgents(r)
 	if err != nil {
@@ -114,7 +114,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		errInternalServer(w, err.Error())
 		return
 	}
-	trace.end("state_events", append([]any{"sessions", len(ids)}, dbPoolAttrs(h.db)...)...)
+	trace.endPool("state_events", h.db, "sessions", len(ids))
 	waits, _ := h.bs.ListActiveWaits(ctx, name)
 	waitsBySubscriber := make(map[string]*board.RegisteredWait)
 	for i := range waits {

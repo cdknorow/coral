@@ -31,7 +31,18 @@ func dbPoolAttrs(db *store.DB) []any {
 		return nil
 	}
 	stats := db.Stats()
-	return []any{"db_in_use", stats.InUse, "db_idle", stats.Idle, "db_wait_count_total", stats.WaitCount, "db_wait_ms_total", stats.WaitDuration.Milliseconds()}
+	rd := db.ReaderStats() // the read pool (#3441): most request-path reads go through it
+	return []any{"db_in_use", stats.InUse, "db_idle", stats.Idle, "db_wait_count_total", stats.WaitCount, "db_wait_ms_total", stats.WaitDuration.Milliseconds(),
+		"rd_in_use", rd.InUse, "rd_idle", rd.Idle, "rd_wait_count_total", rd.WaitCount, "rd_wait_ms_total", rd.WaitDuration.Milliseconds()}
+}
+
+// endPool is end with both pools' counters, read only when tracing is on, so the
+// off path (a poll every 500 ms per open terminal) costs nothing.
+func (t *phaseTrace) endPool(phase string, db *store.DB, attrs ...any) {
+	if !t.enabled {
+		return
+	}
+	t.end(phase, append(attrs, dbPoolAttrs(db)...)...)
 }
 
 func newPhaseTrace(kind string) *phaseTrace {

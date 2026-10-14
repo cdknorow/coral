@@ -685,7 +685,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			func() { allUnread, unreadErr = h.bs.GetUnreadCountsForSessions(ctx, sessionNames) })
 	}
 	runBounded(listReadConcurrency, reads)
-	trace.end("db_reads", append([]any{"reads", len(reads)}, dbPoolAttrs(h.db)...)...)
+	trace.endPool("db_reads", h.db, "reads", len(reads))
 	if displayErr != nil {
 		slog.Warn("failed to read live session identities", "error", displayErr)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Agent metadata is temporarily unavailable; try again.", "code": "agent_metadata_unavailable"})
@@ -759,7 +759,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			Prompt: session.Prompt, Model: session.Model, Capabilities: session.Capabilities, ContextWindow: session.ContextWindow,
 		}
 	}
-	trace.end("db_live_session_extras", dbPoolAttrs(h.db)...)
+	trace.endPool("db_live_session_extras", h.db)
 
 	var sessions []map[string]any
 	liveSIDs := make(map[string]bool) // track session IDs already in results
@@ -1282,6 +1282,10 @@ func (h *SessionsHandler) Capture(w http.ResponseWriter, r *http.Request) {
 // Poll returns capture, tasks, and events in a single batch response.
 // GET /api/sessions/live/{name}/poll
 func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
+	// With CORAL_DEBUG_PHASES=1, each poll logs its phases like the live list and
+	// chat (coral-hub's tunnel measurements).
+	trace := newPhaseTrace("live-poll")
+	defer trace.finish()
 	name := chi.URLParam(r, "name")
 	agentType := r.URL.Query().Get("agent_type")
 	sessionID := r.URL.Query().Get("session_id")
@@ -1289,12 +1293,14 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 		writeSessionIDRequired(w)
 		return
 	}
+	trace.begin("target_check")
 	if shouldValidateExactTarget(agentType, sessionID) {
 		if _, status, message := h.validateExactLiveTarget(r.Context(), name, agentType, sessionID, false); status != 0 {
 			writeExactTargetError(w, status, message)
 			return
 		}
 	}
+	trace.end("target_check")
 	eventsLimit := queryInt(r, "events_limit", 50)
 	if eventsLimit > 200 {
 		eventsLimit = 200
@@ -1303,26 +1309,32 @@ func (h *SessionsHandler) Poll(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Capture pane
+	trace.begin("capture")
 	captureResult := map[string]any{"name": name, "capture": nil}
 	if text, err := h.captureForPoll(ctx, name, agentType, sessionID); err == nil && text != "" {
 		captureResult["capture"] = text
 	} else {
 		captureResult["error"] = fmt.Sprintf("Could not capture pane for '%s'", name)
 	}
+	trace.end("capture")
 
 	// Tasks
+	trace.begin("tasks")
 	var tasks any = []any{}
 	if sessionID != "" {
 		if t, err := h.ts.ListAgentTasks(ctx, name, &sessionID); err == nil {
 			tasks = t
 		}
 	}
+	trace.endPool("tasks", h.db)
 
 	// Events
+	trace.begin("events")
 	var events any = []any{}
 	if e, err := h.ts.ListAgentEvents(ctx, name, eventsLimit, strPtr(sessionID)); err == nil {
 		events = e
 	}
+	trace.endPool("events", h.db)
 
 	// Polled every 500 ms by an open terminal: an unchanged answer is a 304 with no body (#3439).
 	httputil.WriteJSONValidated(w, r, http.StatusOK, map[string]any{
@@ -1475,7 +1487,7 @@ func (h *SessionsHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	if !resumeLookupDone && sessionID != "" {
 		resumeFromID = h.cachedResumeFromID(r.Context(), sessionID)
 	}
-	trace.end("metadata_lookup", append([]any{"meta_cache", metaCache}, dbPoolAttrs(h.db)...)...)
+	trace.endPool("metadata_lookup", h.db, "meta_cache", metaCache)
 
 	if agentType == "" {
 		agentType = at.Claude

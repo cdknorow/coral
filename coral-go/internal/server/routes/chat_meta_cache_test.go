@@ -203,3 +203,29 @@ func BenchmarkChatMetaLookup(b *testing.B) {
 		})
 	})
 }
+
+// The terminal poll logs its phases under CORAL_DEBUG_PHASES=1 too (coral-hub asked
+// what triggers the per-request traces: only that variable, for every request).
+func TestPollLogsItsPhases(t *testing.T) {
+	t.Setenv("CORAL_DEBUG_PHASES", "1")
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(prev)
+	server, _, terminal, ss := setupSessionsTestServer(t)
+	defer server.Close()
+	sid := "dddddddd-0000-0000-0000-000000000001"
+	terminal.addSession("claude-"+sid, "/tmp/p")
+	require.NoError(t, ss.RegisterLiveSession(context.Background(), &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "claude-" + sid, WorkingDir: "/tmp/p"}))
+	resp, err := http.Get(server.URL + "/api/sessions/live/claude-" + sid + "/poll?agent_type=claude&session_id=" + sid)
+	require.NoError(t, err)
+	resp.Body.Close()
+	out := logs.String()
+	for _, phase := range []string{"target_check", "capture", "tasks", "events"} {
+		assert.Contains(t, out, "phase="+phase, phase)
+	}
+	assert.Contains(t, out, "trace_id=live-poll-")
+	assert.Contains(t, out, "request phase summary")
+	assert.Contains(t, out, "rd_wait_count_total=", "the read pool's counters, next to the writer's")
+	assert.Contains(t, out, "db_wait_count_total=")
+}
