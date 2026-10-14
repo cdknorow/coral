@@ -159,6 +159,8 @@ func extractFirstText(content any) string {
 func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 	bin := resolveBinary(params.CLIPath, "claude")
 	parts := []string{bin}
+	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
+	var raw []string
 
 	effectiveID := params.SessionID
 	if params.ResumeSessionID != "" {
@@ -269,10 +271,12 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 	cliPrompt := BuildBoardActionPrompt(params.BoardName, params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt != "" {
 		promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt))
-		parts = append(parts, FormatPromptFileArg(promptFile))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, arg)
 	}
 
-	return strings.Join(ShellQuoteParts(parts), " ")
+	return ShellJoin(parts, raw...)
 }
 
 func (a *ClaudeAgent) PrepareResume(sessionID, workingDir string) {

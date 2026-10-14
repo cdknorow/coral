@@ -146,7 +146,13 @@ func formatEnvExport(key, value string) string {
 	case ShellPowerShell:
 		return fmt.Sprintf("$env:%s=%s;", key, shellQuoteLiteral(value))
 	case ShellCmd:
-		return fmt.Sprintf(`set "%s=%s" &&`, key, value)
+		// cmd.exe has no literal quoting: drop what could end the quotes or expand (#3362).
+		return fmt.Sprintf(`set "%s=%s" &&`, key, strings.Map(func(r rune) rune {
+			if strings.ContainsRune("\"%^!\r\n", r) {
+				return -1
+			}
+			return r
+		}, value))
 	default:
 		return fmt.Sprintf(`export %s=%s &&`, key, singleQuote(value))
 	}
@@ -159,9 +165,9 @@ func formatEnvExport(key, value string) string {
 func formatCatSubstitution(path string) string {
 	switch detectShell() {
 	case ShellPowerShell:
-		return fmt.Sprintf("$((Get-Content -Raw '%s') -replace '\"', '\\\"')", path)
+		return fmt.Sprintf("$((Get-Content -Raw %s) -replace '\"', '\\\"')", shellQuoteLiteral(path))
 	default:
-		return fmt.Sprintf("$(cat '%s')", path)
+		return fmt.Sprintf("$(cat %s)", shellQuoteLiteral(path))
 	}
 }
 
@@ -189,11 +195,12 @@ func prefixWithPathEnv(binDir string) string {
 	shell := detectShell()
 	switch shell {
 	case ShellPowerShell:
-		return fmt.Sprintf(`$env:PATH="%s;$env:PATH"; `, binDir)
+		return fmt.Sprintf(`$env:PATH=%s + $env:PATH; `, shellQuoteLiteral(binDir+";"))
 	case ShellCmd:
 		return fmt.Sprintf(`set "PATH=%s;%%PATH%%" && `, binDir)
 	default:
-		return fmt.Sprintf(`export PATH="%s:$PATH" && `, binDir)
+		// binDir is quoted as a literal; only $PATH is expanded (#3362).
+		return fmt.Sprintf(`export PATH=%s"$PATH" && `, singleQuote(binDir+":"))
 	}
 }
 
@@ -281,9 +288,10 @@ func FormatPromptFileArg(promptFile string) string {
 	shell := detectShell()
 	switch shell {
 	case ShellPowerShell, ShellCmd:
-		return fmt.Sprintf(`"$((Get-Content -Raw '%s') -replace '"', '\"')"`, promptFile)
+		return fmt.Sprintf(`"$((Get-Content -Raw %s) -replace '"', '\"')"`, shellQuoteLiteral(promptFile))
 	default:
-		// bash, zsh, sh
-		return fmt.Sprintf("\"$(cat '%s')\"", promptFile)
+		// bash, zsh, sh. The path is quoted like any value (#3362): it is Coral's own temp
+		// file, but its name carries a session id.
+		return fmt.Sprintf("\"$(cat %s)\"", shellQuoteLiteral(promptFile))
 	}
 }

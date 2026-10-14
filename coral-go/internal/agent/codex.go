@@ -210,12 +210,16 @@ func codexIndexMessage(entry map[string]any) (role, text string) {
 func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	bin := resolveBinary(params.CLIPath, "codex")
 	var parts []string
+	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
+	var raw []string
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
 	// formatEnvExport generates platform-appropriate syntax (export on Unix,
 	// $env: on PowerShell) and quotes values so the shell never expands them.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, formatEnvExport(kv[0], kv[1]))
+		export := formatEnvExport(kv[0], kv[1])
+		raw = append(raw, export)
+		parts = append(parts, export)
 	}
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
@@ -246,7 +250,9 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	if len(sysParts) > 0 {
 		sysFile := writeTempFile("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		parts = append(parts, "-c", fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile)))
+		instructions := fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
+		raw = append(raw, instructions)
+		parts = append(parts, "-c", instructions)
 	}
 
 	// Codex does not read Claude's settings.json, so install Coral's activity
@@ -375,10 +381,12 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	if actionPrompt != "" {
 		promptFile := writeTempFile("codex_prompt", params.SessionID, "txt", []byte(actionPrompt))
-		parts = append(parts, FormatPromptFileArg(promptFile))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, arg)
 	}
 
-	return strings.Join(ShellQuoteParts(parts), " ")
+	return ShellJoin(parts, raw...)
 }
 
 func normalizeCodexApprovalPolicy(policy string) string {

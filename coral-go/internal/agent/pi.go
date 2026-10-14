@@ -136,6 +136,8 @@ func parsePiSession(fpath string, mtime float64) (*IndexedSession, error) {
 func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	bin := resolveBinary(params.CLIPath, "pi")
 	var parts []string
+	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
+	var raw []string
 
 	// Build system prompt for --append-system-prompt
 	var sysParts []string
@@ -151,7 +153,9 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	// Export env vars
 	// Coral environment, built by CoralEnv so every launch path agrees.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, formatEnvExport(kv[0], kv[1]))
+		export := formatEnvExport(kv[0], kv[1])
+		raw = append(raw, export)
+		parts = append(parts, export)
 	}
 	parts = append(parts, bin)
 
@@ -203,7 +207,9 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	// System prompt via --append-system-prompt with temp file
 	if len(sysParts) > 0 {
 		sysFile := writeTempFile("pi_sys", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		parts = append(parts, "--append-system-prompt", FormatPromptFileArg(sysFile))
+		arg := FormatPromptFileArg(sysFile)
+		raw = append(raw, arg)
+		parts = append(parts, "--append-system-prompt", arg)
 	}
 
 	// Action prompt as positional argument
@@ -213,8 +219,10 @@ func (a *PiAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 	if cliPrompt != "" {
 		promptFile := writeTempFile("pi_prompt", params.SessionID, "txt", []byte(cliPrompt))
-		parts = append(parts, FormatPromptFileArg(promptFile))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, arg)
 	}
 
-	return strings.Join(ShellQuoteParts(parts), " ")
+	return ShellJoin(parts, raw...)
 }

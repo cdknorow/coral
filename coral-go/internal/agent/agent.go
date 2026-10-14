@@ -401,23 +401,40 @@ func readProtocolFile(path string) string {
 	return string(content)
 }
 
-// shellQuote wraps a string in shell-appropriate quotes if it contains
-// metacharacters. Platform-specific implementations are in
-// shell_quote_unix.go and shell_quote_windows.go.
-//
-//	func shellQuote(s string) string
+// shellQuote quotes one word for the platform shell, and ShellJoin builds a launch
+// line from parts: shell_quote_unix.go and shell_quote_windows.go.
 
-// ShellQuoteParts applies shellQuote to each part in a command parts slice,
-// skipping parts that are already compound shell expressions.
-// Platform-specific implementations are in shell_quote_unix.go and
-// shell_quote_windows.go.
-//
-//	func ShellQuoteParts(parts []string) []string
+// joinQuoted quotes every part except those named in raw. callOp prefixes the first
+// quoted command word with PowerShell's call operator.
+func joinQuoted(parts, raw []string, quote func(string) string, callOp bool) string {
+	isRaw := make(map[string]bool, len(raw))
+	for _, r := range raw {
+		isRaw[r] = true
+	}
+	out := make([]string, len(parts))
+	seenCommand := false
+	for i, p := range parts {
+		if isRaw[p] {
+			out[i] = p
+			continue
+		}
+		q := quote(p)
+		if callOp && !seenCommand && q != p {
+			q = "& " + q
+		}
+		seenCommand = true
+		out[i] = q
+	}
+	return strings.Join(out, " ")
+}
 
 // writeTempFile creates a temp file with an unpredictable name using os.CreateTemp
 // (O_CREATE|O_EXCL) to prevent symlink attacks. The file name includes the session
 // ID for later cleanup via CleanupTempFiles. Returns the file path.
 func writeTempFile(prefix, id, ext string, content []byte) string {
+	// The path is typed into the launch line inside $(cat …): the id (a session id,
+	// possibly from a request) keeps only safe characters (#3362).
+	id = safeFileID(id)
 	pattern := fmt.Sprintf("coral_%s_%s_*.%s", prefix, id, ext)
 	f, err := os.CreateTemp("", pattern)
 	if err != nil {
@@ -436,13 +453,24 @@ func writeTempFile(prefix, id, ext string, content []byte) string {
 	return f.Name()
 }
 
+// safeFileID keeps letters, digits, '-' and '_' (a UUID is unchanged); anything else
+// becomes '_'.
+func safeFileID(id string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, id)
+}
+
 // CleanupTempFiles removes all Coral temp files associated with the given session ID.
 // Called during session teardown to prevent sensitive content from persisting in /tmp.
 func CleanupTempFiles(sessionID string) {
 	if sessionID == "" {
 		return
 	}
-	pattern := filepath.Join(os.TempDir(), fmt.Sprintf("coral_*_%s*", sessionID))
+	pattern := filepath.Join(os.TempDir(), fmt.Sprintf("coral_*_%s*", safeFileID(sessionID)))
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return

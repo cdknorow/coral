@@ -259,6 +259,8 @@ func parseGeminiSession(fpath string, mtime float64) (*IndexedSession, error) {
 func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 	bin := resolveBinary(params.CLIPath, "agy")
 	var parts []string
+	// raw: the shell syntax this builder makes itself; every other part is quoted (#3362).
+	var raw []string
 
 	var sysParts []string
 	if proto := readProtocolFile(params.ProtocolPath); proto != "" {
@@ -272,7 +274,9 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	// Export env vars so child processes (coral-board, hooks) inherit them.
 	for _, kv := range CoralEnv(params) {
-		parts = append(parts, formatEnvExport(kv[0], kv[1]))
+		export := formatEnvExport(kv[0], kv[1])
+		raw = append(raw, export)
+		parts = append(parts, export)
 	}
 	// NOTE: PATH injection is handled by callers via WrapWithBundlePath()
 
@@ -352,10 +356,12 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 	if len(promptSections) > 0 {
 		fullPrompt := strings.Join(promptSections, "\n\n")
 		promptFile := writeTempFile("agy_prompt", params.SessionID, "txt", []byte(fullPrompt))
-		parts = append(parts, "-i", FormatPromptFileArg(promptFile))
+		arg := FormatPromptFileArg(promptFile)
+		raw = append(raw, arg)
+		parts = append(parts, "-i", arg)
 	}
 
-	return strings.Join(ShellQuoteParts(parts), " ")
+	return ShellJoin(parts, raw...)
 }
 
 func appendAgyPermissionMode(parts []string, mode string) []string {
