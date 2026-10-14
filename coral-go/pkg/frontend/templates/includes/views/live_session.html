@@ -69,6 +69,10 @@
                                     <button class="terminal-header-btn" id="chat-find-btn" type="button" onclick="toggleChatFind()" title="Find in conversation (Ctrl/Cmd+F)" aria-label="Find in conversation">
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
                                     </button>
+                                    <!-- Terminal view, while it shows a pane wider than this window: scale the font to fit (#3455, xterm_renderer.js) -->
+                                    <button class="terminal-header-btn terminal-fit-width-btn" id="terminal-fit-width-btn" type="button" aria-pressed="false" title="Fit the terminal to the screen width" aria-label="Fit the terminal to the screen width" hidden>
+                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8h13"/><path d="M4 5.5L1.5 8 4 10.5"/><path d="M12 5.5l2.5 2.5-2.5 2.5"/></svg>
+                                    </button>
                                     <!-- Dashboard: "Open Agent Tab" opens this agent in its own tab (href set on selection). Hidden in popout mode. -->
                                     <a class="terminal-header-btn" id="terminal-open-window-link" target="_blank" rel="noopener noreferrer" title="Open Agent Tab" aria-label="Open Agent Tab" hidden>
                                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5"/><path d="M14 2L7 9"/><path d="M12 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h4"/></svg>

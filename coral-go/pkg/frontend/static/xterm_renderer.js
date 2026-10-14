@@ -35,6 +35,96 @@ let _askedSize = null;   // { cols, rows } that resize asked for
 let _followBox = '';     // the container's size when this window started following
 const PHONE_MAX_WIDTH = 767; // the mobile layout's breakpoint (mobile.js, css/mobile.css)
 
+// ── Fit to width (#3455) ─────────────────────────────────────────────────
+// While following a pane wider than the window (a phone, a narrow viewer), the operator can scale
+// the font down so every column fits instead of scrolling sideways. Only the font changes: the
+// pane keeps its size for everyone. Below MIN_FIT_FONT it stops shrinking and scrolls the rest.
+// Remembered per device.
+const FIT_WIDTH_KEY = 'coral-terminal-fit-width';
+const MIN_FIT_FONT = 7;
+let _baseFont = 13;      // the font size from Settings, used whenever not fitting
+let _fitWidth = (() => { try { return localStorage.getItem(FIT_WIDTH_KEY) === '1'; } catch { return false; } })();
+
+function _fitButton() {
+    return document.getElementById('terminal-fit-width-btn');
+}
+
+// The width the xterm may take inside its container (no scrollbar, no padding).
+function _availWidth() {
+    const el = _containerEl;
+    if (!el) return 0;
+    const cs = getComputedStyle(el);
+    return el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+}
+
+// The xterm's drawn width at the current font, and what it would be at the Settings font.
+function _screenWidth() {
+    const screen = terminal && terminal.element && terminal.element.querySelector('.xterm-screen');
+    return screen ? screen.getBoundingClientRect().width : 0;
+}
+
+function _setFont(size) {
+    if (terminal && terminal.options.fontSize !== size) terminal.options.fontSize = size;
+}
+
+// Applies the fit-to-width font, or the Settings font, and shows the toggle when it can help.
+function _applyFitWidth() {
+    if (!terminal) { _updateFitButton(false); return; }
+    if (!_following || !_fitWidth) {
+        _setFont(_baseFont);
+        _updateFitButton(_following && _overflowsAtBase());
+        return;
+    }
+    const avail = _availWidth();
+    const cur = terminal.options.fontSize || _baseFont;
+    const w = _screenWidth();
+    if (!(avail > 0 && w > 0)) return; // not laid out yet: the next size change applies it
+    // The drawn width roughly scales with the font: start at the size that just fits, then, as cells
+    // are whole pixels, step down while it overflows and up while the next size still fits.
+    let size = Math.max(MIN_FIT_FONT, Math.min(_baseFont, Math.floor((cur * avail / w) * 2) / 2));
+    _setFont(size);
+    while (size > MIN_FIT_FONT && _screenWidth() > avail) {
+        size = Math.max(MIN_FIT_FONT, size - 0.5);
+        _setFont(size);
+    }
+    while (size < _baseFont && _screenWidth() <= avail) {
+        _setFont(size + 0.5);
+        if (_screenWidth() > avail) { _setFont(size); break; }
+        size += 0.5;
+    }
+    _updateFitButton(true);
+}
+
+// True when the pane at the Settings font is wider than the window.
+function _overflowsAtBase() {
+    const cur = terminal && terminal.options.fontSize;
+    const w = _screenWidth();
+    if (!cur || !w) return false;
+    return w * (_baseFont / cur) > _availWidth() + 1;
+}
+
+function _updateFitButton(show) {
+    const btn = _fitButton();
+    if (!btn) return;
+    btn.hidden = !show;
+    btn.setAttribute('aria-pressed', String(_fitWidth));
+    const label = _fitWidth ? 'Show the terminal at full size (scroll sideways)' : 'Fit the terminal to the screen width';
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+}
+
+/** Turns fit to width on or off on this device (#3455). */
+export function toggleTerminalFitWidth(on = !_fitWidth) {
+    _fitWidth = !!on;
+    try { localStorage.setItem(FIT_WIDTH_KEY, _fitWidth ? '1' : '0'); } catch { /* private mode */ }
+    _applyFitWidth();
+}
+
+/** Tests: the font size the xterm draws at now. */
+export function terminalFontSize() {
+    return terminal ? terminal.options.fontSize : null;
+}
+
 function _isPhoneWidth() {
     return window.innerWidth <= PHONE_MAX_WIDTH;
 }
@@ -76,6 +166,7 @@ function _followPane() {
     _following = true;
     if (_containerEl) _containerEl.classList.add('xterm-follow-pane');
     if (terminal.cols !== _pane.cols || terminal.rows !== _pane.rows) terminal.resize(_pane.cols, _pane.rows);
+    _applyFitWidth();
 }
 
 // Something on this side changed: fit and set the pane's size when this window may, otherwise
@@ -92,6 +183,8 @@ function _sizeLocal(observed = false) {
     const wasFollowing = _following;
     _following = false;
     if (el) el.classList.remove('xterm-follow-pane');
+    _setFont(_baseFont); // fitting this window measures at the Settings font
+    _updateFitButton(false);
     const before = terminal.cols + 'x' + terminal.rows;
     fitAddon.fit();
     // fit() reports a change through onResize, which sends it. Taking the size back at an unchanged
@@ -127,6 +220,7 @@ function _onPaneSize(cols, rows, seq, initial) {
 function _stopFollowing() {
     _following = false;
     if (_containerEl) _containerEl.classList.remove('xterm-follow-pane');
+    _applyFitWidth();
 }
 
 // Input queue: buffers keystrokes while WebSocket is disconnected
@@ -256,6 +350,7 @@ export function createTerminal(containerEl) {
 
     const scrollback = parseInt((state.settings || {}).terminal_scrollback, 10) || 20000;
     const fontSize = parseInt((state.settings || {}).terminal_font_size, 10) || 13;
+    _baseFont = fontSize;
     terminal = new Terminal({
         cursorBlink: true,
         cursorStyle: 'block',
@@ -353,6 +448,11 @@ export function createTerminal(containerEl) {
 
     terminal.open(containerEl);
     _containerEl = containerEl;
+    const fitBtn = _fitButton();
+    if (fitBtn && !fitBtn.dataset.wired) {
+        fitBtn.dataset.wired = '1';
+        fitBtn.addEventListener('click', () => toggleTerminalFitWidth());
+    }
     // xterm's default DOM renderer builds its font and size rules in <style> elements at runtime, which the Cloud
     // Hub's `style-src 'self'` policy blocks (the terminal then renders in a fallback font with wrong cell sizes).
     // The canvas renderer paints into a canvas and needs no injected style. It must load after open().
@@ -603,6 +703,7 @@ export function disposeTerminal() {
     _seq = 0;
     if (_containerEl) _containerEl.classList.remove('xterm-follow-pane');
     _containerEl = null;
+    _updateFitButton(false);
     if (_resizeObserver) {
         _resizeObserver.disconnect();
         _resizeObserver = null;

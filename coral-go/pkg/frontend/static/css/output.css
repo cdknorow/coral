@@ -835,3 +835,7 @@ body.panel-dragging .xterm-container {
     height: auto;
     width: max-content;
 }
+/* Fit to width (#3455): terminal view only; pressed while the font is scaled to fit. */
+.capture-wrapper.chat-mode .terminal-fit-width-btn { display: none; }
+/* 44x44 on touch screens: beats the header's own min-height (popout.css). */
+@media (pointer: coarse) { .terminal-header-actions .terminal-header-btn.terminal-fit-width-btn { min-width: 44px; min-height: 44px; justify-content: center; } }
