@@ -2,7 +2,7 @@
 // Runs the CDP/Chrome frontend suites against an ISOLATED Coral dev server and a headless Chrome.
 //
 //   node run_cdp_suites.mjs [--only substring[,substring...]] [--timeout seconds] [--chrome /path/to/chrome]
-//                           [--shards N] [--retries N] [--allow-flaky] [--stress [--runs N] [--cpu-throttle X]]
+//                           [--shards N] [--retries N] [--allow-flaky] [--keep] [--stress [--runs N] [--cpu-throttle X]]
 //
 // It builds coral with -tags "dev fts5" into a temp dir, starts it with a temp CORAL_DATA_DIR on a
 // free non-default port (never ~/.coral, never :8420), starts headless Chrome with a temp profile and
@@ -35,6 +35,11 @@
 //
 // results.json (path printed at the end) has every suite with its status and every attempt (with the
 // log of the Coral server it ran against); a failed attempt keeps its complete output, untruncated.
+//
+// Disk: a run's temp folder holds the built binary and every shard's data dir and Chrome profile (about
+// 250 MB). On exit it is deleted when every suite passed on its first attempt; otherwise (a failure, a
+// flaky suite, an interrupt) only results.json and the coral.log files are kept, for diagnosis. --keep
+// keeps the whole folder.
 //
 // Before every suite attempt, the shard's Chrome gets one fresh about:blank tab (every other page is
 // closed) and the Coral origin's browser storage (localStorage, sessionStorage via the fresh tab,
@@ -76,6 +81,7 @@ const runs = stress ? intArg('--runs', 3, 1) : 1;
 const throttle = stress ? Number(arg('--cpu-throttle', '4')) : 1;
 if (!(throttle >= 1)) { console.error('--cpu-throttle must be a number >= 1'); process.exit(2); }
 const allowFlaky = flag('--allow-flaky');
+const keep = flag('--keep');
 const PROD_PORT = 8420;
 const chromePath = arg('--chrome', process.env.CHROME || [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
@@ -139,7 +145,25 @@ const recordPids = () => {
 };
 const track = p => { procs.add(p); recordPids(); return p; };
 const untrack = p => { procs.delete(p); recordPids(); };
-const cleanup = () => { for (const p of procs) killTree(p); try { fs.rmSync(pidFile); } catch { /* fine */ } };
+let allPassed = false; // set at the end: every suite passed on its first attempt
+// pruneTmp deletes the run's folder, or (unless all passed) everything in it but results.json and the
+// coral.log files. Chrome profiles go whole.
+const pruneTmp = () => {
+  if (keep) return;
+  try {
+    if (allPassed) { fs.rmSync(tmp, { recursive: true, force: true }); return; }
+    const prune = dir => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory() && e.name === 'profile') fs.rmSync(p, { recursive: true, force: true });
+        else if (e.isDirectory()) { prune(p); try { fs.rmdirSync(p); } catch { /* not empty: it has a log */ } }
+        else if (e.name !== 'results.json' && e.name !== 'coral.log') fs.rmSync(p, { force: true });
+      }
+    };
+    prune(tmp);
+  } catch { /* best effort */ }
+};
+const cleanup = () => { for (const p of procs) killTree(p); try { fs.rmSync(pidFile); } catch { /* fine */ } pruneTmp(); };
 process.on('exit', cleanup);
 process.on('SIGINT', () => process.exit(130));
 process.on('SIGTERM', () => process.exit(143));
@@ -410,5 +434,6 @@ if (stress) {
   if (failed.length) console.log(`FAILED: ${failed.join(', ')}`);
   exitCode = failed.length ? 1 : flaky.length ? (allowFlaky ? 0 : 3) : 0;
 }
-console.log(where);
+allPassed = results.every(r => r.status === 'pass');
+console.log(allPassed && !keep ? 'all passed: the run folder is removed on exit (--keep keeps it)' : where);
 process.exit(exitCode);

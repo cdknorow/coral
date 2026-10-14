@@ -318,6 +318,30 @@ binary, start an isolated server with a temp data directory and set `CORAL_TEST_
 `node tests/frontend/run_cdp_suites.mjs [--only name] [--shards N]` (N isolated server+Chrome
 pairs).
 
+### The disk fills up during test runs
+
+A build or test that fails with `no space left on device`, or a link step that suddenly can't
+open its inputs, is a full disk, not a flaky test: check `df -h` before rerunning.
+
+The usual cause is Go's build cache (`go env GOCACHE`, `~/Library/Caches/go-build` on macOS).
+Every combination of build tags and `-race` adds its own copies of every package and test
+binary, and on a machine running many test builds a day it can reach hundreds of GB before Go's
+own trimming (entries unused for 5 days) catches up. Check it with `du -sh "$(go env GOCACHE)"`
+and clear it about once a week, or whenever it passes ~50 GB:
+
+```bash
+go clean -cache   # safe: the next builds are slower while it refills
+```
+
+Clear it while no build is running: a build that loses its cache files halfway fails with
+`could not import …` or `package … is not in std`. Rerun it after the clear finishes.
+
+`run_cdp_suites.mjs` builds into a temp folder (`$TMPDIR/coral-cdp-*`, about 250 MB with the
+Chrome profiles). It deletes the folder on exit when every suite passed; after a failure, a
+flaky suite or an interrupt it keeps only `results.json` and the `coral.log` files, and
+`--keep` keeps everything. Delete worktrees, built binaries and kept results folders yourself
+when you're done with them.
+
 ### Port already in use
 
 ```
