@@ -228,13 +228,38 @@ async function select(tab, a) {
             main.Fetch.fulfillRequest({ requestId: e.requestId, responseCode: 503, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }, { name: 'Retry-After', value: '1' }],
                 body: Buffer.from(JSON.stringify({ error: 'busy' })).toString('base64') }).catch(() => {});
         });
+        // The live feed renames the selected agent to its list name, which for a terminal agent is
+        // not its tmux session's: the reconnect must still go to the tmux session (#3469). Wait for
+        // that rename first, as a page that has been open a while has it.
+        const listName = `(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); const s = state.currentSession; const l = s && state.liveSessions.find(x => x.session_id === s.session_id); return s && l && s.name === l.name ? s.name : null; })()`;
+        await main.waitFor(`(async () => !!(await ${listName}))()`, 'the live feed to sync the selected agent', 15000);
+        const synced = await main.ev(listName);
+        assert.notEqual(synced, A.name, 'a terminal agent is listed under another name than its tmux session (else this step tests nothing)');
         const socketsBefore = await main.ev(`window.__termSockets.length`);
         await main.ev(`(() => { const s = window.__termSockets[window.__termSockets.length - 1]; s.close(); return true; })()`);
         await main.size(1300, 820); // resized while the socket is down
-        await main.waitFor(`window.__termSockets.length > ${socketsBefore} && window.__termSockets[window.__termSockets.length - 1].readyState === 1`, 'the reconnected terminal socket', 15000);
+        const tmuxPath = '/ws/terminal/' + encodeURIComponent(A.name) + '?';
+        await main.waitFor(`window.__termSockets.length > ${socketsBefore} && window.__termSockets[window.__termSockets.length - 1].readyState === 1 && window.__termSockets[window.__termSockets.length - 1].url.includes(${JSON.stringify(tmuxPath)})`, 'the reconnected terminal socket', 15000)
+            .catch(async e => { throw new Error(`${e.message}: sockets since the close ${JSON.stringify(await main.ev(`window.__termSockets.slice(${socketsBefore}).map(s => s.readyState + ' ' + s.url.split('/ws/terminal/')[1].split('?')[0])`))}`); });
         m = await matches(main, A.name, 'after the reconnect');
         await main.Fetch.disable();
         console.log(`   ✓ pane ${m.p.cols} cols after reconnecting (503s answered meanwhile: ${busy})`);
+
+        console.log('5b. Another agent selected while a reconnect is pending');
+        const aBefore = paneSize(A.name);
+        const nBefore = await main.ev(`window.__termSockets.length`);
+        await main.ev(`(() => { const s = window.__termSockets[window.__termSockets.length - 1]; s.close(); return true; })()`);
+        await main.ev(`(() => { selectLiveSession(${JSON.stringify(B.name)}, 'terminal', ${JSON.stringify(B.sid)}); return true; })()`);
+        await sleep(4000); // sleep-ok: negative check, past A's 3 s reconnect timer
+        const since = await main.ev(`window.__termSockets.slice(${nBefore}).map(s => ({ state: s.readyState, target: decodeURIComponent(s.url.split('/ws/terminal/')[1].split('?')[0]) }))`);
+        assert.ok(since.length >= 1, 'B was attached');
+        assert.deepEqual(since.filter(x => x.target !== B.name), [], `after the switch only B's terminal is opened, never A's again (${JSON.stringify(since)})`);
+        assert.equal(since[since.length - 1].state, 1, `B's socket is open (${JSON.stringify(since)})`);
+        m = await matches(main, B.name, 'B after the switch');
+        assert.deepEqual(paneSize(A.name), aBefore, "A's pane is not resized by B's view");
+        await select(main, A);
+        await matches(main, A.name, 'back on A');
+        console.log(`   ✓ only B attached (${since.length} socket(s)); A's pane kept ${aBefore.cols}x${aBefore.rows}`);
 
         console.log('6. Terminal mounted hidden, shown later');
         await main.ev(`(() => { const w = document.querySelector('.capture-wrapper') || document.getElementById('xterm-container').parentElement; w.dataset.paneTestHidden = '1'; w.style.display = 'none'; return true; })()`);
@@ -316,6 +341,34 @@ async function select(tab, a) {
             assert.equal(otherNow.x.following, true);
             console.log(`   ✓ other desktop set ${theirs.cols}, owner followed; owner resized -> ${m.p.cols}, other follows`);
             await other.close(); tabs.pop();
+        }
+
+        console.log('12. Restart from the dashboard, then a socket drop: it reconnects to the new tmux session');
+        {
+            await select(main, A);
+            await matches(main, A.name, 'A before the restart');
+            const st = `(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); return state.currentSession && state.currentSession.session_id; })()`;
+            await main.ev(`(async () => { window.restartSession(); return true; })()`);
+            await main.waitFor(`document.getElementById('restart-modal') && document.getElementById('restart-modal').style.display === 'flex'`, 'the restart dialog');
+            await main.ev(`(async () => { window.confirmRestart(); return true; })()`);
+            await main.waitFor(`(async () => { const s = await ${st}; return !!s && s !== ${JSON.stringify(A.sid)}; })()`, 'the restarted session id', 20000);
+            const newSid = await main.ev(st);
+            const live = await httpJson('GET', '/api/sessions/live');
+            const list = Array.isArray(live.data) ? live.data : (live.data.sessions || []);
+            const R = list.find(x => x.session_id === newSid);
+            assert.ok(R && R.tmux_session, `the restarted agent is live with a tmux session (${JSON.stringify(R)})`);
+            launched.push({ name: R.tmux_session, sid: newSid });
+            const rPath = '/ws/terminal/' + encodeURIComponent(R.tmux_session) + '?';
+            const lastOpenOn = p => `window.__termSockets.length > 0 && window.__termSockets[window.__termSockets.length - 1].readyState === 1 && window.__termSockets[window.__termSockets.length - 1].url.includes(${JSON.stringify(p)})`;
+            await main.waitFor(lastOpenOn(rPath), 'the terminal on the restarted session', 30000)
+                .catch(async e => { throw new Error(`${e.message}: R ${JSON.stringify({ name: R.name, tmux: R.tmux_session })} sockets ${JSON.stringify(await main.ev(`window.__termSockets.slice(-4).map(s => s.readyState + ' ' + s.url.split('/ws/terminal/')[1].split('?')[0])`))} current ${JSON.stringify(await main.ev(`(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); const s = state.currentSession; return s && { name: s.name, tmux: s.tmux_session, sid: s.session_id }; })()`))}`); });
+            // Let the feed sync the restarted agent, then drop the socket.
+            await main.waitFor(`(async () => { const { state } = await import((window.__coralStatic || '/static/') + 'state.js'); const s = state.currentSession; const l = s && state.liveSessions.find(x => x.session_id === s.session_id); return !!(s && l && s.name === l.name); })()`, 'the feed to sync the restarted agent', 15000);
+            const nR = await main.ev(`window.__termSockets.length`);
+            await main.ev(`(() => { const s = window.__termSockets[window.__termSockets.length - 1]; s.close(); return true; })()`);
+            await main.waitFor(`window.__termSockets.length > ${nR} && (${lastOpenOn(rPath)})`, 'the reconnect to the restarted session', 15000)
+                .catch(async e => { throw new Error(`${e.message}: sockets since the close ${JSON.stringify(await main.ev(`window.__termSockets.slice(${nR}).map(s => s.readyState + ' ' + s.url.split('/ws/terminal/')[1].split('?')[0])`))}`); });
+            console.log(`   ✓ restarted as ${R.tmux_session}; reconnected there after a drop`);
         }
 
         console.log('\nAll terminal pane size checks passed');

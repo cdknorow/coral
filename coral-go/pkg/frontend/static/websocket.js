@@ -280,6 +280,7 @@ export function handleCoralMessage(data) {
                     if (matchedById && s.name !== state.currentSession.name) {
                         state.currentSession.name = s.name;
                     }
+                    if (matchedById && s.tmux_session) state.currentSession.tmux_session = s.tmux_session;
                     if (!matchedById && !isPopout() && s.session_id && s.session_id !== state.currentSession.session_id) {
                         // Matched by name only — adopt new session_id
                         // (only safe when there's a single session with this name)

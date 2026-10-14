@@ -69,6 +69,9 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         capabilities: agentData?.capabilities || null,
         board_project: agentData?.board_project || null,
         board_job_title: agentData?.board_job_title || null,
+        // The terminal socket's target: the tmux session, which is not the agent's list name for
+        // every agent (a terminal agent is listed under its folder's name). Reconnects use it (#3469).
+        tmux_session: agentData?.tmux_session || null,
     };
 
     syncFilesViewerSession();
@@ -221,6 +224,7 @@ export async function selectLiveSession(name, agentType, sessionId, server) {
         container.style.display = "flex";
         container.querySelector(':scope > .vendor-load-notice')?.remove(); // a previous agent's failed load
         const tmuxName = popoutTarget ? popoutTarget.tmux_session : (agentData ? (agentData.tmux_session || name) : name);
+        if (generation === switchGeneration && state.currentSession) state.currentSession.tmux_session = tmuxName;
         const attach = () => {
             // Don't clear innerHTML — createTerminal reuses the existing xterm
             // instance to avoid canvas recreation issues in WebKit webview

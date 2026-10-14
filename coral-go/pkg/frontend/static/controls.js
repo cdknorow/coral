@@ -631,6 +631,8 @@ export async function confirmRestart() {
             // Restart renames the tmux session and returns its canonical name.
             // Keep the browser target aligned with the replacement session.
             const restartedName = result.session_name || result.agent_name;
+            // The terminal reconnects to the replacement tmux session, not the old one (#3469).
+            state.currentSession.tmux_session = result.session_name || null;
             if (restartedName) {
                 state.currentSession.name = restartedName;
                 document.getElementById("session-name").textContent = restartedName;
@@ -655,7 +657,9 @@ export async function confirmRestart() {
             const pollInterval = pollEvery(async () => {
                 pollCount++;
                 try {
-                    const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}`);
+                    // The detail route needs the exact target, agent_type with session_id; without it the
+                    // answer is 400 and the terminal never reattached after a restart (#3469).
+                    const liveResp = await serverFetch(currentServer(), `/api/sessions/live/${encodeURIComponent(newName)}?session_id=${encodeURIComponent(newSessionId)}&agent_type=${encodeURIComponent(newAgentType || '')}`);
                     if (liveResp.ok) {
                         clearInterval(pollInterval);
                         xtermMod.connectTerminalWs(state.currentSession.tmux_session || newName, newAgentType, newSessionId, currentServer());
