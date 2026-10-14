@@ -100,24 +100,33 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await waitFor(`!document.querySelector('.agent-ui-home')?.hidden`, 'back on the home list');
   const coalesced = await ev(`(async()=>{
     const ui = await import((window.__coralStatic||'/static/')+'agent_ui.js');
-    const real = window.fetch; let n = 0;
-    window.fetch = async (url, opts) => { if (String(url).includes('/api/agent/ui?')) { n++; await new Promise(r => setTimeout(r, 400)); /* sleep-ok: simulated network latency, not a wait */ } return real(url, opts); };
+    // Requests are counted from the moment the second refresh is asked for: that one must not be dropped, so a
+    // request has to start after it. Counting from the first call instead (the old check) read 1 under load: the
+    // dashboard's own 2 s poll was already in flight through the real fetch, so 'first' joined it and only the
+    // follow-up was counted, though nothing was dropped.
+    const real = window.fetch; let askedAt = false, afterAsk = 0, afterAskDone = 0;
+    window.fetch = async (url, opts) => {
+      if (!String(url).includes('/api/agent/ui?')) return real(url, opts);
+      const counted = askedAt; if (counted) afterAsk++;
+      await new Promise(r => setTimeout(r, 400)); /* sleep-ok: simulated network latency, not a wait */
+      try { return await real(url, opts); } finally { if (counted) afterAskDone++; } };
     try {
       const first = ui.refreshAgentUI();            // in flight: busy and its request start synchronously
       document.querySelector('.agent-ui-home-row').click();
       const shownAtOnce = !document.querySelector('.agent-ui-card').hidden && document.querySelector('.agent-ui-home').hidden;
+      askedAt = true;
       const second = ui.refreshAgentUI();           // asked while busy
       const isPromise = !!second && typeof second.then === 'function';
       await second;
-      const afterSecond = n;
+      const followUpRan = afterAskDone;              // requests started after the ask AND finished when it resolved
       await first;
-      return { shownAtOnce, isPromise, afterSecond };
+      return { shownAtOnce, isPromise, followUpRan, afterAsk };
     } finally { window.fetch = real; }
   })()`);
   assert.equal(coalesced.shownAtOnce, true, 'a panel click shows its card at once, even with a refresh in flight');
   assert.equal(coalesced.isPromise, true, 'a refresh asked for while busy returns a promise');
-  // >= 2, not exactly 2: the dashboard's own 2 s poll may land during the follow-up and (correctly) queue one more.
-  assert.ok(coalesced.afterSecond >= 2, `and it resolves after one follow-up request has run, not dropped (${coalesced.afterSecond} requests)`);
+  // >= 1, not exactly 1: the dashboard's own 2 s poll may land during the follow-up and (correctly) queue one more.
+  assert.ok(coalesced.followUpRan >= 1, `and it resolves after a follow-up request has run, not dropped (${coalesced.followUpRan} finished after the ask, ${coalesced.afterAsk} started)`);
   assert.equal(cli(['publish','--id','demo','--file',file]).revision,3);
   await ev(`import((window.__coralStatic||'/static/')+'agent_ui.js').then(m=>m.refreshAgentUI())`);
   assert.equal(await ev(`document.querySelectorAll('.agent-ui-card').length`),1,'a new revision resurfaces the panel');
