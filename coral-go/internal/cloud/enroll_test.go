@@ -92,7 +92,11 @@ func TestStartEnrollmentValidatesHubAnswers(t *testing.T) {
 		require.ErrorIs(t, err, ErrHubResponse, name)
 	}
 	_, err = run(good, 500)
-	require.ErrorIs(t, err, ErrHubResponse)
+	require.ErrorIs(t, err, ErrHubUnavailable, "a hub server error is transient")
+	_, err = run(good, 503)
+	require.ErrorIs(t, err, ErrHubUnavailable)
+	_, err = StartEnrollment(context.Background(), NewHubHTTPClient(), "https://127.0.0.1:1", time.Now(), EnrollInfo{})
+	require.ErrorIs(t, err, ErrHubUnavailable, "unreachable")
 }
 
 func TestPollEnrollmentAnswers(t *testing.T) {

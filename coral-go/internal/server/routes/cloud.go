@@ -256,6 +256,11 @@ func (h *CloudHandler) Connect(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": rl.Error()})
 			return
 		}
+		if errors.Is(err, cloud.ErrHubUnavailable) {
+			// Transient (unreachable, or a hub server error): 503, so the CLI says to try again.
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "Could not start enrollment: Coral Hub could not be reached or had an error; try again in a minute"})
+			return
+		}
 		errInternalServer(w, "Could not start enrollment; check that the hub is reachable")
 		return
 	}

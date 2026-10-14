@@ -153,7 +153,7 @@ func (c *cloudClient) call(ctx context.Context, method, path string, body any, h
 		switch resp.StatusCode {
 		case http.StatusBadRequest:
 			return 2
-		case http.StatusTooManyRequests: // Coral Hub is busy: try again later
+		case http.StatusTooManyRequests, http.StatusServiceUnavailable: // Coral Hub is busy, unreachable or failing: try again later
 			return 4
 		}
 		return 1

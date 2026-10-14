@@ -40,8 +40,10 @@ type fakeCoral struct {
 	// the enrollment, for status/connect/cancel: each status read pops statuses[0]
 	// (the last one stays).
 	statuses []string
-	connects int
-	onStatus func() // test hook, called on every status read
+	// connectFail, if set, is the HTTP status /api/cloud/connect answers (with an error body).
+	connectFail int
+	connects    int
+	onStatus    func() // test hook, called on every status read
 }
 
 type fakeRedeem struct {
@@ -112,6 +114,11 @@ func (f *fakeCoral) serve(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/api/cloud/connect":
 		f.connects++
+		if f.connectFail != 0 {
+			w.WriteHeader(f.connectFail)
+			_, _ = io.WriteString(w, `{"error":"Could not start enrollment: Coral Hub could not be reached or had an error; try again in a minute"}`)
+			return
+		}
 		_, _ = io.WriteString(w, enrolling)
 	case "/api/cloud/connect/cancel":
 		_, _ = io.WriteString(w, idle)
@@ -552,4 +559,18 @@ func TestCloudConnectRefusesACredentialItCannotRemove(t *testing.T) {
 	assert.Contains(t, errb.String(), "folder is not writable")
 	assert.FileExists(t, ticket)
 	assert.Empty(t, f.redeems, "nothing was sent")
+}
+
+// QA's v6 nit: a Coral Hub that can't be reached or answers a server error is transient
+// (exit 4, like busy), not a permanent failure (1).
+func TestCloudConnectHubUnavailableIsRetryable(t *testing.T) {
+	f := newFakeCoral(t, ready, enrolled)
+	f.statuses = []string{idle}
+	f.connectFail = http.StatusServiceUnavailable
+	var out, errb bytes.Buffer
+	assert.Equal(t, 4, runCloud([]string{"connect", "--url", f.srv.URL}, strings.NewReader(""), &out, &errb))
+	assert.Contains(t, errb.String(), "Coral Hub could not be reached or had an error; try again in a minute")
+	f.connectFail = http.StatusInternalServerError
+	errb.Reset()
+	assert.Equal(t, 1, runCloud([]string{"connect", "--url", f.srv.URL}, strings.NewReader(""), &out, &errb), "anything else is not retryable")
 }

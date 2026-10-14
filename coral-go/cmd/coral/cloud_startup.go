@@ -159,7 +159,7 @@ func runCloudStartupStep(ctx context.Context, cfg *config.Config, mode string, i
 		log.Printf("[CLOUD] Coral Hub: this server is connected as %s", firstNonEmpty(st.Label, "this server"))
 		return
 	case st.State == cloud.StateRevoked:
-		log.Printf("[CLOUD] Coral Hub revoked this server. Run 'coral cloud disconnect', then 'coral cloud connect'.")
+		log.Printf("[CLOUD] Coral Hub revoked this server. To connect it again, run: coral cloud connect --force")
 		return
 	}
 

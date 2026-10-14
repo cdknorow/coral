@@ -28,6 +28,9 @@ var (
 	ErrEnrollmentExpired    = errors.New("cloud: enrollment code expired")
 	ErrAccessDenied         = errors.New("cloud: the request was denied in Coral Hub")
 	ErrHubResponse          = errors.New("cloud: unexpected response from the hub")
+	// ErrHubUnavailable: the hub could not be reached or answered with a server error
+	// (5xx). Transient: trying again later may work.
+	ErrHubUnavailable = errors.New("cloud: hub unreachable")
 )
 
 // RateLimitedError is the hub refusing to start an enrollment for now (429
@@ -163,7 +166,7 @@ func hubPostHeader(ctx context.Context, hc *http.Client, hubURL, path string, in
 	req.Header.Set("Accept", "application/json")
 	resp, err := hc.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("cloud: hub unreachable") // do not echo URL or error text
+		return 0, nil, ErrHubUnavailable // do not echo URL or error text
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxHubResponse))
@@ -219,6 +222,9 @@ func StartEnrollment(ctx context.Context, hc *http.Client, hubURL string, now ti
 	if status == http.StatusTooManyRequests {
 		// rate_limited: whatever the body says, back off for as long as the hub asks.
 		return nil, &RateLimitedError{RetryAfter: enrollRetryAfter(hdr, now)}
+	}
+	if status >= 500 {
+		return nil, ErrHubUnavailable
 	}
 	if err != nil {
 		return nil, err
