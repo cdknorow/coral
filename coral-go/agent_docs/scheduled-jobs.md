@@ -46,7 +46,7 @@ Returns all jobs except the internal `__oneshot__` sentinel row used for API-tri
         "id": 42,
         "job_id": 7,
         "session_id": "a1b2c3d4-...",
-        "worktree_path": "/home/user/project_task_run_42",
+        "worktree_path": "/home/user/.coral/worktrees/job-run-42-project",
         "status": "completed",
         "scheduled_at": "2025-03-12T16:00:00+00:00",
         "started_at": "2025-03-12T16:00:03+00:00",
@@ -172,6 +172,10 @@ Returns the created job object.
 | 400 | `{"error": "'prompt' is required"}` | Missing prompt for a prompt job. |
 | 400 | `{"error": "'workflow_id' is required for workflow jobs"}` | Missing workflow ID for a workflow job. |
 | 400 | `{"error": "Invalid cron expression: ..."}` | Cron parser rejected the expression. |
+| 400 | `{"error": "unknown timezone: ..."}` | `timezone` is not an IANA zone name (e.g. `Europe/Berlin`); empty means UTC. |
+| 400 | `{"error": "repo_path is not an existing directory: ..."}` / `"repo_path is not a git repository: ..."` | The repository must exist and be a git work tree. |
+
+The same timezone and `repo_path` checks apply when a job is updated.
 
 ---
 
@@ -234,6 +238,14 @@ Returns `{"error": "job not found"}, 404` if the job does not exist.
 
 ---
 
+### Automatic pause
+
+A job whose last 3 runs all failed pauses itself (`enabled` becomes `0`) instead of starting a
+fourth. `paused_reason` on the job says why, with the newest run's error, and the Jobs view shows
+it. Fix the cause, then resume the job (toggle or `enabled: 1`); that clears `paused_reason`.
+
+---
+
 ## List runs for one job
 
 ```
@@ -255,7 +267,7 @@ GET /api/scheduled/jobs/{jobID}/runs?limit=20
       "id": 42,
       "job_id": 7,
       "session_id": "a1b2c3d4-...",
-      "worktree_path": "/home/user/project_task_run_42",
+      "worktree_path": "/home/user/.coral/worktrees/job-run-42-project",
       "status": "completed",
       "scheduled_at": "2025-03-12T16:00:00+00:00",
       "started_at": "2025-03-12T16:00:03+00:00",
@@ -297,7 +309,7 @@ Returns recent runs across all scheduled jobs.
       "job_id": 7,
       "job_name": "Morning triage",
       "session_id": "a1b2c3d4-...",
-      "worktree_path": "/home/user/project_task_run_42",
+      "worktree_path": "/home/user/.coral/worktrees/job-run-42-project",
       "status": "completed",
       "scheduled_at": "2025-03-12T16:00:00+00:00",
       "started_at": "2025-03-12T16:00:03+00:00",

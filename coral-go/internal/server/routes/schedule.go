@@ -3,13 +3,16 @@ package routes
 import (
 	"context"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/robfig/cron/v3"
 
 	"github.com/cdknorow/coral/internal/config"
+	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -150,6 +153,18 @@ func (h *ScheduleHandler) CreateJob(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "Invalid cron expression: "+body.CronExpr)
 		return
 	}
+	// A job that could never run is refused when it is saved, not on its first
+	// slot (#3171).
+	if msg := jobTimezoneError(body.Timezone); msg != "" {
+		errBadRequest(w, msg)
+		return
+	}
+	if body.RepoPath != "" {
+		if msg := jobRepoError(r.Context(), body.RepoPath); msg != "" {
+			errBadRequest(w, msg)
+			return
+		}
+	}
 
 	// Build ScheduledJob with defaults
 	job := store.ScheduledJob{
@@ -207,6 +222,23 @@ func (h *ScheduleHandler) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	delete(fields, "paused_reason") // the scheduler's to set, not the client's
+	if en, ok := fields["enabled"]; ok && (en == true || en == float64(1)) {
+		fields["paused_reason"] = "" // enabled again: clear the scheduler's pause reason
+	}
+	if tz, ok := fields["timezone"].(string); ok {
+		if msg := jobTimezoneError(tz); msg != "" {
+			errBadRequest(w, msg)
+			return
+		}
+	}
+	if repo, ok := fields["repo_path"].(string); ok && repo != "" {
+		if msg := jobRepoError(r.Context(), repo); msg != "" {
+			errBadRequest(w, msg)
+			return
+		}
+	}
+
 	updated, err := h.sched.UpdateScheduledJob(r.Context(), jobID, fields)
 	if err != nil {
 		errInternalServer(w, err.Error())
@@ -243,7 +275,11 @@ func (h *ScheduleHandler) ToggleJob(w http.ResponseWriter, r *http.Request) {
 	if job.Enabled == 1 {
 		newEnabled = 0
 	}
-	updated, err := h.sched.UpdateScheduledJob(r.Context(), jobID, map[string]interface{}{"enabled": newEnabled})
+	fields := map[string]interface{}{"enabled": newEnabled}
+	if newEnabled == 1 {
+		fields["paused_reason"] = "" // resumed: the scheduler's pause reason no longer applies
+	}
+	updated, err := h.sched.UpdateScheduledJob(r.Context(), jobID, fields)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
@@ -351,4 +387,30 @@ func countConsecutiveFailedRuns(runs []store.ScheduledRun) int {
 		n++
 	}
 	return n
+}
+
+// jobTimezoneError is why a job's timezone is unusable, or "" (empty means UTC).
+func jobTimezoneError(tz string) string {
+	if tz == "" {
+		return ""
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return "unknown timezone: " + tz + " (use an IANA name such as Europe/Berlin or America/New_York)"
+	}
+	return ""
+}
+
+// jobRepoError is why a job's repo_path is unusable, or "": it must be an
+// existing directory inside a git work tree.
+func jobRepoError(ctx context.Context, dir string) string {
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		return "repo_path is not an existing directory: " + dir
+	}
+	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := executil.Command(cctx, "git", "-C", dir, "rev-parse", "--is-inside-work-tree").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "true" {
+		return "repo_path is not a git repository: " + dir
+	}
+	return ""
 }

@@ -195,6 +195,10 @@ var columnMigrations = []struct {
 	{"live_sessions", "mcp_servers", "TEXT"},
 	{"scheduled_jobs", "job_type", "TEXT DEFAULT 'prompt'"},
 	{"scheduled_jobs", "workflow_id", "INTEGER"},
+	// Why the scheduler paused a job itself (failing repeatedly); cleared when it is resumed (#3171).
+	{"scheduled_jobs", "paused_reason", "TEXT DEFAULT ''"},
+	// When the job was last enabled again (0 -> 1): the auto-pause counts only runs after it (#3171).
+	{"scheduled_jobs", "resumed_at", "TEXT DEFAULT ''"},
 	{"live_sessions", "worktree_path", "TEXT"},
 	{"live_sessions", "worktree_repo", "TEXT"},
 	{"live_sessions", "team_id", "INTEGER REFERENCES teams(id) ON DELETE SET NULL"},

@@ -738,6 +738,7 @@ func startBackgroundServices(ctx context.Context, db *store.DB, cfg *config.Conf
 	scheduler.SetSessionStore(sessStore)
 	scheduler.SetRuntime(agentRT)
 	scheduler.SetNextFireTimeFn(background.NextFireTime)
+	scheduler.SetWorktreeRoot(filepath.Join(cfg.CoralDir(), "worktrees"))
 	safeGo(ctx, "job_scheduler", func() { scheduler.Run(ctx) })
 	srv.SetScheduler(scheduler)
 

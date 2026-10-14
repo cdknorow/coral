@@ -207,11 +207,14 @@ POST /api/tasks/run
 
 ## Worktrees
 
-When `create_worktree: true` (the default), each job is *intended* to get its own copy of the repo,
-keyed on the run id (`internal/background/scheduler.go:551`):
+When `create_worktree: true` (the default), each job gets its own copy of the repo, keyed on the
+run id:
 
-- **Path**: `<repo_path>_task_run_<run_id>` (sibling directory to the repo)
-- **Branch**: Checked out from `base_branch`
+- **Path**: `<Coral data dir>/worktrees/job-run-<run_id>-<repo name>` (for example
+  `~/.coral/worktrees/job-run-42-myproject`), not beside your repository
+- **Branch**: `coral/job-run-<run_id>`, created from `base_branch`
+- **Name**: a run without a `display_name` is called `Job run <run_id>` (not `Task #N`, which is
+  how board tasks are numbered)
 - **Cleanup**: Removed automatically when the run finishes (unless `cleanup_worktree: false`)
 Set `create_worktree: false` to run the agent directly in `repo_path` — useful for tasks that
 don't modify files, and currently the only configuration that works without changing

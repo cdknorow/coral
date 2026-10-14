@@ -27,11 +27,14 @@ export function renderLiveJobs(runs) {
     }
 
     list.innerHTML = activeRuns.map(run => {
-        const name = run.display_name || run.job_name || `Run #${run.id}`;
+        // A one-off run (POST /api/tasks/run) has no job of its own: never the
+        // internal "__oneshot__" name or a cron badge (#3171).
+        const oneOff = run.trigger_type === 'api' || run.job_name === '__oneshot__';
+        const name = run.display_name || (oneOff ? `Job run ${run.id}` : run.job_name) || `Job run ${run.id}`;
         const hasSid = !!run.session_id;
         const isPending = run.status === 'pending';
-        const triggerBadge = (run.trigger_type || 'cron') === 'api'
-            ? '<span class="live-job-badge live-job-badge-api">api</span>'
+        const triggerBadge = oneOff
+            ? '<span class="live-job-badge live-job-badge-api">one-off</span>'
             : '<span class="live-job-badge live-job-badge-cron">cron</span>';
 
         // Status dot

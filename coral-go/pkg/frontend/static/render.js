@@ -4,7 +4,7 @@ import { importOnce } from './import_once.js';
 import { state } from './state.js';
 import { isCloud, serverFetch, serverForSession, sessionServer, identityKey, splitKey, keyLabel, sessionTeamKey, inTeam, sessionFolderKey, boardFetch, teamFetch, serverUrl } from './server_base.js';
 import { applySleepingView } from './sleeping_view.js';
-import { formatDurationSec as formatDuration, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
+import { formatDurationSec as formatDuration, OPERATOR_ID, isOperatorId, escapeHtml, showToast, escapeAttr, dbg, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, agentNameColor, AGENT_NAME_PALETTE, jsStr, externalMessageBadge } from './utils.js';
 import { renderTranscript } from './live_chat.js';
 import { renderSidebarTagDots } from './tags.js';
 import { getFolderTags, renderFolderTagPills } from './folder_tags.js';
@@ -575,7 +575,7 @@ function _renderBoardPanelMessages(msgsEl, scrollToBottom) {
         const prevAgent = i > 0 ? (messages[i - 1].job_title || messages[i - 1].sender_name || 'Unknown') : null;
         const sameAsPrev = agent === prevAgent;
         const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
-        const isLeader = /orchestrator/i.test(agent) || m.session_id === 'dashboard';
+        const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id || m.session_id);
         const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
         const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
 
@@ -721,7 +721,7 @@ async function _sendBoardChat(boardName) {
         await boardFetch(boardName, `/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: 'dashboard', content }),
+            body: JSON.stringify({ subscriber_id: OPERATOR_ID, as: 'Operator', content }),
         });
         _loadBoardPanelChat(boardName);
     } catch { /* ignore */ }

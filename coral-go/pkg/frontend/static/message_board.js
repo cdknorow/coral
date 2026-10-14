@@ -1,6 +1,6 @@
 /* Message Board: project list, messages, subscribers, posting */
 
-import { escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge } from './utils.js';
+import { OPERATOR_ID, isOperatorId, escapeHtml, escapeAttr, showView, renderMarkdown, boardMessageText, getAgentColor, hexToRgba, showToast, jsStr, externalMessageBadge } from './utils.js';
 import { state } from './state.js';
 import { loadLiveSessions } from './api.js';
 import { platform } from './platform/detect.js';
@@ -286,7 +286,7 @@ function renderMessages(messages) {
         const prevAgent = i > 0 ? (messages[i - 1].job_title || 'Unknown') : null;
         const sameAsPrev = agent === prevAgent;
         const spacing = sameAsPrev ? 'mb-message-grouped' : 'mb-message-first';
-        const isLeader = /orchestrator/i.test(agent) || m.subscriber_id === 'dashboard';
+        const isLeader = /orchestrator/i.test(agent) || isOperatorId(m.subscriber_id);
         const alignClass = isLeader ? ' board-msg-left' : ' board-msg-right';
         const selectedClass = _selectMode && _selectedIds.has(m.id) ? ' mb-message-selected' : '';
         const checkbox = _selectMode ? `<input type="checkbox" class="mb-select-checkbox" data-msg-id="${Number(m.id)}" ${_selectedIds.has(m.id) ? 'checked' : ''} onclick="toggleMessageSelect(${Number(m.id)}, this.checked)">` : '';
@@ -392,7 +392,7 @@ async function subscribeDashboard(project) {
         await boardFetch(project, `/subscribe`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subscriber_id: 'dashboard', job_title: 'Operator' }),
+            body: JSON.stringify({ subscriber_id: OPERATOR_ID, job_title: 'Operator' }),
         });
     } catch (e) {
         // Best effort
@@ -411,7 +411,7 @@ export async function postBoardMessage() {
         const resp = await boardFetch(currentProject, `/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ subscriber_id: 'dashboard', content }),
+            body: JSON.stringify({ subscriber_id: OPERATOR_ID, as: 'Operator', content }),
         });
         if (!resp.ok) {
             console.error('Post failed:', resp.status, await resp.text());

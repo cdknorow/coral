@@ -43,7 +43,8 @@ function renderJobsSidebar() {
     }
     list.innerHTML = scheduledJobs.map(job => {
         const active = selectedJobId === job.id ? 'active' : '';
-        const status = job.enabled ? '' : ' (paused)';
+        // A job the scheduler paused itself says so (#3171).
+        const status = job.enabled ? '' : (job.paused_reason ? ' (paused: failing)' : ' (paused)');
         const lastStatus = job.last_run ? job.last_run.status : '';
         const dot = lastStatus === 'completed' ? '🟢'
             : lastStatus === 'running' ? '🔵'
@@ -149,7 +150,7 @@ function renderJobDetail(job, runs) {
         ${job.description ? `<p class="sched-desc">${escapeHtml(job.description)}</p>` : ''}
         <dl class="info-grid" style="margin-bottom:16px">
             <dt>Schedule</dt><dd><code>${escapeHtml(job.cron_expr)}</code> (${escapeHtml(job.timezone)})</dd>
-            <dt>Status</dt><dd>${enabledLabel}</dd>
+            <dt>Status</dt><dd>${enabledLabel}${!job.enabled && job.paused_reason ? `<div class="sched-paused-reason" role="status">${escapeHtml(job.paused_reason)}. Fix the cause, then Enable to resume.</div>` : ''}</dd>
             <dt>Next Run</dt><dd>${nextFire}</dd>
             ${jobTypeHtml}
             <dt>Repo</dt><dd style="word-break:break-all">${escapeHtml(job.repo_path)}</dd>

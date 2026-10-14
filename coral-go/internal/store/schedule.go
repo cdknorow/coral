@@ -26,6 +26,12 @@ type ScheduledJob struct {
 	WorkflowID      *int64 `db:"workflow_id" json:"workflow_id,omitempty"`
 	CreatedAt       string `db:"created_at" json:"created_at"`
 	UpdatedAt       string `db:"updated_at" json:"updated_at"`
+	// PausedReason says why the scheduler paused the job itself; empty
+	// otherwise (#3171).
+	PausedReason string `db:"paused_reason" json:"paused_reason"`
+	// ResumedAt is when the job was last enabled again after being off; the
+	// scheduler's auto-pause counts only runs scheduled after it (#3171).
+	ResumedAt string `db:"resumed_at" json:"resumed_at,omitempty"`
 }
 
 // ScheduledRun represents a job execution record.
@@ -124,11 +130,19 @@ func (s *ScheduleStore) CreateScheduledJob(ctx context.Context, job *ScheduledJo
 
 // UpdateScheduledJob updates allowed fields on a job.
 func (s *ScheduleStore) UpdateScheduledJob(ctx context.Context, jobID int64, fields map[string]interface{}) (*ScheduledJob, error) {
+	// Enabled again after being off (a resume, by any path): note when, so the
+	// failures before it no longer count towards an auto-pause (#3171).
+	if en, ok := fields["enabled"]; ok && enabledValue(en) {
+		var was int
+		if err := s.db.GetContext(ctx, &was, "SELECT enabled FROM scheduled_jobs WHERE id = ?", jobID); err == nil && was == 0 {
+			fields["resumed_at"] = nowUTC()
+		}
+	}
 	err := dynamicUpdate(ctx, s.db, "scheduled_jobs", jobID, fields, map[string]bool{
 		"name": true, "description": true, "cron_expr": true, "timezone": true,
 		"agent_type": true, "repo_path": true, "base_branch": true, "prompt": true,
 		"enabled": true, "max_duration_s": true, "cleanup_worktree": true, "flags": true,
-		"job_type": true, "workflow_id": true,
+		"job_type": true, "workflow_id": true, "paused_reason": true, "resumed_at": true,
 	}, map[string]bool{
 		"enabled": true, "cleanup_worktree": true,
 	}, true)
@@ -136,6 +150,21 @@ func (s *ScheduleStore) UpdateScheduledJob(ctx context.Context, jobID int64, fie
 		return nil, err
 	}
 	return s.GetScheduledJob(ctx, jobID)
+}
+
+// enabledValue reads an "enabled" field as the routes and the scheduler send it.
+func enabledValue(v interface{}) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case int:
+		return x != 0
+	case int64:
+		return x != 0
+	case float64:
+		return x != 0
+	}
+	return false
 }
 
 // DeleteScheduledJob deletes a job (cascades to runs via FK).
@@ -203,7 +232,7 @@ func (s *ScheduleStore) GetActiveRunForJob(ctx context.Context, jobID int64) (*S
 func (s *ScheduleStore) ListAllRecentRuns(ctx context.Context, limit int) ([]ScheduledRun, error) {
 	var runs []ScheduledRun
 	err := s.db.SelectContext(ctx, &runs,
-		`SELECT r.*, j.name as job_name
+		`SELECT r.*, `+runJobNameSQL+` as job_name
 		 FROM scheduled_runs r JOIN scheduled_jobs j ON j.id = r.job_id
 		 ORDER BY r.scheduled_at DESC LIMIT ?`, limit)
 	return runs, err
@@ -220,6 +249,10 @@ func (s *ScheduleStore) GetScheduledRun(ctx context.Context, runID int64) (*Sche
 }
 
 // ── One-shot / Live Jobs ──────────────────────────────────────────────
+
+// runJobNameSQL is a run's job name for listings: a one-off run belongs to
+// the internal __oneshot__ sentinel, whose name is never shown (#3171).
+const runJobNameSQL = `CASE WHEN j.name = '__oneshot__' THEN NULL ELSE j.name END`
 
 // GetOrCreateSentinelJob returns the __oneshot__ sentinel job ID.
 func (s *ScheduleStore) GetOrCreateSentinelJob(ctx context.Context) (int64, error) {
@@ -265,7 +298,7 @@ func (s *ScheduleStore) CreateOneshotRun(ctx context.Context, scheduledAt string
 func (s *ScheduleStore) ListActiveRuns(ctx context.Context) ([]ScheduledRun, error) {
 	var runs []ScheduledRun
 	err := s.db.SelectContext(ctx, &runs,
-		`SELECT r.*, j.name as job_name
+		`SELECT r.*, `+runJobNameSQL+` as job_name
 		 FROM scheduled_runs r LEFT JOIN scheduled_jobs j ON j.id = r.job_id
 		 WHERE r.status IN ('pending', 'running')
 		 ORDER BY r.scheduled_at DESC`)

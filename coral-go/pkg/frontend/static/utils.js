@@ -336,6 +336,12 @@ export function formatDurationSec(sec) {
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+/** The dashboard's board identity: the reserved Operator subscriber that task
+ *  actions already use (agent_docs/board.md). Team chat posted as "dashboard"
+ *  before #3171; those messages still render as the Operator's. */
+export const OPERATOR_ID = 'Operator';
+export function isOperatorId(id) { return id === OPERATOR_ID || id === 'dashboard'; }
+
 /** Label fenced code blocks with their language (shown by .chat-prose CSS). */
 /** Copy text to the clipboard. navigator.clipboard needs a secure context
  *  (https or localhost), so a dashboard opened over plain http from another

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +63,47 @@ func lookbackStart(job store.ScheduledJob, lastRun *store.ScheduledRun, now time
 	return after
 }
 
+// jobFailurePauseAfter is how many failed runs in a row pause a job.
+const jobFailurePauseAfter = 3
+
+// pauseIfFailing pauses job when its last jobFailurePauseAfter runs all
+// failed, recording why (the newest error) so the Jobs view can show it; the
+// job then waits until someone fixes and resumes it (#3171). Reports whether
+// it paused the job.
+func (s *JobScheduler) pauseIfFailing(ctx context.Context, job store.ScheduledJob) bool {
+	runs, err := s.store.GetRunsForJob(ctx, job.ID, jobFailurePauseAfter)
+	if err != nil || len(runs) < jobFailurePauseAfter {
+		return false
+	}
+	resumed, hasResume := time.Time{}, false
+	if job.ResumedAt != "" {
+		if t, err := parseTimestamp(job.ResumedAt); err == nil {
+			resumed, hasResume = t, true
+		}
+	}
+	for _, r := range runs {
+		if r.Status != "failed" {
+			return false
+		}
+		// A run from before the job was resumed does not count: the user fixed
+		// the cause and resumed it, so it gets its runs again (#3171 review).
+		if hasResume {
+			if t, err := parseTimestamp(r.ScheduledAt); err != nil || !t.After(resumed) {
+				return false
+			}
+		}
+	}
+	reason := fmt.Sprintf("Paused after %d failed runs in a row", jobFailurePauseAfter)
+	if e := runs[0].ErrorMsg; e != nil && strings.TrimSpace(*e) != "" {
+		reason += ": " + strings.TrimSpace(*e)
+	}
+	if _, err := s.store.UpdateScheduledJob(ctx, job.ID, map[string]interface{}{"enabled": 0, "paused_reason": reason}); err != nil {
+		return false
+	}
+	s.logger.Warn("job paused after repeated failures", "job", job.Name, "reason", reason)
+	return true
+}
+
 // ConcurrencyLimitError is returned when the max concurrent run limit is reached.
 type ConcurrencyLimitError struct {
 	Limit int
@@ -85,6 +127,7 @@ type JobScheduler struct {
 	launchFn       func(ctx context.Context, job store.ScheduledJob, runID int64) error
 	nextFireTimeFn func(cronExpr, tz string, after time.Time) (time.Time, error)
 	webhookSem     chan struct{} // limits concurrent webhook dispatch goroutines
+	worktreeRoot   string        // where run worktrees go (Coral's data dir); "" = beside the repo (legacy)
 	workflowRunner *WorkflowRunner
 	workflowStore  *store.WorkflowStore
 }
@@ -126,6 +169,24 @@ func (s *JobScheduler) SetRuntime(rt AgentRuntime) {
 func (s *JobScheduler) SetWorkflowRunner(wr *WorkflowRunner, ws *store.WorkflowStore) {
 	s.workflowRunner = wr
 	s.workflowStore = ws
+}
+
+// SetWorktreeRoot sets the directory run worktrees are created under (the
+// "worktrees" directory in Coral's data dir), instead of beside the user's
+// repository (#3171).
+func (s *JobScheduler) SetWorktreeRoot(dir string) {
+	s.worktreeRoot = dir
+}
+
+// runWorktreeDir is where run runID's worktree of repoPath goes:
+// <worktreeRoot>/job-run-<id>-<repo name>, or beside the repository when no
+// root is set.
+func (s *JobScheduler) runWorktreeDir(repoPath string, runID int64) string {
+	if s.worktreeRoot == "" {
+		return fmt.Sprintf("%s_task_run_%d", repoPath, runID)
+	}
+	_ = os.MkdirAll(s.worktreeRoot, 0o755)
+	return filepath.Join(s.worktreeRoot, fmt.Sprintf("job-run-%d-%s", runID, filepath.Base(filepath.Clean(repoPath))))
 }
 
 // SetNextFireTimeFn sets the cron evaluation function.
@@ -247,6 +308,11 @@ func (s *JobScheduler) evaluateJob(ctx context.Context, job store.ScheduledJob, 
 	lastRun, err := s.store.GetLastRunForJob(ctx, job.ID)
 	if err != nil {
 		return err
+	}
+
+	// A job that keeps failing pauses itself, with the reason shown (#3171).
+	if lastRun != nil && lastRun.Status == "failed" && s.pauseIfFailing(ctx, job) {
+		return nil
 	}
 
 	// Calculate next fire time
@@ -457,7 +523,8 @@ func (s *JobScheduler) FireOneshot(ctx context.Context, config map[string]interf
 		agentType = at.Claude
 	}
 	flags, _ := config["flags"].(string)
-	dn := fmt.Sprintf("Task #%d", runID)
+	// Not "Task #N": board tasks are numbered #N too (#3171).
+	dn := fmt.Sprintf("Job run %d", runID)
 	if displayName != nil {
 		dn = *displayName
 	}
@@ -568,7 +635,7 @@ func (s *JobScheduler) launchAndWatch(runID int64, job store.ScheduledJob, rc ru
 	// Create worktree if configured
 	var runBranch, baseBranch string
 	if rc.createWorktree && rc.repoPath != "" {
-		worktreeDir = fmt.Sprintf("%s_task_run_%d", rc.repoPath, runID)
+		worktreeDir = s.runWorktreeDir(rc.repoPath, runID)
 		baseBranch = rc.baseBranch
 		if baseBranch == "" {
 			baseBranch = "main"
