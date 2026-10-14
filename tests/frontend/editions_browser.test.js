@@ -51,6 +51,12 @@ const STUB = `
     if (path === '/api/cloud/connect') Object.assign(window.__cloud, { state: 'enrolling', user_code: 'ABCD-EFGH', verification_url: '${VERIFY}' });
     if (path === '/api/cloud/max-mode') window.__cloud.max_mode = JSON.parse(opts.body).mode;
     if (path === '/api/cloud/allow-auto-accept') window.__cloud.allow_hub_auto_accept = JSON.parse(opts.body).allow;
+    // loading (#3285): the first window.__cloudLoadingFor status reads say loading, then __cloudAfterLoad applies.
+    if (path === '/api/cloud/status' && window.__cloudStart && window.__cloudStart.loadingFor) {
+      window.__cloudReads = (window.__cloudReads || 0) + 1;
+      if (window.__cloudReads <= window.__cloudStart.loadingFor) return json({ ...window.__cloud, state: 'idle', loading: true });
+      Object.assign(window.__cloud, window.__cloudStart.afterLoad || {});
+    }
     return json({ ...window.__cloud });
   };`;
 
@@ -68,7 +74,7 @@ async function run() {
     let seed = null;
     const load = async (cloud = {}, forbidden = false, forbiddenBody = null) => {
         if (seed) await Page.removeScriptToEvaluateOnNewDocument({ identifier: seed });
-        ({ identifier: seed } = await Page.addScriptToEvaluateOnNewDocument({ source: `window.__cloudStart = ${JSON.stringify(cloud)}; window.__cloudStartForbidden = ${forbidden}; window.__cloudStartForbiddenBody = ${JSON.stringify(forbiddenBody)};` + STUB }));
+        ({ identifier: seed } = await Page.addScriptToEvaluateOnNewDocument({ source: `window.__coralEditionsLoadingWaitMs = 20; window.__cloudStart = ${JSON.stringify(cloud)}; window.__cloudStartForbidden = ${forbidden}; window.__cloudStartForbiddenBody = ${JSON.stringify(forbiddenBody)};` + STUB }));
         await Page.navigate({ url: BASE + '/' }); await Page.loadEventFired();
         await coralReady();
     };
@@ -172,6 +178,25 @@ async function run() {
             await click('#editions-modal [data-editions="done-own"]');
             await until(savedIs('welcome_choice', 'own-hub'), 'own-hub saved');
             check(`${label}: Go to the dashboard closes it and is remembered`, !(await open()) && (await settings()).welcome_choice === 'own-hub');
+
+            // ── The connector still loading (#3285): wait for it, then decide ──
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load({ loadingFor: 2, afterLoad: { state: 'connected', label: 'CLI Box' } });
+            check(`${label}: loading, then already connected (coral cloud connect): no screen, answered as connected`, !(await open()) && (await settings()).welcome_choice === 'connected' && (await settings()).welcome_pending === 'False');
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load({ loadingFor: 2, afterLoad: { state: 'idle' } });
+            await until(`!!document.querySelector('#editions-modal [data-cloud="connect"]:not([hidden])')`, 'the screen after loading');
+            check(`${label}: loading, then not connected: the screen opens ready to connect`, ((await screen()) || {}).connect === true);
+            await click('#editions-modal [data-editions="skip"]');
+            // The skip's own save must land before the next case marks the launch pending again.
+            await until(savedIs('welcome_choice', 'skipped'), 'skipped saved');
+            // Still loading after the first-launch check gives up: no screen now, asked next launch.
+            await put({ welcome_pending: 'True', welcome_choice: '' });
+            await load({ loadingFor: 1000, afterLoad: { state: 'idle' } });
+            // coralReady() (settings) waits for the first-launch check, so it has given up by now.
+            check(`${label}: still loading: the check asked 10 times, then gave up`, (await ev(`window.__cloudReads || 0`)) >= 10);
+            check(`${label}: still loading: no screen this launch, still asked next time`, !(await open()) && (await settings()).welcome_pending === 'True');
+            await put({ welcome_choice: 'own-hub', welcome_pending: 'False' });
 
             // ── No hub configured (a dev build): never opens. From another computer: says where ──
             await put({ welcome_pending: 'True' });

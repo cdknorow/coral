@@ -9,7 +9,7 @@
      again. Settings > About reopens it. It opens only when this build has a hub configured.
    - Home: a short section about Coral Hub and running your own hub, which the user can
      hide (home_editions_hidden).
-   Neither appears in the Cloud Hub itself or in an agent popout. */
+   Neither appears in the Coral Hub itself or in an agent popout. */
 
 import { state } from './state.js';
 import { isCloud } from './server_base.js';
@@ -22,6 +22,11 @@ export const OWN_HUB_GUIDE_URL = 'https://cdknorow.github.io/coral/multi-server-
 function _available() {
     return !isCloud() && !isPopout();
 }
+
+// How long the first-launch check waits for a connector still loading (#3285): tries × waitMs.
+// Tests seed window.__coralEditionsLoadingWaitMs before the app runs to make it quick.
+const LOADING_TRIES = 10;
+const loadingWaitMs = () => Number(window.__coralEditionsLoadingWaitMs) || 300;
 
 const _pending = () => String((state.settings || {}).welcome_pending) === 'True';
 
@@ -36,11 +41,26 @@ async function _saveSettings(values) {
 export async function initEditions() {
     syncHomeEditions();
     if (!_available() || !_pending()) return;
+    let st = null;
     try {
-        const r = await fetch('/api/cloud/status');
-        // 'off': this build has no hub to connect to (a dev build, or --cloud-url off).
-        if (r.ok && (await r.json()).state === 'off') return;
+        // The connector may still be loading its stored enrollment (#3285): ask again briefly.
+        for (let i = 0; i < LOADING_TRIES; i++) {
+            const r = await fetch('/api/cloud/status');
+            st = r.ok ? await r.json() : null;
+            if (!st || !st.loading) break;
+            await new Promise(res => setTimeout(res, loadingWaitMs()));
+        }
     } catch { return; }
+    // 'off': this build has no hub to connect to (a dev build, or --cloud-url off). Still
+    // loading after ~3 s (a startup credential retrying the hub can take longer): it may be
+    // enrolled, so don't ask now; welcome_pending stays and the next launch asks.
+    if (st && (st.state === 'off' || st.loading)) return;
+    // Already connected (with coral cloud connect, before the dashboard was opened): that
+    // answers the first-launch question.
+    if (st && ['connected', 'connecting', 'retrying'].includes(st.state)) {
+        await _saveSettings({ welcome_choice: 'connected', welcome_pending: 'False' });
+        return;
+    }
     showHubSetup();
 }
 
@@ -182,7 +202,7 @@ function _dismiss(choice) {
 
 // ── The home section ─────────────────────────────────────────────────────
 
-/** Show the home section unless hidden (or in the Cloud Hub / a popout). */
+/** Show the home section unless hidden (or in the Coral Hub / a popout). */
 export function syncHomeEditions() {
     const el = document.getElementById('editions-home');
     if (!el) return;

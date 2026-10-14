@@ -153,7 +153,9 @@ class CloudPanel {
     // Poll while something is changing and the panel is on screen.
     schedule(st) {
         clearTimeout(this.timer);
-        if (LIVE.includes(st.state) && this.root.offsetParent !== null) {
+        // loading (#3285): the connector is still reading its stored enrollment, so an
+        // enrolled server can look idle for a moment.
+        if ((LIVE.includes(st.state) || st.loading) && this.root.offsetParent !== null) {
             this.timer = setTimeout(() => this.load(), 3000);
         }
     }
