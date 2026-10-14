@@ -1,3 +1,11 @@
 # The command-line token Coral writes in its data directory (#3149). A test or a
 # run whose data directory is a source folder must never commit one.
 cli-token
+
+# Binaries built here by hand (go build -o <name> ./cmd/<name>/) that the root
+# .gitignore doesn't already list. launch-coral was once committed by accident (7ec8e9c6).
+/launch-coral
+/coral-agent
+/coral-coordination-report
+/coral-hook-session-start
+/mock-agent
