@@ -11,7 +11,7 @@
 //	coral-app                             # Open dashboard at default URL
 //	coral-app --url http://localhost:9000  # Custom server URL
 //	coral-app --width 1400 --height 900   # Custom window size
-//	coral-app --debug                     # Enable debug logging to ~/.coral/app.log
+//	coral-app --debug                     # Enable debug logging to app.log in the data folder
 package main
 
 import (
@@ -59,7 +59,7 @@ func main() {
 	width := flag.Int("width", 1200, "Window width")
 	height := flag.Int("height", 800, "Window height")
 	wait := flag.Bool("wait", false, "Wait for server to be ready before opening")
-	debugFlag := flag.Bool("debug", false, "Enable debug logging to ~/.coral/app.log")
+	debugFlag := flag.Bool("debug", false, "Enable debug logging to app.log in the data folder")
 	dataDir := flag.String("data-dir", "", "Coral's data folder, to ask it for a sign-in link (default: the usual one)")
 	flag.Parse()
 	// A sign-in link handed over by the tray (#3394), in the environment so no other user can
@@ -70,7 +70,7 @@ func main() {
 	debugMode = *debugFlag || os.Getenv("CORAL_DEBUG") == "1"
 
 	// Always log to file so we catch crashes — debug mode adds JS console redirect
-	setupDebugLogging()
+	setupDebugLogging(*dataDir)
 
 	// Check EULA acceptance before proceeding. On macOS, this shows a native
 	// Cocoa dialog on first launch. If the user declines, the app exits.
@@ -361,13 +361,11 @@ func main() {
 	log.Println("[SHUTDOWN] coral-app exiting normally")
 }
 
-// setupDebugLogging redirects log output to ~/.coral/app.log.
-func setupDebugLogging() {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return
-	}
-	logDir := filepath.Join(home, ".coral")
+// setupDebugLogging redirects log output to app.log in Coral's data folder (--data-dir,
+// else the usual one: CORAL_DATA_DIR, CORAL_DIR or ~/.coral), so a window for another
+// Coral logs with that Coral (#3463).
+func setupDebugLogging(dataDir string) {
+	logDir := config.ResolveCoralDir(dataDir)
 	os.MkdirAll(logDir, 0755)
 	logFile := filepath.Join(logDir, "app.log")
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

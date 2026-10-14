@@ -30,4 +30,9 @@ func TestWaitForExit(t *testing.T) {
 	start = time.Now()
 	waitForExit(long.Process.Pid, 500*time.Millisecond)
 	assert.Less(t, time.Since(start), 3*time.Second, "gives up at the limit")
+
+	start = time.Now()
+	waitForExit(0, 10*time.Second)
+	waitForExit(-1, 10*time.Second)
+	assert.Less(t, time.Since(start), time.Second, "no process to wait for")
 }

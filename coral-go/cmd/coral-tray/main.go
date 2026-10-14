@@ -188,7 +188,7 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 	// exit and free the port before starting the server.
 	if v := os.Getenv(restartWaitEnv); v != "" {
 		os.Unsetenv(restartWaitEnv)
-		if pid, err := strconv.Atoi(v); err == nil {
+		if pid, err := strconv.Atoi(v); err == nil && pid > 0 {
 			log.Printf("[STARTUP] restarting: waiting for pid %d to exit", pid)
 			waitForExit(pid, time.Minute)
 		}
@@ -319,8 +319,8 @@ func runForeground(host string, port int, noBrowser, devMode, debugMode bool, ba
 
 	url := fmt.Sprintf("http://localhost:%d", port)
 
-	// Kill any orphaned coral-app from previous sessions
-	killOrphanedCoralApp()
+	// Kill an orphaned coral-app from an earlier run of this Coral (this data folder only)
+	killOrphanedCoralApp(cfg.CoralDir())
 
 	// Anonymous install/upgrade tracking (non-blocking)
 	tracking.SetEntrypoint("coral-tray")
@@ -521,9 +521,11 @@ func fetchLatestVersion() string {
 
 // PID file management
 
+// getDataDir is the server's own data folder (CORAL_DATA_DIR, CORAL_DIR, else ~/.coral),
+// where the tray keeps tray.pid, heartbeat and tray.log too (#3463): a tray on another
+// data folder (a test, a second Coral) never reads or overwrites the default one's.
 func getDataDir() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".coral")
+	dir := config.ResolveCoralDir("")
 	os.MkdirAll(dir, 0755)
 	return dir
 }
@@ -571,6 +573,10 @@ func killCoralApp() {
 	if p == nil {
 		return
 	}
+	if runtime.GOOS == "windows" {
+		p.Kill() // no SIGTERM on Windows (Security, #3463)
+		return
+	}
 	p.Signal(syscall.SIGTERM)
 	// Give WKWebView time to exit cleanly
 	time.Sleep(500 * time.Millisecond)
@@ -581,22 +587,53 @@ func killCoralApp() {
 	}
 }
 
-// killOrphanedCoralApp finds and kills any stale coral-app processes from previous sessions.
-func killOrphanedCoralApp() {
-	out, err := exec.Command("pgrep", "-x", "coral-app").Output()
-	if err != nil || len(out) == 0 {
+// killOrphanedCoralApp stops a coral-app left over from an earlier run of this Coral: only
+// one started for this data folder (launchCoralApp passes --data-dir), never another
+// Coral's window (#3463).
+func killOrphanedCoralApp(dataDir string) {
+	procs, err := process.Processes()
+	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		pid, err := strconv.Atoi(strings.TrimSpace(line))
-		if err != nil || pid == os.Getpid() {
+	for _, p := range procs {
+		if int(p.Pid) == os.Getpid() {
 			continue
 		}
-		if proc, err := os.FindProcess(pid); err == nil {
-			log.Printf("killing orphaned coral-app (PID %d)", pid)
-			proc.Signal(syscall.SIGTERM)
+		name, err := p.Name()
+		if err != nil || strings.TrimSuffix(name, ".exe") != "coral-app" {
+			continue
+		}
+		args, err := p.CmdlineSlice()
+		if err != nil || !appForDataDir(args, dataDir) {
+			continue
+		}
+		log.Printf("killing orphaned coral-app (PID %d)", p.Pid)
+		if proc, err := os.FindProcess(int(p.Pid)); err == nil {
+			terminate(proc)
 		}
 	}
+}
+
+// appForDataDir reports whether coral-app's arguments name dataDir as its --data-dir.
+func appForDataDir(args []string, dataDir string) bool {
+	want := filepath.Clean(dataDir)
+	for i, a := range args {
+		var v string
+		switch {
+		case a == "--data-dir" || a == "-data-dir":
+			if i+1 < len(args) {
+				v = args[i+1]
+			}
+		case strings.HasPrefix(a, "--data-dir="):
+			v = strings.TrimPrefix(a, "--data-dir=")
+		case strings.HasPrefix(a, "-data-dir="):
+			v = strings.TrimPrefix(a, "-data-dir=")
+		}
+		if v != "" && filepath.Clean(v) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // coralAppDataDir is the server's data folder, passed to coral-app so it can ask this
@@ -726,8 +763,22 @@ func spawnRestart(dataDir string) error {
 	return cmd.Start()
 }
 
-// waitForExit returns once pid has exited, or after limit.
+// terminate asks p to exit: SIGTERM, or on Windows, which has no SIGTERM (Signal returns
+// EWINDOWS), Kill (#3463).
+func terminate(p *os.Process) {
+	if runtime.GOOS == "windows" {
+		p.Kill()
+		return
+	}
+	p.Signal(syscall.SIGTERM)
+}
+
+// waitForExit returns once pid has exited, or after limit. A pid of 0 or less names
+// no process: it returns at once.
 func waitForExit(pid int, limit time.Duration) {
+	if pid <= 0 {
+		return
+	}
 	end := time.Now().Add(limit)
 	for time.Now().Before(end) {
 		if alive, err := process.PidExists(int32(pid)); err != nil || !alive {
