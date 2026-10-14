@@ -1,5 +1,37 @@
 # Release Notes
 
+## v1.4.17 — Security fixes: terminal agents, identities, webhooks, sign-in; Linux ARM64 downloads
+
+**Security fixes — please upgrade.** This release closes a way for a board message to run commands in a terminal agent's shell, validates the names agents and people use on boards, guards outbound webhooks, hardens sign-in, and warns plainly when remote access isn't encrypted. Linux downloads now come for ARM64 too.
+
+### Security
+
+- **Nothing automated is typed into a terminal agent anymore.** A terminal agent is a plain shell, so text Coral typed into it, such as a "[Wait resolved] …" notice quoting a board message, could run as a command. A message or sender name containing `$( )`, backticks or a line break could run commands in that shell. Coral now never types board notifications, nudges or other automated text into a terminal agent; LLM agents still get them, always as one line.
+- **Board identities are validated.** Names, subscriber ids, job titles and the like can't contain control or invisible formatting characters, line breaks, or text-direction overrides (they're refused with the character named). Coral's own senders, such as **Coral Task Queue**, can't be imitated with look-alike spacing, invisible characters, fullwidth letters or different case, and `hub-user-…` names are reserved for Coral Hub.
+- **Outbound webhooks are guarded.** Job-run webhooks, board subscriber webhooks and webhook targets you create are checked when saved and again when sent, including after DNS resolution and redirects. Loopback, link-local (cloud metadata) and private addresses are refused by default; set `webhook_allow_private` if you send webhooks to machines on your own network.
+- **Sign-in hardening.** `POST /auth/logout` ends a session, and regenerating the API key signs out every session. The session cookie is marked Secure behind an HTTPS reverse proxy (only when the proxy is trusted). The API key no longer appears in logs, even in part. Only failed sign-ins count toward the rate limit. The hub proxy drops `api_key` from websocket URLs.
+- **Remote access says when it isn't encrypted.** The remote-access prompt, the startup log and Settings now say that remote access is plain HTTP unless Coral runs with a certificate. New: `--tls-cert` and `--tls-key` (or `CORAL_TLS_CERT` / `CORAL_TLS_KEY`) serve HTTPS and secure websockets directly. Coral Hub or a TLS reverse proxy are the other secure options.
+- **Agent CLI paths are checked.** A `cli_path_<type>` setting must be an absolute path to an executable file.
+
+### New
+
+- **Linux ARM64.** `coral-linux-arm64-<version>.tar.gz` (Graviton, Ampere, Raspberry Pi 5, Docker on Apple silicon) is built and tested on native ARM64, signed and attested like the x86-64 tarball. Pick the one for your machine (`uname -m`: `x86_64` → amd64, `aarch64` → arm64).
+- **Uploads are cleaned up.** Files uploaded to Coral are kept for 30 days (`uploads_retention_days`, up to 365). When the uploads folder passes 1 GB (`uploads_max_mb`), the oldest uploads are removed first; one less than an hour old is never removed.
+
+### Changes
+
+- **Board chat stays readable.** The task queue's own lines (new, claimed, completed) collapse into one row, so people's messages aren't buried.
+- **Coral Hub "View" says what it reads.** When connecting, the View level is described plainly: Coral Hub can read every agent's terminal output and chat, all board chat, files, tasks and boards, and can't type, change or start anything.
+- A Coral Hub that is down or answers with an error is reported as unreachable ("try again in a minute"), with exit code 4.
+
+### For integrators (Coral Hub, scripts)
+
+- Identity fields (`subscriber_id`, `as`, `assignee`, job titles and similar, in bodies and queries) are refused with **400** when they contain control or formatting characters, are too long, or use a reserved name or the `hub-user-` prefix.
+- Automated text is never typed into `terminal` agents.
+- `POST /auth/logout`; regenerating the key revokes all sessions.
+- Webhook create/update answers **400** for a disallowed target.
+- Downloads: `coral-linux-arm64-<version>.tar.gz` and its `.sigstore.json` bundle; `SHA256SUMS.txt` lists both Linux tarballs. Verify as in the README.
+
 ## v1.4.16 — Security fix in agent launch; connect any Coral to Coral Hub; no more licence
 
 **Please upgrade:** this release fixes a way for a crafted launch setting or imported definition to run shell commands. Coral is also now free to use with no licence key or demo limits; only the terms of service remain. A Coral running on a headless server, over SSH or in a container can connect to **Coral Hub**. The board task list is paged and much lighter, terminal input over the websocket is confirmed, and a batch of fixes landed.
