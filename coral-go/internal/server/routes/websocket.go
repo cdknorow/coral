@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -709,15 +710,15 @@ func (h *SessionsHandler) WSTerminal(w http.ResponseWriter, r *http.Request) {
 				Rows int    `json:"rows"`
 				// ID, on terminal_input, asks for an answer carrying it (#3276): a
 				// terminal_input_ack once the input is delivered, or the refusal with the id.
-				// Decoded leniently: a frame whose id is not an integer is still typed, as
-				// before ids existed, and gets no answer.
+				// Decoded leniently: a frame whose id is not an integer (or is null) is
+				// still typed, as before ids existed, and gets no answer.
 				RawID json.RawMessage `json:"id"`
 				ID    *int64          `json:"-"`
 			}
 			if err := json.Unmarshal(raw, &msg); err != nil {
 				continue
 			}
-			if len(msg.RawID) > 0 {
+			if len(msg.RawID) > 0 && string(bytes.TrimSpace(msg.RawID)) != "null" {
 				var id int64
 				if json.Unmarshal(msg.RawID, &id) == nil {
 					msg.ID = &id

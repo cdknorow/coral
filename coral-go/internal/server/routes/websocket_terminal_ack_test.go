@@ -135,8 +135,12 @@ func TestWSTerminal_NonIntegerIDIsTypedWithoutAnAck(t *testing.T) {
 	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo STRID_$((3*3))\r", "id": "abc"})
 	out := readBinaryUntilContains(t, ctx, conn, "STRID_9")
 	assert.Contains(t, out, "STRID_9", "the input was typed")
+	// {"id": null} is no id either (it used to decode as id 0 and get an ack).
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo NULLID_$((2*4))\r", "id": nil})
+	out = readBinaryUntilContains(t, ctx, conn, "NULLID_8")
+	assert.Contains(t, out, "NULLID_8", "the input was typed")
 	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "", "id": 5})
 	ack := readWSFrame(t, ctx, conn, 5*time.Second, frameType("terminal_input_ack"))
 	require.NotNil(t, ack)
-	assert.EqualValues(t, 5, ack["id"], "the string id got no ack; the next integer id did")
+	assert.EqualValues(t, 5, ack["id"], "the string and null ids got no ack; the next integer id did")
 }
