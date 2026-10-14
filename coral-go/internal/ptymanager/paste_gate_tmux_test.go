@@ -3,11 +3,14 @@
 package ptymanager
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -26,6 +29,9 @@ import (
 // the next paste lands in the box; with "late", the box is repainted 800 ms after a
 // paste; with "draft", the box opens holding that text once the menu is answered (a
 // person's draft). Like Claude 2.1.299 it draws a no-break space after its marker.
+// With "suggestion", an empty box shows that text faint (SGR 2), as Claude shows its
+// prompt suggestion after a turn; with "ghost", a box holding text shows that faint
+// after it (inline ghost text). Neither is in the box: a paste replaces them (#3468).
 const pasteAwareAgent = `#!/bin/bash
 dir="$1"; state="${2:-menu}"
 stty -icanon -echo min 1 time 0 2>/dev/null
@@ -34,7 +40,13 @@ printf '%s[?2004h' "$ESC"
 box=""
 draw_menu() { printf '\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow\n   3. No\n\n Esc to cancel · Tab to amend\n'; }
 NBSP=$'\xc2\xa0'
-draw_box() { printf '\n──────────\n❯%s%s\n──────────\n  ? for shortcuts\n' "$NBSP" "$box"; }
+draw_box() {
+  faint=""
+  if [ -z "$box" ] && [ -f "$dir/suggestion" ]; then faint="$(cat "$dir/suggestion")"; fi
+  if [ -n "$box" ] && [ -f "$dir/ghost" ]; then faint="$(cat "$dir/ghost")"; fi
+  if [ -n "$faint" ]; then faint="${ESC}[2m${faint}${ESC}[0m"; fi
+  printf '\n──────────\n❯%s%s%s\n──────────\n  ? for shortcuts\n' "$NBSP" "$box" "$faint"
+}
 if [ "$state" = menu ]; then draw_menu; else box="$(cat "$dir/draft" 2>/dev/null)"; draw_box; fi
 acc=""; inpaste=0; paste=""
 while IFS= read -r -s -n1 -d '' c; do
@@ -255,4 +267,175 @@ func TestTheFirstPasteNeverJoinsAPersonsDraft(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "half-written question", strings.TrimSpace(box), "the draft is untouched")
 	DropHeld(name, "test done")
+}
+
+// startBoxAgent runs pasteAwareAgent at its input box, with files (draft, suggestion,
+// ghost) written first, and waits for marker on its screen.
+func startBoxAgent(t *testing.T, tag, marker string, files map[string]string) (*raceTerminal, AutomatedInput, string) {
+	t.Helper()
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	fastGate(t)
+	term := &raceTerminal{TmuxSessionTerminal: newTmuxTestTerminal(t)}
+	dir := t.TempDir()
+	for f, content := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, f), []byte(content), 0o644))
+	}
+	script := filepath.Join(dir, "agent.sh")
+	require.NoError(t, os.WriteFile(script, []byte(pasteAwareAgent), 0o755))
+	sid := "0f1e2d3c-4b5a-4968-8776-6554433221" + tag
+	name := "claude-" + sid
+	logDir := t.TempDir()
+	naming.SetDefaultLogDir(logDir)
+	t.Cleanup(func() { naming.SetDefaultLogDir("") })
+	require.NoError(t, os.WriteFile(naming.LogFile(logDir, "claude", sid), []byte("\x1b[?2004h"), 0o644))
+	spawnTmuxSession(t, term.TmuxSessionTerminal, name, dir)
+	require.NoError(t, term.SendToTarget(context.Background(), name+".0", "bash "+script+" "+dir+" box"))
+	waitForCapture(t, term.TmuxSessionTerminal, name, marker, 10*time.Second)
+	in := pasteInput(term, name)
+	in.AgentType, in.SessionID = "claude", sid
+	return term, in, dir
+}
+
+// #3468 (QA's bug bash): after a turn Claude shows a faint suggestion for the next
+// prompt in its empty box ("❯ coral-board read"). It isn't a draft: a nudge to an
+// idle agent showing one is pasted and sent, and the suggestion is not sent with it.
+func TestAFaintSuggestionIsAnEmptyBox(t *testing.T) {
+	term, in, dir := startBoxAgent(t, "a1", "coral-board read", map[string]string{"suggestion": "coral-board read"})
+	d, err := DeliverAutomated(context.Background(), in)
+	require.NoError(t, err)
+	assert.Equal(t, Sent, d)
+	// The agent records what it received once it has read the Enter, a moment later.
+	require.Eventually(t, func() bool { return readFile(dir, "received") != "" }, 5*time.Second, 20*time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // nothing more arrives
+	assert.Equal(t, pasteTestText+"\n", readFile(dir, "received"), "the nudge alone, once")
+	assert.Zero(t, HeldCount(in.Name))
+	_ = term
+}
+
+// #3468 (Security's review): text a person typed followed by faint ghost text is a
+// draft: one normal-intensity character in the box holds the send, and nothing is
+// added to the draft.
+func TestADraftWithFaintGhostTextIsHeld(t *testing.T) {
+	term, in, dir := startBoxAgent(t, "a2", "git reset main", map[string]string{"draft": "git reset ", "ghost": "main"})
+	assertHeldUntouched(t, term, in, dir, "git reset main")
+}
+
+// #3468: a suggestion accepted with Tab is drawn at normal intensity: it is the
+// person's text now, and is held like any draft.
+func TestAnAcceptedSuggestionIsHeld(t *testing.T) {
+	term, in, dir := startBoxAgent(t, "a3", "coral-board read", map[string]string{"draft": "coral-board read"})
+	assertHeldUntouched(t, term, in, dir, "coral-board read")
+}
+
+// #3468: a "[Pasted ...]" placeholder is never taken for a suggestion, even drawn faint.
+func TestAPastePlaceholderIsNeverASuggestion(t *testing.T) {
+	term, in, dir := startBoxAgent(t, "a4", "[Pasted text #1", map[string]string{"suggestion": "[Pasted text #1 +12 lines]"})
+	assertHeldUntouched(t, term, in, dir, "[Pasted text #1 +12 lines]")
+}
+
+func assertHeldUntouched(t *testing.T, term *raceTerminal, in AutomatedInput, dir, box string) {
+	t.Helper()
+	ctx := context.Background()
+	d, err := DeliverAutomated(ctx, in)
+	require.NoError(t, err)
+	assert.Equal(t, Held, d)
+	time.Sleep(500 * time.Millisecond) // several of the gate's turns
+	assert.Empty(t, readFile(dir, "received"), "nothing submitted")
+	screen, err := term.AgentScreen(ctx, in.Name, in.AgentType, in.SessionID)
+	require.NoError(t, err)
+	got, ok := inputBoxText(screen)
+	require.True(t, ok)
+	assert.Equal(t, box, strings.TrimSpace(got), "the box is untouched")
+	DropHeld(in.Name, "test done")
+}
+
+// #3468 (QA): a send held by a draft is taken off the queue and held again on every
+// turn; it still ages, so the held-too-long notice fires (once, as an input-box hold,
+// not a prompt), and it is logged once, not on every turn.
+func TestASendHeldByADraftIsReportedAndLoggedOnce(t *testing.T) {
+	term, in, dir := startBoxAgent(t, "a5", "my own draft", map[string]string{"draft": "my own draft"})
+	gate.setTimings(gateTimings{tooLong: 300 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
+	var mu sync.Mutex
+	var prompts []bool
+	ended := 0
+	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+		if name == in.Name {
+			mu.Lock()
+			prompts = append(prompts, prompt)
+			mu.Unlock()
+		}
+	})
+	SetHeldEndedFunc(func(name, _, _ string) {
+		if name == in.Name {
+			mu.Lock()
+			ended++
+			mu.Unlock()
+		}
+	})
+	var logs bytes.Buffer
+	var logMu sync.Mutex
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&lockedWriter{w: &logs, mu: &logMu}, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	d, err := DeliverAutomated(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, Held, d)
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(prompts) == 1 }, 5*time.Second, 10*time.Millisecond, "reported after tooLong")
+	time.Sleep(500 * time.Millisecond) // many more turns
+	mu.Lock()
+	assert.Equal(t, []bool{false}, prompts, "reported once, not as a prompt")
+	mu.Unlock()
+	logMu.Lock()
+	held := strings.Count(logs.String(), "automated input paste held")
+	logMu.Unlock()
+	assert.Equal(t, 1, held, "logged once while the reason stays the same")
+	assert.Empty(t, readFile(dir, "received"))
+	mu.Lock()
+	assert.Zero(t, ended, "held again on every turn, but never ended")
+	mu.Unlock()
+	DropHeld(in.Name, "test done")
+	assert.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return ended == 1 }, 5*time.Second, 10*time.Millisecond, "ended once it is dropped")
+	_ = term
+}
+
+// #3468/#3471 (the Orchestrator's loop guard): the agent's state says it needs input
+// (say an earlier held-too-long notice set it), but its input box is on screen with a
+// draft in it: the hold is an input-box hold, reported with prompt=false, so a stale
+// state can't keep turning later holds into prompts.
+func TestADraftHoldIsNotAPromptWhateverTheState(t *testing.T) {
+	_, in, dir := startBoxAgent(t, "a6", "my own draft", map[string]string{"draft": "my own draft"})
+	gate.setTimings(gateTimings{tooLong: 300 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
+	SetNeedsInputFunc(func(context.Context, string, string, string) bool { return true })
+	var mu sync.Mutex
+	var prompts []bool
+	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+		if name == in.Name {
+			mu.Lock()
+			prompts = append(prompts, prompt)
+			mu.Unlock()
+		}
+	})
+	d, err := DeliverAutomated(context.Background(), in)
+	require.NoError(t, err)
+	require.Equal(t, Held, d)
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(prompts) == 1 }, 5*time.Second, 10*time.Millisecond)
+	mu.Lock()
+	assert.Equal(t, []bool{false}, prompts, "an input-box hold, not a prompt")
+	mu.Unlock()
+	assert.Empty(t, readFile(dir, "received"))
+	DropHeld(in.Name, "test done")
+}
+
+type lockedWriter struct {
+	w  *bytes.Buffer
+	mu *sync.Mutex
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }

@@ -629,10 +629,24 @@ func (c *Client) SendRawKeys(ctx context.Context, agentName string, keys []strin
 
 // CapturePane captures the current content of a tmux pane.
 func (c *Client) CapturePane(ctx context.Context, agentName string, lines int, agentType, sessionID string) (string, error) {
+	return c.capturePane(ctx, agentName, lines, agentType, sessionID)
+}
+
+// CapturePaneStyled is CapturePane with each cell's style kept as SGR sequences
+// (capture-pane -e): the automated-input gate tells Claude's faint prompt suggestion
+// from text a person typed by it (#3468).
+func (c *Client) CapturePaneStyled(ctx context.Context, agentName string, lines int, agentType, sessionID string) (string, error) {
+	return c.capturePane(ctx, agentName, lines, agentType, sessionID, "-e")
+}
+
+func (c *Client) capturePane(ctx context.Context, agentName string, lines int, agentType, sessionID string, flags ...string) (string, error) {
 	key := agentName + "\x00" + agentType + "\x00" + sessionID
+	args := func(target string) []string {
+		return append([]string{"capture-pane", "-t", target, "-p", fmt.Sprintf("-S-%d", lines)}, flags...)
+	}
 	if sessionID != "" {
 		if cached, ok := c.captureTarget(key); ok {
-			if out, err := c.run(ctx, "capture-pane", "-t", cached, "-p", fmt.Sprintf("-S-%d", lines)); err == nil {
+			if out, err := c.run(ctx, args(cached)...); err == nil {
 				return out, nil
 			}
 			c.setCaptureTarget(key, "") // the pane is gone or moved: look it up again
@@ -645,7 +659,7 @@ func (c *Client) CapturePane(ctx context.Context, agentName string, lines int, a
 	if target == "" {
 		return "", nil
 	}
-	out, err := c.run(ctx, "capture-pane", "-t", target, "-p", fmt.Sprintf("-S-%d", lines))
+	out, err := c.run(ctx, args(target)...)
 	if err != nil {
 		return "", nil
 	}

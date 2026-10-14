@@ -27,7 +27,7 @@ func (h *SessionsHandler) InstallAutomatedInputHooks() {
 		}
 		return h.deriveSingleSessionState(ctx, sessionID, 0).NeedsInput
 	})
-	ptymanager.SetHeldTooLongFunc(func(name, agentType, sessionID, what string) {
+	ptymanager.SetHeldTooLongFunc(func(name, agentType, sessionID, what string, _ bool) {
 		if sessionID == "" {
 			_, sessionID = logparse.ParseSessionName(name)
 		}

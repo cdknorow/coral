@@ -112,3 +112,36 @@ func TestAutomatedInputIdentity(t *testing.T) {
 	at, sid = AutomatedInput{Name: "x", AgentType: "codex", SessionID: "s"}.identity()
 	assert.Equal(t, [2]string{"codex", "s"}, [2]string{at, sid})
 }
+
+// #3468: the input box on a styled capture holds only faint text. The first screen is
+// QA's real Claude capture (ESC[2m after the marker and its no-break space); the
+// others are capture-pane -e's way of writing styles (combined and carried across
+// lines).
+func TestSuggestionOnly(t *testing.T) {
+	rule := "\x1b[38;5;244m" + strings.Repeat("─", 40) + "\n\x1b[39m"
+	footer := "  \x1b[38;5;220m⏵⏵ auto mode on\x1b[38;5;246m (shift+tab to cycle)\x1b[39m\n"
+	box := func(s string) string {
+		return "\x1b[38;5;231m⏺\x1b[39m OK\n" + rule + "❯\u00a0" + s + "\n" + rule + footer
+	}
+	for name, c := range map[string]struct {
+		screen string
+		want   bool
+	}{
+		"QA's capture":              {box("\x1b[2mcoral-board read\x1b[0m"), true},
+		"faint with a colour":       {box("\x1b[2;38;5;246mcoral-board read\x1b[39;22m"), true},
+		"faint carried to the line": {"\x1b[2m" + strings.Repeat("─", 40) + "\n❯ fix the tests\x1b[0m\n" + rule, true},
+		"empty box":                 {box(""), false},
+		"a draft":                   {box("my own draft"), false},
+		"a draft and ghost text":    {box("git reset \x1b[2mmain\x1b[0m"), false},
+		"accepted (normal again)":   {box("\x1b[2m\x1b[22mcoral-board read"), false},
+		"faint then normal":         {box("\x1b[2mcoral-board\x1b[0m read"), false},
+		"bold is not faint":         {box("\x1b[1mcoral-board read\x1b[0m"), false},
+		"a faint paste placeholder": {box("\x1b[2m[Pasted text #1 +12 lines]\x1b[0m"), false},
+		"no input box":              {"\x1b[2mjust output\x1b[0m\n", false},
+	} {
+		assert.Equal(t, c.want, suggestionOnly(c.screen), name)
+	}
+	// A wrapped box: a faint first line and a normal one under it is someone's text.
+	wrapped := rule + "❯\u00a0\x1b[2mcoral-board\x1b[0m\n  read the board\n" + rule
+	assert.False(t, suggestionOnly(wrapped), "a normal wrapped line")
+}

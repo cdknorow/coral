@@ -154,6 +154,15 @@ func (r *TmuxRuntime) AgentScreen(ctx context.Context, name, agentType, sessionI
 	return r.client.CapturePane(ctx, name, 40, agentType, sessionID)
 }
 
+// AgentScreenStyled implements ptymanager.StyledScreenReader: AgentScreen with each
+// cell's style, so the gate can tell Claude's faint suggestion from a draft (#3468).
+func (r *TmuxRuntime) AgentScreenStyled(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	if agentType == "" && sessionID == "" {
+		agentType, sessionID = parseSessionName(name)
+	}
+	return r.client.CapturePaneStyled(ctx, name, 40, agentType, sessionID)
+}
+
 // SendPrompt implements ptymanager.PromptSender: automated text as one bracketed
 // paste and its Enter (#3457).
 func (r *TmuxRuntime) SendPrompt(ctx context.Context, name, text, agentType, sessionID string) error {

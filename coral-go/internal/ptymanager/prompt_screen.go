@@ -30,6 +30,18 @@ var (
 	promptFooterRe = regexp.MustCompile(`(?i)(enter to (select|confirm|submit)|esc to (cancel|go back|reject|interrupt and reject)|↑/↓ to (navigate|select)|press enter to (confirm|continue))`)
 )
 
+// footerWhy starts PromptOnScreen's reason when only a prompt's footer was seen.
+const footerWhy = "prompt footer: "
+
+// isPromptHold reports whether a hold's reason (PromptOnScreen's, or the agent's
+// state) is a request from the agent to the user: a selection menu, a prompt
+// question, or a state of needs input. A footer alone ("esc to cancel", which agy
+// also shows while it runs a command) holds sends, the safe side, but isn't
+// reported as one (#3468, the Lead's live data).
+func isPromptHold(why string) bool {
+	return !strings.HasPrefix(why, footerWhy)
+}
+
 // PromptOnScreen reports whether screen, the visible text of an agent's
 // terminal (ANSI sequences are stripped), ends in an open prompt, and why.
 // A numbered list in an agent's reply is not a prompt: a menu has at least two
@@ -60,7 +72,7 @@ func PromptOnScreen(screen string) (bool, string) {
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
 		if promptFooterRe.MatchString(t) {
-			return true, "prompt footer: " + t
+			return true, footerWhy + t
 		}
 		if promptQuestionRe.MatchString(t) && options >= 1 {
 			return true, "prompt question: " + t
@@ -140,6 +152,12 @@ func screenTail(b []byte) string {
 // AgentScreen implements ScreenReader for tmux: the bottom of the agent's pane.
 func (t *TmuxSessionTerminal) AgentScreen(ctx context.Context, name, agentType, sessionID string) (string, error) {
 	return t.client.CapturePane(ctx, name, 40, agentType, sessionID)
+}
+
+// AgentScreenStyled implements StyledScreenReader for tmux: AgentScreen with each
+// cell's style (#3468).
+func (t *TmuxSessionTerminal) AgentScreenStyled(ctx context.Context, name, agentType, sessionID string) (string, error) {
+	return t.client.CapturePaneStyled(ctx, name, 40, agentType, sessionID)
 }
 
 // AgentScreen implements ScreenReader for the PTY backend: the end of the

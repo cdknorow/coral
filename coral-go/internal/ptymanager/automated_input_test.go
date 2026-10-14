@@ -2,6 +2,8 @@ package ptymanager
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -53,7 +55,7 @@ func (f *fakeAgent) input(name, key, text string, requireBox bool) AutomatedInpu
 func fastGate(t *testing.T) {
 	t.Helper()
 	prev := gate.setTimings(gateTimings{tooLong: time.Hour, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
-	t.Cleanup(func() { gate.setTimings(prev); SetNeedsInputFunc(nil); SetHeldTooLongFunc(nil) })
+	t.Cleanup(func() { gate.setTimings(prev); SetNeedsInputFunc(nil); SetHeldTooLongFunc(nil); SetHeldEndedFunc(nil) })
 }
 
 // The operator's report (#3431): a board message, a task notification and a
@@ -152,14 +154,18 @@ func TestASendHeldTooLongIsReportedOnce(t *testing.T) {
 	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
 	var mu sync.Mutex
 	var reports []string
-	SetHeldTooLongFunc(func(name, _, _, what string) { mu.Lock(); reports = append(reports, name+"/"+what); mu.Unlock() })
+	SetHeldTooLongFunc(func(name, _, _, what string, prompt bool) {
+		mu.Lock()
+		reports = append(reports, fmt.Sprintf("%s/%s/%v", name, what, prompt))
+		mu.Unlock()
+	})
 	a := &fakeAgent{screen: permissionMenu}
 	name := "claude-gate-long"
 	_, _ = DeliverAutomated(context.Background(), a.input(name, "", "waiting", false))
 	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(reports) == 1 }, 5*time.Second, 10*time.Millisecond)
 	time.Sleep(150 * time.Millisecond)
 	mu.Lock()
-	assert.Equal(t, []string{name + "/test"}, reports, "reported once")
+	assert.Equal(t, []string{name + "/test/true"}, reports, "reported once, as a prompt")
 	mu.Unlock()
 	a.show(idleInputBox)
 	require.Eventually(t, func() bool { return len(a.sent()) == 1 }, 5*time.Second, 10*time.Millisecond)
@@ -271,4 +277,123 @@ func TestDropHeldDiscardsASessionsHeldSends(t *testing.T) {
 	a.show(idleInputBox)
 	time.Sleep(150 * time.Millisecond)
 	assert.Empty(t, a.sent(), "nothing from the old launch")
+}
+
+// #3468 (the Lead's live data): agy shows "esc to cancel" while it runs a command.
+// The footer alone holds sends (the safe side) but is not reported as a prompt; a
+// selection menu is.
+func TestAFooterAloneIsNotReportedAsAPrompt(t *testing.T) {
+	fastGate(t)
+	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
+	var mu sync.Mutex
+	reports := map[string]bool{}
+	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) { mu.Lock(); reports[name] = prompt; mu.Unlock() })
+	footer := &fakeAgent{screen: "⠋ Running npm test (esc to cancel, 12s)\n  Gemini 3.8 Flash · high\n"}
+	menu := &fakeAgent{screen: permissionMenu}
+	_, _ = DeliverAutomated(context.Background(), footer.input("agy-footer", "", "nudge", false))
+	_, _ = DeliverAutomated(context.Background(), menu.input("claude-menu", "", "nudge", false))
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); return len(reports) == 2 }, 5*time.Second, 10*time.Millisecond)
+	mu.Lock()
+	assert.False(t, reports["agy-footer"], "a footer alone: held, not a prompt")
+	assert.True(t, reports["claude-menu"], "a selection menu is a prompt")
+	mu.Unlock()
+	assert.Empty(t, footer.sent(), "still held")
+	DropHeld("agy-footer", "test done")
+	DropHeld("claude-menu", "test done")
+}
+
+// eventLog records the gate's held-too-long and held-ended calls, in order.
+type eventLog struct {
+	mu     sync.Mutex
+	events []string
+}
+
+// install records the calls for sessions named claude-end-* only: the gate is shared,
+// and other tests' sessions may still end while this one runs.
+func (e *eventLog) install() {
+	mine := func(name string) bool { return strings.HasPrefix(name, "claude-end-") }
+	SetHeldTooLongFunc(func(name, _, _, _ string, prompt bool) {
+		if mine(name) {
+			e.add(fmt.Sprintf("report %s %v", name, prompt))
+		}
+	})
+	SetHeldEndedFunc(func(name, _, _ string) {
+		if mine(name) {
+			e.add("ended " + name)
+		}
+	})
+}
+func (e *eventLog) add(s string) { e.mu.Lock(); e.events = append(e.events, s); e.mu.Unlock() }
+func (e *eventLog) get() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.events...)
+}
+
+// #3471's clearing (#3468 v1): once a session's reported sends are all gone, the
+// gate says so, once, after the report: delivered, dropped or expired. A send that
+// was never reported ends silently.
+func TestHeldEndedFollowsTheReport(t *testing.T) {
+	fastGate(t)
+	gate.setTimings(gateTimings{tooLong: 50 * time.Millisecond, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
+	var ev eventLog
+	ev.install()
+	ctx := context.Background()
+
+	delivered := &fakeAgent{screen: permissionMenu}
+	_, _ = DeliverAutomated(ctx, delivered.input("claude-end-delivered", "", "a", false))
+	require.Eventually(t, func() bool { return len(ev.get()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // more turns while it is still held: no end yet
+	assert.Equal(t, []string{"report claude-end-delivered true"}, ev.get())
+	delivered.show(idleInputBox)
+	require.Eventually(t, func() bool { return len(delivered.sent()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return len(ev.get()) == 2 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, []string{"report claude-end-delivered true", "ended claude-end-delivered"}, ev.get(), "ended once, after the report")
+
+	dropped := &fakeAgent{screen: permissionMenu}
+	_, _ = DeliverAutomated(ctx, dropped.input("claude-end-dropped", "", "b", false))
+	require.Eventually(t, func() bool { return len(ev.get()) == 3 }, 5*time.Second, 10*time.Millisecond)
+	DropHeld("claude-end-dropped", "agent killed")
+	require.Eventually(t, func() bool { return len(ev.get()) == 4 }, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "ended claude-end-dropped", ev.get()[3])
+
+	quick := &fakeAgent{screen: permissionMenu}
+	gate.setTimings(gateTimings{tooLong: time.Hour, expiry: 24 * time.Hour, every: 20 * time.Millisecond})
+	_, _ = DeliverAutomated(ctx, quick.input("claude-end-quick", "", "c", false))
+	quick.show(idleInputBox)
+	require.Eventually(t, func() bool { return len(quick.sent()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+	assert.Len(t, ev.get(), 4, "never reported: no end")
+
+	gate.setTimings(gateTimings{tooLong: 30 * time.Millisecond, expiry: 150 * time.Millisecond, every: 20 * time.Millisecond})
+	expired := &fakeAgent{screen: permissionMenu}
+	_, _ = DeliverAutomated(ctx, expired.input("claude-end-expired", "", "d", false))
+	require.Eventually(t, func() bool { return len(ev.get()) == 6 }, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, []string{"report claude-end-expired true", "ended claude-end-expired"}, ev.get()[4:])
+	assert.Zero(t, HeldCount("claude-end-expired"))
+}
+
+// #3468 v2: a turn that took a send off the queue just before DropHeld (the agent
+// was killed or restarted) holds it again just after; it belongs to the old process
+// and is dropped, never held for the new one. A send after the drop is held as usual.
+func TestASendInFlightDuringDropHeldIsNotHeldAgain(t *testing.T) {
+	fastGate(t)
+	name := "claude-gen-drop"
+	a := &fakeAgent{screen: permissionMenu}
+	in := a.input(name, "", "old", false)
+	gate.mu.Lock()
+	in.gen = gate.gens[name] // as DeliverAutomated records it
+	gate.mu.Unlock()
+	DropHeld(name, "agent restarted") // meanwhile
+	gate.holdPaste(in, whyDraft, false, false)
+	gate.hold(in, "a prompt", true)
+	gate.holdEnter(in, true)
+	assert.Zero(t, HeldCount(name), "the old process's send is dropped")
+
+	d, err := DeliverAutomated(context.Background(), a.input(name, "", "new", false))
+	require.NoError(t, err)
+	assert.Equal(t, Held, d)
+	assert.Equal(t, 1, HeldCount(name), "the new process's send is held")
+	DropHeld(name, "test done")
 }

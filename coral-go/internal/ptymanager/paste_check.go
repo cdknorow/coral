@@ -2,6 +2,7 @@ package ptymanager
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -133,6 +134,158 @@ func boxPlaceholder(box string) bool {
 	t := strings.TrimSpace(box)
 	return t == "" || strings.HasPrefix(t, `Try "`) || strings.HasPrefix(t, "Ask Codex to do anything") ||
 		strings.HasPrefix(t, "Type your message")
+}
+
+// StyledScreenReader is implemented by terminals that can show AgentScreen with each
+// cell's style as SGR sequences (tmux's capture-pane -e).
+type StyledScreenReader interface {
+	AgentScreenStyled(ctx context.Context, name, agentType, sessionID string) (string, error)
+}
+
+// suggestionOnly reports whether the input box on a styled screen (capture-pane -e)
+// holds only faint text: after a turn Claude shows a suggestion for the next prompt
+// in the empty box, drawn faint (SGR 2), e.g. "❯ coral-board read" (#3468). Text a
+// person typed, or a suggestion they accepted with Tab, is drawn at normal
+// intensity, so one normal character anywhere in the box (a draft followed by faint
+// ghost text) means it is someone else's text. A faint cell is only ever Claude's
+// own rendering: what is typed or pasted into the box is never drawn faint.
+func suggestionOnly(styled string) bool {
+	lines := styledLines(styled)
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1].text) == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > 12 {
+		lines = lines[len(lines)-12:]
+	}
+	start := -1
+	for i := len(lines) - 1; i >= 0; i-- {
+		if isInputBoxLine(lines[i].text) {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return false
+	}
+	box := []styledLine{lines[start]}
+	for _, l := range lines[start+1:] {
+		t := strings.TrimSpace(l.text)
+		if t == "" || strings.HasPrefix(t, "─") || strings.HasPrefix(t, "╰") || strings.HasPrefix(t, "━") {
+			break
+		}
+		box = append(box, l)
+	}
+	if strings.Contains(squeeze(box[0].text)+squeeze(joinText(box[1:])), pastePlaceholder) {
+		return false // a paste placeholder is never a suggestion
+	}
+	faint := 0
+	for i, l := range box {
+		from := 0
+		if i == 0 {
+			from = inputBoxRe.FindStringSubmatchIndex(l.text)[1]
+		}
+		for _, c := range l.cells {
+			if c.at < from || unicode.IsSpace(c.r) || c.r == '│' || c.r == '┃' || c.r == '|' {
+				continue
+			}
+			if !c.faint {
+				return false
+			}
+			faint++
+		}
+	}
+	return faint > 0
+}
+
+type styledCell struct {
+	r     rune
+	faint bool
+	at    int // byte offset in the line's text
+}
+
+type styledLine struct {
+	text  string // the line without escape sequences (U+00A0 as a space)
+	cells []styledCell
+}
+
+func joinText(ls []styledLine) string {
+	var b strings.Builder
+	for _, l := range ls {
+		b.WriteString(l.text)
+	}
+	return b.String()
+}
+
+// styledLines splits a styled capture into lines of cells, tracking SGR 2 (faint)
+// across lines as the terminal does; every other escape sequence is dropped.
+func styledLines(s string) []styledLine {
+	var out []styledLine
+	var cur styledLine
+	var text strings.Builder
+	faint := false
+	rs := []rune(strings.ReplaceAll(s, "\r", ""))
+	for i := 0; i < len(rs); i++ {
+		r := rs[i]
+		switch {
+		case r == '\n':
+			cur.text = text.String()
+			out = append(out, cur)
+			cur, text = styledLine{}, strings.Builder{}
+		case r == 0x1b && i+1 < len(rs) && rs[i+1] == '[':
+			j := i + 2
+			for j < len(rs) && (rs[j] < 0x40 || rs[j] > 0x7e) {
+				j++
+			}
+			if j < len(rs) && rs[j] == 'm' {
+				faint = sgrFaint(string(rs[i+2:j]), faint)
+			}
+			i = j
+		case r == 0x1b && i+1 < len(rs) && rs[i+1] == ']': // OSC, to BEL or ST
+			j := i + 2
+			for j < len(rs) && rs[j] != 0x07 && !(rs[j] == 0x1b && j+1 < len(rs) && rs[j+1] == '\\') {
+				j++
+			}
+			if j < len(rs) && rs[j] == 0x1b {
+				j++
+			}
+			i = j
+		case r == 0x1b:
+			i++ // a two-character escape
+		case r < 0x20 || r == 0x7f:
+		default:
+			if r == '\u00a0' {
+				r = ' '
+			}
+			cur.cells = append(cur.cells, styledCell{r: r, faint: faint, at: text.Len()})
+			text.WriteRune(r)
+		}
+	}
+	cur.text = text.String()
+	return append(out, cur)
+}
+
+// sgrFaint applies one SGR sequence's parameters to the faint attribute.
+func sgrFaint(params string, faint bool) bool {
+	ps := strings.Split(params, ";")
+	for i := 0; i < len(ps); i++ {
+		p := ps[i]
+		if j := strings.IndexByte(p, ':'); j >= 0 { // a colon sub-parameter (38:5:n)
+			continue
+		}
+		switch p {
+		case "", "0", "22":
+			faint = false
+		case "2":
+			faint = true
+		case "38", "48", "58": // a colour: 5;n or 2;r;g;b
+			if i+1 < len(ps) && ps[i+1] == "5" {
+				i += 2
+			} else if i+1 < len(ps) && ps[i+1] == "2" {
+				i += 4
+			}
+		}
+	}
+	return faint
 }
 
 // pasteLanded reports whether screen's input box shows text (no placeholder before).
