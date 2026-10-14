@@ -27,7 +27,8 @@ export function isStalenessDrift(rows, changed, keyOf) {
         const old = byKey.get(keyOf(c));
         if (!old) return false;
         for (const k of Object.keys(c)) {
-            if (k !== 'staleness_seconds' && !_same(c[k], old[k])) return false;
+            // _partial marks a field-level diff row (#3281), not a field of the session.
+            if (k !== 'staleness_seconds' && k !== '_partial' && !_same(c[k], old[k])) return false;
         }
     }
     return true;

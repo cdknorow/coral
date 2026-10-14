@@ -9,7 +9,7 @@ import { renderLiveJobs } from './live_jobs.js';
 import { updateChangedFileCount } from './changed_files.js';
 import { updateSectionVisibility } from './sidebar.js';
 import { showNotificationToast, showWorkflowNotification, showAlertNotification, showToast, escapeHtml, dbg } from './utils.js';
-import { serverWsBase, identityKey, sessionServer } from './server_base.js';
+import { serverWsBase, identityKey, sessionServer, isCloud } from './server_base.js';
 import { notifyNeedsInput } from './desktop_notify.js';
 import { isPopout, popoutAllowsToastFor, popoutUpdateFromSession, popoutHandleSessionsTick, formatTerminalLabel } from './popout.js';
 import { applySleepingView } from './sleeping_view.js';
@@ -61,7 +61,9 @@ export function connectCoralWs() {
     dbg('connectCoralWs: establishing connection');
     // The hub's own feed carries every server's sessions, tagged with `server`
     // (remote feeds are bridged by the hub), so one socket is enough.
-    const url = `${serverWsBase('local')}/ws/coral`;
+    // A dashboard served by this Coral asks for field-level diffs (#3281): a changed agent
+    // arrives as only what changed. The Coral Hub's own feed keeps whole rows.
+    const url = `${serverWsBase('local')}/ws/coral${isCloud() ? '' : '?diff=fields'}`;
 
     state.coralWs = new WebSocket(url);
     state.coralWs.addEventListener('open', () => markReady('feed')); // window.__coralReady (#3118)
@@ -81,6 +83,15 @@ export function connectCoralWs() {
         dbg('coralWs ERROR', ev);
         // Will trigger onclose
     };
+}
+
+// A partial row for an agent this page lost (#3281): reload the list, at most every few seconds.
+let _lastResync = 0;
+function _resyncLiveList() {
+    const now = Date.now();
+    if (now - _lastResync < 3000) return;
+    _lastResync = now;
+    importOnce('./api.js').then(m => m.loadLiveSessions()).catch(() => {});
 }
 
 /** Identity key of a feed row: (server, session_id || name). */
@@ -126,13 +137,19 @@ export function handleCoralMessage(data) {
 
             // Apply changed sessions (update existing or add new)
             if (data.changed) {
-                for (const changed of data.changed) {
+                for (const raw of data.changed) {
+                    // A field-level diff (#3281) marks a row that carries only what changed.
+                    const { _partial: partial, ...changed } = raw;
                     const key = _feedKey(changed);
                     const idx = sessions.findIndex(s => _feedKey(s) === key);
                     if (idx >= 0) {
                         // Omitted fields keep their previous value; explicit
                         // values (including null) overwrite.
                         sessions[idx] = mergeSession(sessions[idx], changed);
+                    } else if (partial) {
+                        // Only part of a row this page no longer has: never shown half-built.
+                        // Reload the list instead; the next diff after it fits.
+                        _resyncLiveList();
                     } else {
                         // New session: taken as-is.
                         sessions.push(changed);

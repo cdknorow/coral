@@ -23,6 +23,9 @@ assert.equal(isStalenessDrift(rows, [row('a', { working: true })], key), false, 
 assert.equal(isStalenessDrift(rows, [row('a', { staleness_seconds: 12, summary: 'x' })], key), false, 'a new field is a change');
 assert.equal(isStalenessDrift(rows, [row('a', { commands: { clear: '/other' } })], key), false, 'a nested change is a change');
 assert.equal(isStalenessDrift(rows, [row('c')], key), false, 'a new session is a change');
+// A field-level diff (#3281) is still drift when only the age moved: the _partial marker is not a field.
+assert.equal(isStalenessDrift(rows, [{ _partial: true, server: 's1', session_id: 'a', name: 'na', staleness_seconds: 14 }], key), true, 'a partial age-only row is drift');
+assert.equal(isStalenessDrift(rows, [{ _partial: true, server: 's1', session_id: 'a', working: true, staleness_seconds: 14 }], key), false, 'a partial row with a real change is a change');
 assert.equal(isStalenessDrift(rows, [row('a', { staleness_seconds: 12 }), row('c')], key), false, 'one real change among drifting rows');
 assert.equal(isStalenessDrift(rows, [], key), false, 'nothing changed is not a drift to skip on (no diff)');
 assert.equal(isStalenessDrift(rows, undefined, key), false);

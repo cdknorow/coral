@@ -88,7 +88,8 @@ connection opens (not after the first poll tick):
 }
 ```
 
-- `changed`: Full session objects for sessions whose state changed (no field-level diffs). A session appears only when some field changed, and then with every field, so an unarchive carries `archived: false` explicitly.
+- `changed`: Full session objects for sessions whose state changed. A session appears only when some field changed, and then with every field, so an unarchive carries `archived: false` explicitly.
+  - **Field-level diffs (opt-in):** a dashboard that connects with `?diff=fields` gets, for a session it already has on this connection, only `"_partial": true`, the session's identity (`session_id`, `name`, `agent_type` and `server` when present), the fields that changed, and `null` for every field the session no longer has (never omitted: an omitted field keeps its old value). A session new to the connection still arrives whole. A client that gets a partial row for a session it no longer has must not show it alone; reload `GET /api/sessions/live` instead. Coral's own dashboard asks for this; `?feed=hub` always gets whole rows.
 - `removed`: Session IDs (the agent name when there is none) that are no longer live.
 - `active_runs`: Only sent when the active runs list changes.
 - `notifications`: Only when this connection has undelivered notifications (dashboards only).

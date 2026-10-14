@@ -44,7 +44,8 @@ EXTRA = {
 # (internal/background and coral-hub internal/feed): a dashboard-less client that must not consume the machine's pending UI
 # notifications. Only that exact value is accepted through the tunnel; anything else (feed=, feed=Hub, feed=hub2, two values) is refused.
 ENUM = {
-    'GET /ws/coral': {'feed': ['hub']},
+    # diff=fields (#3281) only changes the feed's shape (partial rows for a dashboard); only that exact value passes.
+    'GET /ws/coral': {'feed': ['hub'], 'diff': ['fields']},
     # The artifact link form (#3168): only v=2 passes; any other value or a second v is refused.
     'GET /api/artifacts/{}': {'v': ['2']},
 }

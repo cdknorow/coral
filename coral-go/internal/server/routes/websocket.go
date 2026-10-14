@@ -52,8 +52,11 @@ func (h *SessionsHandler) wsAcceptOptions(r *http.Request) *websocket.AcceptOpti
 //
 // First message is a full "coral_update" with all sessions.
 // Subsequent messages are "coral_diff" with only changed/removed sessions
-// to reduce bandwidth. Full session objects are sent per changed agent
-// (no field-level diffs).
+// to reduce bandwidth. By default a changed agent is sent as its full row. A local
+// dashboard may ask for field-level diffs with ?diff=fields (#3281): a changed row it
+// already has then carries only its identity, the fields that changed, and an explicit
+// null for each field that went away, marked "_partial": true. A hub's feed (?feed=hub)
+// always gets full rows.
 func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	if debugEnabled() {
 		slog.Info("[debug] ws/coral connection from", "remote", r.RemoteAddr, "origin", r.Header.Get("Origin"))
@@ -72,8 +75,12 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 
 	ctx := conn.CloseRead(r.Context())
 
+	// Field-level diffs (#3281): opt-in, and never on a hub's machine feed.
+	fieldDiff := r.URL.Query().Get("diff") == "fields" && r.URL.Query().Get("feed") != "hub"
+
 	// Per-connection state for diff calculation
-	prevSessions := make(map[string]string) // session key -> json string
+	prevSessions := make(map[string]string)      // session key -> json string
+	prevByKey := make(map[string]map[string]any) // session key -> the row last sent (read-only tick data)
 	prevRunsJSON := "[]"
 	firstMessage := true
 	var lastSent time.Time // last message written to this connection
@@ -222,6 +229,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			sent()
 			prevServersJSON = serversJSON
 			prevSessions = currSessions
+			prevByKey = sessionByKey
 			prevRunsJSON = currRunsStr
 			firstMessage = false
 			lastSent = time.Now()
@@ -232,7 +240,11 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 		var changed []map[string]any
 		for key, sJSON := range currSessions {
 			if prevSessions[key] != sJSON {
-				changed = append(changed, sessionByKey[key])
+				if prev, ok := prevByKey[key]; ok && fieldDiff {
+					changed = append(changed, fieldDelta(prev, sessionByKey[key]))
+				} else {
+					changed = append(changed, sessionByKey[key])
+				}
 			}
 		}
 
@@ -279,6 +291,7 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 			lastSent = time.Now()
 			prevServersJSON = serversJSON
 			prevSessions = currSessions
+			prevByKey = sessionByKey
 			prevRunsJSON = currRunsStr
 		} else if time.Since(lastSent) >= wsHeartbeatInterval {
 			// Nothing changed for a while. Say so, so a hub holding this feed
@@ -837,4 +850,39 @@ func sessionAgeSeconds(createdAt string) float64 {
 		return 0
 	}
 	return age
+}
+
+// feedIdentityFields name a feed row (the dashboard keys rows by server and session_id,
+// or name): a field-level diff always carries them.
+var feedIdentityFields = []string{"server", "session_id", "name", "agent_type"}
+
+// fieldDelta is a changed row as a field-level diff (#3281): its identity, every field
+// whose value changed, and null for every field it no longer has, never omitted (an
+// omitted field keeps its old value on the dashboard), marked "_partial" so a dashboard
+// that lost the row knows it can't use it alone.
+func fieldDelta(prev, curr map[string]any) map[string]any {
+	out := map[string]any{"_partial": true}
+	for _, k := range feedIdentityFields {
+		if v, ok := curr[k]; ok {
+			out[k] = v
+		}
+	}
+	for k, v := range curr {
+		if old, ok := prev[k]; !ok || !sameJSON(old, v) {
+			out[k] = v
+		}
+	}
+	for k := range prev {
+		if _, ok := curr[k]; !ok {
+			out[k] = nil
+		}
+	}
+	return out
+}
+
+// sameJSON reports whether a and b encode to the same JSON (the feed's own notion of equal).
+func sameJSON(a, b any) bool {
+	ja, errA := json.Marshal(a)
+	jb, errB := json.Marshal(b)
+	return errA == nil && errB == nil && bytes.Equal(ja, jb)
 }

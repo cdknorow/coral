@@ -79,7 +79,7 @@ var routeQueries = map[string]string{
 	"GET /api/webhooks/{}/deliveries":                   "limit",
 	"GET /api/workflows/runs/recent":                    "limit,offset,status",
 	"GET /api/workflows/{}/runs":                        "limit,offset,status",
-	"GET /ws/coral":                                     "agent_type,feed=hub,session_id",
+	"GET /ws/coral":                                     "agent_type,diff=fields,feed=hub,session_id",
 	"GET /ws/terminal/{}":                               "agent_type,session_id",
 	"POST /api/agent/ui-request":                        "session_id",
 	"POST /api/agent/ui/{}/events":                      "session_id",
