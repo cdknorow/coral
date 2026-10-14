@@ -50,6 +50,16 @@ func killTmuxSession(t *testing.T, socket, name string) {
 	require.NoError(t, exec.Command("tmux", "-S", socket, "kill-session", "-t", "="+name).Run())
 }
 
+// waitTerminalStreamLive returns once the server has attached the socket to the
+// pane: input typed now comes back as output. Killing the session before that
+// races the server's Attach, which then fails ('attach failed') instead of
+// exercising the gone-pane path.
+func waitTerminalStreamLive(t *testing.T, ctx context.Context, conn *websocket.Conn) {
+	t.Helper()
+	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo ATTACHED_$((6*7))\r"})
+	readBinaryUntilContains(t, ctx, conn, "ATTACHED_42")
+}
+
 // #3218, QA's live finding: with the terminal socket open, input to an agent whose
 // pane was killed was dropped silently. The client is now told (terminal_gone,
 // like the HTTP 409), and the stream ends (terminal_closed).
@@ -59,6 +69,7 @@ func TestWSTerminal_InputToAGonePaneIsReportedNotDropped(t *testing.T) {
 	tmuxName := spawnTestSession(t, backend, "gone-agent", "a1b2c3d4-1111-4222-8333-444455556666", "")
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
+	waitTerminalStreamLive(t, ctx, conn)
 
 	killTmuxSession(t, client.SocketPath, tmuxName)
 	sendTerminalJSON(t, ctx, conn, map[string]any{"type": "terminal_input", "data": "echo lost\r"})
@@ -76,6 +87,7 @@ func TestWSTerminal_StreamEndsWhenTheSessionIsGone(t *testing.T) {
 	tmuxName := spawnTestSession(t, backend, "ended-agent", "b2c3d4e5-1111-4222-8333-444455556666", "")
 	conn, ctx, cancel := dialTerminalWS(t, server, tmuxName)
 	defer cancel()
+	waitTerminalStreamLive(t, ctx, conn)
 
 	killTmuxSession(t, client.SocketPath, tmuxName)
 	types := readWSTypes(t, ctx, conn, "terminal_closed", 8*time.Second)
