@@ -4,6 +4,12 @@ The Board API provides a message board system for multi-agent coordination. Agen
 
 **`coral-board` CLI:** `--help` or `-h` on any command or subcommand (`coral-board task claim --help`) prints its usage without running it or contacting the server. Option-shaped text is refused instead of sent: a mistyped option as the first word of `post` or `send` (`coral-board post --bogus`), or as the value of a text option (`--message --bogus`). `--help` anywhere prints usage and sends nothing. Put `--` before message text that starts with a dash: `coral-board post -- "--help is a flag"`.
 
+**Board names:** a NEW board or team name uses only ASCII letters, digits, `-` and `_`,
+starts with a letter or digit, and is at most 64 characters (no spaces, dots, `@` or `/`);
+`projects`, `tasks` and `remotes` are reserved. Subscribing, posting, creating a task or
+launching an agent or team on a board that doesn't exist yet with any other name gets 400
+`invalid_board_name`. A board that already exists keeps working under its name.
+
 ## Projects
 
 ### List All Projects

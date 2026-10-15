@@ -734,3 +734,23 @@ export function jsIdent(name) {
     if (!HANDLER_NAMES.includes(n)) throw new Error('unsafe handler name');
     return n;
 }
+
+// The rule for a NEW board or team name (#3534; the server's board.NewNamePattern): letters,
+// digits, '-' and '_', starting with a letter or digit, at most 64. Existing boards keep
+// any name. Returns '' when the name is fine, else a sentence saying why not.
+const NEW_BOARD_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const RESERVED_BOARD_NAMES = new Set(['projects', 'remotes', 'tasks']);
+export function boardNameProblem(name) {
+    const n = String(name || '');
+    if (!n) return 'A board name is required.';
+    if (n.length > 64) return 'A board name is at most 64 characters.';
+    if (!NEW_BOARD_NAME_RE.test(n)) return "Use only letters, digits, '-' and '_' (no spaces, dots, '@' or '/'), starting with a letter or digit.";
+    if (RESERVED_BOARD_NAMES.has(n.toLowerCase())) return `"${n}" is reserved; choose another name.`;
+    return '';
+}
+
+/** A valid new board name made from free text ("Full Stack Team" → "full-stack-team"). */
+export function boardNameSlug(text) {
+    const slug = String(text || '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 64).replace(/[-_]+$/, '');
+    return slug && !RESERVED_BOARD_NAMES.has(slug) ? slug : 'team';
+}

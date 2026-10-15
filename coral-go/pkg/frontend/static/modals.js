@@ -3,7 +3,7 @@ import { checkAgentCLI } from './prerequisites.js';
 /* Modal management: launch and info dialogs */
 
 import { state } from './state.js';
-import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent, copyText } from './utils.js';
+import { showToast, escapeHtml, escapeAttr, jsStr, jsIdent, copyText, boardNameProblem, boardNameSlug } from './utils.js';
 import { loadLiveSessions } from './api.js';
 import { refreshChangedFiles } from './changed_files.js';
 import { loadBoardProjects } from './message_board.js';
@@ -1256,7 +1256,11 @@ export async function launchSession() {
         if (boardSelect && boardSelect.value) {
             if (boardSelect.value === "__new__") {
                 const boardName = document.getElementById("launch-board-name").value.trim();
-                if (boardName) payload.board_name = boardName;
+                if (boardName) {
+                    const problem = boardNameProblem(boardName);
+                    if (problem) { showToast(problem, true); return; }
+                    payload.board_name = boardName;
+                }
             } else {
                 payload.board_name = boardSelect.value;
             }
@@ -2425,7 +2429,7 @@ window._launchTeamPreset = function(templateName) {
     document.getElementById('quick-launch-template').value = templateName;
     document.getElementById('quick-launch-title').textContent = `Launch ${templateName}`;
     document.getElementById('quick-launch-board-name').value = '';
-    document.getElementById('quick-launch-board-name').placeholder = templateName.toLowerCase().replace(/\s+/g, '-');
+    document.getElementById('quick-launch-board-name').placeholder = boardNameSlug(templateName);
     _serverSettings.clear();
     _quickServer = LOCAL_SERVER;
     _resetDirInputs(['quick-launch-workdir'], LOCAL_SERVER, {}, { switching: false });
@@ -2442,6 +2446,8 @@ window._quickLaunchTeam = async function() {
     const workDir = document.getElementById('quick-launch-workdir').value.trim();
 
     if (!workDir) { showToast('Working directory is required', 'error'); return; }
+    const nameProblem = boardNameProblem(boardName);
+    if (nameProblem) { showToast(nameProblem, 'error'); return; }
 
     const all = [...BUILTIN_TEAM_TEMPLATES, ..._getSavedTeamTemplates()];
     const tmpl = all.find(t => t.name === templateName);
@@ -2783,6 +2789,12 @@ function _validateTeamName() {
         hint.classList.add("error");
         return false;
     }
+    const problem = boardNameProblem(value);
+    if (problem) {
+        hint.textContent = problem;
+        hint.classList.add("error");
+        return false;
+    }
     hint.textContent = "Looks good. This will also be the message board name.";
     hint.classList.remove("error");
     return true;
@@ -2796,7 +2808,7 @@ async function launchTeam() {
         return;
     }
     if (!_validateTeamName()) {
-        showToast("Team name must be unique", true);
+        showToast(boardNameProblem(boardName) || "Team name must be unique", true);
         return;
     }
 

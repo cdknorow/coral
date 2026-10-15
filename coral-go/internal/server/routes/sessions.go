@@ -3574,6 +3574,11 @@ func (h *SessionsHandler) Launch(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "working_dir is required")
 		return
 	}
+	// A new board on this Coral takes a name by the #3534 rule (a remote board's Coral checks its own).
+	if body.BoardName != "" && (body.BoardServer == "" || body.BoardServer == "local") && refuseNewBoardName(w, r, h.bs, body.BoardName) {
+		attempt.Finish(tracking.OutcomeFailure, tracking.FailInvalidRequest, 0, 1)
+		return
+	}
 	// An unknown agent_type used to fall through to Claude and return 200
 	// ok:true, silently starting an agent the caller never asked for.
 	if err := agent.ValidateAgentType(body.AgentType); err != nil {
@@ -3680,6 +3685,12 @@ func (h *SessionsHandler) LaunchTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errBadRequest(w, "invalid JSON")
+		return
+	}
+	// A new team's board takes a name by the #3534 rule, checked before anything is written
+	// (knowledge files, working mode, presets, worktrees, the teams row); relaunching an
+	// existing team keeps its name.
+	if body.BoardName != "" && refuseNewBoardName(w, r, h.bs, body.BoardName) {
 		return
 	}
 

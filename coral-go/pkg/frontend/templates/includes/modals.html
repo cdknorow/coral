@@ -117,7 +117,7 @@
                         </label>
                         <div id="launch-new-board-row" style="display:none">
                             <label>Board Name:
-                                <input type="text" id="launch-board-name" placeholder="e.g. Auth Feature, Sprint 42">
+                                <input type="text" id="launch-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{0,63}" title="Letters, digits, - and _">
                             </label>
                         </div>
                         <div id="launch-board-server-row" style="display:none">
@@ -223,7 +223,7 @@
                                 <p>Name the board, pick the workspace, and tune team defaults.</p>
                             </div>
                             <label>Team Name:
-                                <input type="text" id="team-board-name" placeholder="e.g. Auth Feature, Sprint 42" oninput="window._validateTeamName && window._validateTeamName()">
+                                <input type="text" id="team-board-name" placeholder="e.g. auth-feature, sprint-42" maxlength="64" oninput="window._validateTeamName && window._validateTeamName()">
                             </label>
                             <div id="team-board-name-hint" class="team-field-hint">This will also be used as the message board name.</div>
                             <label>Working Directory:

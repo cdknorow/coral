@@ -758,6 +758,9 @@ func (h *BoardHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		errBadRequest(w, "invalid JSON")
 		return
 	}
+	if refuseNewBoardName(w, r, h.bs, project) {
+		return
+	}
 	subscriberID := body.SubscriberID
 	if subscriberID == "" {
 		subscriberID = body.SessionID // legacy fallback
@@ -831,6 +834,9 @@ func (h *BoardHandler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Content = unescapeLineBreaks(body.Content)
+	if refuseNewBoardName(w, r, h.bs, project) {
+		return
+	}
 
 	subscriberID := body.SubscriberID
 	if subscriberID == "" {
@@ -1464,6 +1470,9 @@ func (h *BoardHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Title == "" {
 		errBadRequest(w, "title required")
+		return
+	}
+	if refuseNewBoardName(w, r, h.bs, project) {
 		return
 	}
 	createdBy := body.CreatedBy
@@ -2467,4 +2476,19 @@ func (h *BoardHandler) goBG(f func()) {
 // misuse.
 func (h *BoardHandler) WaitBackground() {
 	h.background.Wait()
+}
+
+// refuseNewBoardName answers 400 invalid_board_name and returns true when name would start
+// a NEW board (no subscriber or message uses it yet) with a name outside board.NewNamePattern
+// (#3534). A board that already exists keeps working under its name, whatever it is.
+func refuseNewBoardName(w http.ResponseWriter, r *http.Request, bs *board.Store, name string) bool {
+	problem := board.NewNameProblem(name)
+	if problem == "" || bs == nil {
+		return false
+	}
+	if exists, err := bs.BoardExists(r.Context(), name); err == nil && exists {
+		return false
+	}
+	writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
+	return true
 }
