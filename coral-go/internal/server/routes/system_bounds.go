@@ -166,11 +166,16 @@ func readImportFile(root, path string) (data []byte, ok bool, err error) {
 	if fi.Size() > importFileMax {
 		return nil, false, fmt.Errorf("%w: %s is larger than %d KiB", errImportRefused, name, importFileMax>>10)
 	}
-	f, openErr := os.Open(path)
+	// No symlink swapped in after the Lstat: open without following one, and check that the
+	// handle is the regular file that was checked.
+	f, openErr := os.OpenFile(path, os.O_RDONLY|oNoFollow, 0)
 	if openErr != nil {
 		return nil, false, nil
 	}
 	defer f.Close()
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() || !os.SameFile(fi, st) {
+		return nil, false, nil
+	}
 	data, err = io.ReadAll(io.LimitReader(f, importFileMax+1))
 	if err != nil {
 		return nil, false, nil

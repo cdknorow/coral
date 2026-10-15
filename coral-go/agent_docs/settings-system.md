@@ -154,7 +154,7 @@ Verifies whether a CLI tool is installed and returns its path and version.
 
 One of `type` or `binary` must be provided.
 
-`binary` is the Operator's (the dashboard or the command line outside an agent): with an agent's token, or through Coral Hub, it returns 403 `operator_only`. A path must be the CLI path configured in Settings or a file named like the CLI's binary (for `type`'s CLI when `type` is given), and it is refused (400, nothing runs) when it or what it links to is in Coral's data folder, a live agent's working folder or a temp folder. `type` alone needs no permission.
+`binary` is the Operator's (the dashboard or the command line outside an agent): with an agent's token, or through Coral Hub, it returns 403 `operator_only`. A path must be the CLI path configured in Settings or a file named like the CLI's binary (for `type`'s CLI when `type` is given), and it is refused (400, nothing runs) when it or what it links to is in Coral's data folder, a live agent's working folder or a temp folder. Only live agents' folders are known to Coral: a path inside any other project folder is the Operator's own responsibility, the same as a CLI path typed in Settings. `type` alone needs no permission.
 
 **Response (found):**
 ```json
