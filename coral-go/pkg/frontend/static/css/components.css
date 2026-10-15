@@ -1271,6 +1271,7 @@ button.subscriber-history-link {
     color: var(--text-muted);
     font-size: 12px;
     margin-left: 6px;
+    overflow-wrap: anywhere; /* a long host or IDN wraps instead of overflowing the alert at phone width */
 }
 
 .alert-notification-ok {

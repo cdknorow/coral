@@ -140,6 +140,8 @@ export function notificationLinkTarget(url) {
     return route !== null ? { kind: 'route', href: route } : null;
 }
 
+let _alertHostSeq = 0;
+
 export function showAlertNotification(title, message, level = 'info', link = null) {
     const icons = { success: '✅', warning: '⚠️', error: '❌', info: '💬' };
     const icon = icons[level] || icons.info;
@@ -150,8 +152,14 @@ export function showAlertNotification(title, message, level = 'info', link = nul
     const linkHtml = !link ? ''
         // A web link shows where it goes next to its label (the label is the agent's own text), and
         // says so when it isn't encrypted (#3623, Security's NIT on #3622).
+        // A screen reader hears the host too (aria-describedby). The host is URL's own form:
+        // punycode (xn--...) for a look-alike name, with the port when there is one.
+        : target && target.kind === 'web' ? (() => {
+            const hostId = `alert-notification-host-${++_alertHostSeq}`;
+            return `<a href="#" class="alert-notification-link" aria-describedby="${escapeAttr(hostId)}">${escapeHtml(label)}</a>`
+                + ` <span class="alert-notification-host" id="${escapeAttr(hostId)}">${escapeHtml(target.host)}${target.insecure ? ' · not encrypted' : ''}</span>`;
+        })()
         : target ? `<a href="#" class="alert-notification-link">${escapeHtml(label)}</a>`
-            + (target.kind === 'web' ? ` <span class="alert-notification-host">${escapeHtml(target.host)}${target.insecure ? ' · not encrypted' : ''}</span>` : '')
         : `<span class="alert-notification-link blocked-link" title="Link not opened">${escapeHtml(label)}</span>`;
     overlay.innerHTML = `<div class="alert-notification">
             <div class="alert-notification-icon">${icon}</div>

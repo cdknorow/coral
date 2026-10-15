@@ -140,7 +140,9 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
                 u.showAlertNotification('t', 'm', 'info', { url, label });
                 const o = document.querySelector('.alert-notification-overlay:last-of-type');
                 const host = o.querySelector('.alert-notification-host');
-                const r = { host: host ? host.textContent : null, link: !!o.querySelector('a.alert-notification-link') };
+                const a = o.querySelector('a.alert-notification-link');
+                const r = { host: host ? host.textContent : null, link: !!a,
+                    described: !!(host && a && host.id && a.getAttribute('aria-describedby') === host.id) };
                 o.remove();
                 return r;
             };
@@ -149,9 +151,14 @@ const check = (label, ok, detail) => { results.push(!!ok); console.log(`[${ok ? 
                 http: read('http://localhost:3000/', 'The dev server'),
                 docs: read('docs://workflow-quickstart', 'Quickstart'),
                 bad: read('javascript:alert(1)', 'Click me'),
+                idn: read('https://ex\u0430mple.test/login', 'example.test'),
+                port: read('https://example.test:8443/x', 'Port'),
             };
         })`);
         check('an https link shows its host', notes.https.link && notes.https.host === 'docs.example.test', JSON.stringify(notes.https));
+        check('the link is described by its host for a screen reader', notes.https.described && notes.http.described, JSON.stringify([notes.https, notes.http]));
+        check('a look-alike (IDN) host shows as punycode, not as the label it imitates', notes.idn.link && /^xn--/.test(notes.idn.host), JSON.stringify(notes.idn));
+        check('a host with a port shows the port', notes.port.link && notes.port.host === 'example.test:8443', JSON.stringify(notes.port));
         check('an http link shows its host and "not encrypted"', notes.http.link && notes.http.host === 'localhost:3000 · not encrypted', JSON.stringify(notes.http));
         check('a docs link shows no host', notes.docs.link && notes.docs.host === null, JSON.stringify(notes.docs));
         check('a refused link is text with no host', !notes.bad.link && notes.bad.host === null, JSON.stringify(notes.bad));
