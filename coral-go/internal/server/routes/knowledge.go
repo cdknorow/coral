@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/cdknorow/coral/internal/background"
+	"github.com/cdknorow/coral/internal/cloud"
 	"github.com/cdknorow/coral/internal/httputil"
 )
 
@@ -60,11 +61,12 @@ const (
 	knowledgeMaxFailed = 20
 )
 
-// A file path: starts the text or follows a space, quote, bracket or '=' ("and/or" is not
-// one); a Windows drive or UNC path (C:\Users\..., \\server\share); and an email address,
-// which the CLI's login and usage messages can carry (Security's review of #3518).
+// A file path: absolute ("/home/x", "~/x", "./x"), or relative with two or more slashes or a
+// file extension ("a/b/c", "notes/report.md"), so a word like "and/or" survives; a Windows
+// drive or UNC path (C:\Users\..., \\server\share); and an email address, which the CLI's
+// login and usage messages can carry (Security's and coral-hub Security's reviews).
 var (
-	knowledgePathRe    = regexp.MustCompile(`(^|[\s('"=])(?:~|\.{1,2})?/[^\s:'"),]+`)
+	knowledgePathRe    = regexp.MustCompile(`(^|[\s('"=])(?:[~.]*/[^\s'"),]*|[^\s'"(),=/]+(?:/[^\s'"(),=/]+){2,}/?|[^\s'"(),=/]+/[^\s'"(),=/]*\.[A-Za-z0-9]{1,8})`)
 	knowledgeWinPathRe = regexp.MustCompile(`(?i)(^|[\s('"=])(?:[a-z]:[\\/]|\\\\)[^\s'"),]*`)
 	knowledgeEmailRe   = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 )
@@ -90,6 +92,30 @@ type knowledgeStatus struct {
 	FinishedAt         string                      `json:"finished_at,omitempty"`
 	FailedAgents       []background.DistillFailure `json:"failed_agents,omitempty"`
 	CollaborationError string                      `json:"collaboration_error,omitempty"`
+}
+
+// knowledgeHubText replaces a run's error texts for a viewer through Coral Hub: scrubbing
+// free text can't catch everything (a path with a space, a name), so a hub viewer gets this
+// and the dashboard on the machine keeps the scrubbed detail (#3518, Security's review).
+const knowledgeHubText = "distillation failed; see the dashboard on this machine"
+
+// statusFor is the status for request r: through Coral Hub, the error texts are replaced.
+func (j knowledgeJob) statusFor(r *http.Request) knowledgeStatus {
+	out := j.status()
+	if !cloud.Tunneled(r) {
+		return out
+	}
+	fixed := func(s string) string {
+		if s == "" {
+			return ""
+		}
+		return knowledgeHubText
+	}
+	out.Error, out.CollaborationError, out.Progress.Error = fixed(out.Error), fixed(out.CollaborationError), fixed(out.Progress.Error)
+	for i := range out.FailedAgents {
+		out.FailedAgents[i].Error = fixed(out.FailedAgents[i].Error)
+	}
+	return out
 }
 
 func (j knowledgeJob) status() knowledgeStatus {
@@ -143,7 +169,7 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 	if job, exists := knowledgeJobs[teamName]; exists && job.Status == "running" {
 		snap := job.snapshot()
 		knowledgeJobsMu.Unlock()
-		writeJSON(w, http.StatusOK, snap.status())
+		writeJSON(w, http.StatusOK, snap.statusFor(r))
 		return
 	} else if exists {
 		if started, err := time.Parse(time.RFC3339, job.StartedAt); err == nil {
@@ -196,7 +222,7 @@ func (h *SessionsHandler) DistillKnowledge(w http.ResponseWriter, r *http.Reques
 		knowledgeJobsMu.Unlock()
 	}()
 
-	writeJSON(w, http.StatusAccepted, started.status())
+	writeJSON(w, http.StatusAccepted, started.statusFor(r))
 }
 
 // GetKnowledgeStatus returns the status of a distillation run.
@@ -220,7 +246,7 @@ func (h *SessionsHandler) GetKnowledgeStatus(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusOK, map[string]string{"status": "none"})
 		return
 	}
-	writeJSON(w, http.StatusOK, snap.status())
+	writeJSON(w, http.StatusOK, snap.statusFor(r))
 }
 
 // GetTeamKnowledge returns the distilled knowledge bundle for a team.

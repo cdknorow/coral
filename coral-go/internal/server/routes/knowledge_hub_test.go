@@ -16,6 +16,7 @@ import (
 	"github.com/cdknorow/coral/internal/background"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/internal/store/storetest"
+	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
 // #3518: distilling through Coral Hub. The POST (Launch tier) takes no body or query, only
@@ -91,7 +92,7 @@ func TestKnowledgeStatusHasFixedBoundedFields(t *testing.T) {
 		Error:              "knowledge distilled but failed to write: mkdir ~/notes/k:\npermission denied and/or " + long,
 		Progress:           background.DistillProgress{Phase: "agents", Agent: strings.Repeat("a", 100), Error: "see /tmp/transcript.jsonl"},
 		FailedAgents:       failed,
-		CollaborationError: `read './rel/path.md' failed; signed in as someone.else@example.test, see C:\Users\someone\x.log or \\server\share\y`}
+		CollaborationError: `read './rel/path.md' and notes/report.md failed; signed in as someone.else@example.test, see C:\Users\someone\x.log or \\server\share\y`}
 	knowledgeJobsMu.Unlock()
 	t.Cleanup(func() { knowledgeJobsMu.Lock(); delete(knowledgeJobs, "bounded-3518"); knowledgeJobsMu.Unlock() })
 
@@ -102,15 +103,53 @@ func TestKnowledgeStatusHasFixedBoundedFields(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []string{"status", "progress", "error", "failed_agents", "collaboration_error"}, keys, "fixed keys only (no team_name)")
 	raw, _ := json.Marshal(m)
-	for _, leak := range []string{"/home/someone", "/tmp/transcript", "~/notes", "./rel/path", "someone.else@example.test", `C:\\Users`, `\\\\server`, "Users", "share"} {
+	for _, leak := range []string{"/home/someone", "/tmp/transcript", "~/notes", "./rel/path", "someone.else@example.test", "notes/report", `C:\\Users`, `\\\\server`, "Users", "share"} {
 		assert.NotContains(t, string(raw), leak, "no file paths")
 	}
 	errText := m["error"].(string)
 	assert.LessOrEqual(t, len([]rune(errText)), knowledgeMaxText+1)
 	assert.NotContains(t, errText, "\n", "one line")
-	assert.Contains(t, errText, "and/or", "words with a slash aren't paths")
+	assert.Contains(t, errText, "and/or", "an ordinary word with one slash and no extension survives")
 	assert.Len(t, m["failed_agents"], knowledgeMaxFailed, "failed agents are capped")
 	first := m["failed_agents"].([]any)[0].(map[string]any)
 	assert.LessOrEqual(t, len([]rune(first["agent"].(string))), knowledgeMaxName+1)
 	assert.LessOrEqual(t, len([]rune(m["progress"].(map[string]any)["agent"].(string))), knowledgeMaxName+1)
+}
+
+// Through Coral Hub, the run's error texts are a fixed message: the free text stays on this
+// machine (a path with a space or a name can slip past any scrubbing).
+func TestKnowledgeStatusThroughTheHubHidesErrorText(t *testing.T) {
+	knowledgeJobsMu.Lock()
+	knowledgeJobs["hub-3518"] = &knowledgeJob{TeamName: "hub-3518", Status: "failed", Error: `open C:\Users\Jane Doe\x.log failed`,
+		Progress:     background.DistillProgress{Phase: "agents", Error: "see /Users/Jane Doe/y"},
+		FailedAgents: []background.DistillFailure{{Agent: "Dev", Error: "Jane Doe's transcript"}}, CollaborationError: "x"}
+	knowledgeJobsMu.Unlock()
+	t.Cleanup(func() { knowledgeJobsMu.Lock(); delete(knowledgeJobs, "hub-3518"); knowledgeJobsMu.Unlock() })
+
+	get := func(hub bool) map[string]any {
+		req := httptest.NewRequest(http.MethodGet, "/api/teams/detail/hub-3518/distill-knowledge", nil)
+		if hub {
+			req.Header.Set(tunnel.ViaHeader, "1")
+		}
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("name", "hub-3518")
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rr := httptest.NewRecorder()
+		(&SessionsHandler{}).GetKnowledgeStatus(rr, req)
+		require.Equal(t, http.StatusOK, rr.Code)
+		var m map[string]any
+		require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &m))
+		return m
+	}
+	hub := get(true)
+	raw, _ := json.Marshal(hub)
+	assert.NotContains(t, string(raw), "Doe", "nothing of the free text reaches a hub viewer")
+	assert.Equal(t, knowledgeHubText, hub["error"])
+	assert.Equal(t, knowledgeHubText, hub["collaboration_error"])
+	assert.Equal(t, knowledgeHubText, hub["progress"].(map[string]any)["error"])
+	assert.Equal(t, "Dev", hub["failed_agents"].([]any)[0].(map[string]any)["agent"], "the agent's name stays")
+	assert.Equal(t, knowledgeHubText, hub["failed_agents"].([]any)[0].(map[string]any)["error"])
+	local := get(false)
+	assert.Contains(t, local["error"], "failed", "the dashboard on the machine keeps the scrubbed detail")
+	assert.NotEqual(t, knowledgeHubText, local["error"])
 }
