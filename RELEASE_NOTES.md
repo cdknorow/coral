@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.37 — Tokens are hidden from Coral Hub viewers
+
+### Security
+
+- **Coral Hub viewers no longer see well-known token formats.** Before a reply leaves this computer for Coral Hub, Coral replaces these with `[redacted token]`:
+  - GitHub tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`);
+  - `sk-` keys;
+  - AWS access key ids (`AKIA`, `ASIA`);
+  - Slack `xox*-` tokens;
+  - Bearer and Authorization values;
+  - PEM and PGP private-key blocks.
+
+  This covers every View reply: the terminal capture, chat, transcripts, events, the board, knowledge and workflow output. It holds however long the token is and wherever a reply is split. The dashboard on this computer is never changed. View access still shows a whole session; redaction is a safety net for well-known formats, not a guarantee (other secrets, and tokens split by terminal wrapping, can show).
+- **The switch "Hide tokens from Coral Hub viewers" is on by default.** You can turn it off only on this computer (Settings › Coral Hub), never through the hub, and a change applies within a second.
+- **Not yet covered:** the live terminal and the live updates stream. Redaction for those comes in v1.4.38.
+- **Redact before you upload.** An artifact (an attachment) is shown whole through Coral Hub, byte for byte, so take tokens out of a file before uploading it.
+- **Known false match:** an `sk-` package name of 20 or more characters is shown as `[redacted token]` on the hub.
+- **Old git remote records with `user:pass@host:path`** are cleaned once at startup too, completing v1.4.36's cleanup. If such a remote ever held a token, rotate it.
+
 ## v1.4.36 — Security hotfix: file diffs, git remote URLs and home paths through Coral Hub
 
 **Security advisory — please upgrade.** If a git remote URL ever held a token (`https://user:TOKEN@host/...`), rotate that token: older copies may remain in Coral's database files until they are overwritten.
