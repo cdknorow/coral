@@ -217,16 +217,23 @@ func TestAutoAttachRaces(t *testing.T) {
 	}
 	unchanged(t, rig, "![x](shot.png)", "a symlink swapped in before the open")
 
-	// A parent directory is swapped for a symlink out of the roots: the re-resolve catches it.
+	// A parent directory is swapped for a symlink out of the roots: the open itself refuses it
+	// (#3601, W8: opened through a root held on the attach root), so the outside file is never
+	// read; the re-resolve after the read stays as a second check.
 	require.NoError(t, os.Remove(p))
 	rig.write("sub/shot.png", pngBytes(t, 4, 4))
+	readOutside := false
 	attachTestHook = func(stage, path string) {
 		if stage == "before_open" {
 			require.NoError(t, os.Rename(filepath.Join(rig.wd, "sub"), filepath.Join(rig.wd, "sub-moved")))
 			require.NoError(t, os.Symlink(outside, filepath.Join(rig.wd, "sub")))
 		}
+		if stage == "after_stat" {
+			readOutside = true
+		}
 	}
 	unchanged(t, rig, "![x](sub/shot.png)", "a parent directory swapped for a symlink")
+	assert.False(t, readOutside, "the swapped folder's file was opened")
 
 	// The file grows while it is read (Markdown: still valid after the append).
 	rig.write("grow.md", []byte("# log\n"))

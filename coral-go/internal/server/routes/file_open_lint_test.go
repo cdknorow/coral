@@ -27,7 +27,6 @@ var reviewedFileOpens = map[string]string{
 	"artifacts.go:readHead:Open":                                  "an object named by its server-computed hex",
 	"artifacts.go:readSidecar:ReadFile":                           "an object's sidecar, hex name",
 	"auto_attach.go:NewAutoAttacher:ReadFile":                     "server data folder (auto-attach-bytes)",
-	"auto_attach.go:readAttachable:OpenFile":                      "auto-attach: realPath + within its roots + O_NOFOLLOW + SameFile (W8/W9 move it to safefs, later)",
 	"board.go:BoardHandler.TaskChangesDiff:ReadFile":              "the task id is an int64; the server's artifacts folder",
 	"changes_diff_filter.go:isBinaryFile:Open":                    "an untracked name git lists, under diffPathHidden and an Lstat regular-file check",
 	"file_explorer.go:serveExplorerDirectory:Open":                "the explorer: no abs or '..', EvalSymlinks + Rel inside the root, strict roots",

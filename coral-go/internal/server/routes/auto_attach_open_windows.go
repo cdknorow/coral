@@ -2,11 +2,18 @@
 
 package routes
 
-import "os"
+import (
+	"os"
 
-// attachOpenFlags: Windows has no O_NOFOLLOW; readAttachable compares the opened file
-// with a fresh Lstat of the resolved path (os.SameFile), which a symlink fails.
-const attachOpenFlags = 0
+	"golang.org/x/sys/windows"
+)
 
-// linkCount: not available from os.FileInfo on Windows; the other bounds apply.
-func linkCount(os.FileInfo) (uint64, bool) { return 0, false }
+// linkCount is the opened file's hard-link count, from its handle (#3601, weak site W9):
+// os.FileInfo doesn't carry it on Windows.
+func linkCount(f *os.File, _ os.FileInfo) (uint64, bool) {
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(windows.Handle(f.Fd()), &info); err != nil {
+		return 0, false
+	}
+	return uint64(info.NumberOfLinks), true
+}

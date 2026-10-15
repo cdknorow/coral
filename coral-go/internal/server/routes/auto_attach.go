@@ -26,6 +26,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -522,7 +523,7 @@ func (a *AutoAttacher) load(workdir, gitRoot, target string, isImage bool, budge
 	if budget < limit {
 		limit = budget
 	}
-	data, err := readAttachable(real, limit, a.now())
+	data, err := readAttachable(root, rel, real, limit, a.now())
 	if err != nil {
 		return "", nil, "", err
 	}
@@ -559,20 +560,28 @@ var attachTestHook func(stage, path string)
 // readAttachable opens real without following a final symlink and without blocking on a
 // FIFO, and reads at most limit bytes from a regular file with one link, modified within
 // attachFresh, that is the same file a fresh Lstat names and that didn't change while read.
-func readAttachable(real string, limit int64, now time.Time) ([]byte, error) {
+func readAttachable(root, rel, real string, limit int64, now time.Time) ([]byte, error) {
 	if attachTestHook != nil {
 		attachTestHook("before_open", real)
 	}
-	f, err := os.OpenFile(real, os.O_RDONLY|attachOpenFlags, 0)
+	// Opened through a root held on the attach root (#3601, weak sites W8 and W9): every folder
+	// on the way is resolved inside it at open time, so one swapped for a symlink between the
+	// checks and the open is refused, and the file must be a regular one (not a symlink, a
+	// FIFO or a Windows reparse point), opened non-blocking.
+	r, err := safefs.OpenRoot(root)
 	if err != nil {
 		return nil, errAttach("open_failed")
 	}
-	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() {
-		return nil, errAttach("not_regular")
+	f, fi, err := r.Open(rel)
+	r.Close()
+	if err != nil {
+		if errors.Is(err, safefs.ErrNotRegular) {
+			return nil, errAttach("not_regular")
+		}
+		return nil, errAttach("open_failed")
 	}
-	if n, ok := linkCount(fi); ok && n != 1 {
+	defer f.Close()
+	if n, ok := linkCount(f, fi); ok && n != 1 {
 		return nil, errAttach("hardlink")
 	}
 	if li, err := os.Lstat(real); err != nil || !os.SameFile(fi, li) {

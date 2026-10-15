@@ -7,12 +7,8 @@ import (
 	"syscall"
 )
 
-// attachOpenFlags: the open fails on a symlink (the last path element) and never
-// blocks on a FIFO.
-const attachOpenFlags = syscall.O_NOFOLLOW | syscall.O_NONBLOCK
-
-// linkCount is the file's hard-link count.
-func linkCount(fi os.FileInfo) (uint64, bool) {
+// linkCount is the opened file's hard-link count.
+func linkCount(_ *os.File, fi os.FileInfo) (uint64, bool) {
 	st, ok := fi.Sys().(*syscall.Stat_t)
 	if !ok {
 		return 0, false
