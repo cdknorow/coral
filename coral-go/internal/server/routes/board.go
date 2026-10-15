@@ -1274,7 +1274,10 @@ func (h *BoardHandler) PeekAgent(w http.ResponseWriter, r *http.Request) {
 		errNotFound(w, "target subscriber not found on this board")
 		return
 	}
-	if !tunneled {
+	// A peek counts as activity on the target's task, but not one a browser sends from
+	// another page (an image tag elsewhere could keep a stalled task looking active; #3511
+	// follow-up). Agents' coral-board peek sends no fetch metadata.
+	if site := r.Header.Get("Sec-Fetch-Site"); !tunneled && (site == "" || site == "same-origin" || site == "none") {
 		_ = h.bs.TouchActiveTask(r.Context(), project, targetSub.SubscriberID)
 	}
 

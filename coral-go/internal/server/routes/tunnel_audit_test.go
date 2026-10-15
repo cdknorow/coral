@@ -61,10 +61,14 @@ func TestPeekThroughTheTunnel(t *testing.T) {
 	h.SetTerminal(peekTerminal{})
 	r := chi.NewRouter()
 	r.Get("/api/board/{project}/peek", h.PeekAgent)
+	site := ""
 	peek := func(tunneled bool, query string) (int, map[string]any) {
 		req := httptest.NewRequest("GET", "/api/board/p/peek?"+query, nil)
 		if tunneled {
 			stamp(req)
+		}
+		if site != "" {
+			req.Header.Set("Sec-Fetch-Site", site)
 		}
 		rec := httptest.NewRecorder()
 		r.ServeHTTP(rec, req)
@@ -79,6 +83,22 @@ func TestPeekThroughTheTunnel(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, out)
 	assert.Equal(t, "output of tmux-dev", out["output"])
 	assert.NotEqual(t, old, activity(), "a local peek touches the target's task")
+	// A browser on another page (an image tag elsewhere) doesn't count as activity; the
+	// dashboard's own page, and the user's own navigation, do.
+	for _, s := range []string{"cross-site", "same-site"} {
+		reset()
+		site = s
+		code, _ = peek(false, "subscriber_id=Orchestrator&target=Dev")
+		assert.Equal(t, http.StatusOK, code)
+		assert.Equal(t, old, activity(), "a %s browser peek doesn't touch the task", s)
+	}
+	for _, s := range []string{"same-origin", "none"} {
+		reset()
+		site = s
+		peek(false, "subscriber_id=Orchestrator&target=Dev")
+		assert.NotEqual(t, old, activity(), "a %s peek touches the task", s)
+	}
+	site = ""
 	code, _ = peek(false, "subscriber_id=Dev&target=Orchestrator")
 	assert.Equal(t, http.StatusForbidden, code, "no peek right")
 	code, _ = peek(false, "target=Dev")
