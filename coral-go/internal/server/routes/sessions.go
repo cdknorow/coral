@@ -1909,6 +1909,20 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// New files' line counts are read through the working tree held as a root (#3596 W5): a
+	// symlinked folder on the way, a symlink, a FIFO or a device is never read. If the tree can't
+	// be opened, new files count 0 lines.
+	root, rootErr := safefs.OpenRoot(workdir)
+	if rootErr == nil {
+		defer root.Close()
+	}
+	lineCount := func(rel string) int {
+		if rootErr != nil {
+			return 0
+		}
+		return gitutil.NewFileLineCountIn(root, rel)
+	}
+
 	// Run git diff --numstat to get changed files
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -1949,7 +1963,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 			if _, exists := fileMap[f]; !exists {
 				adds := 0
 				if counted < gitutil.MaxNewFileStatFiles {
-					adds = gitutil.NewFileLineCount(filepath.Join(workdir, f))
+					adds = lineCount(f)
 					counted++
 				}
 				fileMap[f] = store.ChangedFile{Filepath: f, Additions: adds, Deletions: 0, Status: "??"}
@@ -1995,10 +2009,13 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 	trackedSet := trackedPaths(ctx, workdir, candidates)
 
 	for _, rel := range candidates {
-		// Skip files that no longer exist on disk
-		fullPath := filepath.Join(workdir, rel)
-		info, statErr := os.Stat(fullPath)
-		if statErr != nil || info.IsDir() {
+		// Skip files that no longer exist on disk, or aren't a regular file inside the tree (an
+		// event's file_path comes from a hook payload; looked up through the root, #3596 W5)
+		if rootErr != nil {
+			continue
+		}
+		info, statErr := root.Lstat(rel)
+		if statErr != nil || !info.Mode().IsRegular() {
 			continue
 		}
 		// Skip tracked files not in fileMap — they have no diff (clean)
@@ -2007,7 +2024,7 @@ func (h *SessionsHandler) refreshFilesInner(w http.ResponseWriter, r *http.Reque
 		}
 		fileMap[rel] = store.ChangedFile{
 			Filepath:  rel,
-			Additions: gitutil.NewFileLineCount(fullPath),
+			Additions: lineCount(rel),
 			Deletions: 0,
 			Status:    "??",
 		}
