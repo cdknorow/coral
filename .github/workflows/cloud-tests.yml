@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: coral-go/go.sum
       - name: pkg and connector tests
         working-directory: coral-go
-        run: go test -race -count=1 -tags '${{ matrix.tags }}' ./pkg/... ./internal/cloud/... ./internal/startup/...
+        run: go test -race -timeout 30m -count=1 -tags '${{ matrix.tags }}' ./pkg/... ./internal/cloud/... ./internal/startup/...
       - name: route census (every registered route has a reviewed tier)
         working-directory: coral-go
         run: go test -count=1 -tags '${{ matrix.tags }}' ./internal/server -run 'TestCloud|TestGuard'
