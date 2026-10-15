@@ -23,7 +23,11 @@ func TestWorkflowRunsAreCapped(t *testing.T) {
 	rt := newWfMockRuntime()
 	runner := NewWorkflowRunner(wfStore, &AgentLauncher{runtime: rt}, rt, nil, nil, t.TempDir(), "localhost", 8420)
 	gate := filepath.Join(t.TempDir(), "go")
-	steps, _ := json.Marshal([]StepDef{{Name: "wait", Type: "shell", Command: "while [ ! -e " + gate + " ]; do sleep 0.05; done"}})
+	// Quoted, with forward slashes: on Windows the step runs in Git's sh, where an unquoted
+	// C:\Users\... loses its backslashes and the loop never ends (#3631). Opened on cleanup too,
+	// so a failed assertion never leaves the loops running.
+	t.Cleanup(func() { _ = os.WriteFile(gate, nil, 0o644) })
+	steps, _ := json.Marshal([]StepDef{{Name: "wait", Type: "shell", Command: "while [ ! -e '" + filepath.ToSlash(gate) + "' ]; do sleep 0.05; done"}})
 	wf := createTestWorkflow(t, wfStore, t.TempDir(), string(steps))
 	ctx := context.Background()
 	var runs []*store.WorkflowRun
