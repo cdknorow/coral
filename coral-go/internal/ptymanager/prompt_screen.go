@@ -33,13 +33,34 @@ var (
 // footerWhy starts PromptOnScreen's reason when only a prompt's footer was seen.
 const footerWhy = "prompt footer: "
 
+// busyWhy starts PromptOnScreen's reason when the footer is drawn while the agent
+// works (a spinner line on screen; #3472).
+const busyWhy = "agent busy: "
+
+// busyLineRe: a working agent's spinner line, as Antigravity draws it above its input
+// box: a braille spinner and an activity ending in an ellipsis ("⣷  Working...",
+// "⠋  Generating...", "⠙  Running command..."), a timer after it allowed.
+// A stopgap from screen text (#3472): agy has no structured busy signal yet, and
+// #3475 replaces screen reading with the CLIs' own signals where they exist.
+var busyLineRe = regexp.MustCompile(`^\s*[\x{2800}-\x{28FF}]\s+\S.*(\.\.\.|…)`)
+
+// busyOnScreen reports whether lines show a working agent's spinner line.
+func busyOnScreen(lines []string) bool {
+	for _, l := range lines {
+		if busyLineRe.MatchString(l) {
+			return true
+		}
+	}
+	return false
+}
+
 // isPromptHold reports whether a hold's reason (PromptOnScreen's, or the agent's
 // state) is a request from the agent to the user: a selection menu, a prompt
 // question, or a state of needs input. A footer alone ("esc to cancel", which agy
-// also shows while it runs a command) holds sends, the safe side, but isn't
-// reported as one (#3468, the Lead's live data).
+// also shows while it runs a command), or one drawn while the agent works, holds
+// sends, the safe side, but isn't reported as one (#3468, #3472).
 func isPromptHold(why string) bool {
-	return !strings.HasPrefix(why, footerWhy)
+	return !strings.HasPrefix(why, footerWhy) && !strings.HasPrefix(why, busyWhy)
 }
 
 // PromptOnScreen reports whether screen, the visible text of an agent's
@@ -48,6 +69,7 @@ func isPromptHold(why string) bool {
 // options, one of them marked as selected, at the bottom of the screen.
 func PromptOnScreen(screen string) (bool, string) {
 	lines := tailLines(logparse.StripANSI(screen), promptScreenLines)
+	all := lines
 	// An open menu or approval replaces the agent's input box. One drawn below
 	// a menu means the menu was answered (a terminal that didn't clear it still
 	// shows it above): only what is below the last input box counts.
@@ -72,6 +94,11 @@ func PromptOnScreen(screen string) (bool, string) {
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
 		if promptFooterRe.MatchString(t) {
+			if busyOnScreen(all) {
+				// Antigravity draws "esc to cancel" under its input box while it works
+				// (#3472): still held, the safe side, but it is busy, not asking.
+				return true, busyWhy + t
+			}
 			return true, footerWhy + t
 		}
 		if promptQuestionRe.MatchString(t) && options >= 1 {

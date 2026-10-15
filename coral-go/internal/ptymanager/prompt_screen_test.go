@@ -145,3 +145,54 @@ func TestRealClaudeScreens(t *testing.T) {
 	assert.True(t, open, "a menu with the no-break space is a prompt")
 	assert.False(t, InputBoxOnScreen(menu), "its highlighted option isn't an input box")
 }
+
+// Antigravity, captured read-only from live sessions (#3472, testdata/agy_*.txt): while
+// it works it draws a spinner line and "esc to cancel" under its input box. Sends
+// are still held there (the footer), but the reason is busy, not a prompt for the
+// user, so it never raises Needs input. A footer with no spinner stays a footer; a
+// real menu stays a prompt even with a spinner on screen.
+func TestAntigravityBusyFooterIsBusyNotAPrompt(t *testing.T) {
+	read := func(f string) string {
+		b, err := os.ReadFile(filepath.Join("testdata", f))
+		require.NoError(t, err)
+		return string(b)
+	}
+	busy := read("agy_busy.txt")
+	open, why := PromptOnScreen(busy)
+	assert.True(t, open, "still held while it works")
+	assert.True(t, strings.HasPrefix(why, busyWhy), why)
+	assert.False(t, isPromptHold(why), "busy is not a prompt")
+	// The other spinner lines agy draws (the Orchestrator's coral-hub data).
+	for _, spin := range []string{"⠋  Generating...", "⠙  Running command...", "⠹  Running command... (12s)", "⠸  Running command…"} {
+		open, why := PromptOnScreen(strings.Replace(busy, "⣷  Working...", spin, 1))
+		assert.True(t, open, spin)
+		assert.True(t, strings.HasPrefix(why, busyWhy), "%s: %s", spin, why)
+	}
+	// Without the spinner it is a footer, as before; a reply line ending in "..." is
+	// no spinner.
+	for _, line := range []string{"  I checked the logs...", "Working..."} {
+		open, why = PromptOnScreen(strings.Replace(busy, "⣷  Working...", line, 1))
+		assert.True(t, open)
+		assert.True(t, strings.HasPrefix(why, footerWhy), "%q: %s", line, why)
+	}
+
+	for _, f := range []string{"agy_idle.txt", "agy_queued.txt"} {
+		open, why := PromptOnScreen(read(f))
+		assert.False(t, open, "%s: %s", f, why)
+	}
+	assert.True(t, InputBoxOnScreen(read("agy_idle.txt")), "agy's idle box")
+
+	footer := strings.TrimSpace(busy[strings.LastIndex(strings.TrimRight(busy, "\n"), "\n")+1:])
+	menu := "⣷  Working...\n  Allow this command?\n  > 1. Allow once\n    2. Deny\n" + footer + "\n"
+	open, why = PromptOnScreen(menu)
+	assert.True(t, open)
+	assert.True(t, isPromptHold(why), "a menu is a prompt whatever else is on screen: %s", why)
+
+	for _, f := range []string{"codex_edit.txt", "codex_exec.txt"} { // their footer ends "esc to cancel"
+		b, err := os.ReadFile(filepath.Join("..", "server", "routes", "testdata", "auto_accept", f))
+		require.NoError(t, err)
+		open, why := PromptOnScreen(string(b))
+		assert.True(t, open, f)
+		assert.True(t, isPromptHold(why), "%s: %s", f, why)
+	}
+}

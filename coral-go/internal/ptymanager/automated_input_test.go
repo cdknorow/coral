@@ -300,6 +300,19 @@ func TestAFooterAloneIsNotReportedAsAPrompt(t *testing.T) {
 	assert.Empty(t, footer.sent(), "still held")
 	DropHeld("agy-footer", "test done")
 	DropHeld("claude-menu", "test done")
+
+	// #3472: agy's live busy screen (a spinner above its box, the footer under it).
+	rule := strings.Repeat("─", 40)
+	busy := &fakeAgent{screen: "⠙  Running command...\n" + rule + "\n>\n" + rule + "\nesc to cancel      Gemini 3.8 Flash · high\n"}
+	_, _ = DeliverAutomated(context.Background(), busy.input("agy-busy", "", "nudge", false))
+	require.Eventually(t, func() bool { mu.Lock(); defer mu.Unlock(); _, ok := reports["agy-busy"]; return ok }, 5*time.Second, 10*time.Millisecond)
+	mu.Lock()
+	assert.False(t, reports["agy-busy"], "busy: held, not a prompt")
+	mu.Unlock()
+	assert.Empty(t, busy.sent())
+	busy.show(rule + "\n>\n" + rule + "\n? for shortcuts      Gemini 3.8 Flash · high\n")
+	require.Eventually(t, func() bool { return len(busy.sent()) == 1 }, 5*time.Second, 10*time.Millisecond, "delivered once its turn ends")
+	DropHeld("agy-busy", "test done")
 }
 
 // eventLog records the gate's held-too-long and held-ended calls, in order.
