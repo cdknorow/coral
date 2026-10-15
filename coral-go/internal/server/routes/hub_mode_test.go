@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -31,6 +32,8 @@ func TestHubModeSetting(t *testing.T) {
 			r.RemoteAddr = "127.0.0.1:5555"
 			r.Header.Set("Origin", "http://127.0.0.1:8420")
 			r.Header.Set("Sec-Fetch-Site", "same-origin")
+			// As the identity middleware marks this computer's dashboard (#3634: restart needs a person).
+			r = r.WithContext(context.WithValue(r.Context(), callerKindKey{}, callerDashCookie))
 		} else {
 			r = stamp(httptest.NewRequest(method, path, strings.NewReader(body)))
 		}

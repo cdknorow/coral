@@ -100,8 +100,11 @@ func (h *SystemHandler) discoverTmux(fresh bool) (string, bool) {
 func (h *SystemHandler) SetTerminal(t ptymanager.SessionTerminal) { h.terminal = t }
 
 // effectiveBackend reports the backend in use: "tmux", "pty", or "unknown".
-func (h *SystemHandler) effectiveBackend() string {
-	switch h.terminal.(type) {
+func (h *SystemHandler) effectiveBackend() string { return TerminalKind(h.terminal) }
+
+// TerminalKind is "tmux", "pty" or "unknown" for a session terminal.
+func TerminalKind(t ptymanager.SessionTerminal) string {
+	switch t.(type) {
 	case *ptymanager.TmuxSessionTerminal:
 		return "tmux"
 	case *ptymanager.PTYSessionTerminal:
@@ -173,6 +176,13 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 	if err := decodeJSON(r, &body); err != nil {
 		errBadRequest(w, "invalid JSON")
 		return
+	}
+	// The terminal backend is written only by its own route, which needs a person (#3634).
+	for k := range body {
+		if isTerminalBackendKey(k) {
+			errBadRequest(w, "terminal_backend is set with Settings > Terminal backend (PUT /api/system/terminal-backend)")
+			return
+		}
 	}
 	// cli_path_<type> (Settings > CLI Paths) is the program Coral runs for that agent
 	// type: only a known type, and only an absolute path to an executable file with no

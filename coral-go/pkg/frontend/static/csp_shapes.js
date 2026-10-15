@@ -60,6 +60,7 @@ export const SHAPES = new Set([
     "id:editScheduledJob(N)",
     "id:editWorkflow(N)",
     "id:editWorkflowWithAgent(N)",
+    "id:endLeftoverTmux()",
     "id:event.preventDefault();id:openFilePreview(S)",
     "id:event.preventDefault();id:saveWebhook()",
     "id:event.preventDefault();id:selectBoardProject(S)",

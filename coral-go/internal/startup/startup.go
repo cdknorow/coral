@@ -52,7 +52,8 @@ type Options struct {
 	// restart is under way; the server shuts down shortly after.
 	Restart func() error
 
-	// BackendType is "pty" or "tmux". Default is "tmux".
+	// BackendType is "pty" or "tmux" from --backend, which wins over the saved Settings >
+	// Terminal backend (#3634); "" means not given: the setting, else tmux (pty on Windows).
 	BackendType string
 
 	// OnServerError is called when ListenAndServe fails (non-ErrServerClosed).
@@ -174,13 +175,7 @@ func (rs *RunningServer) Close() {
 // then call RunningServer.Shutdown().
 func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServer, error) {
 	dbcrypt.SetUnlockSurface(opts.UnlockSurface)
-	if opts.BackendType == "" {
-		if runtime.GOOS == "windows" {
-			opts.BackendType = "pty"
-		} else {
-			opts.BackendType = "tmux"
-		}
-	}
+	backendFlag := opts.BackendType // resolved against the saved setting once the database is open
 	exe, exeErr := os.Executable()
 	log.Printf("[STARTUP] %s version=%q tier=%s backend=%s pid=%d exe=%q exe_err=%v path=%q shell=%q coral_tmux_bin=%q",
 		devStartupMarker,
@@ -222,15 +217,6 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 			instance.close(lockPath)
 		}
 	}()
-
-	// Check if tmux is available when using tmux backend. We don't fail
-	// startup if it's missing — the dashboard still loads and the UI shows
-	// install instructions. Agent launch will fail until tmux is installed.
-	if opts.BackendType == "tmux" {
-		if _, ok := tmux.IsAvailable(); !ok {
-			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)")
-		}
-	}
 
 	// Resolve encryption before opening either database. The board database is
 	// separate and must use the same mode/key. No listener or service has been
@@ -378,9 +364,24 @@ func Start(ctx context.Context, cfg *config.Config, opts Options) (*RunningServe
 	// The terminal input debug log (#3256): off unless the setting, CORAL_DEBUG_INPUT
 	// or --debug-input turns it on.
 	inputlog.Setup(cfg.CoralDir(), opts.DebugInput || inputlog.EnabledFromEnv())
+	savedBackend := ""
 	if settings, err := store.NewSessionStore(db).GetSettings(ctx); err == nil {
 		inputlog.SetSetting(inputlog.SettingOn(settings[inputlog.SettingKey]))
 		agentprio.SetSetting(settings[agentprio.SettingKey])
+		savedBackend = settings[routes.TerminalBackendSetting]
+	}
+	// The terminal backend (#3634): --backend, else the saved setting, else the OS default.
+	var backendForced bool
+	opts.BackendType, backendForced = ResolveBackend(backendFlag, savedBackend, runtime.GOOS)
+	cfg.TerminalBackend, cfg.TerminalBackendForced = opts.BackendType, backendForced
+	log.Printf("[STARTUP] terminal backend=%s (%s)", opts.BackendType, map[bool]string{true: "--backend", false: "Settings > Terminal backend, or the default"}[backendForced])
+	// Check if tmux is available when using tmux backend. We don't fail
+	// startup if it's missing — the dashboard still loads and the UI shows
+	// install instructions. Agent launch will fail until tmux is installed.
+	if opts.BackendType == "tmux" {
+		if _, ok := tmux.IsAvailable(); !ok {
+			log.Printf("[startup] tmux not found — agents cannot be launched until tmux is installed (brew install tmux)")
+		}
 	}
 	// Agents run at a lower OS priority than this server (#3437): the setting,
 	// or --agent-priority / CORAL_AGENT_PRIORITY.
@@ -1062,4 +1063,23 @@ func prepareLogDir(dir string) {
 	}
 	os.MkdirAll(dir, 0o700)
 	os.Chmod(dir, 0o700)
+}
+
+// ResolveBackend picks this run's terminal backend: an explicit --backend (forced); on Windows
+// always pty (no tmux there); else the saved setting when it is exactly "tmux" or "pty"; else
+// tmux.
+func ResolveBackend(flagValue, saved, goos string) (backend string, forced bool) {
+	if flagValue != "" {
+		if flagValue == "pty" {
+			return "pty", true
+		}
+		return "tmux", true
+	}
+	if goos == "windows" {
+		return "pty", false
+	}
+	if saved == "tmux" || saved == "pty" {
+		return saved, false
+	}
+	return "tmux", false
 }

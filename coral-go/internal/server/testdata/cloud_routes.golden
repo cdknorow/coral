@@ -139,6 +139,7 @@ GET /api/system/privacy never
 GET /api/system/qr never
 GET /api/system/status never
 GET /api/system/telemetry never
+GET /api/system/terminal-backend never
 GET /api/system/update-check never
 GET /api/tags view
 GET /api/tasks/active view
@@ -277,6 +278,7 @@ POST /api/system/api-key/regenerate never
 POST /api/system/login-token never
 POST /api/system/restart never
 POST /api/system/telemetry/acknowledge never
+POST /api/system/terminal-backend/end-leftover never
 POST /api/tags never
 POST /api/tasks/run launch
 POST /api/tasks/runs/{runID}/kill interact
@@ -314,6 +316,7 @@ PUT /api/settings/git-diff-mode interact
 PUT /api/system/database-security never
 PUT /api/system/hub-mode never
 PUT /api/system/hub-operator never
+PUT /api/system/terminal-backend never
 PUT /api/teams/detail/{name}/knowledge/{agentName} never
 PUT /api/themes/{name} never
 PUT /api/views/{id} never

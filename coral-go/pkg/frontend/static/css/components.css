@@ -4011,3 +4011,26 @@ button.terminal-gone-header { margin: 0 4px 0 0; font-size: 11px; line-height: 2
 
 /* An image in a post fits its column; it never makes the feed scroll sideways (#3607). */
 .mb-message-body img { max-width: 100%; height: auto; }
+
+/* Settings > Terminal backend (#3634) */
+.tb-row { grid-column: 1 / -1; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-lg) var(--space-xl); margin: var(--space-xs) 0 var(--space-md); background: var(--bg-primary); }
+.tb-head { display: flex; align-items: center; gap: var(--space-md); margin-bottom: var(--space-xs); }
+.tb-label { font-weight: 600; color: var(--text-primary); font-size: var(--fs-md); }
+.tb-now { margin-left: auto; font-size: var(--fs-sm); padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-secondary); background: var(--bg-tertiary); }
+.tb-now b { color: var(--text-primary); }
+.tb-sub { font-size: var(--fs-base); color: var(--text-muted); margin: 0 0 var(--space-md); }
+#settings-modal label.tb-opt { display: flex; flex-direction: row; gap: var(--space-md); align-items: flex-start; border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-md) var(--space-lg); margin-bottom: var(--space-md); cursor: pointer; }
+#settings-modal label.tb-opt:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+#settings-modal .tb-opt input { flex: none; width: 16px; height: 16px; min-height: 0; margin: 3px 0 0; }
+.tb-opt > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tb-t { font-weight: 600; font-size: var(--fs-md); color: var(--text-primary); }
+.tb-default { font-weight: 400; color: var(--text-muted); }
+.tb-d { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; }
+.tb-note { font-size: var(--fs-sm); color: var(--text-muted); line-height: 1.45; margin: var(--space-xs) 0 0; }
+.tb-pending { font-size: var(--fs-base); color: var(--color-warning, #d29922); margin: var(--space-sm) 0 0; }
+.tb-fixed { font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.45; margin: 0; }
+.leftover-tmux-banner { display: flex; align-items: center; gap: var(--space-lg); margin: var(--space-md) var(--space-xl) 0; padding: var(--space-md) var(--space-lg); border-radius: var(--radius-lg); border: 1px solid color-mix(in srgb, var(--color-warning, #d29922) 50%, var(--border)); background: color-mix(in srgb, var(--color-warning, #d29922) 12%, var(--bg-secondary)); color: var(--text-primary); font-size: var(--fs-md); }
+.leftover-tmux-banner[hidden] { display: none; }
+.leftover-tmux-banner .material-icons { color: var(--color-warning, #d29922); }
+.leftover-tmux-text { flex: 1; min-width: 0; }
+@media (max-width: 767px) { .leftover-tmux-banner { flex-wrap: wrap; } }

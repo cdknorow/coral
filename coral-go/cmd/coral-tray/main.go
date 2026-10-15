@@ -60,11 +60,8 @@ func main() {
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
 	devMode := flag.Bool("dev", false, "Deprecated, no effect: Coral has no licence check, and only builds made with -tags dev skip the EULA")
 	debugMode := flag.Bool("debug", false, "Enable debug logging to ~/.coral/tray.log")
-	defaultBackend := "tmux"
-	if runtime.GOOS == "windows" {
-		defaultBackend = "pty"
-	}
-	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
+	// "" = not given: Settings > Terminal backend, else tmux (pty on Windows) (#3634).
+	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else tmux; pty on Windows)")
 	flag.Parse()
 
 	// When launched from a .app bundle on macOS, run in foreground automatically

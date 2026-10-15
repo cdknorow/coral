@@ -563,6 +563,11 @@ func (s *Server) buildRouter() chi.Router {
 	r.Get("/api/system/hub-mode", s.cloudHandler.HubMode)
 	r.Put("/api/system/hub-mode", s.cloudHandler.HubMode)
 	r.Post("/api/system/restart", s.cloudHandler.RestartServer)
+	// The backend in use (startup can fall back to pty, #3634), and whether --backend chose it.
+	s.cloudHandler.BackendRunning, s.cloudHandler.BackendForced = routes.TerminalKind(s.terminal), s.cfg.TerminalBackendForced
+	r.Get("/api/system/terminal-backend", s.cloudHandler.TerminalBackend)
+	r.Put("/api/system/terminal-backend", s.cloudHandler.TerminalBackend)
+	r.Post("/api/system/terminal-backend/end-leftover", s.cloudHandler.EndLeftoverTmuxAgents)
 	r.Put("/api/system/hub-operator", s.cloudHandler.HubOperator)
 	s.cloudHandler.SetIdentityObserver(s.identity)
 	s.cloudHandler.SetBoardStore(s.boardStore)

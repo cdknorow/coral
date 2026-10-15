@@ -71,6 +71,11 @@ type Config struct {
 	// HubModeForced: HubMode came from --hub or CORAL_HUB=1, which win over the saved
 	// Settings > Run as a hub (#3460); turning it off then means starting without them.
 	HubModeForced bool
+	// TerminalBackend is the backend this run uses, "tmux" or "pty" (#3634), and
+	// TerminalBackendForced says it came from --backend, which wins over the saved
+	// Settings > Terminal backend. Startup sets both.
+	TerminalBackend       string
+	TerminalBackendForced bool
 
 	// CloudURL is the Cloud Hub origin this server may connect to as a connector
 	// (--cloud-url or CORAL_CLOUD_URL). Empty (the default) means the connector is

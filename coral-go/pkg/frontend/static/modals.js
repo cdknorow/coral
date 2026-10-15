@@ -3424,6 +3424,7 @@ function artifactStoreMaxSetting() {
 export async function showSettingsModal() {
     // Focus moves in on open, Tab stays inside, and focus comes back on close (accessibility pass).
     attachDialogFocus(document.getElementById('settings-modal'));
+    importOnce('./terminal_backend.js').then(m => m.loadTerminalBackendRow()).catch(() => {}); // #3634
     const s = state.settings || {};
     // The machine-only parts of this dialog (privacy, remote access, database encryption, connecting to a hub) do not
     // exist on the hub: the cloud dialog shows only the per-user settings (applyCloudSettingsDialog below).
@@ -3830,6 +3831,11 @@ export async function applySettings() {
         return;
     }
 
+    // A changed terminal backend asks first and applies at the next start (#3634).
+    try {
+        const tb = await importOnce('./terminal_backend.js');
+        if (!(await tb.applyTerminalBackendChange())) return; // cancelled: the dialog stays open
+    } catch { /* the rest is saved */ }
     hideSettingsModal();
 }
 

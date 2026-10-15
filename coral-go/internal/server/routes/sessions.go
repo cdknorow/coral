@@ -54,6 +54,9 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	// inOldTmux reports an agent session still running in Coral's private tmux server, for a
+	// pty Coral's wake (#3634). Tests replace it.
+	inOldTmux func(ctx context.Context, sessionName string) bool
 	// cliVersionOf finds a CLI's version (agent.CLIVersion; tests replace it), and
 	// cliVersionTried the sessions a missing version was already looked up for (#3573).
 	cliVersionOf      func(settings map[string]string, agentType string) string
@@ -269,6 +272,9 @@ func defaultModelFromSettings(settings map[string]string, agentType, requestMode
 // NewSessionsHandler creates a SessionsHandler with the given dependencies.
 func NewSessionsHandler(db *store.DB, cfg *config.Config, backend ptymanager.TerminalBackend, terminal ptymanager.SessionTerminal, bs *board.Store) *SessionsHandler {
 	return &SessionsHandler{
+		inOldTmux: func(ctx context.Context, name string) bool {
+			return tmux.HasPrivateAgentSession(ctx, tmux.PrivateSocketPath(cfg.CoralDir()), name)
+		},
 		db:                db,
 		ss:                store.NewSessionStore(db),
 		ts:                store.NewTaskStore(db),
@@ -3124,6 +3130,9 @@ func (h *SessionsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	if fresh != nil {
 		workdir = fresh.WorkingDir
 		usePTY = fresh.Backend != nil && *fresh.Backend == "pty" && h.backend != nil
+		if _, onPTY := h.backend.(*ptymanager.PTYBackend); onPTY {
+			usePTY = true // a pty Coral restarts every agent the pty way (#3634)
+		}
 	} else {
 		var err error
 		pane, err = h.terminal.FindSession(ctx, name, agentType, body.SessionID)
@@ -6462,6 +6471,16 @@ func (h *SessionsHandler) wakeExistingSession(ctx context.Context, ls *store.Liv
 	sessionName := naming.SessionName(ls.AgentType, ls.SessionID)
 	logFile := naming.LogFile(h.cfg.LogDir, ls.AgentType, ls.SessionID)
 
+	// A pty Coral holds every agent's terminal itself, whatever backend the agent last ran on
+	// (#3634): an agent from a tmux run wakes the pty way (it used to go down the tmux path and
+	// fail). If it still runs in Coral's old tmux server, waking it would start a second copy.
+	if _, onPTY := h.backend.(*ptymanager.PTYBackend); onPTY {
+		backend = "pty"
+		if h.inOldTmux != nil && h.inOldTmux(ctx, sessionName) {
+			return ErrStillInOldTmux
+		}
+	}
+
 	agentImpl := agent.GetAgent(ls.AgentType)
 	agent.TryPrepareResume(agentImpl, ls.SessionID, ls.WorkingDir)
 
@@ -6634,6 +6653,10 @@ func (h *SessionsHandler) WakeSession(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.wakeExistingSession(ctx, sess); err != nil {
 		log.Printf("Failed to wake session %s: %v", sessionID[:8], err)
+		if errors.Is(err, ErrStillInOldTmux) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": err.Error(), "code": "still_in_old_tmux"})
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": false, "error": "Failed to relaunch session"})
 		return
 	}
@@ -7307,3 +7330,7 @@ func launchCommand(ag agent.Agent, p agent.LaunchParams) (string, error) {
 	}
 	return agent.WrapWithBundlePath(cmd), nil
 }
+
+// ErrStillInOldTmux is a wake on a pty Coral of an agent still running in Coral's old tmux
+// server (#3634): ending it first (Settings, or the Agents tab's banner) avoids a second copy.
+var ErrStillInOldTmux = errors.New("this agent is still running in Coral's old tmux server; end the agents left there first, then wake it")

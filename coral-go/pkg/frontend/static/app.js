@@ -184,6 +184,8 @@ Object.assign(window, {
     checkForUpdates, dismissUpdateToast,
     // pinned folders (#3630)
     pinFolder, unpinFolder, showOpenFolderModal, hideOpenFolderModal, submitOpenFolder,
+    // terminal backend (#3634): the banner's End them, loaded on first use
+    endLeftoverTmux: () => importOnce('./terminal_backend.js').then(m => m.endLeftoverTmux()),
     // message_board
     selectBoardProject, showMessageBoardProjects, postBoardMessage,
     deleteMessageBoardProject, confirmDeleteBoard: deleteMessageBoardProject,
@@ -973,6 +975,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }).finally(() => { _startListLoadSettled(); _liveListLoaded(); });
     loadAllFolderTags();
     if (!popout) loadPinnedFolders();
+    if (!popout) importOnce('./terminal_backend.js').then(m => m.checkLeftoverTmux()).catch(() => {}); // #3634
     loadCustomViews();
     initAgentUI();
     connectCoralWs();

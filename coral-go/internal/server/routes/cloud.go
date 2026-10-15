@@ -94,6 +94,10 @@ type CloudHandler struct {
 	HubModeRunning bool
 	HubModeForced  bool
 	Restart        func() error
+	// The terminal backend (#3634), set by the server: the one this run uses, and whether
+	// --backend forced it.
+	BackendRunning string
+	BackendForced  bool
 
 	ss       *store.SessionStore
 	identity *IdentityObserver
@@ -773,6 +777,10 @@ func (h *CloudHandler) RestartServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !requireJSON(w, r) {
+		return
+	}
+	if !humanInputCaller(r) { // a person only: never an agent with forged browser headers (#3634)
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only the Operator can restart Coral", "code": "operator_only"})
 		return
 	}
 	if h.Restart == nil {

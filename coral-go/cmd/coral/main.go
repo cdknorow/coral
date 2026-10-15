@@ -71,11 +71,8 @@ func main() {
 	noAutoLoopback := flag.Bool("no-auto-loopback", envTrue(os.Getenv("CORAL_NO_AUTO_LOOPBACK")), "When --host names only network addresses, don't also listen on 127.0.0.1 (also CORAL_NO_AUTO_LOOPBACK=1)")
 	port := flag.Int("port", 0, "Port to bind to")
 	noBrowser := flag.Bool("no-browser", false, "Don't open the browser on startup")
-	defaultBackend := "tmux"
-	if runtime.GOOS == "windows" {
-		defaultBackend = "pty"
-	}
-	backendFlag := flag.String("backend", defaultBackend, "Terminal backend: pty or tmux")
+	// "" = not given: Settings > Terminal backend, else tmux (pty on Windows) (#3634).
+	backendFlag := flag.String("backend", "", "Terminal backend: pty or tmux (default: Settings > Terminal backend, else tmux; pty on Windows)")
 	remoteAccess := flag.Bool("remote", false, "Allow remote (non-loopback) connections without requiring the saved setting")
 	hubMode := flag.Bool("hub", false, "Run as a multi-server hub: manage and view remote Coral servers (also CORAL_HUB=1)")
 	cloudURL := flag.String("cloud-url", "", "Coral Hub origin this server may connect to (also CORAL_CLOUD_URL). Release builds default to https://app.coralhub.dev; \"\" or off disables it. Nothing is sent until you connect")

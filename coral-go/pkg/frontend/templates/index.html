@@ -162,6 +162,13 @@
             <!-- Mobile Agent List (shown on mobile instead of sidebar) -->
             <div id="mobile-agent-list" class="mobile-agent-list"></div>
 
+            <!-- #3634: under pty, agents still running in Coral's old tmux server (terminal_backend.js) -->
+            <div id="leftover-tmux-banner" class="leftover-tmux-banner" role="alert" hidden>
+                <span class="material-icons" aria-hidden="true">warning</span>
+                <div class="leftover-tmux-text"><b id="leftover-tmux-count"></b> Coral now uses pty and can't reach them; they keep using CPU and tokens. End them, then wake the agents here. Waking one of them is refused until they are ended, so no second copy starts.</div>
+                <button class="btn btn-primary" type="button" id="leftover-tmux-end" onclick="endLeftoverTmux()">End them</button>
+            </div>
+
             <div id="welcome-screen" class="welcome">
                 <div class="welcome-shell">
                     <header class="welcome-header">
