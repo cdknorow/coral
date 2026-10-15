@@ -65,3 +65,21 @@ func TestTriggerKeepsTheNewestRunsAndTheirDirectories(t *testing.T) {
 	assert.DirExists(t, runDir(stillRunning))
 	assert.DirExists(t, runDir(otherRun), "another workflow's runs are untouched")
 }
+
+// #3587: a run's folder moved aside (left by an earlier database with the same id) is pruned
+// with the run; another id's is left alone.
+func TestRemoveRunDirsIncludesStaleFolders(t *testing.T) {
+	data := t.TempDir()
+	runs := filepath.Join(data, "workflows", "runs")
+	for _, d := range []string{"7", "7.stale-1", "7.stale-2", "70", "70.stale-1", "8.stale-1"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(runs, d), 0o700))
+	}
+	RemoveRunDirs(data, []int64{7})
+	entries, err := os.ReadDir(runs)
+	require.NoError(t, err)
+	var left []string
+	for _, e := range entries {
+		left = append(left, e.Name())
+	}
+	assert.ElementsMatch(t, []string{"70", "70.stale-1", "8.stale-1"}, left)
+}

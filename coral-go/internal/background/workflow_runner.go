@@ -176,7 +176,13 @@ func RemoveRunDirs(dataDir string, ids []int64) {
 		if id <= 0 {
 			continue
 		}
-		_ = os.RemoveAll(filepath.Join(dataDir, "workflows", "runs", strconv.FormatInt(id, 10)))
+		dir := filepath.Join(dataDir, "workflows", "runs", strconv.FormatInt(id, 10))
+		_ = os.RemoveAll(dir)
+		// And any folder an earlier database left for the same id, moved aside (#3587).
+		stale, _ := filepath.Glob(dir + ".stale-*")
+		for _, d := range stale {
+			_ = os.RemoveAll(d)
+		}
 	}
 }
 
