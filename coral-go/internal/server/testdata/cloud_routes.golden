@@ -169,6 +169,7 @@ GET /api/token-usage/timeseries view
 GET /api/views view
 GET /api/views/{id} view
 GET /api/webhooks never
+GET /api/webhooks/{webhookID} never
 GET /api/webhooks/{webhookID}/deliveries never
 GET /api/workflows view
 GET /api/workflows/by-name/{name} view

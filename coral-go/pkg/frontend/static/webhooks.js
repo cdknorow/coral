@@ -87,10 +87,10 @@ export function showWebhookCreate() {
 
 export async function showWebhookEdit(webhookId) {
     try {
-        const resp = await fetch("/api/webhooks");
-        const all = await resp.json();
-        const w = all.find(x => x.id === webhookId);
-        if (!w) return;
+        // The list masks each URL (#3627 F3); editing reads this one webhook in full.
+        const resp = await fetch(`/api/webhooks/${Number(webhookId)}`);
+        if (!resp.ok) { showToast("Failed to load webhook", true); return; }
+        const w = await resp.json();
         _showView("form");
         document.getElementById("webhook-form-title").textContent = "Edit Webhook";
         document.getElementById("webhook-form-id").value = w.id;

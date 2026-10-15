@@ -29,7 +29,9 @@ func NewWebhooksHandler(db *store.DB, cfg *config.Config) *WebhooksHandler {
 	}
 }
 
-// ListWebhooks returns all webhook configurations.
+// ListWebhooks returns all webhook configurations, each URL masked (scheme, host and a short
+// tail): the URL usually is the secret, and a list never needs it whole (#3627 F3). GetWebhook
+// returns one webhook with its full URL, for editing it.
 // GET /api/webhooks
 func (h *WebhooksHandler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 	configs, err := h.ws.ListWebhookConfigs(r.Context(), false)
@@ -37,7 +39,22 @@ func (h *WebhooksHandler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 		errInternalServer(w, err.Error())
 		return
 	}
+	for i := range configs {
+		configs[i].URL = httputil.MaskURL(configs[i].URL)
+	}
 	writeJSON(w, http.StatusOK, emptyIfNil(configs))
+}
+
+// GetWebhook returns one webhook with its full URL: the explicit read the edit form makes.
+// GET /api/webhooks/{webhookID}
+func (h *WebhooksHandler) GetWebhook(w http.ResponseWriter, r *http.Request) {
+	whID, _ := strconv.ParseInt(chi.URLParam(r, "webhookID"), 10, 64)
+	cfg, err := h.ws.GetWebhookConfig(r.Context(), whID)
+	if err != nil || cfg == nil {
+		errNotFound(w, "Webhook not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
 }
 
 // CreateWebhook creates a new webhook.
@@ -117,7 +134,7 @@ func (h *WebhooksHandler) TestWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	// SSRF protection: validate webhook URL doesn't target internal networks
 	if _, err := httputil.ResolveAndValidateURL(cfg.URL); err != nil {
-		errBadRequest(w, fmt.Sprintf("webhook URL blocked: %v", err))
+		errBadRequest(w, httputil.RedactURLs(fmt.Sprintf("webhook URL blocked: %v", err)))
 		return
 	}
 	delivery, err := h.ws.CreateWebhookDelivery(
@@ -149,7 +166,7 @@ func (h *WebhooksHandler) deliverTestWebhook(cfg *store.WebhookConfig, delivery 
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, "POST", cfg.URL, bytes.NewReader(body))
 	if err != nil {
-		errMsg := err.Error()
+		errMsg := httputil.RequestError(err) // never the URL: it usually is the secret (#3627 F3)
 		h.ws.MarkWebhookDelivery(ctx, delivery.ID, "failed", nil, &errMsg, nil, nil)
 		return
 	}
@@ -157,10 +174,7 @@ func (h *WebhooksHandler) deliverTestWebhook(cfg *store.WebhookConfig, delivery 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		errMsg := err.Error()
-		if len(errMsg) > 200 {
-			errMsg = errMsg[:200]
-		}
+		errMsg := httputil.RequestError(err)
 		h.ws.MarkWebhookDelivery(ctx, delivery.ID, "failed", nil, &errMsg, nil, nil)
 		return
 	}
@@ -187,6 +201,13 @@ func (h *WebhooksHandler) ListDeliveries(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		errInternalServer(w, err.Error())
 		return
+	}
+	// Rows stored before #3627 can hold the URL in their error: never shown.
+	for i := range deliveries {
+		if m := deliveries[i].ErrorMsg; m != nil {
+			s := httputil.RedactURLs(*m)
+			deliveries[i].ErrorMsg = &s
+		}
 	}
 	writeJSON(w, http.StatusOK, emptyIfNil(deliveries))
 }

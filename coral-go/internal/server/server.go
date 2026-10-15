@@ -694,6 +694,7 @@ func (s *Server) buildRouter() chi.Router {
 	// Webhooks
 	r.Get("/api/webhooks", whHandler.ListWebhooks)
 	r.Post("/api/webhooks", whHandler.CreateWebhook)
+	r.Get("/api/webhooks/{webhookID}", whHandler.GetWebhook)
 	r.Patch("/api/webhooks/{webhookID}", whHandler.UpdateWebhook)
 	r.Delete("/api/webhooks/{webhookID}", whHandler.DeleteWebhook)
 	r.Post("/api/webhooks/{webhookID}/test", whHandler.TestWebhook)

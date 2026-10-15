@@ -75,7 +75,7 @@ func (d *WebhookDispatcher) deliverNow(ctx context.Context, delivery store.Webho
 	// SSRF protection (#3363): the client refuses private targets at dial time too; this
 	// check gives the delivery a clear error without a connection attempt.
 	if err := httputil.ValidateWebhookURL(ctx, cfg.URL); err != nil {
-		errMsg := fmt.Sprintf("webhook URL blocked (SSRF): %v", err)
+		errMsg := httputil.RedactURLs(fmt.Sprintf("webhook URL blocked (SSRF): %v", err))
 		d.store.MarkWebhookDelivery(ctx, delivery.ID, "failed", nil, &errMsg, nil, nil)
 		return false
 	}
@@ -91,7 +91,7 @@ func (d *WebhookDispatcher) deliverNow(ctx context.Context, delivery store.Webho
 	}
 	req, err := http.NewRequestWithContext(ctx, "POST", cfg.URL, bytes.NewReader(body))
 	if err != nil {
-		errMsg := err.Error()
+		errMsg := httputil.RequestError(err) // never the URL: it usually is the secret (#3627 F3)
 		d.scheduleRetryOrFail(ctx, cfg, delivery, attempt, nil, errMsg)
 		return false
 	}
@@ -99,10 +99,7 @@ func (d *WebhookDispatcher) deliverNow(ctx context.Context, delivery store.Webho
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		errMsg := err.Error()
-		if len(errMsg) > 200 {
-			errMsg = errMsg[:200]
-		}
+		errMsg := httputil.RequestError(err)
 		d.scheduleRetryOrFail(ctx, cfg, delivery, attempt, nil, errMsg)
 		return false
 	}
