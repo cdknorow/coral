@@ -316,8 +316,10 @@ func (s *Server) buildRouter() chi.Router {
 	}))
 
 	// A write from another page in a browser is refused before any auth: a page on
-	// another localhost port or any site can make the browser send one (#3511).
-	r.Use(routes.RefuseForeignBrowserWrites)
+	// another localhost port or any site can make the browser send one (#3511). Behind a
+	// reverse proxy that rewrites Host, a trusted proxy's X-Forwarded-Host is Coral's own host
+	// too (loopback, or CORAL_TRUSTED_PROXIES).
+	r.Use(routes.ForeignBrowserWrites(s.keyStore.ForwardedHost))
 
 	// API key auth — gates remote access behind an auto-generated key.
 	// Localhost connections bypass auth entirely.

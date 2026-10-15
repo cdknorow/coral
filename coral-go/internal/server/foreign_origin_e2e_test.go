@@ -99,3 +99,30 @@ func TestForeignPageCannotWriteOrOpenSockets(t *testing.T) {
 		assert.NotEqual(t, http.StatusSwitchingProtocols, resp.StatusCode, "strict=%v: a foreign port's WebSocket", strict)
 	}
 }
+
+// #3511 follow-up, the real router: behind a reverse proxy on this machine that rewrites
+// Host (nginx proxy_pass without proxy_set_header Host), the dashboard's own write carries
+// the proxy's X-Forwarded-Host and still works; without it, the same Origin is foreign.
+func TestDashboardWriteBehindAHostRewritingProxy(t *testing.T) {
+	_, ts, _ := strictServer(t, false)
+	put := func(fwd string) (int, string) {
+		req, _ := http.NewRequest(http.MethodPut, ts.URL+"/api/settings", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", "https://coral.example")
+		req.Header.Set("Sec-Fetch-Site", "same-origin")
+		if fwd != "" {
+			req.Header.Set("X-Forwarded-Host", fwd)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	code, body := put("coral.example")
+	assert.Equal(t, http.StatusOK, code, "through the proxy: %s", body)
+	code, body = put("")
+	assert.Equal(t, http.StatusForbidden, code, "no forwarded host: %s", body)
+	code, body = put("other.example")
+	assert.Equal(t, http.StatusForbidden, code, "a forwarded host that isn't the Origin's: %s", body)
+}

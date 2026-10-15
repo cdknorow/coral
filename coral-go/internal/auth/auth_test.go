@@ -497,3 +497,25 @@ func TestSetTrustedProxies_RejectsGarbage(t *testing.T) {
 	assert.NoError(t, ks.SetTrustedProxies(""))
 	assert.NoError(t, ks.SetTrustedProxies(" ::1 , fd00::/8 "))
 }
+
+// #3511 follow-up: X-Forwarded-Host is believed only from a trusted proxy (loopback, or
+// CORAL_TRUSTED_PROXIES), first value only; a nil KeyStore has none.
+func TestForwardedHostOnlyFromATrustedProxy(t *testing.T) {
+	ks, err := NewKeyStore(t.TempDir())
+	require.NoError(t, err)
+	require.NoError(t, ks.SetTrustedProxies("10.0.0.0/8"))
+	at := func(remote, fwd string) string {
+		r := httptest.NewRequest("POST", "/api/settings", nil)
+		r.RemoteAddr = remote
+		if fwd != "" {
+			r.Header.Set("X-Forwarded-Host", fwd)
+		}
+		return ks.ForwardedHost(r)
+	}
+	assert.Equal(t, "coral.example", at("127.0.0.1:5000", "coral.example"), "a loopback proxy")
+	assert.Equal(t, "coral.example", at("10.1.2.3:5000", " coral.example , evil.example"), "a configured proxy, first value")
+	assert.Equal(t, "", at("192.168.1.5:5000", "coral.example"), "any other peer is ignored")
+	assert.Equal(t, "", at("127.0.0.1:5000", ""), "no header")
+	var none *KeyStore
+	assert.Equal(t, "", none.ForwardedHost(httptest.NewRequest("POST", "/", nil)))
+}

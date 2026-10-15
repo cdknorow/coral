@@ -68,3 +68,26 @@ func TestRefuseForeignBrowserWrites(t *testing.T) {
 		}
 	}
 }
+
+// #3511 follow-up: behind a reverse proxy that rewrites Host to Coral's address, the
+// trusted proxy's X-Forwarded-Host (forwardedHost) is Coral's own host too; nothing else is.
+func TestForeignBrowserWritesBehindAProxy(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	do := func(h http.Handler, origin string) int {
+		r := httptest.NewRequest("PUT", "http://localhost:8420/api/settings", strings.NewReader(`{}`))
+		r.Host = "localhost:8420" // what nginx's proxy_pass sends without proxy_set_header Host
+		r.Header.Set("Origin", origin)
+		r.Header.Set("Sec-Fetch-Site", "same-origin")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	proxied := ForeignBrowserWrites(func(*http.Request) string { return "coral.example" })(ok)
+	assert.Equal(t, http.StatusOK, do(proxied, "https://coral.example"), "the dashboard behind the proxy")
+	assert.Equal(t, http.StatusOK, do(proxied, "http://localhost:8420"), "Coral's own host still counts")
+	assert.Equal(t, http.StatusForbidden, do(proxied, "https://coral.example.evil.test"), "no suffix match")
+	assert.Equal(t, http.StatusForbidden, do(proxied, "https://evil.example"), "another site")
+	direct := ForeignBrowserWrites(func(*http.Request) string { return "" })(ok)
+	assert.Equal(t, http.StatusForbidden, do(direct, "https://coral.example"), "no trusted forwarded host: refused")
+	assert.Equal(t, http.StatusForbidden, do(RefuseForeignBrowserWrites(ok), "https://coral.example"))
+}

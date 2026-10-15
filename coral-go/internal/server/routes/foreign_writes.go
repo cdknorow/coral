@@ -23,6 +23,17 @@ import (
 // and OPTIONS are left to their routes; the websocket upgrades check their Origin
 // themselves (wsAcceptOptions).
 func RefuseForeignBrowserWrites(next http.Handler) http.Handler {
+	return ForeignBrowserWrites(nil)(next)
+}
+
+// ForeignBrowserWrites is RefuseForeignBrowserWrites behind a reverse proxy that rewrites
+// Host: forwardedHost (auth.KeyStore.ForwardedHost: X-Forwarded-Host, believed only from a
+// trusted proxy) names a second host the browser may have reached Coral on.
+func ForeignBrowserWrites(forwardedHost func(*http.Request) string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler { return refuseForeignBrowserWrites(next, forwardedHost) }
+}
+
+func refuseForeignBrowserWrites(next http.Handler, forwardedHost func(*http.Request) string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
@@ -30,7 +41,11 @@ func RefuseForeignBrowserWrites(next http.Handler) http.Handler {
 			return
 		}
 		browser := r.Header.Get("Origin") != "" || r.Header.Get("Sec-Fetch-Site") != ""
-		if browser && !cloud.TunneledAuthentic(r) && !ownBrowserOrigin(r) {
+		fwd := ""
+		if browser && forwardedHost != nil {
+			fwd = forwardedHost(r)
+		}
+		if browser && !cloud.TunneledAuthentic(r) && !ownBrowserOrigin(r, fwd) {
 			writeJSON(w, http.StatusForbidden, map[string]string{"error": "foreign_origin",
 				"message": "Coral accepts changes only from its own page"})
 			return
@@ -46,12 +61,14 @@ func RefuseForeignBrowserWrites(next http.Handler) http.Handler {
 // same-origin or none (the user's own navigation). The scheme isn't compared: no other
 // server can serve this host and port, and behind a TLS-terminating proxy the request
 // arrives over http while the page is https. A Sec-Fetch-Site with no Origin is
-// accepted only as same-origin or none.
-func ownBrowserOrigin(r *http.Request) bool {
+// accepted only as same-origin or none. Behind a reverse proxy that rewrites Host, the
+// trusted proxy's X-Forwarded-Host (when given) counts as the request's own host too.
+func ownBrowserOrigin(r *http.Request, forwardedHost string) bool {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		u, err := url.Parse(origin)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
-			u.User != nil || (u.Path != "" && u.Path != "/") || !strings.EqualFold(u.Host, r.Host) {
+			u.User != nil || (u.Path != "" && u.Path != "/") ||
+			!(strings.EqualFold(u.Host, r.Host) || (forwardedHost != "" && strings.EqualFold(u.Host, forwardedHost))) {
 			return false
 		}
 	}
