@@ -96,7 +96,7 @@ Object.assign(window, lazyWindowFns(loadModals, ['_selectLaunchType', '_showMobi
 import { initCloud } from './cloud.js';
 import { isCloud } from './server_base.js';
 import { installOverloadWatch } from './overload.js';
-import { handleUnauthorized } from './auth_redirect.js';
+import { handleUnauthorized, isSignedOut401 } from './auth_redirect.js';
 
 // ── Expose functions to HTML onclick handlers ─────────────────────────────
 // Grouped by source module for maintainability. Add new entries to the
@@ -752,7 +752,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const _origFetch = window.fetch;
     window.fetch = async function(...args) {
         const resp = await _origFetch.apply(this, args);
-        if (resp.status === 401 && !isCloud() && _sameOriginApi(args[0])) handleUnauthorized();
+        // Only a 401 that means signed out goes to /auth (#3528); the caller gets the response either way.
+        if (resp.status === 401 && !isCloud() && _sameOriginApi(args[0])) {
+            resp.clone().text().then(t => { if (isSignedOut401(t)) handleUnauthorized(); }).catch(() => handleUnauthorized());
+        }
         return resp;
     };
 

@@ -64,6 +64,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
         })`);
         check('the live feed WebSocket connects and sends', feed.message, JSON.stringify(feed));
 
+        // A 401 that doesn't mean signed out (an agent-only route answers session_token_required to the
+        // dashboard) stays the caller's: the tab is NOT sent to /auth (#3528).
+        const agentOnly = await api('GET', '/api/agent/tasks?session_id=strict-qa');
+        await sleep(500); // sleep-ok: proves a negative (no redirect to /auth follows the 401)
+        const stayed = await ev(`location.pathname`);
+        check('a 401 that is not a sign-out leaves the page where it is', agentOnly.status === 401 && stayed === '/', JSON.stringify({ status: agentOnly.status, code: agentOnly.data && (agentOnly.data.code || agentOnly.data.error), path: stayed }));
+
         // Settings: read, save, read back, restore.
         const before = await api('GET', '/api/settings');
         const prev = String((before.data && (before.data.settings || before.data)).show_session_summary ?? '');
