@@ -465,19 +465,30 @@ func safeFileID(id string) string {
 	}, id)
 }
 
-// CleanupTempFiles removes all Coral temp files associated with the given session ID.
-// Called during session teardown to prevent sensitive content from persisting in /tmp.
+// CleanupTempFiles removes the Coral temp files of one session: its prompt and settings files
+// (coral_<kind>_<id>[_<random>].<ext>) and agy's hooks folder (coral_agyhooks_<id>_<random>),
+// called during teardown so nothing sensitive stays in the temp folder. sessionID must be a
+// canonical UUID and each name must carry exactly it (followed by '_', '.' or nothing): a
+// glob on an id like "a" matched every other session's files too (weak site W10, #3598).
 func CleanupTempFiles(sessionID string) {
-	if sessionID == "" {
+	if !isCanonicalUUID(sessionID) {
 		return
 	}
-	pattern := filepath.Join(os.TempDir(), fmt.Sprintf("coral_*_%s*", safeFileID(sessionID)))
+	pattern := filepath.Join(os.TempDir(), "coral_*_"+sessionID+"*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return
 	}
 	for _, path := range matches {
-		if strings.HasPrefix(filepath.Base(path), "coral_agyhooks_") {
+		base := filepath.Base(path)
+		i := strings.Index(base, "_"+sessionID)
+		if i < len("coral_x") {
+			continue
+		}
+		if rest := base[i+1+len(sessionID):]; rest != "" && rest[0] != '_' && rest[0] != '.' {
+			continue // another id that starts with this one
+		}
+		if strings.HasPrefix(base, "coral_agyhooks_") {
 			os.RemoveAll(path) // agy's hooks folder (#3481)
 			continue
 		}

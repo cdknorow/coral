@@ -1367,7 +1367,7 @@ func TestWriteTempFile_CreatesFile(t *testing.T) {
 }
 
 func TestCleanupTempFiles(t *testing.T) {
-	sid := "cleanup-test-sid"
+	sid := "5c1e0a7d-2b3c-4d5e-8f60-718293a4b5c6" // a canonical UUID, as every session id is (#3598)
 	p1 := writeTempFile("prompt", sid, "txt", []byte("prompt"))
 	p2 := writeTempFile("instructions", sid, "md", []byte("instructions"))
 	CleanupTempFiles(sid)
@@ -1781,7 +1781,7 @@ func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
 // #3481: an agy launch adds a folder of its own with Coral's hooks (agy reads
 // .agents/hooks.json from an --add-dir folder), and the session's cleanup removes it.
 func TestAgyLaunchInstallsSessionHooks(t *testing.T) {
-	sid := "agy-hooks-0000-0000-0000-000000003481"
+	sid := "a9f3c4d1-0000-4000-8000-000000003481" // canonical: CleanupTempFiles only acts on one (#3598)
 	line := (&AgyAgent{}).BuildLaunchCommand(LaunchParams{SessionID: sid, WorkingDir: t.TempDir()})
 	m := regexp.MustCompile(`--add-dir '?([^' ]+)'?`).FindStringSubmatch(line)
 	if m == nil {

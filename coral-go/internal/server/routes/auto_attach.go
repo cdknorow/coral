@@ -290,6 +290,30 @@ func localTarget(t string) bool {
 	return true
 }
 
+// uncOrDevicePath reports a path that names another host or a device rather than a file on
+// this computer's disks: \\host\share and //host/share (UNC), \\?\ and \\.\ (Windows
+// device paths), and a volume longer than a drive letter.
+func uncOrDevicePath(p string) bool {
+	if strings.HasPrefix(strings.ReplaceAll(p, `\`, "/"), "//") {
+		return true
+	}
+	return len(filepath.VolumeName(p)) > 2
+}
+
+// lexicallyWithinAny reports whether the cleaned path p is inside one of dirs (cleaned, as
+// written: no symlink is followed). Empty dirs are skipped.
+func lexicallyWithinAny(p string, dirs []string) bool {
+	for _, d := range dirs {
+		if d == "" {
+			continue
+		}
+		if within(filepath.Clean(d), p) {
+			return true
+		}
+	}
+	return false
+}
+
 // admit counts one attempt against the agent's hourly window.
 func (a *AutoAttacher) admit(sessionID string) bool {
 	a.mu.Lock()
@@ -449,6 +473,17 @@ func (a *AutoAttacher) load(workdir, gitRoot, target string, isImage bool, budge
 		p = filepath.Join(workdir, p)
 	}
 	p = filepath.Clean(p)
+	// Nothing outside the roots is ever resolved or opened (#3598, weak site W7): resolving a
+	// UNC path (\\host\share) makes Windows connect to that host over SMB and send the user's
+	// NTLM hash, and resolving /net/<host>/... mounts it on macOS. So a UNC or device path is
+	// refused outright, and the path as written must already be inside a root (or the folder
+	// it was given as) before any symlink is followed.
+	if uncOrDevicePath(target) || uncOrDevicePath(p) {
+		return "", nil, "", errAttach("outside_roots")
+	}
+	if !lexicallyWithinAny(p, append([]string{workdir, gitRoot}, roots...)) {
+		return "", nil, "", errAttach("outside_roots")
+	}
 	real := realPath(p)
 	if real == "" {
 		return "", nil, "", errAttach("not_found")

@@ -2875,10 +2875,11 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the live session before deleting so we can clean up board/worktree state
 	var boardName, sessionWorkdir string
-	var wasSleeping bool
+	var wasSleeping, sessionFound bool
 	var worktreePathForCleanup, worktreeRepoForCleanup string
 	if body.SessionID != "" {
 		if ls, err := h.ss.GetLiveSession(bgCtx, body.SessionID); err == nil && ls != nil {
+			sessionFound = true
 			sessionWorkdir = ls.WorkingDir
 			if ls.BoardName != nil {
 				boardName = *ls.BoardName
@@ -2960,8 +2961,9 @@ func (h *SessionsHandler) Kill(w http.ResponseWriter, r *http.Request) {
 	// Clean up board state file so it doesn't accumulate over time
 	removeBoardStateFile(name, h.cfg)
 
-	// Clean up temp files (system prompts, settings, action prompts)
-	if body.SessionID != "" {
+	// Clean up temp files (system prompts, settings, action prompts): only a session that was
+	// live, by its own id (#3598).
+	if sessionFound {
 		agent.CleanupTempFiles(body.SessionID)
 	}
 
