@@ -567,7 +567,7 @@ function renderKnowledgeMD(md, agentNames = []) {
 
     if (typeof marked !== 'undefined') {
         const html = marked.parse(text);
-        const sanitized = sanitizeHtml(html, { ADD_ATTR: ['data-knowledge-link'] }, { links: 'board' }); // distilled from agents' text (#3542)
+        const sanitized = sanitizeHtml(html, { ADD_ATTR: ['data-knowledge-link'] }, { links: 'board', knowledgeLinks: true }); // distilled from agents' text (#3542)
         return `<div class="knowledge-md notes-rendered">${sanitized}</div>`;
     }
 

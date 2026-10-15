@@ -26,6 +26,8 @@ const HEX = 'd'.repeat(64);
     const md = [
         '[k](/api/system/api-key) [r](../x.md) [f](#team-view=evil) [t](/team/qa?x=1#evil) [c](/chats?q=hi&page=1&x=2)',
         '[h](https://e.test/p) [m](mailto:a@b.test) [a](coral://artifacts/' + HEX + ') [fs](file:///etc/hosts) [v](vbscript:msgbox) [js](javascript:alert(1)) [cl](coral://agents/x) [src](src/main.go) [abs](/tmp/proj/a.go)',
+        // Raw HTML an agent could write, carrying the markers only Coral's own code may set.
+        'x <a href="#" data-knowledge-link="Worker">kl</a> <span data-file-ref="/etc/hosts">fr</span> <a data-file-ref-raw="/etc/hosts">raw</a> <a href="/api/x" data-route="">dr</a> <span data-fragment="top">fg</span>',
     ].join('\n\n');
     try {
         await Promise.all([Page.enable(), Runtime.enable()]);
@@ -65,6 +67,11 @@ const HEX = 'd'.repeat(64);
                 check('../x.md and file: links become file references with no href, too', L.r && L.r.href === null && L.r.fileRef && L.fs && L.fs.href === null && L.fs.fileRef, JSON.stringify({ r: L.r, fs: L.fs }));
                 check('no anchor in the chat message has a relative href left', Object.values(L).every(x => x.href === null || /^(https?:|mailto:|coral:\/\/artifacts\/|\/(team|chats)\b)/.test(x.href)), JSON.stringify(L));
             }
+
+            const planted = await ev(`(() => { const box = document.getElementById('qa-links-${mode}'); const els = [...box.querySelectorAll('*')].filter(e => ['kl', 'fr', 'raw', 'dr', 'fg'].includes(e.textContent.trim().split(' ')[0])); return { markers: els.filter(e => ['data-knowledge-link', 'data-file-ref-raw', 'data-route', 'data-fragment'].some(a => e.hasAttribute(a)) || (e.hasAttribute('data-file-ref') && e.textContent.trim().startsWith('fr'))).map(e => e.outerHTML), anchors: els.filter(e => e.tagName === 'A' && e.hasAttribute('href')).map(e => e.outerHTML) }; })()`);
+            check('raw HTML carrying Coral-only markers is stripped of them (no file ref, knowledge link, route or fragment)', planted.markers.length === 0 && planted.anchors.length === 0, JSON.stringify(planted));
+            const menu = await ev(`(async () => { const box = document.getElementById('qa-links-${mode}'); for (const e of box.querySelectorAll('*')) if (['kl', 'fr', 'raw', 'dr', 'fg'].includes(e.textContent.trim().split(' ')[0])) e.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 })); await new Promise(r => setTimeout(r, 300)); /* sleep-ok: proves a negative, a menu would open within this */ const m = !!document.querySelector('.chat-file-menu'); document.querySelector('.chat-file-menu')?.remove(); return m; })()`);
+            check('clicking them opens no file menu', !menu, 'a file menu opened');
 
             console.log('  Clicking every blocked item and file reference leaves the page where it is');
             const before = await ev('location.href');

@@ -340,11 +340,26 @@ function routeHref(href) {
     return route ? buildRoute(route) : null;
 }
 
-function applyLinkPolicy(frag, mode) {
+// Markers only Coral's own code may set (Security's review of #3542): live_chat's file references,
+// the policy's own file-reference candidates, in-file fragments and router links. DOMPurify keeps
+// data-* attributes, so text an agent wrote could carry them; they are stripped before the policy
+// adds its own. data-knowledge-link too, unless the caller is the team knowledge view, which puts
+// its own links into the Markdown before it is sanitized (and only acts on a team member's name).
+const OWN_MARKERS = ['data-file-ref', 'data-file-ref-raw', 'data-fragment', 'data-route'];
+
+function stripOwnMarkers(frag, keepKnowledgeLinks) {
+    const names = keepKnowledgeLinks ? OWN_MARKERS : [...OWN_MARKERS, 'data-knowledge-link'];
+    for (const el of frag.querySelectorAll(names.map(n => `[${n}]`).join(','))) {
+        for (const n of names) el.removeAttribute(n);
+    }
+}
+
+function applyLinkPolicy(frag, mode, keepKnowledgeLinks) {
+    stripOwnMarkers(frag, keepKnowledgeLinks);
     for (const a of frag.querySelectorAll('a')) {
         // The team knowledge view's own links between agents (data-knowledge-link, href "#")
-        // are handled by its click listener; leave them be.
-        if (a.hasAttribute('data-knowledge-link') && (a.getAttribute('href') || '#') === '#') continue;
+        // are handled by its click listener, which only opens a member's knowledge; leave them be.
+        if (keepKnowledgeLinks && a.hasAttribute('data-knowledge-link') && (a.getAttribute('href') || '#') === '#') continue;
         if (!a.hasAttribute('href')) {
             // DOMPurify dropped the target (javascript:, data:, vbscript:): plain text, nothing link-like left.
             if (!a.hasAttribute('data-file-ref-raw')) { const span = document.createElement('span'); span.className = 'blocked-link'; span.textContent = a.textContent; a.replaceWith(span); }
@@ -407,7 +422,7 @@ export function sanitizeHtml(html, config, opts) {
     unblockAsLinks(frag);
     // opts.links: 'file', 'board' or 'chat' (applyLinkPolicy); strictLinks is the 'file' mode (#3540).
     const linkMode = opts && (opts.links || (opts.strictLinks && 'file'));
-    if (linkMode && LINK_MODES.has(linkMode)) applyLinkPolicy(frag, linkMode);
+    if (linkMode && LINK_MODES.has(linkMode)) applyLinkPolicy(frag, linkMode, !!(opts && opts.knowledgeLinks));
     const box = document.createElement('div');
     box.appendChild(frag);
     return box.innerHTML;
