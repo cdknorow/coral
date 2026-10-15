@@ -671,6 +671,31 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 	return result, nil
 }
 
+// TurnStartTime returns when the session's current turn began: its EARLIEST prompt_submit
+// since the newest turn boundary (stop, which includes a StopFailure, session_end or
+// session_reset). ok is false when there is none. Claude records a prompt_submit for
+// input typed DURING a turn too (it is queued), so the newest one is not the turn's start
+// (#3510, QA's live repro on Claude 2.1.300).
+func (s *TaskStore) TurnStartTime(ctx context.Context, sessionID string) (time.Time, bool, error) {
+	var at sql.NullString
+	err := s.reader().GetContext(ctx, &at,
+		`SELECT MIN(e.created_at) FROM agent_events e
+		 WHERE e.session_id = ? AND e.event_type = 'prompt_submit'
+		   AND e.created_at > COALESCE((SELECT MAX(b.created_at) FROM agent_events b
+		       WHERE b.session_id = e.session_id AND b.event_type IN ('stop', 'session_end', 'session_reset')), '')`, sessionID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !at.Valid) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	t, err := time.Parse(ISOFormat, at.String)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return t, true, nil
+}
+
 // GetLatestGoalEvent returns the newest goal event for a session, or nil.
 func (s *TaskStore) GetLatestGoalEvent(ctx context.Context, sessionID string) (*AgentEvent, error) {
 	var ev AgentEvent

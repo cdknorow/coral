@@ -22,6 +22,10 @@ const TurnEndHandoffSetting = "turn_end_handoff"
 // agent before it gives up (and hands nothing off): the agent's Stop hook is waiting.
 const turnEndHandoffWait = 1500 * time.Millisecond
 
+// lastDelivered is when a send with a key was last typed into a session, zero if never
+// (ptymanager); a variable so tests can set it.
+var lastDelivered = ptymanager.LastDelivered
+
 // TurnEndHandoff is called by a Claude agent's Stop hook when its turn ends (#3481,
 // #3475 3A). If the agent has unread board messages, the answer tells the hook to keep
 // the agent going with them: Claude Code continues with the hook's reason and context,
@@ -65,9 +69,21 @@ func (h *SessionsHandler) TurnEndHandoff(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusOK, none)
 		return
 	}
+	nudgeKey := "board-unread:" + board
+	// A nudge for these messages typed DURING this turn is queued in Claude's input and
+	// arrives when the turn ends, so a hand-off would deliver them twice (#3510: with the
+	// screen rule, the default, a nudge isn't held during a turn). The nudge that started
+	// the turn was typed before its prompt_submit, so it doesn't count. The turn starts at its
+	// FIRST prompt_submit: Claude records another one for the queued nudge itself.
+	if typed := lastDelivered(owner.SessionName, nudgeKey); !typed.IsZero() {
+		if start, ok, err := h.ts.TurnStartTime(ctx, owner.SessionID); err == nil && ok && typed.After(start) {
+			slog.Info("turn-end hand-off: skipped, a nudge was typed during the turn", "session", owner.SessionName, "board", board, "unread", unread)
+			writeJSON(w, http.StatusOK, none)
+			return
+		}
+	}
 	waitCtx, cancel := context.WithTimeout(ctx, turnEndHandoffWait)
 	defer cancel()
-	nudgeKey := "board-unread:" + board
 	taken, ok := ptymanager.TakeHeld(waitCtx, owner.SessionName, "handed off", func(key string) bool { return key == nudgeKey })
 	if !ok {
 		// A send to the agent was in progress and didn't finish in time: the nudge is

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -128,4 +129,121 @@ func TestTurnEndHandoffSkipsWhileASendIsInProgress(t *testing.T) {
 	var out map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
 	assert.Equal(t, false, out["handoff"], "a send in progress: no second copy through the hand-off")
+}
+
+// #3510 (QA's bug bash): with the screen rule (the default), a nudge isn't held during a
+// turn; it is typed and Claude queues it. A hand-off at the turn's end would then deliver
+// the same messages a second time. So a board nudge typed AFTER the turn's prompt_submit
+// means no hand-off, while the nudge that started the turn (typed before it) doesn't count.
+func TestTurnEndHandoffSkipsANudgeTypedDuringTheTurn(t *testing.T) {
+	server, h, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "eeeeeeee-3510-0000-0000-000000000001"
+	name := "claude-" + sid
+	board := "team-3510"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "golf", WorkingDir: "/w", BoardName: &board}))
+	tok := agentToken(t, h, sid, name)
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.PostMessage(ctx, board, "Lead", "@Worker mid-turn message", nil)
+	require.NoError(t, err)
+
+	ask := func() map[string]any {
+		req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/golf/turn-end", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(store.SessionTokenHeader, tok)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		var out map[string]any
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+		return out
+	}
+	var typed time.Time
+	var typedKey string
+	prev := lastDelivered
+	lastDelivered = func(n, key string) time.Time {
+		if n != name || key != typedKey {
+			return time.Time{}
+		}
+		return typed
+	}
+	t.Cleanup(func() { lastDelivered = prev })
+
+	// No prompt_submit recorded and no nudge typed: the hand-off works as before.
+	assert.Equal(t, true, ask()["handoff"], "nothing typed: hand off")
+
+	event := func(typ string, at time.Time) {
+		_, err := h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "golf", SessionID: &sid, EventType: typ, Summary: typ, CreatedAt: at.Format(store.ISOFormat)})
+		require.NoError(t, err)
+	}
+	// An earlier turn (its prompt and its stop): only the current turn counts.
+	turnStart := time.Now().UTC().Add(-10 * time.Second)
+	event("prompt_submit", turnStart.Add(-60*time.Second))
+	event("stop", turnStart.Add(-50*time.Second))
+	event("prompt_submit", turnStart)
+
+	// QA's repro: the nudge was typed 6 s into the turn and is queued in Claude's input.
+	typedKey, typed = "board-unread:"+board, turnStart.Add(6*time.Second)
+	assert.Equal(t, false, ask()["handoff"], "a nudge typed during the turn is already on its way: no second copy")
+	// QA's live repro on Claude 2.1.300: Claude records a prompt_submit for the queued nudge
+	// (0.4 s after it was typed). The turn still started at its FIRST prompt_submit.
+	event("prompt_submit", typed.Add(400*time.Millisecond))
+	assert.Equal(t, false, ask()["handoff"], "the queued nudge's own prompt_submit doesn't move the turn's start")
+
+	// The nudge that STARTED this turn (typed just before its prompt_submit) doesn't count.
+	typed = turnStart.Add(-500 * time.Millisecond)
+	assert.Equal(t, true, ask()["handoff"], "the turn's own starting nudge: hand off the new messages")
+
+	// A nudge for ANOTHER key typed during the turn doesn't stop it either.
+	typedKey, typed = "ui-request:9", turnStart.Add(6*time.Second)
+	assert.Equal(t, true, ask()["handoff"], "another key: hand off")
+}
+
+// #3510 end to end with the real gate: the turn starts (prompt_submit), the board nudge is
+// TYPED into the agent mid-turn (the screen rule sends it; Claude queues it), and at the
+// turn's end there is no hand-off, so the messages arrive once.
+func TestTurnEndHandoffAfterARealTypedNudge(t *testing.T) {
+	server, h, _, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "eeeeeeee-3510-0000-0000-000000000002"
+	name := "claude-" + sid
+	board := "team-3510b"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "hotel", WorkingDir: "/w", BoardName: &board}))
+	tok := agentToken(t, h, sid, name)
+	_, err := h.bs.Subscribe(ctx, board, "Worker", "Worker", name, nil, nil, "all")
+	require.NoError(t, err)
+	_, err = h.bs.Subscribe(ctx, board, "Lead", "Lead", "", nil, nil, "all")
+	require.NoError(t, err)
+	t.Cleanup(func() { ptymanager.DropHeld(name, "test done") })
+
+	_, err = h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "hotel", SessionID: &sid, EventType: "prompt_submit", Summary: "User submitted prompt",
+		CreatedAt: time.Now().UTC().Add(-2 * time.Second).Format(store.ISOFormat)})
+	require.NoError(t, err)
+
+	_, err = h.bs.PostMessage(ctx, board, "Lead", "@Worker mid-turn message", nil)
+	require.NoError(t, err)
+	typed := false
+	d, err := ptymanager.DeliverAutomated(ctx, ptymanager.AutomatedInput{Term: idleBox{}, Name: name, AgentType: "claude", SessionID: sid,
+		Key: "board-unread:" + board, Text: "You have 1 unread message", What: "test",
+		Send: func(context.Context) error { typed = true; return nil }})
+	require.NoError(t, err)
+	require.True(t, typed, "the nudge was typed (%v)", d)
+	require.False(t, ptymanager.LastDelivered(name, "board-unread:"+board).IsZero())
+	// As Claude 2.1.300 does: a prompt_submit for the queued nudge, just after it was typed.
+	_, err = h.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "hotel", SessionID: &sid, EventType: "prompt_submit", Summary: "queued",
+		CreatedAt: time.Now().UTC().Add(400 * time.Millisecond).Format(store.ISOFormat)})
+	require.NoError(t, err)
+
+	req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/hotel/turn-end", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(store.SessionTokenHeader, tok)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	var out map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
+	assert.Equal(t, false, out["handoff"], "the typed nudge is queued in Claude: no second copy")
 }
