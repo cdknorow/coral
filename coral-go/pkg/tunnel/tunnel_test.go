@@ -193,7 +193,9 @@ func TestManyConcurrentStreams(t *testing.T) {
 	sess, _ := connect(t, hub, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		fmt.Fprintf(w, "%s|%s", r.URL.Path, b)
-	}), nil)
+	}), func(l *LocalHandler) {
+		l.HubLimits = HubLimits{Global: 512} // this is the transport's multiplexing, not the hub limiter (#3624)
+	})
 	var wg sync.WaitGroup
 	var failures atomic.Int32
 	for i := 0; i < 300; i++ {

@@ -271,7 +271,12 @@ type LocalHandler struct {
 	// formats and private keys are replaced by RedactMarker before a reply leaves this
 	// computer. Read on every request; nil means on.
 	RedactTokens func() bool
+	// HubLimits bounds what Coral Hub can hold open on this computer at once (#3624); zero
+	// values take the defaults (DefaultGlobalInFlight, DefaultLongInFlight,
+	// DefaultSearchInFlight, DefaultRequestDeadline). The limiter is always on.
+	HubLimits HubLimits
 
+	lim    limiterOnce
 	once   sync.Once
 	client *http.Client
 	base   *url.URL
@@ -307,6 +312,9 @@ var forwardRequestHeaders = map[string]bool{
 	// POST /api/board/{project}/hub-notice, trusted only on a request this connector stamped.
 	"X-Coral-Hub-Notice": true,
 }
+
+// deadlineTimerKey carries a request's header deadline timer to the point its headers arrive.
+type deadlineTimerKey struct{}
 
 // HubUserHeader names the Coral Hub user behind a tunnel board write: the sender of a
 // chat post (#3377), and who acted when Coral Hub acts as the Operator (#3404).
@@ -488,6 +496,25 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		s.Reject(CodeBadRequest, "method not allowed", 0)
 		return
 	}
+	lm := l.lim.get(l.HubLimits)
+	class := classify(h.Kind, dec)
+	release, ok := lm.acquire(class)
+	if !ok {
+		lm.refused(class, dec)
+		busy(s)
+		return
+	}
+	defer release()
+	if class != classLong {
+		// A stalled handler can't hold its slot: no response headers within the deadline
+		// cancels the request (the body, once it flows, isn't timed).
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		defer cancel()
+		timer := time.AfterFunc(lm.deadline, cancel)
+		defer timer.Stop()
+		ctx = context.WithValue(ctx, deadlineTimerKey{}, timer)
+	}
 	max := l.MaxRequestBody
 	if max <= 0 {
 		max = 256 << 20
@@ -518,6 +545,11 @@ func (l *LocalHandler) serveHTTP(ctx context.Context, s *Stream) {
 		l.Authorize(req.Header)
 	}
 	resp, err := l.client.Do(req)
+	timer, _ := ctx.Value(deadlineTimerKey{}).(*time.Timer)
+	if timer != nil && !timer.Stop() && err != nil {
+		s.Reject(CodeUpstream, "local request took too long", 0)
+		return
+	}
 	if err != nil {
 		s.Reject(CodeUpstream, "local request failed", 0)
 		return
@@ -735,6 +767,14 @@ func (l *LocalHandler) serveWS(ctx context.Context, s *Stream) {
 		l.reject(s)
 		return
 	}
+	lm := l.lim.get(l.HubLimits)
+	release, ok := lm.acquire(classLong)
+	if !ok {
+		lm.refused(classLong, dec)
+		busy(s)
+		return
+	}
+	defer release()
 	hdr := l.stamp(scrub(h.Headers, http.MethodGet, dec))
 	if l.Authorize != nil {
 		l.Authorize(hdr)
