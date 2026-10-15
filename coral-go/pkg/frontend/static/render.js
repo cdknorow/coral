@@ -251,8 +251,16 @@ export function sessionStateInfo(s, opts) {
     // same state, said plainly. The row's "Terminal gone" chip restarts it.
     if (key === 'sleeping' && isGoneAsleep(s)) info.label = 'Terminal gone';
     if (key === 'waiting_on') info.label = waitingOnLabel(getCachedAgentAvailability(s)?.waiting_on) || info.label;
+    // What the agent itself says it waits on (#3481): its permission, question, plan or
+    // input request. A prompt Coral only saw on the screen has no kind: plain Needs input.
+    if (key === 'needs_input' && WAITING_KINDS[s.waiting_kind]) {
+        info.label = info.pill = `Needs input · ${WAITING_KINDS[s.waiting_kind]}`;
+    }
     return info;
 }
+
+/** waiting_kind (from the agent's own request) → the word shown after Needs input. */
+const WAITING_KINDS = { permission: 'Permission', question: 'Question', plan: 'Plan', elicitation: 'Input' };
 
 function getStateLabel(s) {
     return sessionStateInfo(s).label;
