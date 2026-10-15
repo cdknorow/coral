@@ -270,13 +270,16 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		}
 	}
 
-	// Create the run directory
-	runDir := filepath.Join(wr.dataDir, "workflows", "runs", strconv.FormatInt(runID, 10))
-	if err := os.MkdirAll(runDir, 0755); err != nil {
+	// Create the run folder, fresh, and hold it open: every step file is made and read
+	// through it, never by a path an earlier step could have planted a symlink on (#3587).
+	rf, err := openRunFolder(wr.dataDir, runID)
+	if err != nil {
 		errMsg := fmt.Sprintf("failed to create run directory: %v", err)
 		wr.store.SetRunStatus(ctx, runID, "failed", &errMsg)
 		return
 	}
+	defer rf.Close()
+	runDir := rf.dir
 
 	// Write context.json
 	contextData, _ := json.MarshalIndent(map[string]interface{}{
@@ -285,7 +288,9 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		"run_id":        runID,
 		"steps":         steps,
 	}, "", "  ")
-	os.WriteFile(filepath.Join(runDir, "context.json"), contextData, 0644)
+	if err := rf.writeNew("context.json", contextData); err != nil {
+		slog.Warn("[workflow] context.json not written", "run", runID, "error", err)
+	}
 
 	// Initialize step results
 	results := make([]StepResult, len(steps))
@@ -323,9 +328,20 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 			return
 		}
 
-		// Create step directory
-		stepDir := filepath.Join(runDir, fmt.Sprintf("step_%d", i))
-		os.MkdirAll(filepath.Join(stepDir, "artifacts"), 0755)
+		// Create step directory: a new one (one an earlier step made fails this step).
+		sf, serr := rf.step(i)
+		stepDir := sf.dir
+		if serr != nil {
+			errMsg := fmt.Sprintf("step %d (%s) failed: %v", i, step.Name, serr)
+			results[i].Status = "failed"
+			results[i].OutputTail = serr.Error()
+			for j := i + 1; j < len(steps); j++ {
+				results[j].Status = "skipped"
+			}
+			wr.persistResults(context.Background(), runID, i, results)
+			wr.store.SetRunStatus(context.Background(), runID, "failed", &errMsg)
+			return
+		}
 
 		// Build environment variables
 		env := wr.buildStepEnv(workflow, runID, runDir, i, stepDir, len(steps), steps)
@@ -353,9 +369,9 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 		var stepErr error
 		switch step.Type {
 		case "shell":
-			stepErr = wr.executeShellStep(ctx, runID, step, stepDir, workflow.RepoPath, env, &results[i])
+			stepErr = wr.executeShellStep(ctx, runID, step, sf, workflow.RepoPath, env, &results[i])
 		case "agent":
-			stepErr = wr.executeAgentStep(ctx, runID, step, stepDir, workflow.RepoPath, env, defaultAgent, &results[i])
+			stepErr = wr.executeAgentStep(ctx, runID, step, sf, workflow.RepoPath, env, defaultAgent, &results[i])
 		default:
 			stepErr = fmt.Errorf("unknown step type: %s", step.Type)
 		}
@@ -412,7 +428,7 @@ func (wr *WorkflowRunner) executeRun(runID int64, workflow *store.Workflow) {
 }
 
 // executeShellStep runs a shell command, capturing stdout/stderr.
-func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, step StepDef, stepDir, repoPath string, env []string, result *StepResult) error {
+func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, step StepDef, sf stepFiles, repoPath string, env []string, result *StepResult) error {
 	timeout := step.TimeoutS
 	if timeout <= 0 {
 		timeout = 300 // default 5 min for shell
@@ -426,11 +442,11 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	if terr != nil {
 		// Never an exec that fails with no message (E2BIG): say why, in the step (#3423 F3).
 		msg := "coral: " + terr.Error() + "\n"
-		os.WriteFile(filepath.Join(stepDir, "stderr.txt"), []byte(msg), 0644)
-		os.WriteFile(filepath.Join(stepDir, "stdout.txt"), nil, 0644)
+		sf.writeNew("stderr.txt", []byte(msg))
+		sf.writeNew("stdout.txt", nil)
 		code := 1
 		result.ExitCode = &code
-		os.WriteFile(filepath.Join(stepDir, "exit_code"), []byte("1"), 0644)
+		sf.writeNew("exit_code", []byte("1"))
 		result.ErrorTail = msg
 		return terr
 	}
@@ -441,13 +457,13 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 	configureChildProcess(cmd)
 
 	// Capture stdout and stderr to files
-	stdoutFile, err := os.Create(filepath.Join(stepDir, "stdout.txt"))
+	stdoutFile, err := sf.create("stdout.txt")
 	if err != nil {
 		return fmt.Errorf("create stdout file: %w", err)
 	}
 	defer stdoutFile.Close()
 
-	stderrFile, err := os.Create(filepath.Join(stepDir, "stderr.txt"))
+	stderrFile, err := sf.create("stderr.txt")
 	if err != nil {
 		return fmt.Errorf("create stderr file: %w", err)
 	}
@@ -483,20 +499,20 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 		}
 	}
 	result.ExitCode = &exitCode
-	os.WriteFile(filepath.Join(stepDir, "exit_code"), []byte(strconv.Itoa(exitCode)), 0644)
+	sf.writeNew("exit_code", []byte(strconv.Itoa(exitCode)))
 
 	// Capture output tail for the result
-	result.OutputTail = readTail(filepath.Join(stepDir, "stdout.txt"), 100)
+	result.OutputTail = sf.readTail("stdout.txt", 100)
 	if exitCode != 0 {
-		result.ErrorTail = readTail(filepath.Join(stepDir, "stderr.txt"), 40)
+		result.ErrorTail = sf.readTail("stderr.txt", 40)
 	}
 
 	// If output_artifact is set, copy stdout to it: inside the step's folder only, never
 	// through a symlink (#3423, CRIT-02).
 	if step.OutputArtifact != "" {
-		if err := writeArtifact(stepDir, step.OutputArtifact); err != nil {
+		if err := sf.writeArtifact(step.OutputArtifact); err != nil {
 			slog.Warn("[workflow] output_artifact not written", "step", step.Name, "error", err)
-			noteArtifactRefused(stepDir, step.OutputArtifact, err, result)
+			noteArtifactRefused(sf, step.OutputArtifact, err, result)
 		}
 	}
 
@@ -508,7 +524,8 @@ func (wr *WorkflowRunner) executeShellStep(ctx context.Context, runID int64, ste
 
 // executeAgentStep runs an agent step. By default uses --print mode (non-interactive,
 // no tmux session). When interactive: true, launches via tmux with workflow tagging.
-func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, step StepDef, stepDir, repoPath string, env []string, defaultAgent *AgentStepConfig, result *StepResult) error {
+func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, step StepDef, sf stepFiles, repoPath string, env []string, defaultAgent *AgentStepConfig, result *StepResult) error {
+	stepDir := sf.dir
 	timeout := step.TimeoutS
 	if timeout <= 0 {
 		timeout = 600 // default 10 min for agent
@@ -538,7 +555,7 @@ func (wr *WorkflowRunner) executeAgentStep(ctx context.Context, runID int64, ste
 	if step.Interactive {
 		stepErr = wr.executeAgentInteractive(stepCtx, runID, step, stepDir, repoPath, env, agentCfg, prompt, result)
 	} else {
-		stepErr = wr.executeAgentPrint(stepCtx, runID, step, stepDir, repoPath, env, agentCfg, prompt, stepHooks, result)
+		stepErr = wr.executeAgentPrint(stepCtx, runID, step, sf, repoPath, env, agentCfg, prompt, stepHooks, result)
 	}
 
 	// For non-Claude agents, fire Stop hooks via the runner after process exit
@@ -597,7 +614,7 @@ func KnownStepAgentType(agentType string) bool {
 // When the agent config includes tools/capabilities, those are passed via a settings
 // file (same as BuildLaunchCommand) so the agent has tool access in headless mode.
 // Captures stdout/stderr to step files. No tmux session.
-func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, step StepDef, stepDir, repoPath string, env []string, agentCfg *AgentStepConfig, prompt string, stepHooks map[string]interface{}, result *StepResult) error {
+func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, step StepDef, sf stepFiles, repoPath string, env []string, agentCfg *AgentStepConfig, prompt string, stepHooks map[string]interface{}, result *StepResult) error {
 	binPath, err := agent.FindCLI(wr.settings(ctx), agentCfg.AgentType)
 	if err != nil {
 		return fmt.Errorf("step %q: %w", step.Name, err)
@@ -661,13 +678,13 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 	configureChildProcess(cmd)
 
 	// Capture stdout and stderr to files
-	stdoutFile, err := os.Create(filepath.Join(stepDir, "stdout.txt"))
+	stdoutFile, err := sf.create("stdout.txt")
 	if err != nil {
 		return fmt.Errorf("create stdout file: %w", err)
 	}
 	defer stdoutFile.Close()
 
-	stderrFile, err := os.Create(filepath.Join(stepDir, "stderr.txt"))
+	stderrFile, err := sf.create("stderr.txt")
 	if err != nil {
 		return fmt.Errorf("create stderr file: %w", err)
 	}
@@ -702,18 +719,18 @@ func (wr *WorkflowRunner) executeAgentPrint(ctx context.Context, runID int64, st
 		}
 	}
 	result.ExitCode = &exitCode
-	os.WriteFile(filepath.Join(stepDir, "exit_code"), []byte(strconv.Itoa(exitCode)), 0644)
-	result.OutputTail = readTail(filepath.Join(stepDir, "stdout.txt"), 100)
+	sf.writeNew("exit_code", []byte(strconv.Itoa(exitCode)))
+	result.OutputTail = sf.readTail("stdout.txt", 100)
 	if exitCode != 0 {
-		result.ErrorTail = readTail(filepath.Join(stepDir, "stderr.txt"), 40)
+		result.ErrorTail = sf.readTail("stderr.txt", 40)
 	}
 
 	// If output_artifact is set, copy stdout to it: inside the step's folder only, never
 	// through a symlink (#3423, CRIT-02).
 	if step.OutputArtifact != "" {
-		if err := writeArtifact(stepDir, step.OutputArtifact); err != nil {
+		if err := sf.writeArtifact(step.OutputArtifact); err != nil {
 			slog.Warn("[workflow] output_artifact not written", "step", step.Name, "error", err)
-			noteArtifactRefused(stepDir, step.OutputArtifact, err, result)
+			noteArtifactRefused(sf, step.OutputArtifact, err, result)
 		}
 	}
 
@@ -868,9 +885,10 @@ func (wr *WorkflowRunner) buildStepEnv(workflow *store.Workflow, runID int64, ru
 		// Only an artifact inside that step's folder, never through a symlink (#3423): its
 		// content in the environment when it fits (MED-03), else the path alone.
 		if stepIndex-1 < len(steps) && steps[stepIndex-1].OutputArtifact != "" {
-			if p, err := artifactPath(prevDir, steps[stepIndex-1].OutputArtifact); err == nil {
+			if rel := steps[stepIndex-1].OutputArtifact; filepath.IsLocal(rel) {
+				p := filepath.Join(prevDir, rel)
 				env = append(env, "CORAL_PREV_ARTIFACT="+p)
-				if data, err := readRegular(p, maxArtifactEnv+1); err == nil {
+				if data, err := readInRun(runDir, p, maxArtifactEnv+1); err == nil {
 					if len(data) > maxArtifactEnv {
 						env = append(env, "CORAL_PREV_ARTIFACT_TRUNCATED=1")
 					} else {
@@ -1005,7 +1023,7 @@ func expandTemplatesWith(text string, env []string, shell bool, tooBig func(name
 				var data []byte
 				readOK := false
 				if found {
-					if d, err := readRegular(filePath, maxArtifactRead); err == nil {
+					if d, err := readInRun(envMap["CORAL_WORKFLOW_RUN_DIR"], filePath, maxArtifactRead); err == nil {
 						data, readOK = d, true
 					}
 				}
@@ -1076,19 +1094,6 @@ func mergeAgentConfig(defaultCfg, stepCfg *AgentStepConfig) *AgentStepConfig {
 		merged.Flags = stepCfg.Flags
 	}
 	return &merged
-}
-
-// readTail reads the last N lines from a file.
-func readTail(path string, maxLines int) string {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(string(data), "\n")
-	if len(lines) > maxLines {
-		lines = lines[len(lines)-maxLines:]
-	}
-	return strings.Join(lines, "\n")
 }
 
 // listStepFiles returns relative file paths found in a step directory.

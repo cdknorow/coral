@@ -54,7 +54,7 @@ func TestShellStepTimeoutKillsTheProcessGroup(t *testing.T) {
 
 	var res StepResult
 	start := time.Now()
-	err := wr.executeShellStep(context.Background(), 1, step, dir, dir, nil, &res)
+	err := wr.executeShellStep(context.Background(), 1, step, testStepFiles(t), dir, nil, &res)
 	require.Error(t, err, "a timed-out step fails")
 	assert.Less(t, time.Since(start), 30*time.Second, "the step returned at its timeout")
 

@@ -171,6 +171,8 @@ curl -X POST ${CORAL_URL}/api/notifications -H 'Content-Type: application/json' 
 | `CORAL_WORKFLOW_STEP_DIR` | Current step's artifact directory |
 | `CORAL_WORKFLOW_REPO_PATH` | Workflow's configured repo path |
 
+The run folder is private (0700, files 0600). Coral makes each step's folder and its `stdout.txt`, `stderr.txt` and `exit_code` itself, and never reuses or follows anything already there. Don't create a later step's folder, or a link in place of those files: the step fails, and a link out of the run folder is never read or written through. A folder of your own inside your step's folder (`$CORAL_WORKFLOW_STEP_DIR/…`) is fine.
+
 **Step chaining variables** — reference previous step output:
 
 | Variable | Description |

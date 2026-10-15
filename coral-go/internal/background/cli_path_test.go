@@ -62,12 +62,12 @@ func TestSummarizerUsesConfiguredClaudePath(t *testing.T) {
 func TestWorkflowAgentStepUsesConfiguredClaudePath(t *testing.T) {
 	db, _ := fakeClaude(t)
 	runner := NewWorkflowRunner(store.NewWorkflowStore(db), nil, nil, nil, nil, t.TempDir(), "localhost", 8420)
-	stepDir := t.TempDir()
+	sf := testStepFiles(t)
 	result := &StepResult{}
-	err := runner.executeAgentPrint(context.Background(), 1, StepDef{Name: "agent-step"}, stepDir, t.TempDir(), os.Environ(),
+	err := runner.executeAgentPrint(context.Background(), 1, StepDef{Name: "agent-step"}, sf, t.TempDir(), os.Environ(),
 		&AgentStepConfig{AgentType: at.Claude}, "say hi", nil, result)
 	require.NoError(t, err)
-	out, err := os.ReadFile(filepath.Join(stepDir, "stdout.txt"))
+	out, err := os.ReadFile(filepath.Join(sf.dir, "stdout.txt"))
 	require.NoError(t, err)
 	assert.Contains(t, string(out), "FAKE-CLAUDE", "the step ran the configured binary")
 	require.NotNil(t, result.ExitCode)
@@ -89,10 +89,21 @@ func TestWorkflowAgentStepWithoutCLIReportsOnce(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir())
 	runner := NewWorkflowRunner(store.NewWorkflowStore(setupTestDB(t)), nil, nil, nil, nil, t.TempDir(), "localhost", 8420)
-	err := runner.executeAgentPrint(context.Background(), 1, StepDef{Name: "agent-step"}, t.TempDir(), t.TempDir(), nil,
+	err := runner.executeAgentPrint(context.Background(), 1, StepDef{Name: "agent-step"}, testStepFiles(t), t.TempDir(), nil,
 		&AgentStepConfig{AgentType: "zz-no-such-agent"}, "hi", nil, &StepResult{})
 	require.Error(t, err)
 	assert.True(t, strings.HasPrefix(err.Error(), `step "agent-step": `), err.Error())
 	assert.Equal(t, 1, strings.Count(err.Error(), "not found"), err.Error())
 	assert.Contains(t, err.Error(), "Settings > CLI Paths")
+}
+
+// testStepFiles is a fresh run folder's step_0, for calling a step executor directly.
+func testStepFiles(t *testing.T) stepFiles {
+	t.Helper()
+	rf, err := openRunFolder(t.TempDir(), 1)
+	require.NoError(t, err)
+	t.Cleanup(func() { rf.Close() })
+	sf, err := rf.step(0)
+	require.NoError(t, err)
+	return sf
 }

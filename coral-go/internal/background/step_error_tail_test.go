@@ -14,7 +14,7 @@ func TestShellStepKeepsTheErrorTailOnlyWhenItFails(t *testing.T) {
 	run := func(cmd string) *StepResult {
 		dir := t.TempDir()
 		res := &StepResult{}
-		_ = wr.executeShellStep(context.Background(), 1, StepDef{Name: "s", Type: "shell", Command: cmd}, dir, dir, nil, res)
+		_ = wr.executeShellStep(context.Background(), 1, StepDef{Name: "s", Type: "shell", Command: cmd}, testStepFiles(t), dir, nil, res)
 		return res
 	}
 

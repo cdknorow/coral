@@ -95,10 +95,14 @@ func TestOutputArtifactStaysInTheStepFolder(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "fine\n", string(ok), "a normal relative artifact still works")
 
-	// The reading side refuses a link too.
-	_, err = readArtifact(filepath.Join(runDir, "step_2"), "art.txt")
+	// The reading side refuses a link out of the run folder too, and a path out of the step.
+	root, err := os.OpenRoot(runDir)
+	require.NoError(t, err)
+	defer root.Close()
+	sf := stepFiles{run: &runFiles{root: root, dir: runDir}, rel: "step_2", dir: filepath.Join(runDir, "step_2")}
+	_, err = sf.readArtifact("art.txt", maxArtifactRead)
 	assert.Error(t, err)
-	_, err = artifactPath(runDir, "../x")
+	_, err = sf.readArtifact("../x", maxArtifactRead)
 	assert.Error(t, err)
 }
 
@@ -128,7 +132,7 @@ func TestContentTemplateModes(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "stdout.txt")
 	require.NoError(t, os.WriteFile(out, []byte("it's"), 0o644))
-	env := []string{"CORAL_PREV_STDOUT=" + out}
+	env := []string{"CORAL_PREV_STDOUT=" + out, "CORAL_WORKFLOW_RUN_DIR=" + dir} // a step always has its run folder
 	assert.Equal(t, "say it's", expandTemplates("say {{prev_stdout_content}}", env))
 	got, err := expandShellTemplates("echo {{prev_stdout_content}}", env)
 	require.NoError(t, err)
@@ -143,7 +147,7 @@ func TestContentTemplateModes(t *testing.T) {
 func TestContentTemplateDropsTrailingNewlines(t *testing.T) {
 	dir := t.TempDir()
 	out := filepath.Join(dir, "stdout.txt")
-	env := []string{"CORAL_PREV_STDOUT=" + out}
+	env := []string{"CORAL_PREV_STDOUT=" + out, "CORAL_WORKFLOW_RUN_DIR=" + dir} // a step always has its run folder
 	for in, want := range map[string]string{"main\n": "'main'", "a\nb\n": "'a\nb'", "x\n\n\n": "'x'", "": "''"} {
 		require.NoError(t, os.WriteFile(out, []byte(in), 0o644))
 		got, err := expandShellTemplates("{{prev_stdout_content}}", env)

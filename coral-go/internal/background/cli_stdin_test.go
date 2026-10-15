@@ -68,7 +68,7 @@ func TestWorkflowClaudeStepPromptOnStdin(t *testing.T) {
 	runner := NewWorkflowRunner(store.NewWorkflowStore(db), nil, nil, nil, nil, t.TempDir(), "localhost", 8420)
 	prompt := "STEP-SECRET-3521 summarize the board"
 	for _, cfg := range []*AgentStepConfig{{AgentType: at.Claude}, {AgentType: at.Claude, Tools: []string{"Read"}, Model: "haiku"}} {
-		require.NoError(t, runner.executeAgentPrint(context.Background(), 1, StepDef{Name: "s"}, t.TempDir(), t.TempDir(), os.Environ(), cfg, prompt, nil, &StepResult{}))
+		require.NoError(t, runner.executeAgentPrint(context.Background(), 1, StepDef{Name: "s"}, testStepFiles(t), t.TempDir(), os.Environ(), cfg, prompt, nil, &StepResult{}))
 		args, err := os.ReadFile(argsFile)
 		require.NoError(t, err)
 		in, err := os.ReadFile(stdinFile)
@@ -109,7 +109,7 @@ func indexOf(list []string, s string) int {
 func TestWorkflowPrintStepOnUnverifiedCLIFailsClearly(t *testing.T) {
 	db, _ := fakeClaude(t)
 	runner := NewWorkflowRunner(store.NewWorkflowStore(db), nil, nil, nil, nil, t.TempDir(), "localhost", 8420)
-	err := runner.executeAgentStep(context.Background(), 1, StepDef{Name: "s", Prompt: "do it"}, t.TempDir(), t.TempDir(), os.Environ(),
+	err := runner.executeAgentStep(context.Background(), 1, StepDef{Name: "s", Prompt: "do it"}, testStepFiles(t), t.TempDir(), os.Environ(),
 		&AgentStepConfig{AgentType: at.Codex}, &StepResult{})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "aren't supported for codex yet")

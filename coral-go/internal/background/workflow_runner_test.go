@@ -423,7 +423,12 @@ func TestReadTail(t *testing.T) {
 	}
 	os.WriteFile(path, []byte(joinLines(lines)), 0644)
 
-	tail := readTail(path, 5)
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	tail := tailOf(f, 5)
 	if tail == "" {
 		t.Fatal("expected non-empty tail")
 	}
