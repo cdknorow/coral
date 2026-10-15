@@ -2488,10 +2488,14 @@ func (h *BoardHandler) WaitBackground() {
 
 // refuseNewBoardName answers 400 invalid_board_name and returns true when name would start
 // a NEW board (no subscriber or message uses it yet) with a name outside board.NewNamePattern
-// (#3534). A board that already exists keeps working under its name, whatever it is.
+// (#3534) or shaped like a generated id (#3536). A board that already exists keeps working
+// under its name, whatever it is.
 func refuseNewBoardName(w http.ResponseWriter, r *http.Request, bs *board.Store, name string) bool {
-	problem := board.NewNameProblem(name)
-	if problem == "" || bs == nil {
+	if bs == nil {
+		return false
+	}
+	problem := bs.LabelProblem(name) // the name rule, and never id-shaped (#3536)
+	if problem == "" {
 		return false
 	}
 	if exists, err := bs.BoardExists(r.Context(), name); err == nil && exists {
@@ -2528,11 +2532,11 @@ func (h *BoardHandler) RenameBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	label := strings.TrimSpace(body.Label)
-	if problem := board.NewNameProblem(label); problem != "" {
+	id := urlParam(r, "project")
+	if problem := h.bs.LabelProblem(label); problem != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
 		return
 	}
-	id := urlParam(r, "project")
 	if err := h.bs.RenameBoard(r.Context(), id, label); errors.Is(err, board.ErrBoardNotFound) {
 		errNotFound(w, "no such board")
 		return

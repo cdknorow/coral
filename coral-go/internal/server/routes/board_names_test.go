@@ -51,7 +51,7 @@ func TestNewBoardNamesFollowTheRule(t *testing.T) {
 	post := map[string]any{"subscriber_id": "Operator", "as": "Operator", "content": "hi"}
 	task := map[string]any{"subscriber_id": "Operator", "title": "t"}
 
-	for _, bad := range []string{"new team", "team.v2", "@homelab/qa", "projects", "-x"} {
+	for _, bad := range []string{"new team", "team.v2", "@homelab/qa", "projects", "-x", "b-aaaaaaaaaa"} {
 		for _, c := range []struct {
 			path string
 			body map[string]any

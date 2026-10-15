@@ -104,6 +104,14 @@ func TestLaunchBoardChoice(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, code, out)
 	assert.Equal(t, "board_not_found", out["code"])
 
+	// QA's rule: a new board's name can't look like an id, nor be a board's id, even with
+	// new_board.
+	code, out = call(handler.LaunchTeam, team(map[string]any{"board_name": "b-aaaaaaaaaa"}))
+	assert.Equal(t, http.StatusBadRequest, code, out)
+	assert.Equal(t, "invalid_board_name", out["code"])
+	code, out = call(handler.LaunchTeam, team(map[string]any{"board_name": first[0].ID, "new_board": true}))
+	assert.Equal(t, http.StatusBadRequest, code, "another board's id as a name: %v", out)
+
 	// A legacy board (id = name) counts as taken too.
 	_, err = bs.Subscribe(ctx, "legacy-team", "Lead", "Lead", "", nil, nil, "all")
 	require.NoError(t, err)
@@ -111,6 +119,14 @@ func TestLaunchBoardChoice(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, code, out)
 	code, out = call(handler.LaunchTeam, team(map[string]any{"board_id": "legacy-team"}))
 	assert.Equal(t, http.StatusOK, code, out)
+	// The operator's case: a second "legacy-team" next to the old one (a shared label).
+	code, out = call(handler.LaunchTeam, team(map[string]any{"board_name": "legacy-team", "new_board": true}))
+	require.Equal(t, http.StatusOK, code, out)
+	assert.Regexp(t, idRe, out["board_id"], "a new board with its own id")
+	assert.Equal(t, "legacy-team", out["board_label"])
+	id, _, err := bs.ResolveBoard(ctx, "legacy-team")
+	require.NoError(t, err)
+	assert.Equal(t, "legacy-team", id, "the legacy board's id still wins")
 }
 
 // Security's race: concurrent launches of one new name start one board, and the rest get

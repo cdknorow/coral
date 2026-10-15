@@ -17,13 +17,18 @@ gets a fresh id such as `b-7k3m9q2x4p`. Two boards may share a label; renaming c
 the label.
 
 - **A label in place of the id** works when exactly one board has that label; an exact id
-  always wins. When several boards share it, the answer is 409 `ambiguous_board` with
+  always wins. An agent's own-board check uses the resolved id, compared exactly, so an agent
+  may use its board's label. When several boards share it, the answer is 409 `ambiguous_board` with
   `candidates` (`board_id`, `board_label`, `created_at`, `members`). A key that can't be an id
   in a URL (`.`, `..`, `/`, control characters) gets 400 `invalid_board_key`.
 - `GET /api/board/{id}` returns `{board_id, board_label, created_at, created_by, members}`.
 - `PATCH /api/board/{id}` with `{"label": "new-name"}` renames the board. It is the Operator's
   (an agent's token gets 403 `forbidden_for_agent` with strict local auth), and the new label
-  follows the name rule.
+  follows the name rule. A label can never look like a new board's id (`b-` and 10 letters or
+  digits): 400 `invalid_board_name`, on a rename and wherever a new board starts. A label may
+  equal a legacy board's name (a second "sprint" next to the old one); the key `sprint` still
+  means the legacy board, and the new one is reached by its id. If the legacy board is later
+  deleted, `sprint` resolves to the board left with that label.
 - Lists carry `board_label` next to each board key: projects, live sessions, teams and all
   tasks.
 - `coral-board join <id or label>` stores the board's id. A label several boards share lists

@@ -743,6 +743,7 @@ func (s *Server) buildRouter() chi.Router {
 	sessHandler.SetBoardHandler(boardHandler)
 	sessHandler.SetScheduleStore(store.NewScheduleStore(s.db))
 	sessHandler.SetTeamStore(teamsHandler.Store())
+	sessHandler.SetAgentOperatorGate(s.identity.AgentOperatorAction)
 	sessHandler.SetTokenStore(store.NewTokenUsageStore(s.db))
 	notifStore := routes.NewNotificationStore()
 	sessHandler.SetNotificationStore(notifStore)

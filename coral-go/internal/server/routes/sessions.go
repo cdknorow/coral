@@ -51,6 +51,7 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	agentOperatorGate func(r *http.Request, action string) bool // #3536: Operator-only choices in a request body
 	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
 	wsHeartbeat  atomic.Int64
 	remoteAgents background.RemoteAgentSource
@@ -184,6 +185,12 @@ func (h *SessionsHandler) SetNotificationStore(ns *NotificationStore) {
 // SetScheduleStore sets the schedule store for active runs in websocket.
 func (h *SessionsHandler) SetScheduleStore(ss *store.ScheduleStore) {
 	h.schedStore = ss
+}
+
+// SetAgentOperatorGate sets the check for Operator-only choices an agent's token may not
+// make (IdentityObserver.AgentOperatorAction): true means refuse.
+func (h *SessionsHandler) SetAgentOperatorGate(fn func(r *http.Request, action string) bool) {
+	h.agentOperatorGate = fn
 }
 
 // SetTeamStore sets the team store for team persistence.
@@ -6831,13 +6838,21 @@ func (h *SessionsHandler) launchBoard(w http.ResponseWriter, r *http.Request, bo
 			}
 		}
 	}
+	// Another board with a name that's taken makes that name ambiguous for every caller who
+	// uses it: the Operator's choice (Security's #3536 review). An agent's token is refused
+	// with strict local auth, and recorded otherwise.
+	if len(existing) > 0 && newBoard && h.agentOperatorGate != nil && h.agentOperatorGate(r, "POST /api/sessions/launch new_board") {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden_for_agent", "code": "forbidden_for_agent",
+			"message": "An agent can't start another board with a name that's taken: that is for the Operator. Join it with board_id, or pick a new name"})
+		return "", false
+	}
 	if len(existing) > 0 && !newBoard {
 		writeJSON(w, http.StatusConflict, map[string]any{"error": "board_name_exists", "code": "board_name_exists",
 			"message":    "A board named \"" + boardName + "\" already exists: join it (board_id) or start another (new_board)",
 			"candidates": boardCandidates(r, h.bs, existing)})
 		return "", false
 	}
-	if problem := board.NewNameProblem(boardName); problem != "" {
+	if problem := h.bs.LabelProblem(boardName); problem != "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_board_name", "code": "invalid_board_name", "message": problem})
 		return "", false
 	}

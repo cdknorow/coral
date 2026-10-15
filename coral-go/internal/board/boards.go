@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -56,6 +57,24 @@ func (s *Store) ensureBoardsSchema(ctx context.Context) error {
 			UNION ALL SELECT board_id, created_at FROM board_tasks
 		) WHERE key <> '' GROUP BY key`)
 	return err
+}
+
+// boardIDShape is the shape of a generated board id.
+var boardIDShape = regexp.MustCompile(`^b-[a-z2-7]{10}$`)
+
+// LabelProblem is NewNameProblem for a board's label (a new board's name, or a rename),
+// plus: a label may not look like a generated id (QA's #3536 review), so a label can never
+// pass for a new-style id. A label equal to a legacy board's name is allowed: it is just a
+// shared label ("a second sprint next to the old sprint"), and an exact id still wins.
+// "" when it's fine.
+func (s *Store) LabelProblem(label string) string {
+	if p := NewNameProblem(label); p != "" {
+		return p
+	}
+	if boardIDShape.MatchString(label) {
+		return "a board name can't look like a board id (b- and 10 letters or digits); choose another name"
+	}
+	return ""
 }
 
 // UsableBoardKey reports whether key can be a board id in a URL path: not empty, not "." or

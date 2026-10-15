@@ -453,7 +453,9 @@ and agents; `coral-agent launch --board <id>` sends it). `board_name` starts a *
 with that name; if a board with that id or name already exists, the answer is 409
 `board_name_exists` with `candidates` (`board_id`, `board_label`, `created_at`, `members`).
 Retry with `board_id` to join one, or add `"new_board": true` to start another with the same
-name. A new name follows the board name rule (400 `invalid_board_name`); an unknown
+name. Starting another board with a name that's taken is the Operator's choice (it makes that
+name ambiguous for anyone using it): with strict local auth an agent's token gets 403
+`forbidden_for_agent`, and otherwise the call is listed in the identity report. A new name follows the board name rule (400 `invalid_board_name`); an unknown
 `board_id` is 404 `board_not_found`. The answer includes `board_id` and `board_label`.
 
 **Response:**

@@ -557,6 +557,11 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 	case "", "projects", "tasks", "remotes":
 		return nil, nil
 	}
+	// The board the request acts on, as the router will resolve it (#3536, Security's
+	// review): a label naming one board is that board's id, so an agent may use its own
+	// board's label, and the comparison below is on ids, exactly (a case variant of an id is
+	// another key, not this board).
+	project = resolvedBoardKey(r, o.bs, project)
 	sub, lookupErr := o.bs.GetSubscriptionBySessionName(r.Context(), owner.SessionName)
 	if lookupErr != nil {
 		// Never a bypass: checked as an agent with no subscription (the Operator and
@@ -613,7 +618,7 @@ func (o *IdentityObserver) checkBoard(r *http.Request, owner *store.SessionToken
 		}
 		return first, nil
 	}
-	if !strings.EqualFold(project, sub.Project) {
+	if project != sub.Project {
 		note(o.mismatch(r, owner, mismatchCrossBoard, sub.Project, project, "project"))
 	}
 	for f, vs := range claims {
@@ -723,4 +728,30 @@ func (o *IdentityObserver) Report() map[string]any {
 	}
 	return map[string]any{"mode": mode, "callers": callers, "would_break_in_strict_mode": breaking, "would_break_by_route": breakBy, "refused": refused, "agent_operator_calls": opCalls,
 		"mismatches": mm, "recent_mismatches": recent, "attributed_by_session": sessions, "attributed_by_tool": tools}
+}
+
+// resolvedBoardKey is the board id a /api/board/<key> request acts on: the key itself when
+// it is an id or names no single board, else the id of the one board labelled key (the
+// same rule as BoardKeyResolver).
+func resolvedBoardKey(r *http.Request, bs *board.Store, key string) string {
+	if bs == nil || !board.UsableBoardKey(key) {
+		return key
+	}
+	if id, _, err := bs.ResolveBoard(r.Context(), key); err == nil {
+		return id
+	}
+	return key
+}
+
+// AgentOperatorAction is for an Operator-only choice a handler makes from the request body
+// (#3536: new_board for a name that's taken). For an agent's token it records the call in
+// agent_operator_calls and, with strict local auth, returns true: the handler refuses it
+// (403 forbidden_for_agent). The Operator, and callers without a token, get false.
+func (o *IdentityObserver) AgentOperatorAction(r *http.Request, action string) bool {
+	owner, ok := VerifiedSession(r.Context())
+	if o == nil || !ok || owner == nil {
+		return false
+	}
+	o.countOperatorCall(owner.SessionName, action)
+	return o.strict
 }
