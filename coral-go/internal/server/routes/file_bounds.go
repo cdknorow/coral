@@ -274,6 +274,28 @@ func rootAllowed(realRoot string) bool {
 	return true
 }
 
+// trustedGitRoot is the git root of workdir that Coral may use as a root for files: what git
+// reports, but only when it is workdir itself, one of its parents (workdir is inside the
+// repository) or a repository inside workdir (git's one-level child fallback). Anything else
+// came from the repository's own config (core.worktree in an agent-writable .git/config can
+// name any folder), so workdir is used instead (#3596 W6). Every root derivation (the file
+// routes' resolveGitRoot, auto-attach's SessionDirs) goes through it.
+func trustedGitRoot(ctx context.Context, workdir string) string {
+	root := gitutil.ResolveGitRoot(ctx, workdir)
+	if root == "" || root == workdir {
+		return root
+	}
+	realW, err1 := safefs.Resolve(workdir)
+	realR, err2 := safefs.Resolve(root)
+	if err1 != nil || err2 != nil {
+		return workdir
+	}
+	if within(realR, realW) || within(realW, realR) {
+		return root
+	}
+	return workdir
+}
+
 // listingVisible reports whether a directory entry may be shown to a strict caller.
 func listingVisible(dir, name string) bool { return !sensitivePath(filepath.Join(dir, name)) }
 

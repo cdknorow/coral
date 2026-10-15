@@ -1790,7 +1790,7 @@ func (h *SessionsHandler) resolveGitRoot(ctx context.Context, name, agentType, s
 	if workdir == "" {
 		return ""
 	}
-	return gitutil.ResolveGitRoot(ctx, workdir)
+	return trustedGitRoot(ctx, workdir)
 }
 
 // filesCacheFloor is how long a changed-files list stays fresh when nothing

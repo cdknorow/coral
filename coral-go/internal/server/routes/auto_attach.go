@@ -26,7 +26,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -126,7 +125,7 @@ func SessionDirs(ss *store.SessionStore) func(context.Context, string) (string, 
 		if err != nil || live == nil || live.WorkingDir == "" {
 			return "", ""
 		}
-		return live.WorkingDir, gitutil.ResolveGitRoot(ctx, live.WorkingDir)
+		return live.WorkingDir, trustedGitRoot(ctx, live.WorkingDir)
 	}
 }
 

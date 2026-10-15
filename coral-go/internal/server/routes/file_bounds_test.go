@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cdknorow/coral/internal/gitutil"
 	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
@@ -610,4 +611,33 @@ func TestDiffRoutesBoundEveryNonDashboardCaller(t *testing.T) {
 			assert.Equal(t, 400, code, path)
 		}
 	}
+}
+
+// #3596 W6: an agent-writable .git/config can make git report any folder as the repository's
+// root (core.worktree). That folder must not become a root for the file routes or auto-attach.
+func TestCoreWorktreeCannotWidenTheRoot(t *testing.T) {
+	e := newBoundsEnv(t)
+	elsewhere := filepath.Join(e.base, "outdir") // holds inner.txt; unrelated to the session
+	workdir := filepath.Join(e.repo, "app")
+	require.NoError(t, exec.Command("git", "-C", e.repo, "config", "core.worktree", elsewhere).Run())
+	// The precondition: git really does report the unrelated folder.
+	realElsewhere, _ := filepath.EvalSymlinks(elsewhere)
+	got := gitutil.ResolveGitRoot(context.Background(), workdir)
+	realGot, _ := filepath.EvalSymlinks(got)
+	require.Equal(t, realElsewhere, realGot, "git reports core.worktree as the root")
+
+	assert.Equal(t, workdir, trustedGitRoot(context.Background(), workdir), "Coral falls back to the working directory")
+	_, dirsGit := SessionDirs(e.ss)(context.Background(), "fb-1")
+	assert.Equal(t, workdir, dirsGit, "auto-attach's root too")
+
+	// Through the tunnel the unrelated folder's file isn't readable.
+	code, body := e.do("GET", fc, url.Values{"filepath": {filepath.Join(elsewhere, "inner.txt")}, "session_id": {"fb-1"}}, "", tunneled)
+	assert.NotEqual(t, 200, code)
+	assert.NotContains(t, body, "inner")
+
+	// A real parent repository and a child repository still count.
+	require.NoError(t, exec.Command("git", "-C", e.repo, "config", "--unset", "core.worktree").Run())
+	realRepo, _ := filepath.EvalSymlinks(e.repo)
+	realRoot, _ := filepath.EvalSymlinks(trustedGitRoot(context.Background(), workdir))
+	assert.Equal(t, realRepo, realRoot, "the repository workdir is in")
 }
