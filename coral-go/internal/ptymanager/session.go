@@ -67,13 +67,18 @@ func newSession(name, agentType, workDir, sessionID, command string, cols, rows 
 		fmt.Sprintf("CORAL_SESSION_NAME=%s", name),
 	)
 
+	// Set up log file (in the data folder's logs folder, which startup sets; #3601). An unsafe
+	// agent type or session id gets no log path: refused before the process starts (#3602).
+	logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
+	if logPath == "" {
+		return nil, fmt.Errorf("session %s: %w for agent type %q, session %q", name, errNoLogPath, agentType, sessionID)
+	}
+
 	proc, err := startPTYProcess(parts[0], parts[1:], workDir, env, cols, rows)
 	if err != nil {
 		return nil, fmt.Errorf("startPTYProcess: %w", err)
 	}
 
-	// Set up log file (in the data folder's logs folder, which startup sets; #3601)
-	logPath := naming.LogFile(naming.DefaultLogDir(), agentType, sessionID)
 	logFile, err := openLogAppend(logPath)
 	if err != nil {
 		log.Printf("Warning: could not open log file %s: %v", logPath, err)

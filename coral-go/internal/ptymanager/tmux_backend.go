@@ -58,6 +58,11 @@ func (b *TmuxBackend) Spawn(name, agentType, workDir, sessionID, command string,
 	ctx := context.Background()
 	tmuxName := naming.SessionName(agentType, sessionID)
 	logPath := naming.LogFile(b.logDir, agentType, sessionID)
+	if logPath == "" {
+		// naming.LogFile refuses an unsafe agent type or session id: no session is made that
+		// would pipe to '' and run unlogged (#3602, Lead's NIT).
+		return fmt.Errorf("spawn %s: %w for agent type %q, session %q", name, errNoLogPath, agentType, sessionID)
+	}
 
 	// Create (or empty) the log: this user only, never through a link (#3601, W17)
 	resetLog(logPath)
@@ -305,6 +310,11 @@ func (b *TmuxBackend) recoverSession(name string) *tmuxSession {
 		}
 
 		logPath := naming.LogFile(b.logDir, agentType, sessionID)
+		if logPath == "" {
+			// Not a name Coral makes: left alone, never re-piped to '' (#3602, Lead's NIT).
+			log.Printf("[tmux] not recovering %s: %v", pane.SessionName, errNoLogPath)
+			return nil
+		}
 
 		// Reset pipe-pane: close any stale pipe from a previous server
 		// instance, then re-establish to ensure output goes to our log file.
