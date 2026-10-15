@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,17 +73,26 @@ func (e cacheEntry) fresh(now time.Time) bool {
 
 // TemplatesHandler proxies the davila7/claude-code-templates GitHub repo with in-memory caching.
 type TemplatesHandler struct {
-	mu     sync.RWMutex
-	cache  map[string]cacheEntry
-	bytes  int
-	client *http.Client
+	mu       sync.RWMutex
+	cache    map[string]cacheEntry
+	bytes    int
+	client   *http.Client
+	inflight map[string]*templateFetch // one outbound call per URL at a time
+}
+
+// templateFetch is an outbound call others wait on instead of making their own.
+type templateFetch struct {
+	done chan struct{}
+	data interface{}
+	err  error
 }
 
 // NewTemplatesHandler creates a new TemplatesHandler.
 func NewTemplatesHandler() *TemplatesHandler {
 	return &TemplatesHandler{
-		cache:  make(map[string]cacheEntry),
-		client: &http.Client{Timeout: 15 * time.Second},
+		cache:    make(map[string]cacheEntry),
+		client:   &http.Client{Timeout: 15 * time.Second},
+		inflight: make(map[string]*templateFetch),
 	}
 }
 
@@ -122,6 +132,9 @@ func (h *TemplatesHandler) cacheSet(key string, e cacheEntry) {
 				oldest = k
 			}
 		}
+		if oldest == "" {
+			break // nothing left to drop: never spin under the lock
+		}
 		h.bytes -= h.cache[oldest].size
 		delete(h.cache, oldest)
 	}
@@ -136,13 +149,82 @@ func (h *TemplatesHandler) githubFetch(path string) (interface{}, error) {
 	if cached, ok := h.cacheGet(url); ok {
 		return cached.data, cached.err
 	}
+	// Concurrent misses on one URL share a single outbound call.
+	h.mu.Lock()
+	if f, ok := h.inflight[url]; ok {
+		h.mu.Unlock()
+		<-f.done
+		return f.data, f.err
+	}
+	f := &templateFetch{done: make(chan struct{})}
+	h.inflight[url] = f
+	h.mu.Unlock()
+	defer func() {
+		h.mu.Lock()
+		delete(h.inflight, url)
+		h.mu.Unlock()
+		close(f.done)
+	}()
+
 	data, size, err := h.fetch(url)
+	f.data, f.err = data, err
 	if err != nil {
 		h.cacheSet(url, cacheEntry{fetchedAt: time.Now(), err: err, size: len(err.Error())})
 		return nil, err
 	}
 	h.cacheSet(url, cacheEntry{fetchedAt: time.Now(), data: data, size: size})
 	return data, nil
+}
+
+// errTemplateUnknown: the category or template isn't in the repository's listing.
+var errTemplateUnknown = errors.New("no such template")
+
+// known reports whether category (and filename, when given) appears in the repository's
+// listings, read through the same cache. Only names GitHub listed are ever fetched, so a
+// viewer sending many made-up names costs no outbound call for any of them, and the
+// unauthenticated quota (60 an hour) stays the dashboard's (#3619, Security's SHOULD on H2).
+func (h *TemplatesHandler) known(kind, category, filename string) error {
+	data, err := h.githubFetch("cli-tool/components/" + kind)
+	if err != nil {
+		return err
+	}
+	found := false
+	for _, it := range extractDirItems(data, "dir") {
+		if it["name"] == category {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return errTemplateUnknown
+	}
+	if filename == "" {
+		return nil
+	}
+	data, err = h.githubFetch("cli-tool/components/" + kind + "/" + category)
+	if err != nil {
+		return err
+	}
+	for _, it := range extractFileItems(data) {
+		if it["filename"] == filename {
+			return nil
+		}
+	}
+	return errTemplateUnknown
+}
+
+// refuseUnknown answers for a name known refused: 404 for one not in the listing, or the
+// usual error shape when the listing itself couldn't be read.
+func refuseUnknown(w http.ResponseWriter, err error, empty map[string]interface{}) {
+	if errors.Is(err, errTemplateUnknown) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error(), "code": "template_not_found"})
+		return
+	}
+	out := map[string]interface{}{"error": err.Error()}
+	for k, v := range empty {
+		out[k] = v
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (h *TemplatesHandler) fetch(url string) (interface{}, int, error) {
@@ -282,6 +364,10 @@ func (h *TemplatesHandler) ListAgentsInCategory(w http.ResponseWriter, r *http.R
 	if !ok {
 		return
 	}
+	if err := h.known("agents", category, ""); err != nil {
+		refuseUnknown(w, err, map[string]interface{}{"agents": []interface{}{}})
+		return
+	}
 	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/agents/%s", category))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -308,6 +394,10 @@ func (h *TemplatesHandler) GetAgentTemplate(w http.ResponseWriter, r *http.Reque
 		filename += ".md"
 	}
 
+	if err := h.known("agents", category, filename); err != nil {
+		refuseUnknown(w, err, nil)
+		return
+	}
 	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/agents/%s/%s", category, filename))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"error": err.Error()})
@@ -355,6 +445,10 @@ func (h *TemplatesHandler) ListCommandsInCategory(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
+	if err := h.known("commands", category, ""); err != nil {
+		refuseUnknown(w, err, map[string]interface{}{"commands": []interface{}{}})
+		return
+	}
 	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/commands/%s", category))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -381,6 +475,10 @@ func (h *TemplatesHandler) GetCommandTemplate(w http.ResponseWriter, r *http.Req
 		filename += ".md"
 	}
 
+	if err := h.known("commands", category, filename); err != nil {
+		refuseUnknown(w, err, nil)
+		return
+	}
 	data, err := h.githubFetch(fmt.Sprintf("cli-tool/components/commands/%s/%s", category, filename))
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"error": err.Error()})
