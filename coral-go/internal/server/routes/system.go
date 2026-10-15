@@ -231,29 +231,45 @@ func (h *SystemHandler) PutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		body[k] = path
 	}
+	// Convert any value to string, matching Python's str() behavior.
+	// Python's str(True)="True", str(False)="False" — capitalize bools.
+	values := make(map[string]string, len(body))
 	for k, v := range body {
-		// Convert any value to string, matching Python's str() behavior.
-		// Python's str(True)="True", str(False)="False" — capitalize bools.
-		var s string
 		switch val := v.(type) {
 		case bool:
 			if val {
-				s = "True"
+				values[k] = "True"
 			} else {
-				s = "False"
+				values[k] = "False"
 			}
 		default:
-			s = fmt.Sprintf("%v", v)
+			values[k] = fmt.Sprintf("%v", v)
 		}
-		_, err := h.db.ExecContext(r.Context(),
+	}
+	// One request's settings are written together (one transaction): a later PUT can never
+	// land between two of its keys and be half overwritten by the rest (#3547: the dashboard
+	// saved welcome_choice and welcome_pending, and a PUT in between lost its welcome_pending).
+	tx, err := h.db.BeginTxx(r.Context(), nil)
+	if err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	defer tx.Rollback()
+	for k, s := range values {
+		if _, err := tx.ExecContext(r.Context(),
 			"INSERT INTO user_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-			k, s)
-		if err != nil {
+			k, s); err != nil {
 			errInternalServer(w, err.Error())
 			return
 		}
-		// Apply select settings live so new WebSocket attaches see the change
-		// without requiring a server restart.
+	}
+	if err := tx.Commit(); err != nil {
+		errInternalServer(w, err.Error())
+		return
+	}
+	// Apply select settings live so new WebSocket attaches see the change
+	// without requiring a server restart.
+	for k, s := range values {
 		if k == "terminal_replay_bytes" {
 			if n, err := strconv.Atoi(s); err == nil {
 				ptymanager.SetReplayBytes(n)
