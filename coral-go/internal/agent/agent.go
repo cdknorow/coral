@@ -431,28 +431,35 @@ func joinQuoted(parts, raw []string, quote func(string) string, callOp bool) str
 
 // writeTempFile creates a temp file with an unpredictable name using os.CreateTemp
 // (O_CREATE|O_EXCL) to prevent symlink attacks. The file name includes the session
-// ID for later cleanup via CleanupTempFiles. Returns the file path.
+// ID for later cleanup via CleanupTempFiles. Returns the file path, or "" when the
+// file can't be created or fully written: there is no fallback to a predictable name
+// in the shared temp folder, which another user could plant first (#3601 W12).
+// Callers leave the argument out when the path is "".
 func writeTempFile(prefix, id, ext string, content []byte) string {
 	// The path is typed into the launch line inside $(cat …): the id (a session id,
 	// possibly from a request) keeps only safe characters (#3362).
 	id = safeFileID(id)
 	pattern := fmt.Sprintf("coral_%s_%s_*.%s", prefix, id, ext)
-	f, err := os.CreateTemp("", pattern)
+	f, err := createTemp("", pattern)
 	if err != nil {
-		slog.Warn("failed to create temp file", "prefix", prefix, "id", id, "error", err)
-		// Fall back to predictable path so launch can still attempt to proceed
-		path := filepath.Join(os.TempDir(), fmt.Sprintf("coral_%s_%s.%s", prefix, id, ext))
-		if writeErr := os.WriteFile(path, content, 0600); writeErr != nil {
-			slog.Warn("failed to write temp file", "path", path, "error", writeErr)
-		}
-		return path
+		slog.Error("failed to create temp file; launching without it", "prefix", prefix, "id", id, "error", err)
+		return ""
 	}
-	defer f.Close()
-	if _, err := f.Write(content); err != nil {
-		slog.Warn("failed to write temp file content", "path", f.Name(), "error", err)
+	_, err = f.Write(content)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		// A half-written prompt or settings file is never handed to the agent.
+		slog.Error("failed to write temp file; launching without it", "path", f.Name(), "error", err)
+		os.Remove(f.Name())
+		return ""
 	}
 	return f.Name()
 }
+
+// createTemp is os.CreateTemp; tests replace it to make the create or the write fail.
+var createTemp = os.CreateTemp
 
 // safeFileID keeps letters, digits, '-' and '_' (a UUID is unchanged); anything else
 // becomes '_'.

@@ -171,8 +171,11 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 		parts = append(parts, "--session-id", params.SessionID)
 	}
 
-	settingsFile := claudeSettingsFile(params, effectiveID)
-	parts = append(parts, "--settings", settingsFile)
+	// No settings file (the temp folder refused it, logged): Claude still reads its own
+	// settings, without Coral's hooks and prompt, rather than a guessable path.
+	if settingsFile := claudeSettingsFile(params, effectiveID); settingsFile != "" {
+		parts = append(parts, "--settings", settingsFile)
+	}
 
 	if len(params.Flags) > 0 {
 		parts = append(parts, params.Flags...)
@@ -184,10 +187,11 @@ func (a *ClaudeAgent) BuildLaunchCommand(params LaunchParams) string {
 	// without relying on fragile tmux send-keys delivery.
 	cliPrompt := BuildBoardActionPrompt(params.boardPromptName(), params.Role, params.Prompt, params.PromptOverrides, params.BoardType)
 	if cliPrompt != "" {
-		promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt))
-		arg := FormatPromptFileArg(promptFile)
-		raw = append(raw, arg)
-		parts = append(parts, arg)
+		if promptFile := writeTempFile("prompt", effectiveID, "txt", []byte(cliPrompt)); promptFile != "" {
+			arg := FormatPromptFileArg(promptFile)
+			raw = append(raw, arg)
+			parts = append(parts, arg)
+		}
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, "claude")
@@ -301,7 +305,10 @@ func appendPermissionMode(parts []string, params LaunchParams) []string {
 // the args name: the caller removes it once the command has exited.
 func (a *ClaudeAgent) PrintArgs(params LaunchParams) (args []string, settingsFile string) {
 	settingsFile = claudeSettingsFile(params, params.SessionID)
-	args = []string{"--print", "--no-session-persistence", "--settings", settingsFile}
+	args = []string{"--print", "--no-session-persistence"}
+	if settingsFile != "" {
+		args = append(args, "--settings", settingsFile)
+	}
 	args = append(args, params.Flags...)
 	return appendPermissionMode(args, params), settingsFile
 }

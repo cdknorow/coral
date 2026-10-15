@@ -249,10 +249,11 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	sysParts = appendCoralSessionMarker(sysParts, params.SessionID)
 
 	if len(sysParts) > 0 {
-		sysFile := writeTempFile("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n")))
-		instructions := fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
-		raw = append(raw, instructions)
-		parts = append(parts, "-c", instructions)
+		if sysFile := writeTempFile("codex_instructions", params.SessionID, "md", []byte(strings.Join(sysParts, "\n\n"))); sysFile != "" {
+			instructions := fmt.Sprintf(`developer_instructions="%s"`, formatCatSubstitution(sysFile))
+			raw = append(raw, instructions)
+			parts = append(parts, "-c", instructions)
+		}
 	}
 
 	// Codex does not read Claude's settings.json, so install Coral's activity
@@ -380,10 +381,11 @@ func (a *CodexAgent) BuildLaunchCommand(params LaunchParams) string {
 	}
 
 	if actionPrompt != "" {
-		promptFile := writeTempFile("codex_prompt", params.SessionID, "txt", []byte(actionPrompt))
-		arg := FormatPromptFileArg(promptFile)
-		raw = append(raw, arg)
-		parts = append(parts, arg)
+		if promptFile := writeTempFile("codex_prompt", params.SessionID, "txt", []byte(actionPrompt)); promptFile != "" {
+			arg := FormatPromptFileArg(promptFile)
+			raw = append(raw, arg)
+			parts = append(parts, arg)
+		}
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, "codex")

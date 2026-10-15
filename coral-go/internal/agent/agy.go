@@ -364,10 +364,11 @@ func (a *AgyAgent) BuildLaunchCommand(params LaunchParams) string {
 
 	if len(promptSections) > 0 {
 		fullPrompt := strings.Join(promptSections, "\n\n")
-		promptFile := writeTempFile("agy_prompt", params.SessionID, "txt", []byte(fullPrompt))
-		arg := FormatPromptFileArg(promptFile)
-		raw = append(raw, arg)
-		parts = append(parts, "-i", arg)
+		if promptFile := writeTempFile("agy_prompt", params.SessionID, "txt", []byte(fullPrompt)); promptFile != "" {
+			arg := FormatPromptFileArg(promptFile)
+			raw = append(raw, arg)
+			parts = append(parts, "-i", arg)
+		}
 	}
 
 	parts, raw = withSessionToken(parts, raw, params, a.AgentType())
