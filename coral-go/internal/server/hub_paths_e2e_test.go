@@ -18,6 +18,7 @@ import (
 	"nhooyr.io/websocket/wsjson"
 
 	"github.com/cdknorow/coral/internal/cloud"
+	"github.com/cdknorow/coral/internal/store"
 	"github.com/cdknorow/coral/pkg/tunnel"
 )
 
@@ -120,6 +121,28 @@ func TestHubPathsThroughTheTunnel(t *testing.T) {
 	assert.Contains(t, hubFiles, "README.md")
 	assert.NotContains(t, hubFiles, ".env.local")
 	assert.NotContains(t, hubFiles, "keys/id_rsa")
+
+	// A "~" path the hub sends in a body is expanded (resume, launch in a folder), and an error
+	// that quotes it doesn't echo the real home path (Security's #3559 review). The tunnel's
+	// query allow-list refuses "~" in file parameters, so bodies are where it arrives.
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"launch"}`, js).Code)
+	launch := func(dir string) *httptest.ResponseRecorder {
+		return call(h, "POST", "/api/sessions/launch", `{"working_dir":"`+dir+`","agent_type":"terminal"}`, mergeHdr(hub, js))
+	}
+	bad := launch("~/nope")
+	assert.NotEqual(t, 200, bad.Code, bad.Body.String())
+	noHome("launch in ~/nope", bad.Body.String())
+	t.Logf("launch ~/nope -> %d %s", bad.Code, bad.Body.String())
+	good := launch("~/work/proj")
+	require.Equal(t, 200, good.Code, good.Body.String())
+	var started map[string]any
+	require.NoError(t, json.Unmarshal(good.Body.Bytes(), &started))
+	noHome("launch answer", started)
+	ls, err := store.NewSessionStore(r.db).GetLiveSession(context.Background(), started["session_id"].(string))
+	require.NoError(t, err)
+	require.NotNil(t, ls)
+	assert.Equal(t, r.work, ls.WorkingDir, "the hub's ~/work/proj started in the real folder")
+	require.Equal(t, 200, call(h, "PUT", "/api/cloud/max-mode", `{"mode":"view"}`, js).Code)
 
 	// /ws/coral through the tunnel.
 	ts := httptest.NewServer(h)

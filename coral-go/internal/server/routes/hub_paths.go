@@ -5,7 +5,7 @@ package routes
 // the account: the JSON answer's path fields show it as "~/..." (a display form; the hub's
 // grouping by folder still works, since one folder always maps to one form), and the fields
 // the hub never needs (log_path, log_file, tmux_command, source_file) are left out. A tunneled
-// request's own path fields and query parameters starting with "~" are expanded back, so a
+// request's own JSON body path fields starting with "~" are expanded back, so a
 // path the hub got from Coral can be sent to it again. Field names are a fixed list, not a
 // text replace over the body. File lists leave out hidden files' names (hubVisibleFiles).
 // Requests from this computer are unchanged.
@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,12 +26,20 @@ import (
 	"github.com/cdknorow/coral/internal/store"
 )
 
-// hubPathFields hold a path; one under the home directory is shown as "~/...".
+// hubPathFields hold a path; one under the home directory is shown as "~/...". Only string
+// values are rewritten: a new field holding a list of paths (dirs, roots, recent folders) needs
+// its own entry and handling here. A tunneled request's nested field with one of these names
+// and a "~" value is expanded too, whoever wrote it, and its body is re-marshalled.
 var hubPathFields = map[string]bool{
 	"working_directory": true, "working_dir": true, "default_working_dir": true, "repo_path": true,
 	"worktree_path": true, "git_root": true, "cwd": true, "root": true, "dir": true,
 	"directory": true, "folder": true, "path": true, "filepath": true, "file": true,
 }
+
+// hubTextFields are messages that may quote a path inside their text (an error naming the
+// file it couldn't open); a home directory in them is shown as "~" wherever it starts a path.
+// A fixed list of three, not a rewrite of every string (Security's #3559 review).
+var hubTextFields = map[string]bool{"error": true, "detail": true, "message": true}
 
 // hubDroppedFields name files on this computer the hub has no use for.
 var hubDroppedFields = map[string]bool{
@@ -76,6 +85,43 @@ func hubDisplayPath(p string) string {
 	return p
 }
 
+// hubDisplayText shows each home directory inside s as "~" where it is a whole path prefix:
+// not preceded by a path character and followed by a separator or the end of a path.
+func hubDisplayText(s string) string {
+	homes := hubHomes()
+	// The longer form first, so a resolved home that contains the given one is matched whole.
+	order := append([]string(nil), homes...)
+	sort.Slice(order, func(i, j int) bool { return len(order[i]) > len(order[j]) })
+	for _, home := range order {
+		var b strings.Builder
+		rest := s
+		for {
+			i := strings.Index(rest, home)
+			if i < 0 {
+				b.WriteString(rest)
+				break
+			}
+			end := i + len(home)
+			before := i == 0 || !hubPathChar(rest[i-1])
+			after := end == len(rest) || rest[end] == '/' || rest[end] == '\\' || !hubPathChar(rest[end])
+			b.WriteString(rest[:i])
+			if before && after {
+				b.WriteString("~")
+			} else {
+				b.WriteString(home)
+			}
+			rest = rest[end:]
+		}
+		s = b.String()
+	}
+	return s
+}
+
+// hubPathChar: a byte that can continue a file name.
+func hubPathChar(c byte) bool {
+	return c == '.' || c == '-' || c == '_' || c == '/' || c == '\\' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
+}
+
 // hubExpandPath turns "~" or "~/..." back into the home directory; any other value is unchanged.
 func hubExpandPath(p string) string {
 	homes := hubHomes()
@@ -104,6 +150,8 @@ func hubRewrite(v any, f func(string) string, drop bool) {
 			if s, ok := val.(string); ok {
 				if hubPathFields[k] {
 					x[k] = f(s)
+				} else if drop && hubTextFields[k] {
+					x[k] = hubDisplayText(s)
 				}
 				continue
 			}
@@ -165,25 +213,10 @@ func HubPaths(next http.Handler) http.Handler {
 	})
 }
 
-// hubExpandRequest expands "~" in a tunneled request's path query parameters and JSON body
-// fields, so a display path the hub got back from Coral works when it's sent again.
+// hubExpandRequest expands "~" in a tunneled request's JSON body path fields, so a display path
+// the hub got back from Coral works when it's sent again (resume, launch in a folder). Query
+// parameters need nothing: the tunnel's allow-list refuses a file reference starting with "~".
 func hubExpandRequest(r *http.Request) {
-	if q := r.URL.Query(); len(q) > 0 {
-		changed := false
-		for k, vals := range q {
-			if !hubPathFields[k] {
-				continue
-			}
-			for i, s := range vals {
-				if e := hubExpandPath(s); e != s {
-					vals[i], changed = e, true
-				}
-			}
-		}
-		if changed {
-			r.URL.RawQuery = q.Encode()
-		}
-	}
 	if r.Body == nil || r.Method == http.MethodGet || r.Method == http.MethodHead ||
 		!strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
 		return

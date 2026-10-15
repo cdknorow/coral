@@ -131,28 +131,24 @@ func TestHubPathsPassesOtherAnswers(t *testing.T) {
 	assert.Equal(t, "diff --git a/x b/x\n", rec.Body.String())
 }
 
-// A tunneled request's own "~" paths (body fields and query parameters) are expanded, so a
+// A tunneled request's own "~" paths (JSON body fields) are expanded, so a
 // display path the hub got from Coral can be sent back; a local request is left alone.
 func TestHubPathsExpandsTunneledRequests(t *testing.T) {
 	home, _ := hubTestHome(t)
 	var gotBody map[string]any
-	var gotQuery string
 	h := hubTestRouter(func(w http.ResponseWriter, r *http.Request) {
 		gotBody = nil
 		_ = json.NewDecoder(r.Body).Decode(&gotBody)
-		gotQuery = r.URL.Query().Get("working_directory")
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 	body := `{"working_dir":"~/proj","prompt":"~/not a path field","agents":[{"cwd":"~"}]}`
-	hubDo(t, h, "POST", "/api/x?working_directory=~/q&other=~/r", body, true, "Content-Type", "application/json")
+	hubDo(t, h, "POST", "/api/x", body, true, "Content-Type", "application/json")
 	assert.Equal(t, home+"/proj", gotBody["working_dir"])
 	assert.Equal(t, "~/not a path field", gotBody["prompt"])
 	assert.Equal(t, home, gotBody["agents"].([]any)[0].(map[string]any)["cwd"])
-	assert.Equal(t, home+"/q", gotQuery)
 
-	hubDo(t, h, "POST", "/api/x?working_directory=~/q", body, false, "Content-Type", "application/json")
+	hubDo(t, h, "POST", "/api/x", body, false, "Content-Type", "application/json")
 	assert.Equal(t, "~/proj", gotBody["working_dir"], "local requests are unchanged")
-	assert.Equal(t, "~/q", gotQuery)
 }
 
 // /ws/coral's frames: the rows are shared between connections, so a hub's copy is rewritten
@@ -205,4 +201,27 @@ func TestHubPathsKeepsOtherRequestBodies(t *testing.T) {
 	big := `{"content":"` + strings.Repeat("x", 9<<20) + `"}`
 	hubDo(t, h, "POST", "/api/x", big, true, "Content-Type", "application/json")
 	assert.Equal(t, len(big), len(got), "a body over the 8 MiB look is passed through whole")
+}
+
+// Security's #3559 review: an error, detail or message that quotes a path under home shows
+// "~" there too, at a path boundary only; other strings are left alone.
+func TestHubDisplayTextInMessages(t *testing.T) {
+	home, real := hubTestHome(t)
+	for in, want := range map[string]string{
+		"open " + real + "/nope: no such file":   "open ~/nope: no such file",
+		"'" + home + "' is not allowed":          "'~' is not allowed",
+		"two: " + home + "/a and " + real + "/b": "two: ~/a and ~/b",
+		"sibling " + home + "x/y stays":          "sibling " + home + "x/y stays",
+		"nothing here":                           "nothing here",
+	} {
+		assert.Equal(t, want, hubDisplayText(in), in)
+	}
+	h := hubTestRouter(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "open " + real + "/nope: no such file", "detail": home, "hint": home + "/x"})
+	})
+	rec, m := hubDo(t, h, "GET", "/api/x", "", true)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Equal(t, "open ~/nope: no such file", m["error"])
+	assert.Equal(t, "~", m["detail"])
+	assert.Equal(t, home+"/x", m["hint"], "a field outside the three lists is left as it is")
 }
