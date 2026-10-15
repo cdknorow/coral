@@ -55,7 +55,7 @@ go build -o bin/coral-coordination-report ./cmd/coral-coordination-report
 ```bash
 ./bin/coral-coordination-report \
   --board death-or-trade-ai-auto \
-  --db /Users/cknorowski/.coral/messageboard.db \
+  --db /Users/me/.coral/messageboard.db \
   --since 2026-09-29T06:11:53Z
 ```
 *Note: Direct SQLite connections use URI query parameters `file:...db?mode=ro&_query_only=true` to guarantee that SQLite prohibits any write operations.*

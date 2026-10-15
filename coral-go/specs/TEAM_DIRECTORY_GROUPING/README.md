@@ -177,7 +177,7 @@ Examples:
 
 - header: `~/Software/coralai/coral-go`
 - chip: `docs-site`
-- tooltip: `/Users/cknorow/Software/docs/docs-site`
+- tooltip: `/Users/me/Software/docs/docs-site`
 
 ## Interaction Rules
 

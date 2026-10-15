@@ -54,7 +54,7 @@ coral-go/pkg/frontend/static/agent_docs/*
 icons/history.mp4
 icons/main_loop.mp4
 *.pem
-coral-go/Userscknorowski.coral/*
+coral-go/Users*.coral/*
 
 # Generated route-test checkout snapshots
 coral-go/internal/server/routes/artifacts/

@@ -1830,7 +1830,7 @@ func TestBuildLaunchCommand_HooksInSettings(t *testing.T) {
 
 // Regression: the launchers used to strip ':' and '/' from every exported
 // value, turning CORAL_URL into "http127.0.0.18420" and CORAL_DIR into
-// "Userscknorowski.coral". Hooks then posted to a garbage URL (so Codex
+// "Usersme.coral". Hooks then posted to a garbage URL (so Codex
 // agents showed no activity) and coral-board wrote its state into a relative
 // directory inside the repo.
 func TestLaunchCommands_PreserveURLAndPathEnvValues(t *testing.T) {

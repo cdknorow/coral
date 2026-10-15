@@ -116,7 +116,7 @@ func TestTask1589_CodexActivityAssociation(t *testing.T) {
 		require.NoError(t, os.Chtimes(rolloutB, later, later))
 
 		// Both agents have the same working directory
-		cwd := "/Users/cknorowski/Software/death_or_trade"
+		cwd := "/Users/me/Software/project"
 		_ = cwd
 
 		resolvedA := resolveCodexTranscriptByMarker(tempBase, coralID_A)
