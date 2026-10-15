@@ -764,6 +764,8 @@ func (s *Server) buildRouter() chi.Router {
 	autoAccept.Start(context.Background())
 	go autoAccept.Run(context.Background())
 	go sessHandler.RecoverPersonalTaskNotifications(context.Background())
+	// Sessions launched before their CLI version was recorded get it now (#3573).
+	go sessHandler.BackfillCLIVersions(context.Background())
 	notifHandler := routes.NewNotificationHandler(notifStore)
 	r.Post("/api/notifications", notifHandler.Create)
 	r.Get("/api/board/projects", boardHandler.ListProjects)

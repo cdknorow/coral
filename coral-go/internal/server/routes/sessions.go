@@ -54,6 +54,10 @@ import (
 
 // SessionsHandler handles all live session API endpoints.
 type SessionsHandler struct {
+	// cliVersionOf finds a CLI's version (agent.CLIVersion; tests replace it), and
+	// cliVersionTried the sessions a missing version was already looked up for (#3573).
+	cliVersionOf      func(settings map[string]string, agentType string) string
+	cliVersionTried   sync.Map
 	roleRes           roleReservations                          // #3543: numbered names picked for launches not yet subscribed
 	agentOperatorGate func(r *http.Request, action string) bool // #3536: Operator-only choices in a request body
 	// wsHeartbeat overrides wsHeartbeatInterval when set (nanoseconds; tests).
@@ -6898,11 +6902,53 @@ func runBounded(limit int, fns []func()) {
 // recordCLIVersion records which CLI version a launched agent runs (#3481). It asks the
 // CLI (--version, cached per binary), so it runs after the launch, not before.
 func (h *SessionsHandler) recordCLIVersion(sessionID, agentType string, settings map[string]string) {
-	if v := agent.CLIVersion(settings, agentType); v != "" {
+	versionOf := agent.CLIVersion
+	if h.cliVersionOf != nil {
+		versionOf = h.cliVersionOf
+	}
+	if v := versionOf(settings, agentType); v != "" {
 		if err := h.ss.SetCLIVersion(context.Background(), sessionID, v); err != nil {
 			slog.Warn("could not record the agent's CLI version", "session_id", sessionID, "error", err)
 		}
 	}
+}
+
+// BackfillCLIVersions records the CLI version of each live session that has none (#3573). The
+// version is recorded at launch, so an agent launched before #3481, or by a build without it,
+// kept an empty one across restarts, and every decision line said cli_version="". It costs one
+// --version call per CLI binary (cached). The server runs it once, in the background, at start.
+func (h *SessionsHandler) BackfillCLIVersions(ctx context.Context) {
+	live, err := h.ss.GetAllLiveSessions(ctx)
+	if err != nil {
+		return
+	}
+	have, _ := h.ss.CLIVersions(ctx)
+	settings, _ := h.ss.GetSettings(ctx)
+	for _, s := range live {
+		if have[s.SessionID] != "" || s.AgentType == "" {
+			continue
+		}
+		if _, tried := h.cliVersionTried.LoadOrStore(s.SessionID, true); tried {
+			continue
+		}
+		h.recordCLIVersion(s.SessionID, s.AgentType, settings)
+	}
+}
+
+// ensureCLIVersion looks up a session's missing CLI version in the background, once per session
+// (one that started after the backfill, or whose CLI couldn't say), so a decision is never held
+// up by a --version call.
+func (h *SessionsHandler) ensureCLIVersion(sessionID, agentType string) {
+	if sessionID == "" || agentType == "" {
+		return
+	}
+	if _, tried := h.cliVersionTried.LoadOrStore(sessionID, true); tried {
+		return
+	}
+	go func() {
+		settings, _ := h.ss.GetSettings(context.Background())
+		h.recordCLIVersion(sessionID, agentType, settings)
+	}()
 }
 
 // boardLabel is a board's display name for an agent's prompt (#3536); "" if unknown.
