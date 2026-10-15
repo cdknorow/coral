@@ -27,7 +27,9 @@ func TestRestartAndResumeRecoverAGoneTerminal(t *testing.T) {
 			ctx := context.Background()
 			const sid = "00000000-0000-0000-0000-000000003213"
 			wd := t.TempDir()
-			// A project setting in the agent's folder: the launch is built for that folder.
+			// A project setting in the agent's folder. Claude Code reads it itself, behind its
+			// folder-trust prompt; Coral never copies it into --settings (#3591). That the launch
+			// is built for this folder shows in the terminal's working directory below.
 			require.NoError(t, os.MkdirAll(filepath.Join(wd, ".claude"), 0o755))
 			require.NoError(t, os.WriteFile(filepath.Join(wd, ".claude", "settings.json"), []byte(`{"env":{"QA_3213_MARKER":"own-folder"}}`), 0o644))
 			require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "team", WorkingDir: wd}))
@@ -62,7 +64,7 @@ func TestRestartAndResumeRecoverAGoneTerminal(t *testing.T) {
 			require.Len(t, m, 2, "launch has a settings file: %s", launched[0])
 			settings, err := os.ReadFile(m[1])
 			require.NoError(t, err)
-			assert.Contains(t, string(settings), "QA_3213_MARKER", "the launch merges the agent's own folder settings")
+			assert.NotContains(t, string(settings), "QA_3213_MARKER", "a repository's settings never reach --settings (#3591)")
 			if route == "resume" {
 				assert.True(t, strings.Contains(launched[0], "11111111-2222-4333-8444-555555555555"), "resume continues the conversation: %s", launched[0])
 			}
