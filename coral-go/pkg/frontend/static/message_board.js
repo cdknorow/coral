@@ -428,7 +428,7 @@ async function loadBoardSubscribers(project) {
             const sessionName = escapeAttr(s.session_name || '');
             const icon = s.icon ? `<span class="agent-icon">${escapeHtml(s.icon)}</span> ` : '';
             return `<li style="padding:6px 0;border-bottom:1px solid var(--border)">
-                <div style="font-weight:600;font-size:12px">${icon}<a href="javascript:void(0)" class="subscriber-history-link" onclick="navigateToAgentSession('${jsStr(sessionName)}', '${jsStr(displayName)}')" title="View chat history">${escapeHtml(s.job_title)}</a></div>
+                <div style="font-weight:600;font-size:12px">${icon}<button type="button" class="subscriber-history-link" onclick="navigateToAgentSession('${jsStr(sessionName)}', '${jsStr(displayName)}')" title="View chat history">${escapeHtml(s.job_title)}</button></div>
                 <div style="font-size:10px;color:var(--text-muted)">${escapeHtml(s.subscriber_id)}</div>
             </li>`;
         }).join('');

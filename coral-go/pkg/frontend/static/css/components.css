@@ -339,6 +339,30 @@
 }
 
 /* Message board markdown content */
+/* Links in a post and a subscriber's name: the theme's link colour, not the browser's #0000ee,
+   which is unreadable on the dark theme (#3548); underlined on hover; the focus ring is the
+   page-wide one (base.css). */
+.mb-message-body a,
+.board-artifact-link,
+.subscriber-history-link {
+    color: var(--accent);
+    text-decoration: none;
+}
+.mb-message-body a:hover,
+.board-artifact-link:hover,
+.subscriber-history-link:hover {
+    text-decoration: underline;
+}
+/* A subscriber's name opens that agent: a button that reads as a link. */
+button.subscriber-history-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .mb-message-body p {
     margin: 0 0 6px;
 }
