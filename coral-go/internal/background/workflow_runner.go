@@ -569,7 +569,9 @@ var printStepCLIs = map[string]bool{
 	at.Codex:  false, // to verify: "codex exec" reads stdin with no prompt argument; pin --sandbox and the approval policy
 	at.Gemini: false, // to verify: "gemini -p" appends to stdin input; pin --approval-mode (headless can auto-approve)
 	at.Agy:    false, // to verify: "agy --print" takes the prompt as its value (stdin only with stream-json); pin --mode
-	at.Pi:     false, // to verify: not installed on the test machines yet
+	// agy's older name, accepted everywhere else in Coral (QA's review of #3522).
+	at.Antigravity: false,
+	at.Pi:          false, // to verify: not installed on the test machines yet
 }
 
 // PrintStepError says why a non-interactive step can't run on agentType, or "" when it can:

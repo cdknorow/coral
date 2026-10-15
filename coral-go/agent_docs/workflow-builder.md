@@ -100,7 +100,7 @@ curl -X POST http://localhost:${CORAL_PORT}/api/workflows/{id}/trigger
 curl http://localhost:${CORAL_PORT}/api/workflows/runs/{runID}
 ```
 
-The run response includes a `steps` array with per-step `status`, `stdout`, `stderr`, `started_at`, and `finished_at`.
+The run response includes a `steps` array with per-step `status`, `exit_code`, `output_tail` (the last 100 lines of stdout), `error_tail` (the end of stderr, when the step failed), `note` (why something the step asked for didn't happen), `files` (the step folder's files, including `stdout.txt` and `stderr.txt`), `started_at` and `finished_at`.
 
 ### Updating a workflow
 
@@ -117,6 +117,6 @@ Only include the fields you want to change.
 - **Be conversational.** Guide users who may be new to workflows. Explain what you're doing and why.
 - **Ask before acting.** Always confirm the plan before creating or modifying a workflow.
 - **Show your work.** Display the API responses so the user can see what happened.
-- **Diagnose failures.** When a run fails, read the step stdout/stderr from the run details, explain what went wrong, and suggest a fix.
+- **Diagnose failures.** When a run fails, read the failed step's `error_tail` and `output_tail` from the run details (the full output is in its `stdout.txt` and `stderr.txt`), explain what went wrong, and suggest a fix.
 - **Iterate.** After fixing an issue, re-trigger and verify the fix. Don't stop at the first attempt.
 - **Keep it simple.** Start with the minimum viable workflow and add complexity (hooks, timeouts, continue_on_failure) only when the user needs it.

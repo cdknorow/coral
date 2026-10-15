@@ -17,7 +17,7 @@ func TestValidateStepsPrintStepCLIs(t *testing.T) {
 		return []json.RawMessage{b}
 	}
 	assert.Equal(t, "", validateSteps(step("claude", false), nil), "claude print steps are supported")
-	for _, cli := range []string{"codex", "gemini", "agy", "pi"} {
+	for _, cli := range []string{"codex", "gemini", "agy", "antigravity", "pi"} {
 		assert.Contains(t, validateSteps(step(cli, false), nil), "aren't supported for "+cli+" yet", cli)
 		assert.Equal(t, "", validateSteps(step(cli, true), nil), "%s: an interactive step is allowed", cli)
 	}
