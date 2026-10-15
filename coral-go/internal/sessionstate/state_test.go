@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -278,5 +279,59 @@ func TestRequestEventsAndTypedNotifications(t *testing.T) {
 	}
 	if e := NewEvent("tool_use", "s", &detail); e.Kind != "" {
 		t.Errorf("tool_use has no kind, got %q", e.Kind)
+	}
+}
+
+// #3481 phase 1 (Backend's MUST 3 and note): a request stays open until its own tool
+// finishes or the turn ends. Claude runs tools in parallel, and each hook is its own
+// process, so another tool's event (in either order) must not clear it.
+func TestRequestsClearPerTool(t *testing.T) {
+	at := func(s int) time.Time { return time.Date(2026, 10, 15, 1, 0, s, 0, time.UTC) }
+	req := func(tool string, s int) Event {
+		return Event{Type: "permission_request", Summary: "Waiting for the user: permission (" + tool + ")", Kind: "permission", ToolName: tool, At: at(s)}
+	}
+	toolEv := func(tool string, s int) Event {
+		return Event{Type: "tool_use", Summary: "Ran", ToolName: tool, At: at(s)}
+	}
+	p := Event{Type: "prompt_submit", Summary: "User submitted prompt", At: at(0)}
+	s := Event{Type: "stop", Summary: "Agent stopped", At: at(30)}
+
+	cases := []struct {
+		name          string
+		events        []Event
+		needs, inTurn bool
+	}{
+		{"another tool finishing doesn't clear Bash's request", []Event{p, req("Bash", 1), toolEv("Read", 2)}, true, false},
+		{"its own tool finishing (approved) clears it", []Event{p, req("Bash", 1), toolEv("Read", 2), toolEv("Bash", 9)}, false, true},
+		{"swapped arrival: an earlier tool's event after the request", []Event{p, req("Bash", 2), toolEv("Read", 1)}, true, false},
+		{"two requests: one approved, the other still open", []Event{p, req("Bash", 1), req("Edit", 1), toolEv("Bash", 5)}, true, false},
+		{"the turn ends (a denial shows as the transcript's stop)", []Event{p, req("Bash", 1), s}, false, false},
+		{"a notification-only request clears on any tool (older CLIs)", []Event{p, note(permission), toolEv("Read", 3)}, false, true},
+	}
+	for _, c := range cases {
+		got := Derive(Input{Events: c.events})
+		if got.NeedsInput != c.needs || got.InTurn != c.inTurn || got.OwnRequest != c.needs {
+			t.Errorf("%s: needs=%v inTurn=%v own=%v, want %v %v", c.name, got.NeedsInput, got.InTurn, got.OwnRequest, c.needs, c.inTurn)
+		}
+	}
+
+	// The fields the gate reads.
+	got := Derive(Input{Events: []Event{p, toolEv("Read", 4), s, {Type: "prompt_submit", At: at(40)}, req("Bash", 41)}})
+	if !got.Since.Equal(at(41)) || !got.LastEvent.Equal(at(41)) || !got.LastStop.Equal(at(30)) {
+		t.Errorf("since=%v last=%v stop=%v", got.Since, got.LastEvent, got.LastStop)
+	}
+	got = Derive(Input{Events: []Event{p, {Type: "session_end", At: at(50)}}})
+	if !got.Gone || got.InTurn {
+		t.Errorf("session_end: gone=%v inTurn=%v", got.Gone, got.InTurn)
+	}
+	// Coral's own held notice shows Needs input but is not the agent's request.
+	got = Derive(Input{Events: []Event{s, note(HeldInputSummary)}})
+	if !got.NeedsInput || got.OwnRequest {
+		t.Errorf("held notice: needs=%v own=%v", got.NeedsInput, got.OwnRequest)
+	}
+	// A long turn stays InTurn (Working drops after 2 min of staleness).
+	got = Derive(Input{Events: []Event{p, toolEv("Read", 4)}, StalenessSeconds: 600})
+	if !got.InTurn || got.Working {
+		t.Errorf("stale turn: inTurn=%v working=%v", got.InTurn, got.Working)
 	}
 }

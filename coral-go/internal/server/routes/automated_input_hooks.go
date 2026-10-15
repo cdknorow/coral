@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/cdknorow/coral/internal/logparse"
 	"github.com/cdknorow/coral/internal/ptymanager"
@@ -26,6 +27,7 @@ const heldForInputBoxSummary = "Coral is holding automated messages until the te
 // and a way to surface a send held too long. The server calls it once.
 func (h *SessionsHandler) InstallAutomatedInputHooks() {
 	ptymanager.SetNeedsInputFunc(h.gateNeedsInput)
+	ptymanager.SetStateFunc(h.gateState)
 	ptymanager.SetHeldTooLongFunc(h.recordHeldTooLong)
 	ptymanager.SetHeldEndedFunc(h.recordHeldEnded)
 }
@@ -88,4 +90,62 @@ func (h *SessionsHandler) recordHeldNote(name, sessionID, summary string) {
 	}); err != nil {
 		slog.Warn("could not record held automated input", "session", name, "error", err)
 	}
+}
+
+// gateState gives the gate the agent's state from its own signals (#3481, #3475
+// phase 1): its hook events, plus the transcript's end of a turn where a CLI fires no
+// hook (a denial, an interrupt). ok is false when the session has sent no signal at all
+// (no hooks, or none yet): the gate then keeps its screen rule.
+//   - Gone: the session ended (SessionEnd).
+//   - Blocked: a request the agent itself made is open (PermissionRequest, Elicitation,
+//     its permission notification), with what it waits on. Coral's own held notice is
+//     not the agent's request and never blocks.
+//   - InTurn: a prompt or a tool event is the latest.
+//   - Idle: otherwise (a stop, the session's start).
+func (h *SessionsHandler) gateState(ctx context.Context, name, agentType, sessionID string) (ptymanager.AgentState, bool) {
+	if sessionID == "" {
+		_, sessionID = logparse.ParseSessionName(name)
+	}
+	if sessionID == "" || h.ts == nil {
+		return ptymanager.AgentState{}, false
+	}
+	byID, err := h.ts.GetSessionStateEvents(ctx, []string{sessionID})
+	events := byID[sessionID]
+	if err != nil || len(events) == 0 {
+		return ptymanager.AgentState{}, false
+	}
+	in := SessionStateInput{}
+	for _, ev := range events {
+		in.Events = append(in.Events, ev.StateEvent())
+	}
+	workingDir := ""
+	if ls, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && ls != nil {
+		workingDir = ls.WorkingDir
+		if agentType == "" {
+			agentType = ls.AgentType
+		}
+	}
+	h.applyTranscriptState(&in, events, agentType, sessionID, workingDir)
+	st := sessionstate.Derive(in)
+	as := ptymanager.AgentState{
+		State:      ptymanager.StateIdle,
+		Since:      st.Since,
+		LastEvent:  st.LastEvent,
+		LastStop:   st.LastStop,
+		CLIVersion: h.ss.CLIVersion(ctx, sessionID),
+	}
+	switch {
+	case st.Gone:
+		as.State = ptymanager.StateGone
+	case st.OwnRequest:
+		as.State = ptymanager.StateBlocked
+		as.Kind = st.WaitingKind
+		if as.Kind == "" {
+			as.Kind = "permission"
+		}
+	case st.InTurn:
+		as.State = ptymanager.StateInTurn
+	}
+	_, as.ToolPending = h.pending.get(sessionID, time.Now())
+	return as, true
 }

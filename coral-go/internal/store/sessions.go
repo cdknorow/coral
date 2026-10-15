@@ -900,6 +900,13 @@ func (s *SessionStore) SetCLIVersion(ctx context.Context, sessionID, version str
 	return err
 }
 
+// CLIVersion returns the recorded CLI version of one session, or "".
+func (s *SessionStore) CLIVersion(ctx context.Context, sessionID string) string {
+	var v sql.NullString
+	_ = s.db.Reader().GetContext(ctx, &v, "SELECT cli_version FROM live_sessions WHERE session_id = ?", sessionID)
+	return v.String
+}
+
 // CLIVersions returns the recorded CLI version of each live session that has one.
 func (s *SessionStore) CLIVersions(ctx context.Context) (map[string]string, error) {
 	var rows []struct {

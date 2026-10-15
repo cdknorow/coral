@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/cdknorow/coral/internal/board"
+	"github.com/cdknorow/coral/internal/sessionstate"
 	"log"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -65,6 +67,19 @@ type AgentEvent struct {
 	// RefID is the activity's id at its source: tool_use_id for tool calls,
 	// the API request id for thinking turns.
 	RefID *string `db:"ref_id" json:"ref_id,omitempty"`
+}
+
+// StateEvent is the event as the session state derivation reads it: its type,
+// summary, kind (from its detail), tool and time (#3481).
+func (e AgentEvent) StateEvent() sessionstate.Event {
+	ev := sessionstate.NewEvent(e.EventType, e.Summary, e.DetailJSON)
+	if e.ToolName != nil {
+		ev.ToolName = *e.ToolName
+	}
+	if t, err := time.Parse(time.RFC3339Nano, e.CreatedAt); err == nil {
+		ev.At = t
+	}
+	return ev
 }
 
 // ToolCount holds a tool name and its usage count.
@@ -579,11 +594,14 @@ func (s *TaskStore) GetLatestEventTypes(ctx context.Context, sessionIDs []string
 // safe: notification state is reconstructed from the event log rather than an
 // in-memory latch. Events are returned oldest first for each session.
 //
-// Only the suffix that decides the state is returned: the newest turn boundary
-// (stop, prompt_submit, tool_use, session_reset or auto_accept) and the notifications after
-// it. sessionstate.Derive resets on every boundary, so earlier events cannot
-// change its result, and the suffix keeps the newest timestamp the transcript
-// merge compares against. detail_json is not read; no consumer uses it.
+// Only the suffix that decides the state is returned: the newest boundary
+// (stop, prompt_submit, tool_use, session_reset, auto_accept or session_end) and
+// the events after it. sessionstate.Derive resets on every boundary, so earlier
+// events cannot change its result, and the suffix keeps the newest timestamp the
+// transcript merge compares against. One exception (#3481): a tool_use does not
+// close another tool's open request (Claude runs tools in parallel), so while a
+// permission_request is open since the newest turn boundary (all but tool_use),
+// the suffix starts at the earliest such request.
 func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []string) (map[string][]AgentEvent, error) {
 	if len(sessionIDs) == 0 {
 		return map[string][]AgentEvent{}, nil
@@ -594,13 +612,25 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 	}
 	var rows []AgentEvent
 	if err := s.reader().SelectContext(ctx, &rows,
-		`WITH boundary AS (
+		`WITH turn AS (
 		   SELECT s.value AS sid,
 		          (SELECT x.id FROM agent_events x
 		           WHERE x.session_id = s.value
-		             AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept', 'session_end')
-		           ORDER BY x.created_at DESC, x.id DESC LIMIT 1) AS bid
-		   FROM json_each(?) s)
+		             AND x.event_type IN ('stop', 'prompt_submit', 'session_reset', 'auto_accept', 'session_end')
+		           ORDER BY x.created_at DESC, x.id DESC LIMIT 1) AS tid
+		   FROM json_each(?) s),
+		 boundary AS (
+		   SELECT turn.sid,
+		          COALESCE(
+		            (SELECT x.id FROM agent_events x
+		             WHERE x.session_id = turn.sid AND x.event_type = 'permission_request'
+		               AND (turn.tid IS NULL OR (x.created_at, x.id) > ((SELECT t.created_at FROM agent_events t WHERE t.id = turn.tid), turn.tid))
+		             ORDER BY x.created_at, x.id LIMIT 1),
+		            (SELECT x.id FROM agent_events x
+		             WHERE x.session_id = turn.sid
+		               AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept', 'session_end')
+		             ORDER BY x.created_at DESC, x.id DESC LIMIT 1)) AS bid
+		   FROM turn)
 		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.detail_json, e.created_at
 		 FROM boundary
 		 JOIN agent_events b ON b.id = boundary.bid

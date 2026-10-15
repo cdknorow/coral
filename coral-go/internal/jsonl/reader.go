@@ -38,6 +38,14 @@ type sessionCache struct {
 	toolUseNames map[string]string // tool_use_id → tool_name
 	codexState   codexTurnCache
 	agyState     agyTurnCache
+	claudeState  claudeTurnCache
+}
+
+// claudeTurnCache tracks the latest end of a turn in a Claude transcript (#3481).
+type claudeTurnCache struct {
+	transcriptReadState
+	event string
+	at    time.Time
 }
 
 type codexTurnCache struct {

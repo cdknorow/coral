@@ -161,7 +161,7 @@ func (d *IdleDetector) RunOnce(ctx context.Context) error {
 func needsInput(events []store.AgentEvent) bool {
 	in := sessionstate.Input{}
 	for _, ev := range events {
-		in.Events = append(in.Events, sessionstate.NewEvent(ev.EventType, ev.Summary, ev.DetailJSON))
+		in.Events = append(in.Events, ev.StateEvent())
 	}
 	return sessionstate.Derive(in).NeedsInput
 }

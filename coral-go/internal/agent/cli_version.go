@@ -40,7 +40,11 @@ func CLIVersion(settings map[string]string, agentType string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	out, _ := exec.CommandContext(ctx, path, "--version").Output()
+	cmd := exec.CommandContext(ctx, path, "--version")
+	// A CLI that is a wrapper (node, npm shims) can leave a child holding stdout past
+	// the kill: stop waiting for the pipes 2 s after it (Backend's review).
+	cmd.WaitDelay = 2 * time.Second
+	out, _ := cmd.Output()
 	v := cliVersionRe.FindString(string(out))
 	if ctx.Err() == nil {
 		cliVersions.Store(key, v)

@@ -7,6 +7,7 @@ package sessionstate
 import (
 	"encoding/json"
 	"strings"
+	"time"
 )
 
 // Event is the event subset used to derive a live session state.
@@ -18,6 +19,10 @@ type Event struct {
 	// elicitation), or a notification's notification_type (Claude Code), from the
 	// event's detail (#3481). Empty for older events and other CLIs.
 	Kind string
+	// ToolName is the tool of a tool_use or permission_request, when known.
+	ToolName string
+	// At is when the event was recorded (zero when unknown).
+	At time.Time
 }
 
 // NewEvent builds an Event from a stored event, reading its kind from detailJSON.
@@ -66,6 +71,18 @@ type State struct {
 	Sleeping    bool
 	Stuck       bool
 	Done        bool
+
+	// For the automated-input gate (#3481, #3475 phase 1), from the agent's events:
+	// InTurn: its turn is running (a prompt or a tool event is the latest), however
+	// long ago (unlike Working). OwnRequest: NeedsInput comes from the agent's own
+	// request, not Coral's held notice. Gone: its session ended. Since: when the
+	// current state began; LastEvent and LastStop: the latest event, and end of a turn.
+	InTurn     bool
+	OwnRequest bool
+	Gone       bool
+	Since      time.Time
+	LastEvent  time.Time
+	LastStop   time.Time
 }
 
 // Derive applies one restart-safe state machine.
@@ -88,11 +105,17 @@ func Derive(in Input) State {
 	// What a request replaced, restored when Coral's own held notice is cleared.
 	var beforeType string
 	var beforeAwaiting bool
+	// pending counts the agent's open requests per tool (PermissionRequest). Claude
+	// runs tool calls in parallel, so another tool's event must not clear a request
+	// that is still open (#3481, Backend's MUST 3).
+	pending := map[string]int{}
+	open := 0
 	clearRequest := func() {
 		state.NeedsInput = false
 		state.WaitingReason = ""
 		state.WaitingSummary = ""
 		state.WaitingKind = ""
+		pending, open = map[string]int{}, 0
 	}
 	raise := func(event Event, kind string) {
 		// A request already open keeps its kind: the agent's PermissionRequest says
@@ -109,9 +132,39 @@ func Derive(in Input) State {
 		state.WaitingReason = "notification"
 		state.WaitingSummary = event.Summary
 	}
+	phase := func() string {
+		switch {
+		case state.NeedsInput:
+			return "request"
+		case latestType == "tool_use" || latestType == "prompt_submit":
+			return "turn"
+		case latestType == "":
+			return "none"
+		}
+		return "idle"
+	}
 	for _, event := range in.Events {
+		before := phase()
+		if !event.At.IsZero() {
+			state.LastEvent = event.At
+		}
 		switch event.Type {
-		case "session_reset", "prompt_submit", "tool_use":
+		case "tool_use":
+			// A tool finished. It answers its own tool's request (an approval); a
+			// request for another tool stays open.
+			if open > 0 {
+				if pending[event.ToolName] > 0 {
+					pending[event.ToolName]--
+					open--
+				}
+				if open > 0 {
+					break
+				}
+			}
+			latestType = event.Type
+			clearRequest()
+			state.AwaitingUser = false
+		case "session_reset", "prompt_submit":
 			latestType = event.Type
 			clearRequest()
 			state.AwaitingUser = false
@@ -125,10 +178,15 @@ func Derive(in Input) State {
 			latestType = event.Type
 			clearRequest()
 			state.AwaitingUser = true
+			state.LastStop = event.At
 		case "permission_request":
 			// The agent's own hook (Claude's PermissionRequest or Elicitation) says a
 			// request to the user is open, at once rather than ~6 s later (#3481).
 			raise(event, event.Kind)
+			if event.Kind != "elicitation" {
+				pending[event.ToolName]++
+				open++
+			}
 		case "request_resolved":
 			// An elicitation was answered (accept, decline or cancel): the agent goes on.
 			if state.NeedsInput && state.WaitingKind == "elicitation" {
@@ -140,6 +198,7 @@ func Derive(in Input) State {
 			latestType = ""
 			clearRequest()
 			state.AwaitingUser = false
+			state.Gone = true
 		case "notification":
 			if event.Summary == HeldInputEndedSummary {
 				// Coral's held sends were delivered or dropped: its own notice no
@@ -164,7 +223,15 @@ func Derive(in Input) State {
 				}
 			}
 		}
+		if event.Type != "session_end" {
+			state.Gone = false
+		}
+		if phase() != before && !event.At.IsZero() {
+			state.Since = event.At
+		}
 	}
+	state.InTurn = !state.NeedsInput && (latestType == "tool_use" || latestType == "prompt_submit")
+	state.OwnRequest = state.NeedsInput && state.WaitingSummary != HeldInputSummary
 	state.Working = (latestType == "tool_use" || latestType == "prompt_submit") &&
 		in.StalenessSeconds < 120
 	// No authoritative stuck signal exists in the event schema yet. Keep the
@@ -175,6 +242,8 @@ func Derive(in Input) State {
 		clearRequest()
 		state.AwaitingUser = false
 		state.Working = false
+		state.InTurn = false
+		state.OwnRequest = false
 	}
 	return state
 }

@@ -491,7 +491,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: sleepingMap[sid], Archived: archivedMap[sid]}
 		for _, event := range stateEvents[sid] {
-			stateInput.Events = append(stateInput.Events, newStateEvent(event.EventType, event.Summary, event.DetailJSON))
+			stateInput.Events = append(stateInput.Events, event.StateEvent())
 		}
 		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
 		state := DeriveSessionState(stateInput)

@@ -819,7 +819,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid], Archived: liveArchived[sid]}
 		for _, ev := range stateEvents[sid] {
-			stateInput.Events = append(stateInput.Events, sessionstate.NewEvent(ev.EventType, ev.Summary, ev.DetailJSON))
+			stateInput.Events = append(stateInput.Events, ev.StateEvent())
 		}
 		transcriptStarted := time.Now()
 		if !skipExpensive {
@@ -4412,6 +4412,12 @@ func (h *SessionsHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.notePendingToolEvent(body.SessionID, body.EventType, body.ToolUseID)
+	if hasToken && body.EventType == "session_end" {
+		// The agent's process ended (Claude's SessionEnd): nothing held for it may be
+		// typed into whatever runs in that terminal next (#3481). Not on SessionStart:
+		// a launch's first prompt is a held send waiting for that very start.
+		ptymanager.DropHeld(owner.SessionName, "the agent's session ended")
+	}
 	// Only the agent's own (token-verified) notification wakes auto-accept early; the sweep
 	// itself acts only on the state derived from such events.
 	if hasToken && sessionstate.Classify(body.Summary) == sessionstate.NotificationNeedsInput {
