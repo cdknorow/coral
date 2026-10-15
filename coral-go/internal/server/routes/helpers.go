@@ -133,6 +133,10 @@ func emptyIfNil[T any](s []T) []T {
 
 // isPathWithinDir checks that fullPath is within workdir after resolving symlinks.
 // Returns true if the path is safe, false if it escapes the working directory.
+// For READS only: a path that doesn't exist yet counts as inside without looking at where its
+// existing parent really is (a junction or symlinked folder could lead out). Never use it before
+// creating or writing a file; use safefs.Within (it resolves the deepest existing ancestor) or
+// write through a safefs root (#3633, Security's NIT).
 func isPathWithinDir(workdir, fullPath string) bool {
 	realWorkdir, _ := safefs.Resolve(workdir)
 	if realWorkdir == "" {
