@@ -72,6 +72,10 @@ func runAutoAccept(args []string, stdout, stderr io.Writer) int {
 
 // subcommand runs a `coral <subcommand>` and reports whether there was one.
 func subcommand(args []string) (int, bool) {
+	if len(args) > 0 && isVersionArg(args[0]) {
+		printVersion(os.Stdout)
+		return 0, true
+	}
 	if len(args) > 0 && args[0] == "auto-accept" {
 		return runAutoAccept(args[1:], os.Stdout, os.Stderr), true
 	}

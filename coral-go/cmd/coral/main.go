@@ -65,9 +65,6 @@ func main() {
 		}
 	}()
 
-	log.Printf("[STARTUP] coral server starting marker=%s pid=%d go=%s os=%s arch=%s exe=%q path=%q",
-		coralDevStartupMarker, os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
-
 	// Parse --home early so config.Load() can use it
 	homeDir := flag.String("home", "", "Data directory (default: ~/.coral)")
 	host := flag.String("host", "", "Host to bind to")
@@ -99,6 +96,11 @@ func main() {
 		fmt.Println("encrypted database self-test passed")
 		return
 	}
+
+	// Only now, with the flags valid and the server really starting: --help, a bad flag
+	// and the self-test print nothing of a server's (#3506).
+	log.Printf("[STARTUP] coral server starting marker=%s pid=%d go=%s os=%s arch=%s exe=%q path=%q",
+		coralDevStartupMarker, os.Getpid(), runtime.Version(), runtime.GOOS, runtime.GOARCH, mustExecutable(), os.Getenv("PATH"))
 
 	cfg := config.Load(*homeDir)
 	// --hub or CORAL_HUB=1 (read by config.Load) force hub mode on; otherwise the saved
@@ -386,4 +388,26 @@ func envTrue(v string) bool {
 		return true
 	}
 	return false
+}
+
+// isVersionArg reports a request for the version: coral --version, -version, -v or
+// version. It is answered before anything else runs: no startup line, no data dir,
+// no port (#3506).
+func isVersionArg(a string) bool {
+	switch a {
+	case "--version", "-version", "-v", "version":
+		return true
+	}
+	return false
+}
+
+// printVersion prints "coral <version>", or "coral (development build)" for a build
+// without one.
+func printVersion(w io.Writer) {
+	v := config.Version
+	if v == "" {
+		fmt.Fprintln(w, "coral (development build)")
+		return
+	}
+	fmt.Fprintln(w, "coral "+v)
 }
