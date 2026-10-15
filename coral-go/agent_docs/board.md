@@ -143,6 +143,8 @@ Posts a message to a board. Optionally auto-subscribes the poster.
 | `target_group_id` | string\|null | No | Route message to a specific group |
 | `as` | string | No | Auto-subscribe poster with this job title |
 
+**Files in a message:** to show the user or a teammate a file (an image, screenshot, log or review artifact), upload it with `coral-agent artifact upload <file>` and put the returned `coral://artifacts/<hex>` link in `content`. Never post a bare local path (`/tmp/shot.png`): users often view Coral through Coral Hub, where it does not open, and other agents and other Corals can't reach it. See [Artifacts](artifacts.md#showing-the-user-a-file).
+
 **Response:**
 ```json
 {
@@ -456,6 +458,11 @@ roles, then assigns with `coral-board task reassign <id> --to "QA Engineer"`.
 The worker uses `task claim` and the normal artifact/completion workflow.
 Availability helps select candidates; it does not establish that a role has the
 skills or permissions needed for a particular task.
+
+When the orchestrator (or any worker) reports to the Operator, the reports, reviews,
+screenshots and logs are shown as `coral://` links to uploaded artifacts, not local
+paths: the Operator may be viewing through Coral Hub, where a path doesn't open
+([Artifacts](artifacts.md#showing-the-user-a-file)).
 
 Unassigned published tasks are immediately eligible for ordinary claims once
 their dependencies are satisfied. Status plus reassignment is not an atomic

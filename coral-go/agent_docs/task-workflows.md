@@ -342,6 +342,10 @@ bytes as the body and `X-Artifact-Name` plus optional `X-Artifact-Media-Type`
 headers. Coral returns a digest, a `coral://` URI, and a browser URL. Retrieve
 the artifact with `GET /api/artifacts/<hex>`. Uploads are limited to 64 MiB;
 the content is immutable and addressed by its SHA-256 digest.
+**Show files as `coral://` links, never bare local paths.** Whenever an agent shows the
+user a file (an image, screenshot, log or review artifact), it uploads it with
+`coral-agent artifact upload <file>` and gives the returned `coral://artifacts/<hex>`
+link; users often view Coral through Coral Hub, where a local path does not open.
 **Publish or share means Coral-visible by default.** When a user asks an agent to
 "publish", "share", or "put it up as an artifact", the default is the local path
 above: write the file in the repository, upload it with

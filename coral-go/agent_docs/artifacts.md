@@ -4,6 +4,14 @@ An artifact is a file or report an agent shares through Coral so the user and ot
 
 Uploading a file lists it in your own **Artifacts** tab right away, and, if you are on a team, in **Team Artifacts** too (no task needed). Attach it to a task result to also tie it to that task and pass it to downstream tasks.
 
+## Showing the user a file
+
+**Whenever you show the user a file (an image, a screenshot, a log, a review or test report, a patch), upload it with `coral-agent artifact upload <file>` and give them the returned `coral://` link. Never give a bare local path** (`/tmp/shot.png`, `~/notes/report.md`, `file://...`). Users often view Coral through Coral Hub, from another computer, where a path on your machine doesn't open; other agents and other Corals can't open it either. The `coral://artifacts/<hex>` link opens in the Files preview wherever Coral is viewed. This applies to chat replies, board posts (including messages to another team) and task results alike.
+
+- Put the link in the message text next to a short description: `Screenshot of the settings page: coral://artifacts/<hex>`.
+- Upload before you post, so the link is valid when it is read. Uploads are immutable: upload again after changing the file.
+- Check the file for personal or secret data first (an account email or username in a screen capture, a home path, a token in a log). Artifacts are stored and shared; redact before uploading.
+
 ## Publish an artifact
 
 1. Upload the file. Coral stores it and returns a durable URI:
@@ -30,7 +38,7 @@ Uploading a file lists it in your own **Artifacts** tab right away, and, if you 
 
 3. Tell the user the name. They open it from the Artifacts tab, which previews it (HTML in a sandbox that runs no script). The link (`url`) opens plain text, images, JSON and audio/video in the browser; HTML, SVG, XML, JavaScript, PDF, Markdown and any other type download instead. Every artifact response is sandboxed (`Content-Security-Policy: sandbox; default-src 'none'`, `nosniff`), so an artifact never runs script on the dashboard.
 
-Local paths such as `/tmp/report.md` are not reachable by the user or other agents. Always upload first. For small reports you can put the text inline as `content` in the manifest instead of uploading.
+Local paths such as `/tmp/report.md` are not reachable by the user (especially through Coral Hub) or other agents. Always upload first and give the `coral://` link, never the path. For small reports you can put the text inline as `content` in the manifest instead of uploading.
 
 ## What the user sees
 

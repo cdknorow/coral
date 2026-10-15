@@ -84,7 +84,10 @@ durable URL for larger artifacts. See the
 [artifact contract](task-workflows.md#submit-outputs) for limits and provenance.
 
 To make a local file reachable to users and downstream agents, upload it to
-Coral first:
+Coral first. This is the rule whenever you show the user a file (an image,
+screenshot, log or report): upload it and give the `coral://` link, never a bare
+local path, because users often view Coral through Coral Hub, where a path on your
+machine does not open (see [Artifacts](artifacts.md#showing-the-user-a-file)).
 
 ```sh
 coral-agent artifact upload report.md
