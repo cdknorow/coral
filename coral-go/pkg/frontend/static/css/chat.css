@@ -844,6 +844,15 @@
     line-height: 1.55;
 }
 
+/* Coral's notices and notes start where the prose does: the column is 780px wide and centred
+   (.chat-prose > * above), so a shrink-to-fit pill takes the same left margin. Inside a
+   wrapper that is itself the column (pending messages) the base margin of 0 already lines up. */
+.chat-prose > .chat-system,
+.chat-prose > .chat-note {
+    margin-left: max(0px, calc((100% - 780px) / 2));
+    margin-right: auto;
+}
+
 /* Tool/work groups: quieter, sans, so prose stands out */
 .chat-prose .work-group {
     margin-bottom: 18px;
@@ -977,30 +986,31 @@
     .chat-working-dots i { animation: none; opacity: 0.7; }
 }
 
-/* An Esc interrupt: a small centred note, not a message from the user */
+/* An Esc interrupt: a small note, not a message from the user, at the message column's left
+   edge like Coral's notices (#3592) */
 .chat-note {
-    text-align: center;
+    text-align: left;
     font-family: var(--font-sans);
     font-size: 12px;
     color: var(--text-muted);
-    margin: 6px auto 16px;
+    margin: 6px 0 16px;
 }
-.chat-note::before,
-.chat-note::after {
+.chat-note::before {
     content: "—";
-    margin: 0 8px;
+    margin-right: 8px;
     opacity: 0.6;
 }
 
 /* A message Coral typed into the agent's terminal (board or task nudge):
-   a one-line notice instead of a bubble from the user */
+   a one-line notice instead of a bubble from the user. It shrinks to its text and starts at the
+   message column's left edge, so it doesn't shift with the text's length (#3592). */
 .chat-system {
     display: flex;
     align-items: center;
     gap: 6px;
     width: fit-content;
     max-width: min(780px, 100%);
-    margin: 4px auto 16px;
+    margin: 4px 0 16px;
     padding: 4px 12px;
     border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
     border-radius: 999px;
@@ -1010,9 +1020,11 @@
     font-size: 12px;
     line-height: 1.4;
 }
+/* A health check: the pill in the secondary accent (a left bar on a round pill read as a
+   bracket once the pills lined up). */
 .chat-system-health {
-    border-left: 3px solid var(--accent-secondary);
-    padding-left: 8px;
+    border-color: color-mix(in srgb, var(--accent-secondary) 40%, transparent);
+    background: color-mix(in srgb, var(--accent-secondary) 8%, transparent);
 }
 .chat-system-health .chat-system-label,
 .chat-system-health .material-icons {
