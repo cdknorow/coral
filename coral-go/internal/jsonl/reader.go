@@ -18,6 +18,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/agent"
 	at "github.com/cdknorow/coral/internal/agenttypes"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/transcriptlink"
 )
 
@@ -628,7 +629,9 @@ func resolveAgyTranscriptFromHistory(historyPath, basePath, workingDirectory str
 			continue
 		}
 		if filepath.Clean(ws) == cleanTarget {
-			if convID, _ := entry["conversationId"].(string); convID != "" {
+			// The id is a folder name under basePath, never a path: one with a separator,
+			// ".." or a leading "-" is ignored (#3597, weak site W20).
+			if convID, _ := entry["conversationId"].(string); safefs.IsSafeID(convID) {
 				candidate := filepath.Join(basePath, convID, ".system_generated", "logs", "transcript.jsonl")
 				if _, err := os.Stat(candidate); err == nil {
 					return candidate

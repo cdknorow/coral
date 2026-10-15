@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"github.com/cdknorow/coral/internal/safefs"
 )
 
 var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -25,13 +27,27 @@ func codexHome() string {
 	return filepath.Join(home, ".codex")
 }
 
+// maxLinkBytes caps a link file's size: it holds two short fields.
+const maxLinkBytes = 64 << 10
+
 // Codex reads a small explicit mapping, never inferring identity from cwd or
 // arbitrary conversation text. The mapping is outside provider transcripts.
+//
+// The link folder is one the Codex agent can write (#3597, weak site W19), so the file is read
+// as a capped regular file (never a symlink or a FIFO), and its Path is believed only when it is
+// that thread's own rollout file inside <CODEX_HOME>/sessions: named rollout-*-<thread>.jsonl,
+// a regular file, resolving inside the sessions folder. Otherwise the Path is dropped (the
+// thread id, a UUID, is kept) and callers find the rollout file themselves.
 func Codex(sessionID string) CodexLink {
 	if !uuid.MatchString(sessionID) {
 		return CodexLink{}
 	}
-	b, err := os.ReadFile(filepath.Join(codexHome(), "coral-session-links", sessionID+".json"))
+	root, err := safefs.OpenRoot(filepath.Join(codexHome(), "coral-session-links"))
+	if err != nil {
+		return CodexLink{}
+	}
+	b, err := root.ReadFile(sessionID+".json", maxLinkBytes)
+	root.Close()
 	if err != nil {
 		return CodexLink{}
 	}
@@ -39,7 +55,33 @@ func Codex(sessionID string) CodexLink {
 	if json.Unmarshal(b, &link) != nil || !uuid.MatchString(link.ThreadID) {
 		return CodexLink{}
 	}
+	link.Path = rolloutPath(link.Path, link.ThreadID)
 	return link
+}
+
+// rolloutPath returns p resolved when it is threadID's rollout file inside
+// <CODEX_HOME>/sessions, and "" otherwise.
+func rolloutPath(p, threadID string) string {
+	if p == "" || !filepath.IsAbs(p) || safefs.IsUNC(p) {
+		return ""
+	}
+	if ok, _ := filepath.Match("rollout-*-"+threadID+".jsonl", filepath.Base(p)); !ok {
+		return ""
+	}
+	sessions := filepath.Join(codexHome(), "sessions")
+	rel, err := safefs.Within(sessions, p)
+	if err != nil {
+		return ""
+	}
+	real, err := safefs.Resolve(sessions)
+	if err != nil {
+		return ""
+	}
+	full := filepath.Join(real, rel)
+	if fi, err := os.Lstat(full); err != nil || !fi.Mode().IsRegular() {
+		return ""
+	}
+	return full
 }
 
 // BindCodex records an explicit identity from a hook or operator repair. Verify

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cdknorow/coral/internal/executil"
 	"github.com/cdknorow/coral/internal/gitutil"
+	"github.com/cdknorow/coral/internal/safefs"
 	"github.com/cdknorow/coral/internal/store"
 )
 
@@ -468,6 +469,13 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 	}
 	if len(out) > 0 {
 		records := strings.Split(string(out), "\x00")
+		// New files' line counts are read inside the working tree, held open once per pass.
+		countRoot, rootErr := safefs.OpenRoot(workdir)
+		if rootErr != nil {
+			countRoot = nil
+		} else {
+			defer countRoot.Close()
+		}
 		for i := 0; i < len(records); i++ {
 			line := records[i]
 			if len(line) < 4 {
@@ -482,7 +490,9 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 			if statusCode == "??" {
 				if _, exists := fileMap[fp]; !exists {
 					fullPath := filepath.Join(workdir, fp)
-					info, err := os.Stat(fullPath)
+					// Lstat: an untracked symlink is never followed (to a FIFO, /dev/zero or a
+					// network mount; #3597, weak site W18).
+					info, err := os.Lstat(fullPath)
 					if err != nil {
 						continue
 					}
@@ -494,8 +504,8 @@ func queryChangedFiles(ctx context.Context, workdir string) ([]store.ChangedFile
 					// tree with this many new files is not one anybody reads
 					// per-file counts off.
 					adds := 0
-					if lineCounts < gitutil.MaxNewFileStatFiles {
-						adds = gitutil.NewFileLineCount(fullPath)
+					if lineCounts < gitutil.MaxNewFileStatFiles && countRoot != nil {
+						adds = gitutil.NewFileLineCountIn(countRoot, fp)
 						lineCounts++
 					}
 					fileMap[fp] = store.ChangedFile{
