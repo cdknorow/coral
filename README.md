@@ -93,7 +93,7 @@ Everything else — cron-scheduled runs, shell-and-agent workflows with OAuth to
 
 Download the latest binary from [GitHub Releases](https://github.com/cdknorow/coral/releases):
 
-- **macOS**: `Coral.v<version>.dmg` (universal binary), or `brew install --cask cdknorow/coral/coral`
+- **macOS**: `Coral.v<version>.dmg` (universal binary)
 - **Linux**: `coral-linux-amd64-<version>.tar.gz` (x86-64) or `coral-linux-arm64-<version>.tar.gz` (ARM64, e.g. Graviton or Docker on Apple silicon)
 
 #### Verify your download
