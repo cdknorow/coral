@@ -106,7 +106,11 @@ func (h *SessionsHandler) WSCoral(w http.ResponseWriter, r *http.Request) {
 	// interval when that is shorter (the ticker rebuilds that often anyway).
 	// The limit counts only builds that carried a remote change: a kick or a
 	// tick does not hold the next remote change back (#3142).
-	remoteDebounce := min(time.Second, pollInterval)
+	remoteLimit := time.Second
+	if h.cfg.WSRemoteDebounce > 0 {
+		remoteLimit = h.cfg.WSRemoteDebounce // tests only
+	}
+	remoteDebounce := min(remoteLimit, pollInterval)
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()

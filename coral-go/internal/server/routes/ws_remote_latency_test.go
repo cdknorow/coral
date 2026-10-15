@@ -64,6 +64,8 @@ func awaitStatus(t *testing.T, ctx context.Context, conn *websocket.Conn, want s
 func TestWSCoral_RemoteChangesDoNotWaitBehindKicks(t *testing.T) {
 	server, h := setupTestServer(t)
 	h.cfg.WSPollInterval = 10 * time.Second // the ticker cannot deliver it
+	// The remote limit, shortened from a second so each sample doesn't wait a second (#3566 timing).
+	h.cfg.WSRemoteDebounce = 250 * time.Millisecond
 	src := &fakeSource{}
 	h.SetRemoteAgents(src)
 	src.set(remoteSnap("m-0"))
@@ -89,11 +91,11 @@ func TestWSCoral_RemoteChangesDoNotWaitBehindKicks(t *testing.T) {
 	}()
 	time.Sleep(300 * time.Millisecond) // kicks are flowing
 
-	// Remote changes slower than the remote limit (one a second), at offsets
+	// Remote changes slower than the remote limit, at offsets
 	// that drift against the kicks.
 	var lat []time.Duration
 	for i := 1; i <= 8; i++ {
-		time.Sleep(1100*time.Millisecond + time.Duration(i*37)*time.Millisecond)
+		time.Sleep(h.cfg.WSRemoteDebounce + 100*time.Millisecond + time.Duration(i*37)*time.Millisecond)
 		marker := fmt.Sprintf("m-%d", i)
 		src.set(remoteSnap(marker))
 		lat = append(lat, awaitStatus(t, ctx, conn, marker, 2*time.Second))
@@ -127,6 +129,7 @@ func schedulerJitter() time.Duration {
 func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	server, h := setupTestServer(t)
 	h.cfg.WSPollInterval = 10 * time.Second
+	h.cfg.WSRemoteDebounce = 500 * time.Millisecond // shortened from a second; still well over the 180 ms burst
 	src := &fakeSource{}
 	h.SetRemoteAgents(src)
 	src.set(remoteSnap("b-0"))
@@ -134,7 +137,7 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	conn := dialFeed(t, ctx, server.URL)
-	time.Sleep(1100 * time.Millisecond) // past the remote limit since the first build
+	time.Sleep(h.cfg.WSRemoteDebounce + 100*time.Millisecond) // past the remote limit since the first build
 
 	src.set(remoteSnap("b-1"))
 	first := awaitStatus(t, ctx, conn, "b-1", time.Second)
@@ -144,9 +147,9 @@ func TestWSCoral_RemoteBurstIsStillCoalesced(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	// The other nine changes come as one diff with the latest state, within the
-	// second-long limit, and no further diff follows.
+	// limit, and no further diff follows.
 	var diffs []string
-	rctx, stop := context.WithTimeout(ctx, 1500*time.Millisecond)
+	rctx, stop := context.WithTimeout(ctx, 3*h.cfg.WSRemoteDebounce)
 	defer stop()
 	for {
 		var msg struct {

@@ -100,6 +100,9 @@ type Config struct {
 	// WSPollInterval, when set, replaces WSPollIntervalS. Only tests set it,
 	// to tick faster than once a second.
 	WSPollInterval time.Duration
+	// WSRemoteDebounce, when set, replaces the one-second limit on rebuilds for remote feed
+	// changes. Only tests set it, to sample remote latency without a second per sample.
+	WSRemoteDebounce time.Duration
 
 	// Task dependencies
 	MaxTaskDependencyDepth int

@@ -3,6 +3,7 @@ package routes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -110,16 +111,20 @@ func TestSessionStateSequences_StoreToPayload_HTTPAndWSParity(t *testing.T) {
 		{"informational notification alone is idle", []stateStep{{"notification", loginNote}}, wantState{false, false}},
 	}
 
-	for _, tc := range cases {
+	// One server for every case (a server per case was most of this test's time under -race,
+	// #3566 timing); each case is its own session in its own folder, so no case sees another's
+	// events, and the lists are read for that session only.
+	server, handler, terminal, sessStore := setupSessionsTestServer(t)
+	for i, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			server, handler, terminal, sessStore := setupSessionsTestServer(t)
-			sid := "00000000-0000-4000-8000-0000000005a1"
+			sid := fmt.Sprintf("00000000-0000-4000-8000-%012d", 0x5a1+i)
+			folder := fmt.Sprintf("shared-folder-%d", i)
 			terminal.addSession("claude-"+sid, t.TempDir())
 			ctx := context.Background()
-			require.NoError(t, sessStore.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "shared-folder", WorkingDir: t.TempDir()}))
+			require.NoError(t, sessStore.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: folder, WorkingDir: t.TempDir()}))
 			for _, step := range tc.steps {
 				id := sid
-				_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "shared-folder", SessionID: &id, EventType: step.eventType, Summary: step.summary})
+				_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: folder, SessionID: &id, EventType: step.eventType, Summary: step.summary})
 				require.NoError(t, err)
 			}
 
@@ -189,7 +194,7 @@ func TestSessionStateSequences_IsolatedPerSession(t *testing.T) {
 	assert.Equal(t, false, w["awaiting_user"])
 }
 
-// InsertAgentEvent prunes to 500 rows per agent_name, and agent_name is the
+// InsertAgentEvent prunes to 500 rows per session (20 here), and agent_name is the
 // folder shared by every agent in a worktree. A blocked agent's unresolved
 // request must survive its teammates' activity.
 func TestSessionStateSequences_NeedsInputSurvivesTeammatePruning(t *testing.T) {
@@ -202,7 +207,8 @@ func TestSessionStateSequences_NeedsInputSurvivesTeammatePruning(t *testing.T) {
 	id := blocked
 	_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "shared-folder", SessionID: &id, EventType: "notification", Summary: permissionNote})
 	require.NoError(t, err)
-	for i := 0; i < 520; i++ {
+	handler.ts.SetEventKeep(20) // the pruning without 500 inserts (#3566 timing)
+	for i := 0; i < 30; i++ {
 		other := busy
 		_, err := handler.ts.InsertAgentEvent(ctx, &store.AgentEvent{AgentName: "shared-folder", SessionID: &other, EventType: "tool_use", Summary: "Ran: ls"})
 		require.NoError(t, err)

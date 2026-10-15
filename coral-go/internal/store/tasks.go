@@ -11,6 +11,7 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -91,7 +92,17 @@ type ToolCount struct {
 // TaskStore provides agent tasks, notes, and events operations.
 type TaskStore struct {
 	db *DB
+	// eventKeep is how many events InsertAgentEvent keeps per session (0: agentEventKeep).
+	// Atomic, so a test can set it while the server is serving.
+	eventKeep atomic.Int64
 }
+
+// agentEventKeep is how many agent events are kept per session.
+const agentEventKeep = 500
+
+// SetEventKeep changes how many events this store keeps per session; tests use it to reach the
+// pruning without inserting hundreds of events.
+func (s *TaskStore) SetEventKeep(n int) { s.eventKeep.Store(int64(n)) }
 
 // NewTaskStore creates a new TaskStore.
 func NewTaskStore(db *DB) *TaskStore {
@@ -481,13 +492,17 @@ func (s *TaskStore) InsertAgentEvent(ctx context.Context, event *AgentEvent) (*A
 	// Auto-prune to 500 events per session (best-effort). Session-scoped
 	// retention prevents activity from a sibling agent in the same worktree
 	// from erasing an unresolved attention notification.
+	keep := agentEventKeep
+	if n := s.eventKeep.Load(); n > 0 {
+		keep = int(n)
+	}
 	pruneQuery := `DELETE FROM agent_events WHERE agent_name = ? AND id NOT IN
-		 (SELECT id FROM agent_events WHERE agent_name = ? ORDER BY id DESC LIMIT 500)`
-	pruneArgs := []any{event.AgentName, event.AgentName}
+		 (SELECT id FROM agent_events WHERE agent_name = ? ORDER BY id DESC LIMIT ?)`
+	pruneArgs := []any{event.AgentName, event.AgentName, keep}
 	if event.SessionID != nil && *event.SessionID != "" {
 		pruneQuery = `DELETE FROM agent_events WHERE agent_name = ? AND session_id = ? AND id NOT IN
-			 (SELECT id FROM agent_events WHERE agent_name = ? AND session_id = ? ORDER BY id DESC LIMIT 500)`
-		pruneArgs = []any{event.AgentName, *event.SessionID, event.AgentName, *event.SessionID}
+			 (SELECT id FROM agent_events WHERE agent_name = ? AND session_id = ? ORDER BY id DESC LIMIT ?)`
+		pruneArgs = []any{event.AgentName, *event.SessionID, event.AgentName, *event.SessionID, keep}
 	}
 	if _, err := s.db.ExecContext(ctx, pruneQuery, pruneArgs...); err != nil {
 		log.Printf("[store] event prune failed for %s: %v", event.AgentName, err)
