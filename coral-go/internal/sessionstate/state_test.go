@@ -232,3 +232,51 @@ func TestHeldInputEndedClearsOnlyCoralsOwnNotice(t *testing.T) {
 		}
 	}
 }
+
+// #3481: the agent's own request events raise Needs input at once, with what it waits
+// on; an answered elicitation and the end of a session clear it; Claude's
+// notification_type decides a notification's effect when present, whatever its words.
+func TestRequestEventsAndTypedNotifications(t *testing.T) {
+	req := func(kind string) Event {
+		return Event{Type: "permission_request", Summary: "Waiting for the user: " + kind, Kind: kind}
+	}
+	typed := func(typ, msg string) Event {
+		return Event{Type: "notification", Summary: "Notification: " + msg, Kind: typ}
+	}
+	cases := []struct {
+		name     string
+		events   []Event
+		needs    bool
+		kind     string
+		awaiting bool
+	}{
+		{"a tool permission", []Event{prompt, req("permission")}, true, "permission", false},
+		{"a question", []Event{prompt, req("question")}, true, "question", false},
+		{"a plan, then its notification ~6 s later keeps the kind", []Event{prompt, req("plan"), typed("permission_prompt", "Claude Code needs your approval for the plan")}, true, "plan", false},
+		{"approved: the tool ran", []Event{prompt, req("permission"), tool}, false, "", false},
+		{"an elicitation, answered", []Event{prompt, req("elicitation"), {Type: "request_resolved", Kind: "elicitation"}}, false, "", false},
+		{"request_resolved doesn't clear a permission", []Event{prompt, req("permission"), {Type: "request_resolved", Kind: "elicitation"}}, true, "permission", false},
+		{"session ended", []Event{prompt, req("permission"), {Type: "session_end"}}, false, "", false},
+		{"typed permission_prompt, any wording", []Event{tool, typed("permission_prompt", "Approve this?")}, true, "permission", false},
+		{"typed idle_prompt is the calm your-move", []Event{stop, typed("idle_prompt", "needs your input (wording changed)")}, false, "", true},
+		{"typed auth_success raises nothing", []Event{stop, typed("auth_success", "needs your permission")}, false, "", true},
+		{"no type: the words still decide (older CLIs)", []Event{tool, note(permission)}, true, "", false},
+	}
+	for _, c := range cases {
+		got := Derive(Input{Events: c.events})
+		if got.NeedsInput != c.needs || got.WaitingKind != c.kind || got.AwaitingUser != c.awaiting {
+			t.Errorf("%s: needs=%v kind=%q awaiting=%v, want %v %q %v", c.name, got.NeedsInput, got.WaitingKind, got.AwaitingUser, c.needs, c.kind, c.awaiting)
+		}
+	}
+	detail := `{"kind":"question","tool_name":"AskUserQuestion"}`
+	if e := NewEvent("permission_request", "s", &detail); e.Kind != "question" {
+		t.Errorf("NewEvent kind = %q", e.Kind)
+	}
+	nt := `{"notification_type":"idle_prompt"}`
+	if e := NewEvent("notification", "s", &nt); e.Kind != "idle_prompt" {
+		t.Errorf("NewEvent notification kind = %q", e.Kind)
+	}
+	if e := NewEvent("tool_use", "s", &detail); e.Kind != "" {
+		t.Errorf("tool_use has no kind, got %q", e.Kind)
+	}
+}

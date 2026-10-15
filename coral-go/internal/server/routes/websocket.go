@@ -491,7 +491,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: sleepingMap[sid], Archived: archivedMap[sid]}
 		for _, event := range stateEvents[sid] {
-			stateInput.Events = append(stateInput.Events, StateEvent{Type: event.EventType, Summary: event.Summary})
+			stateInput.Events = append(stateInput.Events, newStateEvent(event.EventType, event.Summary, event.DetailJSON))
 		}
 		h.applyTranscriptState(&stateInput, stateEvents[sid], agent.AgentType, sid, agent.WorkingDir)
 		state := DeriveSessionState(stateInput)
@@ -532,6 +532,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"stuck":                 state.Stuck,
 			"waiting_reason":        waitingReason,
 			"waiting_summary":       waitingSummary,
+			"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
 			"working":               state.Working,
 			"changed_file_count":    fileCounts[sid],
 			"commands":              map[string]string{"compress": "/compact", "clear": "/clear"},
@@ -592,6 +593,7 @@ func (h *SessionsHandler) buildSessionListForWS(r *http.Request) ([]map[string]a
 			"done":                  false,
 			"waiting_reason":        nil,
 			"waiting_summary":       nil,
+			"waiting_kind":          nil,
 			"working":               false,
 			"stuck":                 false,
 			"changed_file_count":    0,

@@ -1,0 +1,16 @@
+{
+ "background_tasks": [],
+ "cwd": "/WORK",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "Stop",
+ "last_assistant_message": "BANANA-P0",
+ "permission_mode": "plan",
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_crons": [],
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "stop_hook_active": true,
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}

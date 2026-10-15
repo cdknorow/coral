@@ -1,0 +1,32 @@
+{
+ "cwd": "/WORK",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PermissionRequest",
+ "permission_mode": "default",
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "tool_input": {
+  "questions": [
+   {
+    "header": "Color",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Choose red",
+      "label": "Red"
+     },
+     {
+      "description": "Choose blue",
+      "label": "Blue"
+     }
+    ],
+    "question": "Pick a color:"
+   }
+  ]
+ },
+ "tool_name": "AskUserQuestion",
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}

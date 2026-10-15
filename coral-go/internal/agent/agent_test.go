@@ -1942,3 +1942,22 @@ func launchBody(line string) string {
 		}
 	}
 }
+
+// #3481: Claude agents get the hooks that report a turn starting, a request to the user
+// opening or closing, an API-error stop and the session's end, each sending its event
+// to Coral's state.
+func TestClaudeSettingsInstallTheRequestHooks(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	merged := buildMergedSettings(t.TempDir(), nil)
+	hooks := merged["hooks"].(map[string][]interface{})
+	for _, event := range []string{"UserPromptSubmit", "PermissionRequest", "Elicitation", "ElicitationResult", "StopFailure", "SessionEnd"} {
+		groups := hooks[event]
+		if len(groups) != 1 {
+			t.Fatalf("%s: %d hook groups, want 1", event, len(groups))
+		}
+		b, _ := json.Marshal(groups[0])
+		if !strings.Contains(string(b), `"command":"coral-hook-agentic-state"`) {
+			t.Errorf("%s: %s", event, b)
+		}
+	}
+}

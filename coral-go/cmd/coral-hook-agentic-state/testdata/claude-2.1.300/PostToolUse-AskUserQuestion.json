@@ -1,0 +1,61 @@
+{
+ "cwd": "/WORK",
+ "duration_ms": 1,
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PostToolUse",
+ "permission_mode": "default",
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "tool_input": {
+  "annotations": {},
+  "answers": {
+   "Pick a color:": "Blue"
+  },
+  "questions": [
+   {
+    "header": "Color",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Choose red",
+      "label": "Red"
+     },
+     {
+      "description": "Choose blue",
+      "label": "Blue"
+     }
+    ],
+    "question": "Pick a color:"
+   }
+  ]
+ },
+ "tool_name": "AskUserQuestion",
+ "tool_response": {
+  "annotations": {},
+  "answers": {
+   "Pick a color:": "Blue"
+  },
+  "questions": [
+   {
+    "header": "Color",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": "Choose red",
+      "label": "Red"
+     },
+     {
+      "description": "Choose blue",
+      "label": "Blue"
+     }
+    ],
+    "question": "Pick a color:"
+   }
+  ]
+ },
+ "tool_use_id": "toolu_012MBq9fM4xtNEjfnpLdREtq",
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}

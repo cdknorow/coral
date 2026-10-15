@@ -82,6 +82,57 @@ func TestRefusedEventSendersAreLoggedOnce(t *testing.T) {
 	assert.False(t, s.add("c"), "full: quiet, not one line per event")
 }
 
+// #3481: the agent's request events, posted by its hooks, show as Needs input at once
+// with what it waits on (the list payload's waiting_kind); an answered elicitation and
+// the session's end clear it.
+func TestRequestEventsReachTheState(t *testing.T) {
+	server, h, terminal, ss := setupSessionsTestServer(t)
+	ctx := context.Background()
+	sid := "cccccccc-3481-0000-0000-000000000003"
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: sid, AgentType: "claude", AgentName: "gamma", WorkingDir: "/tmp/g"}))
+	terminal.addSession("claude-"+sid, "/tmp/g")
+	tok := agentToken(t, h, sid, "claude-"+sid)
+	post := func(body string) {
+		req, _ := http.NewRequest("POST", server.URL+"/api/sessions/live/gamma/events", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(store.SessionTokenHeader, tok)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, http.StatusOK, resp.StatusCode, body)
+	}
+	state := func() SessionState { return h.deriveSingleSessionState(ctx, sid, 0) }
+
+	post(`{"event_type":"prompt_submit","summary":"User submitted prompt"}`)
+	post(`{"event_type":"permission_request","summary":"Waiting for the user: plan (ExitPlanMode)","tool_name":"ExitPlanMode","detail_json":{"kind":"plan","tool_name":"ExitPlanMode"}}`)
+	st := state()
+	assert.True(t, st.NeedsInput)
+	assert.Equal(t, "plan", st.WaitingKind)
+	post(`{"event_type":"notification","summary":"Notification: Claude Code needs your approval for the plan","detail_json":{"notification_type":"permission_prompt"}}`)
+	assert.Equal(t, "plan", state().WaitingKind, "the notification ~6 s later keeps the request's kind")
+	post(`{"event_type":"session_end","summary":"Session ended: other","detail_json":{"reason":"other"}}`)
+	assert.False(t, state().NeedsInput, "cleared when the session ends")
+
+	post(`{"event_type":"prompt_submit","summary":"User submitted prompt"}`)
+	post(`{"event_type":"permission_request","summary":"Waiting for the user: input for db","detail_json":{"kind":"elicitation","mcp_server":"db"}}`)
+	resp, err := http.Get(server.URL + "/api/sessions/live")
+	require.NoError(t, err)
+	var rows []map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&rows))
+	resp.Body.Close()
+	var row map[string]any
+	for _, r := range rows {
+		if r["session_id"] == sid {
+			row = r
+		}
+	}
+	require.NotNil(t, row, "listed")
+	assert.Equal(t, true, row["waiting_for_input"])
+	assert.Equal(t, "elicitation", row["waiting_kind"])
+	post(`{"event_type":"request_resolved","summary":"Input request answered: accept","detail_json":{"kind":"elicitation","action":"accept"}}`)
+	assert.False(t, state().NeedsInput, "an answered elicitation clears it")
+}
+
 // #3481 part 1b (Backend's finding): the pending tool, which auto-accept and the gate
 // read, is set only by the agent's own hook, by its session token.
 func TestPendingToolIsBoundToTheAgentsToken(t *testing.T) {

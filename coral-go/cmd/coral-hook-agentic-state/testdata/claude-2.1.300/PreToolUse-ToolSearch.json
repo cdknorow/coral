@@ -1,0 +1,18 @@
+{
+ "cwd": "/WORK",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PreToolUse",
+ "permission_mode": "plan",
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "tool_input": {
+  "max_results": 1,
+  "query": "select:ExitPlanMode"
+ },
+ "tool_name": "ToolSearch",
+ "tool_use_id": "toolu_01AZwLp5Z5TdkquBsqF2hPtc",
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}

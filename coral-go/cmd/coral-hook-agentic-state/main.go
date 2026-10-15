@@ -131,6 +131,13 @@ func parsePendingTool(d map[string]any, sessionID string) map[string]any {
 }
 
 func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]any {
+	// The agent's own signals that it waits on the user, or stopped waiting (#3481,
+	// #3475 phase 0). They are matched by event name first: PermissionRequest carries a
+	// tool_name and would otherwise read as a tool call.
+	if event := parseRequestEvent(d, hookType, sessionID); event != nil {
+		return event
+	}
+
 	// SessionStart / /clear
 	if hookType == "SessionStart" || d["_coral_session_clear"] != nil {
 		return map[string]any{
@@ -210,13 +217,89 @@ func parseAgenticEvent(d map[string]any, hookType, sessionID string) map[string]
 	// Notification
 	if hookType == "Notification" || d["message"] != nil {
 		message, _ := d["message"].(string)
-		return map[string]any{
+		event := map[string]any{
 			"event_type": "notification",
 			"summary":    "Notification: " + hooks.Truncate(message, 100),
 			"session_id": sessionID,
 		}
+		// Claude Code names the kind (permission_prompt, idle_prompt, elicitation_dialog,
+		// ...): kept so the state needn't rely on the message's wording (#3475).
+		if t, _ := d["notification_type"].(string); t != "" {
+			event["detail_json"] = map[string]any{"notification_type": t}
+		}
+		return event
 	}
 
+	return nil
+}
+
+// requestKinds maps the tool a Claude PermissionRequest is for to what the user is
+// asked: a question (AskUserQuestion), a plan approval (ExitPlanMode), else a tool
+// permission (all three fire PermissionRequest; verified on Claude Code 2.1.300).
+var requestKinds = map[string]string{"AskUserQuestion": "question", "ExitPlanMode": "plan"}
+
+// parseRequestEvent maps the hooks that open or close a request to the user, and the
+// end of a session:
+//   - PermissionRequest (a tool permission, question or plan approval) and Elicitation
+//     (an MCP server asks for input): permission_request, with its kind.
+//   - ElicitationResult: request_resolved. A permission prompt has no such hook (an
+//     approval shows as the tool's PostToolUse, a denial as nothing at all).
+//   - StopFailure (the turn ended on an API error): stop.
+//   - SessionEnd: session_end.
+func parseRequestEvent(d map[string]any, hookType, sessionID string) map[string]any {
+	switch hookType {
+	case "PermissionRequest":
+		tool, _ := d["tool_name"].(string)
+		kind := requestKinds[tool]
+		if kind == "" {
+			kind = "permission"
+		}
+		event := map[string]any{
+			"event_type":  "permission_request",
+			"summary":     "Waiting for the user: " + kind + " (" + hooks.Truncate(tool, 60) + ")",
+			"detail_json": map[string]any{"kind": kind, "tool_name": tool},
+			"session_id":  sessionID,
+		}
+		if tool != "" {
+			event["tool_name"] = tool
+		}
+		return event
+	case "Elicitation":
+		server, _ := d["mcp_server_name"].(string)
+		return map[string]any{
+			"event_type":  "permission_request",
+			"summary":     "Waiting for the user: input for " + hooks.Truncate(server, 60),
+			"detail_json": map[string]any{"kind": "elicitation", "mcp_server": server},
+			"session_id":  sessionID,
+		}
+	case "ElicitationResult":
+		action, _ := d["action"].(string)
+		return map[string]any{
+			"event_type":  "request_resolved",
+			"summary":     "Input request answered: " + hooks.Truncate(action, 20),
+			"detail_json": map[string]any{"kind": "elicitation", "action": action},
+			"session_id":  sessionID,
+		}
+	case "StopFailure":
+		msg, _ := d["error"].(string)
+		return map[string]any{
+			"event_type":  "stop",
+			"summary":     "Agent stopped: error",
+			"detail_json": map[string]any{"failed": true, "error": hooks.Truncate(msg, 300)},
+			"session_id":  sessionID,
+		}
+	case "SessionEnd":
+		reason, _ := d["reason"].(string)
+		if reason == "" {
+			reason = "other"
+		}
+		return map[string]any{
+			"event_type":  "session_end",
+			"summary":     "Session ended: " + hooks.Truncate(reason, 40),
+			"detail_json": map[string]any{"reason": reason},
+			"session_id":  sessionID,
+		}
+	}
 	return nil
 }
 

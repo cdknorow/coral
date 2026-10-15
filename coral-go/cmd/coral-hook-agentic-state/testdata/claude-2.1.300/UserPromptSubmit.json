@@ -1,0 +1,10 @@
+{
+ "cwd": "/WORK",
+ "hook_event_name": "UserPromptSubmit",
+ "permission_mode": "default",
+ "prompt": "Use the AskUserQuestion tool to ask me one question: pick a color, options red or blue. Do nothing else.",
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}

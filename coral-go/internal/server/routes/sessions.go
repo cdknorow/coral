@@ -819,7 +819,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 		notStarted := agentNeverStarted(agent.AgentType, latestEv, staleF, sessionAgeSeconds(createdAtMap[sid]))
 		stateInput := SessionStateInput{StalenessSeconds: staleF, NotStarted: notStarted, Sleeping: liveSleeping[sid], Archived: liveArchived[sid]}
 		for _, ev := range stateEvents[sid] {
-			stateInput.Events = append(stateInput.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
+			stateInput.Events = append(stateInput.Events, sessionstate.NewEvent(ev.EventType, ev.Summary, ev.DetailJSON))
 		}
 		transcriptStarted := time.Now()
 		if !skipExpensive {
@@ -871,6 +871,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"done":                  state.Done,
 			"waiting_reason":        nilIf(!state.NeedsInput, state.WaitingReason),
 			"waiting_summary":       nilIf(!state.NeedsInput, state.WaitingSummary),
+			"waiting_kind":          nilIf(!state.NeedsInput || state.WaitingKind == "", state.WaitingKind),
 			"working":               state.Working,
 			"stuck":                 state.Stuck,
 			"changed_file_count":    fc,
@@ -956,6 +957,7 @@ func (h *SessionsHandler) List(w http.ResponseWriter, r *http.Request) {
 			"done":                  false,
 			"waiting_reason":        nil,
 			"waiting_summary":       nil,
+			"waiting_kind":          nil,
 			"working":               false,
 			"stuck":                 false,
 			"changed_file_count":    0,
@@ -1045,6 +1047,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 			"waiting_for_input": false,
 			"waiting_reason":    nil,
 			"waiting_summary":   nil,
+			"waiting_kind":      nil,
 			"working":           false,
 			"done":              false,
 			"stuck":             false,
@@ -1109,6 +1112,7 @@ func (h *SessionsHandler) ResolveSession(w http.ResponseWriter, r *http.Request)
 		"awaiting_user":     liveState.AwaitingUser,
 		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
 		"waiting_summary":   nilIfEmpty(liveState.WaitingSummary),
+		"waiting_kind":      nilIfEmpty(liveState.WaitingKind),
 		"working":           liveState.Working,
 		"done":              false,
 		"stuck":             false,
@@ -1729,6 +1733,7 @@ func (h *SessionsHandler) SessionStatus(w http.ResponseWriter, r *http.Request) 
 		"awaiting_user":     done,
 		"waiting_reason":    nilIfEmpty(liveState.WaitingReason),
 		"waiting_summary":   nilIfEmpty(liveState.WaitingSummary),
+		"waiting_kind":      nilIfEmpty(liveState.WaitingKind),
 		"done":              done,
 		"sleeping":          sleeping,
 		"latest_event":      nilIfEmpty(latestEvent),
@@ -4445,6 +4450,9 @@ func (s *onceSet) add(key string) bool {
 // never mapped. Coral records its own events (auto_accept, retry, ...) directly.
 var postableEventTypes = map[string]bool{
 	"session_reset": true, "prompt_submit": true, "tool_use": true, "stop": true, "notification": true, "goal": true,
+	// #3481: a request to the user opened (PermissionRequest, Elicitation) or answered
+	// (ElicitationResult), and the agent's session ended.
+	"permission_request": true, "request_resolved": true, "session_end": true,
 }
 
 // Limits on a posted event: a hook's summary is short and its detail a small JSON object

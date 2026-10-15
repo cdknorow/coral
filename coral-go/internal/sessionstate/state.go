@@ -4,13 +4,39 @@
 // idle detector all apply exactly the same rules.
 package sessionstate
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Event is the event subset used to derive a live session state.
 // Events must be ordered oldest first.
 type Event struct {
 	Type    string
 	Summary string
+	// Kind is what a permission_request asks (permission, question, plan,
+	// elicitation), or a notification's notification_type (Claude Code), from the
+	// event's detail (#3481). Empty for older events and other CLIs.
+	Kind string
+}
+
+// NewEvent builds an Event from a stored event, reading its kind from detailJSON.
+func NewEvent(eventType, summary string, detailJSON *string) Event {
+	e := Event{Type: eventType, Summary: summary}
+	if detailJSON == nil || *detailJSON == "" || (eventType != "permission_request" && eventType != "request_resolved" && eventType != "notification") {
+		return e
+	}
+	var d struct {
+		Kind             string `json:"kind"`
+		NotificationType string `json:"notification_type"`
+	}
+	if json.Unmarshal([]byte(*detailJSON), &d) == nil {
+		e.Kind = d.Kind
+		if eventType == "notification" {
+			e.Kind = d.NotificationType
+		}
+	}
+	return e
 }
 
 // Input contains the latest event context needed to derive a state.
@@ -32,11 +58,14 @@ type State struct {
 	AwaitingUser   bool
 	WaitingReason  string
 	WaitingSummary string
-	Working        bool
-	NotStarted     bool
-	Sleeping       bool
-	Stuck          bool
-	Done           bool
+	// WaitingKind is what the agent waits on while NeedsInput: permission, question,
+	// plan or elicitation, when the agent said so (#3481); empty otherwise.
+	WaitingKind string
+	Working     bool
+	NotStarted  bool
+	Sleeping    bool
+	Stuck       bool
+	Done        bool
 }
 
 // Derive applies one restart-safe state machine.
@@ -63,6 +92,22 @@ func Derive(in Input) State {
 		state.NeedsInput = false
 		state.WaitingReason = ""
 		state.WaitingSummary = ""
+		state.WaitingKind = ""
+	}
+	raise := func(event Event, kind string) {
+		// A request already open keeps its kind: the agent's PermissionRequest says
+		// "plan" or "question", the notification that follows only "permission".
+		if !state.NeedsInput || state.WaitingKind == "" {
+			state.WaitingKind = kind
+		}
+		if !state.NeedsInput {
+			beforeType, beforeAwaiting = latestType, state.AwaitingUser
+		}
+		latestType = "notification"
+		state.NeedsInput = true
+		state.AwaitingUser = false
+		state.WaitingReason = "notification"
+		state.WaitingSummary = event.Summary
 	}
 	for _, event := range in.Events {
 		switch event.Type {
@@ -80,6 +125,21 @@ func Derive(in Input) State {
 			latestType = event.Type
 			clearRequest()
 			state.AwaitingUser = true
+		case "permission_request":
+			// The agent's own hook (Claude's PermissionRequest or Elicitation) says a
+			// request to the user is open, at once rather than ~6 s later (#3481).
+			raise(event, event.Kind)
+		case "request_resolved":
+			// An elicitation was answered (accept, decline or cancel): the agent goes on.
+			if state.NeedsInput && state.WaitingKind == "elicitation" {
+				clearRequest()
+				latestType = "tool_use"
+				state.AwaitingUser = false
+			}
+		case "session_end":
+			latestType = ""
+			clearRequest()
+			state.AwaitingUser = false
 		case "notification":
 			if event.Summary == HeldInputEndedSummary {
 				// Coral's held sends were delivered or dropped: its own notice no
@@ -90,16 +150,13 @@ func Derive(in Input) State {
 				}
 				continue
 			}
-			switch Classify(event.Summary) {
+			class := Classify(event.Summary)
+			if event.Kind != "" {
+				class = ClassifyType(event.Kind)
+			}
+			switch class {
 			case NotificationNeedsInput:
-				if !state.NeedsInput {
-					beforeType, beforeAwaiting = latestType, state.AwaitingUser
-				}
-				latestType = "notification"
-				state.NeedsInput = true
-				state.AwaitingUser = false
-				state.WaitingReason = "notification"
-				state.WaitingSummary = event.Summary
+				raise(event, notificationKinds[event.Kind])
 			case NotificationAwaitingUser:
 				if !state.NeedsInput {
 					latestType = "notification"
@@ -143,6 +200,29 @@ const (
 	// NotificationAwaitingUser is the idle reminder after a finished turn.
 	NotificationAwaitingUser
 )
+
+// notificationTypes maps Claude Code's notification_type (hooks reference; the
+// 2.1.300 binary) to its effect. Unknown types are informational.
+var notificationTypes = map[string]NotificationClass{
+	"permission_prompt":        NotificationNeedsInput,
+	"worker_permission_prompt": NotificationNeedsInput,
+	"elicitation_dialog":       NotificationNeedsInput,
+	"elicitation_url_dialog":   NotificationNeedsInput,
+	"agent_needs_input":        NotificationNeedsInput,
+	"idle_prompt":              NotificationAwaitingUser,
+}
+
+// notificationKinds is the WaitingKind a needs-input notification_type implies.
+var notificationKinds = map[string]string{
+	"permission_prompt": "permission", "worker_permission_prompt": "permission",
+	"elicitation_dialog": "elicitation", "elicitation_url_dialog": "elicitation",
+}
+
+// ClassifyType maps a notification_type to its effect on the session state: the
+// CLI's own word for it, rather than its English message (#3481).
+func ClassifyType(notificationType string) NotificationClass {
+	return notificationTypes[notificationType]
+}
 
 // needsInputPhrases are the requests an agent makes directly to the user.
 // Only Claude Code registers a Notification hook today. Its messages are

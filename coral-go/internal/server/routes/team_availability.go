@@ -164,7 +164,7 @@ func (h *SessionsHandler) TeamAvailability(w http.ResponseWriter, r *http.Reques
 		}
 		input := SessionStateInput{Sleeping: s.IsSleeping != 0}
 		for _, e := range events[s.SessionID] {
-			input.Events = append(input.Events, StateEvent{Type: e.EventType, Summary: e.Summary})
+			input.Events = append(input.Events, newStateEvent(e.EventType, e.Summary, e.DetailJSON))
 		}
 		h.applyTranscriptState(&input, events[s.SessionID], s.AgentType, s.SessionID, s.WorkingDir)
 		var activeWait *board.RegisteredWait

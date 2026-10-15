@@ -598,21 +598,21 @@ func (s *TaskStore) GetSessionStateEvents(ctx context.Context, sessionIDs []stri
 		   SELECT s.value AS sid,
 		          (SELECT x.id FROM agent_events x
 		           WHERE x.session_id = s.value
-		             AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept')
+		             AND x.event_type IN ('stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept', 'session_end')
 		           ORDER BY x.created_at DESC, x.id DESC LIMIT 1) AS bid
 		   FROM json_each(?) s)
-		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.created_at
+		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.detail_json, e.created_at
 		 FROM boundary
 		 JOIN agent_events b ON b.id = boundary.bid
 		 JOIN agent_events e ON e.session_id = boundary.sid
-		 WHERE e.event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept')
+		 WHERE e.event_type IN ('notification', 'stop', 'prompt_submit', 'tool_use', 'session_reset', 'auto_accept', 'permission_request', 'request_resolved', 'session_end')
 		   AND (e.created_at, e.id) >= (b.created_at, b.id)
 		 UNION ALL
-		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.created_at
+		 SELECT e.id, e.agent_name, e.session_id, e.event_type, e.tool_name, e.summary, e.detail_json, e.created_at
 		 FROM boundary
 		 JOIN agent_events e ON e.session_id = boundary.sid
-		 WHERE boundary.bid IS NULL AND e.event_type = 'notification'
-		 ORDER BY 3, 7, 1`, ids); err != nil {
+		 WHERE boundary.bid IS NULL AND e.event_type IN ('notification', 'permission_request', 'request_resolved')
+		 ORDER BY 3, 8, 1`, ids); err != nil {
 		return nil, err
 	}
 	result := make(map[string][]AgentEvent, len(sessionIDs))

@@ -362,7 +362,23 @@ var coralHooks = map[string][]map[string]interface{}{
 			{"type": "command", "command": "coral-hook-session-start"},
 		}},
 	},
+	// The agent's own turn and request signals (#3481, #3475 phase 0), verified on
+	// Claude Code 2.1.300: a prompt starts a turn; PermissionRequest fires as a tool
+	// permission, an AskUserQuestion or a plan approval opens (Notification follows
+	// only ~6 s later); Elicitation and ElicitationResult open and close an MCP input
+	// request; StopFailure ends a turn on an API error; SessionEnd ends the session.
+	"UserPromptSubmit":  {agenticStateHook},
+	"PermissionRequest": {agenticStateHook},
+	"Elicitation":       {agenticStateHook},
+	"ElicitationResult": {agenticStateHook},
+	"StopFailure":       {agenticStateHook},
+	"SessionEnd":        {agenticStateHook},
 }
+
+// agenticStateHook is the hook group that sends an event to Coral's state.
+var agenticStateHook = map[string]interface{}{"hooks": []map[string]interface{}{
+	{"type": "command", "command": "coral-hook-agentic-state"},
+}}
 
 func buildMergedSettings(workingDir string, agentHooks map[string]interface{}) map[string]interface{} {
 	home, _ := os.UserHomeDir()

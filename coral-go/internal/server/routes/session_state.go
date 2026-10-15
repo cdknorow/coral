@@ -18,6 +18,9 @@ type (
 	SessionState      = sessionstate.State
 )
 
+// newStateEvent builds a state event from a stored one (its kind is in its detail).
+var newStateEvent = sessionstate.NewEvent
+
 // DeriveSessionState applies the shared state machine to a session's events.
 func DeriveSessionState(in SessionStateInput) SessionState {
 	return sessionstate.Derive(in)
@@ -32,7 +35,7 @@ func (h *SessionsHandler) deriveSingleSessionState(ctx context.Context, sessionI
 	in := SessionStateInput{StalenessSeconds: stalenessSeconds}
 	if events, err := h.ts.GetSessionStateEvents(ctx, []string{sessionID}); err == nil {
 		for _, ev := range events[sessionID] {
-			in.Events = append(in.Events, StateEvent{Type: ev.EventType, Summary: ev.Summary})
+			in.Events = append(in.Events, sessionstate.NewEvent(ev.EventType, ev.Summary, ev.DetailJSON))
 		}
 		if session, err := h.ss.GetLiveSession(ctx, sessionID); err == nil && session != nil {
 			in.Archived = session.IsArchived == 1

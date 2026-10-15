@@ -1,0 +1,31 @@
+{
+ "cwd": "/WORK",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PermissionRequest",
+ "permission_mode": "default",
+ "permission_suggestions": [
+  {
+   "destination": "session",
+   "directories": [
+    "/WORK"
+   ],
+   "type": "addDirectories"
+  },
+  {
+   "destination": "session",
+   "mode": "acceptEdits",
+   "type": "setMode"
+  }
+ ],
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "tool_input": {
+  "command": "touch p0-deny-test.txt",
+  "description": "Create empty file p0-deny-test.txt"
+ },
+ "tool_name": "Bash",
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}

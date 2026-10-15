@@ -1,0 +1,18 @@
+{
+ "cwd": "/WORK",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PreToolUse",
+ "permission_mode": "plan",
+ "prompt_id": "00000000-0000-4000-8000-000000000000",
+ "scratchpad_dir": "/SCRATCH",
+ "session_id": "00000000-0000-4000-8000-000000000000",
+ "tool_input": {
+  "content": "1. Create /WORK/p0-plan.txt with the Write tool, containing the text \"hello\".\n2. Verify by reading the file back to confirm its contents.\n",
+  "file_path": "/HOME/.claude/plans/plan-how-to-create-delegated-tome.md"
+ },
+ "tool_name": "Write",
+ "tool_use_id": "toolu_01ECrGrDnpZL3u2vSXtN41BU",
+ "transcript_path": "/HOME/.claude/projects/-private-tmp-q3431-w/00000000-0000-4000-8000-000000000000.jsonl"
+}
