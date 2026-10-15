@@ -42,20 +42,65 @@ func diffPathHidden(rel string) bool {
 	return false
 }
 
-// diffSectionPath is the file a "diff --git a/X b/Y" section is about (Y, or X for a
-// deletion), with git's C-style quoting undone.
+// unquoteGitPath undoes git's C-style quoting of a path ("a/x y" style), else returns it as is.
+func unquoteGitPath(p string) string {
+	if strings.HasPrefix(p, `"`) {
+		if u, err := strconv.Unquote(p); err == nil {
+			return u
+		}
+	}
+	return p
+}
+
+// sectionPaths are all the paths a file section might be about, over-approximated (Security's
+// #3555 review): both sides of the "diff --git" header (every possible split of an unquoted
+// one, since a path can itself contain " b/"), the rename and copy lines, and the ---/+++
+// lines. A section is hidden when any of them is.
+func sectionPaths(sec []byte) []string {
+	var out []string
+	add := func(p string) {
+		p = unquoteGitPath(strings.TrimSpace(p))
+		for _, pre := range []string{"a/", "b/"} {
+			p = strings.TrimPrefix(p, pre)
+		}
+		if p != "" && p != "/dev/null" {
+			out = append(out, p)
+		}
+	}
+	lines := strings.Split(string(sec), "\n")
+	header := strings.TrimPrefix(lines[0], "diff --git ")
+	if strings.HasPrefix(header, `"`) {
+		if a, err := strconv.QuotedPrefix(header); err == nil {
+			add(a)
+			add(header[len(a):])
+		}
+	}
+	for k := 0; k < len(header); k++ {
+		if strings.HasPrefix(header[k:], " b/") || strings.HasPrefix(header[k:], ` "b/`) {
+			add(header[:k])
+			add(header[k+1:])
+		}
+	}
+	add(header)
+	for _, l := range lines[1:] {
+		if strings.HasPrefix(l, "@@") || strings.HasPrefix(l, "GIT binary patch") {
+			break
+		}
+		for _, pre := range []string{"rename from ", "rename to ", "copy from ", "copy to ", "--- ", "+++ "} {
+			if strings.HasPrefix(l, pre) {
+				add(strings.TrimPrefix(l, pre))
+			}
+		}
+	}
+	return out
+}
+
+// diffSectionPath is the name a note shows for a (non-hidden) section: the b/ side.
 func diffSectionPath(header []byte) string {
 	h := strings.TrimSuffix(strings.TrimPrefix(string(header), "diff --git "), "\n")
-	// Quoted: "a/x y" "b/x y"
 	if strings.HasPrefix(h, `"`) {
 		if a, err := strconv.QuotedPrefix(h); err == nil {
-			rest := strings.TrimSpace(h[len(a):])
-			if b, err := strconv.Unquote(rest); err == nil {
-				return strings.TrimPrefix(b, "b/")
-			}
-			if s, err := strconv.Unquote(a); err == nil {
-				return strings.TrimPrefix(s, "a/")
-			}
+			return strings.TrimPrefix(unquoteGitPath(strings.TrimSpace(h[len(a):])), "b/")
 		}
 	}
 	if i := strings.LastIndex(h, " b/"); i >= 0 {
@@ -80,13 +125,21 @@ func filterPatch(diff []byte) []byte {
 			nl = len(sec)
 		}
 		path := diffSectionPath(sec[:nl])
+		hidden := false
+		for _, p := range sectionPaths(sec) {
+			if diffPathHidden(p) {
+				hidden = true
+				break
+			}
+		}
 		switch {
-		case diffPathHidden(path):
-			out.Write(diffNote("changes to %s not shown (sensitive path)", path))
+		case hidden:
+			// No name: the name of a secret or personal file is itself information.
+			out.Write(diffNote("changes to a sensitive file not shown"))
 		case bytes.Contains(sec, []byte("\nGIT binary patch\n")) || bytes.Contains(sec, []byte("\nBinary files ")):
-			out.Write(diffNote("changes to %s not shown (binary file)", path))
+			out.Write(diffNote("changes to %q not shown (binary file)", path))
 		case len(sec) > diffSectionMax:
-			out.Write(diffNote("changes to %s not shown (%d bytes, over 256 KiB)", path, len(sec)))
+			out.Write(diffNote("changes to %q not shown (%d bytes, over 256 KiB)", path, len(sec)))
 		default:
 			out.Write(sec)
 		}
@@ -155,7 +208,7 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 			diff = append(diff, '\n')
 		}
 		if diffPathHidden(rel) {
-			diff = append(diff, diffNote("new file %s not shown (sensitive path)", rel)...)
+			diff = append(diff, diffNote("a new sensitive file not shown")...)
 			continue
 		}
 		fi, err := os.Lstat(filepath.Join(workdir, rel))
@@ -163,11 +216,11 @@ func (h *SessionsHandler) generatePersistedDiff(ctx context.Context, workdir str
 			continue
 		}
 		if fi.Size() > diffSectionMax {
-			diff = append(diff, diffNote("new file %s, %d bytes, not stored", rel, fi.Size())...)
+			diff = append(diff, diffNote("new file %q, %d bytes, not stored", rel, fi.Size())...)
 			continue
 		}
 		if isBinaryFile(filepath.Join(workdir, rel)) {
-			diff = append(diff, diffNote("new file %s, %d bytes, not stored (binary)", rel, fi.Size())...)
+			diff = append(diff, diffNote("new file %q, %d bytes, not stored (binary)", rel, fi.Size())...)
 			continue
 		}
 		fileDiff, ferr := exec.CommandContext(ctx, "git", "-C", workdir, "diff", "--no-index", "--", os.DevNull, rel).Output()

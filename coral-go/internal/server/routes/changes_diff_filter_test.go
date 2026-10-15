@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -47,10 +48,12 @@ func TestFilterPatch(t *testing.T) {
 	assert.NotContains(t, out, "sekrit")
 	assert.NotContains(t, out, "zcmZ?w")
 	assert.NotContains(t, out, big)
-	for _, note := range []string{"changes to .env.local not shown (sensitive path)", "changes to keys/id_rsa not shown (sensitive path)",
-		"changes to shot.png not shown (binary file)", "changes to big.txt not shown"} {
+	for _, note := range []string{"changes to a sensitive file not shown", `changes to "shot.png" not shown (binary file)`, `changes to "big.txt" not shown`} {
 		assert.Contains(t, out, note)
 	}
+	assert.Equal(t, 2, strings.Count(out, "changes to a sensitive file not shown"))
+	assert.NotContains(t, out, ".env.local", "a hidden file's name isn't shown either")
+	assert.NotContains(t, out, "id_rsa")
 	// A quoted path (git's C-style quoting) is read correctly.
 	quoted := "diff --git \"a/.env prod\" \"b/.env prod\"\n+X=" + secretEnv + "\n"
 	assert.NotContains(t, string(filterPatch([]byte(quoted))), "do-not-leak")
@@ -101,11 +104,12 @@ func TestGeneratePersistedDiff(t *testing.T) {
 	assert.Contains(t, out, "+a plain new file")
 	assert.NotContains(t, out, "do-not-leak")
 	assert.NotContains(t, out, "sekrit")
-	assert.Contains(t, out, "new file .env.local not shown (sensitive path)")
-	assert.Contains(t, out, "new file keys/id_rsa not shown (sensitive path)")
-	assert.Contains(t, out, fmt.Sprintf("new file shot.png, %d bytes, not stored", len(big)))
-	assert.Contains(t, out, "new file tiny.bin, 5 bytes, not stored (binary)")
-	assert.Contains(t, out, fmt.Sprintf("new file big.log, %d bytes, not stored", len(bigText)))
+	assert.Equal(t, 2, strings.Count(out, "a new sensitive file not shown"))
+	assert.NotContains(t, out, ".env.local")
+	assert.NotContains(t, out, "id_rsa")
+	assert.Contains(t, out, fmt.Sprintf(`new file "shot.png", %d bytes, not stored`, len(big)))
+	assert.Contains(t, out, `new file "tiny.bin", 5 bytes, not stored (binary)`)
+	assert.Contains(t, out, fmt.Sprintf(`new file "big.log", %d bytes, not stored`, len(bigText)))
 	assert.NotContains(t, out, "a log line that goes on")
 	assert.Less(t, len(diff), 4096, "a small diff for a big checkout")
 
@@ -190,8 +194,8 @@ func TestTunneledDiffsAreFiltered(t *testing.T) {
 	assert.Contains(t, hub, "+b")
 	assert.NotContains(t, hub, "do-not-leak")
 	assert.NotContains(t, hub, "zcmZ?w")
-	assert.Contains(t, hub, "changes to .env.local not shown (sensitive path)")
-	assert.Contains(t, hub, "changes to shot.png not shown (binary file)")
+	assert.Contains(t, hub, "changes to a sensitive file not shown")
+	assert.Contains(t, hub, `changes to "shot.png" not shown (binary file)`)
 	assert.Equal(t, old, get(false), "locally the stored diff is served whole")
 
 	// The same for a session's stored diff (both routes).
@@ -227,4 +231,49 @@ func TestTunneledDiffsAreFiltered(t *testing.T) {
 	live, err := sh.generatePersistedDiff(context.Background(), repo)
 	require.NoError(t, err)
 	assert.NotContains(t, string(live), "do-not-leak")
+}
+
+// Security's #3555 SHOULD 1: a section is hidden when ANY path it names is: a rename or copy
+// FROM a hidden path, a path containing " b/" (a ".k b" dot-folder), and the ---/+++ lines.
+// SHOULD 2: a name with a newline can't start a fake section through a note.
+func TestFilterPatchEveryPathCounts(t *testing.T) {
+	for name, sec := range map[string]string{
+		"rename from .env":  "diff --git a/.env b/notes.txt\nsimilarity index 95%\nrename from .env\nrename to notes.txt\n@@ -1 +1 @@\n " + secretEnv + "\n",
+		"copy from a key":   "diff --git a/keys/id_rsa b/copy.txt\ncopy from keys/id_rsa\ncopy to copy.txt\n@@ -0,0 +1 @@\n+" + secretKey + "\n",
+		"a ' b/' dot dir":   "diff --git a/.k b/x b/.k b/x\nnew file mode 100644\n--- /dev/null\n+++ b/.k b/x\n@@ -0,0 +1 @@\n+" + secretEnv + "\n",
+		"only --- names it": "diff --git a/plain b/plain\n--- a/.ssh/config\n+++ b/plain\n@@ -1 +1 @@\n+" + secretEnv + "\n",
+	} {
+		out := string(filterPatch([]byte(sec)))
+		assert.NotContains(t, out, "do-not-leak", name)
+		assert.NotContains(t, out, "sekrit", name)
+		assert.Contains(t, out, "changes to a sensitive file not shown", name)
+	}
+	evil := "diff --git a/x\ndiff --git a/fake b/fake.png b/x\ndiff --git a/fake b/fake.png\nGIT binary patch\nliteral 1\nzz\n\n"
+	out := string(filterPatch([]byte(evil)))
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(l, "# Coral:") {
+			assert.NotContains(t, l, "\n")
+		}
+	}
+	assert.NotContains(t, capDiff([]byte(diffNote("changes to %q not shown (binary file)", "a\ndiff --git a/b b/b")), 1<<20), []byte("\ndiff --git a/b"), "a quoted name keeps a newline escaped")
+}
+
+// QA's #3555 finding: a diff shared by several tasks and a session (hard links to one
+// stored object) counts its bytes once in the store sizes; each task's diff still counts as
+// a file.
+func TestDiffStoreSizesCountSharedDiffsOnce(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("inode identity")
+	}
+	coral := t.TempDir()
+	shared := []byte(strings.Repeat("diff --git a/x b/x\n+same\n", 40))
+	other := []byte("diff --git a/y b/y\n+other\n")
+	for _, p := range []string{"artifacts/tasks/1/changes.diff", "artifacts/tasks/2/changes.diff", "artifacts/sessions/s1/changes.diff"} {
+		require.NoError(t, writeChangesArtifact(filepath.Join(coral, p), shared))
+	}
+	require.NoError(t, writeChangesArtifact(filepath.Join(coral, "artifacts/tasks/3/changes.diff"), other))
+	tb, tn, sb, sn := diffStoreSizes(coral)
+	assert.Equal(t, int64(len(shared)+len(other)), tb+sb, "each stored diff's bytes once")
+	assert.Equal(t, int64(3), tn)
+	assert.Equal(t, int64(1), sn)
 }

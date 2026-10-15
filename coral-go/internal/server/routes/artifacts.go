@@ -113,14 +113,24 @@ func diffStoreSizes(coralDir string) (tb, tn, sb, sn int64) {
 	if diffSizes.dir == coralDir && time.Since(diffSizes.at) < 30*time.Second {
 		return diffSizes.tb, diffSizes.tn, diffSizes.sb, diffSizes.sn
 	}
+	// A diff shared by several tasks or sessions is one file with several hard links (#3555's
+	// dedupe): its bytes count once, under the first place it's found; files counts the
+	// task and session diffs (the links). QA's #3555 finding.
+	seen := map[string]bool{}
 	walk := func(dir string) (bytes, files int64) {
 		_ = filepath.WalkDir(dir, func(_ string, d os.DirEntry, err error) error {
 			if err != nil || !d.Type().IsRegular() {
 				return nil
 			}
 			if info, ierr := d.Info(); ierr == nil {
-				bytes += info.Size()
 				files++
+				if key, ok := fileIdentity(info); ok {
+					if seen[key] {
+						return nil
+					}
+					seen[key] = true
+				}
+				bytes += info.Size()
 			}
 			return nil
 		})
