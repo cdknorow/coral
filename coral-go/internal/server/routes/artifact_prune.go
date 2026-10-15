@@ -44,13 +44,22 @@ const (
 	pruneLargest       = 20
 	pruneMinOlderThan  = 24 * time.Hour // a prune of anything younger is refused (a typo guard)
 	diffObjectGrace    = time.Hour      // a diff object this young may be about to be linked
-	pruneKnowledgeMax  = 4 << 20        // a knowledge file bigger than this is skipped by the scan
 	pruneDiffReadLimit = 512 << 20      // a stored diff bigger than this isn't shrunk
 )
 
 // artifactRefRe finds an artifact id in any text: coral://artifacts/<hex>, /api/artifacts/<hex>
 // (with or without ?v=2), inside Markdown, code or angle brackets alike.
 var artifactRefRe = regexp.MustCompile(`(?i)(?:coral://artifacts/|/api/artifacts/)([0-9a-f]{64})`)
+
+// A long object prune scans the references again every pruneRescanEvery deletions, and at least
+// every pruneRescanAfter (Security's #3554 review). Vars so a test can make them small.
+var (
+	pruneRescanEvery = 100
+	pruneRescanAfter = 30 * time.Second
+)
+
+// pruneAfterDeleteHook lets a test post a link after each object deletion.
+var pruneAfterDeleteHook func()
 
 // pruneRunning: one prune or shrink at a time.
 var pruneRunning sync.Mutex
@@ -124,26 +133,22 @@ func (r *pruneReport) finish() {
 
 // ── References ──────────────────────────────────────────────────────
 
-// referenceColumns are the columns that can link an artifact (the #3554 survey), per database.
-var boardReferenceColumns = [][2]string{
-	{"board_messages", "content"}, {"board_messages", "external_json"},
-	{"task_workflows", "data"}, {"board_tasks", "body"}, {"board_tasks", "completion_message"},
-	{"task_amendments", "changes_json"}, {"task_amendments", "previous_snapshot_json"}, {"task_amendments", "effective_snapshot_json"},
-	{"board_reminders", "message"}, {"board_workflow_presets", "instructions"}, {"board_working_modes", "data"},
+// The reference scan reads EVERY column of every table in both databases, whatever its declared
+// type (deny by default, Lead's and the Orchestrator's #3554 reviews: SQLite types are only
+// declarations, so a BLOB or INTEGER column can hold text too). A table or column added later is
+// scanned without anyone remembering to list it. A table is skipped only when it is listed here,
+// with the reason.
+var referenceExclusions = map[string]string{
+	"call_metrics":        "a request log: a GET of /api/artifacts/<hex> there is a fetch, not a link (and it is by far the slowest table to scan)",
+	"session_fts_data":    "session_fts's own index storage (binary); session_fts itself is scanned",
+	"session_fts_idx":     "session_fts's own index storage; session_fts itself is scanned",
+	"session_fts_content": "the same transcript text as session_fts, which is scanned",
+	"session_fts_docsize": "session_fts's own index storage (sizes)",
+	"session_fts_config":  "session_fts's own settings",
 }
 
-var sessionReferenceColumns = [][2]string{
-	{"task_workflows", "data"}, {"board_tasks", "body"}, {"board_tasks", "completion_message"},
-	{"task_amendments", "changes_json"}, {"task_amendments", "previous_snapshot_json"}, {"task_amendments", "effective_snapshot_json"},
-	{"agent_notes", "content"}, {"session_meta", "notes_md"}, {"session_meta", "auto_summary"},
-	{"agent_ui_panels", "html"}, {"custom_views", "html"}, {"custom_views", "prompt"},
-	{"workflow_runs", "step_results"}, {"workflow_runs", "trigger_context"}, {"workflows", "steps_json"},
-	{"agent_events", "detail_json"},
-}
-
-// scanArtifactReferences returns every artifact id something durable links. Any error (other
-// than a table or column this database doesn't have) fails the whole scan: a prune must never
-// delete "what it could verify".
+// scanArtifactReferences returns every artifact id something durable links. Any error fails the
+// whole scan: a prune must never delete "what it could verify".
 func (h *SessionsHandler) scanArtifactReferences(ctx context.Context) (map[string]bool, error) {
 	if h.bs == nil || h.db == nil {
 		return nil, errors.New("the board or session database isn't available")
@@ -151,10 +156,10 @@ func (h *SessionsHandler) scanArtifactReferences(ctx context.Context) (map[strin
 	ctx, cancel := context.WithTimeout(ctx, pruneScanTimeout)
 	defer cancel()
 	refs := map[string]bool{}
-	if err := scanReferenceColumns(ctx, h.bs.Reader(), boardReferenceColumns, refs); err != nil {
+	if err := scanAllColumns(ctx, h.bs.Reader(), refs); err != nil {
 		return nil, fmt.Errorf("board database: %w", err)
 	}
-	if err := scanReferenceColumns(ctx, h.db.Reader(), sessionReferenceColumns, refs); err != nil {
+	if err := scanAllColumns(ctx, h.db.Reader(), refs); err != nil {
 		return nil, fmt.Errorf("session database: %w", err)
 	}
 	if err := scanKnowledgeReferences(ctx, filepath.Join(h.cfg.CoralDir(), "agent_knowledge"), refs); err != nil {
@@ -163,48 +168,74 @@ func (h *SessionsHandler) scanArtifactReferences(ctx context.Context) (map[strin
 	return refs, nil
 }
 
-func scanReferenceColumns(ctx context.Context, db *sqlx.DB, cols [][2]string, refs map[string]bool) error {
-	have := map[string]map[string]bool{}
-	for _, tc := range cols {
-		table, col := tc[0], tc[1]
-		if have[table] == nil {
-			have[table] = map[string]bool{}
-			rows, err := db.QueryxContext(ctx, "SELECT name FROM pragma_table_info(?)", table)
-			if err != nil {
-				return err
-			}
-			for rows.Next() {
-				var name string
-				if err := rows.Scan(&name); err != nil {
-					rows.Close()
-					return err
-				}
-				have[table][name] = true
-			}
-			rows.Close()
-			if err := rows.Err(); err != nil {
-				return err
-			}
+// scannedColumns lists, per table, the columns the scan reads in db (all of them).
+func scannedColumns(ctx context.Context, db *sqlx.DB) (map[string][]string, error) {
+	var tables []string
+	if err := db.SelectContext(ctx, &tables, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"); err != nil {
+		return nil, err
+	}
+	out := map[string][]string{}
+	for _, t := range tables {
+		if _, skip := referenceExclusions[t]; skip {
+			continue
 		}
-		if !have[table][col] {
-			continue // not in this database (an older schema, or the other database's table)
-		}
-		// Table and column names come from the fixed lists above, never from a request.
-		rows, err := db.QueryxContext(ctx, fmt.Sprintf("SELECT CAST(%s AS BLOB) FROM %s WHERE %s LIKE '%%artifacts/%%'", col, table, col))
+		rows, err := db.QueryxContext(ctx, "SELECT name FROM pragma_table_info(?)", t)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for rows.Next() {
-			var v []byte
-			if err := rows.Scan(&v); err != nil {
+			var name string
+			if err := rows.Scan(&name); err != nil {
 				rows.Close()
-				return err
+				return nil, err
 			}
-			addArtifactRefs(v, refs)
+			out[t] = append(out[t], name)
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
-			return err
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func quoteIdent(s string) string { return `"` + strings.ReplaceAll(s, `"`, `""`) + `"` }
+
+// scanAllColumns reads every column of every table (one query per table) for links.
+func scanAllColumns(ctx context.Context, db *sqlx.DB, refs map[string]bool) error {
+	cols, err := scannedColumns(ctx, db)
+	if err != nil {
+		return err
+	}
+	for table, names := range cols {
+		sel := make([]string, len(names))
+		where := make([]string, len(names))
+		for i, n := range names {
+			sel[i] = "CAST(" + quoteIdent(n) + " AS BLOB)"
+			where[i] = quoteIdent(n) + " LIKE '%artifacts/%'"
+		}
+		// Names come from this database's own schema, quoted; never from a request.
+		rows, err := db.QueryContext(ctx, "SELECT "+strings.Join(sel, ", ")+" FROM "+quoteIdent(table)+" WHERE "+strings.Join(where, " OR "))
+		if err != nil {
+			return fmt.Errorf("%s: %w", table, err)
+		}
+		vals := make([][]byte, len(names))
+		ptrs := make([]any, len(names))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		for rows.Next() {
+			if err := rows.Scan(ptrs...); err != nil {
+				rows.Close()
+				return fmt.Errorf("%s: %w", table, err)
+			}
+			for _, v := range vals {
+				addArtifactRefs(v, refs)
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("%s: %w", table, err)
 		}
 	}
 	return nil
@@ -213,6 +244,33 @@ func scanReferenceColumns(ctx context.Context, db *sqlx.DB, cols [][2]string, re
 func addArtifactRefs(text []byte, refs map[string]bool) {
 	for _, m := range artifactRefRe.FindAllSubmatch(text, -1) {
 		refs[strings.ToLower(string(m[1]))] = true
+	}
+}
+
+// addArtifactRefsFrom scans a reader in chunks, keeping an overlap longer than any link so one
+// split across two chunks is still found (Security's #3554 review: a big file must not be skipped).
+func addArtifactRefsFrom(ctx context.Context, r io.Reader, refs map[string]bool) error {
+	const chunk, overlap = 1 << 20, 128
+	buf := make([]byte, 0, chunk+overlap)
+	tmp := make([]byte, chunk)
+	for {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		n, err := r.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if len(buf) > overlap || err != nil {
+			addArtifactRefs(buf, refs)
+			if len(buf) > overlap {
+				buf = append(buf[:0], buf[len(buf)-overlap:]...)
+			}
+		}
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 }
 
@@ -230,15 +288,14 @@ func scanKnowledgeReferences(ctx context.Context, dir string, refs map[string]bo
 		if !d.Type().IsRegular() || !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
 			return nil
 		}
-		info, err := d.Info()
-		if err != nil || info.Size() > pruneKnowledgeMax {
-			return nil
-		}
-		data, err := os.ReadFile(path)
+		f, err := os.Open(path)
 		if err != nil {
-			return err
+			return err // unreadable: the scan can't vouch for it, so the run removes nothing
 		}
-		addArtifactRefs(data, refs)
+		defer f.Close()
+		if err := addArtifactRefsFrom(ctx, f, refs); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
 		return nil
 	})
 	if errors.Is(err, os.ErrNotExist) {
@@ -416,10 +473,14 @@ func (h *SessionsHandler) closedDiffs(ctx context.Context, o pruneOptions) ([]di
 				continue
 			}
 			c.kind, c.id, c.board = "task", e.Name(), t.BoardID
-			if known && t.CompletedAt != nil {
-				if at, err := parseDBTime(*t.CompletedAt); err == nil {
-					c.at = at // a shared diff's file time is when it was first stored
+			if known {
+				// Aged by when the task was closed (a shared diff's file time is when it was first
+				// stored). No readable completed_at: too young to judge, so it stays.
+				at, ok := closedAt(t.CompletedAt)
+				if !ok {
+					continue
 				}
+				c.at = at
 			}
 			if o.Now.Sub(c.at) >= o.OlderThan {
 				out = append(out, c)
@@ -462,10 +523,12 @@ func (h *SessionsHandler) closedDiffs(ctx context.Context, o pruneOptions) ([]di
 			if known && s.Board != nil {
 				c.board = *s.Board
 			}
-			if known && s.StoppedAt != nil {
-				if at, err := parseDBTime(*s.StoppedAt); err == nil {
-					c.at = at
+			if known {
+				at, ok := closedAt(s.StoppedAt)
+				if !ok {
+					continue // no readable stopped_at: too young to judge
 				}
+				c.at = at
 			}
 			if o.Now.Sub(c.at) >= o.OlderThan {
 				out = append(out, c)
@@ -473,6 +536,14 @@ func (h *SessionsHandler) closedDiffs(ctx context.Context, o pruneOptions) ([]di
 		}
 	}
 	return out, nil
+}
+
+func closedAt(s *string) (time.Time, bool) {
+	if s == nil || strings.TrimSpace(*s) == "" {
+		return time.Time{}, false
+	}
+	at, err := parseDBTime(*s)
+	return at, err == nil
 }
 
 func diffAt(path string) (diffCandidate, bool) {
@@ -593,9 +664,19 @@ func (h *SessionsHandler) runPrune(ctx context.Context, o pruneOptions) (*pruneR
 			}
 		}
 		scanAt := time.Now()
+		sinceScan := 0
 		for _, c := range cands {
 			if capped() {
 				break
+			}
+			// A long run looks again every 100 deletions or 30 s, so a link posted meanwhile is seen.
+			if !o.DryRun && (sinceScan >= pruneRescanEvery || time.Since(scanAt) >= pruneRescanAfter) {
+				if refs, err = h.scanArtifactReferences(ctx); err != nil {
+					slog.Warn("[artifacts] prune: a reference re-scan failed, so the run stops here", "error", err)
+					rep.Errors++
+					break
+				}
+				scanAt, sinceScan = time.Now(), 0
 			}
 			it := pruneItem{Kind: pruneKindObjects, ID: c.id, Name: c.name, Bytes: c.bytes, AgeDays: o.Now.Sub(c.use).Hours() / 24}
 			if o.DryRun {
@@ -613,7 +694,11 @@ func (h *SessionsHandler) runPrune(ctx context.Context, o pruneOptions) (*pruneR
 				rep.add(it)
 				rep.Freed += freed
 				rep.Removed++
+				sinceScan++
 				slog.Info("[artifacts] pruned an artifact object", "digest", c.id, "bytes", freed)
+				if pruneAfterDeleteHook != nil {
+					pruneAfterDeleteHook()
+				}
 			}
 		}
 	}
@@ -698,9 +783,13 @@ func (h *SessionsHandler) pruneDiffs(ctx context.Context, o pruneOptions, diffs 
 		it := pruneItem{Kind: pruneKindDiffs, ID: d.kind + " " + d.id, Board: d.board, Bytes: d.bytes, AgeDays: o.Now.Sub(d.at).Hours() / 24}
 		// Freed: the inode goes once every link to it is a candidate (plus its diff object,
 		// which the sweep removes).
-		others := d.links - candidateLinks[d.inode]
+		// Signed, clamped: a link added or removed since the listing must not wrap (Lead's NIT D).
+		others := int64(d.links) - int64(candidateLinks[d.inode])
 		if objects[d.inode] {
 			others--
+		}
+		if others < 0 {
+			others = 0
 		}
 		freedHere := int64(0)
 		if others == 0 && !counted[d.inode] {
@@ -715,7 +804,7 @@ func (h *SessionsHandler) pruneDiffs(ctx context.Context, o pruneOptions, diffs 
 		if pruneBeforeDiffHook != nil {
 			pruneBeforeDiffHook(d)
 		}
-		if !h.diffStillClosed(ctx, d) {
+		if !h.diffStillClosed(ctx, d, o) {
 			rep.Skipped++
 			continue
 		}
@@ -735,28 +824,38 @@ func (h *SessionsHandler) pruneDiffs(ctx context.Context, o pruneOptions, diffs 
 
 // diffStillClosed re-checks a diff right before it goes: its task is still completed or
 // skipped (a reopened task keeps its diff), its session still stopped.
-func (h *SessionsHandler) diffStillClosed(ctx context.Context, d diffCandidate) bool {
+func (h *SessionsHandler) diffStillClosed(ctx context.Context, d diffCandidate, o pruneOptions) bool {
+	oldEnough := func(at *string) bool {
+		t, ok := closedAt(at)
+		return ok && o.Now.Sub(t) >= o.OlderThan
+	}
 	switch d.kind {
 	case "task":
 		if h.bs == nil {
 			return false
 		}
-		var status string
-		err := h.bs.Reader().GetContext(ctx, &status, "SELECT status FROM board_tasks WHERE id = ?", d.id)
+		var t struct {
+			Status      string  `db:"status"`
+			CompletedAt *string `db:"completed_at"`
+		}
+		err := h.bs.Reader().GetContext(ctx, &t, "SELECT status, completed_at FROM board_tasks WHERE id = ?", d.id)
 		if errors.Is(err, sqlNoRows) {
 			return true // the task is gone
 		}
-		return err == nil && (status == "completed" || status == "skipped")
+		// Still closed AND still old: a task reopened and closed again since the listing has a
+		// new diff, which isn't due yet (Security's #3554 review).
+		return err == nil && (t.Status == "completed" || t.Status == "skipped") && oldEnough(t.CompletedAt)
 	case "session":
 		var s struct {
-			Status   *string `db:"status"`
-			Sleeping int     `db:"is_sleeping"`
+			Status    *string `db:"status"`
+			Sleeping  int     `db:"is_sleeping"`
+			StoppedAt *string `db:"stopped_at"`
 		}
-		err := h.db.Reader().GetContext(ctx, &s, "SELECT status, is_sleeping FROM live_sessions WHERE session_id = ?", d.id)
+		err := h.db.Reader().GetContext(ctx, &s, "SELECT status, is_sleeping, stopped_at FROM live_sessions WHERE session_id = ?", d.id)
 		if errors.Is(err, sqlNoRows) {
 			return true
 		}
-		return err == nil && s.Sleeping == 0 && s.Status != nil && *s.Status == "inactive"
+		return err == nil && s.Sleeping == 0 && s.Status != nil && *s.Status == "inactive" && oldEnough(s.StoppedAt)
 	}
 	return false
 }
@@ -766,6 +865,20 @@ func (h *SessionsHandler) diffStillClosed(ctx context.Context, d diffCandidate) 
 // diff object and the diff is relinked to it; a shared object is never edited in place.
 func (h *SessionsHandler) shrinkDiffs(ctx context.Context, o pruneOptions, diffs []diffCandidate, rep *pruneReport) {
 	done := map[fileKey]bool{}
+	// The old bytes are freed only when every link to them is rewritten (Lead's NIT E): a diff
+	// shared with an open task, which isn't shrunk, keeps them on disk.
+	objects := diffObjectInodes(h.cfg.CoralDir())
+	candidateLinks := map[fileKey]int64{}
+	for _, d := range diffs {
+		candidateLinks[d.inode]++
+	}
+	allLinksShrunk := func(d diffCandidate) bool {
+		others := int64(d.links) - candidateLinks[d.inode]
+		if objects[d.inode] {
+			others--
+		}
+		return others <= 0
+	}
 	for _, d := range diffs {
 		if d.bytes > pruneDiffReadLimit {
 			rep.Errors++
@@ -787,7 +900,7 @@ func (h *SessionsHandler) shrinkDiffs(ctx context.Context, o pruneOptions, diffs
 		saved := int64(len(data) - len(small))
 		it := pruneItem{Kind: "shrink", ID: d.kind + " " + d.id, Board: d.board, Bytes: saved, AgeDays: o.Now.Sub(d.at).Hours() / 24}
 		freedHere := int64(0)
-		if !done[d.inode] {
+		if !done[d.inode] && allLinksShrunk(d) {
 			freedHere = saved
 			done[d.inode] = true
 		}
@@ -799,7 +912,7 @@ func (h *SessionsHandler) shrinkDiffs(ctx context.Context, o pruneOptions, diffs
 		if pruneBeforeDiffHook != nil {
 			pruneBeforeDiffHook(d)
 		}
-		if !h.diffStillClosed(ctx, d) {
+		if !h.diffStillClosed(ctx, d, o) {
 			rep.Skipped++
 			continue
 		}

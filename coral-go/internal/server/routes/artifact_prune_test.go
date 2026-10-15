@@ -490,3 +490,139 @@ func TestRetentionSettingsAndAck(t *testing.T) {
 	require.NoError(t, rig.h.ss.SetSetting(context.Background(), RetentionDaysSetting, "7"))
 	assert.Equal(t, http.StatusOK, post(map[string]string{testDashboardHeader: "1"}))
 }
+
+// The reference scan is deny by default (Lead's #3554 review): every text column of every table
+// is read, and a table is skipped only when referenceExclusions names it with a reason. A stale
+// exclusion (a table that no longer exists) fails here, and links in columns no list ever named
+// keep their objects.
+func TestPruneScanCensus(t *testing.T) {
+	rig := newPruneRig(t)
+	ctx := context.Background()
+	tables := map[string]bool{}
+	for _, db := range []*sqlx.DB{rig.bs.Reader(), rig.h.db.Reader()} {
+		var names []string
+		require.NoError(t, db.Select(&names, "SELECT name FROM sqlite_master WHERE type = 'table'"))
+		for _, n := range names {
+			tables[n] = true
+		}
+	}
+	for table, why := range referenceExclusions {
+		assert.True(t, tables[table], "excluded table %q doesn't exist: remove it from referenceExclusions", table)
+		assert.NotEmpty(t, strings.TrimSpace(why), "excluded table %q needs a reason", table)
+	}
+	scanned, err := scannedColumns(ctx, rig.h.db.Reader())
+	require.NoError(t, err)
+	assert.Contains(t, scanned["session_fts"], "body", "chat transcripts are scanned")
+	assert.Contains(t, scanned["live_sessions"], "prompt")
+	assert.Contains(t, scanned["scheduled_jobs"], "prompt")
+
+	old := 30 * 24 * time.Hour
+	inTitle := rig.object("linked from a task title", "s1", old)
+	inLaunch := rig.object("linked from a launch prompt", "s1", old)
+	inChat := rig.object("linked from a chat transcript", "s1", old)
+	inMetrics := rig.object("only fetched, never linked", "s1", old)
+	_, err = rig.bs.CreateTask(ctx, "team", "review coral://artifacts/"+inTitle, "", "medium", "Operator")
+	require.NoError(t, err)
+	ss := store.NewSessionStore(rig.h.db)
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: "s-launch", AgentName: "a", AgentType: "claude", WorkingDir: t.TempDir()}))
+	_, err = rig.h.db.Exec("UPDATE live_sessions SET prompt = ? WHERE session_id = 's-launch'", "start from coral://artifacts/"+inLaunch)
+	require.NoError(t, err)
+	_, err = rig.h.db.Exec("INSERT INTO session_fts (session_id, body) VALUES ('s-chat', ?)", "assistant: the report is at coral://artifacts/"+inChat)
+	require.NoError(t, err)
+	// Declared types don't limit what SQLite stores: a link in an INTEGER column still counts.
+	inInteger := rig.object("linked from an INTEGER column", "s1", old)
+	require.NoError(t, ss.RegisterLiveSession(ctx, &store.LiveSession{SessionID: "s-int", AgentName: "b", AgentType: "claude", WorkingDir: t.TempDir()}))
+	_, err = rig.h.db.Exec("UPDATE live_sessions SET context_window = ? WHERE session_id = 's-int'", "coral://artifacts/"+inInteger)
+	require.NoError(t, err)
+	var metricCols []string
+	require.NoError(t, rig.h.db.Select(&metricCols, "SELECT name FROM pragma_table_info('call_metrics') WHERE type LIKE '%TEXT%'"))
+	require.NotEmpty(t, metricCols)
+	rep := rig.run(pruneOptions{OlderThan: 7 * 24 * time.Hour, Kinds: kinds(pruneKindObjects), DryRun: true})
+	var listed []string
+	for _, it := range rep.Largest {
+		listed = append(listed, it.ID)
+	}
+	assert.NotContains(t, listed, inTitle, "a task title keeps its object")
+	assert.NotContains(t, listed, inLaunch, "a launch prompt keeps its object")
+	assert.NotContains(t, listed, inChat, "a chat transcript keeps its object")
+	assert.NotContains(t, listed, inInteger, "a link in an INTEGER-declared column keeps its object")
+	assert.Contains(t, listed, inMetrics, "an artifact nothing links is listed")
+}
+
+func TestPruneScansABigKnowledgeFile(t *testing.T) {
+	rig := newPruneRig(t)
+	atEnd := rig.object("linked at the end of a big file", "s1", 30*24*time.Hour)
+	straddling := rig.object("linked across a chunk boundary", "s1", 30*24*time.Hour)
+	unused := rig.object("nothing links this", "s1", 30*24*time.Hour)
+	dir := filepath.Join(rig.coralDir, "agent_knowledge", "team")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	link := "coral://artifacts/" + straddling
+	pad := strings.Repeat("x", (1<<20)-len(link)/2) // the link straddles the first 1 MiB boundary
+	body := pad + " " + link + " " + strings.Repeat("filler line\n", 500_000) + "see coral://artifacts/" + atEnd + "\n"
+	require.Greater(t, len(body), 5<<20, "bigger than the old 4 MiB cap")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.md"), []byte(body), 0o600))
+	rig.run(pruneOptions{OlderThan: 7 * 24 * time.Hour, Kinds: kinds(pruneKindObjects)})
+	assert.True(t, rig.exists(atEnd), "a link at the end of a 5+ MiB file protects its object")
+	assert.True(t, rig.exists(straddling), "a link split across two read chunks still counts")
+	assert.False(t, rig.exists(unused))
+}
+
+func TestPruneDiffWithoutACloseTimeStays(t *testing.T) {
+	rig := newPruneRig(t)
+	id := rig.task("completed", 20*24*time.Hour, []byte("diff --git a/a b/a\n+x\n"))
+	_, err := rig.boardDB.Exec("UPDATE board_tasks SET completed_at = NULL WHERE id = ?", id)
+	require.NoError(t, err)
+	old := rig.now.Add(-30 * 24 * time.Hour) // an old file: falling back to its time would prune it
+	require.NoError(t, os.Chtimes(rig.taskDiff(id), old, old))
+	dry := rig.run(pruneOptions{OlderThan: 7 * 24 * time.Hour, Kinds: kinds(pruneKindDiffs), DryRun: true})
+	assert.Empty(t, dry.Largest, "no completed_at: too young to judge, so it stays")
+}
+
+func TestPruneSkipsATaskClosedAgainMidRun(t *testing.T) {
+	rig := newPruneRig(t)
+	id := rig.task("completed", 20*24*time.Hour, []byte("diff --git a/a b/a\n+x\n"))
+	pruneBeforeDiffHook = func(diffCandidate) {
+		// Reopened and completed again just now: its diff is new, not due yet.
+		_, err := rig.boardDB.Exec("UPDATE board_tasks SET status = 'completed', completed_at = ? WHERE id = ?", rig.now.UTC().Format(time.RFC3339), id)
+		require.NoError(t, err)
+	}
+	t.Cleanup(func() { pruneBeforeDiffHook = nil })
+	rep := rig.run(pruneOptions{OlderThan: 7 * 24 * time.Hour, Kinds: kinds(pruneKindDiffs)})
+	assert.Equal(t, 0, rep.Removed)
+	_, err := os.Stat(rig.taskDiff(id))
+	assert.NoError(t, err, "the regenerated diff stays")
+}
+
+func TestPruneRescansDuringALongRun(t *testing.T) {
+	rig := newPruneRig(t)
+	var ids []string
+	for i := 0; i < 6; i++ {
+		ids = append(ids, rig.object(fmt.Sprintf("old unused %d", i), "s1", 30*24*time.Hour))
+	}
+	old := pruneRescanEvery
+	pruneRescanEvery = 2
+	t.Cleanup(func() { pruneRescanEvery = old; pruneAfterDeleteHook = nil })
+	posted := false
+	pruneAfterDeleteHook = func() {
+		if posted {
+			return
+		}
+		posted = true
+		for _, id := range ids { // link every object still there
+			if rig.exists(id) {
+				rig.post("now linked: coral://artifacts/" + id)
+			}
+		}
+	}
+	rep := rig.run(pruneOptions{OlderThan: 7 * 24 * time.Hour, Kinds: kinds(pruneKindObjects)})
+	left := 0
+	for _, id := range ids {
+		if rig.exists(id) {
+			left++
+		}
+	}
+	// The first deletion posts links to the rest; the re-scan after 2 deletions sees them, so at most
+	// one more (the one already under the lock's re-check before the re-scan) can go.
+	assert.LessOrEqual(t, rep.Removed, 2, "the re-scan stopped the run deleting newly linked objects")
+	assert.GreaterOrEqual(t, left, 4)
+}

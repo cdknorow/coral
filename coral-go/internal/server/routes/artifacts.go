@@ -63,7 +63,7 @@ func (h *SessionsHandler) RegisterAgentArtifacts(r chi.Router) {
 	r.Delete("/api/artifacts/{id}", h.deleteAgentArtifact)
 	r.Get("/api/system/artifact-store/kept", h.keptListRoute) // #3554
 	r.Post("/api/artifacts/prune", h.pruneArtifactsRoute)
-	r.Post("/api/artifacts/retention/ack", h.retentionAckRoute) // #3554     // #3554
+	r.Post("/api/artifacts/retention/ack", h.retentionAckRoute) // #3554
 	r.Put("/api/artifacts/{id}/keep", h.keepArtifactRoute)      // #3554
 	r.Delete("/api/artifacts/{id}/keep", h.keepArtifactRoute)   // #3554
 	r.Get("/api/system/artifact-store", h.getArtifactStore)

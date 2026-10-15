@@ -109,7 +109,7 @@ script, an API key and Coral Hub get 403):
 
 - **Prune** removes, older than a number of days you choose:
   - saved diffs (`changes.diff`) of tasks that are completed or skipped, and of sessions that are stopped. Never an open task's or a running or sleeping session's;
-  - artifacts nothing links. Nothing means no post on a board that still exists, no task, its results or evidence, no note, panel, view or workflow, and no team knowledge file. A link anywhere keeps it, and so does the Operator's **Keep** mark.
+  - artifacts nothing links. Coral looks through everything it stores: posts on boards that still exist, tasks and their results, notes, panels, views, workflows, scheduled jobs, launch prompts, team templates, chat transcripts (as indexed for search) and team knowledge files. A link in any of them keeps the artifact, and so does the Operator's **Keep** mark. Only having downloaded it doesn't.
   - Identical diffs are stored once and shared. The shared copy goes when nothing links it any more.
 - **Shrink** rewrites saved diffs of finished tasks without secrets, dot-files, binaries and files over 256 KiB (each becomes a one-line note). The code changes stay.
 
