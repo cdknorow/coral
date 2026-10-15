@@ -29,6 +29,19 @@ type SessionConfig struct {
 	DeadAfter      time.Duration // declare the peer dead after this, default 60s
 	StreamOpenWait time.Duration // default 10s
 	Limits         Limits
+
+	// Capabilities decides, per authenticated tunnel, which capabilities the hub
+	// advertises in Welcome (version 2 peers only); nil advertises none. Only "relay" is
+	// known, and only with OnRelay set.
+	Capabilities func(identity any) []string
+	// OnRelay handles a relay request the connector opens (#3489, relay.go). Nil: every
+	// connector-opened stream is closed, as in version 1.
+	OnRelay RelayFunc
+	// MaxRelayInFlight caps concurrent OnRelay calls per tunnel (default 4); more get 429.
+	MaxRelayInFlight int
+	// MaxRelayStreams caps connector-opened streams being read per tunnel (default 8). It is
+	// taken before any goroutine or read; a stream over it is closed at once.
+	MaxRelayStreams int
 }
 
 func (c SessionConfig) withDefaults() SessionConfig {
@@ -46,6 +59,12 @@ func (c SessionConfig) withDefaults() SessionConfig {
 	}
 	if c.StreamOpenWait <= 0 {
 		c.StreamOpenWait = 10 * time.Second
+	}
+	if c.MaxRelayInFlight <= 0 {
+		c.MaxRelayInFlight = 4
+	}
+	if c.MaxRelayStreams <= 0 {
+		c.MaxRelayStreams = 8
 	}
 	c.Limits = c.Limits.withDefaults()
 	return c
@@ -86,6 +105,9 @@ type Session struct {
 	localMode Mode
 	active    atomic.Int32
 	closeOnce sync.Once
+	relayOn   bool          // the hub advertised the relay to this tunnel
+	relays    atomic.Int32  // OnRelay calls in progress
+	relaySlot chan struct{} // connector-opened streams being handled (MaxRelayStreams)
 }
 
 // Accept performs the server handshake on an upgraded WebSocket and returns a
@@ -128,7 +150,17 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 	if v < MinProtocolVersion {
 		return reject(CodeUnsupportedVersion, ErrUnsupportedVersion)
 	}
-	w, _ := json.Marshal(Welcome{AcceptedVersion: v, MaxStreams: cfg.MaxStreams})
+	// Capabilities only for a version 2 peer, only the ones this package knows, and the
+	// relay only when the hub can handle it.
+	var caps []string
+	if v >= 2 && cfg.Capabilities != nil {
+		for _, c := range cfg.Capabilities(identity) {
+			if c == CapabilityRelay && cfg.OnRelay != nil {
+				caps = append(caps, c)
+			}
+		}
+	}
+	w, _ := json.Marshal(Welcome{AcceptedVersion: v, MaxStreams: cfg.MaxStreams, Capabilities: caps})
 	if err := c.Write(hctx, websocket.MessageBinary, w); err != nil {
 		_ = c.Close(websocket.StatusInternalError, "")
 		return nil, err
@@ -143,7 +175,8 @@ func Accept(ctx context.Context, c *websocket.Conn, auth AuthFunc, cfg SessionCo
 		_ = nc.Close()
 		return nil, err
 	}
-	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode)}
+	s := &Session{ys: ys, cfg: cfg, cancel: cancel, identity: identity, version: v, coralVer: hello.CoralVersion, localMode: parseLocalMode(hello.LocalMode),
+		relayOn: len(caps) > 0, relaySlot: make(chan struct{}, cfg.MaxRelayStreams)}
 	go s.rejectInbound()
 	go func() { <-ys.CloseChan(); s.Close() }()
 	return s, nil
@@ -164,15 +197,32 @@ func AcceptHTTP(w http.ResponseWriter, r *http.Request, auth AuthFunc, cfg Sessi
 	return Accept(r.Context(), c, auth, cfg)
 }
 
-// rejectInbound closes any stream the connector opens: only the hub opens
-// streams.
+// rejectInbound closes any stream the connector opens: only the hub opens streams.
+// The one exception (#3489) is a relay request, and only on a tunnel the hub advertised
+// the relay to: serveRelay checks its header, cap and deadline before OnRelay, and
+// closes anything else unanswered.
 func (s *Session) rejectInbound() {
 	for {
 		st, err := s.ys.AcceptStream()
 		if err != nil {
 			return
 		}
-		_ = st.Close()
+		if !s.relayOn {
+			_ = st.Close()
+			continue
+		}
+		// The per-tunnel stream limit is taken here, before a goroutine or any read: a
+		// flood of streams costs one close each.
+		select {
+		case s.relaySlot <- struct{}{}:
+		default:
+			_ = st.Close()
+			continue
+		}
+		go func() {
+			defer func() { <-s.relaySlot }()
+			s.serveRelay(st, st.SetDeadline)
+		}()
 	}
 }
 

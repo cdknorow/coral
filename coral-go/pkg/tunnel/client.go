@@ -76,7 +76,10 @@ type ClientOptions struct {
 	// OnState is called from Run when the tunnel connects (nil error) or a
 	// connection attempt or session ends (with the reason).
 	OnState func(connected bool, err error)
-	Logger  *slog.Logger
+	// OnSession is called with the live session after each connect, and with nil when it
+	// ends, so the owner can send relay requests over it (#3489). Optional.
+	OnSession func(*ClientSession)
+	Logger    *slog.Logger
 
 	uplink uplinkConfig // the uplink scheduler's tuning (tests)
 }
@@ -94,6 +97,8 @@ type ClientSession struct {
 	closeOnce  sync.Once
 	started    time.Time
 	up         *uplink // nil: writes go straight to yamux
+	// capabilities the hub advertised in Welcome (version 2), e.g. "relay" (#3489).
+	capabilities []string
 }
 
 func isLoopbackHost(h string) bool {
@@ -262,7 +267,7 @@ func Dial(ctx context.Context, rawURL, token string, o ClientOptions) (*ClientSe
 	if log == nil {
 		log = slog.Default()
 	}
-	cs := &ClientSession{ys: ys, cfg: cfg, h: o.Handler, cancel: cancel, version: w.AcceptedVersion, maxStreams: cfg.MaxStreams, log: log, started: time.Now()}
+	cs := &ClientSession{ys: ys, cfg: cfg, h: o.Handler, cancel: cancel, version: w.AcceptedVersion, maxStreams: cfg.MaxStreams, log: log, started: time.Now(), capabilities: w.Capabilities}
 	if !o.uplink.Off && !envOff(schedulerEnv) {
 		cs.up = newUplink(o.uplink)
 	}
@@ -464,14 +469,23 @@ func Run(ctx context.Context, rawURL, token string, o ClientOptions) error {
 	for {
 		cs, err := Dial(ctx, rawURL, token, o)
 		if err == nil {
+			if o.OnSession != nil {
+				o.OnSession(cs)
+			}
 			note(true, nil)
 			start := time.Now()
 			select {
 			case <-ctx.Done():
 				_ = cs.Close()
+				if o.OnSession != nil {
+					o.OnSession(nil)
+				}
 				note(false, ctx.Err())
 				return ctx.Err()
 			case <-cs.Done():
+			}
+			if o.OnSession != nil {
+				o.OnSession(nil)
 			}
 			note(false, ErrSessionClosed)
 			if time.Since(start) > 30*time.Second {

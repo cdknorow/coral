@@ -51,7 +51,7 @@ func TestHTTPRoundTrip(t *testing.T) {
 	}), func(l *LocalHandler) {
 		l.Authorize = func(h http.Header) { h.Set("Authorization", "Bearer local-key") }
 	})
-	assert.Equal(t, 1, sess.Version())
+	assert.Equal(t, ProtocolVersion, sess.Version())
 	assert.Equal(t, "server-1", sess.Identity())
 	assert.Equal(t, "test", sess.CoralVersion())
 

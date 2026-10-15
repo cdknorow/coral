@@ -35,8 +35,12 @@ import (
 // Protocol versions. The client announces the newest version it speaks; the
 // server accepts min(client, ProtocolVersion) provided that is at least
 // MinProtocolVersion, so older connectors keep working across upgrades.
+//
+// Version 2 (#3489) adds Welcome.Capabilities: the hub may advertise "relay", and only then
+// may the connector open relay streams (relay.go). A version 1 peer on either side never
+// sees or opens one.
 const (
-	ProtocolVersion    = 1
+	ProtocolVersion    = 2
 	MinProtocolVersion = 1
 )
 
@@ -78,6 +82,8 @@ type Welcome struct {
 	AcceptedVersion int    `json:"accepted_version,omitempty"`
 	Error           string `json:"error,omitempty"`
 	MaxStreams      int    `json:"max_streams,omitempty"`
+	// Capabilities (version 2) the hub turns on for this tunnel, e.g. "relay".
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 var (
