@@ -1,5 +1,21 @@
 # Release Notes
 
+## v1.4.47 — Security fix: agent content can never answer a prompt
+
+**Security fix — please upgrade.** A button inside an agent's message could answer a pending permission prompt when clicked; agent content can no longer contain controls, and only Coral's own prompt card answers a prompt.
+
+### Security
+
+- **Agent content is never live UI.** Everything an agent writes (messages, notes, history, summaries, team knowledge, docs) is rendered without buttons, form controls, dialogs or other interactive elements, and without ids, roles or data attributes that could pass for Coral's own. A task-list checkbox is still shown, as a disabled one.
+- **Only Coral's own prompt card answers a prompt.** Clicking an answer or submitting a text answer works only inside a prompt card Coral created, never inside an agent-written plan or a card-shaped message.
+- **Notification links go only where they should.** A notification's link may be a Coral doc, a page in the dashboard, or an `http(s)` address (opened in a new tab). Anything else is shown as plain text, and the server refuses it when the notification is posted.
+- **Docs links stay inside Coral.** A link from one doc to another opens it in the Docs tab, and the docs view follows the same link rules as the message board.
+
+### Windows
+
+- **Safe file access works on Windows.** Coral now refuses a hard-linked file and follows junctions when checking that a path stays inside its folder. Drive-relative and drive-rooted paths (`C:x.png`, `\x.png`) are refused in auto-attach. Coral's own logs and workflow notes are never written through a hard link.
+- **The signed command line can read its token on Windows again.** It had been refused since Oct 14, so commands that sign as you didn't work there. Repository paths from git are also reported in Windows form, so they compare correctly with Coral's own.
+
 ## v1.4.46 — Phone navigation
 
 ### Dashboard
